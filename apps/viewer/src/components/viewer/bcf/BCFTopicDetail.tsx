@@ -215,7 +215,7 @@ export function BCFTopicDetail({
                           <img
                             src={vp.snapshot}
                             alt="Viewpoint"
-                            className="w-full max-h-48 object-contain bg-muted cursor-pointer hover:opacity-90 transition-opacity"
+                            className="w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => onActivateViewpoint(vp)}
                           />
                         ) : (

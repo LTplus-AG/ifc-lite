@@ -45,6 +45,167 @@ fn rotate_and_normalize(
         .ok_or_else(|| Error::geometry("Zero-length direction vector".to_string()))
 }
 
+// ---------------------------------------------------------------------------
+// Reveal face generation helpers
+// ---------------------------------------------------------------------------
+
+/// Determine the primary extrusion axis (0=X, 1=Y, 2=Z) from the opening's
+/// extrusion direction, or fall back to the wall's thinnest AABB dimension.
+#[inline]
+fn determine_extrusion_axis(
+    extrusion_dir: Option<&Vector3<f64>>,
+    wall_min: &Point3<f64>,
+    wall_max: &Point3<f64>,
+) -> usize {
+    if let Some(dir) = extrusion_dir {
+        let ax = dir.x.abs();
+        let ay = dir.y.abs();
+        let az = dir.z.abs();
+        if ax >= ay && ax >= az {
+            0
+        } else if ay >= az {
+            1
+        } else {
+            2
+        }
+    } else {
+        let dx = (wall_max.x - wall_min.x).abs();
+        let dy = (wall_max.y - wall_min.y).abs();
+        let dz = (wall_max.z - wall_min.z).abs();
+        if dx <= dy && dx <= dz {
+            0
+        } else if dy <= dz {
+            1
+        } else {
+            2
+        }
+    }
+}
+
+/// Read a coordinate from a `Point3` by axis index (0=X, 1=Y, 2=Z).
+#[inline(always)]
+fn axis_val(p: &Point3<f64>, axis: usize) -> f64 {
+    match axis {
+        0 => p.x,
+        1 => p.y,
+        _ => p.z,
+    }
+}
+
+/// Build a `Point3` given values for three named axes.
+#[inline(always)]
+fn point_from_axes(a: usize, va: f64, b: usize, vb: f64, c: usize, vc: f64) -> Point3<f64> {
+    let mut coords = [0.0_f64; 3];
+    coords[a] = va;
+    coords[b] = vb;
+    coords[c] = vc;
+    Point3::new(coords[0], coords[1], coords[2])
+}
+
+/// Build a unit `Vector3` pointing along the given axis with the given sign.
+#[inline(always)]
+fn vec_along_axis(axis: usize, sign: f64) -> Vector3<f64> {
+    let mut coords = [0.0_f64; 3];
+    coords[axis] = sign;
+    Vector3::new(coords[0], coords[1], coords[2])
+}
+
+/// Add a single reveal quad (2 triangles) to the mesh, auto-correcting winding
+/// order so the face normal matches the desired direction.
+#[inline]
+fn add_reveal_quad(
+    mesh: &mut Mesh,
+    p0: Point3<f64>,
+    p1: Point3<f64>,
+    p2: Point3<f64>,
+    p3: Point3<f64>,
+    desired_normal: Vector3<f64>,
+) {
+    let edge1 = p1 - p0;
+    let edge2 = p2 - p0;
+    let computed = edge1.cross(&edge2);
+
+    let base = mesh.vertex_count() as u32;
+    mesh.add_vertex(p0, desired_normal);
+    mesh.add_vertex(p1, desired_normal);
+    mesh.add_vertex(p2, desired_normal);
+    mesh.add_vertex(p3, desired_normal);
+
+    if computed.dot(&desired_normal) >= 0.0 {
+        mesh.add_triangle(base, base + 1, base + 2);
+        mesh.add_triangle(base, base + 2, base + 3);
+    } else {
+        mesh.add_triangle(base, base + 2, base + 1);
+        mesh.add_triangle(base, base + 3, base + 2);
+    }
+}
+
+/// Generate 4 reveal quads for a rectangular opening.
+///
+/// Reveals are the inner surfaces of the hole cut through the wall.  Each face
+/// spans the wall thickness (along the extrusion direction) and sits at one
+/// edge of the opening (top, bottom, left, right).
+///
+/// A reveal is **skipped** when the opening edge coincides with the wall
+/// boundary (e.g. a door that starts at floor level has no sill reveal).
+fn generate_reveal_quads(
+    mesh: &mut Mesh,
+    open_min: &Point3<f64>,
+    open_max: &Point3<f64>,
+    wall_min: &Point3<f64>,
+    wall_max: &Point3<f64>,
+    extrusion_dir: Option<&Vector3<f64>>,
+) {
+    let ea = determine_extrusion_axis(extrusion_dir, wall_min, wall_max);
+
+    // Reveal depth along the extrusion axis, clamped to the wall-opening
+    // intersection so reveals never extend beyond either surface.
+    let d_min = axis_val(wall_min, ea).max(axis_val(open_min, ea));
+    let d_max = axis_val(wall_max, ea).min(axis_val(open_max, ea));
+    if d_max - d_min < 1e-4 {
+        return; // No wall thickness to reveal
+    }
+
+    // The two cross-axes (the ones that are NOT the extrusion axis).
+    let cross: [usize; 2] = match ea {
+        0 => [1, 2],
+        1 => [0, 2],
+        _ => [0, 1],
+    };
+
+    for (i, &ca) in cross.iter().enumerate() {
+        let oa = cross[1 - i]; // the *other* cross-axis
+        let o_min = axis_val(open_min, oa);
+        let o_max = axis_val(open_max, oa);
+
+        // --- Face at open_min[ca] — normal points +ca (into opening) ---
+        let face_lo = axis_val(open_min, ca);
+        if face_lo > axis_val(wall_min, ca) + 1e-4 {
+            add_reveal_quad(
+                mesh,
+                point_from_axes(ea, d_min, ca, face_lo, oa, o_min),
+                point_from_axes(ea, d_max, ca, face_lo, oa, o_min),
+                point_from_axes(ea, d_max, ca, face_lo, oa, o_max),
+                point_from_axes(ea, d_min, ca, face_lo, oa, o_max),
+                vec_along_axis(ca, 1.0),
+            );
+        }
+
+        // --- Face at open_max[ca] — normal points −ca (into opening) ---
+        let face_hi = axis_val(open_max, ca);
+        if face_hi < axis_val(wall_max, ca) - 1e-4 {
+            add_reveal_quad(
+                mesh,
+                point_from_axes(ea, d_min, ca, face_hi, oa, o_max),
+                point_from_axes(ea, d_max, ca, face_hi, oa, o_max),
+                point_from_axes(ea, d_max, ca, face_hi, oa, o_min),
+                point_from_axes(ea, d_min, ca, face_hi, oa, o_min),
+                vec_along_axis(ca, -1.0),
+            );
+        }
+    }
+}
+
 /// Whether the representation type is geometry we can process.
 fn is_body_representation(rep_type: &str) -> bool {
     matches!(
@@ -495,9 +656,10 @@ impl GeometryRouter {
     /// 3. **Diagonal wall openings**: Uses AABB clipping without internal face generation
     ///    to avoid rotation artifacts.
     ///
-    /// **Important**: Internal face generation is disabled for all openings because it causes
-    /// visual artifacts (rotated faces, thin lines extending from models). The opening cutouts
-    /// are still geometrically correct - only the internal "reveal" faces are omitted.
+    /// Reveal faces (inner surfaces of the opening holes) are generated as a
+    /// post-clipping step for rectangular and diagonal openings.  For diagonal
+    /// walls the geometry is computed in a rotated axis-aligned frame and
+    /// rotated back, giving correct results for any wall orientation.
     pub fn process_element_with_voids(
         &self,
         element: &DecodedEntity,
@@ -636,6 +798,8 @@ impl GeometryRouter {
         self.apply_diagonal_openings(&mut result, &ctx.openings, &wall_min, &wall_max);
 
         let mut rect_boxes: Vec<(Point3<f64>, Point3<f64>)> = Vec::new();
+        // Keep extrusion directions alongside boxes for reveal generation.
+        let mut rect_dirs: Vec<Option<Vector3<f64>>> = Vec::new();
         let mut non_rect_openings: Vec<&OpeningType> = Vec::new();
 
         for opening in &ctx.merged_openings {
@@ -649,6 +813,7 @@ impl GeometryRouter {
                         (*open_min, *open_max)
                     };
                     rect_boxes.push((final_min, final_max));
+                    rect_dirs.push(*extrusion_dir);
                 }
                 other => {
                     non_rect_openings.push(other);
@@ -658,6 +823,18 @@ impl GeometryRouter {
 
         if !rect_boxes.is_empty() {
             result = self.cut_multiple_rectangular_openings(&result, &rect_boxes);
+
+            // Generate reveal faces (inner surfaces of the opening holes)
+            for (i, (open_min, open_max)) in rect_boxes.iter().enumerate() {
+                generate_reveal_quads(
+                    &mut result,
+                    open_min,
+                    open_max,
+                    &wall_min,
+                    &wall_max,
+                    rect_dirs[i].as_ref(),
+                );
+            }
         }
 
         for opening in &non_rect_openings {
@@ -1034,12 +1211,19 @@ impl GeometryRouter {
                 chunk[2] = n.z as f32;
             }
 
-            let mut wall_x_min = f64::INFINITY;
-            let mut wall_x_max = f64::NEG_INFINITY;
+            // Compute full rotated wall AABB (needed for reveal depth clamping).
+            let mut rot_wall_min =
+                Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+            let mut rot_wall_max =
+                Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
             for wc in &wall_corners {
                 let rwc = rotation * wc;
-                wall_x_min = wall_x_min.min(rwc.x);
-                wall_x_max = wall_x_max.max(rwc.x);
+                rot_wall_min.x = rot_wall_min.x.min(rwc.x);
+                rot_wall_min.y = rot_wall_min.y.min(rwc.y);
+                rot_wall_min.z = rot_wall_min.z.min(rwc.z);
+                rot_wall_max.x = rot_wall_max.x.max(rwc.x);
+                rot_wall_max.y = rot_wall_max.y.max(rwc.y);
+                rot_wall_max.z = rot_wall_max.z.max(rwc.z);
             }
 
             for opening_mesh in group_meshes {
@@ -1056,10 +1240,22 @@ impl GeometryRouter {
                     rot_max.y = rot_max.y.max(p.y);
                     rot_max.z = rot_max.z.max(p.z);
                 }
-                rot_min.x = rot_min.x.min(wall_x_min);
-                rot_max.x = rot_max.x.max(wall_x_max);
+                rot_min.x = rot_min.x.min(rot_wall_min.x);
+                rot_max.x = rot_max.x.max(rot_wall_max.x);
 
                 *result = self.cut_rectangular_opening_no_faces(result, rot_min, rot_max);
+
+                // Generate reveal faces in the rotated (X-aligned) frame.
+                // They rotate back to world space together with the rest of the mesh.
+                let x_dir = Vector3::new(1.0, 0.0, 0.0);
+                generate_reveal_quads(
+                    result,
+                    &rot_min,
+                    &rot_max,
+                    &rot_wall_min,
+                    &rot_wall_max,
+                    Some(&x_dir),
+                );
             }
 
             // Rotate positions and normals back to world frame
@@ -1188,8 +1384,8 @@ impl GeometryRouter {
     /// Cut a rectangular opening from a mesh using AABB clipping.
     ///
     /// This method clips triangles against the opening bounding box using axis-aligned
-    /// clipping planes. Internal face generation is disabled because it causes visual
-    /// artifacts (rotated faces, thin lines extending from models).
+    /// clipping planes. Reveal faces are generated separately in the caller after
+    /// all clipping is complete (see `generate_reveal_quads`).
     /// Single-pass multi-box rectangular clipping.
     /// Instead of iterating boxes one-by-one (O(2^N) triangle growth from boundary
     /// re-splitting), this tests each triangle against ALL boxes simultaneously.
@@ -1347,7 +1543,7 @@ impl GeometryRouter {
             }
         }
 
-        // No internal face generation for diagonal openings
+        // Reveal faces are generated by the caller (see generate_reveal_quads)
         result
     }
 
@@ -1684,5 +1880,242 @@ impl GeometryRouter {
             result.add_vertex(tri.v2, *normal);
             result.add_triangle(base, base + 1, base + 2);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod reveal_tests {
+    use super::*;
+    use crate::Mesh;
+
+    /// Build a simple box mesh (12 triangles) for testing.
+    #[allow(dead_code)]
+    fn make_box_mesh(
+        min: Point3<f64>,
+        max: Point3<f64>,
+    ) -> Mesh {
+        let mut m = Mesh::with_capacity(24, 36);
+
+        let corners = [
+            Point3::new(min.x, min.y, min.z), // 0
+            Point3::new(max.x, min.y, min.z), // 1
+            Point3::new(max.x, max.y, min.z), // 2
+            Point3::new(min.x, max.y, min.z), // 3
+            Point3::new(min.x, min.y, max.z), // 4
+            Point3::new(max.x, min.y, max.z), // 5
+            Point3::new(max.x, max.y, max.z), // 6
+            Point3::new(min.x, max.y, max.z), // 7
+        ];
+
+        // 6 faces × 4 vertices each with face normals
+        let faces: [(Vector3<f64>, [usize; 4]); 6] = [
+            (Vector3::new(0.0, 0.0, -1.0), [0, 2, 1, 3]),  // -Z
+            (Vector3::new(0.0, 0.0, 1.0), [4, 5, 6, 7]),   // +Z
+            (Vector3::new(0.0, -1.0, 0.0), [0, 1, 5, 4]),   // -Y
+            (Vector3::new(0.0, 1.0, 0.0), [2, 3, 7, 6]),    // +Y
+            (Vector3::new(-1.0, 0.0, 0.0), [0, 4, 7, 3]),   // -X
+            (Vector3::new(1.0, 0.0, 0.0), [1, 2, 6, 5]),    // +X
+        ];
+        for (n, idx) in &faces {
+            let b = m.vertex_count() as u32;
+            m.add_vertex(corners[idx[0]], *n);
+            m.add_vertex(corners[idx[1]], *n);
+            m.add_vertex(corners[idx[2]], *n);
+            m.add_vertex(corners[idx[3]], *n);
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+        m
+    }
+
+    /// Extract the dominant normal (first triangle's normal) of all reveal
+    /// triangles (those added after `pre_count` triangles).
+    fn reveal_normals(mesh: &Mesh, pre_tri_count: usize) -> Vec<Vector3<f64>> {
+        let mut normals = Vec::new();
+        let indices = &mesh.indices[pre_tri_count * 3..];
+        for tri in indices.chunks_exact(3) {
+            let i = tri[0] as usize;
+            let nx = mesh.normals[i * 3] as f64;
+            let ny = mesh.normals[i * 3 + 1] as f64;
+            let nz = mesh.normals[i * 3 + 2] as f64;
+            normals.push(Vector3::new(nx, ny, nz));
+        }
+        normals
+    }
+
+    #[test]
+    fn test_reveals_generated_for_axis_aligned_opening() {
+        // Wall: 10m long (X), 0.3m thick (Y), 3m tall (Z)
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 3.0);
+
+        // Opening: 2m wide at X=4..6, full Y depth, 1m..2.5m in Z
+        let open_min = Point3::new(4.0, -0.3, 1.0);
+        let open_max = Point3::new(6.0, 0.3, 2.5);
+
+        let mut mesh = Mesh::new();
+        let extrusion_dir = Vector3::new(0.0, 1.0, 0.0); // Through the wall
+
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&extrusion_dir),
+        );
+
+        // Should have 4 reveal quads = 8 triangles = 16 vertices
+        assert_eq!(mesh.triangle_count(), 8, "Expected 4 reveal quads (8 triangles)");
+        assert_eq!(mesh.vertex_count(), 16, "Expected 16 vertices (4 per quad)");
+    }
+
+    #[test]
+    fn test_reveal_normals_point_inward() {
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 3.0);
+        let open_min = Point3::new(4.0, -0.3, 1.0);
+        let open_max = Point3::new(6.0, 0.3, 2.5);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+
+        let normals = reveal_normals(&mesh, 0);
+
+        // Opening center in X/Z cross-section is (5.0, 1.75)
+        // Left face at X=4.0 → normal should have +X component
+        // Right face at X=6.0 → normal should have −X component
+        // Bottom at Z=1.0 → normal should have +Z component
+        // Top at Z=2.5 → normal should have −Z component
+        let has_pos_x = normals.iter().any(|n| n.x > 0.5);
+        let has_neg_x = normals.iter().any(|n| n.x < -0.5);
+        let has_pos_z = normals.iter().any(|n| n.z > 0.5);
+        let has_neg_z = normals.iter().any(|n| n.z < -0.5);
+
+        assert!(has_pos_x, "Should have +X normal (left reveal)");
+        assert!(has_neg_x, "Should have −X normal (right reveal)");
+        assert!(has_pos_z, "Should have +Z normal (bottom reveal)");
+        assert!(has_neg_z, "Should have −Z normal (top reveal)");
+    }
+
+    #[test]
+    fn test_no_reveals_when_opening_at_wall_boundary() {
+        // Door-like opening that starts at wall bottom (Z=0) and spans full width
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 3.0);
+        // Opening at Z=0 (floor) to Z=2.1 (door height), X covers full wall
+        let open_min = Point3::new(0.0, -0.3, 0.0);
+        let open_max = Point3::new(10.0, 0.3, 2.1);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+
+        // X edges at wall boundary → no left/right reveals
+        // Z bottom at wall boundary → no bottom reveal
+        // Only top reveal at Z=2.1 should exist
+        assert_eq!(mesh.triangle_count(), 2, "Only top reveal expected (1 quad = 2 tris)");
+    }
+
+    #[test]
+    fn test_reveals_with_extrusion_along_x() {
+        // Wall oriented along Y, thickness along X
+        let wall_min = Point3::new(-0.15, 0.0, 0.0);
+        let wall_max = Point3::new(0.15, 10.0, 3.0);
+        let open_min = Point3::new(-0.3, 4.0, 1.0);
+        let open_max = Point3::new(0.3, 6.0, 2.5);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(1.0, 0.0, 0.0);
+        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+
+        assert_eq!(mesh.triangle_count(), 8, "4 reveal quads for X-extrusion");
+    }
+
+    #[test]
+    fn test_reveals_with_extrusion_along_z() {
+        // Slab-like: thickness along Z (horizontal openings)
+        let wall_min = Point3::new(0.0, 0.0, -0.15);
+        let wall_max = Point3::new(10.0, 10.0, 0.15);
+        let open_min = Point3::new(3.0, 3.0, -0.3);
+        let open_max = Point3::new(5.0, 5.0, 0.3);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 0.0, 1.0);
+        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+
+        assert_eq!(mesh.triangle_count(), 8, "4 reveal quads for Z-extrusion");
+    }
+
+    #[test]
+    fn test_reveals_clamp_to_wall_depth() {
+        // Wall: 0.3m thick along Y
+        let wall_min = Point3::new(0.0, 0.0, 0.0);
+        let wall_max = Point3::new(10.0, 0.3, 3.0);
+        // Opening extends well beyond wall in Y (simulating extend_opening_along_direction)
+        let open_min = Point3::new(4.0, -1.0, 1.0);
+        let open_max = Point3::new(6.0, 1.3, 2.5);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+
+        // Reveal depth should be clamped to wall: Y=0.0..0.3 (not -1.0..1.3)
+        for chunk in mesh.positions.chunks_exact(3) {
+            let y = chunk[1] as f64;
+            assert!(
+                y >= -1e-3 && y <= 0.3 + 1e-3,
+                "Reveal vertex Y={y} should be within wall bounds [0.0, 0.3]"
+            );
+        }
+    }
+
+    #[test]
+    fn test_no_reveals_when_no_wall_thickness() {
+        // Degenerate wall with zero thickness along extrusion
+        let wall_min = Point3::new(0.0, 0.0, 0.0);
+        let wall_max = Point3::new(10.0, 0.0, 3.0);
+        let open_min = Point3::new(4.0, -0.1, 1.0);
+        let open_max = Point3::new(6.0, 0.1, 2.5);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+
+        assert_eq!(mesh.triangle_count(), 0, "No reveals for zero-thickness wall");
+    }
+
+    #[test]
+    fn test_determine_extrusion_axis() {
+        let wmin = Point3::new(0.0, 0.0, 0.0);
+        let wmax = Point3::new(10.0, 0.3, 3.0);
+
+        assert_eq!(
+            determine_extrusion_axis(Some(&Vector3::new(1.0, 0.0, 0.0)), &wmin, &wmax),
+            0
+        );
+        assert_eq!(
+            determine_extrusion_axis(Some(&Vector3::new(0.0, 1.0, 0.0)), &wmin, &wmax),
+            1
+        );
+        assert_eq!(
+            determine_extrusion_axis(Some(&Vector3::new(0.0, 0.0, 1.0)), &wmin, &wmax),
+            2
+        );
+        // Diagonal direction — picks dominant axis
+        assert_eq!(
+            determine_extrusion_axis(Some(&Vector3::new(0.7, 0.7, 0.0)), &wmin, &wmax),
+            0 // X and Y tied, X wins via >=
+        );
+        // No direction → thinnest wall dim (Y=0.3)
+        assert_eq!(
+            determine_extrusion_axis(None, &wmin, &wmax),
+            1
+        );
     }
 }

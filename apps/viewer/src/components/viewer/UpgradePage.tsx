@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { PricingTable, SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
@@ -12,16 +12,21 @@ import { navigateToPath } from '@/services/app-navigation';
 
 export function UpgradePage() {
   const desktopEntitlement = useViewerStore((s) => s.desktopEntitlement);
-  const hasPro = hasDesktopPro(desktopEntitlement);
+  const chatHasPro = useViewerStore((s) => s.chatHasPro);
+  const hasPro = chatHasPro || hasDesktopPro(desktopEntitlement);
   const returnTo = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     const candidate = params.get('returnTo');
     return candidate && candidate.startsWith('/') ? candidate : '/';
   }, []);
+  const upgradeRedirectUrl = useMemo(
+    () => `/upgrade?returnTo=${encodeURIComponent(returnTo)}`,
+    [returnTo],
+  );
 
-  const navigateBack = () => {
+  const navigateBack = useCallback(() => {
     navigateToPath(returnTo, { replace: true });
-  };
+  }, [returnTo]);
 
   // Automatically return to the previous app view once upgrade is active.
   useEffect(() => {
@@ -30,7 +35,7 @@ export function UpgradePage() {
       navigateBack();
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [hasPro]);
+  }, [hasPro, navigateBack]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -53,8 +58,8 @@ export function UpgradePage() {
               <div className="flex items-center justify-center py-12">
                 <SignInButton
                   mode="modal"
-                  fallbackRedirectUrl={returnTo}
-                  forceRedirectUrl={returnTo}
+                  fallbackRedirectUrl={upgradeRedirectUrl}
+                  forceRedirectUrl={upgradeRedirectUrl}
                 >
                   <Button>Sign in to continue</Button>
                 </SignInButton>

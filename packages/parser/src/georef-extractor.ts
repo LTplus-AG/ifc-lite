@@ -58,6 +58,12 @@ export interface ProjectedCRS {
   mapProjection?: string;     // e.g., "UTM Zone 10N"
   mapZone?: string;           // e.g., "10N"
   mapUnit?: string;           // e.g., "METRE"
+  /**
+   * Scale factor to convert MapConversion values to metres.
+   * Derived from IfcProjectedCRS.MapUnit (e.g. 0.001 for mm, 1 for m).
+   * If undefined, the project's length unit applies (IFC spec default).
+   */
+  mapUnitScale?: number;
 }
 
 export interface GeoreferenceInfo {
@@ -94,7 +100,7 @@ export function extractGeoreferencing(
   if (projectedCRSIds.length > 0) {
     const entity = entities.get(projectedCRSIds[0]);
     if (entity) {
-      info.projectedCRS = extractProjectedCRS(entity);
+      info.projectedCRS = extractProjectedCRS(entity, (id) => entities.get(id));
       info.hasGeoreference = true;
     }
   }
@@ -131,7 +137,15 @@ function extractMapConversion(entity: IfcEntity): MapConversion {
   };
 }
 
-function extractProjectedCRS(entity: IfcEntity): ProjectedCRS {
+/** SI prefix → scale factor */
+const SI_PREFIX_SCALE: Record<string, number> = {
+  'MILLI': 0.001, 'CENTI': 0.01, 'DECI': 0.1, 'KILO': 1000,
+};
+
+function extractProjectedCRS(
+  entity: IfcEntity,
+  resolveEntity?: (id: number) => IfcEntity | undefined,
+): ProjectedCRS {
   // IfcProjectedCRS attributes (IFC4):
   // [0] Name (IfcLabel)
   // [1] Description (OPTIONAL IfcText)
@@ -141,13 +155,32 @@ function extractProjectedCRS(entity: IfcEntity): ProjectedCRS {
   // [5] MapZone (OPTIONAL IfcIdentifier)
   // [6] MapUnit (OPTIONAL IfcNamedUnit)
 
-  // Parse MapUnit if it's a reference
+  // Resolve MapUnit reference to determine actual unit + scale
   let mapUnit: string | undefined;
+  let mapUnitScale: number | undefined;
   const mapUnitRef = getReference(entity.attributes[6]);
   if (mapUnitRef) {
-    // Would need to resolve the IfcNamedUnit entity
-    mapUnit = 'METRE'; // Default assumption
+    mapUnit = 'METRE'; // default if we can't resolve
+    mapUnitScale = 1;
+    if (resolveEntity) {
+      const unitEntity = resolveEntity(mapUnitRef);
+      if (unitEntity) {
+        // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
+        const prefix = unitEntity.attributes?.[2];
+        if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
+          const prefixStr = prefix.replace(/\./g, '').toUpperCase();
+          const prefixScale = SI_PREFIX_SCALE[prefixStr];
+          if (prefixScale !== undefined) {
+            mapUnitScale = prefixScale;
+            mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';
+          }
+        }
+        // No prefix → base METRE → scale = 1
+      }
+    }
   }
+  // If mapUnitRef is absent → mapUnit stays undefined, mapUnitScale stays undefined
+  // → per IFC spec, MapConversion uses the project's length unit
 
   return {
     id: entity.expressId,
@@ -158,6 +191,7 @@ function extractProjectedCRS(entity: IfcEntity): ProjectedCRS {
     mapProjection: getString(entity.attributes[4]),
     mapZone: getString(entity.attributes[5]),
     mapUnit,
+    mapUnitScale,
   };
 }
 

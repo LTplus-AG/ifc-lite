@@ -581,6 +581,20 @@ export function extractGeoreferencingOnDemand(store: IfcDataStore): Georeference
             const entity = extractor.extractEntity(ref);
             if (entity) {
                 entityMap.set(id, entity);
+
+                // For IfcProjectedCRS, also resolve the MapUnit reference (attribute [6])
+                // so the georef extractor can determine the actual unit scale
+                if (typeName === 'IFCPROJECTEDCRS' && entity.attributes) {
+                    const mapUnitAttr = entity.attributes[6];
+                    const mapUnitRefId = typeof mapUnitAttr === 'number' ? mapUnitAttr : null;
+                    if (mapUnitRefId && !entityMap.has(mapUnitRefId)) {
+                        const unitRef = byId.get(mapUnitRefId);
+                        if (unitRef) {
+                            const unitEntity = extractor.extractEntity(unitRef);
+                            if (unitEntity) entityMap.set(mapUnitRefId, unitEntity);
+                        }
+                    }
+                }
             }
         }
     }

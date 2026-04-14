@@ -49,6 +49,8 @@ export interface LocationMapProps {
   coordinateInfo?: CoordinateInfo;
   /** Geometry result for KMZ export (optional — KMZ button hidden if not provided) */
   geometryResult?: GeometryResult | null;
+  /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1 (metres). */
+  lengthUnitScale?: number;
   /** Whether the map is in edit mode (allows repositioning) */
   editable?: boolean;
   /** Called when the user applies a new position from the map */
@@ -138,7 +140,7 @@ function removeFootprintFromMap(map: InstanceType<typeof import('maplibre-gl').M
 
 export function LocationMap({
   mapConversion, projectedCRS, coordinateInfo, geometryResult,
-  editable, onApplyPosition,
+  lengthUnitScale = 1, editable, onApplyPosition,
 }: LocationMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<InstanceType<typeof import('maplibre-gl').Map> | null>(null);
@@ -195,14 +197,14 @@ export function LocationMap({
 
     let cancelled = false;
 
-    computeFootprintGeoJSON(mapConversion, projectedCRS, coordinateInfo).then(fp => {
+    computeFootprintGeoJSON(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale).then(fp => {
       if (cancelled) return;
       setFootprint(fp);
       footprintRef.current = fp;
     });
 
     return () => { cancelled = true; };
-  }, [mapConversion, projectedCRS, coordinateInfo]);
+  }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale]);
 
   // Geocode search
   useEffect(() => {
@@ -234,7 +236,7 @@ export function LocationMap({
     setMapState('loading');
     setError(null);
 
-    reprojectToLatLon(mapConversion, projectedCRS, coordinateInfo).then(result => {
+    reprojectToLatLon(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale).then(result => {
       if (cancelled) return;
       if (result) {
         setLatLon(result);
@@ -247,7 +249,7 @@ export function LocationMap({
     });
 
     return () => { cancelled = true; };
-  }, [mapConversion, projectedCRS, coordinateInfo]);
+  }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale]);
 
   // When a picked position changes, reverse-project and query elevation
   useEffect(() => {
@@ -262,7 +264,7 @@ export function LocationMap({
 
     // Reverse-project to get IfcMapConversion eastings/northings
     // Accounts for model local geometry offset, rotation, and scale
-    reprojectFromLatLon(pickedLatLon, projectedCRS, mapConversion, coordinateInfo).then(coords => {
+    reprojectFromLatLon(pickedLatLon, projectedCRS, mapConversion, coordinateInfo, lengthUnitScale).then(coords => {
       if (!cancelled) setProjectedCoords(coords);
     });
 
@@ -276,7 +278,7 @@ export function LocationMap({
     });
 
     return () => { cancelled = true; };
-  }, [pickedLatLon, projectedCRS, mapConversion, coordinateInfo]);
+  }, [pickedLatLon, projectedCRS, mapConversion, coordinateInfo, lengthUnitScale]);
 
   // Place or move the picked marker on the map
   const updatePickedMarker = useCallback((pos: LatLon, maplibregl: typeof import('maplibre-gl')) => {

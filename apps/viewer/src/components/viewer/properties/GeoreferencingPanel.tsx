@@ -319,9 +319,11 @@ export interface GeoreferencingPanelProps {
   coordinateInfo?: CoordinateInfo;
   /** GeometryResult for KMZ export */
   geometryResult?: GeometryResult | null;
+  /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1. */
+  lengthUnitScale?: number;
 }
 
-export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVersion, coordinateInfo, geometryResult }: GeoreferencingPanelProps) {
+export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVersion, coordinateInfo, geometryResult, lengthUnitScale }: GeoreferencingPanelProps) {
   const georefMutations = useViewerStore(s => s.georefMutations);
   const setGeorefField = useViewerStore(s => s.setGeorefField);
   const setGeorefFields = useViewerStore(s => s.setGeorefFields);
@@ -353,6 +355,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       mapProjection: muts?.mapProjection ?? base?.mapProjection,
       mapZone: muts?.mapZone ?? base?.mapZone,
       mapUnit: muts?.mapUnit ?? base?.mapUnit,
+      mapUnitScale: base?.mapUnitScale,
     };
   }, [georef, mutations]);
 
@@ -663,6 +666,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         projectedCRS={mergedCRS}
         coordinateInfo={coordinateInfo}
         geometryResult={geometryResult}
+        lengthUnitScale={lengthUnitScale}
         editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined}
       />

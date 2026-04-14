@@ -70,6 +70,7 @@ export async function createCesiumBridge(
   mapConversion: MapConversion,
   projectedCRS: ProjectedCRS,
   coordinateInfo?: CoordinateInfo,
+  lengthUnitScale = 1,
 ): Promise<CesiumBridge | null> {
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
@@ -98,9 +99,13 @@ export async function createCesiumBridge(
   const oIfcX = owx;
   const oIfcY = -owz;
   const oIfcZ = owy;
-  const oEasting = mapConversion.eastings + hScale * (absc * oIfcX - ordi * oIfcY);
-  const oNorthing = mapConversion.northings + hScale * (ordi * oIfcX + absc * oIfcY);
-  const oHeight = mapConversion.orthogonalHeight + oIfcZ;
+  // Geometry coordinates (oIfcX/Y/Z) are already in metres (the geometry engine
+  // converts from the IFC file's native unit during extraction). MapConversion
+  // values use the unit from IfcProjectedCRS.MapUnit; fall back to project unit.
+  const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
+  const oEasting = mapConversion.eastings * mapScale + hScale * (absc * oIfcX - ordi * oIfcY);
+  const oNorthing = mapConversion.northings * mapScale + hScale * (ordi * oIfcX + absc * oIfcY);
+  const oHeight = mapConversion.orthogonalHeight * mapScale + oIfcZ;
 
   let originLon: number, originLat: number;
   try {
@@ -131,6 +136,8 @@ export async function createCesiumBridge(
   // So M = [hScale*absc,   0,  hScale*ordi ]
   //        [hScale*ordi,   0, -hScale*absc ]
   //        [0,             1,  0           ]
+  // Viewer-space deltas are already in metres (geometry engine converts during
+  // extraction), so no lengthUnitScale needed here.
   const m00 = hScale * absc;   // east  from vx
   const m01 = 0;               // east  from vy
   const m02 = hScale * ordi;   // east  from vz
@@ -138,7 +145,7 @@ export async function createCesiumBridge(
   const m11 = 0;               // north from vy
   const m12 = -hScale * absc;  // north from vz
   const m20 = 0;               // up    from vx
-  const m21 = 1;               // up    from vy
+  const m21 = 1;               // up    from vy (vertical = viewer Y, already metres)
   const m22 = 0;               // up    from vz
 
   // ── Cache for ECEF objects ──
@@ -288,9 +295,10 @@ export async function createCesiumBridge(
     const ifcX = wx;
     const ifcY = -wz;
     const ifcZ = wy;
-    const easting = mapConversion.eastings + hScale * (absc * ifcX - ordi * ifcY);
-    const northing = mapConversion.northings + hScale * (ordi * ifcX + absc * ifcY);
-    const height = mapConversion.orthogonalHeight + ifcZ;
+    // Viewer coords (ifcX/Y/Z) are already in metres; only MapConversion values need scaling
+    const easting = mapConversion.eastings * mapScale + hScale * (absc * ifcX - ordi * ifcY);
+    const northing = mapConversion.northings * mapScale + hScale * (ordi * ifcX + absc * ifcY);
+    const height = mapConversion.orthogonalHeight * mapScale + ifcZ;
     try {
       const [lon, lat] = proj4(projDef!, 'WGS84', [easting, northing]);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;

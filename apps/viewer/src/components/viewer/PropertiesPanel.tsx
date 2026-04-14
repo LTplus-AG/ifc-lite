@@ -33,7 +33,7 @@ import { getNativeEntityDetails } from '@/services/desktop-native-metadata';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 
@@ -552,6 +552,13 @@ export function PropertiesPanel() {
     if (!dataStore) return null;
     const info = extractGeoreferencingOnDemand(dataStore as IfcDataStore);
     return info?.hasGeoreference ? info : null;
+  }, [model, ifcDataStore]);
+
+  // Extract IFC length unit scale (e.g. 0.001 for mm, 0.3048 for ft)
+  const lengthUnitScale = useMemo(() => {
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    if (!dataStore?.source?.length || !dataStore?.entityIndex) return 1;
+    return extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
   }, [model, ifcDataStore]);
 
   // Extract type-level properties (e.g., from IfcWallType's HasPropertySets)
@@ -1161,6 +1168,7 @@ export function PropertiesPanel() {
                 schemaVersion={activeDataStore?.schemaVersion}
                 coordinateInfo={(model?.geometryResult ?? geometryResult)?.coordinateInfo}
                 geometryResult={model?.geometryResult ?? geometryResult}
+                lengthUnitScale={lengthUnitScale}
               />
             </CollapsibleContent>
           </Collapsible>

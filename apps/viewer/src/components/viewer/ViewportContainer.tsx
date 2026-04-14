@@ -21,7 +21,7 @@ import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRe
 import { isTauri } from '@/lib/platform';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3 } from 'lucide-react';
 import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { extractGeoreferencingOnDemand, type IfcDataStore, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -199,6 +199,7 @@ export function ViewportContainer() {
         mapProjection: mutCRS?.mapProjection ?? originalCRS?.mapProjection,
         mapZone: mutCRS?.mapZone ?? originalCRS?.mapZone,
         mapUnit: mutCRS?.mapUnit ?? originalCRS?.mapUnit,
+        mapUnitScale: originalCRS?.mapUnitScale,
       };
 
       // Need at least an EPSG name to resolve projection
@@ -233,7 +234,10 @@ export function ViewportContainer() {
       if (merged) {
         // Return coordinateInfo from the SAME model to avoid mismatched transforms
         const coordInfo = model.geometryResult?.coordinateInfo;
-        return { hasGeoreference: true, ...merged, sourceModelId: modelId, coordinateInfo: coordInfo };
+        const unitScale = ds.source?.length && ds.entityIndex
+          ? extractLengthUnitScale(ds.source, ds.entityIndex)
+          : 1;
+        return { hasGeoreference: true, ...merged, sourceModelId: modelId, coordinateInfo: coordInfo, lengthUnitScale: unitScale };
       }
     }
 
@@ -246,7 +250,10 @@ export function ViewportContainer() {
         '__legacy__',
       );
       if (merged) {
-        return { hasGeoreference: true, ...merged, sourceModelId: '__legacy__', coordinateInfo: mergedGeometryResult?.coordinateInfo };
+        const unitScale = ifcDataStore.source?.length && ifcDataStore.entityIndex
+          ? extractLengthUnitScale(ifcDataStore.source, ifcDataStore.entityIndex)
+          : 1;
+        return { hasGeoreference: true, ...merged, sourceModelId: '__legacy__', coordinateInfo: mergedGeometryResult?.coordinateInfo, lengthUnitScale: unitScale };
       }
     }
 
@@ -880,6 +887,7 @@ export function ViewportContainer() {
           projectedCRS={georef.projectedCRS}
           coordinateInfo={georef.coordinateInfo}
           geometryResult={mergedGeometryResult}
+          lengthUnitScale={georef.lengthUnitScale}
         />
       )}
       <Viewport

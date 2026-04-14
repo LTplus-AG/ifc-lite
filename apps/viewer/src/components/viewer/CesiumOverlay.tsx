@@ -175,6 +175,7 @@ function buildModelMatrix(
   const absc = mapConversion?.xAxisAbscissa ?? 1.0;
   const ordi = mapConversion?.xAxisOrdinate ?? 0.0;
   const bounds = coordinateInfo?.originalBounds;
+  // Viewer bounds are already in metres (geometry engine converts from IFC native unit)
   const mvx = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
   const mvy = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
   const mvz = bounds ? (bounds.min.z + bounds.max.z) / 2 : 0;
@@ -182,7 +183,7 @@ function buildModelMatrix(
   let placementHeight = bridge.modelOrigin.height;
   if (clamp && terrainH !== null) {
     const minY = bounds?.min.y ?? 0;
-    const bottomOffset = mvy - minY;
+    const bottomOffset = mvy - minY; // already in metres
     placementHeight = terrainH + bottomOffset;
   }
 
@@ -190,11 +191,15 @@ function buildModelMatrix(
     bridge.modelOrigin.longitude, bridge.modelOrigin.latitude, placementHeight,
   );
   const enuToEcef = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
+  // No lengthUnitScale here — viewer-space GLB vertices are already in metres.
   const sa = hScale * absc, so = hScale * ordi;
+  const tx = -(sa * mvx + so * mvz);
+  const ty = -(so * mvx - sa * mvz);
+  const tz = -mvy;
   const ifcToEnu = new Cesium.Matrix4(
-    sa, -so, 0, -(sa * mvx + so * mvz),
-    so,  sa, 0, -(so * mvx - sa * mvz),
-    0,   0,  1, -mvy,
+    sa, -so, 0, tx,
+    so,  sa, 0, ty,
+    0,   0,  1, tz,
     0,   0,  0, 1,
   );
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
@@ -205,6 +210,8 @@ export interface CesiumOverlayProps {
   projectedCRS?: ProjectedCRS;
   coordinateInfo?: CoordinateInfo;
   geometryResult?: GeometryResult | null;
+  /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1. */
+  lengthUnitScale?: number;
 }
 
 export function CesiumOverlay({
@@ -212,6 +219,7 @@ export function CesiumOverlay({
   projectedCRS,
   coordinateInfo,
   geometryResult,
+  lengthUnitScale = 1,
 }: CesiumOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<InstanceType<typeof import('cesium').Viewer> | null>(null);
@@ -227,6 +235,7 @@ export function CesiumOverlay({
   const ionToken = useViewerStore((s) => s.cesiumIonToken);
   const terrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
   const terrainClamp = useViewerStore((s) => s.cesiumTerrainClamp);
+  const setCesiumTerrainClamp = useViewerStore((s) => s.setCesiumTerrainClamp);
   const terrainHeight = useViewerStore((s) => s.cesiumTerrainHeight);
   const setCesiumTerrainHeight = useViewerStore((s) => s.setCesiumTerrainHeight);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
@@ -237,6 +246,9 @@ export function CesiumOverlay({
   const terrainHeightRef = useRef(terrainHeight);
   terrainClampRef.current = terrainClamp;
   terrainHeightRef.current = terrainHeight;
+
+  // Track whether we've auto-clamped to terrain (only once, so user can still uncheck)
+  const autoClampedRef = useRef(false);
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; destroy?: () => void } | null>(null);
@@ -386,7 +398,7 @@ export function CesiumOverlay({
     let cancelled = false;
 
     (async () => {
-      const bridge = await createCesiumBridge(mapConversion, projectedCRS, coordinateInfo);
+      const bridge = await createCesiumBridge(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale);
       if (cancelled) return;
 
       if (!bridge) {
@@ -396,6 +408,7 @@ export function CesiumOverlay({
 
       const prevBridge = bridgeRef.current;
       bridgeRef.current = bridge;
+      autoClampedRef.current = false; // reset for new bridge
       // Bump version so terrain query effect re-runs now that bridge is ready
       setBridgeVersion((v) => v + 1);
 
@@ -411,11 +424,22 @@ export function CesiumOverlay({
         );
 
         if (isFirstPosition) {
-          // First time: instant jump to isometric view
-          const hpr = new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), 300);
-          viewer.camera.lookAt(target, hpr);
-          viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-          viewer.scene.requestRender();
+          // First time: fly to the model location.
+          // On first load terrain tiles may not be ready, so globe.getHeight
+          // can return undefined. Use flyTo which handles terrain automatically,
+          // targeting a safe altitude above the model origin.
+          const safeHeight = Math.max(modelOrigin.height, 100);
+          viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(
+              modelOrigin.longitude, modelOrigin.latitude, safeHeight + 500,
+            ),
+            orientation: {
+              heading: 0,
+              pitch: Cesium.Math.toRadians(-45),
+              roll: 0,
+            },
+            duration: 0, // instant
+          });
         } else if (prevBridge) {
           // Georef edit: just re-render, the camera sync loop will pick
           // up the new bridge on the next frame. No dramatic fly animation.
@@ -425,7 +449,7 @@ export function CesiumOverlay({
     })();
 
     return () => { cancelled = true; };
-  }, [status, mapConversion, projectedCRS, coordinateInfo]);
+  }, [status, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale]);
 
   // ─── Effect 2b: Query terrain height when bridge is ready ───────────────
   // Also re-queries when terrainClamp is toggled on (in case first query failed)
@@ -448,13 +472,25 @@ export function CesiumOverlay({
       bridge.queryTerrainHeight(Cesium, viewer).then((h) => {
         if (!cancelled && h !== null) {
           setCesiumTerrainHeight(h);
-          // Compute terrain clip Y in viewer space:
-          // terrain is at height h (meters). Model origin is at bridge.modelOrigin.height.
-          // In viewer Y-up, the bottom of the model is at modelMinY.
-          // Terrain clip Y = modelMinY + (terrainHeight - modelOriginHeight)
-          // This places the clip plane at the terrain surface relative to model geometry.
+          // Compute terrain clip Y in viewer space (both h and modelOrigin.height are metres,
+          // bounds are also in metres since the geometry engine converts during extraction)
           const terrainClipY = modelMinY + (h - bridge.modelOrigin.height);
           setCesiumTerrainClipY(terrainClipY);
+
+          // Auto-enable terrain clamping if the model is significantly below terrain
+          // (only once — don't override if the user has manually toggled)
+          if (!autoClampedRef.current && h > bridge.modelOrigin.height + 5) {
+            autoClampedRef.current = true;
+            setCesiumTerrainClamp(true);
+            // Fly camera to the clamped position so the model is visible
+            viewer.camera.flyTo({
+              destination: Cesium.Cartesian3.fromDegrees(
+                bridge.modelOrigin.longitude, bridge.modelOrigin.latitude, h + 500,
+              ),
+              orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
+              duration: 0,
+            });
+          }
         }
       });
     };
@@ -561,7 +597,7 @@ export function CesiumOverlay({
     const newMatrix = buildModelMatrix(Cesium, bridge, mapConversion, coordinateInfo, terrainClamp, terrainHeight);
     model.modelMatrix = newMatrix;
     viewer.scene.requestRender();
-  }, [terrainClamp, terrainHeight, mapConversion, coordinateInfo]);
+  }, [terrainClamp, terrainHeight, mapConversion, coordinateInfo, lengthUnitScale]);
 
   // ─── Effect 3: Camera sync loop ─────────────────────────────────────────
   useEffect(() => {

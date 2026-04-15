@@ -12,8 +12,8 @@
  * - Trim marks for print cutting
  */
 
-import type { PaperSizeDefinition } from './paper-sizes';
-import type { DrawingFrame } from './frame-types';
+import type { PaperSizeDefinition } from './paper-sizes.js';
+import type { DrawingFrame } from './frame-types.js';
 
 /** Result of frame rendering */
 export interface FrameRenderResult {

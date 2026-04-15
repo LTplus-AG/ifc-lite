@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractGeoreferencing, transformToWorld, transformToLocal, getCoordinateSystemDescription, computeAngleToGridNorth } from '../src/georef-extractor';
-import type { IfcEntity } from '../src/entity-extractor';
+import { extractGeoreferencing, transformToWorld, transformToLocal, getCoordinateSystemDescription, computeAngleToGridNorth } from '../src/georef-extractor.js';
+import type { IfcEntity } from '../src/entity-extractor.js';
 
 describe('Georeferencing Extractor', () => {
   it('should extract IfcMapConversion', () => {

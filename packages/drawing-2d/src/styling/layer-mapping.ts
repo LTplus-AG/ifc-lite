@@ -15,7 +15,7 @@ import type {
   SemanticLineType,
   ArchitecturalLine,
   LineWeight,
-} from '../types';
+} from '../types.js';
 
 /**
  * Default layer definitions following AIA CAD Layer Guidelines

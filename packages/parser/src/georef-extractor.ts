@@ -18,7 +18,7 @@
  * - Multi-model coordination (ensuring models align in real-world space)
  */
 
-import type { IfcEntity } from './entity-extractor';
+import type { IfcEntity } from './entity-extractor.js';
 import { getString, getNumber, getReference } from './attribute-helpers.js';
 
 export interface MapConversion {

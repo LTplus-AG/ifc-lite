@@ -18,8 +18,8 @@ import type {
   SectionCutResult,
   DrawingPolygon,
   EntityKey,
-} from './types';
-import { makeEntityKey } from './types';
+} from './types.js';
+import { makeEntityKey } from './types.js';
 import {
   vec3,
   vec3Lerp,
@@ -27,8 +27,8 @@ import {
   getAxisNormal,
   signedDistanceToPlane,
   projectTo2D,
-} from './math';
-import { PolygonBuilder } from './polygon-builder';
+} from './math.js';
+import { PolygonBuilder } from './polygon-builder.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION CUTTER CLASS

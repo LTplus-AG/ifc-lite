@@ -6,11 +6,11 @@
  * Architectural symbol generators for 2D drawings
  */
 
-export { DoorSymbolGenerator } from './door-symbol';
-export { WindowSymbolGenerator } from './window-symbol';
-export { SymbolRenderer } from './symbol-renderer';
+export { DoorSymbolGenerator } from './door-symbol.js';
+export { WindowSymbolGenerator } from './window-symbol.js';
+export { SymbolRenderer } from './symbol-renderer.js';
 export {
   generateDoorSymbol,
   generateWindowSymbol,
   generateStairArrow,
-} from './symbol-utils';
+} from './symbol-utils.js';

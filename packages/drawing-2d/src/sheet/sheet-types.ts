@@ -13,11 +13,11 @@
  * - North arrow
  */
 
-import type { PaperSizeDefinition } from './paper-sizes';
-import type { DrawingFrame } from './frame-types';
-import type { TitleBlockConfig, RevisionEntry } from './title-block-types';
-import type { ScaleBarConfig, NorthArrowConfig } from './scale-bar-types';
-import type { DrawingScale } from '../styles';
+import type { PaperSizeDefinition } from './paper-sizes.js';
+import type { DrawingFrame } from './frame-types.js';
+import type { TitleBlockConfig, RevisionEntry } from './title-block-types.js';
+import type { ScaleBarConfig, NorthArrowConfig } from './scale-bar-types.js';
+import type { DrawingScale } from '../styles.js';
 
 /** Viewport bounds in sheet coordinates (mm from sheet origin) */
 export interface ViewportBounds {

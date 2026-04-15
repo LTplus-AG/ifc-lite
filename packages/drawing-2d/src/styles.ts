@@ -8,7 +8,7 @@
  * Based on ISO 128-50 and common CAD conventions for BIM drawings.
  */
 
-import type { LineCategory } from './types';
+import type { LineCategory } from './types.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HATCH PATTERNS

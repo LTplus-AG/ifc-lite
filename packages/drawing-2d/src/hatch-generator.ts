@@ -9,10 +9,10 @@
  * for architectural section drawings.
  */
 
-import type { Point2D, Line2D, Polygon2D, DrawingPolygon, Bounds2D } from './types';
-import type { HatchPattern, HatchPatternType } from './styles';
-import { getHatchPattern } from './styles';
-import { EPSILON } from './math';
+import type { Point2D, Line2D, Polygon2D, DrawingPolygon, Bounds2D } from './types.js';
+import type { HatchPattern, HatchPatternType } from './styles.js';
+import { getHatchPattern } from './styles.js';
+import { EPSILON } from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

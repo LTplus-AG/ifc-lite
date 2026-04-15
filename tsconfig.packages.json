@@ -1,0 +1,8 @@
+{
+  "//": "Shared compilerOptions for every publishable package in packages/*. Enforces Node-native ESM resolution so extensionless or directory relative imports are rejected at build time, preventing ERR_MODULE_NOT_FOUND in consumers that use the native Node ESM resolver (SSR, serverless, test runners, etc.).",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext"
+  }
+}

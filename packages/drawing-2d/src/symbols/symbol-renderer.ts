@@ -13,7 +13,7 @@ import type {
   WindowFrameParameters,
   StairArrowParameters,
   Point2D,
-} from '../types';
+} from '../types.js';
 
 /**
  * Renders architectural symbols to SVG elements

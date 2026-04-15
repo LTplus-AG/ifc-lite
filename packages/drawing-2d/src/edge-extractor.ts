@@ -12,7 +12,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Vec3, EdgeData, Point2D, DrawingLine, LineCategory } from './types';
+import type { Vec3, EdgeData, Point2D, DrawingLine, LineCategory } from './types.js';
 import {
   vec3,
   vec3Sub,
@@ -22,7 +22,7 @@ import {
   vec3Length,
   EPSILON,
   projectTo2D,
-} from './math';
+} from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

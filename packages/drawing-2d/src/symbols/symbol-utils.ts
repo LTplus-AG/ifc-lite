@@ -13,9 +13,9 @@ import type {
   Bounds2D,
   DoorOperationType,
   WindowPartitioningType,
-} from '../types';
-import { DoorSymbolGenerator, type DoorSymbolResult } from './door-symbol';
-import { WindowSymbolGenerator, type WindowSymbolResult } from './window-symbol';
+} from '../types.js';
+import { DoorSymbolGenerator, type DoorSymbolResult } from './door-symbol.js';
+import { WindowSymbolGenerator, type WindowSymbolResult } from './window-symbol.js';
 
 /**
  * Generate a door symbol from opening info

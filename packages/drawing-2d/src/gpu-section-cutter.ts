@@ -10,8 +10,8 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { CutSegment, SectionPlaneConfig, Point2D, Vec3 } from './types';
-import { getAxisNormal, getProjectionAxes } from './math';
+import type { CutSegment, SectionPlaneConfig, Point2D, Vec3 } from './types.js';
+import { getAxisNormal, getProjectionAxes } from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SHADER CODE

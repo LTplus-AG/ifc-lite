@@ -19,7 +19,7 @@ import type {
   LineStyle,
   SemanticLineType,
   LineCategory,
-} from '../types';
+} from '../types.js';
 
 /**
  * Line weight configuration with actual widths

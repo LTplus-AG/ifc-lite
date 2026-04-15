@@ -10,7 +10,7 @@
  * IFC types, properties, or custom criteria.
  */
 
-import type { HatchPatternType } from '../styles';
+import type { HatchPatternType } from '../styles.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LINE PROPERTIES

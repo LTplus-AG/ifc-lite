@@ -9,7 +9,7 @@
  * Uses parquet-wasm for efficient Parquet parsing in the browser.
  */
 
-import type { MeshData } from './types';
+import type { MeshData } from './types.js';
 
 // Ambient types in vendor-types.d.ts cover parquet-wasm and apache-arrow APIs.
 

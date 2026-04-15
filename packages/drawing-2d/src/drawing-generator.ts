@@ -24,25 +24,25 @@ import type {
   Bounds2D,
   LineCategory,
   ProfileEntry,
-} from './types';
-import { DEFAULT_SECTION_CONFIG, makeEntityKey } from './types';
-import { SectionCutter } from './section-cutter';
-import { PolygonBuilder } from './polygon-builder';
-import { EdgeExtractor, getViewDirection } from './edge-extractor';
-import { HiddenLineClassifier } from './hidden-line';
-import { mergeDrawingLines, deduplicateLines } from './line-merger';
-import { HatchGenerator } from './hatch-generator';
-import { SVGExporter } from './svg-exporter';
-import type { SVGExportOptions } from './svg-exporter';
-import { GPUSectionCutter, isGPUComputeAvailable } from './gpu-section-cutter';
-import { projectProfiles } from './profile-projector';
+} from './types.js';
+import { DEFAULT_SECTION_CONFIG, makeEntityKey } from './types.js';
+import { SectionCutter } from './section-cutter.js';
+import { PolygonBuilder } from './polygon-builder.js';
+import { EdgeExtractor, getViewDirection } from './edge-extractor.js';
+import { HiddenLineClassifier } from './hidden-line.js';
+import { mergeDrawingLines, deduplicateLines } from './line-merger.js';
+import { HatchGenerator } from './hatch-generator.js';
+import { SVGExporter } from './svg-exporter.js';
+import type { SVGExportOptions } from './svg-exporter.js';
+import { GPUSectionCutter, isGPUComputeAvailable } from './gpu-section-cutter.js';
+import { projectProfiles } from './profile-projector.js';
 import {
   boundsEmpty,
   boundsExtendPoint,
   boundsExtendLine,
   projectTo2D,
   lineLength,
-} from './math';
+} from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

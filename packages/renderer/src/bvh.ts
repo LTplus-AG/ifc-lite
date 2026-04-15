@@ -1,5 +1,5 @@
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Ray, Vec3 } from './raycaster';
+import type { Ray, Vec3 } from './raycaster.js';
 
 export interface AABB {
   min: Vec3;

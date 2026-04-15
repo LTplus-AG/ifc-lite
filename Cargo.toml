@@ -27,3 +27,14 @@ overflow-checks = false # Remove overflow checks in release
 [profile.release.package."*"]
 opt-level = 3
 strip = true
+
+# The upstream `core2` crate has been fully yanked from crates.io (every
+# version), which breaks fresh dependency resolution for anything that
+# transitively depends on it. In this workspace the only user is
+# `csgrs 0.20`, which lists `core2` as a non-optional dependency even
+# though its actual usage sits inside the feature-gated `stl-io`/`dxf-io`
+# modules we don't enable. Redirect the reference to a local empty stub
+# so the workspace can resolve and build. See `rust/vendor/core2/src/lib.rs`
+# for the full write-up and removal criteria.
+[patch.crates-io]
+core2 = { path = "rust/vendor/core2" }

@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Minimal stub of the `core2` crate, vendored to unblock Rust builds after
+# every published version of `core2` was yanked from crates.io by the
+# upstream maintainer (2025). See `src/lib.rs` for the full explanation.
+#
+# This crate exists ONLY so `[patch.crates-io]` in the workspace root can
+# redirect `core2 ^0.4` references (pulled in transitively by `csgrs`) to
+# a resolvable local path. It is deliberately NOT a workspace member — the
+# patch entry refers to it by path so it stays invisible to `cargo metadata`
+# consumers and the normal build graph.
+
+[package]
+name = "core2"
+version = "0.4.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Local no-op stub of the yanked `core2` crate. See src/lib.rs."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+# Features declared only so that consumers requesting them (e.g. csgrs's
+# `core2 = { version = "0.4", features = ["alloc"] }`) can still resolve.
+# None of these toggle real behaviour — the stub has no code to gate.
+[features]
+default = ["alloc"]
+alloc = []
+std = []

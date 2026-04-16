@@ -49,7 +49,7 @@ import type { ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
-import { Image as ImageIcon, Key, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { Check, Image as ImageIcon, Key, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { hasDesktopFeatureAccess } from '@/lib/desktop-product';
 import { getModelById } from '@/lib/llm/models';
 import { getApiKeys, updateApiKeys, hasAnyApiKey, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
@@ -217,10 +217,19 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const { execute } = useSandbox();
   const canUseAiAssistant = hasDesktopFeatureAccess(desktopEntitlement, 'ai_assistant');
 
-  // Sync BYOK key availability into the store
+  // Sync BYOK key availability into the store and track per-provider state
+  const [keyStateAnthropic, setKeyStateAnthropic] = useState(hasAnthropicKey);
+  const [keyStateOpenai, setKeyStateOpenai] = useState(hasOpenaiKey);
   useEffect(() => {
-    setChatHasByokKey(hasAnyApiKey());
-    return subscribeApiKeys(() => setChatHasByokKey(hasAnyApiKey()));
+    const refresh = () => {
+      const a = hasAnthropicKey();
+      const o = hasOpenaiKey();
+      setKeyStateAnthropic(a);
+      setKeyStateOpenai(o);
+      setChatHasByokKey(a || o);
+    };
+    refresh();
+    return subscribeApiKeys(refresh);
   }, [setChatHasByokKey]);
 
   const displayUsage: UsageInfo | null = usage;
@@ -1114,10 +1123,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     modelSupportsImages ? 'image/*' : '',
   ].filter(Boolean).join(',');
   const canAttachInput = modelSupportsFiles || modelSupportsImages;
-  // Detect when selected model needs a missing BYOK key
+  // Detect when selected model needs a missing BYOK key (reactive state, not raw reads)
   const modelSource = modelForUi?.source ?? 'proxy';
-  const needsAnthropicKey = modelSource === 'anthropic' && !hasAnthropicKey();
-  const needsOpenaiKey = modelSource === 'openai' && !hasOpenaiKey();
+  const needsAnthropicKey = modelSource === 'anthropic' && !keyStateAnthropic;
+  const needsOpenaiKey = modelSource === 'openai' && !keyStateOpenai;
   const needsByokKey = needsAnthropicKey || needsOpenaiKey;
   const showSupportEmail = Boolean(error && error.includes('louis@ltplus.com'));
   const canContinue = Boolean(
@@ -1472,6 +1481,7 @@ const PROVIDER_INFO = {
 function InlineKeyPrompt({ provider }: { provider: 'anthropic' | 'openai' }) {
   const [value, setValue] = useState('');
   const [show, setShow] = useState(false);
+  const [saved, setSaved] = useState(false);
   const info = PROVIDER_INFO[provider];
 
   const handleSave = useCallback(() => {
@@ -1482,24 +1492,28 @@ function InlineKeyPrompt({ provider }: { provider: 'anthropic' | 'openai' }) {
     } else {
       updateApiKeys({ openaiKey: trimmed });
     }
-    toast.success(`${info.label} API key saved — ready to chat`);
-    setValue('');
-  }, [value, provider, info.label]);
+    setSaved(true);
+  }, [value, provider]);
+
+  // Brief success state before the parent unmounts this component
+  if (saved) {
+    return (
+      <div className="border-b bg-emerald-500/10 px-3 py-2 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400">
+        <Check className="h-3.5 w-3.5" />
+        <span>{info.label} key saved — ready to chat</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="border-b bg-muted/30 px-3 py-2.5 space-y-2">
+    <div className="border-b bg-muted/30 px-3 py-2.5 space-y-1.5">
       <div className="flex items-center gap-1.5 text-xs font-medium">
         <Key className="h-3.5 w-3.5" />
-        <span>{info.label} API key required</span>
+        {info.label} API key required
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Paste your key below. It stays in your browser and goes directly to {info.label}.{' '}
-        <a
-          href={info.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline inline-flex items-center gap-0.5"
-        >
+        Paste your key below — stored in your browser only, sent directly to {info.label}.{' '}
+        <a href={info.url} target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-0.5">
           Get a key <ExternalLink className="h-2.5 w-2.5" />
         </a>
       </p>

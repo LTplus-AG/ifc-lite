@@ -13,6 +13,7 @@ import { coerceModelForEntitlement, DEFAULT_FREE_MODEL } from '../../lib/llm/mod
 import { extractCodeBlocks } from '../../lib/llm/code-extractor.js';
 import type { ScriptDiagnostic } from '../../lib/llm/script-diagnostics.js';
 import { formatDiagnosticsForPrompt, getPrimaryRootCause, groupDiagnosticsByRootCause } from '../../lib/llm/script-diagnostics.js';
+import { hasAnyApiKey as hasAnyApiKeyAtInit } from '../../services/api-keys.js';
 
 const MODEL_STORAGE_KEY = 'ifc-lite-chat-model';
 const MESSAGES_STORAGE_KEY = 'ifc-lite-chat-messages';
@@ -269,7 +270,7 @@ export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set,
   chatMessages: loadStoredMessages(null),
   chatStatus: 'idle',
   chatStreamingContent: '',
-  chatActiveModel: loadValidStoredModel(null, false),
+  chatActiveModel: loadValidStoredModel(null, hasAnyApiKeyAtInit()),
   chatAutoExecute: loadStoredAutoExecute(),
   chatError: null,
   chatAbortController: null,

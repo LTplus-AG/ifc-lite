@@ -11,7 +11,6 @@ import {
   type ChatUsageStore,
   type UsageReservationResult,
   type UsageSnapshot,
-  type UsageTier,
 } from '../../server/chat/chat-handler.js';
 
 function createConfig(overrides: Partial<ChatConfig> = {}): ChatConfig {
@@ -40,49 +39,31 @@ function createSseResponse(chunk: string = 'ok'): Response {
 }
 
 class MemoryUsageStore implements ChatUsageStore {
-  readonly snapshots = new Map<string, { pro: number; free: number }>();
+  readonly snapshots = new Map<string, { free: number }>();
   lastUserIds: string[] = [];
-  releasedCredits = 0;
 
   private ensure(userId: string) {
     this.lastUserIds.push(userId);
     let entry = this.snapshots.get(userId);
     if (!entry) {
-      entry = { pro: 0, free: 0 };
+      entry = { free: 0 };
       this.snapshots.set(userId, entry);
     }
     return entry;
   }
 
-  async getUsageSnapshot(userId: string, tier: UsageTier): Promise<UsageSnapshot> {
+  async getUsageSnapshot(userId: string): Promise<UsageSnapshot> {
     const entry = this.ensure(userId);
-    return tier === 'pro'
-      ? { type: 'credits', used: entry.pro, limit: 10, pct: entry.pro * 10, resetAt: 1_700_000_000 }
-      : { type: 'requests', used: entry.free, limit: 3, pct: entry.free * 33, resetAt: 1_700_000_000 };
+    return { type: 'requests', used: entry.free, limit: 3, pct: entry.free * 33, resetAt: 1_700_000_000 };
   }
 
   async consumeFreeRequest(userId: string): Promise<UsageReservationResult> {
     const entry = this.ensure(userId);
     if (entry.free >= 3) {
-      return { allowed: false, snapshot: await this.getUsageSnapshot(userId, 'free') };
+      return { allowed: false, snapshot: await this.getUsageSnapshot(userId) };
     }
     entry.free += 1;
-    return { allowed: true, snapshot: await this.getUsageSnapshot(userId, 'free') };
-  }
-
-  async reserveProCredits(userId: string, credits: number): Promise<UsageReservationResult> {
-    const entry = this.ensure(userId);
-    if (entry.pro + credits > 10) {
-      return { allowed: false, snapshot: await this.getUsageSnapshot(userId, 'pro') };
-    }
-    entry.pro += credits;
-    return { allowed: true, snapshot: await this.getUsageSnapshot(userId, 'pro') };
-  }
-
-  async releaseProCredits(userId: string, credits: number): Promise<void> {
-    const entry = this.ensure(userId);
-    entry.pro = Math.max(0, entry.pro - credits);
-    this.releasedCredits += credits;
+    return { allowed: true, snapshot: await this.getUsageSnapshot(userId) };
   }
 }
 
@@ -103,12 +84,6 @@ class SingleReadUsageStore implements ChatUsageStore {
       snapshot: { type: 'requests', used: 1, limit: 3, pct: 33, resetAt: 1_700_000_000 },
     };
   }
-
-  async reserveProCredits(): Promise<UsageReservationResult> {
-    throw new Error('not used');
-  }
-
-  async releaseProCredits(): Promise<void> {}
 }
 
 class HangingUsageStore implements ChatUsageStore {
@@ -118,14 +93,6 @@ class HangingUsageStore implements ChatUsageStore {
 
   async consumeFreeRequest(): Promise<UsageReservationResult> {
     return await new Promise<UsageReservationResult>(() => {});
-  }
-
-  async reserveProCredits(): Promise<UsageReservationResult> {
-    return await new Promise<UsageReservationResult>(() => {});
-  }
-
-  async releaseProCredits(): Promise<void> {
-    return await new Promise<void>(() => {});
   }
 }
 

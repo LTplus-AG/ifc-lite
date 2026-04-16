@@ -31,8 +31,6 @@ export interface UsageReservationResult {
 export interface ChatUsageStore {
   getUsageSnapshot(userId: string, tier: UsageTier): Promise<UsageSnapshot>;
   consumeFreeRequest(userId: string): Promise<UsageReservationResult>;
-  reserveProCredits(userId: string, credits: number): Promise<UsageReservationResult>;
-  releaseProCredits(userId: string, credits: number): Promise<void>;
 }
 
 export interface ChatHandlerDeps {

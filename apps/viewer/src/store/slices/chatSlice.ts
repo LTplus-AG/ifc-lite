@@ -329,12 +329,15 @@ export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set,
   setChatStreamingContent: (chatStreamingContent) => set({ chatStreamingContent }),
 
   setChatActiveModel: (chatActiveModel) => {
-    const nextModel = coerceModelForEntitlement(chatActiveModel, get().chatHasByokKey);
+    // Accept any model the user picks — the ChatPanel shows an inline key
+    // prompt if the selected BYOK model doesn't have a key yet, and guards
+    // the send path. Coercion only happens on init and when keys are removed
+    // (via setChatHasByokKey).
     try {
       const key = getModelStorageKey(get().chatStorageUserId);
-      localStorage.setItem(key, nextModel);
+      localStorage.setItem(key, chatActiveModel);
     } catch { /* ignore */ }
-    set({ chatActiveModel: nextModel });
+    set({ chatActiveModel });
   },
 
   setChatAutoExecute: (chatAutoExecute) => {

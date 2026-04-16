@@ -1380,11 +1380,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={canUseAiAssistant ? 'Ask anything...' : 'AI assistant not available'}
+            placeholder={!canUseAiAssistant ? 'AI assistant not available' : needsByokKey ? `Enter your ${needsAnthropicKey ? 'Anthropic' : 'OpenAI'} API key above` : 'Ask anything...'}
             rows={1}
             className="flex-1 resize-none rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground px-3 py-1.5 text-sm min-h-[32px] max-h-[120px] focus:outline-none focus:ring-1 focus:ring-ring"
             style={{ height: 'auto', overflow: 'hidden' }}
-            disabled={!canUseAiAssistant}
+            disabled={!canUseAiAssistant || needsByokKey}
           />
 
           {isActive ? (
@@ -1408,7 +1408,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                   variant="default"
                   size="icon-xs"
                   onClick={handleSend}
-                  disabled={!inputText.trim() || !canUseAiAssistant}
+                  disabled={!inputText.trim() || !canUseAiAssistant || needsByokKey}
                   className="shrink-0 mb-0.5"
                 >
                   <Send className="h-3.5 w-3.5" />

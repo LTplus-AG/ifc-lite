@@ -6,9 +6,12 @@ import {
   ArrowLeft,
   Bot,
   Check,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   Cloud,
   CreditCard,
+  ExternalLink,
   Eye,
   EyeOff,
   FolderOpen,
@@ -298,13 +301,57 @@ export function SettingsPage() {
 
 // ── API Keys Section ──────────────────────────────────────────────────────
 
+function ApiKeyInput({
+  id,
+  value,
+  onChange,
+  onSave,
+  placeholder,
+  isSaved,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  placeholder: string;
+  isSaved: boolean;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="flex gap-2">
+      <div className="relative flex-1">
+        <input
+          id={id}
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !isSaved) onSave(); }}
+          placeholder={placeholder}
+          autoComplete="off"
+          spellCheck={false}
+          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring pr-8"
+        />
+        <button
+          type="button"
+          onClick={() => setShow(!show)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          aria-label={show ? 'Hide key' : 'Show key'}
+        >
+          {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <Button size="sm" onClick={onSave} disabled={isSaved}>
+        Save
+      </Button>
+    </div>
+  );
+}
+
 function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
   const [anthropicKey, setAnthropicKey] = useState(apiKeys.anthropicKey);
   const [openaiKey, setOpenaiKey] = useState(apiKeys.openaiKey);
-  const [showAnthropic, setShowAnthropic] = useState(false);
-  const [showOpenai, setShowOpenai] = useState(false);
+  const [showHowTo, setShowHowTo] = useState<'anthropic' | 'openai' | null>(null);
 
-  // Sync local state when external changes arrive (e.g., clearApiKeys)
   useEffect(() => {
     setAnthropicKey(apiKeys.anthropicKey);
     setOpenaiKey(apiKeys.openaiKey);
@@ -336,9 +383,8 @@ function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
         <div>
           <h1 className="text-2xl font-semibold">API Keys</h1>
           <p className="text-sm text-muted-foreground">
-            Use your own Anthropic or OpenAI API key to unlock additional models.
-            Keys are stored locally in your browser and sent directly to the provider.
-            They never pass through our servers.
+            Bring your own Anthropic or OpenAI API key to unlock additional models.
+            You can configure one or both providers independently.
           </p>
         </div>
       </div>
@@ -348,102 +394,96 @@ function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
         <div className="rounded-md border p-4">
           <div className="mb-2 flex items-center justify-between">
             <label className="text-sm font-medium" htmlFor="anthropic-key">Anthropic API Key</label>
-            {apiKeys.anthropicKey && (
+            {apiKeys.anthropicKey ? (
               <Badge variant="default" className="text-[10px]">
                 <Check className="mr-1 h-3 w-3" />
                 Configured
               </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">Not set</Badge>
             )}
           </div>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Get your key from{' '}
-            <a
-              href="https://console.anthropic.com/settings/keys"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-            >
-              console.anthropic.com
-            </a>.
-            Enables Claude Sonnet 4 and Claude Haiku 3.5.
+          <p className="mb-2 text-xs text-muted-foreground">
+            Unlocks <strong>Claude Sonnet 4</strong> and <strong>Claude Haiku 3.5</strong>.
           </p>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                id="anthropic-key"
-                type={showAnthropic ? 'text' : 'password'}
-                value={anthropicKey}
-                onChange={(e) => setAnthropicKey(e.target.value)}
-                placeholder="sk-ant-..."
-                className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring pr-8"
-              />
-              <button
-                type="button"
-                onClick={() => setShowAnthropic(!showAnthropic)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showAnthropic ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </button>
+          <button
+            type="button"
+            onClick={() => setShowHowTo(showHowTo === 'anthropic' ? null : 'anthropic')}
+            className="mb-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showHowTo === 'anthropic' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            How to get an Anthropic API key
+          </button>
+          {showHowTo === 'anthropic' && (
+            <div className="mb-3 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1.5">
+              <p>1. Go to{' '}
+                <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-0.5">
+                  console.anthropic.com/settings/keys <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              </p>
+              <p>2. Sign in or create an Anthropic account</p>
+              <p>3. Click <strong>Create Key</strong>, name it (e.g. &quot;ifc-lite&quot;)</p>
+              <p>4. Copy the key (starts with <code className="bg-muted px-1 rounded">sk-ant-api03-...</code>)</p>
+              <p>5. Paste it below and click Save</p>
+              <p className="pt-1 text-muted-foreground/70">Anthropic offers $5 free credit on new accounts. After that, usage is pay-as-you-go on your Anthropic billing.</p>
             </div>
-            <Button
-              size="sm"
-              onClick={saveAnthropicKey}
-              disabled={anthropicKey.trim() === apiKeys.anthropicKey}
-            >
-              Save
-            </Button>
-          </div>
+          )}
+          <ApiKeyInput
+            id="anthropic-key"
+            value={anthropicKey}
+            onChange={setAnthropicKey}
+            onSave={saveAnthropicKey}
+            placeholder="sk-ant-api03-..."
+            isSaved={anthropicKey.trim() === apiKeys.anthropicKey}
+          />
         </div>
 
         {/* OpenAI */}
         <div className="rounded-md border p-4">
           <div className="mb-2 flex items-center justify-between">
             <label className="text-sm font-medium" htmlFor="openai-key">OpenAI API Key</label>
-            {apiKeys.openaiKey && (
+            {apiKeys.openaiKey ? (
               <Badge variant="default" className="text-[10px]">
                 <Check className="mr-1 h-3 w-3" />
                 Configured
               </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">Not set</Badge>
             )}
           </div>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Get your key from{' '}
-            <a
-              href="https://platform.openai.com/api-keys"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-            >
-              platform.openai.com
-            </a>.
-            Enables GPT-4o and GPT-4o Mini.
+          <p className="mb-2 text-xs text-muted-foreground">
+            Unlocks <strong>GPT-4o</strong> and <strong>GPT-4o Mini</strong>.
           </p>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                id="openai-key"
-                type={showOpenai ? 'text' : 'password'}
-                value={openaiKey}
-                onChange={(e) => setOpenaiKey(e.target.value)}
-                placeholder="sk-..."
-                className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring pr-8"
-              />
-              <button
-                type="button"
-                onClick={() => setShowOpenai(!showOpenai)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showOpenai ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </button>
+          <button
+            type="button"
+            onClick={() => setShowHowTo(showHowTo === 'openai' ? null : 'openai')}
+            className="mb-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showHowTo === 'openai' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            How to get an OpenAI API key
+          </button>
+          {showHowTo === 'openai' && (
+            <div className="mb-3 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1.5">
+              <p>1. Go to{' '}
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-0.5">
+                  platform.openai.com/api-keys <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              </p>
+              <p>2. Sign in or create an OpenAI account</p>
+              <p>3. Click <strong>Create new secret key</strong>, name it (e.g. &quot;ifc-lite&quot;)</p>
+              <p>4. Copy the key (starts with <code className="bg-muted px-1 rounded">sk-...</code>)</p>
+              <p>5. Paste it below and click Save</p>
+              <p className="pt-1 text-muted-foreground/70">OpenAI requires prepaid credits or a payment method. Usage is billed to your OpenAI account.</p>
             </div>
-            <Button
-              size="sm"
-              onClick={saveOpenaiKey}
-              disabled={openaiKey.trim() === apiKeys.openaiKey}
-            >
-              Save
-            </Button>
-          </div>
+          )}
+          <ApiKeyInput
+            id="openai-key"
+            value={openaiKey}
+            onChange={setOpenaiKey}
+            onSave={saveOpenaiKey}
+            placeholder="sk-..."
+            isSaved={openaiKey.trim() === apiKeys.openaiKey}
+          />
         </div>
 
         {hasAnyKey && (
@@ -455,11 +495,27 @@ function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
           </div>
         )}
 
-        <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-          <strong>Privacy:</strong> Your API keys are stored in your browser&apos;s local storage.
-          When you use a BYOK model, requests go directly from your browser to the provider (Anthropic or OpenAI).
-          Your keys and conversation data never pass through our servers.
-          Free models continue to work through our proxy without any API key.
+        {/* Security & Privacy notice */}
+        <div className="rounded-md border border-dashed p-4 text-xs space-y-2">
+          <p className="font-medium text-foreground">Your API keys never leave your machine.</p>
+          <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
+            <li>Keys are stored in your browser&apos;s <code className="bg-muted px-1 rounded">localStorage</code> and persist across page reloads.</li>
+            <li>When you use a BYOK model, requests go <strong>directly from your browser to the provider</strong> (Anthropic or OpenAI). They never pass through our servers.</li>
+            <li>Free models use our server proxy and do not require any API key.</li>
+            <li>Clearing your browser data or clicking &quot;Remove all keys&quot; above permanently deletes them.</li>
+          </ul>
+          <p className="text-muted-foreground pt-1">
+            <strong>Verify in your browser console:</strong> open DevTools (F12), go to the Console tab, and run:
+          </p>
+          <pre className="bg-muted rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto text-foreground">
+            {`JSON.parse(localStorage.getItem('ifc-lite:api-keys:v1') ?? '{}')`}
+          </pre>
+          <p className="text-muted-foreground">
+            This shows exactly what is stored. Only you can see it. To delete everything:
+          </p>
+          <pre className="bg-muted rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto text-foreground">
+            {`localStorage.removeItem('ifc-lite:api-keys:v1')`}
+          </pre>
         </div>
       </div>
     </section>

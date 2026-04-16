@@ -49,11 +49,11 @@ import type { ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
-import { Image as ImageIcon, Settings2 } from 'lucide-react';
+import { Image as ImageIcon, Key, Settings2, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { hasDesktopFeatureAccess } from '@/lib/desktop-product';
 import { navigateToPath } from '@/services/app-navigation';
 import { getModelById } from '@/lib/llm/models';
-import { getApiKeys, hasAnyApiKey, subscribeApiKeys } from '@/services/api-keys';
+import { getApiKeys, updateApiKeys, hasAnyApiKey, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
 import { useSandbox } from '@/hooks/useSandbox';
 
 // Environment variable for the proxy URL
@@ -784,6 +784,21 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     const modelSource = resolvedModelInfo?.source ?? 'proxy';
     const currentApiKeys = getApiKeys();
 
+    if (modelSource === 'anthropic' && !currentApiKeys.anthropicKey) {
+      setChatError('Enter your Anthropic API key above to use this model.');
+      setChatStatus('idle');
+      setChatAbortController(null);
+      commitAssistantTurn();
+      return;
+    }
+    if (modelSource === 'openai' && !currentApiKeys.openaiKey) {
+      setChatError('Enter your OpenAI API key above to use this model.');
+      setChatStatus('idle');
+      setChatAbortController(null);
+      commitAssistantTurn();
+      return;
+    }
+
     if (modelSource === 'anthropic' && currentApiKeys.anthropicKey) {
       await streamAnthropicChat(currentApiKeys.anthropicKey, {
         model: activeModel,
@@ -1105,6 +1120,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   ].filter(Boolean).join(',');
   const canAttachInput = modelSupportsFiles || modelSupportsImages;
   const showUpgradeNudge = Boolean(error && (error.includes('daily limit') || error.includes('API key')));
+
+  // Detect when selected model needs a missing BYOK key
+  const modelSource = modelForUi?.source ?? 'proxy';
+  const needsAnthropicKey = modelSource === 'anthropic' && !hasAnthropicKey();
+  const needsOpenaiKey = modelSource === 'openai' && !hasOpenaiKey();
+  const needsByokKey = needsAnthropicKey || needsOpenaiKey;
   const showSupportEmail = Boolean(error && error.includes('louis@ltplus.com'));
   const canContinue = Boolean(
     !isActive && (streamingContent.trim().length > 0 || lastFinishReason === 'length'),
@@ -1187,6 +1208,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             Settings
           </Button>
         </div>
+      )}
+
+      {/* Inline BYOK key prompt — shown when user picks a model without the matching key */}
+      {needsByokKey && canUseAiAssistant && (
+        <InlineKeyPrompt provider={needsAnthropicKey ? 'anthropic' : 'openai'} />
       )}
 
       {/* Clear confirmation */}
@@ -1454,6 +1480,84 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           )}
           <span className="text-[10px] text-muted-foreground/30">⌘L</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Inline BYOK key prompt (shown inside chat panel when key is missing) ──
+
+const PROVIDER_INFO = {
+  anthropic: {
+    label: 'Anthropic',
+    placeholder: 'sk-ant-api03-...',
+    url: 'https://console.anthropic.com/settings/keys',
+    urlLabel: 'console.anthropic.com',
+  },
+  openai: {
+    label: 'OpenAI',
+    placeholder: 'sk-...',
+    url: 'https://platform.openai.com/api-keys',
+    urlLabel: 'platform.openai.com',
+  },
+} as const;
+
+function InlineKeyPrompt({ provider }: { provider: 'anthropic' | 'openai' }) {
+  const [value, setValue] = useState('');
+  const [show, setShow] = useState(false);
+  const info = PROVIDER_INFO[provider];
+
+  const handleSave = useCallback(() => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (provider === 'anthropic') {
+      updateApiKeys({ anthropicKey: trimmed });
+    } else {
+      updateApiKeys({ openaiKey: trimmed });
+    }
+    setValue('');
+  }, [value, provider]);
+
+  return (
+    <div className="border-b bg-muted/30 px-3 py-2.5 space-y-2">
+      <div className="flex items-center gap-1.5 text-xs font-medium">
+        <Key className="h-3.5 w-3.5" />
+        <span>{info.label} API key required</span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Paste your key below. It stays in your browser and goes directly to {info.label}.{' '}
+        <a
+          href={info.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline inline-flex items-center gap-0.5"
+        >
+          Get a key <ExternalLink className="h-2.5 w-2.5" />
+        </a>
+      </p>
+      <div className="flex gap-1.5">
+        <div className="relative flex-1">
+          <input
+            type={show ? 'text' : 'password'}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+            placeholder={info.placeholder}
+            autoComplete="off"
+            spellCheck={false}
+            className="w-full rounded border border-input bg-background px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring pr-7"
+          />
+          <button
+            type="button"
+            onClick={() => setShow(!show)}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            {show ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          </button>
+        </div>
+        <Button size="sm" className="h-7 px-3 text-xs" onClick={handleSave} disabled={!value.trim()}>
+          Save
+        </Button>
       </div>
     </div>
   );

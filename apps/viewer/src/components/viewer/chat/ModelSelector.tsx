@@ -95,7 +95,7 @@ export function ModelSelector() {
               <SelectItem
                 key={m.id}
                 value={m.id}
-                disabled={!hasAnthropic}
+                disabled={false}
                 className="text-xs"
               >
                 <span className="flex items-center gap-1.5">
@@ -126,7 +126,7 @@ export function ModelSelector() {
               <SelectItem
                 key={m.id}
                 value={m.id}
-                disabled={!hasOpenai}
+                disabled={false}
                 className="text-xs"
               >
                 <span className="flex items-center gap-1.5">

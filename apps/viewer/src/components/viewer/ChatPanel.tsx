@@ -1482,8 +1482,9 @@ function InlineKeyPrompt({ provider }: { provider: 'anthropic' | 'openai' }) {
     } else {
       updateApiKeys({ openaiKey: trimmed });
     }
+    toast.success(`${info.label} API key saved — ready to chat`);
     setValue('');
-  }, [value, provider]);
+  }, [value, provider, info.label]);
 
   return (
     <div className="border-b bg-muted/30 px-3 py-2.5 space-y-2">

@@ -193,9 +193,10 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
     tier: 'byok',
     source: 'openai',
     contextWindow: 128_000,
-    supportsImages: true,
+    supportsImages: false,
     supportsFileAttachments: true,
     cost: '$$',
+    openaiApi: 'responses',
   },
   {
     id: 'gpt-5.4-mini-2026-03-17',

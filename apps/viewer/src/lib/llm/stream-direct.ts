@@ -118,7 +118,26 @@ export async function streamAnthropicChat(
 
 // ── OpenAI ─────────────────────────────────────────────────────────────────
 
+import { getModelById } from './models.js';
+
+/**
+ * Stream an OpenAI model. Automatically picks the right API:
+ * - Chat Completions (`/v1/chat/completions`) for standard chat models
+ * - Responses (`/v1/responses`) for Codex-style models
+ */
 export async function streamOpenAiChat(
+  apiKey: string,
+  options: Omit<StreamOptions, 'proxyUrl' | 'authToken' | 'onUsageInfo'>,
+): Promise<void> {
+  const modelDef = getModelById(options.model);
+  if (modelDef?.openaiApi === 'responses') {
+    return streamOpenAiResponses(apiKey, options);
+  }
+  return streamOpenAiChatCompletions(apiKey, options);
+}
+
+/** Standard Chat Completions API (GPT-5.4, GPT-5.4 Mini, etc.) */
+async function streamOpenAiChatCompletions(
   apiKey: string,
   options: Omit<StreamOptions, 'proxyUrl' | 'authToken' | 'onUsageInfo'>,
 ): Promise<void> {
@@ -128,6 +147,101 @@ export async function streamOpenAiChat(
     ? [{ role: 'system', content: system }, ...messages]
     : [...messages];
 
+  const { response, cleanup } = await openAiFetch(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      model,
+      messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+      stream: true,
+      temperature: 0.3,
+      max_completion_tokens: 8192,
+    },
+    apiKey,
+    signal,
+    onError,
+  );
+  if (!response) return;
+  cleanup();
+
+  if (!response.body) { onError(new Error('No response body')); return; }
+
+  let fullText = '';
+  let finishReason: string | null = null;
+
+  const ok = await readSseStream(response.body, signal, (data) => {
+    const parsed = JSON.parse(data) as {
+      choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
+    };
+    const content = parsed.choices?.[0]?.delta?.content;
+    if (content) { fullText += content; onChunk(content); }
+    const fr = parsed.choices?.[0]?.finish_reason;
+    if (fr) finishReason = fr;
+  }, onError);
+
+  if (ok) { onFinishReason?.(finishReason); onComplete(fullText); }
+}
+
+/** Responses API for Codex-style models (GPT-5.3 Codex) */
+async function streamOpenAiResponses(
+  apiKey: string,
+  options: Omit<StreamOptions, 'proxyUrl' | 'authToken' | 'onUsageInfo'>,
+): Promise<void> {
+  const { model, messages, system, signal, onChunk, onComplete, onError, onFinishReason } = options;
+
+  // Build the input array: system instructions + conversation
+  const input: Array<{ role: string; content: string | unknown[] }> = [];
+  if (system) {
+    input.push({ role: 'developer', content: system });
+  }
+  for (const m of messages) {
+    input.push({ role: m.role, content: m.content });
+  }
+
+  const { response, cleanup } = await openAiFetch(
+    'https://api.openai.com/v1/responses',
+    {
+      model,
+      input,
+      stream: true,
+      max_output_tokens: 8192,
+    },
+    apiKey,
+    signal,
+    onError,
+  );
+  if (!response) return;
+  cleanup();
+
+  if (!response.body) { onError(new Error('No response body')); return; }
+
+  let fullText = '';
+
+  const ok = await readSseStream(response.body, signal, (data) => {
+    const event = JSON.parse(data) as {
+      type?: string;
+      delta?: string;
+      // response.completed carries status
+      response?: { status?: string };
+    };
+    // Responses API streams `response.output_text.delta` events with a `delta` string
+    if (event.type === 'response.output_text.delta' && event.delta) {
+      fullText += event.delta;
+      onChunk(event.delta);
+    }
+  }, onError);
+
+  if (ok) { onFinishReason?.('stop'); onComplete(fullText); }
+}
+
+// ── Shared helpers ─────────────────────────────────────────────────────────
+
+async function openAiFetch(
+  url: string,
+  body: Record<string, unknown>,
+  apiKey: string,
+  signal: AbortSignal | undefined,
+  onError: (err: Error) => void,
+): Promise<{ response: Response | null; cleanup: () => void }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(
     () => controller.abort(new Error('Chat request timed out. Please try again.')),
@@ -135,142 +249,98 @@ export async function streamOpenAiChat(
   );
   const abortFromParent = () => controller.abort(signal?.reason);
   if (signal) {
-    if (signal.aborted) {
-      clearTimeout(timeoutId);
-      return;
-    }
+    if (signal.aborted) { clearTimeout(timeoutId); return { response: null, cleanup: () => {} }; }
     signal.addEventListener('abort', abortFromParent, { once: true });
   }
 
+  const cleanup = () => {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromParent);
+  };
+
   let response: Response;
   try {
-    response = await fetch('https://api.openai.com/v1/chat/completions', {
+    response = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model,
-        messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
-        stream: true,
-        temperature: 0.3,
-        max_tokens: 8192,
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
   } catch (err) {
-    clearTimeout(timeoutId);
-    signal?.removeEventListener('abort', abortFromParent);
-    if (signal?.aborted) return;
+    cleanup();
+    if (signal?.aborted) return { response: null, cleanup: () => {} };
     if (controller.signal.aborted && controller.signal.reason instanceof Error) {
       onError(controller.signal.reason);
     } else {
       onError(err instanceof Error ? err : new Error(String(err)));
     }
-    return;
-  } finally {
-    clearTimeout(timeoutId);
-    signal?.removeEventListener('abort', abortFromParent);
+    return { response: null, cleanup: () => {} };
   }
 
   if (!response.ok) {
+    cleanup();
     let detail = `OpenAI error (${response.status})`;
     try {
-      const body = (await response.json()) as { error?: { message?: string } };
+      const errBody = (await response.json()) as { error?: { message?: string } };
       if (response.status === 401) {
-        detail = 'Invalid OpenAI API key. Check your key in Settings.';
+        detail = 'Invalid OpenAI API key. Check your key in the chat panel.';
       } else if (response.status === 429) {
         detail = 'OpenAI rate limit reached. Please wait and try again.';
-      } else if (body.error?.message) {
-        detail = `OpenAI: ${body.error.message}`;
+      } else if (errBody.error?.message) {
+        detail = `OpenAI: ${errBody.error.message}`;
       }
-    } catch {
-      // ignore parse failure
-    }
+    } catch { /* ignore parse failure */ }
     onError(new Error(detail));
-    return;
+    return { response: null, cleanup: () => {} };
   }
 
-  if (!response.body) {
-    onError(new Error('No response body'));
-    return;
-  }
+  return { response, cleanup };
+}
 
-  // Parse SSE stream — same format as the proxy
-  const reader = response.body.getReader();
+/** Read an SSE stream, calling onEvent for each `data:` line. Returns true if completed normally. */
+async function readSseStream(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal | undefined,
+  onEvent: (data: string) => void,
+  onError: (err: Error) => void,
+): Promise<boolean> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  let fullText = '';
-  let finishReason: string | null = null;
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       buffer += decoder.decode(value, { stream: true });
       const drained = drainSseBuffer(buffer);
       buffer = drained.remainder;
-
-      for (const event of drained.events) {
-        for (const line of event.split('\n')) {
+      for (const evt of drained.events) {
+        for (const line of evt.split('\n')) {
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6);
           if (data === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(data) as {
-              choices?: Array<{
-                delta?: { content?: string };
-                finish_reason?: string | null;
-              }>;
-            };
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullText += content;
-              onChunk(content);
-            }
-            const fr = parsed.choices?.[0]?.finish_reason;
-            if (fr) finishReason = fr;
-          } catch {
-            // skip malformed SSE
-          }
+          try { onEvent(data); } catch { /* skip malformed */ }
         }
       }
     }
-    // Flush remaining buffer
     buffer += decoder.decode();
     const drained = drainSseBuffer(buffer, true);
-    for (const event of drained.events) {
-      for (const line of event.split('\n')) {
+    for (const evt of drained.events) {
+      for (const line of evt.split('\n')) {
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6);
         if (data === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(data) as {
-            choices?: Array<{
-              delta?: { content?: string };
-              finish_reason?: string | null;
-            }>;
-          };
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            fullText += content;
-            onChunk(content);
-          }
-          const fr = parsed.choices?.[0]?.finish_reason;
-          if (fr) finishReason = fr;
-        } catch {
-          // skip malformed SSE
-        }
+        try { onEvent(data); } catch { /* skip malformed */ }
       }
     }
+    return true;
   } catch (err) {
-    if (signal?.aborted) return;
+    if (signal?.aborted) return false;
     onError(err instanceof Error ? err : new Error(String(err)));
-    return;
+    return false;
   }
-
-  onFinishReason?.(finishReason);
-  onComplete(fullText);
 }

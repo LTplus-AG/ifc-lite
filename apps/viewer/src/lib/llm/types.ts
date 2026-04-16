@@ -155,6 +155,8 @@ export interface LLMModel {
   notes?: string;
   /** Relative cost indicator (BYOK models only) */
   cost?: ModelCost;
+  /** OpenAI API variant: 'chat' (default) or 'responses' (Codex-style models) */
+  openaiApi?: 'chat' | 'responses';
 }
 
 export type ChatStatus = 'idle' | 'sending' | 'streaming' | 'error';

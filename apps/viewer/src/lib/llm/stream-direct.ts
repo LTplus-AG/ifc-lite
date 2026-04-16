@@ -161,9 +161,8 @@ async function streamOpenAiChatCompletions(
     onError,
   );
   if (!response) return;
-  cleanup();
 
-  if (!response.body) { onError(new Error('No response body')); return; }
+  if (!response.body) { cleanup(); onError(new Error('No response body')); return; }
 
   let fullText = '';
   let finishReason: string | null = null;
@@ -178,6 +177,7 @@ async function streamOpenAiChatCompletions(
     if (fr) finishReason = fr;
   }, onError);
 
+  cleanup();
   if (ok) { onFinishReason?.(finishReason); onComplete(fullText); }
 }
 
@@ -210,9 +210,8 @@ async function streamOpenAiResponses(
     onError,
   );
   if (!response) return;
-  cleanup();
 
-  if (!response.body) { onError(new Error('No response body')); return; }
+  if (!response.body) { cleanup(); onError(new Error('No response body')); return; }
 
   let fullText = '';
 
@@ -220,16 +219,15 @@ async function streamOpenAiResponses(
     const event = JSON.parse(data) as {
       type?: string;
       delta?: string;
-      // response.completed carries status
       response?: { status?: string };
     };
-    // Responses API streams `response.output_text.delta` events with a `delta` string
     if (event.type === 'response.output_text.delta' && event.delta) {
       fullText += event.delta;
       onChunk(event.delta);
     }
   }, onError);
 
+  cleanup();
   if (ok) { onFinishReason?.('stop'); onComplete(fullText); }
 }
 
@@ -253,6 +251,9 @@ async function openAiFetch(
     signal.addEventListener('abort', abortFromParent, { once: true });
   }
 
+  // cleanup() clears the connect timeout and removes the abort listener.
+  // Callers must call it AFTER streaming completes, not before — otherwise
+  // user cancellation during SSE consumption won't abort the fetch.
   const cleanup = () => {
     clearTimeout(timeoutId);
     signal?.removeEventListener('abort', abortFromParent);

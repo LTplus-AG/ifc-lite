@@ -43,11 +43,9 @@ export interface ChatSlice {
   chatPendingRepairRequest: ChatRepairRequest | null;
   /** Auto-captured viewport screenshot (base64 data URL) to include with next LLM message */
   chatViewportScreenshot: string | null;
-  /** Clerk JWT for authenticated API calls (null for anonymous/free tier) */
-  chatAuthToken: string | null;
-  /** Whether the current user has a pro subscription */
-  chatHasPro: boolean;
-  /** Usage info from the server: credits (pro) or request count (free) */
+  /** Whether the user has at least one BYOK API key configured */
+  chatHasByokKey: boolean;
+  /** Usage info from the proxy: request count for free tier */
   chatUsage: ChatUsage | null;
   /** User ID used to scope persisted model preference (null for anonymous). */
   chatStorageUserId: string | null;
@@ -78,18 +76,10 @@ export interface ChatSlice {
   sendErrorFeedback: (code: string, error: string) => void;
   /** Store a viewport screenshot to include with the next LLM message */
   setChatViewportScreenshot: (dataUrl: string | null) => void;
-  /** Set the Clerk auth token (called by ClerkProvider wrapper when user signs in) */
-  setChatAuthToken: (token: string | null) => void;
-  /** Set whether user has pro subscription (called by ClerkProvider wrapper) */
-  setChatHasPro: (hasPro: boolean) => void;
+  /** Set whether user has at least one BYOK API key configured */
+  setChatHasByokKey: (hasByokKey: boolean) => void;
   /** Update usage info from server response headers */
   setChatUsage: (usage: ChatUsage | null) => void;
-  /** Switch the active chat user/session context. */
-  switchChatUserContext: (
-    userId: string | null,
-    hasPro: boolean,
-    options?: { clearPersistedCurrent?: boolean; restoreMessages?: boolean },
-  ) => void;
 }
 
 export interface ChatUsage {
@@ -287,8 +277,7 @@ export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set,
   chatPendingPrompt: null,
   chatPendingRepairRequest: null,
   chatViewportScreenshot: null,
-  chatAuthToken: null,
-  chatHasPro: false,
+  chatHasByokKey: false,
   chatUsage: null,
   chatStorageUserId: null,
 
@@ -340,7 +329,7 @@ export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set,
   setChatStreamingContent: (chatStreamingContent) => set({ chatStreamingContent }),
 
   setChatActiveModel: (chatActiveModel) => {
-    const nextModel = coerceModelForEntitlement(chatActiveModel, get().chatHasPro);
+    const nextModel = coerceModelForEntitlement(chatActiveModel, get().chatHasByokKey);
     try {
       const key = getModelStorageKey(get().chatStorageUserId);
       localStorage.setItem(key, nextModel);
@@ -404,50 +393,16 @@ export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set,
 
   setChatViewportScreenshot: (chatViewportScreenshot) => set({ chatViewportScreenshot }),
 
-  setChatAuthToken: (chatAuthToken) => set({ chatAuthToken }),
-
-  setChatHasPro: (chatHasPro) => {
-    const nextModel = coerceModelForEntitlement(get().chatActiveModel, chatHasPro);
+  setChatHasByokKey: (chatHasByokKey) => {
+    const nextModel = coerceModelForEntitlement(get().chatActiveModel, chatHasByokKey);
     try {
       const key = getModelStorageKey(get().chatStorageUserId);
       localStorage.setItem(key, nextModel);
     } catch { /* ignore */ }
-    set({ chatHasPro, chatActiveModel: nextModel });
+    set({ chatHasByokKey, chatActiveModel: nextModel });
   },
 
   setChatUsage: (chatUsage) => set({ chatUsage }),
-
-  switchChatUserContext: (chatStorageUserId, chatHasPro, options) => {
-    const state = get();
-    state.chatAbortController?.abort();
-    if (options?.clearPersistedCurrent) {
-      try {
-        localStorage.removeItem(getMessagesStorageKey(state.chatStorageUserId));
-      } catch { /* ignore */ }
-    }
-    const restoredModel = coerceModelForEntitlement(
-      loadStoredModel(chatStorageUserId, state.chatActiveModel),
-      chatHasPro,
-    );
-    const restoredMessages = options?.restoreMessages === false
-      ? []
-      : loadStoredMessages(chatStorageUserId);
-    set({
-      chatStorageUserId,
-      chatHasPro,
-      chatActiveModel: restoredModel,
-      chatMessages: restoredMessages,
-      chatStatus: 'idle',
-      chatStreamingContent: '',
-      chatError: null,
-      chatAbortController: null,
-      chatAttachments: [],
-      chatPendingPrompt: null,
-      chatPendingRepairRequest: null,
-      chatViewportScreenshot: null,
-      chatUsage: null,
-    });
-  },
 
   sendErrorFeedback: (code, error) => {
     const feedbackMessage: ChatMessage = {

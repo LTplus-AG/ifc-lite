@@ -26,10 +26,8 @@ interface ResolvedDesktopEntitlement {
 
 export function resolveDesktopEntitlement(options: ResolveDesktopEntitlementOptions): ResolvedDesktopEntitlement {
   // NOTE: `token`, `has`, `publicMetadata`, and `now` are accepted but
-  // intentionally unused in this initial implementation.  Full Clerk-based
-  // entitlement resolution (plan checks via `has`, metadata-driven overrides,
-  // token validation, and time-based expiry via `now`) will be wired up once
-  // the Clerk integration is available in the desktop shell.
+  // intentionally unused in this implementation. They are kept for future
+  // extensibility if a desktop-specific entitlement provider is added.
   const { userId } = options;
   const entitlement: DesktopEntitlement = {
     ...getDefaultDesktopEntitlement(),

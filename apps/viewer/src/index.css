@@ -1012,13 +1012,3 @@ body {
   border-radius: 0.25rem;
   animation: skeleton-pulse 2s ease-in-out infinite;
 }
-
-/* Clerk overlays (billing/sidebar/modal) should always stack above app overlays. */
-.cl-portalRoot,
-.cl-modalBackdrop,
-.cl-modalContent,
-.cl-drawerRoot,
-.cl-drawerBackdrop,
-.cl-drawerContent {
-  z-index: 100000 !important;
-}

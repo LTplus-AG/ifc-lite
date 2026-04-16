@@ -49,9 +49,8 @@ import type { ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
-import { Image as ImageIcon, Key, Settings2, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { Image as ImageIcon, Key, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { hasDesktopFeatureAccess } from '@/lib/desktop-product';
-import { navigateToPath } from '@/services/app-navigation';
 import { getModelById } from '@/lib/llm/models';
 import { getApiKeys, updateApiKeys, hasAnyApiKey, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
 import { useSandbox } from '@/hooks/useSandbox';
@@ -235,14 +234,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [lastFinishReason, setLastFinishReason] = useState<string | null>(null);
-  const openSettingsPage = useCallback(() => {
-    navigateToPath('/settings?returnTo=/');
-  }, []);
   const promptAiUpgrade = useCallback(() => {
     setChatError('AI assistant is available with Desktop Pro.');
     toast.info('AI assistant is available with Desktop Pro');
-    openSettingsPage();
-  }, [openSettingsPage, setChatError]);
+  }, [setChatError]);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1119,8 +1114,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     modelSupportsImages ? 'image/*' : '',
   ].filter(Boolean).join(',');
   const canAttachInput = modelSupportsFiles || modelSupportsImages;
-  const showUpgradeNudge = Boolean(error && (error.includes('daily limit') || error.includes('API key')));
-
   // Detect when selected model needs a missing BYOK key
   const modelSource = modelForUi?.source ?? 'proxy';
   const needsAnthropicKey = modelSource === 'anthropic' && !hasAnthropicKey();
@@ -1181,19 +1174,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           <TooltipContent>Auto-run: {autoExecute ? 'ON' : 'OFF'}</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={openSettingsPage}
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>API Keys & Settings</TooltipContent>
-        </Tooltip>
-
         {onClose && (
           <Button variant="ghost" size="icon-xs" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
@@ -1202,11 +1182,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       </div>
 
       {!canUseAiAssistant && (
-        <div className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground flex items-center justify-between gap-3">
-          <span>AI assistant requires Desktop Pro. Core viewing and scripting stay available without it.</span>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={openSettingsPage}>
-            Settings
-          </Button>
+        <div className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          AI assistant requires Desktop Pro. Core viewing and scripting stay available without it.
         </div>
       )}
 
@@ -1317,16 +1294,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 onClick={handleContinue}
               >
                 Continue
-              </Button>
-            )}
-            {showUpgradeNudge && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-5 px-2 text-[10px]"
-                onClick={openSettingsPage}
-              >
-                Settings
               </Button>
             )}
             {showSupportEmail && (

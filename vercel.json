@@ -12,10 +12,6 @@
     {
       "source": "/api/bsdd/:path*",
       "destination": "https://api.bsdd.buildingsmart.org/:path*"
-    },
-    {
-      "source": "/settings",
-      "destination": "/index.html"
     }
   ],
   "headers": [

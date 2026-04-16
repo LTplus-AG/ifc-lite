@@ -76,13 +76,22 @@ After env cleanup, you can also:
 
 ---
 
+## Web viewer changes
+
+- The `/settings` route has been **removed** from the web viewer (`App.tsx` and `vercel.json`).
+  The SettingsPage component still exists for the **desktop app** (Tauri shell mounts it).
+- API key entry for BYOK models now happens **inline in the chat panel** — when a user
+  selects a BYOK model without a key, a prompt appears directly in the conversation area.
+- The `/upgrade` route was already removed in the previous commit.
+
 ## Verification
 
 After removing env vars and redeploying:
 
 1. Free models should work without any sign-in
-2. BYOK models should prompt for an API key in the chat panel
-3. The `/settings` page should show the API key management UI
-4. The `/upgrade` route should 404 (removed from `vercel.json`)
+2. Selecting a BYOK model should show an inline key prompt in the chat panel
+3. The `/settings` and `/upgrade` routes should 404
+4. API keys persist across page reloads (stored in `localStorage`)
+5. Verify keys are browser-local: `JSON.parse(localStorage.getItem('ifc-lite:api-keys:v1') ?? '{}')`
 
 **Delete this file before merging to production.**

@@ -3,29 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Main application component
+ * Main application component.
+ *
+ * The web viewer renders only the ViewerLayout.
+ * The /settings page is desktop-only (mounted by the Tauri shell).
  */
 
 import { ViewerLayout } from './components/viewer/ViewerLayout';
-import { SettingsPage } from './components/viewer/SettingsPage';
 import { BimProvider } from './sdk/BimProvider';
 import { Toaster } from './components/ui/toast';
-import { useEffect, useState } from 'react';
 
 export function App() {
-  const [pathname, setPathname] = useState(() => window.location.pathname);
-
-  useEffect(() => {
-    const onRouteChange = () => setPathname(window.location.pathname);
-    window.addEventListener('popstate', onRouteChange);
-    return () => window.removeEventListener('popstate', onRouteChange);
-  }, []);
-
-  const isSettingsRoute = pathname === '/settings';
-
   return (
     <BimProvider>
-      {isSettingsRoute ? <SettingsPage /> : <ViewerLayout />}
+      <ViewerLayout />
       <Toaster />
     </BimProvider>
   );

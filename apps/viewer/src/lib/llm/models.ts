@@ -140,8 +140,19 @@ export const FREE_MODELS: LLMModel[] = rawFreeModels.map(applyCapabilities);
 
 const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
   {
-    id: 'claude-sonnet-4-20250514',
-    name: 'Claude Sonnet 4',
+    id: 'claude-opus-4-6',
+    name: 'Claude Opus 4.6',
+    provider: 'Anthropic',
+    tier: 'byok',
+    source: 'anthropic',
+    contextWindow: 200_000,
+    supportsImages: true,
+    supportsFileAttachments: true,
+    cost: '$$$',
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    name: 'Claude Sonnet 4.6',
     provider: 'Anthropic',
     tier: 'byok',
     source: 'anthropic',
@@ -151,8 +162,8 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
     cost: '$$',
   },
   {
-    id: 'claude-haiku-3-5-20241022',
-    name: 'Claude Haiku 3.5',
+    id: 'claude-haiku-4-5-20251001',
+    name: 'Claude Haiku 4.5',
     provider: 'Anthropic',
     tier: 'byok',
     source: 'anthropic',
@@ -165,8 +176,19 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
 
 const OPENAI_BYOK_MODELS: LLMModel[] = [
   {
-    id: 'gpt-4o',
-    name: 'GPT-4o',
+    id: 'gpt-5.4',
+    name: 'GPT-5.4',
+    provider: 'OpenAI',
+    tier: 'byok',
+    source: 'openai',
+    contextWindow: 128_000,
+    supportsImages: true,
+    supportsFileAttachments: true,
+    cost: '$$$',
+  },
+  {
+    id: 'gpt-5.3-codex',
+    name: 'GPT-5.3 Codex',
     provider: 'OpenAI',
     tier: 'byok',
     source: 'openai',
@@ -176,8 +198,8 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
     cost: '$$',
   },
   {
-    id: 'gpt-4o-mini',
-    name: 'GPT-4o Mini',
+    id: 'gpt-5.4-mini-2026-03-17',
+    name: 'GPT-5.4 Mini',
     provider: 'OpenAI',
     tier: 'byok',
     source: 'openai',

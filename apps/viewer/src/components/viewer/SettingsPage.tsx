@@ -404,7 +404,7 @@ function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
             )}
           </div>
           <p className="mb-2 text-xs text-muted-foreground">
-            Unlocks <strong>Claude Sonnet 4</strong> and <strong>Claude Haiku 3.5</strong>.
+            Unlocks <strong>Claude Opus 4.6</strong>, <strong>Claude Sonnet 4.6</strong>, and <strong>Claude Haiku 4.5</strong>.
           </p>
           <button
             type="button"
@@ -452,7 +452,7 @@ function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
             )}
           </div>
           <p className="mb-2 text-xs text-muted-foreground">
-            Unlocks <strong>GPT-4o</strong> and <strong>GPT-4o Mini</strong>.
+            Unlocks <strong>GPT-5.4</strong>, <strong>GPT-5.3 Codex</strong>, and <strong>GPT-5.4 Mini</strong>.
           </p>
           <button
             type="button"

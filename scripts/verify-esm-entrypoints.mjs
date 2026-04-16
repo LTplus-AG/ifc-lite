@@ -102,6 +102,13 @@ function discoverPublishablePackages() {
       });
       continue;
     }
+    // Source-only packages that publish raw .ts (no build step) can't be
+    // loaded by Node's native ESM resolver. They are consumed by bundlers
+    // only, so skip them.
+    if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
+      out.push({ name: pkg.name, dir, skip: `source-only .ts entry (bundler-consumed): ${entry}` });
+      continue;
+    }
     out.push({ name: pkg.name, dir, entryAbs });
   }
   return out;

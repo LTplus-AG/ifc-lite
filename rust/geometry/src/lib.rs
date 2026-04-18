@@ -68,6 +68,7 @@
 //! - **Boolean operations**: ~20 entities/sec
 
 pub mod bool2d;
+mod bsp_csg;
 pub mod csg;
 pub mod error;
 pub mod extrusion;

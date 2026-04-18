@@ -17,9 +17,6 @@ debug_geometry = []
 
 [dependencies]
 
-# CSG operations for opening subtraction
-csgrs = { version = "0.20", default-features = false, features = ["earcut", "f64"] }
-
 # Triangulation
 earcutr = "0.4"
 

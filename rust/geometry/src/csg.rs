@@ -703,10 +703,6 @@ impl ClippingProcessor {
 
         let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
 
-        if result_polys.is_empty() {
-            return Ok(host_mesh.clone());
-        }
-
         match Self::polygons_to_mesh(&result_polys) {
             Ok(result) => {
                 let cleaned = Self::remove_degenerate_triangles(&result, host_mesh);

@@ -86,6 +86,26 @@ export interface EdgeLockState {
 /** Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience */
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
 
+export type SectionCapHatchId =
+  | 'solid'
+  | 'diagonal'
+  | 'crossHatch'
+  | 'horizontal'
+  | 'vertical'
+  | 'concrete'
+  | 'brick'
+  | 'insulation';
+
+export interface SectionCapStyle {
+  fillColor: [number, number, number, number];
+  strokeColor: [number, number, number, number];
+  pattern: SectionCapHatchId;
+  spacingPx: number;
+  angleRad: number;
+  widthPx: number;
+  secondaryAngleRad: number;
+}
+
 export interface SectionPlane {
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
@@ -93,6 +113,10 @@ export interface SectionPlane {
   enabled: boolean;
   /** If true, show the opposite side of the cut */
   flipped: boolean;
+  /** Whether to render the filled, hatched cap surface at the plane. Defaults to true. */
+  showCap: boolean;
+  /** User-defined colour + hatch for the cut surface. */
+  capStyle: SectionCapStyle;
 }
 
 // ============================================================================

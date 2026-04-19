@@ -15,6 +15,12 @@ export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
+export {
+    SectionCapRenderer,
+    DEFAULT_CAP_STYLE,
+    HATCH_PATTERN_IDS,
+} from './section-cap.js';
+export type { SectionCapStyle, HatchPatternId } from './section-cap.js';
 export type { Section2DOverlayOptions, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
@@ -62,6 +68,7 @@ import type {
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
+import { SectionCapRenderer, DEFAULT_CAP_STYLE, type SectionCapStyle } from './section-cap.js';
 import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
 import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
@@ -103,6 +110,7 @@ export class Renderer {
     private picker: Picker | null = null;
     private canvas: HTMLCanvasElement;
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
+    private sectionCapRenderer: SectionCapRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     private postProcessor: PostProcessor | null = null;
     private visualEnhancementState: ResolvedVisualEnhancement = {
@@ -173,6 +181,11 @@ export class Renderer {
             this.device.getDevice(),
             this.device.getFormat(),
             this.pipeline.getSampleCount()
+        );
+        this.sectionCapRenderer = new SectionCapRenderer(
+            this.device.getDevice(),
+            this.pipeline,
+            this.device.getFormat()
         );
         this.postProcessor = new PostProcessor(this.device, {
             enableContactShading: true,
@@ -919,8 +932,11 @@ export class Renderer {
                     }
 
                     // Flags (offset 44-47 as u32)
+                    // flags.y packs: bit 0 = sectionEnabled, bit 1 = flipped
                     meshFlags[0] = isSelected ? 1 : 0;
-                    meshFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                    meshFlags[1] =
+                        (sectionPlaneData?.enabled ? 1 : 0) |
+                        (options.sectionPlane?.flipped ? 2 : 0);
                     meshFlags[2] = edgeEnabledU32;
                     meshFlags[3] = edgeIntensityMilliU32;
 
@@ -958,6 +974,11 @@ export class Renderer {
                     depthClearValue: 0.0,  // Reverse-Z: clear to 0.0 (far plane)
                     depthLoadOp: 'clear',
                     depthStoreOp: 'store',
+                    // Stencil is cleared here and preserved for the cap pass
+                    // that runs right after in the same frame.
+                    stencilClearValue: 0,
+                    stencilLoadOp: 'clear',
+                    stencilStoreOp: 'store',
                 },
             });
 
@@ -1093,8 +1114,16 @@ export class Renderer {
                 } else {
                     tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                 }
-                tplFlags[0] = 0; // not selected
-                tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                // flags layout (main shader):
+                //   x = isSelected (0/1)
+                //   y = sectionEnabled bitfield:
+                //       bit 0 = enabled, bit 1 = flipped
+                //   z = edgeEnabled (0/1)
+                //   w = edgeIntensityMilli
+                tplFlags[0] = 0;
+                tplFlags[1] =
+                    (sectionPlaneData?.enabled ? 1 : 0) |
+                    (options.sectionPlane?.flipped ? 2 : 0);
                 tplFlags[2] = edgeEnabledU32;
                 tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1163,6 +1192,45 @@ export class Renderer {
                     for (const batch of overrideBatches) {
                         renderBatch(batch);
                     }
+                    pass.setPipeline(this.pipeline.getPipeline());
+                }
+
+                // Filled, hatched cut surfaces. Run right after opaque geometry
+                // so the depth buffer is complete and transparent passes below
+                // will render over the cap naturally.
+                if (
+                    sectionPlaneData &&
+                    sectionPlaneData.enabled &&
+                    options.sectionPlane?.showCap !== false &&
+                    this.sectionCapRenderer
+                ) {
+                    const opts = options.sectionPlane;
+                    const capStyle: SectionCapStyle = {
+                        ...DEFAULT_CAP_STYLE,
+                        ...(opts?.capStyle ?? {}),
+                        // Narrow optional arrays to the tuple type expected by
+                        // SectionCapStyle. Spread lets overrides come through
+                        // without clobbering unset fields.
+                        fillColor:   opts?.capStyle?.fillColor   ?? DEFAULT_CAP_STYLE.fillColor,
+                        strokeColor: opts?.capStyle?.strokeColor ?? DEFAULT_CAP_STYLE.strokeColor,
+                        pattern:     opts?.capStyle?.pattern     ?? DEFAULT_CAP_STYLE.pattern,
+                        spacingPx:   opts?.capStyle?.spacingPx   ?? DEFAULT_CAP_STYLE.spacingPx,
+                        angleRad:    opts?.capStyle?.angleRad    ?? DEFAULT_CAP_STYLE.angleRad,
+                        widthPx:     opts?.capStyle?.widthPx     ?? DEFAULT_CAP_STYLE.widthPx,
+                        secondaryAngleRad:
+                            opts?.capStyle?.secondaryAngleRad ?? DEFAULT_CAP_STYLE.secondaryAngleRad,
+                    };
+                    this.sectionCapRenderer.draw(pass, {
+                        viewProj,
+                        planeNormal: sectionPlaneData.normal,
+                        planeDistance: sectionPlaneData.distance,
+                        flipped: opts?.flipped === true,
+                        style: capStyle,
+                        batches: opaqueBatches,
+                        meshes: opaqueMeshes,
+                    });
+                    // Restore the main pipeline so later transparent/selection
+                    // passes render correctly.
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
 
@@ -1242,7 +1310,9 @@ export class Renderer {
                             tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                         }
                         tplFlags[0] = 0;
-                        tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                        tplFlags[1] =
+                            (sectionPlaneData?.enabled ? 1 : 0) |
+                            (options.sectionPlane?.flipped ? 2 : 0);
                         tplFlags[2] = edgeEnabledU32;
                         tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1296,7 +1366,9 @@ export class Renderer {
                         tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                     }
                     tplFlags[0] = 1; // isSelected
-                    tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                    tplFlags[1] =
+                        (sectionPlaneData?.enabled ? 1 : 0) |
+                        (options.sectionPlane?.flipped ? 2 : 0);
                     tplFlags[2] = edgeEnabledU32;
                     tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1343,7 +1415,12 @@ export class Renderer {
                 const instancedMeshes = this.scene.getInstancedMeshes();
                 if (instancedMeshes.length > 0) {
                     // Update instanced pipeline uniforms
-                    this.instancedPipeline.updateUniforms(viewProj, sectionPlaneData);
+                    this.instancedPipeline.updateUniforms(
+                        viewProj,
+                        sectionPlaneData
+                            ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
+                            : undefined,
+                    );
 
                     // Switch to instanced pipeline
                     pass.setPipeline(this.instancedPipeline.getPipeline());
@@ -1407,7 +1484,9 @@ export class Renderer {
                 });
                 this.postProcessor.apply(encoder, {
                     targetView: textureView,
-                    depthView: this.pipeline.getDepthTextureView(),
+                    // Depth-only view required because depth24plus-stencil8
+                    // cannot be sampled as texture_depth_* with aspect 'all'.
+                    depthView: this.pipeline.getDepthOnlyTextureView(),
                     objectIdView: this.pipeline.getObjectIdTextureView(),
                     contactQuality: contactEnabled && visualEnhancement.contactShading.quality === 'high' ? 'high' : 'low',
                     radius: Math.min(3.0, Math.max(1.0, visualEnhancement.contactShading.radius)),

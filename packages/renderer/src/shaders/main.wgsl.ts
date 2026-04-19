@@ -95,12 +95,15 @@ export const mainShaderSource = `
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragmentOutput {
-          // Section plane clipping - discard fragments ABOVE the plane
-          // For Down axis (normal +Y), keeps everything below cut height (look down into building)
-          if (uniforms.flags.y == 1u) {
+          // Section plane clipping - discard fragments ABOVE the plane.
+          // flags.y packs two bits: bit 0 = enabled, bit 1 = flipped.
+          let sectionEnabled = (uniforms.flags.y & 1u) == 1u;
+          if (sectionEnabled) {
             let planeNormal = uniforms.sectionPlane.xyz;
             let planeDistance = uniforms.sectionPlane.w;
-            let distToPlane = dot(input.worldPos, planeNormal) - planeDistance;
+            let flipped = (uniforms.flags.y & 2u) == 2u;
+            let side = select(1.0, -1.0, flipped);
+            let distToPlane = (dot(input.worldPos, planeNormal) - planeDistance) * side;
             if (distToPlane > 0.0) {
               discard;
             }

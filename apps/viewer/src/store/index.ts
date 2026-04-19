@@ -37,13 +37,13 @@ import { createDesktopEntitlementSlice, type DesktopEntitlementSlice } from './s
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
-import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, TYPE_VISIBILITY_DEFAULTS } from './constants.js';
+import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, SECTION_CAP_DEFAULTS, UI_DEFAULTS, TYPE_VISIBILITY_DEFAULTS } from './constants.js';
 
 // Re-export types for consumers
 export type * from './types.js';
 
 // Explicitly re-export multi-model types that need to be imported by name
-export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis } from './types.js';
+export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis, SectionCapStyle, SectionCapHatchId, SectionPlane, SectionPlaneAxis } from './types.js';
 
 // Re-export utility functions for entity references
 export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore } from './types.js';
@@ -201,6 +201,16 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         position: SECTION_PLANE_DEFAULTS.POSITION,
         enabled: SECTION_PLANE_DEFAULTS.ENABLED,
         flipped: SECTION_PLANE_DEFAULTS.FLIPPED,
+        showCap: SECTION_PLANE_DEFAULTS.SHOW_CAP,
+        capStyle: {
+          fillColor:   [...SECTION_CAP_DEFAULTS.FILL_COLOR],
+          strokeColor: [...SECTION_CAP_DEFAULTS.STROKE_COLOR],
+          pattern:     SECTION_CAP_DEFAULTS.PATTERN,
+          spacingPx:   SECTION_CAP_DEFAULTS.SPACING_PX,
+          angleRad:    SECTION_CAP_DEFAULTS.ANGLE_RAD,
+          widthPx:     SECTION_CAP_DEFAULTS.WIDTH_PX,
+          secondaryAngleRad: SECTION_CAP_DEFAULTS.SECONDARY_ANGLE_RAD,
+        },
       },
 
       // Camera

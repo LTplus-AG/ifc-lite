@@ -6,6 +6,7 @@
 
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, Plane, Triangle, TriangleVec};
+use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
@@ -490,6 +491,29 @@ impl GeometryRouter {
                 return self.process_element(element, decoder);
             }
         };
+
+        Ok(self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder))
+    }
+
+    /// Apply opening subtraction and clipping planes to an already-built mesh.
+    ///
+    /// Shared entry point used by both the single-mesh path
+    /// ([`process_element_with_voids`]) and the per-sub-mesh path
+    /// ([`process_element_with_submeshes_and_voids`]). The incoming mesh is
+    /// expected to be in the same (world) coordinate space as the element —
+    /// i.e. placement already applied — because opening and clip geometry are
+    /// resolved in world coordinates.
+    ///
+    /// Returns the input mesh unchanged when it is invalid or when no
+    /// openings/clips apply, so callers never lose their input on a
+    /// degenerate opening set.
+    pub(super) fn apply_voids_to_mesh(
+        &self,
+        mesh: Mesh,
+        element: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+    ) -> Mesh {
         use nalgebra::Vector3;
         let world_clipping_planes: Vec<(Point3<f64>, Vector3<f64>, bool)> =
             if self.has_clipping_planes(element, decoder) {
@@ -523,13 +547,13 @@ impl GeometryRouter {
 
         let openings = self.classify_openings(opening_ids, decoder);
 
-        if openings.is_empty() {
-            return self.process_element(element, decoder);
+        if openings.is_empty() && world_clipping_planes.is_empty() {
+            return mesh;
         }
 
         use crate::csg::ClippingProcessor;
         let clipper = ClippingProcessor::new();
-        let mut result = wall_mesh;
+        let mut result = mesh;
 
         // Get wall bounds for clamping opening faces (from result before cutting)
         let (wall_min_f32, wall_max_f32) = result.bounds();
@@ -552,7 +576,7 @@ impl GeometryRouter {
 
         if !wall_valid {
             // Wall mesh is invalid, return as-is
-            return Ok(result);
+            return result;
         }
 
         // Track CSG operations to prevent excessive complexity
@@ -696,7 +720,47 @@ impl GeometryRouter {
             }
         }
 
-        Ok(result)
+        result
+    }
+
+    /// Process an element into per-item sub-meshes with opening subtraction.
+    ///
+    /// Mirrors [`process_element_with_voids`] but preserves each
+    /// `IfcShapeRepresentation` item as its own sub-mesh so that callers can
+    /// look up a direct `IfcStyledItem` color per geometry item (e.g. the
+    /// three extrusion layers of a multi-layer wall). The opening(s) are
+    /// subtracted from each sub-mesh independently so that windows and doors
+    /// cut through every material layer they intersect.
+    ///
+    /// Returns an empty collection when there are no openings (callers should
+    /// fall back to [`process_element_with_submeshes`]) or when every
+    /// sub-mesh is destroyed by void subtraction.
+    pub fn process_element_with_submeshes_and_voids(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<SubMeshCollection> {
+        let opening_ids = match void_index.get(&element.id) {
+            Some(ids) if !ids.is_empty() => ids.clone(),
+            _ => return Ok(SubMeshCollection::new()),
+        };
+
+        let sub_meshes = self.process_element_with_submeshes(element, decoder)?;
+        if sub_meshes.is_empty() {
+            return Ok(SubMeshCollection::new());
+        }
+
+        let mut voided = SubMeshCollection::new();
+        for sub in sub_meshes.sub_meshes {
+            let geometry_id = sub.geometry_id;
+            let voided_mesh = self.apply_voids_to_mesh(sub.mesh, element, &opening_ids, decoder);
+            if !voided_mesh.is_empty() {
+                voided.sub_meshes.push(SubMesh::new(geometry_id, voided_mesh));
+            }
+        }
+
+        Ok(voided)
     }
 
     fn classify_openings(

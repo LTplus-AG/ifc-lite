@@ -53,7 +53,7 @@ import { Check, Image as ImageIcon, Key, Eye, EyeOff, ExternalLink } from 'lucid
 import { hasDesktopFeatureAccess } from '@/lib/desktop-product';
 import { getModelById } from '@/lib/llm/models';
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
-import { getApiKeys, updateApiKeys, hasAnyApiKey, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
+import { getApiKeys, updateApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
 import { useSandbox } from '@/hooks/useSandbox';
 
 // Environment variable for the proxy URL

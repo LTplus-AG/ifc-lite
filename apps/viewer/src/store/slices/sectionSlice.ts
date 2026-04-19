@@ -7,8 +7,94 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { SectionPlane, SectionPlaneAxis, SectionCapStyle } from '../types.js';
+import type { SectionPlane, SectionPlaneAxis, SectionCapStyle, SectionCapHatchId } from '../types.js';
 import { SECTION_PLANE_DEFAULTS, SECTION_CAP_DEFAULTS } from '../constants.js';
+
+// ─── Persistence ─────────────────────────────────────────────────────────
+// Cap appearance (hatch pattern, colours, spacing, angle, whether the cap is
+// shown at all) persists across reloads via localStorage, so the user's
+// preferred cut surface survives closing and re-opening the app. Axis and
+// position are session-scoped because they only make sense relative to a
+// loaded model. See chatSlice.ts for the same direct-localStorage pattern
+// used elsewhere in the store.
+const CAP_STYLE_STORAGE_KEY = 'ifc-lite:section-cap-style';
+const CAP_SHOW_STORAGE_KEY  = 'ifc-lite:section-cap-show';
+
+const HATCH_IDS: readonly SectionCapHatchId[] = [
+  'solid', 'diagonal', 'crossHatch', 'horizontal',
+  'vertical', 'concrete', 'brick', 'insulation',
+] as const;
+
+function isHatchId(v: unknown): v is SectionCapHatchId {
+  return typeof v === 'string' && (HATCH_IDS as readonly string[]).includes(v);
+}
+
+function isRgba(v: unknown): v is [number, number, number, number] {
+  return Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n));
+}
+
+function loadCapStyle(): SectionCapStyle {
+  const fallback: SectionCapStyle = {
+    fillColor:   [...SECTION_CAP_DEFAULTS.FILL_COLOR],
+    strokeColor: [...SECTION_CAP_DEFAULTS.STROKE_COLOR],
+    pattern:     SECTION_CAP_DEFAULTS.PATTERN,
+    spacingPx:   SECTION_CAP_DEFAULTS.SPACING_PX,
+    angleRad:    SECTION_CAP_DEFAULTS.ANGLE_RAD,
+    widthPx:     SECTION_CAP_DEFAULTS.WIDTH_PX,
+    secondaryAngleRad: SECTION_CAP_DEFAULTS.SECONDARY_ANGLE_RAD,
+  };
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(CAP_STYLE_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      fillColor:   isRgba(parsed.fillColor)   ? parsed.fillColor   : fallback.fillColor,
+      strokeColor: isRgba(parsed.strokeColor) ? parsed.strokeColor : fallback.strokeColor,
+      pattern:     isHatchId(parsed.pattern)  ? parsed.pattern     : fallback.pattern,
+      spacingPx:   typeof parsed.spacingPx === 'number' && Number.isFinite(parsed.spacingPx)
+        ? Math.max(2, parsed.spacingPx) : fallback.spacingPx,
+      angleRad:    typeof parsed.angleRad === 'number' && Number.isFinite(parsed.angleRad)
+        ? parsed.angleRad : fallback.angleRad,
+      widthPx:     typeof parsed.widthPx === 'number' && Number.isFinite(parsed.widthPx)
+        ? Math.max(1, parsed.widthPx) : fallback.widthPx,
+      secondaryAngleRad: typeof parsed.secondaryAngleRad === 'number' && Number.isFinite(parsed.secondaryAngleRad)
+        ? parsed.secondaryAngleRad : fallback.secondaryAngleRad,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveCapStyle(style: SectionCapStyle): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CAP_STYLE_STORAGE_KEY, JSON.stringify(style));
+  } catch {
+    // Storage quota, private mode etc. — preference just doesn't persist.
+  }
+}
+
+function loadShowCap(): boolean {
+  if (typeof window === 'undefined') return SECTION_PLANE_DEFAULTS.SHOW_CAP;
+  try {
+    const raw = window.localStorage.getItem(CAP_SHOW_STORAGE_KEY);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+  } catch {
+    /* ignore */
+  }
+  return SECTION_PLANE_DEFAULTS.SHOW_CAP;
+}
+
+function saveShowCap(show: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CAP_SHOW_STORAGE_KEY, String(show));
+  } catch {
+    /* ignore */
+  }
+}
 
 export interface SectionSlice {
   // State
@@ -25,22 +111,18 @@ export interface SectionSlice {
   resetSectionPlane: () => void;
 }
 
-const getDefaultCapStyle = (): SectionCapStyle => ({
-  fillColor:   [...SECTION_CAP_DEFAULTS.FILL_COLOR],
-  strokeColor: [...SECTION_CAP_DEFAULTS.STROKE_COLOR],
-  pattern:     SECTION_CAP_DEFAULTS.PATTERN,
-  spacingPx:   SECTION_CAP_DEFAULTS.SPACING_PX,
-  angleRad:    SECTION_CAP_DEFAULTS.ANGLE_RAD,
-  widthPx:     SECTION_CAP_DEFAULTS.WIDTH_PX,
-  secondaryAngleRad: SECTION_CAP_DEFAULTS.SECONDARY_ANGLE_RAD,
-});
+const getDefaultCapStyle = (): SectionCapStyle => loadCapStyle();
 
 const getDefaultSectionPlane = (): SectionPlane => ({
   axis: SECTION_PLANE_DEFAULTS.AXIS,
   position: SECTION_PLANE_DEFAULTS.POSITION,
   enabled: SECTION_PLANE_DEFAULTS.ENABLED,
   flipped: SECTION_PLANE_DEFAULTS.FLIPPED,
-  showCap: SECTION_PLANE_DEFAULTS.SHOW_CAP,
+  // showCap + capStyle come from localStorage so the user's preferred
+  // cut-surface appearance survives reloads; the axis/position/enabled
+  // fields stay session-scoped because they only make sense for the
+  // currently loaded model.
+  showCap: loadShowCap(),
   capStyle: getDefaultCapStyle(),
 });
 
@@ -78,13 +160,28 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     sectionPlane: { ...state.sectionPlane, flipped: !state.sectionPlane.flipped },
   })),
 
-  setSectionShowCap: (showCap) => set((state) => ({
-    sectionPlane: { ...state.sectionPlane, showCap },
-  })),
+  setSectionShowCap: (showCap) => set((state) => {
+    saveShowCap(showCap);
+    return { sectionPlane: { ...state.sectionPlane, showCap } };
+  }),
 
-  setSectionCapStyle: (style) => set((state) => ({
-    sectionPlane: { ...state.sectionPlane, capStyle: { ...state.sectionPlane.capStyle, ...style } },
-  })),
+  setSectionCapStyle: (style) => set((state) => {
+    const capStyle: SectionCapStyle = { ...state.sectionPlane.capStyle, ...style };
+    saveCapStyle(capStyle);
+    return { sectionPlane: { ...state.sectionPlane, capStyle } };
+  }),
 
-  resetSectionPlane: () => set({ sectionPlane: getDefaultSectionPlane() }),
+  resetSectionPlane: () => set(() => {
+    // Reset clears persisted cap style too — users asking for defaults expect
+    // the defaults to stick on the next reload.
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(CAP_STYLE_STORAGE_KEY);
+        window.localStorage.removeItem(CAP_SHOW_STORAGE_KEY);
+      }
+    } catch {
+      /* ignore */
+    }
+    return { sectionPlane: getDefaultSectionPlane() };
+  }),
 });

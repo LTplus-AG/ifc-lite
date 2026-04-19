@@ -308,10 +308,15 @@ export class SectionCapRenderer {
       label: 'section-cap-fill',
     });
 
+    // Visibility MUST include VERTEX because the fill vertex shader now reads
+    // cap.viewProj + quadP0..3 to position the world-space plane quad. With
+    // FRAGMENT only, WebGPU rejects the pipeline layout — that validation
+    // error cascades into the whole main render pass being dropped every
+    // frame, which appeared as "model doesn't cut, orbit jitters".
     const fillBindLayout = device.createBindGroupLayout({
       entries: [{
         binding: 0,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
         buffer: { type: 'uniform' },
       }],
     });
@@ -342,16 +347,21 @@ export class SectionCapRenderer {
           { format: 'rgba8unorm', writeMask: 0 },
         ],
       },
-      primitive: { topology: 'triangle-list' },
+      // cullMode 'none' — we don't want the fill to depend on which side of
+      // the plane the camera is viewing from (down/up, front/back).
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {
         format: depthFormat,
-        // Reverse-Z depth test: pass where cap quad is closer than whatever
-        // the main opaque pass already wrote. This ensures nearer below-plane
-        // geometry occludes the cap, and — combined with the bounded
-        // world-space quad — means the cap fill cannot leak into empty sky
-        // above the plane even if non-manifold parity left stray stencil
-        // bits in those regions.
-        depthCompare: 'greater',
+        // depthCompare 'always': the quad lies exactly on the clip plane,
+        // which coincides with the top faces of below-plane geometry. A
+        // strict 'greater' depth test fails at those pixels because the
+        // quad depth equals the stored depth, leaving visible pin-holes
+        // in the cap. The world-space quad already restricts screen
+        // coverage to the plane's projection, and stencil bit 0 gates
+        // the cap region inside that footprint, so ignoring depth here
+        // is safe — spurious parity bits outside the quad's screen area
+        // produce no fragments in the first place.
+        depthCompare: 'always',
         depthWriteEnabled: false,
         // Pass where stencil bit 0 == reference bit 0 (= 1). The readMask
         // restricts the compare to bit 0 so any higher bits are ignored.
@@ -413,58 +423,76 @@ export class SectionCapRenderer {
     this.device.queue.writeBuffer(this.stencilUniformBuffer, 0, this.stencilScratch);
 
     // ── Compute world-space plane quad corners ─────────────────────────
-    // Find the dominant axis of the plane normal; that's the axis the plane
-    // is perpendicular to. The quad lives in the remaining two axes, spanning
-    // the model's bounds (with a small margin so the hatch reaches to the
-    // silhouette edge exactly). For rotated buildings the normal has non-unit
-    // components on multiple axes; we fall back to the largest-magnitude axis.
+    // Build an orthonormal basis (u, v) on the plane, project the bounding
+    // box corners into that basis, and take a quad spanning the projected
+    // extent. This keeps every emitted vertex exactly on the plane
+    // dot(p, n) = d — the previous "set the dominant axis directly"
+    // shortcut drifted off the plane for rotated building normals.
     const n = opts.planeNormal;
-    const absX = Math.abs(n[0]);
-    const absY = Math.abs(n[1]);
-    const absZ = Math.abs(n[2]);
     const bMin = opts.boundsMin;
     const bMax = opts.boundsMax;
-    // Margin expands each in-plane axis by 1% of its range so the quad fully
-    // covers the silhouette even with non-axis-aligned building rotations.
-    const margin = 0.01;
-    const extend = (lo: number, hi: number) => {
-        const range = hi - lo;
-        return [lo - range * margin, hi + range * margin] as const;
-    };
-    const [xLo, xHi] = extend(bMin[0], bMax[0]);
-    const [yLo, yHi] = extend(bMin[1], bMax[1]);
-    const [zLo, zHi] = extend(bMin[2], bMax[2]);
-    // distance is the signed world-space distance along the plane normal.
-    // Derive the plane's in-axis position: p.n = d  →  p_axis = d * n_axis
-    // for axis-aligned normals; for rotated normals we solve for the quad by
-    // placing corners on the plane while spanning the two in-plane bounds.
-    const d = opts.planeDistance;
-    let p0x = 0, p0y = 0, p0z = 0;
-    let p1x = 0, p1y = 0, p1z = 0;
-    let p2x = 0, p2y = 0, p2z = 0;
-    let p3x = 0, p3y = 0, p3z = 0;
-    if (absY >= absX && absY >= absZ) {
-        // Plane perpendicular to Y ('down'). Quad spans X × Z at y = d / n.y.
-        const yPlane = d / (n[1] !== 0 ? n[1] : 1);
-        p0x = xLo; p0y = yPlane; p0z = zLo;
-        p1x = xHi; p1y = yPlane; p1z = zLo;
-        p2x = xHi; p2y = yPlane; p2z = zHi;
-        p3x = xLo; p3y = yPlane; p3z = zHi;
-    } else if (absX >= absY && absX >= absZ) {
-        // Plane perpendicular to X ('side'). Quad spans Y × Z at x = d / n.x.
-        const xPlane = d / (n[0] !== 0 ? n[0] : 1);
-        p0x = xPlane; p0y = yLo; p0z = zLo;
-        p1x = xPlane; p1y = yHi; p1z = zLo;
-        p2x = xPlane; p2y = yHi; p2z = zHi;
-        p3x = xPlane; p3y = yLo; p3z = zHi;
-    } else {
-        // Plane perpendicular to Z ('front'). Quad spans X × Y at z = d / n.z.
-        const zPlane = d / (n[2] !== 0 ? n[2] : 1);
-        p0x = xLo; p0y = yLo; p0z = zPlane;
-        p1x = xHi; p1y = yLo; p1z = zPlane;
-        p2x = xHi; p2y = yHi; p2z = zPlane;
-        p3x = xLo; p3y = yHi; p3z = zPlane;
+    const nLenSq = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+    if (nLenSq < 1e-12) {
+        // Degenerate normal — skip cap rather than draw garbage.
+        return;
     }
+
+    // Anchor the plane at the bounds centre projected onto the plane, so the
+    // quad is centred over the model rather than wandering off with the
+    // building origin.
+    const cx = (bMin[0] + bMax[0]) * 0.5;
+    const cy = (bMin[1] + bMax[1]) * 0.5;
+    const cz = (bMin[2] + bMax[2]) * 0.5;
+    const toPlane = (opts.planeDistance - (cx * n[0] + cy * n[1] + cz * n[2])) / nLenSq;
+    const ox = cx + n[0] * toPlane;
+    const oy = cy + n[1] * toPlane;
+    const oz = cz + n[2] * toPlane;
+
+    // Pick a helper axis that's not parallel to n (favour world Y unless n
+    // points mostly along Y, in which case use world X). Cross with n to get
+    // the first in-plane direction u, then v = n × u gives the second.
+    const nyAbs = Math.abs(n[1]);
+    const hx = nyAbs < 0.9 ? 0 : 1;
+    const hy = nyAbs < 0.9 ? 1 : 0;
+    const hz = 0;
+    // u = h × n
+    let ux = hy * n[2] - hz * n[1];
+    let uy = hz * n[0] - hx * n[2];
+    let uz = hx * n[1] - hy * n[0];
+    const uLen = Math.hypot(ux, uy, uz);
+    ux /= uLen; uy /= uLen; uz /= uLen;
+    // v = n × u  (already unit because n and u are both unit and orthogonal,
+    // but normalise defensively in case n isn't unit-length).
+    let vx = n[1] * uz - n[2] * uy;
+    let vy = n[2] * ux - n[0] * uz;
+    let vz = n[0] * uy - n[1] * ux;
+    const vLen = Math.hypot(vx, vy, vz);
+    vx /= vLen; vy /= vLen; vz /= vLen;
+
+    // Project the 8 AABB corners onto (u, v) relative to the anchor and take
+    // the extent. 1% margin so the hatch reaches the silhouette edge cleanly.
+    const margin = 0.01;
+    let uMin = Infinity, uMax = -Infinity;
+    let vMin = Infinity, vMax = -Infinity;
+    for (let i = 0; i < 8; i++) {
+        const x = (i & 1) ? bMax[0] : bMin[0];
+        const y = (i & 2) ? bMax[1] : bMin[1];
+        const z = (i & 4) ? bMax[2] : bMin[2];
+        const rx = x - ox, ry = y - oy, rz = z - oz;
+        const up = rx * ux + ry * uy + rz * uz;
+        const vp = rx * vx + ry * vy + rz * vz;
+        if (up < uMin) uMin = up; if (up > uMax) uMax = up;
+        if (vp < vMin) vMin = vp; if (vp > vMax) vMax = vp;
+    }
+    const uPad = (uMax - uMin) * margin;
+    const vPad = (vMax - vMin) * margin;
+    uMin -= uPad; uMax += uPad;
+    vMin -= vPad; vMax += vPad;
+
+    const p0x = ox + ux * uMin + vx * vMin, p0y = oy + uy * uMin + vy * vMin, p0z = oz + uz * uMin + vz * vMin;
+    const p1x = ox + ux * uMax + vx * vMin, p1y = oy + uy * uMax + vy * vMin, p1z = oz + uz * uMax + vz * vMin;
+    const p2x = ox + ux * uMax + vx * vMax, p2y = oy + uy * uMax + vy * vMax, p2z = oz + uz * uMax + vz * vMax;
+    const p3x = ox + ux * uMin + vx * vMax, p3y = oy + uy * uMin + vy * vMax, p3z = oz + uz * uMin + vz * vMax;
 
     // ── Write cap-fill uniforms ─────────────────────────────────────────
     // Layout (matches CapUniforms in section-cap.wgsl.ts):

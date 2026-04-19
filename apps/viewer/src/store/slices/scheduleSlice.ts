@@ -1,0 +1,307 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Schedule state slice — IFC 4D / IfcTask Gantt panel + playback animation.
+ *
+ * The slice holds:
+ *   • extracted schedule data (tasks, sequences, work schedules)
+ *   • UI state (panel visibility, selected work schedule, expanded rows)
+ *   • playback state (current time, speed, isPlaying)
+ *   • derived-set caches that wire into the 3D viewport's hidden-entity set
+ *     during animation (written through `visibilitySlice.hiddenEntities`).
+ *
+ * Time is stored as an epoch-millisecond number. When the schedule lacks real
+ * dates we fall back to a synthetic range (day 0 … sum-of-durations).
+ */
+
+import type { StateCreator } from 'zustand';
+import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+
+export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';
+
+export interface ScheduleTimeRange {
+  /** Earliest task start time, epoch ms. */
+  start: number;
+  /** Latest task finish time, epoch ms. */
+  end: number;
+  /** true when task dates were synthesized from durations (no ScheduleStart values). */
+  synthetic: boolean;
+}
+
+export interface ScheduleSlice {
+  // ── Data ──────────────────────────────────────────────
+  /** Extracted schedule data for the currently loaded model(s). */
+  scheduleData: ScheduleExtraction | null;
+  /** Pre-computed min/max date range across all tasks with dates. */
+  scheduleRange: ScheduleTimeRange | null;
+  /** Currently focused work schedule globalId ('' = show all tasks). */
+  activeWorkScheduleId: string;
+
+  // ── Panel UI ──────────────────────────────────────────
+  ganttPanelVisible: boolean;
+  /** globalIds of expanded rows in the task tree. */
+  expandedTaskGlobalIds: Set<string>;
+  /** globalId currently hovered in the Gantt timeline. */
+  hoveredTaskGlobalId: string | null;
+  /** globalIds currently selected in the Gantt (separate from viewport selection). */
+  selectedTaskGlobalIds: Set<string>;
+  /** Timeline zoom scale. */
+  ganttTimeScale: GanttTimeScale;
+
+  // ── Playback ─────────────────────────────────────────
+  /** Animation master toggle — when false the viewer renders normally. */
+  animationEnabled: boolean;
+  /** Is the playback currently advancing? */
+  playbackIsPlaying: boolean;
+  /** Current playback time, epoch ms. */
+  playbackTime: number;
+  /** Playback rate in simulated-days-per-real-second. */
+  playbackSpeed: number;
+  /** When true, looping from end → start. */
+  playbackLoop: boolean;
+
+  // ── Actions ──────────────────────────────────────────
+  setScheduleData: (data: ScheduleExtraction | null) => void;
+  setGanttPanelVisible: (visible: boolean) => void;
+  toggleGanttPanel: () => void;
+  setActiveWorkScheduleId: (globalId: string) => void;
+  setGanttTimeScale: (scale: GanttTimeScale) => void;
+
+  toggleTaskExpanded: (globalId: string) => void;
+  expandAllTasks: () => void;
+  collapseAllTasks: () => void;
+  setHoveredTaskGlobalId: (globalId: string | null) => void;
+  setSelectedTaskGlobalIds: (globalIds: string[]) => void;
+
+  setAnimationEnabled: (enabled: boolean) => void;
+  playSchedule: () => void;
+  pauseSchedule: () => void;
+  togglePlaySchedule: () => void;
+  seekSchedule: (time: number) => void;
+  setPlaybackSpeed: (speed: number) => void;
+  setPlaybackLoop: (loop: boolean) => void;
+  advancePlaybackBy: (deltaMs: number) => void;
+}
+
+/**
+ * Convert an ISO 8601 datetime string to epoch ms. Returns undefined when
+ * the input is missing or unparseable.
+ */
+function parseIsoDate(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const t = Date.parse(value);
+  return Number.isNaN(t) ? undefined : t;
+}
+
+/**
+ * Derive a plausible finish time for a task when `ScheduleFinish` is absent.
+ * Uses ScheduleDuration (ISO 8601 seconds) on top of ScheduleStart. Returns
+ * undefined when no start time is available.
+ */
+function taskFinishEpoch(task: ScheduleTaskInfo): number | undefined {
+  const start = parseIsoDate(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);
+  const finish = parseIsoDate(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);
+  if (finish !== undefined) return finish;
+  if (start === undefined) return undefined;
+  const duration = task.taskTime?.scheduleDuration ?? task.taskTime?.actualDuration;
+  if (!duration) return start;
+  const match = duration.match(
+    /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
+  );
+  if (!match) return start;
+  const [, y, mo, w, d, h, mi, s] = match;
+  const yearMs = 365.2425 * 86400_000;
+  const monthMs = yearMs / 12;
+  const totalMs =
+    (y ? parseFloat(y) * yearMs : 0) +
+    (mo ? parseFloat(mo) * monthMs : 0) +
+    (w ? parseFloat(w) * 7 * 86400_000 : 0) +
+    (d ? parseFloat(d) * 86400_000 : 0) +
+    (h ? parseFloat(h) * 3_600_000 : 0) +
+    (mi ? parseFloat(mi) * 60_000 : 0) +
+    (s ? parseFloat(s) * 1000 : 0);
+  return start + totalMs;
+}
+
+function taskStartEpoch(task: ScheduleTaskInfo): number | undefined {
+  return parseIsoDate(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);
+}
+
+/**
+ * Compute the schedule time range across all tasks. Prefers real dates from
+ * TaskTime attributes; falls back to a synthetic 0 … max-duration window.
+ */
+export function computeScheduleRange(data: ScheduleExtraction | null): ScheduleTimeRange | null {
+  if (!data || data.tasks.length === 0) return null;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let hasReal = false;
+  for (const task of data.tasks) {
+    const start = taskStartEpoch(task);
+    const finish = taskFinishEpoch(task);
+    if (start !== undefined) {
+      min = Math.min(min, start);
+      hasReal = true;
+    }
+    if (finish !== undefined) {
+      max = Math.max(max, finish);
+      hasReal = true;
+    }
+  }
+  if (hasReal && Number.isFinite(min) && Number.isFinite(max) && max >= min) {
+    return { start: min, end: max === min ? min + 86400_000 : max, synthetic: false };
+  }
+  // No dates — synthesize a 30-day window as a placeholder.
+  const now = Date.now();
+  return { start: now, end: now + 30 * 86400_000, synthetic: true };
+}
+
+export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSlice> = (set, get) => ({
+  // Initial state
+  scheduleData: null,
+  scheduleRange: null,
+  activeWorkScheduleId: '',
+  ganttPanelVisible: false,
+  expandedTaskGlobalIds: new Set(),
+  hoveredTaskGlobalId: null,
+  selectedTaskGlobalIds: new Set(),
+  ganttTimeScale: 'week',
+  animationEnabled: false,
+  playbackIsPlaying: false,
+  playbackTime: 0,
+  playbackSpeed: 7, // 7 simulated days per real second by default
+  playbackLoop: true,
+
+  // Actions
+  setScheduleData: (scheduleData) => {
+    const range = computeScheduleRange(scheduleData);
+    set({
+      scheduleData,
+      scheduleRange: range,
+      // Reset playback to the schedule's start when loading new data.
+      playbackTime: range?.start ?? 0,
+      playbackIsPlaying: false,
+      // Pick the first work schedule by default.
+      activeWorkScheduleId: scheduleData?.workSchedules[0]?.globalId ?? '',
+      // Expand roots by default so the user sees something.
+      expandedTaskGlobalIds: new Set(
+        scheduleData?.tasks.filter(t => !t.parentGlobalId).map(t => t.globalId) ?? [],
+      ),
+      selectedTaskGlobalIds: new Set(),
+      hoveredTaskGlobalId: null,
+    });
+  },
+
+  setGanttPanelVisible: (ganttPanelVisible) => set({ ganttPanelVisible }),
+  toggleGanttPanel: () => set((s) => ({ ganttPanelVisible: !s.ganttPanelVisible })),
+
+  setActiveWorkScheduleId: (activeWorkScheduleId) => set({ activeWorkScheduleId }),
+  setGanttTimeScale: (ganttTimeScale) => set({ ganttTimeScale }),
+
+  toggleTaskExpanded: (globalId) => set((s) => {
+    const next = new Set(s.expandedTaskGlobalIds);
+    if (next.has(globalId)) next.delete(globalId);
+    else next.add(globalId);
+    return { expandedTaskGlobalIds: next };
+  }),
+  expandAllTasks: () => set((s) => ({
+    expandedTaskGlobalIds: new Set(s.scheduleData?.tasks.map(t => t.globalId) ?? []),
+  })),
+  collapseAllTasks: () => set({ expandedTaskGlobalIds: new Set() }),
+
+  setHoveredTaskGlobalId: (hoveredTaskGlobalId) => set({ hoveredTaskGlobalId }),
+  setSelectedTaskGlobalIds: (ids) => set({ selectedTaskGlobalIds: new Set(ids) }),
+
+  setAnimationEnabled: (animationEnabled) => set({ animationEnabled }),
+  playSchedule: () => set({ playbackIsPlaying: true, animationEnabled: true }),
+  pauseSchedule: () => set({ playbackIsPlaying: false }),
+  togglePlaySchedule: () => set((s) => {
+    const next = !s.playbackIsPlaying;
+    return {
+      playbackIsPlaying: next,
+      animationEnabled: next ? true : s.animationEnabled,
+    };
+  }),
+  seekSchedule: (time) => set({ playbackTime: time }),
+  setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
+  setPlaybackLoop: (playbackLoop) => set({ playbackLoop }),
+
+  advancePlaybackBy: (deltaMs) => {
+    const s = get();
+    if (!s.playbackIsPlaying || !s.scheduleRange) return;
+    // speed = simulated days / real second
+    //   → simulated ms = (deltaMs / 1000) * speed * 86_400_000
+    //                  = deltaMs * speed * 86_400
+    const simulated = deltaMs * s.playbackSpeed * 86_400;
+    let next = s.playbackTime + simulated;
+    if (next > s.scheduleRange.end) {
+      if (s.playbackLoop) {
+        next = s.scheduleRange.start;
+      } else {
+        set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
+        return;
+      }
+    }
+    set({ playbackTime: next });
+  },
+});
+
+// ── Derived selectors ────────────────────────────────────────────────────
+
+/**
+ * Compute the set of product expressIds that should be hidden at the given
+ * playback time. A product is hidden when every task that assigns it has
+ * `scheduleStart > playbackTime`. Products with no controlling task are
+ * always shown.
+ */
+export function computeHiddenProductIds(
+  data: ScheduleExtraction | null,
+  playbackTime: number,
+): Set<number> {
+  const hidden = new Set<number>();
+  if (!data) return hidden;
+  /** product expressId -> true iff it was revealed by at least one task. */
+  const revealed = new Map<number, boolean>();
+  for (const task of data.tasks) {
+    const start = taskStartEpoch(task);
+    if (task.productExpressIds.length === 0) continue;
+    // If no scheduled start, treat the task as always-active (don't hide its products).
+    const isRevealed = start === undefined ? true : start <= playbackTime;
+    for (const id of task.productExpressIds) {
+      if (isRevealed) {
+        revealed.set(id, true);
+      } else if (!revealed.has(id)) {
+        revealed.set(id, false);
+      }
+    }
+  }
+  for (const [id, isRevealed] of revealed) {
+    if (!isRevealed) hidden.add(id);
+  }
+  return hidden;
+}
+
+/**
+ * Compute product expressIds that are currently part of an in-progress task —
+ * useful for highlighting the "active construction front" during playback.
+ */
+export function computeActiveProductIds(
+  data: ScheduleExtraction | null,
+  playbackTime: number,
+): Set<number> {
+  const active = new Set<number>();
+  if (!data) return active;
+  for (const task of data.tasks) {
+    const start = taskStartEpoch(task);
+    const finish = taskFinishEpoch(task);
+    if (start === undefined || finish === undefined) continue;
+    if (playbackTime >= start && playbackTime <= finish) {
+      for (const id of task.productExpressIds) active.add(id);
+    }
+  }
+  return active;
+}
+
+export { taskStartEpoch, taskFinishEpoch, parseIsoDate };

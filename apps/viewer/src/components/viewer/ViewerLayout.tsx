@@ -21,6 +21,7 @@ import { IDSPanel } from './IDSPanel';
 import { LensPanel } from './LensPanel';
 import { ListPanel } from './lists/ListPanel';
 import { ScriptPanel } from './ScriptPanel';
+import { GanttPanel } from './schedule/GanttPanel';
 import { CommandPalette } from './CommandPalette';
 import { DesktopEntitlementBanner } from './DesktopEntitlementBanner';
 import {
@@ -84,6 +85,8 @@ export function ViewerLayout() {
   const setLensPanelVisible = useViewerStore((s) => s.setLensPanelVisible);
   const scriptPanelVisible = useViewerStore((s) => s.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
+  const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
+  const setGanttPanelVisible = useViewerStore((s) => s.setGanttPanelVisible);
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -270,8 +273,8 @@ export function ViewerLayout() {
               </PanelGroup>
             </div>
 
-            {/* Bottom Panel - Lists or Script (custom resizable, outside PanelGroup) */}
-            {(listPanelVisible || scriptPanelVisible || !!activeBottomAnalysisExtension) && (
+            {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable) */}
+            {(listPanelVisible || scriptPanelVisible || ganttPanelVisible || !!activeBottomAnalysisExtension) && (
               <div style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
                 {/* Drag handle */}
                 <div
@@ -281,6 +284,8 @@ export function ViewerLayout() {
                 <div className="h-full w-full overflow-hidden border-t pt-1.5">
                   {activeBottomAnalysisExtension ? (
                     activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                  ) : ganttPanelVisible ? (
+                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
                   ) : scriptPanelVisible ? (
                     <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
                   ) : (
@@ -326,7 +331,7 @@ export function ViewerLayout() {
               <div className="absolute inset-x-0 bottom-0 h-[50vh] bg-background border-t rounded-t-xl shadow-xl z-40 animate-in slide-in-from-bottom">
                 <div className="flex items-center justify-between p-2 border-b">
                   <span className="font-medium text-sm">
-                    {activeAnalysisExtension ? activeAnalysisExtension.label : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
+                    {activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
                   </span>
                   <button
                     className="p-1 hover:bg-muted rounded"
@@ -334,6 +339,7 @@ export function ViewerLayout() {
                       setRightPanelCollapsed(true);
                       if (scriptPanelVisible) setScriptPanelVisible(false);
                       if (listPanelVisible) setListPanelVisible(false);
+                      if (ganttPanelVisible) setGanttPanelVisible(false);
                       if (bcfPanelVisible) setBcfPanelVisible(false);
                       if (lensPanelVisible) setLensPanelVisible(false);
                       if (idsPanelVisible) setIdsPanelVisible(false);
@@ -351,6 +357,8 @@ export function ViewerLayout() {
                     activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
                   ) : activeRightAnalysisExtension ? (
                     activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                  ) : ganttPanelVisible ? (
+                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
                   ) : scriptPanelVisible ? (
                     <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
                   ) : listPanelVisible ? (

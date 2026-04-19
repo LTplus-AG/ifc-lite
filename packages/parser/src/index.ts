@@ -52,6 +52,20 @@ export { extractMaterials, getMaterialForElement, getMaterialNameForElement, typ
 export { extractGeoreferencing, transformToWorld, transformToLocal, getCoordinateSystemDescription, computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from './georef-extractor.js';
 export { extractClassifications, getClassificationsForElement, getClassificationCodeForElement, getClassificationPath, groupElementsByClassification, type ClassificationsData, type Classification, type ClassificationReference } from './classification-extractor.js';
 
+// 4D / scheduling extractor — IfcTask, IfcTaskTime, IfcRelSequence, IfcRelAssignsToProcess,
+// IfcRelAssignsToControl, IfcRelNests, IfcWorkSchedule, IfcWorkPlan, IfcLagTime.
+export {
+  extractScheduleOnDemand,
+  parseIso8601Duration,
+  type ScheduleExtraction,
+  type ScheduleTaskInfo,
+  type ScheduleTaskTimeInfo,
+  type ScheduleSequenceInfo,
+  type WorkScheduleInfo,
+  type SequenceTypeEnum,
+  type TaskDurationType,
+} from './schedule-extractor.js';
+
 // Generated IFC4 schema (100% coverage - 776 entities, 397 types, 207 enums)
 export { SCHEMA_REGISTRY, getEntityMetadata, getAllAttributesForEntity, getInheritanceChainForEntity, isKnownEntity } from './generated/schema-registry.js';
 export type * from './generated/entities.js';

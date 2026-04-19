@@ -34,6 +34,7 @@ import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
 import { createDesktopEntitlementSlice, type DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.js';
+import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -83,6 +84,17 @@ export type { DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.j
 // Re-export Cesium types
 export type { CesiumSlice, CesiumDataSource } from './slices/cesiumSlice.js';
 
+// Re-export Schedule (4D) types + selectors
+export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './slices/scheduleSlice.js';
+export {
+  computeScheduleRange,
+  computeHiddenProductIds,
+  computeActiveProductIds,
+  taskStartEpoch,
+  taskFinishEpoch,
+  parseIsoDate,
+} from './slices/scheduleSlice.js';
+
 // Combined store type
 export type ViewerState = LoadingSlice &
   SelectionSlice &
@@ -105,7 +117,8 @@ export type ViewerState = LoadingSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
-  DesktopEntitlementSlice & {
+  DesktopEntitlementSlice &
+  ScheduleSlice & {
     resetViewerState: () => void;
   };
 
@@ -136,6 +149,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
   ...createDesktopEntitlementSlice(...args),
+  ...createScheduleSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
@@ -337,6 +351,18 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       chatStreamingContent: '',
       chatError: null,
       chatAbortController: null,
+
+      // Schedule (4D) - drop panel + data; definitions are re-extracted on next load
+      ganttPanelVisible: false,
+      scheduleData: null,
+      scheduleRange: null,
+      activeWorkScheduleId: '',
+      expandedTaskGlobalIds: new Set<string>(),
+      hoveredTaskGlobalId: null,
+      selectedTaskGlobalIds: new Set<string>(),
+      animationEnabled: false,
+      playbackIsPlaying: false,
+      playbackTime: 0,
 
       // Mutations - clear all mutation state so stale changes don't carry over
       mutationViews: new Map(),

@@ -48,3 +48,14 @@ export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore 
 
 // Re-export single source of truth for globalId → EntityRef resolution
 export { resolveEntityRef } from './store/resolveEntityRef.js';
+
+// Re-export Schedule (4D) types + helpers
+export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './store/slices/scheduleSlice.js';
+export {
+  computeScheduleRange,
+  computeHiddenProductIds,
+  computeActiveProductIds,
+  taskStartEpoch,
+  taskFinishEpoch,
+  parseIsoDate,
+} from './store/slices/scheduleSlice.js';

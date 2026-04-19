@@ -37,6 +37,7 @@ import {
   Layout,
   LayoutTemplate,
   FileCode2,
+  CalendarClock,
   Globe2,
   Settings,
 } from 'lucide-react';
@@ -305,6 +306,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
   const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
+  const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
+  const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);
@@ -508,21 +511,31 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     return false;
   }, [desktopEntitlement, promptDesktopUpgrade]);
 
-  const handleToggleBottomPanel = useCallback((panel: 'script' | 'list') => {
+  const handleToggleBottomPanel = useCallback((panel: 'script' | 'list' | 'gantt') => {
     if (activeAnalysisExtension?.placement === 'bottom') {
       closeActiveAnalysisExtension();
     }
-    const isScriptPanel = panel === 'script';
-    const nextScriptVisible = isScriptPanel ? !scriptPanelVisible : false;
-    const nextListVisible = isScriptPanel ? false : !listPanelVisible;
+    const nextScriptVisible = panel === 'script' ? !scriptPanelVisible : false;
+    const nextListVisible = panel === 'list' ? !listPanelVisible : false;
+    const nextGanttVisible = panel === 'gantt' ? !ganttPanelVisible : false;
 
     setScriptPanelVisible(nextScriptVisible);
     setListPanelVisible(nextListVisible);
+    setGanttPanelVisible(nextGanttVisible);
 
-    if (nextScriptVisible || nextListVisible) {
+    if (nextScriptVisible || nextListVisible || nextGanttVisible) {
       setRightPanelCollapsed(false);
     }
-  }, [activeAnalysisExtension?.placement, listPanelVisible, scriptPanelVisible, setListPanelVisible, setRightPanelCollapsed, setScriptPanelVisible]);
+  }, [
+    activeAnalysisExtension?.placement,
+    ganttPanelVisible,
+    listPanelVisible,
+    scriptPanelVisible,
+    setGanttPanelVisible,
+    setListPanelVisible,
+    setRightPanelCollapsed,
+    setScriptPanelVisible,
+  ]);
 
   const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
@@ -577,6 +590,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if ((extension.placement ?? 'right') === 'bottom') {
       setScriptPanelVisible(false);
       setListPanelVisible(false);
+      setGanttPanelVisible(false);
       setRightPanelCollapsed(false);
       return;
     }
@@ -589,6 +603,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     analysisExtensionState.activeId,
     analysisExtensionState.extensions,
     setBcfPanelVisible,
+    setGanttPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
     setListPanelVisible,
@@ -600,6 +615,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const panels = new Set<WorkspacePanel>();
     if (scriptPanelVisible) panels.add('script');
     if (listPanelVisible) panels.add('list');
+    if (ganttPanelVisible) panels.add('gantt');
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
@@ -608,6 +624,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   }, [
     analysisExtensionState.activeId,
     bcfPanelVisible,
+    ganttPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
     listPanelVisible,
@@ -619,6 +636,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.size > 1) return 'Multiple Panels';
     if (activeWorkspacePanels.has('script')) return 'Script Editor';
     if (activeWorkspacePanels.has('list')) return 'Lists';
+    if (activeWorkspacePanels.has('gantt')) return 'Schedule';
     if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
@@ -947,6 +965,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Lists
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('gantt')}
+            onCheckedChange={() => handleToggleBottomPanel('gantt')}
+          >
+            <CalendarClock className="h-4 w-4 mr-2" />
+            Schedule (Gantt)
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuCheckboxItem

@@ -1,0 +1,283 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * GanttToolbar — play/pause, timeline scrubber, speed control,
+ * work-schedule selector, and animation toggle.
+ */
+
+import { useCallback, useMemo } from 'react';
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Repeat,
+  Repeat2,
+  Gauge,
+  Sparkles,
+  Calendar,
+  X,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useViewerStore } from '@/store';
+import type { GanttTimeScale } from '@/store';
+import { formatDateTime } from './schedule-utils';
+
+interface GanttToolbarProps {
+  onClose?: () => void;
+}
+
+const SPEED_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 0.5, label: '0.5 d/s' },
+  { value: 1, label: '1 d/s' },
+  { value: 3, label: '3 d/s' },
+  { value: 7, label: '1 w/s' },
+  { value: 30, label: '1 mo/s' },
+  { value: 90, label: '3 mo/s' },
+];
+
+const SCALE_OPTIONS: Array<{ value: GanttTimeScale; label: string }> = [
+  { value: 'hour', label: 'Hour' },
+  { value: 'day', label: 'Day' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+  { value: 'year', label: 'Year' },
+];
+
+export function GanttToolbar({ onClose }: GanttToolbarProps) {
+  const scheduleData = useViewerStore(s => s.scheduleData);
+  const scheduleRange = useViewerStore(s => s.scheduleRange);
+  const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);
+  const setActiveWorkScheduleId = useViewerStore(s => s.setActiveWorkScheduleId);
+  const isPlaying = useViewerStore(s => s.playbackIsPlaying);
+  const playbackTime = useViewerStore(s => s.playbackTime);
+  const playbackSpeed = useViewerStore(s => s.playbackSpeed);
+  const playbackLoop = useViewerStore(s => s.playbackLoop);
+  const animationEnabled = useViewerStore(s => s.animationEnabled);
+  const scale = useViewerStore(s => s.ganttTimeScale);
+  const togglePlay = useViewerStore(s => s.togglePlaySchedule);
+  const pause = useViewerStore(s => s.pauseSchedule);
+  const seek = useViewerStore(s => s.seekSchedule);
+  const setSpeed = useViewerStore(s => s.setPlaybackSpeed);
+  const setLoop = useViewerStore(s => s.setPlaybackLoop);
+  const setAnimationEnabled = useViewerStore(s => s.setAnimationEnabled);
+  const setScale = useViewerStore(s => s.setGanttTimeScale);
+
+  const hasData = !!scheduleData && scheduleData.tasks.length > 0;
+  const hasDates = !!scheduleRange && !scheduleRange.synthetic;
+
+  const scheduleOptions = useMemo(() => {
+    if (!scheduleData) return [];
+    return [
+      { value: '', label: 'All tasks' },
+      ...scheduleData.workSchedules.map(s => ({
+        value: s.globalId,
+        label: s.name || s.globalId,
+      })),
+    ];
+  }, [scheduleData]);
+
+  const scrubPercent = useMemo(() => {
+    if (!scheduleRange) return 0;
+    const span = scheduleRange.end - scheduleRange.start;
+    if (span <= 0) return 0;
+    return Math.min(100, Math.max(0, ((playbackTime - scheduleRange.start) / span) * 100));
+  }, [scheduleRange, playbackTime]);
+
+  const onScrubInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!scheduleRange) return;
+    const pct = parseFloat(e.target.value) / 100;
+    seek(scheduleRange.start + pct * (scheduleRange.end - scheduleRange.start));
+  }, [scheduleRange, seek]);
+
+  const onScrubPointerDown = useCallback(() => {
+    if (isPlaying) pause();
+  }, [isPlaying, pause]);
+
+  const goStart = useCallback(() => {
+    if (scheduleRange) seek(scheduleRange.start);
+  }, [scheduleRange, seek]);
+
+  const goEnd = useCallback(() => {
+    if (scheduleRange) seek(scheduleRange.end);
+  }, [scheduleRange, seek]);
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 border-b bg-card/40 text-sm">
+      <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={goStart}
+              disabled={!hasData}
+              aria-label="Jump to start"
+            >
+              <SkipBack className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Jump to start</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant={isPlaying ? 'default' : 'ghost'}
+              onClick={togglePlay}
+              disabled={!hasData}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{isPlaying ? 'Pause' : 'Play'} construction sequence</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={goEnd}
+              disabled={!hasData}
+              aria-label="Jump to finish"
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Jump to finish</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant={playbackLoop ? 'default' : 'ghost'}
+              onClick={() => setLoop(!playbackLoop)}
+              aria-label={playbackLoop ? 'Disable loop' : 'Enable loop'}
+            >
+              {playbackLoop ? <Repeat className="h-4 w-4" /> : <Repeat2 className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{playbackLoop ? 'Looping' : 'One-shot'}</TooltipContent>
+        </Tooltip>
+      </div>
+
+      {/* Scrub bar */}
+      <div className="flex-1 flex items-center gap-2 min-w-[240px]">
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={0.01}
+          value={scrubPercent}
+          onChange={onScrubInput}
+          onPointerDown={onScrubPointerDown}
+          disabled={!hasData}
+          className="flex-1 accent-primary cursor-pointer h-1 appearance-none bg-muted rounded-full"
+          aria-label="Playback position"
+        />
+        <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
+          {hasData ? formatDateTime(playbackTime) : '—'}
+        </span>
+      </div>
+
+      {/* Work schedule dropdown */}
+      <div className="flex items-center gap-1">
+        <Calendar className="h-4 w-4 text-muted-foreground" />
+        <Select value={activeWorkScheduleId} onValueChange={setActiveWorkScheduleId}>
+          <SelectTrigger className="h-8 w-[180px] text-xs">
+            <SelectValue placeholder="All tasks" />
+          </SelectTrigger>
+          <SelectContent>
+            {scheduleOptions.map(opt => (
+              <SelectItem key={opt.value || 'all'} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Speed */}
+      <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Gauge className="h-4 w-4 text-muted-foreground" />
+          </TooltipTrigger>
+          <TooltipContent>Simulation speed</TooltipContent>
+        </Tooltip>
+        <Select
+          value={String(playbackSpeed)}
+          onValueChange={(v) => setSpeed(parseFloat(v))}
+        >
+          <SelectTrigger className="h-8 w-[110px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SPEED_OPTIONS.map(opt => (
+              <SelectItem key={opt.value} value={String(opt.value)}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Scale */}
+      <Select value={scale} onValueChange={(v) => setScale(v as GanttTimeScale)}>
+        <SelectTrigger className="h-8 w-[90px] text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SCALE_OPTIONS.map(opt => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* Animation toggle */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon-sm"
+            variant={animationEnabled ? 'default' : 'ghost'}
+            onClick={() => setAnimationEnabled(!animationEnabled)}
+            aria-label={animationEnabled ? 'Disable 3D animation' : 'Enable 3D animation'}
+          >
+            <Sparkles className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {animationEnabled ? 'Disable 3D animation' : 'Enable 3D animation'}
+        </TooltipContent>
+      </Tooltip>
+
+      {onClose && (
+        <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close Gantt panel">
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+
+      {hasData && !hasDates && (
+        <span className="text-xs text-amber-500 whitespace-nowrap" title="No real dates — using synthetic range">
+          No dates
+        </span>
+      )}
+    </div>
+  );
+}

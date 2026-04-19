@@ -1194,9 +1194,9 @@ export interface InitOutput {
   readonly profileentryjs_expressId: (a: number) => number;
   readonly symboliccircle_expressId: (a: number) => number;
   readonly __wbg_gpuinstancedgeometryref_free: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1141: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1140: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1181: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1144: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1143: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1184: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export3: (a: number, b: number) => number;

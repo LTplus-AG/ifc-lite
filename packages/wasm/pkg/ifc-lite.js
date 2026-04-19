@@ -212,12 +212,12 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1121(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1121(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1126(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1126(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1161(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1161(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1166(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1166(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -3093,7 +3093,7 @@ function __wbg_get_imports() {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1161(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1166(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3207,7 +3207,7 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_cast_d1f2d19555106100 = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 150, function: Function { arguments: [Externref], shim_idx: 151, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1120, __wasm_bindgen_func_elem_1121);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1125, __wasm_bindgen_func_elem_1126);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {

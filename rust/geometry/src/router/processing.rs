@@ -454,6 +454,15 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<SubMeshCollection> {
+        // If a material-layer buildup is attached, try slicing single-solid
+        // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
+        // layer gets its own sub-mesh keyed by IfcMaterial id. An empty void
+        // index is passed — the caller's has_openings branch takes the
+        // voids-aware path below.
+        if let Some(layered) = self.try_layered_sub_meshes(element, decoder, None) {
+            return Ok(layered);
+        }
+
         // Get representation (attribute 6 for most building elements)
         let representation_attr = element.get(6).ok_or_else(|| {
             Error::geometry(format!(

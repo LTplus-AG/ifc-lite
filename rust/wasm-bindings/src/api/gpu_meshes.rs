@@ -58,11 +58,24 @@ impl IfcAPI {
         let mut decoder = EntityDecoder::with_index(&content, entity_index);
 
         // Build style index: first map geometry IDs to colors, then map element IDs to colors
-        let geometry_styles = build_geometry_style_index(&content, &mut decoder);
+        let mut geometry_styles = build_geometry_style_index(&content, &mut decoder);
         let style_index = build_element_style_index(&content, &geometry_styles, &mut decoder);
         // Build material-based styles for sub-element color fallback (windows, doors)
         let element_material_styles =
             build_element_material_styles_from_content(&content, &mut decoder);
+
+        // Build material_id → color (merged into geometry_styles so per-layer
+        // slices resolve their colour through the normal geometry lookup path)
+        // plus the material-layer buildup index for single-solid slicing.
+        let material_color_index = super::styling::build_material_color_index_from_content(
+            &content, &mut decoder,
+        );
+        for (&mat_id, &color) in &material_color_index {
+            geometry_styles.entry(mat_id).or_insert(color);
+        }
+        let material_layer_index = std::sync::Arc::new(
+            ifc_lite_geometry::MaterialLayerIndex::from_content(&content, &mut decoder),
+        );
 
         // OPTIMIZATION: Collect all FacetedBrep IDs for batch processing
         // Also build void relationship index (host → openings)
@@ -103,6 +116,10 @@ impl IfcAPI {
         if needs_shift {
             router.set_rtc_offset(rtc_offset);
         }
+
+        // Attach the material-layer index so single-solid multi-layer walls /
+        // slabs get per-layer sub-meshes keyed by IfcMaterial id.
+        router.set_material_layer_index(std::sync::Arc::clone(&material_layer_index));
 
         // Batch preprocess FacetedBrep entities for maximum parallelism
         // This triangulates ALL faces from ALL BREPs in one parallel batch
@@ -485,6 +502,10 @@ impl IfcAPI {
             router.preprocess_faceted_breps(&pre_pass.faceted_brep_ids, &mut decoder);
             decoder.clear_point_cache();
         }
+
+        // Attach material-layer index so sub-mesh routing can slice single-solid
+        // elements by their IfcMaterialLayerSetUsage buildup.
+        router.set_material_layer_index(std::sync::Arc::clone(&pre_pass.material_layer_index));
 
         // ── Phase 4: Process only the requested subset of geometry entities ──
         // Build a combined job list: simple first, then complex (same order as parseMeshesAsync)
@@ -1332,6 +1353,12 @@ impl IfcAPI {
                 if needs_shift {
                     router.set_rtc_offset(rtc_offset);
                 }
+
+                // Attach material-layer index so sub-mesh routing can slice
+                // single-solid multi-layer walls / slabs into per-layer slabs.
+                router.set_material_layer_index(std::sync::Arc::clone(
+                    &pre_pass.material_layer_index,
+                ));
 
                 // Surface RTC offset to JavaScript callers early so they can prepare camera/world state
                 if let Some(ref callback) = on_rtc_offset {

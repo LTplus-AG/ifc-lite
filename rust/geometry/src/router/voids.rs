@@ -749,6 +749,15 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         void_index: &FxHashMap<u32, Vec<u32>>,
     ) -> Result<SubMeshCollection> {
+        // Layered single-solid path: slice the element's base mesh by its
+        // material-layer buildup AFTER subtracting voids. This produces one
+        // sub-mesh per layer keyed by IfcMaterial id, so layers show up as
+        // individual colors even when the underlying geometry is a single
+        // swept solid.
+        if let Some(layered) = self.try_layered_sub_meshes(element, decoder, Some(void_index)) {
+            return Ok(layered);
+        }
+
         let opening_ids = match void_index.get(&element.id) {
             Some(ids) if !ids.is_empty() => ids.clone(),
             _ => return Ok(SubMeshCollection::new()),

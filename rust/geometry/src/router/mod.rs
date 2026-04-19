@@ -8,6 +8,7 @@
 
 mod caching;
 mod clipping;
+mod layers;
 mod processing;
 mod transforms;
 mod voids;
@@ -16,6 +17,7 @@ mod voids_2d;
 #[cfg(test)]
 mod tests;
 
+use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, MappedItemProcessor,
@@ -67,6 +69,10 @@ pub struct GeometryRouter {
     /// Subtracted from all world positions in f64 before converting to f32
     /// This preserves precision for georeferenced models (e.g., Swiss UTM)
     rtc_offset: (f64, f64, f64),
+    /// Material-layer buildup index. When set, `process_element_with_submeshes`
+    /// and `process_element_with_submeshes_and_voids` first attempt to slice
+    /// single-solid elements by their `IfcMaterialLayerSetUsage` buildup.
+    material_layer_index: Option<Arc<MaterialLayerIndex>>,
 }
 
 impl GeometryRouter {
@@ -82,6 +88,7 @@ impl GeometryRouter {
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
+            material_layer_index: None,
         };
 
         // Register default P0 processors
@@ -193,6 +200,18 @@ impl GeometryRouter {
     /// Get the current unit scale factor
     pub fn unit_scale(&self) -> f64 {
         self.unit_scale
+    }
+
+    /// Attach a material-layer buildup index. After this, sub-mesh processing
+    /// automatically slices single-solid elements whose buildup is sliceable
+    /// (walls with `IfcMaterialLayerSetUsage`, etc.) into per-layer slabs.
+    pub fn set_material_layer_index(&mut self, index: Arc<MaterialLayerIndex>) {
+        self.material_layer_index = Some(index);
+    }
+
+    #[inline]
+    pub(crate) fn material_layer_index(&self) -> Option<&MaterialLayerIndex> {
+        self.material_layer_index.as_deref()
     }
 
     /// Scale mesh positions from file units to meters

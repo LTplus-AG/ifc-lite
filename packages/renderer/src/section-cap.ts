@@ -127,12 +127,22 @@ const STENCIL_UNIFORM_BYTES = 96;
 //   fillColor (16) + strokeColor (16) + params (16) + params2 (16) = 192 B.
 const FILL_UNIFORM_BYTES = 192;
 
-// Stencil reference used by the fill pass. Bit 0 is set at cap pixels by the
-// invert-parity stencil pass; the fill pipeline compares stencil bit 0 against
-// this reference (equal) and clears it back to 0 so the buffer is ready for
-// the next frame without an explicit clear.
-const STENCIL_REF = 1;
-const STENCIL_PARITY_MASK = 1;
+// Stencil bit layout within the 8-bit stencil buffer:
+//   bit 0 (mask 0x01) — parity of "triangles above the plane on this ray",
+//                       set/cleared by this renderer's parity pass.
+//   bit 1 (mask 0x02) — "opaque below-plane geometry was rendered at this
+//                       pixel", set by the main opaque pipeline in
+//                       RenderPipeline. Bit 1 survives the parity pass
+//                       because that pass's writeMask is 0x01.
+//
+// The fill pass requires BOTH bits set before painting. This keeps
+// non-manifold IFC parity glitches from leaking hatch into empty sky or
+// onto pixels where no below-plane geometry actually exists.
+const STENCIL_PARITY_MASK  = 0x01;
+const STENCIL_OPAQUE_MASK  = 0x02;
+const STENCIL_COMBINED_MASK = STENCIL_PARITY_MASK | STENCIL_OPAQUE_MASK; // 0x03
+// Reference for the fill pass's `equal` compare: bits 0 and 1 both set.
+const STENCIL_REF = STENCIL_COMBINED_MASK; // 3
 
 export class SectionCapRenderer {
   private device: GPUDevice;
@@ -352,22 +362,17 @@ export class SectionCapRenderer {
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {
         format: depthFormat,
-        // depthCompare 'always': the quad lies exactly on the clip plane,
-        // which coincides with the top faces of below-plane geometry. A
-        // strict 'greater' depth test fails at those pixels because the
-        // quad depth equals the stored depth, leaving visible pin-holes
-        // in the cap. The world-space quad already restricts screen
-        // coverage to the plane's projection, and stencil bit 0 gates
-        // the cap region inside that footprint, so ignoring depth here
-        // is safe — spurious parity bits outside the quad's screen area
-        // produce no fragments in the first place.
         depthCompare: 'always',
         depthWriteEnabled: false,
-        // Pass where stencil bit 0 == reference bit 0 (= 1). The readMask
-        // restricts the compare to bit 0 so any higher bits are ignored.
+        // Require BOTH: parity bit (0) says "inside solid" AND opaque bit
+        // (1) says "below-plane geometry was rendered here". Stored value
+        // in bits 0-1 must equal reference 0b11 = 3. Higher bits ignored
+        // by the readMask. Only the parity bit is cleared for the next
+        // frame (writeMask=0x01); bit 1 is re-written every frame by the
+        // main opaque pipeline.
         stencilFront: {
           compare: 'equal',
-          passOp:      'zero',   // Clear stencil for the next frame.
+          passOp:      'zero',
           failOp:      'keep',
           depthFailOp: 'keep',
         },
@@ -377,7 +382,7 @@ export class SectionCapRenderer {
           failOp:      'keep',
           depthFailOp: 'keep',
         },
-        stencilReadMask:  STENCIL_PARITY_MASK,
+        stencilReadMask:  STENCIL_COMBINED_MASK,
         stencilWriteMask: STENCIL_PARITY_MASK,
       },
       multisample: { count: sampleCount },

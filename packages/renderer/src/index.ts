@@ -1042,6 +1042,11 @@ export class Renderer {
             });
 
             pass.setPipeline(this.pipeline.getPipeline());
+            // The main opaque pipeline writes stencil bit 1 via passOp
+            // 'replace' + writeMask 0x02, using this reference. The cap
+            // renderer overrides the reference to STENCIL_REF (3) before
+            // its fill pass; everything else in the frame is fine with 2.
+            pass.setStencilReference(2);
 
             // Check if we have batched meshes (preferred for performance)
             const allBatchedMeshes = this.scene.getBatchedMeshes();

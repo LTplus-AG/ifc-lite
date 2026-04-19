@@ -1284,10 +1284,23 @@ export class Renderer {
                         secondaryAngleRad:
                             opts?.capStyle?.secondaryAngleRad ?? DEFAULT_CAP_STYLE.secondaryAngleRad,
                     };
+                    // Model bounds were stashed via setModelBounds() during the
+                    // section-plane distance computation above. Using the cached
+                    // copy here keeps the cap quad consistent with the clip.
+                    const capBounds = this.getModelBounds() ?? {
+                        min: { x: -1, y: -1, z: -1 },
+                        max: { x:  1, y:  1, z:  1 },
+                    };
                     this.sectionCapRenderer.draw(pass, {
                         viewProj,
                         planeNormal: sectionPlaneData.normal,
                         planeDistance: sectionPlaneData.distance,
+                        // Bounded plane quad in world space — stops stray
+                        // parity stencil bits from non-manifold IFC geometry
+                        // from painting hatch into empty sky above or beside
+                        // the cut.
+                        boundsMin: [capBounds.min.x, capBounds.min.y, capBounds.min.z],
+                        boundsMax: [capBounds.max.x, capBounds.max.y, capBounds.max.z],
                         flipped: opts?.flipped === true,
                         style: capStyle,
                         // Include every opaque batch the main pass actually

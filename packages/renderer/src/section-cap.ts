@@ -98,6 +98,14 @@ export interface SectionCapDrawOptions {
   /** World-space plane equation. `dot(x, normal) == distance` defines the plane. */
   planeNormal:  [number, number, number];
   planeDistance: number;
+  /**
+   * Axis-aligned world-space bounds of the scene. Used to pin the cap fill to
+   * a bounded plane quad instead of a full-screen triangle, so stray stencil
+   * bits from non-manifold IFC geometry cannot paint hatch into empty sky
+   * above or beside the model.
+   */
+  boundsMin:    [number, number, number];
+  boundsMax:    [number, number, number];
   /** If true, cap the opposite half (flipped slider). */
   flipped:      boolean;
   /** Per-frame cap style. */
@@ -114,8 +122,10 @@ export interface SectionCapDrawOptions {
 
 // Stencil-geom uniforms: viewProj (64) + sectionPlane (16) + flags (16) = 96 B.
 const STENCIL_UNIFORM_BYTES = 96;
-// Cap-fill uniforms: fillColor (16) + strokeColor (16) + params (16) + params2 (16) = 64 B.
-const FILL_UNIFORM_BYTES = 64;
+// Cap-fill uniforms:
+//   viewProj (64) + 4 * vec4 corners (64) +
+//   fillColor (16) + strokeColor (16) + params (16) + params2 (16) = 192 B.
+const FILL_UNIFORM_BYTES = 192;
 
 // Stencil reference used by the fill pass. Bit 0 is set at cap pixels by the
 // invert-parity stencil pass; the fill pipeline compares stencil bit 0 against
@@ -144,7 +154,7 @@ export class SectionCapRenderer {
   // Scratch buffers reused each frame.
   private stencilScratch = new Float32Array(STENCIL_UNIFORM_BYTES / 4);
   private stencilScratchU32 = new Uint32Array(this.stencilScratch.buffer, 80, 4);
-  private fillScratch = new Float32Array(FILL_UNIFORM_BYTES / 4);
+  private fillScratch = new Float32Array(FILL_UNIFORM_BYTES / 4);  // 48 floats
 
   constructor(device: GPUDevice, mainPipeline: RenderPipeline, colorFormat: GPUTextureFormat) {
     this.device = device;
@@ -335,7 +345,13 @@ export class SectionCapRenderer {
       primitive: { topology: 'triangle-list' },
       depthStencil: {
         format: depthFormat,
-        depthCompare: 'always',
+        // Reverse-Z depth test: pass where cap quad is closer than whatever
+        // the main opaque pass already wrote. This ensures nearer below-plane
+        // geometry occludes the cap, and — combined with the bounded
+        // world-space quad — means the cap fill cannot leak into empty sky
+        // above the plane even if non-manifold parity left stray stencil
+        // bits in those regions.
+        depthCompare: 'greater',
         depthWriteEnabled: false,
         // Pass where stencil bit 0 == reference bit 0 (= 1). The readMask
         // restricts the compare to bit 0 so any higher bits are ignored.
@@ -396,24 +412,93 @@ export class SectionCapRenderer {
     this.stencilScratchU32[3] = 0;
     this.device.queue.writeBuffer(this.stencilUniformBuffer, 0, this.stencilScratch);
 
+    // ── Compute world-space plane quad corners ─────────────────────────
+    // Find the dominant axis of the plane normal; that's the axis the plane
+    // is perpendicular to. The quad lives in the remaining two axes, spanning
+    // the model's bounds (with a small margin so the hatch reaches to the
+    // silhouette edge exactly). For rotated buildings the normal has non-unit
+    // components on multiple axes; we fall back to the largest-magnitude axis.
+    const n = opts.planeNormal;
+    const absX = Math.abs(n[0]);
+    const absY = Math.abs(n[1]);
+    const absZ = Math.abs(n[2]);
+    const bMin = opts.boundsMin;
+    const bMax = opts.boundsMax;
+    // Margin expands each in-plane axis by 1% of its range so the quad fully
+    // covers the silhouette even with non-axis-aligned building rotations.
+    const margin = 0.01;
+    const extend = (lo: number, hi: number) => {
+        const range = hi - lo;
+        return [lo - range * margin, hi + range * margin] as const;
+    };
+    const [xLo, xHi] = extend(bMin[0], bMax[0]);
+    const [yLo, yHi] = extend(bMin[1], bMax[1]);
+    const [zLo, zHi] = extend(bMin[2], bMax[2]);
+    // distance is the signed world-space distance along the plane normal.
+    // Derive the plane's in-axis position: p.n = d  →  p_axis = d * n_axis
+    // for axis-aligned normals; for rotated normals we solve for the quad by
+    // placing corners on the plane while spanning the two in-plane bounds.
+    const d = opts.planeDistance;
+    let p0x = 0, p0y = 0, p0z = 0;
+    let p1x = 0, p1y = 0, p1z = 0;
+    let p2x = 0, p2y = 0, p2z = 0;
+    let p3x = 0, p3y = 0, p3z = 0;
+    if (absY >= absX && absY >= absZ) {
+        // Plane perpendicular to Y ('down'). Quad spans X × Z at y = d / n.y.
+        const yPlane = d / (n[1] !== 0 ? n[1] : 1);
+        p0x = xLo; p0y = yPlane; p0z = zLo;
+        p1x = xHi; p1y = yPlane; p1z = zLo;
+        p2x = xHi; p2y = yPlane; p2z = zHi;
+        p3x = xLo; p3y = yPlane; p3z = zHi;
+    } else if (absX >= absY && absX >= absZ) {
+        // Plane perpendicular to X ('side'). Quad spans Y × Z at x = d / n.x.
+        const xPlane = d / (n[0] !== 0 ? n[0] : 1);
+        p0x = xPlane; p0y = yLo; p0z = zLo;
+        p1x = xPlane; p1y = yHi; p1z = zLo;
+        p2x = xPlane; p2y = yHi; p2z = zHi;
+        p3x = xPlane; p3y = yLo; p3z = zHi;
+    } else {
+        // Plane perpendicular to Z ('front'). Quad spans X × Y at z = d / n.z.
+        const zPlane = d / (n[2] !== 0 ? n[2] : 1);
+        p0x = xLo; p0y = yLo; p0z = zPlane;
+        p1x = xHi; p1y = yLo; p1z = zPlane;
+        p2x = xHi; p2y = yHi; p2z = zPlane;
+        p3x = xLo; p3y = yHi; p3z = zPlane;
+    }
+
     // ── Write cap-fill uniforms ─────────────────────────────────────────
+    // Layout (matches CapUniforms in section-cap.wgsl.ts):
+    //   0-15   viewProj (mat4x4)
+    //   16-19  quadP0 (vec4)
+    //   20-23  quadP1
+    //   24-27  quadP2
+    //   28-31  quadP3
+    //   32-35  fillColor
+    //   36-39  strokeColor
+    //   40-43  params
+    //   44-47  params2
     const s = opts.style;
-    this.fillScratch[0]  = s.fillColor[0];
-    this.fillScratch[1]  = s.fillColor[1];
-    this.fillScratch[2]  = s.fillColor[2];
-    this.fillScratch[3]  = s.fillColor[3];
-    this.fillScratch[4]  = s.strokeColor[0];
-    this.fillScratch[5]  = s.strokeColor[1];
-    this.fillScratch[6]  = s.strokeColor[2];
-    this.fillScratch[7]  = s.strokeColor[3];
-    this.fillScratch[8]  = HATCH_PATTERN_IDS[s.pattern];
-    this.fillScratch[9]  = s.spacingPx;
-    this.fillScratch[10] = s.angleRad;
-    this.fillScratch[11] = s.widthPx;
-    this.fillScratch[12] = s.secondaryAngleRad;
-    this.fillScratch[13] = 0;
-    this.fillScratch[14] = 0;
-    this.fillScratch[15] = 0;
+    this.fillScratch.set(opts.viewProj, 0);
+    this.fillScratch[16] = p0x; this.fillScratch[17] = p0y; this.fillScratch[18] = p0z; this.fillScratch[19] = 0;
+    this.fillScratch[20] = p1x; this.fillScratch[21] = p1y; this.fillScratch[22] = p1z; this.fillScratch[23] = 0;
+    this.fillScratch[24] = p2x; this.fillScratch[25] = p2y; this.fillScratch[26] = p2z; this.fillScratch[27] = 0;
+    this.fillScratch[28] = p3x; this.fillScratch[29] = p3y; this.fillScratch[30] = p3z; this.fillScratch[31] = 0;
+    this.fillScratch[32] = s.fillColor[0];
+    this.fillScratch[33] = s.fillColor[1];
+    this.fillScratch[34] = s.fillColor[2];
+    this.fillScratch[35] = s.fillColor[3];
+    this.fillScratch[36] = s.strokeColor[0];
+    this.fillScratch[37] = s.strokeColor[1];
+    this.fillScratch[38] = s.strokeColor[2];
+    this.fillScratch[39] = s.strokeColor[3];
+    this.fillScratch[40] = HATCH_PATTERN_IDS[s.pattern];
+    this.fillScratch[41] = s.spacingPx;
+    this.fillScratch[42] = s.angleRad;
+    this.fillScratch[43] = s.widthPx;
+    this.fillScratch[44] = s.secondaryAngleRad;
+    this.fillScratch[45] = 0;
+    this.fillScratch[46] = 0;
+    this.fillScratch[47] = 0;
     this.device.queue.writeBuffer(this.fillUniformBuffer, 0, this.fillScratch);
 
     // ── Pass A: stencil parity (bit 0 = XOR of triangles above plane) ───
@@ -445,9 +530,13 @@ export class SectionCapRenderer {
     }
 
     // ── Pass B: fill quad where stencil bit 0 == 1 (cap region) ─────────
+    // Two triangles (6 indices) covering the plane quad. The vertex shader
+    // indexes quadP0..3 via @builtin(vertex_index) so no vertex buffer is
+    // bound. Depth test + stencil test together restrict output to the
+    // visible cap region.
     pass.setPipeline(this.fillPipeline);
     pass.setBindGroup(0, this.fillBindGroup);
-    pass.draw(3, 1, 0, 0);
+    pass.draw(6, 1, 0, 0);
   }
 
   private drawBatchedAndIndividual(pass: GPURenderPassEncoder, opts: SectionCapDrawOptions): void {

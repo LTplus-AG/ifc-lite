@@ -156,6 +156,18 @@ fn fs_main(in: VertexOutput) -> StencilFragOutI {
  */
 export const capFillShaderSource = /* wgsl */ `
 struct CapUniforms {
+  // Camera view-projection, so the cap is rasterised AT the world-space
+  // plane position (not as a full-screen quad). Pinning the cap to a real
+  // world-space quad is what stops non-manifold IFC parity glitches from
+  // painting hatch into empty sky above the model.
+  viewProj:     mat4x4<f32>,
+  // Four world-space corners of the cap quad, laid out so (0,1,2) and
+  // (0,2,3) form two triangles covering the intersection of the clip plane
+  // with the scene bounding box. w is unused (kept for 16-byte alignment).
+  quadP0:       vec4<f32>,
+  quadP1:       vec4<f32>,
+  quadP2:       vec4<f32>,
+  quadP3:       vec4<f32>,
   // Fill colour (background of the cap).
   fillColor:    vec4<f32>,
   // Stroke colour used by the hatch pattern.
@@ -176,15 +188,13 @@ struct VsOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
-  // Full-screen triangle (no vertex buffer needed).
-  var pos = array<vec2<f32>, 3>(
-    vec2<f32>(-1.0, -1.0),
-    vec2<f32>( 3.0, -1.0),
-    vec2<f32>(-1.0,  3.0),
-  );
+  // Two triangles from four corners: (0,1,2) and (0,2,3).
+  var indices = array<u32, 6>(0u, 1u, 2u, 0u, 2u, 3u);
+  var corners = array<vec4<f32>, 4>(cap.quadP0, cap.quadP1, cap.quadP2, cap.quadP3);
+  let c = corners[indices[vid]];
   var out: VsOut;
-  out.position = vec4<f32>(pos[vid], 0.0, 1.0);
-  out.uv = pos[vid];
+  out.position = cap.viewProj * vec4<f32>(c.xyz, 1.0);
+  out.uv = c.xy;
   return out;
 }
 

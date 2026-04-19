@@ -238,6 +238,32 @@ function applyAlignmentTransformAndUpdateBounds(
       positions[i + 2] = alignedZ;
       found = updateBounds(bounds, alignedX, alignedY, alignedZ) || found;
     }
+
+    // Rotate normals by the transform's 3×3 linear part (translation omitted)
+    // and renormalize. CRS alignment is a rigid rotation, so the linear part
+    // itself is the correct transform for normals; degenerate results from
+    // zero-length or non-finite inputs are left in place.
+    const normals = mesh.normals;
+    if (normals && normals.length >= 3) {
+      for (let i = 0; i < normals.length; i += 3) {
+        const nx = normals[i];
+        const ny = normals[i + 1];
+        const nz = normals[i + 2];
+        if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)) {
+          continue;
+        }
+        const rx = transform.m00 * nx + transform.m01 * ny + transform.m02 * nz;
+        const ry = transform.m10 * nx + transform.m11 * ny + transform.m12 * nz;
+        const rz = transform.m20 * nx + transform.m21 * ny + transform.m22 * nz;
+        const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        if (!Number.isFinite(len) || len < 1e-12) {
+          continue;
+        }
+        normals[i] = rx / len;
+        normals[i + 1] = ry / len;
+        normals[i + 2] = rz / len;
+      }
+    }
   }
 
   geometry.coordinateInfo = {
@@ -475,7 +501,16 @@ export function useIfcFederation() {
       }
 
       const referenceGeoref = findReferenceGeorefModel();
-      const parsedGeoref = extractModelGeoref(parsedDataStore, parsedGeometry.coordinateInfo);
+      // Include any georef edits the user has already saved for this model so
+      // that a reload after editing reflects the new placement. Without this,
+      // extractModelGeoref reads only the raw parsed metadata and mutations
+      // are silently ignored.
+      const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
+      const parsedGeoref = extractModelGeoref(
+        parsedDataStore,
+        parsedGeometry.coordinateInfo,
+        parsedGeorefMutations,
+      );
       if (referenceGeoref && parsedGeoref) {
         setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
         const aligned = alignGeometryToReferenceGeoref(parsedGeometry, parsedGeoref, referenceGeoref);

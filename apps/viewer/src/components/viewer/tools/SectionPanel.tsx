@@ -110,10 +110,12 @@ export function SectionOverlay() {
                 <label className="text-xs text-muted-foreground">Position</label>
                 <div className="flex items-center gap-1">
                   <Button
-                    variant="ghost"
+                    variant={sectionPlane.flipped ? 'default' : 'ghost'}
                     size="icon-sm"
                     onClick={flipSectionPlane}
-                    title="Flip cut direction"
+                    aria-pressed={sectionPlane.flipped}
+                    aria-label={sectionPlane.flipped ? 'Unflip cut direction' : 'Flip cut direction'}
+                    title={sectionPlane.flipped ? 'Cut direction is flipped' : 'Flip cut direction'}
                   >
                     <FlipHorizontal2 className="h-3 w-3" />
                   </Button>

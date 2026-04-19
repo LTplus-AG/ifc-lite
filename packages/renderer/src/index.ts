@@ -15,13 +15,12 @@ export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
-export {
-    SectionCapRenderer,
-    DEFAULT_CAP_STYLE,
-    HATCH_PATTERN_IDS,
-} from './section-cap.js';
-export type { SectionCapStyle, HatchPatternId } from './section-cap.js';
-export type { Section2DOverlayOptions, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+// Section cap styling (hatch pattern ids + default colours). The cap itself
+// is now rendered by Section2DOverlayRenderer's fill pass; this module just
+// holds the styling primitives shared with the store and UI.
+export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
+export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
+export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
@@ -68,7 +67,7 @@ import type {
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
-import { SectionCapRenderer, DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap.js';
+import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
 import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
@@ -110,7 +109,6 @@ export class Renderer {
     private picker: Picker | null = null;
     private canvas: HTMLCanvasElement;
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
-    private sectionCapRenderer: SectionCapRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     private postProcessor: PostProcessor | null = null;
     private visualEnhancementState: ResolvedVisualEnhancement = {
@@ -185,11 +183,6 @@ export class Renderer {
             this.device.getDevice(),
             this.device.getFormat(),
             this.pipeline.getSampleCount()
-        );
-        this.sectionCapRenderer = new SectionCapRenderer(
-            this.device.getDevice(),
-            this.pipeline,
-            this.device.getFormat()
         );
         this.postProcessor = new PostProcessor(this.device, {
             enableContactShading: true,
@@ -1820,8 +1813,6 @@ export class Renderer {
         // Section-plane renderers
         this.sectionPlaneRenderer?.destroy();
         this.sectionPlaneRenderer = null;
-        this.sectionCapRenderer?.destroy();
-        this.sectionCapRenderer = null;
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
 

@@ -37,7 +37,7 @@ import { createDesktopEntitlementSlice, type DesktopEntitlementSlice } from './s
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
-import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, SECTION_CAP_DEFAULTS, UI_DEFAULTS, TYPE_VISIBILITY_DEFAULTS } from './constants.js';
+import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, TYPE_VISIBILITY_DEFAULTS } from './constants.js';
 
 // Re-export types for consumers
 export type * from './types.js';
@@ -195,23 +195,18 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         cornerValence: 0,
       },
 
-      // Section plane
+      // Section plane: reset axis/position/enabled/flipped (those are
+      // model-relative and meaningless when switching files), but PRESERVE
+      // the user's cap appearance preferences (showCap, showOutlines,
+      // capStyle). Those round-trip to localStorage via the slice's
+      // persistence helpers; clobbering them here was the cause of "my
+      // hatch / colour resets to defaults every time I open a file".
       sectionPlane: {
-        axis: SECTION_PLANE_DEFAULTS.AXIS,
+        ...get().sectionPlane,
+        axis:     SECTION_PLANE_DEFAULTS.AXIS,
         position: SECTION_PLANE_DEFAULTS.POSITION,
-        enabled: SECTION_PLANE_DEFAULTS.ENABLED,
-        flipped: SECTION_PLANE_DEFAULTS.FLIPPED,
-        showCap: SECTION_PLANE_DEFAULTS.SHOW_CAP,
-        showOutlines: SECTION_PLANE_DEFAULTS.SHOW_OUTLINES,
-        capStyle: {
-          fillColor:   [...SECTION_CAP_DEFAULTS.FILL_COLOR],
-          strokeColor: [...SECTION_CAP_DEFAULTS.STROKE_COLOR],
-          pattern:     SECTION_CAP_DEFAULTS.PATTERN,
-          spacingPx:   SECTION_CAP_DEFAULTS.SPACING_PX,
-          angleRad:    SECTION_CAP_DEFAULTS.ANGLE_RAD,
-          widthPx:     SECTION_CAP_DEFAULTS.WIDTH_PX,
-          secondaryAngleRad: SECTION_CAP_DEFAULTS.SECONDARY_ANGLE_RAD,
-        },
+        enabled:  SECTION_PLANE_DEFAULTS.ENABLED,
+        flipped:  SECTION_PLANE_DEFAULTS.FLIPPED,
       },
 
       // Camera

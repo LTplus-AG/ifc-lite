@@ -10,6 +10,8 @@
  * where the architectural drawing appears directly on the section cut surface.
  */
 
+import { PIPELINE_CONSTANTS } from './constants.js';
+
 export interface Section2DOverlayCapStyle {
   fillColor:         [number, number, number, number];
   strokeColor:       [number, number, number, number];
@@ -335,7 +337,7 @@ export class Section2DOverlayRenderer {
         cullMode: 'none' as const,
       },
       depthStencil: {
-        format: 'depth24plus-stencil8' as const,
+        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
         depthCompare: 'always' as const,  // Always draw - overlay is positioned with fixed offset
       },
@@ -372,7 +374,7 @@ export class Section2DOverlayRenderer {
         cullMode: 'none' as const,
       },
       depthStencil: {
-        format: 'depth24plus-stencil8' as const,
+        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
         depthCompare: 'always' as const,  // Always draw - overlay is positioned with fixed offset
       },

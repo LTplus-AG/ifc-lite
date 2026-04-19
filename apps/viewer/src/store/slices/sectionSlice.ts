@@ -62,7 +62,8 @@ function loadCapStyle(): SectionCapStyle {
       secondaryAngleRad: typeof parsed.secondaryAngleRad === 'number' && Number.isFinite(parsed.secondaryAngleRad)
         ? parsed.secondaryAngleRad : fallback.secondaryAngleRad,
     };
-  } catch {
+  } catch (error) {
+    console.warn('[section] failed to load cap style from localStorage', error);
     return fallback;
   }
 }
@@ -71,8 +72,10 @@ function saveCapStyle(style: SectionCapStyle): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(CAP_STYLE_STORAGE_KEY, JSON.stringify(style));
-  } catch {
-    // Storage quota, private mode etc. — preference just doesn't persist.
+  } catch (error) {
+    // Storage quota, private mode etc. — preference just doesn't persist this
+    // session; log so a missing setting is at least diagnosable in devtools.
+    console.warn('[section] failed to save cap style to localStorage', error);
   }
 }
 
@@ -82,8 +85,8 @@ function loadBoolean(key: string, fallback: boolean): boolean {
     const raw = window.localStorage.getItem(key);
     if (raw === 'true') return true;
     if (raw === 'false') return false;
-  } catch {
-    /* ignore */
+  } catch (error) {
+    console.warn(`[section] failed to load preference '${key}' from localStorage`, error);
   }
   return fallback;
 }
@@ -92,8 +95,8 @@ function saveBoolean(key: string, value: boolean): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(key, String(value));
-  } catch {
-    /* ignore */
+  } catch (error) {
+    console.warn(`[section] failed to save preference '${key}' to localStorage`, error);
   }
 }
 
@@ -193,8 +196,8 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
         window.localStorage.removeItem(CAP_SHOW_STORAGE_KEY);
         window.localStorage.removeItem(OUTLINES_SHOW_STORAGE_KEY);
       }
-    } catch {
-      /* ignore */
+    } catch (error) {
+      console.warn('[section] failed to clear persisted cap preferences', error);
     }
     return { sectionPlane: getDefaultSectionPlane() };
   }),

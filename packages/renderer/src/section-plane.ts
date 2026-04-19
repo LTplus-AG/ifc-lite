@@ -6,6 +6,8 @@
  * Section plane renderer - renders a visible plane at the section cut location
  */
 
+import { PIPELINE_CONSTANTS } from './constants.js';
+
 export interface SectionPlaneRenderOptions {
   axis: 'down' | 'front' | 'side';  // Semantic axis names: down (Y), front (Z), side (X)
   position: number; // 0-100 percentage
@@ -203,7 +205,7 @@ export class SectionPlaneRenderer {
     this.previewPipeline = this.device.createRenderPipeline({
       ...pipelineBase,
       depthStencil: {
-        format: 'depth24plus-stencil8',
+        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
         depthCompare: 'greater',  // Only draw where plane is behind geometry (empty space)
       },
@@ -213,7 +215,7 @@ export class SectionPlaneRenderer {
     this.cutPipeline = this.device.createRenderPipeline({
       ...pipelineBase,
       depthStencil: {
-        format: 'depth24plus-stencil8',
+        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
         depthCompare: 'always',  // Always draw on top
       },

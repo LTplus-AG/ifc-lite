@@ -86,25 +86,11 @@ export interface EdgeLockState {
 /** Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience */
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
 
-export type SectionCapHatchId =
-  | 'solid'
-  | 'diagonal'
-  | 'crossHatch'
-  | 'horizontal'
-  | 'vertical'
-  | 'concrete'
-  | 'brick'
-  | 'insulation';
-
-export interface SectionCapStyle {
-  fillColor: [number, number, number, number];
-  strokeColor: [number, number, number, number];
-  pattern: SectionCapHatchId;
-  spacingPx: number;
-  angleRad: number;
-  widthPx: number;
-  secondaryAngleRad: number;
-}
+// Re-export the renderer's canonical cap-styling types so the viewer store and
+// the WebGPU renderer share a single source of truth. Adding a new hatch
+// pattern only requires editing `packages/renderer/src/section-cap-style.ts`.
+export type { HatchPatternId as SectionCapHatchId, SectionCapStyle } from '@ifc-lite/renderer';
+import type { SectionCapStyle } from '@ifc-lite/renderer';
 
 export interface SectionPlane {
   axis: SectionPlaneAxis;

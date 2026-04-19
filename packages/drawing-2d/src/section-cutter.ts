@@ -43,7 +43,16 @@ export class SectionCutter {
   constructor(config: SectionPlaneConfig) {
     this.axis = config.axis;
     this.flipped = config.flipped;
-    this.planeNormal = getAxisNormal(config.axis, config.flipped);
+    // Plane equation `dot(x, n) = d` describes the same plane regardless of
+    // which side is "kept", so we always use the unflipped normal here. Using
+    // `getAxisNormal(axis, true)` flips the normal but leaves `position`
+    // unchanged, which describes a DIFFERENT plane (e.g. y = 10 vs y = -10).
+    // That mismatch is exactly what produced "flipped → empty 2D canvas":
+    // the cutter looked for intersections at y = -position, far outside the
+    // model, so no triangles intersected. The `flipped` flag is still kept
+    // and used by `projectTo2D` below to mirror the U axis so the resulting
+    // drawing stays oriented correctly when viewed from the opposite side.
+    this.planeNormal = getAxisNormal(config.axis, false);
     this.planeDistance = config.position;
   }
 

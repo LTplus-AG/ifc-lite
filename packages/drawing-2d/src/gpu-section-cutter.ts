@@ -446,7 +446,13 @@ export class GPUSectionCutter {
    * Create plane uniform data
    */
   private createPlaneData(config: SectionPlaneConfig): Float32Array {
-    const normal = getAxisNormal(config.axis, config.flipped);
+    // Always use the unflipped normal — the plane equation describes the same
+    // 3D plane regardless of which side is "kept", and the GPU cutter only
+    // needs the intersection geometry. `flipped` is honoured separately by
+    // the projection axes / U flip below. Using the flipped normal here would
+    // mean the plane equation describes a different plane entirely (e.g.
+    // y = -position instead of y = position), producing zero intersections.
+    const normal = getAxisNormal(config.axis, false);
     const axes = getProjectionAxes(config.axis);
 
     const axisToIndex = { x: 0, y: 1, z: 2 };

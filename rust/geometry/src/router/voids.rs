@@ -173,10 +173,24 @@ fn generate_reveal_quads(
         _ => [0, 1],
     };
 
+    // Require positive overlap on both cross-axes before emitting any quads.
+    // Guards callers that apply voids per sub-mesh (multi-layer walls) where a
+    // sub-mesh AABB may not overlap the opening at all — without this check,
+    // floating reveal faces would be emitted far from the sub-mesh geometry.
+    for &ax in &cross {
+        let ov_min = axis_val(open_min, ax).max(axis_val(wall_min, ax));
+        let ov_max = axis_val(open_max, ax).min(axis_val(wall_max, ax));
+        if ov_max - ov_min < 1e-4 {
+            return;
+        }
+    }
+
     for (i, &ca) in cross.iter().enumerate() {
         let oa = cross[1 - i]; // the *other* cross-axis
-        let o_min = axis_val(open_min, oa);
-        let o_max = axis_val(open_max, oa);
+        // Clamp the orthogonal cross-axis extent to the wall so reveals never
+        // overshoot the mesh boundary (e.g. an opening taller than its slab).
+        let o_min = axis_val(open_min, oa).max(axis_val(wall_min, oa));
+        let o_max = axis_val(open_max, oa).min(axis_val(wall_max, oa));
 
         // --- Face at open_min[ca] — normal points +ca (into opening) ---
         let face_lo = axis_val(open_min, ca);
@@ -822,10 +836,16 @@ impl GeometryRouter {
         }
 
         if !rect_boxes.is_empty() {
-            result = self.cut_multiple_rectangular_openings(&result, &rect_boxes);
+            let (new_result, processed) =
+                self.cut_multiple_rectangular_openings(&result, &rect_boxes);
+            result = new_result;
 
-            // Generate reveal faces (inner surfaces of the opening holes)
-            for (i, (open_min, open_max)) in rect_boxes.iter().enumerate() {
+            // Generate reveal faces only for openings that were actually cut.
+            // The triangle cap inside `cut_multiple_rectangular_openings` may
+            // have short-circuited the loop, leaving a suffix of boxes
+            // unprocessed — emitting reveals for them would add floating
+            // interior faces without a matching cutout.
+            for (i, (open_min, open_max)) in rect_boxes.iter().enumerate().take(processed) {
                 generate_reveal_quads(
                     &mut result,
                     open_min,
@@ -1396,7 +1416,7 @@ impl GeometryRouter {
         &self,
         mesh: &Mesh,
         boxes: &[(Point3<f64>, Point3<f64>)],
-    ) -> Mesh {
+    ) -> (Mesh, usize) {
         let mut current = mesh.clone();
 
         // Process each box, but only clip triangles that actually intersect THIS box.
@@ -1409,16 +1429,21 @@ impl GeometryRouter {
         // With merged boxes, adjacency is eliminated.
         //
         // Safety: cap triangle count to prevent OOM from pathological cases.
+        // When the cap trips, the remaining suffix of boxes is left uncut; the
+        // processed count is returned so the caller can skip reveal generation
+        // for openings that didn't actually leave a hole in the mesh.
         const MAX_TRIANGLES: usize = 500_000;
 
-        for (_bi, (open_min, open_max)) in boxes.iter().enumerate() {
+        let mut processed = 0;
+        for (open_min, open_max) in boxes.iter() {
             if current.indices.len() / 3 > MAX_TRIANGLES {
                 break;
             }
             current = self.cut_rectangular_opening(&current, *open_min, *open_max);
+            processed += 1;
         }
 
-        current
+        (current, processed)
     }
 
     pub(super) fn cut_rectangular_opening(
@@ -2088,6 +2113,50 @@ mod reveal_tests {
         generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
 
         assert_eq!(mesh.triangle_count(), 0, "No reveals for zero-thickness wall");
+    }
+
+    #[test]
+    fn test_no_reveals_when_opening_misses_submesh_on_cross_axis() {
+        // Sub-mesh slab: Z=[0..0.5]. Opening is at Z=[1.0..2.0] — fully above.
+        // Extrusion along Y (wall thickness). Without cross-axis overlap
+        // guards, reveals would be emitted floating above the slab.
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 0.5);
+        let open_min = Point3::new(4.0, -0.3, 1.0);
+        let open_max = Point3::new(6.0, 0.3, 2.0);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+
+        assert_eq!(
+            mesh.triangle_count(),
+            0,
+            "No reveals when opening lies outside sub-mesh on a cross-axis"
+        );
+    }
+
+    #[test]
+    fn test_reveals_clamp_to_wall_on_orthogonal_cross_axis() {
+        // Sub-mesh Z extent is [0..2.0], but opening spans Z=[1.0..3.0] —
+        // taller than the sub-mesh. The left/right reveals (cross-axis X)
+        // must be clamped in Z to the sub-mesh bound, not the opening's.
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 2.0);
+        let open_min = Point3::new(4.0, -0.3, 1.0);
+        let open_max = Point3::new(6.0, 0.3, 3.0);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+
+        for chunk in mesh.positions.chunks_exact(3) {
+            let z = chunk[2] as f64;
+            assert!(
+                z >= -1e-3 && z <= 2.0 + 1e-3,
+                "Reveal vertex Z={z} should stay within sub-mesh [0.0, 2.0]"
+            );
+        }
     }
 
     #[test]

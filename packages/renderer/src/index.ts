@@ -136,6 +136,10 @@ export class Renderer {
     // Centralises all render scheduling — callers never call render() directly.
     private _renderRequested: boolean = false;
 
+    // One-shot log guard — prints Y-up clip bounds on first section-enable so
+    // users can confirm the slider is operating on the intended range.
+    private _loggedSectionBounds: boolean = false;
+
     // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
     // A single 192-byte uniform buffer (48 floats) is reused for all batches/meshes within a frame
     private readonly uniformScratch = new Float32Array(48);
@@ -805,23 +809,17 @@ export class Renderer {
             }
 
             if (options.sectionPlane) {
-                // Get model bounds from ALL geometry sources: individual meshes AND batched meshes
+                // Get model bounds from batched meshes. We deliberately EXCLUDE
+                // individual meshes (`this.scene.getMeshes()`) here: those are
+                // created lazily for selection highlighting and can live at
+                // unexpected world positions (e.g. legacy transforms, overlay
+                // helpers), which would inflate the bounds range and make
+                // "1% of the slider" span the entire real model — producing
+                // the reported symptom where the model pops from fully visible
+                // to fully invisible across a tiny slider range.
                 const boundsMin = { x: Infinity, y: Infinity, z: Infinity };
                 const boundsMax = { x: -Infinity, y: -Infinity, z: -Infinity };
 
-                // Check individual meshes
-                for (const mesh of meshes) {
-                    if (mesh.bounds) {
-                        boundsMin.x = Math.min(boundsMin.x, mesh.bounds.min[0]);
-                        boundsMin.y = Math.min(boundsMin.y, mesh.bounds.min[1]);
-                        boundsMin.z = Math.min(boundsMin.z, mesh.bounds.min[2]);
-                        boundsMax.x = Math.max(boundsMax.x, mesh.bounds.max[0]);
-                        boundsMax.y = Math.max(boundsMax.y, mesh.bounds.max[1]);
-                        boundsMax.z = Math.max(boundsMax.z, mesh.bounds.max[2]);
-                    }
-                }
-
-                // Check batched meshes (most geometry is here!)
                 const batchedMeshes = this.scene.getBatchedMeshes();
                 for (const batch of batchedMeshes) {
                     if (batch.bounds) {
@@ -831,6 +829,22 @@ export class Renderer {
                         boundsMax.x = Math.max(boundsMax.x, batch.bounds.max[0]);
                         boundsMax.y = Math.max(boundsMax.y, batch.bounds.max[1]);
                         boundsMax.z = Math.max(boundsMax.z, batch.bounds.max[2]);
+                    }
+                }
+
+                // If no batched meshes have bounds yet (streaming, degenerate
+                // models), fall back to individual meshes so at least the
+                // slider has a workable range.
+                if (!Number.isFinite(boundsMin.x)) {
+                    for (const mesh of meshes) {
+                        if (mesh.bounds) {
+                            boundsMin.x = Math.min(boundsMin.x, mesh.bounds.min[0]);
+                            boundsMin.y = Math.min(boundsMin.y, mesh.bounds.min[1]);
+                            boundsMin.z = Math.min(boundsMin.z, mesh.bounds.min[2]);
+                            boundsMax.x = Math.max(boundsMax.x, mesh.bounds.max[0]);
+                            boundsMax.y = Math.max(boundsMax.y, mesh.bounds.max[1]);
+                            boundsMax.z = Math.max(boundsMax.z, mesh.bounds.max[2]);
+                        }
                     }
                 }
 
@@ -884,17 +898,62 @@ export class Renderer {
                         }
                     }
 
-                    // Get axis-specific range based on semantic axis
-                    // Use min/max overrides from sectionPlane if provided (storey-based range)
+                    // Get axis-specific range. The renderer's own `boundsMin/Max`
+                    // are computed from the GPU vertex buffers this frame, so
+                    // they are guaranteed to be in the same Y-up world space as
+                    // `input.worldPos` in the shader. `options.sectionPlane.min/max`
+                    // comes from the UI via `coordinateInfo.shiftedBounds` and can
+                    // be stale during streaming or outright wrong during model
+                    // load (initialised to {0,0,0} before the first bounds update)
+                    // — using those directly was the cause of the "slider moves
+                    // 1% and the whole model disappears" bug.
+                    //
+                    // Policy: always use the renderer's own bounds for the Y-up
+                    // range. Only honour the UI override when it is a valid,
+                    // non-degenerate range that lies INSIDE the actual mesh
+                    // bounds (e.g. storey filtering from the level picker).
                     const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
-                    const minVal = options.sectionPlane.min ?? boundsMin[axisIdx];
-                    const maxVal = options.sectionPlane.max ?? boundsMax[axisIdx];
+                    let minVal = boundsMin[axisIdx];
+                    let maxVal = boundsMax[axisIdx];
+                    const uiMin = options.sectionPlane.min;
+                    const uiMax = options.sectionPlane.max;
+                    if (
+                        Number.isFinite(uiMin) &&
+                        Number.isFinite(uiMax) &&
+                        (uiMax as number) - (uiMin as number) > 1e-6 &&
+                        (uiMin as number) >= minVal - 1e-3 &&
+                        (uiMax as number) <= maxVal + 1e-3
+                    ) {
+                        minVal = uiMin as number;
+                        maxVal = uiMax as number;
+                    }
 
                     // Calculate plane distance from position percentage
                     const range = maxVal - minVal;
                     const distance = minVal + (options.sectionPlane.position / 100) * range;
 
                     sectionPlaneData = { normal, distance, enabled: true };
+
+                    // One-shot diagnostic: when section first becomes active,
+                    // log the exact bounds + distance the shader will use.
+                    // This is the fastest way to confirm "bounds mismatch" bugs
+                    // without asking the user to run a debugger.
+                    if (!this._loggedSectionBounds) {
+                        this._loggedSectionBounds = true;
+                        console.info('[Section] Y-up bounds used for clip:', {
+                            axis: options.sectionPlane.axis,
+                            axisIdx,
+                            bounds: {
+                                min: { x: boundsMin.x, y: boundsMin.y, z: boundsMin.z },
+                                max: { x: boundsMax.x, y: boundsMax.y, z: boundsMax.z },
+                            },
+                            uiOverride: { min: uiMin, max: uiMax },
+                            used: { min: minVal, max: maxVal },
+                            position: options.sectionPlane.position,
+                            distance,
+                            batchedMeshCount: this.scene.getBatchedMeshes().length,
+                        });
+                    }
                 }
             }
 
@@ -1228,6 +1287,10 @@ export class Renderer {
                         style: capStyle,
                         batches: opaqueBatches,
                         meshes: opaqueMeshes,
+                        // Instanced geometry uses its own vertex layout +
+                        // per-instance transforms. Without this, instanced
+                        // elements would show open cut holes with no cap fill.
+                        instanced: this.scene.getInstancedMeshes(),
                     });
                     // Restore the main pipeline so later transparent/selection
                     // passes render correctly.
@@ -1744,6 +1807,8 @@ export class Renderer {
     destroy(): void {
         // Scene mesh GPU buffers
         this.scene.clear();
+        // Re-arm the section-bounds diagnostic log for the next model.
+        this._loggedSectionBounds = false;
 
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();

@@ -10,36 +10,42 @@
  * space void. Wherever that void intersects a closed solid, we render a cap
  * surface showing the cut.
  *
- * Implementation: three stencil passes + one full-screen fill.
+ * Implementation: one stencil parity pass + one full-screen fill.
  *
- *   Pass A (stencilBackIncPipeline):
- *     - Cull front faces so only BACK faces are rasterised.
- *     - Fragment shader discards fragments below the plane.
- *     - Stencil op: increment (front+back both inc, but cull keeps us to back).
- *     - No colour or depth write.
+ *   Pass A (stencilParityPipeline):
+ *     - cullMode: 'none' — IFC geometry mixes windings, so back/front-face
+ *       classification is unreliable. Instead of counting front vs back, we
+ *       count triangle parity: for any camera ray through a pixel, count how
+ *       many triangles lie ABOVE the clipping plane on that ray.
+ *     - Fragment shader discards fragments BELOW the plane. Fragments above
+ *       the plane pass.
+ *     - Stencil op: invert bit 0 on pass (equivalent to XOR 1).
+ *     - Depth test: 'always' with no depth write — we want every triangle
+ *       covering the pixel to contribute, not just the front-most.
  *
- *   Pass B (stencilFrontDecPipeline):
- *     - Cull back faces so only FRONT faces are rasterised.
- *     - Same plane discard.
- *     - Stencil op: decrement.
- *     - No colour or depth write.
+ *     For a pixel whose camera ray crosses the plane INSIDE a solid (a cap
+ *     pixel), an odd number of triangles lie above the plane on that ray
+ *     (exactly one surface crossing happens on one side of the plane). For
+ *     any other pixel an even number of triangles contribute (0 for rays
+ *     that miss the solid, 2 for rays that pass entirely through the half
+ *     of the solid above the plane, …). Parity is winding-independent, so
+ *     this works even on the mixed-winding IFC geometry that forced the
+ *     main pipeline to disable face culling.
  *
- *   Pass C (fillPipeline):
+ *   Pass B (fillPipeline):
  *     - Full-screen triangle.
- *     - Stencil test: pass where stencil != 0.
+ *     - Stencil test: pass where bit 0 is set (reference 1, readMask 1,
+ *       compare 'equal').
  *     - Fragment shader paints the cap colour + screen-space hatch.
- *
- * For a closed convex-ish mesh, Pass A contributes +1 where a back face is
- * "inside" the clipped half-space and the corresponding front face was
- * discarded by the main pass. Pass B undoes that where a front face is also
- * above the plane. Net stencil > 0 exactly at the intersection of the plane
- * with the solid — the cap region.
+ *     - The fill pass also clears stencil back to 0 via `zero` passOp so the
+ *       next frame starts clean without needing an explicit clear.
  */
 
-import type { BatchedMesh, Mesh } from './types.js';
+import type { BatchedMesh, InstancedMesh, Mesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import {
   stencilGeomShaderSource,
+  stencilGeomInstancedShaderSource,
   capFillShaderSource,
 } from './shaders/section-cap.wgsl.js';
 
@@ -100,6 +106,8 @@ export interface SectionCapDrawOptions {
   batches:      BatchedMesh[];
   /** Individual meshes to consider for stencil counting. */
   meshes:       Mesh[];
+  /** Instanced meshes to consider for stencil counting. */
+  instanced?:   InstancedMesh[];
 }
 
 // ─── Uniform layout ───────────────────────────────────────────────────────
@@ -109,16 +117,23 @@ const STENCIL_UNIFORM_BYTES = 96;
 // Cap-fill uniforms: fillColor (16) + strokeColor (16) + params (16) + params2 (16) = 64 B.
 const FILL_UNIFORM_BYTES = 64;
 
-// Stencil reference used by the fill pass — any non-zero value matches the
-// "cap region" (stencil test is NotEqual against 0).
-const STENCIL_REF = 0;
+// Stencil reference used by the fill pass. Bit 0 is set at cap pixels by the
+// invert-parity stencil pass; the fill pipeline compares stencil bit 0 against
+// this reference (equal) and clears it back to 0 so the buffer is ready for
+// the next frame without an explicit clear.
+const STENCIL_REF = 1;
+const STENCIL_PARITY_MASK = 1;
 
 export class SectionCapRenderer {
   private device: GPUDevice;
   private mainPipeline: RenderPipeline;
 
-  private stencilBackIncPipeline: GPURenderPipeline;
-  private stencilFrontDecPipeline: GPURenderPipeline;
+  // Single parity pipeline — works on mixed-winding IFC (no front/back cull).
+  private stencilParityPipeline: GPURenderPipeline;
+  // Parallel pipeline for instanced geometry — shares the same stencil state
+  // but samples per-instance transforms via a storage buffer.
+  private stencilParityInstancedPipeline: GPURenderPipeline;
+  private stencilInstancedBindLayout: GPUBindGroupLayout;
   private fillPipeline: GPURenderPipeline;
 
   private stencilUniformBuffer: GPUBuffer;
@@ -176,54 +191,79 @@ export class SectionCapRenderer {
       multisample: { count: sampleCount },
     };
 
-    this.stencilBackIncPipeline = device.createRenderPipeline({
-      ...stencilBase,
-      label: 'section-cap-back-inc',
-      primitive: { ...stencilBase.primitive, cullMode: 'front' },
-      depthStencil: {
-        format: depthFormat,
-        depthCompare: 'greater-equal',      // Reverse-Z: keep fragments in front of occluders.
-        depthWriteEnabled: false,
-        stencilFront: {
-          compare: 'always',
-          passOp:      'increment-clamp',
-          failOp:      'keep',
-          depthFailOp: 'keep',
-        },
-        stencilBack: {
-          compare: 'always',
-          passOp:      'increment-clamp',
-          failOp:      'keep',
-          depthFailOp: 'keep',
-        },
-        stencilReadMask:  0xff,
-        stencilWriteMask: 0xff,
+    const parityStencil = {
+      format: depthFormat,
+      // depthCompare 'always' with no depth write — every triangle covering
+      // the pixel must contribute to parity, not just the front-most one.
+      depthCompare: 'always' as const,
+      depthWriteEnabled: false,
+      stencilFront: {
+        compare: 'always' as const,
+        passOp:      'invert' as const,
+        failOp:      'keep'   as const,
+        depthFailOp: 'keep'   as const,
       },
+      stencilBack: {
+        compare: 'always' as const,
+        passOp:      'invert' as const,
+        failOp:      'keep'   as const,
+        depthFailOp: 'keep'   as const,
+      },
+      stencilReadMask:  STENCIL_PARITY_MASK,
+      stencilWriteMask: STENCIL_PARITY_MASK,
+    };
+
+    this.stencilParityPipeline = device.createRenderPipeline({
+      ...stencilBase,
+      label: 'section-cap-parity',
+      // cullMode: 'none' — mirror the main pipeline, which disables culling
+      // because IFC geometry mixes winding orders. The parity (invert)
+      // stencil op doesn't care which side of the triangle we see; every
+      // triangle above the plane that covers the pixel toggles bit 0.
+      primitive: { ...stencilBase.primitive, cullMode: 'none' },
+      depthStencil: parityStencil,
     });
 
-    this.stencilFrontDecPipeline = device.createRenderPipeline({
-      ...stencilBase,
-      label: 'section-cap-front-dec',
-      primitive: { ...stencilBase.primitive, cullMode: 'back' },
-      depthStencil: {
-        format: depthFormat,
-        depthCompare: 'greater-equal',
-        depthWriteEnabled: false,
-        stencilFront: {
-          compare: 'always',
-          passOp:      'decrement-clamp',
-          failOp:      'keep',
-          depthFailOp: 'keep',
+    // Instanced stencil-parity pipeline — same stencil rules, but reads
+    // transforms from an instance storage buffer and has a different vertex
+    // layout (no entityId attribute; matches InstancedRenderPipeline).
+    const stencilInstancedShader = device.createShaderModule({
+      code: stencilGeomInstancedShaderSource,
+      label: 'section-cap-stencil-geom-instanced',
+    });
+    this.stencilInstancedBindLayout = device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'uniform' },
         },
-        stencilBack: {
-          compare: 'always',
-          passOp:      'decrement-clamp',
-          failOp:      'keep',
-          depthFailOp: 'keep',
+        {
+          binding: 1,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: 'read-only-storage' },
         },
-        stencilReadMask:  0xff,
-        stencilWriteMask: 0xff,
-      },
+      ],
+    });
+    const stencilInstancedLayout = device.createPipelineLayout({
+      bindGroupLayouts: [this.stencilInstancedBindLayout],
+    });
+    const instancedVertexBuffers: GPUVertexBufferLayout[] = [{
+      // Matches InstancedRenderPipeline: position (3f) + normal (3f) = 24 B.
+      arrayStride: 24,
+      attributes: [
+        { shaderLocation: 0, offset:  0, format: 'float32x3' },
+        { shaderLocation: 1, offset: 12, format: 'float32x3' },
+      ],
+    }];
+    this.stencilParityInstancedPipeline = device.createRenderPipeline({
+      label: 'section-cap-parity-instanced',
+      layout: stencilInstancedLayout,
+      vertex:   { module: stencilInstancedShader, entryPoint: 'vs_main', buffers: instancedVertexBuffers },
+      fragment: { module: stencilInstancedShader, entryPoint: 'fs_main', targets: [] as GPUColorTargetState[] },
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
+      depthStencil: parityStencil,
+      multisample: { count: sampleCount },
     });
 
     // ─── Cap fill pipeline ──────────────────────────────────────────────
@@ -264,20 +304,22 @@ export class SectionCapRenderer {
         format: depthFormat,
         depthCompare: 'always',
         depthWriteEnabled: false,
+        // Pass where stencil bit 0 == reference bit 0 (= 1). The readMask
+        // restricts the compare to bit 0 so any higher bits are ignored.
         stencilFront: {
-          compare: 'not-equal',
+          compare: 'equal',
           passOp:      'zero',   // Clear stencil for the next frame.
-          failOp:      'zero',
-          depthFailOp: 'zero',
+          failOp:      'keep',
+          depthFailOp: 'keep',
         },
         stencilBack: {
-          compare: 'not-equal',
+          compare: 'equal',
           passOp:      'zero',
-          failOp:      'zero',
-          depthFailOp: 'zero',
+          failOp:      'keep',
+          depthFailOp: 'keep',
         },
-        stencilReadMask:  0xff,
-        stencilWriteMask: 0xff,
+        stencilReadMask:  STENCIL_PARITY_MASK,
+        stencilWriteMask: STENCIL_PARITY_MASK,
       },
       multisample: { count: sampleCount },
     });
@@ -341,23 +383,41 @@ export class SectionCapRenderer {
     this.fillScratch[15] = 0;
     this.device.queue.writeBuffer(this.fillUniformBuffer, 0, this.fillScratch);
 
-    // ── Pass A: back faces inc ──────────────────────────────────────────
+    // ── Pass A: stencil parity (bit 0 = XOR of triangles above plane) ───
     pass.setStencilReference(STENCIL_REF);
     pass.setBindGroup(0, this.stencilBindGroup);
-    pass.setPipeline(this.stencilBackIncPipeline);
-    this.drawGeometry(pass, opts);
+    pass.setPipeline(this.stencilParityPipeline);
+    this.drawBatchedAndIndividual(pass, opts);
 
-    // ── Pass B: front faces dec ─────────────────────────────────────────
-    pass.setPipeline(this.stencilFrontDecPipeline);
-    this.drawGeometry(pass, opts);
+    // Instanced geometry uses the 24-byte vertex layout and a per-instance
+    // transform storage buffer, so it needs its own pipeline + bind group
+    // per InstancedMesh. Same stencil state, same parity semantics.
+    const instanced = opts.instanced ?? [];
+    if (instanced.length > 0) {
+      pass.setPipeline(this.stencilParityInstancedPipeline);
+      for (const m of instanced) {
+        if (!m.vertexBuffer || !m.indexBuffer || !m.instanceBuffer) continue;
+        const bindGroup = this.device.createBindGroup({
+          layout: this.stencilInstancedBindLayout,
+          entries: [
+            { binding: 0, resource: { buffer: this.stencilUniformBuffer } },
+            { binding: 1, resource: { buffer: m.instanceBuffer } },
+          ],
+        });
+        pass.setBindGroup(0, bindGroup);
+        pass.setVertexBuffer(0, m.vertexBuffer);
+        pass.setIndexBuffer(m.indexBuffer, 'uint32');
+        pass.drawIndexed(m.indexCount, m.instanceCount, 0, 0, 0);
+      }
+    }
 
-    // ── Pass C: fill quad where stencil != 0 ────────────────────────────
+    // ── Pass B: fill quad where stencil bit 0 == 1 (cap region) ─────────
     pass.setPipeline(this.fillPipeline);
     pass.setBindGroup(0, this.fillBindGroup);
     pass.draw(3, 1, 0, 0);
   }
 
-  private drawGeometry(pass: GPURenderPassEncoder, opts: SectionCapDrawOptions): void {
+  private drawBatchedAndIndividual(pass: GPURenderPassEncoder, opts: SectionCapDrawOptions): void {
     for (const b of opts.batches) {
       if (!b.vertexBuffer || !b.indexBuffer) continue;
       pass.setVertexBuffer(0, b.vertexBuffer);

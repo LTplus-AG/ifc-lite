@@ -1369,8 +1369,8 @@ fn process_entity_job(
     void_index: &FxHashMap<u32, Vec<u32>>,
     skipped_entity_ids: &HashSet<u32>,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
-    /// Present only when the selected coordinate space is `site_local`;
-    /// rotates mesh vertices into the site's axis frame.
+    // Present only when the selected coordinate space is `site_local`; rotates
+    // mesh vertices into the site's axis frame.
     site_local_rotation: Option<&Vec<f64>>,
 ) -> Vec<MeshData> {
     if skipped_entity_ids.contains(&job.id) {

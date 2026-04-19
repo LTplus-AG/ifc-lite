@@ -382,9 +382,33 @@ pub(crate) struct PrePassData {
     pub simple_jobs: Vec<(u32, usize, usize, ifc_lite_core::IfcType)>,
     /// Complex geometry jobs (windows, doors, furniture …)
     pub complex_jobs: Vec<(u32, usize, usize, ifc_lite_core::IfcType)>,
-    /// Element ID → list of material-based colors (from IfcRelAssociatesMaterial chain).
+    /// Element ID → material colors (from IfcRelAssociatesMaterial chain).
     /// Used as fallback when a sub-mesh has no direct IfcStyledItem style.
-    pub element_material_styles: rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
+    pub element_material_styles: rustc_hash::FxHashMap<u32, MaterialColors>,
+}
+
+/// Material colors attached to an element, with provenance.
+///
+/// `Ordered` colors come from IFC entities whose layer order is meaningful and
+/// matches the order of sub-meshes/parts produced by the geometry pipeline:
+/// `IfcMaterialLayerSet` (multi-layer walls/slabs), `IfcMaterialProfileSet`,
+/// `IfcMaterialConstituentSet`. Sub-mesh N → colors[N % len].
+///
+/// `Unordered` colors come from `IfcMaterialList` (e.g. windows: glass + frame),
+/// where the list has no defined correspondence to sub-mesh order. Picking is
+/// done by alpha preference (transparent vs opaque) instead.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MaterialColors {
+    Ordered(Vec<[f32; 4]>),
+    Unordered(Vec<[f32; 4]>),
+}
+
+impl MaterialColors {
+    pub fn as_slice(&self) -> &[[f32; 4]] {
+        match self {
+            Self::Ordered(v) | Self::Unordered(v) => v,
+        }
+    }
 }
 
 /// Single EntityScanner pass that collects everything needed before geometry
@@ -572,38 +596,54 @@ fn build_element_material_styles(
     element_to_material: &rustc_hash::FxHashMap<u32, u32>,
     material_styles: &rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
     decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> {
+) -> rustc_hash::FxHashMap<u32, MaterialColors> {
     use rustc_hash::FxHashMap;
 
-    let mut result: FxHashMap<u32, Vec<[f32; 4]>> = FxHashMap::default();
+    let mut result: FxHashMap<u32, MaterialColors> = FxHashMap::default();
 
     for (&element_id, &material_select_id) in element_to_material {
+        // Resolve material IDs along with whether their order is meaningful for
+        // sub-mesh mapping (layer/profile/constituent sets) or arbitrary
+        // (IfcMaterialList).
+        let resolved = resolve_material_ids(material_select_id, decoder);
+
         let mut colors: Vec<[f32; 4]> = Vec::new();
-
-        // Collect all individual material IDs from the material select
-        let material_ids = resolve_material_ids(material_select_id, decoder);
-
-        for material_id in material_ids {
+        for material_id in resolved.ids {
             if let Some(mat_colors) = material_styles.get(&material_id) {
                 colors.extend(mat_colors);
             }
         }
 
         if !colors.is_empty() {
-            result.insert(element_id, colors);
+            let entry = if resolved.ordered {
+                MaterialColors::Ordered(colors)
+            } else {
+                MaterialColors::Unordered(colors)
+            };
+            result.insert(element_id, entry);
         }
     }
 
     result
 }
 
+/// Result of resolving an IfcMaterialSelect into individual materials.
+struct ResolvedMaterials {
+    ids: Vec<u32>,
+    /// True when the material order matches geometry sub-mesh order
+    /// (e.g. IfcMaterialLayerSet layers map 1:1 to wall layer parts).
+    /// False for unordered sources like IfcMaterialList.
+    ordered: bool,
+}
+
 /// Resolve a material select (which could be IfcMaterial, IfcMaterialList,
 /// IfcMaterialLayerSet, IfcMaterialLayerSetUsage, IfcMaterialConstituentSet,
-/// IfcMaterialProfileSet) into a list of individual IfcMaterial IDs.
+/// IfcMaterialProfileSet) into a list of individual IfcMaterial IDs plus
+/// whether the order is geometry-meaningful.
 fn resolve_material_ids(
     material_select_id: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Vec<u32> {
+) -> ResolvedMaterials {
     resolve_material_ids_inner(material_select_id, decoder, 0)
 }
 
@@ -614,62 +654,67 @@ fn resolve_material_ids_inner(
     material_select_id: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
     depth: u8,
-) -> Vec<u32> {
+) -> ResolvedMaterials {
     if depth >= MAX_MATERIAL_RESOLVE_DEPTH {
-        return vec![];
+        return ResolvedMaterials { ids: vec![], ordered: false };
     }
 
     use ifc_lite_core::IfcType;
 
     let entity = match decoder.decode_by_id(material_select_id) {
         Ok(e) => e,
-        Err(_) => return vec![],
+        Err(_) => return ResolvedMaterials { ids: vec![], ordered: false },
     };
 
     match entity.ifc_type {
-        IfcType::IfcMaterial => {
-            vec![material_select_id]
-        }
-        IfcType::IfcMaterialList => {
-            // Attr 0: Materials (list of IfcMaterial refs)
-            extract_refs_from_list(&entity, 0)
-        }
+        IfcType::IfcMaterial => ResolvedMaterials {
+            ids: vec![material_select_id],
+            // single material — ordering is trivially correct
+            ordered: true,
+        },
+        IfcType::IfcMaterialList => ResolvedMaterials {
+            // Attr 0: Materials (list of IfcMaterial refs).
+            // IfcMaterialList has no defined correspondence between list order
+            // and sub-mesh order — typically used for windows/doors where
+            // glass + frame coexist on one element.
+            ids: extract_refs_from_list(&entity, 0),
+            ordered: false,
+        },
         IfcType::IfcMaterialLayerSetUsage => {
             // Attr 0: ForLayerSet (ref to IfcMaterialLayerSet)
             if let Some(layer_set_id) = entity.get_ref(0) {
                 resolve_material_ids_inner(layer_set_id, decoder, depth + 1)
             } else {
-                vec![]
+                ResolvedMaterials { ids: vec![], ordered: false }
             }
         }
-        IfcType::IfcMaterialLayerSet => {
-            // Attr 0: MaterialLayers (list of IfcMaterialLayer refs)
-            // IfcMaterialLayer: Attr 0: Material (ref to IfcMaterial)
-            extract_nested_material_ids(&entity, 0, 0, decoder)
-        }
-        IfcType::IfcMaterialConstituentSet => {
-            // Attr 2: MaterialConstituents (list of IfcMaterialConstituent refs)
-            // IfcMaterialConstituent: Attr 2: Material (ref to IfcMaterial)
-            extract_nested_material_ids(&entity, 2, 2, decoder)
-        }
-        IfcType::IfcMaterialProfileSet => {
-            // Attr 2: MaterialProfiles (list of IfcMaterialProfile refs)
-            // IfcMaterialProfile: Attr 2: Material (ref to IfcMaterial)
-            extract_nested_material_ids(&entity, 2, 2, decoder)
-        }
+        IfcType::IfcMaterialLayerSet => ResolvedMaterials {
+            // Attr 0: MaterialLayers (list of IfcMaterialLayer refs).
+            // Layer order maps 1:1 to per-layer IfcBuildingElementPart sub-meshes.
+            ids: extract_nested_material_ids(&entity, 0, 0, decoder),
+            ordered: true,
+        },
+        IfcType::IfcMaterialConstituentSet => ResolvedMaterials {
+            // Attr 2: MaterialConstituents (list of IfcMaterialConstituent refs).
+            // Constituent order matches sub-shape order in IFC4 representations.
+            ids: extract_nested_material_ids(&entity, 2, 2, decoder),
+            ordered: true,
+        },
+        IfcType::IfcMaterialProfileSet => ResolvedMaterials {
+            // Attr 2: MaterialProfiles (list of IfcMaterialProfile refs).
+            // Profile order matches sub-shape order.
+            ids: extract_nested_material_ids(&entity, 2, 2, decoder),
+            ordered: true,
+        },
         IfcType::IfcMaterialProfileSetUsage | IfcType::IfcMaterialProfileSetUsageTapering => {
             // Attr 0: ForProfileSet (ref to IfcMaterialProfileSet)
-            // IfcMaterialProfileSetUsageTapering is a subtype with the same attr layout
             if let Some(profile_set_id) = entity.get_ref(0) {
                 resolve_material_ids_inner(profile_set_id, decoder, depth + 1)
             } else {
-                vec![]
+                ResolvedMaterials { ids: vec![], ordered: false }
             }
         }
-        _ => {
-            // Unknown material type — no colors to extract
-            vec![]
-        }
+        _ => ResolvedMaterials { ids: vec![], ordered: false },
     }
 }
 
@@ -708,7 +753,7 @@ fn extract_refs_from_list(entity: &ifc_lite_core::DecodedEntity, index: usize) -
 pub(crate) fn build_element_material_styles_from_content(
     content: &str,
     decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> {
+) -> rustc_hash::FxHashMap<u32, MaterialColors> {
     let (orphan_styled_items, material_def_reprs, element_to_material) =
         collect_material_data(content, decoder);
 
@@ -822,13 +867,17 @@ fn collect_material_entity(
 /// Resolve color for a sub-mesh using the fallback chain:
 /// direct geometry style -> material-based style -> element style -> default.
 ///
-/// `mat_color_idx` is the current index for material color alternation (transparent/opaque).
-/// It is incremented when a material fallback is attempted (caller should track this).
+/// `mat_color_idx` is the per-element sub-mesh counter for material fallback.
+/// For ordered material sources (e.g. IfcMaterialLayerSet), it indexes into the
+/// material list directly so layer N's color is applied to layer N's sub-mesh.
+/// For unordered sources (IfcMaterialList), it alternates transparent/opaque
+/// preference instead.
+/// It is incremented when a material fallback is attempted (caller tracks this).
 pub(crate) fn resolve_submesh_color(
     geometry_id: u32,
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
-    material_colors: Option<&Vec<[f32; 4]>>,
+    material_colors: Option<&MaterialColors>,
     mat_color_idx: &mut usize,
     element_color: Option<[f32; 4]>,
     default_color: [f32; 4],
@@ -838,11 +887,11 @@ pub(crate) fn resolve_submesh_color(
         return color;
     }
 
-    // 2. Material-based fallback (alternating transparent/opaque)
+    // 2. Material-based fallback
     if let Some(colors) = material_colors {
-        let prefer_transparent = *mat_color_idx % 2 == 0;
+        let idx = *mat_color_idx;
         *mat_color_idx += 1;
-        if let Some(color) = pick_material_style_for_submesh(colors, prefer_transparent) {
+        if let Some(color) = pick_material_style_for_submesh(colors, idx) {
             return color;
         }
     }
@@ -855,37 +904,43 @@ pub(crate) fn resolve_submesh_color(
 const TRANSPARENCY_ALPHA_THRESHOLD: f32 = 0.95;
 
 /// Pick the best material style for a sub-mesh.
-/// Prefers transparent colors (glass) for sub-meshes without a direct style,
-/// since glass sub-elements are the most common case where material-based
-/// styling is the only source of appearance data.
+///
+/// `submesh_idx` is the position of this sub-mesh within the parent element's
+/// sub-mesh stream. For ordered material sources (layer/profile/constituent
+/// sets) the sub-mesh order matches the material order, so we index directly.
+/// For unordered sources (IfcMaterialList — typically window glass + frame)
+/// the order is meaningless, so we fall back to alternating transparent/opaque
+/// preference based on parity of the submesh index.
 pub(crate) fn pick_material_style_for_submesh(
-    material_colors: &[[f32; 4]],
-    prefer_transparent: bool,
+    material_colors: &MaterialColors,
+    submesh_idx: usize,
 ) -> Option<[f32; 4]> {
-    if material_colors.is_empty() {
+    let colors = material_colors.as_slice();
+    if colors.is_empty() {
         return None;
     }
 
-    if prefer_transparent {
-        // Prefer transparent (glass) — alpha < threshold
-        if let Some(color) = material_colors
-            .iter()
-            .find(|c| c[3] < TRANSPARENCY_ALPHA_THRESHOLD)
-        {
-            return Some(*color);
+    match material_colors {
+        MaterialColors::Ordered(_) => {
+            // Per-layer correspondence: submesh N → layer N. Wrap on overflow
+            // so geometry pipelines that emit extra sub-meshes (e.g. derived
+            // void faces) still get a valid color rather than nothing.
+            Some(colors[submesh_idx % colors.len()])
         }
-    } else {
-        // Prefer opaque (frame) — alpha >= threshold
-        if let Some(color) = material_colors
-            .iter()
-            .find(|c| c[3] >= TRANSPARENCY_ALPHA_THRESHOLD)
-        {
-            return Some(*color);
+        MaterialColors::Unordered(_) => {
+            // Alternate transparent/opaque preference so windows render with
+            // both glass and frame colors across their two sub-meshes.
+            let prefer_transparent = submesh_idx % 2 == 0;
+            if prefer_transparent {
+                if let Some(c) = colors.iter().find(|c| c[3] < TRANSPARENCY_ALPHA_THRESHOLD) {
+                    return Some(*c);
+                }
+            } else if let Some(c) = colors.iter().find(|c| c[3] >= TRANSPARENCY_ALPHA_THRESHOLD) {
+                return Some(*c);
+            }
+            Some(colors[0])
         }
     }
-
-    // Fallback: first available color
-    Some(material_colors[0])
 }
 
 /// Check if an IFC entity class is "simple" geometry (processed first for fast
@@ -1142,4 +1197,113 @@ fn extract_rotation_from_placement(
 
     let rotation = dy.atan2(dx);
     Some(rotation)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const OPAQUE_A: [f32; 4] = [0.85, 0.85, 0.85, 1.0]; // concrete
+    const TRANSPARENT: [f32; 4] = [0.6, 0.8, 1.0, 0.4]; // insulation
+    const OPAQUE_B: [f32; 4] = [0.7, 0.5, 0.3, 1.0]; // brick
+
+    // Issue #541: ordered material lists (IfcMaterialLayerSet) must map
+    // sub-mesh N to layer N's color, not pick by transparent/opaque parity.
+    #[test]
+    fn ordered_layers_map_one_to_one_to_submesh_index() {
+        let layers = MaterialColors::Ordered(vec![OPAQUE_A, TRANSPARENT, OPAQUE_B]);
+        assert_eq!(pick_material_style_for_submesh(&layers, 0), Some(OPAQUE_A));
+        assert_eq!(pick_material_style_for_submesh(&layers, 1), Some(TRANSPARENT));
+        assert_eq!(pick_material_style_for_submesh(&layers, 2), Some(OPAQUE_B));
+    }
+
+    // Regression for #541: an ordered set whose first layer happens to be
+    // transparent (e.g. air gap) must not bleed transparency onto subsequent
+    // opaque layers.
+    #[test]
+    fn ordered_layers_do_not_propagate_transparency() {
+        let layers = MaterialColors::Ordered(vec![TRANSPARENT, OPAQUE_A]);
+        // Sub-mesh 1 belongs to the opaque layer — it must not be picked as
+        // the transparent first layer regardless of parity.
+        assert_eq!(pick_material_style_for_submesh(&layers, 1), Some(OPAQUE_A));
+    }
+
+    // Sub-mesh count can exceed the material count (e.g. derived faces from
+    // void clipping). Wrap rather than returning None so geometry still gets
+    // a sensible color.
+    #[test]
+    fn ordered_layers_wrap_on_overflow() {
+        let layers = MaterialColors::Ordered(vec![OPAQUE_A, TRANSPARENT]);
+        assert_eq!(pick_material_style_for_submesh(&layers, 2), Some(OPAQUE_A));
+        assert_eq!(pick_material_style_for_submesh(&layers, 3), Some(TRANSPARENT));
+    }
+
+    // Unordered IfcMaterialList still alternates transparent/opaque, so
+    // window glass + frame both render with their respective colors.
+    #[test]
+    fn unordered_list_alternates_transparent_and_opaque() {
+        let mats = MaterialColors::Unordered(vec![OPAQUE_A, TRANSPARENT]);
+        assert_eq!(pick_material_style_for_submesh(&mats, 0), Some(TRANSPARENT));
+        assert_eq!(pick_material_style_for_submesh(&mats, 1), Some(OPAQUE_A));
+        assert_eq!(pick_material_style_for_submesh(&mats, 2), Some(TRANSPARENT));
+    }
+
+    #[test]
+    fn empty_material_colors_returns_none() {
+        assert_eq!(
+            pick_material_style_for_submesh(&MaterialColors::Ordered(vec![]), 0),
+            None
+        );
+        assert_eq!(
+            pick_material_style_for_submesh(&MaterialColors::Unordered(vec![]), 0),
+            None
+        );
+    }
+
+    // Sanity check that resolve_submesh_color advances mat_color_idx and
+    // delegates to the per-variant logic. Exercises the ordered path end-to-end.
+    #[test]
+    fn resolve_submesh_color_advances_index_for_ordered_layers() {
+        use rustc_hash::FxHashMap;
+
+        let geometry_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+        let layers = MaterialColors::Ordered(vec![OPAQUE_A, TRANSPARENT, OPAQUE_B]);
+        let mut idx = 0usize;
+
+        // resolve_submesh_color needs an EntityDecoder; build one on empty content.
+        let mut decoder = ifc_lite_core::EntityDecoder::new("");
+
+        let c0 = resolve_submesh_color(
+            0,
+            &geometry_styles,
+            &mut decoder,
+            Some(&layers),
+            &mut idx,
+            None,
+            [0.0, 0.0, 0.0, 1.0],
+        );
+        let c1 = resolve_submesh_color(
+            0,
+            &geometry_styles,
+            &mut decoder,
+            Some(&layers),
+            &mut idx,
+            None,
+            [0.0, 0.0, 0.0, 1.0],
+        );
+        let c2 = resolve_submesh_color(
+            0,
+            &geometry_styles,
+            &mut decoder,
+            Some(&layers),
+            &mut idx,
+            None,
+            [0.0, 0.0, 0.0, 1.0],
+        );
+
+        assert_eq!(c0, OPAQUE_A);
+        assert_eq!(c1, TRANSPARENT);
+        assert_eq!(c2, OPAQUE_B);
+        assert_eq!(idx, 3);
+    }
 }

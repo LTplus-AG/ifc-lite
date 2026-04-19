@@ -1213,7 +1213,11 @@ export class Renderer {
 
                 // PERFORMANCE FIX: Render partially visible batches as sub-batches (not individual meshes!)
                 // This is the key optimization: instead of 10,000+ individual draw calls,
-                // we create cached sub-batches with only visible elements and render them as single draw calls
+                // we create cached sub-batches with only visible elements and render them as single draw calls.
+                // We also collect resolved opaque sub-batches so the section cap pass below can
+                // include them in its parity count — otherwise hidden/isolated opaque geometry
+                // would show open, un-capped cut holes.
+                const opaqueSubBatches: typeof allBatchedMeshes = [];
                 if (partiallyVisibleBatches.length > 0) {
                     for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
@@ -1232,6 +1236,7 @@ export class Renderer {
                                 pass.setPipeline(this.pipeline.getTransparentPipeline());
                             } else {
                                 pass.setPipeline(this.pipeline.getPipeline());
+                                opaqueSubBatches.push(subBatch);
                             }
                             // Render the sub-batch as a single draw call
                             renderBatch(subBatch);
@@ -1285,7 +1290,12 @@ export class Renderer {
                         planeDistance: sectionPlaneData.distance,
                         flipped: opts?.flipped === true,
                         style: capStyle,
-                        batches: opaqueBatches,
+                        // Include every opaque batch the main pass actually
+                        // drew — full batches AND cached partial sub-batches
+                        // produced for hidden/isolated filtering. Missing
+                        // either kind would leave open, un-capped holes in
+                        // the cut surface.
+                        batches: [...opaqueBatches, ...opaqueSubBatches],
                         meshes: opaqueMeshes,
                         // Instanced geometry uses its own vertex layout +
                         // per-instance transforms. Without this, instanced
@@ -1827,6 +1837,8 @@ export class Renderer {
         // Section-plane renderers
         this.sectionPlaneRenderer?.destroy();
         this.sectionPlaneRenderer = null;
+        this.sectionCapRenderer?.destroy();
+        this.sectionCapRenderer = null;
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
 

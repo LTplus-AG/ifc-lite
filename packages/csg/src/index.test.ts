@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { meshPlaneRelation, subtractHalfspace } from './index.ts';
+import { meshPlaneRelation, subtractHalfspace } from './index.js';
 
 /**
  * Build a trivial MeshData from a flat list of vertex triples. Tests only

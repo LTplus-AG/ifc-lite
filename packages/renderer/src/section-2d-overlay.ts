@@ -136,9 +136,20 @@ export class Section2DOverlayRenderer {
           return output;
         }
 
+        // Two outputs to match the main render pass's colour attachments.
+        // Location 1 is masked off at the pipeline level so cap-less
+        // picking IDs underneath are preserved.
+        struct FragOut {
+          @location(0) color:    vec4<f32>,
+          @location(1) objectId: vec4<f32>,
+        }
+
         @fragment
-        fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-          return input.color;
+        fn fs_main(input: VertexOutput) -> FragOut {
+          var out: FragOut;
+          out.color    = input.color;
+          out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+          return out;
         }
       `,
     });
@@ -168,9 +179,17 @@ export class Section2DOverlayRenderer {
           return output;
         }
 
+        struct FragOutLine {
+          @location(0) color:    vec4<f32>,
+          @location(1) objectId: vec4<f32>,
+        }
+
         @fragment
-        fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-          return vec4<f32>(0.0, 0.0, 0.0, 1.0);  // Black lines
+        fn fs_main(input: VertexOutput) -> FragOutLine {
+          var out: FragOutLine;
+          out.color    = vec4<f32>(0.0, 0.0, 0.0, 1.0);  // Black lines
+          out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+          return out;
         }
       `,
     });
@@ -194,21 +213,28 @@ export class Section2DOverlayRenderer {
       fragment: {
         module: fillShader,
         entryPoint: 'fs_main',
-        targets: [{
-          format: this.format,
-          blend: {
-            color: {
-              srcFactor: 'src-alpha' as const,
-              dstFactor: 'one-minus-src-alpha' as const,
-              operation: 'add' as const,
-            },
-            alpha: {
-              srcFactor: 'one' as const,
-              dstFactor: 'one-minus-src-alpha' as const,
-              operation: 'add' as const,
+        // The main render pass has two colour attachments (main colour +
+        // picker objectId). Pipelines used inside that pass must declare
+        // matching targets — the objectId slot writes nothing so the pass's
+        // picking IDs underneath are preserved.
+        targets: [
+          {
+            format: this.format,
+            blend: {
+              color: {
+                srcFactor: 'src-alpha' as const,
+                dstFactor: 'one-minus-src-alpha' as const,
+                operation: 'add' as const,
+              },
+              alpha: {
+                srcFactor: 'one' as const,
+                dstFactor: 'one-minus-src-alpha' as const,
+                operation: 'add' as const,
+              },
             },
           },
-        }],
+          { format: 'rgba8unorm' as const, writeMask: 0 },
+        ],
       },
       primitive: {
         topology: 'triangle-list' as const,
@@ -242,9 +268,10 @@ export class Section2DOverlayRenderer {
       fragment: {
         module: lineShader,
         entryPoint: 'fs_main',
-        targets: [{
-          format: this.format,
-        }],
+        targets: [
+          { format: this.format },
+          { format: 'rgba8unorm' as const, writeMask: 0 },
+        ],
       },
       primitive: {
         topology: 'line-list' as const,

@@ -18,7 +18,6 @@ import {
   Key,
   LayoutPanelTop,
   Lock,
-  RefreshCw,
   Settings2,
   ShieldCheck,
   Trash2,
@@ -40,7 +39,6 @@ import {
   type DesktopEntitlement,
 } from '@/lib/desktop-product';
 import { navigateToPath } from '@/services/app-navigation';
-import { requestDesktopEntitlementRefresh } from '@/lib/desktop/desktopEntitlementEvents';
 import {
   getDesktopPreferences,
   subscribeDesktopPreferences,
@@ -59,7 +57,6 @@ export function SettingsPage() {
   const chatUsage = useViewerStore((s) => s.chatUsage);
   const [preferences, setPreferences] = useState(() => getDesktopPreferences());
   const [apiKeys, setApiKeys] = useState(() => getApiKeys());
-  const [isRefreshingAccount, setIsRefreshingAccount] = useState(false);
   const returnTo = (() => {
     const params = new URLSearchParams(window.location.search);
     const candidate = params.get('returnTo');
@@ -89,19 +86,6 @@ export function SettingsPage() {
     const unit = chatUsage.type === 'credits' ? 'credits' : 'requests';
     return `${chatUsage.used}/${chatUsage.limit} ${unit} used. Resets ${resetLabel}.`;
   }, [chatUsage]);
-
-  const handleRefreshAccount = async () => {
-    setIsRefreshingAccount(true);
-    try {
-      await requestDesktopEntitlementRefresh();
-      toast.success('Account status refreshed');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not refresh account status';
-      toast.error(message);
-    } finally {
-      setIsRefreshingAccount(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">

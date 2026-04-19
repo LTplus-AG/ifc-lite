@@ -144,28 +144,10 @@ export class RenderPipeline {
                 format: this.depthFormat,
                 depthWriteEnabled: true,
                 depthCompare: 'greater',  // Reverse-Z: greater instead of less
-                // Stencil bit 1 (mask 0x02) marks "opaque below-plane geometry
-                // was rendered at this pixel". SectionCapRenderer uses this
-                // alongside its parity bit (bit 0) to require BOTH "parity
-                // says inside solid" AND "below-plane actually visible here"
-                // before painting the cap — keeps non-manifold IFC parity
-                // glitches from bleeding cap hatch into empty sky.
-                // 'replace' with reference 2 writes bit 1 when a fragment
-                // passes depth. Bit 0 is left alone for the parity pass.
-                stencilFront: {
-                    compare: 'always',
-                    passOp: 'replace',
-                    failOp: 'keep',
-                    depthFailOp: 'keep',
-                },
-                stencilBack: {
-                    compare: 'always',
-                    passOp: 'replace',
-                    failOp: 'keep',
-                    depthFailOp: 'keep',
-                },
-                stencilReadMask: 0x02,
-                stencilWriteMask: 0x02,
+                // The old stencil-based cap needed a "below-plane geometry
+                // was drawn here" marker in bit 1; the 2D-polygon-driven cap
+                // uses exact silhouettes from SectionCutter instead, so no
+                // stencil state is required on the main pipeline.
             },
             // MSAA configuration - must match render pass attachment sample count
             multisample: {

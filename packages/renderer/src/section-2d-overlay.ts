@@ -10,6 +10,16 @@
  * where the architectural drawing appears directly on the section cut surface.
  */
 
+export interface Section2DOverlayCapStyle {
+  fillColor:         [number, number, number, number];
+  strokeColor:       [number, number, number, number];
+  patternId:         number;   // 0..7, matches HATCH_PATTERN_IDS in section-cap.ts
+  spacingPx:         number;
+  angleRad:          number;
+  widthPx:           number;
+  secondaryAngleRad: number;
+}
+
 export interface Section2DOverlayOptions {
   axis: 'down' | 'front' | 'side';  // Semantic axis: down (Y), front (Z), side (X)
   position: number; // 0-100 percentage
@@ -21,6 +31,13 @@ export interface Section2DOverlayOptions {
   flipped?: boolean;
   min?: number;  // Optional override for min range
   max?: number;  // Optional override for max range
+  /**
+   * If provided, the 2D overlay's polygon fills render as the 3D section
+   * cap with this screen-space hatch style. If omitted or `showFills` is
+   * false, only the outline lines render (legacy behaviour).
+   */
+  capStyle?: Section2DOverlayCapStyle;
+  showFills?: boolean;
 }
 
 export interface CutPolygon2D {
@@ -108,23 +125,35 @@ export class Section2DOverlayRenderer {
       bindGroupLayouts: [this.bindGroupLayout],
     });
 
-    // Shader for filled polygons (with vertex colors)
+    // Shader for filled polygons. Applies the user-defined cap style
+    // (single fill colour + screen-space hatch) on top of the EXACT
+    // 2D section polygons produced by SectionCutter. Per-vertex colour
+    // is still supplied by the vertex buffer (unused here, kept for
+    // future multi-material support) but ignored — all fills render
+    // with the uniform cap style so the cut surface reads as a single
+    // architectural section rather than a rainbow of per-IFC-type tints.
     const fillShader = this.device.createShaderModule({
       code: `
         struct Uniforms {
-          viewProj: mat4x4<f32>,
-          planeOffset: vec4<f32>,  // Small offset to render slightly in front of section plane
+          viewProj:       mat4x4<f32>,
+          planeOffset:    vec4<f32>,    // Small offset to render slightly in front of section plane
+          capFillColor:   vec4<f32>,
+          capStrokeColor: vec4<f32>,
+          // x=patternId, y=spacingPx, z=angleRad, w=widthPx
+          params:         vec4<f32>,
+          // x=secondaryAngleRad, y,z,w reserved
+          params2:        vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
 
         struct VertexInput {
           @location(0) position: vec3<f32>,
-          @location(1) color: vec4<f32>,
+          @location(1) color:    vec4<f32>,
         }
 
         struct VertexOutput {
           @builtin(position) position: vec4<f32>,
-          @location(0) color: vec4<f32>,
+          @location(0)       color:    vec4<f32>,
         }
 
         @vertex
@@ -136,9 +165,58 @@ export class Section2DOverlayRenderer {
           return output;
         }
 
-        // Two outputs to match the main render pass's colour attachments.
-        // Location 1 is masked off at the pipeline level so cap-less
-        // picking IDs underneath are preserved.
+        // Screen-space hatch pattern helpers (ported from section-cap.wgsl).
+        fn lineMask(u: f32, s: f32, w: f32) -> f32 {
+          let f = fract(u / s) * s;
+          let d = min(f, s - f);
+          return 1.0 - smoothstep(w * 0.5, w * 0.5 + 1.0, d);
+        }
+        fn rotate(p: vec2<f32>, a: f32) -> vec2<f32> {
+          let c = cos(a);
+          let s = sin(a);
+          return vec2<f32>(c * p.x - s * p.y, s * p.x + c * p.y);
+        }
+        fn hatchIntensity(fragCoord: vec2<f32>, patternId: u32, spacing: f32, angle: f32, width: f32, angle2: f32) -> f32 {
+          let p = fragCoord;
+          if (patternId == 0u) { return 0.0; }          // solid
+          if (patternId == 1u) {                         // diagonal
+            let r = rotate(p, angle);
+            return lineMask(r.x, spacing, width);
+          }
+          if (patternId == 2u) {                         // cross-hatch
+            let r  = rotate(p, angle);
+            let r2 = rotate(p, angle2);
+            return max(lineMask(r.x, spacing, width), lineMask(r2.x, spacing, width));
+          }
+          if (patternId == 3u) { return lineMask(p.y, spacing, width); }    // horizontal
+          if (patternId == 4u) { return lineMask(p.x, spacing, width); }    // vertical
+          if (patternId == 5u) {                         // concrete
+            let gx = fract(p.x / spacing) * spacing - spacing * 0.5;
+            let gy = fract(p.y / spacing) * spacing - spacing * 0.5;
+            let d  = sqrt(gx * gx + gy * gy);
+            let dot = 1.0 - smoothstep(width * 0.6, width * 0.6 + 1.0, d);
+            let r = rotate(p * 0.5, angle);
+            let dashAlong = fract(r.x / (spacing * 2.0));
+            let dashRun = step(0.0, dashAlong) * step(dashAlong, 0.35);
+            let dashLine = lineMask(r.y, spacing, width);
+            return max(dot, dashRun * dashLine);
+          }
+          if (patternId == 6u) {                         // brick
+            let bandH = spacing;
+            let band = floor(p.y / bandH);
+            let offset = select(0.0, bandH, (u32(band) & 1u) == 1u);
+            let horiz = lineMask(p.y, bandH, width);
+            let vertPos = p.x + offset * 0.5;
+            let vert = step(fract(vertPos / (bandH * 2.0)), 0.02);
+            return max(horiz, vert);
+          }
+          if (patternId == 7u) {                         // insulation
+            let y = spacing * 0.5 * sin(p.x * 6.2831853 / spacing) + p.y;
+            return lineMask(y, spacing, width);
+          }
+          return 0.0;
+        }
+
         struct FragOut {
           @location(0) color:    vec4<f32>,
           @location(1) objectId: vec4<f32>,
@@ -146,8 +224,18 @@ export class Section2DOverlayRenderer {
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragOut {
+          let patternId = u32(uniforms.params.x + 0.5);
+          let spacing   = max(2.0, uniforms.params.y);
+          let angle     = uniforms.params.z;
+          let width     = max(1.0, uniforms.params.w);
+          let angle2    = uniforms.params2.x;
+
+          let h = hatchIntensity(input.position.xy, patternId, spacing, angle, width, angle2);
+          let rgb = mix(uniforms.capFillColor.rgb, uniforms.capStrokeColor.rgb, h * uniforms.capStrokeColor.a);
+          let a   = max(uniforms.capFillColor.a, h * uniforms.capStrokeColor.a);
+
           var out: FragOut;
-          out.color    = input.color;
+          out.color    = vec4<f32>(rgb, a);
           out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
           return out;
         }
@@ -287,9 +375,18 @@ export class Section2DOverlayRenderer {
       },
     });
 
-    // Create uniform buffer
+    // Create uniform buffer.
+    //   viewProj       — mat4x4        64 B
+    //   planeOffset    — vec4          16 B
+    //   capFillColor   — vec4          16 B
+    //   capStrokeColor — vec4          16 B
+    //   params         — vec4          16 B   x=patternId, y=spacingPx, z=angleRad, w=widthPx
+    //   params2        — vec4          16 B   x=secondaryAngleRad
+    // Total: 144 B. The extended layout lets the fill fragment shader
+    // apply the user's cap style (screen-space hatch + colour) directly
+    // over the exact polygon silhouette the 2D section cutter produced.
     this.uniformBuffer = this.device.createBuffer({
-      size: 80, // mat4x4 (64) + vec4 (16)
+      size: 144,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -524,19 +621,68 @@ export class Section2DOverlayRenderer {
         break;
     }
 
-    // Update uniforms
-    const uniforms = new Float32Array(20);
+    // Update uniforms. Layout mirrors the WGSL struct above:
+    //   0..15  viewProj
+    //   16..19 planeOffset
+    //   20..23 capFillColor
+    //   24..27 capStrokeColor
+    //   28..31 params  (patternId, spacingPx, angleRad, widthPx)
+    //   32..35 params2 (secondaryAngleRad, _, _, _)
+    const uniforms = new Float32Array(36);
     uniforms.set(viewProj, 0);
     uniforms[16] = offset[0];
     uniforms[17] = offset[1];
     uniforms[18] = offset[2];
-    uniforms[19] = 0;  // padding
+    uniforms[19] = 0;
+    const cs = options.capStyle;
+    if (cs) {
+      uniforms[20] = cs.fillColor[0];
+      uniforms[21] = cs.fillColor[1];
+      uniforms[22] = cs.fillColor[2];
+      uniforms[23] = cs.fillColor[3];
+      uniforms[24] = cs.strokeColor[0];
+      uniforms[25] = cs.strokeColor[1];
+      uniforms[26] = cs.strokeColor[2];
+      uniforms[27] = cs.strokeColor[3];
+      uniforms[28] = cs.patternId;
+      uniforms[29] = cs.spacingPx;
+      uniforms[30] = cs.angleRad;
+      uniforms[31] = cs.widthPx;
+      uniforms[32] = cs.secondaryAngleRad;
+    } else {
+      // Sensible defaults when caller omits style (e.g. legacy lines-only
+      // use): solid fill using a warm-paper colour, no hatch.
+      uniforms[20] = 0.92; uniforms[21] = 0.88; uniforms[22] = 0.78; uniforms[23] = 1;
+      uniforms[24] = 0.10; uniforms[25] = 0.10; uniforms[26] = 0.10; uniforms[27] = 1;
+      uniforms[28] = 0; // solid pattern
+      uniforms[29] = 8;
+      uniforms[30] = Math.PI / 4;
+      uniforms[31] = 1;
+      uniforms[32] = -Math.PI / 4;
+    }
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
-    // Note: Skip filled polygons in 3D overlay - they create visual artifacts
-    // The fills are rendered properly in the 2D panel canvas instead
+    // Filled polygons = the 3D section cap. Render them ONLY when the
+    // caller opts in (`showFills: true` + a capStyle). This replaces the
+    // old stencil-parity cap, which leaked hatch into empty sky on non-
+    // manifold IFC geometry. The polygons here come from exact triangle-
+    // plane intersection in `SectionCutter`, so the silhouette is
+    // mathematically correct.
+    if (
+      options.showFills === true &&
+      options.capStyle &&
+      this.fillVertexBuffer &&
+      this.fillIndexBuffer &&
+      this.fillIndexCount > 0
+    ) {
+      pass.setPipeline(this.fillPipeline);
+      pass.setBindGroup(0, this.bindGroup);
+      pass.setVertexBuffer(0, this.fillVertexBuffer);
+      pass.setIndexBuffer(this.fillIndexBuffer, 'uint32');
+      pass.drawIndexed(this.fillIndexCount);
+    }
 
-    // Draw lines only
+    // Outline lines on top of the fill.
     if (this.lineVertexBuffer && this.lineVertexCount > 0) {
       pass.setPipeline(this.linePipeline);
       pass.setBindGroup(0, this.bindGroup);

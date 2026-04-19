@@ -68,7 +68,7 @@ import type {
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
-import { SectionCapRenderer, DEFAULT_CAP_STYLE, type SectionCapStyle } from './section-cap.js';
+import { SectionCapRenderer, DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap.js';
 import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
 import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
@@ -1042,11 +1042,6 @@ export class Renderer {
             });
 
             pass.setPipeline(this.pipeline.getPipeline());
-            // The main opaque pipeline writes stencil bit 1 via passOp
-            // 'replace' + writeMask 0x02, using this reference. The cap
-            // renderer overrides the reference to STENCIL_REF (3) before
-            // its fill pass; everything else in the frame is fine with 2.
-            pass.setStencilReference(2);
 
             // Check if we have batched meshes (preferred for performance)
             const allBatchedMeshes = this.scene.getBatchedMeshes();
@@ -1264,66 +1259,15 @@ export class Renderer {
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
 
-                // Filled, hatched cut surfaces. Run right after opaque geometry
-                // so the depth buffer is complete and transparent passes below
-                // will render over the cap naturally.
-                if (
-                    sectionPlaneData &&
-                    sectionPlaneData.enabled &&
-                    options.sectionPlane?.showCap !== false &&
-                    this.sectionCapRenderer
-                ) {
-                    const opts = options.sectionPlane;
-                    const capStyle: SectionCapStyle = {
-                        ...DEFAULT_CAP_STYLE,
-                        ...(opts?.capStyle ?? {}),
-                        // Narrow optional arrays to the tuple type expected by
-                        // SectionCapStyle. Spread lets overrides come through
-                        // without clobbering unset fields.
-                        fillColor:   opts?.capStyle?.fillColor   ?? DEFAULT_CAP_STYLE.fillColor,
-                        strokeColor: opts?.capStyle?.strokeColor ?? DEFAULT_CAP_STYLE.strokeColor,
-                        pattern:     opts?.capStyle?.pattern     ?? DEFAULT_CAP_STYLE.pattern,
-                        spacingPx:   opts?.capStyle?.spacingPx   ?? DEFAULT_CAP_STYLE.spacingPx,
-                        angleRad:    opts?.capStyle?.angleRad    ?? DEFAULT_CAP_STYLE.angleRad,
-                        widthPx:     opts?.capStyle?.widthPx     ?? DEFAULT_CAP_STYLE.widthPx,
-                        secondaryAngleRad:
-                            opts?.capStyle?.secondaryAngleRad ?? DEFAULT_CAP_STYLE.secondaryAngleRad,
-                    };
-                    // Model bounds were stashed via setModelBounds() during the
-                    // section-plane distance computation above. Using the cached
-                    // copy here keeps the cap quad consistent with the clip.
-                    const capBounds = this.getModelBounds() ?? {
-                        min: { x: -1, y: -1, z: -1 },
-                        max: { x:  1, y:  1, z:  1 },
-                    };
-                    this.sectionCapRenderer.draw(pass, {
-                        viewProj,
-                        planeNormal: sectionPlaneData.normal,
-                        planeDistance: sectionPlaneData.distance,
-                        // Bounded plane quad in world space — stops stray
-                        // parity stencil bits from non-manifold IFC geometry
-                        // from painting hatch into empty sky above or beside
-                        // the cut.
-                        boundsMin: [capBounds.min.x, capBounds.min.y, capBounds.min.z],
-                        boundsMax: [capBounds.max.x, capBounds.max.y, capBounds.max.z],
-                        flipped: opts?.flipped === true,
-                        style: capStyle,
-                        // Include every opaque batch the main pass actually
-                        // drew — full batches AND cached partial sub-batches
-                        // produced for hidden/isolated filtering. Missing
-                        // either kind would leave open, un-capped holes in
-                        // the cut surface.
-                        batches: [...opaqueBatches, ...opaqueSubBatches],
-                        meshes: opaqueMeshes,
-                        // Instanced geometry uses its own vertex layout +
-                        // per-instance transforms. Without this, instanced
-                        // elements would show open cut holes with no cap fill.
-                        instanced: this.scene.getInstancedMeshes(),
-                    });
-                    // Restore the main pipeline so later transparent/selection
-                    // passes render correctly.
-                    pass.setPipeline(this.pipeline.getPipeline());
-                }
+                // Filled, hatched 3D cut surfaces are now rendered by
+                // Section2DOverlayRenderer using the exact polygons from
+                // SectionCutter (triangle-plane intersection). The old
+                // stencil-parity SectionCapRenderer is no longer in the
+                // render loop — parity XOR on non-manifold IFC geometry
+                // leaks stencil bits into empty sky, and no amount of
+                // bounded quads or second-bit gating fixed that robustly.
+                // See the 2D-overlay draw call further below in this same
+                // render pass, which now emits the cap.
 
                 // Prepare selected meshes once, then render them LAST so transparent batches
                 // don't overwrite highlight color (glass otherwise appears unhighlighted).
@@ -1547,17 +1491,38 @@ export class Renderer {
                     }
                 );
 
-                // Draw 2D section overlay on the section plane (when section is active, not preview)
+                // Draw 2D section overlay on the section plane (when section is
+                // active, not preview). The overlay is also the 3D SECTION CAP:
+                // its polygon fills come from `SectionCutter` (exact triangle-
+                // plane intersection), and the new fill shader applies the
+                // user's screen-space hatch + colour directly on those
+                // polygons. This replaces the old stencil-parity cap, which
+                // bled hatch into empty sky on non-manifold IFC geometry —
+                // the polygons here are mathematically correct, so the cap
+                // silhouette matches the 2D drawing exactly.
                 if (options.sectionPlane.enabled && this.section2DOverlayRenderer?.hasGeometry()) {
+                    const o = options.sectionPlane;
+                    const showFills = o.showCap !== false;
+                    const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
                     this.section2DOverlayRenderer.draw(
                         pass,
                         {
-                            axis: options.sectionPlane.axis,
-                            position: options.sectionPlane.position,
+                            axis: o.axis,
+                            position: o.position,
                             bounds: modelBounds,
                             viewProj,
-                            min: options.sectionPlane.min,
-                            max: options.sectionPlane.max,
+                            min: o.min,
+                            max: o.max,
+                            showFills,
+                            capStyle: showFills ? {
+                                fillColor:   style.fillColor,
+                                strokeColor: style.strokeColor,
+                                patternId:   HATCH_PATTERN_IDS[style.pattern],
+                                spacingPx:   style.spacingPx,
+                                angleRad:    style.angleRad,
+                                widthPx:     style.widthPx,
+                                secondaryAngleRad: style.secondaryAngleRad,
+                            } : undefined,
                         }
                     );
                 }

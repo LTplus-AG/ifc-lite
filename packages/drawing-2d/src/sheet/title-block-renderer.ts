@@ -12,9 +12,9 @@
  * - Revision history table
  */
 
-import type { TitleBlockConfig, RevisionEntry, TitleBlockPosition } from './title-block-types';
-import type { ScaleBarConfig, NorthArrowConfig } from './scale-bar-types';
-import type { DrawingScale } from '../styles';
+import type { TitleBlockConfig, RevisionEntry, TitleBlockPosition } from './title-block-types.js';
+import type { ScaleBarConfig, NorthArrowConfig } from './scale-bar-types.js';
+import type { DrawingScale } from '../styles.js';
 
 /** Inner bounds of the frame (where title block is positioned) */
 export interface FrameInnerBounds {

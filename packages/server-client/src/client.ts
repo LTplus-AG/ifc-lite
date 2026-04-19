@@ -18,8 +18,8 @@ import type {
   ProcessingStats,
   ServerConfig,
   StreamEvent,
-} from './types';
-import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder';
+} from './types.js';
+import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 
 /**
  * Compress a file or ArrayBuffer using gzip compression.

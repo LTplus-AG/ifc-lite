@@ -30,6 +30,24 @@ export const SECTION_PLANE_DEFAULTS = {
   ENABLED: true,
   /** Default flipped state */
   FLIPPED: false,
+  /** Default: render filled/hatched cap surfaces at the cut */
+  SHOW_CAP: true,
+  /** Default: draw polygon outlines on the cut surfaces */
+  SHOW_OUTLINES: true,
+} as const;
+
+/**
+ * Default cut-surface appearance. RGBA tuples are 0-1 per channel. Screen-space
+ * hatch settings are in pixels so the hatch stays readable at any zoom level.
+ */
+export const SECTION_CAP_DEFAULTS = {
+  FILL_COLOR:   [0.92, 0.88, 0.78, 1.0] as [number, number, number, number], // warm paper
+  STROKE_COLOR: [0.10, 0.10, 0.10, 1.0] as [number, number, number, number], // ink
+  PATTERN:      'diagonal' as const,
+  SPACING_PX:   8,
+  ANGLE_RAD:    Math.PI / 4,
+  WIDTH_PX:     1.0,
+  SECONDARY_ANGLE_RAD: -Math.PI / 4,
 } as const;
 
 // ============================================================================

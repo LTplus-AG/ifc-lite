@@ -52,6 +52,14 @@ jobs:
         run: pnpm typecheck
         continue-on-error: true
 
+      # Verify every publishable package can be loaded by Node's native ESM
+      # resolver. Catches broken relative imports (e.g. extensionless specifiers
+      # that bundlers tolerate but Node rejects with ERR_MODULE_NOT_FOUND)
+      # before they reach npm consumers. Must run BEFORE `pnpm run release`
+      # so a regression blocks the publish step.
+      - name: Verify ESM entrypoints
+        run: pnpm test:esm
+
       - name: Run Tests
         run: pnpm test
 

@@ -21,7 +21,7 @@ import type {
   LineWeightPreset,
   LineStylePreset,
   DashPattern,
-} from './types';
+} from './types.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS

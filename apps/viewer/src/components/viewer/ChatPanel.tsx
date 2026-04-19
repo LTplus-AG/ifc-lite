@@ -29,7 +29,6 @@ import {
   ArrowDown,
   Zap,
 } from 'lucide-react';
-import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -38,6 +37,7 @@ import { buildErrorFeedbackContent } from '@/store/slices/chatSlice';
 import { ChatMessageComponent } from './chat/ChatMessage';
 import { ModelSelector } from './chat/ModelSelector';
 import { fetchUsageSnapshot, streamChat, type StreamMessage, type TextContentPart, type ImageContentPart, type UsageInfo } from '@/lib/llm/stream-client';
+import { streamAnthropicChat, streamOpenAiChat } from '@/lib/llm/stream-direct';
 import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/llm/message-capabilities';
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
@@ -49,11 +49,10 @@ import type { ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
-import { Image as ImageIcon } from 'lucide-react';
-import { isClerkConfigured } from '@/lib/llm/clerk-auth';
-import { buildDesktopUpgradeUrl, hasDesktopFeatureAccess } from '@/lib/desktop-product';
-import { navigateToPath } from '@/services/app-navigation';
+import { Check, Image as ImageIcon, Key, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { hasDesktopFeatureAccess } from '@/lib/desktop-product';
 import { getModelById } from '@/lib/llm/models';
+import { getApiKeys, updateApiKeys, hasAnyApiKey, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
 import { useSandbox } from '@/hooks/useSandbox';
 
 // Environment variable for the proxy URL
@@ -67,7 +66,6 @@ const EXAMPLE_PROMPTS = [
 ];
 
 const CONTINUE_PROMPT = 'Continue from exactly where your last response stopped. Do not repeat previously generated text.';
-const DEFAULT_PRO_MONTHLY_CREDIT_LIMIT = 1000;
 const USAGE_REFRESH_INTERVAL_MS = 15_000;
 const EST_CHARS_PER_TOKEN = 4;
 const IMAGE_TOKEN_COST_EST = 850;
@@ -211,23 +209,30 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const consumePendingPrompt = useViewerStore((s) => s.consumeChatPendingPrompt);
   const pendingRepairRequest = useViewerStore((s) => s.chatPendingRepairRequest);
   const consumePendingRepairRequest = useViewerStore((s) => s.consumeChatPendingRepairRequest);
-  const authToken = useViewerStore((s) => s.chatAuthToken);
-  const hasPro = useViewerStore((s) => s.chatHasPro);
+  const hasByokKey = useViewerStore((s) => s.chatHasByokKey);
+  const setChatHasByokKey = useViewerStore((s) => s.setChatHasByokKey);
   const usage = useViewerStore((s) => s.chatUsage);
   const setChatUsage = useViewerStore((s) => s.setChatUsage);
   const desktopEntitlement = useViewerStore((s) => s.desktopEntitlement);
   const { execute } = useSandbox();
   const canUseAiAssistant = hasDesktopFeatureAccess(desktopEntitlement, 'ai_assistant');
-  const displayUsage: UsageInfo | null = usage ?? (hasPro
-    ? {
-      type: 'credits',
-      used: 0,
-      limit: DEFAULT_PRO_MONTHLY_CREDIT_LIMIT,
-      pct: 0,
-      resetAt: 0,
-      billable: false,
-    }
-    : null);
+
+  // Sync BYOK key availability into the store and track per-provider state
+  const [keyStateAnthropic, setKeyStateAnthropic] = useState(hasAnthropicKey);
+  const [keyStateOpenai, setKeyStateOpenai] = useState(hasOpenaiKey);
+  useEffect(() => {
+    const refresh = () => {
+      const a = hasAnthropicKey();
+      const o = hasOpenaiKey();
+      setKeyStateAnthropic(a);
+      setKeyStateOpenai(o);
+      setChatHasByokKey(a || o);
+    };
+    refresh();
+    return subscribeApiKeys(refresh);
+  }, [setChatHasByokKey]);
+
+  const displayUsage: UsageInfo | null = usage;
   const usageResetLabel = displayUsage?.resetAt && displayUsage.resetAt > 0
     ? new Date(displayUsage.resetAt * 1000).toLocaleDateString()
     : '—';
@@ -238,14 +243,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [lastFinishReason, setLastFinishReason] = useState<string | null>(null);
-  const openUpgradePage = useCallback(() => {
-    navigateToPath(buildDesktopUpgradeUrl());
-  }, []);
   const promptAiUpgrade = useCallback(() => {
     setChatError('AI assistant is available with Desktop Pro.');
     toast.info('AI assistant is available with Desktop Pro');
-    openUpgradePage();
-  }, [openUpgradePage, setChatError]);
+  }, [setChatError]);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -307,7 +308,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   useEffect(() => {
     let cancelled = false;
     const refreshUsage = async () => {
-      const snapshot = await fetchUsageSnapshot(PROXY_URL, authToken);
+      const snapshot = await fetchUsageSnapshot(PROXY_URL);
       if (!cancelled && snapshot) {
         setChatUsage(snapshot);
       }
@@ -322,7 +323,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [authToken, setChatUsage]);
+  }, [setChatUsage]);
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
@@ -588,14 +589,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       }
     };
 
-    await streamChat({
-      proxyUrl: PROXY_URL,
-      model: activeModel,
-      messages: streamMessages,
-      system: systemPrompt,
-      authToken,
-      signal: abortController.signal,
-      onChunk: (chunk) => {
+    // ── Shared stream callbacks ──
+    const handleChunk = (chunk: string) => {
         clearPendingAttachmentsOnce();
         accumulated += chunk;
         if (!responseEditState.applyFailed && responseEditState.intent !== 'repair') {
@@ -629,8 +624,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         }
         setChatStatus('streaming');
         updateStreaming(accumulated);
-      },
-      onComplete: (fullText) => {
+    };
+    const handleComplete = (fullText: string) => {
         clearPendingAttachmentsOnce();
         const normalizedText = continuationBase
           ? stripContinuationOverlap(continuationBase, fullText)
@@ -772,22 +767,79 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         }
 
         commitAssistantTurn();
-      },
-      onUsageInfo: (info: UsageInfo) => {
+    };
+    const handleUsageInfo = (info: UsageInfo) => {
         setChatUsage(info);
-      },
-      onFinishReason: (reason) => {
+    };
+    const handleFinishReason = (reason: string | null) => {
         setLastFinishReason(reason);
         if (reason === 'length') {
           setChatError('Response reached output limit. Click Continue to resume.');
         }
-      },
-      onError: (err) => {
+    };
+    const handleError = (err: Error) => {
         setChatError(err.message);
         setChatAbortController(null);
         commitAssistantTurn();
-      },
-    });
+    };
+
+    // Route to direct provider streaming for BYOK models, or through the proxy for free models
+    const resolvedModelInfo = getModelById(activeModel);
+    const modelSource = resolvedModelInfo?.source ?? 'proxy';
+    const currentApiKeys = getApiKeys();
+
+    if (modelSource === 'anthropic' && !currentApiKeys.anthropicKey) {
+      setChatError('Enter your Anthropic API key above to use this model.');
+      setChatStatus('idle');
+      setChatAbortController(null);
+      commitAssistantTurn();
+      return;
+    }
+    if (modelSource === 'openai' && !currentApiKeys.openaiKey) {
+      setChatError('Enter your OpenAI API key above to use this model.');
+      setChatStatus('idle');
+      setChatAbortController(null);
+      commitAssistantTurn();
+      return;
+    }
+
+    if (modelSource === 'anthropic' && currentApiKeys.anthropicKey) {
+      await streamAnthropicChat(currentApiKeys.anthropicKey, {
+        model: activeModel,
+        messages: streamMessages,
+        system: systemPrompt,
+        signal: abortController.signal,
+        onChunk: handleChunk,
+        onComplete: handleComplete,
+        onFinishReason: handleFinishReason,
+        onError: handleError,
+      });
+    } else if (modelSource === 'openai' && currentApiKeys.openaiKey) {
+      await streamOpenAiChat(currentApiKeys.openaiKey, {
+        model: activeModel,
+        messages: streamMessages,
+        system: systemPrompt,
+        signal: abortController.signal,
+        onChunk: handleChunk,
+        onComplete: handleComplete,
+        onFinishReason: handleFinishReason,
+        onError: handleError,
+      });
+    } else {
+      await streamChat({
+        proxyUrl: PROXY_URL,
+        model: activeModel,
+        messages: streamMessages,
+        system: systemPrompt,
+        signal: abortController.signal,
+        onChunk: handleChunk,
+        onComplete: handleComplete,
+        onFinishReason: handleFinishReason,
+        onError: handleError,
+        onUsageInfo: handleUsageInfo,
+      });
+    }
+
     if (abortController.signal.aborted) {
       commitAssistantTurn();
       const currentState = useViewerStore.getState();
@@ -797,7 +849,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       }
     }
   }, [
-    canUseAiAssistant, status, activeModel, attachments, authToken,
+    canUseAiAssistant, status, activeModel, attachments,
     addMessage, setChatStatus, updateStreaming, finalizeAssistant,
     setChatError, setChatAbortController, clearAttachments, setChatUsage, resizeInput,
     buildRepairPromptFromLiveState, triggerAutoRepair, execute,
@@ -1071,8 +1123,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     modelSupportsImages ? 'image/*' : '',
   ].filter(Boolean).join(',');
   const canAttachInput = modelSupportsFiles || modelSupportsImages;
-  const clerkEnabled = isClerkConfigured();
-  const showUpgradeNudge = Boolean(error && (error.includes('Upgrade to Pro') || error.includes('daily limit')));
+  // Detect when selected model needs a missing BYOK key (reactive state, not raw reads)
+  const modelSource = modelForUi?.source ?? 'proxy';
+  const needsAnthropicKey = modelSource === 'anthropic' && !keyStateAnthropic;
+  const needsOpenaiKey = modelSource === 'openai' && !keyStateOpenai;
+  const needsByokKey = needsAnthropicKey || needsOpenaiKey;
   const showSupportEmail = Boolean(error && error.includes('louis@ltplus.com'));
   const canContinue = Boolean(
     !isActive && (streamingContent.trim().length > 0 || lastFinishReason === 'length'),
@@ -1111,7 +1166,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           <TooltipContent>Clear</TooltipContent>
         </Tooltip>
 
-        <ModelSelector hasPro={hasPro} />
+        <ModelSelector />
         <div className="flex-1" />
 
         <Tooltip>
@@ -1128,31 +1183,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           <TooltipContent>Auto-run: {autoExecute ? 'ON' : 'OFF'}</TooltipContent>
         </Tooltip>
 
-        {clerkEnabled && (
-          <>
-            <SignedOut>
-              <SignInButton mode="modal">
-                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground">
-                  Sign in
-                </Button>
-              </SignInButton>
-            </SignedOut>
-            {!hasPro && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-xs text-muted-foreground"
-                onClick={openUpgradePage}
-              >
-                Pro
-              </Button>
-            )}
-            <SignedIn>
-              <UserButton afterSignOutUrl="/" />
-            </SignedIn>
-          </>
-        )}
-
         {onClose && (
           <Button variant="ghost" size="icon-xs" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
@@ -1161,12 +1191,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       </div>
 
       {!canUseAiAssistant && (
-        <div className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground flex items-center justify-between gap-3">
-          <span>AI assistant is available with Desktop Pro. Core viewing and scripting stay available without it.</span>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={openUpgradePage}>
-            Upgrade
-          </Button>
+        <div className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          AI assistant requires Desktop Pro. Core viewing and scripting stay available without it.
         </div>
+      )}
+
+      {/* Inline BYOK key prompt — shown when user picks a model without the matching key */}
+      {needsByokKey && canUseAiAssistant && (
+        <InlineKeyPrompt provider={needsAnthropicKey ? 'anthropic' : 'openai'} />
       )}
 
       {/* Clear confirmation */}
@@ -1273,16 +1305,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 Continue
               </Button>
             )}
-            {showUpgradeNudge && clerkEnabled && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-5 px-2 text-[10px]"
-                onClick={openUpgradePage}
-              >
-                Upgrade
-              </Button>
-            )}
             {showSupportEmail && (
               <a className="underline text-[10px]" href="mailto:louis@ltplus.com">
                 Contact support
@@ -1351,7 +1373,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             </TooltipTrigger>
             <TooltipContent>
               {!canUseAiAssistant
-                ? 'Desktop Pro required for AI assistant'
+                ? 'AI assistant not available'
                 : canAttachInput
                 ? 'Attach file or image (paste, drag & drop)'
                 : 'Selected model does not support attachments'}
@@ -1367,11 +1389,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={canUseAiAssistant ? 'Ask anything...' : 'Desktop Pro required for AI assistant'}
+            placeholder={!canUseAiAssistant ? 'AI assistant not available' : needsByokKey ? `Enter your ${needsAnthropicKey ? 'Anthropic' : 'OpenAI'} API key above` : 'Ask anything...'}
             rows={1}
             className="flex-1 resize-none rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground px-3 py-1.5 text-sm min-h-[32px] max-h-[120px] focus:outline-none focus:ring-1 focus:ring-ring"
             style={{ height: 'auto', overflow: 'hidden' }}
-            disabled={!canUseAiAssistant}
+            disabled={!canUseAiAssistant || needsByokKey}
           />
 
           {isActive ? (
@@ -1395,7 +1417,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                   variant="default"
                   size="icon-xs"
                   onClick={handleSend}
-                  disabled={!inputText.trim() || !canUseAiAssistant}
+                  disabled={!inputText.trim() || !canUseAiAssistant || needsByokKey}
                   className="shrink-0 mb-0.5"
                 >
                   <Send className="h-3.5 w-3.5" />
@@ -1434,6 +1456,90 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           )}
           <span className="text-[10px] text-muted-foreground/30">⌘L</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Inline BYOK key prompt (shown inside chat panel when key is missing) ──
+
+const PROVIDER_INFO = {
+  anthropic: {
+    label: 'Anthropic',
+    placeholder: 'sk-ant-api03-...',
+    url: 'https://console.anthropic.com/settings/keys',
+    urlLabel: 'console.anthropic.com',
+  },
+  openai: {
+    label: 'OpenAI',
+    placeholder: 'sk-...',
+    url: 'https://platform.openai.com/api-keys',
+    urlLabel: 'platform.openai.com',
+  },
+} as const;
+
+function InlineKeyPrompt({ provider }: { provider: 'anthropic' | 'openai' }) {
+  const [value, setValue] = useState('');
+  const [show, setShow] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const info = PROVIDER_INFO[provider];
+
+  const handleSave = useCallback(() => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (provider === 'anthropic') {
+      updateApiKeys({ anthropicKey: trimmed });
+    } else {
+      updateApiKeys({ openaiKey: trimmed });
+    }
+    setSaved(true);
+  }, [value, provider]);
+
+  // Brief success state before the parent unmounts this component
+  if (saved) {
+    return (
+      <div className="border-b bg-emerald-500/10 px-3 py-2 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400">
+        <Check className="h-3.5 w-3.5" />
+        <span>{info.label} key saved — ready to chat</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b bg-muted/30 px-3 py-2.5 space-y-1.5">
+      <div className="flex items-center gap-1.5 text-xs font-medium">
+        <Key className="h-3.5 w-3.5" />
+        {info.label} API key required
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Paste your key below — stored in your browser only, sent directly to {info.label}.{' '}
+        <a href={info.url} target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-0.5">
+          Get a key <ExternalLink className="h-2.5 w-2.5" />
+        </a>
+      </p>
+      <div className="flex gap-1.5">
+        <div className="relative flex-1">
+          <input
+            type={show ? 'text' : 'password'}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+            placeholder={info.placeholder}
+            autoComplete="off"
+            spellCheck={false}
+            className="w-full rounded border border-input bg-background px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring pr-7"
+          />
+          <button
+            type="button"
+            onClick={() => setShow(!show)}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            {show ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          </button>
+        </div>
+        <Button size="sm" className="h-7 px-3 text-xs" onClick={handleSave} disabled={!value.trim()}>
+          Save
+        </Button>
       </div>
     </div>
   );

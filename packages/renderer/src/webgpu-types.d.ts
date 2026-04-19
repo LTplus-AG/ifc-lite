@@ -132,6 +132,7 @@ interface GPURenderPassEncoder {
   setVertexBuffer(slot: number, buffer: GPUBuffer | null, offset?: number, size?: number): void;
   setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset?: number, size?: number): void;
   setBindGroup(index: number, bindGroup: GPUBindGroup | null, dynamicOffsets?: number[]): void;
+  setStencilReference(reference: number): void;
   draw(vertexCount: number, instanceCount?: number, firstVertex?: number, firstInstance?: number): void;
   drawIndexed(indexCount: number, instanceCount?: number, firstIndex?: number, baseVertex?: number, firstInstance?: number): void;
   end(): void;

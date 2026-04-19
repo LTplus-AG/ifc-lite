@@ -20,7 +20,7 @@ import type {
   Line2D,
   DoorOperationType,
   Bounds2D,
-} from '../types';
+} from '../types.js';
 
 /**
  * Result of door symbol generation

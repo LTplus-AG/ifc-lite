@@ -6,7 +6,7 @@
  * Vector math utilities for 2D drawing generation
  */
 
-import type { Vec2, Vec3, Point2D, Line2D, Bounds2D } from './types';
+import type { Vec2, Vec3, Point2D, Line2D, Bounds2D } from './types.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS

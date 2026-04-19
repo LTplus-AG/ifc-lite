@@ -82,7 +82,6 @@ jobs:
             "apps/viewer/src/services/desktop-native-metadata.ts"
             "apps/viewer/src/lib/desktop-product.ts"
             "apps/viewer/src/lib/desktop-entitlement.ts"
-            "apps/viewer/src/lib/desktop/ClerkDesktopEntitlementSync.tsx"
             "apps/viewer/src/lib/desktop/desktopEntitlementEvents.ts"
             "apps/viewer/src/lib/recent-files.ts"
             "apps/viewer/src/hooks/useIfc.ts"

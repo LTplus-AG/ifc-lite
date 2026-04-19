@@ -1,6 +1,6 @@
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Ray, Vec3, Intersection } from './raycaster';
-import { Raycaster } from './raycaster';
+import type { Ray, Vec3, Intersection } from './raycaster.js';
+import { Raycaster } from './raycaster.js';
 import { distance, vecEquals, closestPointOnEdgeWithT, screenToWorldRadius } from './snap-geometry-utils.js';
 import { buildGeometryCache, type MeshGeometryCache } from './snap-geometry-cache.js';
 

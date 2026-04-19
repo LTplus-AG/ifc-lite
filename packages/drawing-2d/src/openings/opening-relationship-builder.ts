@@ -14,7 +14,7 @@ import type {
   EntityMetadata,
   DoorOperationType,
   Vec3,
-} from '../types';
+} from '../types.js';
 
 /**
  * Builder for creating OpeningRelationships from raw relationship data

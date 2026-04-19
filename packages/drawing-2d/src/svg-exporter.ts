@@ -19,9 +19,9 @@ import type {
   Point2D,
   Bounds2D,
   LineCategory,
-} from './types';
-import type { HatchLine } from './hatch-generator';
-import { HatchGenerator } from './hatch-generator';
+} from './types.js';
+import type { HatchLine } from './hatch-generator.js';
+import { HatchGenerator } from './hatch-generator.js';
 import {
   getLineStyle,
   getHatchPattern,
@@ -30,8 +30,8 @@ import {
   type PaperSize,
   type DrawingScale,
   type HatchPattern,
-} from './styles';
-import { boundsSize, boundsCenter } from './math';
+} from './styles.js';
+import { boundsSize, boundsCenter } from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

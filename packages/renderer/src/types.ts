@@ -94,6 +94,34 @@ export interface BatchedMesh {
 // Section plane for clipping
 // Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
+
+export type SectionCapHatchId =
+  | 'solid'
+  | 'diagonal'
+  | 'crossHatch'
+  | 'horizontal'
+  | 'vertical'
+  | 'concrete'
+  | 'brick'
+  | 'insulation';
+
+export interface SectionCapStyleOptions {
+  /** Fill colour behind the hatch. RGBA 0-1. */
+  fillColor?: [number, number, number, number];
+  /** Hatch stroke colour. RGBA 0-1. */
+  strokeColor?: [number, number, number, number];
+  /** Hatch pattern id. */
+  pattern?: SectionCapHatchId;
+  /** Spacing between hatch lines, in screen pixels. */
+  spacingPx?: number;
+  /** Primary angle in radians. */
+  angleRad?: number;
+  /** Line width in pixels. */
+  widthPx?: number;
+  /** Secondary angle (cross-hatch). */
+  secondaryAngleRad?: number;
+}
+
 export interface SectionPlane {
   axis: SectionPlaneAxis;
   position: number; // 0-100 percentage of model bounds
@@ -101,6 +129,15 @@ export interface SectionPlane {
   flipped?: boolean; // If true, show the opposite side of the cut
   min?: number;      // Optional override for min range value
   max?: number;      // Optional override for max range value
+  /** If true (default), render filled cap surfaces with a screen-space hatch. */
+  showCap?: boolean;
+  /**
+   * If true (default), draw polygon outlines on the cut surfaces. Users
+   * can turn surfaces and outlines on/off independently from the UI.
+   */
+  showOutlines?: boolean;
+  /** Override the default cap appearance. */
+  capStyle?: SectionCapStyleOptions;
 }
 
 export type ContactShadingQuality = 'off' | 'low' | 'high';

@@ -53,8 +53,6 @@ export interface StreamOptions {
   messages: StreamMessage[];
   /** System prompt */
   system?: string;
-  /** Auth JWT */
-  authToken?: string | null;
   /** AbortSignal for cancellation */
   signal?: AbortSignal;
   /** Called for each text chunk as it arrives */
@@ -121,12 +119,9 @@ export function drainSseBuffer(buffer: string, flush: boolean = false): { events
  * Fetch current usage snapshot without sending a chat message.
  * Used for instant UI hydration and periodic refresh.
  */
-export async function fetchUsageSnapshot(proxyUrl: string, authToken?: string | null): Promise<UsageInfo | null> {
+export async function fetchUsageSnapshot(proxyUrl: string): Promise<UsageInfo | null> {
   const isDev = Boolean((import.meta as unknown as { env?: Record<string, unknown> }).env?.DEV);
   const headers: Record<string, string> = {};
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
 
   const snapshotUrl = `${proxyUrl}${proxyUrl.includes('?') ? '&' : '?'}usage=1`;
   const appSnapshotUrl = '/api/chat?usage=1';
@@ -165,15 +160,12 @@ export async function fetchUsageSnapshot(proxyUrl: string, authToken?: string | 
  * Parses SSE format (data: {...}\n\n).
  */
 export async function streamChat(options: StreamOptions): Promise<void> {
-  const { proxyUrl, model, messages, system, authToken, signal, onChunk, onComplete, onError, onUsageInfo, onFinishReason } = options;
+  const { proxyUrl, model, messages, system, signal, onChunk, onComplete, onError, onUsageInfo, onFinishReason } = options;
   const isDev = Boolean((import.meta as unknown as { env?: Record<string, unknown> }).env?.DEV);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
 
   const requestBody = JSON.stringify({ messages, model, system });
   const fetchChat = async (url: string) => {
@@ -255,21 +247,13 @@ export async function streamChat(options: StreamOptions): Promise<void> {
       };
       errorDetail = errorBody.error || errorDetail;
 
-      if (response.status === 403 && errorBody.upgrade) {
-        errorDetail = 'Upgrade to Pro to use this model.';
-      }
-
       if (response.status === 401) {
-        errorDetail = 'Authentication expired. Please sign out and sign in again.';
+        errorDetail = 'Authentication error.';
       }
 
       if (response.status === 429) {
-        if (errorBody.type === 'credits') {
-          const contactEmail = errorBody.contactEmail as string | undefined;
-          const contactSuffix = contactEmail ? ` Need more? Reach out at ${contactEmail}.` : '';
-          errorDetail = `Monthly credits used up. Resets ${errorBody.resetAt ? new Date(errorBody.resetAt).toLocaleDateString() : 'next month'}.${contactSuffix}`;
-        } else if (errorBody.type === 'request_cap') {
-          errorDetail = errorBody.error || 'Daily limit reached. Upgrade to Pro for more.';
+        if (errorBody.type === 'request_cap') {
+          errorDetail = errorBody.error || 'Daily limit reached. Add your own API key in Settings for unlimited access.';
         } else {
           errorDetail = errorBody.error || 'Limit reached. Please try again later.';
         }

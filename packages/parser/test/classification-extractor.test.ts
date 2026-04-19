@@ -14,8 +14,8 @@ import {
   getClassificationPath,
   groupElementsByClassification,
   getClassificationSystemName,
-} from '../src/classification-extractor';
-import type { IfcEntity } from '../src/entity-extractor';
+} from '../src/classification-extractor.js';
+import type { IfcEntity } from '../src/entity-extractor.js';
 
 describe('Classification Extractor', () => {
   it('should extract IfcClassification', () => {

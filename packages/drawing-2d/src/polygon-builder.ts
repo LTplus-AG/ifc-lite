@@ -12,8 +12,8 @@
  * - Floating point tolerance for vertex matching
  */
 
-import type { Point2D, Polygon2D, CutSegment, DrawingPolygon, EntityKey } from './types';
-import { makeEntityKey } from './types';
+import type { Point2D, Polygon2D, CutSegment, DrawingPolygon, EntityKey } from './types.js';
+import { makeEntityKey } from './types.js';
 import {
   EPSILON,
   point2DDistance,
@@ -21,7 +21,7 @@ import {
   polygonSignedArea,
   ensureCCW,
   ensureCW,
-} from './math';
+} from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

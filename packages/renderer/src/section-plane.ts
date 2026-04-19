@@ -6,6 +6,8 @@
  * Section plane renderer - renders a visible plane at the section cut location
  */
 
+import { PIPELINE_CONSTANTS } from './constants.js';
+
 export interface SectionPlaneRenderOptions {
   axis: 'down' | 'front' | 'side';  // Semantic axis names: down (Y), front (Z), side (X)
   position: number; // 0-100 percentage
@@ -79,8 +81,15 @@ export class SectionPlaneRenderer {
           return output;
         }
 
+        // Two outputs so the pipeline matches the main pass's two colour
+        // attachments. objectId is masked off at the pipeline level.
+        struct FragOut {
+          @location(0) color:    vec4<f32>,
+          @location(1) objectId: vec4<f32>,
+        }
+
         @fragment
-        fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+        fn fs_main(input: VertexOutput) -> FragOut {
           // Create fine grid pattern
           let gridSize = 0.01;           // Fine grid cells (100 divisions)
           let lineWidth = 0.001;         // Very thin lines
@@ -127,7 +136,10 @@ export class SectionPlaneRenderer {
           // Clamp alpha
           color.a = min(color.a, 0.5);
 
-          return color;
+          var out: FragOut;
+          out.color    = color;
+          out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+          return out;
         }
       `,
     });
@@ -151,21 +163,34 @@ export class SectionPlaneRenderer {
       fragment: {
         module: shaderModule,
         entryPoint: 'fs_main',
-        targets: [{
-          format: this.format,
-          blend: {
-            color: {
-              srcFactor: 'src-alpha' as const,
-              dstFactor: 'one-minus-src-alpha' as const,
-              operation: 'add' as const,
-            },
-            alpha: {
-              srcFactor: 'one' as const,
-              dstFactor: 'one-minus-src-alpha' as const,
-              operation: 'add' as const,
+        // The main render pass has two colour attachments (main colour +
+        // the picker's objectId texture). WebGPU requires every pipeline
+        // used inside a pass to declare exactly the same target count and
+        // formats. The preview plane only paints into the main colour
+        // target — the objectId target is declared with writeMask 0 so
+        // cap-less picking IDs underneath are preserved. Without this,
+        // `setPipeline` raises "Incompatible color attachments at
+        // indices []: RenderPass uses formats [Bgra8Unorm, Rgba8Unorm]
+        // but RenderPipeline uses formats [Bgra8Unorm]" and the whole
+        // frame is dropped.
+        targets: [
+          {
+            format: this.format,
+            blend: {
+              color: {
+                srcFactor: 'src-alpha' as const,
+                dstFactor: 'one-minus-src-alpha' as const,
+                operation: 'add' as const,
+              },
+              alpha: {
+                srcFactor: 'one' as const,
+                dstFactor: 'one-minus-src-alpha' as const,
+                operation: 'add' as const,
+              },
             },
           },
-        }],
+          { format: 'rgba8unorm' as const, writeMask: 0 },
+        ],
       },
       primitive: {
         topology: 'triangle-list' as const,
@@ -180,7 +205,7 @@ export class SectionPlaneRenderer {
     this.previewPipeline = this.device.createRenderPipeline({
       ...pipelineBase,
       depthStencil: {
-        format: 'depth32float',
+        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
         depthCompare: 'greater',  // Only draw where plane is behind geometry (empty space)
       },
@@ -190,7 +215,7 @@ export class SectionPlaneRenderer {
     this.cutPipeline = this.device.createRenderPipeline({
       ...pipelineBase,
       depthStencil: {
-        format: 'depth32float',
+        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
         depthCompare: 'always',  // Always draw on top
       },

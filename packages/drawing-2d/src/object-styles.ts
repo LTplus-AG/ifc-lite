@@ -15,7 +15,7 @@
  *   - Fill Pattern   : hatch applied to the cut section face
  */
 
-import type { HatchPatternType } from './styles';
+import type { HatchPatternType } from './styles.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

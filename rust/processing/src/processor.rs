@@ -108,6 +108,63 @@ fn translation_is_nonidentity(t: (f64, f64, f64)) -> bool {
         || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
 }
 
+/// Apply the inverse of the site placement's 3×3 rotation to in-place `f32`
+/// triplets (positions or normals). Translation is handled separately via the
+/// router's `rtc_offset`; this only rotates vertices into the site-local axis
+/// frame when that frame is non-identity.
+fn apply_inverse_rotation_in_place(values: &mut [f32], column_major_matrix: &[f64]) {
+    if values.len() < 3 || column_major_matrix.len() < 16 {
+        return;
+    }
+
+    let r00 = column_major_matrix[0];
+    let r10 = column_major_matrix[1];
+    let r20 = column_major_matrix[2];
+    let r01 = column_major_matrix[4];
+    let r11 = column_major_matrix[5];
+    let r21 = column_major_matrix[6];
+    let r02 = column_major_matrix[8];
+    let r12 = column_major_matrix[9];
+    let r22 = column_major_matrix[10];
+
+    let is_identity = (r00 - 1.0).abs() < PLACEMENT_IDENTITY_EPSILON
+        && r10.abs() < PLACEMENT_IDENTITY_EPSILON
+        && r20.abs() < PLACEMENT_IDENTITY_EPSILON
+        && r01.abs() < PLACEMENT_IDENTITY_EPSILON
+        && (r11 - 1.0).abs() < PLACEMENT_IDENTITY_EPSILON
+        && r21.abs() < PLACEMENT_IDENTITY_EPSILON
+        && r02.abs() < PLACEMENT_IDENTITY_EPSILON
+        && r12.abs() < PLACEMENT_IDENTITY_EPSILON
+        && (r22 - 1.0).abs() < PLACEMENT_IDENTITY_EPSILON;
+    if is_identity {
+        return;
+    }
+
+    for chunk in values.chunks_exact_mut(3) {
+        let x = chunk[0] as f64;
+        let y = chunk[1] as f64;
+        let z = chunk[2] as f64;
+        chunk[0] = (r00 * x + r10 * y + r20 * z) as f32;
+        chunk[1] = (r01 * x + r11 * y + r21 * z) as f32;
+        chunk[2] = (r02 * x + r12 * y + r22 * z) as f32;
+    }
+}
+
+/// Rotate a mesh into the site-local axis frame. Only runs for the
+/// `site_local` coordinate-space tier; translation alignment happens upstream
+/// via the router's RTC subtraction.
+///
+/// Exposed so the streaming server can apply the same rotation to meshes it
+/// produces outside this crate's parallel loop.
+pub fn convert_mesh_to_site_local(mesh: &mut MeshData, site_transform: Option<&Vec<f64>>) {
+    let Some(site_transform) = site_transform else {
+        return;
+    };
+
+    apply_inverse_rotation_in_place(&mut mesh.positions, site_transform);
+    apply_inverse_rotation_in_place(&mut mesh.normals, site_transform);
+}
+
 /// Job for processing a single entity.
 struct EntityJob {
     id: u32,
@@ -1196,6 +1253,12 @@ pub fn process_geometry_streaming_filtered_with_options(
                 options.include_presentation_layers,
             );
         }
+        let site_local_rotation: Option<&Vec<f64>> =
+            if coord_space == SITE_LOCAL_MESH_COORDINATE_SPACE {
+                site_transform.as_ref()
+            } else {
+                None
+            };
         let chunk_meshes: Vec<MeshData> = jobs_chunk
             .par_iter()
             .flat_map_iter(|job| {
@@ -1208,6 +1271,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     void_index_arc.as_ref(),
                     skipped_entity_ids.as_ref(),
                     geometry_style_index.as_ref(),
+                    site_local_rotation,
                 )
             })
             .collect();
@@ -1305,6 +1369,9 @@ fn process_entity_job(
     void_index: &FxHashMap<u32, Vec<u32>>,
     skipped_entity_ids: &HashSet<u32>,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
+    /// Present only when the selected coordinate space is `site_local`;
+    /// rotates mesh vertices into the site's axis frame.
+    site_local_rotation: Option<&Vec<f64>>,
 ) -> Vec<MeshData> {
     if skipped_entity_ids.contains(&job.id) {
         return Vec::new();
@@ -1353,7 +1420,7 @@ fn process_entity_job(
                         infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id)
                     });
 
-                    let mesh_data = MeshData::new(
+                    let mut mesh_data = MeshData::new(
                         job.id,
                         job.ifc_type.name().to_string(),
                         sub_mesh.positions,
@@ -1364,6 +1431,7 @@ fn process_entity_job(
                     .with_element_metadata(global_id.clone(), name.clone(), presentation_layer.clone())
                     .with_properties(space_zone_properties.clone())
                     .with_style_metadata(material_name, Some(sub.geometry_id));
+                    convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
                     out.push(mesh_data);
                 }
 
@@ -1391,7 +1459,7 @@ fn process_entity_job(
                 calculate_normals(&mut mesh);
             }
 
-            let mesh_data = MeshData::new(
+            let mut mesh_data = MeshData::new(
                 job.id,
                 job.ifc_type.name().to_string(),
                 mesh.positions,
@@ -1401,6 +1469,7 @@ fn process_entity_job(
             )
             .with_element_metadata(global_id, name, presentation_layer)
             .with_properties(space_zone_properties);
+            convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
             return vec![mesh_data];
         }
     }

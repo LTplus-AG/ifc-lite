@@ -126,7 +126,15 @@ export interface FileAttachment {
   isImage?: boolean;
 }
 
-export type ModelTier = 'free' | 'pro';
+export type ModelTier = 'free' | 'byok';
+
+/**
+ * Where requests for this model are routed.
+ * - 'proxy': through the server-side proxy (free models)
+ * - 'anthropic': direct browser-to-Anthropic API (user's own key)
+ * - 'openai': direct browser-to-OpenAI API (user's own key)
+ */
+export type ModelSource = 'proxy' | 'anthropic' | 'openai';
 
 /** Relative cost indicator for paid models */
 export type ModelCost = '$' | '$$' | '$$$';
@@ -136,6 +144,8 @@ export interface LLMModel {
   name: string;
   provider: string;
   tier: ModelTier;
+  /** Where requests are routed — proxy (free) or direct to provider (BYOK) */
+  source: ModelSource;
   contextWindow: number;
   /** Whether this model accepts image inputs in chat content */
   supportsImages: boolean;
@@ -143,8 +153,10 @@ export interface LLMModel {
   supportsFileAttachments: boolean;
   /** Notes shown in model selector */
   notes?: string;
-  /** Relative cost indicator (pro models only) */
+  /** Relative cost indicator (BYOK models only) */
   cost?: ModelCost;
+  /** OpenAI API variant: 'chat' (default) or 'responses' (Codex-style models) */
+  openaiApi?: 'chat' | 'responses';
 }
 
 export type ChatStatus = 'idle' | 'sending' | 'streaming' | 'error';

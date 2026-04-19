@@ -15,7 +15,12 @@ export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
-export type { Section2DOverlayOptions, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+// Section cap styling (hatch pattern ids + default colours). The cap itself
+// is now rendered by Section2DOverlayRenderer's fill pass; this module just
+// holds the styling primitives shared with the store and UI.
+export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
+export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
+export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
@@ -62,6 +67,7 @@ import type {
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
+import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
 import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
@@ -127,6 +133,10 @@ export class Renderer {
     // Dirty flag: set by requestRender(), consumed by the animation loop.
     // Centralises all render scheduling — callers never call render() directly.
     private _renderRequested: boolean = false;
+
+    // One-shot log guard — prints Y-up clip bounds on first section-enable so
+    // users can confirm the slider is operating on the intended range.
+    private _loggedSectionBounds: boolean = false;
 
     // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
     // A single 192-byte uniform buffer (48 floats) is reused for all batches/meshes within a frame
@@ -792,23 +802,17 @@ export class Renderer {
             }
 
             if (options.sectionPlane) {
-                // Get model bounds from ALL geometry sources: individual meshes AND batched meshes
+                // Get model bounds from batched meshes. We deliberately EXCLUDE
+                // individual meshes (`this.scene.getMeshes()`) here: those are
+                // created lazily for selection highlighting and can live at
+                // unexpected world positions (e.g. legacy transforms, overlay
+                // helpers), which would inflate the bounds range and make
+                // "1% of the slider" span the entire real model — producing
+                // the reported symptom where the model pops from fully visible
+                // to fully invisible across a tiny slider range.
                 const boundsMin = { x: Infinity, y: Infinity, z: Infinity };
                 const boundsMax = { x: -Infinity, y: -Infinity, z: -Infinity };
 
-                // Check individual meshes
-                for (const mesh of meshes) {
-                    if (mesh.bounds) {
-                        boundsMin.x = Math.min(boundsMin.x, mesh.bounds.min[0]);
-                        boundsMin.y = Math.min(boundsMin.y, mesh.bounds.min[1]);
-                        boundsMin.z = Math.min(boundsMin.z, mesh.bounds.min[2]);
-                        boundsMax.x = Math.max(boundsMax.x, mesh.bounds.max[0]);
-                        boundsMax.y = Math.max(boundsMax.y, mesh.bounds.max[1]);
-                        boundsMax.z = Math.max(boundsMax.z, mesh.bounds.max[2]);
-                    }
-                }
-
-                // Check batched meshes (most geometry is here!)
                 const batchedMeshes = this.scene.getBatchedMeshes();
                 for (const batch of batchedMeshes) {
                     if (batch.bounds) {
@@ -818,6 +822,22 @@ export class Renderer {
                         boundsMax.x = Math.max(boundsMax.x, batch.bounds.max[0]);
                         boundsMax.y = Math.max(boundsMax.y, batch.bounds.max[1]);
                         boundsMax.z = Math.max(boundsMax.z, batch.bounds.max[2]);
+                    }
+                }
+
+                // If no batched meshes have bounds yet (streaming, degenerate
+                // models), fall back to individual meshes so at least the
+                // slider has a workable range.
+                if (!Number.isFinite(boundsMin.x)) {
+                    for (const mesh of meshes) {
+                        if (mesh.bounds) {
+                            boundsMin.x = Math.min(boundsMin.x, mesh.bounds.min[0]);
+                            boundsMin.y = Math.min(boundsMin.y, mesh.bounds.min[1]);
+                            boundsMin.z = Math.min(boundsMin.z, mesh.bounds.min[2]);
+                            boundsMax.x = Math.max(boundsMax.x, mesh.bounds.max[0]);
+                            boundsMax.y = Math.max(boundsMax.y, mesh.bounds.max[1]);
+                            boundsMax.z = Math.max(boundsMax.z, mesh.bounds.max[2]);
+                        }
                     }
                 }
 
@@ -871,17 +891,62 @@ export class Renderer {
                         }
                     }
 
-                    // Get axis-specific range based on semantic axis
-                    // Use min/max overrides from sectionPlane if provided (storey-based range)
+                    // Get axis-specific range. The renderer's own `boundsMin/Max`
+                    // are computed from the GPU vertex buffers this frame, so
+                    // they are guaranteed to be in the same Y-up world space as
+                    // `input.worldPos` in the shader. `options.sectionPlane.min/max`
+                    // comes from the UI via `coordinateInfo.shiftedBounds` and can
+                    // be stale during streaming or outright wrong during model
+                    // load (initialised to {0,0,0} before the first bounds update)
+                    // — using those directly was the cause of the "slider moves
+                    // 1% and the whole model disappears" bug.
+                    //
+                    // Policy: always use the renderer's own bounds for the Y-up
+                    // range. Only honour the UI override when it is a valid,
+                    // non-degenerate range that lies INSIDE the actual mesh
+                    // bounds (e.g. storey filtering from the level picker).
                     const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
-                    const minVal = options.sectionPlane.min ?? boundsMin[axisIdx];
-                    const maxVal = options.sectionPlane.max ?? boundsMax[axisIdx];
+                    let minVal = boundsMin[axisIdx];
+                    let maxVal = boundsMax[axisIdx];
+                    const uiMin = options.sectionPlane.min;
+                    const uiMax = options.sectionPlane.max;
+                    if (
+                        Number.isFinite(uiMin) &&
+                        Number.isFinite(uiMax) &&
+                        (uiMax as number) - (uiMin as number) > 1e-6 &&
+                        (uiMin as number) >= minVal - 1e-3 &&
+                        (uiMax as number) <= maxVal + 1e-3
+                    ) {
+                        minVal = uiMin as number;
+                        maxVal = uiMax as number;
+                    }
 
                     // Calculate plane distance from position percentage
                     const range = maxVal - minVal;
                     const distance = minVal + (options.sectionPlane.position / 100) * range;
 
                     sectionPlaneData = { normal, distance, enabled: true };
+
+                    // One-shot diagnostic: when section first becomes active,
+                    // log the exact bounds + distance the shader will use.
+                    // This is the fastest way to confirm "bounds mismatch" bugs
+                    // without asking the user to run a debugger.
+                    if (!this._loggedSectionBounds) {
+                        this._loggedSectionBounds = true;
+                        console.info('[Section] Y-up bounds used for clip:', {
+                            axis: options.sectionPlane.axis,
+                            axisIdx,
+                            bounds: {
+                                min: { x: boundsMin.x, y: boundsMin.y, z: boundsMin.z },
+                                max: { x: boundsMax.x, y: boundsMax.y, z: boundsMax.z },
+                            },
+                            uiOverride: { min: uiMin, max: uiMax },
+                            used: { min: minVal, max: maxVal },
+                            position: options.sectionPlane.position,
+                            distance,
+                            batchedMeshCount: this.scene.getBatchedMeshes().length,
+                        });
+                    }
                 }
             }
 
@@ -919,8 +984,11 @@ export class Renderer {
                     }
 
                     // Flags (offset 44-47 as u32)
+                    // flags.y packs: bit 0 = sectionEnabled, bit 1 = flipped
                     meshFlags[0] = isSelected ? 1 : 0;
-                    meshFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                    meshFlags[1] =
+                        (sectionPlaneData?.enabled ? 1 : 0) |
+                        (options.sectionPlane?.flipped ? 2 : 0);
                     meshFlags[2] = edgeEnabledU32;
                     meshFlags[3] = edgeIntensityMilliU32;
 
@@ -958,6 +1026,11 @@ export class Renderer {
                     depthClearValue: 0.0,  // Reverse-Z: clear to 0.0 (far plane)
                     depthLoadOp: 'clear',
                     depthStoreOp: 'store',
+                    // Stencil is cleared here and preserved for the cap pass
+                    // that runs right after in the same frame.
+                    stencilClearValue: 0,
+                    stencilLoadOp: 'clear',
+                    stencilStoreOp: 'store',
                 },
             });
 
@@ -1093,8 +1166,16 @@ export class Renderer {
                 } else {
                     tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                 }
-                tplFlags[0] = 0; // not selected
-                tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                // flags layout (main shader):
+                //   x = isSelected (0/1)
+                //   y = sectionEnabled bitfield:
+                //       bit 0 = enabled, bit 1 = flipped
+                //   z = edgeEnabled (0/1)
+                //   w = edgeIntensityMilli
+                tplFlags[0] = 0;
+                tplFlags[1] =
+                    (sectionPlaneData?.enabled ? 1 : 0) |
+                    (options.sectionPlane?.flipped ? 2 : 0);
                 tplFlags[2] = edgeEnabledU32;
                 tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1125,7 +1206,11 @@ export class Renderer {
 
                 // PERFORMANCE FIX: Render partially visible batches as sub-batches (not individual meshes!)
                 // This is the key optimization: instead of 10,000+ individual draw calls,
-                // we create cached sub-batches with only visible elements and render them as single draw calls
+                // we create cached sub-batches with only visible elements and render them as single draw calls.
+                // We also collect resolved opaque sub-batches so the section cap pass below can
+                // include them in its parity count — otherwise hidden/isolated opaque geometry
+                // would show open, un-capped cut holes.
+                const opaqueSubBatches: typeof allBatchedMeshes = [];
                 if (partiallyVisibleBatches.length > 0) {
                     for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
@@ -1144,6 +1229,7 @@ export class Renderer {
                                 pass.setPipeline(this.pipeline.getTransparentPipeline());
                             } else {
                                 pass.setPipeline(this.pipeline.getPipeline());
+                                opaqueSubBatches.push(subBatch);
                             }
                             // Render the sub-batch as a single draw call
                             renderBatch(subBatch);
@@ -1165,6 +1251,16 @@ export class Renderer {
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
+
+                // Filled, hatched 3D cut surfaces are now rendered by
+                // Section2DOverlayRenderer using the exact polygons from
+                // SectionCutter (triangle-plane intersection). The old
+                // stencil-parity SectionCapRenderer is no longer in the
+                // render loop — parity XOR on non-manifold IFC geometry
+                // leaks stencil bits into empty sky, and no amount of
+                // bounded quads or second-bit gating fixed that robustly.
+                // See the 2D-overlay draw call further below in this same
+                // render pass, which now emits the cap.
 
                 // Prepare selected meshes once, then render them LAST so transparent batches
                 // don't overwrite highlight color (glass otherwise appears unhighlighted).
@@ -1242,7 +1338,9 @@ export class Renderer {
                             tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                         }
                         tplFlags[0] = 0;
-                        tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                        tplFlags[1] =
+                            (sectionPlaneData?.enabled ? 1 : 0) |
+                            (options.sectionPlane?.flipped ? 2 : 0);
                         tplFlags[2] = edgeEnabledU32;
                         tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1296,7 +1394,9 @@ export class Renderer {
                         tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                     }
                     tplFlags[0] = 1; // isSelected
-                    tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                    tplFlags[1] =
+                        (sectionPlaneData?.enabled ? 1 : 0) |
+                        (options.sectionPlane?.flipped ? 2 : 0);
                     tplFlags[2] = edgeEnabledU32;
                     tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1343,7 +1443,12 @@ export class Renderer {
                 const instancedMeshes = this.scene.getInstancedMeshes();
                 if (instancedMeshes.length > 0) {
                     // Update instanced pipeline uniforms
-                    this.instancedPipeline.updateUniforms(viewProj, sectionPlaneData);
+                    this.instancedPipeline.updateUniforms(
+                        viewProj,
+                        sectionPlaneData
+                            ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
+                            : undefined,
+                    );
 
                     // Switch to instanced pipeline
                     pass.setPipeline(this.instancedPipeline.getPipeline());
@@ -1379,17 +1484,40 @@ export class Renderer {
                     }
                 );
 
-                // Draw 2D section overlay on the section plane (when section is active, not preview)
+                // Draw 2D section overlay on the section plane (when section is
+                // active, not preview). The overlay is also the 3D SECTION CAP:
+                // its polygon fills come from `SectionCutter` (exact triangle-
+                // plane intersection), and the new fill shader applies the
+                // user's screen-space hatch + colour directly on those
+                // polygons. This replaces the old stencil-parity cap, which
+                // bled hatch into empty sky on non-manifold IFC geometry —
+                // the polygons here are mathematically correct, so the cap
+                // silhouette matches the 2D drawing exactly.
                 if (options.sectionPlane.enabled && this.section2DOverlayRenderer?.hasGeometry()) {
+                    const o = options.sectionPlane;
+                    const showFills    = o.showCap !== false;
+                    const showOutlines = o.showOutlines !== false;
+                    const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
                     this.section2DOverlayRenderer.draw(
                         pass,
                         {
-                            axis: options.sectionPlane.axis,
-                            position: options.sectionPlane.position,
+                            axis: o.axis,
+                            position: o.position,
                             bounds: modelBounds,
                             viewProj,
-                            min: options.sectionPlane.min,
-                            max: options.sectionPlane.max,
+                            min: o.min,
+                            max: o.max,
+                            showFills,
+                            showOutlines,
+                            capStyle: showFills ? {
+                                fillColor:   style.fillColor,
+                                strokeColor: style.strokeColor,
+                                patternId:   HATCH_PATTERN_IDS[style.pattern],
+                                spacingPx:   style.spacingPx,
+                                angleRad:    style.angleRad,
+                                widthPx:     style.widthPx,
+                                secondaryAngleRad: style.secondaryAngleRad,
+                            } : undefined,
                         }
                     );
                 }
@@ -1407,7 +1535,9 @@ export class Renderer {
                 });
                 this.postProcessor.apply(encoder, {
                     targetView: textureView,
-                    depthView: this.pipeline.getDepthTextureView(),
+                    // Depth-only view required because depth24plus-stencil8
+                    // cannot be sampled as texture_depth_* with aspect 'all'.
+                    depthView: this.pipeline.getDepthOnlyTextureView(),
                     objectIdView: this.pipeline.getObjectIdTextureView(),
                     contactQuality: contactEnabled && visualEnhancement.contactShading.quality === 'high' ? 'high' : 'low',
                     radius: Math.min(3.0, Math.max(1.0, visualEnhancement.contactShading.radius)),
@@ -1665,6 +1795,8 @@ export class Renderer {
     destroy(): void {
         // Scene mesh GPU buffers
         this.scene.clear();
+        // Re-arm the section-bounds diagnostic log for the next model.
+        this._loggedSectionBounds = false;
 
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();

@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractMaterials, getMaterialForElement, getMaterialNameForElement } from '../src/material-extractor';
-import type { IfcEntity } from '../src/entity-extractor';
+import { extractMaterials, getMaterialForElement, getMaterialNameForElement } from '../src/material-extractor.js';
+import type { IfcEntity } from '../src/entity-extractor.js';
 
 describe('Material Extractor', () => {
   it('should extract IfcMaterial', () => {

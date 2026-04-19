@@ -7,9 +7,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractEntityAttributesOnDemand } from '../src/columnar-parser';
-import type { IfcDataStore } from '../src/columnar-parser';
-import type { EntityRef } from '../src/types';
+import { extractEntityAttributesOnDemand } from '../src/columnar-parser.js';
+import type { IfcDataStore } from '../src/columnar-parser.js';
+import type { EntityRef } from '../src/types.js';
 
 describe('Entity Attribute Extraction', () => {
   it('should extract GlobalId, Name, Description, and ObjectType from IFC entity', () => {

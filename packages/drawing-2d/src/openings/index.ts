@@ -6,12 +6,12 @@
  * Opening handling for architectural 2D drawings
  */
 
-export { OpeningRelationshipBuilder } from './opening-relationship-builder';
-export { OpeningFilter } from './opening-filter';
+export { OpeningRelationshipBuilder } from './opening-relationship-builder.js';
+export { OpeningFilter } from './opening-filter.js';
 export {
   buildOpeningRelationships,
   getOpeningsForHost,
   getFillingElement,
   isOpeningElement,
   isDoorOrWindow,
-} from './opening-utils';
+} from './opening-utils.js';

@@ -6,6 +6,7 @@
 
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, Plane, Triangle, TriangleVec};
+use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
@@ -105,6 +106,32 @@ impl ClipBuffers {
         self.result.clear();
         self.remaining.clear();
         self.next_remaining.clear();
+    }
+}
+
+/// Pre-computed per-element void subtraction data.
+///
+/// Building this is expensive: `classify_openings` re-runs `process_element`
+/// on each `IfcOpeningElement`, and clipping-plane extraction resolves the
+/// element's representation. Once built, it can be reused across every
+/// sub-mesh of the same element without re-doing any of that work, so the
+/// per-sub-mesh void path in
+/// [`GeometryRouter::process_element_with_submeshes_and_voids`] pays the
+/// classification cost once per element rather than once per sub-mesh.
+pub(super) struct VoidContext {
+    /// All classified openings. The diagonal-opening pass needs the raw list
+    /// (unmerged) so its per-item box rotation stays accurate.
+    openings: Vec<OpeningType>,
+    /// Rectangular openings merged into larger boxes to prevent O(2^N)
+    /// triangle growth when many adjacent openings tile a surface.
+    merged_openings: Vec<OpeningType>,
+    /// Clipping planes (e.g. roof clips) already transformed to world space.
+    world_clipping_planes: Vec<(Point3<f64>, Vector3<f64>, bool)>,
+}
+
+impl VoidContext {
+    fn is_noop(&self) -> bool {
+        self.openings.is_empty() && self.world_clipping_planes.is_empty()
     }
 }
 
@@ -490,10 +517,48 @@ impl GeometryRouter {
                 return self.process_element(element, decoder);
             }
         };
-        use nalgebra::Vector3;
+
+        Ok(self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder))
+    }
+
+    /// Apply opening subtraction and clipping planes to an already-built mesh.
+    ///
+    /// Shared entry point used by both the single-mesh path
+    /// ([`process_element_with_voids`]) and the per-sub-mesh path
+    /// ([`process_element_with_submeshes_and_voids`]). The incoming mesh is
+    /// expected to be in the same (world) coordinate space as the element —
+    /// i.e. placement already applied — because opening and clip geometry are
+    /// resolved in world coordinates.
+    ///
+    /// Returns the input mesh unchanged when it is invalid or when no
+    /// openings/clips apply, so callers never lose their input on a
+    /// degenerate opening set.
+    pub(super) fn apply_voids_to_mesh(
+        &self,
+        mesh: Mesh,
+        element: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+    ) -> Mesh {
+        let ctx = self.build_void_context(element, opening_ids, decoder);
+        self.apply_void_context(mesh, &ctx)
+    }
+
+    /// Classify openings and extract clipping planes for an element.
+    ///
+    /// This is the expensive half of void subtraction — it decodes every
+    /// `IfcOpeningElement` (running `process_element` on each), classifies
+    /// them as rectangular / diagonal / non-rectangular, merges adjacent
+    /// rectangles, and transforms clipping planes to world space. The
+    /// output is reusable across every sub-mesh of the same element.
+    pub(super) fn build_void_context(
+        &self,
+        element: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+    ) -> VoidContext {
         let world_clipping_planes: Vec<(Point3<f64>, Vector3<f64>, bool)> =
             if self.has_clipping_planes(element, decoder) {
-                // Get element's ObjectPlacement transform (for clipping planes)
                 let mut object_placement_transform =
                     match self.get_placement_transform_from_element(element, decoder) {
                         Ok(t) => t,
@@ -501,13 +566,11 @@ impl GeometryRouter {
                     };
                 self.scale_transform(&mut object_placement_transform);
 
-                // Extract clipping planes (for roof clips)
                 let clipping_planes = match self.extract_base_profile_and_clips(element, decoder) {
                     Ok((_profile, _depth, _axis, _origin, _transform, clips)) => clips,
                     Err(_) => Vec::new(),
                 };
 
-                // Transform clipping planes to world coordinates
                 clipping_planes
                     .iter()
                     .map(|(point, normal, agreement)| {
@@ -522,16 +585,31 @@ impl GeometryRouter {
             };
 
         let openings = self.classify_openings(opening_ids, decoder);
+        let merged_openings = Self::merge_rectangular_openings(&openings);
 
-        if openings.is_empty() {
-            return self.process_element(element, decoder);
+        VoidContext {
+            openings,
+            merged_openings,
+            world_clipping_planes,
+        }
+    }
+
+    /// Apply a pre-built `VoidContext` to a single mesh.
+    ///
+    /// This is the cheap per-mesh half of void subtraction: it re-reads the
+    /// mesh bounds (which differ per sub-mesh), extends rectangular openings
+    /// along their extrusion axis so they fully penetrate the mesh, runs the
+    /// batched rectangular clip, then applies the CSG and clipping-plane
+    /// passes. All the classification work has already been done in
+    /// [`GeometryRouter::build_void_context`].
+    pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext) -> Mesh {
+        if ctx.is_noop() {
+            return mesh;
         }
 
-        use crate::csg::ClippingProcessor;
         let clipper = ClippingProcessor::new();
-        let mut result = wall_mesh;
+        let mut result = mesh;
 
-        // Get wall bounds for clamping opening faces (from result before cutting)
         let (wall_min_f32, wall_max_f32) = result.bounds();
         let wall_min = Point3::new(
             wall_min_f32.x as f64,
@@ -544,35 +622,23 @@ impl GeometryRouter {
             wall_max_f32.z as f64,
         );
 
-        // Validate wall mesh ONCE before CSG operations (not per-iteration)
-        // This avoids O(n) validation on every loop iteration
         let wall_valid = !result.is_empty()
             && result.positions.iter().all(|&v| v.is_finite())
             && result.triangle_count() >= 4;
 
         if !wall_valid {
-            // Wall mesh is invalid, return as-is
-            return Ok(result);
+            return result;
         }
 
-        // Track CSG operations to prevent excessive complexity
         let mut csg_operation_count = 0;
-        const MAX_CSG_OPERATIONS: usize = 10; // Limit to prevent runaway CSG
+        const MAX_CSG_OPERATIONS: usize = 10;
 
-        self.apply_diagonal_openings(&mut result, &openings, &wall_min, &wall_max);
+        self.apply_diagonal_openings(&mut result, &ctx.openings, &wall_min, &wall_max);
 
-        // Merge adjacent/overlapping rectangular openings to prevent exponential
-        // triangle growth. Without merging, N adjacent openings create O(2^N)
-        // boundary triangles because each clip splits triangles from prior clips.
-        let merged_openings = Self::merge_rectangular_openings(&openings);
-        // Collect all rectangular boxes for single-pass multi-box clipping.
-        // Sequential one-by-one clipping causes exponential triangle growth O(2^N)
-        // because each clip creates boundary triangles that the next clip re-splits.
-        // Single-pass: each triangle is tested against ALL boxes once.
         let mut rect_boxes: Vec<(Point3<f64>, Point3<f64>)> = Vec::new();
         let mut non_rect_openings: Vec<&OpeningType> = Vec::new();
 
-        for opening in &merged_openings {
+        for opening in &ctx.merged_openings {
             match opening {
                 OpeningType::Rectangular(open_min, open_max, extrusion_dir) => {
                     let (final_min, final_max) = if let Some(dir) = extrusion_dir {
@@ -590,46 +656,26 @@ impl GeometryRouter {
             }
         }
 
-        // Single-pass multi-box rectangular clipping
         if !rect_boxes.is_empty() {
             result = self.cut_multiple_rectangular_openings(&result, &rect_boxes);
         }
 
-        // Process remaining non-rectangular openings only
         for opening in &non_rect_openings {
             match *opening {
-                OpeningType::Rectangular(..) | OpeningType::DiagonalRectangular(..) => {
-                    // Already handled above
-                }
+                OpeningType::Rectangular(..) | OpeningType::DiagonalRectangular(..) => {}
                 OpeningType::NonRectangular(ref opening_mesh) => {
-                    // Safety: limit total CSG operations to prevent crashes on complex geometry
                     if csg_operation_count >= MAX_CSG_OPERATIONS {
-                        // Skip remaining CSG operations
                         continue;
                     }
 
-                    // Validate opening mesh before CSG (only once per opening)
                     let opening_valid = !opening_mesh.is_empty()
                         && opening_mesh.positions.iter().all(|&v| v.is_finite())
-                        && opening_mesh.positions.len() >= 9; // At least 3 vertices
+                        && opening_mesh.positions.len() >= 9;
 
                     if !opening_valid {
-                        // Skip invalid opening
                         continue;
                     }
 
-                    // Guard CSG against tiny / non-intersecting openings.
-                    //
-                    // Some IfcOpeningElements have vertical (0,0,1) extrusion even in walls
-                    // (e.g. 17 mm connection points). The `is_floor_opening` heuristic
-                    // misclassifies these, forcing them into the CSG path.
-                    // The csgrs BSP tree then destroys the wall mesh because tiny operands
-                    // trigger numerical instability in the BSP split/merge.
-                    //
-                    // Three guards:
-                    // 1. Bounds overlap — skip if opening AABB doesn't touch wall AABB
-                    // 2. Volume threshold — skip openings < 0.1 litre (modelling artefacts)
-                    // 3. Result validation — reject CSG output that loses > 75 % of triangles
                     let (result_min, result_max) = result.bounds();
                     let (open_min_f32, open_max_f32) = opening_mesh.bounds();
                     let no_overlap = open_max_f32.x < result_min.x
@@ -642,7 +688,6 @@ impl GeometryRouter {
                         continue;
                     }
 
-                    // Guard against CSG on very small openings that can destabilize BSP trees.
                     let open_vol = (open_max_f32.x - open_min_f32.x)
                         * (open_max_f32.y - open_min_f32.y)
                         * (open_max_f32.z - open_min_f32.z);
@@ -650,37 +695,24 @@ impl GeometryRouter {
                         continue;
                     }
 
-                    // Use full CSG subtraction for non-rectangular shapes
-                    // Note: mesh_to_csgrs validates and filters invalid triangles internally
                     let tri_before = result.triangle_count();
                     match clipper.subtract_mesh(&result, opening_mesh) {
                         Ok(csg_result) => {
-                            // Validate result is not degenerate — must retain a reasonable
-                            // fraction of the pre-CSG triangles to catch BSP blowups
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                                 .max(MIN_VALID_TRIANGLES);
                             if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
                                 result = csg_result;
                             }
-                            // If result is degenerate, keep previous result
                         }
-                        Err(_) => {
-                            // Keep original result if CSG fails
-                        }
+                        Err(_) => {}
                     }
                     csg_operation_count += 1;
                 }
             }
         }
 
-        // STEP 7: Apply clipping planes (roof clips) if any
-        if !world_clipping_planes.is_empty() {
-            use crate::csg::{ClippingProcessor, Plane};
-            let clipper = ClippingProcessor::new();
-
-            for (_clip_idx, (plane_point, plane_normal, agreement)) in
-                world_clipping_planes.iter().enumerate()
-            {
+        if !ctx.world_clipping_planes.is_empty() {
+            for (plane_point, plane_normal, agreement) in &ctx.world_clipping_planes {
                 let clip_normal = if *agreement {
                     *plane_normal
                 } else {
@@ -696,7 +728,54 @@ impl GeometryRouter {
             }
         }
 
-        Ok(result)
+        result
+    }
+
+    /// Process an element into per-item sub-meshes with opening subtraction.
+    ///
+    /// Mirrors [`process_element_with_voids`] but preserves each
+    /// `IfcShapeRepresentation` item as its own sub-mesh so that callers can
+    /// look up a direct `IfcStyledItem` color per geometry item (e.g. the
+    /// three extrusion layers of a multi-layer wall). The opening(s) are
+    /// subtracted from each sub-mesh independently so that windows and doors
+    /// cut through every material layer they intersect.
+    ///
+    /// Returns an empty collection when there are no openings (callers should
+    /// fall back to [`process_element_with_submeshes`]) or when every
+    /// sub-mesh is destroyed by void subtraction.
+    pub fn process_element_with_submeshes_and_voids(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<SubMeshCollection> {
+        let opening_ids = match void_index.get(&element.id) {
+            Some(ids) if !ids.is_empty() => ids.clone(),
+            _ => return Ok(SubMeshCollection::new()),
+        };
+
+        let sub_meshes = self.process_element_with_submeshes(element, decoder)?;
+        if sub_meshes.is_empty() {
+            return Ok(SubMeshCollection::new());
+        }
+
+        // Classify openings + resolve clipping planes ONCE per element. Doing
+        // this per sub-mesh would re-run `process_element` on every opening
+        // and re-extract clipping planes N times, multiplying the expensive
+        // parsing/CSG setup by the sub-mesh count on the exact elements this
+        // path targets (multi-layer walls with windows).
+        let ctx = self.build_void_context(element, &opening_ids, decoder);
+
+        let mut voided = SubMeshCollection::new();
+        for sub in sub_meshes.sub_meshes {
+            let geometry_id = sub.geometry_id;
+            let voided_mesh = self.apply_void_context(sub.mesh, &ctx);
+            if !voided_mesh.is_empty() {
+                voided.sub_meshes.push(SubMesh::new(geometry_id, voided_mesh));
+            }
+        }
+
+        Ok(voided)
     }
 
     fn classify_openings(

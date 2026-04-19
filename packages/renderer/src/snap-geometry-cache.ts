@@ -10,7 +10,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Vec3 } from './raycaster';
+import type { Vec3 } from './raycaster.js';
 
 export interface MeshGeometryCache {
   vertices: Vec3[];

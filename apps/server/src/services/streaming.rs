@@ -13,6 +13,7 @@ use ifc_lite_core::{
     EntityScanner, IfcType,
 };
 use ifc_lite_geometry::{calculate_normals, GeometryRouter};
+use ifc_lite_processing::convert_mesh_to_site_local;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::pin::Pin;
@@ -45,6 +46,10 @@ struct PreparedData {
     rtc_offset: (f64, f64, f64),
     /// Coordinate space of serialized mesh vertices: `site_local`, `model_rtc`, or `raw_ifc`.
     mesh_coordinate_space: &'static str,
+    /// IfcSite placement, already cheaply cloneable for the worker pool, and
+    /// only populated when the selected coordinate space is `site_local`.
+    /// Lets `process_batch` rotate mesh vertices into the site axis frame.
+    site_local_rotation: Option<Arc<Vec<f64>>>,
     /// IfcSite ObjectPlacement as a column-major 4×4 matrix (metres).
     site_transform: Option<Vec<f64>>,
     /// IfcBuilding ObjectPlacement as a column-major 4×4 matrix (metres).
@@ -188,6 +193,12 @@ fn prepare_streaming_data(content: String) -> PreparedData {
 
     let parse_time_ms = parse_start.elapsed().as_millis() as u64;
 
+    let site_local_rotation = if mesh_coordinate_space == "site_local" {
+        site_transform.clone().map(Arc::new)
+    } else {
+        None
+    };
+
     PreparedData {
         content: Arc::new(content),
         entity_index, // Already Arc
@@ -200,6 +211,7 @@ fn prepare_streaming_data(content: String) -> PreparedData {
         unit_scale,
         rtc_offset,
         mesh_coordinate_space,
+        site_local_rotation,
         site_transform,
         building_transform,
     }
@@ -214,6 +226,7 @@ fn process_batch(
     void_index: Arc<FxHashMap<u32, Vec<u32>>>,
     unit_scale: f64,
     rtc_offset: (f64, f64, f64),
+    site_local_rotation: Option<Arc<Vec<f64>>>,
 ) -> Vec<MeshData> {
     jobs.par_iter()
         .filter_map(|job| {
@@ -244,14 +257,19 @@ fn process_batch(
                             .copied()
                             .unwrap_or_else(|| get_default_color(&job.ifc_type));
 
-                        return Some(MeshData::new(
+                        let mut mesh_data = MeshData::new(
                             job.id,
                             job.ifc_type.name().to_string(),
                             mesh.positions,
                             mesh.normals,
                             mesh.indices,
                             color,
-                        ));
+                        );
+                        convert_mesh_to_site_local(
+                            &mut mesh_data,
+                            site_local_rotation.as_deref(),
+                        );
+                        return Some(mesh_data);
                     }
                 }
             }
@@ -370,12 +388,22 @@ pub fn process_streaming(
                 let style_bg = prepared.style_index.clone();
                 let unit_scale = prepared.unit_scale;
                 let rtc_offset = prepared.rtc_offset;
+                let site_local_rotation = prepared.site_local_rotation.clone();
                 let tx_clone = tx.clone();
 
                 // Spawn batch processing task
                 tokio::spawn(async move {
                     let result = tokio::task::spawn_blocking(move || {
-                        process_batch(chunk_vec, content_bg, index_bg, style_bg, void_bg, unit_scale, rtc_offset)
+                        process_batch(
+                            chunk_vec,
+                            content_bg,
+                            index_bg,
+                            style_bg,
+                            void_bg,
+                            unit_scale,
+                            rtc_offset,
+                            site_local_rotation,
+                        )
                     }).await;
 
                     let batch_result = match result {

@@ -17,12 +17,12 @@ export type {
   PaperOrientation,
   PaperSizeCategory,
   PaperSizeDefinition,
-} from './paper-sizes';
+} from './paper-sizes.js';
 export {
   PAPER_SIZE_REGISTRY,
   getPaperSizesByCategory,
   getDefaultPaperSize,
-} from './paper-sizes';
+} from './paper-sizes.js';
 
 // Frame types
 export type {
@@ -30,12 +30,12 @@ export type {
   FrameBorderConfig,
   FrameMargins,
   DrawingFrame,
-} from './frame-types';
+} from './frame-types.js';
 export {
   FRAME_PRESETS,
   createFrame,
   getDefaultFrame,
-} from './frame-types';
+} from './frame-types.js';
 
 // Title block types
 export type {
@@ -45,14 +45,14 @@ export type {
   TitleBlockLogo,
   RevisionEntry,
   TitleBlockConfig,
-} from './title-block-types';
+} from './title-block-types.js';
 export {
   DEFAULT_TITLE_BLOCK_FIELDS,
   TITLE_BLOCK_PRESETS,
   createTitleBlock,
   getDefaultTitleBlock,
   updateTitleBlockField,
-} from './title-block-types';
+} from './title-block-types.js';
 
 // Scale bar types
 export type {
@@ -62,37 +62,37 @@ export type {
   ScaleBarConfig,
   NorthArrowStyle,
   NorthArrowConfig,
-} from './scale-bar-types';
+} from './scale-bar-types.js';
 export {
   DEFAULT_SCALE_BAR,
   DEFAULT_NORTH_ARROW,
   calculateOptimalScaleBarLength,
   calculateOptimalDivisions,
-} from './scale-bar-types';
+} from './scale-bar-types.js';
 
 // Sheet types
 export type {
   ViewportBounds,
   DrawingSheet,
   SheetCreationOptions,
-} from './sheet-types';
+} from './sheet-types.js';
 export {
   calculateViewportBounds,
   calculateDrawingTransform,
-} from './sheet-types';
+} from './sheet-types.js';
 
 // Renderers
 export type {
   FrameRenderResult,
-} from './frame-renderer';
-export { renderFrame } from './frame-renderer';
+} from './frame-renderer.js';
+export { renderFrame } from './frame-renderer.js';
 
 export type {
   FrameInnerBounds,
   TitleBlockRenderResult,
   TitleBlockExtras,
-} from './title-block-renderer';
-export { renderTitleBlock } from './title-block-renderer';
+} from './title-block-renderer.js';
+export { renderTitleBlock } from './title-block-renderer.js';
 
-export type { PositionMm } from './scale-bar-renderer';
-export { renderScaleBar, renderNorthArrow } from './scale-bar-renderer';
+export type { PositionMm } from './scale-bar-renderer.js';
+export { renderScaleBar, renderNorthArrow } from './scale-bar-renderer.js';

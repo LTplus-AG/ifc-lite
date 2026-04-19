@@ -43,7 +43,7 @@ import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, TYPE_VISIBILITY_D
 export type * from './types.js';
 
 // Explicitly re-export multi-model types that need to be imported by name
-export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis } from './types.js';
+export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis, SectionCapStyle, SectionCapHatchId, SectionPlane, SectionPlaneAxis } from './types.js';
 
 // Re-export utility functions for entity references
 export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore } from './types.js';
@@ -195,12 +195,18 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         cornerValence: 0,
       },
 
-      // Section plane
+      // Section plane: reset axis/position/enabled/flipped (those are
+      // model-relative and meaningless when switching files), but PRESERVE
+      // the user's cap appearance preferences (showCap, showOutlines,
+      // capStyle). Those round-trip to localStorage via the slice's
+      // persistence helpers; clobbering them here was the cause of "my
+      // hatch / colour resets to defaults every time I open a file".
       sectionPlane: {
-        axis: SECTION_PLANE_DEFAULTS.AXIS,
+        ...get().sectionPlane,
+        axis:     SECTION_PLANE_DEFAULTS.AXIS,
         position: SECTION_PLANE_DEFAULTS.POSITION,
-        enabled: SECTION_PLANE_DEFAULTS.ENABLED,
-        flipped: SECTION_PLANE_DEFAULTS.FLIPPED,
+        enabled:  SECTION_PLANE_DEFAULTS.ENABLED,
+        flipped:  SECTION_PLANE_DEFAULTS.FLIPPED,
       },
 
       // Camera

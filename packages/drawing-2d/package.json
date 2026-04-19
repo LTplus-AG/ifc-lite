@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/drawing-2d",
-  "version": "1.15.1",
+  "version": "1.15.2",
   "description": "2D architectural drawing generation from IFC models - section cuts, floor plans, and elevations",
   "type": "module",
   "main": "./dist/index.js",

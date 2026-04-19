@@ -8,7 +8,7 @@
  * All functions are stateless and operate on Vec3 coordinates.
  */
 
-import type { Vec3 } from './raycaster';
+import type { Vec3 } from './raycaster.js';
 
 /**
  * Euclidean distance between two points.

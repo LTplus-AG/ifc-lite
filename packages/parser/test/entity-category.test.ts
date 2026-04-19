@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getInheritanceChain } from '../src/ifc-schema';
+import { getInheritanceChain } from '../src/ifc-schema.js';
 
 describe('IFC entity inheritance chain', () => {
     it('IfcAirTerminal has IfcFlowTerminal in its inheritance chain', () => {

@@ -86,6 +86,12 @@ export interface EdgeLockState {
 /** Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience */
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
 
+// Re-export the renderer's canonical cap-styling types so the viewer store and
+// the WebGPU renderer share a single source of truth. Adding a new hatch
+// pattern only requires editing `packages/renderer/src/section-cap-style.ts`.
+export type { HatchPatternId as SectionCapHatchId, SectionCapStyle } from '@ifc-lite/renderer';
+import type { SectionCapStyle } from '@ifc-lite/renderer';
+
 export interface SectionPlane {
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
@@ -93,6 +99,17 @@ export interface SectionPlane {
   enabled: boolean;
   /** If true, show the opposite side of the cut */
   flipped: boolean;
+  /** Whether to render the filled, hatched cap surface at the plane. Defaults to true. */
+  showCap: boolean;
+  /**
+   * Whether to draw polygon outlines on top of the cut (the crisp black
+   * line the architect expects around each sliced element). Independent
+   * from `showCap` so users can have a hatched fill without outlines,
+   * or vice versa. Defaults to true.
+   */
+  showOutlines: boolean;
+  /** User-defined colour + hatch for the cut surface. */
+  capStyle: SectionCapStyle;
 }
 
 // ============================================================================

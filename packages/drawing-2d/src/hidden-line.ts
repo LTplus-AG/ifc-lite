@@ -10,7 +10,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Vec3, Point2D, Line2D, DrawingLine, Bounds2D, VisibilityState } from './types';
+import type { Vec3, Point2D, Line2D, DrawingLine, Bounds2D, VisibilityState } from './types.js';
 import {
   vec3,
   point2DLerp,
@@ -18,7 +18,7 @@ import {
   boundsEmpty,
   boundsExtendPoint,
   EPSILON,
-} from './math';
+} from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES

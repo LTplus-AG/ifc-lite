@@ -7,17 +7,19 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { X, Slice, ChevronDown, FileImage } from 'lucide-react';
+import { X, Slice, ChevronDown, FileImage, FlipHorizontal2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { AXIS_INFO } from './sectionConstants';
 import { SectionPlaneVisualization } from './SectionVisualization';
+import { SectionCapControls } from './SectionCapControls';
 
 export function SectionOverlay() {
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const toggleSectionPlane = useViewerStore((s) => s.toggleSectionPlane);
+  const flipSectionPlane = useViewerStore((s) => s.flipSectionPlane);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const setDrawingPanelVisible = useViewerStore((s) => s.setDrawing2DPanelVisible);
   const drawingPanelVisible = useViewerStore((s) => s.drawing2DPanelVisible);
@@ -83,10 +85,10 @@ export function SectionOverlay() {
 
         {/* Expandable content */}
         {!isPanelCollapsed && (
-          <div className="border-t px-3 pb-3 min-w-64">
+          <div className="border-t px-3 pb-3 min-w-72">
             {/* Direction Selection */}
             <div className="mt-3">
-              <label className="text-xs text-muted-foreground mb-2 block">Direction</label>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Direction</div>
               <div className="flex gap-1">
                 {(['down', 'front', 'side'] as const).map((axis) => (
                   <Button
@@ -105,16 +107,29 @@ export function SectionOverlay() {
             {/* Position Slider */}
             <div className="mt-3">
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-muted-foreground">Position</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={sectionPlane.position}
-                  onChange={handlePositionChange}
-                  className="w-16 text-xs font-mono bg-muted px-1.5 py-0.5 rounded border-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Position</div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant={sectionPlane.flipped ? 'default' : 'ghost'}
+                    size="icon-sm"
+                    onClick={flipSectionPlane}
+                    aria-pressed={sectionPlane.flipped}
+                    aria-label={sectionPlane.flipped ? 'Unflip cut direction' : 'Flip cut direction'}
+                    title={sectionPlane.flipped ? 'Cut direction is flipped' : 'Flip cut direction'}
+                  >
+                    <FlipHorizontal2 className="h-3 w-3" />
+                  </Button>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={sectionPlane.position}
+                    onChange={handlePositionChange}
+                    aria-label="Section plane position percentage"
+                    className="w-16 text-xs font-mono bg-muted px-1.5 py-0.5 rounded border-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
               </div>
               <input
                 type="range"
@@ -123,9 +138,13 @@ export function SectionOverlay() {
                 step="0.1"
                 value={sectionPlane.position}
                 onChange={handlePositionChange}
+                aria-label="Section plane position slider"
                 className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
               />
             </div>
+
+            {/* Cap surface controls (hatch, colour, spacing) */}
+            <SectionCapControls />
 
             {/* Show 2D panel button - only when panel is closed */}
             {!drawingPanelVisible && (
@@ -156,12 +175,14 @@ export function SectionOverlay() {
       >
         <span className="font-mono text-xs uppercase tracking-wide">
           {sectionPlane.enabled
-            ? `Cutting ${AXIS_INFO[sectionPlane.axis].label.toLowerCase()} at ${sectionPlane.position.toFixed(1)}%`
-            : 'Preview mode'}
+            ? `Cut ${AXIS_INFO[sectionPlane.axis].label.toLowerCase()} at ${sectionPlane.position.toFixed(1)}%${sectionPlane.flipped ? ' (flipped)' : ''}`
+            : 'Clip off — drag slider to cut'}
         </span>
       </div>
 
-      {/* Enable toggle - brutalist style matching Measure tool */}
+      {/* Enable toggle — when OFF the model is not clipped even though the
+          plane visual is shown. Label is explicit so users don't mistake
+          "Preview" for "nothing will happen". */}
       <div className="pointer-events-auto absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
         <button
           onClick={toggleSectionPlane}
@@ -170,9 +191,9 @@ export function SectionOverlay() {
               ? 'bg-primary text-primary-foreground border-primary'
               : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
           }`}
-          title="Toggle section plane"
+          title={sectionPlane.enabled ? 'Click to disable the cut' : 'Click to enable the cut'}
         >
-          {sectionPlane.enabled ? 'Cutting' : 'Preview'}
+          {sectionPlane.enabled ? 'Clipping' : 'Clip off'}
         </button>
       </div>
 

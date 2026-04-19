@@ -19,9 +19,19 @@ export class RenderPipeline {
     private overlayPipeline: GPURenderPipeline;  // Pipeline for color overlays (lens) - renders at exact same depth
     private depthTexture: GPUTexture;
     private depthTextureView: GPUTextureView;
+    // depth-only view of depthTexture for sampling as texture_depth_2d in
+    // post-processing. Required because depth24plus-stencil8 needs an explicit
+    // aspect when bound as a depth texture.
+    private depthOnlyTextureView: GPUTextureView;
+    // stencil-only view — lets the cap quad read the stencil count as an
+    // unsigned integer texture.
+    private stencilTextureView: GPUTextureView;
     private objectIdTexture: GPUTexture;
     private objectIdTextureView: GPUTextureView;
-    private depthFormat: GPUTextureFormat = 'depth32float';
+    // depth24plus-stencil8: depth range is enough at reverse-Z precision, and
+    // stencil8 lets SectionCapRenderer count back/front face intersections
+    // with the clipping plane for filled cap rendering.
+    private depthFormat: GPUTextureFormat = 'depth24plus-stencil8';
     private colorFormat: GPUTextureFormat;
     private objectIdFormat: GPUTextureFormat = 'rgba8unorm';
     private multisampleTexture: GPUTexture | null = null;
@@ -53,6 +63,8 @@ export class RenderPipeline {
             sampleCount: this.sampleCount > 1 ? this.sampleCount : 1,
         });
         this.depthTextureView = this.depthTexture.createView();
+        this.depthOnlyTextureView = this.depthTexture.createView({ aspect: 'depth-only' });
+        this.stencilTextureView = this.depthTexture.createView({ aspect: 'stencil-only' });
         this.objectIdTexture = this.device.createTexture({
             size: { width, height },
             format: this.objectIdFormat,
@@ -132,6 +144,10 @@ export class RenderPipeline {
                 format: this.depthFormat,
                 depthWriteEnabled: true,
                 depthCompare: 'greater',  // Reverse-Z: greater instead of less
+                // The old stencil-based cap needed a "below-plane geometry
+                // was drawn here" marker in bit 1; the 2D-polygon-driven cap
+                // uses exact silhouettes from SectionCutter instead, so no
+                // stencil state is required on the main pipeline.
             },
             // MSAA configuration - must match render pass attachment sample count
             multisample: {
@@ -294,7 +310,7 @@ export class RenderPipeline {
         model: Float32Array,
         color?: [number, number, number, number],
         material?: { metallic?: number; roughness?: number },
-        sectionPlane?: { normal: [number, number, number]; distance: number; enabled: boolean },
+        sectionPlane?: { normal: [number, number, number]; distance: number; enabled: boolean; flipped?: boolean },
         isSelected?: boolean
     ): void {
         // Create buffer with proper alignment:
@@ -334,10 +350,13 @@ export class RenderPipeline {
         }
 
         // flags: vec4<u32> at offset 44 (4 u32 - using flagBuffer view)
-        flagBuffer[0] = isSelected ? 1 : 0;           // isSelected
-        flagBuffer[1] = sectionPlane?.enabled ? 1 : 0; // sectionEnabled
-        flagBuffer[2] = 0;                             // reserved
-        flagBuffer[3] = 0;                             // reserved
+        // flags.y packs: bit 0 = sectionEnabled, bit 1 = sectionFlipped.
+        flagBuffer[0] = isSelected ? 1 : 0;
+        flagBuffer[1] =
+            (sectionPlane?.enabled ? 1 : 0) |
+            (sectionPlane?.flipped ? 2 : 0);
+        flagBuffer[2] = 0;                             // reserved (edgeEnabled written by Renderer)
+        flagBuffer[3] = 0;                             // reserved (edgeIntensity written by Renderer)
 
         // Write the buffer
         this.device.queue.writeBuffer(this.uniformBuffer, 0, buffer);
@@ -368,6 +387,8 @@ export class RenderPipeline {
             sampleCount: this.sampleCount > 1 ? this.sampleCount : 1,
         });
         this.depthTextureView = this.depthTexture.createView();
+        this.depthOnlyTextureView = this.depthTexture.createView({ aspect: 'depth-only' });
+        this.stencilTextureView = this.depthTexture.createView({ aspect: 'stencil-only' });
         this.objectIdTexture = this.device.createTexture({
             size: { width, height },
             format: this.objectIdFormat,
@@ -412,6 +433,20 @@ export class RenderPipeline {
 
     getDepthTextureView(): GPUTextureView {
         return this.depthTextureView;
+    }
+
+    /** Depth-only view (for sampling as texture_depth_* in shaders). */
+    getDepthOnlyTextureView(): GPUTextureView {
+        return this.depthOnlyTextureView;
+    }
+
+    /** Stencil-only view (for sampling stencil in the cap fill pass). */
+    getStencilTextureView(): GPUTextureView {
+        return this.stencilTextureView;
+    }
+
+    getDepthFormat(): GPUTextureFormat {
+        return this.depthFormat;
     }
 
     getObjectIdTextureView(): GPUTextureView {
@@ -474,7 +509,9 @@ export class InstancedRenderPipeline {
     private depthTextureView: GPUTextureView;
     private uniformBuffer: GPUBuffer;
     private colorFormat: GPUTextureFormat;
-    private depthFormat: GPUTextureFormat = 'depth32float';
+    // depth24plus-stencil8 matches RenderPipeline so instanced geometry shares
+    // the same depth/stencil buffer layout.
+    private depthFormat: GPUTextureFormat = 'depth24plus-stencil8';
     private objectIdFormat: GPUTextureFormat = 'rgba8unorm';
     private currentHeight: number;
 
@@ -577,12 +614,14 @@ export class InstancedRenderPipeline {
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragmentOutput {
-          // Section plane clipping - discard fragments ABOVE the plane
-          // For Down axis (normal +Y), keeps everything below cut height (look down into building)
-          if (uniforms.flags.x == 1u) {
+          // Section plane clipping. flags.x packs: bit 0 = enabled, bit 1 = flipped.
+          let sectionEnabled = (uniforms.flags.x & 1u) == 1u;
+          if (sectionEnabled) {
             let planeNormal = uniforms.sectionPlane.xyz;
             let planeDistance = uniforms.sectionPlane.w;
-            let distToPlane = dot(input.worldPos, planeNormal) - planeDistance;
+            let flipped = (uniforms.flags.x & 2u) == 2u;
+            let side = select(1.0, -1.0, flipped);
+            let distToPlane = (dot(input.worldPos, planeNormal) - planeDistance) * side;
             if (distToPlane > 0.0) {
               discard;
             }
@@ -742,9 +781,18 @@ export class InstancedRenderPipeline {
     }
 
     /**
-     * Update uniform buffer with camera matrices and section plane
+     * Update uniform buffer with camera matrices and section plane.
+     * flags.x packs bit 0 = sectionEnabled, bit 1 = sectionFlipped.
      */
-    updateUniforms(viewProj: Float32Array, sectionPlane?: { normal: [number, number, number]; distance: number; enabled: boolean }): void {
+    updateUniforms(
+        viewProj: Float32Array,
+        sectionPlane?: {
+            normal: [number, number, number];
+            distance: number;
+            enabled: boolean;
+            flipped?: boolean;
+        },
+    ): void {
         const buffer = new Float32Array(24); // 6 * 4 floats
         const flagBuffer = new Uint32Array(buffer.buffer, 80, 4);
 
@@ -755,7 +803,7 @@ export class InstancedRenderPipeline {
             buffer[17] = sectionPlane.normal[1];
             buffer[18] = sectionPlane.normal[2];
             buffer[19] = sectionPlane.distance;
-            flagBuffer[0] = 1;
+            flagBuffer[0] = 1 | (sectionPlane.flipped ? 2 : 0);
         } else {
             buffer[16] = 0;
             buffer[17] = 0;

@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { discoverClasses, discoverDataSources } from './discovery';
-import type { LensDataProvider } from './types';
+import { discoverClasses, discoverDataSources } from './discovery.js';
+import type { LensDataProvider } from './types.js';
 
 function createMockProvider(overrides: Partial<LensDataProvider> = {}): LensDataProvider {
   return {

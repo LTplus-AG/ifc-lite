@@ -6,6 +6,6 @@
  * Line styling and layer mapping for architectural drawings
  */
 
-export { LineWeightAssigner, LINE_WEIGHT_CONFIG, IFC_TYPE_WEIGHTS } from './line-weights';
-export { LineStyler, DASH_PATTERNS } from './line-styles';
-export { LayerMapper, DEFAULT_LAYERS, getLayerForIfcType } from './layer-mapping';
+export { LineWeightAssigner, LINE_WEIGHT_CONFIG, IFC_TYPE_WEIGHTS } from './line-weights.js';
+export { LineStyler, DASH_PATTERNS } from './line-styles.js';
+export { LayerMapper, DEFAULT_LAYERS, getLayerForIfcType } from './layer-mapping.js';

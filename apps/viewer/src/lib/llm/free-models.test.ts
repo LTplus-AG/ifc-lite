@@ -47,9 +47,6 @@ test('registry free models match configured env list', async (t) => {
   }
 
   process.env.VITE_LLM_FREE_MODELS = configuredFreeModels.join(',');
-  process.env.VITE_LLM_PRO_MODELS_LOW = '';
-  process.env.VITE_LLM_PRO_MODELS_MEDIUM = '';
-  process.env.VITE_LLM_PRO_MODELS_HIGH = '';
   process.env.VITE_LLM_IMAGE_MODELS = '';
   process.env.VITE_LLM_FILE_ATTACHMENT_MODELS = '';
 
@@ -63,9 +60,6 @@ test('registry free models match configured env list', async (t) => {
 
 test('model capabilities follow override env lists', async () => {
   process.env.VITE_LLM_FREE_MODELS = 'qwen/qwen3-coder,mistralai/devstral-2512';
-  process.env.VITE_LLM_PRO_MODELS_LOW = '';
-  process.env.VITE_LLM_PRO_MODELS_MEDIUM = '';
-  process.env.VITE_LLM_PRO_MODELS_HIGH = '';
   process.env.VITE_LLM_IMAGE_MODELS = 'mistralai/devstral-2512';
   process.env.VITE_LLM_FILE_ATTACHMENT_MODELS = 'qwen/qwen3-coder';
 

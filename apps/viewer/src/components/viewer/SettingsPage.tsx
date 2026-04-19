@@ -2,23 +2,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { SignInButton, SignedIn, SignedOut, UserButton, useAuth, useUser } from '@clerk/clerk-react';
 import {
   ArrowLeft,
   Bot,
   Check,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   Cloud,
   CreditCard,
+  ExternalLink,
+  Eye,
+  EyeOff,
   FolderOpen,
+  Key,
   LayoutPanelTop,
   Lock,
   RefreshCw,
   Settings2,
   ShieldCheck,
+  Trash2,
   WifiOff,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -33,7 +39,6 @@ import {
   isDesktopBillingEnforced,
   type DesktopEntitlement,
 } from '@/lib/desktop-product';
-import { isClerkConfigured } from '@/lib/llm/clerk-auth';
 import { navigateToPath } from '@/services/app-navigation';
 import { requestDesktopEntitlementRefresh } from '@/lib/desktop/desktopEntitlementEvents';
 import {
@@ -41,12 +46,19 @@ import {
   subscribeDesktopPreferences,
   updateDesktopPreferences,
 } from '@/services/desktop-preferences';
+import {
+  getApiKeys,
+  updateApiKeys,
+  clearApiKeys,
+  subscribeApiKeys,
+  type ApiKeyConfig,
+} from '@/services/api-keys';
 
 export function SettingsPage() {
-  const clerkEnabled = isClerkConfigured();
   const desktopEntitlement = useViewerStore((s) => s.desktopEntitlement);
   const chatUsage = useViewerStore((s) => s.chatUsage);
   const [preferences, setPreferences] = useState(() => getDesktopPreferences());
+  const [apiKeys, setApiKeys] = useState(() => getApiKeys());
   const [isRefreshingAccount, setIsRefreshingAccount] = useState(false);
   const returnTo = (() => {
     const params = new URLSearchParams(window.location.search);
@@ -55,6 +67,9 @@ export function SettingsPage() {
   })();
   useEffect(() => subscribeDesktopPreferences(() => {
     setPreferences(getDesktopPreferences());
+  }), []);
+  useEffect(() => subscribeApiKeys(() => {
+    setApiKeys(getApiKeys());
   }), []);
 
   const updatePreference = (updates: Partial<typeof preferences>) => {
@@ -99,6 +114,9 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-6">
+          {/* API Keys Section */}
+          <ApiKeysSection apiKeys={apiKeys} />
+
           <section className="rounded-lg border bg-card p-6 shadow-sm">
             <div className="mb-5 flex items-center gap-3">
               <ShieldCheck className="h-5 w-5" />
@@ -127,8 +145,8 @@ export function SettingsPage() {
                 icon={<CreditCard className="h-4 w-4" />}
               />
               <InfoCard
-                title="AI Usage"
-                body={usageSummary ?? 'No AI usage data yet. Pro usage appears after the first synced usage snapshot.'}
+                title="AI Usage (Free Tier)"
+                body={usageSummary ?? 'No AI usage data yet. Usage appears after the first chat message through the proxy.'}
                 icon={<Bot className="h-4 w-4" />}
               />
               <InfoCard
@@ -142,24 +160,6 @@ export function SettingsPage() {
                 icon={<WifiOff className="h-4 w-4" />}
               />
             </div>
-
-            {clerkEnabled ? (
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => void handleRefreshAccount()}
-                  disabled={isRefreshingAccount}
-                >
-                  <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingAccount ? 'animate-spin' : ''}`} />
-                  Refresh Account Status
-                </Button>
-                {!hasDesktopPro(desktopEntitlement) ? (
-                  <Button onClick={() => navigateToPath(buildDesktopUpgradeUrl('/settings'))}>
-                    Upgrade to Pro
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
           </section>
 
           <section className="rounded-lg border bg-card p-6 shadow-sm">
@@ -225,7 +225,7 @@ export function SettingsPage() {
               <div>
                 <h2 className="text-xl font-semibold">Billing & Features</h2>
                 <p className="text-sm text-muted-foreground">
-                  Desktop billing is app-wide. The viewer stays available on Free, while Pro unlocks advanced desktop features and full AI access.
+                  Desktop billing is app-wide. The viewer stays available on Free, while Pro unlocks advanced desktop features.
                 </p>
               </div>
             </div>
@@ -235,9 +235,6 @@ export function SettingsPage() {
                 <div>
                   <div className="font-medium capitalize">{planTier} plan</div>
                   <p className="text-sm text-muted-foreground">{planSummary}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Desktop caches the latest validated plan locally and stores the auth bearer in native secure storage when available.
-                  </p>
                 </div>
                 {isDesktopBillingEnforced() && !hasDesktopPro(desktopEntitlement) && (
                   <Button onClick={() => navigateToPath(buildDesktopUpgradeUrl('/settings'))}>
@@ -270,14 +267,6 @@ export function SettingsPage() {
                 </div>
               ))}
             </div>
-
-            {!clerkEnabled ? (
-              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                Auth and billing are not configured in this build. Set `VITE_CLERK_PUBLISHABLE_KEY` to enable sign-in and subscription flows.
-              </div>
-            ) : (
-              <SettingsAccountSection desktopEntitlement={desktopEntitlement} />
-            )}
           </section>
 
           <section className="rounded-lg border bg-card p-6 shadow-sm">
@@ -299,7 +288,7 @@ export function SettingsPage() {
               />
               <InfoCard
                 title="Needs Network"
-                body="Cloud AI assistant, billing sync, and live bSDD lookups require network access. Cached Pro can continue during offline grace."
+                body="AI assistant (free via proxy, or direct with your API key), live bSDD lookups, and billing sync require network access."
                 icon={<Cloud className="h-4 w-4" />}
               />
             </div>
@@ -309,6 +298,231 @@ export function SettingsPage() {
     </div>
   );
 }
+
+// ── API Keys Section ──────────────────────────────────────────────────────
+
+function ApiKeyInput({
+  id,
+  value,
+  onChange,
+  onSave,
+  placeholder,
+  isSaved,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  placeholder: string;
+  isSaved: boolean;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="flex gap-2">
+      <div className="relative flex-1">
+        <input
+          id={id}
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !isSaved) onSave(); }}
+          placeholder={placeholder}
+          autoComplete="off"
+          spellCheck={false}
+          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring pr-8"
+        />
+        <button
+          type="button"
+          onClick={() => setShow(!show)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          aria-label={show ? 'Hide key' : 'Show key'}
+        >
+          {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <Button size="sm" onClick={onSave} disabled={isSaved}>
+        Save
+      </Button>
+    </div>
+  );
+}
+
+function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
+  const [anthropicKey, setAnthropicKey] = useState(apiKeys.anthropicKey);
+  const [openaiKey, setOpenaiKey] = useState(apiKeys.openaiKey);
+  const [showHowTo, setShowHowTo] = useState<'anthropic' | 'openai' | null>(null);
+
+  useEffect(() => {
+    setAnthropicKey(apiKeys.anthropicKey);
+    setOpenaiKey(apiKeys.openaiKey);
+  }, [apiKeys.anthropicKey, apiKeys.openaiKey]);
+
+  const saveAnthropicKey = useCallback(() => {
+    updateApiKeys({ anthropicKey: anthropicKey.trim() });
+    toast.success(anthropicKey.trim() ? 'Anthropic API key saved' : 'Anthropic API key removed');
+  }, [anthropicKey]);
+
+  const saveOpenaiKey = useCallback(() => {
+    updateApiKeys({ openaiKey: openaiKey.trim() });
+    toast.success(openaiKey.trim() ? 'OpenAI API key saved' : 'OpenAI API key removed');
+  }, [openaiKey]);
+
+  const handleClearAll = useCallback(() => {
+    clearApiKeys();
+    setAnthropicKey('');
+    setOpenaiKey('');
+    toast.success('All API keys removed');
+  }, []);
+
+  const hasAnyKey = apiKeys.anthropicKey.length > 0 || apiKeys.openaiKey.length > 0;
+
+  return (
+    <section className="rounded-lg border bg-card p-6 shadow-sm">
+      <div className="mb-5 flex items-center gap-3">
+        <Key className="h-5 w-5" />
+        <div>
+          <h1 className="text-2xl font-semibold">API Keys</h1>
+          <p className="text-sm text-muted-foreground">
+            Bring your own Anthropic or OpenAI API key to unlock additional models.
+            You can configure one or both providers independently.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {/* Anthropic */}
+        <div className="rounded-md border p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-sm font-medium" htmlFor="anthropic-key">Anthropic API Key</label>
+            {apiKeys.anthropicKey ? (
+              <Badge variant="default" className="text-[10px]">
+                <Check className="mr-1 h-3 w-3" />
+                Configured
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">Not set</Badge>
+            )}
+          </div>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Unlocks <strong>Claude Opus 4.6</strong>, <strong>Claude Sonnet 4.6</strong>, and <strong>Claude Haiku 4.5</strong>.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowHowTo(showHowTo === 'anthropic' ? null : 'anthropic')}
+            className="mb-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showHowTo === 'anthropic' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            How to get an Anthropic API key
+          </button>
+          {showHowTo === 'anthropic' && (
+            <div className="mb-3 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1.5">
+              <p>1. Go to{' '}
+                <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-0.5">
+                  console.anthropic.com/settings/keys <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              </p>
+              <p>2. Sign in or create an Anthropic account</p>
+              <p>3. Click <strong>Create Key</strong>, name it (e.g. &quot;ifc-lite&quot;)</p>
+              <p>4. Copy the key (starts with <code className="bg-muted px-1 rounded">sk-ant-api03-...</code>)</p>
+              <p>5. Paste it below and click Save</p>
+              <p className="pt-1 text-muted-foreground/70">Anthropic offers $5 free credit on new accounts. After that, usage is pay-as-you-go on your Anthropic billing.</p>
+            </div>
+          )}
+          <ApiKeyInput
+            id="anthropic-key"
+            value={anthropicKey}
+            onChange={setAnthropicKey}
+            onSave={saveAnthropicKey}
+            placeholder="sk-ant-api03-..."
+            isSaved={anthropicKey.trim() === apiKeys.anthropicKey}
+          />
+        </div>
+
+        {/* OpenAI */}
+        <div className="rounded-md border p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-sm font-medium" htmlFor="openai-key">OpenAI API Key</label>
+            {apiKeys.openaiKey ? (
+              <Badge variant="default" className="text-[10px]">
+                <Check className="mr-1 h-3 w-3" />
+                Configured
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">Not set</Badge>
+            )}
+          </div>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Unlocks <strong>GPT-5.4</strong>, <strong>GPT-5.3 Codex</strong>, and <strong>GPT-5.4 Mini</strong>.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowHowTo(showHowTo === 'openai' ? null : 'openai')}
+            className="mb-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showHowTo === 'openai' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            How to get an OpenAI API key
+          </button>
+          {showHowTo === 'openai' && (
+            <div className="mb-3 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1.5">
+              <p>1. Go to{' '}
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-0.5">
+                  platform.openai.com/api-keys <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              </p>
+              <p>2. Sign in or create an OpenAI account</p>
+              <p>3. Click <strong>Create new secret key</strong>, name it (e.g. &quot;ifc-lite&quot;)</p>
+              <p>4. Copy the key (starts with <code className="bg-muted px-1 rounded">sk-...</code>)</p>
+              <p>5. Paste it below and click Save</p>
+              <p className="pt-1 text-muted-foreground/70">OpenAI requires prepaid credits or a payment method. Usage is billed to your OpenAI account.</p>
+            </div>
+          )}
+          <ApiKeyInput
+            id="openai-key"
+            value={openaiKey}
+            onChange={setOpenaiKey}
+            onSave={saveOpenaiKey}
+            placeholder="sk-..."
+            isSaved={openaiKey.trim() === apiKeys.openaiKey}
+          />
+        </div>
+
+        {hasAnyKey && (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={handleClearAll}>
+              <Trash2 className="mr-2 h-3.5 w-3.5" />
+              Remove all keys
+            </Button>
+          </div>
+        )}
+
+        {/* Security & Privacy notice */}
+        <div className="rounded-md border border-dashed p-4 text-xs space-y-2">
+          <p className="font-medium text-foreground">Your API keys never leave your machine.</p>
+          <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
+            <li>Keys are stored in your browser&apos;s <code className="bg-muted px-1 rounded">localStorage</code> and persist across page reloads.</li>
+            <li>When you use a BYOK model, requests go <strong>directly from your browser to the provider</strong> (Anthropic or OpenAI). They never pass through our servers.</li>
+            <li>Free models use our server proxy and do not require any API key.</li>
+            <li>Clearing your browser data or clicking &quot;Remove all keys&quot; above permanently deletes them.</li>
+          </ul>
+          <p className="text-muted-foreground pt-1">
+            <strong>Verify in your browser console:</strong> open DevTools (F12), go to the Console tab, and run:
+          </p>
+          <pre className="bg-muted rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto text-foreground">
+            {`JSON.parse(localStorage.getItem('ifc-lite:api-keys:v1') ?? '{}')`}
+          </pre>
+          <p className="text-muted-foreground">
+            This shows exactly what is stored. Only you can see it. To delete everything:
+          </p>
+          <pre className="bg-muted rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto text-foreground">
+            {`localStorage.removeItem('ifc-lite:api-keys:v1')`}
+          </pre>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
 
 function formatTimestamp(value: number | null): string {
   if (!value) {
@@ -342,7 +556,7 @@ function describeDesktopStatus(entitlement: DesktopEntitlement): string {
     case 'signed_out':
       return 'Signed out';
     case 'anonymous':
-      return 'Auth unavailable in this build';
+      return 'No account configured';
     default:
       return entitlement.status;
   }
@@ -378,53 +592,6 @@ function InfoCard({ title, body, icon }: { title: string; body: string; icon: Re
         {title}
       </div>
       <p className="text-sm text-muted-foreground">{body}</p>
-    </div>
-  );
-}
-
-function SettingsAccountSection({ desktopEntitlement }: { desktopEntitlement: DesktopEntitlement }) {
-  const { isSignedIn } = useAuth();
-  const { user } = useUser();
-  const hasPro = hasDesktopPro(desktopEntitlement);
-  const statusLabel = describeDesktopStatus(desktopEntitlement);
-
-  return (
-    <div className="space-y-4">
-      <SignedOut>
-        <div className="rounded-md border p-4">
-          <p className="mb-3 text-sm text-muted-foreground">
-            Sign in to sync your desktop plan, subscription status, and AI usage limits across web and desktop.
-          </p>
-          <SignInButton mode="modal" forceRedirectUrl="/settings" fallbackRedirectUrl="/settings">
-            <Button>Sign in</Button>
-          </SignInButton>
-        </div>
-      </SignedOut>
-
-      <SignedIn>
-        <div className="flex items-center justify-between gap-4 rounded-md border p-4">
-          <div>
-            <div className="font-medium">
-              {user?.primaryEmailAddress?.emailAddress ?? user?.username ?? 'Signed in'}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Plan: {hasPro ? 'Pro' : 'Free'}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Status: {statusLabel}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Last validated: {formatTimestamp(desktopEntitlement.validatedAt)}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <UserButton afterSignOutUrl="/" />
-            <Button onClick={() => navigateToPath(buildDesktopUpgradeUrl('/settings'))}>
-              {isSignedIn && hasPro ? 'Manage Plan' : 'Upgrade to Pro'}
-            </Button>
-          </div>
-        </div>
-      </SignedIn>
     </div>
   );
 }

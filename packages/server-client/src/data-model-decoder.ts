@@ -6,7 +6,7 @@
  * Decode Parquet-encoded data model from server.
  */
 
-import { ensureParquetInit } from './parquet-decoder';
+import { ensureParquetInit } from './parquet-decoder.js';
 
 export interface EntityMetadata {
   entity_id: number;

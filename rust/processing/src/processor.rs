@@ -12,8 +12,8 @@ use crate::types::response::{
     QuickMetadataEntitySummary, QuickMetadataSpatialNode,
 };
 use ifc_lite_core::{
-    build_entity_index, AttributeValue, DecodedEntity, EntityDecoder, EntityIndex,
-    EntityScanner, IfcType,
+    build_entity_index, scan_placement_bounds, AttributeValue, DecodedEntity, EntityDecoder,
+    EntityIndex, EntityScanner, IfcType,
 };
 use ifc_lite_geometry::{calculate_normals, GeometryRouter};
 use rayon::prelude::*;
@@ -93,7 +93,25 @@ impl Default for StreamingOptions {
 }
 
 const SITE_LOCAL_MESH_COORDINATE_SPACE: &str = "site_local";
+const MODEL_RTC_MESH_COORDINATE_SPACE: &str = "model_rtc";
+const RAW_IFC_MESH_COORDINATE_SPACE: &str = "raw_ifc";
 
+/// Epsilon (metres) below which a placement translation is treated as identity.
+/// Avoids overriding a detected RTC anchor when `IfcSite` sits at the origin
+/// while the geometry itself carries large world coordinates.
+const PLACEMENT_IDENTITY_EPSILON: f64 = 1e-9;
+
+#[inline]
+fn translation_is_nonidentity(t: (f64, f64, f64)) -> bool {
+    t.0.abs() > PLACEMENT_IDENTITY_EPSILON
+        || t.1.abs() > PLACEMENT_IDENTITY_EPSILON
+        || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
+}
+
+/// Apply the inverse of the site placement's 3×3 rotation to in-place `f32`
+/// triplets (positions or normals). Translation is handled separately via the
+/// router's `rtc_offset`; this only rotates vertices into the site-local axis
+/// frame when that frame is non-identity.
 fn apply_inverse_rotation_in_place(values: &mut [f32], column_major_matrix: &[f64]) {
     if values.len() < 3 || column_major_matrix.len() < 16 {
         return;
@@ -109,16 +127,15 @@ fn apply_inverse_rotation_in_place(values: &mut [f32], column_major_matrix: &[f6
     let r12 = column_major_matrix[9];
     let r22 = column_major_matrix[10];
 
-    const EPS: f64 = 1e-9;
-    let is_identity = (r00 - 1.0).abs() < EPS
-        && r10.abs() < EPS
-        && r20.abs() < EPS
-        && r01.abs() < EPS
-        && (r11 - 1.0).abs() < EPS
-        && r21.abs() < EPS
-        && r02.abs() < EPS
-        && r12.abs() < EPS
-        && (r22 - 1.0).abs() < EPS;
+    let is_identity = (r00 - 1.0).abs() < PLACEMENT_IDENTITY_EPSILON
+        && r10.abs() < PLACEMENT_IDENTITY_EPSILON
+        && r20.abs() < PLACEMENT_IDENTITY_EPSILON
+        && r01.abs() < PLACEMENT_IDENTITY_EPSILON
+        && (r11 - 1.0).abs() < PLACEMENT_IDENTITY_EPSILON
+        && r21.abs() < PLACEMENT_IDENTITY_EPSILON
+        && r02.abs() < PLACEMENT_IDENTITY_EPSILON
+        && r12.abs() < PLACEMENT_IDENTITY_EPSILON
+        && (r22 - 1.0).abs() < PLACEMENT_IDENTITY_EPSILON;
     if is_identity {
         return;
     }
@@ -133,7 +150,13 @@ fn apply_inverse_rotation_in_place(values: &mut [f32], column_major_matrix: &[f6
     }
 }
 
-fn convert_mesh_to_site_local(mesh: &mut MeshData, site_transform: Option<&Vec<f64>>) {
+/// Rotate a mesh into the site-local axis frame. Only runs for the
+/// `site_local` coordinate-space tier; translation alignment happens upstream
+/// via the router's RTC subtraction.
+///
+/// Exposed so the streaming server can apply the same rotation to meshes it
+/// produces outside this crate's parallel loop.
+pub fn convert_mesh_to_site_local(mesh: &mut MeshData, site_transform: Option<&Vec<f64>>) {
     let Some(site_transform) = site_transform else {
         return;
     };
@@ -1064,8 +1087,6 @@ pub fn process_geometry_streaming_filtered_with_options(
     let mut router = GeometryRouter::with_units(content, &mut decoder);
 
     // Resolve IfcSite and IfcBuilding placement transforms.
-    // The Site placement translation is used as the RTC offset so that mesh
-    // positions end up in site-local coordinates (building origin preserved).
     let site_transform: Option<Vec<f64>> = site_entity_pos.and_then(|(start, end)| {
         let entity = decoder.decode_at(start, end).ok()?;
         let matrix = router
@@ -1081,18 +1102,39 @@ pub fn process_geometry_streaming_filtered_with_options(
         Some(matrix.to_vec())
     });
 
-    // Use Site placement translation as RTC offset to keep geometry in site-local
-    // coordinates. The building origin stays at (0,0,0) and the site/building
-    // transforms are returned separately so the client can position the block.
-    let rtc_offset = if let Some(ref st) = site_transform {
-        (st[12], st[13], st[14]) // column-major: translation at indices 12,13,14
-    } else {
-        (0.0, 0.0, 0.0)
+    let rtc_jobs: Vec<(u32, usize, usize, IfcType)> = entity_jobs
+        .iter()
+        .map(|job| (job.id, job.start, job.end, job.ifc_type))
+        .collect();
+    let detected_rtc_offset = match router.detect_rtc_offset_from_jobs(&rtc_jobs, &mut decoder) {
+        Some(offset) => offset,
+        None => scan_placement_bounds(content).rtc_offset(),
     };
+
+    // Three-tier coordinate-space selection:
+    //   1. `site_local`: IfcSite placement has a non-identity translation.
+    //      Vertices are expressed relative to the site origin — small floats
+    //      AND a meaningful, relatable frame (useful for coordination).
+    //   2. `model_rtc`:  IfcSite is identity (or missing) but geometry still
+    //      lives at large world coordinates. Subtract a detected anchor so
+    //      f32 precision is preserved.
+    //   3. `raw_ifc`:    neither anchor applies; geometry is already small.
+    let site_rtc = site_transform
+        .as_ref()
+        .map(|st| (st[12], st[13], st[14])) // column-major: translation at 12,13,14
+        .filter(|t| translation_is_nonidentity(*t));
+    let detected_has_offset = translation_is_nonidentity(detected_rtc_offset);
+    let (rtc_offset, coord_space) = if let Some(site) = site_rtc {
+        (site, SITE_LOCAL_MESH_COORDINATE_SPACE)
+    } else if detected_has_offset {
+        (detected_rtc_offset, MODEL_RTC_MESH_COORDINATE_SPACE)
+    } else {
+        ((0.0, 0.0, 0.0), RAW_IFC_MESH_COORDINATE_SPACE)
+    };
+    let has_rtc_offset = coord_space != RAW_IFC_MESH_COORDINATE_SPACE;
     router.set_rtc_offset(rtc_offset);
-    let should_preprocess_faceted_breps =
-        !faceted_brep_ids.is_empty()
-            && !(options.fast_first_batch && options.initial_batch_size < usize::MAX);
+    let should_preprocess_faceted_breps = !faceted_brep_ids.is_empty()
+        && !(options.fast_first_batch && options.initial_batch_size < usize::MAX);
     if should_preprocess_faceted_breps {
         tracing::debug!(count = faceted_brep_ids.len(), "Preprocessing FacetedBreps");
         router.preprocess_faceted_breps(&faceted_brep_ids, &mut decoder);
@@ -1122,7 +1164,6 @@ pub fn process_geometry_streaming_filtered_with_options(
     let throughput_chunk_size = options
         .throughput_batch_size
         .max(initial_chunk_size);
-    let site_transform_arc = Arc::new(site_transform.clone());
     let mut color_cache_by_product_definition_shape: FxHashMap<u32, Option<[f32; 4]>> =
         FxHashMap::default();
     let mut layer_cache_by_product_definition_shape: FxHashMap<u32, Option<String>> =
@@ -1212,6 +1253,12 @@ pub fn process_geometry_streaming_filtered_with_options(
                 options.include_presentation_layers,
             );
         }
+        let site_local_rotation: Option<&Vec<f64>> =
+            if coord_space == SITE_LOCAL_MESH_COORDINATE_SPACE {
+                site_transform.as_ref()
+            } else {
+                None
+            };
         let chunk_meshes: Vec<MeshData> = jobs_chunk
             .par_iter()
             .flat_map_iter(|job| {
@@ -1224,7 +1271,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     void_index_arc.as_ref(),
                     skipped_entity_ids.as_ref(),
                     geometry_style_index.as_ref(),
-                    site_transform_arc.as_ref(),
+                    site_local_rotation,
                 )
             })
             .collect();
@@ -1286,7 +1333,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     ProcessingResult {
         meshes,
-        mesh_coordinate_space: Some(SITE_LOCAL_MESH_COORDINATE_SPACE.to_string()),
+        mesh_coordinate_space: Some(coord_space.to_string()),
         site_transform,
         building_transform,
         metadata: ModelMetadata {
@@ -1294,10 +1341,8 @@ pub fn process_geometry_streaming_filtered_with_options(
             entity_count: total_entities,
             geometry_entity_count,
             coordinate_info: CoordinateInfo {
-                origin_shift: [0.0, 0.0, 0.0],
-                // Note: true geo-referencing requires IfcMapConversion/IfcProjectedCRS;
-                // this flag only indicates that a site placement was found.
-                is_geo_referenced: false,
+                origin_shift: [rtc_offset.0, rtc_offset.1, rtc_offset.2],
+                is_geo_referenced: has_rtc_offset,
             },
         },
         stats: ProcessingStats {
@@ -1324,7 +1369,9 @@ fn process_entity_job(
     void_index: &FxHashMap<u32, Vec<u32>>,
     skipped_entity_ids: &HashSet<u32>,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
-    site_transform: &Option<Vec<f64>>,
+    // Present only when the selected coordinate space is `site_local`; rotates
+    // mesh vertices into the site's axis frame.
+    site_local_rotation: Option<&Vec<f64>>,
 ) -> Vec<MeshData> {
     if skipped_entity_ids.contains(&job.id) {
         return Vec::new();
@@ -1384,7 +1431,7 @@ fn process_entity_job(
                     .with_element_metadata(global_id.clone(), name.clone(), presentation_layer.clone())
                     .with_properties(space_zone_properties.clone())
                     .with_style_metadata(material_name, Some(sub.geometry_id));
-                    convert_mesh_to_site_local(&mut mesh_data, site_transform.as_ref());
+                    convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
                     out.push(mesh_data);
                 }
 
@@ -1422,7 +1469,7 @@ fn process_entity_job(
             )
             .with_element_metadata(global_id, name, presentation_layer)
             .with_properties(space_zone_properties);
-            convert_mesh_to_site_local(&mut mesh_data, site_transform.as_ref());
+            convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
             return vec![mesh_data];
         }
     }

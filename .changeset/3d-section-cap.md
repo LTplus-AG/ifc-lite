@@ -1,7 +1,7 @@
 ---
 '@ifc-lite/renderer': minor
 '@ifc-lite/drawing-2d': patch
-'viewer': patch
+'@ifc-lite/viewer': patch
 ---
 
 3D section cap with screen-space hatches, driven by exact cut polygons.

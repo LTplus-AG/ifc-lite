@@ -259,6 +259,50 @@ impl GeometryRouter {
         Some((x, y, z))
     }
 
+    fn raw_coordinate_is_large(&self, point: (f64, f64, f64)) -> bool {
+        const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
+        let max_abs = point.0.abs().max(point.1.abs()).max(point.2.abs());
+        max_abs * self.unit_scale > LARGE_COORD_THRESHOLD_METERS
+    }
+
+    fn representation_item_uses_raw_large_coordinates(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> bool {
+        let first_vertex = match item.ifc_type {
+            IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
+                self.brep_first_vertex(item, decoder)
+            }
+            IfcType::IfcTriangulatedFaceSet | IfcType::IfcPolygonalFaceSet => {
+                self.tessellated_first_vertex(item, decoder)
+            }
+            IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
+                let Some(shells_attr) = item.get(0) else {
+                    return false;
+                };
+                let Some(shells) = shells_attr.as_list() else {
+                    return false;
+                };
+                let Some(shell_ref) = shells.first() else {
+                    return false;
+                };
+                let Some(shell_id) = shell_ref.as_entity_ref() else {
+                    return false;
+                };
+                match decoder.decode_by_id(shell_id) {
+                    Ok(shell) => self.shell_first_vertex(&shell, decoder),
+                    Err(_) => None,
+                }
+            }
+            _ => None,
+        };
+
+        first_vertex
+            .map(|point| self.raw_coordinate_is_large(point))
+            .unwrap_or(false)
+    }
+
     /// Detect RTC offset by scanning the file for building elements.
     /// Used by synchronous parse paths.
     pub fn detect_rtc_offset_from_first_element(
@@ -577,7 +621,7 @@ impl GeometryRouter {
                     let mut transform = self.get_placement_transform(&placement, decoder)?;
                     self.scale_transform(&mut transform);
                     for sub in &mut sub_meshes.sub_meshes {
-                        self.transform_mesh(&mut sub.mesh, &transform);
+                        self.transform_mesh_world(&mut sub.mesh, &transform);
                     }
                 }
             }
@@ -679,7 +723,7 @@ impl GeometryRouter {
                     if let Some(mut transform) = mapping_transform.clone() {
                         self.scale_transform(&mut transform);
                         for sub in &mut sub_meshes.sub_meshes[count_before..] {
-                            self.transform_mesh(&mut sub.mesh, &transform);
+                            self.transform_mesh_local(&mut sub.mesh, &transform);
                         }
                     }
                 }
@@ -847,18 +891,22 @@ impl GeometryRouter {
             }
         }
 
-        // For FacetedBrep with RTC: use precision-preserving path that subtracts
-        // RTC from f64 coordinates BEFORE f32 conversion (prevents 0.5m jitter
-        // at Y ≈ 6.2M). Vertices are already RTC-shifted, so transform_mesh
-        // should NOT re-apply RTC for these meshes.
-        if item.ifc_type == IfcType::IfcFacetedBrep && self.has_rtc_offset() {
+        // For raw world-coordinate FacetedBrep with RTC: subtract RTC from f64
+        // coordinates BEFORE f32 conversion. Do not use this path for ordinary
+        // local Breps whose large position comes from IfcObjectPlacement; those
+        // are shifted uniformly during the final world transform.
+        if item.ifc_type == IfcType::IfcFacetedBrep
+            && self.has_rtc_offset()
+            && self.representation_item_uses_raw_large_coordinates(item, decoder)
+        {
             let processor = crate::processors::FacetedBrepProcessor::new();
             let rtc_file_units = (
                 self.rtc_offset.0 / self.unit_scale,
                 self.rtc_offset.1 / self.unit_scale,
                 self.rtc_offset.2 / self.unit_scale,
             );
-            let mut mesh = processor.process_with_rtc(item, decoder, &self.schema, rtc_file_units)?;
+            let mut mesh =
+                processor.process_with_rtc(item, decoder, &self.schema, rtc_file_units)?;
             mesh.validate_indices();
             self.scale_mesh(&mut mesh);
             // Mark positions as already RTC-shifted by setting a flag
@@ -876,28 +924,28 @@ impl GeometryRouter {
             // Safety net: strip any out-of-bounds indices before downstream use
             mesh.validate_indices();
 
-            // For meshes with large coordinates: apply RTC with f64 precision
+            // For raw world-coordinate meshes: apply RTC before unit scaling
             // to avoid jitter from f32 truncation at world-space scale.
             // This covers FaceBasedSurface, ShellBasedSurface, and any other
             // processor that stores raw world-space coordinates as f32.
-            if self.has_rtc_offset() && !mesh.rtc_applied && !mesh.positions.is_empty() {
-                let first_mag = (mesh.positions[0].abs() as f64)
-                    .max(mesh.positions[1].abs() as f64);
-                if first_mag > 10000.0 {
-                    // Positions are in file units (pre-scale). RTC offset is in meters.
-                    // Convert RTC to file units for consistent subtraction.
-                    let rtc_fu = (
-                        self.rtc_offset.0 / self.unit_scale,
-                        self.rtc_offset.1 / self.unit_scale,
-                        self.rtc_offset.2 / self.unit_scale,
-                    );
-                    for chunk in mesh.positions.chunks_exact_mut(3) {
-                        chunk[0] = (chunk[0] as f64 - rtc_fu.0) as f32;
-                        chunk[1] = (chunk[1] as f64 - rtc_fu.1) as f32;
-                        chunk[2] = (chunk[2] as f64 - rtc_fu.2) as f32;
-                    }
-                    mesh.rtc_applied = true;
+            if self.has_rtc_offset()
+                && !mesh.rtc_applied
+                && !mesh.positions.is_empty()
+                && self.representation_item_uses_raw_large_coordinates(item, decoder)
+            {
+                // Positions are in file units (pre-scale). RTC offset is in meters.
+                // Convert RTC to file units for consistent subtraction.
+                let rtc_fu = (
+                    self.rtc_offset.0 / self.unit_scale,
+                    self.rtc_offset.1 / self.unit_scale,
+                    self.rtc_offset.2 / self.unit_scale,
+                );
+                for chunk in mesh.positions.chunks_exact_mut(3) {
+                    chunk[0] = (chunk[0] as f64 - rtc_fu.0) as f32;
+                    chunk[1] = (chunk[1] as f64 - rtc_fu.1) as f32;
+                    chunk[2] = (chunk[2] as f64 - rtc_fu.2) as f32;
                 }
+                mesh.rtc_applied = true;
             }
 
             self.scale_mesh(&mut mesh);
@@ -979,7 +1027,7 @@ impl GeometryRouter {
                 let mut mesh = cached_mesh.as_ref().clone();
                 if let Some(mut transform) = mapping_transform {
                     self.scale_transform(&mut transform);
-                    self.transform_mesh(&mut mesh, &transform);
+                    self.transform_mesh_local(&mut mesh, &transform);
                 }
                 return Ok(mesh);
             }
@@ -1031,7 +1079,7 @@ impl GeometryRouter {
         // Apply MappingTarget transformation to this instance
         if let Some(mut transform) = mapping_transform {
             self.scale_transform(&mut transform);
-            self.transform_mesh(&mut mesh, &transform);
+            self.transform_mesh_local(&mut mesh, &transform);
         }
 
         Ok(mesh)

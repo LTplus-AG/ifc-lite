@@ -629,6 +629,43 @@ END-ISO-10303-21;
         .to_string()
     }
 
+    /// Ordinary model pattern: vertices are local and the large coordinate comes
+    /// from IfcLocalPlacement. The placement is rotated to catch regressions
+    /// where RTC is subtracted from local Brep coordinates before placement.
+    fn rotated_placement_model_ifc() -> String {
+        r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition[CoordinationView]'),'2;1');
+FILE_NAME('rotated.ifc','2026-04-13T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('3A_FOM1U13fh337NmQeVRd',$,'TestProject','',$,$,$,(#12),#7);
+#7=IFCUNITASSIGNMENT((#8));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#12=IFCGEOMETRICREPRESENTATIONCONTEXT('3D','Model',3,1.E-6,#14,$);
+#13=IFCLOCALPLACEMENT($,#14);
+#14=IFCAXIS2PLACEMENT3D(#15,#16,#17);
+#15=IFCCARTESIANPOINT((280000.,6214000.,0.));
+#16=IFCDIRECTION((0.,0.,1.));
+#17=IFCDIRECTION((0.,1.,0.));
+#42=IFCBUILDINGELEMENTPROXY('2JJeX0xY93XxwyMxv0upiL',$,'LocalBrep','LocalBrep','LocalBrep',#13,#43,$,.USERDEFINED.);
+#43=IFCPRODUCTDEFINITIONSHAPE($,$,(#44));
+#44=IFCSHAPEREPRESENTATION(#12,'Body','Brep',(#100));
+#100=IFCFACETEDBREP(#101);
+#101=IFCCLOSEDSHELL((#102));
+#102=IFCFACE((#103));
+#103=IFCFACEOUTERBOUND(#104,.T.);
+#104=IFCPOLYLOOP((#110,#111,#112));
+#110=IFCCARTESIANPOINT((0.,0.,0.));
+#111=IFCCARTESIANPOINT((1.,0.,0.));
+#112=IFCCARTESIANPOINT((0.,1.,0.));
+ENDSEC;
+END-ISO-10303-21;
+"#
+        .to_string()
+    }
+
     /// RTC detection must work when placement is at origin but geometry vertices
     /// contain large world coordinates (the infrastructure model pattern).
     #[test]
@@ -682,6 +719,30 @@ END-ISO-10303-21;
             assert!(
                 chunk[0].abs() < 10000.0 && chunk[1].abs() < 10000.0 && chunk[2].abs() < 10000.0,
                 "Vertex ({}, {}, {}) still has large coordinates after RTC",
+                chunk[0],
+                chunk[1],
+                chunk[2]
+            );
+        }
+    }
+
+    #[test]
+    fn rtc_is_applied_after_rotated_object_placement_for_local_vertices() {
+        let content = rotated_placement_model_ifc();
+        let entity_index = ifc_lite_core::build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, entity_index);
+        let mut router = GeometryRouter::with_units(&content, &mut decoder);
+
+        let offset = router.detect_rtc_offset_from_first_element(&content, &mut decoder);
+        router.set_rtc_offset(offset);
+
+        let entity = decoder.decode_by_id(42).unwrap();
+        let mesh = router.process_element(&entity, &mut decoder).unwrap();
+
+        for chunk in mesh.positions.chunks_exact(3) {
+            assert!(
+                chunk[0].abs() < 10.0 && chunk[1].abs() < 10.0 && chunk[2].abs() < 10.0,
+                "Local Brep vertex ({}, {}, {}) was shifted before final placement",
                 chunk[0],
                 chunk[1],
                 chunk[2]

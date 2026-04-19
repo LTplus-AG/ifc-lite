@@ -21,7 +21,8 @@ import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRe
 import { isTauri } from '@/lib/platform';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3 } from 'lucide-react';
 import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
+import { type IfcDataStore } from '@ifc-lite/parser';
+import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -177,83 +178,29 @@ export function ViewportContainer() {
   const georef = useMemo(() => {
     if (!cesiumEnabled) return null;
 
-    // Helper: merge original georef with mutations for a model
-    function mergeGeoref(
-      originalCRS: ProjectedCRS | undefined,
-      originalConv: MapConversion | undefined,
-      modelId: string,
-    ): { mapConversion: MapConversion; projectedCRS: ProjectedCRS } | null {
-      const muts = georefMutations.get(modelId);
-      const mutCRS = muts?.projectedCRS;
-      const mutConv = muts?.mapConversion;
-
-      // Build merged ProjectedCRS — mutation fields override originals
-      const hasCRS = originalCRS || mutCRS;
-      if (!hasCRS) return null;
-      const projectedCRS: ProjectedCRS = {
-        id: originalCRS?.id ?? 0,
-        name: (mutCRS?.name ?? originalCRS?.name ?? '') as string,
-        description: mutCRS?.description ?? originalCRS?.description,
-        geodeticDatum: mutCRS?.geodeticDatum ?? originalCRS?.geodeticDatum,
-        verticalDatum: mutCRS?.verticalDatum ?? originalCRS?.verticalDatum,
-        mapProjection: mutCRS?.mapProjection ?? originalCRS?.mapProjection,
-        mapZone: mutCRS?.mapZone ?? originalCRS?.mapZone,
-        mapUnit: mutCRS?.mapUnit ?? originalCRS?.mapUnit,
-        mapUnitScale: originalCRS?.mapUnitScale,
-      };
-
-      // Need at least an EPSG name to resolve projection
-      if (!projectedCRS.name) return null;
-
-      // Build merged MapConversion
-      const mapConversion: MapConversion = {
-        id: originalConv?.id ?? 0,
-        sourceCRS: originalConv?.sourceCRS ?? 0,
-        targetCRS: originalConv?.targetCRS ?? 0,
-        eastings: (mutConv?.eastings ?? originalConv?.eastings ?? 0) as number,
-        northings: (mutConv?.northings ?? originalConv?.northings ?? 0) as number,
-        orthogonalHeight: (mutConv?.orthogonalHeight ?? originalConv?.orthogonalHeight ?? 0) as number,
-        xAxisAbscissa: mutConv?.xAxisAbscissa ?? originalConv?.xAxisAbscissa,
-        xAxisOrdinate: mutConv?.xAxisOrdinate ?? originalConv?.xAxisOrdinate,
-        scale: mutConv?.scale ?? originalConv?.scale,
-      };
-
-      return { mapConversion, projectedCRS };
-    }
-
     // Check federated models first
     for (const [modelId, model] of storeModels) {
       const ds = model.ifcDataStore;
       if (!ds) continue;
-      const original = extractGeoreferencingOnDemand(ds as IfcDataStore);
-      const merged = mergeGeoref(
-        original?.projectedCRS,
-        original?.mapConversion,
-        modelId,
+      const effective = getEffectiveGeoreference(
+        ds as IfcDataStore,
+        model.geometryResult?.coordinateInfo,
+        georefMutations.get(modelId),
       );
-      if (merged) {
-        // Return coordinateInfo from the SAME model to avoid mismatched transforms
-        const coordInfo = model.geometryResult?.coordinateInfo;
-        const unitScale = ds.source?.length && ds.entityIndex
-          ? extractLengthUnitScale(ds.source, ds.entityIndex)
-          : 1;
-        return { hasGeoreference: true, ...merged, sourceModelId: modelId, coordinateInfo: coordInfo, lengthUnitScale: unitScale };
+      if (effective?.projectedCRS?.name && effective.mapConversion) {
+        return { ...effective, sourceModelId: modelId };
       }
     }
 
     // Fallback to legacy single-model
     if (ifcDataStore) {
-      const original = extractGeoreferencingOnDemand(ifcDataStore as IfcDataStore);
-      const merged = mergeGeoref(
-        original?.projectedCRS,
-        original?.mapConversion,
-        '__legacy__',
+      const effective = getEffectiveGeoreference(
+        ifcDataStore as IfcDataStore,
+        mergedGeometryResult?.coordinateInfo,
+        georefMutations.get('__legacy__'),
       );
-      if (merged) {
-        const unitScale = ifcDataStore.source?.length && ifcDataStore.entityIndex
-          ? extractLengthUnitScale(ifcDataStore.source, ifcDataStore.entityIndex)
-          : 1;
-        return { hasGeoreference: true, ...merged, sourceModelId: '__legacy__', coordinateInfo: mergedGeometryResult?.coordinateInfo, lengthUnitScale: unitScale };
+      if (effective?.projectedCRS?.name && effective.mapConversion) {
+        return { ...effective, sourceModelId: '__legacy__' };
       }
     }
 
@@ -268,22 +215,26 @@ export function ViewportContainer() {
       for (const [modelId, model] of storeModels) {
         const ds = model.ifcDataStore;
         if (!ds) continue;
-        const original = extractGeoreferencingOnDemand(ds as IfcDataStore);
-        const mutCRS = georefMutations.get(modelId)?.projectedCRS;
-        const crsName = mutCRS?.name ?? original?.projectedCRS?.name;
-        if (crsName) return true;
+        const effective = getEffectiveGeoreference(
+          ds as IfcDataStore,
+          model.geometryResult?.coordinateInfo,
+          georefMutations.get(modelId),
+        );
+        if (effective?.projectedCRS?.name) return true;
       }
       // Fallback to legacy single-model
       if (ifcDataStore) {
-        const original = extractGeoreferencingOnDemand(ifcDataStore as IfcDataStore);
-        const mutCRS = georefMutations.get('__legacy__')?.projectedCRS;
-        const crsName = mutCRS?.name ?? original?.projectedCRS?.name;
-        if (crsName) return true;
+        const effective = getEffectiveGeoreference(
+          ifcDataStore as IfcDataStore,
+          mergedGeometryResult?.coordinateInfo,
+          georefMutations.get('__legacy__'),
+        );
+        if (effective?.projectedCRS?.name) return true;
       }
       return false;
     }
     setCesiumAvailable(hasGeoref());
-  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable]);
+  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult]);
 
   // Sync the active Cesium source model ID so terrain actions are scoped correctly
   useEffect(() => {

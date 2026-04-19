@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { IfcParser, parseIfcx, type IfcDataStore } from '@ifc-lite/parser';
-import { GeometryProcessor, GeometryQuality, type CoordinateInfo, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
+import { GeometryProcessor, GeometryQuality, type CoordinateInfo, type DynamicBatchConfig, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
 import { calculateMeshBounds, calculateStoreyHeights, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
@@ -44,7 +44,7 @@ export interface StepBufferIngestOptions {
   fileName: string;
   buffer: ArrayBuffer;
   fileSizeMB: number;
-  getDynamicBatchSize: (fileSizeMB: number) => number | { initial: number; subsequent: number };
+  getDynamicBatchSize: (fileSizeMB: number) => number | DynamicBatchConfig;
   onProgress?: (progress: { phase: string; percent: number }) => void;
   onBatch?: (event: StepBatchEvent) => void;
   onColorUpdate?: (updates: Map<number, RgbaColor>) => void;

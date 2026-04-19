@@ -16,6 +16,9 @@ import { useViewerStore } from '@/store';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { LocationMap, type PickedPosition } from './LocationMap';
+import { mergeMapConversion, mergeProjectedCRS } from '@/lib/geo/effective-georef';
+import { useIfc } from '@/hooks/useIfc';
+import { toast } from '@/components/ui/toast';
 
 // ── Field-specific assistance data ─────────────────────────────────────
 
@@ -332,10 +335,14 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const setCesiumTerrainClamp = useViewerStore(s => s.setCesiumTerrainClamp);
   const cesiumTerrainHeight = useViewerStore(s => s.cesiumTerrainHeight);
   const cesiumSourceModelId = useViewerStore(s => s.cesiumSourceModelId);
+  const models = useViewerStore(s => s.models);
+  const loading = useViewerStore(s => s.loading);
+  const { addModel, clearAllModels } = useIfc();
   // Only show terrain actions when this panel's model is the one backing the Cesium overlay
   const isActiveCesiumModel = !!modelId && modelId === cesiumSourceModelId;
   const [crsOpen, setCrsOpen] = useState(false);
   const [conversionOpen, setConversionOpen] = useState(false);
+  const [showReloadPrompt, setShowReloadPrompt] = useState(false);
 
   useViewerStore(s => s.mutationVersion);
 
@@ -343,38 +350,12 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const supportsStandardGeoreferencing = !schemaVersion?.toUpperCase().includes('2X3');
 
   const mergedCRS = useMemo((): ProjectedCRS | undefined => {
-    const base = georef?.projectedCRS;
-    const muts = mutations?.projectedCRS;
-    if (!base && !muts) return undefined;
-    return {
-      id: base?.id ?? 0,
-      name: muts?.name ?? base?.name ?? '',
-      description: muts?.description ?? base?.description,
-      geodeticDatum: muts?.geodeticDatum ?? base?.geodeticDatum,
-      verticalDatum: muts?.verticalDatum ?? base?.verticalDatum,
-      mapProjection: muts?.mapProjection ?? base?.mapProjection,
-      mapZone: muts?.mapZone ?? base?.mapZone,
-      mapUnit: muts?.mapUnit ?? base?.mapUnit,
-      mapUnitScale: base?.mapUnitScale,
-    };
-  }, [georef, mutations]);
+    return mergeProjectedCRS(georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale ?? 1);
+  }, [georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale]);
 
   const mergedConversion = useMemo((): MapConversion | undefined => {
-    const base = georef?.mapConversion;
-    const muts = mutations?.mapConversion;
-    if (!base && !muts) return undefined;
-    return {
-      id: base?.id ?? 0,
-      sourceCRS: base?.sourceCRS ?? 0,
-      targetCRS: base?.targetCRS ?? 0,
-      eastings: muts?.eastings ?? base?.eastings ?? 0,
-      northings: muts?.northings ?? base?.northings ?? 0,
-      orthogonalHeight: muts?.orthogonalHeight ?? base?.orthogonalHeight ?? 0,
-      xAxisAbscissa: muts?.xAxisAbscissa ?? base?.xAxisAbscissa,
-      xAxisOrdinate: muts?.xAxisOrdinate ?? base?.xAxisOrdinate,
-      scale: muts?.scale ?? base?.scale,
-    };
-  }, [georef, mutations]);
+    return mergeMapConversion(georef?.mapConversion, mutations?.mapConversion);
+  }, [georef?.mapConversion, mutations?.mapConversion]);
 
   const angleToGridNorth = useMemo(() => {
     return computeAngleToGridNorth(mergedConversion?.xAxisAbscissa, mergedConversion?.xAxisOrdinate);
@@ -402,22 +383,69 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return field in entityMuts;
   }, [mutations]);
 
+  const requestAlignmentReload = useCallback(() => {
+    if (models.size > 1) {
+      setShowReloadPrompt(true);
+    }
+  }, [models.size]);
+
+  const reloadModelsForAlignment = useCallback(async () => {
+    const state = useViewerStore.getState();
+    const snapshot = Array.from(state.models.values()).sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
+    const missingSource = snapshot.find(model => !model.sourceFile);
+    if (snapshot.length < 2) {
+      setShowReloadPrompt(false);
+      return;
+    }
+    if (missingSource) {
+      toast.error(`Cannot reload ${missingSource.name}: source file is not available`);
+      return;
+    }
+
+    try {
+      clearAllModels();
+      for (const model of snapshot) {
+        const sourceFile = model.sourceFile;
+        if (!sourceFile) continue;
+        const reloadedModelId = await addModel(sourceFile, {
+          name: model.name,
+          modelId: model.id,
+          loadedAt: model.loadedAt,
+          visible: model.visible,
+          collapsed: model.collapsed,
+        });
+        if (!reloadedModelId) {
+          throw new Error(`Failed to reload ${model.name}`);
+        }
+        if (model.visible === false) {
+          useViewerStore.getState().setModelVisibility(model.id, false);
+        }
+      }
+      setShowReloadPrompt(false);
+      toast.success('Reloaded models for edited georeferencing');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Reload failed');
+    }
+  }, [addModel, clearAllModels]);
+
   const handleSave = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string, value: string | number) => {
     if (!modelId || !setGeorefField) return;
     const oldValue = entity === 'projectedCRS'
-      ? georef?.projectedCRS?.[field as keyof ProjectedCRS]
-      : georef?.mapConversion?.[field as keyof MapConversion];
+      ? mergedCRS?.[field as keyof ProjectedCRS]
+      : mergedConversion?.[field as keyof MapConversion];
     setGeorefField(modelId, entity, field, value, oldValue as string | number | undefined);
-  }, [modelId, setGeorefField, georef]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefField, mergedCRS, mergedConversion, requestAlignmentReload]);
 
   // Handle angle edit: compute and set both XAxisAbscissa and XAxisOrdinate
   const handleAngleChange = useCallback((abscissa: number, ordinate: number) => {
     if (!modelId || !setGeorefFields) return;
     setGeorefFields(modelId, 'mapConversion', [
-      { field: 'xAxisAbscissa', value: abscissa, oldValue: georef?.mapConversion?.xAxisAbscissa },
-      { field: 'xAxisOrdinate', value: ordinate, oldValue: georef?.mapConversion?.xAxisOrdinate },
+      { field: 'xAxisAbscissa', value: abscissa, oldValue: mergedConversion?.xAxisAbscissa },
+      { field: 'xAxisOrdinate', value: ordinate, oldValue: mergedConversion?.xAxisOrdinate },
     ]);
-  }, [modelId, setGeorefFields, georef]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
 
   // Handle position picked from the map (reverse-projected easting/northing + optional terrain height)
   const handleApplyPosition = useCallback((position: PickedPosition) => {
@@ -435,35 +463,37 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     }
     setGeorefFields(modelId, 'mapConversion', fields);
     setConversionOpen(true);
-  }, [modelId, setGeorefFields, mergedConversion]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
 
   const initializeMapConversionDefaults = useCallback(() => {
     if (!modelId || !setGeorefFields) return;
     setGeorefFields(modelId, 'mapConversion', [
-      { field: 'eastings', value: georef?.mapConversion?.eastings ?? 0, oldValue: georef?.mapConversion?.eastings },
-      { field: 'northings', value: georef?.mapConversion?.northings ?? 0, oldValue: georef?.mapConversion?.northings },
-      { field: 'orthogonalHeight', value: georef?.mapConversion?.orthogonalHeight ?? 0, oldValue: georef?.mapConversion?.orthogonalHeight },
-      { field: 'xAxisAbscissa', value: georef?.mapConversion?.xAxisAbscissa ?? 1, oldValue: georef?.mapConversion?.xAxisAbscissa },
-      { field: 'xAxisOrdinate', value: georef?.mapConversion?.xAxisOrdinate ?? 0, oldValue: georef?.mapConversion?.xAxisOrdinate },
-      { field: 'scale', value: georef?.mapConversion?.scale ?? 1, oldValue: georef?.mapConversion?.scale },
+      { field: 'eastings', value: mergedConversion?.eastings ?? 0, oldValue: mergedConversion?.eastings },
+      { field: 'northings', value: mergedConversion?.northings ?? 0, oldValue: mergedConversion?.northings },
+      { field: 'orthogonalHeight', value: mergedConversion?.orthogonalHeight ?? 0, oldValue: mergedConversion?.orthogonalHeight },
+      { field: 'xAxisAbscissa', value: mergedConversion?.xAxisAbscissa ?? 1, oldValue: mergedConversion?.xAxisAbscissa },
+      { field: 'xAxisOrdinate', value: mergedConversion?.xAxisOrdinate ?? 0, oldValue: mergedConversion?.xAxisOrdinate },
+      { field: 'scale', value: mergedConversion?.scale ?? 1, oldValue: mergedConversion?.scale },
     ]);
     setConversionOpen(true);
-  }, [modelId, setGeorefFields, georef]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
 
   const handleEpsgSelect = useCallback((result: EpsgResult) => {
     if (!modelId || !setGeorefFields) return;
     const epsgName = `EPSG:${result.code}`;
     const fieldUpdates: Array<{ field: string; value: string | number; oldValue?: string | number }> = [
-      { field: 'name', value: epsgName, oldValue: georef?.projectedCRS?.name },
+      { field: 'name', value: epsgName, oldValue: mergedCRS?.name },
     ];
     if (result.name) {
-      fieldUpdates.push({ field: 'description', value: result.name, oldValue: georef?.projectedCRS?.description });
+      fieldUpdates.push({ field: 'description', value: result.name, oldValue: mergedCRS?.description });
     }
     if (result.datum) {
-      fieldUpdates.push({ field: 'geodeticDatum', value: result.datum, oldValue: georef?.projectedCRS?.geodeticDatum });
+      fieldUpdates.push({ field: 'geodeticDatum', value: result.datum, oldValue: mergedCRS?.geodeticDatum });
     }
     if (result.projection) {
-      fieldUpdates.push({ field: 'mapProjection', value: result.projection, oldValue: georef?.projectedCRS?.mapProjection });
+      fieldUpdates.push({ field: 'mapProjection', value: result.projection, oldValue: mergedCRS?.mapProjection });
     }
     if (result.unit) {
       const unitUpper = result.unit.toUpperCase();
@@ -474,14 +504,15 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           : unitUpper.includes('FOOT') || unitUpper.includes('FEET')
             ? 'FOOT'
             : result.unit;
-      fieldUpdates.push({ field: 'mapUnit', value: mapUnit, oldValue: georef?.projectedCRS?.mapUnit });
+      fieldUpdates.push({ field: 'mapUnit', value: mapUnit, oldValue: mergedCRS?.mapUnit });
     }
     setGeorefFields(modelId, 'projectedCRS', fieldUpdates);
-    if (!georef?.mapConversion && !mutations?.mapConversion) {
+    if (!mergedConversion && !mutations?.mapConversion) {
       initializeMapConversionDefaults();
     }
     setCrsOpen(true);
-  }, [modelId, setGeorefFields, georef, mutations, initializeMapConversionDefaults]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedCRS, mergedConversion, mutations, initializeMapConversionDefaults, requestAlignmentReload]);
 
   const hasData = mergedCRS || mergedConversion;
   const editable = enableEditing && !!modelId && supportsStandardGeoreferencing;
@@ -516,6 +547,33 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
   return (
     <div>
+      {showReloadPrompt && (
+        <div className="mx-2 my-2 border border-teal-300 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/40 px-2.5 py-2">
+          <div className="flex items-start gap-2">
+            <MapPin className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] text-zinc-700 dark:text-zinc-300">
+                Georeference saved. Reload loaded models to recompute 3D alignment?
+              </p>
+              <div className="mt-1.5 flex items-center gap-2">
+                <button
+                  onClick={reloadModelsForAlignment}
+                  disabled={loading}
+                  className="px-2 py-0.5 text-[10px] font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Reload models
+                </button>
+                <button
+                  onClick={() => setShowReloadPrompt(false)}
+                  className="px-2 py-0.5 text-[10px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800"
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* CRS summary — always visible */}
       <div className="px-2 py-1.5 flex items-center gap-2">
         <Globe className="h-3 w-3 text-teal-500 shrink-0" />

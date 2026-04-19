@@ -10,9 +10,9 @@
 use crate::{Error, Mesh, Point3, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
-use crate::router::GeometryProcessor;
 use super::advanced_face::process_advanced_face;
 use super::helpers::{extract_loop_points_by_id, FaceData, FaceResult};
+use crate::router::GeometryProcessor;
 
 // ---------- FacetedBrepProcessor ----------
 
@@ -261,12 +261,14 @@ impl FacetedBrepProcessor {
         brep_ids: &[u32],
         decoder: &mut EntityDecoder,
         rtc: (f64, f64, f64),
+        large_coord_threshold_file_units: f64,
     ) -> Vec<(usize, Mesh)> {
         use rayon::prelude::*;
 
         // PHASE 1: Sequential - Extract all face data from all BREPs
         // Each entry: (brep_index, face_data)
         let mut all_faces: Vec<(usize, FaceData)> = Vec::with_capacity(brep_ids.len() * 10);
+        let mut raw_large_by_brep = vec![false; brep_ids.len()];
 
         for (brep_idx, &brep_id) in brep_ids.iter().enumerate() {
             // FAST PATH: Get shell ID directly from raw bytes (avoids full entity decode)
@@ -306,6 +308,15 @@ impl FacetedBrepProcessor {
                         None => continue,
                     };
 
+                    if !raw_large_by_brep[brep_idx]
+                        && points.iter().any(|point| {
+                            point.x.abs().max(point.y.abs()).max(point.z.abs())
+                                > large_coord_threshold_file_units
+                        })
+                    {
+                        raw_large_by_brep[brep_idx] = true;
+                    }
+
                     if !orientation {
                         points.reverse();
                     }
@@ -338,7 +349,14 @@ impl FacetedBrepProcessor {
         // Uses rayon thread pool on both native and WASM (via wasm-bindgen-rayon)
         let face_results: Vec<(usize, FaceResult)> = all_faces
             .par_iter()
-            .map(|(brep_idx, face)| (*brep_idx, Self::triangulate_face(face, rtc)))
+            .map(|(brep_idx, face)| {
+                let face_rtc = if raw_large_by_brep[*brep_idx] {
+                    rtc
+                } else {
+                    (0.0, 0.0, 0.0)
+                };
+                (*brep_idx, Self::triangulate_face(face, face_rtc))
+            })
             .collect();
 
         // PHASE 3: Group results back by BREP index
@@ -381,8 +399,9 @@ impl FacetedBrepProcessor {
                         positions,
                         normals: Vec::new(),
                         indices,
-                        // RTC subtracted during f64→f32 conversion when rtc != (0,0,0)
-                        rtc_applied: rtc.0 != 0.0 || rtc.1 != 0.0 || rtc.2 != 0.0,
+                        // RTC is pre-subtracted only for raw world-coordinate Breps.
+                        rtc_applied: raw_large_by_brep[brep_idx]
+                            && (rtc.0 != 0.0 || rtc.1 != 0.0 || rtc.2 != 0.0),
                     },
                 )
             })

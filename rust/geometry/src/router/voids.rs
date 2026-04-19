@@ -303,7 +303,7 @@ impl GeometryRouter {
 
                 // Use the same transform_mesh as process_element → apply_placement
                 // This handles ObjectPlacement, unit scaling, and conditional RTC
-                self.transform_mesh(&mut mesh, &placement_transform);
+                self.transform_mesh_world(&mut mesh, &placement_transform);
 
                 item_meshes.push(mesh);
             }

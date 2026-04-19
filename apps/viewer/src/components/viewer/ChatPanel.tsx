@@ -52,7 +52,8 @@ import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/l
 import { Check, Image as ImageIcon, Key, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { hasDesktopFeatureAccess } from '@/lib/desktop-product';
 import { getModelById } from '@/lib/llm/models';
-import { getApiKeys, updateApiKeys, hasAnyApiKey, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
+import { resolveStreamRoute } from '@/lib/llm/byok-guard';
+import { getApiKeys, updateApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
 import { useSandbox } from '@/hooks/useSandbox';
 
 // Environment variable for the proxy URL
@@ -401,6 +402,20 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     if (!text.trim() || status === 'streaming' || status === 'sending') return;
     if (!canUseAiAssistant) {
       setChatError('AI assistant is available with Desktop Pro.');
+      return;
+    }
+
+    // Resolve the stream route BEFORE any user-visible side effects (adding
+    // the user message, clearing attachments, setting sending state). If the
+    // selected BYOK model has no key, bail out now so the chat transcript
+    // doesn't stack orphaned user messages on repeated sends.
+    const route = resolveStreamRoute(activeModel, getApiKeys());
+    if (route.kind === 'missing-key') {
+      setChatError(
+        route.provider === 'anthropic'
+          ? 'Enter your Anthropic API key above to use this model.'
+          : 'Enter your OpenAI API key above to use this model.',
+      );
       return;
     }
 
@@ -783,28 +798,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         commitAssistantTurn();
     };
 
-    // Route to direct provider streaming for BYOK models, or through the proxy for free models
-    const resolvedModelInfo = getModelById(activeModel);
-    const modelSource = resolvedModelInfo?.source ?? 'proxy';
-    const currentApiKeys = getApiKeys();
-
-    if (modelSource === 'anthropic' && !currentApiKeys.anthropicKey) {
-      setChatError('Enter your Anthropic API key above to use this model.');
-      setChatStatus('idle');
-      setChatAbortController(null);
-      commitAssistantTurn();
-      return;
-    }
-    if (modelSource === 'openai' && !currentApiKeys.openaiKey) {
-      setChatError('Enter your OpenAI API key above to use this model.');
-      setChatStatus('idle');
-      setChatAbortController(null);
-      commitAssistantTurn();
-      return;
-    }
-
-    if (modelSource === 'anthropic' && currentApiKeys.anthropicKey) {
-      await streamAnthropicChat(currentApiKeys.anthropicKey, {
+    // Route to direct provider streaming for BYOK models, or through the proxy
+    // for free models. The route was already resolved (and the missing-key
+    // case handled) at the top of doSend, so this dispatch is total.
+    if (route.kind === 'anthropic') {
+      await streamAnthropicChat(route.apiKey, {
         model: activeModel,
         messages: streamMessages,
         system: systemPrompt,
@@ -814,8 +812,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         onFinishReason: handleFinishReason,
         onError: handleError,
       });
-    } else if (modelSource === 'openai' && currentApiKeys.openaiKey) {
-      await streamOpenAiChat(currentApiKeys.openaiKey, {
+    } else if (route.kind === 'openai') {
+      await streamOpenAiChat(route.apiKey, {
         model: activeModel,
         messages: streamMessages,
         system: systemPrompt,

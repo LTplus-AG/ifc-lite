@@ -14,7 +14,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { drainSseBuffer, type StreamMessage, type StreamOptions } from './stream-client.js';
+import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 
@@ -214,21 +214,35 @@ async function streamOpenAiResponses(
   if (!response.body) { cleanup(); onError(new Error('No response body')); return; }
 
   let fullText = '';
+  // Map Responses API terminal events → chat-style finish_reason.
+  // `response.incomplete` is any non-completed terminal state: when the
+  // reason is `max_output_tokens` — or simply absent — map to 'length' so
+  // the ChatPanel "Continue" UX can resume a truncated Codex reply. Other
+  // explicit reasons (e.g. `content_filter`) pass through unchanged.
+  let finishReason: string | null = 'stop';
 
   const ok = await readSseStream(response.body, signal, (data) => {
     const event = JSON.parse(data) as {
       type?: string;
       delta?: string;
-      response?: { status?: string };
+      response?: {
+        status?: string;
+        incomplete_details?: { reason?: string } | null;
+      };
     };
     if (event.type === 'response.output_text.delta' && event.delta) {
       fullText += event.delta;
       onChunk(event.delta);
+    } else if (event.type === 'response.incomplete') {
+      const reason = event.response?.incomplete_details?.reason;
+      finishReason = reason == null || reason === 'max_output_tokens' ? 'length' : reason;
+    } else if (event.type === 'response.completed') {
+      finishReason = 'stop';
     }
   }, onError);
 
   cleanup();
-  if (ok) { onFinishReason?.('stop'); onComplete(fullText); }
+  if (ok) { onFinishReason?.(finishReason); onComplete(fullText); }
 }
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
@@ -299,49 +313,4 @@ async function openAiFetch(
   }
 
   return { response, cleanup };
-}
-
-/** Read an SSE stream, calling onEvent for each `data:` line. Returns true if completed normally. */
-async function readSseStream(
-  body: ReadableStream<Uint8Array>,
-  signal: AbortSignal | undefined,
-  onEvent: (data: string) => void,
-  onError: (err: Error) => void,
-): Promise<boolean> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const drained = drainSseBuffer(buffer);
-      buffer = drained.remainder;
-      for (const evt of drained.events) {
-        for (const line of evt.split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-          try { onEvent(data); } catch { /* skip malformed */ }
-        }
-      }
-    }
-    buffer += decoder.decode();
-    const drained = drainSseBuffer(buffer, true);
-    for (const evt of drained.events) {
-      for (const line of evt.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-        try { onEvent(data); } catch { /* skip malformed */ }
-      }
-    }
-    return true;
-  } catch (err) {
-    if (signal?.aborted) return false;
-    onError(err instanceof Error ? err : new Error(String(err)));
-    return false;
-  }
 }

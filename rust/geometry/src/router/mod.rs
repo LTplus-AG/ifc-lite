@@ -262,7 +262,13 @@ impl GeometryRouter {
             self.rtc_offset.1 / self.unit_scale,
             self.rtc_offset.2 / self.unit_scale,
         );
-        let results = processor.process_batch(brep_ids, decoder, rtc_file_units);
+        let large_coord_threshold_file_units = 10000.0 / self.unit_scale;
+        let results = processor.process_batch(
+            brep_ids,
+            decoder,
+            rtc_file_units,
+            large_coord_threshold_file_units,
+        );
 
         // Store results in cache (preallocate to avoid rehashing)
         let mut cache = self.faceted_brep_cache.borrow_mut();

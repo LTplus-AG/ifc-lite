@@ -231,6 +231,7 @@ export function useIfcLoader() {
         schemaVersion: 'IFC4',
         loadedAt: Date.now(),
         fileSize,
+        sourceFile: file,
         idOffset: 0,
         maxExpressId: 0,
         loadState: 'pending',

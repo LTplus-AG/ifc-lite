@@ -197,10 +197,10 @@ function buildModelMatrix(
   const ty = -(so * mvx - sa * mvz);
   const tz = -mvy;
   const ifcToEnu = new Cesium.Matrix4(
-    sa, -so, 0, tx,
-    so,  sa, 0, ty,
-    0,   0,  1, tz,
-    0,   0,  0, 1,
+    sa, 0,  so, tx,
+    so, 0, -sa, ty,
+    0,  1,  0,  tz,
+    0,  0,  0,  1,
   );
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
 }
@@ -552,7 +552,14 @@ export function CesiumOverlay({
         let model: { modelMatrix: any; destroy?: () => void } | null = null;
         try {
           model = await Cesium.Model.fromGltfAsync({
-            url: glbUrl, modelMatrix, shadows: Cesium.ShadowMode.DISABLED,
+            url: glbUrl,
+            modelMatrix,
+            shadows: Cesium.ShadowMode.DISABLED,
+            // The generated GLB stores viewer-space vertices and buildModelMatrix
+            // already maps viewer axes into ENU. Avoid Cesium's default glTF
+            // Y-up/Z-forward correction or the model is rotated onto its side.
+            upAxis: Cesium.Axis.Z,
+            forwardAxis: Cesium.Axis.X,
           });
         } finally {
           URL.revokeObjectURL(glbUrl);

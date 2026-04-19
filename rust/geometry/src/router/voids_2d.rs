@@ -309,9 +309,9 @@ impl GeometryRouter {
             }
         };
 
-        // Apply extrusion position transform (with RTC offset)
+        // Apply extrusion position transform in local representation space.
         if position_transform != Matrix4::identity() {
-            self.transform_mesh(&mut mesh, &position_transform);
+            self.transform_mesh_local(&mut mesh, &position_transform);
         }
 
         // Scale mesh

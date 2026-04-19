@@ -289,6 +289,13 @@ export interface NativeMetadataSnapshot {
   spatialTree: NativeMetadataSpatialNode | null;
 }
 
+export type ModelSourceFile = File | {
+  path: string;
+  name: string;
+  size: number;
+  modifiedMs?: number | null;
+};
+
 /** Complete model container for federation */
 export interface FederatedModel {
   /** Unique identifier (UUID generated on load) */
@@ -309,6 +316,8 @@ export interface FederatedModel {
   loadedAt: number;
   /** Original file size in bytes */
   fileSize: number;
+  /** Original source handle used for explicit reload/reposition operations. */
+  sourceFile?: ModelSourceFile;
   /**
    * ID offset for this model (from FederationRegistry)
    * All mesh expressIds are globalIds = originalExpressId + idOffset

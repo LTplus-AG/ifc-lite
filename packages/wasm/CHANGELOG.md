@@ -1,5 +1,11 @@
 # @ifc-lite/wasm
 
+## 1.16.5
+
+### Patch Changes
+
+- [#565](https://github.com/louistrue/ifc-lite/pull/565) [`7000011`](https://github.com/louistrue/ifc-lite/commit/7000011d6eb372c2dadf7c82f6e76a0583c6abc1) Thanks [@louistrue](https://github.com/louistrue)! - Rebuild WASM bindings for model-level RTC and georeferenced federation alignment fixes.
+
 ## 1.16.4
 
 ### Patch Changes

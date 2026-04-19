@@ -339,7 +339,15 @@ export class Section2DOverlayRenderer {
       depthStencil: {
         format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
-        depthCompare: 'always' as const,  // Always draw - overlay is positioned with fixed offset
+        // 'greater-equal' (reverse-Z): draw the cap fill when its depth is at
+        // least as close as whatever the main opaque pass already wrote. The
+        // cap polygons live exactly on the section plane, which coincides
+        // with below-plane top faces — 'greater-equal' lets them tie cleanly
+        // there. Where nearer model geometry (e.g. a wall in front of the
+        // cut, viewed at an angle) wrote a closer depth, the cap fails the
+        // test and is occluded — the user no longer sees cap hatch painted
+        // through model elements that ought to be in front of it.
+        depthCompare: 'greater-equal' as const,
       },
       multisample: {
         count: this.sampleCount,
@@ -376,7 +384,10 @@ export class Section2DOverlayRenderer {
       depthStencil: {
         format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
-        depthCompare: 'always' as const,  // Always draw - overlay is positioned with fixed offset
+        // Same z-respect logic as the fill pipeline above — outline lines
+        // are drawn on the cut plane, so closer model geometry should hide
+        // them when the camera looks through it.
+        depthCompare: 'greater-equal' as const,
       },
       multisample: {
         count: this.sampleCount,

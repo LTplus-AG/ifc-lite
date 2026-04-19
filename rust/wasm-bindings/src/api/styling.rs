@@ -867,12 +867,10 @@ fn collect_material_entity(
 /// Resolve color for a sub-mesh using the fallback chain:
 /// direct geometry style -> material-based style -> element style -> default.
 ///
-/// `mat_color_idx` is the per-element sub-mesh counter for material fallback.
-/// For ordered material sources (e.g. IfcMaterialLayerSet), it indexes into the
-/// material list directly so layer N's color is applied to layer N's sub-mesh.
-/// For unordered sources (IfcMaterialList), it alternates transparent/opaque
-/// preference instead.
-/// It is incremented when a material fallback is attempted (caller tracks this).
+/// `mat_color_idx` is the per-element sub-mesh counter. It is incremented
+/// **once per call**, regardless of which branch returns, so that
+/// `MaterialColors::Ordered` sources map sub-mesh N → layer N even when
+/// some sub-meshes short-circuit on a direct geometry style.
 pub(crate) fn resolve_submesh_color(
     geometry_id: u32,
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
@@ -882,6 +880,12 @@ pub(crate) fn resolve_submesh_color(
     element_color: Option<[f32; 4]>,
     default_color: [f32; 4],
 ) -> [f32; 4] {
+    // Advance for every sub-mesh so index reflects geometry position, not
+    // the number of fallbacks taken. Required for correct ordered-layer
+    // mapping when some sub-meshes carry direct IfcStyledItem styles.
+    let idx = *mat_color_idx;
+    *mat_color_idx += 1;
+
     // 1. Direct geometry style (IfcStyledItem -> geometry item)
     if let Some(color) = find_color_for_geometry(geometry_id, geometry_styles, decoder) {
         return color;
@@ -889,8 +893,6 @@ pub(crate) fn resolve_submesh_color(
 
     // 2. Material-based fallback
     if let Some(colors) = material_colors {
-        let idx = *mat_color_idx;
-        *mat_color_idx += 1;
         if let Some(color) = pick_material_style_for_submesh(colors, idx) {
             return color;
         }
@@ -1258,6 +1260,64 @@ mod tests {
             pick_material_style_for_submesh(&MaterialColors::Unordered(vec![]), 0),
             None
         );
+    }
+
+    // Regression for #541 review comment: the counter must advance for every
+    // sub-mesh, not only when material fallback is taken. If sub-mesh 0 has a
+    // direct IfcStyledItem style (short-circuit), sub-mesh 1 must still read
+    // layer 1's color — not layer 0's.
+    #[test]
+    fn resolve_submesh_color_index_tracks_submesh_position_not_fallback_count() {
+        use rustc_hash::FxHashMap;
+
+        const STYLED_ITEM_COLOR: [f32; 4] = [0.1, 0.2, 0.3, 1.0];
+        const GEOM_ID_WITH_STYLE: u32 = 42;
+        const GEOM_ID_NO_STYLE: u32 = 99;
+
+        let mut geometry_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+        geometry_styles.insert(GEOM_ID_WITH_STYLE, STYLED_ITEM_COLOR);
+
+        let layers = MaterialColors::Ordered(vec![OPAQUE_A, TRANSPARENT, OPAQUE_B]);
+        let mut idx = 0usize;
+        let mut decoder = ifc_lite_core::EntityDecoder::new("");
+
+        // Sub-mesh 0: direct style hit, short-circuits before fallback.
+        let c0 = resolve_submesh_color(
+            GEOM_ID_WITH_STYLE,
+            &geometry_styles,
+            &mut decoder,
+            Some(&layers),
+            &mut idx,
+            None,
+            [0.0, 0.0, 0.0, 1.0],
+        );
+        // Sub-mesh 1: no direct style, must fall back to layer 1 (TRANSPARENT),
+        // not layer 0. If the counter only advanced on fallback, this would
+        // incorrectly return OPAQUE_A.
+        let c1 = resolve_submesh_color(
+            GEOM_ID_NO_STYLE,
+            &geometry_styles,
+            &mut decoder,
+            Some(&layers),
+            &mut idx,
+            None,
+            [0.0, 0.0, 0.0, 1.0],
+        );
+        // Sub-mesh 2: must map to layer 2.
+        let c2 = resolve_submesh_color(
+            GEOM_ID_NO_STYLE,
+            &geometry_styles,
+            &mut decoder,
+            Some(&layers),
+            &mut idx,
+            None,
+            [0.0, 0.0, 0.0, 1.0],
+        );
+
+        assert_eq!(c0, STYLED_ITEM_COLOR);
+        assert_eq!(c1, TRANSPARENT, "layer 1 must not collapse to layer 0");
+        assert_eq!(c2, OPAQUE_B);
+        assert_eq!(idx, 3, "counter advances once per sub-mesh");
     }
 
     // Sanity check that resolve_submesh_color advances mat_color_idx and

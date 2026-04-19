@@ -181,12 +181,26 @@ export class SectionCapRenderer {
       ],
     }];
 
+    // WebGPU requires a pipeline's fragment targets to match the render
+    // pass's colour attachments exactly — both in count and format — even
+    // when the fragment shader doesn't write anything. The main render pass
+    // has two colour attachments (main colour + objectId), so the stencil
+    // pipelines must declare both with writeMask 0 so nothing is written.
+    // This is the fix for "Incompatible color attachments at indices []:
+    // the RenderPass uses textures with formats [Bgra8Unorm, Rgba8Unorm]
+    // but the RenderPipeline with 'section-cap-parity' label uses attachments
+    // with formats []".
+    const noWriteColorTargets: GPUColorTargetState[] = [
+      { format: colorFormat, writeMask: 0 },
+      { format: 'rgba8unorm', writeMask: 0 },
+    ];
+
     const stencilBase = {
       layout: stencilLayout,
       vertex:   { module: stencilShader, entryPoint: 'vs_main', buffers: vertexBuffers },
-      // No colour targets. The fragment shader writes nothing; only the
-      // stencil op runs.
-      fragment: { module: stencilShader, entryPoint: 'fs_main', targets: [] as GPUColorTargetState[] },
+      // Match the main render pass colour attachments but write nothing —
+      // only the stencil op runs.
+      fragment: { module: stencilShader, entryPoint: 'fs_main', targets: noWriteColorTargets },
       primitive: { topology: 'triangle-list' as const },
       multisample: { count: sampleCount },
     };
@@ -260,7 +274,9 @@ export class SectionCapRenderer {
       label: 'section-cap-parity-instanced',
       layout: stencilInstancedLayout,
       vertex:   { module: stencilInstancedShader, entryPoint: 'vs_main', buffers: instancedVertexBuffers },
-      fragment: { module: stencilInstancedShader, entryPoint: 'fs_main', targets: [] as GPUColorTargetState[] },
+      // Must match the render pass's colour attachments — see comment above
+      // on `noWriteColorTargets`.
+      fragment: { module: stencilInstancedShader, entryPoint: 'fs_main', targets: noWriteColorTargets },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: parityStencil,
       multisample: { count: sampleCount },
@@ -291,13 +307,20 @@ export class SectionCapRenderer {
       fragment: {
         module: fillShader,
         entryPoint: 'fs_main',
-        targets: [{
-          format: colorFormat,
-          blend: {
-            color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
-            alpha: { srcFactor: 'one',       dstFactor: 'one-minus-src-alpha' },
+        // Target 0 (main colour) gets the cap paint with alpha blending.
+        // Target 1 (objectId) must be declared to match the render pass's
+        // attachment count, but we mask writes so cap pixels don't clobber
+        // the picking IDs underneath.
+        targets: [
+          {
+            format: colorFormat,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+              alpha: { srcFactor: 'one',       dstFactor: 'one-minus-src-alpha' },
+            },
           },
-        }],
+          { format: 'rgba8unorm', writeMask: 0 },
+        ],
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {

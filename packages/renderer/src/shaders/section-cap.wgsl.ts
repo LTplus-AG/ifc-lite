@@ -48,8 +48,16 @@ fn vs_main(input: VertexInput) -> VertexOutput {
   return out;
 }
 
+// The fragment shader must declare outputs matching the render pipeline's
+// fragment targets, even though writeMask is 0 on both targets (stencil-only
+// pass). WebGPU validates output/target symmetry at pipeline creation time.
+struct StencilFragOut {
+  @location(0) color:    vec4<f32>,
+  @location(1) objectId: vec4<f32>,
+}
+
 @fragment
-fn fs_main(in: VertexOutput) {
+fn fs_main(in: VertexOutput) -> StencilFragOut {
   // flipped flag negates the "kept" side so the user can cut either half.
   let sign = select(1.0, -1.0, uniforms.flags.x == 1u);
   let d = (dot(in.worldPos, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * sign;
@@ -58,7 +66,13 @@ fn fs_main(in: VertexOutput) {
     // are set to 'keep' when the fragment fails this early-out via discard.
     discard;
   }
-  // Otherwise: fragment passes, stencil op runs (inc on back pass, dec on front).
+  // Otherwise: fragment passes, stencil op runs (invert on cullMode=none pass).
+  // Outputs are masked off in the pipeline, so the values themselves are
+  // irrelevant; we just need to satisfy the target/output count check.
+  var out: StencilFragOut;
+  out.color    = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  return out;
 }
 `;
 
@@ -106,13 +120,24 @@ fn vs_main(input: VertexInput, @builtin(instance_index) idx: u32) -> VertexOutpu
   return out;
 }
 
+// Same struct as the non-instanced path — outputs must match the render
+// pipeline's fragment targets.
+struct StencilFragOutI {
+  @location(0) color:    vec4<f32>,
+  @location(1) objectId: vec4<f32>,
+}
+
 @fragment
-fn fs_main(in: VertexOutput) {
+fn fs_main(in: VertexOutput) -> StencilFragOutI {
   let sign = select(1.0, -1.0, uniforms.flags.x == 1u);
   let d = (dot(in.worldPos, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * sign;
   if (d <= 0.0) {
     discard;
   }
+  var out: StencilFragOutI;
+  out.color    = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  return out;
 }
 `;
 
@@ -236,8 +261,16 @@ fn hatchIntensity(fragCoord: vec2<f32>, patternId: u32, spacing: f32, angle: f32
   return 0.0;
 }
 
+struct FragOut {
+  // Main colour: the cap fill + hatch pattern with alpha blending.
+  @location(0) color: vec4<f32>,
+  // objectId attachment: declared so the pipeline matches the render pass,
+  // but writeMask is 0 at the pipeline level so this value is discarded.
+  @location(1) objectId: vec4<f32>,
+}
+
 @fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+fn fs_main(in: VsOut) -> FragOut {
   let patternId = u32(cap.params.x + 0.5);
   let spacing   = max(2.0, cap.params.y);
   let angle     = cap.params.z;
@@ -248,6 +281,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // Mix hatch stroke over the fill.
   let rgb = mix(cap.fillColor.rgb, cap.strokeColor.rgb, h * cap.strokeColor.a);
   let a   = max(cap.fillColor.a, h * cap.strokeColor.a);
-  return vec4<f32>(rgb, a);
+
+  var out: FragOut;
+  out.color    = vec4<f32>(rgb, a);
+  out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  return out;
 }
 `;

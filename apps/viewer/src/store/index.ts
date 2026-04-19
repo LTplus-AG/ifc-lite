@@ -202,6 +202,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         enabled: SECTION_PLANE_DEFAULTS.ENABLED,
         flipped: SECTION_PLANE_DEFAULTS.FLIPPED,
         showCap: SECTION_PLANE_DEFAULTS.SHOW_CAP,
+        showOutlines: SECTION_PLANE_DEFAULTS.SHOW_OUTLINES,
         capStyle: {
           fillColor:   [...SECTION_CAP_DEFAULTS.FILL_COLOR],
           strokeColor: [...SECTION_CAP_DEFAULTS.STROKE_COLOR],

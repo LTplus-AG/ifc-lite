@@ -131,6 +131,11 @@ export interface SectionPlane {
   max?: number;      // Optional override for max range value
   /** If true (default), render filled cap surfaces with a screen-space hatch. */
   showCap?: boolean;
+  /**
+   * If true (default), draw polygon outlines on the cut surfaces. Users
+   * can turn surfaces and outlines on/off independently from the UI.
+   */
+  showOutlines?: boolean;
   /** Override the default cap appearance. */
   capStyle?: SectionCapStyleOptions;
 }

@@ -115,6 +115,13 @@ export interface SectionPlane {
   flipped: boolean;
   /** Whether to render the filled, hatched cap surface at the plane. Defaults to true. */
   showCap: boolean;
+  /**
+   * Whether to draw polygon outlines on top of the cut (the crisp black
+   * line the architect expects around each sliced element). Independent
+   * from `showCap` so users can have a hatched fill without outlines,
+   * or vice versa. Defaults to true.
+   */
+  showOutlines: boolean;
   /** User-defined colour + hatch for the cut surface. */
   capStyle: SectionCapStyle;
 }

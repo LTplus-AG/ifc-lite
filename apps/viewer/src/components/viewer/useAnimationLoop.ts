@@ -177,6 +177,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             // Cap rendering settings — the renderer reads these to draw the
             // filled, hatched cut surfaces.
             showCap: sectionPlaneRef.current.showCap,
+            showOutlines: sectionPlaneRef.current.showOutlines,
             capStyle: sectionPlaneRef.current.capStyle,
             min: sectionRangeRef.current?.min,
             max: sectionRangeRef.current?.max,

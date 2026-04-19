@@ -34,10 +34,16 @@ export interface Section2DOverlayOptions {
   /**
    * If provided, the 2D overlay's polygon fills render as the 3D section
    * cap with this screen-space hatch style. If omitted or `showFills` is
-   * false, only the outline lines render (legacy behaviour).
+   * false, the filled hatch is skipped.
    */
   capStyle?: Section2DOverlayCapStyle;
   showFills?: boolean;
+  /**
+   * Whether to draw the polygon outline + hidden lines on the cap. Users
+   * can turn surfaces and outlines on/off independently. Defaults to true
+   * so existing call sites keep showing outlines.
+   */
+  showOutlines?: boolean;
 }
 
 export interface CutPolygon2D {
@@ -190,16 +196,16 @@ export class Section2DOverlayRenderer {
           }
           if (patternId == 3u) { return lineMask(p.y, spacing, width); }    // horizontal
           if (patternId == 4u) { return lineMask(p.x, spacing, width); }    // vertical
-          if (patternId == 5u) {                         // concrete
-            let gx = fract(p.x / spacing) * spacing - spacing * 0.5;
-            let gy = fract(p.y / spacing) * spacing - spacing * 0.5;
-            let d  = sqrt(gx * gx + gy * gy);
-            let dot = 1.0 - smoothstep(width * 0.6, width * 0.6 + 1.0, d);
-            let r = rotate(p * 0.5, angle);
-            let dashAlong = fract(r.x / (spacing * 2.0));
-            let dashRun = step(0.0, dashAlong) * step(dashAlong, 0.35);
-            let dashLine = lineMask(r.y, spacing, width);
-            return max(dot, dashRun * dashLine);
+          if (patternId == 5u) {
+            // Concrete (ISO 128-50): clean regular dot grid. The previous
+            // version layered dashes on top which looked noisy and broken.
+            // Dots sit at every grid intersection; radius scales with
+            // stroke width so the user's width slider works consistently.
+            let gx = p.x - round(p.x / spacing) * spacing;
+            let gy = p.y - round(p.y / spacing) * spacing;
+            let d = sqrt(gx * gx + gy * gy);
+            let radius = max(1.0, width * 1.2);
+            return 1.0 - smoothstep(radius, radius + 1.0, d);
           }
           if (patternId == 6u) {                         // brick
             let bandH = spacing;
@@ -604,22 +610,14 @@ export class Section2DOverlayRenderer {
 
     const { axis, viewProj } = options;
 
-    // Fixed offset to render overlay clearly above the section plane
-    // Use 0.3m offset for clear visibility at any camera angle
-    const offsetAmount = 0.3;  // 0.3m offset in world units
-    let offset: [number, number, number] = [0, 0, 0];
-
-    switch (axis) {
-      case 'down':
-        offset = [0, offsetAmount, 0];  // Y axis
-        break;
-      case 'front':
-        offset = [0, 0, offsetAmount];  // Z axis
-        break;
-      case 'side':
-        offset = [offsetAmount, 0, 0];  // X axis
-        break;
-    }
+    // No offset — cap renders exactly on the section plane. The previous
+    // 0.3m bias was there to keep the outline lines clear of below-plane
+    // geometry, but it made the cap visually drift off the slider plane
+    // (users could see a 0.3m gap between the plane preview and the cap).
+    // The fill pipeline uses depthCompare 'always' so z-fighting with
+    // coincident below-plane top faces is not an issue; the stencil gate
+    // keeps the fill restricted to the actual cap polygons.
+    const offset: [number, number, number] = [0, 0, 0];
 
     // Update uniforms. Layout mirrors the WGSL struct above:
     //   0..15  viewProj
@@ -682,8 +680,14 @@ export class Section2DOverlayRenderer {
       pass.drawIndexed(this.fillIndexCount);
     }
 
-    // Outline lines on top of the fill.
-    if (this.lineVertexBuffer && this.lineVertexCount > 0) {
+    // Outline lines on top of the fill. Gated by `showOutlines` so the
+    // user can toggle surfaces and outlines independently from the UI.
+    // Defaults to true when the caller omits the flag.
+    if (
+      options.showOutlines !== false &&
+      this.lineVertexBuffer &&
+      this.lineVertexCount > 0
+    ) {
       pass.setPipeline(this.linePipeline);
       pass.setBindGroup(0, this.bindGroup);
       pass.setVertexBuffer(0, this.lineVertexBuffer);

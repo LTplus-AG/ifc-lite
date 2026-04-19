@@ -1495,7 +1495,8 @@ export class Renderer {
                 // silhouette matches the 2D drawing exactly.
                 if (options.sectionPlane.enabled && this.section2DOverlayRenderer?.hasGeometry()) {
                     const o = options.sectionPlane;
-                    const showFills = o.showCap !== false;
+                    const showFills    = o.showCap !== false;
+                    const showOutlines = o.showOutlines !== false;
                     const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
                     this.section2DOverlayRenderer.draw(
                         pass,
@@ -1507,6 +1508,7 @@ export class Renderer {
                             min: o.min,
                             max: o.max,
                             showFills,
+                            showOutlines,
                             capStyle: showFills ? {
                                 fillColor:   style.fillColor,
                                 strokeColor: style.strokeColor,

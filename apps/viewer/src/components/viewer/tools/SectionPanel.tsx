@@ -85,10 +85,10 @@ export function SectionOverlay() {
 
         {/* Expandable content */}
         {!isPanelCollapsed && (
-          <div className="border-t px-3 pb-3 min-w-64">
+          <div className="border-t px-3 pb-3 min-w-72">
             {/* Direction Selection */}
             <div className="mt-3">
-              <label className="text-xs text-muted-foreground mb-2 block">Direction</label>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Direction</div>
               <div className="flex gap-1">
                 {(['down', 'front', 'side'] as const).map((axis) => (
                   <Button
@@ -107,7 +107,7 @@ export function SectionOverlay() {
             {/* Position Slider */}
             <div className="mt-3">
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-muted-foreground">Position</label>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Position</div>
                 <div className="flex items-center gap-1">
                   <Button
                     variant={sectionPlane.flipped ? 'default' : 'ghost'}
@@ -126,6 +126,7 @@ export function SectionOverlay() {
                     step="0.1"
                     value={sectionPlane.position}
                     onChange={handlePositionChange}
+                    aria-label="Section plane position percentage"
                     className="w-16 text-xs font-mono bg-muted px-1.5 py-0.5 rounded border-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
@@ -137,6 +138,7 @@ export function SectionOverlay() {
                 step="0.1"
                 value={sectionPlane.position}
                 onChange={handlePositionChange}
+                aria-label="Section plane position slider"
                 className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
               />
             </div>

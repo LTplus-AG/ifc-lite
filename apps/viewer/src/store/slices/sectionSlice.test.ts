@@ -117,6 +117,22 @@ describe('SectionSlice', () => {
     });
   });
 
+  describe('setSectionShowOutlines', () => {
+    it('should toggle the showOutlines flag independently of showCap and clipping', () => {
+      assert.strictEqual(state.sectionPlane.showOutlines, true);
+      state.setSectionShowOutlines(false);
+      assert.strictEqual(state.sectionPlane.showOutlines, false);
+      assert.strictEqual(state.sectionPlane.showCap, true);
+      assert.strictEqual(state.sectionPlane.enabled, true);
+    });
+
+    it('should set showOutlines back to true', () => {
+      state.setSectionShowOutlines(false);
+      state.setSectionShowOutlines(true);
+      assert.strictEqual(state.sectionPlane.showOutlines, true);
+    });
+  });
+
   describe('setSectionCapStyle', () => {
     it('should partially update the cap style without clobbering other fields', () => {
       const before = state.sectionPlane.capStyle;
@@ -171,6 +187,7 @@ describe('SectionSlice', () => {
       state.setSectionPlaneEnabled(false);
       state.flipSectionPlane();
       state.setSectionShowCap(false);
+      state.setSectionShowOutlines(false);
       state.setSectionCapStyle({ pattern: 'brick' });
 
       state.resetSectionPlane();
@@ -180,6 +197,7 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPlane.enabled, SECTION_PLANE_DEFAULTS.ENABLED);
       assert.strictEqual(state.sectionPlane.flipped, SECTION_PLANE_DEFAULTS.FLIPPED);
       assert.strictEqual(state.sectionPlane.showCap, SECTION_PLANE_DEFAULTS.SHOW_CAP);
+      assert.strictEqual(state.sectionPlane.showOutlines, SECTION_PLANE_DEFAULTS.SHOW_OUTLINES);
       // Default cap pattern restored.
       assert.strictEqual(state.sectionPlane.capStyle.pattern, 'diagonal');
     });

@@ -17,8 +17,9 @@ import { SECTION_PLANE_DEFAULTS, SECTION_CAP_DEFAULTS } from '../constants.js';
 // position are session-scoped because they only make sense relative to a
 // loaded model. See chatSlice.ts for the same direct-localStorage pattern
 // used elsewhere in the store.
-const CAP_STYLE_STORAGE_KEY = 'ifc-lite:section-cap-style';
-const CAP_SHOW_STORAGE_KEY  = 'ifc-lite:section-cap-show';
+const CAP_STYLE_STORAGE_KEY     = 'ifc-lite:section-cap-style';
+const CAP_SHOW_STORAGE_KEY      = 'ifc-lite:section-cap-show';
+const OUTLINES_SHOW_STORAGE_KEY = 'ifc-lite:section-outlines-show';
 
 const HATCH_IDS: readonly SectionCapHatchId[] = [
   'solid', 'diagonal', 'crossHatch', 'horizontal',
@@ -75,26 +76,31 @@ function saveCapStyle(style: SectionCapStyle): void {
   }
 }
 
-function loadShowCap(): boolean {
-  if (typeof window === 'undefined') return SECTION_PLANE_DEFAULTS.SHOW_CAP;
+function loadBoolean(key: string, fallback: boolean): boolean {
+  if (typeof window === 'undefined') return fallback;
   try {
-    const raw = window.localStorage.getItem(CAP_SHOW_STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (raw === 'true') return true;
     if (raw === 'false') return false;
   } catch {
     /* ignore */
   }
-  return SECTION_PLANE_DEFAULTS.SHOW_CAP;
+  return fallback;
 }
 
-function saveShowCap(show: boolean): void {
+function saveBoolean(key: string, value: boolean): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(CAP_SHOW_STORAGE_KEY, String(show));
+    window.localStorage.setItem(key, String(value));
   } catch {
     /* ignore */
   }
 }
+
+const loadShowCap      = () => loadBoolean(CAP_SHOW_STORAGE_KEY,      SECTION_PLANE_DEFAULTS.SHOW_CAP);
+const saveShowCap      = (v: boolean) => saveBoolean(CAP_SHOW_STORAGE_KEY,      v);
+const loadShowOutlines = () => loadBoolean(OUTLINES_SHOW_STORAGE_KEY, SECTION_PLANE_DEFAULTS.SHOW_OUTLINES);
+const saveShowOutlines = (v: boolean) => saveBoolean(OUTLINES_SHOW_STORAGE_KEY, v);
 
 export interface SectionSlice {
   // State
@@ -107,6 +113,7 @@ export interface SectionSlice {
   setSectionPlaneEnabled: (enabled: boolean) => void;
   flipSectionPlane: () => void;
   setSectionShowCap: (show: boolean) => void;
+  setSectionShowOutlines: (show: boolean) => void;
   setSectionCapStyle: (style: Partial<SectionCapStyle>) => void;
   resetSectionPlane: () => void;
 }
@@ -118,12 +125,13 @@ const getDefaultSectionPlane = (): SectionPlane => ({
   position: SECTION_PLANE_DEFAULTS.POSITION,
   enabled: SECTION_PLANE_DEFAULTS.ENABLED,
   flipped: SECTION_PLANE_DEFAULTS.FLIPPED,
-  // showCap + capStyle come from localStorage so the user's preferred
-  // cut-surface appearance survives reloads; the axis/position/enabled
-  // fields stay session-scoped because they only make sense for the
-  // currently loaded model.
-  showCap: loadShowCap(),
-  capStyle: getDefaultCapStyle(),
+  // showCap + showOutlines + capStyle come from localStorage so the
+  // user's preferred cut-surface appearance survives reloads; the axis,
+  // position, and enabled fields stay session-scoped because they only
+  // make sense for the currently loaded model.
+  showCap:      loadShowCap(),
+  showOutlines: loadShowOutlines(),
+  capStyle:     getDefaultCapStyle(),
 });
 
 export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice> = (set) => ({
@@ -165,6 +173,11 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     return { sectionPlane: { ...state.sectionPlane, showCap } };
   }),
 
+  setSectionShowOutlines: (showOutlines) => set((state) => {
+    saveShowOutlines(showOutlines);
+    return { sectionPlane: { ...state.sectionPlane, showOutlines } };
+  }),
+
   setSectionCapStyle: (style) => set((state) => {
     const capStyle: SectionCapStyle = { ...state.sectionPlane.capStyle, ...style };
     saveCapStyle(capStyle);
@@ -178,6 +191,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CAP_STYLE_STORAGE_KEY);
         window.localStorage.removeItem(CAP_SHOW_STORAGE_KEY);
+        window.localStorage.removeItem(OUTLINES_SHOW_STORAGE_KEY);
       }
     } catch {
       /* ignore */

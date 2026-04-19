@@ -32,6 +32,8 @@ export const SECTION_PLANE_DEFAULTS = {
   FLIPPED: false,
   /** Default: render filled/hatched cap surfaces at the cut */
   SHOW_CAP: true,
+  /** Default: draw polygon outlines on the cut surfaces */
+  SHOW_OUTLINES: true,
 } as const;
 
 /**

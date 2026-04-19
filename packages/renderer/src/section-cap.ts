@@ -207,10 +207,20 @@ export class SectionCapRenderer {
 
     const parityStencil = {
       format: depthFormat,
-      // depthCompare 'always' with no depth write — every triangle covering
-      // the pixel must contribute to parity, not just the front-most one.
-      depthCompare: 'always' as const,
+      // Depth-test (reverse-Z: 'greater' means "closer to camera passes")
+      // against the main pass's depth buffer, so only triangles BETWEEN the
+      // camera and the nearest opaque below-plane surface contribute to
+      // parity. Without this, above-plane triangles hidden behind a nearer
+      // wall still flipped bit 0, producing cap hatch that bled through
+      // onto distant/occluding geometry and floating "sideways" pattern
+      // artefacts in empty sky above the cut. Depth-writing stays OFF so
+      // the cap pass doesn't disturb the depth buffer that transparent and
+      // selection passes sample next.
+      depthCompare: 'greater' as const,
       depthWriteEnabled: false,
+      // depthFailOp MUST stay 'keep' — only stencil-passing fragments that
+      // also win the depth test contribute to parity, hidden-behind-wall
+      // triangles are excluded entirely.
       stencilFront: {
         compare: 'always' as const,
         passOp:      'invert' as const,

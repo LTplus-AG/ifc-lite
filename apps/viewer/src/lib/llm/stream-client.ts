@@ -116,6 +116,52 @@ export function drainSseBuffer(buffer: string, flush: boolean = false): { events
 }
 
 /**
+ * Read an SSE stream, invoking onEvent for each `data:` payload.
+ * Skips `[DONE]` sentinels and malformed lines. Returns true if the stream
+ * completed normally; false on abort or error (errors are forwarded via
+ * onError, aborts are silent).
+ */
+export async function readSseStream(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal | undefined,
+  onEvent: (data: string) => void,
+  onError: (err: Error) => void,
+): Promise<boolean> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  const dispatchDrained = (events: string[]) => {
+    for (const evt of events) {
+      for (const line of evt.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+        try { onEvent(data); } catch { /* skip malformed */ }
+      }
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const drained = drainSseBuffer(buffer);
+      buffer = drained.remainder;
+      dispatchDrained(drained.events);
+    }
+    buffer += decoder.decode();
+    dispatchDrained(drainSseBuffer(buffer, true).events);
+    return true;
+  } catch (err) {
+    if (signal?.aborted) return false;
+    onError(err instanceof Error ? err : new Error(String(err)));
+    return false;
+  }
+}
+
+/**
  * Fetch current usage snapshot without sending a chat message.
  * Used for instant UI hydration and periodic refresh.
  */
@@ -292,102 +338,36 @@ export async function streamChat(options: StreamOptions): Promise<void> {
     return;
   }
 
-  // Parse SSE stream
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
   let fullText = '';
   let finishReason: string | null = null;
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  const ok = await readSseStream(response.body, signal, (data) => {
+    const parsed = JSON.parse(data) as {
+      __ifcLiteUsage?: UsageInfo;
+      choices?: Array<{
+        delta?: { content?: string };
+        finish_reason?: string | null;
+      }>;
+    };
 
-      buffer += decoder.decode(value, { stream: true });
-
-      const drained = drainSseBuffer(buffer);
-      buffer = drained.remainder;
-
-      for (const event of drained.events) {
-        for (const line of event.split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-
-          if (data === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(data) as {
-              __ifcLiteUsage?: UsageInfo;
-              choices?: Array<{
-                delta?: { content?: string };
-                finish_reason?: string | null;
-              }>;
-            };
-
-            // Final usage update emitted by proxy after stream-end reconciliation.
-            if (parsed.__ifcLiteUsage && onUsageInfo) {
-              onUsageInfo(parsed.__ifcLiteUsage);
-              continue;
-            }
-
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullText += content;
-              onChunk(content);
-            }
-            const chunkFinishReason = parsed.choices?.[0]?.finish_reason;
-            if (chunkFinishReason) {
-              finishReason = chunkFinishReason;
-            }
-          } catch {
-            // Skip malformed SSE lines
-          }
-        }
-      }
+    // Final usage update emitted by proxy after stream-end reconciliation.
+    if (parsed.__ifcLiteUsage && onUsageInfo) {
+      onUsageInfo(parsed.__ifcLiteUsage);
+      return;
     }
-    buffer += decoder.decode();
-    const drained = drainSseBuffer(buffer, true);
-    for (const event of drained.events) {
-      for (const line of event.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
 
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data) as {
-            __ifcLiteUsage?: UsageInfo;
-            choices?: Array<{
-              delta?: { content?: string };
-              finish_reason?: string | null;
-            }>;
-          };
-
-          if (parsed.__ifcLiteUsage && onUsageInfo) {
-            onUsageInfo(parsed.__ifcLiteUsage);
-            continue;
-          }
-
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            fullText += content;
-            onChunk(content);
-          }
-          const chunkFinishReason = parsed.choices?.[0]?.finish_reason;
-          if (chunkFinishReason) {
-            finishReason = chunkFinishReason;
-          }
-        } catch {
-          // Skip malformed SSE lines
-        }
-      }
+    const content = parsed.choices?.[0]?.delta?.content;
+    if (content) {
+      fullText += content;
+      onChunk(content);
     }
-  } catch (err) {
-    if (signal?.aborted) return;
-    onError(err instanceof Error ? err : new Error(String(err)));
-    return;
-  }
+    const chunkFinishReason = parsed.choices?.[0]?.finish_reason;
+    if (chunkFinishReason) {
+      finishReason = chunkFinishReason;
+    }
+  }, onError);
+
+  if (!ok) return;
 
   onFinishReason?.(finishReason);
   onComplete(fullText);

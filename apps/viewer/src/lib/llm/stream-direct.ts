@@ -14,7 +14,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { drainSseBuffer, type StreamMessage, type StreamOptions } from './stream-client.js';
+import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 
@@ -311,49 +311,4 @@ async function openAiFetch(
   }
 
   return { response, cleanup };
-}
-
-/** Read an SSE stream, calling onEvent for each `data:` line. Returns true if completed normally. */
-async function readSseStream(
-  body: ReadableStream<Uint8Array>,
-  signal: AbortSignal | undefined,
-  onEvent: (data: string) => void,
-  onError: (err: Error) => void,
-): Promise<boolean> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const drained = drainSseBuffer(buffer);
-      buffer = drained.remainder;
-      for (const evt of drained.events) {
-        for (const line of evt.split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-          try { onEvent(data); } catch { /* skip malformed */ }
-        }
-      }
-    }
-    buffer += decoder.decode();
-    const drained = drainSseBuffer(buffer, true);
-    for (const evt of drained.events) {
-      for (const line of evt.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-        try { onEvent(data); } catch { /* skip malformed */ }
-      }
-    }
-    return true;
-  } catch (err) {
-    if (signal?.aborted) return false;
-    onError(err instanceof Error ? err : new Error(String(err)));
-    return false;
-  }
 }

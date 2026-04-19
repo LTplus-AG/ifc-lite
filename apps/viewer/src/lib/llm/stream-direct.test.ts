@@ -58,6 +58,30 @@ test('streamOpenAiChat (Responses API) reports finish_reason=length when output 
   );
 });
 
+test('streamOpenAiChat (Responses API) reports finish_reason=length when incomplete has no reason', async () => {
+  await withMockFetch(
+    async () => sseResponse([
+      JSON.stringify({ type: 'response.output_text.delta', delta: 'partial' }),
+      JSON.stringify({
+        type: 'response.incomplete',
+        response: { status: 'incomplete' },
+      }),
+    ]),
+    async () => {
+      let finishReason: string | null = null;
+      await streamOpenAiChat('sk-test', {
+        model: CODEX_MODEL_ID,
+        messages: [{ role: 'user', content: 'hi' }],
+        onChunk: () => undefined,
+        onComplete: () => undefined,
+        onFinishReason: (reason) => { finishReason = reason; },
+        onError: (err) => { throw err; },
+      });
+      assert.equal(finishReason, 'length');
+    },
+  );
+});
+
 test('streamOpenAiChat (Responses API) reports finish_reason=stop on normal completion', async () => {
   await withMockFetch(
     async () => sseResponse([

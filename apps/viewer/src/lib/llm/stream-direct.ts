@@ -215,8 +215,10 @@ async function streamOpenAiResponses(
 
   let fullText = '';
   // Map Responses API terminal events → chat-style finish_reason.
-  // `response.incomplete` with reason `max_output_tokens` → 'length', so the
-  // ChatPanel "Continue" UX can resume a truncated Codex reply.
+  // `response.incomplete` is any non-completed terminal state: when the
+  // reason is `max_output_tokens` — or simply absent — map to 'length' so
+  // the ChatPanel "Continue" UX can resume a truncated Codex reply. Other
+  // explicit reasons (e.g. `content_filter`) pass through unchanged.
   let finishReason: string | null = 'stop';
 
   const ok = await readSseStream(response.body, signal, (data) => {
@@ -233,7 +235,7 @@ async function streamOpenAiResponses(
       onChunk(event.delta);
     } else if (event.type === 'response.incomplete') {
       const reason = event.response?.incomplete_details?.reason;
-      finishReason = reason === 'max_output_tokens' ? 'length' : reason ?? 'stop';
+      finishReason = reason == null || reason === 'max_output_tokens' ? 'length' : reason;
     } else if (event.type === 'response.completed') {
       finishReason = 'stop';
     }

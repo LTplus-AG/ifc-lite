@@ -214,21 +214,33 @@ async function streamOpenAiResponses(
   if (!response.body) { cleanup(); onError(new Error('No response body')); return; }
 
   let fullText = '';
+  // Map Responses API terminal events → chat-style finish_reason.
+  // `response.incomplete` with reason `max_output_tokens` → 'length', so the
+  // ChatPanel "Continue" UX can resume a truncated Codex reply.
+  let finishReason: string | null = 'stop';
 
   const ok = await readSseStream(response.body, signal, (data) => {
     const event = JSON.parse(data) as {
       type?: string;
       delta?: string;
-      response?: { status?: string };
+      response?: {
+        status?: string;
+        incomplete_details?: { reason?: string } | null;
+      };
     };
     if (event.type === 'response.output_text.delta' && event.delta) {
       fullText += event.delta;
       onChunk(event.delta);
+    } else if (event.type === 'response.incomplete') {
+      const reason = event.response?.incomplete_details?.reason;
+      finishReason = reason === 'max_output_tokens' ? 'length' : reason ?? 'stop';
+    } else if (event.type === 'response.completed') {
+      finishReason = 'stop';
     }
   }, onError);
 
   cleanup();
-  if (ok) { onFinishReason?.('stop'); onComplete(fullText); }
+  if (ok) { onFinishReason?.(finishReason); onComplete(fullText); }
 }
 
 // ── Shared helpers ─────────────────────────────────────────────────────────

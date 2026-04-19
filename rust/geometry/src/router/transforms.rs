@@ -383,6 +383,7 @@ impl GeometryRouter {
                 chunk[1] = (t.y - rtc.1) as f32;
                 chunk[2] = (t.z - rtc.2) as f32;
             });
+            mesh.rtc_applied = true;
         } else {
             mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
                 let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);

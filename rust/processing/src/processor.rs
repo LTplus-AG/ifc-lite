@@ -92,8 +92,21 @@ impl Default for StreamingOptions {
     }
 }
 
+const SITE_LOCAL_MESH_COORDINATE_SPACE: &str = "site_local";
 const MODEL_RTC_MESH_COORDINATE_SPACE: &str = "model_rtc";
 const RAW_IFC_MESH_COORDINATE_SPACE: &str = "raw_ifc";
+
+/// Epsilon (metres) below which a placement translation is treated as identity.
+/// Avoids overriding a detected RTC anchor when `IfcSite` sits at the origin
+/// while the geometry itself carries large world coordinates.
+const PLACEMENT_IDENTITY_EPSILON: f64 = 1e-9;
+
+#[inline]
+fn translation_is_nonidentity(t: (f64, f64, f64)) -> bool {
+    t.0.abs() > PLACEMENT_IDENTITY_EPSILON
+        || t.1.abs() > PLACEMENT_IDENTITY_EPSILON
+        || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
+}
 
 /// Job for processing a single entity.
 struct EntityJob {
@@ -1041,15 +1054,27 @@ pub fn process_geometry_streaming_filtered_with_options(
         None => scan_placement_bounds(content).rtc_offset(),
     };
 
-    // Prefer the IfcSite placement translation when it exists. Otherwise use
-    // the model-level detected RTC anchor so all meshes share one coordinate
-    // space instead of receiving independent per-object shifts.
-    let rtc_offset = if let Some(ref st) = site_transform {
-        (st[12], st[13], st[14]) // column-major: translation at indices 12,13,14
+    // Three-tier coordinate-space selection:
+    //   1. `site_local`: IfcSite placement has a non-identity translation.
+    //      Vertices are expressed relative to the site origin — small floats
+    //      AND a meaningful, relatable frame (useful for coordination).
+    //   2. `model_rtc`:  IfcSite is identity (or missing) but geometry still
+    //      lives at large world coordinates. Subtract a detected anchor so
+    //      f32 precision is preserved.
+    //   3. `raw_ifc`:    neither anchor applies; geometry is already small.
+    let site_rtc = site_transform
+        .as_ref()
+        .map(|st| (st[12], st[13], st[14])) // column-major: translation at 12,13,14
+        .filter(|t| translation_is_nonidentity(*t));
+    let detected_has_offset = translation_is_nonidentity(detected_rtc_offset);
+    let (rtc_offset, coord_space) = if let Some(site) = site_rtc {
+        (site, SITE_LOCAL_MESH_COORDINATE_SPACE)
+    } else if detected_has_offset {
+        (detected_rtc_offset, MODEL_RTC_MESH_COORDINATE_SPACE)
     } else {
-        detected_rtc_offset
+        ((0.0, 0.0, 0.0), RAW_IFC_MESH_COORDINATE_SPACE)
     };
-    let has_rtc_offset = rtc_offset.0 != 0.0 || rtc_offset.1 != 0.0 || rtc_offset.2 != 0.0;
+    let has_rtc_offset = coord_space != RAW_IFC_MESH_COORDINATE_SPACE;
     router.set_rtc_offset(rtc_offset);
     let should_preprocess_faceted_breps = !faceted_brep_ids.is_empty()
         && !(options.fast_first_batch && options.initial_batch_size < usize::MAX);
@@ -1244,14 +1269,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     ProcessingResult {
         meshes,
-        mesh_coordinate_space: Some(
-            if has_rtc_offset {
-                MODEL_RTC_MESH_COORDINATE_SPACE
-            } else {
-                RAW_IFC_MESH_COORDINATE_SPACE
-            }
-            .to_string(),
-        ),
+        mesh_coordinate_space: Some(coord_space.to_string()),
         site_transform,
         building_transform,
         metadata: ModelMetadata {

@@ -43,6 +43,8 @@ struct PreparedData {
     unit_scale: f64,
     /// RTC offset for large-coordinate models (preserves precision in f32 output)
     rtc_offset: (f64, f64, f64),
+    /// Coordinate space of serialized mesh vertices: `site_local`, `model_rtc`, or `raw_ifc`.
+    mesh_coordinate_space: &'static str,
     /// IfcSite ObjectPlacement as a column-major 4×4 matrix (metres).
     site_transform: Option<Vec<f64>>,
     /// IfcBuilding ObjectPlacement as a column-major 4×4 matrix (metres).
@@ -150,11 +152,30 @@ fn prepare_streaming_data(content: String) -> PreparedData {
         }
     };
 
-    let rtc_offset = if let Some(ref st) = site_transform {
-        (st[12], st[13], st[14])
-    } else {
-        detected_rtc_offset
-    };
+    // Three-tier coordinate-space selection, mirroring the non-streaming path:
+    //   1. site_local: IfcSite placement has a non-identity translation.
+    //   2. model_rtc:  fall back to the detected anchor for large-coordinate files.
+    //   3. raw_ifc:    neither anchor applies.
+    const PLACEMENT_IDENTITY_EPSILON: f64 = 1e-9;
+    let site_rtc = site_transform
+        .as_ref()
+        .map(|st| (st[12], st[13], st[14]))
+        .filter(|t| {
+            t.0.abs() > PLACEMENT_IDENTITY_EPSILON
+                || t.1.abs() > PLACEMENT_IDENTITY_EPSILON
+                || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
+        });
+    let detected_has_offset = detected_rtc_offset.0.abs() > PLACEMENT_IDENTITY_EPSILON
+        || detected_rtc_offset.1.abs() > PLACEMENT_IDENTITY_EPSILON
+        || detected_rtc_offset.2.abs() > PLACEMENT_IDENTITY_EPSILON;
+    let (rtc_offset, mesh_coordinate_space): ((f64, f64, f64), &'static str) =
+        if let Some(site) = site_rtc {
+            (site, "site_local")
+        } else if detected_has_offset {
+            (detected_rtc_offset, "model_rtc")
+        } else {
+            ((0.0, 0.0, 0.0), "raw_ifc")
+        };
     router.set_rtc_offset(rtc_offset);
     if !faceted_brep_ids.is_empty() {
         router.preprocess_faceted_breps(&faceted_brep_ids, &mut decoder);
@@ -178,6 +199,7 @@ fn prepare_streaming_data(content: String) -> PreparedData {
         parse_time_ms,
         unit_scale,
         rtc_offset,
+        mesh_coordinate_space,
         site_transform,
         building_transform,
     }
@@ -451,17 +473,7 @@ pub fn process_streaming(
                 },
             },
             cache_key,
-            mesh_coordinate_space: Some(
-                if prepared.rtc_offset.0 != 0.0
-                    || prepared.rtc_offset.1 != 0.0
-                    || prepared.rtc_offset.2 != 0.0
-                {
-                    "model_rtc"
-                } else {
-                    "raw_ifc"
-                }
-                .to_string(),
-            ),
+            mesh_coordinate_space: Some(prepared.mesh_coordinate_space.to_string()),
             site_transform: prepared.site_transform,
             building_transform: prepared.building_transform,
         };

@@ -32,7 +32,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 // Public types
 // ─────────────────────────────────────────────────────────────────────────
 
-export type SpatialGroupStrategy = 'storey' | 'building';
+/**
+ * Exposed strategy values use the exact IFC EXPRESS entity names per AGENTS.md
+ * §1 (Mandatory Schema Compliance). UI layers map these to friendly labels.
+ */
+export type SpatialGroupStrategy = 'IfcBuildingStorey' | 'IfcBuilding';
 export type GenerateOrder = 'bottom-up' | 'top-down';
 
 export interface GenerateScheduleOptions {
@@ -73,7 +77,7 @@ export interface GeneratePreview {
 }
 
 export const DEFAULT_OPTIONS: GenerateScheduleOptions = {
-  strategy: 'storey',
+  strategy: 'IfcBuildingStorey',
   startDate: defaultStartDate(),
   daysPerGroup: 5,
   lagDays: 0,
@@ -118,25 +122,28 @@ function daysToIso8601Duration(days: number): string {
 }
 
 /**
- * Synthetic but stable globalId generator: base64-ish chars seeded with a
- * counter so re-runs of the generator return the same ids for the same
- * strategy + model (deterministic unit-test fixture).
+ * Derive a deterministic, pseudo-IFC 22-char GlobalId from an arbitrary seed.
+ *
+ * Seeds typically encode the container's real IFC GlobalId (+ a role suffix
+ * like 'task' / 'seq' / 'schedule'), so two different models that share the
+ * same strategy/order still produce distinct generated IDs — and re-running
+ * the generator on the same model produces the same IDs, which keeps unit
+ * tests and playback state stable.
  */
-function makeGlobalIdFactory(seed: string): () => string {
+function deterministicGlobalId(seed: string): string {
   const CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
-  let counter = 0;
-  return () => {
-    counter += 1;
-    const raw = `${seed}-${counter}`;
-    let out = '';
-    let acc = 0;
-    for (let i = 0; i < raw.length; i++) acc = (acc * 31 + raw.charCodeAt(i)) >>> 0;
-    for (let i = 0; i < 22; i++) {
-      out += CHARS[acc & 0x3f];
-      acc = (acc * 33 + i) >>> 0;
-    }
-    return out;
-  };
+  let acc = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    acc ^= seed.charCodeAt(i);
+    acc = Math.imul(acc, 0x01000193) >>> 0;
+  }
+  let out = '';
+  for (let i = 0; i < 22; i++) {
+    out += CHARS[acc & 0x3f];
+    // Advance the state so each of the 22 characters depends on the whole seed.
+    acc = Math.imul(acc ^ (i * 0x45d9f3b), 0x01000193) >>> 0;
+  }
+  return out;
 }
 
 /** Resolve a spatial-container expressId → friendly name for the task label. */
@@ -173,12 +180,25 @@ export function generateScheduleFromSpatialHierarchy(
     return emptyPreview(options);
   }
 
-  const newGlobalId = makeGlobalIdFactory(`gen-${options.strategy}`);
   const containers = collectContainers(store, options);
 
   if (containers.length === 0) {
     return emptyPreview(options);
   }
+
+  // Deterministic seeds: every generated GlobalId hashes the strategy + the
+  // involved containers' real IFC GlobalIds, so two models never collide.
+  const generatedSeed = `gen-${options.strategy}`;
+  const taskGlobalIdFor = (group: GroupEntry) =>
+    deterministicGlobalId(`${generatedSeed}|task|${group.sourceGlobalId}`);
+  const sequenceGlobalIdFor = (predecessor: GroupEntry, successor: GroupEntry) =>
+    deterministicGlobalId(
+      `${generatedSeed}|seq|${predecessor.sourceGlobalId}|${successor.sourceGlobalId}`,
+    );
+  const scheduleGlobalIdFor = (groups: GroupEntry[]) =>
+    deterministicGlobalId(
+      `${generatedSeed}|schedule|${groups.map(g => g.sourceGlobalId).join('|')}`,
+    );
 
   // Layout the tasks on a calendar. The first group starts at `startDate`;
   // every subsequent group begins `daysPerGroup + lagDays` after the prior
@@ -190,12 +210,13 @@ export function generateScheduleFromSpatialHierarchy(
   const tasks: ScheduleTaskInfo[] = [];
   const sequences: ScheduleSequenceInfo[] = [];
   let productCount = 0;
-  let prevGlobalId: string | null = null;
+  let prevGroup: GroupEntry | null = null;
+  let prevTaskGlobalId: string | null = null;
 
   containers.forEach((group, index) => {
     const groupStart = addDays(options.startDate, index * strideDays);
     const groupFinish = addDays(groupStart, options.daysPerGroup);
-    const taskGlobalId = newGlobalId();
+    const taskGlobalId = taskGlobalIdFor(group);
 
     tasks.push({
       expressId: 0,
@@ -220,20 +241,21 @@ export function generateScheduleFromSpatialHierarchy(
 
     productCount += group.productExpressIds.length;
 
-    if (options.linkSequences && prevGlobalId) {
+    if (options.linkSequences && prevGroup && prevTaskGlobalId) {
       sequences.push({
-        globalId: newGlobalId(),
-        relatingTaskGlobalId: prevGlobalId,
+        globalId: sequenceGlobalIdFor(prevGroup, group),
+        relatingTaskGlobalId: prevTaskGlobalId,
         relatedTaskGlobalId: taskGlobalId,
         sequenceType: 'FINISH_START',
         timeLagSeconds: options.lagDays > 0 ? options.lagDays * 86_400 : undefined,
         timeLagDuration: lagIso,
       });
     }
-    prevGlobalId = taskGlobalId;
+    prevGroup = group;
+    prevTaskGlobalId = taskGlobalId;
   });
 
-  const scheduleGlobalId = newGlobalId();
+  const scheduleGlobalId = scheduleGlobalIdFor(containers);
   const scheduleFinish = addDays(
     options.startDate,
     Math.max(0, containers.length - 1) * strideDays + options.daysPerGroup,
@@ -246,7 +268,7 @@ export function generateScheduleFromSpatialHierarchy(
     globalId: scheduleGlobalId,
     kind: 'WorkSchedule',
     name: options.scheduleName,
-    description: `Generated from ${options.strategy === 'storey' ? 'building storeys' : 'buildings'}`,
+    description: `Generated from ${options.strategy === 'IfcBuildingStorey' ? 'building storeys' : 'buildings'}`,
     creationDate: toLocalIso(new Date()),
     startTime: options.startDate,
     finishTime: scheduleFinish,
@@ -283,6 +305,12 @@ interface GroupEntry {
   productExpressIds: number[];
   /** globalIds aligned with expressIds (empty string when unknown). */
   productGlobalIds: string[];
+  /**
+   * The spatial container's own IFC GlobalId (falls back to `type#expressId`).
+   * Seeds the deterministic generated GlobalIds so two different models never
+   * emit colliding task IDs.
+   */
+  sourceGlobalId: string;
 }
 
 function collectContainers(
@@ -294,7 +322,7 @@ function collectContainers(
 
   let groups: Array<{ expressId: number; entry: GroupEntry; elevation: number }> = [];
 
-  if (options.strategy === 'storey') {
+  if (options.strategy === 'IfcBuildingStorey') {
     for (const [storeyId, elementIds] of hierarchy.byStorey) {
       if (options.skipEmptyGroups && elementIds.length === 0) continue;
       groups.push({
@@ -317,7 +345,7 @@ function collectContainers(
   // Deterministic ordering: bottom-up by elevation (storeys) / insertion
   // order (buildings); top-down reverses.
   groups.sort((a, b) => {
-    if (options.strategy === 'storey') return a.elevation - b.elevation;
+    if (options.strategy === 'IfcBuildingStorey') return a.elevation - b.elevation;
     return 0;
   });
   if (options.order === 'top-down') groups.reverse();
@@ -332,6 +360,7 @@ function makeGroupEntry(
   fallbackPrefix: string,
 ): GroupEntry {
   const name = resolveName(store, containerId, `${fallbackPrefix} #${containerId}`);
+  const containerGlobalId = store.entities?.getGlobalId?.(containerId) ?? '';
   const productGlobalIds: string[] = new Array(elementIds.length);
   for (let i = 0; i < elementIds.length; i++) {
     const gid = store.entities?.getGlobalId?.(elementIds[i]) ?? '';
@@ -343,6 +372,7 @@ function makeGroupEntry(
     description: undefined,
     productExpressIds: [...elementIds],
     productGlobalIds,
+    sourceGlobalId: containerGlobalId || `${fallbackPrefix}#${containerId}`,
   };
 }
 

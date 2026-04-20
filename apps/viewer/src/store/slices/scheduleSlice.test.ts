@@ -135,6 +135,53 @@ describe('computeHiddenProductIds', () => {
     const hidden = computeHiddenProductIds(data, afterAll);
     assert.strictEqual(hidden.size, 0);
   });
+
+  it('schedule filter: only tasks controlled by the active schedule contribute', () => {
+    const filtered = {
+      hasSchedule: true,
+      workSchedules: [],
+      sequences: [],
+      tasks: [
+        {
+          expressId: 20, globalId: 'task-a', name: 'A', isMilestone: false,
+          childGlobalIds: [], productExpressIds: [1], productGlobalIds: ['w1'],
+          controllingScheduleGlobalIds: ['sched-A'],
+          taskTime: { scheduleStart: '2024-01-01T00:00:00Z', scheduleFinish: '2024-01-05T00:00:00Z' },
+        },
+        {
+          expressId: 21, globalId: 'task-b', name: 'B', isMilestone: false,
+          childGlobalIds: [], productExpressIds: [2], productGlobalIds: ['w2'],
+          controllingScheduleGlobalIds: ['sched-B'],
+          taskTime: { scheduleStart: '2024-01-10T00:00:00Z', scheduleFinish: '2024-01-15T00:00:00Z' },
+        },
+      ],
+    };
+    // Before any task starts — schedule A filter hides only A's products.
+    const hiddenA = computeHiddenProductIds(filtered, Date.parse('2023-12-30T00:00:00Z'), 'sched-A');
+    assert.strictEqual(hiddenA.has(1), true);
+    assert.strictEqual(hiddenA.has(2), false, 'task-b is out of scope for sched-A');
+
+    // Empty / null filter falls back to "all tasks in scope".
+    const hiddenAll = computeHiddenProductIds(filtered, Date.parse('2023-12-30T00:00:00Z'));
+    assert.strictEqual(hiddenAll.has(1), true);
+    assert.strictEqual(hiddenAll.has(2), true);
+  });
+
+  it('schedule filter: tasks with no controllingScheduleGlobalIds are always in-scope', () => {
+    const unattached = {
+      hasSchedule: true,
+      workSchedules: [],
+      sequences: [],
+      tasks: [{
+        expressId: 20, globalId: 'task', name: 'orphan', isMilestone: false,
+        childGlobalIds: [], productExpressIds: [9], productGlobalIds: ['w9'],
+        controllingScheduleGlobalIds: [], // no controlling schedule
+        taskTime: { scheduleStart: '2024-01-01T00:00:00Z', scheduleFinish: '2024-01-05T00:00:00Z' },
+      }],
+    };
+    const hidden = computeHiddenProductIds(unattached, Date.parse('2023-12-30T00:00:00Z'), 'sched-A');
+    assert.strictEqual(hidden.has(9), true, 'orphan task still contributes when filter is applied');
+  });
 });
 
 describe('computeActiveProductIds', () => {

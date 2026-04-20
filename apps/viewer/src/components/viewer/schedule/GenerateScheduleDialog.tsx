@@ -54,12 +54,20 @@ const TASK_TYPES = [
 ] as const;
 
 export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleDialogProps) {
-  const { ifcDataStore, models } = useIfc();
+  const { ifcDataStore, models, activeModelId } = useIfc();
   const setScheduleData = useViewerStore(s => s.setScheduleData);
   const setGanttPanelVisible = useViewerStore(s => s.setGanttPanelVisible);
   const setAnimationEnabled = useViewerStore(s => s.setAnimationEnabled);
 
-  const activeStore = ifcDataStore ?? (models.values().next().value?.ifcDataStore ?? null);
+  // Resolve the store to read from in federation-aware order:
+  //   1. legacy single-model `ifcDataStore`
+  //   2. explicit `activeModelId` selection
+  //   3. only one model loaded → take it
+  // Falling back to `models.values().next()` would pick an arbitrary entry in
+  // insertion order, which isn't the user's current focus.
+  const activeStore = ifcDataStore
+    ?? (activeModelId ? (models.get(activeModelId)?.ifcDataStore ?? null) : null)
+    ?? (models.size === 1 ? (models.values().next().value?.ifcDataStore ?? null) : null);
   const hasSpatial = canGenerateScheduleFrom(activeStore);
 
   const [options, setOptions] = useState<GenerateScheduleOptions>(DEFAULT_OPTIONS);
@@ -141,15 +149,15 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                   icon={<Layers className="h-4 w-4" />}
                   label="Storey"
                   description="One task per IfcBuildingStorey"
-                  active={options.strategy === 'storey'}
-                  onSelect={() => handleChange('strategy', 'storey')}
+                  active={options.strategy === 'IfcBuildingStorey'}
+                  onSelect={() => handleChange('strategy', 'IfcBuildingStorey')}
                 />
                 <StrategyChoice
                   icon={<Building2 className="h-4 w-4" />}
                   label="Building"
                   description="One task per IfcBuilding"
-                  active={options.strategy === 'building'}
-                  onSelect={() => handleChange('strategy', 'building')}
+                  active={options.strategy === 'IfcBuilding'}
+                  onSelect={() => handleChange('strategy', 'IfcBuilding')}
                 />
               </div>
             </div>

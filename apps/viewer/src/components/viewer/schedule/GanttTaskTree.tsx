@@ -69,8 +69,12 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                 <tr
                   key={task.globalId}
                   style={{ height: GANTT_ROW_HEIGHT }}
+                  role="button"
+                  tabIndex={0}
+                  aria-selected={isSelected}
                   className={cn(
                     'border-b border-border/40 transition-colors cursor-pointer select-none',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary',
                     isSelected && 'bg-primary/15',
                     !isSelected && isHovered && 'bg-muted/60',
                     !isSelected && !isHovered && 'hover:bg-muted/40',
@@ -78,6 +82,11 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                   onMouseEnter={() => onHover(task.globalId)}
                   onMouseLeave={() => onHover(null)}
                   onClick={(e) => onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
+                  }}
                 >
                   <td
                     className="px-1 whitespace-nowrap overflow-hidden text-ellipsis"

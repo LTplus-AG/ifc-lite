@@ -241,7 +241,7 @@ declare const bim: {
     addIfcRelNests(handle: number, relatingObjectId: number, relatedObjectIds: number[]): number;
     /** Ergonomic alias for addIfcRelAssignsToControl — assign tasks to a work schedule. Returns relationship expressId. */
     assignTasksToWorkSchedule(handle: number, scheduleId: number, taskIds: number[]): number;
-    /** Attach work schedules to a parent IfcWorkPlan. Returns relationship expressId. */
+    /** Ergonomic alias for addIfcRelAssignsToControl — attach work schedules to a parent IfcWorkPlan. Returns relationship expressId. */
     assignSchedulesToWorkPlan(handle: number, planId: number, scheduleIds: number[]): number;
     /** Ergonomic alias for addIfcRelAssignsToProcess — bind products to a task. Returns relationship expressId. */
     assignProductsToTask(handle: number, taskId: number, productIds: number[]): number;

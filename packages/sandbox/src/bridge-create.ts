@@ -13,6 +13,7 @@
 import { IfcCreator } from '@ifc-lite/sdk';
 import type { MethodSchema, MethodSemanticContract } from './bridge-schema.js';
 import { creatorRegistry } from './creator-registry.js';
+import { buildScheduleMethods, SCHEDULE_SPECIAL_METHOD_NAMES } from './bridge-create-schedule.js';
 
 // ============================================================================
 // Auto-discovery for bim.create (IfcCreator methods)
@@ -32,13 +33,11 @@ import { creatorRegistry } from './creator-registry.js';
 type MethodPattern = 'storey-params' | 'element-params' | 'single-dump' | 'no-args' | 'special';
 
 /** Methods with non-standard signatures that need hand-written wiring */
-const SPECIAL_METHODS = new Set([
+const SPECIAL_METHODS = new Set<string>([
   'constructor', 'toIfc', 'setColor',
-  // Scheduling — handled explicitly below because of varied arg shapes
-  'addIfcWorkSchedule', 'addIfcWorkPlan', 'addIfcTask', 'addIfcRelSequence',
-  'addIfcRelAssignsToControl', 'addIfcRelAssignsToProcess', 'addIfcRelNests',
-  'assignTasksToWorkSchedule', 'assignSchedulesToWorkPlan',
-  'assignProductsToTask', 'nestTasks',
+  // Scheduling lives in bridge-create-schedule.ts — exported list keeps the
+  // two files synchronised without duplicating the method names.
+  ...SCHEDULE_SPECIAL_METHOD_NAMES,
 ]);
 
 /**
@@ -423,221 +422,10 @@ export function buildCreateMethods(): MethodSchema[] {
   });
 
   // ── Scheduling / 4D ────────────────────────────────────────
-  //
-  // These entities model `IfcTask` / `IfcWorkSchedule` / `IfcRelSequence`
-  // chains so the Gantt panel can drive a construction-sequence animation.
-  // The LLM semantics fields below teach the assistant *when* to reach for
-  // each method — see `system-prompt.ts` for the surrounding cheatsheet.
-
-  methods.push({
-    name: 'addIfcWorkSchedule',
-    doc: 'Create an IfcWorkSchedule. Returns schedule expressId.',
-    args: ['number', 'dump'],
-    paramNames: ['handle', 'params'],
-    tsParamTypes: [undefined, "{ Name: string; StartTime: string; FinishTime?: string; CreationDate?: string; Description?: string; Identification?: string; Purpose?: string; Duration?: string; TotalFloat?: string; PredefinedType?: 'ACTUAL' | 'BASELINE' | 'PLANNED' | 'USERDEFINED' | 'NOTDEFINED' }"],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.addIfcWorkSchedule(args[1] as Parameters<typeof creator.addIfcWorkSchedule>[0]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      requiredKeys: ['Name', 'StartTime'],
-      useWhen: 'Create a top-level work schedule container before adding tasks. StartTime is an ISO datetime (e.g. "2024-05-01T08:00:00").',
-    },
-  });
-
-  methods.push({
-    name: 'addIfcWorkPlan',
-    doc: 'Create an IfcWorkPlan (groups multiple schedules). Returns plan expressId.',
-    args: ['number', 'dump'],
-    paramNames: ['handle', 'params'],
-    tsParamTypes: [undefined, "{ Name: string; StartTime: string; FinishTime?: string; CreationDate?: string; Description?: string; Identification?: string; Purpose?: string; Duration?: string; PredefinedType?: 'ACTUAL' | 'BASELINE' | 'PLANNED' | 'USERDEFINED' | 'NOTDEFINED' }"],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.addIfcWorkPlan(args[1] as Parameters<typeof creator.addIfcWorkPlan>[0]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      requiredKeys: ['Name', 'StartTime'],
-      useWhen: 'Use when the user needs multiple schedules grouped under a single plan. Otherwise prefer addIfcWorkSchedule.',
-    },
-  });
-
-  methods.push({
-    name: 'addIfcTask',
-    doc: 'Create an IfcTask. Provide ScheduleStart + ScheduleFinish (or ScheduleDuration) for time fields. Returns task expressId.',
-    args: ['number', 'dump'],
-    paramNames: ['handle', 'params'],
-    tsParamTypes: [undefined, "{ Name: string; Description?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone?: boolean; Priority?: number; ObjectType?: string; ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; IsCritical?: boolean; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED'; Completion?: number; PredefinedType?: 'ATTENDANCE' | 'CONSTRUCTION' | 'DEMOLITION' | 'DISMANTLE' | 'DISPOSAL' | 'INSTALLATION' | 'LOGISTIC' | 'MAINTENANCE' | 'MOVE' | 'OPERATION' | 'REMOVAL' | 'RENOVATION' | 'USERDEFINED' | 'NOTDEFINED' }"],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.addIfcTask(args[1] as Parameters<typeof creator.addIfcTask>[0]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      requiredKeys: ['Name'],
-      useWhen: 'Create a task (activity). Pair with assignTasksToWorkSchedule(...) to put it under a schedule and assignProductsToTask(...) to bind products that reveal during its window.',
-      cautions: [
-        'Dates are ISO 8601 datetimes; durations are ISO 8601 (e.g. "P5D", "PT8H").',
-        'Use IsMilestone=true for zero-duration events like handovers.',
-        'PredefinedType is an enum — prefer CONSTRUCTION, INSTALLATION, DEMOLITION, RENOVATION over free text.',
-      ],
-    },
-  });
-
-  methods.push({
-    name: 'addIfcRelSequence',
-    doc: 'Link predecessor → successor tasks via IfcRelSequence. Returns relationship expressId.',
-    args: ['number', 'number', 'number', 'dump'],
-    paramNames: ['handle', 'predecessorTaskId', 'successorTaskId', 'params'],
-    tsParamTypes: [undefined, undefined, undefined, "{ SequenceType?: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; TimeLag?: string; LagDurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED'; UserDefinedSequenceType?: string }"],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.addIfcRelSequence(
-        args[1] as number,
-        args[2] as number,
-        (args[3] ?? {}) as Parameters<typeof creator.addIfcRelSequence>[2],
-      );
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      useWhen: 'Model a dependency between two tasks. SequenceType defaults to FINISH_START. Pass TimeLag as an ISO 8601 duration string like "P2D".',
-    },
-  });
-
-  methods.push({
-    name: 'addIfcRelAssignsToControl',
-    doc: 'Canonical IfcRelAssignsToControl — bind IfcObjectDefinitions (tasks or sub-schedules) to an IfcControl (IfcWorkSchedule/IfcWorkPlan). Returns relationship expressId.',
-    args: ['number', 'number', 'dump'],
-    paramNames: ['handle', 'relatingControlId', 'relatedObjectIds'],
-    tsParamTypes: [undefined, undefined, 'number[]'],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.addIfcRelAssignsToControl(args[1] as number, args[2] as number[]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      useWhen: 'Canonical IFC name. Prefer this over assignTasksToWorkSchedule when writing IFC-native scripts.',
-    },
-  });
-
-  methods.push({
-    name: 'addIfcRelAssignsToProcess',
-    doc: 'Canonical IfcRelAssignsToProcess — bind products to an IfcProcess (task). Drives the 4D Gantt animation. Returns relationship expressId.',
-    args: ['number', 'number', 'dump'],
-    paramNames: ['handle', 'relatingProcessId', 'relatedObjectIds'],
-    tsParamTypes: [undefined, undefined, 'number[]'],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.addIfcRelAssignsToProcess(args[1] as number, args[2] as number[]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      useWhen: 'Canonical IFC name for binding products to a task. Use instead of assignProductsToTask for schema-compliant scripts.',
-    },
-  });
-
-  methods.push({
-    name: 'addIfcRelNests',
-    doc: 'Canonical IfcRelNests — nest child objects under a parent (task WBS hierarchy). Returns relationship expressId.',
-    args: ['number', 'number', 'dump'],
-    paramNames: ['handle', 'relatingObjectId', 'relatedObjectIds'],
-    tsParamTypes: [undefined, undefined, 'number[]'],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.addIfcRelNests(args[1] as number, args[2] as number[]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      useWhen: 'Canonical IFC name for task nesting. Use instead of nestTasks for schema-compliant scripts.',
-    },
-  });
-
-  methods.push({
-    name: 'assignTasksToWorkSchedule',
-    doc: 'Ergonomic alias for addIfcRelAssignsToControl — assign tasks to a work schedule. Returns relationship expressId.',
-    args: ['number', 'number', 'dump'],
-    paramNames: ['handle', 'scheduleId', 'taskIds'],
-    tsParamTypes: [undefined, undefined, 'number[]'],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.assignTasksToWorkSchedule(args[1] as number, args[2] as number[]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      useWhen: 'Ergonomic alias — delegates to addIfcRelAssignsToControl.',
-    },
-  });
-
-  methods.push({
-    name: 'assignSchedulesToWorkPlan',
-    doc: 'Attach work schedules to a parent IfcWorkPlan. Returns relationship expressId.',
-    args: ['number', 'number', 'dump'],
-    paramNames: ['handle', 'planId', 'scheduleIds'],
-    tsParamTypes: [undefined, undefined, 'number[]'],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.assignSchedulesToWorkPlan(args[1] as number, args[2] as number[]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      useWhen: 'Group schedules under a plan — only needed for multi-schedule projects.',
-    },
-  });
-
-  methods.push({
-    name: 'assignProductsToTask',
-    doc: 'Ergonomic alias for addIfcRelAssignsToProcess — bind products to a task. Returns relationship expressId.',
-    args: ['number', 'number', 'dump'],
-    paramNames: ['handle', 'taskId', 'productIds'],
-    tsParamTypes: [undefined, undefined, 'number[]'],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.assignProductsToTask(args[1] as number, args[2] as number[]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      useWhen: 'Ergonomic alias — delegates to addIfcRelAssignsToProcess.',
-    },
-  });
-
-  methods.push({
-    name: 'nestTasks',
-    doc: 'Ergonomic alias for addIfcRelNests — nest child tasks under a summary parent. Returns relationship expressId.',
-    args: ['number', 'number', 'dump'],
-    paramNames: ['handle', 'parentTaskId', 'childTaskIds'],
-    tsParamTypes: [undefined, undefined, 'number[]'],
-    tsReturn: 'number',
-    call: (_sdk, args, context) => {
-      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
-      return creator.nestTasks(args[1] as number, args[2] as number[]);
-    },
-    returns: 'value',
-    llmSemantics: {
-      taskTags: ['create'],
-      useWhen: 'Ergonomic alias — delegates to addIfcRelNests.',
-    },
-  });
+  // IfcTask / IfcWorkSchedule / IfcRelSequence chains live in a dedicated
+  // module so this file stays under the ~400-line guideline. Adding a new
+  // scheduling method = touch `bridge-create-schedule.ts` only.
+  methods.push(...buildScheduleMethods());
 
   // ── Auto-discover all other public methods from IfcCreator.prototype ──
   // Type-safe dynamic dispatch: methods are validated against ALLOWED_METHODS

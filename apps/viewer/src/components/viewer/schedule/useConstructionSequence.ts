@@ -55,6 +55,7 @@ export function useConstructionSequence(): void {
   const isPlaying = useViewerStore(s => s.playbackIsPlaying);
   const playbackTime = useViewerStore(s => s.playbackTime);
   const scheduleData = useViewerStore(s => s.scheduleData);
+  const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);
   const advancePlaybackBy = useViewerStore(s => s.advancePlaybackBy);
 
   /**
@@ -104,7 +105,7 @@ export function useConstructionSequence(): void {
       return;
     }
 
-    const localHidden = computeHiddenProductIds(scheduleData, playbackTime);
+    const localHidden = computeHiddenProductIds(scheduleData, playbackTime, activeWorkScheduleId);
     const nextHidden = localHiddenToGlobal(
       localHidden,
       scheduleData,
@@ -136,7 +137,7 @@ export function useConstructionSequence(): void {
     if (toShow.length > 0) store.showEntities(toShow);
     if (toHide.length > 0) store.hideEntities(toHide);
     contributedHiddenRef.current = nextMap;
-  }, [animationEnabled, playbackTime, scheduleData]);
+  }, [animationEnabled, playbackTime, scheduleData, activeWorkScheduleId]);
 
   // Unmount cleanup — restore only what we own.
   useEffect(() => {

@@ -32,13 +32,20 @@ export function flattenTaskTree(
   const taskByGlobalId = new Map<string, ScheduleTaskInfo>();
   for (const t of data.tasks) taskByGlobalId.set(t.globalId, t);
 
+  /**
+   * A task is in-scope when no schedule filter is active, or when it (or any
+   * descendant) is controlled by the filter. Ancestors pass through so the
+   * expand/collapse chain stays visible even when only a leaf matches.
+   */
+  const isVisibleForSchedule = (task: ScheduleTaskInfo): boolean => (
+    !filterScheduleGlobalId
+    || task.controllingScheduleGlobalIds.includes(filterScheduleGlobalId)
+    || descendantsInSchedule(task, taskByGlobalId, filterScheduleGlobalId)
+  );
+
   const result: FlattenedTask[] = [];
   const roots = data.tasks.filter(t => !t.parentGlobalId);
-  const filteredRoots = filterScheduleGlobalId
-    ? roots.filter(t => t.controllingScheduleGlobalIds.includes(filterScheduleGlobalId)
-        // Include if any descendant is in the schedule (so the tree still shows)
-        || descendantsInSchedule(t, taskByGlobalId, filterScheduleGlobalId))
-    : roots;
+  const filteredRoots = roots.filter(isVisibleForSchedule);
 
   const visit = (task: ScheduleTaskInfo, depth: number) => {
     const hasChildren = task.childGlobalIds.length > 0;
@@ -47,18 +54,21 @@ export function flattenTaskTree(
     if (hasChildren && isExpanded) {
       for (const childGid of task.childGlobalIds) {
         const child = taskByGlobalId.get(childGid);
-        if (child) visit(child, depth + 1);
+        // Reuse the same predicate so out-of-scope descendants don't leak
+        // through an in-scope ancestor.
+        if (child && isVisibleForSchedule(child)) visit(child, depth + 1);
       }
     }
   };
   for (const root of filteredRoots) visit(root, 0);
 
   // Tasks that are not reachable through IfcRelNests from any root — append
-  // at depth 0 so they're not orphaned.
+  // at depth 0 so they're not orphaned. Apply the same predicate so the
+  // schedule filter is respected.
   const seen = new Set(result.map(r => r.task.globalId));
   for (const task of data.tasks) {
     if (seen.has(task.globalId)) continue;
-    if (filterScheduleGlobalId && !task.controllingScheduleGlobalIds.includes(filterScheduleGlobalId)) continue;
+    if (!isVisibleForSchedule(task)) continue;
     result.push({ task, depth: 0, hasChildren: false, expanded: false });
   }
 

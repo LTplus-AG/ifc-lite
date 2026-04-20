@@ -204,7 +204,7 @@ describe('generateScheduleFromSpatialHierarchy — building strategy', () => {
   it('produces one task per building rolling up all products', () => {
     const preview = generateScheduleFromSpatialHierarchy(buildMockStore(), {
       ...DEFAULT_OPTIONS,
-      strategy: 'building',
+      strategy: 'IfcBuilding',
     });
     assert.strictEqual(preview.groupCount, 1);
     assert.strictEqual(preview.productCount, 6);
@@ -224,13 +224,47 @@ describe('empty / degenerate inputs', () => {
     by.set(100, []); by.set(101, []); by.set(102, []);
     const preview = generateScheduleFromSpatialHierarchy(store, {
       ...DEFAULT_OPTIONS,
-      strategy: 'storey',
+      strategy: 'IfcBuildingStorey',
       skipEmptyGroups: true,
     });
     // byBuilding still has products so the helper isn't technically empty —
     // it just has 0 storey groups. Assert groupCount explicitly.
     assert.strictEqual(preview.groupCount, 0);
     assert.strictEqual(preview.extraction.tasks.length, 0);
+  });
+});
+
+describe('deterministic globalIds', () => {
+  it('re-running against the same model produces identical task IDs', () => {
+    const a = generateScheduleFromSpatialHierarchy(buildMockStore(), DEFAULT_OPTIONS);
+    const b = generateScheduleFromSpatialHierarchy(buildMockStore(), DEFAULT_OPTIONS);
+    assert.deepStrictEqual(
+      a.extraction.tasks.map(t => t.globalId),
+      b.extraction.tasks.map(t => t.globalId),
+    );
+    assert.strictEqual(
+      a.extraction.workSchedules[0].globalId,
+      b.extraction.workSchedules[0].globalId,
+    );
+  });
+
+  it('different models produce different task IDs', () => {
+    // Two models with disjoint container globalIds must not collide.
+    const storeA = buildMockStore();
+    const storeB = buildMockStore();
+    // Re-key storeB's storey ids so `entities.getGlobalId` returns new values.
+    const storeyRemap = new Map<number, string>([
+      [100, 'DIFF-ground'], [101, 'DIFF-L1'], [102, 'DIFF-roof'],
+    ]);
+    const originalGetGlobalId = storeB.entities.getGlobalId.bind(storeB.entities);
+    (storeB.entities as unknown as { getGlobalId: (id: number) => string }).getGlobalId = (id: number) =>
+      storeyRemap.get(id) ?? originalGetGlobalId(id);
+
+    const a = generateScheduleFromSpatialHierarchy(storeA, DEFAULT_OPTIONS);
+    const b = generateScheduleFromSpatialHierarchy(storeB, DEFAULT_OPTIONS);
+    const idsA = new Set(a.extraction.tasks.map(t => t.globalId));
+    const idsB = new Set(b.extraction.tasks.map(t => t.globalId));
+    for (const id of idsB) assert.ok(!idsA.has(id), `id ${id} collided across models`);
   });
 });
 

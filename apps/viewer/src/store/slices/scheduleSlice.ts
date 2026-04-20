@@ -260,15 +260,45 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
  * `scheduleStart > playbackTime`. Products with no controlling task are
  * always shown.
  */
+/**
+ * True when the task participates in the given work-schedule filter.
+ *
+ * An empty or null `scheduleGlobalId` means "no filter" — every task passes.
+ * Tasks whose `controllingScheduleGlobalIds` is empty are treated as
+ * always-visible so they still contribute to playback when a schedule is
+ * selected but the extractor didn't record controlling-schedule info.
+ */
+function taskMatchesScheduleFilter(
+  task: ScheduleTaskInfo,
+  scheduleGlobalId: string | null | undefined,
+): boolean {
+  if (!scheduleGlobalId) return true;
+  if (task.controllingScheduleGlobalIds.length === 0) return true;
+  return task.controllingScheduleGlobalIds.includes(scheduleGlobalId);
+}
+
+/**
+ * Compute the set of product expressIds that should be hidden at the given
+ * playback time. A product is hidden when every task that assigns it has
+ * `scheduleStart > playbackTime`. Products with no controlling task are
+ * always shown.
+ *
+ * `scheduleGlobalId` (optional) restricts evaluation to tasks controlled by
+ * that IfcWorkSchedule / IfcWorkPlan. Pass `null`/`undefined`/`''` to treat
+ * all tasks as in-scope. Federation-aware ID translation is the caller's
+ * responsibility — these selectors stay pure and return local expressIds.
+ */
 export function computeHiddenProductIds(
   data: ScheduleExtraction | null,
   playbackTime: number,
+  scheduleGlobalId?: string | null,
 ): Set<number> {
   const hidden = new Set<number>();
   if (!data) return hidden;
   /** product expressId -> true iff it was revealed by at least one task. */
   const revealed = new Map<number, boolean>();
   for (const task of data.tasks) {
+    if (!taskMatchesScheduleFilter(task, scheduleGlobalId)) continue;
     const start = taskStartEpoch(task);
     if (task.productExpressIds.length === 0) continue;
     // If no scheduled start, treat the task as always-active (don't hide its products).
@@ -290,14 +320,18 @@ export function computeHiddenProductIds(
 /**
  * Compute product expressIds that are currently part of an in-progress task —
  * useful for highlighting the "active construction front" during playback.
+ *
+ * `scheduleGlobalId` semantics mirror {@link computeHiddenProductIds}.
  */
 export function computeActiveProductIds(
   data: ScheduleExtraction | null,
   playbackTime: number,
+  scheduleGlobalId?: string | null,
 ): Set<number> {
   const active = new Set<number>();
   if (!data) return active;
   for (const task of data.tasks) {
+    if (!taskMatchesScheduleFilter(task, scheduleGlobalId)) continue;
     const start = taskStartEpoch(task);
     const finish = taskFinishEpoch(task);
     if (start === undefined || finish === undefined) continue;

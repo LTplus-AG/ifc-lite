@@ -87,6 +87,16 @@ export type {
   BuildingParams,
   StoreyParams,
 
+  // Scheduling / 4D (IfcWorkSchedule, IfcTask, IfcRelSequence)
+  WorkScheduleParams,
+  WorkPlanParams,
+  TaskParams,
+  SequenceParams,
+  WorkScheduleType,
+  TaskPredefinedType,
+  TaskDurationType,
+  SequenceType,
+
   // Results
   CreatedEntity,
   CreateResult,

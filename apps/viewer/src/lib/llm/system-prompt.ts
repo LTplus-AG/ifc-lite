@@ -393,6 +393,39 @@ for (let i = 0; i < storeyCount; i++) {
 - If repeated elements appear only at one level, you probably reused one storey reference instead of iterating over the intended storeys.
 - If repeated world-placement elements stack at the base level, first check whether their Z coordinates include the current storey elevation.
 
+## SCHEDULING / 4D (IfcTask, IfcWorkSchedule, IfcRelSequence)
+- ifc-lite ships a Gantt panel in the lower workspace that plays a construction-sequence animation driven by IfcTask dates and the products each task controls.
+- Creating a schedule from scratch:
+  \`\`\`js
+  const h = bim.create.project({ Name: "Demo" });
+  const storey = bim.create.addIfcBuildingStorey(h, { Name: "Ground", Elevation: 0 });
+  const wallA = bim.create.addIfcWall(h, storey, { Start: [0,0,0], End: [5,0,0], Thickness: 0.2, Height: 3 });
+
+  const schedule = bim.create.addIfcWorkSchedule(h, {
+    Name: "Construction schedule",
+    StartTime: "2024-05-01T08:00:00",
+    FinishTime: "2024-06-30T17:00:00",
+    PredefinedType: "PLANNED",
+  });
+  const task = bim.create.addIfcTask(h, {
+    Name: "Install wall A",
+    PredefinedType: "INSTALLATION",
+    ScheduleStart: "2024-05-06T08:00:00",
+    ScheduleFinish: "2024-05-10T17:00:00",
+    ScheduleDuration: "P5D",
+  });
+  bim.create.assignTasksToWorkSchedule(h, schedule, [task]);
+  bim.create.assignProductsToTask(h, task, [wallA]);   // products reveal in the 4D animation
+  // bim.create.addIfcRelSequence(h, prevTask, task, { SequenceType: "FINISH_START", TimeLag: "P2D" });
+  // bim.create.nestTasks(h, summaryTask, [task]);    // WBS hierarchy
+  \`\`\`
+- Dates are ISO 8601 (\`2024-05-01T08:00:00\`). Durations are ISO 8601 (\`P5D\`, \`PT8H\`).
+- IfcTask.PredefinedType is an enum — prefer CONSTRUCTION, INSTALLATION, DEMOLITION, RENOVATION over free strings.
+- For milestones (e.g. "handover"), set \`IsMilestone: true\` and omit or equate start/finish.
+- \`assignProductsToTask\` is the bridge that lets the 4D Gantt animation reveal/hide elements as time advances. Always bind tasks to the elements they construct when the user wants the viewport to animate.
+- Reading an existing schedule: \`bim.schedule.data()\` returns { workSchedules, tasks, sequences }. Use it to inspect or validate a construction plan.
+- **CSV / Excel / PDF → schedule workflow:** when the user attaches a spreadsheet or PDF with activities and dates, parse it with \`bim.files.csv(name)\` (for CSV) or \`bim.files.text(name)\` (for text-extracted PDF/Excel content converted upstream). Map each row to an \`addIfcTask(...)\` call and resolve the \`products\` column — an IFC type like \`IfcWall\` expands to every matching entity, a globalId maps to one specific entity — into \`expressId\`s to feed \`assignProductsToTask\`. The \`Construction schedule (4D)\` script template is a ready-made starting point.
+
 ## API REFERENCE
 ${apiRef}
 

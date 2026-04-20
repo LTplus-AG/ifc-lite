@@ -124,6 +124,12 @@ export interface FileAttachment {
   imageBase64?: string;
   /** Whether this is an image attachment */
   isImage?: boolean;
+  /** Base64-encoded PDF data (for PDF attachments — Anthropic native document blocks) */
+  pdfBase64?: string;
+  /** Whether this is a PDF attachment */
+  isPdf?: boolean;
+  /** Whether this is a binary spreadsheet (xlsx/xls/ods) that we can't parse here yet. */
+  isSpreadsheetBinary?: boolean;
 }
 
 export type ModelTier = 'free' | 'byok';

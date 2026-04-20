@@ -379,6 +379,106 @@ export interface FilesBackendMethods {
 }
 
 // ============================================================================
+// Schedule (4D) — IFC task, sequence, and work schedule extraction
+//
+// Shapes mirror `@ifc-lite/parser`'s `ScheduleExtraction` struct so the SDK
+// layer stays serializable across the sandbox/transport boundary without
+// pulling the parser into consumer bundles.
+// ============================================================================
+
+export type ScheduleSequenceType =
+  | 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH'
+  | 'USERDEFINED' | 'NOTDEFINED';
+
+export type ScheduleTaskDurationType =
+  | 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED';
+
+export interface ScheduleTaskTimeData {
+  scheduleStart?: string;
+  scheduleFinish?: string;
+  scheduleDuration?: string;
+  actualStart?: string;
+  actualFinish?: string;
+  actualDuration?: string;
+  earlyStart?: string;
+  earlyFinish?: string;
+  lateStart?: string;
+  lateFinish?: string;
+  freeFloat?: string;
+  totalFloat?: string;
+  remainingTime?: string;
+  statusTime?: string;
+  durationType?: ScheduleTaskDurationType;
+  isCritical?: boolean;
+  completion?: number;
+}
+
+export interface ScheduleTaskData {
+  expressId: number;
+  globalId: string;
+  name: string;
+  description?: string;
+  objectType?: string;
+  identification?: string;
+  longDescription?: string;
+  status?: string;
+  workMethod?: string;
+  isMilestone: boolean;
+  priority?: number;
+  predefinedType?: string;
+  taskTime?: ScheduleTaskTimeData;
+  parentGlobalId?: string;
+  childGlobalIds: string[];
+  productExpressIds: number[];
+  productGlobalIds: string[];
+  controllingScheduleGlobalIds: string[];
+}
+
+export interface ScheduleSequenceData {
+  globalId: string;
+  relatingTaskGlobalId: string;
+  relatedTaskGlobalId: string;
+  sequenceType: ScheduleSequenceType;
+  userDefinedSequenceType?: string;
+  timeLagSeconds?: number;
+  timeLagDuration?: string;
+}
+
+export interface WorkScheduleData {
+  expressId: number;
+  globalId: string;
+  kind: 'WorkSchedule' | 'WorkPlan';
+  name: string;
+  description?: string;
+  identification?: string;
+  creationDate?: string;
+  purpose?: string;
+  duration?: string;
+  startTime?: string;
+  finishTime?: string;
+  predefinedType?: string;
+  taskGlobalIds: string[];
+}
+
+export interface ScheduleExtractionData {
+  workSchedules: WorkScheduleData[];
+  tasks: ScheduleTaskData[];
+  sequences: ScheduleSequenceData[];
+  hasSchedule: boolean;
+}
+
+export interface ScheduleBackendMethods {
+  /** Extract the full schedule graph from the active or specified model. */
+  data(modelId?: string): ScheduleExtractionData;
+  /** Convenience — just the task list. */
+  tasks(modelId?: string): ScheduleTaskData[];
+  /** Convenience — just the work schedules / work plans. */
+  workSchedules(modelId?: string): WorkScheduleData[];
+  /** Convenience — just the task dependency edges. */
+  sequences(modelId?: string): ScheduleSequenceData[];
+}
+
+// ============================================================================
 // Backend Interface (implemented by local store or remote proxy)
 // ============================================================================
 
@@ -402,6 +502,7 @@ export interface BimBackend {
   readonly export: ExportBackendMethods;
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
+  readonly schedule: ScheduleBackendMethods;
 
   /** Subscribe to viewer events */
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void;

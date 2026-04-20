@@ -102,6 +102,16 @@ export type {
   ExportBackendMethods,
   LensBackendMethods,
   FilesBackendMethods,
+  ScheduleBackendMethods,
+
+  // Schedule data
+  ScheduleExtractionData,
+  ScheduleTaskData,
+  ScheduleTaskTimeData,
+  ScheduleSequenceData,
+  WorkScheduleData,
+  ScheduleSequenceType,
+  ScheduleTaskDurationType,
 } from './types.js';
 
 export { entityRefToString, stringToEntityRef, dispatchToBackend } from './types.js';
@@ -138,6 +148,7 @@ export { SpatialNamespace } from './namespaces/spatial.js';
 export { EventsNamespace } from './namespaces/events.js';
 export { CreateNamespace } from './namespaces/create.js';
 export { FilesNamespace } from './namespaces/files.js';
+export { ScheduleNamespace } from './namespaces/schedule.js';
 
 // bSDD — buildingSMART Data Dictionary property/classification lookup
 export { BsddNamespace } from './namespaces/bsdd.js';
@@ -217,6 +228,16 @@ export type {
   SiteParams,
   BuildingParams,
   StoreyParams,
+
+  // Scheduling / 4D
+  WorkScheduleParams,
+  WorkPlanParams,
+  TaskParams,
+  SequenceParams,
+  WorkScheduleType,
+  TaskPredefinedType,
+  TaskDurationType,
+  SequenceType,
 
   // Results
   CreatedEntity,

@@ -23,18 +23,12 @@ interface BimEntity {
 
 interface BimPropertySet {
   name: string;
-  Name?: string;
-  globalId?: string;
-  GlobalId?: string;
   properties: Array<{ name: string; value: string | number | boolean | null }>;
-  Properties?: Array<{ name: string; value: string | number | boolean | null }>;
 }
 
 interface BimQuantitySet {
   name: string;
   quantities: Array<{ name: string; value: number | null }>;
-  Name?: string;
-  Quantities?: Array<{ name: string; value: number | null }>;
 }
 
 interface BimAttribute {
@@ -123,40 +117,6 @@ interface BimFileAttachment {
   hasTextContent: boolean;
 }
 
-type BimPoint3D = [number, number, number];
-type BimPoint2D = [number, number];
-
-interface BimPlacement3D {
-  Location: BimPoint3D;
-  Axis?: BimPoint3D;
-  RefDirection?: BimPoint3D;
-}
-
-type BimProfileDef =
-  | { ProfileType: 'AREA'; XDim: number; YDim: number }
-  | { ProfileType: 'AREA'; Radius: number; WallThickness?: number }
-  | { ProfileType: 'AREA'; OuterCurve: BimPoint2D[] }
-  | { ProfileType: 'AREA'; Shape: 'IfcTShapeProfileDef'; FlangeWidth: number; Depth: number; WebThickness: number; FlangeThickness: number; FilletRadius?: number }
-  | { ProfileType: 'AREA'; Shape: 'IfcUShapeProfileDef'; Depth: number; FlangeWidth: number; WebThickness: number; FlangeThickness: number; FilletRadius?: number }
-  | { ProfileType: 'AREA'; OverallWidth: number; OverallDepth: number; WebThickness: number; FlangeThickness: number; FilletRadius?: number }
-  | { ProfileType: 'AREA'; Depth: number; Width: number; Thickness: number; FilletRadius?: number }
-  | { ProfileType: 'AREA'; Depth: number; Width: number; WallThickness: number; Girth: number }
-  | { ProfileType: 'AREA'; XDim: number; YDim: number; WallThickness: number; InnerFilletRadius?: number; OuterFilletRadius?: number };
-
-type BimElementAttrs = {
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-};
-
-type BimWallHostedOpening = BimElementAttrs & {
-  Position: BimPoint3D;
-  Width: number;
-  Height: number;
-  Thickness?: number;
-};
-
 // ── Namespace declarations ──────────────────────────────────────────────
 
 declare const bim: {
@@ -169,7 +129,7 @@ declare const bim: {
     /** Get active model ID */
     activeId(): string | null;
     /** Load IFC content into the 3D viewer for preview */
-    loadIfc(content: string, filename?: string): void;
+    loadIfc(content: string, filename: string): void;
   };
   /** Query entities */
   query: {
@@ -241,7 +201,7 @@ declare const bim: {
   };
   /** Property editing */
   mutate: {
-    /** Set an IfcPropertySet or quantity value */
+    /** Set an IfcPropertySet or quantity value (not a root IFC attribute) */
     setProperty(entity: unknown, psetName: string, propName: string, value: unknown): void;
     /** Set a root IFC attribute such as Name, Description, ObjectType, or Tag */
     setAttribute(entity: unknown, attrName: string, value: string): void;
@@ -260,83 +220,99 @@ declare const bim: {
   /** IFC creation from scratch */
   create: {
     /** Create a new IFC project. Returns a creator handle (number). */
-    project(params?: { Name?: string; Description?: string; Schema?: string; LengthUnit?: string; Author?: string; Organization?: string }): number;
-    /** Add a building storey. Returns storey expressId. */
-    addIfcBuildingStorey(handle: number, params: { Name?: string; Description?: string; Elevation: number }): number;
-    /** Add a wall to a storey. Returns wall expressId. */
-    addIfcWall(handle: number, storeyId: number, params: BimElementAttrs & { Start: [number,number,number]; End: [number,number,number]; Thickness: number; Height: number; Openings?: Array<{ Width: number; Height: number; Position: [number,number,number]; Name?: string }> }): number;
-    /** Add a slab to a storey. Returns slab expressId. */
-    addIfcSlab(handle: number, storeyId: number, params: BimElementAttrs & { Position: [number,number,number]; Thickness: number; Width?: number; Depth?: number; Profile?: [number,number][]; Openings?: Array<{ Width: number; Height: number; Position: [number,number,number]; Name?: string }> }): number;
-    /** Add a column to a storey. Returns column expressId. */
-    addIfcColumn(handle: number, storeyId: number, params: BimElementAttrs & { Position: [number,number,number]; Width: number; Depth: number; Height: number }): number;
-    /** Add a beam to a storey. Returns beam expressId. */
-    addIfcBeam(handle: number, storeyId: number, params: BimElementAttrs & { Start: [number,number,number]; End: [number,number,number]; Width: number; Height: number }): number;
-    /** Add a stair to a storey. Returns stair expressId. */
-    addIfcStair(handle: number, storeyId: number, params: BimElementAttrs & { Position: [number,number,number]; NumberOfRisers: number; RiserHeight: number; TreadLength: number; Width: number; Direction?: number }): number;
-    /** Add a roof to a storey. Returns roof expressId. */
-    addIfcRoof(handle: number, storeyId: number, params: BimElementAttrs & { Position: [number,number,number]; Width: number; Depth: number; Thickness: number; Slope?: number }): number;
-    /** Add a dual-pitch gable roof. `Slope` is in radians. Returns roof expressId. */
-    addIfcGableRoof(handle: number, storeyId: number, params: BimElementAttrs & { Position: [number,number,number]; Width: number; Depth: number; Thickness: number; Slope: number; Overhang?: number }): number;
-    /** Add a door hosted in a wall opening. Position is wall-local [alongWall, 0, baseHeight]. Returns door expressId. */
-    addIfcWallDoor(handle: number, wallId: number, params: BimWallHostedOpening & { PredefinedType?: string; OperationType?: string }): number;
-    /** Add a window hosted in a wall opening. Position is wall-local [alongWall, 0, sillHeight]. Returns window expressId. */
-    addIfcWallWindow(handle: number, wallId: number, params: BimWallHostedOpening & { PartitioningType?: string }): number;
-    /** Add a door to a storey. Returns door expressId. */
-    addIfcDoor(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Width: number; Height: number; Thickness?: number; PredefinedType?: string; OperationType?: string }): number;
-    /** Add a window to a storey. Returns window expressId. */
-    addIfcWindow(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Width: number; Height: number; Thickness?: number; PartitioningType?: string }): number;
-    /** Add a ramp to a storey. Returns ramp expressId. */
-    addIfcRamp(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Width: number; Length: number; Thickness: number; Rise?: number }): number;
-    /** Add a railing to a storey. Returns railing expressId. */
-    addIfcRailing(handle: number, storeyId: number, params: BimElementAttrs & { Start: BimPoint3D; End: BimPoint3D; Height: number; Width?: number }): number;
-    /** Add a plate to a storey. Returns plate expressId. */
-    addIfcPlate(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Width: number; Depth: number; Thickness: number; Profile?: BimPoint2D[] }): number;
-    /** Add a member to a storey. Returns member expressId. */
-    addIfcMember(handle: number, storeyId: number, params: BimElementAttrs & { Start: BimPoint3D; End: BimPoint3D; Width: number; Height: number }): number;
-    /** Add a footing to a storey. Returns footing expressId. */
-    addIfcFooting(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Width: number; Depth: number; Height: number; PredefinedType?: string }): number;
-    /** Add a pile to a storey. Returns pile expressId. */
-    addIfcPile(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Length: number; Diameter: number; IsRectangular?: boolean; RectangularDepth?: number }): number;
-    /** Add a space to a storey. Returns space expressId. */
-    addIfcSpace(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Width: number; Depth: number; Height: number; LongName?: string; Profile?: BimPoint2D[] }): number;
-    /** Add a curtain wall to a storey. Returns curtain wall expressId. */
-    addIfcCurtainWall(handle: number, storeyId: number, params: BimElementAttrs & { Start: BimPoint3D; End: BimPoint3D; Height: number; Thickness?: number }): number;
-    /** Add a furnishing element to a storey. Returns expressId. */
-    addIfcFurnishingElement(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Width: number; Depth: number; Height: number; Direction?: number }): number;
-    /** Add a generic building element proxy to a storey. Returns expressId. */
-    addIfcBuildingElementProxy(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Width: number; Depth: number; Height: number; Profile?: BimPoint2D[]; ProxyType?: string }): number;
-    /** Add a circular column to a storey. Returns expressId. */
-    addIfcCircularColumn(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Radius: number; Height: number }): number;
-    /** Add an I-shape beam to a storey. Returns expressId. */
-    addIfcIShapeBeam(handle: number, storeyId: number, params: BimElementAttrs & { Start: BimPoint3D; End: BimPoint3D; OverallWidth: number; OverallDepth: number; WebThickness: number; FlangeThickness: number; FilletRadius?: number }): number;
-    /** Add an L-shape member to a storey. Returns expressId. */
-    addIfcLShapeMember(handle: number, storeyId: number, params: BimElementAttrs & { Start: BimPoint3D; End: BimPoint3D; Width: number; Depth: number; Thickness: number; FilletRadius?: number }): number;
-    /** Add a T-shape member to a storey. Returns expressId. */
-    addIfcTShapeMember(handle: number, storeyId: number, params: BimElementAttrs & { Start: BimPoint3D; End: BimPoint3D; FlangeWidth: number; Depth: number; WebThickness: number; FlangeThickness: number; FilletRadius?: number }): number;
-    /** Add a U-shape member to a storey. Returns expressId. */
-    addIfcUShapeMember(handle: number, storeyId: number, params: BimElementAttrs & { Start: BimPoint3D; End: BimPoint3D; Depth: number; FlangeWidth: number; WebThickness: number; FlangeThickness: number; FilletRadius?: number }): number;
-    /** Add a hollow circular column to a storey. Returns expressId. */
-    addIfcHollowCircularColumn(handle: number, storeyId: number, params: BimElementAttrs & { Position: BimPoint3D; Radius: number; WallThickness: number; Height: number }): number;
-    /** Add a rectangular hollow beam to a storey. Returns expressId. */
-    addIfcRectangleHollowBeam(handle: number, storeyId: number, params: BimElementAttrs & { Start: BimPoint3D; End: BimPoint3D; XDim: number; YDim: number; WallThickness: number; InnerFilletRadius?: number; OuterFilletRadius?: number }): number;
-    /** Create any IFC type with a profile at a placement. Returns expressId. */
-    addElement(handle: number, storeyId: number, params: { IfcType: string; Placement: BimPlacement3D; Profile: BimProfileDef; Depth: number; ExtrusionDirection?: BimPoint3D; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): number;
-    /** Create any IFC type extruded along a Start→End axis. Returns expressId. */
-    addAxisElement(handle: number, storeyId: number, params: { IfcType: string; Start: BimPoint3D; End: BimPoint3D; Profile: BimProfileDef; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): number;
-    /** Create a profile from a ProfileDef union. Returns profile ID. */
-    createProfile(handle: number, profile: BimProfileDef): number;
-    /** Get the world placement ID for use with addLocalPlacement. */
-    getWorldPlacementId(handle: number): number;
-    /** Assign a named colour to an element. Call before toIfc(). */
-    setColor(handle: number, elementId: number, name: string, rgb: [number, number, number]): void;
-    /** Assign an IFC material (simple or layered) to an element. */
-    addIfcMaterial(handle: number, elementId: number, material: { Name: string; Category?: string; Layers?: Array<{ Name: string; Thickness: number; Category?: string; IsVentilated?: boolean }> }): void;
-    /** Attach a property set to an element. Returns pset expressId. */
-    addIfcPropertySet(handle: number, elementId: number, pset: { Name: string; Properties: Array<{ Name: string; NominalValue: string | number | boolean; Type?: string }> }): number;
-    /** Attach element quantities to an element. Returns qset expressId. */
-    addIfcElementQuantity(handle: number, elementId: number, qset: { Name: string; Quantities: Array<{ Name: string; Value: number; Kind: 'IfcQuantityLength' | 'IfcQuantityArea' | 'IfcQuantityVolume' | 'IfcQuantityCount' | 'IfcQuantityWeight' }> }): number;
+    project(params: { Name?: string; Description?: string; Schema?: string; LengthUnit?: string; Author?: string; Organization?: string }): number;
     /** Generate the IFC STEP file content. Returns { content, entities, stats }. */
     toIfc(handle: number): { content: string; entities: Array<{ expressId: number; type: string; Name?: string }>; stats: { entityCount: number; fileSize: number } };
+    /** Assign a named colour to an element. Call before toIfc(). */
+    setColor(handle: number, elementId: number, name: string, rgb: unknown): void;
+    /** Create an IfcWorkSchedule. Returns schedule expressId. */
+    addIfcWorkSchedule(handle: number, params: { Name: string; StartTime: string; FinishTime?: string; CreationDate?: string; Description?: string; Identification?: string; Purpose?: string; Duration?: string; TotalFloat?: string; PredefinedType?: 'ACTUAL' | 'BASELINE' | 'PLANNED' | 'USERDEFINED' | 'NOTDEFINED' }): number;
+    /** Create an IfcWorkPlan (groups multiple schedules). Returns plan expressId. */
+    addIfcWorkPlan(handle: number, params: { Name: string; StartTime: string; FinishTime?: string; CreationDate?: string; Description?: string; Identification?: string; Purpose?: string; Duration?: string; PredefinedType?: 'ACTUAL' | 'BASELINE' | 'PLANNED' | 'USERDEFINED' | 'NOTDEFINED' }): number;
+    /** Create an IfcTask. Provide ScheduleStart + ScheduleFinish (or ScheduleDuration) for time fields. Returns task expressId. */
+    addIfcTask(handle: number, params: { Name: string; Description?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone?: boolean; Priority?: number; ObjectType?: string; ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; IsCritical?: boolean; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED'; Completion?: number; PredefinedType?: 'ATTENDANCE' | 'CONSTRUCTION' | 'DEMOLITION' | 'DISMANTLE' | 'DISPOSAL' | 'INSTALLATION' | 'LOGISTIC' | 'MAINTENANCE' | 'MOVE' | 'OPERATION' | 'REMOVAL' | 'RENOVATION' | 'USERDEFINED' | 'NOTDEFINED' }): number;
+    /** Link predecessor → successor tasks via IfcRelSequence. Returns relationship expressId. */
+    addIfcRelSequence(handle: number, predecessorTaskId: number, successorTaskId: number, params: { SequenceType?: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; TimeLag?: string; LagDurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED'; UserDefinedSequenceType?: string }): number;
+    /** Assign one or more tasks to a work schedule (IfcRelAssignsToControl). Returns relationship expressId. */
+    assignTasksToWorkSchedule(handle: number, scheduleId: number, taskIds: number[]): number;
+    /** Attach work schedules to a parent IfcWorkPlan. Returns relationship expressId. */
+    assignSchedulesToWorkPlan(handle: number, planId: number, scheduleIds: number[]): number;
+    /** Assign products (walls/slabs/etc. by expressId) to a task via IfcRelAssignsToProcess. These are the elements that reveal during the task window in the Gantt 4D animation. */
+    assignProductsToTask(handle: number, taskId: number, productIds: number[]): number;
+    /** Nest child tasks under a summary parent task via IfcRelNests. Returns relationship expressId. */
+    nestTasks(handle: number, parentTaskId: number, childTaskIds: number[]): number;
+    /** Create ANY IFC type extruded along a Start→End axis. Returns expressId. */
+    addAxisElement(handle: number, storeyId: number, params: unknown): number;
+    /** Create ANY IFC type with a profile at a placement. Returns expressId. */
+    addElement(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcBeam. Returns expressId. */
+    addIfcBeam(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcBuildingElementProxy. Returns expressId. */
+    addIfcBuildingElementProxy(handle: number, storeyId: number, params: unknown): number;
+    /** Add a building storey. Returns storey expressId. */
+    addIfcBuildingStorey(handle: number, params: unknown): number;
+    /** Add IfcCircularColumn. Returns expressId. */
+    addIfcCircularColumn(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcColumn. Returns expressId. */
+    addIfcColumn(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcCurtainWall. Returns expressId. */
+    addIfcCurtainWall(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcDoor. Returns expressId. */
+    addIfcDoor(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcElementQuantity. Returns expressId. */
+    addIfcElementQuantity(handle: number, elementId: number, params: unknown): number;
+    /** Add IfcFooting. Returns expressId. */
+    addIfcFooting(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcFurnishingElement. Returns expressId. */
+    addIfcFurnishingElement(handle: number, storeyId: number, params: unknown): number;
+    /** Add a dual-pitch gable roof. `Slope` is in radians. Returns roof expressId. */
+    addIfcGableRoof(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcHollowCircularColumn. Returns expressId. */
+    addIfcHollowCircularColumn(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcIShapeBeam. Returns expressId. */
+    addIfcIShapeBeam(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcLShapeMember. Returns expressId. */
+    addIfcLShapeMember(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcMaterial. Returns expressId. */
+    addIfcMaterial(handle: number, elementId: number, params: unknown): void;
+    /** Add IfcMember. Returns expressId. */
+    addIfcMember(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcPile. Returns expressId. */
+    addIfcPile(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcPlate. Returns expressId. */
+    addIfcPlate(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcPropertySet. Returns expressId. */
+    addIfcPropertySet(handle: number, elementId: number, params: unknown): number;
+    /** Add IfcRailing. Returns expressId. */
+    addIfcRailing(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcRamp. Returns expressId. */
+    addIfcRamp(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcRectangleHollowBeam. Returns expressId. */
+    addIfcRectangleHollowBeam(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcRoof. Returns expressId. */
+    addIfcRoof(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcSlab. Returns expressId. */
+    addIfcSlab(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcSpace. Returns expressId. */
+    addIfcSpace(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcStair. Returns expressId. */
+    addIfcStair(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcTShapeMember. Returns expressId. */
+    addIfcTShapeMember(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcUShapeMember. Returns expressId. */
+    addIfcUShapeMember(handle: number, storeyId: number, params: unknown): number;
+    /** Add IfcWall. Returns expressId. */
+    addIfcWall(handle: number, storeyId: number, params: unknown): number;
+    /** Add a door hosted in a wall opening. Position is wall-local [alongWall, 0, baseHeight]. Returns door expressId. */
+    addIfcWallDoor(handle: number, wallId: number, params: unknown): number;
+    /** Add a window hosted in a wall opening. Position is wall-local [alongWall, 0, sillHeight]. Returns window expressId. */
+    addIfcWallWindow(handle: number, wallId: number, params: unknown): number;
+    /** Add IfcWindow. Returns expressId. */
+    addIfcWindow(handle: number, storeyId: number, params: unknown): number;
+    /** Create a profile from a ProfileDef union. Returns profile ID. */
+    createProfile(handle: number, profile: unknown): number;
+    /** Get the world placement ID for use with addLocalPlacement. */
+    getWorldPlacementId(handle: number): number;
   };
   /** Uploaded file attachments */
   files: {
@@ -349,6 +325,17 @@ declare const bim: {
     /** Get parsed CSV column names for an uploaded attachment by file name */
     csvColumns(name: string): string[];
   };
+  /** 4D / IFC construction schedule reader (IfcTask, IfcWorkSchedule, IfcRelSequence) */
+  schedule: {
+    /** Full schedule extraction — tasks, dependencies, and work schedules. */
+    data(modelId: string | undefined): { hasSchedule: boolean; workSchedules: Array<{ globalId: string; name: string; startTime?: string; finishTime?: string; predefinedType?: string; kind: 'WorkSchedule' | 'WorkPlan'; taskGlobalIds: string[] }>; tasks: Array<{ globalId: string; expressId: number; name: string; isMilestone: boolean; predefinedType?: string; parentGlobalId?: string; childGlobalIds: string[]; productExpressIds: number[]; productGlobalIds: string[]; controllingScheduleGlobalIds: string[]; taskTime?: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string; actualStart?: string; actualFinish?: string; isCritical?: boolean; completion?: number } }>; sequences: Array<{ relatingTaskGlobalId: string; relatedTaskGlobalId: string; sequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; timeLagSeconds?: number; timeLagDuration?: string }> };
+    /** All IfcTask entities with their times and assigned products. */
+    tasks(modelId: string | undefined): Array<{ globalId: string; expressId: number; name: string; isMilestone: boolean; predefinedType?: string; parentGlobalId?: string; childGlobalIds: string[]; productExpressIds: number[]; productGlobalIds: string[]; controllingScheduleGlobalIds: string[]; taskTime?: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string; isCritical?: boolean; completion?: number } }>;
+    /** All IfcWorkSchedule and IfcWorkPlan containers. */
+    workSchedules(modelId: string | undefined): Array<{ globalId: string; expressId: number; name: string; kind: 'WorkSchedule' | 'WorkPlan'; startTime?: string; finishTime?: string; predefinedType?: string; taskGlobalIds: string[] }>;
+    /** All IfcRelSequence dependency edges (FS/SS/FF/SF, with optional IfcLagTime). */
+    sequences(modelId: string | undefined): Array<{ relatingTaskGlobalId: string; relatedTaskGlobalId: string; sequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; timeLagSeconds?: number; timeLagDuration?: string }>;
+  };
   /** Data export */
   export: {
     /** Export entities to CSV string */
@@ -356,8 +343,8 @@ declare const bim: {
     /** Export entities to JSON array */
     json(entities: BimEntity[], columns: string[]): Record<string, unknown>[];
     /** Export entities to IFC STEP text. Pass filename to auto-download a valid .ifc file */
-    ifc(entities: BimEntity[], options?: { schema?: "IFC2X3" | "IFC4" | "IFC4X3"; filename?: string; includeMutations?: boolean; visibleOnly?: boolean }): string;
-    /** Trigger a browser file download with raw content */
-    download(content: string, filename: string, mimeType?: string): void;
+    ifc(entities: BimEntity[], options: { schema?: "IFC2X3" | "IFC4" | "IFC4X3"; filename?: string; includeMutations?: boolean; visibleOnly?: boolean }): string | Uint8Array;
+    /** Trigger a browser file download with the given content */
+    download(content: string, filename: string, mimeType: string): void;
   };
 };

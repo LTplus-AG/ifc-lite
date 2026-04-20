@@ -27,6 +27,7 @@ import { buildMutateNamespace } from './bridge-mutate.js';
 import { buildCreateMethods } from './bridge-create.js';
 import { buildFilesNamespace } from './bridge-files.js';
 import { buildExportNamespace } from './bridge-export.js';
+import { buildScheduleNamespace } from './bridge-schedule.js';
 
 // ============================================================================
 // Schema Types
@@ -173,6 +174,9 @@ export const NAMESPACE_SCHEMAS: NamespaceSchema[] = [
 
   // ── bim.files ──────────────────────────────────────────────
   buildFilesNamespace(),
+
+  // ── bim.schedule ───────────────────────────────────────────
+  buildScheduleNamespace(),
 
   // ── bim.export ─────────────────────────────────────────────
   buildExportNamespace(),

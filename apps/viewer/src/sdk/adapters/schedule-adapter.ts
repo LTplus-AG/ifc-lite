@@ -33,6 +33,14 @@ function resolveStore(store: StoreApi, modelId?: string): IfcDataStore | null {
     return (model?.ifcDataStore as IfcDataStore | undefined) ?? null;
   }
   if (state.ifcDataStore) return state.ifcDataStore as IfcDataStore;
+  // Respect the user's active model selection before falling back to the
+  // first federated entry — other namespaces (query, selection, viewer)
+  // follow the same pattern.
+  const activeId = state.activeModelId as string | null | undefined;
+  if (activeId) {
+    const active = getModelForRef(state, activeId);
+    if (active?.ifcDataStore) return active.ifcDataStore as IfcDataStore;
+  }
   const firstFederated = state.models?.values().next().value;
   return (firstFederated?.ifcDataStore as IfcDataStore | undefined) ?? null;
 }

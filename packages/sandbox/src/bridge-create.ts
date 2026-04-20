@@ -36,6 +36,7 @@ const SPECIAL_METHODS = new Set([
   'constructor', 'toIfc', 'setColor',
   // Scheduling — handled explicitly below because of varied arg shapes
   'addIfcWorkSchedule', 'addIfcWorkPlan', 'addIfcTask', 'addIfcRelSequence',
+  'addIfcRelAssignsToControl', 'addIfcRelAssignsToProcess', 'addIfcRelNests',
   'assignTasksToWorkSchedule', 'assignSchedulesToWorkPlan',
   'assignProductsToTask', 'nestTasks',
 ]);
@@ -64,6 +65,9 @@ const ALLOWED_METHODS = new Set([
   'addIfcPropertySet', 'addIfcElementQuantity', 'addIfcMaterial',
   // Scheduling / 4D (IfcTask, IfcWorkSchedule, IfcRelSequence)
   'addIfcWorkSchedule', 'addIfcWorkPlan', 'addIfcTask', 'addIfcRelSequence',
+  // Canonical IFC relationship names — preferred for schema compliance.
+  'addIfcRelAssignsToControl', 'addIfcRelAssignsToProcess', 'addIfcRelNests',
+  // Ergonomic aliases retained for script authors.
   'assignTasksToWorkSchedule', 'assignSchedulesToWorkPlan',
   'assignProductsToTask', 'nestTasks',
   // Low-level geometry
@@ -99,6 +103,7 @@ function methodDoc(name: string): string {
   // addIfcWall → 'Add an IfcWall'
   // addElement → 'Add a generic element'
   // createProfile → 'Create a profile from a ProfileDef'
+  if (name === 'addIfcMaterial') return 'Associate a material with an element via IfcRelAssociatesMaterial (deferred to toIfc). Returns nothing.';
   if (name === 'addIfcBuildingStorey') return 'Add a building storey. Returns storey expressId.';
   if (name === 'addIfcGableRoof') return 'Add a dual-pitch gable roof. `Slope` is in radians. Returns roof expressId.';
   if (name === 'addIfcWallDoor') return 'Add a door hosted in a wall opening. Position is wall-local [alongWall, 0, baseHeight]. Returns door expressId.';
@@ -509,8 +514,62 @@ export function buildCreateMethods(): MethodSchema[] {
   });
 
   methods.push({
+    name: 'addIfcRelAssignsToControl',
+    doc: 'Canonical IfcRelAssignsToControl — bind IfcObjectDefinitions (tasks or sub-schedules) to an IfcControl (IfcWorkSchedule/IfcWorkPlan). Returns relationship expressId.',
+    args: ['number', 'number', 'dump'],
+    paramNames: ['handle', 'relatingControlId', 'relatedObjectIds'],
+    tsParamTypes: [undefined, undefined, 'number[]'],
+    tsReturn: 'number',
+    call: (_sdk, args, context) => {
+      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
+      return creator.addIfcRelAssignsToControl(args[1] as number, args[2] as number[]);
+    },
+    returns: 'value',
+    llmSemantics: {
+      taskTags: ['create'],
+      useWhen: 'Canonical IFC name. Prefer this over assignTasksToWorkSchedule when writing IFC-native scripts.',
+    },
+  });
+
+  methods.push({
+    name: 'addIfcRelAssignsToProcess',
+    doc: 'Canonical IfcRelAssignsToProcess — bind products to an IfcProcess (task). Drives the 4D Gantt animation. Returns relationship expressId.',
+    args: ['number', 'number', 'dump'],
+    paramNames: ['handle', 'relatingProcessId', 'relatedObjectIds'],
+    tsParamTypes: [undefined, undefined, 'number[]'],
+    tsReturn: 'number',
+    call: (_sdk, args, context) => {
+      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
+      return creator.addIfcRelAssignsToProcess(args[1] as number, args[2] as number[]);
+    },
+    returns: 'value',
+    llmSemantics: {
+      taskTags: ['create'],
+      useWhen: 'Canonical IFC name for binding products to a task. Use instead of assignProductsToTask for schema-compliant scripts.',
+    },
+  });
+
+  methods.push({
+    name: 'addIfcRelNests',
+    doc: 'Canonical IfcRelNests — nest child objects under a parent (task WBS hierarchy). Returns relationship expressId.',
+    args: ['number', 'number', 'dump'],
+    paramNames: ['handle', 'relatingObjectId', 'relatedObjectIds'],
+    tsParamTypes: [undefined, undefined, 'number[]'],
+    tsReturn: 'number',
+    call: (_sdk, args, context) => {
+      const creator = creatorRegistry.getForSession(context.sandboxSessionId, args[0] as number);
+      return creator.addIfcRelNests(args[1] as number, args[2] as number[]);
+    },
+    returns: 'value',
+    llmSemantics: {
+      taskTags: ['create'],
+      useWhen: 'Canonical IFC name for task nesting. Use instead of nestTasks for schema-compliant scripts.',
+    },
+  });
+
+  methods.push({
     name: 'assignTasksToWorkSchedule',
-    doc: 'Assign one or more tasks to a work schedule (IfcRelAssignsToControl). Returns relationship expressId.',
+    doc: 'Ergonomic alias for addIfcRelAssignsToControl — assign tasks to a work schedule. Returns relationship expressId.',
     args: ['number', 'number', 'dump'],
     paramNames: ['handle', 'scheduleId', 'taskIds'],
     tsParamTypes: [undefined, undefined, 'number[]'],
@@ -522,7 +581,7 @@ export function buildCreateMethods(): MethodSchema[] {
     returns: 'value',
     llmSemantics: {
       taskTags: ['create'],
-      useWhen: 'Attach root (summary) tasks to a schedule after creation.',
+      useWhen: 'Ergonomic alias — delegates to addIfcRelAssignsToControl.',
     },
   });
 
@@ -546,7 +605,7 @@ export function buildCreateMethods(): MethodSchema[] {
 
   methods.push({
     name: 'assignProductsToTask',
-    doc: 'Assign products (walls/slabs/etc. by expressId) to a task via IfcRelAssignsToProcess. These are the elements that reveal during the task window in the Gantt 4D animation.',
+    doc: 'Ergonomic alias for addIfcRelAssignsToProcess — bind products to a task. Returns relationship expressId.',
     args: ['number', 'number', 'dump'],
     paramNames: ['handle', 'taskId', 'productIds'],
     tsParamTypes: [undefined, undefined, 'number[]'],
@@ -558,13 +617,13 @@ export function buildCreateMethods(): MethodSchema[] {
     returns: 'value',
     llmSemantics: {
       taskTags: ['create'],
-      useWhen: 'Bind the elements that a task constructs/installs. Drives the 4D construction-sequence animation.',
+      useWhen: 'Ergonomic alias — delegates to addIfcRelAssignsToProcess.',
     },
   });
 
   methods.push({
     name: 'nestTasks',
-    doc: 'Nest child tasks under a summary parent task via IfcRelNests. Returns relationship expressId.',
+    doc: 'Ergonomic alias for addIfcRelNests — nest child tasks under a summary parent. Returns relationship expressId.',
     args: ['number', 'number', 'dump'],
     paramNames: ['handle', 'parentTaskId', 'childTaskIds'],
     tsParamTypes: [undefined, undefined, 'number[]'],
@@ -576,7 +635,7 @@ export function buildCreateMethods(): MethodSchema[] {
     returns: 'value',
     llmSemantics: {
       taskTags: ['create'],
-      useWhen: 'Build a WBS hierarchy — e.g. summary task "Foundations" nests "Excavation", "Pour", "Cure".',
+      useWhen: 'Ergonomic alias — delegates to addIfcRelNests.',
     },
   });
 

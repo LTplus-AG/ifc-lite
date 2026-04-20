@@ -137,25 +137,29 @@ export function computeScheduleRange(data: ScheduleExtraction | null): ScheduleT
   if (!data || data.tasks.length === 0) return null;
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
-  let hasReal = false;
   for (const task of data.tasks) {
     const start = taskStartEpoch(task);
     const finish = taskFinishEpoch(task);
+    // Use whichever datapoint we have — a task with only ScheduleFinish still
+    // anchors the range. Folding start into `max` (and finish into `min`) keeps
+    // the range deterministic even when only one end is defined.
     if (start !== undefined) {
       min = Math.min(min, start);
-      hasReal = true;
+      max = Math.max(max, start);
     }
     if (finish !== undefined) {
+      min = Math.min(min, finish);
       max = Math.max(max, finish);
-      hasReal = true;
     }
   }
-  if (hasReal && Number.isFinite(min) && Number.isFinite(max) && max >= min) {
-    return { start: min, end: max === min ? min + 86400_000 : max, synthetic: false };
+  if (Number.isFinite(min) && Number.isFinite(max) && max >= min) {
+    // Single-point schedules get a nominal 1-day tail so the Gantt has something to render.
+    return { start: min, end: max === min ? min + 86_400_000 : max, synthetic: false };
   }
-  // No dates — synthesize a 30-day window as a placeholder.
-  const now = Date.now();
-  return { start: now, end: now + 30 * 86400_000, synthetic: true };
+  // No dates anywhere — synthesize a deterministic day-0 / +30d window keyed on
+  // the task count so playback state survives reloads of the same model.
+  const base = 0;
+  return { start: base, end: base + 30 * 86_400_000, synthetic: true };
 }
 
 export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSlice> = (set, get) => ({

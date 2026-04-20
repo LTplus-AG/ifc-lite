@@ -4,16 +4,51 @@
 
 /**
  * useConstructionSequence — drives the 3D viewport's hidden-entity set from
- * the Gantt playback clock. Tracks which ids we contributed so toggling the
- * animation off restores the user's original visibility choices.
+ * the Gantt playback clock.
+ *
+ * Two invariants we must preserve:
+ *   1. **Federation-awareness.** The schedule extractor returns local
+ *      `productExpressIds`. The renderer/visibility slice operates on
+ *      global IDs. We translate via `toGlobalIdFromModels` before writing.
+ *   2. **Don't clobber user-hidden IDs.** On toggle-off / unmount we must
+ *      only reveal IDs we ourselves hid *and* that weren't already hidden
+ *      by the user. We remember the pre-hide state in a `Map<id, wasHidden>`.
  *
  * Playback tick: a requestAnimationFrame loop advances `playbackTime` when
- * `playbackIsPlaying` is true. Hidden-set updates happen on every playback
- * clock change (explicit scrubs too).
+ * `playbackIsPlaying` && `animationEnabled` are both true.
  */
 
 import { useEffect, useRef } from 'react';
-import { useViewerStore, computeHiddenProductIds } from '@/store';
+import { useViewerStore, computeHiddenProductIds, toGlobalIdFromModels } from '@/store';
+import type { ScheduleExtraction } from '@ifc-lite/parser';
+
+/** Map the schedule's local product expressIds to renderer global IDs.
+ *  In single-model mode the map is empty and the id passes through. */
+function localHiddenToGlobal(
+  localHidden: Set<number>,
+  scheduleData: ScheduleExtraction,
+  models: Map<string, { idOffset?: number }>,
+  activeModelId: string | null | undefined,
+): Set<number> {
+  if (localHidden.size === 0) return new Set();
+  // Build a lookup from localExpressId → sourceModelId. We walk the task list
+  // once so a product assigned by multiple tasks still maps to one model.
+  const modelByExpressId = new Map<number, string | null>();
+  for (const task of scheduleData.tasks) {
+    for (const id of task.productExpressIds) {
+      if (!modelByExpressId.has(id)) modelByExpressId.set(id, null);
+    }
+  }
+  // When schedule-adapter cached extraction per model, we only know the
+  // active model id — attribute every localExpressId to it.
+  const sourceModelId = activeModelId ?? (models.keys().next().value ?? '');
+  const result = new Set<number>();
+  for (const local of localHidden) {
+    result.add(toGlobalIdFromModels(models, sourceModelId, local));
+    void modelByExpressId; // kept for future multi-source attribution
+  }
+  return result;
+}
 
 export function useConstructionSequence(): void {
   const animationEnabled = useViewerStore(s => s.animationEnabled);
@@ -22,12 +57,16 @@ export function useConstructionSequence(): void {
   const scheduleData = useViewerStore(s => s.scheduleData);
   const advancePlaybackBy = useViewerStore(s => s.advancePlaybackBy);
 
-  /** expressIds the animation added to hiddenEntities — tracked so we can remove them on disable. */
-  const contributedHiddenRef = useRef<Set<number>>(new Set());
+  /**
+   * Each entry is a global ID we hid; the boolean records whether the id was
+   * ALREADY hidden by the user when we added it. On cleanup we only call
+   * `showEntities` for ids where the flag is `false` (= we were the sole hider).
+   */
+  const contributedHiddenRef = useRef<Map<number, boolean>>(new Map());
 
   // rAF playback loop — ticks the simulated clock.
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || !animationEnabled) return;
     let frame: number | null = null;
     let last = performance.now();
     const tick = (now: number) => {
@@ -40,48 +79,76 @@ export function useConstructionSequence(): void {
     return () => {
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [isPlaying, advancePlaybackBy]);
+  }, [isPlaying, animationEnabled, advancePlaybackBy]);
 
-  // Apply derived visibility / selection on every clock change.
+  // Apply derived visibility on every clock change.
   useEffect(() => {
     const store = useViewerStore.getState();
 
+    /** Filter a toShow list to only ids the hook owns alone. */
+    const filterOwnedToShow = (ids: Iterable<number>): number[] => {
+      const out: number[] = [];
+      for (const id of ids) {
+        if (contributedHiddenRef.current.get(id) === false) out.push(id);
+      }
+      return out;
+    };
+
     if (!animationEnabled || !scheduleData) {
-      // Remove anything the animation previously hid.
+      // Remove only the ids we added that the user hadn't hidden themselves.
       if (contributedHiddenRef.current.size > 0) {
-        const ids = Array.from(contributedHiddenRef.current);
-        store.showEntities(ids);
-        contributedHiddenRef.current = new Set();
+        const toShow = filterOwnedToShow(contributedHiddenRef.current.keys());
+        if (toShow.length > 0) store.showEntities(toShow);
+        contributedHiddenRef.current = new Map();
       }
       return;
     }
 
-    const nextHidden = computeHiddenProductIds(scheduleData, playbackTime);
-    const prevHidden = contributedHiddenRef.current;
+    const localHidden = computeHiddenProductIds(scheduleData, playbackTime);
+    const nextHidden = localHiddenToGlobal(
+      localHidden,
+      scheduleData,
+      store.models as unknown as Map<string, { idOffset?: number }>,
+      store.activeModelId,
+    );
+    const prev = contributedHiddenRef.current;
 
-    // Remove ids we previously hid that shouldn't be hidden now.
+    // 1. Reveal owned ids that shouldn't be hidden any more.
     const toShow: number[] = [];
-    for (const id of prevHidden) {
-      if (!nextHidden.has(id)) toShow.push(id);
+    for (const [id, wasHidden] of prev) {
+      if (!nextHidden.has(id) && wasHidden === false) toShow.push(id);
     }
-    // Add newly-hidden ids.
+
+    // 2. Hide newly-scheduled ids — remember whether they were user-hidden.
     const toHide: number[] = [];
+    const nextMap = new Map<number, boolean>();
+    const currentlyHidden = store.hiddenEntities ?? new Set<number>();
     for (const id of nextHidden) {
-      if (!prevHidden.has(id)) toHide.push(id);
+      if (prev.has(id)) {
+        nextMap.set(id, prev.get(id)!);
+      } else {
+        const wasHidden = currentlyHidden.has(id);
+        nextMap.set(id, wasHidden);
+        if (!wasHidden) toHide.push(id);
+      }
     }
+
     if (toShow.length > 0) store.showEntities(toShow);
     if (toHide.length > 0) store.hideEntities(toHide);
-    contributedHiddenRef.current = nextHidden;
+    contributedHiddenRef.current = nextMap;
   }, [animationEnabled, playbackTime, scheduleData]);
 
-  // Clean up on unmount — if the panel is torn down we need to restore
-  // visibility so the viewport doesn't get stuck with hidden products.
+  // Unmount cleanup — restore only what we own.
   useEffect(() => {
     return () => {
       if (contributedHiddenRef.current.size === 0) return;
       const store = useViewerStore.getState();
-      store.showEntities(Array.from(contributedHiddenRef.current));
-      contributedHiddenRef.current = new Set();
+      const toShow: number[] = [];
+      for (const [id, wasHidden] of contributedHiddenRef.current) {
+        if (wasHidden === false) toShow.push(id);
+      }
+      if (toShow.length > 0) store.showEntities(toShow);
+      contributedHiddenRef.current = new Map();
     };
   }, []);
 }

@@ -54,6 +54,10 @@ const SCALE_OPTIONS: Array<{ value: GanttTimeScale; label: string }> = [
   { value: 'year', label: 'Year' },
 ];
 
+// Radix Select rejects '' as a SelectItem value — use a sentinel for the
+// "All tasks" option and translate at the API boundary.
+const ALL_SCHEDULES_SENTINEL = '__all__';
+
 export function GanttToolbar({ onClose }: GanttToolbarProps) {
   const scheduleData = useViewerStore(s => s.scheduleData);
   const scheduleRange = useViewerStore(s => s.scheduleRange);
@@ -79,13 +83,18 @@ export function GanttToolbar({ onClose }: GanttToolbarProps) {
   const scheduleOptions = useMemo(() => {
     if (!scheduleData) return [];
     return [
-      { value: '', label: 'All tasks' },
+      { value: ALL_SCHEDULES_SENTINEL, label: 'All tasks' },
       ...scheduleData.workSchedules.map(s => ({
         value: s.globalId,
         label: s.name || s.globalId,
       })),
     ];
   }, [scheduleData]);
+
+  const selectedScheduleValue = activeWorkScheduleId || ALL_SCHEDULES_SENTINEL;
+  const handleScheduleChange = useCallback((value: string) => {
+    setActiveWorkScheduleId(value === ALL_SCHEDULES_SENTINEL ? '' : value);
+  }, [setActiveWorkScheduleId]);
 
   const scrubPercent = useMemo(() => {
     if (!scheduleRange) return 0;
@@ -197,13 +206,13 @@ export function GanttToolbar({ onClose }: GanttToolbarProps) {
       {/* Work schedule dropdown */}
       <div className="flex items-center gap-1">
         <Calendar className="h-4 w-4 text-muted-foreground" />
-        <Select value={activeWorkScheduleId} onValueChange={setActiveWorkScheduleId}>
+        <Select value={selectedScheduleValue} onValueChange={handleScheduleChange}>
           <SelectTrigger className="h-8 w-[180px] text-xs">
             <SelectValue placeholder="All tasks" />
           </SelectTrigger>
           <SelectContent>
             {scheduleOptions.map(opt => (
-              <SelectItem key={opt.value || 'all'} value={opt.value}>
+              <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
               </SelectItem>
             ))}

@@ -7,7 +7,7 @@
  * expand/collapse chevrons, milestone diamond markers, and duration.
  */
 
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useLayoutEffect, useRef } from 'react';
 import { ChevronRight, ChevronDown, Diamond, CircleDot, Flag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FlattenedTask } from './schedule-utils';
@@ -36,12 +36,24 @@ export const GanttTaskTree = memo(function GanttTaskTree({
   scrollTop,
   onScroll,
 }: GanttTaskTreeProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     onScroll(e.currentTarget.scrollTop);
   }, [onScroll]);
 
+  // Sync externally-controlled scrollTop (e.g. timeline → task tree alignment).
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (el.scrollTop !== scrollTop) {
+      el.scrollTop = scrollTop;
+    }
+  }, [scrollTop]);
+
   return (
     <div
+      ref={containerRef}
       className="h-full overflow-y-auto overflow-x-hidden border-r bg-background"
       onScroll={handleScroll}
       data-testid="gantt-task-tree"

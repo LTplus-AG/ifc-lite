@@ -89,7 +89,7 @@ export function computeTicks(
   scale: GanttTimeScale,
 ): number[] {
   const ticks: number[] = [];
-  const span = Math.max(1, end - start);
+  if (end <= start) return [start];
   const startDate = new Date(start);
 
   const addTick = (t: number) => { if (t >= start && t <= end) ticks.push(t); };
@@ -110,8 +110,8 @@ export function computeTicks(
     }
     case 'week': {
       const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-      // Back up to previous Monday-ish; we don't care about locale.
-      d.setDate(d.getDate() - d.getDay());
+      // Back up to the previous Monday (ISO week anchor).
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
       while (d.getTime() <= end) {
         addTick(d.getTime());
         d.setDate(d.getDate() + 7);
@@ -138,7 +138,6 @@ export function computeTicks(
   // Always include endpoints for a clean label frame.
   if (ticks[0] !== start) ticks.unshift(start);
   if (ticks[ticks.length - 1] !== end) ticks.push(end);
-  void span;
   return ticks;
 }
 
@@ -199,7 +198,7 @@ export function taskBarGeometry(
  */
 export function formatDurationShort(iso: string | undefined): string {
   if (!iso) return '—';
-  const m = iso.match(/P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?/);
+  const m = iso.match(/^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
   if (!m) return iso;
   const [, y, mo, w, d, h, mi, s] = m;
   const parts: string[] = [];

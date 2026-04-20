@@ -32,7 +32,13 @@ const TASK_ATTR = {
   PredefinedType: 12,
 } as const;
 
-/** IFC2X3 IfcTask layout (no TaskTime; has ScheduleStart/Finish/Duration inline). */
+/**
+ * IFC2X3 IfcTask layout — the attributes IfcTask itself adds over IfcObject
+ * (TaskId, Status, WorkMethod, IsMilestone, Priority). IFC2X3 schedule times
+ * live on `IfcScheduleTimeControl` and link to IfcTask via `IfcRelAssignsTasks`
+ * — we don't resolve those here yet; best-effort 2x3 models only surface task
+ * metadata without dates.
+ */
 const TASK_ATTR_2X3 = {
   GlobalId: 0,
   Name: 2,
@@ -283,6 +289,12 @@ export function parseIso8601Duration(value: string | undefined): number | undefi
   );
   if (!match) return undefined;
   const [, y, mo, w, d, h, mi, s] = match;
+  // Reject bare "P" / "PT" which would otherwise silently return 0 and mask
+  // malformed IfcLagTime / IfcTaskTime durations.
+  if (y === undefined && mo === undefined && w === undefined && d === undefined
+    && h === undefined && mi === undefined && s === undefined) {
+    return undefined;
+  }
   const yearSec = 365.2425 * 86400;
   const monthSec = yearSec / 12;
   return (

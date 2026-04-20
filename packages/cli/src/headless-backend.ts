@@ -512,12 +512,33 @@ export class HeadlessBackend implements BimBackend {
 
   private createScheduleAdapter(): ScheduleBackendMethods {
     const store = this.store;
-    const extract = () => extractScheduleOnDemand(store) as ReturnType<ScheduleBackendMethods['data']>;
+    const modelName = this.modelName;
+    let cached: ReturnType<ScheduleBackendMethods['data']> | null = null;
+
+    const assertModel = (modelId?: string) => {
+      // Headless mode ships exactly one model — `MODEL_ID` or the configured
+      // name. Unknown ids surface a clear error instead of silently returning
+      // the wrong data.
+      if (modelId && modelId !== MODEL_ID && modelId !== modelName) {
+        throw new Error(
+          `Unknown modelId '${modelId}' — headless backend only has '${MODEL_ID}'`,
+        );
+      }
+    };
+
+    const extract = (modelId?: string) => {
+      assertModel(modelId);
+      if (!cached) {
+        cached = extractScheduleOnDemand(store) as ReturnType<ScheduleBackendMethods['data']>;
+      }
+      return cached;
+    };
+
     return {
-      data: () => extract(),
-      tasks: () => extract().tasks,
-      workSchedules: () => extract().workSchedules,
-      sequences: () => extract().sequences,
+      data: (modelId) => extract(modelId),
+      tasks: (modelId) => extract(modelId).tasks,
+      workSchedules: (modelId) => extract(modelId).workSchedules,
+      sequences: (modelId) => extract(modelId).sequences,
     };
   }
 }

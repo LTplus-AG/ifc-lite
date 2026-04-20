@@ -613,6 +613,17 @@ export interface WorkScheduleParams {
 /** IfcWorkPlan parameters — identical shape to IfcWorkSchedule. */
 export interface WorkPlanParams extends WorkScheduleParams {}
 
+/** Canonical IFC-prefixed alias for {@link WorkScheduleParams}. */
+export type IfcWorkScheduleParams = WorkScheduleParams;
+/** Canonical IFC-prefixed alias for {@link WorkPlanParams}. */
+export type IfcWorkPlanParams = WorkPlanParams;
+/** Canonical IFC-prefixed alias for {@link WorkScheduleType}. */
+export type IfcWorkScheduleType = WorkScheduleType;
+/** Canonical IFC-prefixed alias for {@link TaskPredefinedType}. */
+export type IfcTaskPredefinedType = TaskPredefinedType;
+/** Canonical IFC-prefixed alias for {@link TaskDurationType}. */
+export type IfcTaskDurationType = TaskDurationType;
+
 /**
  * IfcTask parameters.
  *
@@ -651,15 +662,24 @@ export interface TaskParams {
   Completion?: number;
 }
 
+/** Canonical IFC-prefixed alias for {@link TaskParams}. */
+export type IfcTaskParams = TaskParams;
+
 /** IfcRelSequence parameters (predecessor → successor edge). */
-export interface SequenceParams {
-  SequenceType?: SequenceType;
+export interface IfcRelSequenceParams {
+  SequenceType?: IfcRelSequenceType;
   /** ISO 8601 duration (e.g. "P2D"). Negative durations indicate leads. */
   TimeLag?: string;
   /** Duration type applied to the lag (default WORKTIME). */
   LagDurationType?: TaskDurationType;
   UserDefinedSequenceType?: string;
 }
+
+/** @deprecated Use {@link IfcRelSequenceParams}. */
+export type SequenceParams = IfcRelSequenceParams;
+
+/** Canonical alias using the IFC EXPRESS enum name. */
+export type IfcRelSequenceType = SequenceType;
 
 // ============================================================================
 // Creation result

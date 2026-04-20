@@ -233,13 +233,19 @@ declare const bim: {
     addIfcTask(handle: number, params: { Name: string; Description?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone?: boolean; Priority?: number; ObjectType?: string; ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; IsCritical?: boolean; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED'; Completion?: number; PredefinedType?: 'ATTENDANCE' | 'CONSTRUCTION' | 'DEMOLITION' | 'DISMANTLE' | 'DISPOSAL' | 'INSTALLATION' | 'LOGISTIC' | 'MAINTENANCE' | 'MOVE' | 'OPERATION' | 'REMOVAL' | 'RENOVATION' | 'USERDEFINED' | 'NOTDEFINED' }): number;
     /** Link predecessor → successor tasks via IfcRelSequence. Returns relationship expressId. */
     addIfcRelSequence(handle: number, predecessorTaskId: number, successorTaskId: number, params: { SequenceType?: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; TimeLag?: string; LagDurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED'; UserDefinedSequenceType?: string }): number;
-    /** Assign one or more tasks to a work schedule (IfcRelAssignsToControl). Returns relationship expressId. */
+    /** Canonical IfcRelAssignsToControl — bind IfcObjectDefinitions (tasks or sub-schedules) to an IfcControl (IfcWorkSchedule/IfcWorkPlan). Returns relationship expressId. */
+    addIfcRelAssignsToControl(handle: number, relatingControlId: number, relatedObjectIds: number[]): number;
+    /** Canonical IfcRelAssignsToProcess — bind products to an IfcProcess (task). Drives the 4D Gantt animation. Returns relationship expressId. */
+    addIfcRelAssignsToProcess(handle: number, relatingProcessId: number, relatedObjectIds: number[]): number;
+    /** Canonical IfcRelNests — nest child objects under a parent (task WBS hierarchy). Returns relationship expressId. */
+    addIfcRelNests(handle: number, relatingObjectId: number, relatedObjectIds: number[]): number;
+    /** Ergonomic alias for addIfcRelAssignsToControl — assign tasks to a work schedule. Returns relationship expressId. */
     assignTasksToWorkSchedule(handle: number, scheduleId: number, taskIds: number[]): number;
     /** Attach work schedules to a parent IfcWorkPlan. Returns relationship expressId. */
     assignSchedulesToWorkPlan(handle: number, planId: number, scheduleIds: number[]): number;
-    /** Assign products (walls/slabs/etc. by expressId) to a task via IfcRelAssignsToProcess. These are the elements that reveal during the task window in the Gantt 4D animation. */
+    /** Ergonomic alias for addIfcRelAssignsToProcess — bind products to a task. Returns relationship expressId. */
     assignProductsToTask(handle: number, taskId: number, productIds: number[]): number;
-    /** Nest child tasks under a summary parent task via IfcRelNests. Returns relationship expressId. */
+    /** Ergonomic alias for addIfcRelNests — nest child tasks under a summary parent. Returns relationship expressId. */
     nestTasks(handle: number, parentTaskId: number, childTaskIds: number[]): number;
     /** Create ANY IFC type extruded along a Start→End axis. Returns expressId. */
     addAxisElement(handle: number, storeyId: number, params: unknown): number;
@@ -273,7 +279,7 @@ declare const bim: {
     addIfcIShapeBeam(handle: number, storeyId: number, params: unknown): number;
     /** Add IfcLShapeMember. Returns expressId. */
     addIfcLShapeMember(handle: number, storeyId: number, params: unknown): number;
-    /** Add IfcMaterial. Returns expressId. */
+    /** Associate a material with an element via IfcRelAssociatesMaterial (deferred to toIfc). Returns nothing. */
     addIfcMaterial(handle: number, elementId: number, params: unknown): void;
     /** Add IfcMember. Returns expressId. */
     addIfcMember(handle: number, storeyId: number, params: unknown): number;
@@ -328,13 +334,13 @@ declare const bim: {
   /** 4D / IFC construction schedule reader (IfcTask, IfcWorkSchedule, IfcRelSequence) */
   schedule: {
     /** Full schedule extraction — tasks, dependencies, and work schedules. */
-    data(modelId: string | undefined): { hasSchedule: boolean; workSchedules: Array<{ globalId: string; name: string; startTime?: string; finishTime?: string; predefinedType?: string; kind: 'WorkSchedule' | 'WorkPlan'; taskGlobalIds: string[] }>; tasks: Array<{ globalId: string; expressId: number; name: string; isMilestone: boolean; predefinedType?: string; parentGlobalId?: string; childGlobalIds: string[]; productExpressIds: number[]; productGlobalIds: string[]; controllingScheduleGlobalIds: string[]; taskTime?: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string; actualStart?: string; actualFinish?: string; isCritical?: boolean; completion?: number } }>; sequences: Array<{ relatingTaskGlobalId: string; relatedTaskGlobalId: string; sequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; timeLagSeconds?: number; timeLagDuration?: string }> };
+    data(modelId?: string): { hasSchedule: boolean; workSchedules: Array<{ globalId: string; name: string; startTime?: string; finishTime?: string; predefinedType?: string; kind: 'WorkSchedule' | 'WorkPlan'; taskGlobalIds: string[] }>; tasks: Array<{ globalId: string; expressId: number; name: string; isMilestone: boolean; predefinedType?: string; parentGlobalId?: string; childGlobalIds: string[]; productExpressIds: number[]; productGlobalIds: string[]; controllingScheduleGlobalIds: string[]; taskTime?: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string; actualStart?: string; actualFinish?: string; isCritical?: boolean; completion?: number } }>; sequences: Array<{ relatingTaskGlobalId: string; relatedTaskGlobalId: string; sequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; timeLagSeconds?: number; timeLagDuration?: string }> };
     /** All IfcTask entities with their times and assigned products. */
-    tasks(modelId: string | undefined): Array<{ globalId: string; expressId: number; name: string; isMilestone: boolean; predefinedType?: string; parentGlobalId?: string; childGlobalIds: string[]; productExpressIds: number[]; productGlobalIds: string[]; controllingScheduleGlobalIds: string[]; taskTime?: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string; isCritical?: boolean; completion?: number } }>;
+    tasks(modelId?: string): Array<{ globalId: string; expressId: number; name: string; isMilestone: boolean; predefinedType?: string; parentGlobalId?: string; childGlobalIds: string[]; productExpressIds: number[]; productGlobalIds: string[]; controllingScheduleGlobalIds: string[]; taskTime?: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string; isCritical?: boolean; completion?: number } }>;
     /** All IfcWorkSchedule and IfcWorkPlan containers. */
-    workSchedules(modelId: string | undefined): Array<{ globalId: string; expressId: number; name: string; kind: 'WorkSchedule' | 'WorkPlan'; startTime?: string; finishTime?: string; predefinedType?: string; taskGlobalIds: string[] }>;
+    workSchedules(modelId?: string): Array<{ globalId: string; expressId: number; name: string; kind: 'WorkSchedule' | 'WorkPlan'; startTime?: string; finishTime?: string; predefinedType?: string; taskGlobalIds: string[] }>;
     /** All IfcRelSequence dependency edges (FS/SS/FF/SF, with optional IfcLagTime). */
-    sequences(modelId: string | undefined): Array<{ relatingTaskGlobalId: string; relatedTaskGlobalId: string; sequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; timeLagSeconds?: number; timeLagDuration?: string }>;
+    sequences(modelId?: string): Array<{ relatingTaskGlobalId: string; relatedTaskGlobalId: string; sequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; timeLagSeconds?: number; timeLagDuration?: string }>;
   };
   /** Data export */
   export: {
@@ -344,7 +350,7 @@ declare const bim: {
     json(entities: BimEntity[], columns: string[]): Record<string, unknown>[];
     /** Export entities to IFC STEP text. Pass filename to auto-download a valid .ifc file */
     ifc(entities: BimEntity[], options: { schema?: "IFC2X3" | "IFC4" | "IFC4X3"; filename?: string; includeMutations?: boolean; visibleOnly?: boolean }): string | Uint8Array;
-    /** Trigger a browser file download with the given content */
-    download(content: string, filename: string, mimeType: string): void;
+    /** Trigger a browser file download with the given content. mimeType defaults to text/plain. */
+    download(content: string, filename: string, mimeType?: string): void;
   };
 };

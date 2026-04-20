@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 export {} // module boundary (stripped by transpiler)
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -89,6 +93,10 @@ if (csvFile) {
     )
     .toArray()
 
+  // Minimum character count before we fall back to a globalId prefix match;
+  // avoids accidental wildcarding when the CSV column holds short tokens.
+  const MIN_GID_PREFIX_LEN = 4
+
   function resolveProducts(spec: string | undefined): number[] {
     if (!spec) return []
     const parts = spec.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
@@ -101,9 +109,12 @@ if (csvFile) {
           if (e.type.toUpperCase() === upper) ids.add(e.ref.expressId)
         }
       } else {
-        // Treat as globalId (or prefix)
+        // Exact globalId match, OR prefix match when the token is long enough
+        // to uniquely identify an element (≥ 4 chars).
         for (const e of allProducts) {
-          if (e.globalId === part || e.globalId.startsWith(part)) {
+          if (e.globalId === part) {
+            ids.add(e.ref.expressId)
+          } else if (part.length >= MIN_GID_PREFIX_LEN && e.globalId.startsWith(part)) {
             ids.add(e.ref.expressId)
           }
         }
@@ -126,9 +137,15 @@ if (csvFile) {
     const pred = predCol ? row[predCol] : undefined
     const prodSpec = productsCol ? row[productsCol] : undefined
     const prodIds = resolveProducts(prodSpec)
+    const predefinedType = typeCol ? row[typeCol] : undefined
+    const isMilestone = mileCol ? toBool(row[mileCol]) : undefined
+    const isCritical = critCol ? toBool(row[critCol]) : undefined
+    const completion = compCol ? toNumber(row[compCol]) : undefined
     console.log(
       `  • [${id}] ${name}  ${start ?? '?'} → ${finish ?? dur ?? '?'}  ` +
-      `prod=${prodIds.length}  pred=${pred ?? '-'}`,
+      `prod=${prodIds.length}  pred=${pred ?? '-'}  ` +
+      `type=${predefinedType ?? '-'}  mile=${isMilestone ?? '-'}  ` +
+      `crit=${isCritical ?? '-'}  comp=${completion ?? '-'}`,
     )
   }
   console.log(
@@ -136,10 +153,6 @@ if (csvFile) {
     'mutation workflow — ask the assistant to wire the plan into a fresh ' +
     'IFC export using bim.create.* so the 4D Gantt panel can play it.',
   )
-
-  // Use references so the linter doesn't complain about unused vars when
-  // the attached CSV doesn't include every optional column.
-  void typeCol; void mileCol; void critCol; void compCol
 } else {
   // ─── Mode 2: generate a demo IFC with walls + a matching schedule ─────
   console.log('[schedule] No CSV attached — building demo model + schedule')

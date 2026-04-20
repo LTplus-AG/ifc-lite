@@ -1646,54 +1646,73 @@ export class IfcCreator {
   }
 
   /**
-   * Assign tasks (or sub-schedules) to a work schedule / work plan via
-   * IfcRelAssignsToControl. Returns the relationship expressId.
-   */
-  assignTasksToWorkSchedule(scheduleId: number, taskIds: number[]): number {
-    if (taskIds.length === 0) throw new Error('assignTasksToWorkSchedule: taskIds is empty');
-    const relId = this.id();
-    const globalId = this.newGlobalId();
-    const refs = taskIds.map(id => `#${id}`).join(',');
-    this.line(relId, 'IFCRELASSIGNSTOCONTROL',
-      `'${globalId}',#${this.ownerHistoryId},$,$,(${refs}),$,#${scheduleId}`);
-    return relId;
-  }
-
-  /**
-   * Assign sub-schedules to a parent IfcWorkPlan (alias for
-   * assignTasksToWorkSchedule — both use IfcRelAssignsToControl).
-   */
-  assignSchedulesToWorkPlan(planId: number, scheduleIds: number[]): number {
-    return this.assignTasksToWorkSchedule(planId, scheduleIds);
-  }
-
-  /**
-   * Assign products (walls, slabs, etc. by expressId) to a task via
-   * IfcRelAssignsToProcess. These are the elements the Gantt animation
-   * reveals when the task starts. Returns the relationship expressId.
-   */
-  assignProductsToTask(taskId: number, productIds: number[]): number {
-    if (productIds.length === 0) throw new Error('assignProductsToTask: productIds is empty');
-    const relId = this.id();
-    const globalId = this.newGlobalId();
-    const refs = productIds.map(id => `#${id}`).join(',');
-    this.line(relId, 'IFCRELASSIGNSTOPROCESS',
-      `'${globalId}',#${this.ownerHistoryId},$,$,(${refs}),$,#${taskId},$`);
-    return relId;
-  }
-
-  /**
-   * Nest child tasks under a parent (summary) task via IfcRelNests.
+   * Emit an IfcRelAssignsToControl — binds any IfcObjectDefinition (typically
+   * IfcTasks or sub-schedules) to an IfcControl (IfcWorkSchedule / IfcWorkPlan).
    * Returns the relationship expressId.
    */
-  nestTasks(parentTaskId: number, childTaskIds: number[]): number {
-    if (childTaskIds.length === 0) throw new Error('nestTasks: childTaskIds is empty');
+  addIfcRelAssignsToControl(relatingControlId: number, relatedObjectIds: number[]): number {
+    if (relatedObjectIds.length === 0) throw new Error('addIfcRelAssignsToControl: relatedObjectIds is empty');
     const relId = this.id();
     const globalId = this.newGlobalId();
-    const refs = childTaskIds.map(id => `#${id}`).join(',');
-    this.line(relId, 'IFCRELNESTS',
-      `'${globalId}',#${this.ownerHistoryId},$,$,#${parentTaskId},(${refs})`);
+    const refs = relatedObjectIds.map(id => `#${id}`).join(',');
+    this.line(relId, 'IFCRELASSIGNSTOCONTROL',
+      `'${globalId}',#${this.ownerHistoryId},$,$,(${refs}),$,#${relatingControlId}`);
     return relId;
+  }
+
+  /**
+   * Ergonomic alias — assign tasks (or sub-schedules) to a work schedule.
+   * Delegates to {@link addIfcRelAssignsToControl}.
+   */
+  assignTasksToWorkSchedule(scheduleId: number, taskIds: number[]): number {
+    return this.addIfcRelAssignsToControl(scheduleId, taskIds);
+  }
+
+  /**
+   * Ergonomic alias — attach sub-schedules to an IfcWorkPlan. Delegates to
+   * {@link addIfcRelAssignsToControl}.
+   */
+  assignSchedulesToWorkPlan(planId: number, scheduleIds: number[]): number {
+    return this.addIfcRelAssignsToControl(planId, scheduleIds);
+  }
+
+  /**
+   * Emit an IfcRelAssignsToProcess — binds products (walls, slabs, ...) to an
+   * IfcProcess (usually an IfcTask). These drive the Gantt 4D animation.
+   * Returns the relationship expressId.
+   */
+  addIfcRelAssignsToProcess(relatingProcessId: number, relatedObjectIds: number[]): number {
+    if (relatedObjectIds.length === 0) throw new Error('addIfcRelAssignsToProcess: relatedObjectIds is empty');
+    const relId = this.id();
+    const globalId = this.newGlobalId();
+    const refs = relatedObjectIds.map(id => `#${id}`).join(',');
+    this.line(relId, 'IFCRELASSIGNSTOPROCESS',
+      `'${globalId}',#${this.ownerHistoryId},$,$,(${refs}),$,#${relatingProcessId},$`);
+    return relId;
+  }
+
+  /** Ergonomic alias — delegates to {@link addIfcRelAssignsToProcess}. */
+  assignProductsToTask(taskId: number, productIds: number[]): number {
+    return this.addIfcRelAssignsToProcess(taskId, productIds);
+  }
+
+  /**
+   * Emit an IfcRelNests — nests children under a parent object (used for WBS
+   * task hierarchies here). Returns the relationship expressId.
+   */
+  addIfcRelNests(relatingObjectId: number, relatedObjectIds: number[]): number {
+    if (relatedObjectIds.length === 0) throw new Error('addIfcRelNests: relatedObjectIds is empty');
+    const relId = this.id();
+    const globalId = this.newGlobalId();
+    const refs = relatedObjectIds.map(id => `#${id}`).join(',');
+    this.line(relId, 'IFCRELNESTS',
+      `'${globalId}',#${this.ownerHistoryId},$,$,#${relatingObjectId},(${refs})`);
+    return relId;
+  }
+
+  /** Ergonomic alias — delegates to {@link addIfcRelNests}. */
+  nestTasks(parentTaskId: number, childTaskIds: number[]): number {
+    return this.addIfcRelNests(parentTaskId, childTaskIds);
   }
 
   /**

@@ -1177,7 +1177,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const modelSupportsImages = modelForUi?.supportsImages ?? false;
   const modelSupportsFiles = modelForUi?.supportsFileAttachments ?? true;
   const attachmentAccept = [
-    modelSupportsFiles ? '.csv,.json,.txt,.tsv' : '',
+    modelSupportsFiles
+      ? '.csv,.json,.txt,.tsv,.pdf,application/pdf,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet'
+      : '',
     modelSupportsImages ? 'image/*' : '',
   ].filter(Boolean).join(',');
   const canAttachInput = modelSupportsFiles || modelSupportsImages;

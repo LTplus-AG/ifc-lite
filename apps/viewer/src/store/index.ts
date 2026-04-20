@@ -352,7 +352,9 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       chatError: null,
       chatAbortController: null,
 
-      // Schedule (4D) - drop panel + data; definitions are re-extracted on next load
+      // Schedule (4D) - drop panel + data; definitions are re-extracted on
+      // next load. `playbackSpeed`, `playbackLoop`, and `ganttTimeScale` are
+      // intentionally preserved as user preferences that survive file loads.
       ganttPanelVisible: false,
       scheduleData: null,
       scheduleRange: null,

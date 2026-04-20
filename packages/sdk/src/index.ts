@@ -229,7 +229,15 @@ export type {
   BuildingParams,
   StoreyParams,
 
-  // Scheduling / 4D
+  // Scheduling / 4D — canonical IFC-prefixed names + legacy aliases
+  IfcWorkScheduleParams,
+  IfcWorkPlanParams,
+  IfcTaskParams,
+  IfcRelSequenceParams,
+  IfcWorkScheduleType,
+  IfcTaskPredefinedType,
+  IfcTaskDurationType,
+  IfcRelSequenceType,
   WorkScheduleParams,
   WorkPlanParams,
   TaskParams,

@@ -18,6 +18,7 @@ import {
   Gauge,
   Sparkles,
   Calendar,
+  CalendarPlus,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,8 @@ import { formatDateTime } from './schedule-utils';
 
 interface GanttToolbarProps {
   onClose?: () => void;
+  onOpenGenerate?: () => void;
+  canGenerate?: boolean;
 }
 
 const SPEED_OPTIONS: Array<{ value: number; label: string }> = [
@@ -58,7 +61,7 @@ const SCALE_OPTIONS: Array<{ value: GanttTimeScale; label: string }> = [
 // "All tasks" option and translate at the API boundary.
 const ALL_SCHEDULES_SENTINEL = '__all__';
 
-export function GanttToolbar({ onClose }: GanttToolbarProps) {
+export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttToolbarProps) {
   const scheduleData = useViewerStore(s => s.scheduleData);
   const scheduleRange = useViewerStore(s => s.scheduleRange);
   const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);
@@ -258,6 +261,26 @@ export function GanttToolbar({ onClose }: GanttToolbarProps) {
           ))}
         </SelectContent>
       </Select>
+
+      {/* Generate from spatial hierarchy */}
+      {onOpenGenerate && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onOpenGenerate}
+              disabled={!canGenerate}
+              aria-label="Generate schedule from storeys"
+            >
+              <CalendarPlus className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {canGenerate ? 'Generate schedule from storeys…' : 'No spatial hierarchy to generate from'}
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       {/* Animation toggle */}
       <Tooltip>

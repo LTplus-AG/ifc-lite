@@ -2,16 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { Calendar, CalendarClock, X } from 'lucide-react';
+import { Calendar, CalendarClock, CalendarPlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface GanttEmptyStateProps {
   loading: boolean;
   hasModel: boolean;
+  /** When true, the active model has a spatial hierarchy — enables the CTA. */
+  canGenerate?: boolean;
   onClose?: () => void;
+  onGenerate?: () => void;
 }
 
-export function GanttEmptyState({ loading, hasModel, onClose }: GanttEmptyStateProps) {
+export function GanttEmptyState({ loading, hasModel, canGenerate, onClose, onGenerate }: GanttEmptyStateProps) {
   return (
     <div className="relative h-full w-full flex flex-col items-center justify-center text-center p-8 gap-3 text-muted-foreground">
       {onClose && (
@@ -50,6 +53,17 @@ export function GanttEmptyState({ loading, hasModel, onClose }: GanttEmptyStateP
             itself from those entities and the products they control via
             <span className="font-mono"> IfcRelAssignsToProcess</span>.
           </p>
+          {canGenerate && onGenerate && (
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <Button size="sm" onClick={onGenerate} className="gap-2">
+                <CalendarPlus className="h-4 w-4" />
+                Generate from storeys
+              </Button>
+              <p className="text-xs text-muted-foreground max-w-xs">
+                Build a schedule by assigning every product in each building storey to a task.
+              </p>
+            </div>
+          )}
         </>
       )}
     </div>

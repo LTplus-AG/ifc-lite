@@ -21,7 +21,9 @@ import { GanttToolbar } from './GanttToolbar';
 import { GanttTaskTree } from './GanttTaskTree';
 import { GanttTimeline } from './GanttTimeline';
 import { GanttEmptyState } from './GanttEmptyState';
+import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { flattenTaskTree } from './schedule-utils';
+import { canGenerateScheduleFrom } from './generate-schedule';
 import { useConstructionSequence } from './useConstructionSequence';
 
 interface GanttPanelProps {
@@ -98,6 +100,13 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const leftRef = useRef<HTMLDivElement>(null);
 
+  // Generate-from-storeys dialog state.
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const canGenerate = useMemo(
+    () => canGenerateScheduleFrom(ifcDataStore ?? (models.values().next().value?.ifcDataStore ?? null)),
+    [ifcDataStore, models],
+  );
+
   const handleSelect = useCallback((globalId: string, multi: boolean) => {
     const current = new Set(selectedTaskGlobalIds);
     if (multi) {
@@ -114,12 +123,20 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden bg-background">
-      <GanttToolbar onClose={onClose} />
+      <GanttToolbar
+        onClose={onClose}
+        onOpenGenerate={() => setGenerateOpen(true)}
+        canGenerate={canGenerate}
+      />
+
+      <GenerateScheduleDialog open={generateOpen} onOpenChange={setGenerateOpen} />
 
       {showEmpty ? (
         <GanttEmptyState
           loading={loading}
           hasModel={!!ifcDataStore || models.size > 0}
+          canGenerate={canGenerate}
+          onGenerate={() => setGenerateOpen(true)}
           onClose={onClose}
         />
       ) : (

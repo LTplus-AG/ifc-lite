@@ -14,6 +14,12 @@ import type { FlattenedTask } from './schedule-utils';
 import { formatDurationShort } from './schedule-utils';
 
 export const GANTT_ROW_HEIGHT = 28;
+/**
+ * Height of the sticky column-header row. MUST match the timeline's tick
+ * header so scroll-sync between the two panes lands on the same row —
+ * otherwise the highlight band / task bars drift by one row.
+ */
+export const GANTT_HEADER_HEIGHT = 28;
 
 interface GanttTaskTreeProps {
   rows: FlattenedTask[];
@@ -58,6 +64,18 @@ export const GanttTaskTree = memo(function GanttTaskTree({
       onScroll={handleScroll}
       data-testid="gantt-task-tree"
     >
+      {/*
+        Sticky column header — mirrors the timeline's tick header so both
+        scroll containers have identical content layouts and `scrollTop` sync
+        lands on the same row.
+      */}
+      <div
+        className="sticky top-0 z-10 bg-card/90 backdrop-blur-sm border-b flex items-center justify-between px-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium"
+        style={{ height: GANTT_HEADER_HEIGHT }}
+      >
+        <span>Task</span>
+        <span>Duration</span>
+      </div>
       <div style={{ height: rows.length * GANTT_ROW_HEIGHT }}>
         <table className="w-full text-xs border-collapse">
           <tbody>

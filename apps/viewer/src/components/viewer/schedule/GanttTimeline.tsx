@@ -20,9 +20,11 @@ import {
   taskBarGeometry,
   formatDateTime,
 } from './schedule-utils';
-import { GANTT_ROW_HEIGHT } from './GanttTaskTree';
+import { GANTT_ROW_HEIGHT, GANTT_HEADER_HEIGHT } from './GanttTaskTree';
 
-const HEADER_HEIGHT = 28;
+// Alias kept for local readability; binds to the shared constant so the
+// timeline header and the task-tree header stay the same height.
+const HEADER_HEIGHT = GANTT_HEADER_HEIGHT;
 
 interface GanttTimelineProps {
   rows: FlattenedTask[];

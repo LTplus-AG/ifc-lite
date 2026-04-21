@@ -32,7 +32,6 @@
 import { useEffect, useRef } from 'react';
 import {
   useViewerStore,
-  computeHiddenProductIds,
   toGlobalIdFromModels,
   type ForwardModelMapLike,
 } from '@/store';
@@ -132,22 +131,14 @@ export function useConstructionSequence(): void {
     const models: ForwardModelMapLike = store.models;
     const activeModelId = store.activeModelId;
 
-    // ── Compute next frame ────────────────────────────────────────────
-    // For 'minimal' style we keep the historical behaviour: just the
-    // visibility channel from the schedule slice's computeHiddenProductIds.
-    // For 'phased' we use the animator's richer phase output.
-    let nextLocalHidden: Set<number>;
-    let nextLocalColors: Map<number, RGBA>;
-    if (animationSettings.style === 'minimal') {
-      nextLocalHidden = computeHiddenProductIds(scheduleData, playbackTime, activeWorkScheduleId);
-      nextLocalColors = new Map();
-    } else {
-      const frame = computeAnimationFrame(
-        scheduleData, playbackTime, animationSettings, activeWorkScheduleId || null,
-      );
-      nextLocalHidden = frame.hiddenIds;
-      nextLocalColors = frame.colorOverrides;
-    }
+    // Animator is now a single source of truth — it always emits hiddenIds
+    // (so `minimal` still removes demolished products and hides upcoming
+    // ones) and only emits colour overrides when style === 'phased'.
+    const frame = computeAnimationFrame(
+      scheduleData, playbackTime, animationSettings, activeWorkScheduleId || null,
+    );
+    const nextLocalHidden: Set<number> = frame.hiddenIds;
+    const nextLocalColors: Map<number, RGBA> = frame.colorOverrides;
 
     const nextHidden = localIdsToGlobal(nextLocalHidden, models, activeModelId) as Set<number>;
     const nextColors = localIdsToGlobal(nextLocalColors, models, activeModelId) as Map<number, RGBA>;

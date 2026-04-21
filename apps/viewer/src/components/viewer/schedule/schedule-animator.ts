@@ -146,7 +146,11 @@ export interface AnimationSettings {
 }
 
 export const DEFAULT_ANIMATION_SETTINGS: AnimationSettings = {
-  style: 'phased',
+  // Default is 'minimal' — pure visibility-timing with zero colour overlays.
+  // The colour features are an opt-in power-user feature (see the popover's
+  // style tiles). Users who load a model should see it animate cleanly by
+  // default without any palette cast on top of their authoring.
+  style: 'minimal',
   preparationDays: 2,
   rampInFraction: 0.08,
   fadeOutFraction: 0.10,
@@ -358,7 +362,7 @@ export function computeAnimationFrame(
     'removal-complete': 0,
   };
 
-  if (!data || data.tasks.length === 0 || settings.style === 'minimal') {
+  if (!data || data.tasks.length === 0) {
     return { colorOverrides, hiddenIds, stats };
   }
 
@@ -373,6 +377,13 @@ export function computeAnimationFrame(
     'upcoming-far': 20,
     'complete': 10,
   };
+
+  /**
+   * Two-layer separation: *timing* (hiddenIds) is always emitted regardless
+   * of style so minimal mode still removes demolished products and hides
+   * upcoming ones. *Colour overlays* only emit when style === 'phased'.
+   */
+  const emitColours = settings.style === 'phased';
 
   /** Per-product chosen phase so we resolve multi-task conflicts. */
   const chosenByProduct = new Map<number, PhaseResult>();
@@ -401,7 +412,7 @@ export function computeAnimationFrame(
       hiddenIds.add(id);
       continue;
     }
-    if (result.color) {
+    if (emitColours && result.color) {
       colorOverrides.set(id, result.color);
     }
   }

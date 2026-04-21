@@ -354,3 +354,86 @@ describe('computeAnimationFrame — defensive inputs', () => {
     assert.equal(frame.colorOverrides.size, 0);
   });
 });
+
+// ─── untasked-product hide (coverage-gap workaround) ─────────────────────
+
+describe('computeAnimationFrame — hideUntaskedProducts', () => {
+  const taskedProduct = 100;
+  const untaskedProduct = 200;
+  const data = makeSchedule([
+    makeTask({
+      productExpressIds: [taskedProduct],
+      predefinedType: 'CONSTRUCTION',
+      taskTime: { scheduleStart: '2024-05-10T00:00:00Z', scheduleFinish: '2024-05-20T00:00:00Z' },
+    }),
+  ]);
+
+  it('hides products not covered by any task when enabled and allProductIds supplied', () => {
+    const frame = computeAnimationFrame(
+      data, parseDate('2024-05-15T00:00:00Z'),
+      settings({ hideUntaskedProducts: true }),
+      null,
+      [taskedProduct, untaskedProduct],
+    );
+    // Untasked product is added to hidden; tasked product is active (visible).
+    assert.ok(frame.hiddenIds.has(untaskedProduct));
+    assert.ok(!frame.hiddenIds.has(taskedProduct));
+  });
+
+  it('leaves untasked products untouched when the setting is off', () => {
+    const frame = computeAnimationFrame(
+      data, parseDate('2024-05-15T00:00:00Z'),
+      settings({ hideUntaskedProducts: false }),
+      null,
+      [taskedProduct, untaskedProduct],
+    );
+    assert.ok(!frame.hiddenIds.has(untaskedProduct));
+  });
+
+  it('is a no-op when allProductIds is not supplied (caller opt-in)', () => {
+    const frame = computeAnimationFrame(
+      data, parseDate('2024-05-15T00:00:00Z'),
+      settings({ hideUntaskedProducts: true }),
+      // no 5th arg — animator can't know the model universe
+    );
+    assert.equal(frame.hiddenIds.size, 0);
+  });
+});
+
+// ─── completed tint ──────────────────────────────────────────────────────
+
+describe('computeAnimationFrame — showCompletedTint', () => {
+  const data = makeSchedule([
+    makeTask({
+      productExpressIds: [1],
+      predefinedType: 'CONSTRUCTION',
+      taskTime: { scheduleStart: '2024-05-10T00:00:00Z', scheduleFinish: '2024-05-20T00:00:00Z' },
+    }),
+  ]);
+
+  it('emits the COMPLETED palette colour after a task finishes (phased + opt-in)', () => {
+    const frame = computeAnimationFrame(
+      data, parseDate('2024-06-01T00:00:00Z'),
+      phased({ showCompletedTint: true }),
+    );
+    assert.equal(frame.stats.complete, 1);
+    assert.deepEqual(frame.colorOverrides.get(1), DEFAULT_PALETTE.COMPLETED);
+  });
+
+  it('emits no override after finish when the tint is off (default)', () => {
+    const frame = computeAnimationFrame(
+      data, parseDate('2024-06-01T00:00:00Z'),
+      phased({ showCompletedTint: false }),
+    );
+    assert.equal(frame.colorOverrides.size, 0);
+  });
+
+  it('still emits nothing in minimal style even when the tint flag is on', () => {
+    // emitColours gate dominates: style=minimal never emits colour overrides.
+    const frame = computeAnimationFrame(
+      data, parseDate('2024-06-01T00:00:00Z'),
+      settings({ style: 'minimal', showCompletedTint: true }),
+    );
+    assert.equal(frame.colorOverrides.size, 0);
+  });
+});

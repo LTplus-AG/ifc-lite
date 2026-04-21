@@ -122,6 +122,8 @@ export function AnimationSettingsPopover({
   const palette = settings.palette;
   const prepColor = palette.PREPARATION ?? DEFAULT_PALETTE.PREPARATION;
   const prepIsDefault = rgbEquals(prepColor, DEFAULT_PALETTE.PREPARATION);
+  const completedColor = palette.COMPLETED ?? DEFAULT_PALETTE.COMPLETED;
+  const completedIsDefault = rgbEquals(completedColor, DEFAULT_PALETTE.COMPLETED);
 
   return (
     <DropdownMenu>
@@ -242,6 +244,12 @@ export function AnimationSettingsPopover({
             onChange={v => patch({ hideBeforePreparation: v })}
           />
           <ToggleRow
+            label="Hide unscheduled products"
+            description="Hide anything not assigned to a task — stops untaskd geometry rendering as material default (often pure white)."
+            checked={settings.hideUntaskedProducts}
+            onChange={v => patch({ hideUntaskedProducts: v })}
+          />
+          <ToggleRow
             label="Animate demolition"
             description="Remove products when demolition tasks complete."
             checked={settings.animateDemolition}
@@ -284,6 +292,30 @@ export function AnimationSettingsPopover({
                     rgba={prepColor}
                     onChange={setPaletteColor}
                     isDefault={prepIsDefault}
+                  />
+                </div>
+              )}
+
+              <ToggleRow
+                label="Tint completed products"
+                description="Paint a neutral tint over built products so they're distinguishable from material-default geometry."
+                checked={settings.showCompletedTint}
+                onChange={v => patch({ showCompletedTint: v })}
+              />
+
+              {settings.showCompletedTint && (
+                <div className="flex items-center justify-between gap-3 pl-2 pt-1 border-l-2 border-primary/30">
+                  <span className="grid gap-0.5 min-w-0">
+                    <span className="text-xs font-medium">Completed colour</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      Low-alpha tint applied after a task finishes.
+                    </span>
+                  </span>
+                  <PaletteSwatch
+                    colorKey="COMPLETED"
+                    rgba={completedColor}
+                    onChange={setPaletteColor}
+                    isDefault={completedIsDefault}
                   />
                 </div>
               )}

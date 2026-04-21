@@ -49,7 +49,8 @@ export type TaskPaletteKey =
   | 'DISPOSAL' | 'INSTALLATION' | 'LOGISTIC' | 'MAINTENANCE'
   | 'MOVE' | 'OPERATION' | 'REMOVAL' | 'RENOVATION'
   | 'USERDEFINED' | 'NOTDEFINED'
-  | 'PREPARATION';
+  | 'PREPARATION'
+  | 'COMPLETED';
 
 export type TaskPalette = Record<TaskPaletteKey, RGBA>;
 
@@ -79,13 +80,17 @@ export const DEFAULT_PALETTE: TaskPalette = {
   ATTENDANCE:   [0.75, 0.75, 0.80, 1.0], // cool grey
   USERDEFINED:  [0.55, 0.72, 0.86, 1.0], // soft blue
   NOTDEFINED:   [0.70, 0.70, 0.70, 1.0], // neutral grey
-  // The preparation *ghost* is intentionally a dark, low-alpha NEUTRAL
-  // colour — overlaying any bright/saturated alpha on top of opaque light
-  // IFC geometry composites toward white (src-alpha blending: 0.5 * blue +
-  // 0.5 * white-concrete ≈ washed-out pale blue). A dark low-alpha overlay
-  // dims the material instead, which reads as "dusty / shadowed / pending"
-  // regardless of the host geometry colour.
-  PREPARATION:  [0.12, 0.14, 0.18, 0.15],
+  // The preparation *ghost* is a dark NEUTRAL colour at moderate alpha.
+  // Now that the overlay pipeline has real src-alpha blending AND skips the
+  // glass-fresnel path (flags.x bit 1), a 0.55-alpha dark overlay composites
+  // as a clear dim silhouette on both light and dark viewport themes — you
+  // see the underlying material through it but it reads as pending/ghosted.
+  PREPARATION:  [0.15, 0.17, 0.22, 0.55],
+  // "Completed" is an opt-in tint for built-but-static products so users can
+  // visually separate "already built" from "never-touched / untaskd". A
+  // muted cool grey at low alpha doesn't recolour the material heavily but
+  // clearly distinguishes it from material-default renders. Off by default.
+  COMPLETED:    [0.55, 0.58, 0.62, 0.25],
 };
 
 /**
@@ -144,6 +149,30 @@ export interface AnimationSettings {
    * the user wants to see the whole model at once with colour-coding only.
    */
   hideBeforePreparation: boolean;
+  /**
+   * Hide products that have NO controlling task in the active schedule.
+   *
+   * Without this, partial schedule coverage (e.g. an LLM-generated sequence
+   * that only covers the bottom floors, or a schedule whose tasks don't
+   * reach every product) leaves untaskd products rendering as their
+   * material default — which on bare concrete IFC reads as pure white and
+   * dominates the viewport. On by default because "untaskd" during an
+   * active construction animation effectively means "not yet built": the
+   * animation looks cleanest when those products simply don't exist yet.
+   *
+   * Turn off to show the whole model with only the scheduled portion
+   * highlighted (useful during schedule authoring so the user can still
+   * see everything they haven't taskd).
+   */
+  hideUntaskedProducts: boolean;
+  /**
+   * Apply the COMPLETED palette tint to products whose task has finished.
+   * Off by default — completed products render as material-default, which
+   * is the Synchro/Navisworks convention ("done = the real model"). Turn
+   * on when you want a persistent visual distinction between built and
+   * untaskd products.
+   */
+  showCompletedTint: boolean;
   /** RGBA palette indexed by TaskPaletteKey. Defaults to DEFAULT_PALETTE. */
   palette: TaskPalette;
 }
@@ -168,6 +197,8 @@ export const DEFAULT_ANIMATION_SETTINGS: AnimationSettings = {
   paletteIntensity: 0.6,
   animateDemolition: true,
   hideBeforePreparation: true,
+  hideUntaskedProducts: true,
+  showCompletedTint: false,
   palette: DEFAULT_PALETTE,
 };
 
@@ -329,7 +360,12 @@ function computeTaskPhase(
     return { phase: 'active', hide: false, color: paint(1) };
   }
 
-  // After finish — rendered as material default.
+  // After finish — material default, or an explicit "completed" tint when
+  // the user wants built products visually distinguished from untaskd ones.
+  if (settings.showCompletedTint) {
+    const completedColor = settings.palette.COMPLETED;
+    return { phase: 'complete', hide: false, color: completedColor };
+  }
   return { phase: 'complete', hide: false };
 }
 
@@ -351,6 +387,15 @@ export function computeAnimationFrame(
   playbackTime: number,
   settings: AnimationSettings,
   scheduleGlobalId?: string | null,
+  /**
+   * Universe of product expressIds in the model(s). When
+   * `settings.hideUntaskedProducts` is true, every id in this iterable that
+   * isn't covered by any in-scope task is added to `hiddenIds` so the caller
+   * doesn't render material-default for coverage gaps. Leave undefined when
+   * the caller already handles untasked products separately — the animator
+   * falls back to task-only hiding.
+   */
+  allProductIds?: Iterable<number>,
 ): AnimationFrame {
   const colorOverrides = new Map<number, RGBA>();
   const hiddenIds = new Set<number>();
@@ -417,6 +462,18 @@ export function computeAnimationFrame(
     }
     if (emitColours && result.color) {
       colorOverrides.set(id, result.color);
+    }
+  }
+
+  // Untasked-product hide: anything in the model universe that no in-scope
+  // task touched is treated as "not yet built" during animation. Without
+  // this, partial schedule coverage leaves the unscheduled portion of the
+  // model rendering as material default — which for bare concrete IFC reads
+  // as pure white and dominates the viewport. `chosenByProduct` is our
+  // tasked-set for the current filter; everything else gets hidden.
+  if (settings.hideUntaskedProducts && allProductIds) {
+    for (const id of allProductIds) {
+      if (!chosenByProduct.has(id)) hiddenIds.add(id);
     }
   }
 

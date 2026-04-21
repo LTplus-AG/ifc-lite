@@ -131,11 +131,43 @@ export function useConstructionSequence(): void {
     const models: ForwardModelMapLike = store.models;
     const activeModelId = store.activeModelId;
 
+    // Enumerate the source model's LOCAL expressIds so the animator can
+    // hide coverage-gap products (those with no controlling task). We walk
+    // meshes rather than the full IFC entity table because only meshed
+    // products can visibly "show up" as the material default in the
+    // viewport — non-meshed entities don't render regardless. The same
+    // `sourceModelId` resolution as `localIdsToGlobal` guarantees
+    // consistent local-id space between the animator's hiddenIds and
+    // these untasked ids.
+    //
+    // Runs only when the untasked-hide setting is on so we don't pay the
+    // mesh-iteration cost on every playback frame when the feature is off.
+    //
+    // We reach into `store.models` directly (not through `models` typed as
+    // `ForwardModelMapLike`) because we need `geometryResult.meshes`, which
+    // is a FederatedModel property outside the federation-ID API surface.
+    let allLocalIds: Set<number> | undefined;
+    if (animationSettings.hideUntaskedProducts) {
+      const fullModels = store.models;
+      const sourceModelId = activeModelId
+        ?? (fullModels.size === 1 ? (fullModels.keys().next().value ?? '') : '');
+      const sourceModel = sourceModelId ? fullModels.get(sourceModelId) : undefined;
+      const meshes = sourceModel?.geometryResult?.meshes;
+      const idOffset = sourceModel?.idOffset ?? 0;
+      if (meshes && meshes.length > 0) {
+        allLocalIds = new Set<number>();
+        for (const mesh of meshes) {
+          allLocalIds.add(mesh.expressId - idOffset);
+        }
+      }
+    }
+
     // Animator is now a single source of truth — it always emits hiddenIds
     // (so `minimal` still removes demolished products and hides upcoming
     // ones) and only emits colour overrides when style === 'phased'.
     const frame = computeAnimationFrame(
       scheduleData, playbackTime, animationSettings, activeWorkScheduleId || null,
+      allLocalIds,
     );
     const nextLocalHidden: Set<number> = frame.hiddenIds;
     const nextLocalColors: Map<number, RGBA> = frame.colorOverrides;

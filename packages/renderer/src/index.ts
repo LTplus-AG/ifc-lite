@@ -1243,12 +1243,20 @@ export class Renderer {
                 // Placed AFTER partial batches so depth buffer is complete for both full
                 // and partial batches. Uses 'equal' depth compare — only paints where
                 // original geometry wrote depth, so hidden entities never leak through.
+                //
+                // flags.x bit 1 = overlay: tells the shader to preserve baseColor.a
+                // (the overlay pipeline now has src-alpha blending so low-alpha ghost
+                // tints composite correctly against the opaque pass) AND skip the
+                // glass-fresnel branch (which is meant for real glass materials and
+                // would whiten low-alpha colour overrides at grazing angles).
                 const overrideBatches = this.scene.getOverrideBatches();
                 if (overrideBatches.length > 0) {
                     pass.setPipeline(this.pipeline.getOverlayPipeline());
+                    tplFlags[0] = 2;  // set overlay bit for the duration of these draws
                     for (const batch of overrideBatches) {
                         renderBatch(batch);
                     }
+                    tplFlags[0] = 0;  // restore for any downstream use of the template
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
 

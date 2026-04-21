@@ -253,6 +253,12 @@ export class RenderPipeline {
         // Uses depthCompare 'equal' so it ONLY renders where original geometry already wrote depth.
         // This prevents hidden entities from "leaking through" overlay batches.
         // depthWriteEnabled: false — don't disturb the depth buffer for subsequent passes.
+        //
+        // Src-alpha blending on the COLOR target only — the second target is the
+        // objectId buffer used for GPU picking and must stay unblended so low-alpha
+        // ghosts don't corrupt picks. With srcFactor=src-alpha, alpha=1.0 callers
+        // (lens, active-phase paints) still composite fully opaque, so this is
+        // backward-compatible for every caller that doesn't set alpha < 1.
         const overlayPipelineDescriptor: GPURenderPipelineDescriptor = {
             layout: pipelineLayout,
             vertex: {
@@ -272,7 +278,16 @@ export class RenderPipeline {
             fragment: {
                 module: shaderModule,
                 entryPoint: 'fs_main',
-                targets: [{ format: this.colorFormat }, { format: 'rgba8unorm' }],
+                targets: [
+                    {
+                        format: this.colorFormat,
+                        blend: {
+                            color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+                            alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+                        },
+                    },
+                    { format: 'rgba8unorm' },
+                ],
             },
             primitive: {
                 topology: 'triangle-list',

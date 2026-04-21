@@ -77,52 +77,74 @@ export const GanttTaskTree = memo(function GanttTaskTree({
         <span>Duration</span>
       </div>
       <div style={{ height: rows.length * GANTT_ROW_HEIGHT }}>
-        <table className="w-full text-xs border-collapse">
+        {/*
+          ARIA grid semantics: the table is a grid, each <tr> keeps its
+          native/`row` role (so `aria-selected` is valid), and the focusable
+          primary cell carries `tabIndex` + keyboard handlers. This keeps the
+          chevron <button> as a real button (not nested inside a `button`).
+        */}
+        <table
+          className="w-full text-xs border-collapse"
+          role="grid"
+          aria-multiselectable="true"
+        >
           <tbody>
             {rows.map((row) => {
               const { task, depth, hasChildren, expanded } = row;
               const isSelected = selectedGlobalIds.has(task.globalId);
               const isHovered = hoveredGlobalId === task.globalId;
+              const label = task.name || task.identification || task.globalId.slice(0, 8);
               return (
                 <tr
                   key={task.globalId}
-                  style={{ height: GANTT_ROW_HEIGHT }}
-                  role="button"
-                  tabIndex={0}
+                  role="row"
                   aria-selected={isSelected}
+                  style={{ height: GANTT_ROW_HEIGHT }}
                   className={cn(
-                    'border-b border-border/40 transition-colors cursor-pointer select-none',
-                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary',
+                    'border-b border-border/40 transition-colors select-none',
                     isSelected && 'bg-primary/15',
                     !isSelected && isHovered && 'bg-muted/60',
                     !isSelected && !isHovered && 'hover:bg-muted/40',
                   )}
                   onMouseEnter={() => onHover(task.globalId)}
                   onMouseLeave={() => onHover(null)}
-                  onClick={(e) => onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey)}
-                  onKeyDown={(e) => {
-                    // Only handle keys on the row itself — Space/Enter on the
-                    // nested chevron button must keep its native activation.
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key !== 'Enter' && e.key !== ' ') return;
-                    e.preventDefault();
-                    onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
-                  }}
                 >
                   <td
-                    className="px-1 whitespace-nowrap overflow-hidden text-ellipsis"
+                    role="gridcell"
+                    tabIndex={0}
+                    aria-label={label}
+                    className={cn(
+                      'px-1 whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary',
+                    )}
                     style={{ paddingLeft: 4 + depth * 14 }}
+                    onClick={(e) => onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey)}
+                    onKeyDown={(e) => {
+                      // The cell handles its own key events; the nested
+                      // chevron <button> retains native activation via
+                      // `stopPropagation` inside its own handlers.
+                      if (e.key !== 'Enter' && e.key !== ' ') return;
+                      e.preventDefault();
+                      onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
+                    }}
                   >
                     <span className="inline-flex items-center gap-1">
                       {hasChildren ? (
                         <button
                           type="button"
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? 'Collapse' : 'Expand'} ${label}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             onToggleExpand(task.globalId);
                           }}
+                          onKeyDown={(e) => {
+                            // Let the browser activate the button natively;
+                            // don't let Enter/Space bubble and also trigger
+                            // row selection in the parent cell.
+                            if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+                          }}
                           className="w-4 h-4 flex items-center justify-center text-muted-foreground hover:text-foreground"
-                          aria-label={expanded ? 'Collapse' : 'Expand'}
                         >
                           {expanded ? (
                             <ChevronDown className="w-3 h-3" />
@@ -150,11 +172,14 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                         )}
                         title={task.name || task.globalId}
                       >
-                        {task.name || task.identification || task.globalId.slice(0, 8)}
+                        {label}
                       </span>
                     </span>
                   </td>
-                  <td className="px-2 text-muted-foreground font-mono text-right whitespace-nowrap">
+                  <td
+                    role="gridcell"
+                    className="px-2 text-muted-foreground font-mono text-right whitespace-nowrap"
+                  >
                     {formatDurationShort(task.taskTime?.scheduleDuration)}
                   </td>
                 </tr>

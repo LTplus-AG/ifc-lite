@@ -291,6 +291,14 @@ function buildWorkControl(id: number, ws: WorkScheduleInfo, owner: string): stri
   // round-trips. Anchor on whatever the upstream extractor already picked,
   // then on the schedule's own start/finish time.
   const creationDate = ws.creationDate ?? ws.startTime ?? ws.finishTime ?? '1970-01-01T00:00:00';
+  // `StartTime` is REQUIRED on IfcWorkControl in IFC4 (ENTITY IfcWorkControl
+  // ... StartTime : IfcDateTime) — emitting `$` would fail schema
+  // validation on strict viewers. Fall back through the same deterministic
+  // chain as `creationDate`. `FinishTime` IS optional, but writing a real
+  // value is still friendlier than `$` when the schedule's own `startTime`
+  // is the only datum we have.
+  const startTime = ws.startTime ?? ws.finishTime ?? creationDate;
+  const finishTime = ws.finishTime ?? startTime;
   // IFC4: GlobalId, OwnerHistory, Name, Description, ObjectType,
   //       Identification, CreationDate, Creators, Purpose,
   //       Duration, TotalFloat, StartTime, FinishTime, PredefinedType
@@ -307,8 +315,8 @@ function buildWorkControl(id: number, ws: WorkScheduleInfo, owner: string): stri
     `${optStr(ws.purpose)},`,
     `${optStr(ws.duration)},`,
     `$,`,
-    `${optStr(ws.startTime)},`,
-    `${optStr(ws.finishTime)},`,
+    `'${escStr(startTime)}',`,
+    `'${escStr(finishTime)}',`,
     `${optEnum(ws.predefinedType)});`,
   ].join('');
 }

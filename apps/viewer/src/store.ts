@@ -49,6 +49,7 @@ export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore 
 // Re-export single source of truth for globalId → EntityRef resolution
 export { resolveEntityRef } from './store/resolveEntityRef.js';
 export { toGlobalIdFromModels, fromGlobalIdFromModels, toGlobalIdForRef } from './store/globalId.js';
+export type { ForwardModelMapLike } from './store/globalId.js';
 
 // Re-export Schedule (4D) types + helpers
 export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './store/slices/scheduleSlice.js';

@@ -1416,8 +1416,10 @@ export function PropertiesPanel() {
                   </>
                 )}
 
-                {/* 4D / Construction schedule — controlling tasks for this entity */}
-                {selectedEntity && scheduleData && (
+                {/* 4D / Construction schedule — controlling tasks for this entity.
+                    Gated on `hasScheduleForSelection` so the separator above
+                    doesn't render on its own when ScheduleCard would return null. */}
+                {selectedEntity && scheduleData && hasScheduleForSelection && (
                   <>
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <ScheduleCard

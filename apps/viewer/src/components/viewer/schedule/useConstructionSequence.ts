@@ -30,7 +30,12 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { useViewerStore, computeHiddenProductIds, toGlobalIdFromModels } from '@/store';
+import {
+  useViewerStore,
+  computeHiddenProductIds,
+  toGlobalIdFromModels,
+  type ForwardModelMapLike,
+} from '@/store';
 import { computeAnimationFrame, type RGBA } from './schedule-animator';
 
 /**
@@ -44,7 +49,7 @@ import { computeAnimationFrame, type RGBA } from './schedule-animator';
  */
 function localIdsToGlobal<T>(
   localMap: Map<number, T> | Set<number>,
-  models: Map<string, { idOffset?: number }>,
+  models: ForwardModelMapLike,
   activeModelId: string | null | undefined,
 ): Map<number, T> | Set<number> {
   const sourceModelId = activeModelId
@@ -122,7 +127,9 @@ export function useConstructionSequence(): void {
       return;
     }
 
-    const models = store.models as unknown as Map<string, { idOffset?: number }>;
+    // `store.models` already satisfies `ForwardModelMapLike` — no cast
+    // required once we stop narrowing it to a plain Map at the boundary.
+    const models: ForwardModelMapLike = store.models;
     const activeModelId = store.activeModelId;
 
     // ── Compute next frame ────────────────────────────────────────────

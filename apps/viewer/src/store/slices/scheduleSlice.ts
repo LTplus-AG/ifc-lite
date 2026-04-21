@@ -276,10 +276,17 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   advancePlaybackBy: (deltaMs) => {
     const s = get();
     if (!s.playbackIsPlaying || !s.scheduleRange) return;
+    // Clamp the wall-clock delta before scaling. rAF pauses when the tab is
+    // hidden, OS sleeps, or a breakpoint fires; the next frame fires with a
+    // multi-second delta. At the default 7 days/sec that would skip weeks of
+    // schedule in one step, either missing animation states or overshooting
+    // the end of non-looping playback.
+    const MAX_DELTA_MS = 100;
+    const clamped = Math.min(Math.max(deltaMs, 0), MAX_DELTA_MS);
     // speed = simulated days / real second
     //   → simulated ms = (deltaMs / 1000) * speed * 86_400_000
     //                  = deltaMs * speed * 86_400
-    const simulated = deltaMs * s.playbackSpeed * 86_400;
+    const simulated = clamped * s.playbackSpeed * 86_400;
     let next = s.playbackTime + simulated;
     if (next > s.scheduleRange.end) {
       if (s.playbackLoop) {

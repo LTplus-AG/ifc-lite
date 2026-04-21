@@ -112,21 +112,30 @@ export function toLocalIso(d: Date): string {
 }
 
 const MS_PER_DAY = 86_400_000;
+const MS_PER_HOUR = 3_600_000;
 
-function addDays(iso: string, days: number): string {
+function addMs(iso: string, ms: number): string {
   const d = new Date(iso);
   // Millisecond arithmetic preserves fractional days — `setDate()` with a
   // fractional argument silently truncates.
-  d.setTime(d.getTime() + days * MS_PER_DAY);
+  d.setTime(d.getTime() + ms);
   return toLocalIso(d);
 }
 
-function daysToIso8601Duration(days: number): string {
-  // Integer-day durations stay compact ("P5D"); fractional days drop down to
-  // hours so we don't emit "P1.5D" (valid ISO but uncommon in Gantt exports).
-  if (Number.isInteger(days)) return `P${days}D`;
-  const hours = Math.round(days * 24);
-  return `PT${hours}H`;
+/**
+ * Format a millisecond duration as ISO 8601. Prefers whole days when the
+ * value divides cleanly, then whole hours, else whole minutes, else
+ * whole seconds. Crucially, the *input* and the returned string describe
+ * the same number of milliseconds — so callers that emit `timeLagSeconds`
+ * alongside this string (the IfcRelSequence → IfcLagTime chain) never
+ * drift when `durationDays` / `lagDays` is fractional.
+ */
+function msToIso8601Duration(ms: number): string {
+  if (ms <= 0) return 'PT0S';
+  if (ms % MS_PER_DAY === 0) return `P${ms / MS_PER_DAY}D`;
+  if (ms % MS_PER_HOUR === 0) return `PT${ms / MS_PER_HOUR}H`;
+  if (ms % 60_000 === 0) return `PT${ms / 60_000}M`;
+  return `PT${Math.round(ms / 1000)}S`;
 }
 
 /**
@@ -236,15 +245,17 @@ export function generateScheduleFromSpatialHierarchy(
   // every subsequent group begins `daysPerGroup + lagDays` after the prior
   // group's start.
   //
-  // `durationDays` / `lagDays` are the sanitized-once values threaded through
-  // every arithmetic step so `groupFinish`, `scheduleFinish` and the emitted
-  // ISO duration all agree (a prior build used `options.daysPerGroup` raw,
-  // producing mismatches with `daysToIso8601Duration`).
-  const durationDays = Math.max(0.1, options.daysPerGroup);
-  const lagDays = Math.max(0, options.lagDays);
-  const strideDays = durationDays + lagDays;
-  const durationIso = daysToIso8601Duration(durationDays);
-  const lagIso = lagDays > 0 ? daysToIso8601Duration(lagDays) : undefined;
+  // Work in milliseconds and derive *everything else* (task dates, ISO
+  // durations, `timeLagSeconds`) from those same ms values. Earlier iterations
+  // computed `timeLagSeconds` exactly (`lagDays * 86_400`) while the ISO
+  // string rounded fractional days to hours — a 0.3-day lag came out as 25920
+  // seconds next to `PT7H` (25200 seconds). Using one ms quantity everywhere
+  // keeps the schedule dates and IFC durations byte-consistent.
+  const durationMs = Math.max(MS_PER_HOUR, Math.round(options.daysPerGroup * MS_PER_DAY));
+  const lagMs = Math.max(0, Math.round(options.lagDays * MS_PER_DAY));
+  const strideMs = durationMs + lagMs;
+  const durationIso = msToIso8601Duration(durationMs);
+  const lagIso = lagMs > 0 ? msToIso8601Duration(lagMs) : undefined;
 
   const tasks: ScheduleTaskInfo[] = [];
   const sequences: ScheduleSequenceInfo[] = [];
@@ -253,8 +264,8 @@ export function generateScheduleFromSpatialHierarchy(
   let prevTaskGlobalId: string | null = null;
 
   containers.forEach((group, index) => {
-    const groupStart = addDays(options.startDate, index * strideDays);
-    const groupFinish = addDays(groupStart, durationDays);
+    const groupStart = addMs(options.startDate, index * strideMs);
+    const groupFinish = addMs(groupStart, durationMs);
     const taskGlobalId = taskGlobalIdFor(group);
 
     tasks.push({
@@ -286,7 +297,7 @@ export function generateScheduleFromSpatialHierarchy(
         relatingTaskGlobalId: prevTaskGlobalId,
         relatedTaskGlobalId: taskGlobalId,
         sequenceType: 'FINISH_START',
-        timeLagSeconds: lagDays > 0 ? lagDays * 86_400 : undefined,
+        timeLagSeconds: lagMs > 0 ? Math.round(lagMs / 1000) : undefined,
         timeLagDuration: lagIso,
       });
     }
@@ -295,9 +306,9 @@ export function generateScheduleFromSpatialHierarchy(
   });
 
   const scheduleGlobalId = scheduleGlobalIdFor(containers);
-  const scheduleFinish = addDays(
+  const scheduleFinish = addMs(
     options.startDate,
-    Math.max(0, containers.length - 1) * strideDays + durationDays,
+    Math.max(0, containers.length - 1) * strideMs + durationMs,
   );
   const taskGlobalIds = tasks.map(t => t.globalId);
   for (const task of tasks) task.controllingScheduleGlobalIds = [scheduleGlobalId];

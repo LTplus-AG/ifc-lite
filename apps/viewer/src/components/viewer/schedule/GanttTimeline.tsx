@@ -34,10 +34,6 @@ interface GanttTimelineProps {
   selectedGlobalIds: Set<string>;
   hoveredGlobalId: string | null;
   onSelect: (globalId: string, multi: boolean) => void;
-  /** Double-click a task bar / milestone to select + frame in 3D. */
-  onDoubleClickRow?: (globalId: string, multi: boolean) => void;
-  /** Right-click a task bar / milestone to open the context menu. */
-  onContextMenuRow?: (event: React.MouseEvent, globalId: string, label: string) => void;
   onHover: (globalId: string | null) => void;
   onScrubSeek: (time: number) => void;
   scrollTop: number;
@@ -53,8 +49,6 @@ export const GanttTimeline = memo(function GanttTimeline({
   selectedGlobalIds,
   hoveredGlobalId,
   onSelect,
-  onDoubleClickRow,
-  onContextMenuRow,
   onHover,
   onScrubSeek,
   scrollTop,
@@ -245,7 +239,6 @@ export const GanttTimeline = memo(function GanttTimeline({
             const cx = barX;
             const cy = y + GANTT_ROW_HEIGHT / 2;
             const s = 6;
-            const milestoneLabel = task.name || task.globalId;
             return (
               <g
                 key={task.globalId}
@@ -255,19 +248,6 @@ export const GanttTimeline = memo(function GanttTimeline({
                   e.stopPropagation();
                   onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
                 }}
-                onDoubleClick={
-                  onDoubleClickRow
-                    ? (e) => {
-                        e.stopPropagation();
-                        onDoubleClickRow(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
-                      }
-                    : undefined
-                }
-                onContextMenu={
-                  onContextMenuRow
-                    ? (e) => onContextMenuRow(e, task.globalId, milestoneLabel)
-                    : undefined
-                }
                 className="cursor-pointer"
               >
                 <polygon
@@ -285,7 +265,6 @@ export const GanttTimeline = memo(function GanttTimeline({
             );
           }
 
-          const barLabel = task.name || task.globalId;
           return (
             <g
               key={task.globalId}
@@ -295,19 +274,6 @@ export const GanttTimeline = memo(function GanttTimeline({
                 e.stopPropagation();
                 onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
               }}
-              onDoubleClick={
-                onDoubleClickRow
-                  ? (e) => {
-                      e.stopPropagation();
-                      onDoubleClickRow(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
-                    }
-                  : undefined
-              }
-              onContextMenu={
-                onContextMenuRow
-                  ? (e) => onContextMenuRow(e, task.globalId, barLabel)
-                  : undefined
-              }
               className="cursor-pointer"
             >
               <rect

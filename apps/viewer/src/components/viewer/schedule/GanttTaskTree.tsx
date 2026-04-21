@@ -27,10 +27,6 @@ interface GanttTaskTreeProps {
   hoveredGlobalId: string | null;
   onToggleExpand: (globalId: string) => void;
   onSelect: (globalId: string, multi: boolean) => void;
-  /** Double-click a row to select + frame its products in 3D. */
-  onDoubleClickRow?: (globalId: string, multi: boolean) => void;
-  /** Right-click a row to open the context menu at the cursor. */
-  onContextMenuRow?: (event: React.MouseEvent, globalId: string, label: string) => void;
   onHover: (globalId: string | null) => void;
   scrollTop: number;
   onScroll: (scrollTop: number) => void;
@@ -42,8 +38,6 @@ export const GanttTaskTree = memo(function GanttTaskTree({
   hoveredGlobalId,
   onToggleExpand,
   onSelect,
-  onDoubleClickRow,
-  onContextMenuRow,
   onHover,
   scrollTop,
   onScroll,
@@ -114,11 +108,6 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                   )}
                   onMouseEnter={() => onHover(task.globalId)}
                   onMouseLeave={() => onHover(null)}
-                  onContextMenu={
-                    onContextMenuRow
-                      ? (e) => onContextMenuRow(e, task.globalId, label)
-                      : undefined
-                  }
                 >
                   <td
                     role="gridcell"
@@ -130,14 +119,6 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                     )}
                     style={{ paddingLeft: 4 + depth * 14 }}
                     onClick={(e) => onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey)}
-                    onDoubleClick={
-                      onDoubleClickRow
-                        ? (e) => {
-                            e.stopPropagation();
-                            onDoubleClickRow(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
-                          }
-                        : undefined
-                    }
                     onKeyDown={(e) => {
                       // The cell handles its own key events; the nested
                       // chevron <button> retains native activation via

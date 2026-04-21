@@ -3,27 +3,28 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * useGanttSelection3DSync — isolates 3D viewport to the products owned by
- * the currently-selected Gantt task(s).
+ * useGanttSelection3DSync — the ONLY Gantt ↔ 3D interaction: selecting task
+ * rows in the Gantt isolates their products in the 3D viewport.
  *
  * Behaviour:
  *   • When `selectedTaskGlobalIds` becomes non-empty AND `ganttSync3D` is
- *     on, compute the union of every *descendant* task's productExpressIds
- *     (so selecting a parent row reveals every leaf below it), translate to
- *     federated global IDs, and call `setIsolatedEntities(Set)`.
+ *     on AND 4D animation is NOT playing, compute the union of every
+ *     *descendant* task's productExpressIds (so selecting a parent row
+ *     reveals every leaf below it), translate to federated global IDs, and
+ *     call `setIsolatedEntities(Set)`.
  *   • When the selection clears, we restore the user's pre-sync isolation
  *     state — we only own the isolation while the Gantt selection is
- *     active. Ownership is tracked in a ref (mirrors the pattern in
- *     `useConstructionSequence`) so the user can run selection → isolate →
- *     select nothing → back to whatever they had before.
- *   • When `ganttSync3D` is turned OFF while owning isolation, we restore
- *     the prior state immediately — the master toggle is an instant
- *     "unlink" action, not just a gate for future actions.
+ *     active. Ownership is tracked in a ref so the user can run selection
+ *     → isolate → clear → back to whatever they had before.
+ *   • When `ganttSync3D` is turned OFF (or animation turns ON) while we own
+ *     isolation, we restore the prior state immediately.
  *
- * Does NOT own `hiddenEntities`. The 4D animator does that during
- * playback; this hook only touches `isolatedEntities`. Run order in
- * GanttPanel: animator first, then this hook, so the isolation wraps the
- * animator's hidden set (both filters apply).
+ * Why animation gates this: the 4D animator is the authoritative visibility
+ * source while playback is enabled (it writes hiddenIds per-frame). Running
+ * isolation on top would intersect the two filters and produce confusing
+ * "half a building" renders. Pausing is a cheap gesture, so isolate-on-
+ * select becomes available again the instant the user pauses or disables
+ * animation.
  */
 
 import { useEffect, useRef } from 'react';
@@ -41,6 +42,7 @@ export function useGanttSelection3DSync(): void {
   const scheduleData = useViewerStore(s => s.scheduleData);
   const selectedTaskGlobalIds = useViewerStore(s => s.selectedTaskGlobalIds);
   const ganttSync3D = useViewerStore(s => s.ganttSync3D);
+  const animationEnabled = useViewerStore(s => s.animationEnabled);
 
   /** Ref to what we last wrote, plus what the prior user state was. */
   const ownedRef = useRef<ContributedIsolation | null>(null);
@@ -63,8 +65,11 @@ export function useGanttSelection3DSync(): void {
       ownedRef.current = null;
     };
 
-    // ── Sync disabled or nothing selected → restore whatever we owned ──
-    if (!ganttSync3D || !scheduleData || selectedTaskGlobalIds.size === 0) {
+    // ── Any gate off → restore ownership and stop ──────────────────────
+    // - Sync switch off
+    // - Animation on (animator owns visibility; isolation would conflict)
+    // - No schedule or empty Gantt selection
+    if (!ganttSync3D || animationEnabled || !scheduleData || selectedTaskGlobalIds.size === 0) {
       restorePrior();
       return;
     }
@@ -109,7 +114,7 @@ export function useGanttSelection3DSync(): void {
       ownedRef.current = { ...ownedRef.current, owned: globalIds };
       store.setIsolatedEntities(globalIds);
     }
-  }, [scheduleData, selectedTaskGlobalIds, ganttSync3D]);
+  }, [scheduleData, selectedTaskGlobalIds, ganttSync3D, animationEnabled]);
 
   // Unmount cleanup — release ownership so the user's isolation isn't
   // stuck at whatever the Gantt left pinned.

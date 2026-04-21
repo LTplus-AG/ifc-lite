@@ -43,6 +43,7 @@ import { QuantitySetCard } from './properties/QuantitySetCard';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
 import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
+import { ScheduleCard } from './properties/ScheduleCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { RelationshipsCard } from './properties/RelationshipsCard';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
@@ -546,6 +547,21 @@ export function PropertiesPanel() {
     return totalCount > 0 ? rels : null;
   }, [selectedEntity, model, ifcDataStore]);
 
+  // 4D schedule — both parsed-from-IFC and locally-generated schedules live in
+  // the schedule slice. ScheduleCard renders nothing when no task in the
+  // schedule lists this entity as a controlled product, so it's safe to call
+  // unconditionally.
+  const scheduleData = useViewerStore((s) => s.scheduleData);
+  const scheduleIsGenerated = useMemo(() => {
+    if (!scheduleData || scheduleData.tasks.length === 0) return false;
+    return scheduleData.tasks.every(t => !t.expressId || t.expressId <= 0);
+  }, [scheduleData]);
+  const selectedEntityGlobalId = useMemo(() => {
+    if (!selectedEntity) return null;
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    return (dataStore as IfcDataStore | null)?.entities?.getGlobalId?.(selectedEntity.expressId) ?? null;
+  }, [selectedEntity, model, ifcDataStore]);
+
   // Extract georeferencing info for the model (used in coordinates section)
   const georef = useMemo(() => {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
@@ -937,7 +953,7 @@ export function PropertiesPanel() {
     return (
       <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">Properties</h2>
+          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">Inspector</h2>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-white dark:bg-black">
           <div className="w-16 h-16 border-2 border-dashed border-zinc-300 dark:border-zinc-800 flex items-center justify-center mb-4 bg-zinc-100 dark:bg-zinc-950">
@@ -1375,6 +1391,19 @@ export function PropertiesPanel() {
                   <>
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <RelationshipsCard relationships={renderedEntityRelationships} />
+                  </>
+                )}
+
+                {/* 4D / Construction schedule — controlling tasks for this entity */}
+                {selectedEntity && scheduleData && (
+                  <>
+                    <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
+                    <ScheduleCard
+                      scheduleData={scheduleData}
+                      selectedExpressId={selectedEntity.expressId}
+                      selectedGlobalId={selectedEntityGlobalId}
+                      isGenerated={scheduleIsGenerated}
+                    />
                   </>
                 )}
               </div>

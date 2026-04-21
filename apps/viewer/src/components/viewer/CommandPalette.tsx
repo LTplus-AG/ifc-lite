@@ -53,6 +53,10 @@ import {
   FolderOpen,
   Clock,
   Save,
+  CalendarClock,
+  CalendarPlus,
+  Sparkles,
+  Eraser,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -207,23 +211,28 @@ function activateRightPanel(panel: 'bcf' | 'ids' | 'lens') {
   // If was active → all closed → falls back to Properties
 }
 
-/** Exclusively activate a bottom panel (Script / List).
+/** Exclusively activate a bottom panel (Script / List / Gantt).
  *  Closes the other first so the if-else chain in ViewerLayout renders it.
  *  If the target is already active, closes it. */
-function activateBottomPanel(panel: 'script' | 'list') {
+function activateBottomPanel(panel: 'script' | 'list' | 'gantt') {
   const s = useViewerStore.getState();
-  const isActive = panel === 'script' ? s.scriptPanelVisible : s.listPanelVisible;
+  const isActive =
+    panel === 'script' ? s.scriptPanelVisible
+    : panel === 'list' ? s.listPanelVisible
+    : s.ganttPanelVisible;
 
   closeActiveAnalysisExtension();
 
-  // Close all bottom panels
+  // Close all bottom panels — only one slots into the bottom strip at a time.
   s.setScriptPanelVisible(false);
   s.setListPanelVisible(false);
+  s.setGanttPanelVisible(false);
 
   if (!isActive) {
     s.setRightPanelCollapsed(false);
     if (panel === 'script') s.setScriptPanelVisible(true);
-    else s.setListPanelVisible(true);
+    else if (panel === 'list') s.setListPanelVisible(true);
+    else s.setGanttPanelVisible(true);
   }
 }
 
@@ -362,7 +371,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
     // ── Panels ──
     c.push(
-      { id: 'panel:properties', label: 'Properties', keywords: 'attributes panel right', category: 'Panels', icon: Layout,
+      { id: 'panel:properties', label: 'Inspector', keywords: 'properties attributes material classification schedule task panel right', category: 'Panels', icon: Layout,
         action: () => { const s = useViewerStore.getState(); s.setRightPanelCollapsed(!s.rightPanelCollapsed); } },
       { id: 'panel:tree', label: 'Spatial Tree', keywords: 'hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
         action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
@@ -372,10 +381,45 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('bcf'); } },
       { id: 'panel:ids', label: 'IDS Validation', keywords: 'information delivery specification check', category: 'Panels', icon: ClipboardCheck,
         action: () => { activateRightPanel('ids'); } },
-      { id: 'panel:lists', label: 'Entity Lists', keywords: 'table spreadsheet schedule', category: 'Panels', icon: FileSpreadsheet,
+      { id: 'panel:lists', label: 'Entity Lists', keywords: 'table spreadsheet', category: 'Panels', icon: FileSpreadsheet,
         action: () => { activateBottomPanel('list'); } },
+      { id: 'panel:gantt', label: 'Construction Schedule (Gantt)', keywords: '4d timeline tasks ifctask sequence playback animation', category: 'Panels', icon: CalendarClock,
+        action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
+    );
+
+    // ── Schedule / 4D (Tools) ─────────────────────────────
+    c.push(
+      { id: 'schedule:generate', label: 'Generate Schedule from Storeys…',
+        keywords: '4d ifctask construction sequence storey building create gantt',
+        category: 'Tools', icon: CalendarPlus,
+        action: () => {
+          // Make sure the Gantt panel is mounted so the dialog has a host
+          // before flipping the dialog flag. Order matters — closing other
+          // panels first prevents the bottom strip from rendering them.
+          const s = useViewerStore.getState();
+          if (!s.ganttPanelVisible) activateBottomPanel('gantt');
+          // Same tick is fine — the dialog is portalled via Radix and doesn't
+          // depend on GanttPanel finishing its first render.
+          useViewerStore.getState().setGenerateScheduleDialogOpen(true);
+        } },
+      { id: 'schedule:toggle-animation', label: 'Toggle 4D Construction Animation',
+        keywords: 'play pause schedule task gantt simulation',
+        category: 'Visibility', icon: Sparkles,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAnimationEnabled(!s.animationEnabled);
+        } },
+      { id: 'schedule:reset', label: 'Reset Schedule (Clear 4D Data)',
+        keywords: 'remove gantt tasks ifctask delete clear',
+        category: 'Tools', icon: Eraser,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setScheduleData(null);
+          s.setAnimationEnabled(false);
+          s.pauseSchedule();
+        } },
     );
 
     // ── Export ──

@@ -66,6 +66,14 @@ export {
   type TaskDurationType,
 } from './schedule-extractor.js';
 
+// IFC4 STEP serializer for schedule entities — produces ready-to-splice
+// `#N=IFC...(...)` lines from a `ScheduleExtraction`.
+export {
+  serializeScheduleToStep,
+  type SerializeScheduleOptions,
+  type SerializeScheduleResult,
+} from './schedule-serializer.js';
+
 // Generated IFC4 schema (100% coverage - 776 entities, 397 types, 207 enums)
 export { SCHEMA_REGISTRY, getEntityMetadata, getAllAttributesForEntity, getInheritanceChainForEntity, isKnownEntity } from './generated/schema-registry.js';
 export type * from './generated/entities.js';

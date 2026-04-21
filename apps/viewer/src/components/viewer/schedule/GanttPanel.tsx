@@ -100,8 +100,10 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const leftRef = useRef<HTMLDivElement>(null);
 
-  // Generate-from-storeys dialog state.
-  const [generateOpen, setGenerateOpen] = useState(false);
+  // Generate-from-storeys dialog state lives in the slice so the command
+  // palette / hotkeys can open it without going through this component.
+  const generateOpen = useViewerStore(s => s.generateScheduleDialogOpen);
+  const setGenerateOpen = useViewerStore(s => s.setGenerateScheduleDialogOpen);
   const canGenerate = useMemo(
     () => canGenerateScheduleFrom(ifcDataStore ?? (models.values().next().value?.ifcDataStore ?? null)),
     [ifcDataStore, models],

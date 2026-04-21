@@ -356,6 +356,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // next load. `playbackSpeed`, `playbackLoop`, and `ganttTimeScale` are
       // intentionally preserved as user preferences that survive file loads.
       ganttPanelVisible: false,
+      generateScheduleDialogOpen: false,
       scheduleData: null,
       scheduleRange: null,
       activeWorkScheduleId: '',

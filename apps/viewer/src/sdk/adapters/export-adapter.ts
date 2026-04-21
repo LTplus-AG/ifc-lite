@@ -8,6 +8,7 @@ import { EntityNode } from '@ifc-lite/query';
 import { StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
+import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
 
 /** Options for CSV export */
 interface CsvOptions {
@@ -379,7 +380,25 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         georefMutations,
       };
 
-      return exporter.export(exportOptions).content;
+      const exportedContent = exporter.export(exportOptions).content;
+
+      // Splice any in-memory schedule (parsed-and-cached, or generated via the
+      // Gantt panel's "Generate from storeys" dialog) into the STEP output.
+      // The serializer emits IFC4-conformant IfcWorkSchedule / IfcTask /
+      // IfcTaskTime / IfcRelSequence / IfcRelAssignsToProcess /
+      // IfcRelAssignsToControl / IfcRelNests lines that any conformant viewer
+      // (incl. ifc-lite itself on re-import) will parse natively.
+      //
+      // STEP exports are text by contract; the binary path is reserved for
+      // future formats. We pass through Uint8Array unchanged so the contract
+      // doesn't silently change.
+      if (typeof exportedContent !== 'string') return exportedContent;
+      return injectScheduleIntoStep(
+        exportedContent,
+        state.scheduleData ?? null,
+        model.ifcDataStore as IfcDataStore,
+        modelId,
+      );
     },
 
     download(content: string | Uint8Array, filename: string, mimeType?: string) {
@@ -387,6 +406,94 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       return undefined;
     },
   };
+}
+
+/**
+ * Splice an in-memory `ScheduleExtraction` into a STEP file's DATA section.
+ *
+ * Two cases:
+ *   • The schedule was *parsed* from the same source IFC (every task has a
+ *     positive expressId — it already exists in the STEP body, so we leave
+ *     the file alone).
+ *   • The schedule was *generated* (e.g. via the Gantt panel's "Generate
+ *     from storeys" dialog — task.expressId === 0). We allocate fresh
+ *     express IDs starting just past the model's current maximum, run
+ *     `serializeScheduleToStep` to produce IFC4-conformant lines, and splice
+ *     them in just before the trailing `ENDSEC;`. The caller still gets a
+ *     well-formed `ISO-10303-21;` ... `END-ISO-10303-21;` string.
+ *
+ * We also use the source model's existing IfcOwnerHistory (when present)
+ * for the inserted entities so they share ownership metadata.
+ */
+export function injectScheduleIntoStep(
+  stepContent: string,
+  scheduleData: ScheduleExtraction | null,
+  ifcDataStore: IfcDataStore,
+  exportingModelId: string,
+): string {
+  if (!scheduleData || scheduleData.tasks.length === 0) return stepContent;
+
+  // Only consider tasks the user generated locally — anything with a real
+  // expressId is already in the STEP body and must not be duplicated.
+  const isGenerated = scheduleData.tasks.every(t => !t.expressId || t.expressId <= 0);
+  if (!isGenerated) return stepContent;
+
+  // Pick a fresh express-ID starting point. The exporter renumbers in order,
+  // so scanning the highest `#NNN=` in the output is the safest source of
+  // truth (even if the source data store had a different max id space).
+  const maxId = findMaxExpressId(stepContent);
+  const ownerHistoryId = findFirstOwnerHistoryId(stepContent) ?? undefined;
+
+  // Resolve product GlobalIds → expressIds against the live data store so
+  // generated `IfcRelAssignsToProcess` entries point at real geometry.
+  const resolveProduct = (gid: string): number | undefined => {
+    if (!gid) return undefined;
+    return ifcDataStore.entities?.getExpressIdByGlobalId?.(gid) ?? undefined;
+  };
+
+  const result = serializeScheduleToStep(scheduleData, {
+    nextId: maxId + 1,
+    ownerHistoryId,
+    resolveProductExpressId: resolveProduct,
+  });
+
+  if (result.lines.length === 0) return stepContent;
+
+  // Splice the new lines in just before the closing ENDSEC of the DATA
+  // section. We anchor on the LAST `ENDSEC;` since the header section also
+  // ends with one — we want the data-section end.
+  const endSecIdx = stepContent.lastIndexOf('ENDSEC;');
+  if (endSecIdx < 0) {
+    // Malformed STEP — surface the original file unchanged rather than
+    // corrupting it.
+    console.warn('[export] schedule injection: ENDSEC not found in STEP output');
+    return stepContent;
+  }
+
+  const head = stepContent.slice(0, endSecIdx);
+  const tail = stepContent.slice(endSecIdx);
+  void exportingModelId;
+  return `${head}${result.lines.join('\n')}\n${tail}`;
+}
+
+/** Scan the STEP body for the highest `#N=` declaration. Returns 0 when none. */
+function findMaxExpressId(stepContent: string): number {
+  let max = 0;
+  // Pattern: line starts with `#NNN=` (newline-anchored to avoid matching
+  // refs inside attribute lists).
+  const regex = /(?:^|\n)\s*#(\d+)\s*=/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(stepContent)) !== null) {
+    const n = parseInt(m[1], 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max;
+}
+
+/** Find the first IfcOwnerHistory's express ID in the STEP file, if any. */
+function findFirstOwnerHistoryId(stepContent: string): number | null {
+  const m = stepContent.match(/(?:^|\n)\s*#(\d+)\s*=\s*IFCOWNERHISTORY\b/i);
+  return m ? parseInt(m[1], 10) : null;
 }
 
 /** Trigger a browser file download */

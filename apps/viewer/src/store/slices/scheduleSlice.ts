@@ -41,6 +41,12 @@ export interface ScheduleSlice {
 
   // ── Panel UI ──────────────────────────────────────────
   ganttPanelVisible: boolean;
+  /**
+   * Generate-schedule-from-storeys dialog open flag. Lives in the slice (not
+   * local component state) so the command palette and other entry points can
+   * open it without coupling to GanttPanel's render tree.
+   */
+  generateScheduleDialogOpen: boolean;
   /** globalIds of expanded rows in the task tree. */
   expandedTaskGlobalIds: Set<string>;
   /** globalId currently hovered in the Gantt timeline. */
@@ -68,6 +74,8 @@ export interface ScheduleSlice {
   toggleGanttPanel: () => void;
   setActiveWorkScheduleId: (globalId: string) => void;
   setGanttTimeScale: (scale: GanttTimeScale) => void;
+
+  setGenerateScheduleDialogOpen: (open: boolean) => void;
 
   toggleTaskExpanded: (globalId: string) => void;
   expandAllTasks: () => void;
@@ -168,6 +176,7 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   scheduleRange: null,
   activeWorkScheduleId: '',
   ganttPanelVisible: false,
+  generateScheduleDialogOpen: false,
   expandedTaskGlobalIds: new Set(),
   hoveredTaskGlobalId: null,
   selectedTaskGlobalIds: new Set(),
@@ -203,6 +212,8 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
 
   setActiveWorkScheduleId: (activeWorkScheduleId) => set({ activeWorkScheduleId }),
   setGanttTimeScale: (ganttTimeScale) => set({ ganttTimeScale }),
+
+  setGenerateScheduleDialogOpen: (generateScheduleDialogOpen) => set({ generateScheduleDialogOpen }),
 
   toggleTaskExpanded: (globalId) => set((s) => {
     const next = new Set(s.expandedTaskGlobalIds);

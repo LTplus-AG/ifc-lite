@@ -77,7 +77,7 @@ function makeGeneratedSchedule(): ScheduleExtraction {
 }
 
 test('injectScheduleIntoStep is a no-op when scheduleData is null', () => {
-  const out = injectScheduleIntoStep(SAMPLE_STEP, null, STUB_STORE, 'm1');
+  const out = injectScheduleIntoStep(SAMPLE_STEP, null, STUB_STORE);
   assert.equal(out, SAMPLE_STEP);
 });
 
@@ -91,12 +91,12 @@ test('injectScheduleIntoStep is a no-op when every task has a positive expressId
       controllingScheduleGlobalIds: [],
     }],
   };
-  const out = injectScheduleIntoStep(SAMPLE_STEP, parsed, STUB_STORE, 'm1');
+  const out = injectScheduleIntoStep(SAMPLE_STEP, parsed, STUB_STORE);
   assert.equal(out, SAMPLE_STEP);
 });
 
-test('injectScheduleIntoStep splices generated schedule entities before the data ENDSEC', () => {
-  const out = injectScheduleIntoStep(SAMPLE_STEP, makeGeneratedSchedule(), STUB_STORE, 'm1');
+test('injectScheduleIntoStep splices generated schedule entities before the DATA section ENDSEC', () => {
+  const out = injectScheduleIntoStep(SAMPLE_STEP, makeGeneratedSchedule(), STUB_STORE);
   // The new entities must appear in the file.
   assert.match(out, /=IFCWORKSCHEDULE\(/);
   assert.match(out, /=IFCTASK\(/);
@@ -105,14 +105,54 @@ test('injectScheduleIntoStep splices generated schedule entities before the data
   assert.match(out, /=IFCRELASSIGNSTOPROCESS\(/);
   // Trailer must still be intact and well-formed.
   assert.ok(out.endsWith('END-ISO-10303-21;\n'));
-  // Inserted entities must come BEFORE the trailing END-ISO-10303-21.
+  // Splice location must be strictly INSIDE the DATA section, not just
+  // before `END-ISO-10303-21;` — entities outside the DATA block are
+  // invalid STEP placement.
+  const dataStartIdx = out.indexOf('DATA;');
+  const dataEndIdx = out.indexOf('ENDSEC;', dataStartIdx);
   const wsIdx = out.indexOf('=IFCWORKSCHEDULE(');
-  const endIdx = out.indexOf('END-ISO-10303-21');
-  assert.ok(wsIdx > 0 && wsIdx < endIdx);
+  assert.ok(dataStartIdx >= 0, 'DATA; section header present');
+  assert.ok(dataEndIdx > dataStartIdx, 'DATA ENDSEC comes after DATA;');
+  assert.ok(wsIdx > dataStartIdx && wsIdx < dataEndIdx,
+    `IfcWorkSchedule splice (${wsIdx}) must land inside DATA..ENDSEC (${dataStartIdx}..${dataEndIdx})`);
+});
+
+test('injectScheduleIntoStep partitions mixed schedules — only generated tasks are emitted', () => {
+  const mixed: ScheduleExtraction = {
+    hasSchedule: true,
+    workSchedules: [{
+      expressId: 0, globalId: 'gen-sched', kind: 'WorkSchedule',
+      name: 'Gen', startTime: '2024-05-01T08:00:00',
+      taskGlobalIds: ['gen-task'],
+    }],
+    tasks: [
+      {
+        // Parsed — must NOT be re-emitted (already in source STEP).
+        expressId: 99, globalId: 'parsed-task', name: 'Already-in-file',
+        isMilestone: false, childGlobalIds: [],
+        productExpressIds: [], productGlobalIds: [],
+        controllingScheduleGlobalIds: [],
+      },
+      {
+        // Generated — must be emitted.
+        expressId: 0, globalId: 'gen-task', name: 'Fresh',
+        isMilestone: false, childGlobalIds: [],
+        productExpressIds: [0], productGlobalIds: ['wall-A'],
+        controllingScheduleGlobalIds: ['gen-sched'],
+        taskTime: { scheduleStart: '2024-05-01T08:00:00', scheduleFinish: '2024-05-05T17:00:00' },
+      },
+    ],
+    sequences: [],
+  };
+  const out = injectScheduleIntoStep(SAMPLE_STEP, mixed, STUB_STORE);
+  // The generated task should be emitted…
+  assert.match(out, /IFCTASK\('[^']+',[^)]*'Fresh'/);
+  // …but the parsed task name must not appear a second time.
+  assert.ok(!/Already-in-file/.test(out), 'parsed task is not re-emitted');
 });
 
 test('injectScheduleIntoStep allocates IDs above the existing maximum', () => {
-  const out = injectScheduleIntoStep(SAMPLE_STEP, makeGeneratedSchedule(), STUB_STORE, 'm1');
+  const out = injectScheduleIntoStep(SAMPLE_STEP, makeGeneratedSchedule(), STUB_STORE);
   // Existing max in SAMPLE_STEP is 12; first new entity must be #13 or higher.
   const firstNewId = out.match(/(?<=\n)#(\d+)=IFCWORKSCHEDULE\(/);
   assert.ok(firstNewId);
@@ -120,7 +160,7 @@ test('injectScheduleIntoStep allocates IDs above the existing maximum', () => {
 });
 
 test('injectScheduleIntoStep references the existing IfcOwnerHistory', () => {
-  const out = injectScheduleIntoStep(SAMPLE_STEP, makeGeneratedSchedule(), STUB_STORE, 'm1');
+  const out = injectScheduleIntoStep(SAMPLE_STEP, makeGeneratedSchedule(), STUB_STORE);
   // Entities should reference #10 (the stub IfcOwnerHistory) for ownership.
   const ws = out.split('\n').find(l => l.includes('=IFCWORKSCHEDULE('));
   assert.ok(ws);
@@ -128,7 +168,7 @@ test('injectScheduleIntoStep references the existing IfcOwnerHistory', () => {
 });
 
 test('injectScheduleIntoStep resolves product GlobalIds via the data store', () => {
-  const out = injectScheduleIntoStep(SAMPLE_STEP, makeGeneratedSchedule(), STUB_STORE, 'm1');
+  const out = injectScheduleIntoStep(SAMPLE_STEP, makeGeneratedSchedule(), STUB_STORE);
   const proc = out.split('\n').find(l => l.includes('=IFCRELASSIGNSTOPROCESS('));
   assert.ok(proc);
   // wall-A → 11, wall-B → 12 per STUB_STORE's resolver.

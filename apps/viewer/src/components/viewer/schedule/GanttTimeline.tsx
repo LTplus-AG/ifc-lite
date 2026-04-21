@@ -17,7 +17,6 @@ import {
   computeTicks,
   formatTickLabel,
   timeToX,
-  taskBarGeometry,
   formatDateTime,
 } from './schedule-utils';
 import { GANTT_ROW_HEIGHT, GANTT_HEADER_HEIGHT } from './GanttTaskTree';
@@ -84,6 +83,24 @@ export const GanttTimeline = memo(function GanttTimeline({
     return m;
   }, [rows]);
 
+  /**
+   * Memoize `{ start, finish }` epoch tuples per task. The rAF playback loop
+   * writes `playbackTime` on every frame (~60 Hz), so re-parsing ISO
+   * datetimes / running the duration regex inside the `rows.map` was showing
+   * up as a hot path for schedules with hundreds of rows. Recompute only when
+   * the rows themselves change (task adds / reorders / schedule reloads).
+   */
+  const taskEpochs = useMemo(() => {
+    const m = new Map<string, { start: number | undefined; finish: number | undefined }>();
+    for (const row of rows) {
+      m.set(row.task.globalId, {
+        start: taskStartEpoch(row.task),
+        finish: taskFinishEpoch(row.task),
+      });
+    }
+    return m;
+  }, [rows]);
+
   const cursorX = useMemo(
     () => timeToX(playbackTime, range.start, range.end, pixelWidth),
     [playbackTime, range, pixelWidth],
@@ -104,7 +121,12 @@ export const GanttTimeline = memo(function GanttTimeline({
   const handleTimelineClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const target = e.currentTarget;
     const rect = target.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+    // `rect.left` tracks the svg's visible left edge, which shifts when the
+    // container scrolls horizontally. Re-anchor to the SVG origin by adding
+    // the scroll offset — keeps click→time mapping correct once horizontal
+    // zoom produces overflow. No-op today because pixelWidth === clientWidth.
+    const scrollLeft = containerRef.current?.scrollLeft ?? 0;
+    const x = e.clientX - rect.left + scrollLeft;
     const pct = Math.min(1, Math.max(0, x / pixelWidth));
     onScrubSeek(range.start + pct * (range.end - range.start));
   }, [pixelWidth, range, onScrubSeek]);
@@ -187,27 +209,34 @@ export const GanttTimeline = memo(function GanttTimeline({
         <DependencyArrows
           sequences={data.sequences}
           taskRowIndex={taskRowIndex}
-          tasks={data.tasks}
+          taskEpochs={taskEpochs}
           rangeStart={range.start}
           rangeEnd={range.end}
           pixelWidth={pixelWidth}
         />
 
-        {/* Task bars */}
+        {/* Task bars — use the memoized taskEpochs map so we don't re-parse
+            ISO datetimes on every playback tick. */}
         {rows.map((row, i) => {
           const { task } = row;
+          const epochs = taskEpochs.get(task.globalId);
+          const start = epochs?.start;
+          const finish = epochs?.finish;
+          if (start === undefined || finish === undefined) return null;
+
           const y = i * GANTT_ROW_HEIGHT;
-          const geometry = taskBarGeometry(task, range.start, range.end, pixelWidth);
-          const isActive = isTaskActive(task, playbackTime);
-          const isDone = isTaskDone(task, playbackTime);
+          const barX = timeToX(start, range.start, range.end, pixelWidth);
+          const barX2 = timeToX(finish, range.start, range.end, pixelWidth);
+          const barWidth = Math.max(task.isMilestone ? 0 : 2, barX2 - barX);
+
+          const isActive = playbackTime >= start && playbackTime <= finish;
+          const isDone = playbackTime > finish;
           const isPending = !isActive && !isDone;
           const isSel = selectedGlobalIds.has(task.globalId);
           const isCritical = task.taskTime?.isCritical ?? false;
 
-          if (!geometry) return null;
-
           if (task.isMilestone) {
-            const cx = geometry.x;
+            const cx = barX;
             const cy = y + GANTT_ROW_HEIGHT / 2;
             const s = 6;
             return (
@@ -230,7 +259,7 @@ export const GanttTimeline = memo(function GanttTimeline({
                 <title>
                   {task.name || task.globalId}
                   {'\n'}
-                  {formatDateTime(taskStartEpoch(task))}
+                  {formatDateTime(start)}
                 </title>
               </g>
             );
@@ -248,9 +277,9 @@ export const GanttTimeline = memo(function GanttTimeline({
               className="cursor-pointer"
             >
               <rect
-                x={geometry.x}
+                x={barX}
                 y={y + 6}
-                width={Math.max(2, geometry.width)}
+                width={Math.max(2, barWidth)}
                 height={GANTT_ROW_HEIGHT - 12}
                 rx={3}
                 ry={3}
@@ -273,9 +302,9 @@ export const GanttTimeline = memo(function GanttTimeline({
               />
               {task.taskTime?.completion !== undefined && (
                 <rect
-                  x={geometry.x}
+                  x={barX}
                   y={y + 6}
-                  width={Math.max(0, geometry.width) * Math.min(1, Math.max(0, task.taskTime.completion / 100))}
+                  width={Math.max(0, barWidth) * Math.min(1, Math.max(0, task.taskTime.completion / 100))}
                   height={GANTT_ROW_HEIGHT - 12}
                   rx={3}
                   ry={3}
@@ -286,7 +315,7 @@ export const GanttTimeline = memo(function GanttTimeline({
               <title>
                 {task.name || task.globalId}
                 {'\n'}
-                {formatDateTime(taskStartEpoch(task))} → {formatDateTime(taskFinishEpoch(task))}
+                {formatDateTime(start)} → {formatDateTime(finish)}
               </title>
             </g>
           );
@@ -311,7 +340,8 @@ export const GanttTimeline = memo(function GanttTimeline({
 interface DependencyArrowsProps {
   sequences: ScheduleSequenceInfo[];
   taskRowIndex: Map<string, number>;
-  tasks: ScheduleExtraction['tasks'];
+  /** Memoized { start, finish } per task globalId — avoids re-parsing ISO. */
+  taskEpochs: Map<string, { start: number | undefined; finish: number | undefined }>;
   rangeStart: number;
   rangeEnd: number;
   pixelWidth: number;
@@ -324,30 +354,23 @@ interface DependencyArrowsProps {
 function DependencyArrows({
   sequences,
   taskRowIndex,
-  tasks,
+  taskEpochs,
   rangeStart,
   rangeEnd,
   pixelWidth,
 }: DependencyArrowsProps) {
-  const taskByGid = useMemo(() => {
-    const m = new Map<string, ScheduleExtraction['tasks'][number]>();
-    for (const t of tasks) m.set(t.globalId, t);
-    return m;
-  }, [tasks]);
-
   return (
     <g opacity={0.45}>
       {sequences.map((seq, i) => {
-        const from = taskByGid.get(seq.relatingTaskGlobalId);
-        const to = taskByGid.get(seq.relatedTaskGlobalId);
-        if (!from || !to) return null;
-        const rowFrom = taskRowIndex.get(from.globalId);
-        const rowTo = taskRowIndex.get(to.globalId);
-        if (rowFrom === undefined || rowTo === undefined) return null;
-        const fromStart = taskStartEpoch(from);
-        const fromFinish = taskFinishEpoch(from);
-        const toStart = taskStartEpoch(to);
-        const toFinish = taskFinishEpoch(to);
+        const fromEpochs = taskEpochs.get(seq.relatingTaskGlobalId);
+        const toEpochs = taskEpochs.get(seq.relatedTaskGlobalId);
+        const rowFrom = taskRowIndex.get(seq.relatingTaskGlobalId);
+        const rowTo = taskRowIndex.get(seq.relatedTaskGlobalId);
+        if (!fromEpochs || !toEpochs || rowFrom === undefined || rowTo === undefined) return null;
+        const fromStart = fromEpochs.start;
+        const fromFinish = fromEpochs.finish;
+        const toStart = toEpochs.start;
+        const toFinish = toEpochs.finish;
         if (
           fromStart === undefined || fromFinish === undefined ||
           toStart === undefined || toFinish === undefined
@@ -392,21 +415,5 @@ function DependencyArrows({
   );
 }
 
-function isTaskActive(
-  task: ScheduleExtraction['tasks'][number],
-  t: number,
-): boolean {
-  const s = taskStartEpoch(task);
-  const f = taskFinishEpoch(task);
-  if (s === undefined || f === undefined) return false;
-  return t >= s && t <= f;
-}
-
-function isTaskDone(
-  task: ScheduleExtraction['tasks'][number],
-  t: number,
-): boolean {
-  const f = taskFinishEpoch(task);
-  if (f === undefined) return false;
-  return t > f;
-}
+// Active / done predicates are now inlined into the row loop against the
+// memoized `taskEpochs` map (above) — see the `rows.map(...)` block.

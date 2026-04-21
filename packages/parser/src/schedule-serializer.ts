@@ -98,6 +98,19 @@ function ownerRef(ownerHistoryId: number | undefined): string {
   return ownerHistoryId !== undefined ? `#${ownerHistoryId}` : '$';
 }
 
+/**
+ * Format seconds as an ISO 8601 duration string suitable for IfcDuration.
+ * Prefers the coarsest integer unit that divides cleanly to avoid noisy
+ * "PT432000S" style output for round values like "P5D".
+ */
+function secondsToIso8601Duration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'PT0S';
+  if (seconds % 86_400 === 0) return `P${seconds / 86_400}D`;
+  if (seconds % 3_600 === 0) return `PT${seconds / 3_600}H`;
+  if (seconds % 60 === 0) return `PT${seconds / 60}M`;
+  return `PT${Math.round(seconds)}S`;
+}
+
 function refList(ids: number[]): string {
   return ids.length === 0 ? '$' : `(${ids.map(id => `#${id}`).join(',')})`;
 }
@@ -236,11 +249,19 @@ export function serializeScheduleToStep(
     const relatedId = taskExpressIdByGlobalId.get(seq.relatedTaskGlobalId);
     if (relatingId === undefined || relatedId === undefined) continue;
 
+    // Preserve lag on export even when the upstream extractor only knew the
+    // numeric seconds value (e.g. IFC2X3 round-trips where the original
+    // IfcDuration string got dropped). We reconstruct an ISO 8601 duration so
+    // the emitted IfcLagTime stays schema-valid.
+    const lagDuration = seq.timeLagDuration
+      ?? (seq.timeLagSeconds !== undefined && seq.timeLagSeconds !== 0
+          ? secondsToIso8601Duration(seq.timeLagSeconds)
+          : undefined);
     let lagRef = '$';
-    if (seq.timeLagDuration) {
+    if (lagDuration) {
       const lagId = nextId++;
       lines.push(
-        `#${lagId}=IFCLAGTIME($,$,$,IFCDURATION('${escStr(seq.timeLagDuration)}'),.WORKTIME.);`,
+        `#${lagId}=IFCLAGTIME($,$,$,IFCDURATION('${escStr(lagDuration)}'),.WORKTIME.);`,
       );
       lagRef = `#${lagId}`;
       stats.lagTimes += 1;
@@ -265,7 +286,11 @@ export function serializeScheduleToStep(
 function buildWorkControl(id: number, ws: WorkScheduleInfo, owner: string): string {
   const entity = ws.kind === 'WorkPlan' ? 'IFCWORKPLAN' : 'IFCWORKSCHEDULE';
   const globalId = ensureGlobalId(ws.globalId, `ws|${ws.kind}|${ws.name}`);
-  const creationDate = ws.creationDate ?? new Date().toISOString().slice(0, 19);
+  // Deterministic fallback ordering — don't touch `Date.now()` here, it would
+  // give identical inputs different STEP output and break diff-based export
+  // round-trips. Anchor on whatever the upstream extractor already picked,
+  // then on the schedule's own start/finish time.
+  const creationDate = ws.creationDate ?? ws.startTime ?? ws.finishTime ?? '1970-01-01T00:00:00';
   // IFC4: GlobalId, OwnerHistory, Name, Description, ObjectType,
   //       Identification, CreationDate, Creators, Purpose,
   //       Duration, TotalFloat, StartTime, FinishTime, PredefinedType
@@ -368,8 +393,13 @@ function resolveProductIds(
   // boundary), use the caller-supplied resolver to look them up against the
   // current model — falls back to expressIds whenever the resolver returns
   // undefined.
+  //
+  // Walk the union of both arrays so global-id-only entries (common for
+  // generated schedules where expressId was never filled in) still hit the
+  // resolver instead of being silently dropped.
   const out: number[] = [];
-  for (let i = 0; i < task.productExpressIds.length; i++) {
+  const count = Math.max(task.productExpressIds.length, task.productGlobalIds.length);
+  for (let i = 0; i < count; i++) {
     const expressId = task.productExpressIds[i];
     const globalId = task.productGlobalIds[i];
     if (resolver && globalId) {
@@ -379,7 +409,7 @@ function resolveProductIds(
         continue;
       }
     }
-    if (expressId > 0) out.push(expressId);
+    if (expressId !== undefined && expressId > 0) out.push(expressId);
   }
   return out;
 }

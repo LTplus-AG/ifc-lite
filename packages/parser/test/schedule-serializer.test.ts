@@ -156,14 +156,70 @@ describe('serializeScheduleToStep', () => {
     expect(result.stats.taskTimes).toBe(0);
     expect(result.lines.some(l => l.includes('=IFCTASKTIME('))).toBe(false);
     const task = result.lines.find(l => l.includes("'Untimed'"));
-    // 12th attribute (TaskTime) must be `$`.
-    expect(task).toMatch(/=IFCTASK\([^)]*,\$,\.NOTDEFINED\.\)|=IFCTASK\([^)]*,\$,\$\)/);
+    expect(task).toBeDefined();
+    // IfcTask attribute 12 (TaskTime, zero-indexed [11]) must be `$`. Use the
+    // nested-paren-safe arg counter instead of a regex — IfcTask args can
+    // legally contain inline lists.
+    const taskArgs = task!.match(/=IFCTASK\((.+)\);$/)![1];
+    const splitArgs = splitTopLevelArgs(taskArgs);
+    expect(splitArgs.length).toBe(13);
+    expect(splitArgs[11]).toBe('$');
   });
 
   it('returns the next free express ID', () => {
     const result = serializeScheduleToStep(makeExtraction(), { nextId: 100 });
     expect(result.nextId).toBeGreaterThan(100);
     expect(result.nextId).toBe(100 + result.lines.length);
+  });
+
+  it('reconstructs IfcLagTime from timeLagSeconds when timeLagDuration is missing', () => {
+    const data = makeExtraction();
+    data.sequences = [{
+      globalId: 'seq-no-dur',
+      relatingTaskGlobalId: 'task-a',
+      relatedTaskGlobalId: 'task-b',
+      sequenceType: 'FINISH_START',
+      timeLagSeconds: 2 * 86_400, // 2 days
+      // timeLagDuration intentionally omitted
+    }];
+    const result = serializeScheduleToStep(data, { nextId: 1 });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('P2D')");
+    expect(result.stats.lagTimes).toBe(1);
+  });
+
+  it('creationDate falls back deterministically to startTime / finishTime (not Date.now())', () => {
+    const data = makeExtraction();
+    data.workSchedules[0].creationDate = undefined;
+    // Same input → same output, twice in a row.
+    const a = serializeScheduleToStep(data, { nextId: 1 });
+    const b = serializeScheduleToStep(data, { nextId: 1 });
+    const wsA = a.lines.find(l => l.includes('=IFCWORKSCHEDULE('))!;
+    const wsB = b.lines.find(l => l.includes('=IFCWORKSCHEDULE('))!;
+    expect(wsA).toBe(wsB);
+    // The emitted creationDate should be the schedule's startTime.
+    expect(wsA).toContain("'2024-05-01T08:00:00'");
+  });
+
+  it('resolveProductExpressId still fires for globalId-only tasks (no aligned expressId)', () => {
+    const data: ScheduleExtraction = {
+      hasSchedule: true, workSchedules: [], sequences: [],
+      tasks: [{
+        expressId: 0, globalId: 'task-x', name: 'Global-only task',
+        isMilestone: false, childGlobalIds: [],
+        productExpressIds: [],
+        productGlobalIds: ['prod-A', 'prod-B'],
+        controllingScheduleGlobalIds: [],
+      }],
+    };
+    const remap: Record<string, number> = { 'prod-A': 4001, 'prod-B': 4002 };
+    const result = serializeScheduleToStep(data, {
+      nextId: 1,
+      resolveProductExpressId: gid => remap[gid],
+    });
+    const proc = result.lines.find(l => l.includes('=IFCRELASSIGNSTOPROCESS('));
+    expect(proc).toContain('(#4001,#4002)');
   });
 
   it('resolveProductExpressId is preferred when product globalIds are known', () => {
@@ -180,18 +236,48 @@ describe('serializeScheduleToStep', () => {
   });
 });
 
-/** Count top-level comma-separated arguments in a STEP attribute list. */
-function countTopLevelArgs(args: string): number {
+/**
+ * Split a STEP attribute list on top-level commas.
+ *
+ * STEP (ISO 10303-21) escapes an apostrophe inside a quoted string by
+ * doubling it (`''`), never with a backslash — so the tokenizer toggles
+ * `inStr` on every single `'` and skips a lookahead-pair that forms an
+ * escaped apostrophe.
+ */
+function splitTopLevelArgs(args: string): string[] {
+  const out: string[] = [];
   let depth = 0;
   let inStr = false;
-  let count = 1;
+  let current = '';
   for (let i = 0; i < args.length; i++) {
     const c = args[i];
-    if (c === "'" && args[i - 1] !== '\\') inStr = !inStr;
-    if (inStr) continue;
-    if (c === '(') depth++;
-    else if (c === ')') depth--;
-    else if (c === ',' && depth === 0) count++;
+    if (c === "'") {
+      if (inStr && args[i + 1] === "'") {
+        // Escaped apostrophe — consume the pair verbatim, don't toggle.
+        current += "''";
+        i += 1;
+        continue;
+      }
+      inStr = !inStr;
+      current += c;
+      continue;
+    }
+    if (!inStr) {
+      if (c === '(') depth++;
+      else if (c === ')') depth--;
+      else if (c === ',' && depth === 0) {
+        out.push(current.trim());
+        current = '';
+        continue;
+      }
+    }
+    current += c;
   }
-  return count;
+  if (current.length > 0) out.push(current.trim());
+  return out;
+}
+
+/** Count top-level comma-separated arguments in a STEP attribute list. */
+function countTopLevelArgs(args: string): number {
+  return splitTopLevelArgs(args).length;
 }

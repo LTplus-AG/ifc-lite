@@ -22,30 +22,28 @@ import { useEffect, useRef } from 'react';
 import { useViewerStore, computeHiddenProductIds, toGlobalIdFromModels } from '@/store';
 import type { ScheduleExtraction } from '@ifc-lite/parser';
 
-/** Map the schedule's local product expressIds to renderer global IDs.
- *  In single-model mode the map is empty and the id passes through. */
+/**
+ * Map the schedule's local product expressIds to renderer global IDs.
+ *
+ * Schedule extraction is currently per-model (the schedule-adapter caches
+ * one extraction per active model), so every local expressId is attributed
+ * to that model. Federation-aware per-product attribution — tasks whose
+ * `productExpressIds` span multiple models — would require extending
+ * `ScheduleExtraction` with a source-model field; that's an explicit
+ * follow-up noted in the PR description.
+ */
 function localHiddenToGlobal(
   localHidden: Set<number>,
-  scheduleData: ScheduleExtraction,
+  _scheduleData: ScheduleExtraction,
   models: Map<string, { idOffset?: number }>,
   activeModelId: string | null | undefined,
 ): Set<number> {
   if (localHidden.size === 0) return new Set();
-  // Build a lookup from localExpressId → sourceModelId. We walk the task list
-  // once so a product assigned by multiple tasks still maps to one model.
-  const modelByExpressId = new Map<number, string | null>();
-  for (const task of scheduleData.tasks) {
-    for (const id of task.productExpressIds) {
-      if (!modelByExpressId.has(id)) modelByExpressId.set(id, null);
-    }
-  }
-  // When schedule-adapter cached extraction per model, we only know the
-  // active model id — attribute every localExpressId to it.
-  const sourceModelId = activeModelId ?? (models.keys().next().value ?? '');
+  const sourceModelId = activeModelId
+    ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
   const result = new Set<number>();
   for (const local of localHidden) {
     result.add(toGlobalIdFromModels(models, sourceModelId, local));
-    void modelByExpressId; // kept for future multi-source attribution
   }
   return result;
 }

@@ -561,6 +561,23 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     return (dataStore as IfcDataStore | null)?.entities?.getGlobalId?.(selectedEntity.expressId) ?? null;
   }, [selectedEntity, model, ifcDataStore]);
+  /** True when at least one task in the current schedule controls this entity —
+   *  used to keep the Inspector's empty-state from hiding a populated card.
+   *  Federation-aware: matches globalId first (see `ScheduleCard`). */
+  const hasScheduleForSelection = useMemo(() => {
+    if (!selectedEntity || !scheduleData || scheduleData.tasks.length === 0) return false;
+    const expressId = selectedEntity.expressId;
+    const gid = selectedEntityGlobalId;
+    for (const task of scheduleData.tasks) {
+      const taskHasGlobalIds = task.productGlobalIds.some(Boolean);
+      if (gid && taskHasGlobalIds) {
+        if (task.productGlobalIds.includes(gid)) return true;
+        continue;
+      }
+      if (expressId > 0 && task.productExpressIds.includes(expressId)) return true;
+    }
+    return false;
+  }, [selectedEntity, scheduleData, selectedEntityGlobalId]);
 
   // Extract georeferencing info for the model (used in coordinates section)
   const georef = useMemo(() => {
@@ -1297,7 +1314,12 @@ export function PropertiesPanel() {
                 schemaVersion={activeDataStore?.schemaVersion}
               />
             )}
-            {renderedMergedProperties.length === 0 && renderedClassifications.length === 0 && !renderedMaterialInfo && renderedDocuments.length === 0 ? (
+            {renderedMergedProperties.length === 0
+              && renderedClassifications.length === 0
+              && !renderedMaterialInfo
+              && renderedDocuments.length === 0
+              && !renderedEntityRelationships
+              && !hasScheduleForSelection ? (
               <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">No property sets</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">

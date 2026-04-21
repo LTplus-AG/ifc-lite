@@ -34,6 +34,8 @@ import { useIfc } from '@/hooks/useIfc';
 import {
   generateScheduleFromSpatialHierarchy,
   canGenerateScheduleFrom,
+  defaultStartDate,
+  resolveActiveDataStore,
   DEFAULT_OPTIONS,
   type GenerateScheduleOptions,
   type SpatialGroupStrategy,
@@ -59,15 +61,9 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   const setGanttPanelVisible = useViewerStore(s => s.setGanttPanelVisible);
   const setAnimationEnabled = useViewerStore(s => s.setAnimationEnabled);
 
-  // Resolve the store to read from in federation-aware order:
-  //   1. legacy single-model `ifcDataStore`
-  //   2. explicit `activeModelId` selection
-  //   3. only one model loaded → take it
-  // Falling back to `models.values().next()` would pick an arbitrary entry in
-  // insertion order, which isn't the user's current focus.
-  const activeStore = ifcDataStore
-    ?? (activeModelId ? (models.get(activeModelId)?.ifcDataStore ?? null) : null)
-    ?? (models.size === 1 ? (models.values().next().value?.ifcDataStore ?? null) : null);
+  // Resolve the store to read from in federation-aware order. See
+  // `resolveActiveDataStore` in GanttPanel for the shared rationale.
+  const activeStore = resolveActiveDataStore(ifcDataStore, activeModelId, models);
   const hasSpatial = canGenerateScheduleFrom(activeStore);
 
   const [options, setOptions] = useState<GenerateScheduleOptions>(DEFAULT_OPTIONS);
@@ -77,7 +73,10 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   // Reset form state on every (re)open so users can reuse the dialog.
   useEffect(() => {
     if (open) {
-      setOptions({ ...DEFAULT_OPTIONS, startDate: DEFAULT_OPTIONS.startDate });
+      // Compute a fresh start date on each open so re-opening the dialog
+      // reflects "today" — `DEFAULT_OPTIONS.startDate` is evaluated at module
+      // load and goes stale in long-running sessions.
+      setOptions({ ...DEFAULT_OPTIONS, startDate: defaultStartDate() });
       setAdvancedOpen(false);
       setSubmitting(false);
     }

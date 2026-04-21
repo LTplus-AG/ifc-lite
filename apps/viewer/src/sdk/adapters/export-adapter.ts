@@ -397,7 +397,6 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         exportedContent,
         state.scheduleData ?? null,
         model.ifcDataStore as IfcDataStore,
-        modelId,
       );
     },
 
@@ -429,14 +428,36 @@ export function injectScheduleIntoStep(
   stepContent: string,
   scheduleData: ScheduleExtraction | null,
   ifcDataStore: IfcDataStore,
-  exportingModelId: string,
 ): string {
   if (!scheduleData || scheduleData.tasks.length === 0) return stepContent;
 
-  // Only consider tasks the user generated locally — anything with a real
-  // expressId is already in the STEP body and must not be duplicated.
-  const isGenerated = scheduleData.tasks.every(t => !t.expressId || t.expressId <= 0);
-  if (!isGenerated) return stepContent;
+  // Partition tasks: only tasks the user generated locally (expressId <= 0 or
+  // missing) need to be serialized. Tasks with a real expressId are already
+  // emitted as part of the normal export and must not be duplicated.
+  // Partitioning lets mixed schedules (e.g. user appended a generated task to
+  // a parsed schedule) still round-trip the new tail.
+  const generatedTasks = scheduleData.tasks.filter(t => !t.expressId || t.expressId <= 0);
+  if (generatedTasks.length === 0) return stepContent;
+
+  // Only forward sequences whose endpoints are both in the generated set —
+  // re-emitting a sequence that references an already-exported task would
+  // produce a duplicate IfcRelSequence on re-import.
+  const generatedTaskGids = new Set(generatedTasks.map(t => t.globalId));
+  const generatedSequences = scheduleData.sequences.filter(
+    s => generatedTaskGids.has(s.relatingTaskGlobalId) && generatedTaskGids.has(s.relatedTaskGlobalId),
+  );
+
+  // Work schedules: keep only those whose entire task membership was
+  // generated (or that are fresh — no expressId). A parsed work schedule
+  // already exists in the STEP body.
+  const generatedWorkSchedules = scheduleData.workSchedules.filter(ws => !ws.expressId || ws.expressId <= 0);
+
+  const partitioned: ScheduleExtraction = {
+    hasSchedule: true,
+    workSchedules: generatedWorkSchedules,
+    tasks: generatedTasks,
+    sequences: generatedSequences,
+  };
 
   // Pick a fresh express-ID starting point. The exporter renumbers in order,
   // so scanning the highest `#NNN=` in the output is the safest source of
@@ -451,7 +472,7 @@ export function injectScheduleIntoStep(
     return ifcDataStore.entities?.getExpressIdByGlobalId?.(gid) ?? undefined;
   };
 
-  const result = serializeScheduleToStep(scheduleData, {
+  const result = serializeScheduleToStep(partitioned, {
     nextId: maxId + 1,
     ownerHistoryId,
     resolveProductExpressId: resolveProduct,
@@ -472,7 +493,6 @@ export function injectScheduleIntoStep(
 
   const head = stepContent.slice(0, endSecIdx);
   const tail = stepContent.slice(endSecIdx);
-  void exportingModelId;
   return `${head}${result.lines.join('\n')}\n${tail}`;
 }
 

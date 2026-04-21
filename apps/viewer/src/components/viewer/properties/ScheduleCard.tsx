@@ -164,10 +164,13 @@ function TaskRow({ task, scheduleNames }: TaskRowProps) {
 }
 
 /**
- * Find all tasks whose `productExpressIds` (or `productGlobalIds`) include
- * the selected entity. We check both keys so generated schedules (where
- * expressId can be 0 until the schedule is baked into the IFC) and parsed
- * schedules both work.
+ * Find all tasks whose products include the selected entity.
+ *
+ * Federation-aware: prefer `productGlobalIds` whenever we know the entity's
+ * globalId (and the task carries globalIds of its own) — local expressIds can
+ * collide across federated models, so matching by globalId first is the safe
+ * default. Fall back to `productExpressIds` only for schedules that never
+ * recorded globalIds (legacy / headless extraction paths).
  */
 function findControllingTasks(
   data: ScheduleExtraction | null,
@@ -178,12 +181,15 @@ function findControllingTasks(
   if (selectedExpressId === null && !selectedGlobalId) return [];
   const out: ScheduleTaskInfo[] = [];
   for (const task of data.tasks) {
-    if (selectedExpressId !== null && selectedExpressId > 0
-        && task.productExpressIds.includes(selectedExpressId)) {
-      out.push(task);
+    const taskHasGlobalIds = task.productGlobalIds.some(Boolean);
+    if (selectedGlobalId && taskHasGlobalIds) {
+      if (task.productGlobalIds.includes(selectedGlobalId)) out.push(task);
+      // When globalIds are the authoritative side, do NOT also match on
+      // expressId — a collision across models would produce a false positive.
       continue;
     }
-    if (selectedGlobalId && task.productGlobalIds.includes(selectedGlobalId)) {
+    if (selectedExpressId !== null && selectedExpressId > 0
+        && task.productExpressIds.includes(selectedExpressId)) {
       out.push(task);
     }
   }

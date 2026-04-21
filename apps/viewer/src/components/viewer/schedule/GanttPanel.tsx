@@ -23,7 +23,7 @@ import { GanttTimeline } from './GanttTimeline';
 import { GanttEmptyState } from './GanttEmptyState';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { flattenTaskTree } from './schedule-utils';
-import { canGenerateScheduleFrom } from './generate-schedule';
+import { canGenerateScheduleFrom, resolveActiveDataStore } from './generate-schedule';
 import { useConstructionSequence } from './useConstructionSequence';
 
 interface GanttPanelProps {
@@ -33,7 +33,13 @@ interface GanttPanelProps {
 const LEFT_PANE_WIDTH = 320;
 
 export function GanttPanel({ onClose }: GanttPanelProps) {
-  const { ifcDataStore, models, loading } = useIfc();
+  const { ifcDataStore, models, loading, activeModelId } = useIfc();
+
+  // Resolve the active model once; shared by extraction + canGenerate.
+  const activeStore = useMemo(
+    () => resolveActiveDataStore(ifcDataStore, activeModelId, models),
+    [ifcDataStore, activeModelId, models],
+  );
 
   const {
     scheduleData,
@@ -65,27 +71,25 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
     seekSchedule: s.seekSchedule,
   })));
 
-  // Extract schedule data whenever the primary data store changes. We prefer
-  // the single-model legacy store; multi-model federation extraction is a
-  // follow-up (pick the first model until then).
+  // Extract schedule data whenever the resolved data store changes.
   useEffect(() => {
-    const store = ifcDataStore ?? models.values().next().value?.ifcDataStore;
-    if (!store) {
+    if (!activeStore) {
       if (scheduleData) setScheduleData(null);
+      setExtractionError(null);
       return;
     }
     try {
-      const extraction = extractScheduleOnDemand(store);
+      const extraction = extractScheduleOnDemand(activeStore);
       setScheduleData(extraction.hasSchedule ? extraction : null);
+      setExtractionError(null);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       console.warn('[GanttPanel] Failed to extract schedule', err);
       setScheduleData(null);
+      setExtractionError(message);
     }
-    // We intentionally depend only on ifcDataStore identity — models map
-    // churns every selection, and a fresh extraction is cheap only when the
-    // store object actually changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ifcDataStore]);
+  }, [activeStore]);
 
   // Drive the 3D viewport's hidden-entity set from the playback clock.
   useConstructionSequence();
@@ -100,13 +104,16 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const leftRef = useRef<HTMLDivElement>(null);
 
+  /** Last schedule-extraction error message (surfaced in the empty state). */
+  const [extractionError, setExtractionError] = useState<string | null>(null);
+
   // Generate-from-storeys dialog state lives in the slice so the command
   // palette / hotkeys can open it without going through this component.
   const generateOpen = useViewerStore(s => s.generateScheduleDialogOpen);
   const setGenerateOpen = useViewerStore(s => s.setGenerateScheduleDialogOpen);
   const canGenerate = useMemo(
-    () => canGenerateScheduleFrom(ifcDataStore ?? (models.values().next().value?.ifcDataStore ?? null)),
-    [ifcDataStore, models],
+    () => canGenerateScheduleFrom(activeStore),
+    [activeStore],
   );
 
   const handleSelect = useCallback((globalId: string, multi: boolean) => {
@@ -138,6 +145,7 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
           loading={loading}
           hasModel={!!ifcDataStore || models.size > 0}
           canGenerate={canGenerate}
+          extractionError={extractionError}
           onGenerate={() => setGenerateOpen(true)}
           onClose={onClose}
         />

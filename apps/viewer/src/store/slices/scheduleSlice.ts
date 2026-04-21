@@ -96,10 +96,20 @@ export interface ScheduleSlice {
 /**
  * Convert an ISO 8601 datetime string to epoch ms. Returns undefined when
  * the input is missing or unparseable.
+ *
+ * `IfcDateTime` values produced by authoring tools are typically written
+ * without a timezone designator (e.g. `2024-05-01T08:00:00`). `Date.parse`
+ * treats those as *local* time, so the same IFC opened on machines in
+ * different timezones would yield different epoch values — shifting the
+ * Gantt and breaking equality with exported STEP strings. We normalize
+ * TZ-less inputs to UTC (append `Z`) so playback stays stable across
+ * machines and STEP round-trips.
  */
 function parseIsoDate(value: string | undefined): number | undefined {
   if (!value) return undefined;
-  const t = Date.parse(value);
+  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(value);
+  const normalized = hasTz ? value : `${value}Z`;
+  const t = Date.parse(normalized);
   return Number.isNaN(t) ? undefined : t;
 }
 
@@ -265,12 +275,6 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
 
 // ── Derived selectors ────────────────────────────────────────────────────
 
-/**
- * Compute the set of product expressIds that should be hidden at the given
- * playback time. A product is hidden when every task that assigns it has
- * `scheduleStart > playbackTime`. Products with no controlling task are
- * always shown.
- */
 /**
  * True when the task participates in the given work-schedule filter.
  *

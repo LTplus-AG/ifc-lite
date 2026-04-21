@@ -92,7 +92,11 @@ export const DEFAULT_OPTIONS: GenerateScheduleOptions = {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────
 
-function defaultStartDate(): string {
+/**
+ * Compute a reasonable default start time — today at 08:00 local — evaluated
+ * at call time (not module load) so dialog re-opens reflect the current day.
+ */
+export function defaultStartDate(): string {
   const d = new Date();
   d.setHours(8, 0, 0, 0);
   return toLocalIso(d);
@@ -107,9 +111,13 @@ export function toLocalIso(d: Date): string {
   );
 }
 
+const MS_PER_DAY = 86_400_000;
+
 function addDays(iso: string, days: number): string {
   const d = new Date(iso);
-  d.setDate(d.getDate() + days);
+  // Millisecond arithmetic preserves fractional days — `setDate()` with a
+  // fractional argument silently truncates.
+  d.setTime(d.getTime() + days * MS_PER_DAY);
   return toLocalIso(d);
 }
 
@@ -144,6 +152,30 @@ function deterministicGlobalId(seed: string): string {
     acc = Math.imul(acc ^ (i * 0x45d9f3b), 0x01000193) >>> 0;
   }
   return out;
+}
+
+/**
+ * Resolve the active IfcDataStore in federation-aware order:
+ *   1. explicit legacy single-model `ifcDataStore`
+ *   2. the user's current `activeModelId` selection
+ *   3. only when exactly one model is loaded → take it
+ * Declines to guess in ambiguous multi-model cases so we never operate on
+ * an arbitrary insertion-order pick.
+ */
+export function resolveActiveDataStore(
+  ifcDataStore: IfcDataStore | null | undefined,
+  activeModelId: string | null | undefined,
+  models: Map<string, { ifcDataStore: IfcDataStore | null }>,
+): IfcDataStore | null {
+  if (ifcDataStore) return ifcDataStore;
+  if (activeModelId) {
+    const active = models.get(activeModelId);
+    if (active?.ifcDataStore) return active.ifcDataStore;
+  }
+  if (models.size === 1) {
+    return models.values().next().value?.ifcDataStore ?? null;
+  }
+  return null;
 }
 
 /** Resolve a spatial-container expressId → friendly name for the task label. */
@@ -203,9 +235,16 @@ export function generateScheduleFromSpatialHierarchy(
   // Layout the tasks on a calendar. The first group starts at `startDate`;
   // every subsequent group begins `daysPerGroup + lagDays` after the prior
   // group's start.
-  const strideDays = Math.max(0.1, options.daysPerGroup) + Math.max(0, options.lagDays);
-  const durationIso = daysToIso8601Duration(Math.max(0.1, options.daysPerGroup));
-  const lagIso = options.lagDays > 0 ? daysToIso8601Duration(options.lagDays) : undefined;
+  //
+  // `durationDays` / `lagDays` are the sanitized-once values threaded through
+  // every arithmetic step so `groupFinish`, `scheduleFinish` and the emitted
+  // ISO duration all agree (a prior build used `options.daysPerGroup` raw,
+  // producing mismatches with `daysToIso8601Duration`).
+  const durationDays = Math.max(0.1, options.daysPerGroup);
+  const lagDays = Math.max(0, options.lagDays);
+  const strideDays = durationDays + lagDays;
+  const durationIso = daysToIso8601Duration(durationDays);
+  const lagIso = lagDays > 0 ? daysToIso8601Duration(lagDays) : undefined;
 
   const tasks: ScheduleTaskInfo[] = [];
   const sequences: ScheduleSequenceInfo[] = [];
@@ -215,7 +254,7 @@ export function generateScheduleFromSpatialHierarchy(
 
   containers.forEach((group, index) => {
     const groupStart = addDays(options.startDate, index * strideDays);
-    const groupFinish = addDays(groupStart, options.daysPerGroup);
+    const groupFinish = addDays(groupStart, durationDays);
     const taskGlobalId = taskGlobalIdFor(group);
 
     tasks.push({
@@ -247,7 +286,7 @@ export function generateScheduleFromSpatialHierarchy(
         relatingTaskGlobalId: prevTaskGlobalId,
         relatedTaskGlobalId: taskGlobalId,
         sequenceType: 'FINISH_START',
-        timeLagSeconds: options.lagDays > 0 ? options.lagDays * 86_400 : undefined,
+        timeLagSeconds: lagDays > 0 ? lagDays * 86_400 : undefined,
         timeLagDuration: lagIso,
       });
     }
@@ -258,7 +297,7 @@ export function generateScheduleFromSpatialHierarchy(
   const scheduleGlobalId = scheduleGlobalIdFor(containers);
   const scheduleFinish = addDays(
     options.startDate,
-    Math.max(0, containers.length - 1) * strideDays + options.daysPerGroup,
+    Math.max(0, containers.length - 1) * strideDays + durationDays,
   );
   const taskGlobalIds = tasks.map(t => t.globalId);
   for (const task of tasks) task.controllingScheduleGlobalIds = [scheduleGlobalId];
@@ -269,7 +308,10 @@ export function generateScheduleFromSpatialHierarchy(
     kind: 'WorkSchedule',
     name: options.scheduleName,
     description: `Generated from ${options.strategy === 'IfcBuildingStorey' ? 'building storeys' : 'buildings'}`,
-    creationDate: toLocalIso(new Date()),
+    // Deterministic — exports must be reproducible. Anchoring on `startDate`
+    // reflects "this schedule was authored for that start" without smearing a
+    // `new Date()` wall-clock stamp across re-runs.
+    creationDate: options.startDate,
     startTime: options.startDate,
     finishTime: scheduleFinish,
     predefinedType: 'PLANNED',

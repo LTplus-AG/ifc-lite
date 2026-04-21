@@ -101,6 +101,9 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                   onMouseLeave={() => onHover(null)}
                   onClick={(e) => onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey)}
                   onKeyDown={(e) => {
+                    // Only handle keys on the row itself — Space/Enter on the
+                    // nested chevron button must keep its native activation.
+                    if (e.target !== e.currentTarget) return;
                     if (e.key !== 'Enter' && e.key !== ' ') return;
                     e.preventDefault();
                     onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);

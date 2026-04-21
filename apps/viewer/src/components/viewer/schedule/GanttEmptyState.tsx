@@ -10,11 +10,20 @@ interface GanttEmptyStateProps {
   hasModel: boolean;
   /** When true, the active model has a spatial hierarchy — enables the CTA. */
   canGenerate?: boolean;
+  /** Human-readable extraction error (last parser failure), if any. */
+  extractionError?: string | null;
   onClose?: () => void;
   onGenerate?: () => void;
 }
 
-export function GanttEmptyState({ loading, hasModel, canGenerate, onClose, onGenerate }: GanttEmptyStateProps) {
+export function GanttEmptyState({
+  loading,
+  hasModel,
+  canGenerate,
+  extractionError,
+  onClose,
+  onGenerate,
+}: GanttEmptyStateProps) {
   return (
     <div className="relative h-full w-full flex flex-col items-center justify-center text-center p-8 gap-3 text-muted-foreground">
       {onClose && (
@@ -43,6 +52,23 @@ export function GanttEmptyState({ loading, hasModel, canGenerate, onClose, onGen
         </>
       ) : loading ? (
         <p className="text-xs">Extracting schedule…</p>
+      ) : extractionError ? (
+        <>
+          <h3 className="text-sm font-semibold text-destructive">Schedule extraction failed</h3>
+          <p className="text-xs max-w-md text-muted-foreground">
+            <span className="font-mono text-destructive">{extractionError}</span>
+            <br />
+            Re-open the model or inspect the browser console for details.
+          </p>
+          {canGenerate && onGenerate && (
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <Button size="sm" variant="outline" onClick={onGenerate} className="gap-2">
+                <CalendarPlus className="h-4 w-4" />
+                Generate from storeys instead
+              </Button>
+            </div>
+          )}
+        </>
       ) : (
         <>
           <h3 className="text-sm font-semibold text-foreground">No schedule found</h3>

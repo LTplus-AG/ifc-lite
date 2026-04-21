@@ -172,6 +172,30 @@ export function AnimationSettingsPopover({
               />
             </div>
 
+            {/* ── Palette intensity ─────────────────────────────── */}
+            <div className="grid gap-1.5 py-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="palette-intensity" className="text-xs">Colour intensity</Label>
+                <span className="text-xs font-mono text-muted-foreground">
+                  {Math.round(settings.paletteIntensity * 100)}%
+                </span>
+              </div>
+              <input
+                id="palette-intensity"
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(settings.paletteIntensity * 100)}
+                onChange={(e) => patch({ paletteIntensity: Number(e.target.value) / 100 })}
+                className="w-full accent-primary"
+              />
+              <span className="text-[10px] text-muted-foreground">
+                0% leaves materials untouched; 100% paints the task-type colour
+                at full strength. 60% keeps the underlying material readable.
+              </span>
+            </div>
+
             <DropdownMenuSeparator />
 
             {/* ── Palette legend ─────────────────────────────────── */}

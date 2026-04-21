@@ -56,8 +56,13 @@ export type TaskPalette = Record<TaskPaletteKey, RGBA>;
 /**
  * Task-type palette aligned with Synchro's default conventions.
  *
- * Alpha = 1 for active phases; PREPARATION is pre-baked at 0.28 so a look-
- * ahead ghost stays readable without reading individual phase alpha.
+ * RGB channels are chosen for decent contrast on both light and dark
+ * viewport backgrounds; **alpha is 1.0 for task-type entries** because the
+ * per-frame `paletteIntensity` setting (not the palette) is how users dial
+ * how strongly the override paints over the real material.
+ *
+ * PREPARATION is treated separately — it's a ghost outline, not an active
+ * paint, so it keeps its own alpha baked in.
  */
 export const DEFAULT_PALETTE: TaskPalette = {
   CONSTRUCTION: [0.34, 0.76, 0.39, 1.0], // emerald green
@@ -74,7 +79,10 @@ export const DEFAULT_PALETTE: TaskPalette = {
   ATTENDANCE:   [0.75, 0.75, 0.80, 1.0], // cool grey
   USERDEFINED:  [0.55, 0.72, 0.86, 1.0], // soft blue
   NOTDEFINED:   [0.70, 0.70, 0.70, 1.0], // neutral grey
-  PREPARATION:  [0.45, 0.65, 0.95, 0.28], // translucent ghost blue
+  // Darker, more saturated blue that reads as a distinct ghost on both
+  // light and dark viewport backgrounds. The original light-blue @ 0.28
+  // alpha was near-invisible against typical IFC material palettes.
+  PREPARATION:  [0.20, 0.45, 0.80, 0.50],
 };
 
 /**
@@ -116,6 +124,15 @@ export interface AnimationSettings {
   showPreparationGhost: boolean;
   /** Apply task-type colour during active phase. */
   colorizeByTaskType: boolean;
+  /**
+   * 0 = no palette override (pure visibility-timing mode even inside
+   * `'phased'` style); 1 = full palette alpha. Multiplies the emitted
+   * RGBA alpha for every active / ramp-in / settling / removal phase so
+   * users can dial "subtle tint" vs. "saturated highlight" without
+   * editing the palette itself. Does not affect the PREPARATION ghost,
+   * which keeps its own baked alpha.
+   */
+  paletteIntensity: number;
   /** Animate DEMOLITION / DISMANTLE / REMOVAL / DISPOSAL as inverted fade. */
   animateDemolition: boolean;
   /**
@@ -133,8 +150,15 @@ export const DEFAULT_ANIMATION_SETTINGS: AnimationSettings = {
   preparationDays: 2,
   rampInFraction: 0.08,
   fadeOutFraction: 0.10,
-  showPreparationGhost: true,
+  // Off by default — the ghost is a power-user feature. Left on, it used
+  // to paint the upper floors of a staged-from-top-down model nearly
+  // white on light viewports.
+  showPreparationGhost: false,
   colorizeByTaskType: true,
+  // 0.6 is a sensible middle ground — the task-type colour reads clearly
+  // but the underlying material still shows through. Users can push to 1.0
+  // for a full Synchro-like paint or pull to 0 for purely visibility-timed.
+  paletteIntensity: 0.6,
   animateDemolition: true,
   hideBeforePreparation: true,
   palette: DEFAULT_PALETTE,
@@ -232,6 +256,14 @@ function computeTaskPhase(
   const typeKey = resolvePaletteKey(task.predefinedType);
   const typeColor = settings.palette[typeKey] ?? settings.palette.NOTDEFINED;
   const prepColor = settings.palette.PREPARATION;
+  // Clamp once; 0 disables task-type painting entirely even in 'phased'.
+  const intensity = Math.min(1, Math.max(0, settings.paletteIntensity));
+  // Helper: palette alpha × user intensity. Kept inline rather than lifted
+  // to the module scope because it closes over `typeColor[3]`.
+  const paint = (alpha: number): RGBA => [
+    typeColor[0], typeColor[1], typeColor[2],
+    Math.min(1, Math.max(0, alpha * typeColor[3] * intensity)),
+  ];
 
   // ── Removal-like tasks invert the lifecycle ──────────────────────────
   if (settings.animateDemolition && isRemovalTask(task)) {
@@ -243,10 +275,10 @@ function computeTaskPhase(
       return { phase: 'removal-complete', hide: true };
     }
     const p = (playbackTime - start) / duration;
-    // Fade red tint in and overall override alpha out.
-    const alpha = 1 - easeInCubic(p);
-    const tint: RGBA = [typeColor[0], typeColor[1], typeColor[2], alpha];
-    return { phase: 'removal-active', hide: false, color: tint };
+    // Fade red tint in and overall override alpha out. Intensity modulates
+    // the peak — `intensity=0` means the tint is never visible (the product
+    // simply disappears at `finish`).
+    return { phase: 'removal-active', hide: false, color: paint(1 - easeInCubic(p)) };
   }
 
   // ── Standard construction lifecycle ──────────────────────────────────
@@ -265,7 +297,9 @@ function computeTaskPhase(
   }
 
   if (playbackTime <= finish) {
-    if (!settings.colorizeByTaskType) {
+    // colorizeByTaskType=false → phase is tracked for stats but no override;
+    // paletteIntensity=0 is the same effect without changing the toggle.
+    if (!settings.colorizeByTaskType || intensity === 0) {
       return { phase: 'active', hide: false };
     }
     const p = (playbackTime - start) / duration;
@@ -274,7 +308,7 @@ function computeTaskPhase(
       return {
         phase: 'active-ramp-in',
         hide: false,
-        color: withAlpha(typeColor, easeOutCubic(t)),
+        color: paint(easeOutCubic(t)),
       };
     }
     if (p > 1 - settings.fadeOutFraction) {
@@ -282,10 +316,10 @@ function computeTaskPhase(
       return {
         phase: 'active-settling',
         hide: false,
-        color: withAlpha(typeColor, 1 - easeInCubic(t)),
+        color: paint(1 - easeInCubic(t)),
       };
     }
-    return { phase: 'active', hide: false, color: typeColor };
+    return { phase: 'active', hide: false, color: paint(1) };
   }
 
   // After finish — rendered as material default.

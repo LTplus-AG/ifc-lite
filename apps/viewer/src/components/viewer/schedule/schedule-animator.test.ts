@@ -67,33 +67,60 @@ describe('computeAnimationFrame — standard lifecycle', () => {
     assert.equal(frame.hiddenIds.size, 0);
   });
 
-  it('paints the preparation ghost inside the look-ahead window', () => {
-    // 1 day before start; preparationDays=2 → inside window.
+  it('paints the preparation ghost inside the look-ahead window (when opted in)', () => {
+    // Default is ghost-off — users must opt in. 1 day before start, so inside
+    // the 2-day preparation window.
     const t = parseDate('2024-05-09T08:00:00Z');
-    const frame = computeAnimationFrame(data, t, settings({ preparationDays: 2 }));
+    const frame = computeAnimationFrame(
+      data, t, settings({ preparationDays: 2, showPreparationGhost: true }),
+    );
     assert.equal(frame.hiddenIds.size, 0);
     assert.equal(frame.stats['upcoming-preparation'], 2);
     const color = frame.colorOverrides.get(1);
     assert.ok(color);
-    // Preparation entry in the palette, verbatim.
+    // Preparation entry in the palette, verbatim (intensity doesn't affect it).
     assert.deepEqual(color, DEFAULT_PALETTE.PREPARATION);
   });
 
-  it('paints with task-type colour at full alpha in the middle of the active window', () => {
+  it('defaults hide upcoming products without drawing a ghost', () => {
+    const t = parseDate('2024-05-09T08:00:00Z');
+    const frame = computeAnimationFrame(data, t, settings({ preparationDays: 2 }));
+    // Ghost toggle is OFF in defaults; hideBeforePreparation=true kicks in.
+    assert.ok(frame.hiddenIds.has(1));
+    assert.equal(frame.colorOverrides.size, 0);
+  });
+
+  it('paints with task-type colour (scaled by paletteIntensity) in the middle of the active window', () => {
     const t = parseDate('2024-05-15T00:00:00Z'); // ~mid-window
     const frame = computeAnimationFrame(data, t, settings());
     assert.equal(frame.stats.active, 2);
+    const color = frame.colorOverrides.get(1)!;
+    const expectedAlpha = DEFAULT_PALETTE.CONSTRUCTION[3] * DEFAULT_ANIMATION_SETTINGS.paletteIntensity;
+    assert.deepEqual(color.slice(0, 3), DEFAULT_PALETTE.CONSTRUCTION.slice(0, 3));
+    assert.equal(color[3], expectedAlpha);
+  });
+
+  it('paletteIntensity=1 restores full-strength task-type colour', () => {
+    const t = parseDate('2024-05-15T00:00:00Z');
+    const frame = computeAnimationFrame(data, t, settings({ paletteIntensity: 1 }));
     assert.deepEqual(frame.colorOverrides.get(1), DEFAULT_PALETTE.CONSTRUCTION);
+  });
+
+  it('paletteIntensity=0 suppresses the active-phase override entirely', () => {
+    const t = parseDate('2024-05-15T00:00:00Z');
+    const frame = computeAnimationFrame(data, t, settings({ paletteIntensity: 0 }));
+    assert.equal(frame.stats.active, 2);
+    assert.equal(frame.colorOverrides.size, 0);
   });
 
   it('ramps opacity up during the first rampInFraction of the window', () => {
     // 5% into the 10-day window: ~0.5 day from start. rampInFraction default 0.08 → inside ramp.
     const start = parseDate('2024-05-10T08:00:00Z');
     const t = start + 0.5 * DAY;
-    const frame = computeAnimationFrame(data, t, settings());
+    const frame = computeAnimationFrame(data, t, settings({ paletteIntensity: 1 }));
     assert.equal(frame.stats['active-ramp-in'], 2);
     const color = frame.colorOverrides.get(1)!;
-    // Ramp-in alpha < 1 and > 0
+    // Ramp-in alpha < 1 and > 0 at intensity=1
     assert.ok(color[3] > 0);
     assert.ok(color[3] < 1);
   });
@@ -101,7 +128,9 @@ describe('computeAnimationFrame — standard lifecycle', () => {
   it('fades out (override alpha) during the last fadeOutFraction of the window', () => {
     const finish = parseDate('2024-05-20T17:00:00Z');
     const t = finish - 0.2 * DAY; // ~last 2 %
-    const frame = computeAnimationFrame(data, t, settings({ fadeOutFraction: 0.10 }));
+    const frame = computeAnimationFrame(
+      data, t, settings({ fadeOutFraction: 0.10, paletteIntensity: 1 }),
+    );
     assert.equal(frame.stats['active-settling'], 2);
     const color = frame.colorOverrides.get(1)!;
     assert.ok(color[3] < 1);
@@ -152,10 +181,11 @@ describe('computeAnimationFrame — removal tasks invert the lifecycle', () => {
     const frame = computeAnimationFrame(
       data,
       parseDate('2024-05-11T00:00:00Z'),
-      settings({ animateDemolition: false }),
+      settings({ animateDemolition: false, paletteIntensity: 1 }),
     );
     // Falls through to the standard construction lifecycle, which paints the
-    // DEMOLITION palette colour solid during the active window.
+    // DEMOLITION palette colour at full strength (intensity=1) during the
+    // active window.
     assert.equal(frame.stats.active, 1);
     assert.deepEqual(frame.colorOverrides.get(9), DEFAULT_PALETTE.DEMOLITION);
   });
@@ -218,9 +248,10 @@ describe('computeAnimationFrame — multi-task resolution', () => {
     const frame = computeAnimationFrame(
       makeSchedule([prepTask, activeTask]),
       parseDate('2024-05-18T12:00:00Z'),
-      settings(),
+      settings({ paletteIntensity: 1 }),
     );
-    // Active task (INSTALLATION) wins.
+    // Active task (INSTALLATION) wins; intensity=1 so the emitted colour
+    // equals the palette entry byte-for-byte.
     const colour = frame.colorOverrides.get(42) as RGBA;
     assert.deepEqual(colour, DEFAULT_PALETTE.INSTALLATION);
     assert.equal(frame.stats.active, 1);

@@ -3,16 +3,27 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * useConstructionSequence — drives the 3D viewport's hidden-entity set from
- * the Gantt playback clock.
+ * useConstructionSequence — drives the 3D viewport from the Gantt playback
+ * clock.
  *
- * Two invariants we must preserve:
- *   1. **Federation-awareness.** The schedule extractor returns local
- *      `productExpressIds`. The renderer/visibility slice operates on
- *      global IDs. We translate via `toGlobalIdFromModels` before writing.
- *   2. **Don't clobber user-hidden IDs.** On toggle-off / unmount we must
- *      only reveal IDs we ourselves hid *and* that weren't already hidden
- *      by the user. We remember the pre-hide state in a `Map<id, wasHidden>`.
+ * Two output channels per frame:
+ *   1. **Hidden set** (`visibilitySlice.hiddenEntities`) — products that the
+ *      current playback time says should not be visible (upcoming-far +
+ *      completed demolitions).
+ *   2. **Color overrides** (`dataSlice.pendingColorUpdates`) — per-entity
+ *      RGBA drives the lifecycle colouring in `style === 'phased'`. Lifts
+ *      into `scene.setColorOverrides()` via the existing lens-pipeline.
+ *
+ * Invariants:
+ *   • **Federation-awareness.** The animator returns local `productExpressIds`.
+ *     The renderer/visibility layer operates on global IDs. We translate via
+ *     `toGlobalIdFromModels` before writing.
+ *   • **Don't clobber user-hidden IDs.** On toggle-off / unmount we only
+ *     reveal IDs we hid ourselves *and* that weren't already hidden by the
+ *     user. Tracked via `Map<id, wasHidden>`.
+ *   • **Don't clobber lens colour overrides.** We only write
+ *     `pendingColorUpdates` when phased animation is active; on toggle-off
+ *     we clear so the lens or material default takes over.
  *
  * Playback tick: a requestAnimationFrame loop advances `playbackTime` when
  * `playbackIsPlaying` && `animationEnabled` are both true.
@@ -20,32 +31,37 @@
 
 import { useEffect, useRef } from 'react';
 import { useViewerStore, computeHiddenProductIds, toGlobalIdFromModels } from '@/store';
-import type { ScheduleExtraction } from '@ifc-lite/parser';
+import { computeAnimationFrame, type RGBA } from './schedule-animator';
 
 /**
  * Map the schedule's local product expressIds to renderer global IDs.
  *
- * Schedule extraction is currently per-model (the schedule-adapter caches
- * one extraction per active model), so every local expressId is attributed
- * to that model. Federation-aware per-product attribution — tasks whose
+ * Schedule extraction is per-model (the schedule-adapter caches one
+ * extraction per active model), so every local expressId is attributed to
+ * that model. Federation-aware per-product attribution — tasks whose
  * `productExpressIds` span multiple models — would require extending
- * `ScheduleExtraction` with a source-model field; that's an explicit
- * follow-up noted in the PR description.
+ * `ScheduleExtraction` with a source-model field; explicit follow-up.
  */
-function localHiddenToGlobal(
-  localHidden: Set<number>,
-  _scheduleData: ScheduleExtraction,
+function localIdsToGlobal<T>(
+  localMap: Map<number, T> | Set<number>,
   models: Map<string, { idOffset?: number }>,
   activeModelId: string | null | undefined,
-): Set<number> {
-  if (localHidden.size === 0) return new Set();
+): Map<number, T> | Set<number> {
   const sourceModelId = activeModelId
     ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
-  const result = new Set<number>();
-  for (const local of localHidden) {
-    result.add(toGlobalIdFromModels(models, sourceModelId, local));
+
+  if (localMap instanceof Set) {
+    const out = new Set<number>();
+    for (const local of localMap) {
+      out.add(toGlobalIdFromModels(models, sourceModelId, local));
+    }
+    return out;
   }
-  return result;
+  const out = new Map<number, T>();
+  for (const [local, v] of localMap) {
+    out.set(toGlobalIdFromModels(models, sourceModelId, local), v);
+  }
+  return out;
 }
 
 export function useConstructionSequence(): void {
@@ -55,13 +71,12 @@ export function useConstructionSequence(): void {
   const scheduleData = useViewerStore(s => s.scheduleData);
   const activeWorkScheduleId = useViewerStore(s => s.activeWorkScheduleId);
   const advancePlaybackBy = useViewerStore(s => s.advancePlaybackBy);
+  const animationSettings = useViewerStore(s => s.animationSettings);
 
-  /**
-   * Each entry is a global ID we hid; the boolean records whether the id was
-   * ALREADY hidden by the user when we added it. On cleanup we only call
-   * `showEntities` for ids where the flag is `false` (= we were the sole hider).
-   */
+  /** Each entry is a GLOBAL id we hid; flag = "was already hidden by user". */
   const contributedHiddenRef = useRef<Map<number, boolean>>(new Map());
+  /** Global ids for which we last wrote colour overrides. Used on cleanup. */
+  const contributedColorsRef = useRef<Set<number>>(new Set());
 
   // rAF playback loop — ticks the simulated clock.
   useEffect(() => {
@@ -80,11 +95,10 @@ export function useConstructionSequence(): void {
     };
   }, [isPlaying, animationEnabled, advancePlaybackBy]);
 
-  // Apply derived visibility on every clock change.
+  // Apply derived visibility + colour on every playback / settings change.
   useEffect(() => {
     const store = useViewerStore.getState();
 
-    /** Filter a toShow list to only ids the hook owns alone. */
     const filterOwnedToShow = (ids: Iterable<number>): number[] => {
       const out: number[] = [];
       for (const id of ids) {
@@ -93,61 +107,94 @@ export function useConstructionSequence(): void {
       return out;
     };
 
+    // ── Animation off: restore owned visibility + clear colour overrides ──
     if (!animationEnabled || !scheduleData) {
-      // Remove only the ids we added that the user hadn't hidden themselves.
       if (contributedHiddenRef.current.size > 0) {
         const toShow = filterOwnedToShow(contributedHiddenRef.current.keys());
         if (toShow.length > 0) store.showEntities(toShow);
         contributedHiddenRef.current = new Map();
       }
+      if (contributedColorsRef.current.size > 0) {
+        // `new Map()` signals "clear overlays" to useGeometryStreaming.
+        store.setPendingColorUpdates(new Map());
+        contributedColorsRef.current = new Set();
+      }
       return;
     }
 
-    const localHidden = computeHiddenProductIds(scheduleData, playbackTime, activeWorkScheduleId);
-    const nextHidden = localHiddenToGlobal(
-      localHidden,
-      scheduleData,
-      store.models as unknown as Map<string, { idOffset?: number }>,
-      store.activeModelId,
-    );
-    const prev = contributedHiddenRef.current;
+    const models = store.models as unknown as Map<string, { idOffset?: number }>;
+    const activeModelId = store.activeModelId;
 
-    // 1. Reveal owned ids that shouldn't be hidden any more.
+    // ── Compute next frame ────────────────────────────────────────────
+    // For 'minimal' style we keep the historical behaviour: just the
+    // visibility channel from the schedule slice's computeHiddenProductIds.
+    // For 'phased' we use the animator's richer phase output.
+    let nextLocalHidden: Set<number>;
+    let nextLocalColors: Map<number, RGBA>;
+    if (animationSettings.style === 'minimal') {
+      nextLocalHidden = computeHiddenProductIds(scheduleData, playbackTime, activeWorkScheduleId);
+      nextLocalColors = new Map();
+    } else {
+      const frame = computeAnimationFrame(
+        scheduleData, playbackTime, animationSettings, activeWorkScheduleId || null,
+      );
+      nextLocalHidden = frame.hiddenIds;
+      nextLocalColors = frame.colorOverrides;
+    }
+
+    const nextHidden = localIdsToGlobal(nextLocalHidden, models, activeModelId) as Set<number>;
+    const nextColors = localIdsToGlobal(nextLocalColors, models, activeModelId) as Map<number, RGBA>;
+
+    // ── Reconcile hidden set ──────────────────────────────────────────
+    const prev = contributedHiddenRef.current;
     const toShow: number[] = [];
     for (const [id, wasHidden] of prev) {
       if (!nextHidden.has(id) && wasHidden === false) toShow.push(id);
     }
-
-    // 2. Hide newly-scheduled ids — remember whether they were user-hidden.
     const toHide: number[] = [];
-    const nextMap = new Map<number, boolean>();
+    const nextHiddenMap = new Map<number, boolean>();
     const currentlyHidden = store.hiddenEntities ?? new Set<number>();
     for (const id of nextHidden) {
       if (prev.has(id)) {
-        nextMap.set(id, prev.get(id)!);
+        nextHiddenMap.set(id, prev.get(id)!);
       } else {
         const wasHidden = currentlyHidden.has(id);
-        nextMap.set(id, wasHidden);
+        nextHiddenMap.set(id, wasHidden);
         if (!wasHidden) toHide.push(id);
       }
     }
-
     if (toShow.length > 0) store.showEntities(toShow);
     if (toHide.length > 0) store.hideEntities(toHide);
-    contributedHiddenRef.current = nextMap;
-  }, [animationEnabled, playbackTime, scheduleData, activeWorkScheduleId]);
+    contributedHiddenRef.current = nextHiddenMap;
 
-  // Unmount cleanup — restore only what we own.
+    // ── Reconcile colour overrides ────────────────────────────────────
+    // Overrides are all-or-nothing per pendingColorUpdates call: the next
+    // map is a full replacement. When empty, signal a clear with `new Map()`.
+    if (nextColors.size > 0) {
+      store.setPendingColorUpdates(nextColors);
+      contributedColorsRef.current = new Set(nextColors.keys());
+    } else if (contributedColorsRef.current.size > 0) {
+      store.setPendingColorUpdates(new Map());
+      contributedColorsRef.current = new Set();
+    }
+  }, [animationEnabled, playbackTime, scheduleData, activeWorkScheduleId, animationSettings]);
+
+  // Unmount cleanup — restore owned visibility + clear our colour overrides.
   useEffect(() => {
     return () => {
-      if (contributedHiddenRef.current.size === 0) return;
       const store = useViewerStore.getState();
-      const toShow: number[] = [];
-      for (const [id, wasHidden] of contributedHiddenRef.current) {
-        if (wasHidden === false) toShow.push(id);
+      if (contributedHiddenRef.current.size > 0) {
+        const toShow: number[] = [];
+        for (const [id, wasHidden] of contributedHiddenRef.current) {
+          if (wasHidden === false) toShow.push(id);
+        }
+        if (toShow.length > 0) store.showEntities(toShow);
+        contributedHiddenRef.current = new Map();
       }
-      if (toShow.length > 0) store.showEntities(toShow);
-      contributedHiddenRef.current = new Map();
+      if (contributedColorsRef.current.size > 0) {
+        store.setPendingColorUpdates(new Map());
+        contributedColorsRef.current = new Set();
+      }
     };
   }, []);
 }

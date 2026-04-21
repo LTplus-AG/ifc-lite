@@ -18,6 +18,8 @@
 
 import type { StateCreator } from 'zustand';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
+import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedule-animator';
 
 export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';
 
@@ -67,6 +69,12 @@ export interface ScheduleSlice {
   playbackSpeed: number;
   /** When true, looping from end → start. */
   playbackLoop: boolean;
+  /**
+   * Animation style + palette settings. See `schedule-animator.ts` for the
+   * phase / colour model. `minimal` keeps the original visibility-only
+   * behaviour; `phased` lights up the type-colour lifecycle.
+   */
+  animationSettings: AnimationSettings;
 
   // ── Actions ──────────────────────────────────────────
   setScheduleData: (data: ScheduleExtraction | null) => void;
@@ -84,6 +92,12 @@ export interface ScheduleSlice {
   setSelectedTaskGlobalIds: (globalIds: string[]) => void;
 
   setAnimationEnabled: (enabled: boolean) => void;
+  /** Replace the full animation-settings object. */
+  setAnimationSettings: (settings: AnimationSettings) => void;
+  /** Shallow-merge patch — convenient for toolbar toggles. */
+  patchAnimationSettings: (patch: Partial<AnimationSettings>) => void;
+  /** Restore the built-in Synchro-style defaults. */
+  resetAnimationSettings: () => void;
   playSchedule: () => void;
   pauseSchedule: () => void;
   togglePlaySchedule: () => void;
@@ -196,6 +210,7 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   playbackTime: 0,
   playbackSpeed: 7, // 7 simulated days per real second by default
   playbackLoop: true,
+  animationSettings: DEFAULT_ANIMATION_SETTINGS,
 
   // Actions
   setScheduleData: (scheduleData) => {
@@ -240,6 +255,11 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   setSelectedTaskGlobalIds: (ids) => set({ selectedTaskGlobalIds: new Set(ids) }),
 
   setAnimationEnabled: (animationEnabled) => set({ animationEnabled }),
+  setAnimationSettings: (animationSettings) => set({ animationSettings }),
+  patchAnimationSettings: (patch) => set((s) => ({
+    animationSettings: { ...s.animationSettings, ...patch },
+  })),
+  resetAnimationSettings: () => set({ animationSettings: DEFAULT_ANIMATION_SETTINGS }),
   playSchedule: () => set({ playbackIsPlaying: true, animationEnabled: true }),
   pauseSchedule: () => set({ playbackIsPlaying: false }),
   togglePlaySchedule: () => set((s) => {

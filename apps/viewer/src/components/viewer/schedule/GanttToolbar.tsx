@@ -16,7 +16,6 @@ import {
   Repeat,
   Repeat2,
   Gauge,
-  Sparkles,
   Calendar,
   CalendarPlus,
   X,
@@ -33,6 +32,7 @@ import {
 import { useViewerStore } from '@/store';
 import type { GanttTimeScale } from '@/store';
 import { formatDateTime } from './schedule-utils';
+import { AnimationSettingsPopover } from './AnimationSettingsPopover';
 
 interface GanttToolbarProps {
   onClose?: () => void;
@@ -282,22 +282,12 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
         </Tooltip>
       )}
 
-      {/* Animation toggle */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="icon-sm"
-            variant={animationEnabled ? 'default' : 'ghost'}
-            onClick={() => setAnimationEnabled(!animationEnabled)}
-            aria-label={animationEnabled ? 'Disable 3D animation' : 'Enable 3D animation'}
-          >
-            <Sparkles className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {animationEnabled ? 'Disable 3D animation' : 'Enable 3D animation'}
-        </TooltipContent>
-      </Tooltip>
+      {/* Animation settings popover (replaces the bare toggle — gives the
+          user access to lifecycle colour / palette / preparation window). */}
+      <AnimationSettingsPopover
+        animationEnabled={animationEnabled}
+        onToggleAnimation={() => setAnimationEnabled(!animationEnabled)}
+      />
 
       {onClose && (
         <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close Gantt panel">

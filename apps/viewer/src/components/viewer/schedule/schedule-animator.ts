@@ -79,10 +79,13 @@ export const DEFAULT_PALETTE: TaskPalette = {
   ATTENDANCE:   [0.75, 0.75, 0.80, 1.0], // cool grey
   USERDEFINED:  [0.55, 0.72, 0.86, 1.0], // soft blue
   NOTDEFINED:   [0.70, 0.70, 0.70, 1.0], // neutral grey
-  // Darker, more saturated blue that reads as a distinct ghost on both
-  // light and dark viewport backgrounds. The original light-blue @ 0.28
-  // alpha was near-invisible against typical IFC material palettes.
-  PREPARATION:  [0.20, 0.45, 0.80, 0.50],
+  // The preparation *ghost* is intentionally a dark, low-alpha NEUTRAL
+  // colour — overlaying any bright/saturated alpha on top of opaque light
+  // IFC geometry composites toward white (src-alpha blending: 0.5 * blue +
+  // 0.5 * white-concrete ≈ washed-out pale blue). A dark low-alpha overlay
+  // dims the material instead, which reads as "dusty / shadowed / pending"
+  // regardless of the host geometry colour.
+  PREPARATION:  [0.12, 0.14, 0.18, 0.15],
 };
 
 /**

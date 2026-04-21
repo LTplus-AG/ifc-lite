@@ -7,17 +7,20 @@
  * controls the 4D animation behaviour.
  *
  * Two conceptual layers:
- *   • **Timing** (minimal + phased) — schedule-driven visibility: hide
- *     upcoming products, animate demolition. Always available.
- *   • **Colour overlays** (phased only, opt-in) — task-type palette,
- *     preparation ghost, intensity. Customizable palette.
+ *   • **Timing** — schedule-driven visibility: hide upcoming products,
+ *     remove demolished ones. Always available.
+ *   • **Colour overlays** (phased only, opt-in) — task-type palette with
+ *     a fully editable colour picker on each swatch.
  *
- * The dropdown collapses the colour controls entirely when style=minimal
- * so the "no colour" case is visually calm and obvious.
+ * Layout rationale: in phased mode the palette editor is front and centre
+ * (right after the style tiles) so users can actually find it — previous
+ * iterations buried it at the bottom of the popover and the common
+ * complaint was "I don't see how I can change colours". Each swatch is a
+ * 20 px clickable preview bound to a native `<input type="color">`.
  */
 
 import { useCallback } from 'react';
-import { Sparkles, RotateCcw } from 'lucide-react';
+import { Sparkles, RotateCcw, Paintbrush, Palette, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -105,8 +108,8 @@ export function AnimationSettingsPopover({
     if (!rgb) return;
     const prev = settings.palette[key] ?? DEFAULT_PALETTE[key];
     // Preserve the existing alpha — the native picker is opaque so we only
-    // update RGB. Keeps the PREPARATION ghost at its 0.5 alpha even when
-    // users edit its hue.
+    // update RGB. Keeps the PREPARATION ghost at its baked low alpha even
+    // when users edit its hue.
     const next: RGBA = [rgb[0], rgb[1], rgb[2], prev[3]];
     patch({ palette: { ...settings.palette, [key]: next } });
   }, [patch, settings.palette]);
@@ -116,6 +119,9 @@ export function AnimationSettingsPopover({
   }, [patch, settings.palette]);
 
   const phased = settings.style === 'phased';
+  const palette = settings.palette;
+  const prepColor = palette.PREPARATION ?? DEFAULT_PALETTE.PREPARATION;
+  const prepIsDefault = rgbEquals(prepColor, DEFAULT_PALETTE.PREPARATION);
 
   return (
     <DropdownMenu>
@@ -133,7 +139,7 @@ export function AnimationSettingsPopover({
         </TooltipTrigger>
         <TooltipContent>4D animation settings</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-[340px] p-3">
+      <DropdownMenuContent align="end" className="w-[360px] p-3 max-h-[min(80vh,700px)] overflow-y-auto">
         {/* ── Master toggle ────────────────────────────────────────── */}
         <div className="flex items-center justify-between gap-3 pb-2">
           <div className="grid gap-0.5">
@@ -147,29 +153,88 @@ export function AnimationSettingsPopover({
 
         <DropdownMenuSeparator />
 
-        {/* ── Style tiles — the layer switch ───────────────────────── */}
+        {/* ── Style tiles — two ways to visualize the schedule ─────── */}
         <div className="grid gap-1.5 py-2">
           <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Style</Label>
           <div className="grid grid-cols-2 gap-2">
             <StyleTile
+              icon={<Eye className="h-3.5 w-3.5" />}
               label="Minimal"
-              description="Visibility only — clean reveal, no colour"
+              description="Visibility only — no colour"
               active={!phased}
               onSelect={() => setStyle('minimal')}
             />
             <StyleTile
+              icon={<Palette className="h-3.5 w-3.5" />}
               label="Phased"
-              description="Task-type colour overlays + preparation ghost"
+              description="Task-type colour overlays"
               active={phased}
               onSelect={() => setStyle('phased')}
             />
           </div>
         </div>
 
+        {/* ── Phased: palette editor FIRST so it's impossible to miss ── */}
+        {phased && (
+          <>
+            <DropdownMenuSeparator />
+            <div className="grid gap-1.5 py-2">
+              <div className="flex items-center gap-1.5">
+                <Paintbrush className="h-3 w-3 text-primary" />
+                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Task-type palette
+                </Label>
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                Click any swatch to change its colour. Hover a modified entry
+                to reset just that one.
+              </span>
+              <div className="grid grid-cols-1 gap-0.5 pt-1">
+                {PALETTE_LEGEND.map(entry => {
+                  const current = palette[entry.key] ?? DEFAULT_PALETTE[entry.key];
+                  return (
+                    <PaletteRow
+                      key={entry.key}
+                      label={entry.label}
+                      colorKey={entry.key}
+                      rgba={current}
+                      onChange={setPaletteColor}
+                      onResetEntry={resetPaletteEntry}
+                      isDefault={rgbEquals(current, DEFAULT_PALETTE[entry.key])}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Minimal: clear CTA explaining what phased adds ───────── */}
+        {!phased && (
+          <>
+            <DropdownMenuSeparator />
+            <button
+              type="button"
+              onClick={() => setStyle('phased')}
+              className="w-full rounded-md border border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors px-3 py-2 text-left my-1"
+            >
+              <div className="flex items-center gap-1.5">
+                <Palette className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium">Switch to Phased to customize colours</span>
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                Unlocks task-type palette editing, preparation ghost, and
+                colour intensity.
+              </span>
+            </button>
+          </>
+        )}
+
         <DropdownMenuSeparator />
 
         {/* ── Timing-layer toggles (always visible) ────────────────── */}
         <div className="grid gap-2 py-2">
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Timing</Label>
           <ToggleRow
             label="Hide upcoming products"
             description="Don't render work that hasn't started yet."
@@ -184,130 +249,87 @@ export function AnimationSettingsPopover({
           />
         </div>
 
-        {/* ── Phased-only section ──────────────────────────────────── */}
-        {!phased && (
-          <>
-            <DropdownMenuSeparator />
-            <p className="text-[11px] text-muted-foreground italic pt-1 pb-0.5">
-              Switch to <span className="font-medium not-italic">Phased</span> to
-              enable task-type colour overlays, preparation ghost, and a custom
-              palette.
-            </p>
-          </>
-        )}
-
         {phased && (
           <>
             <DropdownMenuSeparator />
 
             {/* ── Colour-layer toggles ─────────────────────────────── */}
             <div className="grid gap-2 py-2">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Colour overlays
+              </Label>
               <ToggleRow
                 label="Colour by task type"
-                description="Green=construction, blue=install, red=demolition…"
+                description="Paint the palette colour over active products."
                 checked={settings.colorizeByTaskType}
                 onChange={v => patch({ colorizeByTaskType: v })}
               />
               <ToggleRow
                 label="Preparation ghost"
-                description="Translucent outline inside the look-ahead window."
+                description="Dim products inside the look-ahead window."
                 checked={settings.showPreparationGhost}
                 onChange={v => patch({ showPreparationGhost: v })}
               />
-            </div>
 
-            <DropdownMenuSeparator />
-
-            {/* ── Look-ahead + intensity sliders ───────────────────── */}
-            <div className="grid gap-1.5 py-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="prep-days" className="text-xs">Look-ahead window</Label>
-                <span className="text-xs font-mono text-muted-foreground">{settings.preparationDays}d</span>
-              </div>
-              <input
-                id="prep-days"
-                type="range"
-                min={0}
-                max={14}
-                step={1}
-                value={settings.preparationDays}
-                onChange={(e) => patch({ preparationDays: Number(e.target.value) })}
-                className="w-full accent-primary"
-              />
-            </div>
-
-            <div className="grid gap-1.5 py-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="palette-intensity" className="text-xs">Colour intensity</Label>
-                <span className="text-xs font-mono text-muted-foreground">
-                  {Math.round(settings.paletteIntensity * 100)}%
-                </span>
-              </div>
-              <input
-                id="palette-intensity"
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={Math.round(settings.paletteIntensity * 100)}
-                onChange={(e) => patch({ paletteIntensity: Number(e.target.value) / 100 })}
-                className="w-full accent-primary"
-              />
-              <span className="text-[10px] text-muted-foreground">
-                0% = no colour (equivalent to Minimal); 100% = solid paint.
-              </span>
-            </div>
-
-            {settings.showPreparationGhost && (
-              <>
-                <DropdownMenuSeparator />
-                {/* ── Preparation ghost colour (separate from task types) ── */}
-                <div className="grid gap-1.5 py-2">
-                  <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    Preparation ghost colour
-                  </Label>
-                  <PaletteRow
-                    label="Ghost (look-ahead window)"
+              {settings.showPreparationGhost && (
+                <div className="flex items-center justify-between gap-3 pl-2 pt-1 border-l-2 border-primary/30">
+                  <span className="grid gap-0.5 min-w-0">
+                    <span className="text-xs font-medium">Ghost colour</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      Low-alpha dim applied to upcoming products.
+                    </span>
+                  </span>
+                  <PaletteSwatch
                     colorKey="PREPARATION"
-                    rgba={settings.palette.PREPARATION ?? DEFAULT_PALETTE.PREPARATION}
+                    rgba={prepColor}
                     onChange={setPaletteColor}
-                    onResetEntry={resetPaletteEntry}
-                    isDefault={rgbEquals(
-                      settings.palette.PREPARATION ?? DEFAULT_PALETTE.PREPARATION,
-                      DEFAULT_PALETTE.PREPARATION,
-                    )}
+                    isDefault={prepIsDefault}
                   />
                 </div>
-              </>
-            )}
+              )}
+            </div>
 
             <DropdownMenuSeparator />
 
-            {/* ── Task-type palette editor ─────────────────────────── */}
-            <div className="grid gap-1.5 py-2">
-              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Task-type palette
-              </Label>
-              <span className="text-[10px] text-muted-foreground -mt-0.5 mb-1">
-                Click any swatch to change the colour for that
-                <span className="font-mono"> IfcTaskTypeEnum</span> value.
-              </span>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                {PALETTE_LEGEND.map(entry => {
-                  const current = settings.palette[entry.key] ?? DEFAULT_PALETTE[entry.key];
-                  return (
-                    <PaletteRow
-                      key={entry.key}
-                      label={entry.label}
-                      colorKey={entry.key}
-                      rgba={current}
-                      onChange={setPaletteColor}
-                      onResetEntry={resetPaletteEntry}
-                      isDefault={rgbEquals(current, DEFAULT_PALETTE[entry.key])}
-                      compact
-                    />
-                  );
-                })}
+            {/* ── Sliders ──────────────────────────────────────────── */}
+            <div className="grid gap-3 py-2">
+              <div className="grid gap-1">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="prep-days" className="text-xs">Look-ahead window</Label>
+                  <span className="text-xs font-mono text-muted-foreground">{settings.preparationDays}d</span>
+                </div>
+                <input
+                  id="prep-days"
+                  type="range"
+                  min={0}
+                  max={14}
+                  step={1}
+                  value={settings.preparationDays}
+                  onChange={(e) => patch({ preparationDays: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+
+              <div className="grid gap-1">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="palette-intensity" className="text-xs">Colour intensity</Label>
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {Math.round(settings.paletteIntensity * 100)}%
+                  </span>
+                </div>
+                <input
+                  id="palette-intensity"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round(settings.paletteIntensity * 100)}
+                  onChange={(e) => patch({ paletteIntensity: Number(e.target.value) / 100 })}
+                  className="w-full accent-primary"
+                />
+                <span className="text-[10px] text-muted-foreground">
+                  0% = no colour (equivalent to Minimal); 100% = solid paint.
+                </span>
               </div>
             </div>
           </>
@@ -327,13 +349,14 @@ export function AnimationSettingsPopover({
 }
 
 interface StyleTileProps {
+  icon: React.ReactNode;
   label: string;
   description: string;
   active: boolean;
   onSelect: () => void;
 }
 
-function StyleTile({ label, description, active, onSelect }: StyleTileProps) {
+function StyleTile({ icon, label, description, active, onSelect }: StyleTileProps) {
   return (
     <button
       type="button"
@@ -344,7 +367,10 @@ function StyleTile({ label, description, active, onSelect }: StyleTileProps) {
       )}
       aria-pressed={active}
     >
-      <span className="text-xs font-medium">{label}</span>
+      <span className="flex items-center gap-1.5">
+        <span className={active ? 'text-primary' : 'text-muted-foreground'}>{icon}</span>
+        <span className="text-xs font-medium">{label}</span>
+      </span>
       <span className="text-[10px] text-muted-foreground">{description}</span>
     </button>
   );
@@ -375,61 +401,94 @@ interface PaletteRowProps {
   rgba: RGBA;
   onChange: (key: TaskPaletteKey, hex: string) => void;
   onResetEntry: (key: TaskPaletteKey) => void;
-  /** True when the current colour equals the default — hides the reset dot. */
   isDefault: boolean;
-  /** Compact mode: smaller swatch + smaller label for the 2-col grid. */
-  compact?: boolean;
 }
 
 /**
- * Single palette entry editor. The swatch itself is a colour input —
- * clicking it opens the system colour picker. When the current colour
- * differs from the default, a small reset dot appears; clicking it restores
- * the default for that entry alone.
+ * Full-width palette row — 20 px clickable swatch + friendly label + hex
+ * code + per-entry reset on hover when modified. Larger than the old 14 px
+ * swatches so the interactive affordance actually reads as a button.
  */
-function PaletteRow({ label, colorKey, rgba, onChange, onResetEntry, isDefault, compact }: PaletteRowProps) {
-  const hex = rgbaToHex(rgba);
+function PaletteRow({ label, colorKey, rgba, onChange, onResetEntry, isDefault }: PaletteRowProps) {
   return (
-    <div className="flex items-center gap-1.5 min-w-0 group">
-      <label
-        className={cn(
-          'relative rounded-sm border border-border shrink-0 cursor-pointer',
-          'hover:ring-2 hover:ring-primary/40 transition-shadow',
-          compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
-        )}
-        aria-label={`Change colour for ${label}`}
-        title={`${label} — click to edit`}
-      >
-        <span
-          className="absolute inset-0 rounded-sm"
-          style={{ backgroundColor: rgbaToCss(rgba) }}
-          aria-hidden
-        />
-        <input
-          type="color"
-          value={hex}
-          onChange={(e) => onChange(colorKey, e.target.value)}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        />
-      </label>
-      <span
-        className={cn(
-          'text-muted-foreground truncate flex-1 min-w-0',
-          compact ? 'text-[11px]' : 'text-xs',
-        )}
-        title={colorKey}
-      >
-        {label}
-      </span>
+    <div className="group flex items-center gap-2 px-1.5 py-1 rounded hover:bg-muted/40 transition-colors">
+      <PaletteSwatch
+        colorKey={colorKey}
+        rgba={rgba}
+        onChange={onChange}
+        isDefault={isDefault}
+      />
+      <div className="flex flex-col min-w-0 flex-1">
+        <span className="text-xs font-medium truncate" title={colorKey}>
+          {label}
+        </span>
+        <span className="text-[10px] font-mono text-muted-foreground">
+          {rgbaToHex(rgba).toUpperCase()}
+          {!isDefault && <span className="ml-1 text-primary">• modified</span>}
+        </span>
+      </div>
       {!isDefault && (
-        <button
-          type="button"
-          onClick={() => onResetEntry(colorKey)}
-          className="h-3 w-3 rounded-full border border-primary/60 bg-primary/20 hover:bg-primary/40 shrink-0 transition-colors"
-          aria-label={`Reset ${label} to default colour`}
-          title="Modified — click to reset"
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => onResetEntry(colorKey)}
+              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-5 w-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
+              aria-label={`Reset ${label} to default colour`}
+            >
+              <RotateCcw className="h-3 w-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Reset to default</TooltipContent>
+        </Tooltip>
       )}
     </div>
+  );
+}
+
+interface PaletteSwatchProps {
+  colorKey: TaskPaletteKey;
+  rgba: RGBA;
+  onChange: (key: TaskPaletteKey, hex: string) => void;
+  /** Kept for parent-side rendering; not used inside the swatch. */
+  isDefault?: boolean;
+}
+
+/**
+ * 20 × 20 px swatch that doubles as a `<input type="color">`. A subtle
+ * checker pattern behind the colour communicates alpha (useful for the
+ * PREPARATION ghost which has baked low alpha), and a ring on
+ * hover/focus confirms it's interactive.
+ */
+function PaletteSwatch({ colorKey, rgba, onChange }: PaletteSwatchProps) {
+  return (
+    <label
+      className={cn(
+        'relative h-5 w-5 rounded border-2 border-border shrink-0 cursor-pointer overflow-hidden',
+        'hover:ring-2 hover:ring-primary/50 focus-within:ring-2 focus-within:ring-primary/60',
+        'transition-shadow',
+      )}
+      style={{
+        // Checkerboard showing through low-alpha colours.
+        backgroundImage:
+          'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
+        backgroundSize: '6px 6px',
+        backgroundPosition: '0 0, 0 3px, 3px -3px, -3px 0px',
+      }}
+      title={`${colorKey} — click to edit`}
+      aria-label={`Change colour for ${colorKey}`}
+    >
+      <span
+        className="absolute inset-0 rounded-sm"
+        style={{ backgroundColor: rgbaToCss(rgba) }}
+        aria-hidden
+      />
+      <input
+        type="color"
+        value={rgbaToHex(rgba)}
+        onChange={(e) => onChange(colorKey, e.target.value)}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+      />
+    </label>
   );
 }

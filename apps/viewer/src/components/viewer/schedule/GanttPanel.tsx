@@ -25,6 +25,10 @@ import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { flattenTaskTree } from './schedule-utils';
 import { canGenerateScheduleFrom, resolveActiveDataStore } from './generate-schedule';
 import { useConstructionSequence } from './useConstructionSequence';
+import { useGanttSelection3DSync } from './useGanttSelection3DSync';
+import { useViewportToGanttSync } from './useViewportToGanttSync';
+import { useGanttInteractions } from './useGanttInteractions';
+import { GanttRowContextMenu, type GanttContextMenuState } from './GanttRowContextMenu';
 
 interface GanttPanelProps {
   onClose?: () => void;
@@ -94,6 +98,9 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   // Drive the 3D viewport's hidden-entity set from the playback clock.
   useConstructionSequence();
 
+  // Isolate 3D by the current Gantt selection (master toggle: ganttSync3D).
+  useGanttSelection3DSync();
+
   // Flatten task tree honoring expand/collapse state.
   const rows = useMemo(
     () => flattenTaskTree(scheduleData, expandedTaskGlobalIds, activeWorkScheduleId || undefined),
@@ -103,6 +110,46 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   // Shared scroll position between task list and timeline (so rows line up).
   const [scrollTop, setScrollTop] = useState(0);
   const leftRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Scroll the Gantt to the row matching a given taskGlobalId. Shared by
+   * the reverse-sync (viewport click → highlight) so the user always sees
+   * what just got selected. Uses the row order from the flattened tree to
+   * find the pixel offset — has to run *after* ancestor-expansion so the
+   * target row's index reflects the now-visible layout.
+   */
+  const scrollToTask = useCallback((taskGlobalId: string) => {
+    // Defer so React has committed any expansion the reverse-sync queued.
+    requestAnimationFrame(() => {
+      const current = useViewerStore.getState();
+      const expanded = current.expandedTaskGlobalIds;
+      const flat = flattenTaskTree(
+        current.scheduleData,
+        expanded,
+        current.activeWorkScheduleId || undefined,
+      );
+      const idx = flat.findIndex(r => r.task.globalId === taskGlobalId);
+      if (idx < 0) return;
+      // GANTT_ROW_HEIGHT is 28 (shared with GanttTaskTree). Center in pane.
+      const ROW = 28;
+      const HEADER = 28;
+      const container = leftRef.current;
+      if (!container) return;
+      const viewportH = container.clientHeight - HEADER;
+      const target = Math.max(0, idx * ROW - viewportH / 2 + ROW / 2);
+      setScrollTop(target);
+    });
+  }, []);
+
+  // Reverse sync: viewport click → highlight owning task row.
+  const viewportToGanttHandle = useViewportToGanttSync(scrollToTask);
+
+  // Imperative actions (isolate / frame / select / clear / keyboard).
+  const interactions = useGanttInteractions(viewportToGanttHandle);
+
+  /** Right-click context-menu state (anchor + target task). */
+  const [ctxMenu, setCtxMenu] = useState<GanttContextMenuState | null>(null);
+  const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
 
   /** Last schedule-extraction error message (surfaced in the empty state). */
   const [extractionError, setExtractionError] = useState<string | null>(null);
@@ -128,10 +175,52 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
     setSelectedTaskGlobalIds(Array.from(current));
   }, [selectedTaskGlobalIds, setSelectedTaskGlobalIds]);
 
+  /**
+   * Double-click a row → "show me this" = select it, select its products
+   * in 3D, frame the camera on them. Selecting first so users with
+   * multi-row selection get the full group framed together.
+   */
+  const handleRowDoubleClick = useCallback((globalId: string, multi: boolean) => {
+    const shouldKeepMulti = multi && selectedTaskGlobalIds.has(globalId);
+    const effective: string[] = shouldKeepMulti
+      ? Array.from(selectedTaskGlobalIds)
+      : [globalId];
+    // Update Gantt selection first so the sync hook isolates to the right set.
+    if (!shouldKeepMulti) setSelectedTaskGlobalIds(effective);
+    // Then frame — reuses current Gantt selection via the interactions hook.
+    interactions.frameSelection(effective);
+  }, [interactions, selectedTaskGlobalIds, setSelectedTaskGlobalIds]);
+
+  /** Right-click → open the context menu at the cursor. */
+  const handleRowContextMenu = useCallback((
+    event: React.MouseEvent,
+    globalId: string,
+    label: string,
+  ) => {
+    event.preventDefault();
+    // Ensure the clicked row is in the effective target set for the menu.
+    // If it's already selected, leave the selection alone; otherwise
+    // make this row the single-item selection so commands act on it.
+    if (!selectedTaskGlobalIds.has(globalId)) {
+      setSelectedTaskGlobalIds([globalId]);
+    }
+    setCtxMenu({
+      taskGlobalId: globalId,
+      label,
+      anchorX: event.clientX,
+      anchorY: event.clientY,
+    });
+  }, [selectedTaskGlobalIds, setSelectedTaskGlobalIds]);
+
   const showEmpty = !scheduleData || !scheduleRange || rows.length === 0;
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden bg-background">
+    <div
+      className="h-full w-full flex flex-col overflow-hidden bg-background outline-none"
+      // `tabIndex={0}` so keyboard shortcuts fire while the Gantt has focus.
+      tabIndex={0}
+      onKeyDown={interactions.onKeyDown}
+    >
       <GanttToolbar
         onClose={onClose}
         onOpenGenerate={() => setGenerateOpen(true)}
@@ -162,6 +251,8 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
               hoveredGlobalId={hoveredTaskGlobalId}
               onToggleExpand={toggleTaskExpanded}
               onSelect={handleSelect}
+              onDoubleClickRow={handleRowDoubleClick}
+              onContextMenuRow={handleRowContextMenu}
               onHover={setHoveredTaskGlobalId}
               scrollTop={scrollTop}
               onScroll={setScrollTop}
@@ -177,6 +268,8 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
               selectedGlobalIds={selectedTaskGlobalIds}
               hoveredGlobalId={hoveredTaskGlobalId}
               onSelect={handleSelect}
+              onDoubleClickRow={handleRowDoubleClick}
+              onContextMenuRow={handleRowContextMenu}
               onHover={setHoveredTaskGlobalId}
               onScrubSeek={seekSchedule}
               scrollTop={scrollTop}
@@ -185,6 +278,12 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
           </div>
         </div>
       )}
+
+      <GanttRowContextMenu
+        state={ctxMenu}
+        onClose={closeCtxMenu}
+        interactions={interactions}
+      />
     </div>
   );
 }

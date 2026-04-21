@@ -76,6 +76,25 @@ export interface ScheduleSlice {
    */
   animationSettings: AnimationSettings;
 
+  /**
+   * Master toggle for the Gantt ↔ 3D viewport linkage.
+   *
+   * When `true` (default):
+   *   • Selecting Gantt row(s) isolates their products in the 3D viewport
+   *   • Clicking a product in the 3D viewport highlights the owning task
+   *     in the Gantt (expands ancestors + scrolls into view)
+   *   • Double-click on a Gantt row frames the camera on its products
+   *   • `I` isolates, `F` frames, `Esc` clears (when Gantt has focus)
+   *
+   * When `false`, the Gantt and 3D viewport are fully decoupled — useful
+   * during schedule authoring when a user wants to pan/orbit freely
+   * without isolation snapping to whatever row they just clicked.
+   *
+   * Persisted in the slice (not a ref) so the command palette / settings
+   * panels can read + toggle it without prop-drilling.
+   */
+  ganttSync3D: boolean;
+
   // ── Actions ──────────────────────────────────────────
   setScheduleData: (data: ScheduleExtraction | null) => void;
   setGanttPanelVisible: (visible: boolean) => void;
@@ -92,6 +111,9 @@ export interface ScheduleSlice {
   setSelectedTaskGlobalIds: (globalIds: string[]) => void;
 
   setAnimationEnabled: (enabled: boolean) => void;
+  /** Toggle / set the Gantt ↔ 3D viewport sync master switch. */
+  setGanttSync3D: (enabled: boolean) => void;
+  toggleGanttSync3D: () => void;
   /** Replace the full animation-settings object. */
   setAnimationSettings: (settings: AnimationSettings) => void;
   /** Shallow-merge patch — convenient for toolbar toggles. */
@@ -211,6 +233,7 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   playbackSpeed: 7, // 7 simulated days per real second by default
   playbackLoop: true,
   animationSettings: DEFAULT_ANIMATION_SETTINGS,
+  ganttSync3D: true,
 
   // Actions
   setScheduleData: (scheduleData) => {
@@ -255,6 +278,8 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   setSelectedTaskGlobalIds: (ids) => set({ selectedTaskGlobalIds: new Set(ids) }),
 
   setAnimationEnabled: (animationEnabled) => set({ animationEnabled }),
+  setGanttSync3D: (ganttSync3D) => set({ ganttSync3D }),
+  toggleGanttSync3D: () => set((s) => ({ ganttSync3D: !s.ganttSync3D })),
   setAnimationSettings: (animationSettings) => set({ animationSettings }),
   patchAnimationSettings: (patch) => set((s) => ({
     animationSettings: { ...s.animationSettings, ...patch },

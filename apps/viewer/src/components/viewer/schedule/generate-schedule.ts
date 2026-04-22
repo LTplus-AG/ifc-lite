@@ -27,6 +27,7 @@ import type {
   WorkScheduleInfo,
 } from '@ifc-lite/parser';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MeshData } from '@ifc-lite/geometry';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public types
@@ -35,12 +36,32 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 /**
  * Exposed strategy values use the exact IFC EXPRESS entity names per AGENTS.md
  * §1 (Mandatory Schema Compliance). UI layers map these to friendly labels.
+ *
+ * `IfcBuildingStorey` / `IfcBuilding` — trust the model's spatial hierarchy.
+ * `IfcElement` — ignore spatial hierarchy, slice the model by the actual
+ *   geometric Z elevation of each meshed element. A rescue hatch for IFCs
+ *   with broken hierarchies (a common authoring issue where structural
+ *   elements all end up assigned to the ground floor even though they're
+ *   physically on floors 10-20).
  */
-export type SpatialGroupStrategy = 'IfcBuildingStorey' | 'IfcBuilding';
+export type SpatialGroupStrategy = 'IfcBuildingStorey' | 'IfcBuilding' | 'IfcElement';
 export type GenerateOrder = 'bottom-up' | 'top-down';
 
+/**
+ * For the `IfcElement` strategy, how to further subdivide elements that
+ * fall into the same Z slice.
+ *
+ *   `none`  — one task per Z slice, every element inside it goes to that task.
+ *   `class` — split each Z slice by IFC class (IfcWall, IfcSlab, …), so a
+ *             20-floor model with 5 classes yields up to 100 tasks.
+ *   `type`  — split by the element's resolved type name (IfcRelDefinesByType
+ *             target's Name, or ObjectType attribute fallback).
+ *   `name`  — split by the element's own Name attribute.
+ */
+export type ElementZSubgroup = 'none' | 'class' | 'type' | 'name';
+
 export interface GenerateScheduleOptions {
-  /** Which spatial container to treat as one task. */
+  /** Which source to derive tasks from. */
   strategy: SpatialGroupStrategy;
   /** ISO 8601 datetime for the first task's start (e.g. "2024-05-01T08:00:00"). */
   startDate: string;
@@ -49,7 +70,7 @@ export interface GenerateScheduleOptions {
   /** Lag between groups in days (≥ 0). Applied both to dates and IfcLagTime. */
   lagDays: number;
   /**
-   * Order to visit groups when both strategy allows it. "bottom-up" goes by
+   * Order to visit groups when the strategy allows it. "bottom-up" goes by
    * ascending elevation (site → G → 1 → …); "top-down" reverses.
    */
   order: GenerateOrder;
@@ -61,6 +82,17 @@ export interface GenerateScheduleOptions {
   scheduleName: string;
   /** PredefinedType stamped on each task. */
   predefinedType: string;
+  /**
+   * `IfcElement` only: height of each Z slice in metres. Typical storey
+   * heights are 3–4 m, so 3.0 is a sensible default. Must be positive.
+   * Ignored by spatial strategies.
+   */
+  heightTolerance: number;
+  /**
+   * `IfcElement` only: how to subdivide elements sharing a Z slice into
+   * separate tasks. Ignored by spatial strategies.
+   */
+  elementZSubgroup: ElementZSubgroup;
 }
 
 export interface GeneratePreview {
@@ -86,7 +118,21 @@ export const DEFAULT_OPTIONS: GenerateScheduleOptions = {
   linkSequences: true,
   scheduleName: 'Construction schedule',
   predefinedType: 'CONSTRUCTION',
+  heightTolerance: 3.0,
+  elementZSubgroup: 'none',
 };
+
+/**
+ * Optional geometry context the `IfcElement` strategy needs to partition
+ * elements by their actual Z elevation. Meshes carry GLOBAL expressIds
+ * (post-federation offset); the generator converts back to LOCAL ids
+ * using `idOffset` so downstream task.productExpressIds match the
+ * animator's local-space expectations.
+ */
+export interface GenerateModelContext {
+  meshes: MeshData[];
+  idOffset: number;
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -216,26 +262,43 @@ function storeyElevation(store: IfcDataStore, storeyId: number): number {
 // Core
 // ─────────────────────────────────────────────────────────────────────────
 
-export function canGenerateScheduleFrom(store: IfcDataStore | null | undefined): boolean {
-  if (!store?.spatialHierarchy) return false;
-  const byStorey = store.spatialHierarchy.byStorey;
-  const byBuilding = store.spatialHierarchy.byBuilding;
-  return (byStorey?.size ?? 0) > 0 || (byBuilding?.size ?? 0) > 0;
+export function canGenerateScheduleFrom(
+  store: IfcDataStore | null | undefined,
+  /** Geometry is required only for the `IfcElement` strategy. */
+  modelContext?: GenerateModelContext | null,
+): boolean {
+  if (!store) return false;
+  const byStorey = store.spatialHierarchy?.byStorey;
+  const byBuilding = store.spatialHierarchy?.byBuilding;
+  const hasSpatial = (byStorey?.size ?? 0) > 0 || (byBuilding?.size ?? 0) > 0;
+  const hasMeshes = (modelContext?.meshes?.length ?? 0) > 0;
+  return hasSpatial || hasMeshes;
 }
 
 /**
- * Build a schedule extraction from the model's spatial hierarchy. Returns an
- * `empty` preview when no storeys / buildings exist.
+ * Build a schedule extraction from the model's spatial hierarchy *or* (when
+ * the strategy is `IfcElement`) from element geometry Z slices. Returns an
+ * `empty` preview when the chosen strategy has no data to work with.
  */
 export function generateScheduleFromSpatialHierarchy(
   store: IfcDataStore | null | undefined,
   options: GenerateScheduleOptions,
+  /** Required when `options.strategy === 'IfcElement'`. */
+  modelContext?: GenerateModelContext | null,
 ): GeneratePreview {
-  if (!store || !canGenerateScheduleFrom(store)) {
+  if (!store) {
+    return emptyPreview(options);
+  }
+  if (options.strategy !== 'IfcElement' && !canGenerateScheduleFrom(store)) {
+    return emptyPreview(options);
+  }
+  if (options.strategy === 'IfcElement' && !modelContext?.meshes?.length) {
     return emptyPreview(options);
   }
 
-  const containers = collectContainers(store, options);
+  const containers = options.strategy === 'IfcElement'
+    ? collectZSliceContainers(store, modelContext!, options)
+    : collectContainers(store, options);
 
   if (containers.length === 0) {
     return emptyPreview(options);
@@ -332,7 +395,7 @@ export function generateScheduleFromSpatialHierarchy(
     globalId: scheduleGlobalId,
     kind: 'WorkSchedule',
     name: options.scheduleName,
-    description: `Generated from ${options.strategy === 'IfcBuildingStorey' ? 'building storeys' : 'buildings'}`,
+    description: describeStrategy(options),
     // Deterministic — exports must be reproducible. Anchoring on `startDate`
     // reflects "this schedule was authored for that start" without smearing a
     // `new Date()` wall-clock stamp across re-runs.
@@ -447,6 +510,156 @@ function makeGroupEntry(
     // with the GlobalId keeps the seed human-readable for debugging.
     sourceGlobalId: `${containerGlobalId || fallbackPrefix}#${containerId}`,
   };
+}
+
+/**
+ * Collect groups by slicing the model's meshed elements into Z bands of
+ * `options.heightTolerance` metres. Optionally subdivides each band by
+ * element name / IFC class / type so schedules like "Floor 10 walls"
+ * and "Floor 10 slabs" are separate tasks.
+ *
+ * Why this exists: real IFC models frequently misattribute elements to the
+ * wrong storey in the spatial hierarchy (authoring tools pool everything
+ * under the ground-floor container). This path ignores the hierarchy
+ * entirely and partitions elements by their actual geometry — the only
+ * 100 %-reliable source of truth for where something physically is.
+ */
+function collectZSliceContainers(
+  store: IfcDataStore,
+  modelContext: GenerateModelContext,
+  options: GenerateScheduleOptions,
+): GroupEntry[] {
+  const meshes = modelContext.meshes;
+  if (meshes.length === 0) return [];
+
+  const bandMetres = Math.max(0.1, options.heightTolerance);
+  const idOffset = modelContext.idOffset || 0;
+
+  // Scan every mesh once: compute min+max Z, derive a centroid Z, keep the
+  // ifcType in hand. O(total vertex count) but cache-friendly because
+  // positions are a typed array.
+  interface MeshMeta {
+    localId: number;
+    centroidZ: number;
+    ifcType: string;
+  }
+  const meta: MeshMeta[] = [];
+  for (const mesh of meshes) {
+    if (!mesh.positions || mesh.positions.length < 3) continue;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    // Z is every 3rd float in a packed [x,y,z,x,y,z,…] buffer.
+    for (let i = 2; i < mesh.positions.length; i += 3) {
+      const z = mesh.positions[i];
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
+    if (!Number.isFinite(minZ) || !Number.isFinite(maxZ)) continue;
+    meta.push({
+      localId: mesh.expressId - idOffset,
+      centroidZ: (minZ + maxZ) * 0.5,
+      ifcType: mesh.ifcType ?? 'IfcElement',
+    });
+  }
+  if (meta.length === 0) return [];
+
+  // Bin by Z. Bin indices are integers so two elements at identical Z
+  // always land in the same bin regardless of floating-point drift.
+  const binOfZ = (z: number) => Math.floor(z / bandMetres);
+
+  // Primary bin + optional sub-key → list of mesh metas.
+  // Bin key is "<bin> <subkey>" so we can sort lexicographically
+  // after the bin portion is zero-padded to a fixed width.
+  const BIN_WIDTH = 8; // enough for 10^8 bins × 0.1 m = 10^7 m of range
+  const padBin = (b: number): string => {
+    const sign = b < 0 ? '-' : '+';
+    const abs = Math.abs(b).toString().padStart(BIN_WIDTH, '0');
+    return `${sign}${abs}`;
+  };
+
+  const subgroupKeyFor = (m: MeshMeta): string => {
+    switch (options.elementZSubgroup) {
+      case 'class':
+        return m.ifcType;
+      case 'type': {
+        const tn = store.entities?.getTypeName?.(m.localId) ?? '';
+        return tn || m.ifcType;
+      }
+      case 'name':
+        return store.entities?.getName?.(m.localId) ?? '';
+      default:
+        return '';
+    }
+  };
+
+  const groups = new Map<string, { bin: number; subkey: string; metas: MeshMeta[] }>();
+  for (const m of meta) {
+    const bin = binOfZ(m.centroidZ);
+    const subkey = subgroupKeyFor(m);
+    const key = `${padBin(bin)} ${subkey}`;
+    let bucket = groups.get(key);
+    if (!bucket) {
+      bucket = { bin, subkey, metas: [] };
+      groups.set(key, bucket);
+    }
+    bucket.metas.push(m);
+  }
+
+  // Deterministic order: ascending bin, then lexicographic subkey. Reverse
+  // for top-down.
+  const sortedKeys = [...groups.keys()].sort();
+  if (options.order === 'top-down') sortedKeys.reverse();
+
+  const entries: GroupEntry[] = [];
+  for (const key of sortedKeys) {
+    const bucket = groups.get(key)!;
+    if (options.skipEmptyGroups && bucket.metas.length === 0) continue;
+
+    const localIds = bucket.metas.map(m => m.localId);
+    const productGlobalIds = localIds.map(id => store.entities?.getGlobalId?.(id) ?? '');
+
+    const zFrom = bucket.bin * bandMetres;
+    const zTo = zFrom + bandMetres;
+    const zLabel = `${formatZ(zFrom)} – ${formatZ(zTo)}`;
+    const displayName = bucket.subkey
+      ? `${bucket.subkey} · ${zLabel}`
+      : `Elements ${zLabel}`;
+
+    entries.push({
+      name: displayName,
+      identification: undefined,
+      description: `Elements with geometry Z in ${zLabel} (${localIds.length} item${localIds.length === 1 ? '' : 's'})`,
+      productExpressIds: localIds,
+      productGlobalIds,
+      // Seed for the deterministic task globalId — bin+subkey uniquely
+      // identifies the bucket across runs of the same model.
+      sourceGlobalId: `IfcElement#bin${padBin(bucket.bin)}|sub:${bucket.subkey}`,
+    });
+  }
+  return entries;
+}
+
+function formatZ(z: number): string {
+  // Two decimals is plenty for metre-scale bins; trims trailing zeros so
+  // "+3.00 m" reads as "+3 m" but "+3.25 m" keeps its precision.
+  const sign = z >= 0 ? '+' : '';
+  const rounded = Math.round(z * 100) / 100;
+  return `${sign}${rounded.toString()} m`; // NBSP to keep units together
+}
+
+function describeStrategy(options: GenerateScheduleOptions): string {
+  switch (options.strategy) {
+    case 'IfcBuildingStorey':
+      return 'Generated from building storeys';
+    case 'IfcBuilding':
+      return 'Generated from buildings';
+    case 'IfcElement': {
+      const subBy = options.elementZSubgroup === 'none'
+        ? ''
+        : `, grouped by ${options.elementZSubgroup}`;
+      return `Generated from element Z slices (${options.heightTolerance} m bands${subBy})`;
+    }
+  }
 }
 
 function emptyPreview(options: GenerateScheduleOptions): GeneratePreview {

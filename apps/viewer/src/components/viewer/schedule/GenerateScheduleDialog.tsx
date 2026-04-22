@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { CalendarPlus, Layers, Building2, ChevronDown, ChevronRight, AlertTriangle, Loader2 } from 'lucide-react';
+import { CalendarPlus, Layers, Building2, Ruler, ChevronDown, ChevronRight, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -65,7 +65,23 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   // Resolve the store to read from in federation-aware order. See
   // `resolveActiveDataStore` in GanttPanel for the shared rationale.
   const activeStore = resolveActiveDataStore(ifcDataStore, activeModelId, models);
+
+  // Resolve the source-model's geometry context. The `IfcElement` strategy
+  // needs `meshes` + `idOffset` to compute each element's true Z elevation;
+  // the spatial strategies don't touch geometry.
+  const modelContext = useMemo(() => {
+    const sourceModelId = activeModelId
+      ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
+    if (!sourceModelId) return null;
+    const model = models.get(sourceModelId);
+    const meshes = model?.geometryResult?.meshes;
+    if (!meshes || meshes.length === 0) return null;
+    return { meshes, idOffset: model?.idOffset ?? 0 };
+  }, [models, activeModelId]);
+
   const hasSpatial = canGenerateScheduleFrom(activeStore);
+  const hasGeometry = !!modelContext;
+  const canGenerate = hasSpatial || hasGeometry;
 
   const [options, setOptions] = useState<GenerateScheduleOptions>(DEFAULT_OPTIONS);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -83,12 +99,23 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
     }
   }, [open]);
 
+  // If the only available source is geometry (no spatial hierarchy),
+  // auto-switch the strategy to `IfcElement` so the preview isn't empty.
+  useEffect(() => {
+    if (!open) return;
+    if (!hasSpatial && hasGeometry && options.strategy !== 'IfcElement') {
+      setOptions(prev => ({ ...prev, strategy: 'IfcElement' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, hasSpatial, hasGeometry]);
+
   // Live preview — runs on every option change. The helper is pure and cheap
-  // (O(storeys × products)), so we don't debounce.
+  // enough (O(vertex count) for the Z strategy; O(storeys × products) for
+  // the others) that we don't debounce.
   const preview = useMemo(() => {
-    if (!hasSpatial) return null;
-    return generateScheduleFromSpatialHierarchy(activeStore, options);
-  }, [activeStore, hasSpatial, options]);
+    if (!canGenerate) return null;
+    return generateScheduleFromSpatialHierarchy(activeStore, options, modelContext);
+  }, [activeStore, canGenerate, modelContext, options]);
 
   const canSubmit = !!preview && !preview.empty && preview.groupCount > 0 && !submitting;
 
@@ -160,48 +187,132 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarPlus className="h-5 w-5 text-primary" />
-            Generate schedule from spatial hierarchy
+            Generate schedule
           </DialogTitle>
           <DialogDescription>
-            Creates a work schedule with one task per building storey (or building),
-            and assigns every product contained in that group to the task so the 4D
-            Gantt animation can reveal them as time advances.
+            Creates a work schedule with one task per group and assigns every
+            product in that group to the task, so the 4D Gantt animation can
+            reveal them as time advances.
           </DialogDescription>
         </DialogHeader>
 
-        {!hasSpatial ? (
+        {!canGenerate ? (
           <div className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
             <div>
-              <p className="font-medium text-foreground">No spatial hierarchy found</p>
+              <p className="font-medium text-foreground">Nothing to group by</p>
               <p className="text-muted-foreground">
-                Load an IFC model that contains at least one IfcBuildingStorey or
-                IfcBuilding and try again.
+                The loaded model has neither a spatial hierarchy nor visible
+                geometry. Load an IFC with IfcBuildingStorey/IfcBuilding
+                containers or meshed elements and try again.
               </p>
             </div>
           </div>
         ) : (
           <div className="grid gap-4">
-            {/* Strategy */}
+            {/* Strategy — three tiles. Height is the rescue for models with
+                broken spatial hierarchies; sub-options reveal only when it's
+                active, keeping the dialog uncluttered for the common case. */}
             <div className="grid gap-2">
               <Label>Group by</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <StrategyChoice
                   icon={<Layers className="h-4 w-4" />}
                   label="Storey"
-                  description="One task per IfcBuildingStorey"
+                  description="Per IfcBuildingStorey"
                   active={options.strategy === 'IfcBuildingStorey'}
+                  disabled={!hasSpatial}
                   onSelect={() => handleChange('strategy', 'IfcBuildingStorey')}
                 />
                 <StrategyChoice
                   icon={<Building2 className="h-4 w-4" />}
                   label="Building"
-                  description="One task per IfcBuilding"
+                  description="Per IfcBuilding"
                   active={options.strategy === 'IfcBuilding'}
+                  disabled={!hasSpatial}
                   onSelect={() => handleChange('strategy', 'IfcBuilding')}
                 />
+                <StrategyChoice
+                  icon={<Ruler className="h-4 w-4" />}
+                  label="Height"
+                  description="Slice by element Z"
+                  active={options.strategy === 'IfcElement'}
+                  disabled={!hasGeometry}
+                  onSelect={() => handleChange('strategy', 'IfcElement')}
+                />
               </div>
+              {options.strategy !== 'IfcElement' && !hasSpatial && (
+                <p className="text-[11px] text-muted-foreground">
+                  Spatial hierarchy missing — only Height is available for this model.
+                </p>
+              )}
             </div>
+
+            {/* Height sub-panel — only when the IfcElement strategy is active.
+                Inline, bordered, visually tied to the tile above so it reads as
+                "settings for the selected group-by". */}
+            {options.strategy === 'IfcElement' && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 grid gap-3">
+                <div className="flex items-center gap-2">
+                  <Ruler className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-medium">Height-slice options</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    Uses geometry, ignores spatial tree
+                  </span>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="gen-tol" className="text-xs">Slice height</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {options.heightTolerance.toFixed(1)} m
+                    </span>
+                  </div>
+                  <input
+                    id="gen-tol"
+                    type="range"
+                    min={0.5}
+                    max={10}
+                    step={0.25}
+                    value={options.heightTolerance}
+                    onChange={(e) => handleChange('heightTolerance', parseFloat(e.target.value))}
+                    className="w-full accent-primary"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Elements whose geometry centroid Z falls inside the same
+                    band share a task. Typical storey heights are 3–4 m.
+                  </p>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Subdivide each slice</Label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {([
+                      { k: 'none',  label: 'None'  },
+                      { k: 'class', label: 'Class' },
+                      { k: 'type',  label: 'Type'  },
+                      { k: 'name',  label: 'Name'  },
+                    ] as const).map(opt => (
+                      <SubgroupPill
+                        key={opt.k}
+                        label={opt.label}
+                        active={options.elementZSubgroup === opt.k}
+                        onSelect={() => handleChange('elementZSubgroup', opt.k)}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {options.elementZSubgroup === 'none'
+                      ? 'One task per slice — every element in the band goes to that task.'
+                      : options.elementZSubgroup === 'class'
+                      ? 'Split each slice by IFC class (IfcWall, IfcSlab, …).'
+                      : options.elementZSubgroup === 'type'
+                      ? 'Split each slice by the element’s type name (IfcRelDefinesByType target).'
+                      : 'Split each slice by each element’s Name attribute.'}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Primary fields */}
             <div className="grid grid-cols-2 gap-3">
@@ -318,7 +429,11 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                   />
                   <ToggleRow
                     label="Skip empty groups"
-                    description="Ignore storeys with no contained products."
+                    description={
+                      options.strategy === 'IfcElement'
+                        ? 'Ignore Z slices with no elements.'
+                        : 'Ignore storeys or buildings with no contained products.'
+                    }
                     checked={options.skipEmptyGroups}
                     onChange={(v) => handleChange('skipEmptyGroups', v)}
                   />
@@ -373,27 +488,61 @@ interface StrategyChoiceProps {
   label: string;
   description: string;
   active: boolean;
+  /** When true the tile is unavailable (greyed out, not clickable). */
+  disabled?: boolean;
   onSelect: () => void;
 }
 
-function StrategyChoice({ icon, label, description, active, onSelect }: StrategyChoiceProps) {
+function StrategyChoice({ icon, label, description, active, disabled, onSelect }: StrategyChoiceProps) {
+  const base = 'flex items-start gap-2 rounded-md border p-2.5 text-left transition-colors';
+  const state = active
+    ? 'border-primary bg-primary/5 text-foreground'
+    : disabled
+    ? 'border-dashed border-input/60 bg-muted/20 text-muted-foreground cursor-not-allowed opacity-60'
+    : 'border-input hover:bg-muted/40 text-foreground';
   return (
     <button
       type="button"
-      onClick={onSelect}
-      className={
-        'flex items-start gap-2 rounded-md border p-2.5 text-left transition-colors ' +
-        (active
-          ? 'border-primary bg-primary/5 text-foreground'
-          : 'border-input hover:bg-muted/40 text-foreground')
-      }
+      onClick={disabled ? undefined : onSelect}
+      className={`${base} ${state}`}
       aria-pressed={active}
+      disabled={disabled}
+      title={disabled ? 'Not available for this model' : undefined}
     >
       <span className={'mt-0.5 ' + (active ? 'text-primary' : 'text-muted-foreground')}>{icon}</span>
       <span className="grid gap-0.5">
         <span className="text-sm font-medium">{label}</span>
         <span className="text-xs text-muted-foreground">{description}</span>
       </span>
+    </button>
+  );
+}
+
+interface SubgroupPillProps {
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+}
+
+/**
+ * Compact 4-across segmented pill used for the Z-subgroup mode
+ * (None / Class / Type / Name). Kept small and modest so it reads as a
+ * setting, not a navigation target.
+ */
+function SubgroupPill({ label, active, onSelect }: SubgroupPillProps) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={active}
+      className={
+        'rounded border px-2 py-1 text-xs transition-colors ' +
+        (active
+          ? 'border-primary bg-primary/10 text-primary font-medium'
+          : 'border-input text-muted-foreground hover:bg-muted/40 hover:text-foreground')
+      }
+    >
+      {label}
     </button>
   );
 }

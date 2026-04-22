@@ -324,6 +324,109 @@ describe('deterministic globalIds', () => {
   });
 });
 
+describe('generateScheduleFromSpatialHierarchy — IfcElement (Z slice) strategy', () => {
+  // Build a synthetic mesh for a product — position Z controls bin, ifcType
+  // controls the "class" subgroup, name/type routed through entities.
+  const makeMesh = (expressId: number, z: number, ifcType = 'IfcWall') => ({
+    expressId,
+    ifcType,
+    positions: new Float32Array([0, 0, z, 1, 0, z, 0, 1, z]),
+    normals: new Float32Array(9),
+    indices: new Uint32Array([0, 1, 2]),
+    color: [1, 1, 1, 1] as [number, number, number, number],
+  });
+
+  const baseStore = (): IfcDataStore => {
+    const nameByLocal = new Map<number, { name: string; globalId: string; typeName: string }>([
+      [1, { name: 'Wall A', globalId: 'W-A', typeName: 'WallType-100' }],
+      [2, { name: 'Wall B', globalId: 'W-B', typeName: 'WallType-100' }],
+      [3, { name: 'Slab L1', globalId: 'S-L1', typeName: 'SlabType-S1' }],
+      [4, { name: 'Slab L2', globalId: 'S-L2', typeName: 'SlabType-S1' }],
+      [5, { name: 'Col High', globalId: 'C-Hi', typeName: 'ColType-X' }],
+    ]);
+    return {
+      spatialHierarchy: undefined,
+      entities: {
+        getName: (id: number) => nameByLocal.get(id)?.name ?? '',
+        getGlobalId: (id: number) => nameByLocal.get(id)?.globalId ?? '',
+        getTypeName: (id: number) => nameByLocal.get(id)?.typeName ?? '',
+      },
+    } as unknown as IfcDataStore;
+  };
+
+  it('is empty when no geometry is supplied', () => {
+    const preview = generateScheduleFromSpatialHierarchy(
+      baseStore(),
+      { ...DEFAULT_OPTIONS, strategy: 'IfcElement' },
+    );
+    assert.strictEqual(preview.empty, true);
+  });
+
+  it('bins by mesh centroid Z (tolerance = slice height), subgroup=none', () => {
+    const meshes = [
+      makeMesh(1, 0.2), makeMesh(2, 1.1),  // bin 0 (0-3 m)
+      makeMesh(3, 3.5), makeMesh(4, 4.9),  // bin 1 (3-6 m)
+      makeMesh(5, 9.8),                     // bin 3 (9-12 m) — note gap is fine
+    ];
+    const preview = generateScheduleFromSpatialHierarchy(
+      baseStore(),
+      { ...DEFAULT_OPTIONS, strategy: 'IfcElement', heightTolerance: 3, elementZSubgroup: 'none' },
+      { meshes: meshes as unknown as import('@ifc-lite/geometry').MeshData[], idOffset: 0 },
+    );
+    assert.strictEqual(preview.empty, false);
+    assert.strictEqual(preview.groupCount, 3);
+    // Products in the first bin: 1 and 2.
+    const task0 = preview.extraction.tasks[0]!;
+    assert.deepEqual(task0.productExpressIds.sort(), [1, 2]);
+    const task1 = preview.extraction.tasks[1]!;
+    assert.deepEqual(task1.productExpressIds.sort(), [3, 4]);
+    const task2 = preview.extraction.tasks[2]!;
+    assert.deepEqual(task2.productExpressIds, [5]);
+  });
+
+  it('subdivides each slice by IFC class when subgroup=class', () => {
+    const meshes = [
+      makeMesh(1, 0.5, 'IfcWall'),
+      makeMesh(2, 0.8, 'IfcWall'),
+      makeMesh(3, 1.2, 'IfcSlab'),
+      makeMesh(4, 4.5, 'IfcWall'),
+    ];
+    const preview = generateScheduleFromSpatialHierarchy(
+      baseStore(),
+      { ...DEFAULT_OPTIONS, strategy: 'IfcElement', heightTolerance: 3, elementZSubgroup: 'class' },
+      { meshes: meshes as unknown as import('@ifc-lite/geometry').MeshData[], idOffset: 0 },
+    );
+    // bin 0 × { IfcWall, IfcSlab } + bin 1 × { IfcWall } = 3 tasks.
+    assert.strictEqual(preview.groupCount, 3);
+    const walls0 = preview.extraction.tasks.find(t => t.name.startsWith('IfcWall') && t.productExpressIds.includes(1));
+    assert.ok(walls0, 'expected IfcWall task in bin 0');
+    assert.deepEqual(walls0!.productExpressIds.sort(), [1, 2]);
+  });
+
+  it('respects idOffset when converting mesh.expressId to local', () => {
+    // idOffset=1000: mesh with expressId=1001 → local=1.
+    const meshes = [makeMesh(1001, 0.5)];
+    const preview = generateScheduleFromSpatialHierarchy(
+      baseStore(),
+      { ...DEFAULT_OPTIONS, strategy: 'IfcElement', heightTolerance: 3, elementZSubgroup: 'none' },
+      { meshes: meshes as unknown as import('@ifc-lite/geometry').MeshData[], idOffset: 1000 },
+    );
+    assert.deepEqual(preview.extraction.tasks[0]!.productExpressIds, [1]);
+  });
+
+  it('emits unique task globalIds across bins and subkeys', () => {
+    const meshes: ReturnType<typeof makeMesh>[] = [];
+    for (let i = 0; i < 20; i++) meshes.push(makeMesh(i + 1, i * 0.5, i % 2 === 0 ? 'IfcWall' : 'IfcSlab'));
+    const preview = generateScheduleFromSpatialHierarchy(
+      baseStore(),
+      { ...DEFAULT_OPTIONS, strategy: 'IfcElement', heightTolerance: 2, elementZSubgroup: 'class' },
+      { meshes: meshes as unknown as import('@ifc-lite/geometry').MeshData[], idOffset: 0 },
+    );
+    const ids = preview.extraction.tasks.map(t => t.globalId);
+    assert.strictEqual(new Set(ids).size, ids.length, `${ids.length - new Set(ids).size} collisions`);
+  });
+});
+
 describe('toLocalIso', () => {
   it('emits a stable zero-padded local-timezone ISO string', () => {
     const d = new Date(2024, 4, 1, 8, 5, 9); // May 1, 08:05:09

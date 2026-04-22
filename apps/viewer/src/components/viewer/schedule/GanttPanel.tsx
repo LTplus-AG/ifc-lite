@@ -123,13 +123,33 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   const handleSelect = (globalId: string, multi: boolean) => {
     const current = new Set(selectedTaskGlobalIds);
     if (multi) {
+      // Ctrl/Shift-click — toggle membership of the clicked row.
       if (current.has(globalId)) current.delete(globalId);
       else current.add(globalId);
     } else {
-      current.clear();
-      current.add(globalId);
+      // Plain click — toggle if it's the ONLY selected row (click again to
+      // deselect), otherwise replace the selection. This is what users
+      // expect from file-manager-style rows: one click selects, same click
+      // again clears.
+      const isSoleSelection = current.size === 1 && current.has(globalId);
+      if (isSoleSelection) {
+        current.clear();
+      } else {
+        current.clear();
+        current.add(globalId);
+      }
     }
     setSelectedTaskGlobalIds(Array.from(current));
+  };
+
+  /**
+   * Empty-space click (task-tree background, timeline background) clears
+   * the current Gantt selection. Matches the deselect ergonomics of every
+   * other list widget and gives the user a predictable "out" that doesn't
+   * require hunting the same row again.
+   */
+  const handleBackgroundClick = () => {
+    if (selectedTaskGlobalIds.size > 0) setSelectedTaskGlobalIds([]);
   };
 
   const showEmpty = !scheduleData || !scheduleRange || rows.length === 0;
@@ -166,6 +186,7 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
               hoveredGlobalId={hoveredTaskGlobalId}
               onToggleExpand={toggleTaskExpanded}
               onSelect={handleSelect}
+              onBackgroundClick={handleBackgroundClick}
               onHover={setHoveredTaskGlobalId}
               scrollTop={scrollTop}
               onScroll={setScrollTop}

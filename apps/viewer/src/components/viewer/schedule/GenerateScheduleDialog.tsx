@@ -31,6 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
+import { serializeScheduleToStep } from '@ifc-lite/parser';
 import {
   generateScheduleFromSpatialHierarchy,
   canGenerateScheduleFrom,
@@ -101,6 +102,42 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   const handleGenerate = useCallback(() => {
     if (!preview || preview.empty) return;
     setSubmitting(true);
+
+    // DEBUG: full inspection of what's being added to the model. Dumps the
+    // extraction (tasks + work schedules + sequences) *and* the STEP lines
+    // the serializer will emit when the file is exported. Safe to keep —
+    // runs only on user-initiated generation and only logs to console.
+    try {
+      const extraction = preview.extraction;
+      const stepPreview = serializeScheduleToStep(extraction, {
+        // These IDs don't matter for inspection — the export adapter
+        // remaps them to the host file's ID space at injection time.
+        nextId: 1_000_000,
+      });
+      /* eslint-disable no-console */
+      console.groupCollapsed(
+        `%c[IfcTask] Generated schedule — ${extraction.tasks.length} task(s), ${stepPreview.lines.length} STEP line(s)`,
+        'color:#6ea2ff;font-weight:bold',
+      );
+      console.log('options', options);
+      console.log('workSchedules', extraction.workSchedules);
+      console.log('tasks', extraction.tasks);
+      console.log('sequences', extraction.sequences);
+      console.log('stats', stepPreview.stats);
+      console.log('STEP preview (first 50 lines):');
+      for (const line of stepPreview.lines.slice(0, 50)) console.log(line);
+      if (stepPreview.lines.length > 50) {
+        console.log(`… ${stepPreview.lines.length - 50} more line(s). Full STEP:`);
+        console.log(stepPreview.lines.join('\n'));
+      }
+      console.log('raw extraction (JSON)', JSON.stringify(extraction, null, 2));
+      console.groupEnd();
+      /* eslint-enable no-console */
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[IfcTask] Debug log failed (non-fatal):', err);
+    }
+
     // rAF gives the button time to paint its pressed state before we swap
     // the Gantt rows; cheap-but-visible feedback.
     requestAnimationFrame(() => {
@@ -110,7 +147,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       setSubmitting(false);
       onOpenChange(false);
     });
-  }, [preview, setScheduleData, setGanttPanelVisible, setAnimationEnabled, onOpenChange]);
+  }, [preview, options, setScheduleData, setGanttPanelVisible, setAnimationEnabled, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

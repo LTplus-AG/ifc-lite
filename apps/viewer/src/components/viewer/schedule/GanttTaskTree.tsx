@@ -27,6 +27,8 @@ interface GanttTaskTreeProps {
   hoveredGlobalId: string | null;
   onToggleExpand: (globalId: string) => void;
   onSelect: (globalId: string, multi: boolean) => void;
+  /** Click on empty-space below the rows clears the selection. */
+  onBackgroundClick?: () => void;
   onHover: (globalId: string | null) => void;
   scrollTop: number;
   onScroll: (scrollTop: number) => void;
@@ -38,6 +40,7 @@ export const GanttTaskTree = memo(function GanttTaskTree({
   hoveredGlobalId,
   onToggleExpand,
   onSelect,
+  onBackgroundClick,
   onHover,
   scrollTop,
   onScroll,
@@ -57,11 +60,21 @@ export const GanttTaskTree = memo(function GanttTaskTree({
     }
   }, [scrollTop]);
 
+  /**
+   * Click on the scroll container itself (not a row/cell/button) clears
+   * the Gantt selection. Uses `e.currentTarget === e.target` so clicks
+   * that bubble up from a row don't also fire deselect.
+   */
+  const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.currentTarget === e.target) onBackgroundClick?.();
+  }, [onBackgroundClick]);
+
   return (
     <div
       ref={containerRef}
       className="h-full overflow-y-auto overflow-x-hidden border-r bg-background"
       onScroll={handleScroll}
+      onClick={handleContainerClick}
       data-testid="gantt-task-tree"
     >
       {/*

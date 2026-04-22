@@ -5,11 +5,10 @@
 /**
  * GanttPanel — 4D / IfcTask Gantt chart rendered in the viewer's bottom panel.
  *
- * Gantt ↔ 3D interactions are deliberately minimal: selecting task rows
- * isolates their products in the 3D viewport (via `useGanttSelection3DSync`),
- * and nothing else. No double-click, no right-click menu, no keyboard
- * shortcuts, no reverse sync — one interaction, one effect. The master
- * `ganttSync3D` toggle in the toolbar disables it entirely.
+ * Gantt ↔ 3D: selecting task rows highlights their products in the 3D
+ * viewport via the renderer's selection-highlight channel (no isolation,
+ * no hiding — highlight only). Clearing the selection removes the
+ * highlight. The 4D animator runs completely uninterrupted either way.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -25,7 +24,7 @@ import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { flattenTaskTree } from './schedule-utils';
 import { canGenerateScheduleFrom, resolveActiveDataStore } from './generate-schedule';
 import { useConstructionSequence } from './useConstructionSequence';
-import { useGanttSelection3DSync } from './useGanttSelection3DSync';
+import { useGanttSelection3DHighlight } from './useGanttSelection3DHighlight';
 
 interface GanttPanelProps {
   onClose?: () => void;
@@ -98,9 +97,9 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   // Drive the 3D viewport's hidden-entity set from the playback clock.
   useConstructionSequence();
 
-  // Isolate 3D by the current Gantt selection. Disabled automatically while
-  // animation is playing so the 4D animator owns visibility end-to-end.
-  useGanttSelection3DSync();
+  // Highlight the current Gantt selection's products in 3D. Selection-only
+  // — no visibility changes — so it never interferes with the animator.
+  useGanttSelection3DHighlight();
 
   // Flatten task tree honoring expand/collapse state.
   const rows = useMemo(

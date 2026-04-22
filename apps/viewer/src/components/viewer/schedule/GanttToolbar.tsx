@@ -19,8 +19,6 @@ import {
   Calendar,
   CalendarPlus,
   X,
-  Link,
-  Unlink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -73,8 +71,6 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
   const playbackSpeed = useViewerStore(s => s.playbackSpeed);
   const playbackLoop = useViewerStore(s => s.playbackLoop);
   const animationEnabled = useViewerStore(s => s.animationEnabled);
-  const ganttSync3D = useViewerStore(s => s.ganttSync3D);
-  const toggleGanttSync3D = useViewerStore(s => s.toggleGanttSync3D);
   const scale = useViewerStore(s => s.ganttTimeScale);
   const togglePlay = useViewerStore(s => s.togglePlaySchedule);
   const pause = useViewerStore(s => s.pauseSchedule);
@@ -285,28 +281,6 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
           </TooltipContent>
         </Tooltip>
       )}
-
-      {/* Sync-3D toggle — links/unlinks the Gantt from the 3D viewport.
-          When ON: Gantt selection isolates, viewport click highlights the
-          task, double-click frames. When OFF: Gantt and 3D are independent. */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="icon-sm"
-            variant={ganttSync3D ? 'default' : 'ghost'}
-            onClick={toggleGanttSync3D}
-            aria-label={ganttSync3D ? 'Unlink Gantt from 3D viewport' : 'Link Gantt to 3D viewport'}
-            aria-pressed={ganttSync3D}
-          >
-            {ganttSync3D ? <Link className="h-4 w-4" /> : <Unlink className="h-4 w-4" />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {ganttSync3D
-            ? '3D ↔ Gantt linked — selecting tasks isolates in 3D. Click to unlink.'
-            : '3D ↔ Gantt unlinked — click to link.'}
-        </TooltipContent>
-      </Tooltip>
 
       {/* Animation settings popover (replaces the bare toggle — gives the
           user access to lifecycle colour / palette / preparation window). */}

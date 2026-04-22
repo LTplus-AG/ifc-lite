@@ -141,24 +141,38 @@ function msToIso8601Duration(ms: number): string {
 /**
  * Derive a deterministic, pseudo-IFC 22-char GlobalId from an arbitrary seed.
  *
- * Seeds typically encode the container's real IFC GlobalId (+ a role suffix
- * like 'task' / 'seq' / 'schedule'), so two different models that share the
- * same strategy/order still produce distinct generated IDs — and re-running
- * the generator on the same model produces the same IDs, which keeps unit
- * tests and playback state stable.
+ * Four parallel 32-bit streams (128 bits of state) with cross-mixing,
+ * output cycles through all four. See the twin implementation in
+ * `packages/parser/src/schedule-serializer.ts` for the full history —
+ * MUST stay byte-identical to it so round-tripping a generated schedule
+ * through export + re-import lands on the same GlobalIds.
  */
 function deterministicGlobalId(seed: string): string {
   const CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
-  let acc = 0x811c9dc5;
+  let h0 = 0x811c9dc5 >>> 0;
+  let h1 = 0x9e3779b9 >>> 0;
+  let h2 = 0x6c078965 >>> 0;
+  let h3 = 0xb5297a4d >>> 0;
   for (let i = 0; i < seed.length; i++) {
-    acc ^= seed.charCodeAt(i);
-    acc = Math.imul(acc, 0x01000193) >>> 0;
+    const c = seed.charCodeAt(i);
+    h0 = Math.imul(h0 ^ c, 0x01000193) >>> 0;
+    h1 = Math.imul(h1 ^ c ^ (h1 >>> 11), 0x85ebca6b) >>> 0;
+    h2 = Math.imul(h2 + c + (h2 >>> 7), 0xc2b2ae35) >>> 0;
+    h3 = Math.imul(h3 ^ ((c << 3) | (c >>> 5)) ^ (h3 >>> 13), 0x27d4eb2f) >>> 0;
   }
+  const mix = (x: number, y: number): number =>
+    Math.imul((x ^ y) + ((x >>> 7) | (y << 25)), 0x85ebca6b) >>> 0;
+  const m0 = mix(h0, h2);
+  const m1 = mix(h1, h3);
+  const m2 = mix(h2, m1);
+  const m3 = mix(h3, m0);
+  const pool: number[] = [m0, m1, m2, m3];
   let out = '';
   for (let i = 0; i < 22; i++) {
-    out += CHARS[acc & 0x3f];
-    // Advance the state so each of the 22 characters depends on the whole seed.
-    acc = Math.imul(acc ^ (i * 0x45d9f3b), 0x01000193) >>> 0;
+    const idx = i & 3;
+    const src = pool[idx];
+    out += CHARS[src & 0x3f];
+    pool[idx] = Math.imul(src ^ ((i + 1) * 0x45d9f3b), 0x01000193) >>> 0;
   }
   return out;
 }

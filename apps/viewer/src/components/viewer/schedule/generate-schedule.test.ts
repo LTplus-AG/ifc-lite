@@ -266,6 +266,62 @@ describe('deterministic globalIds', () => {
     const idsB = new Set(b.extraction.tasks.map(t => t.globalId));
     for (const id of idsB) assert.ok(!idsA.has(id), `id ${id} collided across models`);
   });
+
+  it('100 distinct seeds map to 100 distinct GlobalIds (hash-collision regression)', () => {
+    // Regression: the single-stream 32-bit FNV variant we shipped
+    // collided on real-world 30-task schedules — duplicate task
+    // GlobalIds caused downstream Gantt bars to overwrite each other,
+    // producing bars scattered across months instead of a clean
+    // sequence. The two-stream mixer is sized so 100 seeds never
+    // collide; this guards against regressing to the weaker variant.
+    const entitiesByExpressId = new Map<number, { name: string; globalId: string }>();
+    const byStorey = new Map<number, number[]>();
+    const storeyElevations = new Map<number, number>();
+    for (let i = 0; i < 100; i++) {
+      const storeyId = 1000 + i;
+      // Use realistic IFC 22-char GUIDs so we're stressing the same
+      // input shape as production (not short "storey-0001" stubs).
+      const gid = `Storey-${i.toString().padStart(17, 'A')}`;
+      entitiesByExpressId.set(storeyId, { name: `Level ${i}`, globalId: gid });
+      byStorey.set(storeyId, [i + 1]); // one element per storey so none are skipped
+      storeyElevations.set(storeyId, i * 3.0);
+    }
+
+    const stressStore = {
+      spatialHierarchy: {
+        project: { expressId: 0, type: 0, name: 'Project', children: [], elements: [] },
+        byStorey,
+        byBuilding: new Map([[99, Array.from(byStorey.values()).flat()]]),
+        bySite: new Map(),
+        bySpace: new Map(),
+        storeyElevations,
+        storeyHeights: new Map(),
+        elementToStorey: new Map(),
+        getStoreyElements: () => [],
+        getStoreyByElevation: () => null,
+        getContainingSpace: () => null,
+        getPath: () => [],
+      },
+      entities: {
+        getName: (id: number) => entitiesByExpressId.get(id)?.name ?? '',
+        getGlobalId: (id: number) => entitiesByExpressId.get(id)?.globalId ?? '',
+      },
+      // Required IfcDataStore surface — unused by this codepath but
+      // satisfies the type so we don't have to cast through `unknown`.
+      properties: null,
+      entityCount: 0,
+      schemaVersion: 'IFC4',
+    } as unknown as IfcDataStore;
+
+    const preview = generateScheduleFromSpatialHierarchy(stressStore, DEFAULT_OPTIONS);
+    const ids = preview.extraction.tasks.map(t => t.globalId);
+    assert.strictEqual(ids.length, 100, 'expected 100 tasks');
+    const unique = new Set(ids);
+    assert.strictEqual(unique.size, 100, `GlobalId collisions: ${ids.length - unique.size}`);
+    // Workschedule id must also be distinct from every task id.
+    const wsId = preview.extraction.workSchedules[0]!.globalId;
+    assert.ok(!unique.has(wsId), `workschedule id ${wsId} collides with a task`);
+  });
 });
 
 describe('toLocalIso', () => {

@@ -7,8 +7,8 @@
  * expand/collapse chevrons, milestone diamond markers, and duration.
  */
 
-import { memo, useCallback, useLayoutEffect, useRef } from 'react';
-import { ChevronRight, ChevronDown, Diamond, CircleDot, Flag } from 'lucide-react';
+import { memo, useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { ChevronRight, ChevronDown, Diamond, CircleDot, Flag, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FlattenedTask } from './schedule-utils';
 import { formatDurationShort } from './schedule-utils';
@@ -29,6 +29,8 @@ interface GanttTaskTreeProps {
   onSelect: (globalId: string, multi: boolean) => void;
   /** Click on empty-space below the rows clears the selection. */
   onBackgroundClick?: () => void;
+  /** User finished a drag — move the source row to the index of the target row. */
+  onReorder?: (sourceGlobalId: string, targetIndex: number) => void;
   onHover: (globalId: string | null) => void;
   scrollTop: number;
   onScroll: (scrollTop: number) => void;
@@ -41,10 +43,17 @@ export const GanttTaskTree = memo(function GanttTaskTree({
   onToggleExpand,
   onSelect,
   onBackgroundClick,
+  onReorder,
   onHover,
   scrollTop,
   onScroll,
 }: GanttTaskTreeProps) {
+  // Drag-to-reorder state. Uses native HTML5 drag-and-drop for
+  // accessibility (screen-readers can speak the cursor transitions)
+  // and cross-browser reliability. `dropIndex` drives the horizontal
+  // drop-indicator line between rows.
+  const dragSourceRef = useRef<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -102,11 +111,12 @@ export const GanttTaskTree = memo(function GanttTaskTree({
           aria-multiselectable="true"
         >
           <tbody>
-            {rows.map((row) => {
+            {rows.map((row, rowIdx) => {
               const { task, depth, hasChildren, expanded } = row;
               const isSelected = selectedGlobalIds.has(task.globalId);
               const isHovered = hoveredGlobalId === task.globalId;
               const label = task.name || task.identification || task.globalId.slice(0, 8);
+              const showDropAbove = onReorder && dropIndex === rowIdx;
               return (
                 <tr
                   key={task.globalId}
@@ -118,9 +128,37 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                     isSelected && 'bg-primary/15',
                     !isSelected && isHovered && 'bg-muted/60',
                     !isSelected && !isHovered && 'hover:bg-muted/40',
+                    showDropAbove && 'border-t-2 border-t-primary',
                   )}
                   onMouseEnter={() => onHover(task.globalId)}
                   onMouseLeave={() => onHover(null)}
+                  draggable={onReorder ? true : undefined}
+                  onDragStart={onReorder ? (e) => {
+                    dragSourceRef.current = task.globalId;
+                    // dataTransfer must be set on Firefox for drag to fire.
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', task.globalId);
+                  } : undefined}
+                  onDragOver={onReorder ? (e) => {
+                    if (!dragSourceRef.current || dragSourceRef.current === task.globalId) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    setDropIndex(rowIdx);
+                  } : undefined}
+                  onDragLeave={onReorder ? () => {
+                    if (dropIndex === rowIdx) setDropIndex(null);
+                  } : undefined}
+                  onDrop={onReorder ? (e) => {
+                    e.preventDefault();
+                    const src = dragSourceRef.current;
+                    if (src && src !== task.globalId) onReorder(src, rowIdx);
+                    dragSourceRef.current = null;
+                    setDropIndex(null);
+                  } : undefined}
+                  onDragEnd={onReorder ? () => {
+                    dragSourceRef.current = null;
+                    setDropIndex(null);
+                  } : undefined}
                 >
                   <td
                     role="gridcell"
@@ -141,7 +179,13 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                       onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
                     }}
                   >
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1 group">
+                      {onReorder && (
+                        <GripVertical
+                          className="w-3 h-3 text-muted-foreground/30 group-hover:text-muted-foreground/70 transition-colors shrink-0"
+                          aria-hidden
+                        />
+                      )}
                       {hasChildren ? (
                         <button
                           type="button"

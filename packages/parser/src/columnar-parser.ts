@@ -282,8 +282,16 @@ export class ColumnarParser {
             const includeInPrimaryIndex =
                 !deferPropertyAtomIndex || cat !== CAT_PROPERTY_ENTITY || PROPERTY_CONTAINER_TYPES.has(typeUpper);
             if (includeInPrimaryIndex) {
-                let typeList = byType.get(ref.type);
-                if (!typeList) { typeList = []; byType.set(ref.type, typeList); }
+                // STEP convention is uppercase entity type names and every
+                // downstream consumer (schedule-extractor, property readers,
+                // test helpers) keys on uppercase. The tokenizer preserves
+                // original case though, so if a STEP writer ever emits
+                // mixed-case or lowercase types the index would miss on
+                // canonical lookups. Normalise once here — `getTypeUpper`
+                // is already cached by type name so the cost is ~0.
+                const typeKey = getTypeUpper(ref.type);
+                let typeList = byType.get(typeKey);
+                if (!typeList) { typeList = []; byType.set(typeKey, typeList); }
                 typeList.push(ref.expressId);
             }
             if (cat === CAT_SPATIAL) spatialRefs.push(ref);

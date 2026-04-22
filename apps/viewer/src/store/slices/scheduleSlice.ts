@@ -216,6 +216,32 @@ export interface ScheduleSlice {
    *   • remove from the owning work-schedule's `taskGlobalIds`
    */
   deleteTask: (globalId: string) => void;
+  /**
+   * Create a brand-new task and insert it after `afterGlobalId` (or at the
+   * end of the root-task list when absent). Inherits PredefinedType from
+   * the task it's inserted after when possible; duration defaults to 5
+   * days; start anchors to the predecessor's finish + 1 day (or the
+   * schedule range's start when there's no predecessor).
+   *
+   * Returns the new task's globalId so callers can immediately select it
+   * (the Gantt toolbar's "+ Task" button does this for a rename-right-
+   * away flow).
+   */
+  addTask: (options?: {
+    afterGlobalId?: string;
+    parentGlobalId?: string | null;
+    nameDefault?: string;
+    predefinedTypeDefault?: string;
+    durationDays?: number;
+  }) => string;
+  /**
+   * Move a task to a new position in the flat root-order. v1 keeps the
+   * parent unchanged (no re-parenting from tree drag yet — that's a
+   * larger sub-feature). `newIndex` is interpreted in the context of
+   * the current root-ordering, i.e. the position in
+   * `workSchedule.taskGlobalIds`.
+   */
+  moveTask: (globalId: string, newIndex: number) => void;
 
   // ── Undo / redo ────────────────────────────────────────
   undoScheduleEdit: () => void;
@@ -741,6 +767,128 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     commitEdit(get, set, next, selectionChanged ? { selectedTaskGlobalIds: selected } : undefined);
   },
 
+  addTask: (options) => {
+    const current = get().scheduleData;
+    const now = Date.now();
+    // Fresh globalId: deterministic hash of timestamp + task count. The
+    // two-stream 128-bit hash guarantees no collision even when the user
+    // spams "Add" rapidly.
+    const seed = `user-add|${now}|${current?.tasks.length ?? 0}|${Math.random().toString(36).slice(2, 8)}`;
+    const newGid = generatedGlobalIdFromSeed(seed);
+    const afterGid = options?.afterGlobalId;
+    const durationDays = Math.max(0.5, options?.durationDays ?? 5);
+    const name = options?.nameDefault ?? 'New task';
+    const predefinedType = options?.predefinedTypeDefault ?? 'CONSTRUCTION';
+
+    pushScheduleSnapshot(get, set, `Add task: ${name}`);
+    const next = current
+      ? cloneExtraction(current)
+      : { hasSchedule: true, workSchedules: [], sequences: [], tasks: [] } as ScheduleExtraction;
+
+    // Derive default start: after the predecessor's finish when we have
+    // one, otherwise the schedule range start, otherwise today at 08:00.
+    const predIdx = afterGid ? next.tasks.findIndex(t => t.globalId === afterGid) : -1;
+    let startIso: string;
+    if (predIdx >= 0) {
+      const predFinish = parseIsoDate(next.tasks[predIdx].taskTime?.scheduleFinish);
+      startIso = predFinish !== undefined
+        ? toIsoUtc(predFinish)
+        : (next.tasks[predIdx].taskTime?.scheduleStart ?? isoNowAt8());
+    } else {
+      const rangeStart = computeScheduleRange(next)?.start;
+      startIso = rangeStart !== undefined ? toIsoUtc(rangeStart) : isoNowAt8();
+    }
+    const startMs = parseIsoDate(startIso) ?? Date.now();
+    const finishMs = startMs + durationDays * 86_400_000;
+
+    const newTask: ScheduleTaskInfo = {
+      expressId: 0,
+      globalId: newGid,
+      name,
+      isMilestone: false,
+      predefinedType,
+      childGlobalIds: [],
+      productExpressIds: [],
+      productGlobalIds: [],
+      controllingScheduleGlobalIds: next.workSchedules[0]
+        ? [next.workSchedules[0].globalId]
+        : [],
+      taskTime: {
+        scheduleStart: startIso,
+        scheduleFinish: toIsoUtc(finishMs),
+        scheduleDuration: msToIsoDuration(finishMs - startMs),
+      },
+    };
+
+    // Insert in the tasks array after the predecessor (or at end).
+    if (predIdx >= 0) next.tasks.splice(predIdx + 1, 0, newTask);
+    else next.tasks.push(newTask);
+
+    // Mirror insertion in the owning work-schedule's taskGlobalIds list
+    // so renderers that walk via work-schedule see the new task. If no
+    // work schedule exists, synthesise one — can't emit a schedule of
+    // orphan tasks.
+    if (next.workSchedules.length === 0) {
+      next.workSchedules.push({
+        expressId: 0,
+        globalId: generatedGlobalIdFromSeed(`user-add|ws|${now}`),
+        kind: 'WorkSchedule',
+        name: 'Construction schedule',
+        description: 'User-authored',
+        creationDate: startIso,
+        startTime: startIso,
+        finishTime: toIsoUtc(finishMs),
+        predefinedType: 'PLANNED',
+        taskGlobalIds: [newGid],
+      });
+      newTask.controllingScheduleGlobalIds = [next.workSchedules[0].globalId];
+    } else {
+      const ws = next.workSchedules[0];
+      const wsPredIdx = afterGid ? ws.taskGlobalIds.indexOf(afterGid) : -1;
+      if (wsPredIdx >= 0) ws.taskGlobalIds.splice(wsPredIdx + 1, 0, newGid);
+      else ws.taskGlobalIds.push(newGid);
+    }
+    next.hasSchedule = true;
+
+    // Auto-select the new task so the Inspector's Task card lights up
+    // for immediate rename.
+    const nextSelected = new Set<string>([newGid]);
+    commitEdit(get, set, next, { selectedTaskGlobalIds: nextSelected });
+
+    return newGid;
+  },
+
+  moveTask: (globalId, newIndex) => {
+    const current = get().scheduleData;
+    if (!current) return;
+    const srcIdx = current.tasks.findIndex(t => t.globalId === globalId);
+    if (srcIdx < 0) return;
+
+    pushScheduleSnapshot(get, set, `Move task: ${current.tasks[srcIdx].name || 'untitled'}`);
+    const next = cloneExtraction(current);
+
+    // Move in the tasks array. Clamp to valid bounds.
+    const safeNewIdx = Math.max(0, Math.min(next.tasks.length - 1, newIndex));
+    const [moved] = next.tasks.splice(srcIdx, 1);
+    // Adjust target index when moving downward: the splice above removed
+    // one element before the drop position, so the effective target
+    // shifts by one.
+    const targetIdx = srcIdx < safeNewIdx ? safeNewIdx : safeNewIdx;
+    next.tasks.splice(targetIdx, 0, moved);
+
+    // Mirror the move in every work-schedule that owns the task so
+    // STEP round-trip preserves order.
+    for (const ws of next.workSchedules) {
+      const wsIdx = ws.taskGlobalIds.indexOf(globalId);
+      if (wsIdx < 0) continue;
+      const wsTarget = srcIdx < safeNewIdx ? safeNewIdx : safeNewIdx;
+      ws.taskGlobalIds.splice(wsIdx, 1);
+      ws.taskGlobalIds.splice(Math.max(0, Math.min(ws.taskGlobalIds.length, wsTarget)), 0, globalId);
+    }
+
+    commitEdit(get, set, next);
+  },
+
   undoScheduleEdit: () => {
     const s = get();
     if (s.scheduleUndoStack.length === 0) return;
@@ -1021,6 +1169,48 @@ function resolveIdOffset(
 ): number {
   if (!sourceModelId) return 0;
   return state.models?.get(sourceModelId)?.idOffset ?? 0;
+}
+
+/**
+ * 128-bit rolling hash truncated to 22 base64url-ish chars, mirroring
+ * the serializer's deterministic GlobalId generator. Keeps new-task
+ * globalIds distinct even when the user spams "+ Task" rapidly.
+ */
+function generatedGlobalIdFromSeed(seed: string): string {
+  const CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
+  let h0 = 0x811c9dc5 >>> 0;
+  let h1 = 0x9e3779b9 >>> 0;
+  let h2 = 0x6c078965 >>> 0;
+  let h3 = 0xb5297a4d >>> 0;
+  for (let i = 0; i < seed.length; i++) {
+    const c = seed.charCodeAt(i);
+    h0 = Math.imul(h0 ^ c, 0x01000193) >>> 0;
+    h1 = Math.imul(h1 ^ c ^ (h1 >>> 11), 0x85ebca6b) >>> 0;
+    h2 = Math.imul(h2 + c + (h2 >>> 7), 0xc2b2ae35) >>> 0;
+    h3 = Math.imul(h3 ^ ((c << 3) | (c >>> 5)) ^ (h3 >>> 13), 0x27d4eb2f) >>> 0;
+  }
+  const mix = (x: number, y: number): number =>
+    Math.imul((x ^ y) + ((x >>> 7) | (y << 25)), 0x85ebca6b) >>> 0;
+  const m0 = mix(h0, h2);
+  const m1 = mix(h1, h3);
+  const m2 = mix(h2, m1);
+  const m3 = mix(h3, m0);
+  const pool: number[] = [m0, m1, m2, m3];
+  let out = '';
+  for (let i = 0; i < 22; i++) {
+    const idx = i & 3;
+    const src = pool[idx];
+    out += CHARS[src & 0x3f];
+    pool[idx] = Math.imul(src ^ ((i + 1) * 0x45d9f3b), 0x01000193) >>> 0;
+  }
+  return out;
+}
+
+/** Today at 08:00 UTC, ISO-8601 no milliseconds — a friendly default. */
+function isoNowAt8(): string {
+  const d = new Date();
+  d.setUTCHours(8, 0, 0, 0);
+  return toIsoUtc(d.getTime());
 }
 
 // ── Derived selectors ────────────────────────────────────────────────────

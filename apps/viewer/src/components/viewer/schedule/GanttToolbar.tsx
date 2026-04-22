@@ -18,6 +18,7 @@ import {
   Gauge,
   Calendar,
   CalendarPlus,
+  Plus,
   X,
   Trash2,
   Undo2,
@@ -81,6 +82,8 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
   const redoDepth = useViewerStore(s => s.scheduleRedoStack.length);
   const undoScheduleEdit = useViewerStore(s => s.undoScheduleEdit);
   const redoScheduleEdit = useViewerStore(s => s.redoScheduleEdit);
+  const addTaskAction = useViewerStore(s => s.addTask);
+  const selectedTaskGlobalIds = useViewerStore(s => s.selectedTaskGlobalIds);
   const scale = useViewerStore(s => s.ganttTimeScale);
   const togglePlay = useViewerStore(s => s.togglePlaySchedule);
   const pause = useViewerStore(s => s.pauseSchedule);
@@ -289,6 +292,30 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
           <TooltipContent>
             {canGenerate ? 'Generate schedule…' : 'No spatial hierarchy or geometry to generate from'}
           </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* + Task — insert a new task after the currently-selected row
+          (or at the end when none is selected). Auto-selects the new
+          task so the Inspector's Task card lights up for rename. */}
+      {hasData && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => {
+                const afterGlobalId = selectedTaskGlobalIds.size === 1
+                  ? selectedTaskGlobalIds.values().next().value
+                  : undefined;
+                addTaskAction({ afterGlobalId });
+              }}
+              aria-label="Add task"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Add task (after selection or at end)</TooltipContent>
         </Tooltip>
       )}
 

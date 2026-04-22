@@ -487,3 +487,104 @@ describe('scheduleSlice editing — undo / redo', () => {
     );
   });
 });
+
+describe('scheduleSlice editing — addTask', () => {
+  it('appends at the end when no predecessor is given', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a', name: 'A' }),
+      mkTask({ globalId: 'b', name: 'B' }),
+    ]));
+    const newGid = store.getState().addTask();
+    const s = store.getState().scheduleData!;
+    assert.strictEqual(s.tasks.length, 3);
+    assert.strictEqual(s.tasks[2].globalId, newGid);
+  });
+
+  it('inserts after the given predecessor', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a', name: 'A' }),
+      mkTask({ globalId: 'b', name: 'B' }),
+      mkTask({ globalId: 'c', name: 'C' }),
+    ]));
+    const newGid = store.getState().addTask({ afterGlobalId: 'a' });
+    const names = store.getState().scheduleData!.tasks.map(t => t.globalId);
+    assert.deepStrictEqual(names, ['a', newGid, 'b', 'c']);
+  });
+
+  it('auto-selects the new task for immediate rename', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([mkTask({ globalId: 'a' })]));
+    const newGid = store.getState().addTask();
+    const sel = Array.from(store.getState().selectedTaskGlobalIds);
+    assert.deepStrictEqual(sel, [newGid]);
+  });
+
+  it('flips scheduleIsEdited so the export badge lights up', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([mkTask({ globalId: 'a' })]));
+    store.getState().addTask();
+    assert.strictEqual(store.getState().scheduleIsEdited, true);
+  });
+
+  it('synthesises a work schedule when none exists', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData({
+      hasSchedule: true, workSchedules: [], sequences: [], tasks: [],
+    });
+    store.getState().addTask();
+    const s = store.getState().scheduleData!;
+    assert.strictEqual(s.workSchedules.length, 1);
+    assert.strictEqual(s.workSchedules[0].taskGlobalIds.length, 1);
+    assert.strictEqual(s.workSchedules[0].taskGlobalIds[0], s.tasks[0].globalId);
+  });
+});
+
+describe('scheduleSlice editing — moveTask', () => {
+  it('moves a task to the requested index', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a' }),
+      mkTask({ globalId: 'b' }),
+      mkTask({ globalId: 'c' }),
+      mkTask({ globalId: 'd' }),
+    ]));
+    store.getState().moveTask('a', 2);
+    const order = store.getState().scheduleData!.tasks.map(t => t.globalId);
+    assert.deepStrictEqual(order, ['b', 'c', 'a', 'd']);
+  });
+
+  it('moves backwards too (larger index to smaller)', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a' }),
+      mkTask({ globalId: 'b' }),
+      mkTask({ globalId: 'c' }),
+    ]));
+    store.getState().moveTask('c', 0);
+    const order = store.getState().scheduleData!.tasks.map(t => t.globalId);
+    assert.deepStrictEqual(order, ['c', 'a', 'b']);
+  });
+
+  it('reflects move in the work schedule taskGlobalIds', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData({
+      hasSchedule: true, sequences: [],
+      workSchedules: [{
+        expressId: 0, globalId: 'ws', kind: 'WorkSchedule', name: 'WS',
+        taskGlobalIds: ['a', 'b', 'c'],
+      }],
+      tasks: [
+        mkTask({ globalId: 'a' }),
+        mkTask({ globalId: 'b' }),
+        mkTask({ globalId: 'c' }),
+      ],
+    });
+    store.getState().moveTask('c', 0);
+    assert.deepStrictEqual(
+      store.getState().scheduleData!.workSchedules[0].taskGlobalIds,
+      ['c', 'a', 'b'],
+    );
+  });
+});

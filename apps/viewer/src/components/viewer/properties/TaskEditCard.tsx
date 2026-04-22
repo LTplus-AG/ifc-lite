@@ -169,41 +169,41 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
             />
           </div>
 
-          {/* Time */}
+          {/* Time — stacked layout. Two datetime-local inputs side-by-side
+              overflow the narrow default Inspector width (22 % of viewport);
+              stacking reads cleaner even at wide widths and gives every
+              input enough room to render the browser's picker UI. */}
           <div className="grid gap-2 rounded border border-border/60 p-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="grid gap-1">
-                <Label htmlFor="task-start" className="text-[10px]">Start</Label>
-                <Input
-                  id="task-start"
-                  type="datetime-local"
-                  value={startLocal}
-                  disabled={task.isMilestone === false && false /* keep enabled */}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    updateTaskTime(taskGlobalId, {
-                      scheduleStart: v ? `${v}:00` : undefined,
-                    });
-                  }}
-                  className="h-7 text-xs font-mono"
-                />
-              </div>
-              <div className="grid gap-1">
-                <Label htmlFor="task-finish" className="text-[10px]">Finish</Label>
-                <Input
-                  id="task-finish"
-                  type="datetime-local"
-                  value={finishLocal}
-                  disabled={task.isMilestone}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    updateTaskTime(taskGlobalId, {
-                      scheduleFinish: v ? `${v}:00` : undefined,
-                    });
-                  }}
-                  className="h-7 text-xs font-mono"
-                />
-              </div>
+            <div className="grid gap-1">
+              <Label htmlFor="task-start" className="text-[10px]">Start</Label>
+              <Input
+                id="task-start"
+                type="datetime-local"
+                value={startLocal}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  updateTaskTime(taskGlobalId, {
+                    scheduleStart: v ? `${v}:00` : undefined,
+                  });
+                }}
+                className="h-7 w-full text-xs font-mono"
+              />
+            </div>
+            <div className="grid gap-1">
+              <Label htmlFor="task-finish" className="text-[10px]">Finish</Label>
+              <Input
+                id="task-finish"
+                type="datetime-local"
+                value={finishLocal}
+                disabled={task.isMilestone}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  updateTaskTime(taskGlobalId, {
+                    scheduleFinish: v ? `${v}:00` : undefined,
+                  });
+                }}
+                className="h-7 w-full text-xs font-mono"
+              />
             </div>
             <div className="grid gap-1">
               <Label htmlFor="task-dur" className="text-[10px]">Duration (days)</Label>
@@ -220,7 +220,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                   const iso = daysToIso(n);
                   updateTaskTime(taskGlobalId, { scheduleDuration: iso });
                 }}
-                className="h-7 text-xs font-mono"
+                className="h-7 w-full text-xs font-mono"
               />
               <p className="text-[10px] text-muted-foreground flex items-start gap-1">
                 <Info className="h-3 w-3 shrink-0 mt-px" />

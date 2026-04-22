@@ -111,10 +111,7 @@ describe('QueryResultEntity on-demand fallback (issue #577)', () => {
     const [wall] = query.ofType('IfcWallStandardCase').execute();
 
     expect(wall.getProperty('Pset_WallCommon', 'FireRating')).toBe('REI60');
-    // NOTE: on-demand extractor currently returns raw STEP tokens for booleans
-    // (".T." / ".F." rather than true/false). That normalization lives outside
-    // this fix; assert presence here.
-    expect(wall.getProperty('Pset_WallCommon', 'IsExternal')).not.toBeNull();
+    expect(wall.getProperty('Pset_WallCommon', 'IsExternal')).toBe(true);
     expect(wall.getProperty('Pset_WallCommon', 'NoSuchProp')).toBeNull();
   });
 });

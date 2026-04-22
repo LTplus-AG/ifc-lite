@@ -182,7 +182,21 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             } else if (typeof nominalValue === 'boolean') {
                 type = PropertyValueType.Boolean;
             } else if (nominalValue !== null && nominalValue !== undefined) {
-                value = String(nominalValue);
+                // Normalize untagged STEP enumeration tokens. Conformant IFC wraps
+                // booleans as IFCBOOLEAN(.T.) (handled above), but some authoring
+                // tools emit the bare tokens directly in the NominalValue slot.
+                if (nominalValue === '.T.') {
+                    type = PropertyValueType.Boolean;
+                    value = true;
+                } else if (nominalValue === '.F.') {
+                    type = PropertyValueType.Boolean;
+                    value = false;
+                } else if (nominalValue === '.U.' || nominalValue === '.X.') {
+                    type = PropertyValueType.Logical;
+                    value = null;
+                } else {
+                    value = String(nominalValue);
+                }
             }
 
             return { type, value };

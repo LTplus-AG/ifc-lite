@@ -57,17 +57,47 @@ export const GanttTimeline = memo(function GanttTimeline({
   const containerRef = useRef<HTMLDivElement>(null);
   const [pixelWidth, setPixelWidth] = useState(1000);
 
-  // Resize observer keeps pixelWidth synced with the right pane width.
+  /**
+   * Minimum pixels per time-scale unit. When the schedule spans more units
+   * than the container can show at this density, we grow the SVG past the
+   * pane width and the container scrolls horizontally — instead of
+   * squeezing bars into unreadable 2-pixel stripes with overlapping tick
+   * labels. Tuned so "Week" scale gives ~80 px per week (readable labels,
+   * click-accurate bars) and larger scales get proportionally more.
+   */
+  const MIN_PX_PER_TICK: Record<GanttTimeScale, number> = {
+    hour: 40,
+    day: 60,
+    week: 80,
+    month: 100,
+    year: 140,
+  };
+  const MS_PER_TICK_FOR_SCALE: Record<GanttTimeScale, number> = {
+    hour: 3_600_000,
+    day: 86_400_000,
+    week: 7 * 86_400_000,
+    month: 30 * 86_400_000,
+    year: 365 * 86_400_000,
+  };
+
+  // Resize observer keeps pixelWidth synced with the right pane width, but
+  // grows when the schedule is too long to fit at the configured density.
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setPixelWidth(Math.max(200, el.clientWidth));
-    });
+    const recompute = () => {
+      const span = Math.max(1, range.end - range.start);
+      const tickMs = MS_PER_TICK_FOR_SCALE[scale];
+      const minPerTick = MIN_PX_PER_TICK[scale];
+      const required = Math.ceil((span / tickMs) * minPerTick);
+      setPixelWidth(Math.max(200, el.clientWidth, required));
+    };
+    const ro = new ResizeObserver(recompute);
     ro.observe(el);
-    setPixelWidth(Math.max(200, el.clientWidth));
+    recompute();
     return () => ro.disconnect();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.start, range.end, scale]);
 
   const ticks = useMemo(
     () => computeTicks(range.start, range.end, scale),

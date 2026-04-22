@@ -439,7 +439,13 @@ function makeGroupEntry(
     description: undefined,
     productExpressIds: [...elementIds],
     productGlobalIds,
-    sourceGlobalId: containerGlobalId || `${fallbackPrefix}#${containerId}`,
+    // Always include the container's expressId so the seed is unique even
+    // if two storeys happen to report the same IFC GlobalId (seen in the
+    // wild with a malformed parser state — duplicates collapsed every
+    // storey to the same task globalId and cross-mapped products into the
+    // wrong task). expressId is authoritative per model; concatenating it
+    // with the GlobalId keeps the seed human-readable for debugging.
+    sourceGlobalId: `${containerGlobalId || fallbackPrefix}#${containerId}`,
   };
 }
 

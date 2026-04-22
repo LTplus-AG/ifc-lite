@@ -57,6 +57,7 @@ export {
   computeScheduleRange,
   computeHiddenProductIds,
   computeActiveProductIds,
+  countGeneratedTasks,
   taskStartEpoch,
   taskFinishEpoch,
   parseIsoDate,

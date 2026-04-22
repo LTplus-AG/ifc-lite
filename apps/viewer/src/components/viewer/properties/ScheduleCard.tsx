@@ -66,6 +66,15 @@ export function ScheduleCard({
         <span className="font-bold text-xs text-sky-700 dark:text-sky-400 truncate flex-1 min-w-0">
           Construction Schedule
         </span>
+        {isGenerated && (
+          <span
+            className="flex items-center gap-1 text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
+            title="Pending schedule edits — included on IFC export"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+            Pending
+          </span>
+        )}
         <span className="text-[10px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
           {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
         </span>
@@ -73,8 +82,8 @@ export function ScheduleCard({
       <CollapsibleContent>
         <div className="border-t-2 border-sky-200 dark:border-sky-800">
           {isGenerated && (
-            <div className="px-3 py-1.5 text-[10px] text-sky-700 dark:text-sky-300 bg-sky-100/60 dark:bg-sky-900/30 border-b border-sky-200/50 dark:border-sky-800/50">
-              Generated locally — included on IFC export.
+            <div className="px-3 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-900/20 border-b border-amber-200/60 dark:border-amber-800/50">
+              Generated locally — will be spliced into the next IFC export.
             </div>
           )}
           <div className="divide-y divide-sky-100 dark:divide-sky-900/30">

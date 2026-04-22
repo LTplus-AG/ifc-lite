@@ -9,6 +9,7 @@ import {
   computeScheduleRange,
   computeHiddenProductIds,
   computeActiveProductIds,
+  countGeneratedTasks,
   taskStartEpoch,
   taskFinishEpoch,
 } from './scheduleSlice.js';
@@ -209,5 +210,52 @@ describe('task time helpers', () => {
     };
     assert.strictEqual(taskStartEpoch(task), Date.parse('2024-01-01T00:00:00Z'));
     assert.strictEqual(taskFinishEpoch(task), Date.parse('2024-01-06T00:00:00Z'));
+  });
+});
+
+describe('countGeneratedTasks', () => {
+  const mkTask = (expressId: number | undefined, globalId: string) => ({
+    expressId: expressId as number,
+    globalId,
+    name: globalId,
+    isMilestone: false,
+    childGlobalIds: [],
+    productExpressIds: [],
+    productGlobalIds: [],
+    controllingScheduleGlobalIds: [],
+  });
+
+  it('returns 0 for null / empty data', () => {
+    assert.strictEqual(countGeneratedTasks(null), 0);
+    assert.strictEqual(countGeneratedTasks(undefined), 0);
+    assert.strictEqual(countGeneratedTasks({
+      hasSchedule: false, workSchedules: [], sequences: [], tasks: [],
+    }), 0);
+  });
+
+  it('counts only tasks with expressId <= 0 or missing', () => {
+    const data: ScheduleExtraction = {
+      hasSchedule: true, workSchedules: [], sequences: [],
+      tasks: [
+        mkTask(42, 'parsed'),     // extracted — already in STEP
+        mkTask(0, 'generated-a'),  // generated
+        mkTask(undefined, 'generated-b'), // generated (missing id)
+        mkTask(100, 'parsed-2'),   // extracted
+      ],
+    };
+    assert.strictEqual(countGeneratedTasks(data), 2);
+  });
+
+  it('agrees with the export partitioning rule (no tasks with expressId>0 counted)', () => {
+    // Regression guard: if injectScheduleIntoStep's filter ever diverges from
+    // this helper, the badge count and the actual injected set get out of
+    // sync. Keep them lockstep.
+    const data: ScheduleExtraction = {
+      hasSchedule: true, workSchedules: [], sequences: [],
+      tasks: [
+        mkTask(1, 'a'), mkTask(2, 'b'), mkTask(3, 'c'),
+      ],
+    };
+    assert.strictEqual(countGeneratedTasks(data), 0);
   });
 });

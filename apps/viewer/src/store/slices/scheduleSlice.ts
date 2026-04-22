@@ -76,6 +76,15 @@ export interface ScheduleSlice {
    */
   animationSettings: AnimationSettings;
 
+  /**
+   * Model the current `scheduleData` is attributed to, for federation +
+   * dirty-tracking integration. Set by `commitGeneratedSchedule` when the
+   * user generates a schedule from the spatial hierarchy; remains null
+   * when the schedule came from extraction (extracted tasks already exist
+   * in the host STEP file and aren't "pending").
+   */
+  scheduleSourceModelId: string | null;
+
   // ── Actions ──────────────────────────────────────────
   setScheduleData: (data: ScheduleExtraction | null) => void;
   setGanttPanelVisible: (visible: boolean) => void;
@@ -92,6 +101,23 @@ export interface ScheduleSlice {
   setSelectedTaskGlobalIds: (globalIds: string[]) => void;
 
   setAnimationEnabled: (enabled: boolean) => void;
+  /**
+   * Commit a *generated* schedule (from the Generate dialog) as a first-
+   * class pending edit. Sets scheduleData + sourceModelId, marks the
+   * source model as dirty, and bumps the mutation version so every
+   * export-badge selector repaints.
+   *
+   * Extracted schedules go through `setScheduleData(data)` without a
+   * sourceModelId — they're already in the host file, not pending.
+   */
+  commitGeneratedSchedule: (data: ScheduleExtraction, sourceModelId: string) => void;
+  /**
+   * Discard the generated tail of the current schedule — tasks with
+   * `expressId <= 0` or missing. Keeps extracted tasks intact so
+   * partial-authoring workflows (parsed schedule + user-appended task)
+   * still reset cleanly. Returns the number of tasks removed.
+   */
+  clearGeneratedSchedule: () => number;
   /** Replace the full animation-settings object. */
   setAnimationSettings: (settings: AnimationSettings) => void;
   /** Shallow-merge patch — convenient for toolbar toggles. */
@@ -211,6 +237,7 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   playbackSpeed: 7, // 7 simulated days per real second by default
   playbackLoop: true,
   animationSettings: DEFAULT_ANIMATION_SETTINGS,
+  scheduleSourceModelId: null,
 
   // Actions
   setScheduleData: (scheduleData) => {
@@ -255,6 +282,98 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   setSelectedTaskGlobalIds: (ids) => set({ selectedTaskGlobalIds: new Set(ids) }),
 
   setAnimationEnabled: (animationEnabled) => set({ animationEnabled }),
+
+  commitGeneratedSchedule: (data, sourceModelId) => {
+    const range = computeScheduleRange(data);
+    set(state => {
+      const newDirty = new Set((state as unknown as { dirtyModels?: Set<string> }).dirtyModels);
+      newDirty.add(sourceModelId);
+      const bump = ((state as unknown as { mutationVersion?: number }).mutationVersion ?? 0) + 1;
+      return {
+        scheduleData: data,
+        scheduleRange: range,
+        scheduleSourceModelId: sourceModelId,
+        playbackTime: range?.start ?? 0,
+        playbackIsPlaying: false,
+        activeWorkScheduleId: data.workSchedules[0]?.globalId ?? '',
+        expandedTaskGlobalIds: new Set(
+          data.tasks.filter(t => !t.parentGlobalId).map(t => t.globalId),
+        ),
+        selectedTaskGlobalIds: new Set(),
+        hoveredTaskGlobalId: null,
+        // Cross-slice writes live behind a cast because the slice creator
+        // is only typed for its own shape; the store combines slices so
+        // these fields exist at runtime.
+        dirtyModels: newDirty,
+        mutationVersion: bump,
+      } as Partial<ScheduleSlice>;
+    });
+  },
+
+  clearGeneratedSchedule: () => {
+    const current = get().scheduleData;
+    if (!current || current.tasks.length === 0) return 0;
+
+    const keptTasks = current.tasks.filter(t => t.expressId && t.expressId > 0);
+    const removed = current.tasks.length - keptTasks.length;
+    if (removed === 0) return 0;
+
+    const keptTaskGlobalIds = new Set(keptTasks.map(t => t.globalId));
+    // Drop sequences that pointed at removed tasks so the STEP never ends
+    // up with a dangling IfcRelSequence referencing a deleted task.
+    const keptSequences = current.sequences.filter(
+      s => keptTaskGlobalIds.has(s.relatingTaskGlobalId)
+        && keptTaskGlobalIds.has(s.relatedTaskGlobalId),
+    );
+    // Work schedules are authored per-generation — if we have no tasks
+    // left, drop them too; otherwise keep whichever ones still control a
+    // surviving task.
+    const keptSchedules = keptTasks.length === 0
+      ? []
+      : current.workSchedules.filter(ws =>
+          keptTasks.some(t => t.controllingScheduleGlobalIds.includes(ws.globalId)),
+        );
+
+    const next: ScheduleExtraction = keptTasks.length === 0
+      ? { hasSchedule: false, workSchedules: [], tasks: [], sequences: [] }
+      : { hasSchedule: true, workSchedules: keptSchedules, tasks: keptTasks, sequences: keptSequences };
+
+    const nextRange = computeScheduleRange(keptTasks.length === 0 ? null : next);
+    const sourceModelId = get().scheduleSourceModelId;
+
+    set(state => {
+      const crossState = state as unknown as {
+        dirtyModels?: Set<string>;
+        mutationViews?: Map<string, unknown>;
+        georefMutations?: Map<string, unknown>;
+        mutationVersion?: number;
+      };
+      // Only remove the model from `dirtyModels` if this was its ONLY
+      // outstanding edit — property / georef mutations keep it dirty.
+      const newDirty = new Set(crossState.dirtyModels);
+      if (sourceModelId) {
+        const hasPropertyEdits = crossState.mutationViews?.has(sourceModelId) ?? false;
+        const hasGeorefEdits = crossState.georefMutations?.has(sourceModelId) ?? false;
+        if (!hasPropertyEdits && !hasGeorefEdits) {
+          newDirty.delete(sourceModelId);
+        }
+      }
+      const bump = (crossState.mutationVersion ?? 0) + 1;
+      return {
+        scheduleData: keptTasks.length === 0 ? null : next,
+        scheduleRange: nextRange,
+        scheduleSourceModelId: keptTasks.length === 0 ? null : sourceModelId,
+        playbackTime: nextRange?.start ?? 0,
+        playbackIsPlaying: false,
+        selectedTaskGlobalIds: new Set(),
+        hoveredTaskGlobalId: null,
+        dirtyModels: newDirty,
+        mutationVersion: bump,
+      } as Partial<ScheduleSlice>;
+    });
+
+    return removed;
+  },
   setAnimationSettings: (animationSettings) => set({ animationSettings }),
   patchAnimationSettings: (patch) => set((s) => ({
     animationSettings: { ...s.animationSettings, ...patch },
@@ -385,3 +504,21 @@ export function computeActiveProductIds(
 }
 
 export { taskStartEpoch, taskFinishEpoch, parseIsoDate };
+
+/**
+ * Count tasks that the user generated locally — tasks with no existing
+ * `expressId` in the host STEP file. These are the "pending schedule
+ * edits" equivalent of property mutations: they need to be serialized
+ * and spliced into the STEP on export.
+ *
+ * Matches the partitioning rule in `export-adapter.injectScheduleIntoStep`
+ * so the count, dirty flag, and export path agree on what counts.
+ */
+export function countGeneratedTasks(data: ScheduleExtraction | null | undefined): number {
+  if (!data || data.tasks.length === 0) return 0;
+  let n = 0;
+  for (const t of data.tasks) {
+    if (!t.expressId || t.expressId <= 0) n++;
+  }
+  return n;
+}

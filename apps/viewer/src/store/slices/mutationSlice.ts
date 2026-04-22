@@ -758,7 +758,18 @@ export const createMutationSlice: StateCreator<
 
   // Query
   hasChanges: (modelId) => {
-    return get().dirtyModels.has(modelId);
+    if (get().dirtyModels.has(modelId)) return true;
+    // Schedule-only case: a generated schedule counts as a pending edit
+    // even if the user hasn't touched any properties.
+    const cross = get() as unknown as {
+      scheduleSourceModelId?: string | null;
+      scheduleData?: { tasks: Array<{ expressId?: number }> } | null;
+    };
+    if (cross.scheduleSourceModelId !== modelId) return false;
+    const tasks = cross.scheduleData?.tasks;
+    if (!tasks) return false;
+    for (const t of tasks) if (!t.expressId || t.expressId <= 0) return true;
+    return false;
   },
 
   getMutationsForModel: (modelId) => {
@@ -779,6 +790,16 @@ export const createMutationSlice: StateCreator<
         count += 1; // count the model as having modifications
       }
     }
+    // Include generated schedule tasks — these are spliced into the STEP
+    // export just like property mutations are, so they belong in the same
+    // "pending changes" count the export badge reads.
+    const cross = get() as unknown as {
+      scheduleData?: { tasks: Array<{ expressId?: number }> } | null;
+    };
+    const tasks = cross.scheduleData?.tasks;
+    if (tasks) {
+      for (const t of tasks) if (!t.expressId || t.expressId <= 0) count++;
+    }
     return count;
   },
 
@@ -787,6 +808,17 @@ export const createMutationSlice: StateCreator<
     const view = get().mutationViews.get(modelId);
     if (view) {
       view.clear();
+    }
+
+    // Also discard pending schedule edits owned by this model. Done via
+    // the schedule slice's own action so its invariants (range, playback,
+    // expanded rows) stay consistent.
+    const cross = get() as unknown as {
+      scheduleSourceModelId?: string | null;
+      clearGeneratedSchedule?: () => number;
+    };
+    if (cross.scheduleSourceModelId === modelId && cross.clearGeneratedSchedule) {
+      cross.clearGeneratedSchedule();
     }
 
     set((state) => {
@@ -816,6 +848,10 @@ export const createMutationSlice: StateCreator<
     for (const view of get().mutationViews.values()) {
       view.clear();
     }
+
+    // Schedule slice handles its own state transitions.
+    const cross = get() as unknown as { clearGeneratedSchedule?: () => number };
+    cross.clearGeneratedSchedule?.();
 
     set((state) => ({
       undoStacks: new Map(),

@@ -56,6 +56,7 @@ import { ensureModelExportReady } from '@/services/desktop-export';
 import { StepExporter, MergedExporter, Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type MergeModelInput, type ExportProgress, type StepExportProgress } from '@ifc-lite/export';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { injectScheduleIntoStep } from '@/sdk/adapters/export-adapter';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -515,7 +516,20 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         setExportProgress(null);
 
-        const blob = new Blob([toBlobPart(result.content)], { type: 'text/plain' });
+        // Splice pending generated schedule tasks into the STEP. The adapter
+        // helper is a no-op when there's nothing to inject, so calling it
+        // unconditionally keeps this surface in lockstep with the SDK.
+        const state = useViewerStore.getState();
+        const finalContent = typeof result.content === 'string'
+            && state.scheduleSourceModelId === selectedModelId
+          ? injectScheduleIntoStep(
+              result.content,
+              state.scheduleData ?? null,
+              selectedModel.ifcDataStore as IfcDataStore,
+            )
+          : result.content;
+
+        const blob = new Blob([toBlobPart(finalContent)], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

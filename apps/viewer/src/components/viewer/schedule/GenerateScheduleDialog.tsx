@@ -58,7 +58,7 @@ const TASK_TYPES = [
 
 export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleDialogProps) {
   const { ifcDataStore, models, activeModelId } = useIfc();
-  const setScheduleData = useViewerStore(s => s.setScheduleData);
+  const commitGeneratedSchedule = useViewerStore(s => s.commitGeneratedSchedule);
   const setGanttPanelVisible = useViewerStore(s => s.setGanttPanelVisible);
   const setAnimationEnabled = useViewerStore(s => s.setAnimationEnabled);
 
@@ -141,13 +141,18 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
     // rAF gives the button time to paint its pressed state before we swap
     // the Gantt rows; cheap-but-visible feedback.
     requestAnimationFrame(() => {
-      setScheduleData(preview.extraction);
+      // Attribute the generated schedule to the currently-active model.
+      // Legacy single-model sessions fall back to '__legacy__' so the
+      // dirty flag still pairs with the viewer's model identity.
+      const sourceModelId = activeModelId
+        ?? (models.size === 1 ? (models.keys().next().value ?? '__legacy__') : '__legacy__');
+      commitGeneratedSchedule(preview.extraction, sourceModelId);
       setGanttPanelVisible(true);
       setAnimationEnabled(true);
       setSubmitting(false);
       onOpenChange(false);
     });
-  }, [preview, options, setScheduleData, setGanttPanelVisible, setAnimationEnabled, onOpenChange]);
+  }, [preview, options, commitGeneratedSchedule, setGanttPanelVisible, setAnimationEnabled, onOpenChange, activeModelId, models]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

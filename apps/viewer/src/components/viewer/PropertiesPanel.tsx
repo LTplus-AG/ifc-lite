@@ -552,9 +552,13 @@ export function PropertiesPanel() {
   // schedule lists this entity as a controlled product, so it's safe to call
   // unconditionally.
   const scheduleData = useViewerStore((s) => s.scheduleData);
+  // True when the schedule contains at least one task the user generated
+  // locally (no expressId in the host STEP). Mixed schedules — parsed tail +
+  // user-appended task — still surface the pending banner so the user sees
+  // that something will be spliced on export.
   const scheduleIsGenerated = useMemo(() => {
     if (!scheduleData || scheduleData.tasks.length === 0) return false;
-    return scheduleData.tasks.every(t => !t.expressId || t.expressId <= 0);
+    return scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0);
   }, [scheduleData]);
   const selectedEntityGlobalId = useMemo(() => {
     if (!selectedEntity) return null;

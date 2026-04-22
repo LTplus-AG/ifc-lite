@@ -19,6 +19,7 @@ import {
   Calendar,
   CalendarPlus,
   X,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -29,8 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useViewerStore } from '@/store';
+import { useViewerStore, countGeneratedTasks } from '@/store';
 import type { GanttTimeScale } from '@/store';
+import { toast } from '@/components/ui/toast';
 import { formatDateTime } from './schedule-utils';
 import { AnimationSettingsPopover } from './AnimationSettingsPopover';
 
@@ -71,6 +73,8 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
   const playbackSpeed = useViewerStore(s => s.playbackSpeed);
   const playbackLoop = useViewerStore(s => s.playbackLoop);
   const animationEnabled = useViewerStore(s => s.animationEnabled);
+  const pendingGeneratedCount = useViewerStore(s => countGeneratedTasks(s.scheduleData));
+  const clearGeneratedSchedule = useViewerStore(s => s.clearGeneratedSchedule);
   const scale = useViewerStore(s => s.ganttTimeScale);
   const togglePlay = useViewerStore(s => s.togglePlaySchedule);
   const pause = useViewerStore(s => s.pauseSchedule);
@@ -278,6 +282,34 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
           </TooltipTrigger>
           <TooltipContent>
             {canGenerate ? 'Generate schedule from storeys…' : 'No spatial hierarchy to generate from'}
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Discard pending generated schedule — only visible when at least
+          one locally-generated task exists. Keeps extracted tasks intact
+          so partial-authoring workflows can still revert just the
+          pending tail. */}
+      {pendingGeneratedCount > 0 && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => {
+                const removed = clearGeneratedSchedule();
+                if (removed > 0) {
+                  toast.success(`Discarded ${removed} pending task${removed === 1 ? '' : 's'}.`);
+                }
+              }}
+              aria-label={`Discard ${pendingGeneratedCount} pending generated task${pendingGeneratedCount === 1 ? '' : 's'}`}
+              className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Discard {pendingGeneratedCount} pending schedule task{pendingGeneratedCount === 1 ? '' : 's'}
           </TooltipContent>
         </Tooltip>
       )}

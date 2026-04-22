@@ -535,37 +535,45 @@ function collectZSliceContainers(
   const bandMetres = Math.max(0.1, options.heightTolerance);
   const idOffset = modelContext.idOffset || 0;
 
-  // Scan every mesh once: compute min+max Z, derive a centroid Z, keep the
-  // ifcType in hand. O(total vertex count) but cache-friendly because
-  // positions are a typed array.
+  // Scan every mesh once: compute min+max vertical, derive a centroid,
+  // keep the ifcType in hand. O(total vertex count) but cache-friendly
+  // because positions are a typed array.
+  //
+  // Vertical axis note: mesh positions are in WebGL Y-up space (the
+  // parser runs `convertZUpToYUp` on every mesh during collection, so
+  // IFC-native Z maps onto WebGL Y and what used to be IFC Y is now
+  // negated into WebGL Z). Reading the Y component (index 1) gives us
+  // the real "up" — reading Z here would bin by depth, not elevation,
+  // which looks like random noise at schedule time.
   interface MeshMeta {
     localId: number;
-    centroidZ: number;
+    centroidY: number;
     ifcType: string;
   }
   const meta: MeshMeta[] = [];
   for (const mesh of meshes) {
     if (!mesh.positions || mesh.positions.length < 3) continue;
-    let minZ = Infinity;
-    let maxZ = -Infinity;
-    // Z is every 3rd float in a packed [x,y,z,x,y,z,…] buffer.
-    for (let i = 2; i < mesh.positions.length; i += 3) {
-      const z = mesh.positions[i];
-      if (z < minZ) minZ = z;
-      if (z > maxZ) maxZ = z;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    // Vertical (Y in WebGL space) is every 3rd float starting at index 1.
+    for (let i = 1; i < mesh.positions.length; i += 3) {
+      const v = mesh.positions[i];
+      if (v < minY) minY = v;
+      if (v > maxY) maxY = v;
     }
-    if (!Number.isFinite(minZ) || !Number.isFinite(maxZ)) continue;
+    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) continue;
     meta.push({
       localId: mesh.expressId - idOffset,
-      centroidZ: (minZ + maxZ) * 0.5,
+      centroidY: (minY + maxY) * 0.5,
       ifcType: mesh.ifcType ?? 'IfcElement',
     });
   }
   if (meta.length === 0) return [];
 
-  // Bin by Z. Bin indices are integers so two elements at identical Z
-  // always land in the same bin regardless of floating-point drift.
-  const binOfZ = (z: number) => Math.floor(z / bandMetres);
+  // Bin by vertical coordinate. Bin indices are integers so two elements
+  // at identical height always land in the same bin regardless of
+  // floating-point drift.
+  const binOfY = (y: number) => Math.floor(y / bandMetres);
 
   // Primary bin + optional sub-key → list of mesh metas.
   // Bin key is "<bin> <subkey>" so we can sort lexicographically
@@ -594,7 +602,7 @@ function collectZSliceContainers(
 
   const groups = new Map<string, { bin: number; subkey: string; metas: MeshMeta[] }>();
   for (const m of meta) {
-    const bin = binOfZ(m.centroidZ);
+    const bin = binOfY(m.centroidY);
     const subkey = subgroupKeyFor(m);
     const key = `${padBin(bin)} ${subkey}`;
     let bucket = groups.get(key);

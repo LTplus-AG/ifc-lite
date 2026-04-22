@@ -325,12 +325,16 @@ describe('deterministic globalIds', () => {
 });
 
 describe('generateScheduleFromSpatialHierarchy — IfcElement (Z slice) strategy', () => {
-  // Build a synthetic mesh for a product — position Z controls bin, ifcType
-  // controls the "class" subgroup, name/type routed through entities.
-  const makeMesh = (expressId: number, z: number, ifcType = 'IfcWall') => ({
+  // Build a synthetic mesh for a product — vertical coord on Y (WebGL
+  // Y-up, matching the parser's `convertZUpToYUp` output) controls the
+  // bin; ifcType controls the "class" subgroup; name/type routed
+  // through the entities shim.
+  const makeMesh = (expressId: number, y: number, ifcType = 'IfcWall') => ({
     expressId,
     ifcType,
-    positions: new Float32Array([0, 0, z, 1, 0, z, 0, 1, z]),
+    // 3 vertices at (x, y, z) = (0,y,0), (1,y,0), (0,y,1) — all at the
+    // same vertical so the centroid equals `y` exactly.
+    positions: new Float32Array([0, y, 0, 1, y, 0, 0, y, 1]),
     normals: new Float32Array(9),
     indices: new Uint32Array([0, 1, 2]),
     color: [1, 1, 1, 1] as [number, number, number, number],

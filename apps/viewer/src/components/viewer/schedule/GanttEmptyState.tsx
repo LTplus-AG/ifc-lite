@@ -64,7 +64,7 @@ export function GanttEmptyState({
             <div className="flex flex-col items-center gap-2 pt-2">
               <Button size="sm" variant="outline" onClick={onGenerate} className="gap-2">
                 <CalendarPlus className="h-4 w-4" />
-                Generate from storeys instead
+                Generate a schedule instead
               </Button>
             </div>
           )}
@@ -83,10 +83,10 @@ export function GanttEmptyState({
             <div className="flex flex-col items-center gap-2 pt-2">
               <Button size="sm" onClick={onGenerate} className="gap-2">
                 <CalendarPlus className="h-4 w-4" />
-                Generate from storeys
+                Generate schedule
               </Button>
               <p className="text-xs text-muted-foreground max-w-xs">
-                Build a schedule by assigning every product in each building storey to a task.
+                Build a schedule by storey, building, or element-Z height slice.
               </p>
             </div>
           )}

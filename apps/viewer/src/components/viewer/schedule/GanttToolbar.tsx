@@ -275,13 +275,13 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
               variant="ghost"
               onClick={onOpenGenerate}
               disabled={!canGenerate}
-              aria-label="Generate schedule from storeys"
+              aria-label="Generate construction schedule"
             >
               <CalendarPlus className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            {canGenerate ? 'Generate schedule from storeys…' : 'No spatial hierarchy to generate from'}
+            {canGenerate ? 'Generate schedule…' : 'No spatial hierarchy or geometry to generate from'}
           </TooltipContent>
         </Tooltip>
       )}

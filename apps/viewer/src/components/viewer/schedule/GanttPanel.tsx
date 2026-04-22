@@ -115,10 +115,18 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
   // palette / hotkeys can open it without going through this component.
   const generateOpen = useViewerStore(s => s.generateScheduleDialogOpen);
   const setGenerateOpen = useViewerStore(s => s.setGenerateScheduleDialogOpen);
-  const canGenerate = useMemo(
-    () => canGenerateScheduleFrom(activeStore),
-    [activeStore],
-  );
+  const canGenerate = useMemo(() => {
+    // Geometry-only models (no spatial hierarchy) can still generate via
+    // the Height strategy, so surface the button whenever EITHER a
+    // spatial tree OR meshes exist on the active source model.
+    const sourceModelId = activeModelId
+      ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
+    const meshes = sourceModelId ? models.get(sourceModelId)?.geometryResult?.meshes : undefined;
+    const ctx = meshes && meshes.length > 0
+      ? { meshes, idOffset: models.get(sourceModelId!)?.idOffset ?? 0 }
+      : undefined;
+    return canGenerateScheduleFrom(activeStore, ctx);
+  }, [activeStore, activeModelId, models]);
 
   const handleSelect = (globalId: string, multi: boolean) => {
     const current = new Set(selectedTaskGlobalIds);

@@ -20,6 +20,7 @@ import {
   formatDateTime,
 } from './schedule-utils';
 import { GANTT_ROW_HEIGHT, GANTT_HEADER_HEIGHT } from './GanttTaskTree';
+import { useGanttBarDrag } from './useGanttBarDrag';
 
 // Alias kept for local readability; binds to the shared constant so the
 // timeline header and the task-tree header stay the same height.
@@ -56,6 +57,10 @@ export const GanttTimeline = memo(function GanttTimeline({
 }: GanttTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pixelWidth, setPixelWidth] = useState(1000);
+
+  // Drag state machine for bar shift / resize. Returned `live` drives
+  // the floating tooltip rendered below the timeline SVG.
+  const barDrag = useGanttBarDrag({ range, pixelWidth, scale });
 
   /**
    * Minimum pixels per time-scale unit. When the schedule spans more units
@@ -295,6 +300,16 @@ export const GanttTimeline = memo(function GanttTimeline({
             );
           }
 
+          // Edge hit zones for resize. Minimum 4 px wide so we stay
+          // clickable even on very short bars; capped at 25 % of the
+          // bar width so on bars < 20 px the whole bar becomes a shift
+          // zone (you can still resize via the Inspector).
+          const edgeZone = Math.min(8, Math.max(4, Math.floor(barWidth * 0.25)));
+          const showEdgeHandles = barWidth >= edgeZone * 2 + 4;
+          const barTop = y + 6;
+          const barH = GANTT_ROW_HEIGHT - 12;
+          const isDragging = barDrag.live.taskGlobalId === task.globalId;
+
           return (
             <g
               key={task.globalId}
@@ -304,13 +319,12 @@ export const GanttTimeline = memo(function GanttTimeline({
                 e.stopPropagation();
                 onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
               }}
-              className="cursor-pointer"
             >
               <rect
                 x={barX}
-                y={y + 6}
+                y={barTop}
                 width={Math.max(2, barWidth)}
-                height={GANTT_ROW_HEIGHT - 12}
+                height={barH}
                 rx={3}
                 ry={3}
                 fill={
@@ -327,20 +341,62 @@ export const GanttTimeline = memo(function GanttTimeline({
                         : '#c7d2fe'
                 }
                 fillOpacity={isPending ? 0.55 : 0.95}
-                stroke={isSel ? '#111827' : 'transparent'}
-                strokeWidth={isSel ? 1.5 : 0}
+                stroke={isDragging ? '#0ea5e9' : isSel ? '#111827' : 'transparent'}
+                strokeWidth={isDragging ? 2 : isSel ? 1.5 : 0}
               />
               {task.taskTime?.completion !== undefined && (
                 <rect
                   x={barX}
-                  y={y + 6}
+                  y={barTop}
                   width={Math.max(0, barWidth) * Math.min(1, Math.max(0, task.taskTime.completion / 100))}
-                  height={GANTT_ROW_HEIGHT - 12}
+                  height={barH}
                   rx={3}
                   ry={3}
                   fill="#111827"
                   fillOpacity={0.28}
+                  pointerEvents="none"
                 />
+              )}
+              {/* Shift hit-zone: the interior of the bar. Draws no fill
+                  (the visible fill rect above handles that) but owns the
+                  pointer events that map to drag-body. */}
+              <rect
+                x={showEdgeHandles ? barX + edgeZone : barX}
+                y={barTop}
+                width={
+                  showEdgeHandles
+                    ? Math.max(1, barWidth - edgeZone * 2)
+                    : Math.max(2, barWidth)
+                }
+                height={barH}
+                fill="transparent"
+                className="cursor-move"
+                onPointerDown={(e) => barDrag.onPointerDown(e, task.globalId, 'shift')}
+              />
+              {/* Edge resize hit-zones. Only render when the bar is wide
+                  enough for separate zones — otherwise the whole bar is
+                  a shift zone and resize goes through the Inspector. */}
+              {showEdgeHandles && (
+                <>
+                  <rect
+                    x={barX}
+                    y={barTop}
+                    width={edgeZone}
+                    height={barH}
+                    fill="transparent"
+                    className="cursor-ew-resize"
+                    onPointerDown={(e) => barDrag.onPointerDown(e, task.globalId, 'resize-start')}
+                  />
+                  <rect
+                    x={barX + barWidth - edgeZone}
+                    y={barTop}
+                    width={edgeZone}
+                    height={barH}
+                    fill="transparent"
+                    className="cursor-ew-resize"
+                    onPointerDown={(e) => barDrag.onPointerDown(e, task.globalId, 'resize-finish')}
+                  />
+                </>
               )}
               <title>
                 {task.name || task.globalId}
@@ -363,9 +419,55 @@ export const GanttTimeline = memo(function GanttTimeline({
           className={cn('pointer-events-none drop-shadow')}
         />
       </svg>
+
+      {/* Live-drag tooltip — floats next to the cursor, absolute-
+          positioned inside the scroll container so it scrolls with
+          everything else. Only visible while a drag is active. */}
+      {barDrag.live.taskGlobalId && (
+        <DragTooltip live={barDrag.live} />
+      )}
     </div>
   );
 });
+
+interface DragTooltipProps {
+  live: { taskGlobalId: string | null; mode: 'shift' | 'resize-start' | 'resize-finish' | null; liveStartMs: number; liveFinishMs: number };
+}
+
+/**
+ * Tiny fixed-position readout pinned near the top of the timeline during
+ * a bar drag. Shows the proposed new start / finish / duration so the
+ * user can see the commit target without staring at the bar itself.
+ * Fixed positioning (not absolute) keeps it above any scroll; `top:60px`
+ * anchors below the toolbar region.
+ */
+function DragTooltip({ live }: DragTooltipProps) {
+  const durMs = Math.max(0, live.liveFinishMs - live.liveStartMs);
+  const durDays = (durMs / 86_400_000).toFixed(2).replace(/\.?0+$/, '');
+  const fmt = (ms: number) => {
+    const d = new Date(ms);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  };
+  const modeLabel =
+    live.mode === 'shift' ? 'Shifting'
+    : live.mode === 'resize-start' ? 'Resizing start'
+    : live.mode === 'resize-finish' ? 'Resizing finish'
+    : '';
+  return (
+    <div
+      className="fixed z-50 pointer-events-none top-16 left-1/2 -translate-x-1/2 rounded-md border border-sky-400 bg-sky-50 dark:bg-sky-950 dark:border-sky-700 px-3 py-1.5 shadow-lg text-[11px] font-mono text-sky-900 dark:text-sky-100"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="font-sans text-[10px] uppercase tracking-wider opacity-70">{modeLabel}</div>
+      <div>Start  {fmt(live.liveStartMs)}</div>
+      <div>Finish {fmt(live.liveFinishMs)}</div>
+      <div className="opacity-80">Duration {durDays}d</div>
+      <div className="font-sans text-[9px] opacity-50 mt-0.5">Shift = no snap · Esc = cancel</div>
+    </div>
+  );
+}
 
 interface DependencyArrowsProps {
   sequences: ScheduleSequenceInfo[];

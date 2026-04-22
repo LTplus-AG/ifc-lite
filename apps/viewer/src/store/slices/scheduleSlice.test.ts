@@ -4,7 +4,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import type { ScheduleExtraction } from '@ifc-lite/parser';
+import { create } from 'zustand';
+import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 import {
   computeScheduleRange,
   computeHiddenProductIds,
@@ -13,6 +14,7 @@ import {
   taskStartEpoch,
   taskFinishEpoch,
 } from './scheduleSlice.js';
+import { createScheduleSlice, type ScheduleSlice } from './scheduleSlice.js';
 
 function makeExtraction(): ScheduleExtraction {
   return {
@@ -257,5 +259,231 @@ describe('countGeneratedTasks', () => {
       ],
     };
     assert.strictEqual(countGeneratedTasks(data), 0);
+  });
+});
+
+// ─── editing (P1) ──────────────────────────────────────────────────────
+
+/**
+ * Boot a bare scheduleSlice in a test-only zustand store. We don't need
+ * the other slices for mutator tests — the cross-slice dirty/version
+ * fields are referenced defensively via `as unknown as` casts so they
+ * simply no-op when absent, and that's fine for our assertions.
+ */
+function bootScheduleStore() {
+  return create<ScheduleSlice>()((set, get, api) => createScheduleSlice(set, get, api));
+}
+
+function mkTask(over: Partial<ScheduleTaskInfo> & { globalId: string }): ScheduleTaskInfo {
+  const defaults = {
+    expressId: 1,
+    name: `T-${over.globalId}`,
+    isMilestone: false,
+    childGlobalIds: [],
+    productExpressIds: [],
+    productGlobalIds: [],
+    controllingScheduleGlobalIds: [],
+  };
+  // Spread `over` LAST so callers win every contested field (including globalId).
+  return { ...defaults, ...over };
+}
+
+function mkExtraction(tasks: ScheduleTaskInfo[]): ScheduleExtraction {
+  return { hasSchedule: true, workSchedules: [], sequences: [], tasks };
+}
+
+describe('scheduleSlice editing — updateTask', () => {
+  it('patches name / predefinedType without touching unrelated fields', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a', name: 'Old', predefinedType: 'CONSTRUCTION', identification: 'IDENT' }),
+    ]));
+    store.getState().updateTask('a', { name: 'New', predefinedType: 'INSTALLATION' });
+
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.strictEqual(t.name, 'New');
+    assert.strictEqual(t.predefinedType, 'INSTALLATION');
+    assert.strictEqual(t.identification, 'IDENT');
+    assert.strictEqual(store.getState().scheduleIsEdited, true);
+  });
+
+  it('isMilestone → true collapses duration and finish', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'm', isMilestone: false,
+        taskTime: {
+          scheduleStart: '2024-05-01T08:00:00',
+          scheduleFinish: '2024-05-05T08:00:00',
+          scheduleDuration: 'P4D',
+        },
+      }),
+    ]));
+    store.getState().updateTask('m', { isMilestone: true });
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.strictEqual(t.isMilestone, true);
+    assert.strictEqual(t.taskTime?.scheduleDuration, 'PT0S');
+    assert.strictEqual(t.taskTime?.scheduleFinish, '2024-05-01T08:00:00');
+  });
+});
+
+describe('scheduleSlice editing — updateTaskTime', () => {
+  it('start + finish → derived duration (days)', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a', taskTime: { scheduleStart: '2024-05-01T08:00:00' } }),
+    ]));
+    store.getState().updateTaskTime('a', {
+      scheduleStart: '2024-05-01T08:00:00',
+      scheduleFinish: '2024-05-06T08:00:00',
+    });
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.strictEqual(t.taskTime?.scheduleDuration, 'P5D');
+  });
+
+  it('start + duration → derived finish', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a' }),
+    ]));
+    store.getState().updateTaskTime('a', {
+      scheduleStart: '2024-05-01T08:00:00',
+      scheduleDuration: 'P5D',
+    });
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.strictEqual(t.taskTime?.scheduleFinish, '2024-05-06T08:00:00');
+  });
+
+  it('rejects finish-before-start (no mutation)', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'a',
+        taskTime: {
+          scheduleStart: '2024-05-05T08:00:00',
+          scheduleFinish: '2024-05-10T08:00:00',
+        },
+      }),
+    ]));
+    store.getState().updateTaskTime('a', { scheduleFinish: '2024-05-01T08:00:00' });
+    // Value unchanged.
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.strictEqual(t.taskTime?.scheduleFinish, '2024-05-10T08:00:00');
+  });
+});
+
+describe('scheduleSlice editing — assign / unassign products', () => {
+  it('assign appends + dedupes', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a', productExpressIds: [1], productGlobalIds: ['1'] }),
+    ]));
+    store.getState().assignProductsToTask('a', [1, 2, 3]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.productExpressIds.sort(), [1, 2, 3]);
+    // Calling again with same set is idempotent.
+    store.getState().assignProductsToTask('a', [2, 3]);
+    assert.deepStrictEqual(
+      store.getState().scheduleData!.tasks[0].productExpressIds.sort(),
+      [1, 2, 3],
+    );
+  });
+
+  it('unassign drops targeted ids only', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'a',
+        productExpressIds: [1, 2, 3],
+        productGlobalIds: ['1', '2', '3'],
+      }),
+    ]));
+    store.getState().unassignProductsFromTask('a', [2]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.productExpressIds, [1, 3]);
+    assert.deepStrictEqual(t.productGlobalIds, ['1', '3']);
+  });
+});
+
+describe('scheduleSlice editing — deleteTask', () => {
+  it('removes the task and cascades sequences referring to it', () => {
+    const store = bootScheduleStore();
+    const data: ScheduleExtraction = {
+      hasSchedule: true, workSchedules: [], tasks: [
+        mkTask({ globalId: 'a' }),
+        mkTask({ globalId: 'b' }),
+      ],
+      sequences: [
+        { globalId: 'seq-ab', relatingTaskGlobalId: 'a', relatedTaskGlobalId: 'b', sequenceType: 'FINISH_START' },
+      ],
+    };
+    store.getState().setScheduleData(data);
+    store.getState().deleteTask('a');
+    const s = store.getState().scheduleData!;
+    assert.strictEqual(s.tasks.length, 1);
+    assert.strictEqual(s.tasks[0].globalId, 'b');
+    assert.strictEqual(s.sequences.length, 0);
+    assert.strictEqual(store.getState().scheduleIsEdited, true);
+  });
+
+  it('cascades into descendant tasks', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData({
+      hasSchedule: true, workSchedules: [], sequences: [],
+      tasks: [
+        mkTask({ globalId: 'parent', childGlobalIds: ['child1', 'child2'] }),
+        mkTask({ globalId: 'child1', parentGlobalId: 'parent' }),
+        mkTask({ globalId: 'child2', parentGlobalId: 'parent', childGlobalIds: ['grand'] }),
+        mkTask({ globalId: 'grand', parentGlobalId: 'child2' }),
+        mkTask({ globalId: 'unrelated' }),
+      ],
+    });
+    store.getState().deleteTask('parent');
+    const s = store.getState().scheduleData!;
+    const remaining = s.tasks.map(t => t.globalId).sort();
+    assert.deepStrictEqual(remaining, ['unrelated']);
+  });
+});
+
+describe('scheduleSlice editing — undo / redo', () => {
+  it('undo restores pre-edit state; redo reapplies', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a', name: 'Original' }),
+    ]));
+    store.getState().updateTask('a', { name: 'Changed' });
+    assert.strictEqual(store.getState().scheduleData!.tasks[0].name, 'Changed');
+
+    store.getState().undoScheduleEdit();
+    assert.strictEqual(store.getState().scheduleData!.tasks[0].name, 'Original');
+    assert.strictEqual(store.getState().scheduleIsEdited, false);
+
+    store.getState().redoScheduleEdit();
+    assert.strictEqual(store.getState().scheduleData!.tasks[0].name, 'Changed');
+    assert.strictEqual(store.getState().scheduleIsEdited, true);
+  });
+
+  it('transactions coalesce rapid edits into a single undo step', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'a',
+        taskTime: {
+          scheduleStart: '2024-05-01T08:00:00',
+          scheduleFinish: '2024-05-02T08:00:00',
+        },
+      }),
+    ]));
+    store.getState().beginScheduleTransaction('drag');
+    store.getState().updateTaskTime('a', { scheduleStart: '2024-05-01T09:00:00' });
+    store.getState().updateTaskTime('a', { scheduleStart: '2024-05-01T10:00:00' });
+    store.getState().updateTaskTime('a', { scheduleStart: '2024-05-01T12:00:00' });
+    store.getState().endScheduleTransaction();
+    assert.strictEqual(store.getState().scheduleUndoStack.length, 1);
+    store.getState().undoScheduleEdit();
+    assert.strictEqual(
+      store.getState().scheduleData!.tasks[0].taskTime?.scheduleStart,
+      '2024-05-01T08:00:00',
+    );
   });
 });

@@ -166,7 +166,9 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       // tasks, so it's safe to call unconditionally.
       const finalContent = typeof result.content === 'string'
           && state.scheduleSourceModelId === modelInfo.id
-        ? injectScheduleIntoStep(result.content, state.scheduleData ?? null, exportDataStore)
+        ? injectScheduleIntoStep(result.content, state.scheduleData ?? null, exportDataStore, {
+            scheduleIsEdited: state.scheduleIsEdited === true,
+          })
         : result.content;
 
       // Download the file

@@ -20,6 +20,8 @@ import {
   CalendarPlus,
   X,
   Trash2,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -75,6 +77,10 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
   const animationEnabled = useViewerStore(s => s.animationEnabled);
   const pendingGeneratedCount = useViewerStore(s => countGeneratedTasks(s.scheduleData));
   const clearGeneratedSchedule = useViewerStore(s => s.clearGeneratedSchedule);
+  const undoDepth = useViewerStore(s => s.scheduleUndoStack.length);
+  const redoDepth = useViewerStore(s => s.scheduleRedoStack.length);
+  const undoScheduleEdit = useViewerStore(s => s.undoScheduleEdit);
+  const redoScheduleEdit = useViewerStore(s => s.redoScheduleEdit);
   const scale = useViewerStore(s => s.ganttTimeScale);
   const togglePlay = useViewerStore(s => s.togglePlaySchedule);
   const pause = useViewerStore(s => s.pauseSchedule);
@@ -284,6 +290,42 @@ export function GanttToolbar({ onClose, onOpenGenerate, canGenerate }: GanttTool
             {canGenerate ? 'Generate schedule…' : 'No spatial hierarchy or geometry to generate from'}
           </TooltipContent>
         </Tooltip>
+      )}
+
+      {/* Undo / Redo for schedule edits. Gated on stack depth so the
+          buttons only appear when there's actually something to undo —
+          avoids a persistent greyed-out pair on clean schedules. */}
+      {(undoDepth > 0 || redoDepth > 0) && (
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={undoScheduleEdit}
+                disabled={undoDepth === 0}
+                aria-label="Undo schedule edit"
+              >
+                <Undo2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={redoScheduleEdit}
+                disabled={redoDepth === 0}
+                aria-label="Redo schedule edit"
+              >
+                <Redo2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+          </Tooltip>
+        </div>
       )}
 
       {/* Discard pending generated schedule — only visible when at least

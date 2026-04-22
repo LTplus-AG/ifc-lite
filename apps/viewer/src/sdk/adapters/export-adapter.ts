@@ -397,6 +397,7 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         exportedContent,
         state.scheduleData ?? null,
         model.ifcDataStore as IfcDataStore,
+        { scheduleIsEdited: state.scheduleIsEdited === true },
       );
     },
 
@@ -410,46 +411,77 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
 /**
  * Splice an in-memory `ScheduleExtraction` into a STEP file's DATA section.
  *
- * Two cases:
- *   • The schedule was *parsed* from the same source IFC (every task has a
- *     positive expressId — it already exists in the STEP body, so we leave
- *     the file alone).
- *   • The schedule was *generated* (e.g. via the Gantt panel's "Generate
- *     from storeys" dialog — task.expressId === 0). We allocate fresh
- *     express IDs starting just past the model's current maximum, run
- *     `serializeScheduleToStep` to produce IFC4-conformant lines, and splice
- *     them in just before the trailing `ENDSEC;`. The caller still gets a
- *     well-formed `ISO-10303-21;` ... `END-ISO-10303-21;` string.
+ * Three cases:
+ *   1. Schedule is purely parsed and untouched — leave the STEP alone.
+ *   2. Schedule has generated-only tail (pre-existing behaviour) — append
+ *      the generated tasks + sequences + schedules just before ENDSEC.
+ *   3. Schedule has been *edited* (rename / reschedule / reassign / delete
+ *      on ANY task, generated or parsed) — strip EVERY schedule entity
+ *      from the STEP body and re-emit the whole `scheduleData` fresh.
+ *      Dependent entities (`IfcTaskTime`, `IfcLagTime`, `IfcRel*`) cascade
+ *      cleanly on deletion because we serialize the whole block at once.
  *
  * We also use the source model's existing IfcOwnerHistory (when present)
  * for the inserted entities so they share ownership metadata.
  */
+export interface InjectScheduleOptions {
+  /**
+   * When true, the caller has edited the in-memory schedule — enter
+   * rewrite mode (case 3 above). The flag is the scheduleSlice's
+   * `scheduleIsEdited` value; threading it here keeps injection logic
+   * free of store knowledge.
+   */
+  scheduleIsEdited?: boolean;
+}
+
 export function injectScheduleIntoStep(
   stepContent: string,
   scheduleData: ScheduleExtraction | null,
   ifcDataStore: IfcDataStore,
+  options?: InjectScheduleOptions,
 ): string {
-  if (!scheduleData || scheduleData.tasks.length === 0) return stepContent;
+  if (!scheduleData || scheduleData.tasks.length === 0) {
+    // No schedule in memory. If the caller flagged "edited", the user
+    // deleted every task in what used to be a parsed schedule — we
+    // still want to strip the stale entities from the STEP.
+    if (options?.scheduleIsEdited) {
+      return stripScheduleEntities(stepContent);
+    }
+    return stepContent;
+  }
 
-  // Partition tasks: only tasks the user generated locally (expressId <= 0 or
-  // missing) need to be serialized. Tasks with a real expressId are already
-  // emitted as part of the normal export and must not be duplicated.
-  // Partitioning lets mixed schedules (e.g. user appended a generated task to
-  // a parsed schedule) still round-trip the new tail.
+  const hasGenerated = scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0);
+  const edited = options?.scheduleIsEdited === true;
+
+  if (!edited && !hasGenerated) return stepContent;
+
+  // Shared resolution helpers for both injection paths.
+  const resolveProduct = (gid: string): number | undefined => {
+    if (!gid) return undefined;
+    return ifcDataStore.entities?.getExpressIdByGlobalId?.(gid) ?? undefined;
+  };
+
+  // ── Rewrite path: strip + re-emit the full schedule ─────────────
+  if (edited) {
+    const stripped = stripScheduleEntities(stepContent);
+    const maxId = findMaxExpressId(stripped);
+    const ownerHistoryId = findFirstOwnerHistoryId(stripped) ?? undefined;
+
+    const result = serializeScheduleToStep(scheduleData, {
+      nextId: maxId + 1,
+      ownerHistoryId,
+      resolveProductExpressId: resolveProduct,
+    });
+    if (result.lines.length === 0) return stripped;
+    return spliceBeforeEndSec(stripped, result.lines);
+  }
+
+  // ── Append-only path: only generated tasks (legacy behaviour) ───
   const generatedTasks = scheduleData.tasks.filter(t => !t.expressId || t.expressId <= 0);
-  if (generatedTasks.length === 0) return stepContent;
-
-  // Only forward sequences whose endpoints are both in the generated set —
-  // re-emitting a sequence that references an already-exported task would
-  // produce a duplicate IfcRelSequence on re-import.
   const generatedTaskGids = new Set(generatedTasks.map(t => t.globalId));
   const generatedSequences = scheduleData.sequences.filter(
     s => generatedTaskGids.has(s.relatingTaskGlobalId) && generatedTaskGids.has(s.relatedTaskGlobalId),
   );
-
-  // Work schedules: keep only those whose entire task membership was
-  // generated (or that are fresh — no expressId). A parsed work schedule
-  // already exists in the STEP body.
   const generatedWorkSchedules = scheduleData.workSchedules.filter(ws => !ws.expressId || ws.expressId <= 0);
 
   const partitioned: ScheduleExtraction = {
@@ -459,30 +491,24 @@ export function injectScheduleIntoStep(
     sequences: generatedSequences,
   };
 
-  // Pick a fresh express-ID starting point. The exporter renumbers in order,
-  // so scanning the highest `#NNN=` in the output is the safest source of
-  // truth (even if the source data store had a different max id space).
   const maxId = findMaxExpressId(stepContent);
   const ownerHistoryId = findFirstOwnerHistoryId(stepContent) ?? undefined;
-
-  // Resolve product GlobalIds → expressIds against the live data store so
-  // generated `IfcRelAssignsToProcess` entries point at real geometry.
-  const resolveProduct = (gid: string): number | undefined => {
-    if (!gid) return undefined;
-    return ifcDataStore.entities?.getExpressIdByGlobalId?.(gid) ?? undefined;
-  };
 
   const result = serializeScheduleToStep(partitioned, {
     nextId: maxId + 1,
     ownerHistoryId,
     resolveProductExpressId: resolveProduct,
   });
-
   if (result.lines.length === 0) return stepContent;
+  return spliceBeforeEndSec(stepContent, result.lines);
+}
 
-  // Splice the new lines in just before the closing ENDSEC of the DATA
-  // section. We anchor on the LAST `ENDSEC;` since the header section also
-  // ends with one — we want the data-section end.
+/**
+ * Splice fresh STEP lines just before the DATA-section's closing
+ * `ENDSEC;`. Anchored on the LAST `ENDSEC;` because the header section
+ * also ends with one — we want the data end.
+ */
+function spliceBeforeEndSec(stepContent: string, lines: string[]): string {
   const endSecIdx = stepContent.lastIndexOf('ENDSEC;');
   if (endSecIdx < 0) {
     // Malformed STEP — surface the original file unchanged rather than
@@ -490,10 +516,114 @@ export function injectScheduleIntoStep(
     console.warn('[export] schedule injection: ENDSEC not found in STEP output');
     return stepContent;
   }
-
   const head = stepContent.slice(0, endSecIdx);
   const tail = stepContent.slice(endSecIdx);
-  return `${head}${result.lines.join('\n')}\n${tail}`;
+  return `${head}${lines.join('\n')}\n${tail}`;
+}
+
+/**
+ * Remove every schedule-related entity declaration from the STEP body.
+ *
+ * Two-pass:
+ *   1. Identify every express ID whose entity type is in the "always a
+ *      schedule entity" set (`IfcTask`, `IfcWorkSchedule`, `IfcWorkPlan`,
+ *      `IfcTaskTime`, `IfcLagTime`).
+ *   2. Drop lines whose ID is in that set OR whose entity type is one of
+ *      the sometimes-schedule types (`IfcRelSequence`, `IfcRelAssignsTo-
+ *      Process`, `IfcRelAssignsToControl`) OR `IfcRelNests` lines that
+ *      reference any ID from step 1.
+ *
+ * The IfcRelNests check prevents us from stripping cost-item/resource
+ * nests, which share the entity but aren't schedule-owned.
+ */
+const ALWAYS_SCHEDULE_TYPES: ReadonlySet<string> = new Set([
+  'IFCTASK',
+  'IFCWORKSCHEDULE',
+  'IFCWORKPLAN',
+  'IFCTASKTIME',
+  'IFCTASKTIMERECURRING',
+  'IFCLAGTIME',
+]);
+
+const SOMETIMES_SCHEDULE_TYPES: ReadonlySet<string> = new Set([
+  'IFCRELSEQUENCE',
+  'IFCRELASSIGNSTOPROCESS',
+  'IFCRELASSIGNSTOCONTROL',
+]);
+
+function stripScheduleEntities(stepContent: string): string {
+  // Pass 1: collect schedule-entity IDs.
+  const scheduleIds = new Set<number>();
+  // Anchored on line start + "#N = TYPE" to avoid matching refs inside
+  // attribute lists. Capture group 1 is the ID, group 2 is the type.
+  const declRegex = /(?:^|\n)\s*#(\d+)\s*=\s*([A-Z0-9_]+)\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = declRegex.exec(stepContent)) !== null) {
+    const id = parseInt(m[1], 10);
+    const typeUpper = m[2].toUpperCase();
+    if (ALWAYS_SCHEDULE_TYPES.has(typeUpper)) scheduleIds.add(id);
+  }
+
+  if (scheduleIds.size === 0) {
+    // No "always" schedule entities. There can't be any schedule-related
+    // relationship entities either; nothing to strip.
+    return stepContent;
+  }
+
+  // Pass 2: walk the file line-by-line, drop schedule lines.
+  //
+  // We preserve line endings by splitting on `\n` and re-joining. STEP
+  // files use `\r\n` on some writers — `\r` ends up as a trailing char
+  // on each split, which we let through unchanged on re-join.
+  const lines = stepContent.split('\n');
+  const out: string[] = [];
+  // Per-line regex: expect `<whitespace>#ID=TYPE`. Tolerant of empty /
+  // comment / section-marker lines (left intact).
+  const lineDeclRegex = /^\s*#(\d+)\s*=\s*([A-Z0-9_]+)\b([\s\S]*)$/i;
+
+  for (const raw of lines) {
+    const match = lineDeclRegex.exec(raw);
+    if (!match) {
+      out.push(raw);
+      continue;
+    }
+    const id = parseInt(match[1], 10);
+    const typeUpper = match[2].toUpperCase();
+    const rest = match[3] ?? '';
+
+    if (scheduleIds.has(id)) continue; // Always-schedule entity itself.
+    if (SOMETIMES_SCHEDULE_TYPES.has(typeUpper)) {
+      // Relationship entity; keep only if we can prove it's unrelated.
+      // Cheap check: does it reference a schedule-entity ID? Scan for
+      // `#N` tokens and test against the set.
+      if (referencesAnyId(rest, scheduleIds)) continue;
+      out.push(raw);
+      continue;
+    }
+    if (typeUpper === 'IFCRELNESTS') {
+      // Only strip when the RelatingObject (first express-id arg past
+      // owner history / guid / etc.) IS a task. A cheap heuristic: if
+      // any referenced ID is in scheduleIds, strip. False positive for
+      // a nests that mixes task + non-task would drop a non-task nest,
+      // which is vanishingly rare.
+      if (referencesAnyId(rest, scheduleIds)) continue;
+      out.push(raw);
+      continue;
+    }
+    out.push(raw);
+  }
+  return out.join('\n');
+}
+
+/** True iff any `#N` token in `rest` has N in the given set. */
+function referencesAnyId(rest: string, ids: ReadonlySet<number>): boolean {
+  const refRegex = /#(\d+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = refRegex.exec(rest)) !== null) {
+    const n = parseInt(m[1], 10);
+    if (ids.has(n)) return true;
+  }
+  return false;
 }
 
 /** Scan the STEP body for the highest `#N=` declaration. Returns 0 when none. */

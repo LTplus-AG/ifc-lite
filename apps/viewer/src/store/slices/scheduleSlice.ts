@@ -23,6 +23,18 @@ import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedul
 
 export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';
 
+/**
+ * One undo/redo entry — captures the full `scheduleData` + derived
+ * `scheduleRange` at a point in time. `label` is surfaced in the UI toast
+ * so users see "Undone: edit task time" rather than a generic message.
+ */
+export interface ScheduleSnapshot {
+  label: string;
+  data: ScheduleExtraction | null;
+  range: ScheduleTimeRange | null;
+  isEdited: boolean;
+}
+
 export interface ScheduleTimeRange {
   /** Earliest task start time, epoch ms. */
   start: number;
@@ -85,6 +97,37 @@ export interface ScheduleSlice {
    */
   scheduleSourceModelId: string | null;
 
+  /**
+   * True when any schedule edit (updateTask / updateTaskTime / assign /
+   * unassign / deleteTask / sequence mutation) has diverged the in-memory
+   * `scheduleData` from whatever the host STEP file currently has on disk.
+   *
+   * When set, the export path rewrites the entire schedule block (strips
+   * the original entities, re-emits from `scheduleData`). Cheaper than
+   * per-entity diffing and eliminates whole classes of dangling-reference
+   * bugs when dependent entities (`IfcTaskTime`, `IfcLagTime`, `IfcRel*`)
+   * cascade on task deletion.
+   *
+   * Distinct from "has generated tasks" (`expressId <= 0`): a schedule can
+   * be edited without any generated tasks (e.g. renamed a parsed task) and
+   * must still trigger the rewrite.
+   */
+  scheduleIsEdited: boolean;
+
+  /**
+   * Snapshot undo/redo stacks for schedule edits. Each entry is a deep
+   * clone of `scheduleData` taken BEFORE a mutator ran, so undo restores
+   * the exact pre-mutation state byte-for-byte. Stack caps at 50 — older
+   * snapshots are dropped from the bottom on overflow.
+   *
+   * Transactions: mutators invoked inside a `beginScheduleTransaction()` /
+   * `endScheduleTransaction()` pair push exactly ONE snapshot at begin,
+   * so a drag-gesture that fires 60 updateTaskTime calls still undoes as
+   * one user-visible step.
+   */
+  scheduleUndoStack: ScheduleSnapshot[];
+  scheduleRedoStack: ScheduleSnapshot[];
+
   // ── Actions ──────────────────────────────────────────
   setScheduleData: (data: ScheduleExtraction | null) => void;
   setGanttPanelVisible: (visible: boolean) => void;
@@ -131,6 +174,62 @@ export interface ScheduleSlice {
   setPlaybackSpeed: (speed: number) => void;
   setPlaybackLoop: (loop: boolean) => void;
   advancePlaybackBy: (deltaMs: number) => void;
+
+  // ── Schedule editing (P1) ──────────────────────────────
+  /**
+   * Patch a task's identity / descriptive fields. Silently no-ops when
+   * the globalId isn't found. Enabling `isMilestone: true` also forces
+   * `taskTime.scheduleDuration` to `PT0S` and `scheduleFinish` equal to
+   * `scheduleStart` so the Gantt renders the diamond correctly.
+   */
+  updateTask: (
+    globalId: string,
+    patch: Partial<Pick<ScheduleTaskInfo,
+      'name' | 'identification' | 'description' | 'longDescription'
+      | 'objectType' | 'predefinedType' | 'isMilestone'>>,
+  ) => void;
+  /**
+   * Patch a task's schedule time fields. The three related values
+   * (`scheduleStart`, `scheduleFinish`, `scheduleDuration`) are kept
+   * internally consistent: if the caller supplies any two, the third is
+   * recomputed; if only one is supplied, the others are preserved from
+   * the existing `taskTime`. Rejects finish-before-start by ignoring
+   * that patch (caller can surface a validation error).
+   */
+  updateTaskTime: (
+    globalId: string,
+    patch: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string },
+  ) => void;
+  /**
+   * Append products (renderer-space global IDs) to a task's assignment
+   * list. Federation-aware: globals are translated to local expressIds
+   * using the active source model's `idOffset`. De-duplicates against
+   * existing membership so double-clicking "Add" is safe.
+   */
+  assignProductsToTask: (taskGlobalId: string, globalProductIds: number[]) => void;
+  /** Remove products (global IDs) from a task's assignment list. */
+  unassignProductsFromTask: (taskGlobalId: string, globalProductIds: number[]) => void;
+  /**
+   * Delete a task and cascade-clean dependent entities:
+   *   • drop `IfcRelSequence` edges that reference it (either side)
+   *   • reparent children to the deleted task's parent (or detach to root)
+   *   • remove from the owning work-schedule's `taskGlobalIds`
+   */
+  deleteTask: (globalId: string) => void;
+
+  // ── Undo / redo ────────────────────────────────────────
+  undoScheduleEdit: () => void;
+  redoScheduleEdit: () => void;
+  /**
+   * Transactions coalesce a burst of rapid edits (bar drag, typing into
+   * a field) into a single undo step: one snapshot at begin, later
+   * mutators skip snapshotting until `endScheduleTransaction` closes the
+   * window. `abortScheduleTransaction` pops the snapshot we pushed at
+   * begin — use it when a drag is Esc-cancelled.
+   */
+  beginScheduleTransaction: (label: string) => void;
+  endScheduleTransaction: () => void;
+  abortScheduleTransaction: () => void;
 }
 
 /**
@@ -238,10 +337,17 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   playbackLoop: true,
   animationSettings: DEFAULT_ANIMATION_SETTINGS,
   scheduleSourceModelId: null,
+  scheduleIsEdited: false,
+  scheduleUndoStack: [],
+  scheduleRedoStack: [],
 
   // Actions
   setScheduleData: (scheduleData) => {
     const range = computeScheduleRange(scheduleData);
+    // Any in-flight transaction is abandoned when fresh data is loaded.
+    scheduleTxn.active = false;
+    scheduleTxn.label = '';
+    scheduleTxn.pushedAt = -1;
     set({
       scheduleData,
       scheduleRange: range,
@@ -256,6 +362,11 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
       ),
       selectedTaskGlobalIds: new Set(),
       hoveredTaskGlobalId: null,
+      // New data = clean slate. Edit state from a prior schedule doesn't
+      // carry over.
+      scheduleIsEdited: false,
+      scheduleUndoStack: [],
+      scheduleRedoStack: [],
     });
   },
 
@@ -285,6 +396,9 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
 
   commitGeneratedSchedule: (data, sourceModelId) => {
     const range = computeScheduleRange(data);
+    scheduleTxn.active = false;
+    scheduleTxn.label = '';
+    scheduleTxn.pushedAt = -1;
     set(state => {
       const newDirty = new Set((state as unknown as { dirtyModels?: Set<string> }).dirtyModels);
       newDirty.add(sourceModelId);
@@ -301,6 +415,12 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
         ),
         selectedTaskGlobalIds: new Set(),
         hoveredTaskGlobalId: null,
+        // Generated schedules haven't been edited (they're brand-new);
+        // stacks reset so users can't undo back to a pre-generation state
+        // via the schedule undo UI (keeps the semantic crisp).
+        scheduleIsEdited: false,
+        scheduleUndoStack: [],
+        scheduleRedoStack: [],
         // Cross-slice writes live behind a cast because the slice creator
         // is only typed for its own shape; the store combines slices so
         // these fields exist at runtime.
@@ -367,11 +487,20 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
         playbackIsPlaying: false,
         selectedTaskGlobalIds: new Set(),
         hoveredTaskGlobalId: null,
+        // Discarding generated tasks resets the edit state to "clean"
+        // for the remaining parsed schedule. Any undo history from
+        // prior edits is also dropped — you can't undo a discard.
+        scheduleIsEdited: false,
+        scheduleUndoStack: [],
+        scheduleRedoStack: [],
         dirtyModels: newDirty,
         mutationVersion: bump,
       } as Partial<ScheduleSlice>;
     });
 
+    scheduleTxn.active = false;
+    scheduleTxn.label = '';
+    scheduleTxn.pushedAt = -1;
     return removed;
   },
   setAnimationSettings: (animationSettings) => set({ animationSettings }),
@@ -417,7 +546,482 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     }
     set({ playbackTime: next });
   },
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Schedule editing (P1)
+  //
+  // All mutators funnel through the same pattern:
+  //   1. If not inside a transaction, push a pre-mutation snapshot.
+  //   2. Clone + patch `scheduleData` (deep enough — tasks/sequences/ws
+  //      are shallow-patched, but the containing collection is rebuilt so
+  //      Zustand's identity-based subscriptions fire).
+  //   3. Recompute `scheduleRange` if time-affecting fields changed.
+  //   4. Set `scheduleIsEdited = true`, mark the source model dirty, bump
+  //      `mutationVersion` via the cross-slice cast so the export badge
+  //      re-renders.
+  // ═════════════════════════════════════════════════════════════════════
+
+  updateTask: (globalId, patch) => {
+    const current = get().scheduleData;
+    if (!current) return;
+    const idx = current.tasks.findIndex(t => t.globalId === globalId);
+    if (idx < 0) return;
+    pushScheduleSnapshot(get, set, `Edit task: ${current.tasks[idx].name || 'untitled'}`);
+
+    const next = cloneExtraction(current);
+    const t = next.tasks[idx];
+    if (patch.name !== undefined) t.name = patch.name;
+    if (patch.identification !== undefined) t.identification = patch.identification;
+    if (patch.description !== undefined) t.description = patch.description;
+    if (patch.longDescription !== undefined) t.longDescription = patch.longDescription;
+    if (patch.objectType !== undefined) t.objectType = patch.objectType;
+    if (patch.predefinedType !== undefined) t.predefinedType = patch.predefinedType;
+    if (patch.isMilestone !== undefined) {
+      t.isMilestone = patch.isMilestone;
+      if (patch.isMilestone && t.taskTime) {
+        // Milestones have zero duration — collapse finish to start and set
+        // PT0S explicitly so the serializer emits it verbatim on export.
+        t.taskTime = {
+          ...t.taskTime,
+          scheduleFinish: t.taskTime.scheduleStart ?? t.taskTime.scheduleFinish,
+          scheduleDuration: 'PT0S',
+        };
+      }
+    }
+    commitEdit(get, set, next);
+  },
+
+  updateTaskTime: (globalId, patch) => {
+    const current = get().scheduleData;
+    if (!current) return;
+    const idx = current.tasks.findIndex(t => t.globalId === globalId);
+    if (idx < 0) return;
+    pushScheduleSnapshot(get, set, `Edit task time: ${current.tasks[idx].name || 'untitled'}`);
+
+    const next = cloneExtraction(current);
+    const t = next.tasks[idx];
+    const prevTime = t.taskTime ?? {};
+    // Combine prior + patch; then reconcile start/finish/duration so
+    // whichever pair the user supplied wins and the third is derived.
+    const merged = { ...prevTime, ...patch };
+    const reconciled = reconcileTaskTime(merged);
+    if (!reconciled) {
+      // finish < start — reject by reverting this transaction's snapshot.
+      // We already pushed; pop it so the user doesn't undo into an
+      // un-change.
+      const s = get();
+      if (s.scheduleUndoStack.length > 0) {
+        const popped = s.scheduleUndoStack.slice(0, -1);
+        set({ scheduleUndoStack: popped });
+      }
+      return;
+    }
+    t.taskTime = reconciled;
+    commitEdit(get, set, next);
+  },
+
+  assignProductsToTask: (taskGlobalId, globalProductIds) => {
+    if (globalProductIds.length === 0) return;
+    const current = get().scheduleData;
+    if (!current) return;
+    const idx = current.tasks.findIndex(t => t.globalId === taskGlobalId);
+    if (idx < 0) return;
+
+    // Federation: convert incoming globals → local expressIds using the
+    // schedule's source model. When there's no source yet (purely parsed
+    // schedule) fall back to the single-model assumption.
+    const s = get();
+    const sourceModelId = s.scheduleSourceModelId
+      ?? resolveSingleModelId(s as unknown as { models?: Map<string, unknown> });
+    const idOffset = resolveIdOffset(s as unknown as { models?: Map<string, { idOffset?: number }> }, sourceModelId);
+    const toLocal = (g: number): number => g - idOffset;
+
+    pushScheduleSnapshot(get, set, `Assign ${globalProductIds.length} product(s)`);
+    const next = cloneExtraction(current);
+    const t = next.tasks[idx];
+    const existingLocal = new Set(t.productExpressIds);
+    const existingGlobal = new Set(t.productGlobalIds);
+    for (const g of globalProductIds) {
+      const local = toLocal(g);
+      if (!existingLocal.has(local)) {
+        t.productExpressIds.push(local);
+        existingLocal.add(local);
+      }
+      const gs = String(g);
+      if (!existingGlobal.has(gs)) {
+        t.productGlobalIds.push(gs);
+        existingGlobal.add(gs);
+      }
+    }
+    commitEdit(get, set, next);
+  },
+
+  unassignProductsFromTask: (taskGlobalId, globalProductIds) => {
+    if (globalProductIds.length === 0) return;
+    const current = get().scheduleData;
+    if (!current) return;
+    const idx = current.tasks.findIndex(t => t.globalId === taskGlobalId);
+    if (idx < 0) return;
+
+    const s = get();
+    const sourceModelId = s.scheduleSourceModelId
+      ?? resolveSingleModelId(s as unknown as { models?: Map<string, unknown> });
+    const idOffset = resolveIdOffset(s as unknown as { models?: Map<string, { idOffset?: number }> }, sourceModelId);
+    const localsToDrop = new Set(globalProductIds.map(g => g - idOffset));
+    const globalsToDrop = new Set(globalProductIds.map(g => String(g)));
+
+    pushScheduleSnapshot(get, set, `Remove ${globalProductIds.length} product(s)`);
+    const next = cloneExtraction(current);
+    const t = next.tasks[idx];
+    t.productExpressIds = t.productExpressIds.filter(id => !localsToDrop.has(id));
+    t.productGlobalIds = t.productGlobalIds.filter(gid => !globalsToDrop.has(gid));
+    commitEdit(get, set, next);
+  },
+
+  deleteTask: (globalId) => {
+    const current = get().scheduleData;
+    if (!current) return;
+    const target = current.tasks.find(t => t.globalId === globalId);
+    if (!target) return;
+
+    pushScheduleSnapshot(get, set, `Delete task: ${target.name || 'untitled'}`);
+    const next = cloneExtraction(current);
+
+    // Collect every descendant so we can also remove their tasks and the
+    // sequences that reference them (cycle-safe BFS — we trust the tree
+    // but don't assume it).
+    const byId = new Map(next.tasks.map(t => [t.globalId, t] as const));
+    const doomedIds = new Set<string>();
+    const queue: string[] = [globalId];
+    while (queue.length > 0) {
+      const g = queue.shift()!;
+      if (doomedIds.has(g)) continue;
+      doomedIds.add(g);
+      const task = byId.get(g);
+      if (!task) continue;
+      for (const child of task.childGlobalIds) {
+        if (!doomedIds.has(child)) queue.push(child);
+      }
+    }
+
+    // Reparent any survivors that reference a doomed parent (shouldn't
+    // happen if the tree is well-formed, but doomedIds covers descendants
+    // so this only catches weird multi-parent edges if they exist).
+    for (const t of next.tasks) {
+      if (doomedIds.has(t.globalId)) continue;
+      if (t.parentGlobalId && doomedIds.has(t.parentGlobalId)) {
+        t.parentGlobalId = target.parentGlobalId;
+      }
+      // Remove doomed children from surviving tasks' child lists.
+      if (t.childGlobalIds.some(c => doomedIds.has(c))) {
+        t.childGlobalIds = t.childGlobalIds.filter(c => !doomedIds.has(c));
+      }
+    }
+
+    next.tasks = next.tasks.filter(t => !doomedIds.has(t.globalId));
+    next.sequences = next.sequences.filter(s =>
+      !doomedIds.has(s.relatingTaskGlobalId) && !doomedIds.has(s.relatedTaskGlobalId),
+    );
+    // Remove doomed task ids from any work schedule's taskGlobalIds.
+    for (const ws of next.workSchedules) {
+      if (ws.taskGlobalIds.some(g => doomedIds.has(g))) {
+        ws.taskGlobalIds = ws.taskGlobalIds.filter(g => !doomedIds.has(g));
+      }
+    }
+    if (next.tasks.length === 0) next.hasSchedule = false;
+
+    // Also drop the deleted ids from the selection set so the Inspector
+    // Task card dismisses cleanly.
+    const selected = new Set(get().selectedTaskGlobalIds);
+    let selectionChanged = false;
+    for (const g of doomedIds) {
+      if (selected.delete(g)) selectionChanged = true;
+    }
+
+    commitEdit(get, set, next, selectionChanged ? { selectedTaskGlobalIds: selected } : undefined);
+  },
+
+  undoScheduleEdit: () => {
+    const s = get();
+    if (s.scheduleUndoStack.length === 0) return;
+    const top = s.scheduleUndoStack[s.scheduleUndoStack.length - 1];
+    const newUndo = s.scheduleUndoStack.slice(0, -1);
+    // Capture current state for redo BEFORE restoring.
+    const redoEntry: ScheduleSnapshot = {
+      label: top.label,
+      data: s.scheduleData ? cloneExtraction(s.scheduleData) : null,
+      range: s.scheduleRange,
+      isEdited: s.scheduleIsEdited,
+    };
+    const newRedo = [...s.scheduleRedoStack, redoEntry].slice(-SCHEDULE_STACK_MAX);
+    applySnapshot(get, set, top, newUndo, newRedo);
+  },
+
+  redoScheduleEdit: () => {
+    const s = get();
+    if (s.scheduleRedoStack.length === 0) return;
+    const top = s.scheduleRedoStack[s.scheduleRedoStack.length - 1];
+    const newRedo = s.scheduleRedoStack.slice(0, -1);
+    const undoEntry: ScheduleSnapshot = {
+      label: top.label,
+      data: s.scheduleData ? cloneExtraction(s.scheduleData) : null,
+      range: s.scheduleRange,
+      isEdited: s.scheduleIsEdited,
+    };
+    const newUndo = [...s.scheduleUndoStack, undoEntry].slice(-SCHEDULE_STACK_MAX);
+    applySnapshot(get, set, top, newUndo, newRedo);
+  },
+
+  beginScheduleTransaction: (label) => {
+    // One snapshot for the whole transaction. Skip if one's already open.
+    if (scheduleTxn.active) return;
+    scheduleTxn.active = true;
+    scheduleTxn.label = label;
+    scheduleTxn.pushedAt = get().scheduleUndoStack.length;
+    pushScheduleSnapshot(get, set, label, /* forceIgnoreTxn */ true);
+  },
+
+  endScheduleTransaction: () => {
+    scheduleTxn.active = false;
+    scheduleTxn.label = '';
+    scheduleTxn.pushedAt = -1;
+  },
+
+  abortScheduleTransaction: () => {
+    if (!scheduleTxn.active) return;
+    // Pop the snapshot we pushed at begin — only if it's still the top.
+    const s = get();
+    if (s.scheduleUndoStack.length === scheduleTxn.pushedAt + 1) {
+      const entry = s.scheduleUndoStack[s.scheduleUndoStack.length - 1];
+      if (entry.label === scheduleTxn.label) {
+        // Restoring the snapshot also reverts any mutations we made
+        // during the transaction.
+        const newUndo = s.scheduleUndoStack.slice(0, -1);
+        applySnapshot(get, set, entry, newUndo, s.scheduleRedoStack);
+      }
+    }
+    scheduleTxn.active = false;
+    scheduleTxn.label = '';
+    scheduleTxn.pushedAt = -1;
+  },
 });
+
+// ═════════════════════════════════════════════════════════════════════
+// Internal helpers for schedule editing
+// ═════════════════════════════════════════════════════════════════════
+
+const SCHEDULE_STACK_MAX = 50;
+
+/**
+ * Transaction state lives at module scope (not in the Zustand state) so
+ * bar-drag / field-typing callbacks can flip it without re-subscribing.
+ * Single-threaded JS = no race concerns; the UI only opens one gesture
+ * at a time. Reset on any schedule load so state can't leak between
+ * sessions.
+ */
+const scheduleTxn = { active: false, label: '', pushedAt: -1 };
+
+/** Deep-clone an extraction so snapshots don't share mutable refs. */
+function cloneExtraction(src: ScheduleExtraction): ScheduleExtraction {
+  // `structuredClone` is available in every runtime we target. Falls
+  // back to JSON only if the environment is ancient — the tasks /
+  // sequences are plain data so both paths round-trip cleanly.
+  if (typeof structuredClone === 'function') return structuredClone(src);
+  return JSON.parse(JSON.stringify(src)) as ScheduleExtraction;
+}
+
+/**
+ * Push a pre-mutation snapshot onto the undo stack, clear the redo
+ * stack (as is standard for undo UIs — any new edit after an undo
+ * forks history). Skipped when a transaction is active unless the
+ * caller passes `forceIgnoreTxn`.
+ */
+function pushScheduleSnapshot(
+  get: () => ScheduleSlice,
+  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  label: string,
+  forceIgnoreTxn = false,
+): void {
+  if (scheduleTxn.active && !forceIgnoreTxn) return;
+  const s = get();
+  if (!s.scheduleData) return;
+  const entry: ScheduleSnapshot = {
+    label,
+    data: cloneExtraction(s.scheduleData),
+    range: s.scheduleRange,
+    isEdited: s.scheduleIsEdited,
+  };
+  const nextUndo = [...s.scheduleUndoStack, entry].slice(-SCHEDULE_STACK_MAX);
+  set({
+    scheduleUndoStack: nextUndo,
+    scheduleRedoStack: [], // fork — clear redo
+  });
+}
+
+/**
+ * Finalise an edit: replace `scheduleData`, recompute range, flip the
+ * edited flag, cross-slice-mark dirty, bump mutation version.
+ */
+function commitEdit(
+  get: () => ScheduleSlice,
+  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  next: ScheduleExtraction,
+  extra?: Partial<ScheduleSlice>,
+): void {
+  const range = computeScheduleRange(next);
+  set(state => {
+    const crossState = state as unknown as {
+      dirtyModels?: Set<string>;
+      mutationVersion?: number;
+    };
+    const sourceModelId = (state as ScheduleSlice).scheduleSourceModelId;
+    const newDirty = new Set(crossState.dirtyModels);
+    if (sourceModelId) newDirty.add(sourceModelId);
+    const bump = (crossState.mutationVersion ?? 0) + 1;
+    return {
+      ...(extra ?? {}),
+      scheduleData: next,
+      scheduleRange: range,
+      scheduleIsEdited: true,
+      dirtyModels: newDirty,
+      mutationVersion: bump,
+    } as Partial<ScheduleSlice>;
+  });
+  // Touch `get` so the linter doesn't complain about the unused arg.
+  // Reading here (post-set) is also cheap and keeps the signature
+  // symmetric with the other helpers.
+  void get();
+}
+
+/**
+ * Restore a snapshot (shared by undo + redo + abort). Keeps the undo /
+ * redo stacks the caller decided on, rather than deriving from `top`.
+ */
+function applySnapshot(
+  get: () => ScheduleSlice,
+  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  snap: ScheduleSnapshot,
+  newUndo: ScheduleSnapshot[],
+  newRedo: ScheduleSnapshot[],
+): void {
+  set(state => {
+    const crossState = state as unknown as {
+      dirtyModels?: Set<string>;
+      mutationVersion?: number;
+    };
+    const sourceModelId = (state as ScheduleSlice).scheduleSourceModelId;
+    const newDirty = new Set(crossState.dirtyModels);
+    if (sourceModelId) {
+      if (snap.isEdited) newDirty.add(sourceModelId);
+      else newDirty.delete(sourceModelId);
+    }
+    const bump = (crossState.mutationVersion ?? 0) + 1;
+    return {
+      scheduleData: snap.data,
+      scheduleRange: snap.range,
+      scheduleIsEdited: snap.isEdited,
+      scheduleUndoStack: newUndo,
+      scheduleRedoStack: newRedo,
+      dirtyModels: newDirty,
+      mutationVersion: bump,
+    } as Partial<ScheduleSlice>;
+  });
+  void get();
+}
+
+/**
+ * Reconcile scheduleStart / scheduleFinish / scheduleDuration so any
+ * two-of-three the caller supplies produce a consistent third.
+ *   • If start + finish supplied → derive duration from their delta.
+ *   • If start + duration → derive finish.
+ *   • If finish + duration (no start) → leave as-is; no start to anchor.
+ *   • Otherwise return patched merge as-is.
+ * Returns null when finish < start (invalid, caller should reject).
+ */
+function reconcileTaskTime(
+  merged: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string }
+    & Record<string, unknown>,
+): typeof merged | null {
+  const start = parseIsoDate(merged.scheduleStart as string | undefined);
+  const finish = parseIsoDate(merged.scheduleFinish as string | undefined);
+  if (start !== undefined && finish !== undefined && finish < start) return null;
+
+  if (start !== undefined && finish !== undefined) {
+    merged.scheduleDuration = msToIsoDuration(finish - start);
+  } else if (start !== undefined && merged.scheduleDuration) {
+    const finishMs = addIsoDurationToEpoch(start, merged.scheduleDuration);
+    if (finishMs !== undefined) merged.scheduleFinish = toIsoUtc(finishMs);
+  }
+  return merged;
+}
+
+/** Emit an ISO 8601 P…T… duration from a millisecond quantity. */
+function msToIsoDuration(ms: number): string {
+  const clamped = Math.max(0, Math.round(ms));
+  if (clamped === 0) return 'PT0S';
+  const days = Math.floor(clamped / 86_400_000);
+  const remAfterDays = clamped - days * 86_400_000;
+  const hours = Math.floor(remAfterDays / 3_600_000);
+  const remAfterHours = remAfterDays - hours * 3_600_000;
+  const mins = Math.floor(remAfterHours / 60_000);
+  const secs = Math.floor((remAfterHours - mins * 60_000) / 1000);
+  let out = 'P';
+  if (days > 0) out += `${days}D`;
+  if (hours > 0 || mins > 0 || secs > 0) {
+    out += 'T';
+    if (hours > 0) out += `${hours}H`;
+    if (mins > 0) out += `${mins}M`;
+    if (secs > 0) out += `${secs}S`;
+  }
+  return out === 'P' ? 'P0D' : out;
+}
+
+function addIsoDurationToEpoch(start: number, iso: string): number | undefined {
+  const match = iso.match(
+    /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
+  );
+  if (!match) return undefined;
+  const [, y, mo, w, d, h, mi, s] = match;
+  const yearMs = 365.2425 * 86_400_000;
+  const monthMs = yearMs / 12;
+  const total =
+    (y ? parseFloat(y) * yearMs : 0) +
+    (mo ? parseFloat(mo) * monthMs : 0) +
+    (w ? parseFloat(w) * 7 * 86_400_000 : 0) +
+    (d ? parseFloat(d) * 86_400_000 : 0) +
+    (h ? parseFloat(h) * 3_600_000 : 0) +
+    (mi ? parseFloat(mi) * 60_000 : 0) +
+    (s ? parseFloat(s) * 1000 : 0);
+  return start + total;
+}
+
+/** Epoch ms → ISO-8601 UTC (no milliseconds), matching the extractor. */
+function toIsoUtc(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  );
+}
+
+/** Pick the only model when running single-model; '' otherwise. */
+function resolveSingleModelId(
+  state: { models?: Map<string, unknown> },
+): string | null {
+  const models = state.models;
+  if (!models || models.size !== 1) return null;
+  const firstKey = models.keys().next().value;
+  return typeof firstKey === 'string' ? firstKey : null;
+}
+
+function resolveIdOffset(
+  state: { models?: Map<string, { idOffset?: number }> },
+  sourceModelId: string | null,
+): number {
+  if (!sourceModelId) return 0;
+  return state.models?.get(sourceModelId)?.idOffset ?? 0;
+}
 
 // ── Derived selectors ────────────────────────────────────────────────────
 

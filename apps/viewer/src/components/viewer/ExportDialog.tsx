@@ -526,6 +526,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               result.content,
               state.scheduleData ?? null,
               selectedModel.ifcDataStore as IfcDataStore,
+              { scheduleIsEdited: state.scheduleIsEdited === true },
             )
           : result.content;
 

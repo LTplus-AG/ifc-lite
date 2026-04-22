@@ -44,6 +44,7 @@ import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
 import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
 import { ScheduleCard } from './properties/ScheduleCard';
+import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { RelationshipsCard } from './properties/RelationshipsCard';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
@@ -552,6 +553,13 @@ export function PropertiesPanel() {
   // schedule lists this entity as a controlled product, so it's safe to call
   // unconditionally.
   const scheduleData = useViewerStore((s) => s.scheduleData);
+  // Single-task selection from the Gantt triggers the Task edit card —
+  // pull the set and its size so the Inspector can react to any change.
+  const selectedTaskGlobalIds = useViewerStore((s) => s.selectedTaskGlobalIds);
+  const singleSelectedTaskGlobalId = useMemo(() => {
+    if (selectedTaskGlobalIds.size !== 1) return null;
+    return selectedTaskGlobalIds.values().next().value ?? null;
+  }, [selectedTaskGlobalIds]);
   // True when the schedule contains at least one task the user generated
   // locally (no expressId in the host STEP). Mixed schedules — parsed tail +
   // user-appended task — still surface the pending banner so the user sees
@@ -1307,6 +1315,16 @@ export function PropertiesPanel() {
 
         <ScrollArea className="flex-1 bg-white dark:bg-black">
           <TabsContent value="properties" className="m-0 p-3 overflow-hidden">
+            {/* Task edit card — renders when exactly one Gantt task is
+                selected. Shown above any entity properties because the
+                user's attention shifted to editing the task, not the 3D
+                element. Other tabs (quantities / relationships / bSDD)
+                still show entity content regardless. */}
+            {singleSelectedTaskGlobalId && (
+              <div className="mb-3">
+                <TaskEditCard taskGlobalId={singleSelectedTaskGlobalId} />
+              </div>
+            )}
             {/* Edit toolbar - only shown when edit mode is active */}
             {editMode && selectedEntity && !isNativeLazySelection && (
               <EditToolbar

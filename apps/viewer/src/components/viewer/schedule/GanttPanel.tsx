@@ -162,8 +162,34 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
 
   const showEmpty = !scheduleData || !scheduleRange || rows.length === 0;
 
+  // Keyboard shortcuts for schedule undo/redo — active only while the
+  // Gantt panel (or a descendant) has focus, so the shortcut doesn't
+  // steal Ctrl+Z from the script editor / text inputs elsewhere.
+  const onPanelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    // Ignore when the user is typing into an input/textarea — the
+    // browser's own undo history is usually what they want there.
+    const target = e.target as HTMLElement | null;
+    const tag = target?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+
+    if (e.key === 'z' || e.key === 'Z') {
+      e.preventDefault();
+      if (e.shiftKey) useViewerStore.getState().redoScheduleEdit();
+      else useViewerStore.getState().undoScheduleEdit();
+    } else if (e.key === 'y' || e.key === 'Y') {
+      e.preventDefault();
+      useViewerStore.getState().redoScheduleEdit();
+    }
+  };
+
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden bg-background">
+    <div
+      className="h-full w-full flex flex-col overflow-hidden bg-background outline-none"
+      tabIndex={-1}
+      onKeyDown={onPanelKeyDown}
+    >
       <GanttToolbar
         onClose={onClose}
         onOpenGenerate={() => setGenerateOpen(true)}

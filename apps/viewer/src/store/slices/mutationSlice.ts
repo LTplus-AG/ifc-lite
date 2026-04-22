@@ -759,13 +759,16 @@ export const createMutationSlice: StateCreator<
   // Query
   hasChanges: (modelId) => {
     if (get().dirtyModels.has(modelId)) return true;
-    // Schedule-only case: a generated schedule counts as a pending edit
-    // even if the user hasn't touched any properties.
+    // Schedule-only case: a generated schedule OR an edited parsed
+    // schedule counts as a pending edit even if the user hasn't touched
+    // any properties.
     const cross = get() as unknown as {
       scheduleSourceModelId?: string | null;
+      scheduleIsEdited?: boolean;
       scheduleData?: { tasks: Array<{ expressId?: number }> } | null;
     };
     if (cross.scheduleSourceModelId !== modelId) return false;
+    if (cross.scheduleIsEdited) return true;
     const tasks = cross.scheduleData?.tasks;
     if (!tasks) return false;
     for (const t of tasks) if (!t.expressId || t.expressId <= 0) return true;
@@ -793,13 +796,27 @@ export const createMutationSlice: StateCreator<
     // Include generated schedule tasks — these are spliced into the STEP
     // export just like property mutations are, so they belong in the same
     // "pending changes" count the export badge reads.
+    //
+    // Edited parsed schedules: if the schedule has been edited (any task
+    // renamed / rescheduled / deleted / etc.) count +1 to surface the
+    // badge, even when no generated tasks exist. Users need some signal
+    // that "edits are pending export"; a single +1 keeps the count
+    // honest without inflating for every individual field change.
     const cross = get() as unknown as {
       scheduleData?: { tasks: Array<{ expressId?: number }> } | null;
+      scheduleIsEdited?: boolean;
     };
     const tasks = cross.scheduleData?.tasks;
+    let hasGenerated = false;
     if (tasks) {
-      for (const t of tasks) if (!t.expressId || t.expressId <= 0) count++;
+      for (const t of tasks) {
+        if (!t.expressId || t.expressId <= 0) {
+          count++;
+          hasGenerated = true;
+        }
+      }
     }
+    if (cross.scheduleIsEdited && !hasGenerated) count++;
     return count;
   },
 

@@ -174,3 +174,154 @@ test('injectScheduleIntoStep resolves product GlobalIds via the data store', () 
   // wall-A → 11, wall-B → 12 per STUB_STORE's resolver.
   assert.match(proc!, /\(#11,#12\)/);
 });
+
+// ─── rewrite mode (P1: schedule-as-unit export) ───────────────────────
+
+/**
+ * STEP fixture with an existing parsed schedule block — exercises the
+ * rewrite path that strips all schedule entities and re-emits fresh.
+ */
+const SAMPLE_STEP_WITH_SCHEDULE = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('test'),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('proj-gid',$,'P',$,$,$,$,(#2),#3);
+#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);
+#11=IFCWALL('wall-A-gid',#10,'A',$,$,$,$,$,$);
+#12=IFCWALL('wall-B-gid',#10,'B',$,$,$,$,$,$);
+#20=IFCWORKSCHEDULE('orig-sched-gid',#10,'Original',$,$,$,$,$,$,$,$,$,$,$,.PLANNED.);
+#21=IFCTASKTIME($,$,$,.WORKTIME.,'P3D','2024-01-01T08:00:00','2024-01-04T08:00:00',$,$,$,$,$,$,$,$,$,$,$,$,$);
+#22=IFCTASK('orig-task-gid',#10,'Original task',$,$,$,$,$,$,.F.,$,#21,.CONSTRUCTION.);
+#23=IFCRELASSIGNSTOCONTROL('rel-ctl',#10,$,$,(#22),$,#20);
+#24=IFCRELASSIGNSTOPROCESS('rel-proc',#10,$,$,(#11,#12),$,#22);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+test('injectScheduleIntoStep rewrite mode strips the original schedule block', () => {
+  // No in-memory schedule + edited flag → user deleted every task.
+  const out = injectScheduleIntoStep(
+    SAMPLE_STEP_WITH_SCHEDULE,
+    null,
+    STUB_STORE,
+    { scheduleIsEdited: true },
+  );
+  assert.ok(!out.includes('IFCWORKSCHEDULE'), 'original workschedule removed');
+  assert.ok(!out.includes('IFCTASK('), 'original task removed');
+  assert.ok(!out.includes('IFCTASKTIME'), 'original task time removed');
+  assert.ok(!out.includes('IFCRELASSIGNSTOCONTROL'), 'rel-assigns-to-control removed');
+  assert.ok(!out.includes('IFCRELASSIGNSTOPROCESS'), 'rel-assigns-to-process removed');
+  // Non-schedule entities must remain intact.
+  assert.ok(out.includes('IFCWALL'), 'walls preserved');
+  assert.ok(out.includes('IFCOWNERHISTORY'), 'owner history preserved');
+  assert.ok(out.includes('IFCPROJECT'), 'project preserved');
+});
+
+test('injectScheduleIntoStep rewrite mode replaces the original schedule with the edited one', () => {
+  const edited: ScheduleExtraction = {
+    hasSchedule: true,
+    workSchedules: [{
+      expressId: 20, globalId: 'orig-sched-gid', kind: 'WorkSchedule',
+      name: 'Renamed schedule',
+      startTime: '2024-05-01T08:00:00',
+      finishTime: '2024-05-10T17:00:00',
+      predefinedType: 'PLANNED',
+      taskGlobalIds: ['orig-task-gid'],
+    }],
+    tasks: [{
+      expressId: 22, globalId: 'orig-task-gid', name: 'Renamed task',
+      isMilestone: false, predefinedType: 'CONSTRUCTION',
+      childGlobalIds: [],
+      productExpressIds: [11],
+      productGlobalIds: ['wall-A'],
+      controllingScheduleGlobalIds: ['orig-sched-gid'],
+      taskTime: {
+        scheduleStart: '2024-05-01T08:00:00',
+        scheduleFinish: '2024-05-05T17:00:00',
+        scheduleDuration: 'P5D',
+      },
+    }],
+    sequences: [],
+  };
+  const out = injectScheduleIntoStep(
+    SAMPLE_STEP_WITH_SCHEDULE,
+    edited,
+    STUB_STORE,
+    { scheduleIsEdited: true },
+  );
+
+  // Old names/timestamps gone.
+  assert.ok(!out.includes("'Original'"), 'original schedule name stripped');
+  assert.ok(!out.includes("'Original task'"), 'original task name stripped');
+  assert.ok(!out.includes('P3D'), 'original duration stripped');
+  assert.ok(!out.includes('2024-01-01T08:00:00'), 'original date stripped');
+
+  // New names/timestamps present.
+  assert.ok(out.includes("'Renamed schedule'"), 'new schedule name present');
+  assert.ok(out.includes("'Renamed task'"), 'new task name present');
+  assert.ok(out.includes('P5D'), 'new duration present');
+  assert.ok(out.includes('2024-05-01T08:00:00'), 'new start date present');
+
+  // Globalids must be preserved (same identity).
+  assert.ok(out.includes("'orig-sched-gid'"), 'work-schedule globalId preserved');
+  assert.ok(out.includes("'orig-task-gid'"), 'task globalId preserved');
+
+  // No duplicate emission.
+  const workScheduleCount = (out.match(/=IFCWORKSCHEDULE\(/g) ?? []).length;
+  const taskCount = (out.match(/=IFCTASK\(/g) ?? []).length;
+  assert.equal(workScheduleCount, 1, 'exactly one work schedule in output');
+  assert.equal(taskCount, 1, 'exactly one task in output');
+});
+
+test('injectScheduleIntoStep rewrite mode leaves non-schedule entities byte-identical', () => {
+  // Input has project, owner history, two walls, plus a schedule block.
+  // After rewrite with empty schedule, the non-schedule lines should be
+  // intact (aside from re-ordering they don't do).
+  const out = injectScheduleIntoStep(
+    SAMPLE_STEP_WITH_SCHEDULE,
+    null,
+    STUB_STORE,
+    { scheduleIsEdited: true },
+  );
+  // Each non-schedule line from the input must appear in the output.
+  for (const line of [
+    "#1=IFCPROJECT('proj-gid',$,'P',$,$,$,$,(#2),#3);",
+    '#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);',
+    "#11=IFCWALL('wall-A-gid',#10,'A',$,$,$,$,$,$);",
+    "#12=IFCWALL('wall-B-gid',#10,'B',$,$,$,$,$,$);",
+  ]) {
+    assert.ok(out.includes(line), `preserved line: ${line}`);
+  }
+});
+
+test('injectScheduleIntoStep without scheduleIsEdited preserves append-only legacy behaviour', () => {
+  // Mixed schedule (one parsed, one generated) without the edit flag →
+  // only the generated tail is emitted, original parsed task stays intact.
+  const mixed: ScheduleExtraction = {
+    hasSchedule: true,
+    workSchedules: [],
+    tasks: [
+      {
+        expressId: 99, globalId: 'parsed', name: 'Parsed task', isMilestone: false,
+        childGlobalIds: [], productExpressIds: [], productGlobalIds: [],
+        controllingScheduleGlobalIds: [],
+      },
+      {
+        expressId: 0, globalId: 'fresh', name: 'Fresh', isMilestone: false,
+        childGlobalIds: [], productExpressIds: [0], productGlobalIds: ['wall-A'],
+        controllingScheduleGlobalIds: [],
+        taskTime: { scheduleStart: '2024-05-01T08:00:00', scheduleFinish: '2024-05-05T17:00:00' },
+      },
+    ],
+    sequences: [],
+  };
+  // Legacy (no options): only generated should splice in, parsed name
+  // must not re-appear.
+  const legacy = injectScheduleIntoStep(SAMPLE_STEP_WITH_SCHEDULE, mixed, STUB_STORE);
+  assert.match(legacy, /'Fresh'/);
+  // The original schedule block stays untouched because we're in append mode.
+  assert.ok(legacy.includes("'Original'"), 'original schedule block preserved in append mode');
+});

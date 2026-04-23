@@ -118,10 +118,16 @@ export type LifecyclePhase =
 
 export interface AnimationSettings {
   /**
-   * `'minimal'` = only toggle hidden-ids per hard reveal (no colour/opacity
-   * effects). `'phased'` = full lifecycle colouring from the palette below.
+   * Whether any colour overlays paint over the base material during
+   * playback. Derived at the animator: true when ANY of
+   * `colorizeByTaskType` / `showPreparationGhost` / `showCompletedTint`
+   * is on. The Popover's "Minimal" / "Phased" tiles read + write the
+   * underlying flags as presets; there is no separate `style` mode.
+   *
+   * Earlier revisions stored `style: 'minimal' | 'phased'` alongside
+   * these flags — two ways to say the same thing invited drift. Now
+   * the flags are the source of truth.
    */
-  style: 'minimal' | 'phased';
   /** Days before task start that the preparation ghost is shown. */
   preparationDays: number;
   /** Fraction of the task window used for the ramp-in (0..0.5). */
@@ -178,23 +184,21 @@ export interface AnimationSettings {
 }
 
 export const DEFAULT_ANIMATION_SETTINGS: AnimationSettings = {
-  // Default is 'minimal' — pure visibility-timing with zero colour overlays.
-  // The colour features are an opt-in power-user feature (see the popover's
-  // style tiles). Users who load a model should see it animate cleanly by
-  // default without any palette cast on top of their authoring.
-  style: 'minimal',
+  // Defaults to pure visibility-timing with zero colour overlays — the
+  // "Minimal" preset from the popover. Users who load a model should
+  // see it animate cleanly by default without any palette cast on top
+  // of their authoring. Every colour flag is OFF; the "Phased" preset
+  // in the popover flips `colorizeByTaskType` + raises
+  // `paletteIntensity`.
   preparationDays: 2,
   rampInFraction: 0.08,
   fadeOutFraction: 0.10,
-  // Off by default — the ghost is a power-user feature. Left on, it used
-  // to paint the upper floors of a staged-from-top-down model nearly
-  // white on light viewports.
   showPreparationGhost: false,
-  colorizeByTaskType: true,
-  // 0.6 is a sensible middle ground — the task-type colour reads clearly
-  // but the underlying material still shows through. Users can push to 1.0
-  // for a full Synchro-like paint or pull to 0 for purely visibility-timed.
-  paletteIntensity: 0.6,
+  colorizeByTaskType: false,
+  // 0 = no palette tint even if `colorizeByTaskType` is flipped later
+  // by other code; the "Phased" preset bumps this to 0.6 (middle-ground)
+  // when the user selects it.
+  paletteIntensity: 0,
   animateDemolition: true,
   hideBeforePreparation: true,
   hideUntaskedProducts: true,
@@ -426,12 +430,15 @@ export function computeAnimationFrame(
     'complete': 10,
   };
 
-  /**
-   * Two-layer separation: *timing* (hiddenIds) is always emitted regardless
-   * of style so minimal mode still removes demolished products and hides
-   * upcoming ones. *Colour overlays* only emit when style === 'phased'.
-   */
-  const emitColours = settings.style === 'phased';
+  // Two-layer separation: *timing* (hiddenIds) is always emitted so
+  // minimal-mode still removes demolished products and hides upcoming
+  // ones. *Colour overlays* only emit when at least one colour-overlay
+  // feature is enabled — the "minimal" preset in the popover simply
+  // leaves all three flags off.
+  const emitColours =
+    settings.colorizeByTaskType
+    || settings.showPreparationGhost
+    || settings.showCompletedTint;
 
   /** Per-product chosen phase so we resolve multi-task conflicts. */
   const chosenByProduct = new Map<number, PhaseResult>();

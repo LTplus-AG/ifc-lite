@@ -9,6 +9,7 @@ import { StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
+import { spliceScheduleIntoExport } from './export-schedule-splice.js';
 
 /** Options for CSV export */
 interface CsvOptions {
@@ -380,31 +381,18 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         georefMutations,
       };
 
-      const exportedContent = exporter.export(exportOptions).content;
-
-      // Splice any in-memory schedule (parsed-and-cached, or generated via the
-      // Gantt panel's "Generate from storeys" dialog) into the STEP output.
-      // The serializer emits IFC4-conformant IfcWorkSchedule / IfcTask /
-      // IfcTaskTime / IfcRelSequence / IfcRelAssignsToProcess /
-      // IfcRelAssignsToControl / IfcRelNests lines that any conformant viewer
-      // (incl. ifc-lite itself on re-import) will parse natively.
-      //
-      // STEP is textual by spec but the underlying exporter sometimes
-      // returns a Uint8Array (pre-encoded bytes). Decode → splice →
-      // re-encode when that happens; the string-only short-circuit we
-      // used before silently dropped the schedule on byte-path exports.
-      const stepText = typeof exportedContent === 'string'
-        ? exportedContent
-        : new TextDecoder('utf-8', { fatal: false }).decode(exportedContent);
-      const injected = injectScheduleIntoStep(
-        stepText,
-        state.scheduleData ?? null,
-        model.ifcDataStore as IfcDataStore,
-        { scheduleIsEdited: state.scheduleIsEdited === true },
-      );
-      return typeof exportedContent === 'string'
-        ? injected
-        : new TextEncoder().encode(injected);
+      // Splice any in-memory schedule (parsed-and-cached, or generated
+      // via the Gantt panel's "Generate from storeys" dialog) into the
+      // STEP output via the shared splice helper. Keeps this adapter
+      // in lockstep with the viewer's ExportDialog / ExportChangesButton
+      // so bugs can't differ across surfaces.
+      const exportResult = exporter.export(exportOptions);
+      const spliced = spliceScheduleIntoExport(exportResult, modelId, model.ifcDataStore as IfcDataStore, {
+        scheduleData: state.scheduleData ?? null,
+        scheduleIsEdited: state.scheduleIsEdited === true,
+        scheduleSourceModelId: state.scheduleSourceModelId ?? null,
+      });
+      return spliced.content;
     },
 
     download(content: string | Uint8Array, filename: string, mimeType?: string) {

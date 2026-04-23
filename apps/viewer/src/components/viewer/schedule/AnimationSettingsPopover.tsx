@@ -98,10 +98,22 @@ export function AnimationSettingsPopover({
   const patch = useViewerStore(s => s.patchAnimationSettings);
   const reset = useViewerStore(s => s.resetAnimationSettings);
 
-  const setStyle = useCallback(
-    (style: AnimationSettings['style']) => patch({ style }),
-    [patch],
-  );
+  // Minimal / Phased tiles are presets over the underlying colour
+  // flags, not a separate mode flag. "Phased" turns on task-type
+  // coloring at a sensible default intensity; "Minimal" turns every
+  // colour overlay off. Users can still toggle individual flags
+  // inside the Phased panel after picking either preset.
+  const applyMinimalPreset = useCallback(() => patch({
+    colorizeByTaskType: false,
+    showPreparationGhost: false,
+    showCompletedTint: false,
+    paletteIntensity: 0,
+  }), [patch]);
+  const applyPhasedPreset = useCallback(() => patch({
+    colorizeByTaskType: true,
+    paletteIntensity: 0.6,
+    // Leave ghost / completed off by default — power-user toggles inside.
+  }), [patch]);
 
   const setPaletteColor = useCallback((key: TaskPaletteKey, hex: string) => {
     const rgb = hexToRgb(hex);
@@ -118,7 +130,11 @@ export function AnimationSettingsPopover({
     patch({ palette: { ...settings.palette, [key]: DEFAULT_PALETTE[key] } });
   }, [patch, settings.palette]);
 
-  const phased = settings.style === 'phased';
+  // Derive the tile state from the underlying flags — "phased" means
+  // at least one colour overlay is on. No separate `style` bit.
+  const phased = settings.colorizeByTaskType
+    || settings.showPreparationGhost
+    || settings.showCompletedTint;
   const palette = settings.palette;
   const prepColor = palette.PREPARATION ?? DEFAULT_PALETTE.PREPARATION;
   const prepIsDefault = rgbEquals(prepColor, DEFAULT_PALETTE.PREPARATION);
@@ -164,14 +180,14 @@ export function AnimationSettingsPopover({
               label="Minimal"
               description="Visibility only — no colour"
               active={!phased}
-              onSelect={() => setStyle('minimal')}
+              onSelect={() => applyMinimalPreset()}
             />
             <StyleTile
               icon={<Palette className="h-3.5 w-3.5" />}
               label="Phased"
               description="Task-type colour overlays"
               active={phased}
-              onSelect={() => setStyle('phased')}
+              onSelect={() => applyPhasedPreset()}
             />
           </div>
         </div>
@@ -217,7 +233,7 @@ export function AnimationSettingsPopover({
             <DropdownMenuSeparator />
             <button
               type="button"
-              onClick={() => setStyle('phased')}
+              onClick={() => applyPhasedPreset()}
               className="w-full rounded-md border border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors px-3 py-2 text-left my-1"
             >
               <div className="flex items-center gap-1.5">

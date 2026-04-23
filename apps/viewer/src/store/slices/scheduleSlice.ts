@@ -18,6 +18,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import { deterministicGlobalId } from '@ifc-lite/parser';
 import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
 import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedule-animator';
 
@@ -374,25 +375,46 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     scheduleTxn.active = false;
     scheduleTxn.label = '';
     scheduleTxn.pushedAt = -1;
-    set({
-      scheduleData,
-      scheduleRange: range,
-      // Reset playback to the schedule's start when loading new data.
-      playbackTime: range?.start ?? 0,
-      playbackIsPlaying: false,
-      // Pick the first work schedule by default.
-      activeWorkScheduleId: scheduleData?.workSchedules[0]?.globalId ?? '',
-      // Expand roots by default so the user sees something.
-      expandedTaskGlobalIds: new Set(
-        scheduleData?.tasks.filter(t => !t.parentGlobalId).map(t => t.globalId) ?? [],
-      ),
-      selectedTaskGlobalIds: new Set(),
-      hoveredTaskGlobalId: null,
-      // New data = clean slate. Edit state from a prior schedule doesn't
-      // carry over.
-      scheduleIsEdited: false,
-      scheduleUndoStack: [],
-      scheduleRedoStack: [],
+    // Extracted-schedule attribution: even though the schedule wasn't
+    // user-generated, every downstream consumer (export splice gate,
+    // `mutationSlice.hasChanges`, the Inspector's pending chip) cares
+    // about "which model does this schedule live in?". Previously
+    // sourceModelId was only set by `commitGeneratedSchedule`, which
+    // meant extracted schedules surfaced as `null` and downstream
+    // reads had to fall through a single-model heuristic to cope. Now
+    // we populate it from the active model at every `setScheduleData`
+    // call so the field is always truthful.
+    set(state => {
+      const crossState = state as unknown as {
+        activeModelId?: string | null;
+        models?: Map<string, unknown>;
+      };
+      const activeId = crossState.activeModelId ?? null;
+      const single = crossState.models && crossState.models.size === 1
+        ? (crossState.models.keys().next().value as string | undefined) ?? null
+        : null;
+      const derivedSourceModelId = scheduleData ? (activeId ?? single) : null;
+      return {
+        scheduleData,
+        scheduleRange: range,
+        // Reset playback to the schedule's start when loading new data.
+        playbackTime: range?.start ?? 0,
+        playbackIsPlaying: false,
+        // Pick the first work schedule by default.
+        activeWorkScheduleId: scheduleData?.workSchedules[0]?.globalId ?? '',
+        // Expand roots by default so the user sees something.
+        expandedTaskGlobalIds: new Set(
+          scheduleData?.tasks.filter(t => !t.parentGlobalId).map(t => t.globalId) ?? [],
+        ),
+        selectedTaskGlobalIds: new Set(),
+        hoveredTaskGlobalId: null,
+        scheduleSourceModelId: derivedSourceModelId,
+        // New data = clean slate. Edit state from a prior schedule doesn't
+        // carry over.
+        scheduleIsEdited: false,
+        scheduleUndoStack: [],
+        scheduleRedoStack: [],
+      } as Partial<ScheduleSlice>;
     });
   },
 
@@ -774,7 +796,7 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     // two-stream 128-bit hash guarantees no collision even when the user
     // spams "Add" rapidly.
     const seed = `user-add|${now}|${current?.tasks.length ?? 0}|${Math.random().toString(36).slice(2, 8)}`;
-    const newGid = generatedGlobalIdFromSeed(seed);
+    const newGid = deterministicGlobalId(seed);
     const afterGid = options?.afterGlobalId;
     const durationDays = Math.max(0.5, options?.durationDays ?? 5);
     const name = options?.nameDefault ?? 'New task';
@@ -831,7 +853,7 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     if (next.workSchedules.length === 0) {
       next.workSchedules.push({
         expressId: 0,
-        globalId: generatedGlobalIdFromSeed(`user-add|ws|${now}`),
+        globalId: deterministicGlobalId(`user-add|ws|${now}`),
         kind: 'WorkSchedule',
         name: 'Construction schedule',
         description: 'User-authored',
@@ -1169,41 +1191,6 @@ function resolveIdOffset(
 ): number {
   if (!sourceModelId) return 0;
   return state.models?.get(sourceModelId)?.idOffset ?? 0;
-}
-
-/**
- * 128-bit rolling hash truncated to 22 base64url-ish chars, mirroring
- * the serializer's deterministic GlobalId generator. Keeps new-task
- * globalIds distinct even when the user spams "+ Task" rapidly.
- */
-function generatedGlobalIdFromSeed(seed: string): string {
-  const CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
-  let h0 = 0x811c9dc5 >>> 0;
-  let h1 = 0x9e3779b9 >>> 0;
-  let h2 = 0x6c078965 >>> 0;
-  let h3 = 0xb5297a4d >>> 0;
-  for (let i = 0; i < seed.length; i++) {
-    const c = seed.charCodeAt(i);
-    h0 = Math.imul(h0 ^ c, 0x01000193) >>> 0;
-    h1 = Math.imul(h1 ^ c ^ (h1 >>> 11), 0x85ebca6b) >>> 0;
-    h2 = Math.imul(h2 + c + (h2 >>> 7), 0xc2b2ae35) >>> 0;
-    h3 = Math.imul(h3 ^ ((c << 3) | (c >>> 5)) ^ (h3 >>> 13), 0x27d4eb2f) >>> 0;
-  }
-  const mix = (x: number, y: number): number =>
-    Math.imul((x ^ y) + ((x >>> 7) | (y << 25)), 0x85ebca6b) >>> 0;
-  const m0 = mix(h0, h2);
-  const m1 = mix(h1, h3);
-  const m2 = mix(h2, m1);
-  const m3 = mix(h3, m0);
-  const pool: number[] = [m0, m1, m2, m3];
-  let out = '';
-  for (let i = 0; i < 22; i++) {
-    const idx = i & 3;
-    const src = pool[idx];
-    out += CHARS[src & 0x3f];
-    pool[idx] = Math.imul(src ^ ((i + 1) * 0x45d9f3b), 0x01000193) >>> 0;
-  }
-  return out;
 }
 
 /** Today at 08:00 UTC, ISO-8601 no milliseconds — a friendly default. */

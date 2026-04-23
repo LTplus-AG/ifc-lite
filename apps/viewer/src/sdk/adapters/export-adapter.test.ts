@@ -325,3 +325,65 @@ test('injectScheduleIntoStep without scheduleIsEdited preserves append-only lega
   // The original schedule block stays untouched because we're in append mode.
   assert.ok(legacy.includes("'Original'"), 'original schedule block preserved in append mode');
 });
+
+// ─── edge cases flagged in the retrospective ────────────────────────
+
+test('stripScheduleEntities preserves IFCTASK as substring inside non-task strings', () => {
+  // Defensive: an IFC file could (unusually) contain a string attribute
+  // whose text literally spells "IFCTASK" or "IFCWORKSCHEDULE". The
+  // line-regex is anchored to leading whitespace + `#N=TYPE` so it
+  // shouldn't match substrings, but let's verify.
+  const stepWithTrickyString = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('test'),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('proj',$,'P',$,$,$,$,(#2),#3);
+#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);
+#11=IFCWALL('wall-A',#10,'Description mentions IFCTASK for context',$,$,$,$,$,$);
+#20=IFCWORKSCHEDULE('real-ws',#10,'Real',$,$,$,$,$,$,$,$,$,$,.PLANNED.);
+#22=IFCTASK('real-task',#10,'Real task',$,$,$,$,$,$,.F.,$,$,.CONSTRUCTION.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+  const out = injectScheduleIntoStep(stepWithTrickyString, null, STUB_STORE, {
+    scheduleIsEdited: true,
+  });
+  // Real schedule entities stripped…
+  assert.ok(!out.includes("'real-ws'"), 'real workschedule stripped');
+  assert.ok(!out.includes("'real-task'"), 'real task stripped');
+  // …but the wall with "IFCTASK" in its description must survive.
+  assert.ok(
+    out.includes('Description mentions IFCTASK for context'),
+    'wall with IFCTASK substring in string attribute preserved',
+  );
+});
+
+test('stripScheduleEntities handles \\r\\n line endings', () => {
+  // Some STEP writers emit CRLF; node tests typically run with LF.
+  // Verify the splitter treats \r\n correctly — each line ends up with
+  // its trailing \r, gets the same regex treatment, and rejoins.
+  const crlf = [
+    'ISO-10303-21;',
+    'HEADER;',
+    "FILE_DESCRIPTION(('test'),'2;1');",
+    "FILE_NAME('','',(''),(''),'','','');",
+    "FILE_SCHEMA(('IFC4'));",
+    'ENDSEC;',
+    'DATA;',
+    "#1=IFCPROJECT('proj',$,'P',$,$,$,$,(#2),#3);",
+    "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+    "#11=IFCWALL('wall-A',#10,'A',$,$,$,$,$,$);",
+    "#20=IFCWORKSCHEDULE('ws',#10,'WS',$,$,$,$,$,$,$,$,$,$,.PLANNED.);",
+    'ENDSEC;',
+    'END-ISO-10303-21;',
+    '',
+  ].join('\r\n');
+  const out = injectScheduleIntoStep(crlf, null, STUB_STORE, { scheduleIsEdited: true });
+  assert.ok(!out.includes('IFCWORKSCHEDULE'), 'CRLF workschedule stripped');
+  assert.ok(out.includes('IFCWALL'), 'CRLF non-schedule line preserved');
+  // \r\n preservation not strictly required; as long as each kept line
+  // survives with its content, we pass.
+});

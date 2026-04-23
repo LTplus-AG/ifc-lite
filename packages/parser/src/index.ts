@@ -74,6 +74,12 @@ export {
   type SerializeScheduleResult,
 } from './schedule-serializer.js';
 
+// Deterministic 22-char GlobalId generator — shared by every call site
+// that mints a synthetic IFC-style id (serializer fallback, schedule
+// generator, user-authored tasks). Never re-implement this; always
+// import from here.
+export { deterministicGlobalId } from './deterministic-global-id.js';
+
 // Generated IFC4 schema (100% coverage - 776 entities, 397 types, 207 enums)
 export { SCHEMA_REGISTRY, getEntityMetadata, getAllAttributesForEntity, getInheritanceChainForEntity, isKnownEntity } from './generated/schema-registry.js';
 export type * from './generated/entities.js';

@@ -37,16 +37,22 @@ function makeSchedule(tasks: ScheduleTaskInfo[]): ScheduleExtraction {
   return { hasSchedule: true, workSchedules: [], sequences: [], tasks };
 }
 
-// Tests exercise the colour pipeline, which requires style: 'phased'.
-// Default is now 'minimal' (see `DEFAULT_ANIMATION_SETTINGS.style`). Unless
-// a test is specifically asserting minimal behaviour, wrap with `phased()`.
+// Tests exercise the colour pipeline, which requires at least one
+// colour-overlay flag to be on. Default settings have all three off
+// (the "minimal" preset). `phased()` turns on the task-type colour
+// flag — the minimum needed to emit non-null `result.color` in
+// `computeTaskPhase`. Tests asserting minimal behaviour use `settings()`.
 const settings = (over: Partial<AnimationSettings> = {}): AnimationSettings => ({
   ...DEFAULT_ANIMATION_SETTINGS,
   ...over,
 });
 const phased = (over: Partial<AnimationSettings> = {}): AnimationSettings => ({
   ...DEFAULT_ANIMATION_SETTINGS,
-  style: 'phased',
+  colorizeByTaskType: true,
+  // The new minimal default has `paletteIntensity: 0`; `phased()` mirrors
+  // the Popover's Phased preset (0.6) so tests exercise the real paint
+  // pipeline rather than a silently-zeroed alpha.
+  paletteIntensity: 0.6,
   ...over,
 });
 
@@ -99,10 +105,13 @@ describe('computeAnimationFrame — standard lifecycle', () => {
 
   it('paints with task-type colour (scaled by paletteIntensity) in the middle of the active window', () => {
     const t = parseDate('2024-05-15T00:00:00Z'); // ~mid-window
-    const frame = computeAnimationFrame(data, t, phased());
+    // Explicit intensity — don't piggyback on a preset default, keep
+    // the assertion's math self-contained.
+    const cfg = phased({ paletteIntensity: 0.6 });
+    const frame = computeAnimationFrame(data, t, cfg);
     assert.equal(frame.stats.active, 2);
     const color = frame.colorOverrides.get(1)!;
-    const expectedAlpha = DEFAULT_PALETTE.CONSTRUCTION[3] * DEFAULT_ANIMATION_SETTINGS.paletteIntensity;
+    const expectedAlpha = DEFAULT_PALETTE.CONSTRUCTION[3] * cfg.paletteIntensity;
     assert.deepEqual(color.slice(0, 3), DEFAULT_PALETTE.CONSTRUCTION.slice(0, 3));
     assert.equal(color[3], expectedAlpha);
   });
@@ -211,7 +220,7 @@ describe('computeAnimationFrame — style / flag behaviour', () => {
     // Active mid-window: nothing is hidden (timing says "visible"), no colour.
     const frame = computeAnimationFrame(
       data, parseDate('2024-05-15T00:00:00Z'),
-      settings({ style: 'minimal' }),
+      settings(),
     );
     assert.equal(frame.colorOverrides.size, 0);
     assert.equal(frame.hiddenIds.size, 0);
@@ -221,7 +230,7 @@ describe('computeAnimationFrame — style / flag behaviour', () => {
   it('style=minimal still hides upcoming products (timing layer always active)', () => {
     const frame = computeAnimationFrame(
       data, parseDate('2024-05-01T00:00:00Z'), // before task start
-      settings({ style: 'minimal', hideBeforePreparation: true }),
+      settings({ hideBeforePreparation: true }),
     );
     assert.ok(frame.hiddenIds.has(1));
     assert.equal(frame.colorOverrides.size, 0);
@@ -243,7 +252,7 @@ describe('computeAnimationFrame — style / flag behaviour', () => {
     };
     const frame = computeAnimationFrame(
       demo, parseDate('2024-05-15T00:00:00Z'), // well after the task finishes
-      settings({ style: 'minimal', animateDemolition: true }),
+      settings({ animateDemolition: true }),
     );
     assert.ok(frame.hiddenIds.has(7));
     assert.equal(frame.colorOverrides.size, 0);
@@ -428,12 +437,16 @@ describe('computeAnimationFrame — showCompletedTint', () => {
     assert.equal(frame.colorOverrides.size, 0);
   });
 
-  it('still emits nothing in minimal style even when the tint flag is on', () => {
-    // emitColours gate dominates: style=minimal never emits colour overrides.
+  it('emits the completed tint whenever its flag is on, regardless of other colour flags', () => {
+    // Post-P1.3: `emitColours` is derived — ANY colour flag being on
+    // turns on the colour pipeline. So a tint-only configuration emits
+    // its colour without needing `colorizeByTaskType` or a separate
+    // `style` mode.
     const frame = computeAnimationFrame(
       data, parseDate('2024-06-01T00:00:00Z'),
-      settings({ style: 'minimal', showCompletedTint: true }),
+      settings({ showCompletedTint: true }),
     );
-    assert.equal(frame.colorOverrides.size, 0);
+    assert.equal(frame.colorOverrides.size, 1);
+    assert.deepEqual(frame.colorOverrides.get(1), DEFAULT_PALETTE.COMPLETED);
   });
 });

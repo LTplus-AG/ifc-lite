@@ -56,7 +56,7 @@ import { ensureModelExportReady } from '@/services/desktop-export';
 import { StepExporter, MergedExporter, Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type MergeModelInput, type ExportProgress, type StepExportProgress } from '@ifc-lite/export';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { injectScheduleIntoStep } from '@/sdk/adapters/export-adapter';
+import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -516,40 +516,18 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         setExportProgress(null);
 
-        // Splice pending generated schedule tasks into the STEP.
-        //
-        // STEP is textual but the exporter sometimes returns a Uint8Array
-        // (pre-encoded bytes). Decode on the way in + re-encode on the way
-        // out when that happens — a string-only gate would silently drop
-        // the splice whenever bytes came back, producing an IFC export
-        // with zero task entities and an empty Gantt on re-import.
-        //
-        // Fallback on source-model match: single-model sessions can have
-        // scheduleSourceModelId still null (generate dialog used
-        // `__legacy__` or just picked the only model). Splice anyway
-        // when there's a schedule in memory and no federation conflict.
+        // Splice pending schedule tasks into the STEP via the shared
+        // helper. Same contract every export surface uses so bugs
+        // can't differ between the dialog, the quick button, and the
+        // SDK adapter.
         const state = useViewerStore.getState();
-        const scheduleTaskCount = state.scheduleData?.tasks.length ?? 0;
-        const shouldInject = state.scheduleSourceModelId === selectedModelId
-          || (state.scheduleSourceModelId === null && scheduleTaskCount > 0);
-        let finalContent: string | Uint8Array = result.content;
-        if (shouldInject) {
-          const rawContent = result.content;
-          const stepText = typeof rawContent === 'string'
-            ? rawContent
-            : new TextDecoder('utf-8', { fatal: false }).decode(rawContent);
-          const injected = injectScheduleIntoStep(
-            stepText,
-            state.scheduleData ?? null,
-            selectedModel.ifcDataStore as IfcDataStore,
-            { scheduleIsEdited: state.scheduleIsEdited === true },
-          );
-          finalContent = typeof rawContent === 'string'
-            ? injected
-            : new TextEncoder().encode(injected);
-        }
+        const spliced = spliceScheduleIntoExport(result, selectedModelId, selectedModel.ifcDataStore as IfcDataStore, {
+          scheduleData: state.scheduleData ?? null,
+          scheduleIsEdited: state.scheduleIsEdited === true,
+          scheduleSourceModelId: state.scheduleSourceModelId ?? null,
+        });
 
-        const blob = new Blob([toBlobPart(finalContent)], { type: 'text/plain' });
+        const blob = new Blob([toBlobPart(spliced.content)], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

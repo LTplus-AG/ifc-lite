@@ -19,7 +19,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { injectScheduleIntoStep } from '@/sdk/adapters/export-adapter';
+import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 
 interface ExportChangesButtonProps {
   /** Optional custom class name */
@@ -159,36 +159,17 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
         application: 'ifc-lite',
       });
 
-      // Splice any pending generated schedule into the STEP. Matches the
-      // SDK's export-adapter path so every export surface (quick button,
-      // dialog, headless SDK) emits the same bytes for the same inputs.
-      //
-      // STEP is textual by spec but the exporter sometimes returns a
-      // Uint8Array (pre-encoded bytes). Decode → splice → re-encode
-      // when that happens; a string-only gate would silently drop the
-      // schedule whenever the exporter picked the bytes path.
-      const scheduleTaskCount = state.scheduleData?.tasks.length ?? 0;
-      const shouldInject = state.scheduleSourceModelId === modelInfo.id
-        || (state.scheduleSourceModelId === null && scheduleTaskCount > 0);
-      let finalContent: string | Uint8Array = result.content;
-      if (shouldInject) {
-        const rawContent = result.content;
-        const stepText = typeof rawContent === 'string'
-          ? rawContent
-          : new TextDecoder('utf-8', { fatal: false }).decode(rawContent);
-        const injected = injectScheduleIntoStep(
-          stepText,
-          state.scheduleData ?? null,
-          exportDataStore,
-          { scheduleIsEdited: state.scheduleIsEdited === true },
-        );
-        finalContent = typeof rawContent === 'string'
-          ? injected
-          : new TextEncoder().encode(injected);
-      }
+      // Splice any pending schedule into the STEP via the shared
+      // helper. Same contract every export surface uses so bugs can't
+      // differ between the quick button, the dialog, and the SDK.
+      const spliced = spliceScheduleIntoExport(result, modelInfo.id, exportDataStore, {
+        scheduleData: state.scheduleData ?? null,
+        scheduleIsEdited: state.scheduleIsEdited === true,
+        scheduleSourceModelId: state.scheduleSourceModelId ?? null,
+      });
 
       // Download the file
-      const blob = new Blob([toBlobPart(finalContent)], { type: 'text/plain' });
+      const blob = new Blob([toBlobPart(spliced.content)], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

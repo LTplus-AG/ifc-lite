@@ -35,6 +35,7 @@ import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
 import { createDesktopEntitlementSlice, type DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.js';
 import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.js';
+import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -86,6 +87,7 @@ export type { CesiumSlice, CesiumDataSource } from './slices/cesiumSlice.js';
 
 // Re-export Schedule (4D) types + selectors
 export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './slices/scheduleSlice.js';
+export type { PlaybackSlice } from './slices/playbackSlice.js';
 export {
   computeScheduleRange,
   computeHiddenProductIds,
@@ -119,7 +121,8 @@ export type ViewerState = LoadingSlice &
   ChatSlice &
   CesiumSlice &
   DesktopEntitlementSlice &
-  ScheduleSlice & {
+  ScheduleSlice &
+  PlaybackSlice & {
     resetViewerState: () => void;
   };
 
@@ -151,6 +154,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createCesiumSlice(...args),
   ...createDesktopEntitlementSlice(...args),
   ...createScheduleSlice(...args),
+  ...createPlaybackSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that

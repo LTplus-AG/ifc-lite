@@ -19,8 +19,6 @@
 import type { StateCreator } from 'zustand';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 import { deterministicGlobalId } from '@ifc-lite/parser';
-import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
-import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedule-animator';
 import {
   parseIsoDate,
   msToIsoDuration,
@@ -113,24 +111,6 @@ export interface ScheduleSlice {
   /** Timeline zoom scale. */
   ganttTimeScale: GanttTimeScale;
 
-  // ── Playback ─────────────────────────────────────────
-  /** Animation master toggle — when false the viewer renders normally. */
-  animationEnabled: boolean;
-  /** Is the playback currently advancing? */
-  playbackIsPlaying: boolean;
-  /** Current playback time, epoch ms. */
-  playbackTime: number;
-  /** Playback rate in simulated-days-per-real-second. */
-  playbackSpeed: number;
-  /** When true, looping from end → start. */
-  playbackLoop: boolean;
-  /**
-   * Animation style + palette settings. See `schedule-animator.ts` for the
-   * phase / colour model. `minimal` keeps the original visibility-only
-   * behaviour; `phased` lights up the type-colour lifecycle.
-   */
-  animationSettings: AnimationSettings;
-
   /**
    * Model the current `scheduleData` is attributed to, for federation +
    * dirty-tracking integration. Set by `commitGeneratedSchedule` when the
@@ -195,7 +175,6 @@ export interface ScheduleSlice {
   setHoveredTaskGlobalId: (globalId: string | null) => void;
   setSelectedTaskGlobalIds: (globalIds: string[]) => void;
 
-  setAnimationEnabled: (enabled: boolean) => void;
   /**
    * Commit a *generated* schedule (from the Generate dialog) as a first-
    * class pending edit. Sets scheduleData + sourceModelId, marks the
@@ -213,19 +192,6 @@ export interface ScheduleSlice {
    * still reset cleanly. Returns the number of tasks removed.
    */
   clearGeneratedSchedule: () => number;
-  /** Replace the full animation-settings object. */
-  setAnimationSettings: (settings: AnimationSettings) => void;
-  /** Shallow-merge patch — convenient for toolbar toggles. */
-  patchAnimationSettings: (patch: Partial<AnimationSettings>) => void;
-  /** Restore the built-in Synchro-style defaults. */
-  resetAnimationSettings: () => void;
-  playSchedule: () => void;
-  pauseSchedule: () => void;
-  togglePlaySchedule: () => void;
-  seekSchedule: (time: number) => void;
-  setPlaybackSpeed: (speed: number) => void;
-  setPlaybackLoop: (loop: boolean) => void;
-  advancePlaybackBy: (deltaMs: number) => void;
 
   // ── Schedule editing (P1) ──────────────────────────────
   /**
@@ -418,12 +384,6 @@ export const createScheduleSlice: StateCreator<
   hoveredTaskGlobalId: null,
   selectedTaskGlobalIds: new Set(),
   ganttTimeScale: 'week',
-  animationEnabled: false,
-  playbackIsPlaying: false,
-  playbackTime: 0,
-  playbackSpeed: 7, // 7 simulated days per real second by default
-  playbackLoop: true,
-  animationSettings: DEFAULT_ANIMATION_SETTINGS,
   scheduleSourceModelId: null,
   scheduleIsEdited: false,
   scheduleUndoStack: [],
@@ -495,8 +455,6 @@ export const createScheduleSlice: StateCreator<
 
   setHoveredTaskGlobalId: (hoveredTaskGlobalId) => set({ hoveredTaskGlobalId }),
   setSelectedTaskGlobalIds: (ids) => set({ selectedTaskGlobalIds: new Set(ids) }),
-
-  setAnimationEnabled: (animationEnabled) => set({ animationEnabled }),
 
   commitGeneratedSchedule: (data, sourceModelId) => {
     const range = computeScheduleRange(data);
@@ -596,49 +554,6 @@ export const createScheduleSlice: StateCreator<
     });
 
     return removed;
-  },
-  setAnimationSettings: (animationSettings) => set({ animationSettings }),
-  patchAnimationSettings: (patch) => set((s) => ({
-    animationSettings: { ...s.animationSettings, ...patch },
-  })),
-  resetAnimationSettings: () => set({ animationSettings: DEFAULT_ANIMATION_SETTINGS }),
-  playSchedule: () => set({ playbackIsPlaying: true, animationEnabled: true }),
-  pauseSchedule: () => set({ playbackIsPlaying: false }),
-  togglePlaySchedule: () => set((s) => {
-    const next = !s.playbackIsPlaying;
-    return {
-      playbackIsPlaying: next,
-      animationEnabled: next ? true : s.animationEnabled,
-    };
-  }),
-  seekSchedule: (time) => set({ playbackTime: time }),
-  setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
-  setPlaybackLoop: (playbackLoop) => set({ playbackLoop }),
-
-  advancePlaybackBy: (deltaMs) => {
-    const s = get();
-    if (!s.playbackIsPlaying || !s.scheduleRange) return;
-    // Clamp the wall-clock delta before scaling. rAF pauses when the tab is
-    // hidden, OS sleeps, or a breakpoint fires; the next frame fires with a
-    // multi-second delta. At the default 7 days/sec that would skip weeks of
-    // schedule in one step, either missing animation states or overshooting
-    // the end of non-looping playback.
-    const MAX_DELTA_MS = 100;
-    const clamped = Math.min(Math.max(deltaMs, 0), MAX_DELTA_MS);
-    // speed = simulated days / real second
-    //   → simulated ms = (deltaMs / 1000) * speed * 86_400_000
-    //                  = deltaMs * speed * 86_400
-    const simulated = clamped * s.playbackSpeed * 86_400;
-    let next = s.playbackTime + simulated;
-    if (next > s.scheduleRange.end) {
-      if (s.playbackLoop) {
-        next = s.scheduleRange.start;
-      } else {
-        set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
-        return;
-      }
-    }
-    set({ playbackTime: next });
   },
 
   // ═════════════════════════════════════════════════════════════════════

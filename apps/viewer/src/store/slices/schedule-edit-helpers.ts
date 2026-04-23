@@ -166,7 +166,7 @@ export function resolveIdOffset(
  * duplicated across 6 files, inviting drift.
  */
 export function resolveScheduleSourceModelId<M>(
-  models: Map<string, M>,
+  models: ReadonlyMap<string, M>,
   activeModelId: string | null | undefined,
   emptyFallback: string = '',
 ): string {

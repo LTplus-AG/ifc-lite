@@ -13,9 +13,9 @@ import {
   type RGBA,
 } from './overlaySlice.js';
 
-const RED: RGBA = { r: 1, g: 0, b: 0, a: 1 };
-const GREEN: RGBA = { r: 0, g: 1, b: 0, a: 1 };
-const BLUE: RGBA = { r: 0, g: 0, b: 1, a: 1 };
+const RED: RGBA = [1, 0, 0, 1];
+const GREEN: RGBA = [0, 1, 0, 1];
+const BLUE: RGBA = [0, 0, 1, 1];
 
 function mkLayer(id: string, priority: number, opts: {
   hide?: Iterable<number>;

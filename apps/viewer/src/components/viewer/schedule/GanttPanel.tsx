@@ -26,6 +26,7 @@ import { flattenTaskTree } from './schedule-utils';
 import { canGenerateScheduleFrom, resolveActiveDataStore } from './generate-schedule';
 import { useConstructionSequence } from './useConstructionSequence';
 import { useGanttSelection3DHighlight } from './useGanttSelection3DHighlight';
+import { useOverlayCompositor } from './useOverlayCompositor';
 
 interface GanttPanelProps {
   onClose?: () => void;
@@ -119,7 +120,15 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStore]);
 
+  // Single compositor — reads the overlay-layer registry and writes the
+  // composite into the renderer's legacy hiddenEntities / pendingColorUpdates
+  // channels. Must be mounted BEFORE any layer owner in the render tree so
+  // its first reconcile can observe their initial contributions.
+  useOverlayCompositor();
+
   // Drive the 3D viewport's hidden-entity set from the playback clock.
+  // Registers the 'animation' overlay layer; the compositor above does
+  // the actual write.
   useConstructionSequence();
 
   // Highlight the current Gantt selection's products in 3D. Selection-only

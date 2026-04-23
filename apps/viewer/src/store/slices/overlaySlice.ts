@@ -26,7 +26,12 @@
 
 import type { StateCreator } from 'zustand';
 
-export type RGBA = { r: number; g: number; b: number; a: number };
+/**
+ * RGBA tuple — `[r, g, b, a]` in 0..1 floats. Matches the shape of
+ * `pendingColorUpdates` values in `dataSlice` and the animator palette
+ * so layers can pass colour values straight through without conversion.
+ */
+export type RGBA = [number, number, number, number];
 
 export interface OverlayLayer {
   /** Stable id used to register / update / remove. e.g. 'animation'. */

@@ -162,15 +162,18 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       // Splice any pending generated schedule into the STEP. Matches the
       // SDK's export-adapter path so every export surface (quick button,
       // dialog, headless SDK) emits the same bytes for the same inputs.
-      // The helper is a no-op when there's no schedule or no generated
-      // tasks, so it's safe to call unconditionally.
-      const isStringContent = typeof result.content === 'string';
+      //
+      // STEP is textual by spec but the exporter sometimes returns a
+      // Uint8Array (pre-encoded bytes). Decode on the way in + re-encode
+      // on the way out when that happens — the earlier string-only gate
+      // was silently dropping the splice whenever the exporter picked
+      // the bytes path.
       const sourceModelMatches = state.scheduleSourceModelId === modelInfo.id;
       const scheduleTaskCount = state.scheduleData?.tasks.length ?? 0;
       /* eslint-disable no-console */
       console.log(
         '[ExportChangesButton] schedule injection gate —',
-        'isString', isStringContent,
+        'contentType', typeof result.content,
         'sourceModel', state.scheduleSourceModelId,
         'modelId', modelInfo.id,
         'match', sourceModelMatches,
@@ -180,11 +183,22 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       /* eslint-enable no-console */
       const shouldInject = sourceModelMatches
         || (state.scheduleSourceModelId === null && scheduleTaskCount > 0);
-      const finalContent = (typeof result.content === 'string' && shouldInject)
-        ? injectScheduleIntoStep(result.content, state.scheduleData ?? null, exportDataStore, {
-            scheduleIsEdited: state.scheduleIsEdited === true,
-          })
-        : result.content;
+      let finalContent: string | Uint8Array = result.content;
+      if (shouldInject) {
+        const rawContent = result.content;
+        const stepText = typeof rawContent === 'string'
+          ? rawContent
+          : new TextDecoder('utf-8', { fatal: false }).decode(rawContent);
+        const injected = injectScheduleIntoStep(
+          stepText,
+          state.scheduleData ?? null,
+          exportDataStore,
+          { scheduleIsEdited: state.scheduleIsEdited === true },
+        );
+        finalContent = typeof rawContent === 'string'
+          ? injected
+          : new TextEncoder().encode(injected);
+      }
 
       // Download the file
       const blob = new Blob([toBlobPart(finalContent)], { type: 'text/plain' });

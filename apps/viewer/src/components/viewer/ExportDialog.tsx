@@ -516,17 +516,20 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         setExportProgress(null);
 
-        // Splice pending generated schedule tasks into the STEP. The adapter
-        // helper is a no-op when there's nothing to inject, so calling it
-        // unconditionally keeps this surface in lockstep with the SDK.
+        // Splice pending generated schedule tasks into the STEP.
+        //
+        // STEP is textual but the exporter sometimes returns a Uint8Array
+        // (pre-encoded bytes). Decode on the way in + re-encode on the way
+        // out when that happens — previously a string-only gate silently
+        // dropped the splice whenever bytes came back, producing an IFC
+        // export with zero task entities and an empty Gantt on re-import.
         const state = useViewerStore.getState();
-        const isStringContent = typeof result.content === 'string';
         const sourceModelMatches = state.scheduleSourceModelId === selectedModelId;
         const scheduleTaskCount = state.scheduleData?.tasks.length ?? 0;
         /* eslint-disable no-console */
         console.log(
           '[ExportDialog] schedule injection gate —',
-          'isString', isStringContent,
+          'contentType', typeof result.content,
           'sourceModel', state.scheduleSourceModelId,
           'selected', selectedModelId,
           'match', sourceModelMatches,
@@ -534,20 +537,28 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           'edited', state.scheduleIsEdited,
         );
         /* eslint-enable no-console */
-        // Fallback: if the session is single-model (no federated
-        // models AND source===null OR source==='__legacy__'), splice
-        // anyway. The source attribution was added for multi-model
-        // federation and shouldn't gate single-model exports.
+        // Fallback: single-model sessions can have scheduleSourceModelId
+        // still null (generate dialog used `__legacy__` or just picked
+        // the only model). Splice anyway when there's a schedule in
+        // memory and no federation conflict.
         const shouldInject = sourceModelMatches
           || (state.scheduleSourceModelId === null && scheduleTaskCount > 0);
-        const finalContent = (typeof result.content === 'string' && shouldInject)
-          ? injectScheduleIntoStep(
-              result.content,
-              state.scheduleData ?? null,
-              selectedModel.ifcDataStore as IfcDataStore,
-              { scheduleIsEdited: state.scheduleIsEdited === true },
-            )
-          : result.content;
+        let finalContent: string | Uint8Array = result.content;
+        if (shouldInject) {
+          const rawContent = result.content;
+          const stepText = typeof rawContent === 'string'
+            ? rawContent
+            : new TextDecoder('utf-8', { fatal: false }).decode(rawContent);
+          const injected = injectScheduleIntoStep(
+            stepText,
+            state.scheduleData ?? null,
+            selectedModel.ifcDataStore as IfcDataStore,
+            { scheduleIsEdited: state.scheduleIsEdited === true },
+          );
+          finalContent = typeof rawContent === 'string'
+            ? injected
+            : new TextEncoder().encode(injected);
+        }
 
         const blob = new Blob([toBlobPart(finalContent)], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);

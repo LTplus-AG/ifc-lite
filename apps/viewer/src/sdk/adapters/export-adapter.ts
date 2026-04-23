@@ -389,16 +389,22 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       // IfcRelAssignsToControl / IfcRelNests lines that any conformant viewer
       // (incl. ifc-lite itself on re-import) will parse natively.
       //
-      // STEP exports are text by contract; the binary path is reserved for
-      // future formats. We pass through Uint8Array unchanged so the contract
-      // doesn't silently change.
-      if (typeof exportedContent !== 'string') return exportedContent;
-      return injectScheduleIntoStep(
-        exportedContent,
+      // STEP is textual by spec but the underlying exporter sometimes
+      // returns a Uint8Array (pre-encoded bytes). Decode → splice →
+      // re-encode when that happens; the string-only short-circuit we
+      // used before silently dropped the schedule on byte-path exports.
+      const stepText = typeof exportedContent === 'string'
+        ? exportedContent
+        : new TextDecoder('utf-8', { fatal: false }).decode(exportedContent);
+      const injected = injectScheduleIntoStep(
+        stepText,
         state.scheduleData ?? null,
         model.ifcDataStore as IfcDataStore,
         { scheduleIsEdited: state.scheduleIsEdited === true },
       );
+      return typeof exportedContent === 'string'
+        ? injected
+        : new TextEncoder().encode(injected);
     },
 
     download(content: string | Uint8Array, filename: string, mimeType?: string) {

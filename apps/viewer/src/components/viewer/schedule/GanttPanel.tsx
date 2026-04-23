@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { extractScheduleOnDemand } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
 import { GanttToolbar } from './GanttToolbar';
 import { GanttTaskTree } from './GanttTaskTree';
@@ -25,6 +26,7 @@ import { flattenTaskTree } from './schedule-utils';
 import { canGenerateScheduleFrom, resolveActiveDataStore } from './generate-schedule';
 import { useConstructionSequence } from './useConstructionSequence';
 import { useGanttSelection3DHighlight } from './useGanttSelection3DHighlight';
+import { useOverlayCompositor } from './useOverlayCompositor';
 
 interface GanttPanelProps {
   onClose?: () => void;
@@ -118,7 +120,15 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStore]);
 
+  // Single compositor — reads the overlay-layer registry and writes the
+  // composite into the renderer's legacy hiddenEntities / pendingColorUpdates
+  // channels. Must be mounted BEFORE any layer owner in the render tree so
+  // its first reconcile can observe their initial contributions.
+  useOverlayCompositor();
+
   // Drive the 3D viewport's hidden-entity set from the playback clock.
+  // Registers the 'animation' overlay layer; the compositor above does
+  // the actual write.
   useConstructionSequence();
 
   // Highlight the current Gantt selection's products in 3D. Selection-only
@@ -143,8 +153,7 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
     // Geometry-only models (no spatial hierarchy) can still generate via
     // the Height strategy, so surface the button whenever EITHER a
     // spatial tree OR meshes exist on the active source model.
-    const sourceModelId = activeModelId
-      ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
+    const sourceModelId = resolveScheduleSourceModelId(models, activeModelId);
     const meshes = sourceModelId ? models.get(sourceModelId)?.geometryResult?.meshes : undefined;
     const ctx = meshes && meshes.length > 0
       ? { meshes, idOffset: models.get(sourceModelId!)?.idOffset ?? 0 }

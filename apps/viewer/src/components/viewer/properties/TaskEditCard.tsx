@@ -19,7 +19,7 @@
  * snapshots onto the undo stack so every field change is reversible.
  */
 
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,21 +78,66 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
   const [nameDraft, setNameDraft] = useState<string>('');
   const [identDraft, setIdentDraft] = useState<string>('');
 
+  // Date / duration drafts — held locally and pushed to the store after a
+  // short debounce so rapid typing or picker-spinning doesn't produce a
+  // per-keystroke undo snapshot + re-render storm. Committed on blur
+  // immediately to make the Tab-away flow feel instant.
+  const { startLocal, finishLocal, durationDays } = useMemo(
+    () => deriveTimeFields(task),
+    [task],
+  );
+  const [startDraft, setStartDraft] = useState<string>('');
+  const [finishDraft, setFinishDraft] = useState<string>('');
+  const [durationDraft, setDurationDraft] = useState<string>('');
+
   // Sync drafts from authoritative state whenever the task changes or an
   // undo/redo snaps back to a different value.
   useMemo(() => {
     setNameDraft(task?.name ?? '');
     setIdentDraft(task?.identification ?? '');
+    setStartDraft(startLocal);
+    setFinishDraft(finishLocal);
+    setDurationDraft(durationDays === 0 ? '' : String(durationDays));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskGlobalId, task?.name, task?.identification, scheduleUndoDepth]);
+  }, [taskGlobalId, task?.name, task?.identification, startLocal, finishLocal, durationDays, scheduleUndoDepth]);
+
+  // Debounce handle shared across the three time fields. Flush on unmount
+  // or when the user switches tasks so no edit is silently dropped.
+  const timeCommitRef = useRef<{ timer: number | null; flush: (() => void) | null }>({ timer: null, flush: null });
+  useEffect(() => {
+    return () => {
+      if (timeCommitRef.current.timer !== null) {
+        window.clearTimeout(timeCommitRef.current.timer);
+        timeCommitRef.current.flush?.();
+        timeCommitRef.current.timer = null;
+        timeCommitRef.current.flush = null;
+      }
+    };
+  }, [taskGlobalId]);
+
+  const scheduleTimeCommit = useCallback((flush: () => void) => {
+    if (timeCommitRef.current.timer !== null) {
+      window.clearTimeout(timeCommitRef.current.timer);
+    }
+    timeCommitRef.current.flush = flush;
+    timeCommitRef.current.timer = window.setTimeout(() => {
+      timeCommitRef.current.flush?.();
+      timeCommitRef.current.timer = null;
+      timeCommitRef.current.flush = null;
+    }, 200);
+  }, []);
+
+  const flushTimeCommit = useCallback(() => {
+    if (timeCommitRef.current.timer !== null) {
+      window.clearTimeout(timeCommitRef.current.timer);
+      timeCommitRef.current.flush?.();
+      timeCommitRef.current.timer = null;
+      timeCommitRef.current.flush = null;
+    }
+  }, []);
 
   const [showDetails, setShowDetails] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const { startLocal, finishLocal, durationDays } = useMemo(
-    () => deriveTimeFields(task),
-    [task],
-  );
 
   const onCommitName = useCallback(() => {
     if (task && nameDraft !== task.name) updateTask(taskGlobalId, { name: nameDraft });
@@ -179,13 +224,17 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               <Input
                 id="task-start"
                 type="datetime-local"
-                value={startLocal}
+                value={startDraft}
                 onChange={(e) => {
                   const v = e.target.value;
-                  updateTaskTime(taskGlobalId, {
-                    scheduleStart: v ? `${v}:00` : undefined,
+                  setStartDraft(v);
+                  scheduleTimeCommit(() => {
+                    updateTaskTime(taskGlobalId, {
+                      scheduleStart: v ? `${v}:00` : undefined,
+                    });
                   });
                 }}
+                onBlur={flushTimeCommit}
                 className="h-7 w-full text-xs font-mono"
               />
             </div>
@@ -194,14 +243,18 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               <Input
                 id="task-finish"
                 type="datetime-local"
-                value={finishLocal}
+                value={finishDraft}
                 disabled={task.isMilestone}
                 onChange={(e) => {
                   const v = e.target.value;
-                  updateTaskTime(taskGlobalId, {
-                    scheduleFinish: v ? `${v}:00` : undefined,
+                  setFinishDraft(v);
+                  scheduleTimeCommit(() => {
+                    updateTaskTime(taskGlobalId, {
+                      scheduleFinish: v ? `${v}:00` : undefined,
+                    });
                   });
                 }}
+                onBlur={flushTimeCommit}
                 className="h-7 w-full text-xs font-mono"
               />
             </div>
@@ -212,14 +265,19 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                 type="number"
                 min={0}
                 step={0.5}
-                value={durationDays}
+                value={durationDraft}
                 disabled={task.isMilestone}
                 onChange={(e) => {
-                  const n = parseFloat(e.target.value);
+                  const v = e.target.value;
+                  setDurationDraft(v);
+                  const n = parseFloat(v);
                   if (!Number.isFinite(n) || n < 0) return;
                   const iso = daysToIso(n);
-                  updateTaskTime(taskGlobalId, { scheduleDuration: iso });
+                  scheduleTimeCommit(() => {
+                    updateTaskTime(taskGlobalId, { scheduleDuration: iso });
+                  });
                 }}
+                onBlur={flushTimeCommit}
                 className="h-7 w-full text-xs font-mono"
               />
               <p className="text-[10px] text-muted-foreground flex items-start gap-1">

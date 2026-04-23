@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { CalendarPlus, Layers, Building2, Ruler, ChevronDown, ChevronRight, AlertTriangle, Loader2 } from 'lucide-react';
+import { CalendarPlus, Layers, Building2, Ruler, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,9 +27,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { useViewerStore } from '@/store';
+import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
 import { serializeScheduleToStep } from '@ifc-lite/parser';
 import {
@@ -39,22 +38,16 @@ import {
   resolveActiveDataStore,
   DEFAULT_OPTIONS,
   type GenerateScheduleOptions,
-  type SpatialGroupStrategy,
   type GenerateOrder,
 } from './generate-schedule';
 import { formatDateTime } from './schedule-utils';
+import { HeightStrategyPanel } from './HeightStrategyPanel';
+import { GenerateAdvancedPanel } from './GenerateAdvancedPanel';
 
 interface GenerateScheduleDialogProps {
   open: boolean;
   onOpenChange: (next: boolean) => void;
 }
-
-const TASK_TYPES = [
-  'CONSTRUCTION', 'INSTALLATION', 'DEMOLITION', 'DISMANTLE',
-  'DISPOSAL', 'LOGISTIC', 'MAINTENANCE', 'MOVE',
-  'OPERATION', 'REMOVAL', 'RENOVATION', 'ATTENDANCE',
-  'USERDEFINED', 'NOTDEFINED',
-] as const;
 
 export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleDialogProps) {
   const { ifcDataStore, models, activeModelId } = useIfc();
@@ -70,8 +63,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   // needs `meshes` + `idOffset` to compute each element's true Z elevation;
   // the spatial strategies don't touch geometry.
   const modelContext = useMemo(() => {
-    const sourceModelId = activeModelId
-      ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
+    const sourceModelId = resolveScheduleSourceModelId(models, activeModelId);
     if (!sourceModelId) return null;
     const model = models.get(sourceModelId);
     const meshes = model?.geometryResult?.meshes;
@@ -171,8 +163,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       // Attribute the generated schedule to the currently-active model.
       // Legacy single-model sessions fall back to '__legacy__' so the
       // dirty flag still pairs with the viewer's model identity.
-      const sourceModelId = activeModelId
-        ?? (models.size === 1 ? (models.keys().next().value ?? '__legacy__') : '__legacy__');
+      const sourceModelId = resolveScheduleSourceModelId(models, activeModelId, '__legacy__');
       commitGeneratedSchedule(preview.extraction, sourceModelId);
       setGanttPanelVisible(true);
       setAnimationEnabled(true);
@@ -249,69 +240,14 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
             </div>
 
             {/* Height sub-panel — only when the IfcElement strategy is active.
-                Inline, bordered, visually tied to the tile above so it reads as
-                "settings for the selected group-by". */}
+                Reads as "settings for the selected group-by". */}
             {options.strategy === 'IfcElement' && (
-              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 grid gap-3">
-                <div className="flex items-center gap-2">
-                  <Ruler className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-xs font-medium">Height-slice options</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground">
-                    Uses geometry, ignores spatial tree
-                  </span>
-                </div>
-
-                <div className="grid gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="gen-tol" className="text-xs">Slice height</Label>
-                    <span className="text-xs font-mono text-muted-foreground">
-                      {options.heightTolerance.toFixed(1)} m
-                    </span>
-                  </div>
-                  <input
-                    id="gen-tol"
-                    type="range"
-                    min={0.5}
-                    max={10}
-                    step={0.25}
-                    value={options.heightTolerance}
-                    onChange={(e) => handleChange('heightTolerance', parseFloat(e.target.value))}
-                    className="w-full accent-primary"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    Elements whose geometry centroid Z falls inside the same
-                    band share a task. Typical storey heights are 3–4 m.
-                  </p>
-                </div>
-
-                <div className="grid gap-1.5">
-                  <Label className="text-xs">Subdivide each slice</Label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {([
-                      { k: 'none',  label: 'None'  },
-                      { k: 'class', label: 'Class' },
-                      { k: 'type',  label: 'Type'  },
-                      { k: 'name',  label: 'Name'  },
-                    ] as const).map(opt => (
-                      <SubgroupPill
-                        key={opt.k}
-                        label={opt.label}
-                        active={options.elementZSubgroup === opt.k}
-                        onSelect={() => handleChange('elementZSubgroup', opt.k)}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    {options.elementZSubgroup === 'none'
-                      ? 'One task per slice — every element in the band goes to that task.'
-                      : options.elementZSubgroup === 'class'
-                      ? 'Split each slice by IFC class (IfcWall, IfcSlab, …).'
-                      : options.elementZSubgroup === 'type'
-                      ? 'Split each slice by the element’s type name (IfcRelDefinesByType target).'
-                      : 'Split each slice by each element’s Name attribute.'}
-                  </p>
-                </div>
-              </div>
+              <HeightStrategyPanel
+                heightTolerance={options.heightTolerance}
+                elementZSubgroup={options.elementZSubgroup}
+                onHeightToleranceChange={(n) => handleChange('heightTolerance', n)}
+                onSubgroupChange={(s) => handleChange('elementZSubgroup', s)}
+              />
             )}
 
             {/* Primary fields */}
@@ -365,81 +301,17 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
               </div>
             </div>
 
-            {/* Advanced */}
-            <div className="rounded-md border">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm font-medium text-left hover:bg-muted/40 transition-colors"
-                onClick={() => setAdvancedOpen(o => !o)}
-                aria-expanded={advancedOpen}
-              >
-                {advancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                Advanced
-              </button>
-              {advancedOpen && (
-                <div className="grid gap-3 border-t p-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="gen-lag">Lag days (between groups)</Label>
-                      <Input
-                        id="gen-lag"
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={options.lagDays}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value);
-                          handleChange('lagDays', Number.isFinite(v) && v >= 0 ? v : 0);
-                        }}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="gen-type">PredefinedType</Label>
-                      <Select
-                        value={options.predefinedType}
-                        onValueChange={(v) => handleChange('predefinedType', v)}
-                      >
-                        <SelectTrigger id="gen-type">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TASK_TYPES.map(t => (
-                            <SelectItem key={t} value={t}>{t}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="gen-name">Work schedule name</Label>
-                    <Input
-                      id="gen-name"
-                      value={options.scheduleName}
-                      onChange={(e) => handleChange('scheduleName', e.target.value)}
-                      placeholder="Construction schedule"
-                    />
-                  </div>
-
-                  <ToggleRow
-                    label="Link tasks with FS dependencies"
-                    description="Adds IfcRelSequence edges between consecutive groups."
-                    checked={options.linkSequences}
-                    onChange={(v) => handleChange('linkSequences', v)}
-                  />
-                  <ToggleRow
-                    label="Skip empty groups"
-                    description={
-                      options.strategy === 'IfcElement'
-                        ? 'Ignore Z slices with no elements.'
-                        : 'Ignore storeys or buildings with no contained products.'
-                    }
-                    checked={options.skipEmptyGroups}
-                    onChange={(v) => handleChange('skipEmptyGroups', v)}
-                  />
-                </div>
-              )}
-            </div>
+            <GenerateAdvancedPanel
+              open={advancedOpen}
+              onOpenChange={setAdvancedOpen}
+              strategy={options.strategy}
+              lagDays={options.lagDays}
+              predefinedType={options.predefinedType}
+              scheduleName={options.scheduleName}
+              linkSequences={options.linkSequences}
+              skipEmptyGroups={options.skipEmptyGroups}
+              onChange={handleChange}
+            />
 
             {/* Live summary */}
             <div className="rounded-md bg-muted/30 p-3 text-sm">
@@ -518,50 +390,3 @@ function StrategyChoice({ icon, label, description, active, disabled, onSelect }
   );
 }
 
-interface SubgroupPillProps {
-  label: string;
-  active: boolean;
-  onSelect: () => void;
-}
-
-/**
- * Compact 4-across segmented pill used for the Z-subgroup mode
- * (None / Class / Type / Name). Kept small and modest so it reads as a
- * setting, not a navigation target.
- */
-function SubgroupPill({ label, active, onSelect }: SubgroupPillProps) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={active}
-      className={
-        'rounded border px-2 py-1 text-xs transition-colors ' +
-        (active
-          ? 'border-primary bg-primary/10 text-primary font-medium'
-          : 'border-input text-muted-foreground hover:bg-muted/40 hover:text-foreground')
-      }
-    >
-      {label}
-    </button>
-  );
-}
-
-interface ToggleRowProps {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}
-
-function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
-  return (
-    <label className="flex items-center justify-between gap-3 cursor-pointer">
-      <span className="grid gap-0.5">
-        <span className="text-sm font-medium">{label}</span>
-        <span className="text-xs text-muted-foreground">{description}</span>
-      </span>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </label>
-  );
-}

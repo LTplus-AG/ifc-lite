@@ -486,6 +486,110 @@ describe('scheduleSlice editing — undo / redo', () => {
       '2024-05-01T08:00:00',
     );
   });
+
+  it('transaction state is store-scoped — two stores do not alias', () => {
+    // Regression: transaction state used to live at module scope, which
+    // meant a transaction opened on one store leaked into a second store
+    // instantiated in the same process (tests, multi-session, hot-reload).
+    // Now that state lives inside the slice, each store owns its own window.
+    const storeA = bootScheduleStore();
+    const storeB = bootScheduleStore();
+    storeA.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'a',
+        taskTime: {
+          scheduleStart: '2024-05-01T08:00:00',
+          scheduleFinish: '2024-05-02T08:00:00',
+        },
+      }),
+    ]));
+    storeB.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'b',
+        taskTime: {
+          scheduleStart: '2024-05-01T08:00:00',
+          scheduleFinish: '2024-05-02T08:00:00',
+        },
+      }),
+    ]));
+
+    // Open a transaction on A. B should see a clean transaction state.
+    storeA.getState().beginScheduleTransaction('drag');
+    assert.strictEqual(storeA.getState().scheduleTransaction.active, true);
+    assert.strictEqual(storeB.getState().scheduleTransaction.active, false);
+
+    // Edits on B should produce independent undo entries — not suppressed
+    // by A's open transaction.
+    storeB.getState().updateTaskTime('b', { scheduleStart: '2024-05-01T09:00:00' });
+    storeB.getState().updateTaskTime('b', { scheduleStart: '2024-05-01T10:00:00' });
+    // Each edit on B gets its own snapshot (2 total) because B is not in
+    // a transaction. If the module-level global were still here, A's
+    // transaction would suppress B's snapshots and we'd see 0.
+    assert.strictEqual(storeB.getState().scheduleUndoStack.length, 2);
+
+    storeA.getState().endScheduleTransaction();
+    assert.strictEqual(storeA.getState().scheduleTransaction.active, false);
+  });
+
+  // ── P1.4 — operation-based undo replay symmetry ─────────────────────
+
+  it('undo → redo → undo is byte-identical on field edits', () => {
+    // Property test — after N undos + N redos + N undos the state must
+    // equal the state after the first N undos, byte-for-byte. Proves the
+    // field-patch descriptor's inverse-capture keeps undo/redo symmetric.
+    // If this breaks, users lose edits on second-undo after a redo.
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'a', name: 'A0', identification: 'id0',
+        taskTime: {
+          scheduleStart: '2024-05-01T08:00:00',
+          scheduleFinish: '2024-05-02T08:00:00',
+        },
+      }),
+    ]));
+    store.getState().updateTask('a', { name: 'A1' });
+    store.getState().updateTaskTime('a', { scheduleStart: '2024-05-01T12:00:00' });
+
+    store.getState().undoScheduleEdit();
+    store.getState().undoScheduleEdit();
+    const afterUndos = JSON.stringify(store.getState().scheduleData);
+    assert.strictEqual(store.getState().scheduleIsEdited, false);
+
+    store.getState().redoScheduleEdit();
+    store.getState().redoScheduleEdit();
+    assert.strictEqual(store.getState().scheduleData!.tasks[0].name, 'A1');
+    assert.strictEqual(store.getState().scheduleIsEdited, true);
+
+    store.getState().undoScheduleEdit();
+    store.getState().undoScheduleEdit();
+    assert.strictEqual(
+      JSON.stringify(store.getState().scheduleData),
+      afterUndos,
+      'second undo pass must be byte-identical to the first',
+    );
+  });
+
+  it('updateTaskTime rejects finish < start without pushing a snapshot', () => {
+    // Rejection is silent but MUST leave the stack unchanged, otherwise
+    // the user sees a redo-empty undo chip even though nothing committed.
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'a',
+        taskTime: {
+          scheduleStart: '2024-05-01T08:00:00',
+          scheduleFinish: '2024-05-02T08:00:00',
+        },
+      }),
+    ]));
+    store.getState().updateTaskTime('a', { scheduleFinish: '2024-04-01T00:00:00' });
+    assert.strictEqual(store.getState().scheduleUndoStack.length, 0);
+    assert.strictEqual(
+      store.getState().scheduleData!.tasks[0].taskTime?.scheduleFinish,
+      '2024-05-02T08:00:00',
+    );
+  });
 });
 
 describe('scheduleSlice editing — addTask', () => {

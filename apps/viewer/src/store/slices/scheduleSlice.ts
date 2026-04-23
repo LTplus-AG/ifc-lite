@@ -19,22 +19,62 @@
 import type { StateCreator } from 'zustand';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 import { deterministicGlobalId } from '@ifc-lite/parser';
-import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
-import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedule-animator';
+import {
+  parseIsoDate,
+  msToIsoDuration,
+  addIsoDurationToEpoch,
+  toIsoUtc,
+  isoNowAt8,
+  reconcileTaskTime,
+  cloneExtraction,
+  resolveSingleModelId,
+  resolveIdOffset,
+} from './schedule-edit-helpers.js';
 
 export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';
 
 /**
- * One undo/redo entry — captures the full `scheduleData` + derived
- * `scheduleRange` at a point in time. `label` is surfaced in the UI toast
- * so users see "Undone: edit task time" rather than a generic message.
+ * Undo / redo entry — discriminated union with two kinds:
+ *
+ *   • `kind: 'full'` — captures the entire `scheduleData` as a deep clone.
+ *     Used by structural edits (add / delete / move / assign / unassign)
+ *     and by transaction-begin, where the set of affected fields is
+ *     hard to bound ahead of time.
+ *
+ *   • `kind: 'fieldPatch'` — captures only the before-state of the fields
+ *     that changed on a single task. Used by `updateTask` and
+ *     `updateTaskTime` (the common case — typing a name, dragging a bar).
+ *     ~100 bytes per entry vs ~20 KB for a full clone of a 500-task
+ *     schedule, which matters at the 50-entry stack cap.
+ *
+ * `label` surfaces in the UI toast so users see "Undone: edit task
+ * name" rather than a generic message. `priorRange` + `priorIsEdited`
+ * are captured on both kinds so undo restores derived state + the
+ * pending-edit flag correctly (recomputing is cheap but doesn't tell
+ * us whether the schedule was "clean" before the edit — an edit sequence
+ * could span crossings of that flag).
  */
-export interface ScheduleSnapshot {
+export interface ScheduleFullSnapshot {
+  kind: 'full';
   label: string;
   data: ScheduleExtraction | null;
   range: ScheduleTimeRange | null;
   isEdited: boolean;
 }
+
+export interface ScheduleFieldPatchSnapshot {
+  kind: 'fieldPatch';
+  label: string;
+  taskGlobalId: string;
+  /** Fields on the task as they were BEFORE the edit. Sparse. */
+  before: Partial<ScheduleTaskInfo>;
+  /** Range before the edit — restored verbatim on undo. */
+  priorRange: ScheduleTimeRange | null;
+  /** `scheduleIsEdited` flag before the edit. */
+  priorIsEdited: boolean;
+}
+
+export type ScheduleSnapshot = ScheduleFullSnapshot | ScheduleFieldPatchSnapshot;
 
 export interface ScheduleTimeRange {
   /** Earliest task start time, epoch ms. */
@@ -70,24 +110,6 @@ export interface ScheduleSlice {
   selectedTaskGlobalIds: Set<string>;
   /** Timeline zoom scale. */
   ganttTimeScale: GanttTimeScale;
-
-  // ── Playback ─────────────────────────────────────────
-  /** Animation master toggle — when false the viewer renders normally. */
-  animationEnabled: boolean;
-  /** Is the playback currently advancing? */
-  playbackIsPlaying: boolean;
-  /** Current playback time, epoch ms. */
-  playbackTime: number;
-  /** Playback rate in simulated-days-per-real-second. */
-  playbackSpeed: number;
-  /** When true, looping from end → start. */
-  playbackLoop: boolean;
-  /**
-   * Animation style + palette settings. See `schedule-animator.ts` for the
-   * phase / colour model. `minimal` keeps the original visibility-only
-   * behaviour; `phased` lights up the type-colour lifecycle.
-   */
-  animationSettings: AnimationSettings;
 
   /**
    * Model the current `scheduleData` is attributed to, for federation +
@@ -129,6 +151,15 @@ export interface ScheduleSlice {
   scheduleUndoStack: ScheduleSnapshot[];
   scheduleRedoStack: ScheduleSnapshot[];
 
+  /**
+   * Transaction state for the edit pipeline. Lives in the store (not at
+   * module scope) so parallel test stores, hot-reloaded sessions, and
+   * multiple mounted viewer instances each have their own transaction
+   * window. `pushedAt` tracks the stack depth at which `beginScheduleTransaction`
+   * snapshotted, so `abortScheduleTransaction` can precisely unwind.
+   */
+  scheduleTransaction: { active: boolean; label: string; pushedAt: number };
+
   // ── Actions ──────────────────────────────────────────
   setScheduleData: (data: ScheduleExtraction | null) => void;
   setGanttPanelVisible: (visible: boolean) => void;
@@ -144,7 +175,6 @@ export interface ScheduleSlice {
   setHoveredTaskGlobalId: (globalId: string | null) => void;
   setSelectedTaskGlobalIds: (globalIds: string[]) => void;
 
-  setAnimationEnabled: (enabled: boolean) => void;
   /**
    * Commit a *generated* schedule (from the Generate dialog) as a first-
    * class pending edit. Sets scheduleData + sourceModelId, marks the
@@ -162,19 +192,6 @@ export interface ScheduleSlice {
    * still reset cleanly. Returns the number of tasks removed.
    */
   clearGeneratedSchedule: () => number;
-  /** Replace the full animation-settings object. */
-  setAnimationSettings: (settings: AnimationSettings) => void;
-  /** Shallow-merge patch — convenient for toolbar toggles. */
-  patchAnimationSettings: (patch: Partial<AnimationSettings>) => void;
-  /** Restore the built-in Synchro-style defaults. */
-  resetAnimationSettings: () => void;
-  playSchedule: () => void;
-  pauseSchedule: () => void;
-  togglePlaySchedule: () => void;
-  seekSchedule: (time: number) => void;
-  setPlaybackSpeed: (speed: number) => void;
-  setPlaybackLoop: (loop: boolean) => void;
-  advancePlaybackBy: (deltaMs: number) => void;
 
   // ── Schedule editing (P1) ──────────────────────────────
   /**
@@ -260,26 +277,6 @@ export interface ScheduleSlice {
 }
 
 /**
- * Convert an ISO 8601 datetime string to epoch ms. Returns undefined when
- * the input is missing or unparseable.
- *
- * `IfcDateTime` values produced by authoring tools are typically written
- * without a timezone designator (e.g. `2024-05-01T08:00:00`). `Date.parse`
- * treats those as *local* time, so the same IFC opened on machines in
- * different timezones would yield different epoch values — shifting the
- * Gantt and breaking equality with exported STEP strings. We normalize
- * TZ-less inputs to UTC (append `Z`) so playback stays stable across
- * machines and STEP round-trips.
- */
-function parseIsoDate(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(value);
-  const normalized = hasTz ? value : `${value}Z`;
-  const t = Date.parse(normalized);
-  return Number.isNaN(t) ? undefined : t;
-}
-
-/**
  * Derive a plausible finish time for a task when `ScheduleFinish` is absent.
  * Uses ScheduleDuration (ISO 8601 seconds) on top of ScheduleStart. Returns
  * undefined when no start time is available.
@@ -346,7 +343,37 @@ export function computeScheduleRange(data: ScheduleExtraction | null): ScheduleT
   return { start: base, end: base + 30 * 86_400_000, synthetic: true };
 }
 
-export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSlice> = (set, get) => ({
+/**
+ * Fields that live on OTHER slices but are read/written from the schedule
+ * slice. Listed here so the StateCreator's generic parameter includes
+ * them — this eliminates the `as unknown as { ... }` casts we'd otherwise
+ * need at every cross-slice site and turns type errors on the other
+ * slice's shape into compile errors here instead of silent runtime bugs.
+ *
+ * Kept as a small weakly-typed projection rather than importing the
+ * owning slices' types (which would create a cycle through index.ts).
+ */
+interface ScheduleCrossSliceReads {
+  /** modelSlice — id of the model the user is currently focused on. */
+  activeModelId?: string | null;
+  /** modelSlice — every model the viewer knows about, keyed by id. */
+  models?: Map<string, { idOffset?: number }>;
+  /** mutationSlice — set of model ids that have pending edits. */
+  dirtyModels?: Set<string>;
+  /** mutationSlice — monotonic version number; bumped on every write. */
+  mutationVersion?: number;
+  /** mutationSlice — per-model override views for property edits. */
+  mutationViews?: Map<string, unknown>;
+  /** mutationSlice — per-model georef overrides. */
+  georefMutations?: Map<string, unknown>;
+}
+
+export const createScheduleSlice: StateCreator<
+  ScheduleSlice & ScheduleCrossSliceReads,
+  [],
+  [],
+  ScheduleSlice
+> = (set, get) => ({
   // Initial state
   scheduleData: null,
   scheduleRange: null,
@@ -357,24 +384,15 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   hoveredTaskGlobalId: null,
   selectedTaskGlobalIds: new Set(),
   ganttTimeScale: 'week',
-  animationEnabled: false,
-  playbackIsPlaying: false,
-  playbackTime: 0,
-  playbackSpeed: 7, // 7 simulated days per real second by default
-  playbackLoop: true,
-  animationSettings: DEFAULT_ANIMATION_SETTINGS,
   scheduleSourceModelId: null,
   scheduleIsEdited: false,
   scheduleUndoStack: [],
   scheduleRedoStack: [],
+  scheduleTransaction: { active: false, label: '', pushedAt: -1 },
 
   // Actions
   setScheduleData: (scheduleData) => {
     const range = computeScheduleRange(scheduleData);
-    // Any in-flight transaction is abandoned when fresh data is loaded.
-    scheduleTxn.active = false;
-    scheduleTxn.label = '';
-    scheduleTxn.pushedAt = -1;
     // Extracted-schedule attribution: even though the schedule wasn't
     // user-generated, every downstream consumer (export splice gate,
     // `mutationSlice.hasChanges`, the Inspector's pending chip) cares
@@ -385,13 +403,9 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     // we populate it from the active model at every `setScheduleData`
     // call so the field is always truthful.
     set(state => {
-      const crossState = state as unknown as {
-        activeModelId?: string | null;
-        models?: Map<string, unknown>;
-      };
-      const activeId = crossState.activeModelId ?? null;
-      const single = crossState.models && crossState.models.size === 1
-        ? (crossState.models.keys().next().value as string | undefined) ?? null
+      const activeId = state.activeModelId ?? null;
+      const single = state.models && state.models.size === 1
+        ? (state.models.keys().next().value as string | undefined) ?? null
         : null;
       const derivedSourceModelId = scheduleData ? (activeId ?? single) : null;
       return {
@@ -414,6 +428,8 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
         scheduleIsEdited: false,
         scheduleUndoStack: [],
         scheduleRedoStack: [],
+        // Any in-flight transaction is abandoned when fresh data is loaded.
+        scheduleTransaction: { active: false, label: '', pushedAt: -1 },
       } as Partial<ScheduleSlice>;
     });
   },
@@ -440,17 +456,12 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   setHoveredTaskGlobalId: (hoveredTaskGlobalId) => set({ hoveredTaskGlobalId }),
   setSelectedTaskGlobalIds: (ids) => set({ selectedTaskGlobalIds: new Set(ids) }),
 
-  setAnimationEnabled: (animationEnabled) => set({ animationEnabled }),
-
   commitGeneratedSchedule: (data, sourceModelId) => {
     const range = computeScheduleRange(data);
-    scheduleTxn.active = false;
-    scheduleTxn.label = '';
-    scheduleTxn.pushedAt = -1;
     set(state => {
-      const newDirty = new Set((state as unknown as { dirtyModels?: Set<string> }).dirtyModels);
+      const newDirty = new Set(state.dirtyModels);
       newDirty.add(sourceModelId);
-      const bump = ((state as unknown as { mutationVersion?: number }).mutationVersion ?? 0) + 1;
+      const bump = (state.mutationVersion ?? 0) + 1;
       return {
         scheduleData: data,
         scheduleRange: range,
@@ -469,6 +480,7 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
         scheduleIsEdited: false,
         scheduleUndoStack: [],
         scheduleRedoStack: [],
+        scheduleTransaction: { active: false, label: '', pushedAt: -1 },
         // Cross-slice writes live behind a cast because the slice creator
         // is only typed for its own shape; the store combines slices so
         // these fields exist at runtime.
@@ -510,23 +522,17 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     const sourceModelId = get().scheduleSourceModelId;
 
     set(state => {
-      const crossState = state as unknown as {
-        dirtyModels?: Set<string>;
-        mutationViews?: Map<string, unknown>;
-        georefMutations?: Map<string, unknown>;
-        mutationVersion?: number;
-      };
       // Only remove the model from `dirtyModels` if this was its ONLY
       // outstanding edit — property / georef mutations keep it dirty.
-      const newDirty = new Set(crossState.dirtyModels);
+      const newDirty = new Set(state.dirtyModels);
       if (sourceModelId) {
-        const hasPropertyEdits = crossState.mutationViews?.has(sourceModelId) ?? false;
-        const hasGeorefEdits = crossState.georefMutations?.has(sourceModelId) ?? false;
+        const hasPropertyEdits = state.mutationViews?.has(sourceModelId) ?? false;
+        const hasGeorefEdits = state.georefMutations?.has(sourceModelId) ?? false;
         if (!hasPropertyEdits && !hasGeorefEdits) {
           newDirty.delete(sourceModelId);
         }
       }
-      const bump = (crossState.mutationVersion ?? 0) + 1;
+      const bump = (state.mutationVersion ?? 0) + 1;
       return {
         scheduleData: keptTasks.length === 0 ? null : next,
         scheduleRange: nextRange,
@@ -541,58 +547,13 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
         scheduleIsEdited: false,
         scheduleUndoStack: [],
         scheduleRedoStack: [],
+        scheduleTransaction: { active: false, label: '', pushedAt: -1 },
         dirtyModels: newDirty,
         mutationVersion: bump,
       } as Partial<ScheduleSlice>;
     });
 
-    scheduleTxn.active = false;
-    scheduleTxn.label = '';
-    scheduleTxn.pushedAt = -1;
     return removed;
-  },
-  setAnimationSettings: (animationSettings) => set({ animationSettings }),
-  patchAnimationSettings: (patch) => set((s) => ({
-    animationSettings: { ...s.animationSettings, ...patch },
-  })),
-  resetAnimationSettings: () => set({ animationSettings: DEFAULT_ANIMATION_SETTINGS }),
-  playSchedule: () => set({ playbackIsPlaying: true, animationEnabled: true }),
-  pauseSchedule: () => set({ playbackIsPlaying: false }),
-  togglePlaySchedule: () => set((s) => {
-    const next = !s.playbackIsPlaying;
-    return {
-      playbackIsPlaying: next,
-      animationEnabled: next ? true : s.animationEnabled,
-    };
-  }),
-  seekSchedule: (time) => set({ playbackTime: time }),
-  setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
-  setPlaybackLoop: (playbackLoop) => set({ playbackLoop }),
-
-  advancePlaybackBy: (deltaMs) => {
-    const s = get();
-    if (!s.playbackIsPlaying || !s.scheduleRange) return;
-    // Clamp the wall-clock delta before scaling. rAF pauses when the tab is
-    // hidden, OS sleeps, or a breakpoint fires; the next frame fires with a
-    // multi-second delta. At the default 7 days/sec that would skip weeks of
-    // schedule in one step, either missing animation states or overshooting
-    // the end of non-looping playback.
-    const MAX_DELTA_MS = 100;
-    const clamped = Math.min(Math.max(deltaMs, 0), MAX_DELTA_MS);
-    // speed = simulated days / real second
-    //   → simulated ms = (deltaMs / 1000) * speed * 86_400_000
-    //                  = deltaMs * speed * 86_400
-    const simulated = clamped * s.playbackSpeed * 86_400;
-    let next = s.playbackTime + simulated;
-    if (next > s.scheduleRange.end) {
-      if (s.playbackLoop) {
-        next = s.scheduleRange.start;
-      } else {
-        set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
-        return;
-      }
-    }
-    set({ playbackTime: next });
   },
 
   // ═════════════════════════════════════════════════════════════════════
@@ -614,7 +575,30 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     if (!current) return;
     const idx = current.tasks.findIndex(t => t.globalId === globalId);
     if (idx < 0) return;
-    pushScheduleSnapshot(get, set, `Edit task: ${current.tasks[idx].name || 'untitled'}`);
+
+    // Which fields the patch actually touches — we snapshot exactly
+    // these + `taskTime` if the milestone-collapse path applies, so
+    // undo restores the minimum needed to reverse the edit.
+    const touchedKeys: Array<keyof ScheduleTaskInfo> = [];
+    if (patch.name !== undefined) touchedKeys.push('name');
+    if (patch.identification !== undefined) touchedKeys.push('identification');
+    if (patch.description !== undefined) touchedKeys.push('description');
+    if (patch.longDescription !== undefined) touchedKeys.push('longDescription');
+    if (patch.objectType !== undefined) touchedKeys.push('objectType');
+    if (patch.predefinedType !== undefined) touchedKeys.push('predefinedType');
+    if (patch.isMilestone !== undefined) {
+      touchedKeys.push('isMilestone');
+      if (patch.isMilestone) touchedKeys.push('taskTime');
+    }
+    if (touchedKeys.length === 0) return;
+
+    const beforeFields = pickExistingFields(current.tasks[idx], touchedKeys);
+    pushFieldPatchSnapshot(
+      get, set,
+      `Edit task: ${current.tasks[idx].name || 'untitled'}`,
+      globalId,
+      beforeFields,
+    );
 
     const next = cloneExtraction(current);
     const t = next.tasks[idx];
@@ -644,7 +628,25 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     if (!current) return;
     const idx = current.tasks.findIndex(t => t.globalId === globalId);
     if (idx < 0) return;
-    pushScheduleSnapshot(get, set, `Edit task time: ${current.tasks[idx].name || 'untitled'}`);
+
+    // Validate BEFORE pushing a snapshot. Previously we'd push then
+    // pop-on-reject, which was correct but left the rejected snapshot
+    // briefly on the stack and forced the stack-length observers to
+    // re-render. With field-patch snapshots we only need the `taskTime`
+    // field's prior state, so compute the validation check against a
+    // dry-run merge first.
+    const prevTimeProbe = current.tasks[idx].taskTime ?? {};
+    const mergedProbe = { ...prevTimeProbe, ...patch };
+    const reconciledProbe = reconcileTaskTime(mergedProbe);
+    if (!reconciledProbe) return; // finish < start — silent reject
+
+    const beforeFields = pickExistingFields(current.tasks[idx], ['taskTime']);
+    pushFieldPatchSnapshot(
+      get, set,
+      `Edit task time: ${current.tasks[idx].name || 'untitled'}`,
+      globalId,
+      beforeFields,
+    );
 
     const next = cloneExtraction(current);
     const t = next.tasks[idx];
@@ -654,9 +656,9 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     const merged = { ...prevTime, ...patch };
     const reconciled = reconcileTaskTime(merged);
     if (!reconciled) {
-      // finish < start — reject by reverting this transaction's snapshot.
-      // We already pushed; pop it so the user doesn't undo into an
-      // un-change.
+      // Defensive — the probe above already caught this case, so this
+      // branch shouldn't be reachable. Left in so we never commit a
+      // malformed taskTime.
       const s = get();
       if (s.scheduleUndoStack.length > 0) {
         const popped = s.scheduleUndoStack.slice(0, -1);
@@ -679,9 +681,8 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     // schedule's source model. When there's no source yet (purely parsed
     // schedule) fall back to the single-model assumption.
     const s = get();
-    const sourceModelId = s.scheduleSourceModelId
-      ?? resolveSingleModelId(s as unknown as { models?: Map<string, unknown> });
-    const idOffset = resolveIdOffset(s as unknown as { models?: Map<string, { idOffset?: number }> }, sourceModelId);
+    const sourceModelId = s.scheduleSourceModelId ?? resolveSingleModelId(s);
+    const idOffset = resolveIdOffset(s, sourceModelId);
     const toLocal = (g: number): number => g - idOffset;
 
     pushScheduleSnapshot(get, set, `Assign ${globalProductIds.length} product(s)`);
@@ -712,9 +713,8 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     if (idx < 0) return;
 
     const s = get();
-    const sourceModelId = s.scheduleSourceModelId
-      ?? resolveSingleModelId(s as unknown as { models?: Map<string, unknown> });
-    const idOffset = resolveIdOffset(s as unknown as { models?: Map<string, { idOffset?: number }> }, sourceModelId);
+    const sourceModelId = s.scheduleSourceModelId ?? resolveSingleModelId(s);
+    const idOffset = resolveIdOffset(s, sourceModelId);
     const localsToDrop = new Set(globalProductIds.map(g => g - idOffset));
     const globalsToDrop = new Set(globalProductIds.map(g => String(g)));
 
@@ -916,13 +916,9 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     if (s.scheduleUndoStack.length === 0) return;
     const top = s.scheduleUndoStack[s.scheduleUndoStack.length - 1];
     const newUndo = s.scheduleUndoStack.slice(0, -1);
-    // Capture current state for redo BEFORE restoring.
-    const redoEntry: ScheduleSnapshot = {
-      label: top.label,
-      data: s.scheduleData ? cloneExtraction(s.scheduleData) : null,
-      range: s.scheduleRange,
-      isEdited: s.scheduleIsEdited,
-    };
+    // Capture current state for redo BEFORE restoring — matching the
+    // popped entry's kind so redo can symmetrically re-apply.
+    const redoEntry = captureInverseSnapshot(s, top);
     const newRedo = [...s.scheduleRedoStack, redoEntry].slice(-SCHEDULE_STACK_MAX);
     applySnapshot(get, set, top, newUndo, newRedo);
   },
@@ -932,47 +928,44 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     if (s.scheduleRedoStack.length === 0) return;
     const top = s.scheduleRedoStack[s.scheduleRedoStack.length - 1];
     const newRedo = s.scheduleRedoStack.slice(0, -1);
-    const undoEntry: ScheduleSnapshot = {
-      label: top.label,
-      data: s.scheduleData ? cloneExtraction(s.scheduleData) : null,
-      range: s.scheduleRange,
-      isEdited: s.scheduleIsEdited,
-    };
+    const undoEntry = captureInverseSnapshot(s, top);
     const newUndo = [...s.scheduleUndoStack, undoEntry].slice(-SCHEDULE_STACK_MAX);
     applySnapshot(get, set, top, newUndo, newRedo);
   },
 
   beginScheduleTransaction: (label) => {
     // One snapshot for the whole transaction. Skip if one's already open.
-    if (scheduleTxn.active) return;
-    scheduleTxn.active = true;
-    scheduleTxn.label = label;
-    scheduleTxn.pushedAt = get().scheduleUndoStack.length;
+    const s = get();
+    if (s.scheduleTransaction.active) return;
+    set({
+      scheduleTransaction: {
+        active: true,
+        label,
+        pushedAt: s.scheduleUndoStack.length,
+      },
+    });
     pushScheduleSnapshot(get, set, label, /* forceIgnoreTxn */ true);
   },
 
   endScheduleTransaction: () => {
-    scheduleTxn.active = false;
-    scheduleTxn.label = '';
-    scheduleTxn.pushedAt = -1;
+    set({ scheduleTransaction: { active: false, label: '', pushedAt: -1 } });
   },
 
   abortScheduleTransaction: () => {
-    if (!scheduleTxn.active) return;
-    // Pop the snapshot we pushed at begin — only if it's still the top.
     const s = get();
-    if (s.scheduleUndoStack.length === scheduleTxn.pushedAt + 1) {
+    const txn = s.scheduleTransaction;
+    if (!txn.active) return;
+    // Pop the snapshot we pushed at begin — only if it's still the top.
+    if (s.scheduleUndoStack.length === txn.pushedAt + 1) {
       const entry = s.scheduleUndoStack[s.scheduleUndoStack.length - 1];
-      if (entry.label === scheduleTxn.label) {
+      if (entry.label === txn.label) {
         // Restoring the snapshot also reverts any mutations we made
         // during the transaction.
         const newUndo = s.scheduleUndoStack.slice(0, -1);
         applySnapshot(get, set, entry, newUndo, s.scheduleRedoStack);
       }
     }
-    scheduleTxn.active = false;
-    scheduleTxn.label = '';
-    scheduleTxn.pushedAt = -1;
+    set({ scheduleTransaction: { active: false, label: '', pushedAt: -1 } });
   },
 });
 
@@ -983,39 +976,30 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
 const SCHEDULE_STACK_MAX = 50;
 
 /**
- * Transaction state lives at module scope (not in the Zustand state) so
- * bar-drag / field-typing callbacks can flip it without re-subscribing.
- * Single-threaded JS = no race concerns; the UI only opens one gesture
- * at a time. Reset on any schedule load so state can't leak between
- * sessions.
- */
-const scheduleTxn = { active: false, label: '', pushedAt: -1 };
-
-/** Deep-clone an extraction so snapshots don't share mutable refs. */
-function cloneExtraction(src: ScheduleExtraction): ScheduleExtraction {
-  // `structuredClone` is available in every runtime we target. Falls
-  // back to JSON only if the environment is ancient — the tasks /
-  // sequences are plain data so both paths round-trip cleanly.
-  if (typeof structuredClone === 'function') return structuredClone(src);
-  return JSON.parse(JSON.stringify(src)) as ScheduleExtraction;
-}
-
-/**
- * Push a pre-mutation snapshot onto the undo stack, clear the redo
- * stack (as is standard for undo UIs — any new edit after an undo
- * forks history). Skipped when a transaction is active unless the
- * caller passes `forceIgnoreTxn`.
+ * Push a pre-mutation FULL snapshot onto the undo stack, clear the redo
+ * stack (as is standard for undo UIs — any new edit after an undo forks
+ * history). Skipped when a transaction is active unless the caller
+ * passes `forceIgnoreTxn`.
+ *
+ * Structural edits (add / delete / move / assign / unassign) use this.
+ * For lightweight field edits on a single task, prefer
+ * {@link pushFieldPatchSnapshot} — same semantics, ~200× smaller entry.
  */
 function pushScheduleSnapshot(
-  get: () => ScheduleSlice,
-  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  get: () => ScheduleSlice & ScheduleCrossSliceReads,
+  set: (
+    patch:
+      | Partial<ScheduleSlice>
+      | ((state: ScheduleSlice & ScheduleCrossSliceReads) => Partial<ScheduleSlice>),
+  ) => void,
   label: string,
   forceIgnoreTxn = false,
 ): void {
-  if (scheduleTxn.active && !forceIgnoreTxn) return;
   const s = get();
+  if (s.scheduleTransaction.active && !forceIgnoreTxn) return;
   if (!s.scheduleData) return;
-  const entry: ScheduleSnapshot = {
+  const entry: ScheduleFullSnapshot = {
+    kind: 'full',
     label,
     data: cloneExtraction(s.scheduleData),
     range: s.scheduleRange,
@@ -1029,25 +1013,88 @@ function pushScheduleSnapshot(
 }
 
 /**
+ * Push a pre-mutation FIELD-PATCH snapshot for a single-task edit.
+ * Captures only the task's globalId + the before-state of fields that
+ * will change. ~100 bytes per entry regardless of schedule size.
+ *
+ * `beforeFields` should be the EXACT set of keys the mutator is about
+ * to overwrite — if the patch isn't a strict subset of what's mutated,
+ * undo replays from the wrong baseline. Use `pickExistingFields` to
+ * capture from the live task.
+ */
+function pushFieldPatchSnapshot(
+  get: () => ScheduleSlice & ScheduleCrossSliceReads,
+  set: (
+    patch:
+      | Partial<ScheduleSlice>
+      | ((state: ScheduleSlice & ScheduleCrossSliceReads) => Partial<ScheduleSlice>),
+  ) => void,
+  label: string,
+  taskGlobalId: string,
+  beforeFields: Partial<ScheduleTaskInfo>,
+): void {
+  const s = get();
+  if (s.scheduleTransaction.active) return;
+  if (!s.scheduleData) return;
+  const entry: ScheduleFieldPatchSnapshot = {
+    kind: 'fieldPatch',
+    label,
+    taskGlobalId,
+    before: beforeFields,
+    priorRange: s.scheduleRange,
+    priorIsEdited: s.scheduleIsEdited,
+  };
+  const nextUndo = [...s.scheduleUndoStack, entry].slice(-SCHEDULE_STACK_MAX);
+  set({
+    scheduleUndoStack: nextUndo,
+    scheduleRedoStack: [], // fork — clear redo
+  });
+}
+
+/**
+ * Capture the current value of the given fields from a task so we can
+ * restore them on undo. Deep-copies arrays / nested structs (taskTime)
+ * so later mutations can't alias the snapshot.
+ */
+function pickExistingFields(
+  task: ScheduleTaskInfo,
+  keys: ReadonlyArray<keyof ScheduleTaskInfo>,
+): Partial<ScheduleTaskInfo> {
+  const out: Partial<ScheduleTaskInfo> = {};
+  for (const k of keys) {
+    const v = task[k];
+    if (v === undefined) {
+      (out as Record<string, unknown>)[k] = undefined;
+    } else if (typeof v === 'object' && v !== null) {
+      // Plain object or array — deep clone to break aliasing.
+      (out as Record<string, unknown>)[k] = structuredClone(v);
+    } else {
+      (out as Record<string, unknown>)[k] = v;
+    }
+  }
+  return out;
+}
+
+/**
  * Finalise an edit: replace `scheduleData`, recompute range, flip the
  * edited flag, cross-slice-mark dirty, bump mutation version.
  */
 function commitEdit(
-  get: () => ScheduleSlice,
-  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  get: () => ScheduleSlice & ScheduleCrossSliceReads,
+  set: (
+    patch:
+      | Partial<ScheduleSlice>
+      | ((state: ScheduleSlice & ScheduleCrossSliceReads) => Partial<ScheduleSlice>),
+  ) => void,
   next: ScheduleExtraction,
   extra?: Partial<ScheduleSlice>,
 ): void {
   const range = computeScheduleRange(next);
   set(state => {
-    const crossState = state as unknown as {
-      dirtyModels?: Set<string>;
-      mutationVersion?: number;
-    };
-    const sourceModelId = (state as ScheduleSlice).scheduleSourceModelId;
-    const newDirty = new Set(crossState.dirtyModels);
+    const sourceModelId = state.scheduleSourceModelId;
+    const newDirty = new Set(state.dirtyModels);
     if (sourceModelId) newDirty.add(sourceModelId);
-    const bump = (crossState.mutationVersion ?? 0) + 1;
+    const bump = (state.mutationVersion ?? 0) + 1;
     return {
       ...(extra ?? {}),
       scheduleData: next,
@@ -1064,32 +1111,111 @@ function commitEdit(
 }
 
 /**
+ * Build an "inverse snapshot" of the current state that matches the
+ * shape of the entry we're about to pop. For `full` entries we deep-
+ * clone the entire extraction; for `fieldPatch` entries we capture
+ * the task's current field values so a later redo can re-apply them.
+ *
+ * Preserving the kind symmetry guarantees that undo → redo → undo
+ * brings the state back to byte-identical (the symmetry test in
+ * scheduleSlice.test.ts locks this down).
+ */
+function captureInverseSnapshot(
+  state: ScheduleSlice,
+  entry: ScheduleSnapshot,
+): ScheduleSnapshot {
+  if (entry.kind === 'full') {
+    return {
+      kind: 'full',
+      label: entry.label,
+      data: state.scheduleData ? cloneExtraction(state.scheduleData) : null,
+      range: state.scheduleRange,
+      isEdited: state.scheduleIsEdited,
+    };
+  }
+  // fieldPatch — mirror by capturing current values of the same keys
+  // and the current range / edited flag.
+  const task = state.scheduleData?.tasks.find(t => t.globalId === entry.taskGlobalId);
+  const keys = Object.keys(entry.before) as Array<keyof ScheduleTaskInfo>;
+  const currentFields = task ? pickExistingFields(task, keys) : {};
+  return {
+    kind: 'fieldPatch',
+    label: entry.label,
+    taskGlobalId: entry.taskGlobalId,
+    before: currentFields,
+    priorRange: state.scheduleRange,
+    priorIsEdited: state.scheduleIsEdited,
+  };
+}
+
+/**
  * Restore a snapshot (shared by undo + redo + abort). Keeps the undo /
  * redo stacks the caller decided on, rather than deriving from `top`.
  */
 function applySnapshot(
-  get: () => ScheduleSlice,
-  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  get: () => ScheduleSlice & ScheduleCrossSliceReads,
+  set: (
+    patch:
+      | Partial<ScheduleSlice>
+      | ((state: ScheduleSlice & ScheduleCrossSliceReads) => Partial<ScheduleSlice>),
+  ) => void,
   snap: ScheduleSnapshot,
   newUndo: ScheduleSnapshot[],
   newRedo: ScheduleSnapshot[],
 ): void {
+  if (snap.kind === 'full') {
+    set(state => {
+      const sourceModelId = state.scheduleSourceModelId;
+      const newDirty = new Set(state.dirtyModels);
+      if (sourceModelId) {
+        if (snap.isEdited) newDirty.add(sourceModelId);
+        else newDirty.delete(sourceModelId);
+      }
+      const bump = (state.mutationVersion ?? 0) + 1;
+      return {
+        scheduleData: snap.data,
+        scheduleRange: snap.range,
+        scheduleIsEdited: snap.isEdited,
+        scheduleUndoStack: newUndo,
+        scheduleRedoStack: newRedo,
+        dirtyModels: newDirty,
+        mutationVersion: bump,
+      } as Partial<ScheduleSlice>;
+    });
+    void get();
+    return;
+  }
+
+  // Field-patch restore: find the task by globalId and overwrite only
+  // the fields captured in `before`. The rest of `scheduleData` is
+  // untouched — structurally we don't need a full clone.
   set(state => {
-    const crossState = state as unknown as {
-      dirtyModels?: Set<string>;
-      mutationVersion?: number;
-    };
-    const sourceModelId = (state as ScheduleSlice).scheduleSourceModelId;
-    const newDirty = new Set(crossState.dirtyModels);
+    const sourceModelId = state.scheduleSourceModelId;
+    const newDirty = new Set(state.dirtyModels);
     if (sourceModelId) {
-      if (snap.isEdited) newDirty.add(sourceModelId);
+      if (snap.priorIsEdited) newDirty.add(sourceModelId);
       else newDirty.delete(sourceModelId);
     }
-    const bump = (crossState.mutationVersion ?? 0) + 1;
+    const bump = (state.mutationVersion ?? 0) + 1;
+
+    // Patch the single affected task. Clone the extraction shallowly so
+    // Zustand identity-based subscriptions fire; deeper structures that
+    // weren't touched stay referentially stable.
+    const current = state.scheduleData;
+    let nextData: ScheduleExtraction | null = current;
+    if (current) {
+      const idx = current.tasks.findIndex(t => t.globalId === snap.taskGlobalId);
+      if (idx >= 0) {
+        const nextTasks = current.tasks.slice();
+        nextTasks[idx] = { ...current.tasks[idx], ...snap.before };
+        nextData = { ...current, tasks: nextTasks };
+      }
+    }
+
     return {
-      scheduleData: snap.data,
-      scheduleRange: snap.range,
-      scheduleIsEdited: snap.isEdited,
+      scheduleData: nextData,
+      scheduleRange: snap.priorRange,
+      scheduleIsEdited: snap.priorIsEdited,
       scheduleUndoStack: newUndo,
       scheduleRedoStack: newRedo,
       dirtyModels: newDirty,
@@ -1097,107 +1223,6 @@ function applySnapshot(
     } as Partial<ScheduleSlice>;
   });
   void get();
-}
-
-/**
- * Reconcile scheduleStart / scheduleFinish / scheduleDuration so any
- * two-of-three the caller supplies produce a consistent third.
- *   • If start + finish supplied → derive duration from their delta.
- *   • If start + duration → derive finish.
- *   • If finish + duration (no start) → leave as-is; no start to anchor.
- *   • Otherwise return patched merge as-is.
- * Returns null when finish < start (invalid, caller should reject).
- */
-function reconcileTaskTime(
-  merged: { scheduleStart?: string; scheduleFinish?: string; scheduleDuration?: string }
-    & Record<string, unknown>,
-): typeof merged | null {
-  const start = parseIsoDate(merged.scheduleStart as string | undefined);
-  const finish = parseIsoDate(merged.scheduleFinish as string | undefined);
-  if (start !== undefined && finish !== undefined && finish < start) return null;
-
-  if (start !== undefined && finish !== undefined) {
-    merged.scheduleDuration = msToIsoDuration(finish - start);
-  } else if (start !== undefined && merged.scheduleDuration) {
-    const finishMs = addIsoDurationToEpoch(start, merged.scheduleDuration);
-    if (finishMs !== undefined) merged.scheduleFinish = toIsoUtc(finishMs);
-  }
-  return merged;
-}
-
-/** Emit an ISO 8601 P…T… duration from a millisecond quantity. */
-function msToIsoDuration(ms: number): string {
-  const clamped = Math.max(0, Math.round(ms));
-  if (clamped === 0) return 'PT0S';
-  const days = Math.floor(clamped / 86_400_000);
-  const remAfterDays = clamped - days * 86_400_000;
-  const hours = Math.floor(remAfterDays / 3_600_000);
-  const remAfterHours = remAfterDays - hours * 3_600_000;
-  const mins = Math.floor(remAfterHours / 60_000);
-  const secs = Math.floor((remAfterHours - mins * 60_000) / 1000);
-  let out = 'P';
-  if (days > 0) out += `${days}D`;
-  if (hours > 0 || mins > 0 || secs > 0) {
-    out += 'T';
-    if (hours > 0) out += `${hours}H`;
-    if (mins > 0) out += `${mins}M`;
-    if (secs > 0) out += `${secs}S`;
-  }
-  return out === 'P' ? 'P0D' : out;
-}
-
-function addIsoDurationToEpoch(start: number, iso: string): number | undefined {
-  const match = iso.match(
-    /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
-  );
-  if (!match) return undefined;
-  const [, y, mo, w, d, h, mi, s] = match;
-  const yearMs = 365.2425 * 86_400_000;
-  const monthMs = yearMs / 12;
-  const total =
-    (y ? parseFloat(y) * yearMs : 0) +
-    (mo ? parseFloat(mo) * monthMs : 0) +
-    (w ? parseFloat(w) * 7 * 86_400_000 : 0) +
-    (d ? parseFloat(d) * 86_400_000 : 0) +
-    (h ? parseFloat(h) * 3_600_000 : 0) +
-    (mi ? parseFloat(mi) * 60_000 : 0) +
-    (s ? parseFloat(s) * 1000 : 0);
-  return start + total;
-}
-
-/** Epoch ms → ISO-8601 UTC (no milliseconds), matching the extractor. */
-function toIsoUtc(ms: number): string {
-  const d = new Date(ms);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return (
-    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T` +
-    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
-  );
-}
-
-/** Pick the only model when running single-model; '' otherwise. */
-function resolveSingleModelId(
-  state: { models?: Map<string, unknown> },
-): string | null {
-  const models = state.models;
-  if (!models || models.size !== 1) return null;
-  const firstKey = models.keys().next().value;
-  return typeof firstKey === 'string' ? firstKey : null;
-}
-
-function resolveIdOffset(
-  state: { models?: Map<string, { idOffset?: number }> },
-  sourceModelId: string | null,
-): number {
-  if (!sourceModelId) return 0;
-  return state.models?.get(sourceModelId)?.idOffset ?? 0;
-}
-
-/** Today at 08:00 UTC, ISO-8601 no milliseconds — a friendly default. */
-function isoNowAt8(): string {
-  const d = new Date();
-  d.setUTCHours(8, 0, 0, 0);
-  return toIsoUtc(d.getTime());
 }
 
 // ── Derived selectors ────────────────────────────────────────────────────

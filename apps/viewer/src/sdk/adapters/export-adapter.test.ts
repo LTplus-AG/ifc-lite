@@ -387,3 +387,71 @@ test('stripScheduleEntities handles \\r\\n line endings', () => {
   // \r\n preservation not strictly required; as long as each kept line
   // survives with its content, we pass.
 });
+
+test('stripScheduleEntities handles multi-line STEP entities', () => {
+  // Valid STEP allows entities to span multiple lines (whitespace is
+  // tolerated anywhere outside string literals). The old line-by-line
+  // regex would have stripped only the first line of a multi-line
+  // IFCTASK, leaving its attribute-list continuation as orphan garbage.
+  // The statement-level tokenizer handles this correctly.
+  const multiLine = [
+    'ISO-10303-21;',
+    'HEADER;',
+    "FILE_DESCRIPTION(('test'),'2;1');",
+    "FILE_NAME('','',(''),(''),'','','');",
+    "FILE_SCHEMA(('IFC4'));",
+    'ENDSEC;',
+    'DATA;',
+    "#1=IFCPROJECT('proj',$,'P',$,$,$,$,(#2),#3);",
+    "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+    "#11=IFCWALL('wall-A',#10,'A',$,$,$,$,$,$);",
+    // Split the IFCTASK across 3 lines. Valid STEP.
+    "#20=IFCTASK(",
+    "  'multi-task',#10,'Multi-line task',",
+    "  $,$,$,$,$,$,.F.,$,$,.CONSTRUCTION.);",
+    // Multi-line workschedule too.
+    "#30=IFCWORKSCHEDULE('ws-multi',",
+    "  #10,'WS multi',$,$,$,$,$,$,$,$,$,$,.PLANNED.);",
+    'ENDSEC;',
+    'END-ISO-10303-21;',
+    '',
+  ].join('\n');
+  const out = injectScheduleIntoStep(multiLine, null, STUB_STORE, { scheduleIsEdited: true });
+  // Every schedule artifact must be gone — no orphan attribute lines
+  // left behind.
+  assert.ok(!out.includes("'multi-task'"), 'multi-line task stripped');
+  assert.ok(!out.includes("'ws-multi'"), 'multi-line workschedule stripped');
+  assert.ok(!out.includes('Multi-line task'), 'orphan attribute line not left behind');
+  assert.ok(!out.includes('WS multi'), 'orphan workschedule continuation not left behind');
+  // Non-schedule entities stay.
+  assert.ok(out.includes("'wall-A'"), 'wall survives multi-line strip');
+  assert.ok(out.includes('IFCPROJECT'), 'project survives multi-line strip');
+});
+
+test("stripScheduleEntities respects ';' inside string literals", () => {
+  // A string attribute that literally contains `;` must not confuse
+  // the statement tokenizer — STEP terminates statements with `;`
+  // outside string literals only.
+  const trickySemicolon = [
+    'ISO-10303-21;',
+    'HEADER;',
+    "FILE_DESCRIPTION(('test'),'2;1');",
+    "FILE_NAME('','',(''),(''),'','','');",
+    "FILE_SCHEMA(('IFC4'));",
+    'ENDSEC;',
+    'DATA;',
+    "#1=IFCPROJECT('proj',$,'P',$,$,$,$,(#2),#3);",
+    "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+    // IFC string-escape: `''` means a single quote. `;` inside a
+    // string literal is NOT a statement terminator.
+    "#11=IFCWALL('w;all','B','A;B;C',$,$,$,$,$,$);",
+    "#20=IFCWORKSCHEDULE('ws',#10,'note;with;semis',$,$,$,$,$,$,$,$,$,$,.PLANNED.);",
+    'ENDSEC;',
+    'END-ISO-10303-21;',
+    '',
+  ].join('\n');
+  const out = injectScheduleIntoStep(trickySemicolon, null, STUB_STORE, { scheduleIsEdited: true });
+  assert.ok(!out.includes("'ws'"), 'workschedule stripped despite semicolons in string');
+  assert.ok(out.includes("'w;all'"), 'wall with semicolon in name preserved');
+  assert.ok(out.includes('A;B;C'), 'wall attribute with semicolons preserved');
+});

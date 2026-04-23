@@ -155,3 +155,25 @@ export function resolveIdOffset(
   if (!sourceModelId) return 0;
   return state.models?.get(sourceModelId)?.idOffset ?? 0;
 }
+
+/**
+ * Standard "which model does this schedule attach to?" resolution: prefer
+ * the currently-active model; fall back to the only model in single-model
+ * sessions; otherwise return `emptyFallback` (defaults to `''`).
+ *
+ * Extracted so every schedule-pipeline site uses the same rule — previously
+ * the `activeModelId ?? (models.size === 1 ? ... : '')` snippet was
+ * duplicated across 6 files, inviting drift.
+ */
+export function resolveScheduleSourceModelId<M>(
+  models: Map<string, M>,
+  activeModelId: string | null | undefined,
+  emptyFallback: string = '',
+): string {
+  if (activeModelId) return activeModelId;
+  if (models.size === 1) {
+    const first = models.keys().next().value;
+    return typeof first === 'string' ? first : emptyFallback;
+  }
+  return emptyFallback;
+}

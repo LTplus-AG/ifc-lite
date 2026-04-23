@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useViewerStore } from '@/store';
+import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
 import { serializeScheduleToStep } from '@ifc-lite/parser';
 import {
@@ -62,8 +63,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   // needs `meshes` + `idOffset` to compute each element's true Z elevation;
   // the spatial strategies don't touch geometry.
   const modelContext = useMemo(() => {
-    const sourceModelId = activeModelId
-      ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
+    const sourceModelId = resolveScheduleSourceModelId(models, activeModelId);
     if (!sourceModelId) return null;
     const model = models.get(sourceModelId);
     const meshes = model?.geometryResult?.meshes;
@@ -163,8 +163,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       // Attribute the generated schedule to the currently-active model.
       // Legacy single-model sessions fall back to '__legacy__' so the
       // dirty flag still pairs with the viewer's model identity.
-      const sourceModelId = activeModelId
-        ?? (models.size === 1 ? (models.keys().next().value ?? '__legacy__') : '__legacy__');
+      const sourceModelId = resolveScheduleSourceModelId(models, activeModelId, '__legacy__');
       commitGeneratedSchedule(preview.extraction, sourceModelId);
       setGanttPanelVisible(true);
       setAnimationEnabled(true);

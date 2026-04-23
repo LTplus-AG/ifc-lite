@@ -94,6 +94,7 @@ export {
   taskFinishEpoch,
   parseIsoDate,
 } from './slices/scheduleSlice.js';
+export { resolveScheduleSourceModelId } from './slices/schedule-edit-helpers.js';
 
 // Combined store type
 export type ViewerState = LoadingSlice &

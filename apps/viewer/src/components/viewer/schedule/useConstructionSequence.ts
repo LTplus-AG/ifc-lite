@@ -35,6 +35,7 @@ import {
   toGlobalIdFromModels,
   type ForwardModelMapLike,
 } from '@/store';
+import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { computeAnimationFrame, type RGBA } from './schedule-animator';
 
 /**
@@ -51,8 +52,7 @@ function localIdsToGlobal<T>(
   models: ForwardModelMapLike,
   activeModelId: string | null | undefined,
 ): Map<number, T> | Set<number> {
-  const sourceModelId = activeModelId
-    ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
+  const sourceModelId = resolveScheduleSourceModelId(models, activeModelId);
 
   if (localMap instanceof Set) {
     const out = new Set<number>();
@@ -149,8 +149,7 @@ export function useConstructionSequence(): void {
     let allLocalIds: Set<number> | undefined;
     if (animationSettings.hideUntaskedProducts) {
       const fullModels = store.models;
-      const sourceModelId = activeModelId
-        ?? (fullModels.size === 1 ? (fullModels.keys().next().value ?? '') : '');
+      const sourceModelId = resolveScheduleSourceModelId(fullModels, activeModelId);
       const sourceModel = sourceModelId ? fullModels.get(sourceModelId) : undefined;
       const meshes = sourceModel?.geometryResult?.meshes;
       const idOffset = sourceModel?.idOffset ?? 0;

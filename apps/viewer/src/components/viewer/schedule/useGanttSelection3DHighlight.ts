@@ -26,6 +26,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useViewerStore, toGlobalIdFromModels } from '@/store';
+import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { collectProductLocalIdsForTasks } from './schedule-selection';
 
 interface OwnedHighlight {
@@ -88,8 +89,7 @@ export function useGanttSelection3DHighlight(): void {
 
     const models = store.models;
     const activeModelId = store.activeModelId;
-    const sourceModelId = activeModelId
-      ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
+    const sourceModelId = resolveScheduleSourceModelId(models, activeModelId);
 
     const globalIds = new Set<number>();
     for (const local of localIds) {

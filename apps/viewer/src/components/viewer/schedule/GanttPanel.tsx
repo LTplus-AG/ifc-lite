@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { extractScheduleOnDemand } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
 import { GanttToolbar } from './GanttToolbar';
 import { GanttTaskTree } from './GanttTaskTree';
@@ -143,8 +144,7 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
     // Geometry-only models (no spatial hierarchy) can still generate via
     // the Height strategy, so surface the button whenever EITHER a
     // spatial tree OR meshes exist on the active source model.
-    const sourceModelId = activeModelId
-      ?? (models.size === 1 ? (models.keys().next().value ?? '') : '');
+    const sourceModelId = resolveScheduleSourceModelId(models, activeModelId);
     const meshes = sourceModelId ? models.get(sourceModelId)?.geometryResult?.meshes : undefined;
     const ctx = meshes && meshes.length > 0
       ? { meshes, idOffset: models.get(sourceModelId!)?.idOffset ?? 0 }

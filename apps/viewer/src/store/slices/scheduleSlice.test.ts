@@ -486,6 +486,50 @@ describe('scheduleSlice editing — undo / redo', () => {
       '2024-05-01T08:00:00',
     );
   });
+
+  it('transaction state is store-scoped — two stores do not alias', () => {
+    // Regression: transaction state used to live at module scope, which
+    // meant a transaction opened on one store leaked into a second store
+    // instantiated in the same process (tests, multi-session, hot-reload).
+    // Now that state lives inside the slice, each store owns its own window.
+    const storeA = bootScheduleStore();
+    const storeB = bootScheduleStore();
+    storeA.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'a',
+        taskTime: {
+          scheduleStart: '2024-05-01T08:00:00',
+          scheduleFinish: '2024-05-02T08:00:00',
+        },
+      }),
+    ]));
+    storeB.getState().setScheduleData(mkExtraction([
+      mkTask({
+        globalId: 'b',
+        taskTime: {
+          scheduleStart: '2024-05-01T08:00:00',
+          scheduleFinish: '2024-05-02T08:00:00',
+        },
+      }),
+    ]));
+
+    // Open a transaction on A. B should see a clean transaction state.
+    storeA.getState().beginScheduleTransaction('drag');
+    assert.strictEqual(storeA.getState().scheduleTransaction.active, true);
+    assert.strictEqual(storeB.getState().scheduleTransaction.active, false);
+
+    // Edits on B should produce independent undo entries — not suppressed
+    // by A's open transaction.
+    storeB.getState().updateTaskTime('b', { scheduleStart: '2024-05-01T09:00:00' });
+    storeB.getState().updateTaskTime('b', { scheduleStart: '2024-05-01T10:00:00' });
+    // Each edit on B gets its own snapshot (2 total) because B is not in
+    // a transaction. If the module-level global were still here, A's
+    // transaction would suppress B's snapshots and we'd see 0.
+    assert.strictEqual(storeB.getState().scheduleUndoStack.length, 2);
+
+    storeA.getState().endScheduleTransaction();
+    assert.strictEqual(storeA.getState().scheduleTransaction.active, false);
+  });
 });
 
 describe('scheduleSlice editing — addTask', () => {

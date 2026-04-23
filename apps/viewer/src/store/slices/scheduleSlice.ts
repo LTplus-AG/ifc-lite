@@ -346,7 +346,37 @@ export function computeScheduleRange(data: ScheduleExtraction | null): ScheduleT
   return { start: base, end: base + 30 * 86_400_000, synthetic: true };
 }
 
-export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSlice> = (set, get) => ({
+/**
+ * Fields that live on OTHER slices but are read/written from the schedule
+ * slice. Listed here so the StateCreator's generic parameter includes
+ * them — this eliminates the `as unknown as { ... }` casts we'd otherwise
+ * need at every cross-slice site and turns type errors on the other
+ * slice's shape into compile errors here instead of silent runtime bugs.
+ *
+ * Kept as a small weakly-typed projection rather than importing the
+ * owning slices' types (which would create a cycle through index.ts).
+ */
+interface ScheduleCrossSliceReads {
+  /** modelSlice — id of the model the user is currently focused on. */
+  activeModelId?: string | null;
+  /** modelSlice — every model the viewer knows about, keyed by id. */
+  models?: Map<string, { idOffset?: number }>;
+  /** mutationSlice — set of model ids that have pending edits. */
+  dirtyModels?: Set<string>;
+  /** mutationSlice — monotonic version number; bumped on every write. */
+  mutationVersion?: number;
+  /** mutationSlice — per-model override views for property edits. */
+  mutationViews?: Map<string, unknown>;
+  /** mutationSlice — per-model georef overrides. */
+  georefMutations?: Map<string, unknown>;
+}
+
+export const createScheduleSlice: StateCreator<
+  ScheduleSlice & ScheduleCrossSliceReads,
+  [],
+  [],
+  ScheduleSlice
+> = (set, get) => ({
   // Initial state
   scheduleData: null,
   scheduleRange: null,
@@ -382,13 +412,9 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     // we populate it from the active model at every `setScheduleData`
     // call so the field is always truthful.
     set(state => {
-      const crossState = state as unknown as {
-        activeModelId?: string | null;
-        models?: Map<string, unknown>;
-      };
-      const activeId = crossState.activeModelId ?? null;
-      const single = crossState.models && crossState.models.size === 1
-        ? (crossState.models.keys().next().value as string | undefined) ?? null
+      const activeId = state.activeModelId ?? null;
+      const single = state.models && state.models.size === 1
+        ? (state.models.keys().next().value as string | undefined) ?? null
         : null;
       const derivedSourceModelId = scheduleData ? (activeId ?? single) : null;
       return {
@@ -444,9 +470,9 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   commitGeneratedSchedule: (data, sourceModelId) => {
     const range = computeScheduleRange(data);
     set(state => {
-      const newDirty = new Set((state as unknown as { dirtyModels?: Set<string> }).dirtyModels);
+      const newDirty = new Set(state.dirtyModels);
       newDirty.add(sourceModelId);
-      const bump = ((state as unknown as { mutationVersion?: number }).mutationVersion ?? 0) + 1;
+      const bump = (state.mutationVersion ?? 0) + 1;
       return {
         scheduleData: data,
         scheduleRange: range,
@@ -507,23 +533,17 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     const sourceModelId = get().scheduleSourceModelId;
 
     set(state => {
-      const crossState = state as unknown as {
-        dirtyModels?: Set<string>;
-        mutationViews?: Map<string, unknown>;
-        georefMutations?: Map<string, unknown>;
-        mutationVersion?: number;
-      };
       // Only remove the model from `dirtyModels` if this was its ONLY
       // outstanding edit — property / georef mutations keep it dirty.
-      const newDirty = new Set(crossState.dirtyModels);
+      const newDirty = new Set(state.dirtyModels);
       if (sourceModelId) {
-        const hasPropertyEdits = crossState.mutationViews?.has(sourceModelId) ?? false;
-        const hasGeorefEdits = crossState.georefMutations?.has(sourceModelId) ?? false;
+        const hasPropertyEdits = state.mutationViews?.has(sourceModelId) ?? false;
+        const hasGeorefEdits = state.georefMutations?.has(sourceModelId) ?? false;
         if (!hasPropertyEdits && !hasGeorefEdits) {
           newDirty.delete(sourceModelId);
         }
       }
-      const bump = (crossState.mutationVersion ?? 0) + 1;
+      const bump = (state.mutationVersion ?? 0) + 1;
       return {
         scheduleData: keptTasks.length === 0 ? null : next,
         scheduleRange: nextRange,
@@ -674,9 +694,8 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     // schedule's source model. When there's no source yet (purely parsed
     // schedule) fall back to the single-model assumption.
     const s = get();
-    const sourceModelId = s.scheduleSourceModelId
-      ?? resolveSingleModelId(s as unknown as { models?: Map<string, unknown> });
-    const idOffset = resolveIdOffset(s as unknown as { models?: Map<string, { idOffset?: number }> }, sourceModelId);
+    const sourceModelId = s.scheduleSourceModelId ?? resolveSingleModelId(s);
+    const idOffset = resolveIdOffset(s, sourceModelId);
     const toLocal = (g: number): number => g - idOffset;
 
     pushScheduleSnapshot(get, set, `Assign ${globalProductIds.length} product(s)`);
@@ -707,9 +726,8 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
     if (idx < 0) return;
 
     const s = get();
-    const sourceModelId = s.scheduleSourceModelId
-      ?? resolveSingleModelId(s as unknown as { models?: Map<string, unknown> });
-    const idOffset = resolveIdOffset(s as unknown as { models?: Map<string, { idOffset?: number }> }, sourceModelId);
+    const sourceModelId = s.scheduleSourceModelId ?? resolveSingleModelId(s);
+    const idOffset = resolveIdOffset(s, sourceModelId);
     const localsToDrop = new Set(globalProductIds.map(g => g - idOffset));
     const globalsToDrop = new Set(globalProductIds.map(g => String(g)));
 
@@ -986,8 +1004,12 @@ const SCHEDULE_STACK_MAX = 50;
  * caller passes `forceIgnoreTxn`.
  */
 function pushScheduleSnapshot(
-  get: () => ScheduleSlice,
-  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  get: () => ScheduleSlice & ScheduleCrossSliceReads,
+  set: (
+    patch:
+      | Partial<ScheduleSlice>
+      | ((state: ScheduleSlice & ScheduleCrossSliceReads) => Partial<ScheduleSlice>),
+  ) => void,
   label: string,
   forceIgnoreTxn = false,
 ): void {
@@ -1012,21 +1034,21 @@ function pushScheduleSnapshot(
  * edited flag, cross-slice-mark dirty, bump mutation version.
  */
 function commitEdit(
-  get: () => ScheduleSlice,
-  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  get: () => ScheduleSlice & ScheduleCrossSliceReads,
+  set: (
+    patch:
+      | Partial<ScheduleSlice>
+      | ((state: ScheduleSlice & ScheduleCrossSliceReads) => Partial<ScheduleSlice>),
+  ) => void,
   next: ScheduleExtraction,
   extra?: Partial<ScheduleSlice>,
 ): void {
   const range = computeScheduleRange(next);
   set(state => {
-    const crossState = state as unknown as {
-      dirtyModels?: Set<string>;
-      mutationVersion?: number;
-    };
-    const sourceModelId = (state as ScheduleSlice).scheduleSourceModelId;
-    const newDirty = new Set(crossState.dirtyModels);
+    const sourceModelId = state.scheduleSourceModelId;
+    const newDirty = new Set(state.dirtyModels);
     if (sourceModelId) newDirty.add(sourceModelId);
-    const bump = (crossState.mutationVersion ?? 0) + 1;
+    const bump = (state.mutationVersion ?? 0) + 1;
     return {
       ...(extra ?? {}),
       scheduleData: next,
@@ -1047,24 +1069,24 @@ function commitEdit(
  * redo stacks the caller decided on, rather than deriving from `top`.
  */
 function applySnapshot(
-  get: () => ScheduleSlice,
-  set: (patch: Partial<ScheduleSlice> | ((state: ScheduleSlice) => Partial<ScheduleSlice>)) => void,
+  get: () => ScheduleSlice & ScheduleCrossSliceReads,
+  set: (
+    patch:
+      | Partial<ScheduleSlice>
+      | ((state: ScheduleSlice & ScheduleCrossSliceReads) => Partial<ScheduleSlice>),
+  ) => void,
   snap: ScheduleSnapshot,
   newUndo: ScheduleSnapshot[],
   newRedo: ScheduleSnapshot[],
 ): void {
   set(state => {
-    const crossState = state as unknown as {
-      dirtyModels?: Set<string>;
-      mutationVersion?: number;
-    };
-    const sourceModelId = (state as ScheduleSlice).scheduleSourceModelId;
-    const newDirty = new Set(crossState.dirtyModels);
+    const sourceModelId = state.scheduleSourceModelId;
+    const newDirty = new Set(state.dirtyModels);
     if (sourceModelId) {
       if (snap.isEdited) newDirty.add(sourceModelId);
       else newDirty.delete(sourceModelId);
     }
-    const bump = (crossState.mutationVersion ?? 0) + 1;
+    const bump = (state.mutationVersion ?? 0) + 1;
     return {
       scheduleData: snap.data,
       scheduleRange: snap.range,

@@ -8,7 +8,7 @@
  */
 
 import { memo, useMemo, useCallback, useRef, useLayoutEffect, useState } from 'react';
-import type { ScheduleExtraction, ScheduleSequenceInfo } from '@ifc-lite/parser';
+import type { ScheduleExtraction } from '@ifc-lite/parser';
 import { cn } from '@/lib/utils';
 import { taskStartEpoch, taskFinishEpoch } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
@@ -17,10 +17,12 @@ import {
   computeTicks,
   formatTickLabel,
   timeToX,
-  formatDateTime,
 } from './schedule-utils';
 import { GANTT_ROW_HEIGHT, GANTT_HEADER_HEIGHT } from './GanttTaskTree';
 import { useGanttBarDrag } from './useGanttBarDrag';
+import { GanttTaskBar } from './GanttTaskBar';
+import { GanttDependencyArrows } from './GanttDependencyArrows';
+import { GanttDragTooltip } from './GanttDragTooltip';
 
 // Alias kept for local readability; binds to the shared constant so the
 // timeline header and the task-tree header stay the same height.
@@ -241,7 +243,7 @@ export const GanttTimeline = memo(function GanttTimeline({
         })}
 
         {/* Dependency arrows (drawn before bars so bars overlap) */}
-        <DependencyArrows
+        <GanttDependencyArrows
           sequences={data.sequences}
           taskRowIndex={taskRowIndex}
           taskEpochs={taskEpochs}
@@ -258,152 +260,23 @@ export const GanttTimeline = memo(function GanttTimeline({
           const start = epochs?.start;
           const finish = epochs?.finish;
           if (start === undefined || finish === undefined) return null;
-
-          const y = i * GANTT_ROW_HEIGHT;
-          const barX = timeToX(start, range.start, range.end, pixelWidth);
-          const barX2 = timeToX(finish, range.start, range.end, pixelWidth);
-          const barWidth = Math.max(task.isMilestone ? 0 : 2, barX2 - barX);
-
-          const isActive = playbackTime >= start && playbackTime <= finish;
-          const isDone = playbackTime > finish;
-          const isPending = !isActive && !isDone;
-          const isSel = selectedGlobalIds.has(task.globalId);
-          const isCritical = task.taskTime?.isCritical ?? false;
-
-          if (task.isMilestone) {
-            const cx = barX;
-            const cy = y + GANTT_ROW_HEIGHT / 2;
-            const s = 6;
-            return (
-              <g
-                key={task.globalId}
-                onMouseEnter={() => onHover(task.globalId)}
-                onMouseLeave={() => onHover(null)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
-                }}
-                className="cursor-pointer"
-              >
-                <polygon
-                  points={`${cx},${cy - s} ${cx + s},${cy} ${cx},${cy + s} ${cx - s},${cy}`}
-                  fill={isDone ? '#f59e0b' : isActive ? '#fbbf24' : '#94a3b8'}
-                  stroke={isSel ? '#111827' : '#713f12'}
-                  strokeWidth={isSel ? 1.5 : 1}
-                />
-                <title>
-                  {task.name || task.globalId}
-                  {'\n'}
-                  {formatDateTime(start)}
-                </title>
-              </g>
-            );
-          }
-
-          // Edge hit zones for resize. Minimum 4 px wide so we stay
-          // clickable even on very short bars; capped at 25 % of the
-          // bar width so on bars < 20 px the whole bar becomes a shift
-          // zone (you can still resize via the Inspector).
-          const edgeZone = Math.min(8, Math.max(4, Math.floor(barWidth * 0.25)));
-          const showEdgeHandles = barWidth >= edgeZone * 2 + 4;
-          const barTop = y + 6;
-          const barH = GANTT_ROW_HEIGHT - 12;
-          const isDragging = barDrag.live.taskGlobalId === task.globalId;
-
           return (
-            <g
+            <GanttTaskBar
               key={task.globalId}
-              onMouseEnter={() => onHover(task.globalId)}
-              onMouseLeave={() => onHover(null)}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(task.globalId, e.shiftKey || e.ctrlKey || e.metaKey);
-              }}
-            >
-              <rect
-                x={barX}
-                y={barTop}
-                width={Math.max(2, barWidth)}
-                height={barH}
-                rx={3}
-                ry={3}
-                fill={
-                  isCritical
-                    ? isDone
-                      ? '#dc2626'
-                      : isActive
-                        ? '#ef4444'
-                        : '#7f1d1d'
-                    : isDone
-                      ? '#6366f1'
-                      : isActive
-                        ? '#818cf8'
-                        : '#c7d2fe'
-                }
-                fillOpacity={isPending ? 0.55 : 0.95}
-                stroke={isDragging ? '#0ea5e9' : isSel ? '#111827' : 'transparent'}
-                strokeWidth={isDragging ? 2 : isSel ? 1.5 : 0}
-              />
-              {task.taskTime?.completion !== undefined && (
-                <rect
-                  x={barX}
-                  y={barTop}
-                  width={Math.max(0, barWidth) * Math.min(1, Math.max(0, task.taskTime.completion / 100))}
-                  height={barH}
-                  rx={3}
-                  ry={3}
-                  fill="#111827"
-                  fillOpacity={0.28}
-                  pointerEvents="none"
-                />
-              )}
-              {/* Shift hit-zone: the interior of the bar. Draws no fill
-                  (the visible fill rect above handles that) but owns the
-                  pointer events that map to drag-body. */}
-              <rect
-                x={showEdgeHandles ? barX + edgeZone : barX}
-                y={barTop}
-                width={
-                  showEdgeHandles
-                    ? Math.max(1, barWidth - edgeZone * 2)
-                    : Math.max(2, barWidth)
-                }
-                height={barH}
-                fill="transparent"
-                className="cursor-move"
-                onPointerDown={(e) => barDrag.onPointerDown(e, task.globalId, 'shift')}
-              />
-              {/* Edge resize hit-zones. Only render when the bar is wide
-                  enough for separate zones — otherwise the whole bar is
-                  a shift zone and resize goes through the Inspector. */}
-              {showEdgeHandles && (
-                <>
-                  <rect
-                    x={barX}
-                    y={barTop}
-                    width={edgeZone}
-                    height={barH}
-                    fill="transparent"
-                    className="cursor-ew-resize"
-                    onPointerDown={(e) => barDrag.onPointerDown(e, task.globalId, 'resize-start')}
-                  />
-                  <rect
-                    x={barX + barWidth - edgeZone}
-                    y={barTop}
-                    width={edgeZone}
-                    height={barH}
-                    fill="transparent"
-                    className="cursor-ew-resize"
-                    onPointerDown={(e) => barDrag.onPointerDown(e, task.globalId, 'resize-finish')}
-                  />
-                </>
-              )}
-              <title>
-                {task.name || task.globalId}
-                {'\n'}
-                {formatDateTime(start)} → {formatDateTime(finish)}
-              </title>
-            </g>
+              task={task}
+              rowIndex={i}
+              start={start}
+              finish={finish}
+              rangeStart={range.start}
+              rangeEnd={range.end}
+              pixelWidth={pixelWidth}
+              playbackTime={playbackTime}
+              isSelected={selectedGlobalIds.has(task.globalId)}
+              isDragging={barDrag.live.taskGlobalId === task.globalId}
+              onHover={onHover}
+              onSelect={onSelect}
+              onPointerDown={barDrag.onPointerDown}
+            />
           );
         })}
 
@@ -424,128 +297,9 @@ export const GanttTimeline = memo(function GanttTimeline({
           positioned inside the scroll container so it scrolls with
           everything else. Only visible while a drag is active. */}
       {barDrag.live.taskGlobalId && (
-        <DragTooltip live={barDrag.live} />
+        <GanttDragTooltip live={barDrag.live} />
       )}
     </div>
   );
 });
 
-interface DragTooltipProps {
-  live: { taskGlobalId: string | null; mode: 'shift' | 'resize-start' | 'resize-finish' | null; liveStartMs: number; liveFinishMs: number };
-}
-
-/**
- * Tiny fixed-position readout pinned near the top of the timeline during
- * a bar drag. Shows the proposed new start / finish / duration so the
- * user can see the commit target without staring at the bar itself.
- * Fixed positioning (not absolute) keeps it above any scroll; `top:60px`
- * anchors below the toolbar region.
- */
-function DragTooltip({ live }: DragTooltipProps) {
-  const durMs = Math.max(0, live.liveFinishMs - live.liveStartMs);
-  const durDays = (durMs / 86_400_000).toFixed(2).replace(/\.?0+$/, '');
-  const fmt = (ms: number) => {
-    const d = new Date(ms);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-  };
-  const modeLabel =
-    live.mode === 'shift' ? 'Shifting'
-    : live.mode === 'resize-start' ? 'Resizing start'
-    : live.mode === 'resize-finish' ? 'Resizing finish'
-    : '';
-  return (
-    <div
-      className="fixed z-50 pointer-events-none top-16 left-1/2 -translate-x-1/2 rounded-md border border-sky-400 bg-sky-50 dark:bg-sky-950 dark:border-sky-700 px-3 py-1.5 shadow-lg text-[11px] font-mono text-sky-900 dark:text-sky-100"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="font-sans text-[10px] uppercase tracking-wider opacity-70">{modeLabel}</div>
-      <div>Start  {fmt(live.liveStartMs)}</div>
-      <div>Finish {fmt(live.liveFinishMs)}</div>
-      <div className="opacity-80">Duration {durDays}d</div>
-      <div className="font-sans text-[9px] opacity-50 mt-0.5">Shift = no snap · Esc = cancel</div>
-    </div>
-  );
-}
-
-interface DependencyArrowsProps {
-  sequences: ScheduleSequenceInfo[];
-  taskRowIndex: Map<string, number>;
-  /** Memoized { start, finish } per task globalId — avoids re-parsing ISO. */
-  taskEpochs: Map<string, { start: number | undefined; finish: number | undefined }>;
-  rangeStart: number;
-  rangeEnd: number;
-  pixelWidth: number;
-}
-
-/**
- * Renders IfcRelSequence dependencies as subtle orthogonal connectors between
- * the predecessor's finish and the successor's start (FS/SS/FF/SF).
- */
-function DependencyArrows({
-  sequences,
-  taskRowIndex,
-  taskEpochs,
-  rangeStart,
-  rangeEnd,
-  pixelWidth,
-}: DependencyArrowsProps) {
-  return (
-    <g opacity={0.45}>
-      {sequences.map((seq, i) => {
-        const fromEpochs = taskEpochs.get(seq.relatingTaskGlobalId);
-        const toEpochs = taskEpochs.get(seq.relatedTaskGlobalId);
-        const rowFrom = taskRowIndex.get(seq.relatingTaskGlobalId);
-        const rowTo = taskRowIndex.get(seq.relatedTaskGlobalId);
-        if (!fromEpochs || !toEpochs || rowFrom === undefined || rowTo === undefined) return null;
-        const fromStart = fromEpochs.start;
-        const fromFinish = fromEpochs.finish;
-        const toStart = toEpochs.start;
-        const toFinish = toEpochs.finish;
-        if (
-          fromStart === undefined || fromFinish === undefined ||
-          toStart === undefined || toFinish === undefined
-        ) return null;
-
-        let x1 = 0, x2 = 0;
-        switch (seq.sequenceType) {
-          case 'START_START':
-            x1 = timeToX(fromStart, rangeStart, rangeEnd, pixelWidth);
-            x2 = timeToX(toStart, rangeStart, rangeEnd, pixelWidth);
-            break;
-          case 'FINISH_FINISH':
-            x1 = timeToX(fromFinish, rangeStart, rangeEnd, pixelWidth);
-            x2 = timeToX(toFinish, rangeStart, rangeEnd, pixelWidth);
-            break;
-          case 'START_FINISH':
-            x1 = timeToX(fromStart, rangeStart, rangeEnd, pixelWidth);
-            x2 = timeToX(toFinish, rangeStart, rangeEnd, pixelWidth);
-            break;
-          case 'FINISH_START':
-          default:
-            x1 = timeToX(fromFinish, rangeStart, rangeEnd, pixelWidth);
-            x2 = timeToX(toStart, rangeStart, rangeEnd, pixelWidth);
-            break;
-        }
-        const y1 = rowFrom * GANTT_ROW_HEIGHT + GANTT_ROW_HEIGHT / 2;
-        const y2 = rowTo * GANTT_ROW_HEIGHT + GANTT_ROW_HEIGHT / 2;
-        const midX = (x1 + x2) / 2;
-        return (
-          <path
-            key={`seq-${i}`}
-            d={`M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1}
-            strokeDasharray="3 2"
-            pointerEvents="none"
-          />
-        );
-      })}
-    </g>
-  );
-}
-
-// Active / done predicates are now inlined into the row loop against the
-// memoized `taskEpochs` map (above) — see the `rows.map(...)` block.

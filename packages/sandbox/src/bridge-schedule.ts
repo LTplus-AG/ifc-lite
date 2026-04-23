@@ -17,41 +17,113 @@
  * Internal `ScheduleExtraction` structs stay camelCase; translation
  * happens at this boundary so SDK callers see the IFC-native shape
  * LLM-generated scripts will recognise.
+ *
+ * Both the emitted TypeScript return types (bim-globals.d.ts) and the
+ * runtime key translator are DERIVED from a single schema below —
+ * adding a field now requires exactly one edit to the schema table
+ * instead of the prior four (type string + translator + internal
+ * interface + often a test).
  */
 
 import type { NamespaceSchema } from './bridge-schema.js';
 
-// ─── Public IFC-PascalCase shape (emitted into bim-globals.d.ts) ──────
+// ─── Schema: one source of truth for field mapping + TS types ─────────
 
-const TASK_TIME_RETURN =
-  "{ ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string;"
-  + ' ActualStart?: string; ActualFinish?: string; ActualDuration?: string;'
-  + ' EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string;'
-  + ' FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string;'
-  + " IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' }";
+/**
+ * One attribute of a schedule struct. `tsType` is the TypeScript type
+ * as a string, with `?` on the key handled by `optional`. Enum values
+ * come through as literal-union tsType (e.g. `"'WORKTIME' | 'ELAPSEDTIME'"`).
+ */
+interface FieldSpec {
+  pascalKey: string;
+  camelKey: string;
+  tsType: string;
+  optional: boolean;
+}
 
-const TASK_RETURN =
-  '{ GlobalId: string; ExpressId: number; Name: string; Description?: string;'
-  + ' ObjectType?: string; Identification?: string; LongDescription?: string;'
-  + ' Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number;'
-  + ' PredefinedType?: string;'
-  + ' ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[];'
-  + ' AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[];'
-  + ' ControllingScheduleGlobalIds: string[];'
-  + ` TaskTime?: ${TASK_TIME_RETURN} }`;
+function mk(pascal: string, camel: string, tsType: string, optional = true): FieldSpec {
+  return { pascalKey: pascal, camelKey: camel, tsType, optional };
+}
 
-const WORK_SCHEDULE_RETURN =
-  "{ GlobalId: string; ExpressId: number; Name: string; Description?: string;"
-  + ' Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string;'
-  + " Purpose?: string; Duration?: string; PredefinedType?: string;"
-  + " Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[] }";
+const TASK_TIME_FIELDS: FieldSpec[] = [
+  mk('ScheduleStart',    'scheduleStart',    'string'),
+  mk('ScheduleFinish',   'scheduleFinish',   'string'),
+  mk('ScheduleDuration', 'scheduleDuration', 'string'),
+  mk('ActualStart',      'actualStart',      'string'),
+  mk('ActualFinish',     'actualFinish',     'string'),
+  mk('ActualDuration',   'actualDuration',   'string'),
+  mk('EarlyStart',       'earlyStart',       'string'),
+  mk('EarlyFinish',      'earlyFinish',      'string'),
+  mk('LateStart',        'lateStart',        'string'),
+  mk('LateFinish',       'lateFinish',       'string'),
+  mk('FreeFloat',        'freeFloat',        'string'),
+  mk('TotalFloat',       'totalFloat',       'string'),
+  mk('RemainingTime',    'remainingTime',    'string'),
+  mk('StatusTime',       'statusTime',       'string'),
+  mk('IsCritical',       'isCritical',       'boolean'),
+  mk('Completion',       'completion',       'number'),
+  mk('DurationType',     'durationType',     "'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED'"),
+];
 
-const SEQUENCE_RETURN =
-  '{ RelatingProcessGlobalId: string; RelatedProcessGlobalId: string;'
-  + " SequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH'"
-  + " | 'USERDEFINED' | 'NOTDEFINED';"
-  + ' UserDefinedSequenceType?: string;'
-  + ' TimeLagSeconds?: number; TimeLagDuration?: string }';
+const TASK_FIELDS: FieldSpec[] = [
+  mk('GlobalId',                    'globalId',                     'string', false),
+  mk('ExpressId',                   'expressId',                    'number', false),
+  mk('Name',                        'name',                         'string', false),
+  mk('Description',                 'description',                  'string'),
+  mk('ObjectType',                  'objectType',                   'string'),
+  mk('Identification',              'identification',               'string'),
+  mk('LongDescription',             'longDescription',              'string'),
+  mk('Status',                      'status',                       'string'),
+  mk('WorkMethod',                  'workMethod',                   'string'),
+  mk('IsMilestone',                 'isMilestone',                  'boolean', false),
+  mk('Priority',                    'priority',                     'number'),
+  mk('PredefinedType',              'predefinedType',               'string'),
+  mk('ParentTaskGlobalId',          'parentGlobalId',               'string'),
+  mk('ChildTaskGlobalIds',          'childGlobalIds',               'string[]', false),
+  mk('AssignedProductExpressIds',   'productExpressIds',            'number[]', false),
+  mk('AssignedProductGlobalIds',    'productGlobalIds',             'string[]', false),
+  mk('ControllingScheduleGlobalIds','controllingScheduleGlobalIds', 'string[]', false),
+  // TaskTime is a nested struct — handled by the schema-to-type helper below.
+];
+
+const WORK_SCHEDULE_FIELDS: FieldSpec[] = [
+  mk('GlobalId',        'globalId',        'string', false),
+  mk('ExpressId',       'expressId',       'number', false),
+  mk('Name',            'name',            'string', false),
+  mk('Description',     'description',     'string'),
+  mk('Identification',  'identification',  'string'),
+  mk('CreationDate',    'creationDate',    'string'),
+  mk('StartTime',       'startTime',       'string'),
+  mk('FinishTime',      'finishTime',      'string'),
+  mk('Purpose',         'purpose',         'string'),
+  mk('Duration',        'duration',        'string'),
+  mk('PredefinedType',  'predefinedType',  'string'),
+  mk('Kind',            'kind',            "'WorkSchedule' | 'WorkPlan'", false),
+  mk('TaskGlobalIds',   'taskGlobalIds',   'string[]', false),
+];
+
+const SEQUENCE_FIELDS: FieldSpec[] = [
+  mk('RelatingProcessGlobalId', 'relatingTaskGlobalId', 'string', false),
+  mk('RelatedProcessGlobalId',  'relatedTaskGlobalId',  'string', false),
+  mk('SequenceType',            'sequenceType',
+    "'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'", false),
+  mk('UserDefinedSequenceType', 'userDefinedSequenceType', 'string'),
+  mk('TimeLagSeconds',          'timeLagSeconds',           'number'),
+  mk('TimeLagDuration',         'timeLagDuration',          'string'),
+];
+
+// ─── Schema → TS return-type string ────────────────────────────────────
+
+function buildReturnType(fields: FieldSpec[], extra: string = ''): string {
+  const parts = fields.map(f => `${f.pascalKey}${f.optional ? '?' : ''}: ${f.tsType}`);
+  if (extra) parts.push(extra);
+  return `{ ${parts.join('; ')} }`;
+}
+
+const TASK_TIME_RETURN = buildReturnType(TASK_TIME_FIELDS);
+const TASK_RETURN      = buildReturnType(TASK_FIELDS, `TaskTime?: ${TASK_TIME_RETURN}`);
+const WORK_SCHEDULE_RETURN = buildReturnType(WORK_SCHEDULE_FIELDS);
+const SEQUENCE_RETURN  = buildReturnType(SEQUENCE_FIELDS);
 
 const DATA_RETURN =
   `{ HasSchedule: boolean;`
@@ -59,89 +131,39 @@ const DATA_RETURN =
   + ` Tasks: Array<${TASK_RETURN}>;`
   + ` Sequences: Array<${SEQUENCE_RETURN}> }`;
 
-// ─── Internal → public translator ─────────────────────────────────────
+// ─── Schema → runtime translator ──────────────────────────────────────
 
-// Typed to `any` at this boundary because the internal ScheduleExtraction
-// lives in @ifc-lite/parser — pulling the types in here would create a
-// bridge → parser dependency the bundler doesn't need. The bridge just
-// renames keys.
+/**
+ * Walk `fields` and produce a new object with PascalCase keys reading
+ * from the source's camelCase keys. Any field whose source value is
+ * `undefined` is kept as `undefined` (not omitted) so shape checks
+ * remain stable across optional-field presence.
+ */
+function translateByFields(source: Record<string, unknown>, fields: FieldSpec[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of fields) out[f.pascalKey] = source[f.camelKey];
+  return out;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function translateTaskTime(tt: any): Record<string, unknown> | undefined {
   if (!tt) return undefined;
-  return {
-    ScheduleStart: tt.scheduleStart,
-    ScheduleFinish: tt.scheduleFinish,
-    ScheduleDuration: tt.scheduleDuration,
-    ActualStart: tt.actualStart,
-    ActualFinish: tt.actualFinish,
-    ActualDuration: tt.actualDuration,
-    EarlyStart: tt.earlyStart,
-    EarlyFinish: tt.earlyFinish,
-    LateStart: tt.lateStart,
-    LateFinish: tt.lateFinish,
-    FreeFloat: tt.freeFloat,
-    TotalFloat: tt.totalFloat,
-    RemainingTime: tt.remainingTime,
-    StatusTime: tt.statusTime,
-    IsCritical: tt.isCritical,
-    Completion: tt.completion,
-    DurationType: tt.durationType,
-  };
+  return translateByFields(tt, TASK_TIME_FIELDS);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function translateTask(t: any): Record<string, unknown> {
-  return {
-    GlobalId: t.globalId,
-    ExpressId: t.expressId,
-    Name: t.name,
-    Description: t.description,
-    ObjectType: t.objectType,
-    Identification: t.identification,
-    LongDescription: t.longDescription,
-    Status: t.status,
-    WorkMethod: t.workMethod,
-    IsMilestone: t.isMilestone,
-    Priority: t.priority,
-    PredefinedType: t.predefinedType,
-    ParentTaskGlobalId: t.parentGlobalId,
-    ChildTaskGlobalIds: t.childGlobalIds,
-    AssignedProductExpressIds: t.productExpressIds,
-    AssignedProductGlobalIds: t.productGlobalIds,
-    ControllingScheduleGlobalIds: t.controllingScheduleGlobalIds,
-    TaskTime: translateTaskTime(t.taskTime),
-  };
+  return { ...translateByFields(t, TASK_FIELDS), TaskTime: translateTaskTime(t.taskTime) };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function translateWorkSchedule(w: any): Record<string, unknown> {
-  return {
-    GlobalId: w.globalId,
-    ExpressId: w.expressId,
-    Name: w.name,
-    Description: w.description,
-    Identification: w.identification,
-    CreationDate: w.creationDate,
-    StartTime: w.startTime,
-    FinishTime: w.finishTime,
-    Purpose: w.purpose,
-    Duration: w.duration,
-    PredefinedType: w.predefinedType,
-    Kind: w.kind,
-    TaskGlobalIds: w.taskGlobalIds,
-  };
+  return translateByFields(w, WORK_SCHEDULE_FIELDS);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function translateSequence(s: any): Record<string, unknown> {
-  return {
-    RelatingProcessGlobalId: s.relatingTaskGlobalId,
-    RelatedProcessGlobalId: s.relatedTaskGlobalId,
-    SequenceType: s.sequenceType,
-    UserDefinedSequenceType: s.userDefinedSequenceType,
-    TimeLagSeconds: s.timeLagSeconds,
-    TimeLagDuration: s.timeLagDuration,
-  };
+  return translateByFields(s, SEQUENCE_FIELDS);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -153,6 +175,25 @@ function translateData(d: any): Record<string, unknown> {
     Sequences: (d.sequences ?? []).map(translateSequence),
   };
 }
+
+// Exposed for tests — lets us assert TS return shape stays byte-identical
+// when we refactor the schema-to-type builder.
+export const __schedule_schema_testing = {
+  TASK_TIME_FIELDS,
+  TASK_FIELDS,
+  WORK_SCHEDULE_FIELDS,
+  SEQUENCE_FIELDS,
+  TASK_TIME_RETURN,
+  TASK_RETURN,
+  WORK_SCHEDULE_RETURN,
+  SEQUENCE_RETURN,
+  DATA_RETURN,
+  translateTask,
+  translateTaskTime,
+  translateWorkSchedule,
+  translateSequence,
+  translateData,
+};
 
 export function buildScheduleNamespace(): NamespaceSchema {
   return {

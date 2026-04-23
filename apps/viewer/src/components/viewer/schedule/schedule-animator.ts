@@ -486,6 +486,3 @@ export function computeAnimationFrame(
 
   return { colorOverrides, hiddenIds, stats };
 }
-
-// Re-export internal helpers for unit tests
-export const __testing = { computeTaskPhase, resolvePaletteKey, isRemovalTask, parseEpoch };

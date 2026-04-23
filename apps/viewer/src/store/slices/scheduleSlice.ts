@@ -36,16 +36,47 @@ import {
 export type GanttTimeScale = 'hour' | 'day' | 'week' | 'month' | 'year';
 
 /**
- * One undo/redo entry — captures the full `scheduleData` + derived
- * `scheduleRange` at a point in time. `label` is surfaced in the UI toast
- * so users see "Undone: edit task time" rather than a generic message.
+ * Undo / redo entry — discriminated union with two kinds:
+ *
+ *   • `kind: 'full'` — captures the entire `scheduleData` as a deep clone.
+ *     Used by structural edits (add / delete / move / assign / unassign)
+ *     and by transaction-begin, where the set of affected fields is
+ *     hard to bound ahead of time.
+ *
+ *   • `kind: 'fieldPatch'` — captures only the before-state of the fields
+ *     that changed on a single task. Used by `updateTask` and
+ *     `updateTaskTime` (the common case — typing a name, dragging a bar).
+ *     ~100 bytes per entry vs ~20 KB for a full clone of a 500-task
+ *     schedule, which matters at the 50-entry stack cap.
+ *
+ * `label` surfaces in the UI toast so users see "Undone: edit task
+ * name" rather than a generic message. `priorRange` + `priorIsEdited`
+ * are captured on both kinds so undo restores derived state + the
+ * pending-edit flag correctly (recomputing is cheap but doesn't tell
+ * us whether the schedule was "clean" before the edit — an edit sequence
+ * could span crossings of that flag).
  */
-export interface ScheduleSnapshot {
+export interface ScheduleFullSnapshot {
+  kind: 'full';
   label: string;
   data: ScheduleExtraction | null;
   range: ScheduleTimeRange | null;
   isEdited: boolean;
 }
+
+export interface ScheduleFieldPatchSnapshot {
+  kind: 'fieldPatch';
+  label: string;
+  taskGlobalId: string;
+  /** Fields on the task as they were BEFORE the edit. Sparse. */
+  before: Partial<ScheduleTaskInfo>;
+  /** Range before the edit — restored verbatim on undo. */
+  priorRange: ScheduleTimeRange | null;
+  /** `scheduleIsEdited` flag before the edit. */
+  priorIsEdited: boolean;
+}
+
+export type ScheduleSnapshot = ScheduleFullSnapshot | ScheduleFieldPatchSnapshot;
 
 export interface ScheduleTimeRange {
   /** Earliest task start time, epoch ms. */
@@ -629,7 +660,30 @@ export const createScheduleSlice: StateCreator<
     if (!current) return;
     const idx = current.tasks.findIndex(t => t.globalId === globalId);
     if (idx < 0) return;
-    pushScheduleSnapshot(get, set, `Edit task: ${current.tasks[idx].name || 'untitled'}`);
+
+    // Which fields the patch actually touches — we snapshot exactly
+    // these + `taskTime` if the milestone-collapse path applies, so
+    // undo restores the minimum needed to reverse the edit.
+    const touchedKeys: Array<keyof ScheduleTaskInfo> = [];
+    if (patch.name !== undefined) touchedKeys.push('name');
+    if (patch.identification !== undefined) touchedKeys.push('identification');
+    if (patch.description !== undefined) touchedKeys.push('description');
+    if (patch.longDescription !== undefined) touchedKeys.push('longDescription');
+    if (patch.objectType !== undefined) touchedKeys.push('objectType');
+    if (patch.predefinedType !== undefined) touchedKeys.push('predefinedType');
+    if (patch.isMilestone !== undefined) {
+      touchedKeys.push('isMilestone');
+      if (patch.isMilestone) touchedKeys.push('taskTime');
+    }
+    if (touchedKeys.length === 0) return;
+
+    const beforeFields = pickExistingFields(current.tasks[idx], touchedKeys);
+    pushFieldPatchSnapshot(
+      get, set,
+      `Edit task: ${current.tasks[idx].name || 'untitled'}`,
+      globalId,
+      beforeFields,
+    );
 
     const next = cloneExtraction(current);
     const t = next.tasks[idx];
@@ -659,7 +713,25 @@ export const createScheduleSlice: StateCreator<
     if (!current) return;
     const idx = current.tasks.findIndex(t => t.globalId === globalId);
     if (idx < 0) return;
-    pushScheduleSnapshot(get, set, `Edit task time: ${current.tasks[idx].name || 'untitled'}`);
+
+    // Validate BEFORE pushing a snapshot. Previously we'd push then
+    // pop-on-reject, which was correct but left the rejected snapshot
+    // briefly on the stack and forced the stack-length observers to
+    // re-render. With field-patch snapshots we only need the `taskTime`
+    // field's prior state, so compute the validation check against a
+    // dry-run merge first.
+    const prevTimeProbe = current.tasks[idx].taskTime ?? {};
+    const mergedProbe = { ...prevTimeProbe, ...patch };
+    const reconciledProbe = reconcileTaskTime(mergedProbe);
+    if (!reconciledProbe) return; // finish < start — silent reject
+
+    const beforeFields = pickExistingFields(current.tasks[idx], ['taskTime']);
+    pushFieldPatchSnapshot(
+      get, set,
+      `Edit task time: ${current.tasks[idx].name || 'untitled'}`,
+      globalId,
+      beforeFields,
+    );
 
     const next = cloneExtraction(current);
     const t = next.tasks[idx];
@@ -669,9 +741,9 @@ export const createScheduleSlice: StateCreator<
     const merged = { ...prevTime, ...patch };
     const reconciled = reconcileTaskTime(merged);
     if (!reconciled) {
-      // finish < start — reject by reverting this transaction's snapshot.
-      // We already pushed; pop it so the user doesn't undo into an
-      // un-change.
+      // Defensive — the probe above already caught this case, so this
+      // branch shouldn't be reachable. Left in so we never commit a
+      // malformed taskTime.
       const s = get();
       if (s.scheduleUndoStack.length > 0) {
         const popped = s.scheduleUndoStack.slice(0, -1);
@@ -929,13 +1001,9 @@ export const createScheduleSlice: StateCreator<
     if (s.scheduleUndoStack.length === 0) return;
     const top = s.scheduleUndoStack[s.scheduleUndoStack.length - 1];
     const newUndo = s.scheduleUndoStack.slice(0, -1);
-    // Capture current state for redo BEFORE restoring.
-    const redoEntry: ScheduleSnapshot = {
-      label: top.label,
-      data: s.scheduleData ? cloneExtraction(s.scheduleData) : null,
-      range: s.scheduleRange,
-      isEdited: s.scheduleIsEdited,
-    };
+    // Capture current state for redo BEFORE restoring — matching the
+    // popped entry's kind so redo can symmetrically re-apply.
+    const redoEntry = captureInverseSnapshot(s, top);
     const newRedo = [...s.scheduleRedoStack, redoEntry].slice(-SCHEDULE_STACK_MAX);
     applySnapshot(get, set, top, newUndo, newRedo);
   },
@@ -945,12 +1013,7 @@ export const createScheduleSlice: StateCreator<
     if (s.scheduleRedoStack.length === 0) return;
     const top = s.scheduleRedoStack[s.scheduleRedoStack.length - 1];
     const newRedo = s.scheduleRedoStack.slice(0, -1);
-    const undoEntry: ScheduleSnapshot = {
-      label: top.label,
-      data: s.scheduleData ? cloneExtraction(s.scheduleData) : null,
-      range: s.scheduleRange,
-      isEdited: s.scheduleIsEdited,
-    };
+    const undoEntry = captureInverseSnapshot(s, top);
     const newUndo = [...s.scheduleUndoStack, undoEntry].slice(-SCHEDULE_STACK_MAX);
     applySnapshot(get, set, top, newUndo, newRedo);
   },
@@ -998,10 +1061,14 @@ export const createScheduleSlice: StateCreator<
 const SCHEDULE_STACK_MAX = 50;
 
 /**
- * Push a pre-mutation snapshot onto the undo stack, clear the redo
- * stack (as is standard for undo UIs — any new edit after an undo
- * forks history). Skipped when a transaction is active unless the
- * caller passes `forceIgnoreTxn`.
+ * Push a pre-mutation FULL snapshot onto the undo stack, clear the redo
+ * stack (as is standard for undo UIs — any new edit after an undo forks
+ * history). Skipped when a transaction is active unless the caller
+ * passes `forceIgnoreTxn`.
+ *
+ * Structural edits (add / delete / move / assign / unassign) use this.
+ * For lightweight field edits on a single task, prefer
+ * {@link pushFieldPatchSnapshot} — same semantics, ~200× smaller entry.
  */
 function pushScheduleSnapshot(
   get: () => ScheduleSlice & ScheduleCrossSliceReads,
@@ -1016,7 +1083,8 @@ function pushScheduleSnapshot(
   const s = get();
   if (s.scheduleTransaction.active && !forceIgnoreTxn) return;
   if (!s.scheduleData) return;
-  const entry: ScheduleSnapshot = {
+  const entry: ScheduleFullSnapshot = {
+    kind: 'full',
     label,
     data: cloneExtraction(s.scheduleData),
     range: s.scheduleRange,
@@ -1027,6 +1095,69 @@ function pushScheduleSnapshot(
     scheduleUndoStack: nextUndo,
     scheduleRedoStack: [], // fork — clear redo
   });
+}
+
+/**
+ * Push a pre-mutation FIELD-PATCH snapshot for a single-task edit.
+ * Captures only the task's globalId + the before-state of fields that
+ * will change. ~100 bytes per entry regardless of schedule size.
+ *
+ * `beforeFields` should be the EXACT set of keys the mutator is about
+ * to overwrite — if the patch isn't a strict subset of what's mutated,
+ * undo replays from the wrong baseline. Use `pickExistingFields` to
+ * capture from the live task.
+ */
+function pushFieldPatchSnapshot(
+  get: () => ScheduleSlice & ScheduleCrossSliceReads,
+  set: (
+    patch:
+      | Partial<ScheduleSlice>
+      | ((state: ScheduleSlice & ScheduleCrossSliceReads) => Partial<ScheduleSlice>),
+  ) => void,
+  label: string,
+  taskGlobalId: string,
+  beforeFields: Partial<ScheduleTaskInfo>,
+): void {
+  const s = get();
+  if (s.scheduleTransaction.active) return;
+  if (!s.scheduleData) return;
+  const entry: ScheduleFieldPatchSnapshot = {
+    kind: 'fieldPatch',
+    label,
+    taskGlobalId,
+    before: beforeFields,
+    priorRange: s.scheduleRange,
+    priorIsEdited: s.scheduleIsEdited,
+  };
+  const nextUndo = [...s.scheduleUndoStack, entry].slice(-SCHEDULE_STACK_MAX);
+  set({
+    scheduleUndoStack: nextUndo,
+    scheduleRedoStack: [], // fork — clear redo
+  });
+}
+
+/**
+ * Capture the current value of the given fields from a task so we can
+ * restore them on undo. Deep-copies arrays / nested structs (taskTime)
+ * so later mutations can't alias the snapshot.
+ */
+function pickExistingFields(
+  task: ScheduleTaskInfo,
+  keys: ReadonlyArray<keyof ScheduleTaskInfo>,
+): Partial<ScheduleTaskInfo> {
+  const out: Partial<ScheduleTaskInfo> = {};
+  for (const k of keys) {
+    const v = task[k];
+    if (v === undefined) {
+      (out as Record<string, unknown>)[k] = undefined;
+    } else if (typeof v === 'object' && v !== null) {
+      // Plain object or array — deep clone to break aliasing.
+      (out as Record<string, unknown>)[k] = structuredClone(v);
+    } else {
+      (out as Record<string, unknown>)[k] = v;
+    }
+  }
+  return out;
 }
 
 /**
@@ -1065,6 +1196,44 @@ function commitEdit(
 }
 
 /**
+ * Build an "inverse snapshot" of the current state that matches the
+ * shape of the entry we're about to pop. For `full` entries we deep-
+ * clone the entire extraction; for `fieldPatch` entries we capture
+ * the task's current field values so a later redo can re-apply them.
+ *
+ * Preserving the kind symmetry guarantees that undo → redo → undo
+ * brings the state back to byte-identical (the symmetry test in
+ * scheduleSlice.test.ts locks this down).
+ */
+function captureInverseSnapshot(
+  state: ScheduleSlice,
+  entry: ScheduleSnapshot,
+): ScheduleSnapshot {
+  if (entry.kind === 'full') {
+    return {
+      kind: 'full',
+      label: entry.label,
+      data: state.scheduleData ? cloneExtraction(state.scheduleData) : null,
+      range: state.scheduleRange,
+      isEdited: state.scheduleIsEdited,
+    };
+  }
+  // fieldPatch — mirror by capturing current values of the same keys
+  // and the current range / edited flag.
+  const task = state.scheduleData?.tasks.find(t => t.globalId === entry.taskGlobalId);
+  const keys = Object.keys(entry.before) as Array<keyof ScheduleTaskInfo>;
+  const currentFields = task ? pickExistingFields(task, keys) : {};
+  return {
+    kind: 'fieldPatch',
+    label: entry.label,
+    taskGlobalId: entry.taskGlobalId,
+    before: currentFields,
+    priorRange: state.scheduleRange,
+    priorIsEdited: state.scheduleIsEdited,
+  };
+}
+
+/**
  * Restore a snapshot (shared by undo + redo + abort). Keeps the undo /
  * redo stacks the caller decided on, rather than deriving from `top`.
  */
@@ -1079,18 +1248,59 @@ function applySnapshot(
   newUndo: ScheduleSnapshot[],
   newRedo: ScheduleSnapshot[],
 ): void {
+  if (snap.kind === 'full') {
+    set(state => {
+      const sourceModelId = state.scheduleSourceModelId;
+      const newDirty = new Set(state.dirtyModels);
+      if (sourceModelId) {
+        if (snap.isEdited) newDirty.add(sourceModelId);
+        else newDirty.delete(sourceModelId);
+      }
+      const bump = (state.mutationVersion ?? 0) + 1;
+      return {
+        scheduleData: snap.data,
+        scheduleRange: snap.range,
+        scheduleIsEdited: snap.isEdited,
+        scheduleUndoStack: newUndo,
+        scheduleRedoStack: newRedo,
+        dirtyModels: newDirty,
+        mutationVersion: bump,
+      } as Partial<ScheduleSlice>;
+    });
+    void get();
+    return;
+  }
+
+  // Field-patch restore: find the task by globalId and overwrite only
+  // the fields captured in `before`. The rest of `scheduleData` is
+  // untouched — structurally we don't need a full clone.
   set(state => {
     const sourceModelId = state.scheduleSourceModelId;
     const newDirty = new Set(state.dirtyModels);
     if (sourceModelId) {
-      if (snap.isEdited) newDirty.add(sourceModelId);
+      if (snap.priorIsEdited) newDirty.add(sourceModelId);
       else newDirty.delete(sourceModelId);
     }
     const bump = (state.mutationVersion ?? 0) + 1;
+
+    // Patch the single affected task. Clone the extraction shallowly so
+    // Zustand identity-based subscriptions fire; deeper structures that
+    // weren't touched stay referentially stable.
+    const current = state.scheduleData;
+    let nextData: ScheduleExtraction | null = current;
+    if (current) {
+      const idx = current.tasks.findIndex(t => t.globalId === snap.taskGlobalId);
+      if (idx >= 0) {
+        const nextTasks = current.tasks.slice();
+        nextTasks[idx] = { ...current.tasks[idx], ...snap.before };
+        nextData = { ...current, tasks: nextTasks };
+      }
+    }
+
     return {
-      scheduleData: snap.data,
-      scheduleRange: snap.range,
-      scheduleIsEdited: snap.isEdited,
+      scheduleData: nextData,
+      scheduleRange: snap.priorRange,
+      scheduleIsEdited: snap.priorIsEdited,
       scheduleUndoStack: newUndo,
       scheduleRedoStack: newRedo,
       dirtyModels: newDirty,

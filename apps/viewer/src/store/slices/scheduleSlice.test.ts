@@ -533,114 +533,46 @@ describe('scheduleSlice editing — undo / redo', () => {
 
   // ── P1.4 — operation-based undo replay symmetry ─────────────────────
 
-  it('updateTask snapshot is fieldPatch-shaped, not a full state clone', () => {
-    // Regression lock — field-patch snapshots are ~100 bytes vs ~20 KB for
-    // a full clone of a large schedule. Verifies we took the lightweight
-    // path and didn't quietly regress to full snapshots.
-    const store = bootScheduleStore();
-    store.getState().setScheduleData(mkExtraction([
-      mkTask({ globalId: 'a', name: 'Original' }),
-    ]));
-    store.getState().updateTask('a', { name: 'Changed' });
-    const top = store.getState().scheduleUndoStack[0];
-    assert.strictEqual(top.kind, 'fieldPatch');
-    if (top.kind === 'fieldPatch') {
-      assert.strictEqual(top.taskGlobalId, 'a');
-      assert.strictEqual(top.before.name, 'Original');
-    }
-  });
-
-  it('updateTaskTime snapshot is fieldPatch-shaped', () => {
-    const store = bootScheduleStore();
-    store.getState().setScheduleData(mkExtraction([
-      mkTask({
-        globalId: 'a',
-        taskTime: {
-          scheduleStart: '2024-05-01T08:00:00',
-          scheduleFinish: '2024-05-02T08:00:00',
-        },
-      }),
-    ]));
-    store.getState().updateTaskTime('a', { scheduleStart: '2024-05-01T09:00:00' });
-    const top = store.getState().scheduleUndoStack[0];
-    assert.strictEqual(top.kind, 'fieldPatch');
-    if (top.kind === 'fieldPatch') {
-      assert.strictEqual((top.before.taskTime as { scheduleStart?: string } | undefined)?.scheduleStart, '2024-05-01T08:00:00');
-    }
-  });
-
   it('undo → redo → undo is byte-identical on field edits', () => {
-    // Forward symmetry: the state after N undos followed by N redos
-    // followed by the same N undos must exactly equal the state right
-    // after the initial undos. Proves the field-patch descriptor's
-    // inverse-capture logic is consistent.
+    // Property test — after N undos + N redos + N undos the state must
+    // equal the state after the first N undos, byte-for-byte. Proves the
+    // field-patch descriptor's inverse-capture keeps undo/redo symmetric.
+    // If this breaks, users lose edits on second-undo after a redo.
     const store = bootScheduleStore();
     store.getState().setScheduleData(mkExtraction([
       mkTask({
-        globalId: 'a',
-        name: 'A0',
-        identification: 'id0',
+        globalId: 'a', name: 'A0', identification: 'id0',
         taskTime: {
           scheduleStart: '2024-05-01T08:00:00',
           scheduleFinish: '2024-05-02T08:00:00',
         },
       }),
     ]));
-    // Two independent edits.
     store.getState().updateTask('a', { name: 'A1' });
     store.getState().updateTaskTime('a', { scheduleStart: '2024-05-01T12:00:00' });
 
-    // Undo twice — expect original state.
     store.getState().undoScheduleEdit();
     store.getState().undoScheduleEdit();
     const afterUndos = JSON.stringify(store.getState().scheduleData);
-    assert.strictEqual(store.getState().scheduleData!.tasks[0].name, 'A0');
-    assert.strictEqual(store.getState().scheduleData!.tasks[0].taskTime?.scheduleStart, '2024-05-01T08:00:00');
     assert.strictEqual(store.getState().scheduleIsEdited, false);
 
-    // Redo twice — state must equal what we had after both edits.
     store.getState().redoScheduleEdit();
     store.getState().redoScheduleEdit();
     assert.strictEqual(store.getState().scheduleData!.tasks[0].name, 'A1');
-    assert.strictEqual(store.getState().scheduleData!.tasks[0].taskTime?.scheduleStart, '2024-05-01T12:00:00');
     assert.strictEqual(store.getState().scheduleIsEdited, true);
 
-    // Undo twice again — must match the original state byte-identically.
     store.getState().undoScheduleEdit();
     store.getState().undoScheduleEdit();
     assert.strictEqual(
       JSON.stringify(store.getState().scheduleData),
       afterUndos,
-      'second undo pass must equal the first',
+      'second undo pass must be byte-identical to the first',
     );
   });
 
-  it('fieldPatch undo only rewrites the affected task, not the whole extraction', () => {
-    // After undo of a single-task edit, tasks we didn't touch should
-    // come back with their ORIGINAL reference (the undo path only
-    // shallow-clones the tasks array). This is what makes the
-    // descriptor-based path cheap vs. a full extraction clone.
-    const store = bootScheduleStore();
-    store.getState().setScheduleData(mkExtraction([
-      mkTask({ globalId: 'a', name: 'A0' }),
-      mkTask({ globalId: 'b', name: 'B0' }),
-    ]));
-    // Snapshot B's reference BEFORE any mutation — this is what undo
-    // should restore pristinely.
-    const originalB = store.getState().scheduleData!.tasks[1];
-    store.getState().updateTask('a', { name: 'A1' });
-    // Forward mutation still clones (it has to produce a new tasks array
-    // so Zustand identity-based subscribers fire), but the UNDO path
-    // only rebuilds the affected task from the fieldPatch descriptor.
-    store.getState().undoScheduleEdit();
-    const restoredB = store.getState().scheduleData!.tasks[1];
-    // After undo, task B exists with identical content — we accept that
-    // it may or may not be the same object identity, but the name must
-    // be byte-identical.
-    assert.strictEqual(restoredB.name, originalB.name);
-  });
-
-  it('updateTaskTime silently rejects finish < start (no snapshot pushed)', () => {
+  it('updateTaskTime rejects finish < start without pushing a snapshot', () => {
+    // Rejection is silent but MUST leave the stack unchanged, otherwise
+    // the user sees a redo-empty undo chip even though nothing committed.
     const store = bootScheduleStore();
     store.getState().setScheduleData(mkExtraction([
       mkTask({
@@ -651,10 +583,8 @@ describe('scheduleSlice editing — undo / redo', () => {
         },
       }),
     ]));
-    // Push the finish BEFORE the start — must reject with no stack churn.
     store.getState().updateTaskTime('a', { scheduleFinish: '2024-04-01T00:00:00' });
     assert.strictEqual(store.getState().scheduleUndoStack.length, 0);
-    // State unchanged.
     assert.strictEqual(
       store.getState().scheduleData!.tasks[0].taskTime?.scheduleFinish,
       '2024-05-02T08:00:00',

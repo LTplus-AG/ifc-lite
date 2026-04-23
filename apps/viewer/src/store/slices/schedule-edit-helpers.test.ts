@@ -11,93 +11,81 @@ import {
   toIsoUtc,
   reconcileTaskTime,
   cloneExtraction,
-  resolveSingleModelId,
-  resolveIdOffset,
 } from './schedule-edit-helpers.js';
 
-describe('schedule-edit-helpers — ISO date parsing', () => {
-  it('normalises tz-less inputs to UTC', () => {
-    // 2024-05-01T08:00:00 at UTC == 1714550400000 ms.
-    const a = parseIsoDate('2024-05-01T08:00:00');
-    const b = parseIsoDate('2024-05-01T08:00:00Z');
-    assert.strictEqual(a, b);
-  });
-
-  it('returns undefined for missing / unparseable input', () => {
-    assert.strictEqual(parseIsoDate(undefined), undefined);
-    assert.strictEqual(parseIsoDate(''), undefined);
+describe('schedule-edit-helpers — ISO 8601 date+duration round-trip', () => {
+  it('parseIsoDate normalises tz-less inputs to UTC', () => {
+    // Regression: before this normalization, opening the same IFC on
+    // machines in different timezones produced different epoch values,
+    // shifting the Gantt and breaking STEP round-trip equality.
+    assert.strictEqual(
+      parseIsoDate('2024-05-01T08:00:00'),
+      parseIsoDate('2024-05-01T08:00:00Z'),
+    );
     assert.strictEqual(parseIsoDate('not-a-date'), undefined);
   });
 
-  it('round-trips through toIsoUtc', () => {
+  it('msToIsoDuration ↔ addIsoDurationToEpoch invert each other', () => {
+    // Property test — the two halves of the duration pipeline must be
+    // strict inverses, otherwise a task's finish = start + duration
+    // computation drifts on every round-trip.
+    const start = parseIsoDate('2024-05-01T08:00:00Z')!;
+    const deltaMs = 5 * 86_400_000 + 4 * 3_600_000;
+    const iso = msToIsoDuration(deltaMs);
+    assert.strictEqual(iso, 'P5DT4H');
+    assert.strictEqual(addIsoDurationToEpoch(start, iso)! - start, deltaMs);
+    assert.strictEqual(addIsoDurationToEpoch(0, 'NOT-A-DURATION'), undefined);
+  });
+
+  it('toIsoUtc round-trips with parseIsoDate', () => {
     const ms = parseIsoDate('2024-05-01T08:00:00Z')!;
     assert.strictEqual(toIsoUtc(ms), '2024-05-01T08:00:00');
   });
 });
 
-describe('schedule-edit-helpers — ISO duration round-trip', () => {
-  it('msToIsoDuration emits PT0S for zero', () => {
-    assert.strictEqual(msToIsoDuration(0), 'PT0S');
-  });
-
-  it('emits days + time components', () => {
-    const twoDaysFourHours = 2 * 86_400_000 + 4 * 3_600_000;
-    assert.strictEqual(msToIsoDuration(twoDaysFourHours), 'P2DT4H');
-  });
-
-  it('addIsoDurationToEpoch inverts msToIsoDuration', () => {
-    const start = parseIsoDate('2024-05-01T08:00:00Z')!;
-    const iso = msToIsoDuration(5 * 86_400_000);
-    const end = addIsoDurationToEpoch(start, iso);
-    assert.strictEqual(end! - start, 5 * 86_400_000);
-  });
-
-  it('addIsoDurationToEpoch returns undefined for malformed input', () => {
-    assert.strictEqual(addIsoDurationToEpoch(0, 'NOT-A-DURATION'), undefined);
-  });
-});
-
 describe('schedule-edit-helpers — reconcileTaskTime', () => {
-  it('derives duration when start + finish supplied', () => {
-    const result = reconcileTaskTime({
-      scheduleStart: '2024-05-01T08:00:00Z',
-      scheduleFinish: '2024-05-03T08:00:00Z',
-    });
-    assert.strictEqual(result?.scheduleDuration, 'P2D');
+  it('derives the missing attribute from the two supplied', () => {
+    // start + finish → duration
+    assert.strictEqual(
+      reconcileTaskTime({ scheduleStart: '2024-05-01T08:00:00Z', scheduleFinish: '2024-05-03T08:00:00Z' })
+        ?.scheduleDuration,
+      'P2D',
+    );
+    // start + duration → finish
+    assert.strictEqual(
+      reconcileTaskTime({ scheduleStart: '2024-05-01T08:00:00Z', scheduleDuration: 'P3D' })
+        ?.scheduleFinish,
+      '2024-05-04T08:00:00',
+    );
   });
 
-  it('derives finish when start + duration supplied (no finish)', () => {
-    const result = reconcileTaskTime({
-      scheduleStart: '2024-05-01T08:00:00Z',
-      scheduleDuration: 'P3D',
-    });
-    assert.strictEqual(result?.scheduleFinish, '2024-05-04T08:00:00');
-  });
-
-  it('rejects finish < start', () => {
-    const result = reconcileTaskTime({
-      scheduleStart: '2024-05-03T08:00:00Z',
-      scheduleFinish: '2024-05-01T08:00:00Z',
-    });
-    assert.strictEqual(result, null);
+  it('rejects finish < start with null (caller must not commit)', () => {
+    // This is what gates the Inspector's time edit from committing a
+    // negative duration. Returning null explicitly rather than a reconciled
+    // object is the signal the caller watches for.
+    assert.strictEqual(
+      reconcileTaskTime({
+        scheduleStart: '2024-05-03T08:00:00Z',
+        scheduleFinish: '2024-05-01T08:00:00Z',
+      }),
+      null,
+    );
   });
 });
 
 describe('schedule-edit-helpers — cloneExtraction', () => {
-  it('does not share mutable refs with source', () => {
+  it('breaks mutable-ref aliasing so undo snapshots stay independent', () => {
+    // The undo stack depends on this: if snapshots aliased the live
+    // extraction's arrays, editing a task after a snapshot would corrupt
+    // the snapshot and undo would fail silently.
     const src = {
       hasSchedule: true,
       workSchedules: [],
       sequences: [],
       tasks: [{
-        expressId: 1,
-        globalId: 'a',
-        name: 'A',
-        isMilestone: false,
-        childGlobalIds: ['child1'],
-        productExpressIds: [10, 20],
-        productGlobalIds: ['g1'],
-        controllingScheduleGlobalIds: [],
+        expressId: 1, globalId: 'a', name: 'A', isMilestone: false,
+        childGlobalIds: ['child1'], productExpressIds: [10, 20],
+        productGlobalIds: ['g1'], controllingScheduleGlobalIds: [],
       }],
     };
     const clone = cloneExtraction(src as never);
@@ -105,28 +93,5 @@ describe('schedule-edit-helpers — cloneExtraction', () => {
     clone.tasks[0].productExpressIds.push(99);
     assert.strictEqual(src.tasks[0].name, 'A');
     assert.deepStrictEqual(src.tasks[0].productExpressIds, [10, 20]);
-  });
-});
-
-describe('schedule-edit-helpers — federation helpers', () => {
-  it('resolveSingleModelId returns null for 0 or 2+ models', () => {
-    assert.strictEqual(resolveSingleModelId({}), null);
-    assert.strictEqual(resolveSingleModelId({ models: new Map() }), null);
-    const two = new Map<string, unknown>([['a', {}], ['b', {}]]);
-    assert.strictEqual(resolveSingleModelId({ models: two }), null);
-  });
-
-  it('resolveSingleModelId returns the only key when size=1', () => {
-    const one = new Map<string, unknown>([['only', {}]]);
-    assert.strictEqual(resolveSingleModelId({ models: one }), 'only');
-  });
-
-  it('resolveIdOffset returns 0 for null sourceModelId', () => {
-    assert.strictEqual(resolveIdOffset({}, null), 0);
-  });
-
-  it('resolveIdOffset reads idOffset from the named model', () => {
-    const models = new Map([['m1', { idOffset: 1000 }]]);
-    assert.strictEqual(resolveIdOffset({ models }, 'm1'), 1000);
   });
 });

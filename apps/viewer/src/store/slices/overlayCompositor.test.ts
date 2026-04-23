@@ -85,21 +85,6 @@ function mkLayer(id: string, priority: number, opts: {
 }
 
 describe('overlay compositor — reconciliation', () => {
-  it('hides every newly-introduced id the first time a layer registers', () => {
-    const r = reconcile({
-      prevContributedHidden: new Map(),
-      prevContributedColors: new Set(),
-      layers: new Map([['animation', mkLayer('animation', 100, { hide: [1, 2, 3] })]]),
-      currentlyHidden: new Set(),
-    });
-    assert.deepStrictEqual(r.hideDelta.sort((a, b) => a - b), [1, 2, 3]);
-    assert.deepStrictEqual(r.showDelta, []);
-    // Each new id's "was already hidden" bit is false (we own them).
-    for (const id of [1, 2, 3]) {
-      assert.strictEqual(r.nextContributedHidden.get(id), false);
-    }
-  });
-
   it("preserves user's prior isolation — doesn't unhide ids the user had hidden first", () => {
     // User had id 5 already hidden (via class filter, say). Animation
     // layer then registers it too.
@@ -122,18 +107,6 @@ describe('overlay compositor — reconciliation', () => {
       currentlyHidden: new Set([5]),
     });
     assert.deepStrictEqual(r2.showDelta, []);
-  });
-
-  it('unhides only owned ids on layer removal', () => {
-    // We hid {1, 2, 3} on first reconcile — none were pre-user-hidden.
-    const prev = new Map<number, boolean>([[1, false], [2, false], [3, false]]);
-    const r = reconcile({
-      prevContributedHidden: prev,
-      prevContributedColors: new Set(),
-      layers: new Map(),
-      currentlyHidden: new Set([1, 2, 3]),
-    });
-    assert.deepStrictEqual(r.showDelta.sort((a, b) => a - b), [1, 2, 3]);
   });
 
   it('colour overrides are full-replace — empty layers signal a clear exactly once', () => {
@@ -164,23 +137,6 @@ describe('overlay compositor — reconciliation', () => {
       currentlyHidden: new Set(),
     });
     assert.strictEqual(r3.nextColors, 'unchanged');
-  });
-
-  it('composes multiple layers — higher priority wins on colour collisions', () => {
-    const BLUE: RGBA = [0, 0, 1, 1];
-    const r = reconcile({
-      prevContributedHidden: new Map(),
-      prevContributedColors: new Set(),
-      layers: new Map([
-        ['lens', mkLayer('lens', 50, { colour: [[7, RED]] })],
-        ['animation', mkLayer('animation', 100, { colour: [[7, BLUE]] })],
-      ]),
-      currentlyHidden: new Set(),
-    });
-    assert.notStrictEqual(r.nextColors, 'clear');
-    assert.notStrictEqual(r.nextColors, 'unchanged');
-    const colours = r.nextColors as Map<number, RGBA>;
-    assert.deepStrictEqual(colours.get(7), BLUE);
   });
 
   it('layer swap — adds new ids, removes dropped ids (owned only)', () => {

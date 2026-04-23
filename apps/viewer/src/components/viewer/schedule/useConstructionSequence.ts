@@ -123,6 +123,7 @@ export function useConstructionSequence(): void {
         store.setPendingColorUpdates(new Map());
         contributedColorsRef.current = new Set();
       }
+      store.removeOverlayLayer('animation');
       return;
     }
 
@@ -206,6 +207,18 @@ export function useConstructionSequence(): void {
       store.setPendingColorUpdates(new Map());
       contributedColorsRef.current = new Set();
     }
+
+    // ── P4 overlay-layer registration (observability) ──────────────────
+    // Mirror the contribution into the overlay registry so future consumers
+    // can read "what is the animator currently contributing?" without
+    // walking our internal refs. The legacy writes above still drive the
+    // renderer — this is a pure-additive handshake for the overlay graph.
+    store.registerOverlayLayer({
+      id: 'animation',
+      priority: 100,
+      hiddenIds: nextHidden,
+      colorOverrides: nextColors.size > 0 ? nextColors : null,
+    });
   }, [animationEnabled, playbackTime, scheduleData, activeWorkScheduleId, animationSettings]);
 
   // Unmount cleanup — restore owned visibility + clear our colour overrides.
@@ -224,6 +237,7 @@ export function useConstructionSequence(): void {
         store.setPendingColorUpdates(new Map());
         contributedColorsRef.current = new Set();
       }
+      store.removeOverlayLayer('animation');
     };
   }, []);
 }

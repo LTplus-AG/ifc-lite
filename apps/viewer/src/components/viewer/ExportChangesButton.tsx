@@ -164,8 +164,23 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       // dialog, headless SDK) emits the same bytes for the same inputs.
       // The helper is a no-op when there's no schedule or no generated
       // tasks, so it's safe to call unconditionally.
-      const finalContent = typeof result.content === 'string'
-          && state.scheduleSourceModelId === modelInfo.id
+      const isStringContent = typeof result.content === 'string';
+      const sourceModelMatches = state.scheduleSourceModelId === modelInfo.id;
+      const scheduleTaskCount = state.scheduleData?.tasks.length ?? 0;
+      /* eslint-disable no-console */
+      console.log(
+        '[ExportChangesButton] schedule injection gate —',
+        'isString', isStringContent,
+        'sourceModel', state.scheduleSourceModelId,
+        'modelId', modelInfo.id,
+        'match', sourceModelMatches,
+        'taskCount', scheduleTaskCount,
+        'edited', state.scheduleIsEdited,
+      );
+      /* eslint-enable no-console */
+      const shouldInject = sourceModelMatches
+        || (state.scheduleSourceModelId === null && scheduleTaskCount > 0);
+      const finalContent = (typeof result.content === 'string' && shouldInject)
         ? injectScheduleIntoStep(result.content, state.scheduleData ?? null, exportDataStore, {
             scheduleIsEdited: state.scheduleIsEdited === true,
           })

@@ -440,20 +440,54 @@ export function injectScheduleIntoStep(
   ifcDataStore: IfcDataStore,
   options?: InjectScheduleOptions,
 ): string {
+  // Breadcrumb — the re-import path has been flaky, so we log the
+  // decision branch every time. If the Gantt is empty after re-import,
+  // the branch taken here pinpoints whether the splice fired, was
+  // skipped (and why), or emitted zero lines.
+  /* eslint-disable no-console */
+  const taskCount = scheduleData?.tasks.length ?? 0;
+  const generatedCount = scheduleData
+    ? scheduleData.tasks.filter(t => !t.expressId || t.expressId <= 0).length
+    : 0;
+  const wsCount = scheduleData?.workSchedules.length ?? 0;
+  console.groupCollapsed(
+    `%c[IfcTask] injectScheduleIntoStep — tasks=${taskCount} generated=${generatedCount} ws=${wsCount} edited=${options?.scheduleIsEdited === true}`,
+    'color:#6ea2ff;font-weight:bold',
+  );
+  console.log('stepContent length', stepContent.length);
+  console.log('has ENDSEC;', stepContent.includes('ENDSEC;'));
+  console.log('options', options);
+  if (scheduleData) {
+    console.log('first 3 tasks', scheduleData.tasks.slice(0, 3).map(t => ({
+      globalId: t.globalId, name: t.name, expressId: t.expressId,
+    })));
+  }
+  /* eslint-enable no-console */
+
+  const finish = (result: string, note: string): string => {
+    /* eslint-disable no-console */
+    console.log(note, 'out length', result.length, 'delta', result.length - stepContent.length);
+    console.groupEnd();
+    /* eslint-enable no-console */
+    return result;
+  };
+
   if (!scheduleData || scheduleData.tasks.length === 0) {
     // No schedule in memory. If the caller flagged "edited", the user
     // deleted every task in what used to be a parsed schedule — we
     // still want to strip the stale entities from the STEP.
     if (options?.scheduleIsEdited) {
-      return stripScheduleEntities(stepContent);
+      return finish(stripScheduleEntities(stepContent), 'branch: strip-only (edited, empty schedule)');
     }
-    return stepContent;
+    return finish(stepContent, 'branch: no-op (no schedule)');
   }
 
   const hasGenerated = scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0);
   const edited = options?.scheduleIsEdited === true;
 
-  if (!edited && !hasGenerated) return stepContent;
+  if (!edited && !hasGenerated) {
+    return finish(stepContent, 'branch: no-op (parsed unchanged)');
+  }
 
   // Shared resolution helpers for both injection paths.
   const resolveProduct = (gid: string): number | undefined => {
@@ -472,8 +506,11 @@ export function injectScheduleIntoStep(
       ownerHistoryId,
       resolveProductExpressId: resolveProduct,
     });
-    if (result.lines.length === 0) return stripped;
-    return spliceBeforeEndSec(stripped, result.lines);
+    /* eslint-disable no-console */
+    console.log('rewrite: serialized', result.lines.length, 'lines; stats', result.stats);
+    /* eslint-enable no-console */
+    if (result.lines.length === 0) return finish(stripped, 'branch: rewrite, no lines emitted');
+    return finish(spliceBeforeEndSec(stripped, result.lines), 'branch: rewrite + splice');
   }
 
   // ── Append-only path: only generated tasks (legacy behaviour) ───
@@ -499,8 +536,11 @@ export function injectScheduleIntoStep(
     ownerHistoryId,
     resolveProductExpressId: resolveProduct,
   });
-  if (result.lines.length === 0) return stepContent;
-  return spliceBeforeEndSec(stepContent, result.lines);
+  /* eslint-disable no-console */
+  console.log('append: serialized', result.lines.length, 'lines; stats', result.stats);
+  /* eslint-enable no-console */
+  if (result.lines.length === 0) return finish(stepContent, 'branch: append, no lines emitted');
+  return finish(spliceBeforeEndSec(stepContent, result.lines), 'branch: append + splice');
 }
 
 /**

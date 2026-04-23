@@ -520,8 +520,27 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         // helper is a no-op when there's nothing to inject, so calling it
         // unconditionally keeps this surface in lockstep with the SDK.
         const state = useViewerStore.getState();
-        const finalContent = typeof result.content === 'string'
-            && state.scheduleSourceModelId === selectedModelId
+        const isStringContent = typeof result.content === 'string';
+        const sourceModelMatches = state.scheduleSourceModelId === selectedModelId;
+        const scheduleTaskCount = state.scheduleData?.tasks.length ?? 0;
+        /* eslint-disable no-console */
+        console.log(
+          '[ExportDialog] schedule injection gate —',
+          'isString', isStringContent,
+          'sourceModel', state.scheduleSourceModelId,
+          'selected', selectedModelId,
+          'match', sourceModelMatches,
+          'taskCount', scheduleTaskCount,
+          'edited', state.scheduleIsEdited,
+        );
+        /* eslint-enable no-console */
+        // Fallback: if the session is single-model (no federated
+        // models AND source===null OR source==='__legacy__'), splice
+        // anyway. The source attribution was added for multi-model
+        // federation and shouldn't gate single-model exports.
+        const shouldInject = sourceModelMatches
+          || (state.scheduleSourceModelId === null && scheduleTaskCount > 0);
+        const finalContent = (typeof result.content === 'string' && shouldInject)
           ? injectScheduleIntoStep(
               result.content,
               state.scheduleData ?? null,

@@ -121,9 +121,36 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
           'bytes) or the tasks may be missing required attributes.',
         );
       }
+      /* eslint-enable no-console */
+
+      // CRITICAL guard: do NOT overwrite an in-memory user-edited /
+      // generated schedule with null just because the underlying
+      // IfcDataStore reference shifted (this effect re-runs when
+      // geometry finishes streaming, spatial hierarchy rebuilds, or
+      // any other store mutation changes the activeStore identity).
+      // Earlier revisions did `setScheduleData(hasSchedule ? extraction
+      // : null)` unconditionally, which silently wiped the generated
+      // schedule moments before the user clicked Export — leading to
+      // an exported IFC with no task entities and an empty Gantt on
+      // re-import. Only replace when the extraction actually has data,
+      // or when we've previously had no schedule in memory.
+      const s = useViewerStore.getState();
+      const hasPendingSchedule = !!s.scheduleData && s.scheduleData.tasks.length > 0
+        && (s.scheduleIsEdited || s.scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0));
+      /* eslint-disable no-console */
+      console.log('hasPendingSchedule', hasPendingSchedule);
       console.groupEnd();
       /* eslint-enable no-console */
-      setScheduleData(extraction.hasSchedule ? extraction : null);
+      if (extraction.hasSchedule) {
+        // New extraction wins — this is the "fresh file with a real
+        // schedule" case. Any generated tail in memory is replaced;
+        // that's intentional because we can't reconcile it with a
+        // different source.
+        setScheduleData(extraction);
+      } else if (!hasPendingSchedule) {
+        // No extraction + no pending edits → fine to clear.
+        setScheduleData(null);
+      } // else: keep whatever's in memory (generated / edited).
       setExtractionError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

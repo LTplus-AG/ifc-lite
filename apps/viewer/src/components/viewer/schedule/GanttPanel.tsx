@@ -82,46 +82,7 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
       return;
     }
     try {
-      // Diagnostic breadcrumbs — on re-import of a file we previously
-      // exported with a schedule, users have hit "no Gantt appears". Log
-      // the byType index counts + store.source availability so the
-      // cause (missing IFCTASK index, zero-length source, etc.) is
-      // always visible in a collapsed console group without forcing a
-      // debug rebuild.
-      const byType = activeStore.entityIndex?.byType;
-      const taskIds = byType?.get('IFCTASK') ?? byType?.get('IfcTask') ?? [];
-      const wsIds = byType?.get('IFCWORKSCHEDULE') ?? byType?.get('IfcWorkSchedule') ?? [];
-      const wpIds = byType?.get('IFCWORKPLAN') ?? byType?.get('IfcWorkPlan') ?? [];
-      const seqIds = byType?.get('IFCRELSEQUENCE') ?? byType?.get('IfcRelSequence') ?? [];
-      /* eslint-disable no-console */
-      console.groupCollapsed(
-        `%c[Gantt] Schedule extraction probe — tasks=${taskIds.length} ws=${wsIds.length}`,
-        'color:#6ea2ff',
-      );
-      console.log('store.source bytes', activeStore.source?.length ?? 0);
-      console.log('schemaVersion', activeStore.schemaVersion);
-      console.log('entityIndex.byType size', byType?.size ?? 0);
-      console.log('IfcTask ids', taskIds.slice(0, 10), taskIds.length > 10 ? `(+${taskIds.length - 10} more)` : '');
-      console.log('IfcWorkSchedule ids', wsIds);
-      console.log('IfcWorkPlan ids', wpIds);
-      console.log('IfcRelSequence count', seqIds.length);
-      /* eslint-enable no-console */
-
       const extraction = extractScheduleOnDemand(activeStore);
-      /* eslint-disable no-console */
-      console.log('extraction.hasSchedule', extraction.hasSchedule);
-      console.log('extraction.tasks.length', extraction.tasks.length);
-      console.log('extraction.workSchedules.length', extraction.workSchedules.length);
-      if (!extraction.hasSchedule && taskIds.length > 0) {
-        console.warn(
-          `[Gantt] Found ${taskIds.length} IfcTask entities in the index but`,
-          'extractScheduleOnDemand returned hasSchedule=false. The store.source',
-          'buffer may be empty (size',
-          activeStore.source?.length ?? 0,
-          'bytes) or the tasks may be missing required attributes.',
-        );
-      }
-      /* eslint-enable no-console */
 
       // CRITICAL guard: do NOT overwrite an in-memory user-edited /
       // generated schedule with null just because the underlying
@@ -137,10 +98,6 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
       const s = useViewerStore.getState();
       const hasPendingSchedule = !!s.scheduleData && s.scheduleData.tasks.length > 0
         && (s.scheduleIsEdited || s.scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0));
-      /* eslint-disable no-console */
-      console.log('hasPendingSchedule', hasPendingSchedule);
-      console.groupEnd();
-      /* eslint-enable no-console */
       if (extraction.hasSchedule) {
         // New extraction wins — this is the "fresh file with a real
         // schedule" case. Any generated tail in memory is replaced;

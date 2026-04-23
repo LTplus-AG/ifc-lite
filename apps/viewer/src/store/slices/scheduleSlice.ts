@@ -370,20 +370,6 @@ export const createScheduleSlice: StateCreator<ScheduleSlice, [], [], ScheduleSl
   // Actions
   setScheduleData: (scheduleData) => {
     const range = computeScheduleRange(scheduleData);
-    // Log every schedule reset — if the user's generated schedule
-    // disappears unexpectedly, this is where to look.
-    const prev = get().scheduleData;
-    if (prev && !scheduleData) {
-      /* eslint-disable no-console */
-      console.warn(
-        '[scheduleSlice] setScheduleData(null) — replacing',
-        prev.tasks.length, 'in-memory tasks with empty.',
-        'scheduleIsEdited=', get().scheduleIsEdited,
-        'generatedCount=', prev.tasks.filter(t => !t.expressId || t.expressId <= 0).length,
-      );
-      console.trace('[scheduleSlice] setScheduleData(null) caller');
-      /* eslint-enable no-console */
-    }
     // Any in-flight transaction is abandoned when fresh data is loaded.
     scheduleTxn.active = false;
     scheduleTxn.label = '';

@@ -578,11 +578,24 @@ export type WorkScheduleType =
   | 'ACTUAL' | 'BASELINE' | 'PLANNED'
   | 'USERDEFINED' | 'NOTDEFINED';
 
+/**
+ * IFC task-type enum — union of IFC4 and IFC4X3 `IfcTaskTypeEnum` values.
+ *
+ * IFC4 introduced the first 14. IFC4X3 added 9 more to cover the
+ * operations/maintenance lifecycle (ADJUSTMENT through TROUBLESHOOTING).
+ * The superset is exposed here so scripts can author schedules for
+ * either schema; IFC4 files that try to round-trip the newer values
+ * may fail validation on strict toolchains — caller's responsibility.
+ */
 export type TaskPredefinedType =
+  // IFC4 values
   | 'ATTENDANCE' | 'CONSTRUCTION' | 'DEMOLITION' | 'DISMANTLE'
   | 'DISPOSAL' | 'INSTALLATION' | 'LOGISTIC' | 'MAINTENANCE'
   | 'MOVE' | 'OPERATION' | 'REMOVAL' | 'RENOVATION'
-  | 'USERDEFINED' | 'NOTDEFINED';
+  | 'USERDEFINED' | 'NOTDEFINED'
+  // IFC4X3 additions (operations / maintenance lifecycle)
+  | 'ADJUSTMENT' | 'CALIBRATION' | 'EMERGENCY' | 'INSPECTION'
+  | 'SAFETY' | 'SHUTDOWN' | 'STARTUP' | 'TESTING' | 'TROUBLESHOOTING';
 
 export type TaskDurationType =
   | 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED';

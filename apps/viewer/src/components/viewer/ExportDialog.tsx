@@ -520,28 +520,17 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         //
         // STEP is textual but the exporter sometimes returns a Uint8Array
         // (pre-encoded bytes). Decode on the way in + re-encode on the way
-        // out when that happens — previously a string-only gate silently
-        // dropped the splice whenever bytes came back, producing an IFC
-        // export with zero task entities and an empty Gantt on re-import.
+        // out when that happens — a string-only gate would silently drop
+        // the splice whenever bytes came back, producing an IFC export
+        // with zero task entities and an empty Gantt on re-import.
+        //
+        // Fallback on source-model match: single-model sessions can have
+        // scheduleSourceModelId still null (generate dialog used
+        // `__legacy__` or just picked the only model). Splice anyway
+        // when there's a schedule in memory and no federation conflict.
         const state = useViewerStore.getState();
-        const sourceModelMatches = state.scheduleSourceModelId === selectedModelId;
         const scheduleTaskCount = state.scheduleData?.tasks.length ?? 0;
-        /* eslint-disable no-console */
-        console.log(
-          '[ExportDialog] schedule injection gate —',
-          'contentType', typeof result.content,
-          'sourceModel', state.scheduleSourceModelId,
-          'selected', selectedModelId,
-          'match', sourceModelMatches,
-          'taskCount', scheduleTaskCount,
-          'edited', state.scheduleIsEdited,
-        );
-        /* eslint-enable no-console */
-        // Fallback: single-model sessions can have scheduleSourceModelId
-        // still null (generate dialog used `__legacy__` or just picked
-        // the only model). Splice anyway when there's a schedule in
-        // memory and no federation conflict.
-        const shouldInject = sourceModelMatches
+        const shouldInject = state.scheduleSourceModelId === selectedModelId
           || (state.scheduleSourceModelId === null && scheduleTaskCount > 0);
         let finalContent: string | Uint8Array = result.content;
         if (shouldInject) {

@@ -164,24 +164,11 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       // dialog, headless SDK) emits the same bytes for the same inputs.
       //
       // STEP is textual by spec but the exporter sometimes returns a
-      // Uint8Array (pre-encoded bytes). Decode on the way in + re-encode
-      // on the way out when that happens — the earlier string-only gate
-      // was silently dropping the splice whenever the exporter picked
-      // the bytes path.
-      const sourceModelMatches = state.scheduleSourceModelId === modelInfo.id;
+      // Uint8Array (pre-encoded bytes). Decode → splice → re-encode
+      // when that happens; a string-only gate would silently drop the
+      // schedule whenever the exporter picked the bytes path.
       const scheduleTaskCount = state.scheduleData?.tasks.length ?? 0;
-      /* eslint-disable no-console */
-      console.log(
-        '[ExportChangesButton] schedule injection gate —',
-        'contentType', typeof result.content,
-        'sourceModel', state.scheduleSourceModelId,
-        'modelId', modelInfo.id,
-        'match', sourceModelMatches,
-        'taskCount', scheduleTaskCount,
-        'edited', state.scheduleIsEdited,
-      );
-      /* eslint-enable no-console */
-      const shouldInject = sourceModelMatches
+      const shouldInject = state.scheduleSourceModelId === modelInfo.id
         || (state.scheduleSourceModelId === null && scheduleTaskCount > 0);
       let finalContent: string | Uint8Array = result.content;
       if (shouldInject) {

@@ -268,12 +268,17 @@ export class SectionPlaneRenderer {
 
     const { axis, position, bounds, viewProj, isPreview, min: minOverride, max: maxOverride, normal } = options;
 
-    // Only draw section plane in preview mode - hide it during active cutting
-    if (!isPreview) {
+    const hasExplicitPlane = normal !== undefined;
+
+    // Axis-preset gizmo is preview-only: once clipping is enabled the hatched
+    // 3D cap surfaces take over as the "here is the cut" visual. Custom-normal
+    // planes have no 3D cap yet (the cap pipeline still assumes cardinal axes),
+    // so we keep the gizmo quad visible when clipping is enabled for custom
+    // planes — otherwise the user has no feedback on where the cut actually
+    // sits in world space.
+    if (!isPreview && !hasExplicitPlane) {
       return;
     }
-
-    const hasExplicitPlane = normal !== undefined;
 
     const vertices = hasExplicitPlane
       ? this.calculatePlaneVerticesFromNormal(normal!, position, bounds)

@@ -11,10 +11,15 @@ import { AXIS_INFO } from './sectionConstants';
 interface SectionPlaneVisualizationProps {
   axis: 'down' | 'front' | 'side';
   enabled: boolean;
+  /** True when the plane has been set via face-pick (arbitrary normal).
+   * Changes the badge colour + label so the user isn't misled by the
+   * nearest-cardinal `axis` value that's still populated for downstream
+   * compatibility (drawings/BCF). */
+  isCustom?: boolean;
 }
 
 // Section plane visual indicator component
-export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisualizationProps) {
+export function SectionPlaneVisualization({ axis, enabled, isCustom = false }: SectionPlaneVisualizationProps) {
   // Get the axis color
   const axisColors = {
     down: '#03A9F4',  // Light blue for horizontal cuts
@@ -22,7 +27,8 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
     side: '#FF9800',  // Orange for side cuts
   };
 
-  const color = axisColors[axis];
+  const color = isCustom ? '#9C6BDE' : axisColors[axis];
+  const label = isCustom ? 'CUSTOM' : AXIS_INFO[axis].label.toUpperCase();
 
   return (
     <svg
@@ -53,10 +59,10 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
           dominantBaseline="central"
           fill={color}
           fontFamily="monospace"
-          fontSize="11"
+          fontSize={isCustom ? 8 : 11}
           fontWeight="bold"
         >
-          {AXIS_INFO[axis].label.toUpperCase()}
+          {label}
         </text>
         {/* Active indicator */}
         {enabled && (

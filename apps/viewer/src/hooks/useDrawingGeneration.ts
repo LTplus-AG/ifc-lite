@@ -34,7 +34,15 @@ export const AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
 interface UseDrawingGenerationParams {
   geometryResult: GeometryResult | null | undefined;
   ifcDataStore: { source: Uint8Array } | null;
-  sectionPlane: { axis: 'down' | 'front' | 'side'; position: number; flipped: boolean };
+  sectionPlane: {
+    axis: 'down' | 'front' | 'side';
+    position: number;
+    flipped: boolean;
+    /** When set, the plane is an arbitrary world-space normal (face-pick). The
+     * drawing pipeline currently only understands cardinal-axis cuts; the
+     * generator short-circuits with an informative error in that case. */
+    normal?: [number, number, number];
+  };
   displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number };
   combinedHiddenIds: Set<number>;
   combinedIsolatedIds: Set<number> | null;
@@ -90,6 +98,17 @@ export function useDrawingGeneration({
       setDrawing(null);
       setDrawingStatus('idle');
       setDrawingError('No visible geometry');
+      return;
+    }
+
+    // Custom-normal planes (face-pick) bypass the 2D drawing pipeline until
+    // the generator supports arbitrary plane normals. Without this guard the
+    // generator would cut the model along the nearest cardinal axis and the
+    // resulting drawing would not match the actual shader clip.
+    if (sectionPlane.normal !== undefined) {
+      setDrawing(null);
+      setDrawingStatus('idle');
+      setDrawingError('2D drawing is not available for custom face-picked planes. Switch to Down/Front/Side to generate.');
       return;
     }
 
@@ -553,7 +572,12 @@ export function useDrawingGeneration({
   // Auto-regenerate when section plane changes
   // Strategy: INSTANT - no debounce, but prevent overlapping computations
   // The generation time itself acts as natural batching for fast slider movements
-  const sectionRef = useRef({ axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped });
+  const sectionRef = useRef<{ axis: 'down' | 'front' | 'side'; position: number; flipped: boolean; normalKey: string }>({
+    axis: sectionPlane.axis,
+    position: sectionPlane.position,
+    flipped: sectionPlane.flipped,
+    normalKey: sectionPlane.normal ? sectionPlane.normal.join(',') : '',
+  });
   const isGeneratingRef = useRef(false);
   const latestSectionRef = useRef({ axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped });
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -592,6 +616,12 @@ export function useDrawingGeneration({
     }
   }, [generateDrawing]);
 
+  // Stable key representing the presence/direction of a custom plane —
+  // stringified normal tuple or '' for preset. Lets the effect below notice
+  // transitions into/out of custom mode even if the nearest cardinal axis
+  // happens to match.
+  const normalKey = sectionPlane.normal ? sectionPlane.normal.join(',') : '';
+
   useEffect(() => {
     // Always update latest section ref (even if generating)
     latestSectionRef.current = { axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped };
@@ -601,13 +631,19 @@ export function useDrawingGeneration({
     if (
       prev.axis === sectionPlane.axis &&
       prev.position === sectionPlane.position &&
-      prev.flipped === sectionPlane.flipped
+      prev.flipped === sectionPlane.flipped &&
+      prev.normalKey === normalKey
     ) {
       return;
     }
 
     // Update processed ref
-    sectionRef.current = { axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped };
+    sectionRef.current = {
+      axis: sectionPlane.axis,
+      position: sectionPlane.position,
+      flipped: sectionPlane.flipped,
+      normalKey,
+    };
 
     // If panel is visible OR 3D overlay is enabled, and we have geometry, regenerate INSTANTLY
     if ((panelVisible || displayOptions.show3DOverlay) && geometryResult?.meshes) {
@@ -615,7 +651,7 @@ export function useDrawingGeneration({
       // doRegenerate handles preventing overlaps and will auto-regenerate with latest when done
       doRegenerate();
     }
-  }, [panelVisible, displayOptions.show3DOverlay, sectionPlane.axis, sectionPlane.position, sectionPlane.flipped, geometryResult, combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds, doRegenerate]);
+  }, [panelVisible, displayOptions.show3DOverlay, sectionPlane.axis, sectionPlane.position, sectionPlane.flipped, normalKey, geometryResult, combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds, doRegenerate]);
 
   return {
     generateDrawing,

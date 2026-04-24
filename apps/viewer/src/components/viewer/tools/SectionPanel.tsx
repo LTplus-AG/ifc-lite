@@ -195,8 +195,9 @@ export function SectionOverlay() {
             <ChevronDown className={`h-3 w-3 transition-transform ${isPanelCollapsed ? '-rotate-90' : ''}`} />
           </button>
           <div className="flex items-center gap-1">
-            {/* Only show 2D button when panel is closed */}
-            {!drawingPanelVisible && (
+            {/* Only show 2D button when panel is closed — and never for custom
+                planes, where the drawing pipeline can't project correctly yet. */}
+            {!drawingPanelVisible && !isCustomPlane && (
               <Button variant="ghost" size="icon-sm" onClick={handleView2D} title="Open 2D Drawing Panel">
                 <FileImage className="h-3 w-3" />
               </Button>
@@ -285,8 +286,10 @@ export function SectionOverlay() {
             {/* Cap surface controls (hatch, colour, spacing) */}
             <SectionCapControls />
 
-            {/* Show 2D panel button - only when panel is closed */}
-            {!drawingPanelVisible && (
+            {/* Show 2D panel button - only when panel is closed and the
+                plane is a cardinal axis (the drawing pipeline doesn't yet
+                support arbitrary normals). */}
+            {!drawingPanelVisible && !isCustomPlane && (
               <div className="mt-3 pt-3 border-t">
                 <Button
                   variant="outline"
@@ -297,6 +300,11 @@ export function SectionOverlay() {
                   <FileImage className="h-4 w-4 mr-2" />
                   Open 2D Drawing
                 </Button>
+              </div>
+            )}
+            {isCustomPlane && (
+              <div className="mt-3 pt-3 border-t text-[10px] text-muted-foreground leading-snug">
+                2D drawing export is only available for the Down / Front / Side presets. Pick a preset to generate a plan/section.
               </div>
             )}
           </div>
@@ -337,7 +345,7 @@ export function SectionOverlay() {
       </div>
 
       {/* Section plane visualization overlay */}
-      <SectionPlaneVisualization axis={sectionPlane.axis} enabled={sectionPlane.enabled} />
+      <SectionPlaneVisualization axis={sectionPlane.axis} enabled={sectionPlane.enabled} isCustom={isCustomPlane} />
     </>
   );
 }

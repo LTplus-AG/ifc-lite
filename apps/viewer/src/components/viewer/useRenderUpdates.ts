@@ -86,7 +86,16 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
 
-    if (activeTool === 'section' && drawing2D && drawing2D.cutPolygons.length > 0 && show3DOverlay) {
+    // Skip the 3D cap overlay for custom-normal planes. `uploadSection2DOverlay`
+    // takes a cardinal axis and projects the 2D polygons back to 3D using an
+    // axis-aligned mapping, so for a tilted plane the cap would land on the
+    // nearest cardinal cut — not on the actual shader clip — and appear at
+    // the wrong location and orientation. The gizmo quad still renders the
+    // plane position; the 2D cap stays empty until the drawing pipeline
+    // supports arbitrary normals.
+    const customPlane = sectionPlane.normal !== undefined;
+
+    if (activeTool === 'section' && drawing2D && drawing2D.cutPolygons.length > 0 && show3DOverlay && !customPlane) {
       const polygons: CutPolygon2D[] = drawing2D.cutPolygons.map((cp) => ({
         polygon: cp.polygon,
         ifcType: cp.ifcType,

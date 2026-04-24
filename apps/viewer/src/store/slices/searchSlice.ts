@@ -21,6 +21,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { Tier1Index } from '@/lib/search/tier1-index';
+import type { SearchResult } from '@/lib/search/tier0-scan';
 
 /** Index lifecycle state for a single model. */
 export type Tier1IndexStatus = 'pending' | 'building' | 'ready' | 'error';
@@ -35,6 +36,21 @@ export interface Tier1IndexRecord {
   error?: string;
 }
 
+/**
+ * Vim-style search cycle — enters on Enter-commit from the inline field.
+ * While active, `n` / `N` step through the frozen result list, framing
+ * each match, and a small hint badge is shown near the search field.
+ * Any typing, Esc, or clicking elsewhere exits the cycle.
+ */
+export interface SearchVimCycleState {
+  /** The query string at the moment of commit (shown in the hint). */
+  query: string;
+  /** Frozen snapshot of results at commit; stable for the cycle's lifetime. */
+  results: SearchResult[];
+  /** 0-based index of the currently selected result. */
+  index: number;
+}
+
 export interface SearchSlice {
   /** Current input value (debounced consumers may stage their own copy). */
   searchQuery: string;
@@ -44,6 +60,8 @@ export interface SearchSlice {
   searchHighlightIndex: number;
   /** Per-model Tier-1 index lifecycle (modelId → record). */
   searchIndexes: Map<string, Tier1IndexRecord>;
+  /** Active vim-style cycle, or null when not cycling. */
+  searchVimCycle: SearchVimCycleState | null;
 
   setSearchQuery: (query: string) => void;
   setSearchOpen: (open: boolean) => void;
@@ -57,6 +75,13 @@ export interface SearchSlice {
   setSearchIndexRecord: (modelId: string, record: Tier1IndexRecord) => void;
   /** Drop the index record for a model (called when a model is removed). */
   removeSearchIndexRecord: (modelId: string) => void;
+
+  /** Enter vim cycle mode with a frozen result snapshot at `index`. */
+  enterVimCycle: (query: string, results: SearchResult[], index: number) => void;
+  /** Exit vim cycle mode (no-op when inactive). */
+  exitVimCycle: () => void;
+  /** Advance the cycle by +1 / -1, wrapping around. */
+  stepVimCycle: (delta: 1 | -1) => void;
 }
 
 export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> = (set) => ({
@@ -64,13 +89,17 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchOpen: false,
   searchHighlightIndex: 0,
   searchIndexes: new Map(),
+  searchVimCycle: null,
 
-  setSearchQuery: (searchQuery) => set({ searchQuery, searchHighlightIndex: 0 }),
+  // Typing or programmatically changing the query breaks out of vim cycle —
+  // the user is re-searching, not stepping through a committed result list.
+  setSearchQuery: (searchQuery) => set({ searchQuery, searchHighlightIndex: 0, searchVimCycle: null }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   setSearchHighlightIndex: (searchHighlightIndex) => set({ searchHighlightIndex }),
 
   closeSearch: () => set({ searchOpen: false, searchHighlightIndex: 0 }),
-  resetSearch: () => set({ searchQuery: '', searchOpen: false, searchHighlightIndex: 0 }),
+  resetSearch: () =>
+    set({ searchQuery: '', searchOpen: false, searchHighlightIndex: 0, searchVimCycle: null }),
 
   setSearchIndexRecord: (modelId, record) =>
     set((state) => {
@@ -85,5 +114,22 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
       const next = new Map(state.searchIndexes);
       next.delete(modelId);
       return { searchIndexes: next };
+    }),
+
+  enterVimCycle: (query, results, index) => {
+    if (results.length === 0) return;
+    const clamped = Math.max(0, Math.min(index, results.length - 1));
+    set({ searchVimCycle: { query, results, index: clamped } });
+  },
+
+  exitVimCycle: () => set({ searchVimCycle: null }),
+
+  stepVimCycle: (delta) =>
+    set((state) => {
+      const cycle = state.searchVimCycle;
+      if (!cycle || cycle.results.length === 0) return {};
+      const len = cycle.results.length;
+      const next = (cycle.index + delta + len) % len;
+      return { searchVimCycle: { ...cycle, index: next } };
     }),
 });

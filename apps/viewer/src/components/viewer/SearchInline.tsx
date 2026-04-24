@@ -5,21 +5,27 @@
 /**
  * SearchInline — always-visible search field in the MainToolbar.
  *
- * P0: linear Tier-0 scan across already-cached EntityTable columns
- * (type, name, GlobalId, description, objectType). Tier-1 worker index
- * and SQL mode arrive in later phases on top of this same UI shell.
+ * P0: Tier-0 linear scan over cached EntityTable columns.
+ * P1: Tier-1 per-model inverted token index, built post-load.
+ * P2: Vim-style n/N cycle after Enter-commit, plus recent-search MRU
+ *     surfaced in the popover when the field is focused with empty query.
  *
  * Keyboard:
  *   • `/` or ⌘F / Ctrl+F  → focus the field (focus-suppressed when an
  *     input/textarea/CodeMirror editor already has focus)
  *   • ↑ / ↓               → navigate result rows in the popover
- *   • Enter               → select + frame the highlighted result
- *   • ⇧Enter              → add to multi-selection (no frame)
- *   • Esc                 → close popover; second Esc blurs the field
+ *   • Enter               → select + frame the highlighted result,
+ *                           enter vim cycle mode, record recent
+ *   • ⇧Enter              → add to multi-selection (no frame, no cycle)
+ *   • Esc                 → close popover; second Esc blurs the field;
+ *                           while cycling, Esc exits the cycle
+ *   • n / N               → step forward / backward through the cycle,
+ *                           framing each match (fires anywhere except
+ *                           inside other editable surfaces)
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Clock, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Input } from '@/components/ui/input';
 import { useViewerStore } from '@/store';
@@ -28,11 +34,16 @@ import { cn } from '@/lib/utils';
 import { runTier0Scan, type SearchResult, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
+import {
+  loadRecentSearches,
+  pushRecentSearch,
+  clearRecentSearches,
+} from '@/lib/search/recent-searches';
 
 const DEBOUNCE_MS = 80;
 const RESULT_LIMIT = 50;
 
-/** True when an editable surface has focus and should swallow `/` keystrokes. */
+/** True when an editable surface has focus and should swallow `/` / `n` keystrokes. */
 function isEditableFocused(): boolean {
   const el = document.activeElement;
   if (!el) return false;
@@ -53,10 +64,14 @@ export function SearchInline() {
     searchOpen,
     searchHighlightIndex,
     searchIndexes,
+    searchVimCycle,
     setSearchQuery,
     setSearchOpen,
     setSearchHighlightIndex,
     closeSearch,
+    enterVimCycle,
+    exitVimCycle,
+    stepVimCycle,
     models,
     setSelectedEntity,
     setSelectedEntityId,
@@ -68,10 +83,14 @@ export function SearchInline() {
       searchOpen: s.searchOpen,
       searchHighlightIndex: s.searchHighlightIndex,
       searchIndexes: s.searchIndexes,
+      searchVimCycle: s.searchVimCycle,
       setSearchQuery: s.setSearchQuery,
       setSearchOpen: s.setSearchOpen,
       setSearchHighlightIndex: s.setSearchHighlightIndex,
       closeSearch: s.closeSearch,
+      enterVimCycle: s.enterVimCycle,
+      exitVimCycle: s.exitVimCycle,
+      stepVimCycle: s.stepVimCycle,
       models: s.models,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
@@ -82,6 +101,9 @@ export function SearchInline() {
 
   // Kick off lazy Tier-1 index builds for any loaded model.
   useSearchIndex();
+
+  // Recents list — loaded on mount, refreshed after each Enter commit.
+  const [recents, setRecents] = useState<string[]>(() => loadRecentSearches());
 
   // Debounce the query so each keystroke doesn't trigger a 4M-entity scan.
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
@@ -157,8 +179,8 @@ export function SearchInline() {
     }
   }, [results, searchHighlightIndex, setSearchHighlightIndex]);
 
-  /** Drive selection + frame from a result row. */
-  const selectResult = useCallback(
+  /** Apply selection + frame for a search result. Does NOT touch cycle state. */
+  const applySelection = useCallback(
     (r: SearchResult, addToSelection: boolean) => {
       const ref = { modelId: r.modelId, expressId: r.expressId };
       const isLegacy = r.modelId === 'legacy' || r.modelId === '__legacy__' || models.size === 0;
@@ -167,26 +189,57 @@ export function SearchInline() {
       if (addToSelection) {
         addEntityToSelection(ref);
         setSelectedEntityId(globalId);
-      } else {
-        setSelectedEntityId(globalId);
-        setSelectedEntity(ref);
-        // Frame after the selection state has flushed so the renderer
-        // is targeting the freshly-selected entity, not the previous one.
-        if (cameraCallbacks.frameSelection) {
-          window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-        }
+        return;
       }
-      closeSearch();
+
+      setSelectedEntityId(globalId);
+      setSelectedEntity(ref);
+      if (cameraCallbacks.frameSelection) {
+        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+      }
     },
     [
       addEntityToSelection,
       cameraCallbacks,
-      closeSearch,
       models,
       setSelectedEntity,
       setSelectedEntityId,
     ],
   );
+
+  /** Commit: select + frame + enter vim cycle + record recent. */
+  const commitResult = useCallback(
+    (r: SearchResult, index: number, addToSelection: boolean) => {
+      applySelection(r, addToSelection);
+      if (!addToSelection && results.length > 0) {
+        enterVimCycle(debouncedQuery, results, index);
+      }
+      const trimmed = debouncedQuery.trim();
+      if (trimmed) setRecents(pushRecentSearch(trimmed));
+      closeSearch();
+    },
+    [applySelection, closeSearch, debouncedQuery, enterVimCycle, results],
+  );
+
+  // Re-select + reframe when the vim cycle steps. Uses the results-array
+  // identity to distinguish entry (selection already done by commitResult)
+  // from subsequent steps (this effect drives the selection).
+  const handledCycleRef = useRef<{ results: SearchResult[]; index: number } | null>(null);
+  useEffect(() => {
+    if (!searchVimCycle) {
+      handledCycleRef.current = null;
+      return;
+    }
+    const last = handledCycleRef.current;
+    const isEntry = !last || last.results !== searchVimCycle.results;
+    handledCycleRef.current = {
+      results: searchVimCycle.results,
+      index: searchVimCycle.index,
+    };
+    if (isEntry) return; // selection was performed by commitResult.
+    const current = searchVimCycle.results[searchVimCycle.index];
+    if (current) applySelection(current, false);
+  }, [searchVimCycle, applySelection]);
 
   /** Global `/` and ⌘F / Ctrl+F shortcuts to focus the field. */
   useEffect(() => {
@@ -213,6 +266,32 @@ export function SearchInline() {
     return () => window.removeEventListener('keydown', handler);
   }, [setSearchOpen]);
 
+  /** Global n / N / Esc cycle-control listener — active only while cycling. */
+  useEffect(() => {
+    if (!searchVimCycle) return;
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Don't swallow `n` / `N` when the user is typing elsewhere.
+      if (isEditableFocused()) return;
+      if (e.key === 'n') {
+        e.preventDefault();
+        stepVimCycle(1);
+        return;
+      }
+      if (e.key === 'N') {
+        e.preventDefault();
+        stepVimCycle(-1);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        exitVimCycle();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [searchVimCycle, stepVimCycle, exitVimCycle]);
+
   /** Click-outside closes the popover (but doesn't blur the field). */
   useEffect(() => {
     if (!searchOpen) return;
@@ -228,7 +307,8 @@ export function SearchInline() {
 
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      // Esc: first press closes popover, second blurs the field.
+      // Esc: first press closes popover, second blurs the field. Cycle
+      // exit is handled by the global listener, so we don't fight it here.
       if (e.key === 'Escape') {
         if (searchOpen) {
           e.preventDefault();
@@ -240,7 +320,6 @@ export function SearchInline() {
       }
 
       if (!searchOpen && (e.key === 'ArrowDown' || e.key === 'Enter')) {
-        // Re-open the popover if the user is interacting with results.
         if (results.length > 0) setSearchOpen(true);
       }
 
@@ -261,13 +340,15 @@ export function SearchInline() {
       if (e.key === 'Enter') {
         e.preventDefault();
         const target = results[searchHighlightIndex];
-        if (target) selectResult(target, e.shiftKey);
+        if (target) commitResult(target, searchHighlightIndex, e.shiftKey);
       }
     },
-    [results, searchHighlightIndex, searchOpen, selectResult, setSearchHighlightIndex, setSearchOpen],
+    [commitResult, results, searchHighlightIndex, searchOpen, setSearchHighlightIndex, setSearchOpen],
   );
 
-  const showPopover = searchOpen && (results.length > 0 || searchQuery.trim().length > 0);
+  const queryTrimmedLen = searchQuery.trim().length;
+  const showPopover = searchOpen && (results.length > 0 || queryTrimmedLen > 0 || recents.length > 0);
+  const showRecents = searchOpen && queryTrimmedLen === 0 && recents.length > 0;
 
   return (
     <div ref={containerRef} className="relative w-72">
@@ -281,25 +362,135 @@ export function SearchInline() {
           setSearchQuery(e.target.value);
           if (!searchOpen) setSearchOpen(true);
         }}
-        onFocus={() => {
-          if (searchQuery.trim().length > 0) setSearchOpen(true);
-        }}
+        onFocus={() => setSearchOpen(true)}
         onKeyDown={handleInputKeyDown}
         aria-label="Search entities"
         aria-autocomplete="list"
         aria-expanded={showPopover}
         aria-controls="search-inline-popover"
       />
-      {showPopover && (
+      {/* Vim cycle hint — shows below the input whenever a cycle is active
+          and the popover is closed. Clicking it exits the cycle. */}
+      {searchVimCycle && !showPopover && (
+        <VimCycleHint
+          query={searchVimCycle.query}
+          index={searchVimCycle.index}
+          total={searchVimCycle.results.length}
+          onExit={exitVimCycle}
+        />
+      )}
+      {showPopover && showRecents && (
+        <RecentsPopover
+          recents={recents}
+          onPick={(q) => {
+            setSearchQuery(q);
+            inputRef.current?.focus();
+          }}
+          onClear={() => {
+            clearRecentSearches();
+            setRecents([]);
+          }}
+        />
+      )}
+      {showPopover && !showRecents && (
         <SearchPopover
           results={results}
           highlightIndex={searchHighlightIndex}
           modelsCount={models.size}
           indexingCount={indexingCount}
-          onSelect={(r, additive) => selectResult(r, additive)}
+          onSelect={(r, i, additive) => commitResult(r, i, additive)}
           onHover={(i) => setSearchHighlightIndex(i)}
         />
       )}
+    </div>
+  );
+}
+
+interface VimCycleHintProps {
+  query: string;
+  index: number;
+  total: number;
+  onExit: () => void;
+}
+
+function VimCycleHint({ query, index, total, onExit }: VimCycleHintProps) {
+  return (
+    <div
+      className="absolute left-0 right-0 top-full mt-1 flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm dark:border-zinc-800 dark:bg-zinc-950 z-40"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="font-mono font-semibold text-zinc-700 dark:text-zinc-300">
+        {index + 1} / {total}
+      </span>
+      <span className="truncate">
+        <span className="opacity-70">cycling </span>
+        <span className="font-mono">&quot;{query}&quot;</span>
+        <span className="opacity-70"> — press </span>
+        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">n</kbd>
+        <span className="opacity-70"> / </span>
+        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">N</kbd>
+      </span>
+      <button
+        type="button"
+        className="ml-auto rounded p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+        aria-label="Exit cycle"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          onExit();
+        }}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+interface RecentsPopoverProps {
+  recents: string[];
+  onPick: (query: string) => void;
+  onClear: () => void;
+}
+
+function RecentsPopover({ recents, onPick, onClear }: RecentsPopoverProps) {
+  return (
+    <div
+      id="search-inline-popover"
+      role="listbox"
+      className="absolute left-0 right-0 top-full mt-1 rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950 z-50"
+    >
+      <div className="flex items-center justify-between px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          Recent searches
+        </span>
+        <button
+          type="button"
+          className="text-[10px] normal-case hover:underline"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onClear();
+          }}
+        >
+          Clear
+        </button>
+      </div>
+      {recents.map((q) => (
+        <button
+          key={q}
+          type="button"
+          role="option"
+          aria-selected={false}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onPick(q);
+          }}
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-zinc-50 dark:hover:bg-zinc-900"
+        >
+          <Search className="h-3 w-3 text-muted-foreground" />
+          <span className="truncate font-mono">{q}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -309,7 +500,7 @@ interface SearchPopoverProps {
   highlightIndex: number;
   modelsCount: number;
   indexingCount: number;
-  onSelect: (r: SearchResult, additive: boolean) => void;
+  onSelect: (r: SearchResult, index: number, additive: boolean) => void;
   onHover: (index: number) => void;
 }
 
@@ -351,7 +542,7 @@ function SearchPopover({
           onMouseDown={(e) => {
             // mousedown so the input doesn't blur first and tear down the popover.
             e.preventDefault();
-            onSelect(r, e.shiftKey);
+            onSelect(r, i, e.shiftKey);
           }}
           className={cn(
             'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors',

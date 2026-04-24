@@ -22,6 +22,11 @@
 import type { StateCreator } from 'zustand';
 import type { Tier1Index } from '@/lib/search/tier1-index';
 import type { SearchResult, MatchField } from '@/lib/search/tier0-scan';
+import {
+  emptyBuilderState,
+  type VisualBuilderState,
+  type PropertyFilter,
+} from '@/lib/search/sql-builder';
 
 /** Index lifecycle state for a single model. */
 export type Tier1IndexStatus = 'pending' | 'building' | 'ready' | 'error';
@@ -68,6 +73,13 @@ export interface SearchSqlResult {
   runMs: number;
 }
 
+/**
+ * Sub-mode inside the SQL tab — Builder (chip UI) or Editor (raw SQL).
+ * Flipping Builder → Editor copies the generated SQL into the editor as
+ * a starting point; flipping back is read-only.
+ */
+export type SearchSqlMode = 'builder' | 'editor';
+
 export interface SearchSlice {
   /** Current input value (debounced consumers may stage their own copy). */
   searchQuery: string;
@@ -93,6 +105,10 @@ export interface SearchSlice {
   searchSqlRunning: boolean;
   /** Latest SQL error message — raw DuckDB text, rewritten for UI by callers. */
   searchSqlError: string | null;
+  /** Active sub-mode inside the SQL tab (Builder vs Editor). */
+  searchSqlMode: SearchSqlMode;
+  /** Visual-builder state — the user-facing chip representation. */
+  searchSqlBuilder: VisualBuilderState;
 
   setSearchQuery: (query: string) => void;
   setSearchOpen: (open: boolean) => void;
@@ -127,6 +143,15 @@ export interface SearchSlice {
   setSearchSqlRunning: (running: boolean) => void;
   setSearchSqlResult: (result: SearchSqlResult | null) => void;
   setSearchSqlError: (error: string | null) => void;
+
+  setSearchSqlMode: (mode: SearchSqlMode) => void;
+  /** Replace the whole builder state — used by the "Reset" action. */
+  setSearchSqlBuilder: (state: VisualBuilderState) => void;
+  setBuilderIfcType: (type: string | null) => void;
+  setBuilderLimit: (limit: number) => void;
+  addBuilderFilter: (filter: PropertyFilter) => void;
+  updateBuilderFilter: (index: number, patch: Partial<PropertyFilter>) => void;
+  removeBuilderFilter: (index: number) => void;
 }
 
 export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> = (set) => ({
@@ -142,6 +167,8 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchSqlResult: null,
   searchSqlRunning: false,
   searchSqlError: null,
+  searchSqlMode: 'builder',
+  searchSqlBuilder: emptyBuilderState(),
 
   // Typing or programmatically changing the query breaks out of vim cycle —
   // the user is re-searching, not stepping through a committed result list.
@@ -219,4 +246,39 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   setSearchSqlRunning: (searchSqlRunning) => set({ searchSqlRunning }),
   setSearchSqlResult: (searchSqlResult) => set({ searchSqlResult, searchSqlError: null }),
   setSearchSqlError: (searchSqlError) => set({ searchSqlError, searchSqlResult: null }),
+
+  setSearchSqlMode: (searchSqlMode) => set({ searchSqlMode }),
+  setSearchSqlBuilder: (searchSqlBuilder) => set({ searchSqlBuilder }),
+
+  setBuilderIfcType: (ifcType) =>
+    set((state) => ({ searchSqlBuilder: { ...state.searchSqlBuilder, ifcType } })),
+
+  setBuilderLimit: (limit) =>
+    set((state) => ({ searchSqlBuilder: { ...state.searchSqlBuilder, limit } })),
+
+  addBuilderFilter: (filter) =>
+    set((state) => ({
+      searchSqlBuilder: {
+        ...state.searchSqlBuilder,
+        propertyFilters: [...state.searchSqlBuilder.propertyFilters, filter],
+      },
+    })),
+
+  updateBuilderFilter: (index, patch) =>
+    set((state) => {
+      const filters = state.searchSqlBuilder.propertyFilters;
+      if (index < 0 || index >= filters.length) return {};
+      const next = filters.slice();
+      next[index] = { ...filters[index], ...patch };
+      return { searchSqlBuilder: { ...state.searchSqlBuilder, propertyFilters: next } };
+    }),
+
+  removeBuilderFilter: (index) =>
+    set((state) => {
+      const filters = state.searchSqlBuilder.propertyFilters;
+      if (index < 0 || index >= filters.length) return {};
+      const next = filters.slice();
+      next.splice(index, 1);
+      return { searchSqlBuilder: { ...state.searchSqlBuilder, propertyFilters: next } };
+    }),
 });

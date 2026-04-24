@@ -41,6 +41,7 @@ import { cn } from '@/lib/utils';
 import { listSqlTemplates } from '@/lib/search/sql-templates';
 import { rewriteSqlError } from '@/lib/search/sql-error-rewriter';
 import { isDuckDBAvailable, runSql } from '@/lib/search/sql-state';
+import { SearchModalSqlBuilder } from './SearchModal.sql.builder';
 
 /** Rows per virtualizer page — tuned for the result table row height. */
 const RESULT_ROW_HEIGHT = 28;
@@ -91,10 +92,12 @@ export function SearchModalSql() {
     searchSqlResult,
     searchSqlRunning,
     searchSqlError,
+    searchSqlMode,
     setSearchSqlQuery,
     setSearchSqlRunning,
     setSearchSqlResult,
     setSearchSqlError,
+    setSearchSqlMode,
     models,
     activeModelId,
     setSelectedEntity,
@@ -106,10 +109,12 @@ export function SearchModalSql() {
       searchSqlResult: s.searchSqlResult,
       searchSqlRunning: s.searchSqlRunning,
       searchSqlError: s.searchSqlError,
+      searchSqlMode: s.searchSqlMode,
       setSearchSqlQuery: s.setSearchSqlQuery,
       setSearchSqlRunning: s.setSearchSqlRunning,
       setSearchSqlResult: s.setSearchSqlResult,
       setSearchSqlError: s.setSearchSqlError,
+      setSearchSqlMode: s.setSearchSqlMode,
       models: s.models,
       activeModelId: s.activeModelId,
       setSelectedEntity: s.setSelectedEntity,
@@ -157,13 +162,13 @@ export function SearchModalSql() {
     textareaRef.current?.focus();
   }, [setSearchSqlQuery]);
 
-  const run = useCallback(async () => {
+  const runSqlQuery = useCallback(async (rawSql: string) => {
     if (!activeStore) {
       setSearchSqlError('No active model — load an IFC file before running SQL.');
       return;
     }
     if (searchSqlRunning) return;
-    const sql = searchSqlQuery.trim();
+    const sql = rawSql.trim();
     if (!sql) return;
 
     setSearchSqlRunning(true);
@@ -181,8 +186,22 @@ export function SearchModalSql() {
     } finally {
       setSearchSqlRunning(false);
     }
-  }, [activeStore, searchSqlQuery, searchSqlRunning,
+  }, [activeStore, searchSqlRunning,
       setSearchSqlError, setSearchSqlResult, setSearchSqlRunning]);
+
+  const runEditor = useCallback(() => {
+    void runSqlQuery(searchSqlQuery);
+  }, [runSqlQuery, searchSqlQuery]);
+
+  /** Builder "Open in Editor" — copies the generated SQL into the editor
+   *  and flips the sub-mode. Lets the user edit, run, or learn from it. */
+  const promoteToEditor = useCallback((sql: string) => {
+    if (!sql) return;
+    setSearchSqlQuery(sql);
+    setSearchSqlMode('editor');
+    // Focus the textarea on the next frame so the caret lands inside.
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [setSearchSqlMode, setSearchSqlQuery]);
 
   const copyQuery = useCallback(() => {
     if (!searchSqlQuery) return;
@@ -193,7 +212,7 @@ export function SearchModalSql() {
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      void run();
+      runEditor();
       return;
     }
     if (e.key === 'Tab' && !e.shiftKey) {
@@ -201,7 +220,7 @@ export function SearchModalSql() {
       e.preventDefault();
       insertAtCursor('  ');
     }
-  }, [insertAtCursor, run]);
+  }, [insertAtCursor, runEditor]);
 
   // Locate the first selection-key column in the result, if any.
   const selectionKeyIndex = useMemo(() => {
@@ -244,136 +263,180 @@ export function SearchModalSql() {
     );
   }
 
+  const isEditor = searchSqlMode === 'editor';
+
   return (
-    <div className="flex flex-1 min-h-0">
-      {/* Schema browser */}
-      <aside className="w-56 shrink-0 overflow-y-auto border-r bg-zinc-50/50 px-3 py-3 text-xs dark:bg-zinc-900/30">
-        <div className="mb-2 flex items-center gap-1 font-semibold uppercase text-[10px] tracking-wider text-muted-foreground">
-          <Database className="h-3 w-3" /> Tables
+    <div className="flex flex-1 min-h-0 flex-col">
+      {/* ── Top toolbar: mode toggle + Editor-only actions + timing ── */}
+      <div className="flex items-center gap-2 border-b px-3 py-2">
+        <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 dark:border-zinc-800 dark:bg-zinc-950">
+          <button
+            type="button"
+            onClick={() => setSearchSqlMode('builder')}
+            className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
+              !isEditor
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Builder
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchSqlMode('editor')}
+            className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
+              isEditor
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Editor
+          </button>
         </div>
-        {SCHEMA.tables.map((t) => (
-          <details key={t.name} className="mb-1.5" open>
-            <summary className="cursor-pointer rounded px-1 py-0.5 font-mono font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800">
-              {t.name}
-            </summary>
-            <ul className="ml-3 mt-1 space-y-0.5">
-              {t.columns.map((col) => (
-                <li key={col}>
+
+        {isEditor && (
+          <>
+            <div className="mx-1 h-4 w-px bg-zinc-300 dark:bg-zinc-700" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                  <FileCode2 className="h-3 w-3" />
+                  Templates
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-80">
+                <DropdownMenuLabel>Starter queries</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {listSqlTemplates().map((t) => (
+                  <DropdownMenuItem
+                    key={t.id}
+                    onSelect={() => applyTemplate(t.sql)}
+                    className="flex flex-col items-start gap-0.5"
+                  >
+                    <span className="font-medium">{t.label}</span>
+                    <span className="text-[11px] text-muted-foreground">{t.description}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button
+              variant="default"
+              size="sm"
+              onClick={runEditor}
+              disabled={searchSqlRunning || !searchSqlQuery.trim()}
+              className="h-7 gap-1 text-xs"
+            >
+              <Play className="h-3 w-3" />
+              {searchSqlRunning ? 'Running…' : 'Run'}
+              <kbd className="ml-1 rounded border border-primary-foreground/30 bg-primary-foreground/10 px-1 font-mono text-[9px]">⌘↵</kbd>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={copyQuery}
+              disabled={!searchSqlQuery}
+              className="h-7 gap-1 text-xs"
+              title="Copy query to clipboard"
+            >
+              <Copy className="h-3 w-3" />
+              Copy
+            </Button>
+          </>
+        )}
+
+        <div className="ml-auto text-[11px] text-muted-foreground">
+          {searchSqlResult && (
+            <span>⏱ {searchSqlResult.runMs} ms · {searchSqlResult.rows.length} rows</span>
+          )}
+        </div>
+      </div>
+
+      {multiModel && (
+        <div className="border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          SQL runs against the active model only ({activeModel?.name ?? activeModelId}).
+          Switch models via the Hierarchy panel to query a different one.
+        </div>
+      )}
+
+      {/* ── Body: Builder (full width) OR schema + Editor pair ─────────── */}
+      <div className="flex flex-1 min-h-0">
+        {isEditor && (
+          <aside className="w-56 shrink-0 overflow-y-auto border-r bg-zinc-50/50 px-3 py-3 text-xs dark:bg-zinc-900/30">
+            <div className="mb-2 flex items-center gap-1 font-semibold uppercase text-[10px] tracking-wider text-muted-foreground">
+              <Database className="h-3 w-3" /> Tables
+            </div>
+            {SCHEMA.tables.map((t) => (
+              <details key={t.name} className="mb-1.5" open>
+                <summary className="cursor-pointer rounded px-1 py-0.5 font-mono font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                  {t.name}
+                </summary>
+                <ul className="ml-3 mt-1 space-y-0.5">
+                  {t.columns.map((col) => (
+                    <li key={col}>
+                      <button
+                        type="button"
+                        className="w-full rounded px-1 py-0.5 text-left font-mono text-[11px] text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+                        onClick={() => insertAtCursor(col)}
+                        title={`Insert "${col}" at cursor`}
+                      >
+                        {col}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+            <div className="mt-3 mb-2 flex items-center gap-1 font-semibold uppercase text-[10px] tracking-wider text-muted-foreground">
+              <ExternalLink className="h-3 w-3" /> Views
+            </div>
+            <ul className="space-y-0.5">
+              {SCHEMA.views.map((v) => (
+                <li key={v}>
                   <button
                     type="button"
-                    className="w-full rounded px-1 py-0.5 text-left font-mono text-[11px] text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
-                    onClick={() => insertAtCursor(col)}
-                    title={`Insert "${col}" at cursor`}
+                    className="w-full rounded px-1 py-0.5 text-left font-mono text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    onClick={() => insertAtCursor(v)}
+                    title={`Insert "${v}" at cursor`}
                   >
-                    {col}
+                    {v}
                   </button>
                 </li>
               ))}
             </ul>
-          </details>
-        ))}
-        <div className="mt-3 mb-2 flex items-center gap-1 font-semibold uppercase text-[10px] tracking-wider text-muted-foreground">
-          <ExternalLink className="h-3 w-3" /> Views
-        </div>
-        <ul className="space-y-0.5">
-          {SCHEMA.views.map((v) => (
-            <li key={v}>
-              <button
-                type="button"
-                className="w-full rounded px-1 py-0.5 text-left font-mono text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                onClick={() => insertAtCursor(v)}
-                title={`Insert "${v}" at cursor`}
-              >
-                {v}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
-
-      {/* Editor + results stacked */}
-      <div className="flex flex-1 min-w-0 flex-col">
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
-                <FileCode2 className="h-3 w-3" />
-                Templates
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-80">
-              <DropdownMenuLabel>Starter queries</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {listSqlTemplates().map((t) => (
-                <DropdownMenuItem
-                  key={t.id}
-                  onSelect={() => applyTemplate(t.sql)}
-                  className="flex flex-col items-start gap-0.5"
-                >
-                  <span className="font-medium">{t.label}</span>
-                  <span className="text-[11px] text-muted-foreground">{t.description}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => void run()}
-            disabled={searchSqlRunning || !searchSqlQuery.trim()}
-            className="h-7 gap-1 text-xs"
-          >
-            <Play className="h-3 w-3" />
-            {searchSqlRunning ? 'Running…' : 'Run'}
-            <kbd className="ml-1 rounded border border-primary-foreground/30 bg-primary-foreground/10 px-1 font-mono text-[9px]">⌘↵</kbd>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={copyQuery}
-            disabled={!searchSqlQuery}
-            className="h-7 gap-1 text-xs"
-            title="Copy query to clipboard"
-          >
-            <Copy className="h-3 w-3" />
-            Copy
-          </Button>
-
-          <div className="ml-auto text-[11px] text-muted-foreground">
-            {searchSqlResult && (
-              <span>⏱ {searchSqlResult.runMs} ms · {searchSqlResult.rows.length} rows</span>
-            )}
-          </div>
-        </div>
-
-        {multiModel && (
-          <div className="border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            SQL runs against the active model only ({activeModel?.name ?? activeModelId}).
-            Switch models via the Hierarchy panel to query a different one.
-          </div>
+          </aside>
         )}
 
-        <textarea
-          ref={textareaRef}
-          value={searchSqlQuery}
-          onChange={(e) => setSearchSqlQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          spellCheck={false}
-          placeholder="-- Pick a template, or write SQL against entities / properties / quantities…"
-          className="h-48 shrink-0 resize-none border-b bg-background px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:bg-background"
-        />
+        <div className="flex flex-1 min-w-0 flex-col">
+          {isEditor ? (
+            <textarea
+              ref={textareaRef}
+              value={searchSqlQuery}
+              onChange={(e) => setSearchSqlQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              spellCheck={false}
+              placeholder="-- Pick a template, or write SQL against entities / properties / quantities…"
+              className="h-48 shrink-0 resize-none border-b bg-background px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:bg-background"
+            />
+          ) : (
+            <SearchModalSqlBuilder
+              onPromoteToEditor={promoteToEditor}
+              onRun={(sql) => void runSqlQuery(sql)}
+              running={searchSqlRunning}
+            />
+          )}
 
-        {searchSqlError ? (
-          <SqlErrorBox raw={searchSqlError} />
-        ) : (
-          <SqlResultTable
-            result={searchSqlResult}
-            selectionKeyIndex={selectionKeyIndex}
-            onRowClick={handleRowClick}
-          />
-        )}
+          {searchSqlError ? (
+            <SqlErrorBox raw={searchSqlError} />
+          ) : (
+            <SqlResultTable
+              result={searchSqlResult}
+              selectionKeyIndex={selectionKeyIndex}
+              onRowClick={handleRowClick}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

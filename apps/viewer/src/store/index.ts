@@ -402,6 +402,8 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       searchSqlResult: null,
       searchSqlRunning: false,
       searchSqlError: null,
+      searchSqlMode: 'builder',
+      searchSqlBuilder: { ifcType: null, propertyFilters: [], limit: 500 },
     });
   },
 }));

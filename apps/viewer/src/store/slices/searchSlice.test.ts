@@ -180,3 +180,89 @@ describe('searchSlice — advanced modal state', () => {
     assert.strictEqual(store.getState().searchModelFilter, null);
   });
 });
+
+describe('searchSlice — SQL builder actions', () => {
+  let store: StoreApi<SearchSlice>;
+
+  beforeEach(() => {
+    store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
+  });
+
+  it('starts in builder mode with the empty builder state', () => {
+    const s = store.getState();
+    assert.strictEqual(s.searchSqlMode, 'builder');
+    assert.strictEqual(s.searchSqlBuilder.ifcType, null);
+    assert.deepStrictEqual(s.searchSqlBuilder.propertyFilters, []);
+    assert.strictEqual(s.searchSqlBuilder.limit, 500);
+  });
+
+  it('setSearchSqlMode flips between builder and editor', () => {
+    store.getState().setSearchSqlMode('editor');
+    assert.strictEqual(store.getState().searchSqlMode, 'editor');
+    store.getState().setSearchSqlMode('builder');
+    assert.strictEqual(store.getState().searchSqlMode, 'builder');
+  });
+
+  it('setBuilderIfcType / setBuilderLimit patch the builder state', () => {
+    store.getState().setBuilderIfcType('IfcWall');
+    assert.strictEqual(store.getState().searchSqlBuilder.ifcType, 'IfcWall');
+    store.getState().setBuilderLimit(100);
+    assert.strictEqual(store.getState().searchSqlBuilder.limit, 100);
+  });
+
+  it('addBuilderFilter appends a new filter', () => {
+    const f = {
+      psetName: 'Pset_WallCommon',
+      propName: 'IsExternal',
+      op: '=' as const,
+      valueType: 'bool' as const,
+      value: 'true',
+    };
+    store.getState().addBuilderFilter(f);
+    const filters = store.getState().searchSqlBuilder.propertyFilters;
+    assert.strictEqual(filters.length, 1);
+    assert.deepStrictEqual(filters[0], f);
+  });
+
+  it('updateBuilderFilter patches a filter by index', () => {
+    const f = { psetName: 'A', propName: 'B', op: '=' as const, valueType: 'string' as const, value: '' };
+    store.getState().addBuilderFilter(f);
+    store.getState().updateBuilderFilter(0, { value: 'EI60' });
+    const updated = store.getState().searchSqlBuilder.propertyFilters[0];
+    assert.strictEqual(updated.value, 'EI60');
+    assert.strictEqual(updated.propName, 'B');
+  });
+
+  it('updateBuilderFilter is a no-op for out-of-range indices', () => {
+    const before = store.getState().searchSqlBuilder;
+    store.getState().updateBuilderFilter(5, { value: 'x' });
+    assert.strictEqual(store.getState().searchSqlBuilder, before);
+  });
+
+  it('removeBuilderFilter drops the filter at the given index', () => {
+    const f1 = { psetName: 'A', propName: 'X', op: '=' as const, valueType: 'string' as const, value: '' };
+    const f2 = { psetName: 'B', propName: 'Y', op: '=' as const, valueType: 'string' as const, value: '' };
+    store.getState().addBuilderFilter(f1);
+    store.getState().addBuilderFilter(f2);
+    store.getState().removeBuilderFilter(0);
+    const remaining = store.getState().searchSqlBuilder.propertyFilters;
+    assert.strictEqual(remaining.length, 1);
+    assert.strictEqual(remaining[0].psetName, 'B');
+  });
+
+  it('removeBuilderFilter is a no-op for out-of-range indices', () => {
+    const before = store.getState().searchSqlBuilder;
+    store.getState().removeBuilderFilter(2);
+    assert.strictEqual(store.getState().searchSqlBuilder, before);
+  });
+
+  it('setSearchSqlBuilder replaces the whole builder state', () => {
+    const newState = {
+      ifcType: 'IfcDoor',
+      propertyFilters: [],
+      limit: 42,
+    };
+    store.getState().setSearchSqlBuilder(newState);
+    assert.strictEqual(store.getState().searchSqlBuilder, newState);
+  });
+});

@@ -116,3 +116,67 @@ describe('searchSlice — vim cycle', () => {
     assert.ok(store.getState().searchVimCycle, 'cycle still active after popover close');
   });
 });
+
+describe('searchSlice — advanced modal state', () => {
+  let store: StoreApi<SearchSlice>;
+
+  beforeEach(() => {
+    store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
+  });
+
+  it('modal is closed by default with "all" field filter and null model filter', () => {
+    const s = store.getState();
+    assert.strictEqual(s.searchModalOpen, false);
+    assert.strictEqual(s.searchFieldFilter, 'all');
+    assert.strictEqual(s.searchModelFilter, null);
+  });
+
+  it('setSearchModalOpen + toggleSearchModal flip the open flag', () => {
+    store.getState().setSearchModalOpen(true);
+    assert.strictEqual(store.getState().searchModalOpen, true);
+    store.getState().toggleSearchModal();
+    assert.strictEqual(store.getState().searchModalOpen, false);
+    store.getState().toggleSearchModal();
+    assert.strictEqual(store.getState().searchModalOpen, true);
+  });
+
+  it('setSearchFieldFilter updates the chip selection', () => {
+    store.getState().setSearchFieldFilter('name');
+    assert.strictEqual(store.getState().searchFieldFilter, 'name');
+    store.getState().setSearchFieldFilter('all');
+    assert.strictEqual(store.getState().searchFieldFilter, 'all');
+  });
+
+  it('toggleSearchModelFilter materialises the include set on first toggle', () => {
+    const available = ['m1', 'm2', 'm3'];
+    store.getState().toggleSearchModelFilter('m2', available);
+    const filter = store.getState().searchModelFilter;
+    assert.ok(filter);
+    assert.deepStrictEqual(Array.from(filter!).sort(), ['m1', 'm3']);
+  });
+
+  it('toggleSearchModelFilter re-including the last excluded model collapses back to null', () => {
+    const available = ['m1', 'm2'];
+    store.getState().toggleSearchModelFilter('m1', available);
+    // now filter is {m2}
+    store.getState().toggleSearchModelFilter('m1', available);
+    // user re-included m1 → all available included → collapse to null
+    assert.strictEqual(store.getState().searchModelFilter, null);
+  });
+
+  it('toggleSearchModelFilter successive toggles on different models', () => {
+    const available = ['a', 'b', 'c'];
+    store.getState().toggleSearchModelFilter('a', available);
+    store.getState().toggleSearchModelFilter('b', available);
+    const filter = store.getState().searchModelFilter;
+    assert.ok(filter);
+    assert.deepStrictEqual(Array.from(filter!).sort(), ['c']);
+  });
+
+  it('clearSearchModelFilter resets to null', () => {
+    const available = ['a', 'b', 'c'];
+    store.getState().toggleSearchModelFilter('a', available);
+    store.getState().clearSearchModelFilter();
+    assert.strictEqual(store.getState().searchModelFilter, null);
+  });
+});

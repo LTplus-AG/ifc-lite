@@ -23,6 +23,7 @@ import { ListPanel } from './lists/ListPanel';
 import { ScriptPanel } from './ScriptPanel';
 import { GanttPanel } from './schedule/GanttPanel';
 import { CommandPalette } from './CommandPalette';
+import { SearchModal } from './SearchModal';
 import { DesktopEntitlementBanner } from './DesktopEntitlementBanner';
 import {
   closeActiveAnalysisExtension,
@@ -203,6 +204,7 @@ export function ViewerLayout() {
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+        <SearchModal />
 
         {/* Main Toolbar */}
         <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />

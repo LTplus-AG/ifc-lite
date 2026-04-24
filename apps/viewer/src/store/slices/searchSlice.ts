@@ -21,7 +21,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { Tier1Index } from '@/lib/search/tier1-index';
-import type { SearchResult } from '@/lib/search/tier0-scan';
+import type { SearchResult, MatchField } from '@/lib/search/tier0-scan';
 
 /** Index lifecycle state for a single model. */
 export type Tier1IndexStatus = 'pending' | 'building' | 'ready' | 'error';
@@ -51,6 +51,12 @@ export interface SearchVimCycleState {
   index: number;
 }
 
+/**
+ * Chip filter for the advanced modal — narrows results to rows whose
+ * `matchField` equals the selected value, or 'all' for no restriction.
+ */
+export type SearchFieldFilter = MatchField | 'all';
+
 export interface SearchSlice {
   /** Current input value (debounced consumers may stage their own copy). */
   searchQuery: string;
@@ -62,6 +68,12 @@ export interface SearchSlice {
   searchIndexes: Map<string, Tier1IndexRecord>;
   /** Active vim-style cycle, or null when not cycling. */
   searchVimCycle: SearchVimCycleState | null;
+  /** Advanced search modal (⌘⇧F) is open. */
+  searchModalOpen: boolean;
+  /** Field chip filter active inside the modal. Defaults to 'all'. */
+  searchFieldFilter: SearchFieldFilter;
+  /** Per-modelId include filter inside the modal. `null` means all models included. */
+  searchModelFilter: Set<string> | null;
 
   setSearchQuery: (query: string) => void;
   setSearchOpen: (open: boolean) => void;
@@ -82,6 +94,15 @@ export interface SearchSlice {
   exitVimCycle: () => void;
   /** Advance the cycle by +1 / -1, wrapping around. */
   stepVimCycle: (delta: 1 | -1) => void;
+
+  setSearchModalOpen: (open: boolean) => void;
+  toggleSearchModal: () => void;
+  setSearchFieldFilter: (filter: SearchFieldFilter) => void;
+  /** Toggle a model in/out of the include filter. If the filter is null,
+   *  the first toggle materialises it as "all models except this one". */
+  toggleSearchModelFilter: (modelId: string, availableModelIds: readonly string[]) => void;
+  /** Clear model filter (null → all models included). */
+  clearSearchModelFilter: () => void;
 }
 
 export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> = (set) => ({
@@ -90,6 +111,9 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchHighlightIndex: 0,
   searchIndexes: new Map(),
   searchVimCycle: null,
+  searchModalOpen: false,
+  searchFieldFilter: 'all',
+  searchModelFilter: null,
 
   // Typing or programmatically changing the query breaks out of vim cycle —
   // the user is re-searching, not stepping through a committed result list.
@@ -132,4 +156,34 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
       const next = (cycle.index + delta + len) % len;
       return { searchVimCycle: { ...cycle, index: next } };
     }),
+
+  setSearchModalOpen: (searchModalOpen) => set({ searchModalOpen }),
+  toggleSearchModal: () => set((state) => ({ searchModalOpen: !state.searchModalOpen })),
+  setSearchFieldFilter: (searchFieldFilter) => set({ searchFieldFilter }),
+
+  toggleSearchModelFilter: (modelId, availableModelIds) =>
+    set((state) => {
+      const current = state.searchModelFilter;
+      // First toggle from the "all included" null state materialises an
+      // explicit set containing every OTHER model — checking the box that
+      // was "on by default" and unchecking it feels the same to the user.
+      if (current === null) {
+        const next = new Set(availableModelIds);
+        next.delete(modelId);
+        return { searchModelFilter: next };
+      }
+      const next = new Set(current);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      // If the user has re-included every available model, collapse back
+      // to null so the "all included" default re-applies when a new model
+      // loads later.
+      let allIncluded = true;
+      for (const id of availableModelIds) {
+        if (!next.has(id)) { allIncluded = false; break; }
+      }
+      return { searchModelFilter: allIncluded ? null : next };
+    }),
+
+  clearSearchModelFilter: () => set({ searchModelFilter: null }),
 });

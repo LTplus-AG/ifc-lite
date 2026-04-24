@@ -72,6 +72,7 @@ export function SearchInline() {
     enterVimCycle,
     exitVimCycle,
     stepVimCycle,
+    setSearchModalOpen,
     models,
     setSelectedEntity,
     setSelectedEntityId,
@@ -91,6 +92,7 @@ export function SearchInline() {
       enterVimCycle: s.enterVimCycle,
       exitVimCycle: s.exitVimCycle,
       stepVimCycle: s.stepVimCycle,
+      setSearchModalOpen: s.setSearchModalOpen,
       models: s.models,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
@@ -339,11 +341,18 @@ export function SearchInline() {
       }
       if (e.key === 'Enter') {
         e.preventDefault();
+        // ⌘↵ / Ctrl+↵ opens the advanced modal instead of committing — the
+        // inline query is preserved so the modal opens already populated.
+        if (e.metaKey || e.ctrlKey) {
+          setSearchOpen(false);
+          setSearchModalOpen(true);
+          return;
+        }
         const target = results[searchHighlightIndex];
         if (target) commitResult(target, searchHighlightIndex, e.shiftKey);
       }
     },
-    [commitResult, results, searchHighlightIndex, searchOpen, setSearchHighlightIndex, setSearchOpen],
+    [commitResult, results, searchHighlightIndex, searchOpen, setSearchHighlightIndex, setSearchModalOpen, setSearchOpen],
   );
 
   const queryTrimmedLen = searchQuery.trim().length;
@@ -400,6 +409,10 @@ export function SearchInline() {
           indexingCount={indexingCount}
           onSelect={(r, i, additive) => commitResult(r, i, additive)}
           onHover={(i) => setSearchHighlightIndex(i)}
+          onOpenAdvanced={() => {
+            setSearchOpen(false);
+            setSearchModalOpen(true);
+          }}
         />
       )}
     </div>
@@ -502,6 +515,7 @@ interface SearchPopoverProps {
   indexingCount: number;
   onSelect: (r: SearchResult, index: number, additive: boolean) => void;
   onHover: (index: number) => void;
+  onOpenAdvanced: () => void;
 }
 
 function SearchPopover({
@@ -511,6 +525,7 @@ function SearchPopover({
   indexingCount,
   onSelect,
   onHover,
+  onOpenAdvanced,
 }: SearchPopoverProps) {
   if (results.length === 0) {
     return (
@@ -569,9 +584,21 @@ function SearchPopover({
           )}
         </button>
       ))}
-      <div className="border-t border-zinc-200 px-3 py-1 text-[10px] text-muted-foreground dark:border-zinc-800">
-        {results.length} result{results.length === 1 ? '' : 's'} · ↑↓ nav · ↵ select · ⇧↵ multi · Esc close
-        {indexingCount > 0 && <span className="ml-2 opacity-80">· indexing {indexingCount}…</span>}
+      <div className="flex items-center gap-2 border-t border-zinc-200 px-3 py-1 text-[10px] text-muted-foreground dark:border-zinc-800">
+        <span>
+          {results.length} result{results.length === 1 ? '' : 's'} · ↑↓ · ↵ · ⇧↵ · Esc
+          {indexingCount > 0 && <span className="ml-2 opacity-80">· indexing {indexingCount}…</span>}
+        </span>
+        <button
+          type="button"
+          className="ml-auto hover:underline"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onOpenAdvanced();
+          }}
+        >
+          Advanced <kbd className="ml-0.5 rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[9px] dark:border-zinc-700 dark:bg-zinc-900">⌘↵</kbd>
+        </button>
       </div>
     </div>
   );

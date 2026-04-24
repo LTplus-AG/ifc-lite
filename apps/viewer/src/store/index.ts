@@ -395,6 +395,9 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       searchHighlightIndex: 0,
       searchIndexes: new Map(),
       searchVimCycle: null,
+      searchModalOpen: false,
+      searchFieldFilter: 'all',
+      searchModelFilter: null,
     });
   },
 }));

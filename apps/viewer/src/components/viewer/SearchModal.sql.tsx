@@ -1,0 +1,515 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * SearchModal.sql — the DuckDB-backed SQL tab (P4).
+ *
+ * Layered on top of the existing `@ifc-lite/query` DuckDB integration.
+ * Load-perf guarantee unchanged: the engine is dynamic-imported and
+ * init happens only on the first actual Run — not on modal open, not
+ * on IFC load.
+ *
+ * UI
+ *   left rail   — schema browser (tables + views, click column to insert)
+ *   editor      — monospace textarea; ⌘↵ / Ctrl+↵ runs; ⌘⇧↵ runs + keeps focus
+ *   top buttons — Templates dropdown, Run, Copy
+ *   result pane — virtualized table; row click → select + frame (when a
+ *                 recognised entity-id column is present)
+ *   error box   — friendly title + hint, always with the raw text
+ *
+ * Multi-model caveat: DuckDB is initialised against the ACTIVE model
+ * only. A banner makes that explicit when >1 model is loaded.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { Play, Copy, Database, FileCode2, AlertCircle, ExternalLink } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
+import { useViewerStore } from '@/store';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
+import { listSqlTemplates } from '@/lib/search/sql-templates';
+import { rewriteSqlError } from '@/lib/search/sql-error-rewriter';
+import { isDuckDBAvailable, runSql } from '@/lib/search/sql-state';
+
+/** Rows per virtualizer page — tuned for the result table row height. */
+const RESULT_ROW_HEIGHT = 28;
+
+/** Tables + views the DuckDBIntegration registers. Kept local so we don't
+ *  have to import the private helpers from `@ifc-lite/query`. */
+const SCHEMA = {
+  tables: [
+    {
+      name: 'entities',
+      columns: [
+        'express_id', 'global_id', 'name', 'description', 'type',
+        'object_type', 'has_geometry', 'is_type',
+        'contained_in_storey', 'defined_by_type',
+      ],
+    },
+    {
+      name: 'properties',
+      columns: [
+        'entity_id', 'pset_name', 'pset_global_id', 'prop_name', 'prop_type',
+        'value_string', 'value_real', 'value_int', 'value_bool',
+      ],
+    },
+    {
+      name: 'quantities',
+      columns: [
+        'entity_id', 'qset_name', 'quantity_name', 'quantity_type', 'value', 'formula',
+      ],
+    },
+    {
+      name: 'relationships',
+      columns: ['source_id', 'target_id', 'rel_type', 'rel_id'],
+    },
+  ],
+  views: [
+    'walls', 'doors', 'windows', 'slabs', 'columns', 'beams', 'spaces',
+    'entity_properties', 'entity_quantities',
+  ],
+} as const;
+
+/** Columns we recognise as "selection keys" — clicking a row with one of
+ *  these routes the value through the viewer's selection system. */
+const SELECTION_COLUMNS = ['express_id', 'entity_id', 'source_id', 'target_id'] as const;
+
+export function SearchModalSql() {
+  const {
+    searchSqlQuery,
+    searchSqlResult,
+    searchSqlRunning,
+    searchSqlError,
+    setSearchSqlQuery,
+    setSearchSqlRunning,
+    setSearchSqlResult,
+    setSearchSqlError,
+    models,
+    activeModelId,
+    setSelectedEntity,
+    setSelectedEntityId,
+    cameraCallbacks,
+  } = useViewerStore(
+    useShallow((s) => ({
+      searchSqlQuery: s.searchSqlQuery,
+      searchSqlResult: s.searchSqlResult,
+      searchSqlRunning: s.searchSqlRunning,
+      searchSqlError: s.searchSqlError,
+      setSearchSqlQuery: s.setSearchSqlQuery,
+      setSearchSqlRunning: s.setSearchSqlRunning,
+      setSearchSqlResult: s.setSearchSqlResult,
+      setSearchSqlError: s.setSearchSqlError,
+      models: s.models,
+      activeModelId: s.activeModelId,
+      setSelectedEntity: s.setSelectedEntity,
+      setSelectedEntityId: s.setSelectedEntityId,
+      cameraCallbacks: s.cameraCallbacks,
+    })),
+  );
+
+  const [available, setAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void isDuckDBAvailable().then((v) => { if (!cancelled) setAvailable(v); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const activeModel = activeModelId ? models.get(activeModelId) : undefined;
+  const activeStore = activeModel?.ifcDataStore ?? null;
+  const multiModel = models.size > 1;
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertAtCursor = useCallback((snippet: string) => {
+    const ta = textareaRef.current;
+    if (!ta) {
+      setSearchSqlQuery(`${searchSqlQuery}${snippet}`);
+      return;
+    }
+    const start = ta.selectionStart ?? searchSqlQuery.length;
+    const end = ta.selectionEnd ?? searchSqlQuery.length;
+    const next = `${searchSqlQuery.slice(0, start)}${snippet}${searchSqlQuery.slice(end)}`;
+    setSearchSqlQuery(next);
+    // Restore caret after React re-renders.
+    requestAnimationFrame(() => {
+      const ta2 = textareaRef.current;
+      if (!ta2) return;
+      const pos = start + snippet.length;
+      ta2.focus();
+      ta2.selectionStart = pos;
+      ta2.selectionEnd = pos;
+    });
+  }, [searchSqlQuery, setSearchSqlQuery]);
+
+  const applyTemplate = useCallback((sql: string) => {
+    setSearchSqlQuery(sql);
+    textareaRef.current?.focus();
+  }, [setSearchSqlQuery]);
+
+  const run = useCallback(async () => {
+    if (!activeStore) {
+      setSearchSqlError('No active model — load an IFC file before running SQL.');
+      return;
+    }
+    if (searchSqlRunning) return;
+    const sql = searchSqlQuery.trim();
+    if (!sql) return;
+
+    setSearchSqlRunning(true);
+    const start = performance.now();
+    try {
+      const result = await runSql(activeStore, sql);
+      setSearchSqlResult({
+        columns: result.columns,
+        rows: result.rows,
+        runMs: Math.round(performance.now() - start),
+      });
+    } catch (err) {
+      const rewritten = rewriteSqlError(err);
+      setSearchSqlError(rewritten.raw);
+    } finally {
+      setSearchSqlRunning(false);
+    }
+  }, [activeStore, searchSqlQuery, searchSqlRunning,
+      setSearchSqlError, setSearchSqlResult, setSearchSqlRunning]);
+
+  const copyQuery = useCallback(() => {
+    if (!searchSqlQuery) return;
+    void navigator.clipboard?.writeText(searchSqlQuery);
+  }, [searchSqlQuery]);
+
+  // Keyboard inside textarea — ⌘↵ / Ctrl+↵ runs the query.
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      void run();
+      return;
+    }
+    if (e.key === 'Tab' && !e.shiftKey) {
+      // Insert a real tab at cursor rather than tabbing out of the field.
+      e.preventDefault();
+      insertAtCursor('  ');
+    }
+  }, [insertAtCursor, run]);
+
+  // Locate the first selection-key column in the result, if any.
+  const selectionKeyIndex = useMemo(() => {
+    const cols = searchSqlResult?.columns;
+    if (!cols) return -1;
+    for (const candidate of SELECTION_COLUMNS) {
+      const i = cols.indexOf(candidate);
+      if (i >= 0) return i;
+    }
+    return -1;
+  }, [searchSqlResult]);
+
+  const handleRowClick = useCallback((row: unknown[]) => {
+    if (selectionKeyIndex < 0 || !activeModelId) return;
+    const raw = row[selectionKeyIndex];
+    const expressId = typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && !Number.isNaN(Number(raw))
+        ? Number(raw)
+        : null;
+    if (expressId === null || expressId <= 0) return;
+    const globalId = toGlobalIdFromModels(models, activeModelId, expressId);
+    setSelectedEntityId(globalId);
+    setSelectedEntity({ modelId: activeModelId, expressId });
+    if (cameraCallbacks.frameSelection) {
+      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+    }
+  }, [activeModelId, cameraCallbacks, models, selectionKeyIndex, setSelectedEntity, setSelectedEntityId]);
+
+  // ── Render early-outs for the "not ready" states ─────────────────────
+  if (available === false) {
+    return <SqlUnavailableNotice />;
+  }
+
+  if (!activeStore) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-muted-foreground">
+        Load an IFC file first — SQL runs against the active model&apos;s data.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-1 min-h-0">
+      {/* Schema browser */}
+      <aside className="w-56 shrink-0 overflow-y-auto border-r bg-zinc-50/50 px-3 py-3 text-xs dark:bg-zinc-900/30">
+        <div className="mb-2 flex items-center gap-1 font-semibold uppercase text-[10px] tracking-wider text-muted-foreground">
+          <Database className="h-3 w-3" /> Tables
+        </div>
+        {SCHEMA.tables.map((t) => (
+          <details key={t.name} className="mb-1.5" open>
+            <summary className="cursor-pointer rounded px-1 py-0.5 font-mono font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              {t.name}
+            </summary>
+            <ul className="ml-3 mt-1 space-y-0.5">
+              {t.columns.map((col) => (
+                <li key={col}>
+                  <button
+                    type="button"
+                    className="w-full rounded px-1 py-0.5 text-left font-mono text-[11px] text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+                    onClick={() => insertAtCursor(col)}
+                    title={`Insert "${col}" at cursor`}
+                  >
+                    {col}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ))}
+        <div className="mt-3 mb-2 flex items-center gap-1 font-semibold uppercase text-[10px] tracking-wider text-muted-foreground">
+          <ExternalLink className="h-3 w-3" /> Views
+        </div>
+        <ul className="space-y-0.5">
+          {SCHEMA.views.map((v) => (
+            <li key={v}>
+              <button
+                type="button"
+                className="w-full rounded px-1 py-0.5 text-left font-mono text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                onClick={() => insertAtCursor(v)}
+                title={`Insert "${v}" at cursor`}
+              >
+                {v}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </aside>
+
+      {/* Editor + results stacked */}
+      <div className="flex flex-1 min-w-0 flex-col">
+        <div className="flex items-center gap-2 border-b px-3 py-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                <FileCode2 className="h-3 w-3" />
+                Templates
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-80">
+              <DropdownMenuLabel>Starter queries</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {listSqlTemplates().map((t) => (
+                <DropdownMenuItem
+                  key={t.id}
+                  onSelect={() => applyTemplate(t.sql)}
+                  className="flex flex-col items-start gap-0.5"
+                >
+                  <span className="font-medium">{t.label}</span>
+                  <span className="text-[11px] text-muted-foreground">{t.description}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => void run()}
+            disabled={searchSqlRunning || !searchSqlQuery.trim()}
+            className="h-7 gap-1 text-xs"
+          >
+            <Play className="h-3 w-3" />
+            {searchSqlRunning ? 'Running…' : 'Run'}
+            <kbd className="ml-1 rounded border border-primary-foreground/30 bg-primary-foreground/10 px-1 font-mono text-[9px]">⌘↵</kbd>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={copyQuery}
+            disabled={!searchSqlQuery}
+            className="h-7 gap-1 text-xs"
+            title="Copy query to clipboard"
+          >
+            <Copy className="h-3 w-3" />
+            Copy
+          </Button>
+
+          <div className="ml-auto text-[11px] text-muted-foreground">
+            {searchSqlResult && (
+              <span>⏱ {searchSqlResult.runMs} ms · {searchSqlResult.rows.length} rows</span>
+            )}
+          </div>
+        </div>
+
+        {multiModel && (
+          <div className="border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            SQL runs against the active model only ({activeModel?.name ?? activeModelId}).
+            Switch models via the Hierarchy panel to query a different one.
+          </div>
+        )}
+
+        <textarea
+          ref={textareaRef}
+          value={searchSqlQuery}
+          onChange={(e) => setSearchSqlQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          spellCheck={false}
+          placeholder="-- Pick a template, or write SQL against entities / properties / quantities…"
+          className="h-48 shrink-0 resize-none border-b bg-background px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:bg-background"
+        />
+
+        {searchSqlError ? (
+          <SqlErrorBox raw={searchSqlError} />
+        ) : (
+          <SqlResultTable
+            result={searchSqlResult}
+            selectionKeyIndex={selectionKeyIndex}
+            onRowClick={handleRowClick}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Sub-components ──────────────────────────────────────────────────────
+
+function SqlUnavailableNotice() {
+  return (
+    <div className="flex flex-1 items-center justify-center p-8">
+      <div className="max-w-md text-center text-sm">
+        <AlertCircle className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+        <h3 className="mb-1 font-semibold">SQL search needs an optional package</h3>
+        <p className="mb-3 text-muted-foreground">
+          The SQL tab is powered by DuckDB-WASM, which isn&apos;t bundled by default
+          (it adds ~4&nbsp;MB). Install it in your workspace, then reload:
+        </p>
+        <pre className="mx-auto inline-block rounded bg-zinc-100 px-3 py-1.5 font-mono text-xs dark:bg-zinc-900">
+          pnpm add @duckdb/duckdb-wasm
+        </pre>
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Meanwhile, the Search tab (keyword + chips) queries the same data
+          without the optional dependency.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SqlErrorBox({ raw }: { raw: string }) {
+  const rewritten = useMemo(() => rewriteSqlError(raw), [raw]);
+  return (
+    <div className="flex-1 overflow-y-auto bg-red-50/50 px-4 py-3 dark:bg-red-950/20">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+        <div className="min-w-0 flex-1 text-xs">
+          <div className="font-semibold text-red-900 dark:text-red-200">{rewritten.title}</div>
+          {rewritten.hint && (
+            <div className="mt-1 text-red-800 dark:text-red-300">{rewritten.hint}</div>
+          )}
+          {rewritten.raw !== rewritten.title && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[11px] text-red-700 opacity-80 hover:opacity-100 dark:text-red-400">
+                Raw error
+              </summary>
+              <pre className="mt-1 whitespace-pre-wrap rounded bg-red-100 px-2 py-1 font-mono text-[11px] text-red-900 dark:bg-red-900/30 dark:text-red-200">
+                {rewritten.raw}
+              </pre>
+            </details>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface SqlResultTableProps {
+  result: { columns: string[]; rows: unknown[][] } | null;
+  selectionKeyIndex: number;
+  onRowClick: (row: unknown[]) => void;
+}
+
+function SqlResultTable({ result, selectionKeyIndex, onRowClick }: SqlResultTableProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: result?.rows.length ?? 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => RESULT_ROW_HEIGHT,
+    overscan: 20,
+  });
+
+  if (!result) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
+        Pick a template or type a query, then ⌘↵ to run.
+      </div>
+    );
+  }
+
+  if (result.rows.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
+        0 rows — query ran successfully but returned no matches.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-1 min-h-0 flex-col">
+      <div className="flex items-center border-b bg-zinc-50/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:bg-zinc-900/30">
+        {result.columns.map((c) => (
+          <div key={c} className="flex-1 truncate px-2 font-mono">
+            {c}
+          </div>
+        ))}
+      </div>
+      <div ref={scrollRef} className="flex-1 overflow-auto">
+        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+          {virtualizer.getVirtualItems().map((vRow) => {
+            const row = result.rows[vRow.index];
+            const clickable = selectionKeyIndex >= 0;
+            return (
+              <div
+                key={vRow.key}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: vRow.size,
+                  transform: `translateY(${vRow.start}px)`,
+                }}
+                className={cn(
+                  'flex items-center border-b border-zinc-100 px-3 text-[11px] dark:border-zinc-900',
+                  clickable && 'cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800',
+                )}
+                onClick={() => clickable && onRowClick(row)}
+              >
+                {result.columns.map((_, i) => (
+                  <div key={i} className="flex-1 truncate px-2 font-mono">
+                    {formatCell(row[i])}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatCell(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'bigint') return v.toString();
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}

@@ -57,6 +57,17 @@ export interface SearchVimCycleState {
  */
 export type SearchFieldFilter = MatchField | 'all';
 
+/**
+ * Result from the most recent SQL run — kept as a flat snapshot so the
+ * modal can re-render rows without holding onto the DuckDB row
+ * iterators.
+ */
+export interface SearchSqlResult {
+  columns: string[];
+  rows: unknown[][];
+  runMs: number;
+}
+
 export interface SearchSlice {
   /** Current input value (debounced consumers may stage their own copy). */
   searchQuery: string;
@@ -74,6 +85,14 @@ export interface SearchSlice {
   searchFieldFilter: SearchFieldFilter;
   /** Per-modelId include filter inside the modal. `null` means all models included. */
   searchModelFilter: Set<string> | null;
+  /** Persistent SQL editor buffer — survives tab switching within the modal. */
+  searchSqlQuery: string;
+  /** Latest successful SQL result (or null on fresh tab open / error). */
+  searchSqlResult: SearchSqlResult | null;
+  /** Whether a SQL run is currently in flight. */
+  searchSqlRunning: boolean;
+  /** Latest SQL error message — raw DuckDB text, rewritten for UI by callers. */
+  searchSqlError: string | null;
 
   setSearchQuery: (query: string) => void;
   setSearchOpen: (open: boolean) => void;
@@ -103,6 +122,11 @@ export interface SearchSlice {
   toggleSearchModelFilter: (modelId: string, availableModelIds: readonly string[]) => void;
   /** Clear model filter (null → all models included). */
   clearSearchModelFilter: () => void;
+
+  setSearchSqlQuery: (query: string) => void;
+  setSearchSqlRunning: (running: boolean) => void;
+  setSearchSqlResult: (result: SearchSqlResult | null) => void;
+  setSearchSqlError: (error: string | null) => void;
 }
 
 export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> = (set) => ({
@@ -114,6 +138,10 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchModalOpen: false,
   searchFieldFilter: 'all',
   searchModelFilter: null,
+  searchSqlQuery: '',
+  searchSqlResult: null,
+  searchSqlRunning: false,
+  searchSqlError: null,
 
   // Typing or programmatically changing the query breaks out of vim cycle —
   // the user is re-searching, not stepping through a committed result list.
@@ -186,4 +214,9 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
     }),
 
   clearSearchModelFilter: () => set({ searchModelFilter: null }),
+
+  setSearchSqlQuery: (searchSqlQuery) => set({ searchSqlQuery }),
+  setSearchSqlRunning: (searchSqlRunning) => set({ searchSqlRunning }),
+  setSearchSqlResult: (searchSqlResult) => set({ searchSqlResult, searchSqlError: null }),
+  setSearchSqlError: (searchSqlError) => set({ searchSqlError, searchSqlResult: null }),
 });

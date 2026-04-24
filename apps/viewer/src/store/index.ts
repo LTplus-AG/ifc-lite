@@ -398,6 +398,10 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       searchModalOpen: false,
       searchFieldFilter: 'all',
       searchModelFilter: null,
+      searchSqlQuery: '',
+      searchSqlResult: null,
+      searchSqlRunning: false,
+      searchSqlError: null,
     });
   },
 }));

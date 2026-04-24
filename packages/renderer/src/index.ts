@@ -14,6 +14,12 @@ export { Scene } from './scene.js';
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
+export {
+  projectBoundsOntoNormal,
+  planeDistanceForPosition,
+  positionFromPoint,
+  type SectionBounds,
+} from './section-math.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
 // Section cap styling (hatch pattern ids + default colours). The cap itself
 // is now rendered by Section2DOverlayRenderer's fill pass; this module just
@@ -67,6 +73,7 @@ import type {
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
+import { planeDistanceForPosition } from './section-math.js';
 import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
@@ -887,24 +894,15 @@ export class Renderer {
                         } else {
                             normal = [0, 1, 0];
                         }
-                        // Project the 8 AABB corners onto the (unit) normal
-                        // to get the valid distance range, then interpolate
-                        // via `position`.
-                        let minP = Infinity;
-                        let maxP = -Infinity;
-                        for (const cx of [boundsMin.x, boundsMax.x]) {
-                            for (const cy of [boundsMin.y, boundsMax.y]) {
-                                for (const cz of [boundsMin.z, boundsMax.z]) {
-                                    const pr = cx * normal[0] + cy * normal[1] + cz * normal[2];
-                                    if (pr < minP) minP = pr;
-                                    if (pr > maxP) maxP = pr;
-                                }
-                            }
-                        }
-                        const range = maxP - minP;
-                        distance = range > 1e-6
-                            ? minP + (options.sectionPlane.position / 100) * range
-                            : minP;
+                        // Project the model AABB onto the unit normal and
+                        // interpolate via `position` — shared helper so the
+                        // gizmo quad, the shader clip, and the face-pick
+                        // handler all agree on the mapping.
+                        distance = planeDistanceForPosition(
+                            { min: boundsMin, max: boundsMax },
+                            normal,
+                            options.sectionPlane.position,
+                        );
                     } else {
                         // Axis-aligned preset path (unchanged behaviour).
                         // down = Y axis (horizontal cut), front = Z axis, side = X axis.

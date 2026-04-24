@@ -104,10 +104,12 @@ export function useDrawingGeneration({
     // Custom-normal planes (face-pick) bypass the 2D drawing pipeline until
     // the generator supports arbitrary plane normals. Without this guard the
     // generator would cut the model along the nearest cardinal axis and the
-    // resulting drawing would not match the actual shader clip.
+    // resulting drawing would not match the actual shader clip. Using
+    // status='error' (not 'idle') so the Section2DPanel surfaces the reason
+    // to the user instead of looking like "nothing happened".
     if (sectionPlane.normal !== undefined) {
       setDrawing(null);
-      setDrawingStatus('idle');
+      setDrawingStatus('error');
       setDrawingError('2D drawing is not available for custom face-picked planes. Switch to Down/Front/Side to generate.');
       return;
     }
@@ -579,7 +581,12 @@ export function useDrawingGeneration({
     normalKey: sectionPlane.normal ? sectionPlane.normal.join(',') : '',
   });
   const isGeneratingRef = useRef(false);
-  const latestSectionRef = useRef({ axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped });
+  const latestSectionRef = useRef<{ axis: 'down' | 'front' | 'side'; position: number; flipped: boolean; normalKey: string }>({
+    axis: sectionPlane.axis,
+    position: sectionPlane.position,
+    flipped: sectionPlane.flipped,
+    normalKey: sectionPlane.normal ? sectionPlane.normal.join(',') : '',
+  });
   const [isRegenerating, setIsRegenerating] = useState(false);
 
   // Stable regenerate function that handles overlapping calls
@@ -602,12 +609,15 @@ export function useDrawingGeneration({
       isGeneratingRef.current = false;
       setIsRegenerating(false);
 
-      // Check if section changed while we were generating
+      // Check if section changed while we were generating — including
+      // transitions into/out of custom-normal mode (face-pick), which
+      // axis/position/flipped alone can't express.
       const current = latestSectionRef.current;
       if (
         current.axis !== targetSection.axis ||
         current.position !== targetSection.position ||
-        current.flipped !== targetSection.flipped
+        current.flipped !== targetSection.flipped ||
+        current.normalKey !== targetSection.normalKey
       ) {
         // Position changed during generation - regenerate immediately with latest
         // Use microtask to avoid blocking
@@ -623,8 +633,15 @@ export function useDrawingGeneration({
   const normalKey = sectionPlane.normal ? sectionPlane.normal.join(',') : '';
 
   useEffect(() => {
-    // Always update latest section ref (even if generating)
-    latestSectionRef.current = { axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped };
+    // Always update latest section ref (even if generating) — include the
+    // normal so the in-flight completion check can notice custom-plane
+    // transitions.
+    latestSectionRef.current = {
+      axis: sectionPlane.axis,
+      position: sectionPlane.position,
+      flipped: sectionPlane.flipped,
+      normalKey,
+    };
 
     // Check if section plane actually changed from last processed
     const prev = sectionRef.current;

@@ -7,6 +7,7 @@
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { planeDistanceForPosition } from './section-math.js';
 
 export interface SectionPlaneRenderOptions {
   axis: 'down' | 'front' | 'side';  // Semantic axis names: down (Y), front (Z), side (X)
@@ -314,7 +315,13 @@ export class SectionPlaneRenderer {
     uniforms[19] = 0.25;
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
-    // Draw section plane with preview pipeline (respects depth)
+    // Draw section plane with preview pipeline (respects depth). Even for
+    // custom-normal planes with clipping enabled we intentionally stay on
+    // this pipeline — the shader has already discarded the +normal
+    // half-space, so the quad is visible through the "hole" left by the
+    // cut, anchored on the actual clip boundary. Switching to the
+    // always-on-top cutPipeline would paint the quad over the kept
+    // geometry and hide whatever the user is trying to see.
     pass.setPipeline(this.previewPipeline!);
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.vertexBuffer);
@@ -431,24 +438,10 @@ export class SectionPlaneRenderer {
     }
     nx /= nlen; ny /= nlen; nz /= nlen;
 
-    // Project the 8 AABB corners onto the unit normal to get the valid
-    // distance range, then interpolate via `position` (0-100%). Matches
-    // the main renderer's mapping so the gizmo sits exactly on the clip.
-    let minP = Infinity;
-    let maxP = -Infinity;
-    for (const cx of [min.x, max.x]) {
-      for (const cy of [min.y, max.y]) {
-        for (const cz of [min.z, max.z]) {
-          const pr = cx * nx + cy * ny + cz * nz;
-          if (pr < minP) minP = pr;
-          if (pr > maxP) maxP = pr;
-        }
-      }
-    }
-    const rng = maxP - minP;
-    const d = rng > 1e-6
-      ? minP + (Math.min(100, Math.max(0, position)) / 100) * rng
-      : minP;
+    // Shared helper: matches the main renderer's bounds-projection mapping
+    // exactly, so the gizmo quad sits on the shader clip for every slider
+    // position.
+    const d = planeDistanceForPosition(bounds, [nx, ny, nz], position);
 
     // Foot of the perpendicular from the bounds centre projected onto the
     // plane — keeps the gizmo anchored near the model even when the plane

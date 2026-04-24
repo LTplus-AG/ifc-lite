@@ -45,30 +45,46 @@ export function SectionOverlay() {
     rectH: number;
   } | null>(null);
 
-  // Clamp the stored position back inside the parent rect on resize so a
-  // panel dragged near the edge doesn't float off-screen when the viewport
-  // shrinks (window resize, drawing panel opening, etc.).
+  // Re-clamp the stored position whenever either the position OR the parent
+  // element changes size — so a panel dragged near the edge doesn't float
+  // off-screen when the viewport shrinks (2D drawing panel opens, window
+  // resize, etc.). Uses a ResizeObserver on the parent and a window resize
+  // listener; the clamp itself is idempotent (uses the functional setState
+  // form and returns `prev` unchanged when already inside bounds), so re-
+  // running it on `panelPos` change doesn't loop.
   useEffect(() => {
     if (!panelPos) return;
     const el = panelRef.current;
     const parent = el?.parentElement;
     if (!el || !parent) return;
-    const parentRect = parent.getBoundingClientRect();
-    const panelRect = el.getBoundingClientRect();
-    const maxX = Math.max(PANEL_DRAG_MARGIN_PX, parentRect.width - panelRect.width - PANEL_DRAG_MARGIN_PX);
-    const maxY = Math.max(PANEL_DRAG_MARGIN_PX, parentRect.height - panelRect.height - PANEL_DRAG_MARGIN_PX);
-    const clamped = {
-      x: Math.min(maxX, Math.max(PANEL_DRAG_MARGIN_PX, panelPos.x)),
-      y: Math.min(maxY, Math.max(PANEL_DRAG_MARGIN_PX, panelPos.y)),
-    };
-    if (clamped.x !== panelPos.x || clamped.y !== panelPos.y) {
-      setPanelPos(clamped);
-    }
-    // We intentionally do NOT depend on panelPos here to avoid a feedback loop;
-    // this runs whenever panelPos changes (React's normal effect schedule) and
-    // the clamp is idempotent.
 
-  }, [panelPos]);
+    const clampNow = () => {
+      const parentRect = parent.getBoundingClientRect();
+      const panelRect = el.getBoundingClientRect();
+      const maxX = Math.max(PANEL_DRAG_MARGIN_PX, parentRect.width - panelRect.width - PANEL_DRAG_MARGIN_PX);
+      const maxY = Math.max(PANEL_DRAG_MARGIN_PX, parentRect.height - panelRect.height - PANEL_DRAG_MARGIN_PX);
+      setPanelPos((prev) => {
+        if (!prev) return prev;
+        const clamped = {
+          x: Math.min(maxX, Math.max(PANEL_DRAG_MARGIN_PX, prev.x)),
+          y: Math.min(maxY, Math.max(PANEL_DRAG_MARGIN_PX, prev.y)),
+        };
+        return clamped.x === prev.x && clamped.y === prev.y ? prev : clamped;
+      });
+    };
+
+    clampNow();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(clampNow) : null;
+    ro?.observe(parent);
+    window.addEventListener('resize', clampNow);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', clampNow);
+    };
+    // Depend on a boolean so we set up / tear down the observer only on the
+    // null↔non-null edge — further updates are handled inside clampNow via
+    // the functional setPanelPos.
+  }, [panelPos !== null]);
 
   const handleDragPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // Only left-button drags; ignore right-click, touch pan, etc.

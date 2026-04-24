@@ -216,6 +216,26 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPlane.axis, 'front');
     });
 
+    it('should set flipped when the picked normal points along the negative side of the dominant axis', () => {
+      // Picking the underside of a slab: outward normal points -Y. The
+      // cardinal fallback collapses to 'down' (+Y), so `flipped` must be
+      // true so axis+flipped describes the same cut direction as the
+      // actual custom plane.
+      state.setSectionPlaneFromFace([0, -1, 0], 50);
+      assert.strictEqual(state.sectionPlane.axis, 'down');
+      assert.strictEqual(state.sectionPlane.flipped, true);
+
+      // And +Y should leave flipped clear.
+      state.setSectionPlaneFromFace([0, 1, 0], 50);
+      assert.strictEqual(state.sectionPlane.axis, 'down');
+      assert.strictEqual(state.sectionPlane.flipped, false);
+
+      // West-facing wall (outward normal -X) should map to side+flipped.
+      state.setSectionPlaneFromFace([-0.99, 0.05, 0.0], 50);
+      assert.strictEqual(state.sectionPlane.axis, 'side');
+      assert.strictEqual(state.sectionPlane.flipped, true);
+    });
+
     it('should disarm pick mode after a successful pick', () => {
       state.setSectionPickMode(true);
       state.setSectionPlaneFromFace([0, 1, 0], 50);

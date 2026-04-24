@@ -158,20 +158,23 @@ const getDefaultSectionPlane = (): SectionPlane => ({
 
 /**
  * Map an arbitrary world-space unit normal to the closest cardinal axis
- * ('down' = Y, 'front' = Z, 'side' = X). Used so downstream code that still
- * reads `sectionPlane.axis` (drawings export, BCF snapshots) continues to
- * work with face-picked planes — it gets the nearest axis approximation
- * rather than a runtime crash.
+ * ('down' = +Y, 'front' = +Z, 'side' = +X) **and** indicate whether the
+ * picked normal points along the negative side of that cardinal. Used so
+ * downstream code that still reads `sectionPlane.axis + flipped` (drawings
+ * export, BCF snapshots, view controls) continues to describe the same cut
+ * direction as the active custom plane — without this, picking a face whose
+ * outward normal points -X (e.g. the west exterior wall) would degrade to
+ * `axis: 'side'` (+X) without `flipped`, inverting the snapshot.
  */
-function nearestCardinalAxis(
+function nearestCardinalAxisWithSign(
   normal: [number, number, number],
-): SectionPlaneAxis {
+): { axis: SectionPlaneAxis; flipped: boolean } {
   const ax = Math.abs(normal[0]);
   const ay = Math.abs(normal[1]);
   const az = Math.abs(normal[2]);
-  if (ay >= ax && ay >= az) return 'down';
-  if (ax >= az) return 'side';
-  return 'front';
+  if (ay >= ax && ay >= az) return { axis: 'down',  flipped: normal[1] < 0 };
+  if (ax >= az)             return { axis: 'side',  flipped: normal[0] < 0 };
+  return                          { axis: 'front', flipped: normal[2] < 0 };
 }
 
 export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice> = (set) => ({
@@ -265,10 +268,15 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     }
     const unit: [number, number, number] = [nx / len, ny / len, nz / len];
     const clampedPosition = Math.min(100, Math.max(0, Number(position) || 0));
+    const cardinal = nearestCardinalAxisWithSign(unit);
     return {
       sectionPlane: {
         ...state.sectionPlane,
-        axis: nearestCardinalAxis(unit),
+        axis: cardinal.axis,
+        // Preserve the picked half-space for any downstream consumer that
+        // still reads axis + flipped instead of `normal`. Custom-normal
+        // renderer path is unaffected — the shader uses `normal` directly.
+        flipped: cardinal.flipped,
         normal: unit,
         position: clampedPosition,
         enabled: true,

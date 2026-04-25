@@ -122,15 +122,36 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
             let mut ny = Vec::with_capacity(vert_count);
             let mut nz = Vec::with_capacity(vert_count);
 
+            // Some IFC pipelines (e.g. advanced_brep) yield meshes with positions
+            // but no normals. The schema below requires non-null normal columns,
+            // so pad with zeros and let the client recompute them from positions.
+            let has_normals = mesh.normals.len() == mesh.positions.len();
+            if !has_normals && !mesh.normals.is_empty() {
+                tracing::warn!(
+                    express_id = mesh.express_id,
+                    ifc_type = %mesh.ifc_type,
+                    positions = mesh.positions.len(),
+                    normals = mesh.normals.len(),
+                    "Mesh normals length mismatch; emitting zero normals"
+                );
+            }
+
             for i in 0..vert_count {
                 // Position: Z-up to Y-up transform
                 px.push(mesh.positions[i * 3]); // X stays the same
                 py.push(mesh.positions[i * 3 + 2]); // New Y = old Z (vertical)
                 pz.push(-mesh.positions[i * 3 + 1]); // New Z = -old Y (depth)
-                                                     // Normal: Same transform
-                nx.push(mesh.normals[i * 3]); // X stays the same
-                ny.push(mesh.normals[i * 3 + 2]); // New Y = old Z
-                nz.push(-mesh.normals[i * 3 + 1]); // New Z = -old Y
+
+                if has_normals {
+                    // Normal: Same transform as position
+                    nx.push(mesh.normals[i * 3]); // X stays the same
+                    ny.push(mesh.normals[i * 3 + 2]); // New Y = old Z
+                    nz.push(-mesh.normals[i * 3 + 1]); // New Z = -old Y
+                } else {
+                    nx.push(0.0);
+                    ny.push(0.0);
+                    nz.push(0.0);
+                }
             }
             (px, py, pz, nx, ny, nz)
         })
@@ -347,6 +368,28 @@ mod tests {
             data.len() < 10000,
             "Expected compact output, got {} bytes",
             data.len()
+        );
+    }
+
+    /// Regression test for #586: meshes with positions but no normals
+    /// (e.g. `advanced_brep.ifc`) used to panic with "index out of bounds"
+    /// inside the rayon worker, taking down the server process.
+    #[test]
+    fn test_serialize_mesh_without_normals() {
+        let meshes = vec![MeshData::new(
+            42,
+            "IfcAdvancedBrep".to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+            Vec::new(), // no normals — must not panic
+            vec![0, 1, 2],
+            [0.8, 0.8, 0.8, 1.0],
+        )];
+
+        let result = serialize_to_parquet(&meshes);
+        assert!(
+            result.is_ok(),
+            "serialize_to_parquet should not panic on empty normals: {:?}",
+            result.err()
         );
     }
 }

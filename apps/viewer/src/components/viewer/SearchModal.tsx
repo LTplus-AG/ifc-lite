@@ -139,17 +139,26 @@ export function SearchModal() {
     return () => window.removeEventListener('keydown', handler);
   }, [toggleSearchModal]);
 
-  /** Record the query in recents the first time the modal actually has a
-   *  non-empty query at the moment it closes — mirrors what the inline
-   *  does on Enter-commit without requiring the user to commit a row. */
-  const hadNonEmptyOnOpenRef = useRef(false);
+  /**
+   * Record the query in recents on the modal-close *transition* — once
+   * per close, with the final query at that moment. We watch only
+   * `searchModalOpen` (not `searchQuery`) so typing in the inline bar
+   * while the modal is closed never fires this effect; without that
+   * gate, every keystroke in the inline bar (which shares `searchQuery`
+   * with the modal) would push a partial-prefix recent.
+   *
+   * `prevOpenRef` distinguishes the "opened then closed" transition
+   * from the initial mount where `searchModalOpen` is already false.
+   */
+  const prevOpenRef = useRef(searchModalOpen);
   useEffect(() => {
-    if (searchModalOpen) {
-      hadNonEmptyOnOpenRef.current = searchQuery.trim().length > 0;
-      return;
-    }
-    // Modal just closed — if a query was typed during the session, record it.
-    if (hadNonEmptyOnOpenRef.current || searchQuery.trim().length > 0) {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = searchModalOpen;
+    if (wasOpen && !searchModalOpen) {
+      // Use the latest searchQuery via a fresh read — depending on it
+      // would re-fire this effect on every keystroke. Since the close
+      // transition is what we care about, the latest value at close
+      // time is the right thing to record.
       const q = searchQuery.trim();
       if (q) pushRecentSearch(q);
     }

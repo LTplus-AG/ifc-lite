@@ -255,6 +255,15 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
       const next = new Set(current);
       if (next.has(modelId)) next.delete(modelId);
       else next.add(modelId);
+      // Prune ids that no longer correspond to live models. Without
+      // this, the persisted set accumulates garbage entries across
+      // model load/unload cycles — every removed model leaves its id
+      // in `next` permanently because the collapse check below only
+      // walks `availableModelIds` and never sees the orphan.
+      const availSet = new Set(availableModelIds);
+      for (const id of Array.from(next)) {
+        if (!availSet.has(id)) next.delete(id);
+      }
       // If the user has re-included every available model, collapse back
       // to null so the "all included" default re-applies when a new model
       // loads later.

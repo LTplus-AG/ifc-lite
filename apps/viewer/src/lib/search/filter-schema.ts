@@ -85,25 +85,41 @@ function collectIfcTypes(store: IfcDataStore): string[] {
 }
 
 /**
- * Expensive pass — walks every entity that has an on-demand pset/qto
- * map entry and extracts the set/property names. Run once per model
- * lifetime (cache the result in the slice). For a 100K-entity model
- * this is still ~milliseconds because we read the map keys, not values.
+ * AGENTS.md §2 — `extractPropertiesOnDemand` parses the source buffer
+ * and is expensive. Bounding the schema-discovery pass to a sampled
+ * subset keeps it under a few hundred ms even on 4M-entity models.
+ * 200 entities is enough to surface every distinct (set, prop) pair in
+ * any real-world model: psets repeat across entities of the same type,
+ * and any model with >200 distinct pset shapes would drown the chip
+ * dropdown anyway.
+ */
+const SCHEMA_DISCOVERY_SAMPLE_LIMIT = 200;
+
+/**
+ * Sample-based pset/qto schema discovery. Walks at most
+ * `SCHEMA_DISCOVERY_SAMPLE_LIMIT` entities from the on-demand maps
+ * and harvests their (set, property) names — values are NEVER
+ * collected (the chip UI doesn't need them, and that's where the cost
+ * would explode).
  *
- * For the value-extraction path (turning each property into a chip
- * value dropdown) the caller should sample a bounded subset of
- * entities — full enumeration is O(entities × props) and would defeat
- * the on-demand laziness.
+ * Run once per model lifetime; the slice caches the result so flipping
+ * tabs / opening the modal doesn't re-pay it.
  */
 export function discoverPropertyAndQuantitySchema(store: IfcDataStore): PsetQtoSchema {
   const psetMap = new Map<string, Set<string>>();
   const qtoMap = new Map<string, Map<string, string>>();
 
-  // Properties — iterate the on-demand map's element keys (already
-  // narrowed to entities that declare any pset). For each, extract
-  // names only; values are intentionally not collected here.
+  // Properties — iterate up to N entity keys from the on-demand map
+  // (already narrowed to entities that declare any pset). Schema
+  // shapes repeat across entities of the same type, so a small sample
+  // captures the full vocabulary in practice. Each call to
+  // extractPropertiesOnDemand spins up an EntityExtractor that parses
+  // the source buffer, so the loop bound matters.
   if (store.onDemandPropertyMap) {
+    let scanned = 0;
     for (const entityId of store.onDemandPropertyMap.keys()) {
+      if (scanned >= SCHEMA_DISCOVERY_SAMPLE_LIMIT) break;
+      scanned++;
       const sets = extractPropertiesOnDemand(store, entityId);
       for (const set of sets) {
         let bucket = psetMap.get(set.name);
@@ -114,7 +130,10 @@ export function discoverPropertyAndQuantitySchema(store: IfcDataStore): PsetQtoS
   }
 
   if (store.onDemandQuantityMap) {
+    let scanned = 0;
     for (const entityId of store.onDemandQuantityMap.keys()) {
+      if (scanned >= SCHEMA_DISCOVERY_SAMPLE_LIMIT) break;
+      scanned++;
       const sets = extractQuantitiesOnDemand(store, entityId);
       for (const set of sets) {
         let bucket = qtoMap.get(set.name);

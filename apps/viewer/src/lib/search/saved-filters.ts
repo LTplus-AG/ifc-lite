@@ -49,6 +49,10 @@ function safeStorage(): StorageLike | null {
     ls.removeItem(probe);
     return ls;
   } catch {
+    /* localStorage unavailable (private browsing, sandboxed iframe,
+     * Safari quota probe failure). The catch is intentional — feature
+     * silently degrades to in-memory only; a thrown error here would
+     * crash the modal on every open. */
     return null;
   }
 }

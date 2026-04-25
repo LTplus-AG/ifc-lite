@@ -155,17 +155,41 @@ export interface FederatedEvaluateOptions extends Omit<EvaluateOptions, 'candida
   onProgress?: (scanned: number, total: number) => void;
 }
 
+export interface FederatedEvaluateResult {
+  /**
+   * Concatenated matches (model order preserved, per-model the
+   * iteration order — bucket array index when prefilter applied,
+   * expressId column index otherwise). Callers that need score-or-name
+   * ordering should sort; we don't pre-sort because the output drives
+   * a user-visible result table where filtering predicates, not
+   * relevance ranking, decide membership.
+   */
+  matches: FilteredElement[];
+  /**
+   * True when the evaluator stopped early because the result count hit
+   * the configured `limit` while there were unscanned entities. False
+   * when the entire iteration source completed (even if `matches.length`
+   * happens to equal `limit` exactly — the cap was met without
+   * truncation, so the caller should NOT show a "limited" badge).
+   */
+  truncated: boolean;
+  /** Total entities scanned across all models. */
+  scanned: number;
+}
+
 /**
- * Evaluate `rules` across multiple federated models, producing a single
- * sorted result list. Async chunked + cancellable + progress-reporting.
+ * Evaluate `rules` across multiple federated models. Async chunked +
+ * cancellable + progress-reporting. Returns the matches plus an
+ * explicit `truncated` flag so callers can distinguish "exact cap hit"
+ * from "stopped mid-scan".
  */
 export async function evaluateFilterRulesFederated(
   models: ReadonlyArray<{ id: string; store: IfcDataStore | null }>,
   rules: readonly FilterRule[],
   combinator: Combinator,
   options: FederatedEvaluateOptions = {},
-): Promise<FilteredElement[]> {
-  if (rules.length === 0) return [];
+): Promise<FederatedEvaluateResult> {
+  if (rules.length === 0) return { matches: [], truncated: false, scanned: 0 };
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
@@ -220,14 +244,20 @@ export async function evaluateFilterRulesFederated(
       for (let i = 0; i < arr.length && out.length < limit; i += chunkSize) {
         if (signal?.aborted) throwAbort(signal);
         const end = Math.min(i + chunkSize, arr.length);
+        let processedInChunk = 0;
         for (let j = i; j < end; j++) {
+          processedInChunk++;
           const expressId = arr[j];
           if (!expressId) continue;
           if (!evaluateOneEntity(ctx, expressId, orderedRules, combinator)) continue;
           out.push(buildResult(plan.modelId, ctx, expressId));
           if (out.length >= limit) break;
         }
-        scanned += end - i;
+        // Count only entities actually visited — without this, a break
+        // on `limit` mid-chunk would still credit the WHOLE chunk to
+        // `scanned`, hiding truncation (`scanned === grandTotal` while
+        // unscanned entries remain).
+        scanned += processedInChunk;
         options.onProgress?.(scanned, totalKnown ? grandTotal : -1);
         if (end < arr.length && out.length < limit) await yieldToEventLoop();
       }
@@ -253,7 +283,13 @@ export async function evaluateFilterRulesFederated(
     }
   }
 
-  return out;
+  // Truncation is "we stopped because we hit the cap AND there was
+  // still work to do." Reaching `limit` exactly when the iteration
+  // also completes naturally is NOT truncation — every match was
+  // emitted, the cap just happened to coincide. The signal drives the
+  // UI's "limited to N" badge.
+  const truncated = totalKnown ? out.length >= limit && scanned < grandTotal : out.length >= limit;
+  return { matches: out, truncated, scanned };
 }
 
 // ── Iteration source: index prefilter (AND + op:in) ──────────────────────────

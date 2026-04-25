@@ -154,8 +154,8 @@ describe('evaluateFilterRulesFederated', () => {
       [Rule.ifcType(['IfcWall'])],
       'AND',
     );
-    assert.strictEqual(out.length, 3);
-    const modelIds = new Set(out.map((r) => r.modelId));
+    assert.strictEqual(out.matches.length, 3);
+    const modelIds = new Set(out.matches.map((r) => r.modelId));
     assert.deepStrictEqual([...modelIds].sort(), ['a', 'b']);
   });
 
@@ -168,7 +168,7 @@ describe('evaluateFilterRulesFederated', () => {
       'AND',
       { limit: 3 },
     );
-    assert.strictEqual(out.length, 3);
+    assert.strictEqual(out.matches.length, 3);
   });
 });
 
@@ -275,7 +275,7 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
     );
     // Two narrow hits — one wall from `a`, one door from `b`.
     assert.deepStrictEqual(
-      out.map((r) => `${r.modelId}:${r.expressId}`).sort(),
+      out.matches.map((r) => `${r.modelId}:${r.expressId}`).sort(),
       ['a:10', 'b:101'],
     );
   });
@@ -292,7 +292,7 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
       'AND',
       { candidateExpressIdsByModel: candidatesByModel },
     );
-    assert.deepStrictEqual(out, []);
+    assert.deepStrictEqual(out.matches, []);
   });
 
   it('omitting the map keeps the legacy full-scan behaviour', async () => {
@@ -302,7 +302,7 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
       [Rule.ifcType(['IfcWall'])],
       'AND',
     );
-    assert.deepStrictEqual(out.map((r) => r.expressId).sort(), [10, 20]);
+    assert.deepStrictEqual(out.matches.map((r) => r.expressId).sort(), [10, 20]);
   });
 
   it('storeyNameOf / predefinedTypeOf flow through the federated wrapper', async () => {
@@ -313,7 +313,7 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
       'AND',
       { storeyNameOf: (id) => (id === 10 ? 'Level 1' : '') },
     );
-    assert.deepStrictEqual(out.map((r) => r.expressId), [10]);
+    assert.deepStrictEqual(out.matches.map((r) => r.expressId), [10]);
   });
 });
 
@@ -434,7 +434,7 @@ describe('evaluateFilterRulesFederated — large-model scaling', () => {
       },
     );
     // 50_000 / 250 = 200 walls.
-    assert.strictEqual(out.length, 200);
+    assert.strictEqual(out.matches.length, 200);
     // Progress total is the SCAN size (the bucket, not the full table).
     // Without the prefilter this would have been 50_000.
     assert.strictEqual(lastTotal, 200);
@@ -466,7 +466,7 @@ describe('evaluateFilterRulesFederated — large-model scaling', () => {
     // the evaluator doesn't dedupe; it just scans, which produces 10
     // hits since 'special' IS one of the walls). Either way the test
     // verifies OR scans the full table.
-    assert.strictEqual(out.length, 10);
+    assert.strictEqual(out.matches.length, 10);
     assert.strictEqual(lastTotal, 1_000);
   });
 });
@@ -530,8 +530,29 @@ describe('evaluateFilterRulesFederated — async chunking, abort, progress', () 
         onProgress: (scanned) => { lastScanned = scanned; },
       },
     );
-    assert.strictEqual(out.length, 1);
+    assert.strictEqual(out.matches.length, 1);
     // We should have stopped before scanning all four entities.
     assert.ok(lastScanned < rows.length, `expected early termination, scanned ${lastScanned}`);
+  });
+
+  it('truncated flag distinguishes "exact cap hit" from "stopped mid-scan"', async () => {
+    const store = buildStore(rows); // 2 walls; limit=2 means every match emitted.
+    const exactCap = await evaluateFilterRulesFederated(
+      [{ id: 'm', store }],
+      [Rule.ifcType(['IfcWall'])],
+      'AND',
+      { limit: 2 },
+    );
+    assert.strictEqual(exactCap.matches.length, 2);
+    assert.strictEqual(exactCap.truncated, false, 'exact cap with no remaining work is NOT truncation');
+
+    const trueLimit = await evaluateFilterRulesFederated(
+      [{ id: 'm', store }],
+      [Rule.ifcType(['IfcWall'])],
+      'AND',
+      { limit: 1 },
+    );
+    assert.strictEqual(trueLimit.matches.length, 1);
+    assert.strictEqual(trueLimit.truncated, true, 'stopped mid-scan with unscanned entries IS truncation');
   });
 });

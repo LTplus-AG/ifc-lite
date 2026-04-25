@@ -32,6 +32,9 @@ function safeStorage(): StorageLike | null {
     ls.removeItem(probe);
     return ls;
   } catch {
+    /* localStorage unavailable (private browsing, sandboxed iframe,
+     * Safari quota probe failure). Silently degrade to no-recents
+     * rather than crashing the search bar on every render. */
     return null;
   }
 }

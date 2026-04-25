@@ -18,8 +18,8 @@ const sample = {
 describe('formatCsv', () => {
   it('writes a header row plus a body that contains every row', () => {
     const csv = formatCsv(sample);
-    // Header line is the first physical line — easy to assert on.
-    assert.ok(csv.startsWith('express_id,name,is_external,note\n'));
+    // RFC-4180 CRLF line endings — Excel and strict parsers require it.
+    assert.ok(csv.startsWith('express_id,name,is_external,note\r\n'));
     // Each row's first cell value should appear in the CSV body.
     for (const row of sample.rows) {
       assert.ok(csv.includes(String(row[0])), `CSV missing express_id ${row[0]}`);
@@ -42,14 +42,14 @@ describe('formatCsv', () => {
     assert.ok(csv.includes(',,has newline'));
   });
 
-  it('terminates with a newline (POSIX-friendly)', () => {
+  it('terminates with CRLF (RFC 4180)', () => {
     const csv = formatCsv({ columns: ['a'], rows: [['1']] });
-    assert.ok(csv.endsWith('\n'));
+    assert.ok(csv.endsWith('\r\n'));
   });
 
   it('handles empty result sets (header only)', () => {
     const csv = formatCsv({ columns: ['a', 'b'], rows: [] });
-    assert.strictEqual(csv, 'a,b\n');
+    assert.strictEqual(csv, 'a,b\r\n');
   });
 });
 

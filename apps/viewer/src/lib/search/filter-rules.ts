@@ -179,17 +179,61 @@ export const Rule = {
 
 // ── JSON guards ──────────────────────────────────────────────────────────────
 
+const SET_OPS_VALID: ReadonlySet<string> = new Set(['in', 'notIn']);
+const STRING_OPS_VALID: ReadonlySet<string> = new Set([
+  'eq', 'ne', 'contains', 'notContains', 'startsWith',
+]);
+const NUMERIC_OPS_VALID: ReadonlySet<string> = new Set([
+  'eq', 'ne', 'gt', 'gte', 'lt', 'lte',
+]);
+const VALUE_OPS_VALID: ReadonlySet<string> = new Set([
+  'eq', 'ne', 'contains', 'notContains',
+  'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
+]);
+
+function isStringArray(x: unknown): x is string[] {
+  return Array.isArray(x) && x.every((s) => typeof s === 'string');
+}
+
+/**
+ * Validate the per-kind shape of a candidate rule. The store-side
+ * action types guarantee well-formed rules at runtime; this guard
+ * exists to defend the *deserialise* boundary — `parseFilterRules`
+ * gates restored localStorage presets in `saved-filters.ts`, and a
+ * tampered or malformed payload like `{ kind: 'ifcType' }` (no
+ * `values`) would otherwise reach the evaluator's `rule.values.some(…)`
+ * and crash. Per-kind narrowing keeps the surface tight.
+ */
 export function isFilterRule(value: unknown): value is FilterRule {
   if (typeof value !== 'object' || value === null) return false;
-  const kind = (value as { kind?: unknown }).kind;
-  return (
-    kind === 'storey' ||
-    kind === 'ifcType' ||
-    kind === 'predefinedType' ||
-    kind === 'name' ||
-    kind === 'property' ||
-    kind === 'quantity'
-  );
+  const o = value as Record<string, unknown>;
+  switch (o.kind) {
+    case 'storey':
+    case 'ifcType':
+    case 'predefinedType':
+      return isStringArray(o.values) && typeof o.op === 'string' && SET_OPS_VALID.has(o.op);
+    case 'name':
+      return typeof o.value === 'string' && typeof o.op === 'string' && STRING_OPS_VALID.has(o.op);
+    case 'property':
+      return (
+        typeof o.setName === 'string' &&
+        typeof o.propertyName === 'string' &&
+        typeof o.value === 'string' &&
+        typeof o.op === 'string' &&
+        VALUE_OPS_VALID.has(o.op)
+      );
+    case 'quantity':
+      return (
+        typeof o.setName === 'string' &&
+        typeof o.quantityName === 'string' &&
+        typeof o.value === 'number' &&
+        Number.isFinite(o.value) &&
+        typeof o.op === 'string' &&
+        NUMERIC_OPS_VALID.has(o.op)
+      );
+    default:
+      return false;
+  }
 }
 
 export function parseFilterRules(raw: unknown): FilterRule[] {

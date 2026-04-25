@@ -116,4 +116,37 @@ describe('isFilterRule / parseFilterRules', () => {
     assert.strictEqual(parsed.length, 1);
     assert.strictEqual(parsed[0].kind, 'ifcType');
   });
+
+  it('rejects rules with the right kind but missing required fields', () => {
+    // Tampered localStorage payloads — saved-filters round-trips through
+    // parseFilterRules, so a `{kind:'ifcType'}` without values would
+    // crash the evaluator at `rule.values.some(...)`. The shape guard
+    // catches it at the deserialise boundary.
+    assert.strictEqual(isFilterRule({ kind: 'ifcType' }), false);
+    assert.strictEqual(isFilterRule({ kind: 'ifcType', values: 'not-array', op: 'in' }), false);
+    assert.strictEqual(isFilterRule({ kind: 'ifcType', values: [1, 2], op: 'in' }), false);
+    assert.strictEqual(isFilterRule({ kind: 'ifcType', values: [], op: 'bogus' }), false);
+
+    assert.strictEqual(isFilterRule({ kind: 'name' }), false);
+    assert.strictEqual(isFilterRule({ kind: 'name', value: 'x', op: 'unknown' }), false);
+
+    assert.strictEqual(isFilterRule({ kind: 'property', setName: 'P', propertyName: 'X' }), false);
+    assert.strictEqual(
+      isFilterRule({ kind: 'property', setName: 'P', propertyName: 'X', op: 'eq', value: 42 }),
+      false,
+      'value must be a string for property',
+    );
+
+    assert.strictEqual(isFilterRule({ kind: 'quantity', setName: 'Q', quantityName: 'V' }), false);
+    assert.strictEqual(
+      isFilterRule({ kind: 'quantity', setName: 'Q', quantityName: 'V', op: 'gt', value: '5' }),
+      false,
+      'quantity value must be a number',
+    );
+    assert.strictEqual(
+      isFilterRule({ kind: 'quantity', setName: 'Q', quantityName: 'V', op: 'gt', value: NaN }),
+      false,
+      'NaN is not a finite number',
+    );
+  });
 });

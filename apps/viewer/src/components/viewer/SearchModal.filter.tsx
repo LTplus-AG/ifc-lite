@@ -20,8 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { Play, AlertCircle, Download } from 'lucide-react';
+import { Play, Download } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -32,15 +31,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
 import { evaluateFilterRulesFederated } from '@/lib/search/filter-evaluate';
 import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { downloadResult } from '@/lib/search/result-export';
 import { SearchModalFilterBuilder } from './SearchModal.filter.builder';
-
-/** Rows per virtualizer page — tuned for the result table row height. */
-const RESULT_ROW_HEIGHT = 28;
+import { FilterErrorBox, FilterResultTable, RuleSummary } from './filter/result';
 const TEXT_HIT_LIMIT = 50_000;
 const FILTER_CHUNK_SIZE = 20_000;
 const DEFAULT_LIMIT = 5_000;
@@ -86,7 +82,16 @@ export function SearchModalFilter() {
 
   const activeModel = activeModelId ? models.get(activeModelId) : undefined;
   const activeStore = activeModel?.ifcDataStore ?? null;
-  const multiModel = models.size > 1;
+  // Count only models with a populated `ifcDataStore` — `models.size`
+  // includes entries that haven't finished parsing or that arrived
+  // metadata-only (server-loaded), so it would over-report the
+  // "filtering across N" count and the multi-model banner condition.
+  const evaluableModelCount = useMemo(() => {
+    let n = 0;
+    for (const m of models.values()) if (m.ifcDataStore) n++;
+    return n;
+  }, [models]);
+  const multiModel = evaluableModelCount > 1;
 
   // ── Run lifecycle: progress, cancel, limit-hit badge ──────────────────
   const runController = useRef<AbortController | null>(null);
@@ -154,7 +159,7 @@ export function SearchModalFilter() {
       }
 
       const limit = searchFilter.limit > 0 ? searchFilter.limit : DEFAULT_LIMIT;
-      const matched = await evaluateFilterRulesFederated(
+      const { matches, truncated } = await evaluateFilterRulesFederated(
         modelArgs,
         searchFilter.rules,
         searchFilter.combinator,
@@ -171,7 +176,7 @@ export function SearchModalFilter() {
       const columns = multi
         ? ['express_id', 'global_id', 'name', 'type', 'model_id']
         : ['express_id', 'global_id', 'name', 'type'];
-      const rows: unknown[][] = matched.map((m) =>
+      const rows: unknown[][] = matches.map((m) =>
         multi
           ? [m.expressId, m.globalId, m.name, m.ifcType, m.modelId]
           : [m.expressId, m.globalId, m.name, m.ifcType],
@@ -181,7 +186,10 @@ export function SearchModalFilter() {
         rows,
         runMs: Math.round(performance.now() - start),
       });
-      if (matched.length >= limit) setLimitHit(limit);
+      // Use the evaluator's explicit `truncated` signal — `matches.length
+      // === limit` alone misfires when the model genuinely has exactly
+      // that many real matches and every one was emitted.
+      if (truncated) setLimitHit(limit);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setSearchFilterError(err instanceof Error ? err.message : String(err));
@@ -368,7 +376,7 @@ export function SearchModalFilter() {
 
       {multiModel && (
         <div className="border-b bg-zinc-50 px-3 py-1.5 text-[11px] text-muted-foreground dark:bg-zinc-900/30">
-          Filtering across all {models.size} loaded models. Click any row to
+          Filtering across all {evaluableModelCount} loaded models. Click any row to
           select that element in the right model.
         </div>
       )}
@@ -382,133 +390,4 @@ export function SearchModalFilter() {
       />
     </div>
   );
-}
-
-// ── Sub-components ────────────────────────────────────────────────────
-
-function RuleSummary({
-  ruleCount,
-  combinator,
-  limit,
-}: {
-  ruleCount: number;
-  combinator: 'AND' | 'OR';
-  limit: number;
-}) {
-  if (ruleCount === 0) {
-    return (
-      <span className="text-muted-foreground italic">No rules — add one to run.</span>
-    );
-  }
-  return (
-    <span className="text-muted-foreground">
-      <span className="font-mono text-foreground">{ruleCount}</span>{' '}
-      rule{ruleCount === 1 ? '' : 's'}
-      <span className="mx-1">·</span>
-      <span className="font-mono">{combinator}</span>
-      <span className="mx-1">·</span>
-      limit{' '}
-      <span className="font-mono text-foreground">
-        {limit > 0 ? limit.toLocaleString() : '∞'}
-      </span>
-    </span>
-  );
-}
-
-function FilterErrorBox({ raw }: { raw: string }) {
-  return (
-    <div className="border-b bg-red-50/50 px-4 py-3 dark:bg-red-950/20">
-      <div className="flex items-start gap-2">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
-        <div className="min-w-0 flex-1 text-xs">
-          <div className="font-semibold text-red-900 dark:text-red-200">Filter failed</div>
-          <div className="mt-1 break-words text-red-800 dark:text-red-300">{raw}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface FilterResultTableProps {
-  result: { columns: string[]; rows: unknown[][] } | null;
-  selectionKeyIndex: number;
-  onRowClick: (row: unknown[]) => void;
-}
-
-function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResultTableProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({
-    count: result?.rows.length ?? 0,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => RESULT_ROW_HEIGHT,
-    overscan: 20,
-  });
-
-  if (!result) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        Add rules and click Run.
-      </div>
-    );
-  }
-
-  if (result.rows.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        0 matches — broaden the rules, lower the limit, or try OR.
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-1 min-h-0 flex-col">
-      <div className="flex items-center border-b bg-zinc-50/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:bg-zinc-900/30">
-        {result.columns.map((c) => (
-          <div key={c} className="flex-1 truncate px-2 font-mono">
-            {c}
-          </div>
-        ))}
-      </div>
-      <div ref={scrollRef} className="flex-1 overflow-auto">
-        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-          {virtualizer.getVirtualItems().map((vRow) => {
-            const row = result.rows[vRow.index];
-            const clickable = selectionKeyIndex >= 0;
-            return (
-              <div
-                key={vRow.key}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: vRow.size,
-                  transform: `translateY(${vRow.start}px)`,
-                }}
-                className={cn(
-                  'flex items-center border-b border-zinc-100 px-3 text-[11px] dark:border-zinc-900',
-                  clickable && 'cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800',
-                )}
-                onClick={() => clickable && onRowClick(row)}
-              >
-                {result.columns.map((_, i) => (
-                  <div key={i} className="flex-1 truncate px-2 font-mono">
-                    {formatCell(row[i])}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatCell(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'bigint') return v.toString();
-  if (typeof v === 'object') return JSON.stringify(v);
-  return String(v);
 }

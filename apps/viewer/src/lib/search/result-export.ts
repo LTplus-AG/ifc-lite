@@ -41,7 +41,11 @@ function escapeCsvCell(raw: string): string {
   return `"${raw.replace(/"/g, '""')}"`;
 }
 
-/** Serialize a result set to CSV (UTF-8). Trailing newline included. */
+/** Serialize a result set to CSV (UTF-8) with RFC-4180 CRLF line
+ *  endings. Trailing CRLF included. Excel and most strict CSV parsers
+ *  require CRLF; LF-only worked in tolerant parsers but failed in
+ *  Excel's "Get Data" import on some Windows configurations. */
+const CRLF = '\r\n';
 export function formatCsv(result: ExportResult): string {
   const lines: string[] = [];
   lines.push(result.columns.map((c) => escapeCsvCell(c)).join(','));
@@ -52,7 +56,7 @@ export function formatCsv(result: ExportResult): string {
     }
     lines.push(cells.join(','));
   }
-  return lines.join('\n') + '\n';
+  return lines.join(CRLF) + CRLF;
 }
 
 /** Serialize a result set to a pretty-printed JSON array of objects.

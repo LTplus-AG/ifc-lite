@@ -188,20 +188,15 @@ describe('searchSlice — filter rule actions', () => {
     store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
   });
 
-  it('starts in builder mode with the empty filter state', () => {
+  it('starts with the empty filter state', () => {
     const s = store.getState();
-    assert.strictEqual(s.searchSqlMode, 'builder');
     assert.deepStrictEqual(s.searchFilter.rules, []);
     assert.strictEqual(s.searchFilter.combinator, 'AND');
     assert.strictEqual(s.searchFilter.limit, 500);
     assert.strictEqual(s.searchFilterSchema.size, 0);
-  });
-
-  it('setSearchSqlMode flips between builder and editor', () => {
-    store.getState().setSearchSqlMode('editor');
-    assert.strictEqual(store.getState().searchSqlMode, 'editor');
-    store.getState().setSearchSqlMode('builder');
-    assert.strictEqual(store.getState().searchSqlMode, 'builder');
+    assert.strictEqual(s.searchFilterResult, null);
+    assert.strictEqual(s.searchFilterRunning, false);
+    assert.strictEqual(s.searchFilterError, null);
   });
 
   it('setFilterCombinator / setFilterLimit patch the filter state', () => {
@@ -276,37 +271,37 @@ describe('searchSlice — filter rule actions', () => {
   });
 });
 
-describe('searchSlice — SQL result/error pairing', () => {
+describe('searchSlice — Filter run result/error pairing', () => {
   let store: StoreApi<SearchSlice>;
 
   beforeEach(() => {
     store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
   });
 
-  it('setSearchSqlResult clears the prior error (success supersedes failure)', () => {
-    store.getState().setSearchSqlError('boom');
-    store.getState().setSearchSqlResult({ columns: ['a'], rows: [[1]], runMs: 5 });
-    assert.strictEqual(store.getState().searchSqlError, null);
-    assert.deepStrictEqual(store.getState().searchSqlResult?.columns, ['a']);
+  it('setSearchFilterResult clears the prior error (success supersedes failure)', () => {
+    store.getState().setSearchFilterError('boom');
+    store.getState().setSearchFilterResult({ columns: ['a'], rows: [[1]], runMs: 5 });
+    assert.strictEqual(store.getState().searchFilterError, null);
+    assert.deepStrictEqual(store.getState().searchFilterResult?.columns, ['a']);
   });
 
-  it('setSearchSqlError preserves the prior result (notebook semantics)', () => {
-    store.getState().setSearchSqlResult({ columns: ['a'], rows: [[1]], runMs: 5 });
-    store.getState().setSearchSqlError('boom');
+  it('setSearchFilterError preserves the prior result (notebook semantics)', () => {
+    store.getState().setSearchFilterResult({ columns: ['a'], rows: [[1]], runMs: 5 });
+    store.getState().setSearchFilterError('boom');
     // Error and result coexist — UI stacks the error above the last good
     // result. Without this, debugging a failed run loses the previous
     // table the user was reading.
-    assert.strictEqual(store.getState().searchSqlError, 'boom');
-    assert.deepStrictEqual(store.getState().searchSqlResult?.columns, ['a']);
+    assert.strictEqual(store.getState().searchFilterError, 'boom');
+    assert.deepStrictEqual(store.getState().searchFilterResult?.columns, ['a']);
   });
 
   it('callers can wipe both via explicit nulls', () => {
-    store.getState().setSearchSqlResult({ columns: ['a'], rows: [], runMs: 1 });
-    store.getState().setSearchSqlError('x');
-    store.getState().setSearchSqlResult(null);
-    store.getState().setSearchSqlError(null);
-    assert.strictEqual(store.getState().searchSqlError, null);
-    assert.strictEqual(store.getState().searchSqlResult, null);
+    store.getState().setSearchFilterResult({ columns: ['a'], rows: [], runMs: 1 });
+    store.getState().setSearchFilterError('x');
+    store.getState().setSearchFilterResult(null);
+    store.getState().setSearchFilterError(null);
+    assert.strictEqual(store.getState().searchFilterError, null);
+    assert.strictEqual(store.getState().searchFilterResult, null);
   });
 });
 

@@ -3,25 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Search state slice
+ * Search state slice.
  *
- * Inline-toolbar search bar state — query string, popover visibility,
- * keyboard-navigation index, plus the per-model Tier-1 search indexes
- * built post-load. The actual scan results are derived in SearchInline
- * via useMemo; keeping derived results out of the store avoids needless
- * re-renders elsewhere.
+ * Two surfaces — both backed by the same per-model Tier-1 indexes:
+ *   1. Inline toolbar field (Tier-0/Tier-1 fuzzy text scan).
+ *   2. Advanced modal with two tabs:
+ *        - Search: same Tier-0/Tier-1 scan, virtualised + chip filters
+ *          (matchField, model include).
+ *        - Filter: chip-based structured rules over the unified
+ *          `FilterRule[]` shape, evaluated by the in-memory path-B
+ *          evaluator. No DuckDB — Builder + run is the whole UI.
  *
- * Tier hierarchy:
- *   Tier-0 — linear scan over already-cached EntityTable columns
- *            (zero build cost; fallback while Tier-1 is building)
- *   Tier-1 — per-model inverted token index built after load
- *            (zero load hot-path cost; yielded in chunks)
- *   Tier-2 — path-B FilterRule[] runtime evaluator (no DuckDB needed)
- *   Tier-3 — DuckDB SQL (handled in the modal, layered on top)
- *
- * Tier-2 and Tier-3 share the unified `FilterRule[]` shape (see
- * `lib/search/filter-rules.ts`) so the chip builder can dispatch to
- * either engine without rebuilding state.
+ * The path-B evaluator is the only run path; the previous DuckDB
+ * editor / SQL emitter / Run SQL button were removed once it became
+ * clear the in-memory engine handles 4M-entity models with the index
+ * prefilter + cheap-first ordering + chunked yielding pattern.
  */
 
 import type { StateCreator } from 'zustand';
@@ -65,48 +61,38 @@ export interface SearchVimCycleState {
 export type SearchFieldFilter = MatchField | 'all';
 
 /**
- * Result from the most recent SQL run — kept as a flat snapshot so the
- * modal can re-render rows without holding onto the DuckDB row
- * iterators.
+ * Tabular result from a Filter run. Flat snapshot so the modal can
+ * re-render rows without holding live evaluator state.
  */
-export interface SearchSqlResult {
+export interface SearchFilterResult {
   columns: string[];
   rows: unknown[][];
   runMs: number;
 }
 
 /**
- * Sub-mode inside the SQL tab — Builder (chip UI) or Editor (raw SQL).
- * Flipping Builder → Editor copies the generated SQL into the editor as
- * a starting point; flipping back is read-only.
+ * Unified filter state — chip rules + AND/OR + result cap. Drives the
+ * path-B evaluator in `lib/search/filter-evaluate.ts`.
  */
-export type SearchSqlMode = 'builder' | 'editor';
-
-/**
- * Unified filter state — the single source of truth for the chip
- * builder. Both the SQL emitter (`generateSqlFromFilterRules`) and the
- * path-B evaluator (`evaluateFilterRulesFederated`) read this shape, so
- * the user can switch engines at run time without re-entering rules.
- */
-export interface SearchFilterState {
+export interface SearchFilterStateValue {
   rules: FilterRule[];
   combinator: Combinator;
-  /** Result cap. `0` = no LIMIT (skipped in SQL, ~5k default in path-B). */
+  /** Result cap. `0` = no cap (evaluator's internal default applies). */
   limit: number;
 }
 
-export function emptyFilterState(): SearchFilterState {
+export function emptyFilterState(): SearchFilterStateValue {
   return { rules: [], combinator: 'AND', limit: 500 };
 }
 
 /**
- * Per-model schema cache for chip dropdowns. Populated on demand by the
- * builder UI when the modal opens; cleared when a model is removed.
+ * Per-model filter-schema cache for chip dropdowns. Populated on demand
+ * when the modal opens; cleared when a model is removed.
  */
 export interface FilterSchemaCacheEntry {
-  /** Cheap pass — storeys + ifcTypes. Always populated when the entry exists. */
+  /** Cheap pass — storeys + ifcTypes. Always populated when entry exists. */
   basic: FilterSchema;
-  /** Expensive pass — pset/qto names. Lazily populated; null until requested. */
+  /** Expensive pass — pset / qto names. Lazy; null until first request. */
   psetQto: PsetQtoSchema | null;
 }
 
@@ -127,19 +113,16 @@ export interface SearchSlice {
   searchFieldFilter: SearchFieldFilter;
   /** Per-modelId include filter inside the modal. `null` means all models included. */
   searchModelFilter: Set<string> | null;
-  /** Persistent SQL editor buffer — survives tab switching within the modal. */
-  searchSqlQuery: string;
-  /** Latest successful SQL result (or null on fresh tab open / error). */
-  searchSqlResult: SearchSqlResult | null;
-  /** Whether a SQL run is currently in flight. */
-  searchSqlRunning: boolean;
-  /** Latest SQL error message — raw DuckDB text, rewritten for UI by callers. */
-  searchSqlError: string | null;
-  /** Active sub-mode inside the SQL tab (Builder vs Editor). */
-  searchSqlMode: SearchSqlMode;
-  /** Unified filter state — chip rules, combinator, limit. */
-  searchFilter: SearchFilterState;
-  /** Per-model filter schema cache. Lazy. */
+
+  /** Latest Filter run result (or null on fresh tab open / error). */
+  searchFilterResult: SearchFilterResult | null;
+  /** Whether a Filter run is currently in flight. */
+  searchFilterRunning: boolean;
+  /** Latest Filter error message — set when the evaluator throws. */
+  searchFilterError: string | null;
+  /** Filter rule state — chip rules, combinator, limit. */
+  searchFilter: SearchFilterStateValue;
+  /** Per-model filter-schema cache (lazy). */
   searchFilterSchema: Map<string, FilterSchemaCacheEntry>;
 
   setSearchQuery: (query: string) => void;
@@ -171,16 +154,18 @@ export interface SearchSlice {
   /** Clear model filter (null → all models included). */
   clearSearchModelFilter: () => void;
 
-  setSearchSqlQuery: (query: string) => void;
-  setSearchSqlRunning: (running: boolean) => void;
-  setSearchSqlResult: (result: SearchSqlResult | null) => void;
-  setSearchSqlError: (error: string | null) => void;
-
-  setSearchSqlMode: (mode: SearchSqlMode) => void;
+  // ── Filter run state ──────────────────────────────────────────────
+  setSearchFilterRunning: (running: boolean) => void;
+  /** Successful run — sets the result and clears any prior error
+   *  (the new run supersedes the old failure). */
+  setSearchFilterResult: (result: SearchFilterResult | null) => void;
+  /** Error path — keeps the prior result visible while showing the
+   *  error above it (notebook-style pairing). */
+  setSearchFilterError: (error: string | null) => void;
 
   // ── Filter-rule actions ───────────────────────────────────────────
   /** Replace the whole filter state — used by Reset and preset loading. */
-  setSearchFilter: (state: SearchFilterState) => void;
+  setSearchFilter: (state: SearchFilterStateValue) => void;
   setFilterCombinator: (combinator: Combinator) => void;
   setFilterLimit: (limit: number) => void;
   addFilterRule: (rule: FilterRule) => void;
@@ -204,11 +189,9 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchModalOpen: false,
   searchFieldFilter: 'all',
   searchModelFilter: null,
-  searchSqlQuery: '',
-  searchSqlResult: null,
-  searchSqlRunning: false,
-  searchSqlError: null,
-  searchSqlMode: 'builder',
+  searchFilterResult: null,
+  searchFilterRunning: false,
+  searchFilterError: null,
   searchFilter: emptyFilterState(),
   searchFilterSchema: new Map(),
 
@@ -284,18 +267,13 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
 
   clearSearchModelFilter: () => set({ searchModelFilter: null }),
 
-  setSearchSqlQuery: (searchSqlQuery) => set({ searchSqlQuery }),
-  setSearchSqlRunning: (searchSqlRunning) => set({ searchSqlRunning }),
-  // Notebook-style result/error pairing: a successful run clears the
-  // prior error (the new result supersedes it), but an error keeps the
-  // prior result on screen — matches DuckDB UI / Jupyter behaviour where
-  // each run displays independently and a failure doesn't invalidate
-  // the previous good output. Callers that explicitly want to wipe both
-  // can call `setSearchSqlResult(null)` then `setSearchSqlError(null)`.
-  setSearchSqlResult: (searchSqlResult) => set({ searchSqlResult, searchSqlError: null }),
-  setSearchSqlError: (searchSqlError) => set({ searchSqlError }),
-
-  setSearchSqlMode: (searchSqlMode) => set({ searchSqlMode }),
+  setSearchFilterRunning: (searchFilterRunning) => set({ searchFilterRunning }),
+  // Notebook-style pairing: a successful run clears the prior error
+  // (new result supersedes failure) but an error keeps the prior result
+  // on screen so the user doesn't lose their last good table while
+  // debugging.
+  setSearchFilterResult: (searchFilterResult) => set({ searchFilterResult, searchFilterError: null }),
+  setSearchFilterError: (searchFilterError) => set({ searchFilterError }),
 
   setSearchFilter: (searchFilter) => set({ searchFilter }),
 

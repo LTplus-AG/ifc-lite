@@ -5,14 +5,12 @@
 /**
  * Unified filter rule taxonomy.
  *
- * Ported from the Tauri-side `filter.rs` engine so the same shape drives
- * both the JS path-B runtime evaluator (`filter-evaluate.ts`) and the
- * DuckDB SQL emitter (`sql-builder.ts:generateSqlFromFilterRules`).
- *
- * The discriminated-union shape lets the chip UI serialize any rule as
- * a JSON object with a `"kind"` discriminator, mirroring serde's tagged
- * enum encoding. We use `kind` rather than `type` because `type` clashes
- * with the IFC type column name in the SQL emitter.
+ * Ported from the Tauri-side `filter.rs` engine and consumed by the
+ * in-memory path-B runtime evaluator (`filter-evaluate.ts`). The
+ * discriminated-union shape lets the chip UI serialise any rule as a
+ * JSON object with a `"kind"` discriminator, mirroring serde's tagged
+ * enum encoding. We use `kind` rather than `type` because `type`
+ * collides with the IFC `type` attribute name on element rows.
  */
 
 // ── Operator enums ────────────────────────────────────────────────────────────

@@ -3,22 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * SearchModal.sql.builder — chip palette over the unified `FilterRule[]`.
+ * SearchModalFilterBuilder — chip palette over the unified
+ * `FilterRule[]`. Storey / IFC type / Predefined type / Name / Property /
+ * Quantity rules with AND/OR + IsSet/IsNotSet, schema-aware dropdowns
+ * (storeys + types load eagerly, pset/qto names lazily), and saved
+ * preset persistence.
  *
- * Builds rules for every kind in the discriminated union (storey,
- * ifcType, predefinedType, name, property, quantity) and compiles to
- * either DuckDB SQL (`generateSqlFromFilterRules`) or runs them through
- * the path-B in-memory evaluator (`evaluateFilterRulesFederated`) — the
- * parent `SearchModal.sql` decides which engine fires per click.
- *
- * Schema-aware dropdowns: storeys + ifcTypes load eagerly from the
- * active model's spatial hierarchy / entity index (cheap, ~ms). Pset /
- * qto names are loaded on demand the first time a property/quantity
- * rule is added, then cached in the slice for the model's lifetime.
+ * UI-only: this component owns rule editing, not run lifecycle. The
+ * parent `SearchModalFilter` reads the same slice state and triggers
+ * the path-B evaluator from a single Run button.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, ArrowRight, Zap, Database, X, Bookmark, Save } from 'lucide-react';
+import { Plus, Trash2, X, Bookmark, Save } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -31,11 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import {
-  generateSqlFromFilterRules,
-  isSqlSupported,
-  COMMON_IFC_TYPES,
-} from '@/lib/search/sql-builder';
+import { COMMON_IFC_TYPES } from '@/lib/search/common-ifc-types';
 import {
   Rule,
   type FilterRule,
@@ -65,8 +58,6 @@ const VALUE_OPS: ValueOp[] = [
 ];
 const NUMERIC_OPS: NumericOp[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
 
-// Friendlier labels for the op dropdowns. The chip rendering keeps the
-// canonical token so the generated SQL stays readable.
 const OP_LABEL: Record<string, string> = {
   in: 'is one of',  notIn: 'is not one of',
   eq: '=', ne: '≠',
@@ -85,34 +76,7 @@ const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   quantity:        'Quantity',
 };
 
-export interface SearchModalSqlBuilderProps {
-  /** Called when the user clicks "Open in Editor" — parent hands the
-   *  generated SQL to the Editor and flips the mode. */
-  onPromoteToEditor: (sql: string) => void;
-  /** Run via DuckDB SQL. */
-  onRunSql: (sql: string) => void;
-  /** Run via the path-B in-memory evaluator (no DuckDB needed). */
-  onRunFast: () => void;
-  /** True while a run is in flight, disables both Run buttons. */
-  running: boolean;
-  /**
-   * True when the optional `@duckdb/duckdb-wasm` package isn't
-   * resolvable at runtime. Disables the SQL-emitter actions
-   * (Run SQL + Open in Editor) and promotes Fast Run as the primary
-   * action — Builder + Fast Run are entirely DuckDB-free. Defaults to
-   * false so callers that don't probe availability still get the old
-   * behaviour.
-   */
-  sqlUnavailable?: boolean;
-}
-
-export function SearchModalSqlBuilder({
-  onPromoteToEditor,
-  onRunSql,
-  onRunFast,
-  running,
-  sqlUnavailable = false,
-}: SearchModalSqlBuilderProps) {
+export function SearchModalFilterBuilder() {
   const {
     filter,
     schemaMap,
@@ -147,8 +111,6 @@ export function SearchModalSqlBuilder({
     })),
   );
 
-  // Saved filter presets — kept in component state so save/delete can
-  // refresh the dropdown without a re-import. Loaded once on mount.
   const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>(() => loadSavedFilters());
 
   const activeModel = activeModelId ? models.get(activeModelId) : undefined;
@@ -159,48 +121,28 @@ export function SearchModalSqlBuilder({
   useEffect(() => {
     if (!activeModelId || !activeStore) return;
     if (schemaMap.has(activeModelId)) return;
-    const basic = discoverFilterSchema(activeStore);
-    setFilterSchema(activeModelId, basic);
+    setFilterSchema(activeModelId, discoverFilterSchema(activeStore));
   }, [activeModelId, activeStore, schemaMap, setFilterSchema]);
 
-  // Fallback IFC type list when no schema yet (e.g. server-loaded models
-  // without the on-demand maps populated).
+  // Lazy pset/qto schema — fired the first time a property/quantity rule appears.
+  useEffect(() => {
+    if (!activeModelId || !activeStore) return;
+    const entry = schemaMap.get(activeModelId);
+    if (entry?.psetQto) return;
+    const needs = filter.rules.some((r) => r.kind === 'property' || r.kind === 'quantity');
+    if (!needs) return;
+    setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore));
+  }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterPsetQtoSchema]);
+
   const ifcTypeOptions = useMemo<string[]>(() => {
     if (schemaEntry?.basic.ifcTypes && schemaEntry.basic.ifcTypes.length > 0) {
       return schemaEntry.basic.ifcTypes;
     }
     return COMMON_IFC_TYPES.slice();
   }, [schemaEntry]);
-
   const storeyOptions = schemaEntry?.basic.storeys ?? [];
 
-  // Lazy pset/qto schema — fired the first time a property or quantity
-  // rule exists (or when the user clicks the "Refresh dropdowns" button).
-  const ensurePsetQtoSchema = useCallback(() => {
-    if (!activeModelId || !activeStore) return;
-    const entry = schemaMap.get(activeModelId);
-    if (entry?.psetQto) return;
-    const psetQto = discoverPropertyAndQuantitySchema(activeStore);
-    setFilterPsetQtoSchema(activeModelId, psetQto);
-  }, [activeModelId, activeStore, schemaMap, setFilterPsetQtoSchema]);
-
-  useEffect(() => {
-    const needsSchema = filter.rules.some(
-      (r) => r.kind === 'property' || r.kind === 'quantity',
-    );
-    if (needsSchema) ensurePsetQtoSchema();
-  }, [filter.rules, ensurePsetQtoSchema]);
-
-  const generatedSql = useMemo(
-    () =>
-      generateSqlFromFilterRules(filter.rules, {
-        combinator: filter.combinator,
-        limit: filter.limit,
-      }),
-    [filter.rules, filter.combinator, filter.limit],
-  );
-
-  // ── Rule construction handlers ──────────────────────────────────────
+  // ── Rule construction ─────────────────────────────────────────────
 
   const addRuleOfKind = useCallback((kind: FilterRule['kind']) => {
     let rule: FilterRule;
@@ -225,13 +167,10 @@ export function SearchModalSqlBuilder({
 
   const handleSavePreset = useCallback(() => {
     if (filter.rules.length === 0) return;
-    // Browser prompt is fine here — the chip builder is already a modal
-    // dialog, and a nested dialog feels overkill for a one-line input.
     // eslint-disable-next-line no-alert
     const name = window.prompt('Save filter as…', '');
     if (!name) return;
-    const next = saveFilter(name, filter.combinator, filter.rules);
-    setSavedPresets(next);
+    setSavedPresets(saveFilter(name, filter.combinator, filter.rules));
   }, [filter.combinator, filter.rules]);
 
   const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
@@ -243,13 +182,12 @@ export function SearchModalSqlBuilder({
   }, [filter.limit, setSearchFilter]);
 
   const handleDeletePreset = useCallback((name: string) => {
-    const next = deleteSavedFilter(name);
-    setSavedPresets(next);
+    setSavedPresets(deleteSavedFilter(name));
   }, []);
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col overflow-y-auto p-4 gap-3">
-      {/* ── Toolbar: AND/OR, Limit, Reset, optional inline-query bridge ── */}
+    <div className="flex flex-col gap-3 p-4">
+      {/* ── Toolbar: AND/OR · Limit · promote-query · Presets · Save · Reset ── */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <CombinatorToggle value={filter.combinator} onChange={setFilterCombinator} />
 
@@ -277,7 +215,7 @@ export function SearchModalSqlBuilder({
             title="Add a Name contains rule from the search bar query"
           >
             <Plus className="h-3 w-3" />
-            Add &ldquo;{truncate(searchQuery.trim(), 18)}&rdquo; as Name rule
+            Add &ldquo;{truncate(searchQuery.trim(), 18)}&rdquo; as rule
           </Button>
         )}
 
@@ -306,7 +244,7 @@ export function SearchModalSqlBuilder({
               onClick={clearFilterRules}
               className="h-7 gap-1 text-[11px] text-muted-foreground"
             >
-              <X className="h-3 w-3" /> Reset rules
+              <X className="h-3 w-3" /> Reset
             </Button>
           )}
         </div>
@@ -316,7 +254,7 @@ export function SearchModalSqlBuilder({
       <div className="flex flex-col gap-2">
         {filter.rules.length === 0 && (
           <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
-            No rules — click &ldquo;Add rule&rdquo; below or use the search-bar bridge above.
+            Add a rule to start filtering — pick by storey, IFC type, name, property, or quantity.
           </p>
         )}
         {filter.rules.map((rule, i) => (
@@ -330,68 +268,7 @@ export function SearchModalSqlBuilder({
             onRemove={() => removeFilterRule(i)}
           />
         ))}
-
         <AddRuleMenu onAdd={addRuleOfKind} />
-      </div>
-
-      {/* ── Generated SQL preview + actions ────────────────────────────── */}
-      <div className="mt-2 flex flex-col gap-1.5">
-        <div className="flex items-center justify-between">
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Generated SQL
-          </label>
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onPromoteToEditor(generatedSql)}
-              disabled={!generatedSql || sqlUnavailable}
-              className="h-6 gap-1 text-[11px]"
-              title={sqlUnavailable
-                ? 'SQL Editor needs @duckdb/duckdb-wasm — install it to enable'
-                : 'Copy generated SQL into the Editor tab'}
-            >
-              Open in Editor
-              <ArrowRight className="h-3 w-3" />
-            </Button>
-            {/* When DuckDB-WASM isn't installed, Fast Run becomes the
-                primary action — visually default-styled and the only
-                usable run path. Run SQL stays in the layout but disabled,
-                so the keyboard order / muscle memory doesn't shift when
-                the optional package gets installed later. */}
-            <Button
-              variant={sqlUnavailable ? 'default' : 'outline'}
-              size="sm"
-              onClick={onRunFast}
-              disabled={filter.rules.length === 0 || running}
-              className="h-6 gap-1 text-[11px]"
-              title="Run rules through the in-memory evaluator (no DuckDB needed, faster for small candidate sets)"
-            >
-              <Zap className="h-3 w-3" />
-              {running && sqlUnavailable ? 'Running…' : 'Fast Run'}
-            </Button>
-            <Button
-              variant={sqlUnavailable ? 'outline' : 'default'}
-              size="sm"
-              onClick={() => onRunSql(generatedSql)}
-              disabled={!generatedSql || running || sqlUnavailable}
-              className="h-6 gap-1 text-[11px]"
-              title={sqlUnavailable
-                ? 'Run SQL needs @duckdb/duckdb-wasm — use Fast Run instead'
-                : 'Compile rules to SQL and run via DuckDB'}
-            >
-              <Database className="h-3 w-3" />
-              {running && !sqlUnavailable ? 'Running…' : 'Run SQL'}
-            </Button>
-          </div>
-        </div>
-        <pre className="whitespace-pre-wrap rounded border bg-zinc-50 px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-          {generatedSql || (
-            <span className="italic text-muted-foreground">
-              Add a rule to generate a query.
-            </span>
-          )}
-        </pre>
       </div>
     </div>
   );
@@ -407,7 +284,10 @@ function CombinatorToggle({
   onChange: (next: Combinator) => void;
 }) {
   return (
-    <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950">
+    <div
+      className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950"
+      title="AND requires every rule to match. OR matches any rule."
+    >
       {(['AND', 'OR'] as const).map((c) => (
         <button
           key={c}
@@ -462,7 +342,7 @@ function PresetMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel className="text-[10px] uppercase">Saved filter presets</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-[10px] uppercase">Saved presets</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {presets.map((p) => (
           <DropdownMenuItem
@@ -530,20 +410,11 @@ interface RuleRowProps {
 }
 
 function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, onChange, onRemove }: RuleRowProps) {
-  const sqlSupported = isSqlSupported(rule);
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
         {RULE_KIND_LABEL[rule.kind]}
       </span>
-      {!sqlSupported && (
-        <span
-          className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
-          title="DuckDB schema doesn't expose this column — Run SQL will skip this rule. Use Fast Run instead."
-        >
-          Fast Run only
-        </span>
-      )}
 
       {rule.kind === 'storey' && (
         <SetRuleEditor
@@ -583,19 +454,11 @@ function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, onChange, onRem
       )}
 
       {rule.kind === 'property' && (
-        <PropertyEditor
-          rule={rule}
-          psetQto={psetQto}
-          onChange={onChange}
-        />
+        <PropertyEditor rule={rule} psetQto={psetQto} onChange={onChange} />
       )}
 
       {rule.kind === 'quantity' && (
-        <QuantityEditor
-          rule={rule}
-          psetQto={psetQto}
-          onChange={onChange}
-        />
+        <QuantityEditor rule={rule} psetQto={psetQto} onChange={onChange} />
       )}
 
       <button
@@ -636,7 +499,7 @@ function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorProps) {
         <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
           {options.length === 0 && (
             <DropdownMenuItem disabled className="text-muted-foreground italic">
-              No options available — type appears once a model is loaded.
+              No options available — load a model first.
             </DropdownMenuItem>
           )}
           {options.map((o) => (
@@ -854,8 +717,8 @@ function OpDropdown<T extends string>({
 
 /**
  * Free-text input that exposes a small dropdown of known options when
- * the schema knows them. The user can either pick from the menu or type
- * a value not present in the schema (useful for typos / new psets).
+ * the schema knows them. Users can either pick from the menu or type a
+ * value not present in the schema (useful for typos / custom psets).
  */
 function FreeOrPickInput({
   placeholder,

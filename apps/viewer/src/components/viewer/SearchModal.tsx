@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, SlidersHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,7 @@ import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { pushRecentSearch } from '@/lib/search/recent-searches';
 import { SearchModalText } from './SearchModal.text';
-import { SearchModalSql } from './SearchModal.sql';
+import { SearchModalFilter } from './SearchModal.filter';
 
 /** Modal-side result cap. Well above what any user scrolls through, small
  *  enough that the score/merge arrays stay cheap. Virtualization keeps
@@ -187,8 +187,9 @@ export function SearchModal() {
                 <Search className="h-3.5 w-3.5 mr-1.5" />
                 Search
               </TabsTrigger>
-              <TabsTrigger value="sql">
-                SQL
+              <TabsTrigger value="filter">
+                <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
+                Filter
               </TabsTrigger>
             </TabsList>
             <div className="text-[11px] text-muted-foreground">
@@ -215,8 +216,8 @@ export function SearchModal() {
               onClose={close}
             />
           </TabsContent>
-          <TabsContent value="sql" className="flex-1 min-h-0 mt-0 flex">
-            <SearchModalSql />
+          <TabsContent value="filter" className="flex-1 min-h-0 mt-0 flex">
+            <SearchModalFilter />
           </TabsContent>
         </Tabs>
       </DialogContent>

@@ -54,6 +54,22 @@ export interface FilterRulesSqlOptions {
 }
 
 /**
+ * Rule kinds that can't be expressed against the DuckDBIntegration schema
+ * `entities` table — they fall back to Fast Run. Predefined types aren't
+ * materialised as a column today; surfacing a "Fast Run only" warning in
+ * the generated SQL preview is more honest than emitting a predicate
+ * against a non-existent column (which would fail with a binder error
+ * the moment the user clicks Run SQL).
+ */
+const SQL_UNSUPPORTED_RULE_KINDS: ReadonlySet<FilterRule['kind']> = new Set([
+  'predefinedType',
+]);
+
+export function isSqlSupported(rule: FilterRule): boolean {
+  return !SQL_UNSUPPORTED_RULE_KINDS.has(rule.kind);
+}
+
+/**
  * Compile a unified `FilterRule[]` to DuckDB SQL.
  *
  * Strategy: every rule contributes one boolean expression to the WHERE
@@ -62,6 +78,11 @@ export interface FilterRulesSqlOptions {
  * OR (a pset row that doesn't exist would just exclude the entity from
  * the join product). The subquery form mirrors the IsNotSet template
  * and degrades cleanly to "no match" when the property is absent.
+ *
+ * Rules that can't be expressed against the integration's `entities`
+ * schema (currently just `predefinedType`) are silently dropped from
+ * the WHERE clause and the leading comment lists how many were skipped
+ * — switching to Fast Run is the supported path for those.
  */
 export function generateSqlFromFilterRules(
   rules: readonly FilterRule[],
@@ -72,12 +93,26 @@ export function generateSqlFromFilterRules(
 
   if (rules.length === 0) return '';
 
+  const supported = rules.filter(isSqlSupported);
+  const skipped = rules.length - supported.length;
+
   const lines: string[] = [];
   lines.push('-- Generated from unified filter rules.');
+  if (skipped > 0) {
+    // Listing the kinds in the comment lets the user see exactly which
+    // chips dropped out — they can swap to Fast Run or remove the chip.
+    const droppedKinds = rules
+      .filter((r) => !isSqlSupported(r))
+      .map((r) => r.kind)
+      .join(', ');
+    lines.push(
+      `-- WARNING: ${skipped} rule(s) skipped (${droppedKinds}) — DuckDB schema doesn't expose these columns; use Fast Run instead.`,
+    );
+  }
   lines.push('SELECT e.express_id, e.global_id, e.name, e.type');
   lines.push('FROM entities e');
 
-  const predicates = rules.map(renderRulePredicate).filter((p) => p.length > 0);
+  const predicates = supported.map(renderRulePredicate).filter((p) => p.length > 0);
   if (predicates.length > 0) {
     lines.push('WHERE');
     const glue = combinator === 'AND' ? '\n  AND ' : '\n  OR ';
@@ -109,17 +144,18 @@ function renderInList(values: readonly string[]): string {
 
 function renderStoreyRule(rule: StoreyRule): string {
   if (rule.values.length === 0) return rule.op === 'in' ? 'FALSE' : 'TRUE';
-  // The `entities` view doesn't carry storey directly — we join through
-  // relationships.contained_in_storey if the schema exposes it. The
-  // default DuckDBIntegration schema doesn't, so we rely on a
-  // `entity_storeys(entity_id, storey_name)` view; emit the predicate
-  // and let the integration layer surface a friendly error if the view
-  // is missing. (The viewer's path-B evaluator covers the common case
-  // without ever needing this SQL.)
+  // The DuckDBIntegration schema gives us `entities.contained_in_storey`
+  // (an INTEGER pointing at the IfcBuildingStorey express_id) but no
+  // dedicated `entity_storeys` view. Resolve storey names through a
+  // self-lookup: the storey row IS in the same `entities` table with
+  // type = 'IfcBuildingStorey'. We use ANY (subquery) rather than IN so
+  // DuckDB plans this as a nested loop with the small storey side as
+  // the build relation — typically <100 rows in real models.
   const op = rule.op === 'in' ? 'IN' : 'NOT IN';
-  return `e.express_id ${op} (
-    SELECT entity_id FROM entity_storeys
-    WHERE storey_name IN (${renderInList(rule.values)})
+  return `e.contained_in_storey ${op} (
+    SELECT s.express_id FROM entities s
+    WHERE s.type = 'IfcBuildingStorey'
+      AND s.name IN (${renderInList(rule.values)})
   )`;
 }
 

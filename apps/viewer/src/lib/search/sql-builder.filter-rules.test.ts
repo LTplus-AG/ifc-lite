@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { generateSqlFromFilterRules } from './sql-builder.js';
+import { generateSqlFromFilterRules, isSqlSupported } from './sql-builder.js';
 import { Rule } from './filter-rules.js';
 
 describe('generateSqlFromFilterRules — empty input', () => {
@@ -126,6 +126,54 @@ describe('generateSqlFromFilterRules — limit & ordering', () => {
   it('always orders by name for deterministic output', () => {
     const sql = generateSqlFromFilterRules([Rule.ifcType(['IfcWall'])]);
     assert.match(sql, /ORDER BY e\.name/);
+  });
+});
+
+describe('generateSqlFromFilterRules — storey rule (Codex P1 fix)', () => {
+  it('joins via entities.contained_in_storey + IfcBuildingStorey lookup, not the missing entity_storeys view', () => {
+    const sql = generateSqlFromFilterRules([Rule.storey(['Level 1', 'Level 2'])]);
+    // Self-join through the entities table — no reference to a
+    // non-existent `entity_storeys` view.
+    assert.match(sql, /e\.contained_in_storey IN/);
+    assert.match(sql, /FROM entities s/);
+    assert.match(sql, /s\.type = 'IfcBuildingStorey'/);
+    assert.match(sql, /s\.name IN \('Level 1', 'Level 2'\)/);
+    assert.doesNotMatch(sql, /entity_storeys/);
+  });
+
+  it('NOT IN op flips the outer comparator without changing the inner subquery', () => {
+    const sql = generateSqlFromFilterRules([Rule.storey(['Level 1'], 'notIn')]);
+    assert.match(sql, /e\.contained_in_storey NOT IN/);
+    assert.match(sql, /s\.type = 'IfcBuildingStorey'/);
+  });
+});
+
+describe('generateSqlFromFilterRules — predefinedType rule (Codex P1 fix)', () => {
+  it('isSqlSupported returns false for predefinedType rules', () => {
+    assert.strictEqual(isSqlSupported(Rule.predefinedType(['SOLIDWALL'])), false);
+    assert.strictEqual(isSqlSupported(Rule.ifcType(['IfcWall'])), true);
+  });
+
+  it('drops predefinedType rules from the WHERE clause and surfaces a warning comment', () => {
+    const sql = generateSqlFromFilterRules([
+      Rule.ifcType(['IfcWall']),
+      Rule.predefinedType(['SOLIDWALL']),
+    ]);
+    // The WHERE clause holds only the IfcType predicate.
+    assert.match(sql, /e\.type IN \('IfcWall'\)/);
+    assert.doesNotMatch(sql, /predefined_type/);
+    // Header comment lists how many rules were skipped + their kinds.
+    assert.match(sql, /WARNING: 1 rule\(s\) skipped \(predefinedType\)/);
+  });
+
+  it('emits no WHERE when every rule is unsupported', () => {
+    const sql = generateSqlFromFilterRules([
+      Rule.predefinedType(['A']),
+      Rule.predefinedType(['B']),
+    ]);
+    // Two rules dropped → header warns, body has no WHERE.
+    assert.match(sql, /WARNING: 2 rule\(s\) skipped/);
+    assert.doesNotMatch(sql, /\bWHERE\b/);
   });
 });
 

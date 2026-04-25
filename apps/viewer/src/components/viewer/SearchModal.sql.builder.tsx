@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   generateSqlFromFilterRules,
+  isSqlSupported,
   COMMON_IFC_TYPES,
 } from '@/lib/search/sql-builder';
 import {
@@ -510,11 +511,20 @@ interface RuleRowProps {
 }
 
 function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, onChange, onRemove }: RuleRowProps) {
+  const sqlSupported = isSqlSupported(rule);
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
         {RULE_KIND_LABEL[rule.kind]}
       </span>
+      {!sqlSupported && (
+        <span
+          className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+          title="DuckDB schema doesn't expose this column — Run SQL will skip this rule. Use Fast Run instead."
+        >
+          Fast Run only
+        </span>
+      )}
 
       {rule.kind === 'storey' && (
         <SetRuleEditor

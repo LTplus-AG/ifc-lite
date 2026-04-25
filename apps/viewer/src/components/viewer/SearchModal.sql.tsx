@@ -262,15 +262,17 @@ export function SearchModalSql() {
           bucket.add(hit.expressId);
           narrowedFromTextHits++;
         }
-        if (grouped.size > 0) {
-          candidatesByModel = new Map();
-          for (const [id, set] of grouped) candidatesByModel.set(id, set);
-          // Models that exist but produced no text hits get an empty
-          // candidate set so the structured rules don't accidentally
-          // match against the full table.
-          for (const m of modelArgs) {
-            if (!candidatesByModel.has(m.id)) candidatesByModel.set(m.id, []);
-          }
+        // Always build a candidate map when the user is narrowing — even
+        // if the text query produced zero hits. Without this, a misspelt
+        // or overly-specific query would fall back to a full scan and
+        // structured rules would return matches unrelated to the text
+        // (Codex P1: "Preserve text narrowing when no Tier-0/Tier-1 hits
+        // exist"). Empty candidate set per model ⇒ zero results from
+        // path-B, which is the correct intersection semantics.
+        candidatesByModel = new Map();
+        for (const [id, set] of grouped) candidatesByModel.set(id, set);
+        for (const m of modelArgs) {
+          if (!candidatesByModel.has(m.id)) candidatesByModel.set(m.id, []);
         }
       }
 

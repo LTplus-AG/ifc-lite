@@ -247,6 +247,67 @@ describe('matchQuantityRule', () => {
   });
 });
 
+describe('evaluateFilterRulesFederated — per-model candidate narrowing', () => {
+  it('candidateExpressIdsByModel narrows each model independently', () => {
+    const a = buildStore(rows);
+    const b = buildStore([
+      { expressId: 100, type: 'IFCWALL', globalId: 'aabcdefghijklmnopqrstu', name: 'Wall-B-1' },
+      { expressId: 101, type: 'IFCDOOR', globalId: 'babcdefghijklmnopqrstu', name: 'Door-B-2' },
+    ]);
+    const candidatesByModel = new Map<string, Iterable<number>>([
+      ['a', [10]],     // only Wall-EXT-001 from a
+      ['b', [101]],    // only Door-B-2 from b
+    ]);
+    const out = evaluateFilterRulesFederated(
+      [{ id: 'a', store: a }, { id: 'b', store: b }],
+      [Rule.ifcType(['IfcWall', 'IfcDoor'])],
+      'AND',
+      { candidateExpressIdsByModel: candidatesByModel },
+    );
+    // Two narrow hits — one wall from `a`, one door from `b`.
+    assert.deepStrictEqual(
+      out.map((r) => `${r.modelId}:${r.expressId}`).sort(),
+      ['a:10', 'b:101'],
+    );
+  });
+
+  it('an empty candidate set for a model yields zero results from that model (intersection semantics)', () => {
+    // This is the Codex P1 invariant: a misspelt text query that produced
+    // zero Tier-0/Tier-1 hits must NOT degrade to a full-table scan when
+    // the user has structured rules. Empty Iterable per model ⇒ no rows.
+    const a = buildStore(rows);
+    const candidatesByModel = new Map<string, Iterable<number>>([['a', []]]);
+    const out = evaluateFilterRulesFederated(
+      [{ id: 'a', store: a }],
+      [Rule.ifcType(['IfcWall'])],
+      'AND',
+      { candidateExpressIdsByModel: candidatesByModel },
+    );
+    assert.deepStrictEqual(out, []);
+  });
+
+  it('omitting the map keeps the legacy full-scan behaviour', () => {
+    const a = buildStore(rows);
+    const out = evaluateFilterRulesFederated(
+      [{ id: 'a', store: a }],
+      [Rule.ifcType(['IfcWall'])],
+      'AND',
+    );
+    assert.deepStrictEqual(out.map((r) => r.expressId).sort(), [10, 20]);
+  });
+
+  it('storeyNameOf / predefinedTypeOf flow through the federated wrapper', () => {
+    const a = buildStore(rows);
+    const out = evaluateFilterRulesFederated(
+      [{ id: 'a', store: a }],
+      [Rule.storey(['Level 1'])],
+      'AND',
+      { storeyNameOf: (id) => (id === 10 ? 'Level 1' : '') },
+    );
+    assert.deepStrictEqual(out.map((r) => r.expressId), [10]);
+  });
+});
+
 describe('evaluateFilterRules — empty rules', () => {
   it('returns [] when rules is empty (matches Rust behaviour)', () => {
     const store = buildStore(rows);

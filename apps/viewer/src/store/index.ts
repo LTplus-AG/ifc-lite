@@ -403,7 +403,8 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       searchSqlRunning: false,
       searchSqlError: null,
       searchSqlMode: 'builder',
-      searchSqlBuilder: { ifcType: null, propertyFilters: [], limit: 500 },
+      searchFilter: { rules: [], combinator: 'AND', limit: 500 },
+      searchFilterSchema: new Map(),
     });
   },
 }));

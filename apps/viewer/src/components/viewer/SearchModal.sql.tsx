@@ -48,6 +48,7 @@ import {
   type SavedQuery,
 } from '@/lib/search/saved-queries';
 import { downloadResult } from '@/lib/search/result-export';
+import { evaluateFilterRulesFederated } from '@/lib/search/filter-evaluate';
 import { SearchModalSqlBuilder } from './SearchModal.sql.builder';
 
 /** Rows per virtualizer page — tuned for the result table row height. */
@@ -100,6 +101,7 @@ export function SearchModalSql() {
     searchSqlRunning,
     searchSqlError,
     searchSqlMode,
+    searchFilter,
     setSearchSqlQuery,
     setSearchSqlRunning,
     setSearchSqlResult,
@@ -117,6 +119,7 @@ export function SearchModalSql() {
       searchSqlRunning: s.searchSqlRunning,
       searchSqlError: s.searchSqlError,
       searchSqlMode: s.searchSqlMode,
+      searchFilter: s.searchFilter,
       setSearchSqlQuery: s.setSearchSqlQuery,
       setSearchSqlRunning: s.setSearchSqlRunning,
       setSearchSqlResult: s.setSearchSqlResult,
@@ -199,6 +202,63 @@ export function SearchModalSql() {
   const runEditor = useCallback(() => {
     void runSqlQuery(searchSqlQuery);
   }, [runSqlQuery, searchSqlQuery]);
+
+  /**
+   * Path-B Fast Run — evaluate the chip rules in-memory across every
+   * loaded model with an `ifcDataStore`. Renders into the same
+   * SearchSqlResult shape so the result table re-uses the SQL renderer.
+   * No DuckDB init required, so this works even when the optional
+   * package isn't installed.
+   */
+  const runFast = useCallback(() => {
+    if (searchSqlRunning) return;
+    if (searchFilter.rules.length === 0) {
+      setSearchSqlError('Add at least one rule before Fast Run.');
+      return;
+    }
+    setSearchSqlRunning(true);
+    const start = performance.now();
+    try {
+      const modelArgs: Array<{ id: string; store: typeof activeStore }> = [];
+      for (const m of models.values()) {
+        if (m.ifcDataStore) modelArgs.push({ id: m.id, store: m.ifcDataStore });
+      }
+      const matched = evaluateFilterRulesFederated(
+        modelArgs,
+        searchFilter.rules,
+        searchFilter.combinator,
+        { limit: searchFilter.limit > 0 ? searchFilter.limit : 5_000 },
+      );
+      // Tag rows with model id when more than one model is loaded so the
+      // user can tell results apart.
+      const multi = modelArgs.length > 1;
+      const columns = multi
+        ? ['express_id', 'global_id', 'name', 'type', 'model_id']
+        : ['express_id', 'global_id', 'name', 'type'];
+      const rows: unknown[][] = matched.map((m) =>
+        multi
+          ? [m.expressId, m.globalId, m.name, m.ifcType, m.modelId]
+          : [m.expressId, m.globalId, m.name, m.ifcType],
+      );
+      setSearchSqlResult({
+        columns,
+        rows,
+        runMs: Math.round(performance.now() - start),
+      });
+    } catch (err) {
+      setSearchSqlError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSearchSqlRunning(false);
+    }
+  }, [
+    activeStore,
+    models,
+    searchFilter,
+    searchSqlRunning,
+    setSearchSqlError,
+    setSearchSqlResult,
+    setSearchSqlRunning,
+  ]);
 
   /** Builder "Open in Editor" — copies the generated SQL into the editor
    *  and flips the sub-mode. Lets the user edit, run, or learn from it. */
@@ -295,19 +355,19 @@ export function SearchModalSql() {
   }, [activeModelId, cameraCallbacks, models, selectionKeyIndex, setSelectedEntity, setSelectedEntityId]);
 
   // ── Render early-outs for the "not ready" states ─────────────────────
-  if (available === false) {
-    return <SqlUnavailableNotice />;
-  }
-
+  // DuckDB unavailable still leaves Fast Run usable, so we no longer
+  // hard-block the entire tab — we just disable Editor mode and steer
+  // the user toward Builder + Fast Run via a banner.
   if (!activeStore) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-muted-foreground">
-        Load an IFC file first — SQL runs against the active model&apos;s data.
+        Load an IFC file first — search runs against the active model&apos;s data.
       </div>
     );
   }
 
-  const isEditor = searchSqlMode === 'editor';
+  const duckDbUnavailable = available === false;
+  const isEditor = searchSqlMode === 'editor' && !duckDbUnavailable;
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
@@ -327,12 +387,14 @@ export function SearchModalSql() {
           </button>
           <button
             type="button"
-            onClick={() => setSearchSqlMode('editor')}
+            onClick={() => !duckDbUnavailable && setSearchSqlMode('editor')}
+            disabled={duckDbUnavailable}
+            title={duckDbUnavailable ? 'SQL Editor needs @duckdb/duckdb-wasm' : undefined}
             className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
               isEditor
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground'
-            }`}
+            } ${duckDbUnavailable ? 'cursor-not-allowed opacity-50' : ''}`}
           >
             Editor
           </button>
@@ -489,8 +551,15 @@ export function SearchModalSql() {
 
       {multiModel && (
         <div className="border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          SQL runs against the active model only ({activeModel?.name ?? activeModelId}).
-          Switch models via the Hierarchy panel to query a different one.
+          SQL Editor runs against the active model only ({activeModel?.name ?? activeModelId}).
+          Fast Run (Builder) evaluates across every loaded model.
+        </div>
+      )}
+
+      {duckDbUnavailable && (
+        <div className="border-b bg-blue-50 px-3 py-1.5 text-[11px] text-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
+          DuckDB-WASM not installed — Editor disabled. Builder &amp; Fast Run still work
+          (no DuckDB needed). To enable SQL Editor: <code className="rounded bg-blue-100 px-1 font-mono dark:bg-blue-900/60">pnpm add @duckdb/duckdb-wasm</code>
         </div>
       )}
 
@@ -556,7 +625,8 @@ export function SearchModalSql() {
           ) : (
             <SearchModalSqlBuilder
               onPromoteToEditor={promoteToEditor}
-              onRun={(sql) => void runSqlQuery(sql)}
+              onRunSql={(sql) => void runSqlQuery(sql)}
+              onRunFast={runFast}
               running={searchSqlRunning}
             />
           )}
@@ -577,28 +647,6 @@ export function SearchModalSql() {
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────
-
-function SqlUnavailableNotice() {
-  return (
-    <div className="flex flex-1 items-center justify-center p-8">
-      <div className="max-w-md text-center text-sm">
-        <AlertCircle className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-        <h3 className="mb-1 font-semibold">SQL search needs an optional package</h3>
-        <p className="mb-3 text-muted-foreground">
-          The SQL tab is powered by DuckDB-WASM, which isn&apos;t bundled by default
-          (it adds ~4&nbsp;MB). Install it in your workspace, then reload:
-        </p>
-        <pre className="mx-auto inline-block rounded bg-zinc-100 px-3 py-1.5 font-mono text-xs dark:bg-zinc-900">
-          pnpm add @duckdb/duckdb-wasm
-        </pre>
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          Meanwhile, the Search tab (keyword + chips) queries the same data
-          without the optional dependency.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function SqlErrorBox({ raw }: { raw: string }) {
   const rewritten = useMemo(() => rewriteSqlError(raw), [raw]);

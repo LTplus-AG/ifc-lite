@@ -181,19 +181,20 @@ describe('searchSlice — advanced modal state', () => {
   });
 });
 
-describe('searchSlice — SQL builder actions', () => {
+describe('searchSlice — filter rule actions', () => {
   let store: StoreApi<SearchSlice>;
 
   beforeEach(() => {
     store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
   });
 
-  it('starts in builder mode with the empty builder state', () => {
+  it('starts in builder mode with the empty filter state', () => {
     const s = store.getState();
     assert.strictEqual(s.searchSqlMode, 'builder');
-    assert.strictEqual(s.searchSqlBuilder.ifcType, null);
-    assert.deepStrictEqual(s.searchSqlBuilder.propertyFilters, []);
-    assert.strictEqual(s.searchSqlBuilder.limit, 500);
+    assert.deepStrictEqual(s.searchFilter.rules, []);
+    assert.strictEqual(s.searchFilter.combinator, 'AND');
+    assert.strictEqual(s.searchFilter.limit, 500);
+    assert.strictEqual(s.searchFilterSchema.size, 0);
   });
 
   it('setSearchSqlMode flips between builder and editor', () => {
@@ -203,66 +204,110 @@ describe('searchSlice — SQL builder actions', () => {
     assert.strictEqual(store.getState().searchSqlMode, 'builder');
   });
 
-  it('setBuilderIfcType / setBuilderLimit patch the builder state', () => {
-    store.getState().setBuilderIfcType('IfcWall');
-    assert.strictEqual(store.getState().searchSqlBuilder.ifcType, 'IfcWall');
-    store.getState().setBuilderLimit(100);
-    assert.strictEqual(store.getState().searchSqlBuilder.limit, 100);
+  it('setFilterCombinator / setFilterLimit patch the filter state', () => {
+    store.getState().setFilterCombinator('OR');
+    assert.strictEqual(store.getState().searchFilter.combinator, 'OR');
+    store.getState().setFilterLimit(100);
+    assert.strictEqual(store.getState().searchFilter.limit, 100);
   });
 
-  it('addBuilderFilter appends a new filter', () => {
-    const f = {
-      psetName: 'Pset_WallCommon',
-      propName: 'IsExternal',
-      op: '=' as const,
-      valueType: 'bool' as const,
-      value: 'true',
-    };
-    store.getState().addBuilderFilter(f);
-    const filters = store.getState().searchSqlBuilder.propertyFilters;
-    assert.strictEqual(filters.length, 1);
-    assert.deepStrictEqual(filters[0], f);
+  it('addFilterRule appends a rule', () => {
+    const r = { kind: 'ifcType' as const, values: ['IfcWall'], op: 'in' as const };
+    store.getState().addFilterRule(r);
+    const rules = store.getState().searchFilter.rules;
+    assert.strictEqual(rules.length, 1);
+    assert.deepStrictEqual(rules[0], r);
   });
 
-  it('updateBuilderFilter patches a filter by index', () => {
-    const f = { psetName: 'A', propName: 'B', op: '=' as const, valueType: 'string' as const, value: '' };
-    store.getState().addBuilderFilter(f);
-    store.getState().updateBuilderFilter(0, { value: 'EI60' });
-    const updated = store.getState().searchSqlBuilder.propertyFilters[0];
-    assert.strictEqual(updated.value, 'EI60');
-    assert.strictEqual(updated.propName, 'B');
+  it('updateFilterRule replaces a rule at the given index', () => {
+    const r1 = { kind: 'ifcType' as const, values: ['IfcWall'], op: 'in' as const };
+    const r2 = { kind: 'ifcType' as const, values: ['IfcDoor'], op: 'in' as const };
+    store.getState().addFilterRule(r1);
+    store.getState().updateFilterRule(0, r2);
+    assert.deepStrictEqual(store.getState().searchFilter.rules[0], r2);
   });
 
-  it('updateBuilderFilter is a no-op for out-of-range indices', () => {
-    const before = store.getState().searchSqlBuilder;
-    store.getState().updateBuilderFilter(5, { value: 'x' });
-    assert.strictEqual(store.getState().searchSqlBuilder, before);
+  it('updateFilterRule is a no-op for out-of-range indices', () => {
+    const before = store.getState().searchFilter;
+    store.getState().updateFilterRule(5, {
+      kind: 'ifcType' as const, values: [], op: 'in' as const,
+    });
+    assert.strictEqual(store.getState().searchFilter, before);
   });
 
-  it('removeBuilderFilter drops the filter at the given index', () => {
-    const f1 = { psetName: 'A', propName: 'X', op: '=' as const, valueType: 'string' as const, value: '' };
-    const f2 = { psetName: 'B', propName: 'Y', op: '=' as const, valueType: 'string' as const, value: '' };
-    store.getState().addBuilderFilter(f1);
-    store.getState().addBuilderFilter(f2);
-    store.getState().removeBuilderFilter(0);
-    const remaining = store.getState().searchSqlBuilder.propertyFilters;
-    assert.strictEqual(remaining.length, 1);
-    assert.strictEqual(remaining[0].psetName, 'B');
+  it('removeFilterRule drops the rule at the given index', () => {
+    const r1 = { kind: 'ifcType' as const, values: ['IfcWall'], op: 'in' as const };
+    const r2 = { kind: 'name' as const, op: 'contains' as const, value: 'EXT' };
+    store.getState().addFilterRule(r1);
+    store.getState().addFilterRule(r2);
+    store.getState().removeFilterRule(0);
+    const rules = store.getState().searchFilter.rules;
+    assert.strictEqual(rules.length, 1);
+    assert.strictEqual(rules[0].kind, 'name');
   });
 
-  it('removeBuilderFilter is a no-op for out-of-range indices', () => {
-    const before = store.getState().searchSqlBuilder;
-    store.getState().removeBuilderFilter(2);
-    assert.strictEqual(store.getState().searchSqlBuilder, before);
+  it('removeFilterRule is a no-op for out-of-range indices', () => {
+    const before = store.getState().searchFilter;
+    store.getState().removeFilterRule(2);
+    assert.strictEqual(store.getState().searchFilter, before);
   });
 
-  it('setSearchSqlBuilder replaces the whole builder state', () => {
-    const newState = {
-      ifcType: 'IfcDoor',
-      propertyFilters: [],
+  it('clearFilterRules empties rules but preserves combinator + limit', () => {
+    store.getState().setFilterCombinator('OR');
+    store.getState().setFilterLimit(123);
+    store.getState().addFilterRule({
+      kind: 'ifcType' as const, values: ['IfcWall'], op: 'in' as const,
+    });
+    store.getState().clearFilterRules();
+    const f = store.getState().searchFilter;
+    assert.deepStrictEqual(f.rules, []);
+    assert.strictEqual(f.combinator, 'OR');
+    assert.strictEqual(f.limit, 123);
+  });
+
+  it('setSearchFilter replaces the whole filter state', () => {
+    const next = {
+      rules: [{ kind: 'name' as const, op: 'eq' as const, value: 'X' }],
+      combinator: 'OR' as const,
       limit: 42,
     };
-    store.getState().setSearchSqlBuilder(newState);
-    assert.strictEqual(store.getState().searchSqlBuilder, newState);
+    store.getState().setSearchFilter(next);
+    assert.strictEqual(store.getState().searchFilter, next);
+  });
+});
+
+describe('searchSlice — schema cache', () => {
+  let store: StoreApi<SearchSlice>;
+
+  beforeEach(() => {
+    store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
+  });
+
+  it('setFilterSchema inserts a basic entry with null psetQto', () => {
+    store.getState().setFilterSchema('m1', { storeys: [['L1', 0]], ifcTypes: ['IfcWall'] });
+    const entry = store.getState().searchFilterSchema.get('m1');
+    assert.ok(entry);
+    assert.deepStrictEqual(entry!.basic.ifcTypes, ['IfcWall']);
+    assert.strictEqual(entry!.psetQto, null);
+  });
+
+  it('setFilterSchema preserves existing psetQto when re-setting basic', () => {
+    store.getState().setFilterSchema('m1', { storeys: [], ifcTypes: ['IfcWall'] });
+    store.getState().setFilterPsetQtoSchema('m1', { psets: [['Pset_X', ['P']]], qtos: [] });
+    store.getState().setFilterSchema('m1', { storeys: [], ifcTypes: ['IfcWall', 'IfcDoor'] });
+    const entry = store.getState().searchFilterSchema.get('m1');
+    assert.ok(entry?.psetQto);
+    assert.deepStrictEqual(entry!.psetQto!.psets, [['Pset_X', ['P']]]);
+  });
+
+  it('setFilterPsetQtoSchema is a no-op without a prior basic entry', () => {
+    store.getState().setFilterPsetQtoSchema('mX', { psets: [], qtos: [] });
+    assert.strictEqual(store.getState().searchFilterSchema.has('mX'), false);
+  });
+
+  it('removeFilterSchema drops the model entry', () => {
+    store.getState().setFilterSchema('m1', { storeys: [], ifcTypes: [] });
+    store.getState().removeFilterSchema('m1');
+    assert.strictEqual(store.getState().searchFilterSchema.has('m1'), false);
   });
 });

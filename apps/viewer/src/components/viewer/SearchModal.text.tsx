@@ -58,7 +58,8 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
     setSearchHighlightIndex,
     setSelectedEntity,
     setSelectedEntityId,
-    addEntityToSelection,
+    addEntitiesToSelection,
+    toggleEntitySelection,
     clearEntitySelection,
     enterVimCycle,
     cameraCallbacks,
@@ -76,7 +77,8 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       setSearchHighlightIndex: s.setSearchHighlightIndex,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
-      addEntityToSelection: s.addEntityToSelection,
+      addEntitiesToSelection: s.addEntitiesToSelection,
+      toggleEntitySelection: s.toggleEntitySelection,
       clearEntitySelection: s.clearEntitySelection,
       enterVimCycle: s.enterVimCycle,
       cameraCallbacks: s.cameraCallbacks,
@@ -145,20 +147,30 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
     ],
   );
 
-  /** Additive toggle — adds/removes from multi-selection without closing. */
+  /**
+   * Additive toggle — adds OR removes from multi-selection without
+   * closing. Uses `toggleEntitySelection` so a second Shift+Enter (or
+   * a second checkbox click on the same row) deselects, rather than
+   * being a no-op that forces the user to clear the entire selection.
+   */
   const toggleAdditive = useCallback(
     (r: SearchResult) => {
-      addEntityToSelection({ modelId: r.modelId, expressId: r.expressId });
+      toggleEntitySelection({ modelId: r.modelId, expressId: r.expressId });
     },
-    [addEntityToSelection],
+    [toggleEntitySelection],
   );
 
-  /** Batch: add every filtered result to multi-selection. */
+  /**
+   * Batch: add every filtered result to multi-selection in a single
+   * Zustand `set`. The naïve loop over `addEntityToSelection` triggered
+   * one re-render per row — visibly janky on a 5K-row filtered set.
+   */
   const selectAll = useCallback(() => {
-    for (const r of filtered) {
-      addEntityToSelection({ modelId: r.modelId, expressId: r.expressId });
-    }
-  }, [addEntityToSelection, filtered]);
+    if (filtered.length === 0) return;
+    addEntitiesToSelection(
+      filtered.map((r) => ({ modelId: r.modelId, expressId: r.expressId })),
+    );
+  }, [addEntitiesToSelection, filtered]);
 
   /** Batch: frame whatever is the primary selection (if any). */
   const frame = useCallback(() => {

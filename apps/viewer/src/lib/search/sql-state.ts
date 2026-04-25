@@ -26,7 +26,27 @@ let cachedAvailable: boolean | null = null;
 let activeEngine: DuckDBIntegration | null = null;
 /** The store the current `activeEngine` was built from — used to detect model swaps. */
 let activeStore: IfcDataStore | null = null;
-let initInFlight: Promise<DuckDBIntegration> | null = null;
+
+/**
+ * Single serial queue for every state-changing call (`ensureEngineFor`,
+ * `disposeSqlEngine`). Each caller chains its work onto `queue` so two
+ * concurrent calls can never overlap inside the
+ * dispose-then-rebuild critical section. Without this, four interleaved
+ * calls targeting different stores could leave an orphan engine
+ * (queued init writes `activeEngine = X` after a dispose has already
+ * cleared it) — see the race documented on the parent branch's PR
+ * review.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  // Always continue from a resolved queue — `.catch(() => undefined)` so
+  // an earlier failure never poisons later tasks. Each chained step sees
+  // the latest module-level state inside its own turn.
+  const next = queue.then(task);
+  queue = next.catch(() => undefined);
+  return next;
+}
 
 /** Cached availability probe — never throws. */
 export async function isDuckDBAvailable(): Promise<boolean> {
@@ -43,41 +63,36 @@ export async function isDuckDBAvailable(): Promise<boolean> {
  * Build (or reuse) the DuckDB engine for `store`. If a previous engine
  * exists for a different store, it's disposed first to release the WASM
  * worker + accumulated tables.
+ *
+ * Concurrency: every call queues behind the previous mutator, so two
+ * concurrent calls for the same store both observe the engine the
+ * first one built (no double-init), and a same-store call that arrives
+ * while a different-store init is mid-flight just waits its turn.
  */
 export async function ensureEngineFor(store: IfcDataStore): Promise<DuckDBIntegration> {
-  if (activeEngine && activeStore === store) return activeEngine;
+  return enqueue(async () => {
+    // Inside our serial turn — both reads of `activeEngine` and
+    // `activeStore` are stable for the duration of this task.
+    if (activeEngine && activeStore === store) return activeEngine;
 
-  if (initInFlight) {
-    // An init is already running for some store — wait for it and decide
-    // afterwards whether the returned engine matches ours.
-    const prev = await initInFlight;
-    if (activeStore === store) return prev;
-  }
+    if (activeEngine) {
+      const prev = activeEngine;
+      activeEngine = null;
+      activeStore = null;
+      // Block the queue on dispose so the next caller doesn't try to
+      // rebuild while the previous worker is still alive. The
+      // `.catch` logs but doesn't break the queue chain.
+      await prev.dispose().catch((err: unknown) => {
+        console.warn('[sql-state] previous DuckDB dispose failed:', err);
+      });
+    }
 
-  // Different store (model swap) or first init — tear down + rebuild.
-  if (activeEngine) {
-    const prev = activeEngine;
-    activeEngine = null;
-    activeStore = null;
-    // Dispose best-effort in the background; don't block the new init.
-    void prev.dispose().catch((err: unknown) => {
-      console.warn('[sql-state] previous DuckDB dispose failed:', err);
-    });
-  }
-
-  initInFlight = (async () => {
     const engine = new DuckDBIntegration();
     await engine.init(store);
     activeEngine = engine;
     activeStore = store;
     return engine;
-  })();
-
-  try {
-    return await initInFlight;
-  } finally {
-    initInFlight = null;
-  }
+  });
 }
 
 /** Run SQL against the engine for `store`, initialising lazily if needed. */
@@ -88,15 +103,16 @@ export async function runSql(store: IfcDataStore, sql: string): Promise<SQLResul
 
 /** Dispose the active engine (called on file reload / unmount). */
 export async function disposeSqlEngine(): Promise<void> {
-  const engine = activeEngine;
-  activeEngine = null;
-  activeStore = null;
-  initInFlight = null;
-  if (engine) {
-    await engine.dispose().catch((err: unknown) => {
-      console.warn('[sql-state] dispose failed:', err);
-    });
-  }
+  return enqueue(async () => {
+    const engine = activeEngine;
+    activeEngine = null;
+    activeStore = null;
+    if (engine) {
+      await engine.dispose().catch((err: unknown) => {
+        console.warn('[sql-state] dispose failed:', err);
+      });
+    }
+  });
 }
 
 /** Exposed for tests — resets the module-level singleton between cases. */
@@ -104,5 +120,5 @@ export function __resetSqlState(): void {
   cachedAvailable = null;
   activeEngine = null;
   activeStore = null;
-  initInFlight = null;
+  queue = Promise.resolve();
 }

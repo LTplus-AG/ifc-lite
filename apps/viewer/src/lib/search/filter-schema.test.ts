@@ -11,6 +11,7 @@ import {
   QuantityTableBuilder,
   PropertyValueType,
   QuantityType,
+  IfcTypeEnum,
 } from '@ifc-lite/data';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -85,7 +86,7 @@ function buildStore(args: {
       if (s.elevation !== undefined) storeyElevations.set(s.id, s.elevation);
     }
     spatialHierarchy = {
-      project: { expressId: 1, type: 'IfcProject', name: '', children: [], elements: [] },
+      project: { expressId: 1, type: IfcTypeEnum.IfcProject, name: '', children: [], elements: [] },
       byStorey,
       byBuilding: new Map(),
       bySite: new Map(),

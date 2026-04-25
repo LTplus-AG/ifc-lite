@@ -276,6 +276,40 @@ describe('searchSlice — filter rule actions', () => {
   });
 });
 
+describe('searchSlice — SQL result/error pairing', () => {
+  let store: StoreApi<SearchSlice>;
+
+  beforeEach(() => {
+    store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
+  });
+
+  it('setSearchSqlResult clears the prior error (success supersedes failure)', () => {
+    store.getState().setSearchSqlError('boom');
+    store.getState().setSearchSqlResult({ columns: ['a'], rows: [[1]], runMs: 5 });
+    assert.strictEqual(store.getState().searchSqlError, null);
+    assert.deepStrictEqual(store.getState().searchSqlResult?.columns, ['a']);
+  });
+
+  it('setSearchSqlError preserves the prior result (notebook semantics)', () => {
+    store.getState().setSearchSqlResult({ columns: ['a'], rows: [[1]], runMs: 5 });
+    store.getState().setSearchSqlError('boom');
+    // Error and result coexist — UI stacks the error above the last good
+    // result. Without this, debugging a failed run loses the previous
+    // table the user was reading.
+    assert.strictEqual(store.getState().searchSqlError, 'boom');
+    assert.deepStrictEqual(store.getState().searchSqlResult?.columns, ['a']);
+  });
+
+  it('callers can wipe both via explicit nulls', () => {
+    store.getState().setSearchSqlResult({ columns: ['a'], rows: [], runMs: 1 });
+    store.getState().setSearchSqlError('x');
+    store.getState().setSearchSqlResult(null);
+    store.getState().setSearchSqlError(null);
+    assert.strictEqual(store.getState().searchSqlError, null);
+    assert.strictEqual(store.getState().searchSqlResult, null);
+  });
+});
+
 describe('searchSlice — schema cache', () => {
   let store: StoreApi<SearchSlice>;
 

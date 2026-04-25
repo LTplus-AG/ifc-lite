@@ -286,8 +286,14 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
 
   setSearchSqlQuery: (searchSqlQuery) => set({ searchSqlQuery }),
   setSearchSqlRunning: (searchSqlRunning) => set({ searchSqlRunning }),
+  // Notebook-style result/error pairing: a successful run clears the
+  // prior error (the new result supersedes it), but an error keeps the
+  // prior result on screen — matches DuckDB UI / Jupyter behaviour where
+  // each run displays independently and a failure doesn't invalidate
+  // the previous good output. Callers that explicitly want to wipe both
+  // can call `setSearchSqlResult(null)` then `setSearchSqlError(null)`.
   setSearchSqlResult: (searchSqlResult) => set({ searchSqlResult, searchSqlError: null }),
-  setSearchSqlError: (searchSqlError) => set({ searchSqlError, searchSqlResult: null }),
+  setSearchSqlError: (searchSqlError) => set({ searchSqlError }),
 
   setSearchSqlMode: (searchSqlMode) => set({ searchSqlMode }),
 

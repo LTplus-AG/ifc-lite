@@ -698,15 +698,16 @@ export function SearchModalSql() {
             />
           )}
 
-          {searchSqlError ? (
-            <SqlErrorBox raw={searchSqlError} />
-          ) : (
-            <SqlResultTable
-              result={searchSqlResult}
-              selectionKeyIndex={selectionKeyIndex}
-              onRowClick={handleRowClick}
-            />
-          )}
+          {/* Notebook layout: the latest error stacks ABOVE the previous
+              result table, so users keep their last successful query
+              visible while debugging the new failure. Mirrors DuckDB UI /
+              Jupyter behaviour. */}
+          {searchSqlError && <SqlErrorBox raw={searchSqlError} />}
+          <SqlResultTable
+            result={searchSqlResult}
+            selectionKeyIndex={selectionKeyIndex}
+            onRowClick={handleRowClick}
+          />
         </div>
       </div>
     </div>

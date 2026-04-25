@@ -49,6 +49,8 @@ import {
 } from '@/lib/search/saved-queries';
 import { downloadResult } from '@/lib/search/result-export';
 import { evaluateFilterRulesFederated } from '@/lib/search/filter-evaluate';
+import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
+import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { SearchModalSqlBuilder } from './SearchModal.sql.builder';
 
 /** Rows per virtualizer page — tuned for the result table row height. */
@@ -102,6 +104,8 @@ export function SearchModalSql() {
     searchSqlError,
     searchSqlMode,
     searchFilter,
+    searchQuery,
+    searchIndexes,
     setSearchSqlQuery,
     setSearchSqlRunning,
     setSearchSqlResult,
@@ -120,6 +124,8 @@ export function SearchModalSql() {
       searchSqlError: s.searchSqlError,
       searchSqlMode: s.searchSqlMode,
       searchFilter: s.searchFilter,
+      searchQuery: s.searchQuery,
+      searchIndexes: s.searchIndexes,
       setSearchSqlQuery: s.setSearchSqlQuery,
       setSearchSqlRunning: s.setSearchSqlRunning,
       setSearchSqlResult: s.setSearchSqlResult,
@@ -223,11 +229,59 @@ export function SearchModalSql() {
       for (const m of models.values()) {
         if (m.ifcDataStore) modelArgs.push({ id: m.id, store: m.ifcDataStore });
       }
+
+      // ── Tier-1/Tier-0 narrowing ────────────────────────────────────
+      // When the inline search bar carries a non-empty query, fold it
+      // into the run as a candidate set: structured rules only check
+      // the text-search hit list rather than scanning every entity.
+      // Empty query → full scan, same as before.
+      const trimmedQuery = searchQuery.trim();
+      let candidatesByModel: Map<string, Iterable<number>> | undefined;
+      let narrowedFromTextHits = 0;
+      if (trimmedQuery.length > 0) {
+        const t0Models: ScanModel[] = [];
+        const t1Indexes: Tier1Index[] = [];
+        for (const m of modelArgs) {
+          const rec = searchIndexes.get(m.id);
+          if (rec?.status === 'ready' && rec.index) {
+            t1Indexes.push(rec.index);
+          } else {
+            t0Models.push({ id: m.id, ifcDataStore: m.store });
+          }
+        }
+        const t1Hits = t1Indexes.length > 0
+          ? queryTier1Indexes(t1Indexes, trimmedQuery, { limit: 50_000 })
+          : [];
+        const t0Hits = t0Models.length > 0
+          ? runTier0Scan(t0Models, trimmedQuery, { limit: 50_000 })
+          : [];
+        const grouped = new Map<string, Set<number>>();
+        for (const hit of t1Hits.concat(t0Hits)) {
+          let bucket = grouped.get(hit.modelId);
+          if (!bucket) { bucket = new Set(); grouped.set(hit.modelId, bucket); }
+          bucket.add(hit.expressId);
+          narrowedFromTextHits++;
+        }
+        if (grouped.size > 0) {
+          candidatesByModel = new Map();
+          for (const [id, set] of grouped) candidatesByModel.set(id, set);
+          // Models that exist but produced no text hits get an empty
+          // candidate set so the structured rules don't accidentally
+          // match against the full table.
+          for (const m of modelArgs) {
+            if (!candidatesByModel.has(m.id)) candidatesByModel.set(m.id, []);
+          }
+        }
+      }
+
       const matched = evaluateFilterRulesFederated(
         modelArgs,
         searchFilter.rules,
         searchFilter.combinator,
-        { limit: searchFilter.limit > 0 ? searchFilter.limit : 5_000 },
+        {
+          limit: searchFilter.limit > 0 ? searchFilter.limit : 5_000,
+          candidateExpressIdsByModel: candidatesByModel,
+        },
       );
       // Tag rows with model id when more than one model is loaded so the
       // user can tell results apart.
@@ -337,8 +391,21 @@ export function SearchModalSql() {
     return -1;
   }, [searchSqlResult]);
 
+  // Locate the model_id column (only present in federated Fast Run results).
+  const modelIdColumnIndex = useMemo(() => {
+    const cols = searchSqlResult?.columns;
+    if (!cols) return -1;
+    return cols.indexOf('model_id');
+  }, [searchSqlResult]);
+
   const handleRowClick = useCallback((row: unknown[]) => {
-    if (selectionKeyIndex < 0 || !activeModelId) return;
+    if (selectionKeyIndex < 0) return;
+    // Federated Fast Run rows know which model they belong to; SQL Editor
+    // rows fall back to the active model (DuckDB only sees one model).
+    const rowModelId = modelIdColumnIndex >= 0 && typeof row[modelIdColumnIndex] === 'string'
+      ? (row[modelIdColumnIndex] as string)
+      : activeModelId;
+    if (!rowModelId) return;
     const raw = row[selectionKeyIndex];
     const expressId = typeof raw === 'number'
       ? raw
@@ -346,13 +413,13 @@ export function SearchModalSql() {
         ? Number(raw)
         : null;
     if (expressId === null || expressId <= 0) return;
-    const globalId = toGlobalIdFromModels(models, activeModelId, expressId);
+    const globalId = toGlobalIdFromModels(models, rowModelId, expressId);
     setSelectedEntityId(globalId);
-    setSelectedEntity({ modelId: activeModelId, expressId });
+    setSelectedEntity({ modelId: rowModelId, expressId });
     if (cameraCallbacks.frameSelection) {
       window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
     }
-  }, [activeModelId, cameraCallbacks, models, selectionKeyIndex, setSelectedEntity, setSelectedEntityId]);
+  }, [activeModelId, cameraCallbacks, models, modelIdColumnIndex, selectionKeyIndex, setSelectedEntity, setSelectedEntityId]);
 
   // ── Render early-outs for the "not ready" states ─────────────────────
   // DuckDB unavailable still leaves Fast Run usable, so we no longer

@@ -17,8 +17,8 @@
  * rule is added, then cached in the slice for the model's lifetime.
  */
 
-import { useCallback, useEffect, useMemo } from 'react';
-import { Plus, Trash2, ArrowRight, Zap, Database, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus, Trash2, ArrowRight, Zap, Database, X, Bookmark, Save } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,12 @@ import {
   discoverFilterSchema,
   discoverPropertyAndQuantitySchema,
 } from '@/lib/search/filter-schema';
+import {
+  loadSavedFilters,
+  saveFilter,
+  deleteSavedFilter,
+  type SavedFilterPreset,
+} from '@/lib/search/saved-filters';
 
 // ── Op constants ──────────────────────────────────────────────────────
 
@@ -110,6 +116,7 @@ export function SearchModalSqlBuilder({
     clearFilterRules,
     setFilterSchema,
     setFilterPsetQtoSchema,
+    setSearchFilter,
   } = useViewerStore(
     useShallow((s) => ({
       filter: s.searchFilter,
@@ -125,8 +132,13 @@ export function SearchModalSqlBuilder({
       clearFilterRules: s.clearFilterRules,
       setFilterSchema: s.setFilterSchema,
       setFilterPsetQtoSchema: s.setFilterPsetQtoSchema,
+      setSearchFilter: s.setSearchFilter,
     })),
   );
+
+  // Saved filter presets — kept in component state so save/delete can
+  // refresh the dropdown without a re-import. Loaded once on mount.
+  const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>(() => loadSavedFilters());
 
   const activeModel = activeModelId ? models.get(activeModelId) : undefined;
   const activeStore = activeModel?.ifcDataStore ?? null;
@@ -198,6 +210,32 @@ export function SearchModalSqlBuilder({
     addFilterRule(Rule.name('contains', q));
   }, [addFilterRule, searchQuery]);
 
+  // ── Preset handlers ─────────────────────────────────────────────────
+
+  const handleSavePreset = useCallback(() => {
+    if (filter.rules.length === 0) return;
+    // Browser prompt is fine here — the chip builder is already a modal
+    // dialog, and a nested dialog feels overkill for a one-line input.
+    // eslint-disable-next-line no-alert
+    const name = window.prompt('Save filter as…', '');
+    if (!name) return;
+    const next = saveFilter(name, filter.combinator, filter.rules);
+    setSavedPresets(next);
+  }, [filter.combinator, filter.rules]);
+
+  const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
+    setSearchFilter({
+      rules: preset.rules.map((r) => ({ ...r }) as FilterRule),
+      combinator: preset.combinator,
+      limit: filter.limit,
+    });
+  }, [filter.limit, setSearchFilter]);
+
+  const handleDeletePreset = useCallback((name: string) => {
+    const next = deleteSavedFilter(name);
+    setSavedPresets(next);
+  }, []);
+
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-y-auto p-4 gap-3">
       {/* ── Toolbar: AND/OR, Limit, Reset, optional inline-query bridge ── */}
@@ -233,6 +271,22 @@ export function SearchModalSqlBuilder({
         )}
 
         <div className="ml-auto flex items-center gap-1">
+          <PresetMenu
+            presets={savedPresets}
+            onLoad={handleLoadPreset}
+            onDelete={handleDeletePreset}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleSavePreset}
+            disabled={filter.rules.length === 0}
+            className="h-7 gap-1 text-[11px]"
+            title="Save the current rules as a named preset"
+          >
+            <Save className="h-3 w-3" /> Save
+          </Button>
           {filter.rules.length > 0 && (
             <Button
               type="button"
@@ -349,6 +403,74 @@ function CombinatorToggle({
         </button>
       ))}
     </div>
+  );
+}
+
+function PresetMenu({
+  presets,
+  onLoad,
+  onDelete,
+}: {
+  presets: SavedFilterPreset[];
+  onLoad: (preset: SavedFilterPreset) => void;
+  onDelete: (name: string) => void;
+}) {
+  if (presets.length === 0) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled
+        className="h-7 gap-1 text-[11px] text-muted-foreground"
+        title="Save a preset first"
+      >
+        <Bookmark className="h-3 w-3" /> Presets
+      </Button>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 text-[11px]"
+        >
+          <Bookmark className="h-3 w-3" /> Presets
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel className="text-[10px] uppercase">Saved filter presets</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {presets.map((p) => (
+          <DropdownMenuItem
+            key={p.name}
+            onSelect={() => onLoad(p)}
+            className="flex items-start justify-between gap-2"
+          >
+            <div className="flex flex-col">
+              <span className="font-medium">{p.name}</span>
+              <span className="text-[10px] text-muted-foreground">
+                {p.rules.length} rule{p.rules.length === 1 ? '' : 's'} · {p.combinator}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label={`Delete preset ${p.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(p.name);
+              }}
+              className="rounded p-1 text-muted-foreground hover:bg-zinc-100 hover:text-destructive dark:hover:bg-zinc-800"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

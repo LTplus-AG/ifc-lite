@@ -116,6 +116,17 @@ export function evaluateFilterRules(
   return out;
 }
 
+export interface FederatedEvaluateOptions extends Omit<EvaluateOptions, 'candidateExpressIds'> {
+  /**
+   * Optional per-model candidate set. When supplied for a model, only
+   * those expressIds are evaluated (the typical use is "narrow with
+   * Tier-1 first, then verify structured rules"). Models absent from
+   * the map fall back to a full scan of their entity column. Pass an
+   * empty iterable to skip a model entirely.
+   */
+  candidateExpressIdsByModel?: ReadonlyMap<string, Iterable<number>>;
+}
+
 /**
  * Evaluate `rules` across multiple federated models, producing a single
  * sorted result list. Mirrors the Rust `run_element_filter` shape.
@@ -124,7 +135,7 @@ export function evaluateFilterRulesFederated(
   models: ReadonlyArray<{ id: string; store: IfcDataStore | null }>,
   rules: readonly FilterRule[],
   combinator: Combinator,
-  options: EvaluateOptions = {},
+  options: FederatedEvaluateOptions = {},
 ): FilteredElement[] {
   if (rules.length === 0) return [];
   const limit = options.limit ?? DEFAULT_LIMIT;
@@ -134,8 +145,11 @@ export function evaluateFilterRulesFederated(
     if (!m.store) continue;
     const remaining = limit - out.length;
     if (remaining <= 0) break;
+    const candidates = options.candidateExpressIdsByModel?.get(m.id);
     const local = evaluateFilterRules(m.id, m.store, rules, combinator, {
-      ...options,
+      storeyNameOf: options.storeyNameOf,
+      predefinedTypeOf: options.predefinedTypeOf,
+      candidateExpressIds: candidates,
       limit: remaining,
     });
     out.push(...local);

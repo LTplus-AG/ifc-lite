@@ -24,7 +24,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Play, Copy, Database, FileCode2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Play, Copy, Database, FileCode2, AlertCircle, ExternalLink, Star, Bookmark, Download, Trash2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -41,6 +41,13 @@ import { cn } from '@/lib/utils';
 import { listSqlTemplates } from '@/lib/search/sql-templates';
 import { rewriteSqlError } from '@/lib/search/sql-error-rewriter';
 import { isDuckDBAvailable, runSql } from '@/lib/search/sql-state';
+import {
+  loadSavedQueries,
+  saveQuery,
+  deleteSavedQuery,
+  type SavedQuery,
+} from '@/lib/search/saved-queries';
+import { downloadResult } from '@/lib/search/result-export';
 import { SearchModalSqlBuilder } from './SearchModal.sql.builder';
 
 /** Rows per virtualizer page — tuned for the result table row height. */
@@ -208,6 +215,43 @@ export function SearchModalSql() {
     void navigator.clipboard?.writeText(searchSqlQuery);
   }, [searchSqlQuery]);
 
+  // ── Saved queries ──────────────────────────────────────────────────
+  // Loaded once per modal open + refreshed after every save / delete.
+  const [savedQueries, setSavedQueries] = useState<SavedQuery[]>(() => loadSavedQueries());
+
+  const handleSaveQuery = useCallback(() => {
+    const sql = searchSqlQuery.trim();
+    if (!sql) return;
+    if (typeof window === 'undefined') return;
+    const name = window.prompt(
+      'Save this query as:',
+      'My query — ' + new Date().toLocaleString(),
+    );
+    if (!name || !name.trim()) return;
+    setSavedQueries(saveQuery(name, sql));
+  }, [searchSqlQuery]);
+
+  const handleApplySaved = useCallback((q: SavedQuery) => {
+    setSearchSqlQuery(q.sql);
+    setSearchSqlMode('editor');
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [setSearchSqlMode, setSearchSqlQuery]);
+
+  const handleDeleteSaved = useCallback((id: string) => {
+    setSavedQueries(deleteSavedQuery(id));
+  }, []);
+
+  // ── Result export ──────────────────────────────────────────────────
+  const handleExport = useCallback((format: 'csv' | 'json') => {
+    if (!searchSqlResult) return;
+    const stem = `ifc-query-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`;
+    downloadResult(
+      { columns: searchSqlResult.columns, rows: searchSqlResult.rows },
+      format,
+      stem,
+    );
+  }, [searchSqlResult]);
+
   // Keyboard inside textarea — ⌘↵ / Ctrl+↵ runs the query.
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -343,13 +387,103 @@ export function SearchModalSql() {
               <Copy className="h-3 w-3" />
               Copy
             </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSaveQuery}
+              disabled={!searchSqlQuery.trim()}
+              className="h-7 gap-1 text-xs"
+              title="Save query under a name"
+            >
+              <Star className="h-3 w-3" />
+              Save
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={savedQueries.length === 0}
+                  className="h-7 gap-1 text-xs"
+                  title="Saved queries"
+                >
+                  <Bookmark className="h-3 w-3" />
+                  My queries
+                  {savedQueries.length > 0 && (
+                    <span className="ml-0.5 rounded bg-zinc-200 px-1 text-[9px] dark:bg-zinc-800">
+                      {savedQueries.length}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-80">
+                <DropdownMenuLabel>Saved queries</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {savedQueries.length === 0 ? (
+                  <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
+                    No saved queries yet — click Save above to add one.
+                  </div>
+                ) : (
+                  savedQueries.map((q) => (
+                    <div
+                      key={q.id}
+                      className="group flex items-start gap-1 px-1"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleApplySaved(q)}
+                        className="flex-1 truncate rounded px-2 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        title={q.sql}
+                      >
+                        <div className="truncate font-medium">{q.name}</div>
+                        <div className="truncate font-mono text-[10px] text-muted-foreground">
+                          {q.sql.split('\n').find((l) => l.trim() && !l.trim().startsWith('--')) ?? q.sql}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSaved(q.id)}
+                        aria-label={`Delete saved query ${q.name}`}
+                        className="invisible self-center rounded p-1 text-muted-foreground hover:bg-zinc-100 hover:text-foreground group-hover:visible dark:hover:bg-zinc-800"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
 
-        <div className="ml-auto text-[11px] text-muted-foreground">
+        <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
           {searchSqlResult && (
             <span>⏱ {searchSqlResult.runMs} ms · {searchSqlResult.rows.length} rows</span>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!searchSqlResult || searchSqlResult.rows.length === 0}
+                className="h-7 gap-1 text-xs"
+                title="Export results"
+              >
+                <Download className="h-3 w-3" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => handleExport('csv')}>
+                Download CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleExport('json')}>
+                Download JSON
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

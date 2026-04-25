@@ -95,6 +95,15 @@ export interface SearchModalSqlBuilderProps {
   onRunFast: () => void;
   /** True while a run is in flight, disables both Run buttons. */
   running: boolean;
+  /**
+   * True when the optional `@duckdb/duckdb-wasm` package isn't
+   * resolvable at runtime. Disables the SQL-emitter actions
+   * (Run SQL + Open in Editor) and promotes Fast Run as the primary
+   * action — Builder + Fast Run are entirely DuckDB-free. Defaults to
+   * false so callers that don't probe availability still get the old
+   * behaviour.
+   */
+  sqlUnavailable?: boolean;
 }
 
 export function SearchModalSqlBuilder({
@@ -102,6 +111,7 @@ export function SearchModalSqlBuilder({
   onRunSql,
   onRunFast,
   running,
+  sqlUnavailable = false,
 }: SearchModalSqlBuilderProps) {
   const {
     filter,
@@ -335,15 +345,22 @@ export function SearchModalSqlBuilder({
               variant="ghost"
               size="sm"
               onClick={() => onPromoteToEditor(generatedSql)}
-              disabled={!generatedSql}
+              disabled={!generatedSql || sqlUnavailable}
               className="h-6 gap-1 text-[11px]"
-              title="Copy generated SQL into the Editor tab"
+              title={sqlUnavailable
+                ? 'SQL Editor needs @duckdb/duckdb-wasm — install it to enable'
+                : 'Copy generated SQL into the Editor tab'}
             >
               Open in Editor
               <ArrowRight className="h-3 w-3" />
             </Button>
+            {/* When DuckDB-WASM isn't installed, Fast Run becomes the
+                primary action — visually default-styled and the only
+                usable run path. Run SQL stays in the layout but disabled,
+                so the keyboard order / muscle memory doesn't shift when
+                the optional package gets installed later. */}
             <Button
-              variant="outline"
+              variant={sqlUnavailable ? 'default' : 'outline'}
               size="sm"
               onClick={onRunFast}
               disabled={filter.rules.length === 0 || running}
@@ -351,18 +368,20 @@ export function SearchModalSqlBuilder({
               title="Run rules through the in-memory evaluator (no DuckDB needed, faster for small candidate sets)"
             >
               <Zap className="h-3 w-3" />
-              Fast Run
+              {running && sqlUnavailable ? 'Running…' : 'Fast Run'}
             </Button>
             <Button
-              variant="default"
+              variant={sqlUnavailable ? 'outline' : 'default'}
               size="sm"
               onClick={() => onRunSql(generatedSql)}
-              disabled={!generatedSql || running}
+              disabled={!generatedSql || running || sqlUnavailable}
               className="h-6 gap-1 text-[11px]"
-              title="Compile rules to SQL and run via DuckDB"
+              title={sqlUnavailable
+                ? 'Run SQL needs @duckdb/duckdb-wasm — use Fast Run instead'
+                : 'Compile rules to SQL and run via DuckDB'}
             >
               <Database className="h-3 w-3" />
-              {running ? 'Running…' : 'Run SQL'}
+              {running && !sqlUnavailable ? 'Running…' : 'Run SQL'}
             </Button>
           </div>
         </div>

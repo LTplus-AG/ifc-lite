@@ -183,6 +183,17 @@ export function SearchModalSql() {
       setSearchSqlError('No active model — load an IFC file before running SQL.');
       return;
     }
+    // Defense in depth: never invoke runSql when DuckDB-WASM isn't
+    // resolvable. The Builder already disables the Run SQL button in
+    // this state, but a stale React closure or a programmatic caller
+    // could still reach here — short-circuit with a friendly message
+    // rather than letting the bare-specifier error bubble up.
+    if (available === false) {
+      setSearchSqlError(
+        '@duckdb/duckdb-wasm is not installed. Use Fast Run in the Builder, or install with `pnpm add @duckdb/duckdb-wasm` and reload.',
+      );
+      return;
+    }
     if (searchSqlRunning) return;
     const sql = rawSql.trim();
     if (!sql) return;
@@ -202,7 +213,7 @@ export function SearchModalSql() {
     } finally {
       setSearchSqlRunning(false);
     }
-  }, [activeStore, searchSqlRunning,
+  }, [activeStore, available, searchSqlRunning,
       setSearchSqlError, setSearchSqlResult, setSearchSqlRunning]);
 
   const runEditor = useCallback(() => {
@@ -697,6 +708,7 @@ export function SearchModalSql() {
               onRunSql={(sql) => void runSqlQuery(sql)}
               onRunFast={runFast}
               running={searchSqlRunning}
+              sqlUnavailable={duckDbUnavailable}
             />
           )}
 

@@ -3,30 +3,28 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Search state slice
+ * Search state slice.
  *
- * Inline-toolbar search bar state — query string, popover visibility,
- * keyboard-navigation index, plus the per-model Tier-1 search indexes
- * built post-load. The actual scan results are derived in SearchInline
- * via useMemo; keeping derived results out of the store avoids needless
- * re-renders elsewhere.
+ * Two surfaces — both backed by the same per-model Tier-1 indexes:
+ *   1. Inline toolbar field (Tier-0/Tier-1 fuzzy text scan).
+ *   2. Advanced modal with two tabs:
+ *        - Search: same Tier-0/Tier-1 scan, virtualised + chip filters
+ *          (matchField, model include).
+ *        - Filter: chip-based structured rules over the unified
+ *          `FilterRule[]` shape, evaluated by the in-memory path-B
+ *          evaluator. No DuckDB — Builder + run is the whole UI.
  *
- * Tier hierarchy:
- *   Tier-0 — linear scan over already-cached EntityTable columns
- *            (zero build cost; fallback while Tier-1 is building)
- *   Tier-1 — per-model inverted token index built after load
- *            (zero load hot-path cost; yielded in chunks)
- *   Tier-3 — DuckDB SQL (handled in the modal, layered on top)
+ * The path-B evaluator is the only run path; the previous DuckDB
+ * editor / SQL emitter / Run SQL button were removed once it became
+ * clear the in-memory engine handles 4M-entity models with the index
+ * prefilter + cheap-first ordering + chunked yielding pattern.
  */
 
 import type { StateCreator } from 'zustand';
 import type { Tier1Index } from '@/lib/search/tier1-index';
 import type { SearchResult, MatchField } from '@/lib/search/tier0-scan';
-import {
-  emptyBuilderState,
-  type VisualBuilderState,
-  type PropertyFilter,
-} from '@/lib/search/sql-builder';
+import type { FilterRule, Combinator } from '@/lib/search/filter-rules';
+import type { FilterSchema, PsetQtoSchema } from '@/lib/search/filter-schema';
 
 /** Index lifecycle state for a single model. */
 export type Tier1IndexStatus = 'pending' | 'building' | 'ready' | 'error';
@@ -63,22 +61,40 @@ export interface SearchVimCycleState {
 export type SearchFieldFilter = MatchField | 'all';
 
 /**
- * Result from the most recent SQL run — kept as a flat snapshot so the
- * modal can re-render rows without holding onto the DuckDB row
- * iterators.
+ * Tabular result from a Filter run. Flat snapshot so the modal can
+ * re-render rows without holding live evaluator state.
  */
-export interface SearchSqlResult {
+export interface SearchFilterResult {
   columns: string[];
   rows: unknown[][];
   runMs: number;
 }
 
 /**
- * Sub-mode inside the SQL tab — Builder (chip UI) or Editor (raw SQL).
- * Flipping Builder → Editor copies the generated SQL into the editor as
- * a starting point; flipping back is read-only.
+ * Unified filter state — chip rules + AND/OR + result cap. Drives the
+ * path-B evaluator in `lib/search/filter-evaluate.ts`.
  */
-export type SearchSqlMode = 'builder' | 'editor';
+export interface SearchFilterStateValue {
+  rules: FilterRule[];
+  combinator: Combinator;
+  /** Result cap. `0` = no cap (evaluator's internal default applies). */
+  limit: number;
+}
+
+export function emptyFilterState(): SearchFilterStateValue {
+  return { rules: [], combinator: 'AND', limit: 500 };
+}
+
+/**
+ * Per-model filter-schema cache for chip dropdowns. Populated on demand
+ * when the modal opens; cleared when a model is removed.
+ */
+export interface FilterSchemaCacheEntry {
+  /** Cheap pass — storeys + ifcTypes. Always populated when entry exists. */
+  basic: FilterSchema;
+  /** Expensive pass — pset / qto names. Lazy; null until first request. */
+  psetQto: PsetQtoSchema | null;
+}
 
 export interface SearchSlice {
   /** Current input value (debounced consumers may stage their own copy). */
@@ -97,18 +113,17 @@ export interface SearchSlice {
   searchFieldFilter: SearchFieldFilter;
   /** Per-modelId include filter inside the modal. `null` means all models included. */
   searchModelFilter: Set<string> | null;
-  /** Persistent SQL editor buffer — survives tab switching within the modal. */
-  searchSqlQuery: string;
-  /** Latest successful SQL result (or null on fresh tab open / error). */
-  searchSqlResult: SearchSqlResult | null;
-  /** Whether a SQL run is currently in flight. */
-  searchSqlRunning: boolean;
-  /** Latest SQL error message — raw DuckDB text, rewritten for UI by callers. */
-  searchSqlError: string | null;
-  /** Active sub-mode inside the SQL tab (Builder vs Editor). */
-  searchSqlMode: SearchSqlMode;
-  /** Visual-builder state — the user-facing chip representation. */
-  searchSqlBuilder: VisualBuilderState;
+
+  /** Latest Filter run result (or null on fresh tab open / error). */
+  searchFilterResult: SearchFilterResult | null;
+  /** Whether a Filter run is currently in flight. */
+  searchFilterRunning: boolean;
+  /** Latest Filter error message — set when the evaluator throws. */
+  searchFilterError: string | null;
+  /** Filter rule state — chip rules, combinator, limit. */
+  searchFilter: SearchFilterStateValue;
+  /** Per-model filter-schema cache (lazy). */
+  searchFilterSchema: Map<string, FilterSchemaCacheEntry>;
 
   setSearchQuery: (query: string) => void;
   setSearchOpen: (open: boolean) => void;
@@ -139,19 +154,30 @@ export interface SearchSlice {
   /** Clear model filter (null → all models included). */
   clearSearchModelFilter: () => void;
 
-  setSearchSqlQuery: (query: string) => void;
-  setSearchSqlRunning: (running: boolean) => void;
-  setSearchSqlResult: (result: SearchSqlResult | null) => void;
-  setSearchSqlError: (error: string | null) => void;
+  // ── Filter run state ──────────────────────────────────────────────
+  setSearchFilterRunning: (running: boolean) => void;
+  /** Successful run — sets the result and clears any prior error
+   *  (the new run supersedes the old failure). */
+  setSearchFilterResult: (result: SearchFilterResult | null) => void;
+  /** Error path — keeps the prior result visible while showing the
+   *  error above it (notebook-style pairing). */
+  setSearchFilterError: (error: string | null) => void;
 
-  setSearchSqlMode: (mode: SearchSqlMode) => void;
-  /** Replace the whole builder state — used by the "Reset" action. */
-  setSearchSqlBuilder: (state: VisualBuilderState) => void;
-  setBuilderIfcType: (type: string | null) => void;
-  setBuilderLimit: (limit: number) => void;
-  addBuilderFilter: (filter: PropertyFilter) => void;
-  updateBuilderFilter: (index: number, patch: Partial<PropertyFilter>) => void;
-  removeBuilderFilter: (index: number) => void;
+  // ── Filter-rule actions ───────────────────────────────────────────
+  /** Replace the whole filter state — used by Reset and preset loading. */
+  setSearchFilter: (state: SearchFilterStateValue) => void;
+  setFilterCombinator: (combinator: Combinator) => void;
+  setFilterLimit: (limit: number) => void;
+  addFilterRule: (rule: FilterRule) => void;
+  updateFilterRule: (index: number, rule: FilterRule) => void;
+  removeFilterRule: (index: number) => void;
+  /** Drop every rule but keep combinator + limit. */
+  clearFilterRules: () => void;
+
+  // ── Schema cache actions ──────────────────────────────────────────
+  setFilterSchema: (modelId: string, basic: FilterSchema) => void;
+  setFilterPsetQtoSchema: (modelId: string, psetQto: PsetQtoSchema) => void;
+  removeFilterSchema: (modelId: string) => void;
 }
 
 export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> = (set) => ({
@@ -163,12 +189,11 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchModalOpen: false,
   searchFieldFilter: 'all',
   searchModelFilter: null,
-  searchSqlQuery: '',
-  searchSqlResult: null,
-  searchSqlRunning: false,
-  searchSqlError: null,
-  searchSqlMode: 'builder',
-  searchSqlBuilder: emptyBuilderState(),
+  searchFilterResult: null,
+  searchFilterRunning: false,
+  searchFilterError: null,
+  searchFilter: emptyFilterState(),
+  searchFilterSchema: new Map(),
 
   // Typing or programmatically changing the query breaks out of vim cycle —
   // the user is re-searching, not stepping through a committed result list.
@@ -242,43 +267,75 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
 
   clearSearchModelFilter: () => set({ searchModelFilter: null }),
 
-  setSearchSqlQuery: (searchSqlQuery) => set({ searchSqlQuery }),
-  setSearchSqlRunning: (searchSqlRunning) => set({ searchSqlRunning }),
-  setSearchSqlResult: (searchSqlResult) => set({ searchSqlResult, searchSqlError: null }),
-  setSearchSqlError: (searchSqlError) => set({ searchSqlError, searchSqlResult: null }),
+  setSearchFilterRunning: (searchFilterRunning) => set({ searchFilterRunning }),
+  // Notebook-style pairing: a successful run clears the prior error
+  // (new result supersedes failure) but an error keeps the prior result
+  // on screen so the user doesn't lose their last good table while
+  // debugging.
+  setSearchFilterResult: (searchFilterResult) => set({ searchFilterResult, searchFilterError: null }),
+  setSearchFilterError: (searchFilterError) => set({ searchFilterError }),
 
-  setSearchSqlMode: (searchSqlMode) => set({ searchSqlMode }),
-  setSearchSqlBuilder: (searchSqlBuilder) => set({ searchSqlBuilder }),
+  setSearchFilter: (searchFilter) => set({ searchFilter }),
 
-  setBuilderIfcType: (ifcType) =>
-    set((state) => ({ searchSqlBuilder: { ...state.searchSqlBuilder, ifcType } })),
+  setFilterCombinator: (combinator) =>
+    set((state) => ({ searchFilter: { ...state.searchFilter, combinator } })),
 
-  setBuilderLimit: (limit) =>
-    set((state) => ({ searchSqlBuilder: { ...state.searchSqlBuilder, limit } })),
+  setFilterLimit: (limit) =>
+    set((state) => ({ searchFilter: { ...state.searchFilter, limit } })),
 
-  addBuilderFilter: (filter) =>
+  addFilterRule: (rule) =>
     set((state) => ({
-      searchSqlBuilder: {
-        ...state.searchSqlBuilder,
-        propertyFilters: [...state.searchSqlBuilder.propertyFilters, filter],
+      searchFilter: {
+        ...state.searchFilter,
+        rules: [...state.searchFilter.rules, rule],
       },
     })),
 
-  updateBuilderFilter: (index, patch) =>
+  updateFilterRule: (index, rule) =>
     set((state) => {
-      const filters = state.searchSqlBuilder.propertyFilters;
-      if (index < 0 || index >= filters.length) return {};
-      const next = filters.slice();
-      next[index] = { ...filters[index], ...patch };
-      return { searchSqlBuilder: { ...state.searchSqlBuilder, propertyFilters: next } };
+      const rules = state.searchFilter.rules;
+      if (index < 0 || index >= rules.length) return {};
+      const next = rules.slice();
+      next[index] = rule;
+      return { searchFilter: { ...state.searchFilter, rules: next } };
     }),
 
-  removeBuilderFilter: (index) =>
+  removeFilterRule: (index) =>
     set((state) => {
-      const filters = state.searchSqlBuilder.propertyFilters;
-      if (index < 0 || index >= filters.length) return {};
-      const next = filters.slice();
+      const rules = state.searchFilter.rules;
+      if (index < 0 || index >= rules.length) return {};
+      const next = rules.slice();
       next.splice(index, 1);
-      return { searchSqlBuilder: { ...state.searchSqlBuilder, propertyFilters: next } };
+      return { searchFilter: { ...state.searchFilter, rules: next } };
+    }),
+
+  clearFilterRules: () =>
+    set((state) => ({ searchFilter: { ...state.searchFilter, rules: [] } })),
+
+  setFilterSchema: (modelId, basic) =>
+    set((state) => {
+      const next = new Map(state.searchFilterSchema);
+      const existing = next.get(modelId);
+      next.set(modelId, { basic, psetQto: existing?.psetQto ?? null });
+      return { searchFilterSchema: next };
+    }),
+
+  setFilterPsetQtoSchema: (modelId, psetQto) =>
+    set((state) => {
+      const next = new Map(state.searchFilterSchema);
+      const existing = next.get(modelId);
+      // Only meaningful once a basic schema has been set — the modal
+      // calls discoverFilterSchema first then queues the heavy pass.
+      if (!existing) return {};
+      next.set(modelId, { basic: existing.basic, psetQto });
+      return { searchFilterSchema: next };
+    }),
+
+  removeFilterSchema: (modelId) =>
+    set((state) => {
+      if (!state.searchFilterSchema.has(modelId)) return {};
+      const next = new Map(state.searchFilterSchema);
+      next.delete(modelId);
+      return { searchFilterSchema: next };
     }),
 });

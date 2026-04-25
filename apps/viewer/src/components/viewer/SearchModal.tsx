@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, SlidersHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,7 @@ import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { pushRecentSearch } from '@/lib/search/recent-searches';
 import { SearchModalText } from './SearchModal.text';
-import { SearchModalSql } from './SearchModal.sql';
+import { SearchModalFilter } from './SearchModal.filter';
 
 /** Modal-side result cap. Well above what any user scrolls through, small
  *  enough that the score/merge arrays stay cheap. Virtualization keeps
@@ -139,17 +139,26 @@ export function SearchModal() {
     return () => window.removeEventListener('keydown', handler);
   }, [toggleSearchModal]);
 
-  /** Record the query in recents the first time the modal actually has a
-   *  non-empty query at the moment it closes — mirrors what the inline
-   *  does on Enter-commit without requiring the user to commit a row. */
-  const hadNonEmptyOnOpenRef = useRef(false);
+  /**
+   * Record the query in recents on the modal-close *transition* — once
+   * per close, with the final query at that moment. We watch only
+   * `searchModalOpen` (not `searchQuery`) so typing in the inline bar
+   * while the modal is closed never fires this effect; without that
+   * gate, every keystroke in the inline bar (which shares `searchQuery`
+   * with the modal) would push a partial-prefix recent.
+   *
+   * `prevOpenRef` distinguishes the "opened then closed" transition
+   * from the initial mount where `searchModalOpen` is already false.
+   */
+  const prevOpenRef = useRef(searchModalOpen);
   useEffect(() => {
-    if (searchModalOpen) {
-      hadNonEmptyOnOpenRef.current = searchQuery.trim().length > 0;
-      return;
-    }
-    // Modal just closed — if a query was typed during the session, record it.
-    if (hadNonEmptyOnOpenRef.current || searchQuery.trim().length > 0) {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = searchModalOpen;
+    if (wasOpen && !searchModalOpen) {
+      // Use the latest searchQuery via a fresh read — depending on it
+      // would re-fire this effect on every keystroke. Since the close
+      // transition is what we care about, the latest value at close
+      // time is the right thing to record.
       const q = searchQuery.trim();
       if (q) pushRecentSearch(q);
     }
@@ -187,8 +196,9 @@ export function SearchModal() {
                 <Search className="h-3.5 w-3.5 mr-1.5" />
                 Search
               </TabsTrigger>
-              <TabsTrigger value="sql">
-                SQL
+              <TabsTrigger value="filter">
+                <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
+                Filter
               </TabsTrigger>
             </TabsList>
             <div className="text-[11px] text-muted-foreground">
@@ -215,8 +225,8 @@ export function SearchModal() {
               onClose={close}
             />
           </TabsContent>
-          <TabsContent value="sql" className="flex-1 min-h-0 mt-0 flex">
-            <SearchModalSql />
+          <TabsContent value="filter" className="flex-1 min-h-0 mt-0 flex">
+            <SearchModalFilter />
           </TabsContent>
         </Tabs>
       </DialogContent>

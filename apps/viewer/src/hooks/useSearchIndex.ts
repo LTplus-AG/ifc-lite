@@ -24,12 +24,21 @@ import { useViewerStore } from '@/store';
 import { buildTier1Index } from '@/lib/search/tier1-index';
 
 export function useSearchIndex(): void {
-  const { models, searchIndexes, setSearchIndexRecord, removeSearchIndexRecord } = useViewerStore(
+  const {
+    models,
+    searchIndexes,
+    setSearchIndexRecord,
+    removeSearchIndexRecord,
+    searchFilterSchema,
+    removeFilterSchema,
+  } = useViewerStore(
     useShallow((s) => ({
       models: s.models,
       searchIndexes: s.searchIndexes,
       setSearchIndexRecord: s.setSearchIndexRecord,
       removeSearchIndexRecord: s.removeSearchIndexRecord,
+      searchFilterSchema: s.searchFilterSchema,
+      removeFilterSchema: s.removeFilterSchema,
     })),
   );
 
@@ -47,6 +56,13 @@ export function useSearchIndex(): void {
         controllers.delete(modelId);
         removeSearchIndexRecord(modelId);
       }
+    }
+
+    // Drop the filter-schema cache for departed models too. Stale entries
+    // would surface in the chip dropdowns the next time a model with the
+    // same id loaded (e.g. user reopens a different file as model_0).
+    for (const modelId of Array.from(searchFilterSchema.keys())) {
+      if (!models.has(modelId)) removeFilterSchema(modelId);
     }
 
     // Kick off builds for models that are loaded but not yet indexed.
@@ -95,7 +111,7 @@ export function useSearchIndex(): void {
       // models that went missing got aborted above. The real cleanup is
       // the component-unmount pass below.
     };
-  }, [models, searchIndexes, setSearchIndexRecord, removeSearchIndexRecord]);
+  }, [models, searchIndexes, setSearchIndexRecord, removeSearchIndexRecord, searchFilterSchema, removeFilterSchema]);
 
   // Abort any in-flight builds when the consumer unmounts. Separate effect
   // so it only fires on unmount (no deps).

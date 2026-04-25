@@ -398,12 +398,11 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       searchModalOpen: false,
       searchFieldFilter: 'all',
       searchModelFilter: null,
-      searchSqlQuery: '',
-      searchSqlResult: null,
-      searchSqlRunning: false,
-      searchSqlError: null,
-      searchSqlMode: 'builder',
-      searchSqlBuilder: { ifcType: null, propertyFilters: [], limit: 500 },
+      searchFilterResult: null,
+      searchFilterRunning: false,
+      searchFilterError: null,
+      searchFilter: { rules: [], combinator: 'AND', limit: 500 },
+      searchFilterSchema: new Map(),
     });
   },
 }));

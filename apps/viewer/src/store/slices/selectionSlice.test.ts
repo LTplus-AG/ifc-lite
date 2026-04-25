@@ -106,6 +106,52 @@ describe('SelectionSlice', () => {
     });
   });
 
+  describe('multi-model selection: addEntitiesToSelection (batch)', () => {
+    it('should add every ref in one set call', () => {
+      const refs: EntityRef[] = [
+        { modelId: 'model-1', expressId: 1 },
+        { modelId: 'model-1', expressId: 2 },
+        { modelId: 'model-2', expressId: 3 },
+      ];
+      state.addEntitiesToSelection(refs);
+      assert.strictEqual(state.selectedEntitiesSet.size, 3);
+    });
+
+    it('should set primary selection to the LAST ref (matches single-add convention)', () => {
+      const refs: EntityRef[] = [
+        { modelId: 'model-1', expressId: 1 },
+        { modelId: 'model-2', expressId: 99 },
+      ];
+      state.addEntitiesToSelection(refs);
+      assert.deepStrictEqual(state.selectedEntity, { modelId: 'model-2', expressId: 99 });
+    });
+
+    it('should be a no-op for empty input', () => {
+      const before = state.selectedEntitiesSet;
+      state.addEntitiesToSelection([]);
+      assert.strictEqual(state.selectedEntitiesSet, before, 'state ref unchanged');
+    });
+
+    it('should compose with prior single-adds without losing entries', () => {
+      const ref0: EntityRef = { modelId: 'model-1', expressId: 0 };
+      state.addEntityToSelection(ref0);
+      state.addEntitiesToSelection([
+        { modelId: 'model-1', expressId: 1 },
+        { modelId: 'model-1', expressId: 2 },
+      ]);
+      assert.strictEqual(state.selectedEntitiesSet.size, 3);
+    });
+
+    it('should dedupe overlapping refs without changing the set size beyond the union', () => {
+      state.addEntityToSelection({ modelId: 'm', expressId: 7 });
+      state.addEntitiesToSelection([
+        { modelId: 'm', expressId: 7 }, // duplicate
+        { modelId: 'm', expressId: 8 },
+      ]);
+      assert.strictEqual(state.selectedEntitiesSet.size, 2);
+    });
+  });
+
   describe('multi-model selection: removeEntityFromSelection', () => {
     it('should remove entity from selection set', () => {
       const ref: EntityRef = { modelId: 'model-1', expressId: 123 };

@@ -169,54 +169,52 @@ function scanModel(
     const name = nIdx !== 0 ? strings.get(nIdx) : '';
     const globalId = gIdx !== 0 ? strings.get(gIdx) : '';
 
+    // Score every applicable field and keep the max — Tier-1's
+    // `scoreEntry` does the same, and the result-merge code in the UI
+    // depends on Tier-0 / Tier-1 producing comparable orderings. The
+    // previous short-circuit (skip type once name produced any score)
+    // ranked an entity that hits NAME_SUBSTR (40) below an entity that
+    // would have hit TYPE_EXACT (80) on its name field, so the same
+    // logical match scored differently across paths.
     let score = 0;
     let matchField: MatchField = 'name';
+    const bump = (s: number, mf: MatchField): void => {
+      if (s > score) {
+        score = s;
+        matchField = mf;
+      }
+    };
 
     if (name) {
       const nameLower = name.toLowerCase();
-      if (nameLower === needle) {
-        score = SCORE.NAME_EXACT;
-        matchField = 'name';
-      } else if (nameLower.startsWith(needle)) {
-        score = SCORE.NAME_PREFIX;
-        matchField = 'name';
-      } else if (nameLower.includes(needle)) {
-        score = SCORE.NAME_SUBSTR;
-        matchField = 'name';
-      }
+      if (nameLower === needle) bump(SCORE.NAME_EXACT, 'name');
+      else if (nameLower.startsWith(needle)) bump(SCORE.NAME_PREFIX, 'name');
+      else if (nameLower.includes(needle)) bump(SCORE.NAME_SUBSTR, 'name');
     }
 
-    if (score === 0) {
-      // Type comparison uses the resolved type-name accessor (handles enum
-      // → PascalCase conversion); cheap but a method call, so we only do
-      // it when nothing else matched.
-      const idForType = expressId[i];
-      const typeName = table.getTypeName(idForType);
+    {
+      // Type lookup uses the resolved type-name accessor (handles enum
+      // → PascalCase conversion). Cheap but a method call, so it stays
+      // inside the per-row loop only because it can outrank NAME_SUBSTR.
+      const typeName = table.getTypeName(expressId[i]);
       const typeLower = typeName.toLowerCase();
-      if (typeLower === needle) {
-        score = SCORE.TYPE_EXACT;
-        matchField = 'type';
-      } else if (typeLower.startsWith(needle)) {
-        score = SCORE.TYPE_PREFIX;
-        matchField = 'type';
-      }
+      if (typeLower === needle) bump(SCORE.TYPE_EXACT, 'type');
+      else if (typeLower.startsWith(needle)) bump(SCORE.TYPE_PREFIX, 'type');
     }
 
     let objectType = '';
-    if (score === 0 && oIdx !== 0) {
+    if (oIdx !== 0) {
       objectType = strings.get(oIdx);
       if (objectType.toLowerCase().includes(needle)) {
-        score = SCORE.OBJECTTYPE_SUBSTR;
-        matchField = 'objectType';
+        bump(SCORE.OBJECTTYPE_SUBSTR, 'objectType');
       }
     }
 
     let description = '';
-    if (score === 0 && dIdx !== 0) {
+    if (dIdx !== 0) {
       description = strings.get(dIdx);
       if (description.toLowerCase().includes(needle)) {
-        score = SCORE.DESCRIPTION_SUBSTR;
-        matchField = 'description';
+        bump(SCORE.DESCRIPTION_SUBSTR, 'description');
       }
     }
 

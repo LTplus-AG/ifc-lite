@@ -58,6 +58,12 @@ function isEditableFocused(): boolean {
 export function SearchInline() {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Tracks the latest scheduled `frameSelection` timer so back-to-back
+  // selection changes (or unmount) don't leak orphaned timeouts. Without
+  // this, picking a different result inside the 50ms window — or
+  // unmounting the component — leaves a stale callback queued that fires
+  // on a now-unrelated camera state.
+  const frameTimerRef = useRef<number | null>(null);
 
   const {
     searchQuery,
@@ -76,7 +82,7 @@ export function SearchInline() {
     models,
     setSelectedEntity,
     setSelectedEntityId,
-    addEntityToSelection,
+    toggleEntitySelection,
     cameraCallbacks,
   } = useViewerStore(
     useShallow((s) => ({
@@ -96,7 +102,7 @@ export function SearchInline() {
       models: s.models,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
-      addEntityToSelection: s.addEntityToSelection,
+      toggleEntitySelection: s.toggleEntitySelection,
       cameraCallbacks: s.cameraCallbacks,
     })),
   );
@@ -113,6 +119,15 @@ export function SearchInline() {
     const handle = window.setTimeout(() => setDebouncedQuery(searchQuery), DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
   }, [searchQuery]);
+
+  // Clear any pending frame timer on unmount so a fire-and-forget
+  // callback can't outlive the component.
+  useEffect(() => () => {
+    if (frameTimerRef.current !== null) {
+      window.clearTimeout(frameTimerRef.current);
+      frameTimerRef.current = null;
+    }
+  }, []);
 
   // Split models into two pools: those with a ready Tier-1 index, and
   // those still relying on the Tier-0 linear scan. Recomputed only when
@@ -134,17 +149,26 @@ export function SearchInline() {
     return { tier0Models: t0, tier1Indexes: t1, indexingCount: building };
   }, [models, searchIndexes]);
 
-  const results = useMemo<SearchResult[]>(() => {
-    if (!debouncedQuery.trim()) return [];
+  /**
+   * Run the Tier-0/Tier-1 scan synchronously for an arbitrary query.
+   * Extracted from the debounced `results` memo so the Enter-commit
+   * path can flush against the LIVE `searchQuery` rather than the
+   * debounced snapshot — without it, hitting Enter inside the 80ms
+   * debounce window commits a hit from the previous query and records
+   * the wrong recent-search term, even though the input shows newer
+   * text (Codex P2: "Commit inline search against the current query").
+   */
+  const runScan = useCallback((q: string): SearchResult[] => {
+    if (!q.trim()) return [];
     if (tier0Models.length === 0 && tier1Indexes.length === 0) return [];
 
     const t1Results =
       tier1Indexes.length > 0
-        ? queryTier1Indexes(tier1Indexes, debouncedQuery, { limit: RESULT_LIMIT })
+        ? queryTier1Indexes(tier1Indexes, q, { limit: RESULT_LIMIT })
         : [];
     const t0Results =
       tier0Models.length > 0
-        ? runTier0Scan(tier0Models, debouncedQuery, { limit: RESULT_LIMIT })
+        ? runTier0Scan(tier0Models, q, { limit: RESULT_LIMIT })
         : [];
 
     if (t1Results.length === 0) return t0Results;
@@ -168,7 +192,12 @@ export function SearchInline() {
       if (out.length >= RESULT_LIMIT) break;
     }
     return out;
-  }, [tier0Models, tier1Indexes, debouncedQuery]);
+  }, [tier0Models, tier1Indexes]);
+
+  const results = useMemo<SearchResult[]>(
+    () => runScan(debouncedQuery),
+    [runScan, debouncedQuery],
+  );
 
   // Keep the highlight index in range as results change.
   useEffect(() => {
@@ -189,7 +218,10 @@ export function SearchInline() {
       const globalId = isLegacy ? r.expressId : toGlobalIdFromModels(models, r.modelId, r.expressId);
 
       if (addToSelection) {
-        addEntityToSelection(ref);
+        // Shift+Enter additive — TOGGLES rather than just adds, so a
+        // second Shift+Enter on the same row deselects (was: forced
+        // the user to clear the entire multi-selection to undo).
+        toggleEntitySelection(ref);
         setSelectedEntityId(globalId);
         return;
       }
@@ -197,26 +229,46 @@ export function SearchInline() {
       setSelectedEntityId(globalId);
       setSelectedEntity(ref);
       if (cameraCallbacks.frameSelection) {
-        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+        if (frameTimerRef.current !== null) window.clearTimeout(frameTimerRef.current);
+        frameTimerRef.current = window.setTimeout(() => {
+          cameraCallbacks.frameSelection?.();
+          frameTimerRef.current = null;
+        }, 50);
       }
     },
     [
-      addEntityToSelection,
       cameraCallbacks,
       models,
       setSelectedEntity,
       setSelectedEntityId,
+      toggleEntitySelection,
     ],
   );
 
-  /** Commit: select + frame + enter vim cycle + record recent. */
+  /**
+   * Commit: select + frame + enter vim cycle + record recent.
+   *
+   * `overrideResults` / `overrideQuery` let the Enter-commit path
+   * pass freshly-scanned results from the LIVE `searchQuery` when
+   * the debounce hasn't settled yet — without that, the user's
+   * `n`/`N` cycle and the recorded recent both reflect the prior
+   * (debounced) query rather than what the input shows.
+   */
   const commitResult = useCallback(
-    (r: SearchResult, index: number, addToSelection: boolean) => {
+    (
+      r: SearchResult,
+      index: number,
+      addToSelection: boolean,
+      overrideResults?: SearchResult[],
+      overrideQuery?: string,
+    ) => {
+      const cycleResults = overrideResults ?? results;
+      const cycleQuery = overrideQuery ?? debouncedQuery;
       applySelection(r, addToSelection);
-      if (!addToSelection && results.length > 0) {
-        enterVimCycle(debouncedQuery, results, index);
+      if (!addToSelection && cycleResults.length > 0) {
+        enterVimCycle(cycleQuery, cycleResults, index);
       }
-      const trimmed = debouncedQuery.trim();
+      const trimmed = cycleQuery.trim();
       if (trimmed) setRecents(pushRecentSearch(trimmed));
       closeSearch();
     },
@@ -348,8 +400,20 @@ export function SearchInline() {
           setSearchModalOpen(true);
           return;
         }
-        const target = results[searchHighlightIndex];
-        if (target) commitResult(target, searchHighlightIndex, e.shiftKey);
+        // Flush the debounce: if the user typed something that hasn't yet
+        // settled into `debouncedQuery`, re-scan synchronously against the
+        // LIVE `searchQuery`. The popover is showing stale results in that
+        // window (debounced still reflects the prior query) so committing
+        // `results[index]` would select the wrong entity. Match the input.
+        const live = searchQuery;
+        const useLive = live.trim() !== debouncedQuery.trim();
+        const liveResults = useLive ? runScan(live) : results;
+        if (liveResults.length === 0) return;
+        const idx = useLive
+          ? Math.min(searchHighlightIndex, liveResults.length - 1)
+          : searchHighlightIndex;
+        const target = liveResults[idx];
+        if (target) commitResult(target, idx, e.shiftKey, liveResults, live);
       }
     },
     [commitResult, results, searchHighlightIndex, searchOpen, setSearchHighlightIndex, setSearchModalOpen, setSearchOpen],

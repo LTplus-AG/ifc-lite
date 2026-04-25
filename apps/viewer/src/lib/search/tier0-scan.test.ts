@@ -122,6 +122,23 @@ describe('runTier0Scan', () => {
     assert.strictEqual(winner!.matchField, 'type');
   });
 
+  it('keeps the MAX score across fields (a substring name hit can be outranked by a type-exact hit)', () => {
+    // The entity's name contains "wall" (NAME_SUBSTR=40) AND its type
+    // is exactly "IfcWall" (TYPE_EXACT=80). The match should win on
+    // type, not be capped at name. Without this, multi-model results
+    // where one model used Tier-1 (max-across-fields) and another
+    // used Tier-0 (short-circuit) would rank the same logical match
+    // differently — breaking the comparable-ordering guarantee.
+    const store = buildStore([
+      { expressId: 10, type: 'IFCWALL', globalId: '1abcdefghijklmnopqrstu', name: 'metal-wall-cladding' },
+    ]);
+    const out = runTier0Scan([modelOf('m', store)], 'ifcwall');
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(out[0].matchField, 'type', 'type should outrank a substring name hit');
+    // 80 (TYPE_EXACT) ≫ 40 (NAME_SUBSTR).
+    assert.strictEqual(out[0].score, 80);
+  });
+
   it('matches by description and objectType when name/type miss', () => {
     const store = buildStore(baseRows);
 

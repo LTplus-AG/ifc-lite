@@ -220,20 +220,37 @@ export function SearchModalSql() {
     void runSqlQuery(searchSqlQuery);
   }, [runSqlQuery, searchSqlQuery]);
 
+  // ── Fast Run lifecycle: progress, cancel, limit-hit badge ──────────────
+  // Local component state rather than the global store: nothing else in
+  // the app needs to read these and they're rebuilt every run.
+  const fastRunController = useRef<AbortController | null>(null);
+  const [fastRunProgress, setFastRunProgress] = useState<{ scanned: number; total: number } | null>(null);
+  const [fastRunLimitHit, setFastRunLimitHit] = useState<number | null>(null);
+
   /**
    * Path-B Fast Run — evaluate the chip rules in-memory across every
-   * loaded model with an `ifcDataStore`. Renders into the same
-   * SearchSqlResult shape so the result table re-uses the SQL renderer.
-   * No DuckDB init required, so this works even when the optional
-   * package isn't installed.
+   * loaded model with an `ifcDataStore`. Async + chunked so the main
+   * thread stays responsive on huge models (4M+ entities), with an
+   * AbortController so the user can cancel mid-flight, and a progress
+   * callback that drives the chunked progress strip.
    */
-  const runFast = useCallback(() => {
+  const runFast = useCallback(async () => {
     if (searchSqlRunning) return;
     if (searchFilter.rules.length === 0) {
       setSearchSqlError('Add at least one rule before Fast Run.');
       return;
     }
+    // Replace any previous run's controller — clicking Fast Run while
+    // a stale run is somehow still queued aborts the old one cleanly.
+    fastRunController.current?.abort();
+    const controller = new AbortController();
+    fastRunController.current = controller;
+
     setSearchSqlRunning(true);
+    setSearchSqlError(null);
+    setFastRunLimitHit(null);
+    setFastRunProgress({ scanned: 0, total: 0 });
+
     const start = performance.now();
     try {
       const modelArgs: Array<{ id: string; store: typeof activeStore }> = [];
@@ -248,7 +265,6 @@ export function SearchModalSql() {
       // Empty query → full scan, same as before.
       const trimmedQuery = searchQuery.trim();
       let candidatesByModel: Map<string, Iterable<number>> | undefined;
-      let narrowedFromTextHits = 0;
       if (trimmedQuery.length > 0) {
         const t0Models: ScanModel[] = [];
         const t1Indexes: Tier1Index[] = [];
@@ -271,15 +287,11 @@ export function SearchModalSql() {
           let bucket = grouped.get(hit.modelId);
           if (!bucket) { bucket = new Set(); grouped.set(hit.modelId, bucket); }
           bucket.add(hit.expressId);
-          narrowedFromTextHits++;
         }
         // Always build a candidate map when the user is narrowing — even
-        // if the text query produced zero hits. Without this, a misspelt
-        // or overly-specific query would fall back to a full scan and
-        // structured rules would return matches unrelated to the text
-        // (Codex P1: "Preserve text narrowing when no Tier-0/Tier-1 hits
-        // exist"). Empty candidate set per model ⇒ zero results from
-        // path-B, which is the correct intersection semantics.
+        // when the text query produced zero hits. Without this, a misspelt
+        // query would fall back to a full scan and structured rules would
+        // return matches unrelated to the text (intersection semantics).
         candidatesByModel = new Map();
         for (const [id, set] of grouped) candidatesByModel.set(id, set);
         for (const m of modelArgs) {
@@ -287,15 +299,24 @@ export function SearchModalSql() {
         }
       }
 
-      const matched = evaluateFilterRulesFederated(
+      const limit = searchFilter.limit > 0 ? searchFilter.limit : 5_000;
+      const matched = await evaluateFilterRulesFederated(
         modelArgs,
         searchFilter.rules,
         searchFilter.combinator,
         {
-          limit: searchFilter.limit > 0 ? searchFilter.limit : 5_000,
+          limit,
           candidateExpressIdsByModel: candidatesByModel,
+          signal: controller.signal,
+          onProgress: (scanned, total) => {
+            // React batches setState across microtasks but explicit
+            // chunk-boundary calls still surface a smooth progress
+            // signal because each yieldToEventLoop allows a paint.
+            setFastRunProgress({ scanned, total });
+          },
         },
       );
+
       // Tag rows with model id when more than one model is loaded so the
       // user can tell results apart.
       const multi = modelArgs.length > 1;
@@ -312,20 +333,45 @@ export function SearchModalSql() {
         rows,
         runMs: Math.round(performance.now() - start),
       });
+      // Surface the limit-hit affordance when we stopped early. The
+      // result count will equal the limit at this point — let the user
+      // know more matches likely exist beyond the cap.
+      if (matched.length >= limit) setFastRunLimitHit(limit);
     } catch (err) {
+      // Aborted runs aren't errors — just clear running state.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setSearchSqlError(err instanceof Error ? err.message : String(err));
     } finally {
-      setSearchSqlRunning(false);
+      // Only clear running state if THIS run is still the active one.
+      // A second click that aborts the first will have already started
+      // its own run and we don't want to clobber its state.
+      if (fastRunController.current === controller) {
+        fastRunController.current = null;
+        setSearchSqlRunning(false);
+        setFastRunProgress(null);
+      }
     }
   }, [
-    activeStore,
     models,
     searchFilter,
+    searchIndexes,
+    searchQuery,
     searchSqlRunning,
     setSearchSqlError,
     setSearchSqlResult,
     setSearchSqlRunning,
   ]);
+
+  /** Cancel the in-flight Fast Run. No-op if nothing is running. */
+  const cancelFastRun = useCallback(() => {
+    fastRunController.current?.abort();
+  }, []);
+
+  // Cancel any in-flight Fast Run when the modal unmounts so background
+  // chunked work doesn't keep ticking after the user closes the tab.
+  useEffect(() => () => {
+    fastRunController.current?.abort();
+  }, []);
 
   /** Builder "Open in Editor" — copies the generated SQL into the editor
    *  and flips the sub-mode. Lets the user edit, run, or learn from it. */
@@ -601,8 +647,51 @@ export function SearchModalSql() {
         )}
 
         <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
-          {searchSqlResult && (
-            <span>⏱ {searchSqlResult.runMs} ms · {searchSqlResult.rows.length} rows</span>
+          {fastRunProgress && fastRunProgress.total > 0 && (
+            // Inline progress strip while a Fast Run is in flight. The
+            // chunked yieldToEventLoop in the evaluator gives the
+            // browser time to paint between updates so this animates
+            // smoothly even on 4M-entity scans.
+            <span className="inline-flex items-center gap-1.5">
+              <span className="relative h-1.5 w-24 overflow-hidden rounded bg-zinc-200 dark:bg-zinc-800">
+                <span
+                  className="absolute left-0 top-0 h-full bg-primary transition-[width] duration-100"
+                  style={{
+                    width: `${Math.min(100, Math.round((fastRunProgress.scanned / fastRunProgress.total) * 100))}%`,
+                  }}
+                />
+              </span>
+              <span className="font-mono">
+                {fastRunProgress.scanned.toLocaleString()} / {fastRunProgress.total.toLocaleString()}
+              </span>
+            </span>
+          )}
+          {fastRunProgress && fastRunProgress.total <= 0 && (
+            <span className="font-mono">
+              scanned {fastRunProgress.scanned.toLocaleString()}
+            </span>
+          )}
+          {searchSqlRunning && fastRunController.current && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={cancelFastRun}
+              className="h-6 gap-1 text-[11px] text-amber-700 hover:text-amber-900 dark:text-amber-300"
+              title="Stop the in-flight evaluator"
+            >
+              Cancel
+            </Button>
+          )}
+          {!searchSqlRunning && fastRunLimitHit !== null && (
+            <span
+              className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+              title="Increase the limit or narrow the rules to see more matches"
+            >
+              limited to {fastRunLimitHit.toLocaleString()}
+            </span>
+          )}
+          {searchSqlResult && !searchSqlRunning && (
+            <span>⏱ {searchSqlResult.runMs} ms · {searchSqlResult.rows.length.toLocaleString()} rows</span>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -34,13 +34,22 @@ function buildStore(rows: Row[]): IfcDataStore {
     );
   }
   const entities = builder.build();
+  // Populate byType so the prefilter has something to chew on. STEP
+  // type names are stored UPPERCASE in this index — match the parser.
+  const byType = new Map<string, number[]>();
+  for (const r of rows) {
+    const key = r.type.toUpperCase();
+    let bucket = byType.get(key);
+    if (!bucket) { bucket = []; byType.set(key, bucket); }
+    bucket.push(r.expressId);
+  }
   return {
     fileSize: 0,
     schemaVersion: 'IFC4',
     entityCount: rows.length,
     parseTime: 0,
     source: new Uint8Array(0),
-    entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map() },
+    entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType },
     strings,
     entities,
     properties: { count: 0 },
@@ -135,12 +144,12 @@ describe('evaluateFilterRules — storey & predefinedType resolvers', () => {
 });
 
 describe('evaluateFilterRulesFederated', () => {
-  it('merges results from multiple models', () => {
+  it('merges results from multiple models', async () => {
     const a = buildStore(rows);
     const b = buildStore([
       { expressId: 100, type: 'IFCWALL', globalId: 'aabcdefghijklmnopqrstu', name: 'Wall-B-1' },
     ]);
-    const out = evaluateFilterRulesFederated(
+    const out = await evaluateFilterRulesFederated(
       [{ id: 'a', store: a }, { id: 'b', store: b }],
       [Rule.ifcType(['IfcWall'])],
       'AND',
@@ -150,10 +159,10 @@ describe('evaluateFilterRulesFederated', () => {
     assert.deepStrictEqual([...modelIds].sort(), ['a', 'b']);
   });
 
-  it('caps total across federated models', () => {
+  it('caps total across federated models', async () => {
     const a = buildStore(rows);
     const b = buildStore(rows.map((r) => ({ ...r, expressId: r.expressId + 1000 })));
-    const out = evaluateFilterRulesFederated(
+    const out = await evaluateFilterRulesFederated(
       [{ id: 'a', store: a }, { id: 'b', store: b }],
       [Rule.ifcType(['IfcWall'])],
       'AND',
@@ -248,7 +257,7 @@ describe('matchQuantityRule', () => {
 });
 
 describe('evaluateFilterRulesFederated — per-model candidate narrowing', () => {
-  it('candidateExpressIdsByModel narrows each model independently', () => {
+  it('candidateExpressIdsByModel narrows each model independently', async () => {
     const a = buildStore(rows);
     const b = buildStore([
       { expressId: 100, type: 'IFCWALL', globalId: 'aabcdefghijklmnopqrstu', name: 'Wall-B-1' },
@@ -258,7 +267,7 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
       ['a', [10]],     // only Wall-EXT-001 from a
       ['b', [101]],    // only Door-B-2 from b
     ]);
-    const out = evaluateFilterRulesFederated(
+    const out = await evaluateFilterRulesFederated(
       [{ id: 'a', store: a }, { id: 'b', store: b }],
       [Rule.ifcType(['IfcWall', 'IfcDoor'])],
       'AND',
@@ -271,13 +280,13 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
     );
   });
 
-  it('an empty candidate set for a model yields zero results from that model (intersection semantics)', () => {
-    // This is the Codex P1 invariant: a misspelt text query that produced
-    // zero Tier-0/Tier-1 hits must NOT degrade to a full-table scan when
+  it('an empty candidate set for a model yields zero results from that model (intersection semantics)', async () => {
+    // Codex P1 invariant: a misspelt text query that produced zero
+    // Tier-0/Tier-1 hits must NOT degrade to a full-table scan when
     // the user has structured rules. Empty Iterable per model ⇒ no rows.
     const a = buildStore(rows);
     const candidatesByModel = new Map<string, Iterable<number>>([['a', []]]);
-    const out = evaluateFilterRulesFederated(
+    const out = await evaluateFilterRulesFederated(
       [{ id: 'a', store: a }],
       [Rule.ifcType(['IfcWall'])],
       'AND',
@@ -286,9 +295,9 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
     assert.deepStrictEqual(out, []);
   });
 
-  it('omitting the map keeps the legacy full-scan behaviour', () => {
+  it('omitting the map keeps the legacy full-scan behaviour', async () => {
     const a = buildStore(rows);
-    const out = evaluateFilterRulesFederated(
+    const out = await evaluateFilterRulesFederated(
       [{ id: 'a', store: a }],
       [Rule.ifcType(['IfcWall'])],
       'AND',
@@ -296,9 +305,9 @@ describe('evaluateFilterRulesFederated — per-model candidate narrowing', () =>
     assert.deepStrictEqual(out.map((r) => r.expressId).sort(), [10, 20]);
   });
 
-  it('storeyNameOf / predefinedTypeOf flow through the federated wrapper', () => {
+  it('storeyNameOf / predefinedTypeOf flow through the federated wrapper', async () => {
     const a = buildStore(rows);
-    const out = evaluateFilterRulesFederated(
+    const out = await evaluateFilterRulesFederated(
       [{ id: 'a', store: a }],
       [Rule.storey(['Level 1'])],
       'AND',
@@ -312,5 +321,217 @@ describe('evaluateFilterRules — empty rules', () => {
   it('returns [] when rules is empty (matches Rust behaviour)', () => {
     const store = buildStore(rows);
     assert.deepStrictEqual(evaluateFilterRules('m1', store, [], 'AND'), []);
+  });
+});
+
+describe('orderRulesByCost — cheap-first reordering', () => {
+  const order = __internal.orderRulesByCost;
+
+  it('lifts cheap kinds (ifcType, name, storey) before expensive (property, quantity)', () => {
+    const reordered = order([
+      Rule.property('Pset_X', 'P', 'eq', 'v'),
+      Rule.ifcType(['IfcWall']),
+      Rule.quantity('Qto_X', 'Q', 'gt', 1),
+      Rule.name('contains', 'wall'),
+    ]);
+    // Equal-cost rules retain their authored order — `ifcType` before
+    // `name` because cost(ifcType)=0 < cost(name)=2.
+    assert.deepStrictEqual(reordered.map((r) => r.kind), ['ifcType', 'name', 'property', 'quantity']);
+  });
+
+  it('is a stable sort — two equal-cost rules keep their input order', () => {
+    const a = Rule.name('contains', 'a');
+    const b = Rule.name('contains', 'b');
+    const reordered = order([a, b]);
+    assert.strictEqual(reordered[0], a);
+    assert.strictEqual(reordered[1], b);
+  });
+
+  it('does not mutate the input array', () => {
+    const input = [
+      Rule.property('Pset_X', 'P', 'eq', 'v'),
+      Rule.ifcType(['IfcWall']),
+    ];
+    const before = input.map((r) => r.kind);
+    void order(input);
+    assert.deepStrictEqual(input.map((r) => r.kind), before);
+  });
+});
+
+describe('selectIterationSource — index prefilter (AND + op:in)', () => {
+  const select = __internal.selectIterationSource;
+
+  it('AND + ifcType op:in narrows to byType bucket(s)', () => {
+    const store = buildStore(rows);
+    const source = select(store, [Rule.ifcType(['IfcWall'])], 'AND', undefined);
+    const ids = Array.from(source as Iterable<number>);
+    // Bucket holds only the two walls — not the door / slab.
+    assert.deepStrictEqual(ids.sort(), [10, 20]);
+  });
+
+  it('AND + multiple narrowing rules picks the smallest bucket', () => {
+    const store = buildStore(rows);
+    // ifcType {IfcWall} = 2 entries; ifcType {IfcDoor} = 1 entry.
+    // The smaller of the two should be chosen as the iteration source.
+    const source = select(
+      store,
+      [Rule.ifcType(['IfcWall']), Rule.ifcType(['IfcDoor'])],
+      'AND',
+      undefined,
+    );
+    const ids = Array.from(source as Iterable<number>);
+    assert.deepStrictEqual(ids, [30]);
+  });
+
+  it('OR combinator skips the prefilter and falls back to the full table', () => {
+    const store = buildStore(rows);
+    const source = select(store, [Rule.ifcType(['IfcWall'])], 'OR', undefined);
+    const ids = Array.from(source as Iterable<number>);
+    // Generator over the full expressId column — all four entities.
+    assert.deepStrictEqual(ids.sort(), [10, 20, 30, 40]);
+  });
+
+  it('notIn ops skip the prefilter (inverting a small set is still big)', () => {
+    const store = buildStore(rows);
+    const source = select(store, [Rule.ifcType(['IfcWall'], 'notIn')], 'AND', undefined);
+    const ids = Array.from(source as Iterable<number>);
+    // No bucket suggested → full-table iteration.
+    assert.strictEqual(ids.length, 4);
+  });
+
+  it('explicit candidateExpressIds wins over the prefilter', () => {
+    const store = buildStore(rows);
+    const source = select(store, [Rule.ifcType(['IfcWall'])], 'AND', [99]);
+    assert.deepStrictEqual(Array.from(source as Iterable<number>), [99]);
+  });
+});
+
+describe('evaluateFilterRulesFederated — large-model scaling', () => {
+  // Synthetic 50K-entity store: 200 walls in a sea of slabs. The
+  // prefilter MUST narrow the scan to the wall bucket (≤ 200 entities)
+  // rather than walking the full table — otherwise huge models would
+  // freeze the main thread on Fast Run, which is the AGENTS.md §2 trap
+  // this whole module is built to avoid.
+  it('AND + ifcType prefilter scans only the bucket on a 50K-entity model', async () => {
+    const big: Row[] = [];
+    for (let i = 0; i < 50_000; i++) {
+      big.push({
+        expressId: i + 1,
+        type: i % 250 === 0 ? 'IFCWALL' : 'IFCSLAB',
+        globalId: `${String(i).padStart(22, '0')}`.slice(0, 22),
+        name: `entity-${i}`,
+      });
+    }
+    const store = buildStore(big);
+    let lastTotal = 0;
+    const out = await evaluateFilterRulesFederated(
+      [{ id: 'm', store }],
+      [Rule.ifcType(['IfcWall'])],
+      'AND',
+      {
+        chunkSize: 1_000,
+        onProgress: (_scanned, total) => { lastTotal = total; },
+      },
+    );
+    // 50_000 / 250 = 200 walls.
+    assert.strictEqual(out.length, 200);
+    // Progress total is the SCAN size (the bucket, not the full table).
+    // Without the prefilter this would have been 50_000.
+    assert.strictEqual(lastTotal, 200);
+  });
+
+  it('OR mode falls back to full scan (prefilter is unsafe under OR)', async () => {
+    const big: Row[] = [];
+    for (let i = 0; i < 1_000; i++) {
+      big.push({
+        expressId: i + 1,
+        type: i % 100 === 0 ? 'IFCWALL' : 'IFCSLAB',
+        globalId: `${String(i).padStart(22, '0')}`.slice(0, 22),
+        name: i === 0 ? 'special' : `entity-${i}`,
+      });
+    }
+    const store = buildStore(big);
+    let lastTotal = 0;
+    const out = await evaluateFilterRulesFederated(
+      [{ id: 'm', store }],
+      [Rule.ifcType(['IfcWall']), Rule.name('eq', 'special')],
+      'OR',
+      {
+        chunkSize: 100,
+        onProgress: (_scanned, total) => { lastTotal = total; },
+      },
+    );
+    // 10 walls + 1 special = 10 results (the 'special' wall is also in
+    // the wall bucket, so it counts once via dedupe of the OR — but
+    // the evaluator doesn't dedupe; it just scans, which produces 10
+    // hits since 'special' IS one of the walls). Either way the test
+    // verifies OR scans the full table.
+    assert.strictEqual(out.length, 10);
+    assert.strictEqual(lastTotal, 1_000);
+  });
+});
+
+describe('evaluateFilterRulesFederated — async chunking, abort, progress', () => {
+  it('reports onProgress with monotonically growing scanned counter', async () => {
+    const store = buildStore(rows);
+    const ticks: Array<{ scanned: number; total: number }> = [];
+    await evaluateFilterRulesFederated(
+      [{ id: 'm', store }],
+      [Rule.ifcType(['IfcWall'])],
+      'AND',
+      {
+        chunkSize: 1,
+        onProgress: (scanned, total) => { ticks.push({ scanned, total }); },
+      },
+    );
+    // First tick is the initial 0/total emission; subsequent ticks
+    // monotonically grow; final tick equals total.
+    assert.ok(ticks.length >= 2, `expected ≥2 progress ticks, got ${ticks.length}`);
+    assert.strictEqual(ticks[0].scanned, 0);
+    for (let i = 1; i < ticks.length; i++) {
+      assert.ok(
+        ticks[i].scanned >= ticks[i - 1].scanned,
+        `progress regressed from ${ticks[i - 1].scanned} → ${ticks[i].scanned}`,
+      );
+    }
+  });
+
+  it('honours AbortSignal at chunk boundaries', async () => {
+    const store = buildStore(rows);
+    const controller = new AbortController();
+    // Abort before the first await — the evaluator's chunk-boundary
+    // check fires after the first chunk completes.
+    controller.abort();
+    let threwAbort = false;
+    try {
+      await evaluateFilterRulesFederated(
+        [{ id: 'm', store }],
+        [Rule.ifcType(['IfcWall'])],
+        'AND',
+        { chunkSize: 1, signal: controller.signal },
+      );
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') threwAbort = true;
+      else throw err;
+    }
+    assert.ok(threwAbort, 'expected AbortError when signal is pre-aborted');
+  });
+
+  it('limit short-circuits the run before scanning the rest', async () => {
+    const store = buildStore(rows);
+    let lastScanned = 0;
+    const out = await evaluateFilterRulesFederated(
+      [{ id: 'm', store }],
+      [Rule.ifcType(['IfcWall'])],
+      'AND',
+      {
+        limit: 1,
+        chunkSize: 1,
+        onProgress: (scanned) => { lastScanned = scanned; },
+      },
+    );
+    assert.strictEqual(out.length, 1);
+    // We should have stopped before scanning all four entities.
+    assert.ok(lastScanned < rows.length, `expected early termination, scanned ${lastScanned}`);
   });
 });

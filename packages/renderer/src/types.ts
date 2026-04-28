@@ -172,6 +172,15 @@ export interface RenderOptions {
   isolatedIds?: Set<number> | null; // Only show these meshes (null = show all)
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
+  /**
+   * Per-frame alpha overrides — primary use case is X-Ray mode.
+   * Map<expressId, alpha 0..1>. Non-selected meshes/batches whose expressId
+   * appears in this map render at the override alpha through the existing
+   * transparent pipeline. Selected meshes are exempt so highlights stay opaque.
+   * Mixed batches (some entries overridden, some not) take the minimum override
+   * alpha — selected meshes are then re-rendered on top by the highlight pass.
+   */
+  transparencyOverrides?: Map<number, number> | null;
   // Building rotation in radians (from IfcSite placement) - used to orient section planes
   buildingRotation?: number;
   selectedModelIndex?: number;    // Model index for multi-model selection (must match mesh.modelIndex)

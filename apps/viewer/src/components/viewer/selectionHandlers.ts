@@ -64,7 +64,9 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
         screenSnapRadius: 0,
       },
     });
-    const point = result.snapTarget?.position ?? result.intersection?.point ?? null;
+    const point = result.snapTarget?.position
+      ?? result.intersection?.point
+      ?? raycastStoreyFloor(ctx, x, y);
     if (!point) return;
     await handleAddElementDrop(point);
     return;
@@ -164,6 +166,53 @@ export function rendererPointToIfcStoreyLocal(point: { x: number; y: number; z: 
 }
 
 /**
+ * Storey-floor ray-plane intersection — used as a fallback when the
+ * scene raycast misses every mesh (so the user can place new elements
+ * in empty space, not just on existing surfaces). The floor sits at
+ * renderer Y = storey elevation; if no storey is selected we use 0
+ * (the renderer's default ground plane).
+ */
+function raycastStoreyFloor(
+  ctx: MouseHandlerContext,
+  x: number,
+  y: number,
+): { x: number; y: number; z: number } | null {
+  const camera = ctx.renderer.getCamera();
+  const canvas = ctx.renderer.getCanvas();
+  if (!camera || !canvas) return null;
+  const ray = camera.unprojectToRay(x, y, canvas.clientWidth, canvas.clientHeight);
+  if (!ray) return null;
+  const planeY = resolveStoreyFloorY();
+  // Looking down typically means D.y < 0; reject parallel / near-parallel
+  // cases so we don't hand back a wildly extrapolated intersection.
+  const dy = ray.direction.y;
+  if (Math.abs(dy) < 1e-6) return null;
+  const t = (planeY - ray.origin.y) / dy;
+  if (!Number.isFinite(t) || t <= 0) return null;
+  return {
+    x: ray.origin.x + ray.direction.x * t,
+    y: planeY,
+    z: ray.origin.z + ray.direction.z * t,
+  };
+}
+
+/**
+ * Resolve the renderer Y of the currently selected (or first
+ * available) storey's floor. Falls back to 0 when nothing is loaded.
+ */
+function resolveStoreyFloorY(): number {
+  const state = useViewerStore.getState();
+  const modelId = state.addElementModelId ?? state.activeModelId;
+  if (!modelId) return 0;
+  const model = state.models.get(modelId);
+  const ds = model?.ifcDataStore;
+  if (!ds) return 0;
+  const storeyId = state.addElementStoreyId ?? firstStoreyExpressId(modelId);
+  if (storeyId === null) return 0;
+  return ds.spatialHierarchy?.storeyElevations?.get(storeyId) ?? 0;
+}
+
+/**
  * Update the live hover preview for the add-element tool. Runs the
  * same magnetic raycast as the click handler and keeps `hoverPoint`
  * in sync with whatever the next click would place. Used by the
@@ -202,7 +251,9 @@ export function handleAddElementHover(ctx: MouseHandlerContext, x: number, y: nu
         },
       });
 
-      const point = result.snapTarget?.position ?? result.intersection?.point ?? null;
+      const point = result.snapTarget?.position
+        ?? result.intersection?.point
+        ?? raycastStoreyFloor(ctx, x, y);
       const store = useViewerStore.getState();
       store.setAddElementHoverPoint(point ? { x: point.x, y: point.y, z: point.z } : null);
 

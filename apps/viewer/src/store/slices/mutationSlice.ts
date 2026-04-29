@@ -45,6 +45,8 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
+import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
+import type { AddElementType } from './addElementSlice.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -453,6 +455,7 @@ function runInStoreElementBuilder(
   ifcType: string,
   errorContext: string,
   build: (editor: StoreEditor, anchor: ReturnType<typeof resolveSpatialAnchor>) => number,
+  meshPayload?: ElementMeshPayload,
 ): { expressId: number } | { error: string } {
   const state = get();
   const model = state.models.get(modelId);
@@ -471,6 +474,27 @@ function runInStoreElementBuilder(
     entityId = build(editor, anchor);
   } catch (err) {
     return { error: err instanceof Error ? err.message : `Failed to ${errorContext}` };
+  }
+
+  // Build a renderer-frame mesh for the new element so it appears in
+  // 3D the moment the action commits — the ImportError-only behaviour
+  // before this would only surface the change after an export+reparse.
+  if (meshPayload) {
+    const storeyElevation =
+      dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
+    const globalId = toGlobalIdFromModels(state.models, modelId, entityId);
+    const mesh = buildElementMesh({
+      type: meshPayload.type,
+      globalId,
+      storeyElevation,
+      payload: meshPayload,
+    });
+    if (mesh) {
+      const cross = get() as unknown as {
+        appendGeometryBatch?: (batch: MeshData[]) => void;
+      };
+      cross.appendGeometryBatch?.([mesh]);
+    }
   }
 
   set((s) => {
@@ -501,6 +525,33 @@ function runInStoreElementBuilder(
   });
 
   return { expressId: entityId };
+}
+
+/**
+ * Build the polygon corner ring used by slab/roof/plate/space mesh
+ * previews from a builder param object that may be in rectangle or
+ * polygon mode. Rectangle = 4 corners CCW from `Position` +
+ * Width/Depth; polygon = the `OuterCurve` lifted to 3D at z = 0.
+ */
+function profileCornersFromParams(
+  params:
+    | { Profile?: 'rectangle'; Position: [number, number, number]; Width: number; Depth: number }
+    | { Profile: 'polygon'; OuterCurve: Array<[number, number]>; Position?: [number, number, number] },
+): Array<[number, number, number]> {
+  if ('Profile' in params && params.Profile === 'polygon') {
+    const z = params.Position?.[2] ?? 0;
+    return params.OuterCurve.map(([x, y]) => [x, y, z]);
+  }
+  const rect = params as {
+    Position: [number, number, number]; Width: number; Depth: number;
+  };
+  const [px, py, pz] = rect.Position;
+  return [
+    [px, py, pz],
+    [px + rect.Width, py, pz],
+    [px + rect.Width, py + rect.Depth, pz],
+    [px, py + rect.Depth, pz],
+  ];
 }
 
 /** Decode the `@N` form used to encode positional indices into Mutation.attributeName. */
@@ -942,6 +993,30 @@ export const createMutationSlice: StateCreator<
       return { error: err instanceof Error ? err.message : 'Failed to add column' };
     }
 
+    // Inject a renderer-frame box mesh so the column appears in 3D
+    // immediately. Same coordinate-frame plumbing as
+    // `runInStoreElementBuilder`, kept inline since this action
+    // pre-dates the shared helper.
+    const storeyElevationCol =
+      dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
+    const columnGlobalId = toGlobalIdFromModels(state.models, modelId, columnId);
+    const columnMesh = buildElementMesh({
+      type: 'column',
+      globalId: columnGlobalId,
+      storeyElevation: storeyElevationCol,
+      payload: {
+        type: 'column',
+        params: { Width: params.Width, Depth: params.Depth, Height: params.Height },
+        position: params.Position,
+      },
+    });
+    if (columnMesh) {
+      const cross = get() as unknown as {
+        appendGeometryBatch?: (batch: MeshData[]) => void;
+      };
+      cross.appendGeometryBatch?.([columnMesh]);
+    }
+
     set((s) => {
       const newUndoStacks = new Map(s.undoStacks);
       const stack = newUndoStacks.get(modelId) || [];
@@ -974,68 +1049,62 @@ export const createMutationSlice: StateCreator<
 
   addWall: (modelId, storeyExpressId, params) => {
     return runInStoreElementBuilder(
-      get,
-      set,
-      modelId,
-      storeyExpressId,
-      'IFCWALL',
-      'add wall',
+      get, set, modelId, storeyExpressId, 'IFCWALL', 'add wall',
       (editor, anchor) => addWallToStore(editor, anchor, params).wallId,
+      { type: 'wall', params: { Thickness: params.Thickness, Height: params.Height }, start: params.Start, end: params.End },
     );
   },
 
   addSlab: (modelId, storeyExpressId, params) => {
     return runInStoreElementBuilder(
-      get,
-      set,
-      modelId,
-      storeyExpressId,
-      'IFCSLAB',
-      'add slab',
+      get, set, modelId, storeyExpressId, 'IFCSLAB', 'add slab',
       (editor, anchor) => addSlabToStore(editor, anchor, params).slabId,
+      { type: 'slab', params: { Width: 0, Depth: 0, Thickness: params.Thickness }, corners: profileCornersFromParams(params) },
     );
   },
 
   addBeam: (modelId, storeyExpressId, params) => {
     return runInStoreElementBuilder(
-      get,
-      set,
-      modelId,
-      storeyExpressId,
-      'IFCBEAM',
-      'add beam',
+      get, set, modelId, storeyExpressId, 'IFCBEAM', 'add beam',
       (editor, anchor) => addBeamToStore(editor, anchor, params).beamId,
+      { type: 'beam', params: { Width: params.Width, Height: params.Height }, start: params.Start, end: params.End },
     );
   },
 
   addDoor: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, 'IFCDOOR', 'add door',
     (editor, anchor) => addDoorToStore(editor, anchor, params).doorId,
+    { type: 'door', params: { Width: params.Width, Height: params.Height, FrameThickness: params.FrameThickness ?? 0.05 }, position: params.Position },
   ),
 
   addWindow: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, 'IFCWINDOW', 'add window',
     (editor, anchor) => addWindowToStore(editor, anchor, params).windowId,
+    { type: 'window', params: { Width: params.Width, Height: params.Height, FrameThickness: params.FrameThickness ?? 0.05 }, position: params.Position },
   ),
 
   addSpace: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, 'IFCSPACE', 'add space',
     (editor, anchor) => addSpaceToStore(editor, anchor, params).spaceId,
+    { type: 'space', params: { Width: 0, Depth: 0, Height: params.Height }, corners: profileCornersFromParams(params) },
   ),
 
   addRoof: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, 'IFCROOF', 'add roof',
     (editor, anchor) => addRoofToStore(editor, anchor, params).roofId,
+    { type: 'roof', params: { Width: 0, Depth: 0, Thickness: params.Thickness }, corners: profileCornersFromParams(params) },
   ),
 
   addPlate: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, 'IFCPLATE', 'add plate',
     (editor, anchor) => addPlateToStore(editor, anchor, params).plateId,
+    { type: 'plate', params: { Width: 0, Depth: 0, Thickness: params.Thickness }, corners: profileCornersFromParams(params) },
   ),
 
   addMember: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, 'IFCMEMBER', 'add member',
     (editor, anchor) => addMemberToStore(editor, anchor, params).memberId,
+    { type: 'member', params: { Width: params.Width, Height: params.Height }, start: params.Start, end: params.End },
   ),
 
   generateSpacesFromWalls: (modelId, storeyExpressId, options) => {

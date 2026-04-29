@@ -121,6 +121,15 @@ export function AddElementOverlay() {
         </filter>
       </defs>
 
+      {/* Hover-ghost for single-click placements — column/door/window. */}
+      {(type === 'column' || type === 'door' || type === 'window') && hoverPoint && (
+        <SingleClickGhost
+          type={type}
+          hoverWorld={hoverPoint}
+          projection={projection}
+        />
+      )}
+
       {/* Two-click axial placements share the same start→end preview. */}
       {type === 'wall' || type === 'beam' || type === 'member' ? (
         <WallBeamPreview
@@ -128,6 +137,7 @@ export function AddElementOverlay() {
           hover={hover}
           pendingWorld={pendingPoints}
           hoverWorld={hoverPoint}
+          projection={projection}
         />
       ) : null}
 
@@ -194,11 +204,13 @@ function WallBeamPreview({
   hover,
   pendingWorld,
   hoverWorld,
+  projection,
 }: {
   pending: Pt[];
   hover: Pt | null;
   pendingWorld: AddElementVec3[];
   hoverWorld: AddElementVec3 | null;
+  projection: Project;
 }) {
   if (pending.length === 0 || !hover) return null;
   const start = pending[0];
@@ -206,8 +218,41 @@ function WallBeamPreview({
   const length = hoverWorld ? worldDistance2D(startWorld, hoverWorld) : 0;
   const mid = { x: (start.x + hover.x) / 2, y: (start.y + hover.y) / 2 };
 
+  // 3D ghost box — read the per-type params from the store so the
+  // outline matches the about-to-commit element's actual size.
+  const ghost = useViewerStore.getState();
+  const type = ghost.addElementType;
+  const thick = type === 'wall'
+    ? ghost.addElementWallParams.Thickness
+    : type === 'beam'
+      ? ghost.addElementBeamParams.Width
+      : ghost.addElementMemberParams.Width;
+  const height = type === 'wall'
+    ? ghost.addElementWallParams.Height
+    : type === 'beam'
+      ? ghost.addElementBeamParams.Height
+      : ghost.addElementMemberParams.Height;
+
+  let ghostOutline: string | null = null;
+  if (hoverWorld) {
+    const corners = linearBoxCorners(startWorld, hoverWorld, thick, height);
+    const projected = corners.map((c) => projection({ x: c[0], y: c[1], z: c[2] }));
+    if (projected.every((p): p is Pt => p !== null)) {
+      ghostOutline = projectedHullOutline(projected as Pt[]);
+    }
+  }
+
   return (
     <>
+      {ghostOutline && (
+        <polygon
+          points={ghostOutline}
+          fill={PRIMARY_LIGHT}
+          stroke={GHOST}
+          strokeWidth={1}
+          strokeDasharray="3,3"
+        />
+      )}
       <line
         x1={start.x}
         y1={start.y}
@@ -221,6 +266,117 @@ function WallBeamPreview({
       {length > 0.001 && <Label x={mid.x} y={mid.y} text={`${length.toFixed(2)} m`} />}
     </>
   );
+}
+
+/**
+ * Single-click ghost for column / door / window — projects the
+ * about-to-commit axis box at the cursor so the user sees where
+ * the leaf / cross-section actually lands before clicking.
+ */
+function SingleClickGhost({
+  type,
+  hoverWorld,
+  projection,
+}: {
+  type: 'column' | 'door' | 'window';
+  hoverWorld: AddElementVec3;
+  projection: Project;
+}) {
+  const state = useViewerStore.getState();
+  let sx: number, sy: number, sz: number;
+  if (type === 'column') {
+    const p = state.addElementColumnParams;
+    sx = p.Width; sy = p.Depth; sz = p.Height;
+  } else if (type === 'door') {
+    const p = state.addElementDoorParams;
+    sx = p.Width; sy = p.FrameThickness; sz = p.Height;
+  } else {
+    const p = state.addElementWindowParams;
+    sx = p.Width; sy = p.FrameThickness; sz = p.Height;
+  }
+  // Hover is in renderer-frame; project the axis-aligned box around it.
+  const hx = sx / 2;
+  const hz = sy / 2; // renderer Z
+  const cy = hoverWorld.y;
+  const cx = hoverWorld.x;
+  const cz = hoverWorld.z;
+  const corners: Array<[number, number, number]> = [
+    [cx - hx, cy,        cz - hz],
+    [cx + hx, cy,        cz - hz],
+    [cx + hx, cy,        cz + hz],
+    [cx - hx, cy,        cz + hz],
+    [cx - hx, cy + sz,   cz - hz],
+    [cx + hx, cy + sz,   cz - hz],
+    [cx + hx, cy + sz,   cz + hz],
+    [cx - hx, cy + sz,   cz + hz],
+  ];
+  const projected = corners.map((c) => projection({ x: c[0], y: c[1], z: c[2] }));
+  if (!projected.every((p): p is Pt => p !== null)) return null;
+  const outline = projectedHullOutline(projected as Pt[]);
+  return (
+    <polygon
+      points={outline}
+      fill={PRIMARY_LIGHT}
+      stroke={GHOST}
+      strokeWidth={1}
+      strokeDasharray="3,3"
+    />
+  );
+}
+
+/** Eight renderer-frame corners of a thickness-extruded segment (wall/beam/member). */
+function linearBoxCorners(
+  startWorld: AddElementVec3,
+  endWorld: AddElementVec3,
+  thickness: number,
+  height: number,
+): Array<[number, number, number]> {
+  const dx = endWorld.x - startWorld.x;
+  const dz = endWorld.z - startWorld.z;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) return [];
+  const ax = dx / len, az = dz / len;
+  // Perpendicular in the ground plane (renderer X/Z, Y is up).
+  const nx = -az, nz = ax;
+  const half = thickness / 2;
+  const baseY = startWorld.y;
+  const topY = baseY + height;
+  return [
+    [startWorld.x + nx * half, baseY, startWorld.z + nz * half],
+    [endWorld.x   + nx * half, baseY, endWorld.z   + nz * half],
+    [endWorld.x   - nx * half, baseY, endWorld.z   - nz * half],
+    [startWorld.x - nx * half, baseY, startWorld.z - nz * half],
+    [startWorld.x + nx * half, topY,  startWorld.z + nz * half],
+    [endWorld.x   + nx * half, topY,  endWorld.z   + nz * half],
+    [endWorld.x   - nx * half, topY,  endWorld.z   - nz * half],
+    [startWorld.x - nx * half, topY,  startWorld.z - nz * half],
+  ];
+}
+
+/**
+ * 2D convex hull of projected screen points → SVG polygon string.
+ * The 8 box corners projected to screen don't always trace a clean
+ * outline edge-by-edge (back faces overlap), so we just render the
+ * silhouette envelope. Andrew's monotone-chain on (x, y).
+ */
+function projectedHullOutline(pts: Pt[]): string {
+  if (pts.length < 3) return pts.map((p) => `${p.x},${p.y}`).join(' ');
+  const sorted = [...pts].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: Pt[] = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: Pt[] = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop();
+  lower.pop();
+  return [...lower, ...upper].map((p) => `${p.x},${p.y}`).join(' ');
 }
 
 function SlabRectanglePreview({

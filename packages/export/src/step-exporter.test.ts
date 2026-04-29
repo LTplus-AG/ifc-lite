@@ -426,6 +426,29 @@ describe('StepExporter', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
+  // Regression: the deltaOnly early-return previously fired before the
+  // overlay-entities pass, so `createEntity()`-only edits were silently
+  // dropped from delta exports.
+  it('emits overlay-created entities under deltaOnly when no other modifications exist', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    view.createEntity('IFCDIRECTION', [[1, 0, 0]]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      deltaOnly: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#2=IFCDIRECTION((1,0,0));');
+    expect(content).not.toContain('#1=IFCCARTESIANPOINT');
+    expect(result.stats.newEntityCount).toBe(1);
+  });
+
   it('honours applyMutations: false for overlay state', () => {
     const dataStore = buildMockDataStore([
       [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],

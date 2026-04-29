@@ -31,12 +31,13 @@ export const OVERLAY_BYTE_OFFSET = -1;
 export class StoreEditor {
   private store: IfcDataStore;
   private view: MutablePropertyView;
-  private seeded = false;
+  private maxExistingId: number;
 
   constructor(store: IfcDataStore, view: MutablePropertyView) {
     this.store = store;
     this.view = view;
-    this.seedWatermark();
+    this.maxExistingId = this.computeMaxExistingId();
+    this.view.setExpressIdWatermark(this.maxExistingId);
   }
 
   /**
@@ -54,7 +55,10 @@ export class StoreEditor {
    *   - arrays → STEP list `(a,b,c)`
    */
   addEntity(type: string, attributes: IfcAttributeValue[]): EntityRef {
-    this.seedWatermark();
+    // Re-seed every call: cheap (one comparison + at most one write inside the
+    // view), and recovers from `view.clear()`, which resets the allocator to 0
+    // and would otherwise hand out colliding ids on the next addEntity().
+    this.view.setExpressIdWatermark(this.maxExistingId);
     const created = this.view.createEntity(type, attributes);
     return {
       expressId: created.expressId,
@@ -102,13 +106,11 @@ export class StoreEditor {
     return this.view.getNewEntities();
   }
 
-  private seedWatermark(): void {
-    if (this.seeded) return;
+  private computeMaxExistingId(): number {
     let max = 0;
     for (const id of this.store.entityIndex.byId.keys()) {
       if (id > max) max = id;
     }
-    this.view.setExpressIdWatermark(max);
-    this.seeded = true;
+    return max;
   }
 }

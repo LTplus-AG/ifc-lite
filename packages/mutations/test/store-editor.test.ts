@@ -103,4 +103,19 @@ describe('StoreEditor', () => {
     // Watermark is reset; first add starts back at 1 unless re-seeded.
     expect(view.peekNextExpressId()).toBe(1);
   });
+
+  // Regression: previously the editor latched `seeded=true` once, so after
+  // `view.clear()` the next addEntity would allocate from 1 and collide with
+  // existing source ids. Re-seeding on every add prevents this.
+  it('addEntity after view.clear() re-seeds and avoids id collisions', () => {
+    const store = makeStore(10);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    view.clear();
+    const ref = editor.addEntity('IFCCARTESIANPOINT', [[0, 0, 0]]);
+
+    expect(ref.expressId).toBe(11);
+    expect(ref.expressId).toBeGreaterThan(10);
+  });
 });

@@ -441,8 +441,15 @@ export class StepExporter {
       }
     }
 
-    // If delta only, only export modified entities
-    if (options.deltaOnly && modifiedEntities.size === 0) {
+    // If delta only, only export modified entities. Overlay-created entities
+    // also count — without this, `createEntity()`-only edits would silently
+    // drop out of delta exports.
+    const overlayNewEntityCount = (
+      this.mutationView
+      && options.applyMutations !== false
+      && typeof this.mutationView.getNewEntities === 'function'
+    ) ? this.mutationView.getNewEntities().length : 0;
+    if (options.deltaOnly && modifiedEntities.size === 0 && overlayNewEntityCount === 0) {
       const emptyContent = new TextEncoder().encode(header + 'DATA;\nENDSEC;\nEND-ISO-10303-21;\n');
       return {
         content: emptyContent,

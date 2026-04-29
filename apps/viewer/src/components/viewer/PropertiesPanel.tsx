@@ -1314,11 +1314,15 @@ export function PropertiesPanel() {
           </TabsTrigger>
           <TabsTrigger
             value="raw-step"
-            title="Raw STEP"
-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
+            title="Raw STEP — developer view of positional arguments"
+            className="properties-tab-trigger raw-step-tab-trigger shrink-0 grow-0 px-2 font-mono"
           >
-            <FileBox className="h-3 w-3 shrink-0 panel-compact-icon" />
-            <span className="panel-compact-text">Raw</span>
+            {/* Bracket glyphs read as "code" without an icon dependency,
+                stay readable at 9px, and free up width for the three
+                primary tabs to keep their text visible at the default
+                panel size. */}
+            <span aria-hidden className="text-[10px] leading-none tracking-tight">&lt;/&gt;</span>
+            <span className="sr-only">Raw STEP</span>
           </TabsTrigger>
         </TabsList>
 

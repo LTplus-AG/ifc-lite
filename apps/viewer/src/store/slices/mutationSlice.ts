@@ -47,17 +47,6 @@ export interface MutationSlice {
   mutationVersion: number;
   /** Georeferencing mutations per model */
   georefMutations: Map<string, GeorefMutationData>;
-  /**
-   * "Add Column" dialog state. Held in the mutation slice because the
-   * dialog drives a store-level mutation; mounted at the ViewerLayout
-   * level so it can be opened from the context menu, the edit toolbar,
-   * or any other future entry point.
-   */
-  addColumnDialog: {
-    isOpen: boolean;
-    modelId: string | null;
-    storeyExpressId: number | null;
-  };
 
   // Actions - Georeferencing Mutations
   /** Set a georeferencing field value */
@@ -172,10 +161,6 @@ export interface MutationSlice {
     storeyExpressId: number,
     params: ColumnInStoreParams
   ) => { expressId: number } | { error: string };
-  /** Open the Add Column dialog with optional pre-filled storey. */
-  openAddColumnDialog: (modelId: string, storeyExpressId: number | null) => void;
-  /** Close the Add Column dialog and clear its inputs. */
-  closeAddColumnDialog: () => void;
 
   // Actions - Undo/Redo
   /** Undo last mutation for a model */
@@ -273,7 +258,6 @@ export const createMutationSlice: StateCreator<
   dirtyModels: new Set(),
   mutationVersion: 0,
   georefMutations: new Map(),
-  addColumnDialog: { isOpen: false, modelId: null, storeyExpressId: null },
 
   // Georeferencing Mutations
   setGeorefField: (modelId, entity, field, value, oldValue) => {
@@ -707,14 +691,6 @@ export const createMutationSlice: StateCreator<
     return { expressId: columnId };
   },
 
-  openAddColumnDialog: (modelId, storeyExpressId) => {
-    set({ addColumnDialog: { isOpen: true, modelId, storeyExpressId } });
-  },
-
-  closeAddColumnDialog: () => {
-    set({ addColumnDialog: { isOpen: false, modelId: null, storeyExpressId: null } });
-  },
-
   // Undo/Redo
   undo: (modelId) => {
     const state = get();
@@ -842,6 +818,17 @@ export const createMutationSlice: StateCreator<
         view.restoreNewEntity(stashed);
       } else {
         view.restoreFromTombstone(mutation.entityId);
+      }
+      // Also un-hide the rendered mesh — the EntityContextMenu's
+      // delete handler hid it via the visibility system, so undo has
+      // to mirror that to bring the entity back into the scene.
+      const cross = get() as unknown as {
+        toGlobalId?: (modelId: string, expressId: number) => number;
+        showEntity?: (id: number) => void;
+      };
+      if (cross.toGlobalId && cross.showEntity) {
+        const globalId = cross.toGlobalId(modelId, mutation.entityId);
+        cross.showEntity(globalId);
       }
     }
 
@@ -977,6 +964,16 @@ export const createMutationSlice: StateCreator<
         });
       }
       view.deleteEntity(mutation.entityId);
+      // Re-hide the mesh — symmetric with the menu's delete handler
+      // and with the undo path above.
+      const cross = get() as unknown as {
+        toGlobalId?: (modelId: string, expressId: number) => number;
+        hideEntity?: (id: number) => void;
+      };
+      if (cross.toGlobalId && cross.hideEntity) {
+        const globalId = cross.toGlobalId(modelId, mutation.entityId);
+        cross.hideEntity(globalId);
+      }
     }
 
     set((s) => {

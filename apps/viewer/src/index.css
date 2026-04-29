@@ -379,6 +379,43 @@ body {
   color: var(--color-primary) !important;
 }
 
+/* Raw STEP tab — terminal-flavoured dev affordance.
+   Compact (icon-only </>), separates visually from the three "human"
+   tabs with a left divider and a green active state that nods to a
+   shell cursor. Stays width-stable at narrow panel widths because
+   it explicitly opts out of `flex: 1` (uses an `auto`-ish width
+   driven by the </> glyph plus padding). */
+.properties-tab-trigger.raw-step-tab-trigger {
+  flex: 0 0 auto;
+  min-width: 2.25rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  border-left: 1px solid var(--tabs-border);
+  letter-spacing: 0;
+  color: color-mix(in srgb, var(--tab-text) 70%, transparent) !important;
+}
+
+.properties-tab-trigger.raw-step-tab-trigger:hover {
+  background-color: color-mix(in srgb, #10b981 16%, var(--tabs-bg)) !important;
+  color: #047857 !important;
+}
+
+.dark .properties-tab-trigger.raw-step-tab-trigger:hover {
+  background-color: color-mix(in srgb, #10b981 22%, var(--tabs-bg)) !important;
+  color: #34d399 !important;
+}
+
+.properties-tab-trigger.raw-step-tab-trigger[data-state="active"] {
+  background-color: color-mix(in srgb, #10b981 14%, var(--tab-active-bg)) !important;
+  color: #047857 !important;
+  border-top-color: #10b981 !important;
+}
+
+.dark .properties-tab-trigger.raw-step-tab-trigger[data-state="active"] {
+  color: #34d399 !important;
+  border-top-color: #34d399 !important;
+}
+
 /* Quantity cards - cyan accent */
 .dark .border-blue-200,
 .dark .border-blue-800,

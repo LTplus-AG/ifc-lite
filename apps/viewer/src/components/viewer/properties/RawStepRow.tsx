@@ -16,6 +16,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { isInlineEditableToken, parseRawStepInput } from './raw-step-format';
 
+/** Match a bare `#N` STEP entity reference. */
+const REF_TOKEN_RE = /^#(\d+)$/;
+
 interface RawStepRowProps {
   modelId: string;
   entityId: number;
@@ -30,6 +33,10 @@ interface RawStepRowProps {
   isMutated: boolean;
   /** Set false to lock the row (e.g. native-metadata model). */
   enableEditing: boolean;
+  /** Drill into a `#N` reference. RawStepCard auto-skips trivial
+   *  single-ref wrappers and pushes the meaningful target onto the
+   *  navigation stack. */
+  onNavigate?: (refId: number) => void;
 }
 
 export function RawStepRow({
@@ -40,6 +47,7 @@ export function RawStepRow({
   displayToken,
   isMutated,
   enableEditing,
+  onNavigate,
 }: RawStepRowProps) {
   const setPositionalAttribute = useViewerStore((s) => s.setPositionalAttribute);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -50,6 +58,8 @@ export function RawStepRow({
 
   const editable = enableEditing && isInlineEditableToken(displayToken);
   const display = displayToken;
+  const refMatch = display.match(REF_TOKEN_RE);
+  const refTargetId = refMatch ? Number.parseInt(refMatch[1], 10) : null;
 
   const inputRef = useCallback((node: HTMLInputElement | null) => {
     if (node) {
@@ -147,6 +157,21 @@ export function RawStepRow({
             aria-describedby={error ? `raw-step-err-${entityId}-${index}` : undefined}
           />
         </div>
+      ) : refTargetId !== null && onNavigate ? (
+        // Reference token — render as a navigable chip. Drilling into
+        // a ref shouldn't share the same hover affordance as editing
+        // a scalar; the emerald accent matches the Raw tab indicator
+        // and visually separates "follow" from "edit". Editing a ref
+        // (changing it to point at a different `#N`) goes through
+        // the pen icon on the right.
+        <button
+          type="button"
+          onClick={() => onNavigate(refTargetId)}
+          className="min-w-0 text-left font-mono text-xs truncate px-1.5 py-0.5 rounded text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/25 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:underline decoration-dotted underline-offset-2"
+          title={`Drill into ${display} (auto-skips trivial wrappers)`}
+        >
+          {display}
+        </button>
       ) : (
         <button
           type="button"

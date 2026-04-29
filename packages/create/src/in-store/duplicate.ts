@@ -30,6 +30,37 @@ import type { IfcAttributeValue } from '@ifc-lite/mutations';
 /** A 3D vector — STEP-local metres. */
 export type Vec3 = [number, number, number];
 
+/**
+ * One existing IfcRelDefines* / IfcRelAssociates* edge that
+ * references the source. The duplicate flow emits a fresh rel of the
+ * same type pointing at the duplicate so the exported STEP carries
+ * the same psets / qsets / material / classifications / documents /
+ * type associations the source had — without modifying the existing
+ * rels.
+ *
+ * The resolver populates these from the parsed store; the in-store
+ * builder stays parser-free.
+ */
+export interface SourceAssociation {
+  /** Existing rel's IFC type (e.g. `'IFCRELDEFINESBYPROPERTIES'`). */
+  relType: string;
+  /** Existing rel's OwnerHistory expressId. Reused on the new rel. */
+  ownerHistoryId: number;
+  /** Existing rel's Name attribute (parsed; null when `$`). */
+  name: string | null;
+  /** Existing rel's Description attribute (parsed; null when `$`). */
+  description: string | null;
+  /**
+   * The existing rel's `Relating*` reference (positional index 5):
+   * - `IFCRELDEFINESBYPROPERTIES.RelatingPropertyDefinition` → IfcPropertySet / IfcElementQuantity
+   * - `IFCRELDEFINESBYTYPE.RelatingType` → Type entity
+   * - `IFCRELASSOCIATESMATERIAL.RelatingMaterial`
+   * - `IFCRELASSOCIATESCLASSIFICATION.RelatingClassification`
+   * - `IFCRELASSOCIATESDOCUMENT.RelatingDocument`
+   */
+  relatingExpressId: number;
+}
+
 export interface SourceAttributes {
   /** Source entity type (e.g. `'IFCWALL'`, `'IFCCOLUMN'`). */
   type: string;
@@ -51,6 +82,13 @@ export interface SourceAttributes {
   refDirectionRef: string;
   /** Express id of the IfcBuildingStorey containing the source — emit a fresh IfcRelContainedInSpatialStructure pointing at it. Null skips the rel. */
   storeyId: number | null;
+  /**
+   * Association rels containing the source. Each one is replayed
+   * against the duplicate so the export carries the same psets,
+   * qsets, material, classifications, documents, and type binding
+   * as the source. Empty array (or omitted) skips the cloning step.
+   */
+  associations?: SourceAssociation[];
 }
 
 export interface DuplicateInStoreOptions {
@@ -68,6 +106,13 @@ export interface DuplicateBuildResult {
   newAxisPlacementId: number;
   /** The IfcRelContainedInSpatialStructure linking the new entity to its storey. Null when the source had no spatial container. */
   relContainedId: number | null;
+  /**
+   * The fresh `IfcRelDefines*` / `IfcRelAssociates*` rel ids
+   * emitted to mirror the source's associations. One entry per
+   * `SourceAssociation` provided. Empty when the resolver didn't
+   * collect any (or didn't run).
+   */
+  associationRelIds: number[];
 }
 
 /**
@@ -151,11 +196,33 @@ export function duplicateInStore(
     relContainedId = rel.expressId;
   }
 
+  // 6. Replay every IfcRelDefines* / IfcRelAssociates* edge that
+  //    references the source. Emits one fresh rel per association so
+  //    the duplicate carries identical psets, qsets, material,
+  //    classifications, documents, and type binding in the exported
+  //    STEP. Modifies no existing rel — each new rel has just the
+  //    duplicate in its RelatedObjects list.
+  const associationRelIds: number[] = [];
+  if (source.associations && source.associations.length > 0) {
+    for (const assoc of source.associations) {
+      const rel = editor.addEntity(assoc.relType, [
+        generateIfcGuid(),                          // GlobalId
+        `#${assoc.ownerHistoryId}`,                  // OwnerHistory
+        assoc.name,                                  // Name (parsed; may be null)
+        assoc.description,                           // Description
+        [`#${duplicate.expressId}`],                 // RelatedObjects
+        `#${assoc.relatingExpressId}`,               // Relating*
+      ]);
+      associationRelIds.push(rel.expressId);
+    }
+  }
+
   return {
     newId: duplicate.expressId,
     newPlacementId: placement.expressId,
     newPointId: point.expressId,
     newAxisPlacementId: axisPlacement.expressId,
     relContainedId,
+    associationRelIds,
   };
 }

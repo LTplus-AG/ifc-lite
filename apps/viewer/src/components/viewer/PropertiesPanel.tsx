@@ -584,39 +584,55 @@ export function PropertiesPanel() {
     return base;
   }, [entityNode, overlayEntity, selectedEntity, mutationViews, mutationVersion]);
 
+  // Resolve the entity id used for parsed-store lookups. For overlay
+  // duplicates this is the source entity (via the view's alias) — so
+  // materials / classifications / documents / structural rels appear
+  // on the duplicate exactly as they do on the source. Without the
+  // alias resolution the parsed maps would return empty for the
+  // overlay-only id.
+  const lookupExpressId = useMemo(() => {
+    const expressId = selectedEntity?.expressId;
+    if (!expressId) return null;
+    let modelId = selectedEntity?.modelId;
+    if (modelId === 'legacy') modelId = '__legacy__';
+    const view = modelId ? mutationViews.get(modelId) : null;
+    return view?.resolveBaseEntityId(expressId) ?? expressId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEntity, mutationViews, mutationVersion]);
+
   // Extract classifications for the selected entity from the IFC data store
   const classifications = useMemo(() => {
-    if (!selectedEntity) return [];
+    if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractClassificationsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract materials for the selected entity from the IFC data store
   const materialInfo = useMemo(() => {
-    if (!selectedEntity) return null;
+    if (!selectedEntity || lookupExpressId === null) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    return extractMaterialsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract documents for the selected entity from the IFC data store
   const documents = useMemo(() => {
-    if (!selectedEntity) return [];
+    if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractDocumentsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractDocumentsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract structural relationships (openings, fills, groups, connections)
   const entityRelationships = useMemo(() => {
-    if (!selectedEntity) return null;
+    if (!selectedEntity || lookupExpressId === null) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    const rels = extractRelationshipsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
+    const rels = extractRelationshipsOnDemand(dataStore as IfcDataStore, lookupExpressId);
     const totalCount = rels.voids.length + rels.fills.length + rels.groups.length + rels.connections.length;
     return totalCount > 0 ? rels : null;
-  }, [selectedEntity, model, ifcDataStore]);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // 4D schedule — both parsed-from-IFC and locally-generated schedules live in
   // the schedule slice. ScheduleCard renders nothing when no task in the

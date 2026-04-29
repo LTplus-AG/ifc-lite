@@ -15,7 +15,24 @@
 
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
-import type { SourceAttributes, Vec3 } from './duplicate.js';
+import type { SourceAttributes, SourceAssociation, Vec3 } from './duplicate.js';
+
+/**
+ * Rel types whose `RelatedObjects` list is replayed against a
+ * duplicate so the export carries the same psets / qsets / material /
+ * classifications / documents / type binding as the source.
+ *
+ * `IFCRELCONTAINEDINSPATIALSTRUCTURE` is intentionally excluded — the
+ * duplicate flow already emits a fresh one anchored to the source's
+ * storey (see `duplicate.ts` step 5).
+ */
+const ASSOCIATION_REL_TYPES = [
+  'IFCRELDEFINESBYPROPERTIES',     // psets + qsets (RelatingPropertyDefinition)
+  'IFCRELDEFINESBYTYPE',           // type binding
+  'IFCRELASSOCIATESMATERIAL',
+  'IFCRELASSOCIATESCLASSIFICATION',
+  'IFCRELASSOCIATESDOCUMENT',
+] as const;
 
 function asString(v: IfcAttributeValue | undefined): string {
   if (v === null || v === undefined) return '$';
@@ -118,6 +135,12 @@ export function resolveDuplicateSource(
   // Falls back to null when the entity sits outside the spatial tree.
   const storeyId = store.spatialHierarchy?.elementToStorey?.get(sourceExpressId) ?? null;
 
+  // Association rels that reference the source — replayed against
+  // the duplicate by `duplicateInStore` so the exported STEP carries
+  // the same psets / qsets / material / classifications / documents
+  // / type binding.
+  const associations = collectSourceAssociations(store, extractor, sourceExpressId);
+
   return {
     type: sourceEntity.type.toUpperCase(),
     attributes: attrs,
@@ -129,5 +152,60 @@ export function resolveDuplicateSource(
     axisRef,
     refDirectionRef,
     storeyId,
+    associations,
   };
+}
+
+/**
+ * Walk the parsed entity index for every association rel type and
+ * gather the ones whose `RelatedObjects` list contains `sourceId`.
+ * Returns one `SourceAssociation` per matching rel — duplicate flow
+ * emits a fresh rel of the same type pointing at the duplicate.
+ */
+function collectSourceAssociations(
+  store: IfcDataStore,
+  extractor: EntityExtractor,
+  sourceId: number,
+): SourceAssociation[] {
+  const out: SourceAssociation[] = [];
+  for (const relType of ASSOCIATION_REL_TYPES) {
+    const ids = store.entityIndex.byType.get(relType);
+    if (!ids || ids.length === 0) continue;
+    for (const relId of ids) {
+      const ref = store.entityIndex.byId.get(relId);
+      if (!ref) continue;
+      const entity = extractor.extractEntity(ref);
+      if (!entity) continue;
+
+      const related = entity.attributes[4];
+      // RelatedObjects is a STEP set serialised as a JS array. The
+      // parser returns each `#N` as a plain number — we look for the
+      // source id by direct membership, not by string match.
+      if (!Array.isArray(related)) continue;
+      let referencesSource = false;
+      for (const member of related) {
+        if (typeof member === 'number' && member === sourceId) {
+          referencesSource = true;
+          break;
+        }
+      }
+      if (!referencesSource) continue;
+
+      const ownerHistoryId = asNumber(entity.attributes[1]);
+      const relatingExpressId = asNumber(entity.attributes[5]);
+      if (ownerHistoryId === null || relatingExpressId === null) continue;
+
+      const name = typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null;
+      const description = typeof entity.attributes[3] === 'string' ? entity.attributes[3] : null;
+
+      out.push({
+        relType,
+        ownerHistoryId,
+        name,
+        description,
+        relatingExpressId,
+      });
+    }
+  }
+  return out;
 }

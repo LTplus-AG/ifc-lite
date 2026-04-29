@@ -140,4 +140,80 @@ describe('duplicateInStore', () => {
     const tiny: SourceAttributes = { ...baseSource(), attributes: ['guid', '#1', null] };
     expect(() => duplicateInStore(editor, tiny)).toThrow(/need ≥7/);
   });
+
+  describe('association rel cloning', () => {
+    it('emits one fresh rel per association so the duplicate carries the same psets/material/etc.', () => {
+      const store = makeStore(200);
+      const view = new MutablePropertyView(null, 'm1');
+      const editor = new StoreEditor(store, view);
+
+      const sourceWithAssocs: SourceAttributes = {
+        ...baseSource(),
+        associations: [
+          {
+            relType: 'IFCRELDEFINESBYPROPERTIES',
+            ownerHistoryId: 5,
+            name: 'Pset_WallCommon',
+            description: null,
+            relatingExpressId: 150,  // → IfcPropertySet
+          },
+          {
+            relType: 'IFCRELASSOCIATESMATERIAL',
+            ownerHistoryId: 5,
+            name: null,
+            description: null,
+            relatingExpressId: 161,  // → IfcMaterial
+          },
+          {
+            relType: 'IFCRELASSOCIATESCLASSIFICATION',
+            ownerHistoryId: 5,
+            name: null,
+            description: 'Uniclass',
+            relatingExpressId: 175,  // → IfcClassificationReference
+          },
+        ],
+      };
+
+      const result = duplicateInStore(editor, sourceWithAssocs);
+
+      // 3 association rels emitted, each above the watermark.
+      expect(result.associationRelIds).toHaveLength(3);
+      for (const id of result.associationRelIds) {
+        expect(id).toBeGreaterThan(200);
+      }
+
+      const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+
+      // Each rel should be the right type with the duplicate as the
+      // sole RelatedObject and the source's Relating* preserved.
+      const propsRel = byId.get(result.associationRelIds[0]);
+      expect(propsRel?.type).toBe('IFCRELDEFINESBYPROPERTIES');
+      expect(propsRel?.attributes[1]).toBe('#5');                    // OwnerHistory
+      expect(propsRel?.attributes[2]).toBe('Pset_WallCommon');        // Name
+      expect(propsRel?.attributes[3]).toBeNull();                    // Description
+      expect(propsRel?.attributes[4]).toEqual([`#${result.newId}`]);   // RelatedObjects → duplicate only
+      expect(propsRel?.attributes[5]).toBe('#150');                  // RelatingPropertyDefinition
+
+      const matRel = byId.get(result.associationRelIds[1]);
+      expect(matRel?.type).toBe('IFCRELASSOCIATESMATERIAL');
+      expect(matRel?.attributes[5]).toBe('#161');
+
+      const classRel = byId.get(result.associationRelIds[2]);
+      expect(classRel?.type).toBe('IFCRELASSOCIATESCLASSIFICATION');
+      expect(classRel?.attributes[3]).toBe('Uniclass');               // Description preserved
+      expect(classRel?.attributes[5]).toBe('#175');
+    });
+
+    it('emits no association rels when the source has none', () => {
+      const store = makeStore(100);
+      const view = new MutablePropertyView(null, 'm1');
+      const editor = new StoreEditor(store, view);
+
+      // baseSource() doesn't set `associations`.
+      const result = duplicateInStore(editor, baseSource());
+      expect(result.associationRelIds).toEqual([]);
+      const types = view.getNewEntities().map((e) => e.type);
+      expect(types).not.toContain('IFCRELDEFINESBYPROPERTIES');
+    });
+  });
 });

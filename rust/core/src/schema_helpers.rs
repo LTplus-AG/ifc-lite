@@ -70,18 +70,19 @@ pub fn has_geometry_by_name(type_name: &str) -> bool {
 }
 
 /// Subtypes of `IfcProduct` that exist solely as spatial containers and
-/// aren't rendered directly. `IfcSpace` and `IfcSite` are deliberately NOT
-/// in this set.
+/// aren't rendered directly. `IfcSpace` and `IfcSite` are deliberately
+/// exempt — their boundary representations are consumed by the renderer.
+///
+/// We block by inheritance, not by exact match, so IFC4X3 facility
+/// subclasses like `IfcBridge`/`IfcRoad`/`IfcRailway`/`IfcMarineFacility`
+/// (under `IfcFacility`), their `*Part` variants (under `IfcFacilityPart`),
+/// `IfcSpatialZone`, and any future concrete spatial container all collapse
+/// to the same answer without the whitelist needing to enumerate them.
 fn is_non_geometric_spatial(t: IfcType) -> bool {
-    matches!(
-        t,
-        IfcType::IfcSpatialElement
-            | IfcType::IfcSpatialStructureElement
-            | IfcType::IfcBuilding
-            | IfcType::IfcBuildingStorey
-            | IfcType::IfcFacility
-            | IfcType::IfcFacilityPart
-    )
+    if matches!(t, IfcType::IfcSpace | IfcType::IfcSite) {
+        return false;
+    }
+    t.is_subtype_of(IfcType::IfcSpatialElement)
 }
 
 #[cfg(test)]
@@ -178,7 +179,32 @@ mod tests {
 
     #[test]
     fn non_geometric_spatial_excluded() {
-        for name in ["IFCBUILDING", "IFCBUILDINGSTOREY", "IFCFACILITY", "IFCFACILITYPART"] {
+        for name in [
+            // The original whitelist excluded these explicitly.
+            "IFCBUILDING",
+            "IFCBUILDINGSTOREY",
+            "IFCFACILITY",
+            "IFCFACILITYPART",
+            // Abstract bases — same logic, never rendered directly.
+            "IFCSPATIALELEMENT",
+            "IFCSPATIALSTRUCTUREELEMENT",
+            // IFC4X3 facility subtypes: previously absent from the whitelist
+            // and would now leak through if the block-list were leaf-only
+            // (regression flagged on the original PR review).
+            "IFCBRIDGE",
+            "IFCROAD",
+            "IFCRAILWAY",
+            "IFCMARINEFACILITY",
+            "IFCBRIDGEPART",
+            "IFCFACILITYPARTCOMMON",
+            // IfcSpatialZone — concrete but a container, not a renderable
+            // body. The original whitelist did not include it.
+            "IFCSPATIALZONE",
+            // External spatial elements are abstract air volumes, not
+            // rendered. Not in the original whitelist.
+            "IFCEXTERNALSPATIALELEMENT",
+            "IFCEXTERNALSPATIALSTRUCTUREELEMENT",
+        ] {
             assert!(!has_geometry_by_name(name), "{name} should NOT have geometry");
         }
     }

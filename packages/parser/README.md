@@ -1,30 +1,6 @@
 # @ifc-lite/parser
 
-High-performance IFC parser with **100% schema coverage** via code generation.
-
-## Features
-
-### Core Parser (Existing)
-- ✅ Fast byte-level STEP tokenization (~1,259 MB/s)
-- ✅ Entity extraction with lazy evaluation
-- ✅ Property and quantity extraction
-- ✅ Relationship graph building
-- ✅ Spatial hierarchy with elevation support
-- ✅ Style and material appearance
-- ✅ Columnar storage (TypedArrays)
-
-### NEW: 100% Schema Coverage
-- ✅ **776 IFC4 entities** (auto-generated from EXPRESS schemas)
-- ✅ **397 type definitions**
-- ✅ **207 enumerations**
-- ✅ **60 SELECT union types**
-- ✅ Full TypeScript type safety
-- ✅ Runtime schema metadata
-
-### NEW: Advanced Extractors
-- ✅ **Materials Extractor** - IfcMaterial, layers, profiles, constituents
-- ✅ **Georeferencing Extractor** - Coordinate transformations, CRS support
-- ✅ **Classification Extractor** - Uniclass, Omniclass, MasterFormat, etc.
+High-performance IFC parser. Tokenizes STEP files at ~1,259 MB/s, builds columnar TypedArray storage, and ships full type-safe coverage of IFC4 (776 entities) and IFC4X3 (876 entities).
 
 ## Installation
 
@@ -32,7 +8,7 @@ High-performance IFC parser with **100% schema coverage** via code generation.
 npm install @ifc-lite/parser
 ```
 
-## Quick Start
+## Parse a file
 
 ```typescript
 import { IfcParser } from '@ifc-lite/parser';
@@ -40,287 +16,101 @@ import { IfcParser } from '@ifc-lite/parser';
 const parser = new IfcParser();
 const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
 
-// Parse with progress tracking
 const result = await parser.parse(buffer, {
-  onProgress: ({ phase, percent }) => {
-    console.log(`${phase}: ${percent.toFixed(1)}%`);
-  }
+  onProgress: ({ phase, percent }) => console.log(`${phase}: ${percent.toFixed(1)}%`),
 });
 
-console.log(`Parsed ${result.entityCount} entities`);
+console.log(`Parsed ${result.entityCount} entities in ${result.parseTime}ms`);
 ```
 
-## Usage
-
-### Basic Entity Access
+For columnar storage (TypedArray-backed, query-friendly, recommended for models > 10 MB):
 
 ```typescript
-import type { IfcWall, IfcDoor, IfcWindow } from '@ifc-lite/parser';
+const store = await parser.parseColumnar(buffer);
 
-// Type-safe entity access with full IntelliSense
-const walls = result.entities.values();
-for (const wall of walls) {
-  if (wall.type === 'IfcWall') {
-    console.log(wall.name);
-    // TypeScript knows all IfcWall attributes!
-  }
-}
+// store.entities    — typed access by expressId
+// store.properties  — flattened pset table
+// store.quantities  — flattened qset table
+// store.spatialHierarchy.byStorey  — Map<storeyId, Set<elementId>>
+console.log(`${store.entityCount} entities, schema ${store.schemaVersion}`);
 ```
 
-### Schema Metadata
+## Type-safe entity access
+
+All 776 IFC4 entities (876 for IFC4X3) ship as TypeScript types via the generated schema.
 
 ```typescript
-import { SCHEMA_REGISTRY, getEntityMetadata } from '@ifc-lite/parser';
+import type { IfcWall, IfcDoor, IfcSlab } from '@ifc-lite/parser';
+import { isKnownEntity, getEntityMetadata } from '@ifc-lite/parser';
 
-// Get metadata for any entity type
-const wallMeta = getEntityMetadata('IfcWall');
+// Schema metadata
+const meta = getEntityMetadata('IfcWall');
+console.log(meta.parent);              // 'IfcBuildingElement'
+console.log(meta.inheritanceChain);    // ['IfcRoot', ..., 'IfcWall']
+console.log(meta.allAttributes);       // every attribute including inherited
 
-console.log(wallMeta.parent);  // 'IfcBuildingElement'
-console.log(wallMeta.inheritanceChain);  // Full chain from IfcRoot
-console.log(wallMeta.allAttributes);  // All attributes including inherited
-
-// Check if a type is known
-import { isKnownEntity } from '@ifc-lite/parser';
-console.log(isKnownEntity('IfcWall'));  // true
-console.log(isKnownEntity('IfcFoo'));   // false
+// Schema membership check
+console.log(isKnownEntity('IfcWall'));     // true
+console.log(isKnownEntity('IfcWidget'));   // false
 ```
 
-### Materials Extraction (NEW!)
+## On-demand property extraction
 
-```typescript
-import { extractMaterials, getMaterialNameForElement } from '@ifc-lite/parser';
-
-// Extract all material definitions
-const materialsData = extractMaterials(result.entities, entitiesByType);
-
-console.log(`Materials: ${materialsData.materials.size}`);
-console.log(`Layer sets: ${materialsData.materialLayerSets.size}`);
-console.log(`Associations: ${materialsData.associations.length}`);
-
-// Get material for a specific wall
-const wallId = 12345;
-const materialName = getMaterialNameForElement(wallId, materialsData);
-console.log(`Wall material: ${materialName}`);  // e.g., "Concrete C30/37"
-
-// Access material details
-for (const [id, material] of materialsData.materials) {
-  console.log(`${material.name}: ${material.description}`);
-}
-
-// Access layer sets (multi-layer walls, roofs, etc.)
-for (const [id, layerSet] of materialsData.materialLayerSets) {
-  console.log(`${layerSet.name}: ${layerSet.totalThickness}m total`);
-  for (const layerId of layerSet.layers) {
-    const layer = materialsData.materialLayers.get(layerId);
-    console.log(`  - ${layer?.name}: ${layer?.thickness}m`);
-  }
-}
-```
-
-### Georeferencing (NEW!)
+Properties and quantities are extracted lazily — pay only for what you read.
 
 ```typescript
 import {
-  extractGeoreferencing,
-  transformToWorld,
-  getCoordinateSystemDescription
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
+  extractMaterialsOnDemand,
+  extractClassificationsOnDemand,
 } from '@ifc-lite/parser';
 
-// Extract georeferencing info
-const georef = extractGeoreferencing(result.entities, entitiesByType);
-
-if (georef.hasGeoreference) {
-  console.log(getCoordinateSystemDescription(georef));
-  // e.g., "EPSG:32610 (UTM Zone 10N) Datum: WGS84 Origin: (500000, 4000000, 100)"
-
-  // Transform local coordinates to world coordinates
-  const localPoint: [number, number, number] = [10, 20, 5];
-  const worldPoint = transformToWorld(localPoint, georef);
-  console.log(`World coordinates: ${worldPoint}`);  // Real-world coordinates
-
-  // Access CRS details
-  console.log(`Projection: ${georef.projectedCRS?.mapProjection}`);
-  console.log(`Datum: ${georef.projectedCRS?.geodeticDatum}`);
-  console.log(`Zone: ${georef.projectedCRS?.mapZone}`);
-}
-```
-
-### Classifications (NEW!)
-
-```typescript
-import {
-  extractClassifications,
-  getClassificationsForElement,
-  getClassificationPath,
-  groupElementsByClassification,
-} from '@ifc-lite/parser';
-
-// Extract all classifications
-const classificationsData = extractClassifications(result.entities, entitiesByType);
-
-console.log(`Systems: ${classificationsData.classifications.size}`);
-console.log(`References: ${classificationsData.classificationReferences.size}`);
-
-// Get classifications for a specific element
 const wallId = 12345;
-const classifications = getClassificationsForElement(wallId, classificationsData);
 
-for (const classification of classifications) {
-  console.log(`Code: ${classification.identification}`);
-  console.log(`Name: ${classification.name}`);
+const psets = extractPropertiesOnDemand(store, wallId);
+//   [{ name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'REI 60' }, ...] }]
 
-  // Get full classification path
-  const path = getClassificationPath(classification.id, classificationsData);
-  console.log(`Path: ${path.join(' > ')}`);
-  // e.g., "Uniclass 2015 > Pr > Pr_60 > Pr_60_10 > Pr_60_10_32"
-}
+const qsets = extractQuantitiesOnDemand(store, wallId);
+//   [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', value: 5.0 }, ...] }]
 
-// Group elements by classification code
-const groups = groupElementsByClassification(classificationsData);
-for (const [code, elementIds] of groups) {
-  console.log(`${code}: ${elementIds.length} elements`);
-}
+const material = extractMaterialsOnDemand(store, wallId);
+//   { name: 'Concrete C30/37', layers: [{ name: 'Concrete', thickness: 0.15 }, ...] }
+
+const classifications = extractClassificationsOnDemand(store, wallId);
+//   [{ system: 'Uniclass 2015', code: 'Pr_60_10_32', name: 'External walls', ... }]
 ```
 
-### Comprehensive Extraction
+## Georeferencing
 
 ```typescript
-import { extractCompleteIfcData, getEnrichedElementInfo } from '@ifc-lite/parser/examples/comprehensive-extraction';
+import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 
-// Extract everything in one call
-const completeData = extractCompleteIfcData(result.entities, entitiesByType);
+const georef = extractGeoreferencingOnDemand(store);
 
-// Get enriched info for any element (with materials, classifications, world coords)
-const wallInfo = getEnrichedElementInfo(wallId, completeData);
-
-console.log(wallInfo);
-// {
-//   id: 12345,
-//   type: 'IfcWall',
-//   name: 'Wall-001',
-//   inheritanceChain: ['IfcRoot', 'IfcObject', 'IfcProduct', 'IfcElement', 'IfcBuildingElement', 'IfcWall'],
-//   material: {
-//     name: 'Concrete C30/37',
-//     type: 'LayerSet',
-//     layers: [
-//       { material: 'Concrete', thickness: 0.15 },
-//       { material: 'Insulation', thickness: 0.10 },
-//     ]
-//   },
-//   classifications: [
-//     { system: 'Uniclass 2015', code: 'Pr_60_10_32', name: 'External walls', path: [...] }
-//   ],
-//   worldCoordinates: [500010, 4000020, 105],
-//   properties: { ... },
-//   quantities: { ... }
-// }
+if (georef?.hasGeoreference) {
+  console.log(`CRS: ${georef.projectedCRS?.name}`);
+  console.log(`Origin: ${georef.eastings}, ${georef.northings}, ${georef.orthogonalHeight}`);
+  console.log(`Rotation: ${georef.rotationRadians} rad`);
+}
 ```
-
-## API Reference
-
-### Core Classes
-
-- **`IfcParser`** - Main parser class
-- **`StepTokenizer`** - Fast STEP file tokenizer
-- **`EntityExtractor`** - Entity extraction with lazy evaluation
-- **`PropertyExtractor`** - Property set extraction
-- **`QuantityExtractor`** - Quantity set extraction
-- **`RelationshipExtractor`** - Relationship graph building
-- **`SpatialHierarchyBuilder`** - Spatial hierarchy building
-- **`StyleExtractor`** - Material and color extraction
-
-### NEW: Advanced Extractors
-
-- **`extractMaterials()`** - Extract all material definitions
-- **`extractGeoreferencing()`** - Extract coordinate system info
-- **`extractClassifications()`** - Extract classification systems
-
-### NEW: Generated Schema
-
-- **`SCHEMA_REGISTRY`** - Complete IFC4 schema metadata (776 entities)
-- **`getEntityMetadata()`** - Get metadata for any entity type
-- **`getAllAttributesForEntity()`** - Get all attributes including inherited
-- **`getInheritanceChainForEntity()`** - Get full inheritance chain
-- **`isKnownEntity()`** - Check if entity type exists in schema
-
-### Types (100% Coverage)
-
-All 776 IFC4 entities are available as TypeScript types:
-
-```typescript
-import type {
-  // Spatial
-  IfcProject, IfcSite, IfcBuilding, IfcBuildingStorey, IfcSpace,
-
-  // Building Elements
-  IfcWall, IfcDoor, IfcWindow, IfcSlab, IfcColumn, IfcBeam,
-  IfcStair, IfcRoof, IfcRailing, IfcCurtainWall,
-
-  // Materials (NEW!)
-  IfcMaterial, IfcMaterialLayer, IfcMaterialLayerSet,
-  IfcMaterialProfile, IfcMaterialProfileSet,
-  IfcMaterialConstituent, IfcMaterialConstituentSet,
-
-  // Georeferencing (NEW!)
-  IfcMapConversion, IfcProjectedCRS, IfcGeometricRepresentationContext,
-
-  // Classifications (NEW!)
-  IfcClassification, IfcClassificationReference,
-
-  // Infrastructure (IFC4X3 - 876 entities)
-  IfcRoad, IfcBridge, IfcRailway, IfcTunnel, IfcAlignment,
-
-  // ... and 770+ more entities!
-} from '@ifc-lite/parser';
-```
-
-## Schema Coverage
-
-### Before (Manual Implementation)
-- ~70 entities manually implemented
-- ~7% schema coverage
-- Missing: materials, georeferencing, infrastructure
-
-### After (Code Generation)
-- **776 entities** (IFC4) or **876 entities** (IFC4X3)
-- **100% schema coverage**
-- Includes: materials, georeferencing, infrastructure, classifications, structural, MEP, cost, scheduling
 
 ## Performance
 
-- **Parse speed:** ~1,259 MB/s tokenization
-- **Memory:** Columnar storage with TypedArrays
-- **Bundle size:** ~1.9 MB generated schema (200 KB gzipped)
-- **Parse time:** ~600-700ms for 50 MB files, ~100-200ms for 10 MB files
-- **Coverage gain:** +1393% (70 → 1000+ entities)
+| Model size | Parse time |
+|---:|---:|
+| 10 MB | ~100–200 ms |
+| 50 MB | ~600–700 ms |
+| 200 MB | ~2.5–3 s |
 
-## Examples
+- Tokenization: ~1,259 MB/s on M1/M2 laptops
+- Bundle: ~200 KB gzipped (schema registry included)
+- Memory: TypedArray columnar storage
 
-See `/src/examples/` for comprehensive examples:
+## API
 
-- **comprehensive-extraction.ts** - Complete extraction with all new features
-- **material-report.ts** - Generate material usage reports
-- **georef-transform.ts** - Coordinate system transformations
-- **classification-query.ts** - Query by classification codes
-
-## Development
-
-```bash
-# Build
-npm run build
-
-# Test
-npm test
-
-# Regenerate IFC schema (if EXPRESS files updated)
-cd ../codegen
-npm run generate:ifc4
-```
-
-## Contributing
-
-Issues and PRs welcome at https://github.com/louistrue/ifc-lite
+See the [Parsing Guide](../../docs/guide/parsing.md) and [API Reference](../../docs/api/typescript.md#ifc-liteparser).
 
 ## License
 
-MIT
+[MPL-2.0](../../LICENSE)

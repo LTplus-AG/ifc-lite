@@ -179,7 +179,7 @@ Right-click on an entity in 3D or the hierarchy:
 | Item | Effect |
 |---|---|
 | **Delete entity** (red) | Tombstones the entity. Visible only when the active model has an editable mutation view. Toast confirms with undo hint. |
-| **Add column here…** (emerald) | Visible only when the right-clicked entity is an `IfcBuildingStorey`. Opens the Add Column dialog with the storey pre-filled. |
+| **Add Column here…** (emerald) | Visible only when the right-clicked entity is an `IfcBuildingStorey`. Opens the Add Column dialog with the storey pre-filled. |
 
 ### Add Column dialog
 
@@ -228,6 +228,7 @@ const profile = editor.addEntity('IfcRectangleProfileDef', [
 // → { expressId: <new>, type: 'IfcRectangleProfileDef', byteOffset: -1, ... }
 
 // Override a single positional argument on an existing entity by index.
+// (STEP argument index is zero-based — index 0 = first STEP argument.)
 editor.setPositionalAttribute(profile.expressId, 3, 0.7);  // XDim → 0.7
 
 // Remove an entity (existing entities are tombstoned, overlay-only ones forgotten).
@@ -273,7 +274,7 @@ const result = addColumnToStore(editor, anchor, {
 // → { columnId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId }
 ```
 
-The column lands in the existing spatial hierarchy, references the model's own owner history and 'Body' subcontext, and exports as 12 new STEP entities the next time you call `StepExporter.export({ applyMutations: true })`. No script + re-parse round-trip needed.
+The column lands in the existing spatial hierarchy, references the model's own owner history and 'Body' subcontext, and exports as a set of new STEP entities the next time you call `StepExporter.export({ applyMutations: true })`. No script + re-parse round-trip needed.
 
 ### `bim.store.*` — Scripting & SDK
 
@@ -305,7 +306,7 @@ The viewer surfaces store-level edits in three places — see [Viewer Integratio
 
   - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`.
   - **Right-click → Delete entity** — calls `removeEntity`, surfaces a toast with undo support.
-  - **Right-click on a storey → Add column here…** — opens the Add Column dialog, calls `addColumn` on submit, and selects the new column in the 3D scene.
+  - **Right-click on a storey → Add Column here…** — opens the Add Column dialog, calls `addColumn` on submit, and selects the new column in the 3D scene.
 
 All three paths route through the same `mutationSlice` actions that wrap `StoreEditor`, so undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`) covers store-level edits identically to property edits.
 

@@ -39,6 +39,12 @@ export interface SpaceRectangleParams {
   LongName?: string;
   Description?: string;
   ObjectType?: string;
+  /**
+   * Slot 9 enum (without dots). IFC4 IfcSpaceTypeEnum
+   * (e.g. INTERNAL/EXTERNAL/USERDEFINED/NOTDEFINED), or the IFC2X3
+   * IfcInternalOrExternalEnum. Defaults to INTERNAL.
+   */
+  PredefinedType?: string;
 }
 
 export interface SpacePolygonParams {
@@ -50,6 +56,8 @@ export interface SpacePolygonParams {
   LongName?: string;
   Description?: string;
   ObjectType?: string;
+  /** See SpaceRectangleParams.PredefinedType. */
+  PredefinedType?: string;
 }
 
 export interface SpaceBuildResult {
@@ -93,8 +101,9 @@ export function addSpaceToStore(
   // IfcSpace attribute order:
   //   GlobalId, OwnerHistory, Name, Description, ObjectType,
   //   ObjectPlacement, Representation, LongName, CompositionType,
-  //   InteriorOrExteriorSpace, ElevationWithFlooring
-  // (CompositionType+ exists in both IFC2X3 and IFC4.)
+  //   PredefinedType (IFC4 IfcSpaceTypeEnum) / InteriorOrExteriorSpace
+  //   (IFC2X3 IfcInternalOrExternalEnum), ElevationWithFlooring
+  // INTERNAL is a valid value in both enums, so it makes a safe default.
   const attrs: Array<unknown> = [
     generateIfcGuid(),
     `#${anchor.ownerHistoryId}`,
@@ -105,7 +114,7 @@ export function addSpaceToStore(
     `#${productShapeId}`,
     params.LongName ?? null,
     '.ELEMENT.',
-    '.INTERNAL.',
+    `.${params.PredefinedType ?? 'INTERNAL'}.`,
     null,
   ];
   const spaceId = editor.addEntity('IfcSpace', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;

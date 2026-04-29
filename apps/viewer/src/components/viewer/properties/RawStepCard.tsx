@@ -278,7 +278,7 @@ export function RawStepCard({
         <div className="flex items-center gap-2 min-w-0">
           <FileBox className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
           <span
-            className="font-mono text-[11px] font-semibold tracking-wide uppercase text-zinc-700 dark:text-zinc-200 truncate"
+            className="font-mono text-[11px] font-semibold tracking-wide text-zinc-700 dark:text-zinc-200 truncate"
             title={`${currentType} #${currentId}`}
           >
             {currentType} #{currentId}

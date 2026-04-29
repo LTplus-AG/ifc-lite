@@ -76,10 +76,10 @@ export interface SourceAttributes {
   representationId: number | null;
   /** OwnerHistory expressId from the source (positional index 1 on IfcRoot). */
   ownerHistoryId: number;
-  /** The IfcAxis2Placement3D's `Axis` ref (index 1) verbatim — `"#N"` string or `"$"`. Reused on the new placement so the duplicate keeps source rotation. */
-  axisRef: string;
-  /** The IfcAxis2Placement3D's `RefDirection` ref (index 2) verbatim. */
-  refDirectionRef: string;
+  /** The IfcAxis2Placement3D's `Axis` ref (index 1), or `null` when omitted (`$` in STEP). Reused on the new placement so the duplicate keeps source rotation. */
+  axisRef: string | null;
+  /** The IfcAxis2Placement3D's `RefDirection` ref (index 2), or `null` when omitted. */
+  refDirectionRef: string | null;
   /** Express id of the IfcBuildingStorey containing the source — emit a fresh IfcRelContainedInSpatialStructure pointing at it. Null skips the rel. */
   storeyId: number | null;
   /**

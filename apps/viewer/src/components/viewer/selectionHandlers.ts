@@ -392,6 +392,18 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** Signed 2D polygon area via the shoelace formula. */
+function polygonArea2D(points: Array<[number, number]>): number {
+  if (points.length < 3) return 0;
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    area += x1 * y2 - x2 * y1;
+  }
+  return area * 0.5;
+}
+
 /**
  * Close an in-progress polygon for any slab-style type
  * (slab / roof / plate / space). Triggered by Enter. Requires
@@ -415,6 +427,13 @@ export function commitAddElementSlabPolygon(): void {
     const ifc = rendererPointToIfcStoreyLocal(pt);
     return [ifc[0], ifc[1]] as [number, number];
   });
+  // Reject degenerate (zero-area) polygons — repeated or collinear
+  // pending points would otherwise produce an OuterCurve that exports
+  // as an invalid slab/roof/plate/space profile.
+  if (Math.abs(polygonArea2D(outer)) < 1e-6) {
+    toast.error(`${capitalize(type)} polygon must have a non-zero area`);
+    return;
+  }
   switch (type) {
     case 'slab': {
       const p = state.addElementSlabParams;

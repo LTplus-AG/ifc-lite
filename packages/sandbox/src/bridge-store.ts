@@ -23,6 +23,10 @@ export function buildStoreNamespace(): NamespaceSchema {
         doc: 'Inject a new entity into the active model. Returns an EntityRef for the freshly-allocated expressId.',
         args: ['string', 'dump'],
         paramNames: ['modelId', 'def'],
+        tsParamTypes: [
+          'string',
+          '{ type: string; attributes: unknown[] }',
+        ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
           const def = args[1] as { type: string; attributes: unknown[] };
@@ -38,6 +42,7 @@ export function buildStoreNamespace(): NamespaceSchema {
         doc: 'Remove an entity. Tombstones existing entities; forgets overlay-only ones. Returns false if the id is unknown.',
         args: ['dump'],
         paramNames: ['entity'],
+        tsParamTypes: ['{ modelId: string; expressId: number }'],
         tsReturn: 'boolean',
         call: (sdk, args) => {
           const ref = toRef(args[0]);
@@ -53,6 +58,11 @@ export function buildStoreNamespace(): NamespaceSchema {
         doc: 'Edit a non-IfcRoot attribute by zero-based STEP argument index (e.g. IfcRectangleProfileDef.XDim is index 3).',
         args: ['dump', 'number', 'dump'],
         paramNames: ['entity', 'index', 'value'],
+        tsParamTypes: [
+          '{ modelId: string; expressId: number }',
+          'number',
+          'unknown',
+        ],
         call: (sdk, args) => {
           const ref = toRef(args[0]);
           if (!ref) {

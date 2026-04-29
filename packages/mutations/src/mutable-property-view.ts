@@ -901,6 +901,11 @@ export class MutablePropertyView {
    */
   restoreNewEntity(entity: NewEntity): void {
     this.newEntities.set(entity.expressId, entity);
+    // Without this the next createEntity() can hand out the same id and
+    // overwrite the restored entity.
+    if (entity.expressId > this.nextAllocatedId) {
+      this.nextAllocatedId = entity.expressId;
+    }
   }
 
   getTombstones(): Set<number> {
@@ -1020,6 +1025,13 @@ export class MutablePropertyView {
    * Apply a batch of mutations (e.g., from imported change set)
    */
   applyMutations(mutations: Mutation[]): void {
+    // CREATE_ENTITY records are skipped (callers must restore the
+    // payload via restoreNewEntity). Track the ids we've skipped so a
+    // matching DELETE_ENTITY in the same batch doesn't tombstone an
+    // entity that never made it into this view — that stale tombstone
+    // would later suppress a freshly-allocated overlay entity reusing
+    // the same expressId.
+    const skippedCreateIds = new Set<number>();
     for (const mutation of mutations) {
       switch (mutation.type) {
         case 'CREATE_PROPERTY':
@@ -1082,6 +1094,7 @@ export class MutablePropertyView {
           // CREATE_ENTITY would lose the entity. We log and skip rather
           // than silently dropping it, so callers see they need to
           // restore the payload through the dedicated path.
+          skippedCreateIds.add(mutation.entityId);
           // eslint-disable-next-line no-console
           console.warn(
             `applyMutations: CREATE_ENTITY for #${mutation.entityId} requires a NewEntity payload — restore via restoreNewEntity()`,
@@ -1090,6 +1103,7 @@ export class MutablePropertyView {
         }
 
         case 'DELETE_ENTITY':
+          if (skippedCreateIds.has(mutation.entityId)) break;
           this.deleteEntity(mutation.entityId);
           break;
       }

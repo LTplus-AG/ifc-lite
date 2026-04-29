@@ -180,8 +180,9 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
 
   setAddElementType: (addElementType) =>
     // Switching types resets the pending-click queue — a wall's start
-    // doesn't make sense as a slab's first corner.
-    set({ addElementType, addElementPendingPoints: [] }),
+    // doesn't make sense as a slab's first corner. Hover is cleared
+    // alongside so a stale preview doesn't flash with the new shape.
+    set({ addElementType, addElementPendingPoints: [], addElementHoverPoint: null }),
   setAddElementStoreyId: (addElementStoreyId) => set({ addElementStoreyId }),
   setAddElementModelId: (addElementModelId) => set({ addElementModelId }),
   setAddElementWallParams: (p) =>
@@ -205,7 +206,7 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
   setAddElementMemberParams: (p) =>
     set((s) => ({ addElementMemberParams: { ...s.addElementMemberParams, ...p } })),
   setAddElementSlabMode: (addElementSlabMode) =>
-    set({ addElementSlabMode, addElementPendingPoints: [] }),
+    set({ addElementSlabMode, addElementPendingPoints: [], addElementHoverPoint: null }),
   appendAddElementPendingPoint: (p) =>
     set((s) => ({ addElementPendingPoints: [...s.addElementPendingPoints, p] })),
   setAddElementHoverPoint: (addElementHoverPoint) => set({ addElementHoverPoint }),

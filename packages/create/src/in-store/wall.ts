@@ -55,14 +55,22 @@ export function addWallToStore(
 ): WallBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
+  if (params.Thickness <= 0 || params.Height <= 0) {
+    throw new Error('addWallToStore: Thickness and Height must be positive');
+  }
   const dx = params.End[0] - params.Start[0];
   const dy = params.End[1] - params.Start[1];
   const dz = params.End[2] - params.Start[2];
-  const wallLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  // Walls are extruded along the placement +Z axis (storey up). Sloped
+  // endpoints would silently emit invalid geometry, so reject them.
+  if (Math.abs(dz) > 1e-9) {
+    throw new Error('addWallToStore: Start and End must lie on the same storey plane (Z must match)');
+  }
+  const wallLen = Math.hypot(dx, dy);
   if (wallLen <= 0) {
     throw new Error('addWallToStore: Start and End must be distinct points');
   }
-  const dir: Point3D = vecNorm([dx, dy, dz]);
+  const dir: Point3D = vecNorm([dx, dy, 0]);
 
   // Placement at Start with local X = wall direction. Z stays default
   // (up); STEP's IfcAxis2Placement3D fills the missing axis from there.

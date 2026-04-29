@@ -620,7 +620,11 @@ export class StepExporter {
       entities.push(line);
     }
 
-    // Add overlay-created entities (store.addEntity / mutationView.createEntity)
+    // Add overlay-created entities (store.addEntity / mutationView.createEntity).
+    // Apply the same filters as the source-iteration pass so newly-created
+    // beams/slabs don't smuggle their geometry helpers (IfcCartesianPoint,
+    // IfcExtrudedAreaSolid, etc.) past `includeGeometry:false` /
+    // `exportPropertiesOnly()` modes.
     if (
       this.mutationView
       && (options.applyMutations !== false)
@@ -630,7 +634,14 @@ export class StepExporter {
         // STEP requires UPPERCASE entity type tokens. `NewEntity.type` is
         // stored in canonical PascalCase per the public API contract; the
         // upper-case happens here at the file-format boundary.
-        const line = `#${entity.expressId}=${entity.type.toUpperCase()}(${serializeStepArgs(entity.attributes)});`;
+        const upperType = entity.type.toUpperCase();
+        if (options.includeGeometry === false && this.isGeometryEntity(upperType)) {
+          continue;
+        }
+        if (allowedEntityIds !== null && !allowedEntityIds.has(entity.expressId)) {
+          continue;
+        }
+        const line = `#${entity.expressId}=${upperType}(${serializeStepArgs(entity.attributes)});`;
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema);
           if (converted !== null) {

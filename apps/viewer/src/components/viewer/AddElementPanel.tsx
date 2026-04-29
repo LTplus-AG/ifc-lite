@@ -131,13 +131,16 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
   }, [effectiveModelId, models, ifcDataStore]);
 
   // Auto-pick the first storey when the user hasn't chosen one or
-  // the previous choice no longer exists in the active model.
+  // the previous choice no longer exists in the active model. Also
+  // reset on model change — storey express ids are model-local, so a
+  // colliding numeric id from a different federated model would
+  // otherwise be silently reused as the placement target.
   useEffect(() => {
     if (storeyOptions.length === 0) return;
     if (addElementStoreyId === null) return;
     const stillValid = storeyOptions.some((s) => s.expressId === addElementStoreyId);
     if (!stillValid) setAddElementStoreyId(null);
-  }, [storeyOptions, addElementStoreyId, setAddElementStoreyId]);
+  }, [storeyOptions, addElementStoreyId, setAddElementStoreyId, effectiveModelId]);
 
   const hasModel = !!effectiveModelId;
   const hasStorey = storeyOptions.length > 0;

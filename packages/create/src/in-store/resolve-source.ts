@@ -41,6 +41,16 @@ function asString(v: IfcAttributeValue | undefined): string {
   return '$';
 }
 
+/**
+ * Like asString but maps the omitted-token sentinel (`$`) to `null`.
+ * The editor serialises plain strings as quoted STEP literals, so the
+ * verbatim `'$'` would land as `'$'` in output instead of the bare token.
+ */
+function asRefOrNull(v: IfcAttributeValue | undefined): string | null {
+  const s = asString(v);
+  return s === '$' ? null : s;
+}
+
 function asNumber(v: IfcAttributeValue | undefined): number | null {
   if (typeof v === 'number') return v;
   return null;
@@ -112,8 +122,8 @@ export function resolveDuplicateSource(
   }
 
   const locationId = asNumber(axisEntity.attributes[0]);  // Location → IfcCartesianPoint
-  const axisRef = asString(axisEntity.attributes[1]);     // Axis (optional)
-  const refDirectionRef = asString(axisEntity.attributes[2]); // RefDirection (optional)
+  const axisRef = asRefOrNull(axisEntity.attributes[1]);     // Axis (optional)
+  const refDirectionRef = asRefOrNull(axisEntity.attributes[2]); // RefDirection (optional)
 
   let sourceLocation: Vec3 = [0, 0, 0];
   if (locationId !== null) {
@@ -142,7 +152,10 @@ export function resolveDuplicateSource(
   const associations = collectSourceAssociations(store, extractor, sourceExpressId);
 
   return {
-    type: sourceEntity.type.toUpperCase(),
+    // Canonical PascalCase (e.g. "IfcWall"); falls back to the raw
+    // extractor type when the entity table doesn't recognise the id
+    // (vendor extensions etc).
+    type: store.entities.getTypeName(sourceExpressId) || sourceEntity.type,
     attributes: attrs,
     placementExpressId: placementId,
     parentPlacementId,
@@ -198,8 +211,12 @@ function collectSourceAssociations(
       const name = typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null;
       const description = typeof entity.attributes[3] === 'string' ? entity.attributes[3] : null;
 
+      // Use the entity table's canonical name so the duplicate replays
+      // a PascalCase type into the editor (e.g. "IfcRelDefinesByProperties"),
+      // not the byType map's UPPERCASE storage key.
+      const canonicalRelType = store.entities.getTypeName(relId) || relType;
       out.push({
-        relType,
+        relType: canonicalRelType,
         ownerHistoryId,
         name,
         description,

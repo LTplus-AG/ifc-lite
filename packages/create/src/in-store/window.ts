@@ -30,6 +30,8 @@ export interface WindowInStoreParams {
   PredefinedType?: 'WINDOW' | 'SKYLIGHT' | 'LIGHTDOME' | 'USERDEFINED' | 'NOTDEFINED';
   /** IFC4 PartitioningType. Defaults to NOTDEFINED. */
   PartitioningType?: string;
+  /** Free-text label when PartitioningType === 'USERDEFINED'. Ignored otherwise. */
+  UserDefinedPartitioningType?: string;
   Name?: string;
   Description?: string;
   ObjectType?: string;
@@ -68,9 +70,10 @@ export function addWindowToStore(
   const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Window');
   attrs.push(params.Height, params.Width);
   if (!isIFC2X3) {
+    const partitioningType = params.PartitioningType ?? 'NOTDEFINED';
     attrs.push(`.${params.PredefinedType ?? 'NOTDEFINED'}.`);
-    attrs.push(`.${params.PartitioningType ?? 'NOTDEFINED'}.`);
-    attrs.push(null); // UserDefinedPartitioningType
+    attrs.push(`.${partitioningType}.`);
+    attrs.push(partitioningType === 'USERDEFINED' ? params.UserDefinedPartitioningType ?? null : null);
   }
 
   const windowId = editor.addEntity('IfcWindow', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;

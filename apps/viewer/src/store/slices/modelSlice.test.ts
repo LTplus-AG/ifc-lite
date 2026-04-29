@@ -304,16 +304,15 @@ describe('ModelSlice', () => {
       model.maxExpressId = 10_000;
       state.addModel(model);
 
-      // Seed a fake mutation view with a fresh overlay entity. Cast
-      // through `unknown` since the test mock only exposes the
-      // `getNewEntity` shape the resolver consults.
-      state = {
-        ...state,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        mutationViews: new Map([
-          ['model-1', { getNewEntity: (id: number) => (id === 11_001 ? { expressId: id } : null) }],
-        ]) as any,
-      };
+      // Seed a fake mutation view with a fresh overlay entity. The
+      // resolver only reads `getNewEntity` from each view, so we type
+      // the map narrowly and let it satisfy the slice's wider type via
+      // a single-property cast on the wrapping state object.
+      type StubView = { getNewEntity: (id: number) => { expressId: number } | null };
+      const stubViews: Map<string, StubView> = new Map([
+        ['model-1', { getNewEntity: (id: number) => (id === 11_001 ? { expressId: id } : null) }],
+      ]);
+      state = { ...state, mutationViews: stubViews } as typeof state & { mutationViews: Map<string, StubView> };
 
       // Inside the parsed range — first pass resolves it.
       const within = state.resolveGlobalIdFromModels(42);

@@ -130,6 +130,14 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
 
 /** Retrieve a cached file blob and reconstruct a File object. */
 export async function getCachedFile(target: string | RecentFileEntry): Promise<File | null> {
+  // Path-bearing entries (Tauri filesystem) are uniquely keyed by path
+  // in the recents list, but the IndexedDB cache is name-keyed. A
+  // name-only hit could resolve `A/model.ifc` to the cached blob from
+  // `B/model.ifc`, opening the wrong file silently. Defer to the
+  // caller's native re-open path instead.
+  if (typeof target !== 'string' && target.path) {
+    return null;
+  }
   const name = typeof target === 'string' ? target : target.name;
   try {
     const db = await openDB();

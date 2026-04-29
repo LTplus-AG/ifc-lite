@@ -38,6 +38,8 @@ export interface DoorInStoreParams {
   PredefinedType?: 'DOOR' | 'GATE' | 'TRAPDOOR' | 'USERDEFINED' | 'NOTDEFINED';
   /** IFC4 OperationType enum (without the dots). Defaults to SINGLE_SWING_LEFT. */
   OperationType?: string;
+  /** Free-text label when OperationType === 'USERDEFINED'. Ignored otherwise. */
+  UserDefinedOperationType?: string;
   Name?: string;
   Description?: string;
   ObjectType?: string;
@@ -79,9 +81,11 @@ export function addDoorToStore(
   // OverallHeight / OverallWidth are present on IfcDoor in both schemas.
   attrs.push(params.Height, params.Width);
   if (!isIFC2X3) {
+    const operationType = params.OperationType ?? 'SINGLE_SWING_LEFT';
     attrs.push(`.${params.PredefinedType ?? 'NOTDEFINED'}.`);
-    attrs.push(`.${params.OperationType ?? 'SINGLE_SWING_LEFT'}.`);
-    attrs.push(null); // UserDefinedOperationType
+    attrs.push(`.${operationType}.`);
+    // UserDefinedOperationType is only meaningful when OperationType=USERDEFINED.
+    attrs.push(operationType === 'USERDEFINED' ? params.UserDefinedOperationType ?? null : null);
   }
 
   const doorId = editor.addEntity('IfcDoor', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;

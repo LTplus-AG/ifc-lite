@@ -22,7 +22,18 @@ console.log('✅ WASM initialized\n');
 
 // Load test file (with colors)
 console.log('📁 Loading test IFC file with colors...');
-const ifcData = readFileSync(join(ROOT_DIR, 'tests/models/test-colors.ifc'), 'utf-8');
+const fixturePath = join(ROOT_DIR, 'tests/models/various/test-colors.ifc');
+let ifcData;
+try {
+  ifcData = readFileSync(fixturePath, 'utf-8');
+} catch (err) {
+  if (err.code === 'ENOENT') {
+    console.error(`❌ Fixture not found: ${fixturePath}`);
+    console.error('   Run `pnpm fixtures` from the repo root to download it.');
+    process.exit(2);
+  }
+  throw err;
+}
 console.log(`   File size: ${ifcData.length} bytes`);
 console.log(`   Lines: ${ifcData.split('\n').length}\n`);
 

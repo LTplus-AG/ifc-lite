@@ -145,16 +145,22 @@ Ready-to-run projects in the [`examples/`](examples/) folder:
 We welcome contributions! No Rust toolchain needed, WASM comes pre-built.
 
 ```bash
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/louistrue/ifc-lite.git
+git clone https://github.com/louistrue/ifc-lite.git
 cd ifc-lite
 pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:5173
 ```
 
-If you need large IFC fixtures for benchmarks or stress tests, fetch only the files you need:
+If you need IFC fixtures for tests, benchmarks, or stress tests, fetch them with:
 
 ```bash
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
+pnpm fixtures           # download every fixture (idempotent, hash-verified)
+pnpm fixtures:check     # CI-friendly: exit 1 if anything is missing or stale
 ```
+
+The fixtures are stored on a GitHub Release and catalogued in
+[`tests/models/manifest.json`](tests/models/manifest.json) — see
+[`tests/models/README.md`](tests/models/README.md) for the full design and
+maintainer workflow.
 
 See the [Contributing Guide](docs/contributing/setup.md) and [Release Process](RELEASE.md) for details.
 

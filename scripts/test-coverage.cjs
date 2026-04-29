@@ -8,7 +8,18 @@ const { IfcAPI } = require('../packages/wasm/ifc_lite_wasm');
 
 // Create detailed analysis
 const api = new IfcAPI();
-const ifc = fs.readFileSync(path.join(__dirname, '../tests/models/01_Snowdon_Towers_Sample_Structural(1).ifc'), 'utf8');
+const fixturePath = path.join(__dirname, '../tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc');
+let ifc;
+try {
+  ifc = fs.readFileSync(fixturePath, 'utf8');
+} catch (err) {
+  if (err.code === 'ENOENT') {
+    console.error(`Fixture not found: ${fixturePath}`);
+    console.error('Run `pnpm fixtures` from the repo root to download it.');
+    process.exit(2);
+  }
+  throw err;
+}
 
 console.log('\n=== IFC-LITE COVERAGE ANALYSIS ===\n');
 

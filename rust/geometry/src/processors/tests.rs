@@ -8,13 +8,37 @@ use super::*;
 use crate::router::GeometryProcessor;
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
 
+/// Read a fixture under `tests/models/`, returning `None` and printing a
+/// `pnpm fixtures` hint if the file isn't present yet — either because it's
+/// missing on a fresh clone, or because it's still a leftover Git LFS
+/// pointer from before the move to `tests/models/manifest.json`.
+fn read_fixture(rel: &str) -> Option<String> {
+    let path = format!("../../tests/models/{}", rel);
+    match std::fs::read_to_string(&path) {
+        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            eprintln!(
+                "skipping: fixture {} is still a Git LFS pointer — run `pnpm fixtures` from the repo root to download the real bytes",
+                path,
+            );
+            None
+        }
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                path,
+            );
+            None
+        }
+        Err(e) => panic!("failed to read fixture {}: {}", path, e),
+    }
+}
+
 #[test]
 fn test_advanced_brep_file() {
     use crate::router::GeometryRouter;
 
-    // Read the actual advanced_brep.ifc file
-    let content = std::fs::read_to_string("../../tests/models/ifcopenshell/advanced_brep.ifc")
-        .expect("Failed to read test file");
+    let Some(content) = read_fixture("ifcopenshell/advanced_brep.ifc") else { return };
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -185,10 +209,11 @@ fn test_polygonal_bounded_half_space_respects_boundary() {
 fn test_764_column_file() {
     use crate::router::GeometryRouter;
 
-    // Read the actual 764 column file
-    let content = std::fs::read_to_string(
-        "../../tests/models/ifcopenshell/764--column--no-materials-or-surface-styles-found--augmented.ifc"
-    ).expect("Failed to read test file");
+    let Some(content) = read_fixture(
+        "ifcopenshell/764--column--no-materials-or-surface-styles-found--augmented.ifc",
+    ) else {
+        return;
+    };
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -222,11 +247,9 @@ fn test_764_column_file() {
 fn test_wall_with_opening_file() {
     use crate::router::GeometryRouter;
 
-    // Read the wall-with-opening file
-    let content = std::fs::read_to_string(
-        "../../tests/models/buildingsmart/wall-with-opening-and-window.ifc",
-    )
-    .expect("Failed to read test file");
+    let Some(content) = read_fixture("buildingsmart/wall-with-opening-and-window.ifc") else {
+        return;
+    };
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);

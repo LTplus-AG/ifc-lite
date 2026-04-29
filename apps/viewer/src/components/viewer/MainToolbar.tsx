@@ -33,6 +33,7 @@ import {
   MessageSquare,
   ClipboardCheck,
   Palette,
+  Bomb,
   Orbit,
   Layout,
   LayoutTemplate,
@@ -87,7 +88,7 @@ import {
 } from '@/services/analysis-extensions';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section';
-type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | string;
+type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'physics' | string;
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
   return typeof (file as NativeFileHandle).path === 'string';
@@ -305,6 +306,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // Lens state
   const lensPanelVisible = useViewerStore((state) => state.lensPanelVisible);
   const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
+  const physicsPanelVisible = useViewerStore((state) => state.physicsPanelVisible);
+  const setPhysicsPanelVisible = useViewerStore((state) => state.setPhysicsPanelVisible);
   const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
@@ -538,7 +541,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'physics') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -552,12 +555,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
     const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
     const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
+    const nextPhysicsVisible = panel === 'physics' ? !physicsPanelVisible : false;
 
     setBcfPanelVisible(nextBcfVisible);
     setIdsPanelVisible(nextIdsVisible);
     setLensPanelVisible(nextLensVisible);
+    setPhysicsPanelVisible(nextPhysicsVisible);
 
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible) {
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextPhysicsVisible) {
       setRightPanelCollapsed(false);
     }
   }, [
@@ -565,10 +570,12 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     bcfPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
+    physicsPanelVisible,
     requireDesktopFeature,
     setBcfPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
+    setPhysicsPanelVisible,
     setRightPanelCollapsed,
   ]);
 
@@ -599,6 +606,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setBcfPanelVisible(false);
     setIdsPanelVisible(false);
     setLensPanelVisible(false);
+    setPhysicsPanelVisible(false);
     setRightPanelCollapsed(false);
   }, [
     analysisExtensionState.activeId,
@@ -608,6 +616,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setIdsPanelVisible,
     setLensPanelVisible,
     setListPanelVisible,
+    setPhysicsPanelVisible,
     setRightPanelCollapsed,
     setScriptPanelVisible,
   ]);
@@ -620,6 +629,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
+    if (physicsPanelVisible) panels.add('physics');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [
@@ -629,6 +639,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     idsPanelVisible,
     lensPanelVisible,
     listPanelVisible,
+    physicsPanelVisible,
     scriptPanelVisible,
   ]);
 
@@ -641,6 +652,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
+    if (activeWorkspacePanels.has('physics')) return 'Physics';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 
@@ -995,6 +1007,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <Palette className="h-4 w-4 mr-2" />
             Lens Rules
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('physics')}
+            onCheckedChange={() => handleToggleRightPanel('physics')}
+          >
+            <Bomb className="h-4 w-4 mr-2" />
+            Physics
           </DropdownMenuCheckboxItem>
           {rightAnalysisExtensions.length > 0 && (
             <>

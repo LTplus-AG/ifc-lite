@@ -16,7 +16,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
 import { HoverTooltip } from './HoverTooltip';
-import { PhysicsResultPanel } from './PhysicsResultPanel';
+import { PhysicsPanel } from './PhysicsPanel';
 import { BCFPanel } from './BCFPanel';
 import { IDSPanel } from './IDSPanel';
 import { LensPanel } from './LensPanel';
@@ -85,6 +85,8 @@ export function ViewerLayout() {
   const setListPanelVisible = useViewerStore((s) => s.setListPanelVisible);
   const lensPanelVisible = useViewerStore((s) => s.lensPanelVisible);
   const setLensPanelVisible = useViewerStore((s) => s.setLensPanelVisible);
+  const physicsPanelVisible = useViewerStore((s) => s.physicsPanelVisible);
+  const setPhysicsPanelVisible = useViewerStore((s) => s.setPhysicsPanelVisible);
   const scriptPanelVisible = useViewerStore((s) => s.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
@@ -204,7 +206,6 @@ export function ViewerLayout() {
         {/* Global Overlays */}
         <EntityContextMenu />
         <HoverTooltip />
-        <PhysicsResultPanel />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
 
@@ -263,6 +264,8 @@ export function ViewerLayout() {
                   <div className="h-full w-full overflow-hidden panel-container">
                     {activeRightAnalysisExtension ? (
                       activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                    ) : physicsPanelVisible ? (
+                      <PhysicsPanel onClose={() => setPhysicsPanelVisible(false)} />
                     ) : lensPanelVisible ? (
                       <LensPanel onClose={() => setLensPanelVisible(false)} />
                     ) : idsPanelVisible ? (
@@ -335,7 +338,7 @@ export function ViewerLayout() {
               <div className="absolute inset-x-0 bottom-0 h-[50vh] bg-background border-t rounded-t-xl shadow-xl z-40 animate-in slide-in-from-bottom">
                 <div className="flex items-center justify-between p-2 border-b">
                   <span className="font-medium text-sm">
-                    {activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Inspector'}
+                    {activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : physicsPanelVisible ? 'Physics' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Inspector'}
                   </span>
                   <button
                     className="p-1 hover:bg-muted rounded"
@@ -347,6 +350,7 @@ export function ViewerLayout() {
                       if (bcfPanelVisible) setBcfPanelVisible(false);
                       if (lensPanelVisible) setLensPanelVisible(false);
                       if (idsPanelVisible) setIdsPanelVisible(false);
+                      if (physicsPanelVisible) setPhysicsPanelVisible(false);
                       if (activeAnalysisExtension) closeActiveAnalysisExtension();
                     }}
                   >
@@ -369,6 +373,8 @@ export function ViewerLayout() {
                     <ListPanel onClose={() => setListPanelVisible(false)} />
                   ) : lensPanelVisible ? (
                     <LensPanel onClose={() => setLensPanelVisible(false)} />
+                  ) : physicsPanelVisible ? (
+                    <PhysicsPanel onClose={() => setPhysicsPanelVisible(false)} />
                   ) : idsPanelVisible ? (
                     <IDSPanel onClose={() => setIdsPanelVisible(false)} />
                   ) : bcfPanelVisible ? (

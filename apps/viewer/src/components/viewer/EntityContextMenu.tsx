@@ -32,7 +32,6 @@ import {
 import { useIfc } from '@/hooks/useIfc';
 import { useBim } from '@/sdk/BimProvider';
 import { toast } from '@/components/ui/toast';
-import { usePhysicsResultStore } from '@/sdk/physics-ui-store';
 import type { EntityRef } from '@ifc-lite/sdk';
 
 export function EntityContextMenu() {
@@ -46,8 +45,11 @@ export function EntityContextMenu() {
   const menuRef = useRef<HTMLDivElement>(null);
   const { ifcDataStore, models } = useIfc();
   const bim = useBim();
-  const setPhysicsResult = usePhysicsResultStore((s) => s.set);
-  const clearPhysicsResult = usePhysicsResultStore((s) => s.clear);
+  const setPhysicsResult = useViewerStore((s) => s.setPhysicsResult);
+  const setPhysicsRunning = useViewerStore((s) => s.setPhysicsRunning);
+  const setPhysicsPanelVisible = useViewerStore((s) => s.setPhysicsPanelVisible);
+  const clearPhysicsResult = useViewerStore((s) => s.clearPhysicsResult);
+  const physicsSettings = useViewerStore((s) => s.physicsSettings);
 
   // Resolve contextMenu.entityId (globalId) to original expressId and model
   // This is needed because IfcDataStore uses original expressIds, not globalIds
@@ -220,32 +222,40 @@ export function EntityContextMenu() {
     closeContextMenu();
     if (!resolvedExpressId || !contextEntityRef) return;
 
+    // Reveal the dedicated panel before running so the user gets feedback
+    // (running spinner, settings) the moment they trigger.
+    setPhysicsPanelVisible(true);
+    setPhysicsRunning(true);
+
     try {
       await bim.physics.ready();
     } catch (err) {
       console.error('[Physics] init failed:', err);
       toast.error('Physics engine failed to load');
+      setPhysicsRunning(false);
       return;
     }
 
-    toast.info('Running physics simulation…');
-
     let result;
     try {
-      // Scope the simulation to the clicked element's model — without this
-      // the backend falls back to the active/legacy model, which can mismatch
-      // when right-clicking into a non-active model under federation.
       result = await bim.physics.simulate(contextEntityRef.modelId, {
         remove: [contextEntityRef.expressId],
+        durationSeconds: physicsSettings.durationSeconds,
+        fallThreshold: physicsSettings.fallThreshold,
+        tiltThreshold: physicsSettings.tiltThreshold,
+        adjacencyTolerance: physicsSettings.adjacencyTolerance,
+        colliderStrategy: physicsSettings.colliderStrategy,
       });
     } catch (err) {
       console.error('[Physics] simulation failed:', err);
       toast.error('Physics simulation failed');
+      setPhysicsRunning(false);
       return;
     }
 
     if (result.bodies.length === 0) {
       toast.info('No geometry loaded — physics needs processed meshes');
+      setPhysicsRunning(false);
       return;
     }
 
@@ -261,12 +271,18 @@ export function EntityContextMenu() {
       name: entityName,
       ifcType: entityType,
     });
-
-    const summary =
-      `${result.falling.length} falling, ${result.tilted.length} tilted, ` +
-      `${result.anchored.length} anchored (${result.bodies.length} bodies, ${result.joints.length} joints)`;
-    toast.info(summary);
-  }, [resolvedExpressId, contextEntityRef, bim, closeContextMenu, setPhysicsResult, entityName, entityType]);
+  }, [
+    resolvedExpressId,
+    contextEntityRef,
+    bim,
+    closeContextMenu,
+    setPhysicsResult,
+    setPhysicsRunning,
+    setPhysicsPanelVisible,
+    physicsSettings,
+    entityName,
+    entityType,
+  ]);
 
   const handleResetPhysicsColors = useCallback(() => {
     bim.viewer.resetColors();

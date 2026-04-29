@@ -38,6 +38,7 @@ import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.
 import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
 import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js';
 import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
+import { createPhysicsSlice, type PhysicsSlice } from './slices/physicsSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -128,7 +129,8 @@ export type ViewerState = LoadingSlice &
   ScheduleSlice &
   PlaybackSlice &
   OverlaySlice &
-  SearchSlice & {
+  SearchSlice &
+  PhysicsSlice & {
     resetViewerState: () => void;
   };
 
@@ -163,6 +165,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createPlaybackSlice(...args),
   ...createOverlaySlice(...args),
   ...createSearchSlice(...args),
+  ...createPhysicsSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
@@ -319,6 +322,13 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       activeTopicId: null,
       activeViewpointId: null,
       // Keep bcfProject and bcfAuthor - user's work
+
+      // Physics — drop the panel/result on file swap so we don't paint a
+      // stale colorize over the freshly loaded geometry. Settings persist.
+      physicsPanelVisible: false,
+      physicsRunning: false,
+      physicsResult: null,
+      physicsRemoved: null,
 
       // IDS - reset panel but keep document and results
       idsPanelVisible: false,

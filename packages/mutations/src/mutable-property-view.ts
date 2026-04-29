@@ -729,6 +729,20 @@ export class MutablePropertyView {
     return this.positionalAttrMutations.get(entityId) ?? null;
   }
 
+  /**
+   * Drop a single positional override. Used by undo to roll a
+   * setPositionalAttribute back to "no override" when there was no prior
+   * value. Mirrors `removeAttributeMutation` for symmetric naming.
+   */
+  removePositionalMutation(entityId: number, index: number): void {
+    const entityMap = this.positionalAttrMutations.get(entityId);
+    if (!entityMap) return;
+    entityMap.delete(index);
+    if (entityMap.size === 0) {
+      this.positionalAttrMutations.delete(entityId);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Entity-level mutations (create / delete)
   // ---------------------------------------------------------------------------
@@ -802,6 +816,26 @@ export class MutablePropertyView {
 
   isDeleted(expressId: number): boolean {
     return this.tombstones.has(expressId);
+  }
+
+  /**
+   * Reverse `deleteEntity` for an existing-entity tombstone. Returns true if
+   * a tombstone was removed; false if the id was not tombstoned. Used by
+   * undo of a DELETE_ENTITY mutation on a source-buffer entity. Overlay-only
+   * entities are restored via a separate path (`restoreNewEntity`).
+   */
+  restoreFromTombstone(expressId: number): boolean {
+    return this.tombstones.delete(expressId);
+  }
+
+  /**
+   * Re-add an overlay-only entity to `newEntities`. Pairs with `deleteEntity`
+   * to support undo of a freshly-created-and-then-deleted entity. The caller
+   * is responsible for stashing the `NewEntity` record between delete and
+   * restore (the slice's undo stack does this).
+   */
+  restoreNewEntity(entity: NewEntity): void {
+    this.newEntities.set(entity.expressId, entity);
   }
 
   getTombstones(): Set<number> {

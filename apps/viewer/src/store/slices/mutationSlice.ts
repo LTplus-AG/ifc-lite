@@ -8,9 +8,11 @@
 
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
+import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
+import { addColumnToStore, resolveSpatialAnchor, type ColumnInStoreParams } from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 /** Tracks georeferencing field mutations per model */
@@ -23,6 +25,14 @@ export interface MutationSlice {
   // State
   /** Mutation views per model */
   mutationViews: Map<string, MutablePropertyView>;
+  /** Per-model StoreEditor caches (created on demand). Keyed by mutation-view modelId. */
+  storeEditors: Map<string, StoreEditor>;
+  /**
+   * Tombstoned overlay entities, keyed by `${modelId}:${expressId}`. Stashed
+   * so undo of a `removeEntity` on a freshly-added overlay entity can replay
+   * the same NewEntity record back into the view.
+   */
+  removedNewEntities: Map<string, NewEntity>;
   /** All change sets */
   changeSets: Map<string, ChangeSet>;
   /** Active change set ID */
@@ -124,6 +134,34 @@ export interface MutationSlice {
     oldValue?: string
   ) => Mutation | null;
 
+  // Actions - Store-Level Mutations (raw STEP entity edits)
+  /**
+   * Edit a positional STEP argument by zero-based index. Used by the Raw
+   * STEP editor for non-IfcRoot entities (profile dimensions, cartesian
+   * point coords, etc.) where the attribute has no symbolic name.
+   */
+  setPositionalAttribute: (
+    modelId: string,
+    entityId: number,
+    index: number,
+    value: IfcAttributeValue
+  ) => Mutation | null;
+  /**
+   * Tombstone an entity (existing source entity) or forget it (overlay-only).
+   * Returns true if the entity was known to the store or overlay.
+   */
+  removeEntity: (modelId: string, expressId: number) => boolean;
+  /**
+   * Add a fully-anchored IfcColumn (and its sub-graph) to a parsed model.
+   * Returns the new column's expressId, or null if the model can't be
+   * resolved or the storey anchor lookup fails.
+   */
+  addColumn: (
+    modelId: string,
+    storeyExpressId: number,
+    params: ColumnInStoreParams
+  ) => { expressId: number } | { error: string };
+
   // Actions - Undo/Redo
   /** Undo last mutation for a model */
   undo: (modelId: string) => void;
@@ -167,6 +205,42 @@ function generateChangeSetId(): string {
   return `cs_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
+/**
+ * Get-or-create the per-model `StoreEditor`. The editor pairs a parsed
+ * `IfcDataStore` with a `MutablePropertyView`; both must already exist
+ * (the data store comes from `models`, the view from PropertiesPanel's
+ * lazy-init effect). Returns null if either is missing.
+ */
+function getOrCreateStoreEditor(
+  get: () => ViewerState,
+  set: (partial: Partial<ViewerState>) => void,
+  modelId: string,
+): StoreEditor | null {
+  const state = get();
+  const cached = state.storeEditors.get(modelId);
+  if (cached) return cached;
+
+  const view = state.mutationViews.get(modelId);
+  if (!view) return null;
+
+  const model = state.models.get(modelId);
+  const dataStore = model?.ifcDataStore;
+  if (!dataStore) return null;
+
+  const editor = new StoreEditor(dataStore, view);
+  const next = new Map(state.storeEditors);
+  next.set(modelId, editor);
+  set({ storeEditors: next });
+  return editor;
+}
+
+/** Decode the `@N` form used to encode positional indices into Mutation.attributeName. */
+function positionalIndex(attributeName: string | undefined): number | null {
+  if (!attributeName || attributeName[0] !== '@') return null;
+  const n = Number(attributeName.slice(1));
+  return Number.isFinite(n) && n >= 0 && Number.isInteger(n) ? n : null;
+}
+
 export const createMutationSlice: StateCreator<
   ViewerState,
   [],
@@ -175,6 +249,8 @@ export const createMutationSlice: StateCreator<
 > = (set, get) => ({
   // Initial state
   mutationViews: new Map(),
+  storeEditors: new Map(),
+  removedNewEntities: new Map(),
   changeSets: new Map(),
   activeChangeSetId: null,
   undoStacks: new Map(),
@@ -253,9 +329,11 @@ export const createMutationSlice: StateCreator<
     set((state) => {
       const newViews = new Map(state.mutationViews);
       newViews.delete(modelId);
+      const newEditors = new Map(state.storeEditors);
+      newEditors.delete(modelId);
       const newDirty = new Set(state.dirtyModels);
       newDirty.delete(modelId);
-      return { mutationViews: newViews, dirtyModels: newDirty };
+      return { mutationViews: newViews, storeEditors: newEditors, dirtyModels: newDirty };
     });
   },
 
@@ -462,6 +540,157 @@ export const createMutationSlice: StateCreator<
     return mutation;
   },
 
+  // Store-Level Mutations
+  setPositionalAttribute: (modelId, entityId, index, value) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+
+    // Capture prior overlay value (if any) for undo. We can't recover the
+    // base STEP value from here without parsing the source — that's the
+    // RawStepRow's job — so undo of "first override" simply removes the
+    // override, falling back to the original buffer value.
+    const prior = view.getPositionalMutationsForEntity(entityId)?.get(index);
+    editor.setPositionalAttribute(entityId, index, value);
+
+    set((state) => {
+      const newUndoStacks = new Map(state.undoStacks);
+      const stack = newUndoStacks.get(modelId) || [];
+      const mutation: Mutation = {
+        id: `mut_pos_${entityId}_${index}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        type: 'UPDATE_POSITIONAL_ATTRIBUTE',
+        timestamp: Date.now(),
+        modelId,
+        entityId,
+        attributeName: `@${index}`,
+        oldValue: (prior ?? null) as PropertyValue,
+        newValue: value as PropertyValue,
+      };
+      newUndoStacks.set(modelId, [...stack, mutation]);
+
+      const newRedoStacks = new Map(state.redoStacks);
+      newRedoStacks.set(modelId, []);
+
+      const newDirty = new Set(state.dirtyModels);
+      newDirty.add(modelId);
+
+      return {
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: state.mutationVersion + 1,
+      };
+    });
+
+    // Return the mutation we just pushed onto the undo stack.
+    const stack = get().undoStacks.get(modelId);
+    return stack ? stack[stack.length - 1] : null;
+  },
+
+  removeEntity: (modelId, expressId) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return false;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return false;
+
+    // Stash the overlay record (if any) BEFORE the editor forgets it, so
+    // undo can re-add the exact same NewEntity. For source-buffer entities
+    // there's nothing to stash — undo just removes the tombstone.
+    const overlayRecord = view.getNewEntity(expressId);
+    const removed = editor.removeEntity(expressId);
+    if (!removed) return false;
+
+    set((state) => {
+      const newRemoved = new Map(state.removedNewEntities);
+      if (overlayRecord) {
+        newRemoved.set(`${modelId}:${expressId}`, overlayRecord);
+      }
+
+      const newUndoStacks = new Map(state.undoStacks);
+      const stack = newUndoStacks.get(modelId) || [];
+      const mutation: Mutation = {
+        id: `mut_del_${expressId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        type: 'DELETE_ENTITY',
+        timestamp: Date.now(),
+        modelId,
+        entityId: expressId,
+      };
+      newUndoStacks.set(modelId, [...stack, mutation]);
+
+      const newRedoStacks = new Map(state.redoStacks);
+      newRedoStacks.set(modelId, []);
+
+      const newDirty = new Set(state.dirtyModels);
+      newDirty.add(modelId);
+
+      return {
+        removedNewEntities: newRemoved,
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: state.mutationVersion + 1,
+      };
+    });
+
+    return true;
+  },
+
+  addColumn: (modelId, storeyExpressId, params) => {
+    const state = get();
+    const model = state.models.get(modelId);
+    const dataStore = model?.ifcDataStore;
+    if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
+
+    // The dialog passes the same modelId used by the model store; mutation
+    // views are keyed identically (no legacy normalization needed in the
+    // multi-model path the dialog operates in).
+    const view = state.mutationViews.get(modelId);
+    if (!view) return { error: 'Model has no editable mutation view yet' };
+
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { error: 'Failed to create store editor' };
+
+    let columnId: number;
+    try {
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const result = addColumnToStore(editor, anchor, params);
+      columnId = result.columnId;
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to add column' };
+    }
+
+    set((s) => {
+      const newUndoStacks = new Map(s.undoStacks);
+      const stack = newUndoStacks.get(modelId) || [];
+      const mutation: Mutation = {
+        id: `mut_col_${columnId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        type: 'CREATE_ENTITY',
+        timestamp: Date.now(),
+        modelId,
+        entityId: columnId,
+        attributeName: 'IFCCOLUMN',
+      };
+      newUndoStacks.set(modelId, [...stack, mutation]);
+
+      const newRedoStacks = new Map(s.redoStacks);
+      newRedoStacks.set(modelId, []);
+
+      const newDirty = new Set(s.dirtyModels);
+      newDirty.add(modelId);
+
+      return {
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: s.mutationVersion + 1,
+      };
+    });
+
+    return { expressId: columnId };
+  },
+
   // Undo/Redo
   undo: (modelId) => {
     const state = get();
@@ -563,6 +792,32 @@ export const createMutationSlice: StateCreator<
         } else {
           view.removeAttributeMutation(mutation.entityId, mutation.attributeName);
         }
+      }
+    } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
+      // Positional attrs encode their index in `@N` since the existing
+      // Mutation shape has no dedicated field for it.
+      const index = positionalIndex(mutation.attributeName);
+      if (index !== null) {
+        if (mutation.oldValue === null || mutation.oldValue === undefined) {
+          view.removePositionalMutation(mutation.entityId, index);
+        } else {
+          view.setPositionalAttribute(mutation.entityId, index, mutation.oldValue as IfcAttributeValue, true);
+        }
+      }
+    } else if (mutation.type === 'CREATE_ENTITY') {
+      // Undo of a create: tombstone-like — just delete it from the overlay.
+      // The view's `deleteEntity` returns false if it's already gone, which
+      // is fine for redo to re-establish.
+      view.deleteEntity(mutation.entityId);
+    } else if (mutation.type === 'DELETE_ENTITY') {
+      // Undo of a delete: restore tombstone for source entity, OR replay
+      // the stashed NewEntity record for an overlay-only entity.
+      const stashKey = `${modelId}:${mutation.entityId}`;
+      const stashed = get().removedNewEntities.get(stashKey);
+      if (stashed) {
+        view.restoreNewEntity(stashed);
+      } else {
+        view.restoreFromTombstone(mutation.entityId);
       }
     }
 
@@ -666,6 +921,38 @@ export const createMutationSlice: StateCreator<
       if (mutation.attributeName && mutation.newValue !== undefined) {
         view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.newValue), undefined, true);
       }
+    } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
+      const index = positionalIndex(mutation.attributeName);
+      if (index !== null && mutation.newValue !== undefined) {
+        view.setPositionalAttribute(mutation.entityId, index, mutation.newValue as IfcAttributeValue, true);
+      }
+    } else if (mutation.type === 'CREATE_ENTITY') {
+      // Redo of a create: replay from the stashed NewEntity. Symmetrical to
+      // DELETE_ENTITY's undo — same map, same key.
+      const stashKey = `${modelId}:${mutation.entityId}`;
+      const stashed = get().removedNewEntities.get(stashKey);
+      if (stashed) {
+        view.restoreNewEntity(stashed);
+      } else {
+        // Source-buffer entities have no stash; the editor's deleteEntity
+        // call simply re-tombstoned them — which is exactly what we want
+        // here? No — for CREATE_ENTITY redo we want the entity to come back.
+        // Source-entity creates are not a real path; CREATE_ENTITY in this
+        // codebase only ever fires for overlay-added entities. Nothing to
+        // do if the stash is empty (means the redo is unreachable).
+      }
+    } else if (mutation.type === 'DELETE_ENTITY') {
+      // Redo of a delete: tombstone again. For overlay-only entities we
+      // first stash the NewEntity (it'll be re-fetched for the next undo).
+      const overlay = view.getNewEntity(mutation.entityId);
+      if (overlay) {
+        set((s) => {
+          const next = new Map(s.removedNewEntities);
+          next.set(`${modelId}:${mutation.entityId}`, overlay);
+          return { removedNewEntities: next };
+        });
+      }
+      view.deleteEntity(mutation.entityId);
     }
 
     set((s) => {
@@ -851,11 +1138,22 @@ export const createMutationSlice: StateCreator<
       const newGeorefMuts = new Map(state.georefMutations);
       newGeorefMuts.delete(modelId);
 
+      const newRemoved = new Map(state.removedNewEntities);
+      const prefix = `${modelId}:`;
+      for (const key of [...newRemoved.keys()]) {
+        if (key.startsWith(prefix)) newRemoved.delete(key);
+      }
+
+      const newEditors = new Map(state.storeEditors);
+      newEditors.delete(modelId);
+
       return {
         undoStacks: newUndoStacks,
         redoStacks: newRedoStacks,
         dirtyModels: newDirty,
         georefMutations: newGeorefMuts,
+        removedNewEntities: newRemoved,
+        storeEditors: newEditors,
         mutationVersion: state.mutationVersion + 1,
       };
     });
@@ -875,6 +1173,8 @@ export const createMutationSlice: StateCreator<
       redoStacks: new Map(),
       dirtyModels: new Set(),
       georefMutations: new Map(),
+      removedNewEntities: new Map(),
+      storeEditors: new Map(),
       mutationVersion: state.mutationVersion + 1,
     }));
   },

@@ -167,6 +167,8 @@ export enum RelationshipType {
   FillsElement = 41,
   VoidsElement = 42,
   ConnectsElements = 43,
+  ConnectsStructuralMember = 44,
+  ConnectsWithRealizingElements = 45,
   SpaceBoundary = 50,
   AssignsToGroup = 60,
   AssignsToProduct = 61,

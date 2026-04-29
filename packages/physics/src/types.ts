@@ -29,6 +29,15 @@ export type AnchorReason = 'explicit' | 'ifcType' | 'lowestElement';
 
 export type Stability = 'stable' | 'tilted' | 'falling' | 'removed';
 
+/**
+ * Collider shape strategy:
+ * - `trimesh`: exact, slow, contact-unstable for thin elements.
+ * - `convexHull`: dramatically faster + more stable, loses concavity.
+ * - `auto` (default): per IFC type — convex for column/beam/member/footing/pile,
+ *   trimesh for slab/wall/roof/etc. that routinely have openings.
+ */
+export type ColliderStrategy = 'auto' | 'trimesh' | 'convexHull';
+
 export interface SimulateOptions {
   /** Express IDs to delete from the world before stepping. */
   remove?: number[];
@@ -58,6 +67,9 @@ export interface SimulateOptions {
   groundAnchorTolerance?: number;
   /** IFC types to treat as anchors regardless of position. Default: footings, piles, foundations. */
   anchorIfcTypes?: string[];
+
+  /** How to convert each mesh into a collider shape. Default: `auto`. */
+  colliderStrategy?: ColliderStrategy;
 }
 
 /** Resolved options with all defaults filled in. */
@@ -73,6 +85,7 @@ export interface ResolvedSimulateOptions {
   tiltThreshold: number;
   groundAnchorTolerance: number;
   anchorIfcTypes: string[];
+  colliderStrategy: ColliderStrategy;
 }
 
 export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
@@ -87,6 +100,7 @@ export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
   tiltThreshold: 0.05,
   groundAnchorTolerance: 0.05,
   anchorIfcTypes: ['IfcFooting', 'IfcPile', 'IfcFoundation'],
+  colliderStrategy: 'auto',
 };
 
 export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimulateOptions {
@@ -102,6 +116,7 @@ export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimul
     tiltThreshold: opts?.tiltThreshold ?? DEFAULT_OPTIONS.tiltThreshold,
     groundAnchorTolerance: opts?.groundAnchorTolerance ?? DEFAULT_OPTIONS.groundAnchorTolerance,
     anchorIfcTypes: opts?.anchorIfcTypes ?? DEFAULT_OPTIONS.anchorIfcTypes.slice(),
+    colliderStrategy: opts?.colliderStrategy ?? DEFAULT_OPTIONS.colliderStrategy,
   };
 }
 

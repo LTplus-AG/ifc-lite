@@ -108,6 +108,7 @@ export type {
   // Physics — rigid-body what-if simulation
   PhysicsAnchorReason,
   PhysicsBodyOutcome,
+  PhysicsColliderStrategy,
   PhysicsSimulateOptions,
   PhysicsSimulationResult,
   PhysicsStability,

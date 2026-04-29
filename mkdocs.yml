@@ -129,6 +129,7 @@ nav:
     - IDS Validation: guide/ids.md
     - 2D Drawings: guide/drawing-2d.md
     - Property Editing: guide/mutations.md
+    - Physics What-If: guide/physics.md
     - Performance: guide/performance.md
   - Architecture:
     - Overview: architecture/overview.md

@@ -171,6 +171,8 @@ function relationshipTypeToString(type: RelationshipType): string {
     [RelationshipType.FillsElement]: 'IfcRelFillsElement',
     [RelationshipType.ConnectsPathElements]: 'IfcRelConnectsPathElements',
     [RelationshipType.ConnectsElements]: 'IfcRelConnectsElements',
+    [RelationshipType.ConnectsStructuralMember]: 'IfcRelConnectsStructuralMember',
+    [RelationshipType.ConnectsWithRealizingElements]: 'IfcRelConnectsWithRealizingElements',
     [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
     [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
     [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',

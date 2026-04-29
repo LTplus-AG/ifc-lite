@@ -49,12 +49,27 @@ export function extractRelFast(
         const [relating, _] = readRefId(buffer, pos, end);
         if (relating < 0 || related.length === 0) return null;
         return { relatingObject: relating, relatedObjects: related };
-    } else if (typeUpper === 'IFCRELCONNECTSELEMENTS' || typeUpper === 'IFCRELCONNECTSPATHELEMENTS') {
+    } else if (
+        typeUpper === 'IFCRELCONNECTSELEMENTS'
+        || typeUpper === 'IFCRELCONNECTSPATHELEMENTS'
+        || typeUpper === 'IFCRELCONNECTSWITHREALIZINGELEMENTS'
+    ) {
+        // attr[4]=ConnectionGeometry, attr[5]=RelatingElement, attr[6]=RelatedElement
+        // (RealizingElements + ConnectionType follow but aren't needed for the graph)
         pos = skipCommas(buffer, pos, end, 1);
         const [relating, rp2] = readRefId(buffer, pos, end);
         pos = skipCommas(buffer, rp2, end, 1);
         const [related, _] = readRefId(buffer, pos, end);
         if (relating < 0 || related < 0) return null;
+        return { relatingObject: relating, relatedObjects: [related] };
+    } else if (typeUpper === 'IFCRELCONNECTSSTRUCTURALMEMBER') {
+        // attr[4]=RelatingStructuralMember, attr[5]=RelatedStructuralConnection
+        // both are single refs.
+        const [relating, rp] = readRefId(buffer, pos, end);
+        if (relating < 0) return null;
+        pos = skipCommas(buffer, rp, end, 1);
+        const [related, _] = readRefId(buffer, pos, end);
+        if (related < 0) return null;
         return { relatingObject: relating, relatedObjects: [related] };
     } else {
         // Default: attr[4]=RelatingObject, attr[5]=RelatedObject(s)

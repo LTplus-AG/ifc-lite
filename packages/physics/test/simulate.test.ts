@@ -101,6 +101,26 @@ describe('@ifc-lite/physics', () => {
     expect(matches).toHaveLength(1);
   });
 
+  it('auto collider strategy keeps a column on an anchored slab stable', () => {
+    const slab = cube(1, 'IfcSlab', [0, 0, 0.05], [4, 4, 0.1]);
+    const column = cube(2, 'IfcColumn', [0, 0, 1.6], [0.3, 0.3, 3.0]);
+    const result = simulate([slab, column], {
+      durationSeconds: 1.0,
+      colliderStrategy: 'auto',
+    });
+    expect(result.stable).toContain(2);
+  });
+
+  it('forced trimesh strategy still simulates without dropping bodies', () => {
+    const slab = cube(1, 'IfcSlab', [0, 0, 0.05], [4, 4, 0.1]);
+    const column = cube(2, 'IfcColumn', [0, 0, 1.6], [0.3, 0.3, 3.0]);
+    const result = simulate([slab, column], {
+      durationSeconds: 0.5,
+      colliderStrategy: 'trimesh',
+    });
+    expect(result.bodies).toHaveLength(2);
+  });
+
   it('skips empty meshes', () => {
     const empty: PhysicsMesh = {
       expressId: 99,

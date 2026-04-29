@@ -56,13 +56,14 @@ export const RELATIONSHIP_TYPES = new Set([
     'IFCRELASSOCIATESDOCUMENT',
     'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
     'IFCRELCONNECTSPATHELEMENTS', 'IFCRELCONNECTSELEMENTS',
+    'IFCRELCONNECTSSTRUCTURALMEMBER', 'IFCRELCONNECTSWITHREALIZINGELEMENTS',
     'IFCRELSPACEBOUNDARY',
     'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOPRODUCT',
     'IFCRELREFERENCEDINSPATIALSTRUCTURE',
 ]);
 
 // Map IFC relationship type strings to RelationshipType enum
-// MUST cover ALL RelationshipType enum values (15 types total)
+// MUST cover ALL RelationshipType enum values (17 types total)
 export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELCONTAINEDINSPATIALSTRUCTURE': RelationshipType.ContainsElements,
     'IFCRELAGGREGATES': RelationshipType.Aggregates,
@@ -75,6 +76,8 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELFILLSELEMENT': RelationshipType.FillsElement,
     'IFCRELCONNECTSPATHELEMENTS': RelationshipType.ConnectsPathElements,
     'IFCRELCONNECTSELEMENTS': RelationshipType.ConnectsElements,
+    'IFCRELCONNECTSSTRUCTURALMEMBER': RelationshipType.ConnectsStructuralMember,
+    'IFCRELCONNECTSWITHREALIZINGELEMENTS': RelationshipType.ConnectsWithRealizingElements,
     'IFCRELSPACEBOUNDARY': RelationshipType.SpaceBoundary,
     'IFCRELASSIGNSTOGROUP': RelationshipType.AssignsToGroup,
     'IFCRELASSIGNSTOPRODUCT': RelationshipType.AssignsToProduct,
@@ -107,6 +110,7 @@ export const HIERARCHY_REL_TYPES = new Set([
     // Structural relationships (voids, fills, connections, groups)
     'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
     'IFCRELCONNECTSPATHELEMENTS', 'IFCRELCONNECTSELEMENTS',
+    'IFCRELCONNECTSSTRUCTURALMEMBER', 'IFCRELCONNECTSWITHREALIZINGELEMENTS',
     'IFCRELSPACEBOUNDARY',
     'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOPRODUCT',
     'IFCRELREFERENCEDINSPATIALSTRUCTURE',

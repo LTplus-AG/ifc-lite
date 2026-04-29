@@ -30,7 +30,8 @@ mod world;
 
 pub use simulate::simulate;
 pub use types::{
-    Aabb, AnchorReason, BodyOutcome, PhysicsMesh, SimulateOptions, SimulationResult, Stability,
+    Aabb, AnchorReason, BodyOutcome, ColliderStrategy, PhysicsMesh, SimulateOptions,
+    SimulationResult, Stability,
 };
 
 #[cfg(test)]
@@ -190,6 +191,38 @@ mod tests {
             .filter(|p| **p == (1, 2) || **p == (2, 1))
             .count();
         assert_eq!(count, 1, "duplicate joints not collapsed: {:?}", result.joints);
+    }
+
+    #[test]
+    fn convex_hull_strategy_keeps_column_stable_on_anchored_slab() {
+        // The 'Auto' strategy promotes IfcColumn to a convex-hull collider.
+        // A column resting on an anchored slab should remain stable.
+        let slab = cube(1, "IfcSlab", [0.0, 0.0, 0.05], [4.0, 4.0, 0.1]);
+        let column = cube(2, "IfcColumn", [0.0, 0.0, 1.6], [0.3, 0.3, 3.0]);
+        let result = simulate(
+            &[slab, column],
+            &SimulateOptions {
+                duration_seconds: 1.0,
+                collider_strategy: ColliderStrategy::Auto,
+                ..Default::default()
+            },
+        );
+        assert!(result.stable.contains(&2));
+    }
+
+    #[test]
+    fn forced_trimesh_strategy_still_simulates() {
+        let slab = cube(1, "IfcSlab", [0.0, 0.0, 0.05], [4.0, 4.0, 0.1]);
+        let column = cube(2, "IfcColumn", [0.0, 0.0, 1.6], [0.3, 0.3, 3.0]);
+        let result = simulate(
+            &[slab, column],
+            &SimulateOptions {
+                duration_seconds: 0.5,
+                collider_strategy: ColliderStrategy::Trimesh,
+                ..Default::default()
+            },
+        );
+        assert_eq!(result.bodies.len(), 2);
     }
 
     #[test]

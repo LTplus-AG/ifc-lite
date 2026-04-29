@@ -18,7 +18,7 @@
 use rapier3d::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::types::{Aabb, AnchorReason, PhysicsMesh, SimulateOptions};
+use crate::types::{Aabb, AnchorReason, ColliderStrategy, PhysicsMesh, SimulateOptions};
 
 pub(crate) struct BodyEntry {
     pub express_id: u32,
@@ -94,7 +94,7 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
         let start_rotation = *body.rotation();
         let handle = bodies.insert(body);
 
-        if let Some(collider) = build_collider(mesh, &center, &mesh.ifc_type) {
+        if let Some(collider) = build_collider(mesh, &center, &mesh.ifc_type, options.collider_strategy) {
             colliders.insert_with_parent(collider, handle, &mut bodies);
         }
 
@@ -201,7 +201,12 @@ fn classify_anchor(
     None
 }
 
-fn build_collider(mesh: &PhysicsMesh, center: &[f32; 3], ifc_type: &str) -> Option<Collider> {
+fn build_collider(
+    mesh: &PhysicsMesh,
+    center: &[f32; 3],
+    ifc_type: &str,
+    strategy: ColliderStrategy,
+) -> Option<Collider> {
     let mut vertices: Vec<Vector> = Vec::with_capacity(mesh.vertex_count());
     for v in mesh.positions.chunks_exact(3) {
         vertices.push(Vector::new(v[0] - center[0], v[1] - center[1], v[2] - center[2]));
@@ -212,7 +217,10 @@ fn build_collider(mesh: &PhysicsMesh, center: &[f32; 3], ifc_type: &str) -> Opti
     let mut tris: Vec<[u32; 3]> = Vec::with_capacity(mesh.triangle_count());
     let vert_count = vertices.len() as u32;
     for t in mesh.indices.chunks_exact(3) {
-        if t[0] < vert_count && t[1] < vert_count && t[2] < vert_count && t[0] != t[1]
+        if t[0] < vert_count
+            && t[1] < vert_count
+            && t[2] < vert_count
+            && t[0] != t[1]
             && t[1] != t[2]
             && t[0] != t[2]
         {
@@ -224,8 +232,38 @@ fn build_collider(mesh: &PhysicsMesh, center: &[f32; 3], ifc_type: &str) -> Opti
     }
 
     let density = density_for(ifc_type);
+    let resolved = resolve_strategy(strategy, ifc_type);
+
+    if matches!(resolved, ColliderStrategy::ConvexHull) {
+        if let Some(builder) = ColliderBuilder::convex_hull(&vertices) {
+            return Some(builder.density(density).build());
+        }
+        // convex hull rejects degenerate / coplanar inputs — fall through to
+        // trimesh rather than dropping the body silently.
+    }
+
     let builder = ColliderBuilder::trimesh(vertices, tris).ok()?.density(density);
     Some(builder.build())
+}
+
+/// Pick a concrete strategy when the caller asked for `Auto`. Convex-hull
+/// approximations are great for elements whose IFC representation is plausibly
+/// convex (columns, beams, footings) and a poor fit for elements that
+/// routinely carry openings or holes (slabs, walls, roofs).
+fn resolve_strategy(strategy: ColliderStrategy, ifc_type: &str) -> ColliderStrategy {
+    match strategy {
+        ColliderStrategy::Trimesh => ColliderStrategy::Trimesh,
+        ColliderStrategy::ConvexHull => ColliderStrategy::ConvexHull,
+        ColliderStrategy::Auto => match ifc_type {
+            "IfcColumn"
+            | "IfcBeam"
+            | "IfcMember"
+            | "IfcFooting"
+            | "IfcPile"
+            | "IfcPlate" => ColliderStrategy::ConvexHull,
+            _ => ColliderStrategy::Trimesh,
+        },
+    }
 }
 
 /// Crude per-IFC-type density in kg/m³. Used because IFC files rarely carry

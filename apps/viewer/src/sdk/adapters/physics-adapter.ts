@@ -35,6 +35,8 @@ import { LEGACY_MODEL_ID } from './model-compat.js';
 const CONNECTION_REL_TYPES = [
   RelationshipType.ConnectsElements,
   RelationshipType.ConnectsPathElements,
+  RelationshipType.ConnectsStructuralMember,
+  RelationshipType.ConnectsWithRealizingElements,
 ];
 
 export function createPhysicsAdapter(store: StoreApi): PhysicsBackendMethods {
@@ -147,5 +149,6 @@ function toEngineOptions(
     tiltThreshold: options.tiltThreshold,
     groundAnchorTolerance: options.groundAnchorTolerance,
     anchorIfcTypes: options.anchorIfcTypes,
+    colliderStrategy: options.colliderStrategy,
   };
 }

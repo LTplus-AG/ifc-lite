@@ -19,12 +19,22 @@ import {
   type AABB,
   type AnchorReason,
   type BodyOutcome,
+  type ColliderStrategy,
   type PhysicsMesh,
   type SimulateOptions,
   type SimulationResult,
   type Stability,
   resolveOptions,
 } from './types.js';
+
+const CONVEX_FRIENDLY_TYPES = new Set([
+  'IfcColumn',
+  'IfcBeam',
+  'IfcMember',
+  'IfcFooting',
+  'IfcPile',
+  'IfcPlate',
+]);
 
 let initPromise: Promise<void> | null = null;
 
@@ -105,7 +115,7 @@ export function simulate(
       if (!anchored) desc.setCcdEnabled(true);
       const body = world.createRigidBody(desc);
 
-      const colliderDesc = buildColliderDesc(mesh, center);
+      const colliderDesc = buildColliderDesc(mesh, center, options.colliderStrategy);
       if (colliderDesc) {
         colliderDesc.setDensity(densityFor(mesh.ifcType));
         world.createCollider(colliderDesc, body);
@@ -172,7 +182,11 @@ export function simulate(
   }
 }
 
-function buildColliderDesc(mesh: PhysicsMesh, center: [number, number, number]): RAPIER.ColliderDesc | null {
+function buildColliderDesc(
+  mesh: PhysicsMesh,
+  center: [number, number, number],
+  strategy: ColliderStrategy,
+): RAPIER.ColliderDesc | null {
   const positions = mesh.positions;
   if (!positions || positions.length < 9) return null;
   const indices = mesh.indices;
@@ -184,6 +198,14 @@ function buildColliderDesc(mesh: PhysicsMesh, center: [number, number, number]):
     recentered[i] = positions[i] - center[0];
     recentered[i + 1] = positions[i + 1] - center[1];
     recentered[i + 2] = positions[i + 2] - center[2];
+  }
+
+  const resolved = resolveStrategy(strategy, mesh.ifcType);
+  if (resolved === 'convexHull') {
+    const hull = RAPIER.ColliderDesc.convexHull(recentered);
+    if (hull) return hull;
+    // convexHull rejects degenerate / coplanar inputs — fall through to
+    // trimesh rather than dropping the collider silently.
   }
 
   const tris: number[] = [];
@@ -198,6 +220,11 @@ function buildColliderDesc(mesh: PhysicsMesh, center: [number, number, number]):
   if (tris.length === 0) return null;
 
   return RAPIER.ColliderDesc.trimesh(recentered, new Uint32Array(tris));
+}
+
+function resolveStrategy(strategy: ColliderStrategy, ifcType: string): ColliderStrategy {
+  if (strategy === 'trimesh' || strategy === 'convexHull') return strategy;
+  return CONVEX_FRIENDLY_TYPES.has(ifcType) ? 'convexHull' : 'trimesh';
 }
 
 function computeJoints(

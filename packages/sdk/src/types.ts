@@ -373,6 +373,15 @@ export type PhysicsAnchorReason = 'explicit' | 'ifcType' | 'lowestElement';
 
 export type PhysicsStability = 'stable' | 'tilted' | 'falling' | 'removed';
 
+/**
+ * Collider shape strategy:
+ * - `trimesh`: exact, slow, contact-unstable for thin elements.
+ * - `convexHull`: dramatically faster + more stable, loses concavity.
+ * - `auto` (default): per IFC type — convex for column/beam/member/footing/pile,
+ *   trimesh for slab/wall/roof/etc.
+ */
+export type PhysicsColliderStrategy = 'auto' | 'trimesh' | 'convexHull';
+
 export interface PhysicsSimulateOptions {
   /** Express IDs to delete from the world before stepping. */
   remove?: number[];
@@ -402,6 +411,8 @@ export interface PhysicsSimulateOptions {
   groundAnchorTolerance?: number;
   /** IFC types to anchor regardless of position. Default: footings, piles, foundations. */
   anchorIfcTypes?: string[];
+  /** Collider shape strategy. Default: `auto`. */
+  colliderStrategy?: PhysicsColliderStrategy;
 }
 
 export interface PhysicsBodyOutcome {

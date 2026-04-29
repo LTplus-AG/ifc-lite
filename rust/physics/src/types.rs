@@ -106,6 +106,26 @@ pub enum AnchorReason {
     LowestElement,
 }
 
+/// Collider shape strategy. Different IFC element types respond best to
+/// different shape representations:
+/// - `Trimesh` is exact but slow and contact-unstable for thin elements.
+/// - `ConvexHull` is dramatically faster and more stable, but loses concavity
+///   (holes in slabs, web cutouts in I-beams).
+/// - `Auto` picks per IFC type — convex for column/beam/member/footing/pile,
+///   trimesh for slab/wall/roof/stair (which routinely have openings).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ColliderStrategy {
+    Auto,
+    Trimesh,
+    ConvexHull,
+}
+
+impl Default for ColliderStrategy {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
 /// Final classification of a body after simulation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Stability {
@@ -162,6 +182,9 @@ pub struct SimulateOptions {
 
     /// IFC types to treat as anchors regardless of position.
     pub anchor_ifc_types: Vec<String>,
+
+    /// How to convert each mesh into a collider shape.
+    pub collider_strategy: ColliderStrategy,
 }
 
 impl Default for SimulateOptions {
@@ -182,6 +205,7 @@ impl Default for SimulateOptions {
                 "IfcPile".to_string(),
                 "IfcFoundation".to_string(),
             ],
+            collider_strategy: ColliderStrategy::Auto,
         }
     }
 }

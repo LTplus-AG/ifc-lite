@@ -16,4 +16,4 @@ mod type_ids;
 pub use type_ids::*;
 
 // Re-export the generated IfcType directly (this is now the canonical schema)
-pub use schema::{has_geometry_by_name, IfcType};
+pub use schema::IfcType;

@@ -16,11 +16,12 @@ import { IfcParser } from '@ifc-lite/parser';
 const parser = new IfcParser();
 const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
 
+const t0 = performance.now();
 const result = await parser.parse(buffer, {
   onProgress: ({ phase, percent }) => console.log(`${phase}: ${percent.toFixed(1)}%`),
 });
 
-console.log(`Parsed ${result.entityCount} entities in ${result.parseTime}ms`);
+console.log(`Parsed ${result.entityCount} entities in ${(performance.now() - t0).toFixed(0)}ms`);
 ```
 
 For columnar storage (TypedArray-backed, query-friendly, recommended for models > 10 MB):

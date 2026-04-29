@@ -3,7 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { normalizeIfcTypeName } from '@ifc-lite/parser';
-import type { AddColumnInStoreParams, BimBackend, EntityRef } from '../types.js';
+import type {
+  AddBeamInStoreParams,
+  AddColumnInStoreParams,
+  AddSlabInStoreParams,
+  AddWallInStoreParams,
+  BimBackend,
+  EntityRef,
+} from '../types.js';
 
 /**
  * `bim.store` — document-level edits on a parsed model.
@@ -96,5 +103,38 @@ export class StoreNamespace {
    */
   addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
     return this.backend.store.addColumn(modelId, storeyExpressId, params);
+  }
+
+  /**
+   * Add an IfcWall from `Start` to `End` (storey-local metres). Profile
+   * spans the full length along the wall axis, centred on `Thickness`,
+   * and is extruded upward by `Height`.
+   *
+   * @example
+   *   bim.store.addWall('arch', storeyId, {
+   *     Start: [0, 0, 0], End: [5, 0, 0],
+   *     Thickness: 0.2, Height: 3, Name: 'North Wall',
+   *   });
+   */
+  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef {
+    return this.backend.store.addWall(modelId, storeyExpressId, params);
+  }
+
+  /**
+   * Add an IfcSlab. `Position` is the minimum corner; the slab extends
+   * `Width` along +X, `Depth` along +Y, and is extruded `Thickness`
+   * upward.
+   */
+  addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef {
+    return this.backend.store.addSlab(modelId, storeyExpressId, params);
+  }
+
+  /**
+   * Add an IfcBeam between `Start` and `End` with a centred rectangular
+   * cross-section (`Width` × `Height`). Local Z is the beam axis so the
+   * extrusion runs along the beam.
+   */
+  addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef {
+    return this.backend.store.addBeam(modelId, storeyExpressId, params);
   }
 }

@@ -59,6 +59,9 @@ function createMockBackend() {
     removeEntity: vi.fn(() => true),
     setPositionalAttribute: vi.fn(),
     addColumn: vi.fn((modelId: string) => ({ modelId, expressId: 99 })),
+    addWall: vi.fn((modelId: string) => ({ modelId, expressId: 100 })),
+    addSlab: vi.fn((modelId: string) => ({ modelId, expressId: 101 })),
+    addBeam: vi.fn((modelId: string) => ({ modelId, expressId: 102 })),
   };
   const spatial = {
     queryBounds: vi.fn(() => []),

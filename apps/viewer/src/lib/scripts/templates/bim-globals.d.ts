@@ -222,6 +222,12 @@ declare const bim: {
     setPositionalAttribute(entity: unknown, index: number, value: unknown): void;
     /** Add an IfcColumn to a parsed model anchored to an existing IfcBuildingStorey. Returns the new column entity ref. */
     addColumn(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcWall from Start to End anchored to an IfcBuildingStorey. Returns the new wall entity ref. */
+    addWall(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Thickness: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcSlab anchored to an IfcBuildingStorey. Position is the minimum corner. */
+    addSlab(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcBeam from Start to End with a centred rectangular cross-section. */
+    addBeam(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
   };
   /** Lens visualization */
   lens: {

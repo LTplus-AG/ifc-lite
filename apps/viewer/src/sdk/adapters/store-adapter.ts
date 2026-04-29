@@ -10,8 +10,25 @@
  */
 
 import { StoreEditor } from '@ifc-lite/mutations';
-import { addColumnToStore, resolveSpatialAnchor, type ColumnInStoreParams } from '@ifc-lite/create';
-import type { AddColumnInStoreParams, EntityRef, StoreBackendMethods } from '@ifc-lite/sdk';
+import {
+  addBeamToStore,
+  addColumnToStore,
+  addSlabToStore,
+  addWallToStore,
+  resolveSpatialAnchor,
+  type BeamInStoreParams,
+  type ColumnInStoreParams,
+  type SlabInStoreParams,
+  type WallInStoreParams,
+} from '@ifc-lite/create';
+import type {
+  AddBeamInStoreParams,
+  AddColumnInStoreParams,
+  AddSlabInStoreParams,
+  AddWallInStoreParams,
+  EntityRef,
+  StoreBackendMethods,
+} from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
@@ -74,6 +91,39 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
       const result = addColumnToStore(editor, anchor, params as ColumnInStoreParams);
       return { modelId: normalizedModelId, expressId: result.columnId };
+    },
+    addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) {
+        throw new Error(`bim.store.addWall: no model loaded for id "${modelId}"`);
+      }
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addWallToStore(editor, anchor, params as WallInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.wallId };
+    },
+    addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) {
+        throw new Error(`bim.store.addSlab: no model loaded for id "${modelId}"`);
+      }
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addSlabToStore(editor, anchor, params as SlabInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.slabId };
+    },
+    addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) {
+        throw new Error(`bim.store.addBeam: no model loaded for id "${modelId}"`);
+      }
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addBeamToStore(editor, anchor, params as BeamInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.beamId };
     },
   };
 }

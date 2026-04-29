@@ -370,15 +370,54 @@ export interface AddColumnInStoreParams {
   Tag?: string;
 }
 
+export interface AddWallInStoreParams {
+  Start: [number, number, number];
+  End: [number, number, number];
+  Thickness: number;
+  Height: number;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export interface AddSlabInStoreParams {
+  Position: [number, number, number];
+  Width: number;
+  Depth: number;
+  Thickness: number;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export interface AddBeamInStoreParams {
+  Start: [number, number, number];
+  End: [number, number, number];
+  Width: number;
+  Height: number;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
 export interface StoreBackendMethods {
   addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef;
   removeEntity(ref: EntityRef): boolean;
   setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void;
   /**
-   * High-level builder: add an IfcColumn to an existing parsed model,
-   * anchored to a target IfcBuildingStorey. Returns the new column's ref.
+   * High-level builders: drop an element into an existing parsed model,
+   * anchored to a target IfcBuildingStorey. Each emits the full STEP
+   * sub-graph (placement → profile → solid → representation +
+   * IfcRelContainedInSpatialStructure) into the overlay so the element
+   * appears alongside the existing model on export.
    */
   addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef;
+  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef;
+  addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef;
+  addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef;
 }
 
 export interface SpatialBackendMethods {

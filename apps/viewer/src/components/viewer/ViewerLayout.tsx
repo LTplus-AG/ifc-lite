@@ -9,6 +9,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { MainToolbar } from './MainToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { PropertiesPanel } from './PropertiesPanel';
+import { AddElementPanel } from './AddElementPanel';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
@@ -81,6 +82,8 @@ export function ViewerLayout() {
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   const bcfPanelVisible = useViewerStore((s) => s.bcfPanelVisible);
   const setBcfPanelVisible = useViewerStore((s) => s.setBcfPanelVisible);
+  const activeTool = useViewerStore((s) => s.activeTool);
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const idsPanelVisible = useViewerStore((s) => s.idsPanelVisible);
   const setIdsPanelVisible = useViewerStore((s) => s.setIdsPanelVisible);
   const listPanelVisible = useViewerStore((s) => s.listPanelVisible);
@@ -264,6 +267,8 @@ export function ViewerLayout() {
                   <div className="h-full w-full overflow-hidden panel-container">
                     {activeRightAnalysisExtension ? (
                       activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                    ) : activeTool === 'addElement' ? (
+                      <AddElementPanel onClose={() => setActiveTool('select')} />
                     ) : lensPanelVisible ? (
                       <LensPanel onClose={() => setLensPanelVisible(false)} />
                     ) : idsPanelVisible ? (
@@ -368,6 +373,8 @@ export function ViewerLayout() {
                     <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
                   ) : listPanelVisible ? (
                     <ListPanel onClose={() => setListPanelVisible(false)} />
+                  ) : activeTool === 'addElement' ? (
+                    <AddElementPanel onClose={() => setActiveTool('select')} />
                   ) : lensPanelVisible ? (
                     <LensPanel onClose={() => setLensPanelVisible(false)} />
                   ) : idsPanelVisible ? (

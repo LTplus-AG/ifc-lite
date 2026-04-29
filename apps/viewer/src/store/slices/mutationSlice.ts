@@ -13,12 +13,18 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import {
+  addBeamToStore,
   addColumnToStore,
+  addSlabToStore,
+  addWallToStore,
   resolveSpatialAnchor,
   duplicateInStore,
   resolveDuplicateSource,
+  type BeamInStoreParams,
   type ColumnInStoreParams,
   type DuplicateInStoreOptions,
+  type SlabInStoreParams,
+  type WallInStoreParams,
 } from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -264,6 +270,24 @@ export interface MutationSlice {
     storeyExpressId: number,
     params: ColumnInStoreParams
   ) => { expressId: number } | { error: string };
+  /** Add an IfcWall anchored to a storey. */
+  addWall: (
+    modelId: string,
+    storeyExpressId: number,
+    params: WallInStoreParams
+  ) => { expressId: number } | { error: string };
+  /** Add an IfcSlab anchored to a storey. */
+  addSlab: (
+    modelId: string,
+    storeyExpressId: number,
+    params: SlabInStoreParams
+  ) => { expressId: number } | { error: string };
+  /** Add an IfcBeam anchored to a storey. */
+  addBeam: (
+    modelId: string,
+    storeyExpressId: number,
+    params: BeamInStoreParams
+  ) => { expressId: number } | { error: string };
   /**
    * Duplicate an existing IfcRoot product in a chosen direction.
    * Offset magnitude is one source-bbox dimension along the picked
@@ -351,6 +375,70 @@ function getOrCreateStoreEditor(
   next.set(modelId, editor);
   set({ storeEditors: next });
   return editor;
+}
+
+/**
+ * Shared dispatcher for the wall/slab/beam in-store builders. Mirrors the
+ * structure of `addColumn` (resolve store/view/editor/anchor → run the
+ * builder → push a CREATE_ENTITY undo entry → mark dirty + bump version)
+ * without copy-pasting that block per element type.
+ */
+function runInStoreElementBuilder(
+  get: () => ViewerState,
+  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
+  modelId: string,
+  storeyExpressId: number,
+  ifcType: string,
+  errorContext: string,
+  build: (editor: StoreEditor, anchor: ReturnType<typeof resolveSpatialAnchor>) => number,
+): { expressId: number } | { error: string } {
+  const state = get();
+  const model = state.models.get(modelId);
+  const dataStore = model?.ifcDataStore;
+  if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
+
+  const view = state.mutationViews.get(modelId);
+  if (!view) return { error: 'Model has no editable mutation view yet' };
+
+  const editor = getOrCreateStoreEditor(get, set, modelId);
+  if (!editor) return { error: 'Failed to create store editor' };
+
+  let entityId: number;
+  try {
+    const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+    entityId = build(editor, anchor);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : `Failed to ${errorContext}` };
+  }
+
+  set((s) => {
+    const newUndoStacks = new Map(s.undoStacks);
+    const stack = newUndoStacks.get(modelId) || [];
+    const mutation: Mutation = {
+      id: `mut_${ifcType.toLowerCase()}_${entityId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      type: 'CREATE_ENTITY',
+      timestamp: Date.now(),
+      modelId,
+      entityId,
+      attributeName: ifcType,
+    };
+    newUndoStacks.set(modelId, [...stack, mutation]);
+
+    const newRedoStacks = new Map(s.redoStacks);
+    newRedoStacks.set(modelId, []);
+
+    const newDirty = new Set(s.dirtyModels);
+    newDirty.add(modelId);
+
+    return {
+      undoStacks: newUndoStacks,
+      redoStacks: newRedoStacks,
+      dirtyModels: newDirty,
+      mutationVersion: s.mutationVersion + 1,
+    };
+  });
+
+  return { expressId: entityId };
 }
 
 /** Decode the `@N` form used to encode positional indices into Mutation.attributeName. */
@@ -820,6 +908,42 @@ export const createMutationSlice: StateCreator<
     });
 
     return { expressId: columnId };
+  },
+
+  addWall: (modelId, storeyExpressId, params) => {
+    return runInStoreElementBuilder(
+      get,
+      set,
+      modelId,
+      storeyExpressId,
+      'IFCWALL',
+      'add wall',
+      (editor, anchor) => addWallToStore(editor, anchor, params).wallId,
+    );
+  },
+
+  addSlab: (modelId, storeyExpressId, params) => {
+    return runInStoreElementBuilder(
+      get,
+      set,
+      modelId,
+      storeyExpressId,
+      'IFCSLAB',
+      'add slab',
+      (editor, anchor) => addSlabToStore(editor, anchor, params).slabId,
+    );
+  },
+
+  addBeam: (modelId, storeyExpressId, params) => {
+    return runInStoreElementBuilder(
+      get,
+      set,
+      modelId,
+      storeyExpressId,
+      'IFCBEAM',
+      'add beam',
+      (editor, anchor) => addBeamToStore(editor, anchor, params).beamId,
+    );
   },
 
   duplicateEntity: (modelId, sourceExpressId, direction = DUPLICATE_DEFAULT_DIRECTION, options) => {

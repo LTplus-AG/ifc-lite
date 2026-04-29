@@ -10,7 +10,8 @@
 
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { useViewerStore } from '@/store';
-import { fromGlobalIdFromModels } from '@/store/globalId';
+import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
+import { toast } from '@/components/ui/toast';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -36,6 +37,18 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // Measure tool now uses drag interaction (see mousedown/mousemove/mouseup)
   if (tool === 'measure') {
     return; // Skip click handling for measure tool
+  }
+
+  // Add-element tool — drop a wall/slab/beam/column at the cursor's
+  // world point. Mirrors the annotate flow: raycasts the scene; if
+  // the click misses geometry we silently no-op (no floating
+  // elements). The renderer is Y-up, IFC is Z-up — convert as we
+  // hand off to the storey-local builders.
+  if (tool === 'addElement') {
+    const result = renderer.raycastScene(x, y, ctx.getPickOptions());
+    if (!result?.intersection) return;
+    await handleAddElementDrop(result.intersection.point);
+    return;
   }
 
   // Annotate tool — drop a pin at the cursor's world point.
@@ -95,6 +108,121 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     ctx.lastClickTimeRef.current = now;
     ctx.lastClickPosRef.current = clickPos;
   }
+}
+
+/**
+ * Find the first IfcBuildingStorey entity in the active model. Used as a
+ * fallback when the user hasn't picked a target storey in the panel.
+ */
+function firstStoreyExpressId(modelId: string): number | null {
+  const state = useViewerStore.getState();
+  const model = state.models.get(modelId);
+  const ids = model?.ifcDataStore?.entityIndex.byType.get('IFCBUILDINGSTOREY');
+  return ids && ids.length > 0 ? ids[0] : null;
+}
+
+/**
+ * Active model resolver — falls back through the same legacy chain
+ * the rest of the viewer uses when a single model is loaded.
+ */
+function resolveActiveModelId(): string | null {
+  const state = useViewerStore.getState();
+  if (state.activeModelId) return state.activeModelId;
+  const first = state.models.keys().next();
+  return first.done ? null : first.value;
+}
+
+/**
+ * Handle a click landing on the scene while the addElement tool is
+ * active. Reads the panel state from the store, converts the click
+ * point from renderer Y-up to IFC Z-up storey-local (Z forced to 0 so
+ * the element always sits on the storey floor — users can refine via
+ * Raw STEP), then dispatches the matching builder action.
+ */
+async function handleAddElementDrop(point: { x: number; y: number; z: number }): Promise<void> {
+  const state = useViewerStore.getState();
+  const modelId = state.addElementModelId ?? resolveActiveModelId();
+  if (!modelId) {
+    toast.error("Couldn't add element: no model loaded");
+    return;
+  }
+
+  const storeyId = state.addElementStoreyId ?? firstStoreyExpressId(modelId);
+  if (storeyId === null) {
+    toast.error("Couldn't add element: model has no IfcBuildingStorey");
+    return;
+  }
+
+  // Renderer Y-up → IFC Z-up conversion (mirrors the matrix in
+  // packages/renderer/src/pipeline.ts). Z forced to 0 so the element
+  // sits on the storey floor; the click landing on a vertical surface
+  // higher up doesn't lift the element along Z (matches how
+  // construction-tool placement actually feels).
+  const ifcX = point.x;
+  const ifcY = -point.z;
+  const start: [number, number, number] = [ifcX, ifcY, 0];
+
+  const type = state.addElementType;
+  let result: { expressId: number } | { error: string };
+  let label: string;
+
+  switch (type) {
+    case 'wall': {
+      const p = state.addElementWallParams;
+      result = state.addWall(modelId, storeyId, {
+        Start: start,
+        End: [start[0] + p.Length, start[1], start[2]],
+        Thickness: p.Thickness,
+        Height: p.Height,
+      });
+      label = 'Wall';
+      break;
+    }
+    case 'slab': {
+      const p = state.addElementSlabParams;
+      result = state.addSlab(modelId, storeyId, {
+        Position: start,
+        Width: p.Width,
+        Depth: p.Depth,
+        Thickness: p.Thickness,
+      });
+      label = 'Slab';
+      break;
+    }
+    case 'beam': {
+      const p = state.addElementBeamParams;
+      result = state.addBeam(modelId, storeyId, {
+        Start: start,
+        End: [start[0] + p.Length, start[1], start[2]],
+        Width: p.Width,
+        Height: p.Height,
+      });
+      label = 'Beam';
+      break;
+    }
+    case 'column': {
+      const p = state.addElementColumnParams;
+      result = state.addColumn(modelId, storeyId, {
+        Position: start,
+        Width: p.Width,
+        Depth: p.Depth,
+        Height: p.Height,
+      });
+      label = 'Column';
+      break;
+    }
+  }
+
+  if ('error' in result) {
+    toast.error(`Couldn't add ${label.toLowerCase()}: ${result.error}`);
+    return;
+  }
+
+  // Federation-aware: select the new entity by its global id so the
+  // 3D viewport can flash it into focus.
+  const globalId = toGlobalIdFromModels(state.models, modelId, result.expressId);
+  state.setSelectedEntityId(globalId);
+  toast.success(`${label} #${result.expressId} added — undo to remove`);
 }
 
 /**

@@ -40,7 +40,17 @@ import type {
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { addColumnToStore, resolveSpatialAnchor, type ColumnInStoreParams } from '@ifc-lite/create';
+import {
+  addBeamToStore,
+  addColumnToStore,
+  addSlabToStore,
+  addWallToStore,
+  resolveSpatialAnchor,
+  type BeamInStoreParams,
+  type ColumnInStoreParams,
+  type SlabInStoreParams,
+  type WallInStoreParams,
+} from '@ifc-lite/create';
 import { EntityNode } from '@ifc-lite/query';
 import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import {
@@ -420,6 +430,24 @@ export class HeadlessBackend implements BimBackend {
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addColumnToStore(editor, anchor, params);
         return { modelId, expressId: result.columnId };
+      },
+      addWall(modelId: string, storeyExpressId: number, params: WallInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addWallToStore(editor, anchor, params);
+        return { modelId, expressId: result.wallId };
+      },
+      addSlab(modelId: string, storeyExpressId: number, params: SlabInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addSlabToStore(editor, anchor, params);
+        return { modelId, expressId: result.slabId };
+      },
+      addBeam(modelId: string, storeyExpressId: number, params: BeamInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addBeamToStore(editor, anchor, params);
+        return { modelId, expressId: result.beamId };
       },
     };
   }

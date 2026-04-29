@@ -456,7 +456,7 @@ export function Viewport({
     }
 
     // Set cursor based on active tool
-    if (activeTool === 'measure' || activeTool === 'annotate') {
+    if (activeTool === 'measure' || activeTool === 'annotate' || activeTool === 'addElement') {
       canvas.style.cursor = 'crosshair';
     } else {
       canvas.style.cursor = 'default';

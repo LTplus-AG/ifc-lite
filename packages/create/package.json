@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^"
   },

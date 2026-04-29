@@ -523,7 +523,7 @@ export class HeadlessBackend implements BimBackend {
         // overlay state on this backend's MutablePropertyView is included.
         if (this.mutationView) {
           const exporter = new StepExporter(store, this.mutationView);
-          const result = exporter.export({ schema: 'IFC4', ...exportOpts });
+          const result = exporter.export({ schema, ...exportOpts });
           return new TextDecoder().decode(result.content);
         }
         return exportToStep(store, exportOpts);

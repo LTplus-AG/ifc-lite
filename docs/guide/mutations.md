@@ -219,7 +219,9 @@ const view = new MutablePropertyView(propertyTable, modelId);
 const editor = new StoreEditor(dataStore, view);
 
 // Add a fresh entity with positional STEP attributes.
-const profile = editor.addEntity('IFCRECTANGLEPROFILEDEF', [
+// Pass the canonical IFC EXPRESS PascalCase name; UPPERCASE STEP tokens
+// are accepted too — both are normalized to the same internal form.
+const profile = editor.addEntity('IfcRectangleProfileDef', [
   '.AREA.', null, '#34', 0.6, 0.4,
 ]);
 // → { expressId: <new>, type: 'IFCRECTANGLEPROFILEDEF', byteOffset: -1, ... }
@@ -279,7 +281,7 @@ In the viewer's QuickJS sandbox and the TypeScript SDK, the same surface is expo
 ```typescript
 // SDK (TypeScript app)
 const profile = bim.store.addEntity('arch', {
-  type: 'IFCRECTANGLEPROFILEDEF',
+  type: 'IfcRectangleProfileDef',
   attributes: ['.AREA.', null, '#34', 0.6, 0.4],
 });
 bim.store.setPositionalAttribute(profile, 3, 0.7);

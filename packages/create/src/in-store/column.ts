@@ -16,22 +16,9 @@
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */
 
+import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { SpatialAnchor } from './anchor.js';
-
-const GUID_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
-
-function newGuid(): string {
-  const bytes = new Uint8Array(22);
-  if (typeof globalThis.crypto !== 'undefined' && globalThis.crypto.getRandomValues) {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 22; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  let result = '';
-  for (let i = 0; i < 22; i++) result += GUID_CHARS[bytes[i] % 64];
-  return result;
-}
 
 export interface ColumnInStoreParams {
   /** Base centre of the column, in storey-local coordinates (metres). */
@@ -126,9 +113,11 @@ export function addColumnToStore(
     [`#${shapeRepId}`],
   ]).expressId;
 
-  // The column itself.
-  const columnId = editor.addEntity('IFCCOLUMN', [
-    newGuid(),
+  // The column itself. `IfcColumn.PredefinedType` only exists from IFC4
+  // onward — IFC2X3 has no such attribute, so emitting `.COLUMN.` there
+  // would produce an invalid 9-arg entity record.
+  const columnAttrs: Array<unknown> = [
+    generateIfcGuid(),
     `#${ownerHistoryId}`,
     params.Name ?? 'Column',
     params.Description ?? null,
@@ -136,14 +125,17 @@ export function addColumnToStore(
     `#${placementId}`,
     `#${productShapeId}`,
     params.Tag ?? null,
-    '.COLUMN.',
-  ]).expressId;
+  ];
+  if ((anchor.schema ?? 'IFC4') !== 'IFC2X3') {
+    columnAttrs.push('.COLUMN.');
+  }
+  const columnId = editor.addEntity('IFCCOLUMN', columnAttrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
 
   // Link column → storey via a fresh IfcRelContainedInSpatialStructure.
   // Adding a parallel relationship is simpler than mutating the storey's
   // existing one and produces an equivalent result on import.
   const relContainedId = editor.addEntity('IFCRELCONTAINEDINSPATIALSTRUCTURE', [
-    newGuid(),
+    generateIfcGuid(),
     `#${ownerHistoryId}`,
     null,
     null,

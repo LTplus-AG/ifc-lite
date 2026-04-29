@@ -642,6 +642,9 @@ importers:
 
   packages/create:
     dependencies:
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../encoding
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations

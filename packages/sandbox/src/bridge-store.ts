@@ -58,7 +58,11 @@ export function buildStoreNamespace(): NamespaceSchema {
           if (!ref) {
             throw new Error('bim.store.setPositionalAttribute: invalid entity reference');
           }
-          sdk.store.setPositionalAttribute(ref, args[1] as number, args[2]);
+          const index = args[1] as number;
+          if (!Number.isInteger(index) || index < 0) {
+            throw new Error(`bim.store.setPositionalAttribute: index must be a non-negative integer, got ${index}`);
+          }
+          sdk.store.setPositionalAttribute(ref, index, args[2]);
         },
         returns: 'void',
       },
@@ -74,11 +78,24 @@ export function buildStoreNamespace(): NamespaceSchema {
         ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
+          const storeyExpressId = args[1] as number;
+          if (!Number.isInteger(storeyExpressId) || storeyExpressId < 0) {
+            throw new Error(`bim.store.addColumn: storeyExpressId must be a non-negative integer, got ${storeyExpressId}`);
+          }
           const params = args[2] as Parameters<typeof sdk.store.addColumn>[2];
           if (!params || !Array.isArray(params.Position) || params.Position.length !== 3) {
             throw new Error('bim.store.addColumn: params.Position must be [x, y, z]');
           }
-          return sdk.store.addColumn(args[0] as string, args[1] as number, params);
+          if (!params.Position.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+            throw new Error('bim.store.addColumn: params.Position values must be finite numbers');
+          }
+          for (const key of ['Width', 'Depth', 'Height'] as const) {
+            const v = params[key];
+            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
+              throw new Error(`bim.store.addColumn: params.${key} must be a finite number > 0, got ${v}`);
+            }
+          }
+          return sdk.store.addColumn(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',
       },

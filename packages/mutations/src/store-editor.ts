@@ -46,6 +46,10 @@ export class StoreEditor {
    * `addEntity` calls, `setPositionalAttribute`, exporters) to reference
    * the new record.
    *
+   * Pass `type` as the canonical IFC EXPRESS PascalCase name
+   * (e.g. `'IfcRectangleProfileDef'`). UPPERCASE STEP tokens are also
+   * accepted — both are normalized to the same internal form.
+   *
    * Attribute conventions (mirrors `EntityExtractor.extractEntity()` output):
    *   - numbers → STEP integer / REAL literal
    *   - `"#42"` → STEP entity reference

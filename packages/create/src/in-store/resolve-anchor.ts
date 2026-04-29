@@ -11,8 +11,8 @@
  * IfcLocalPlacement.
  */
 
-import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
-import type { SpatialAnchor } from './anchor.js';
+import { EntityExtractor, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
+import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
 
 export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number): SpatialAnchor {
   const ownerHistoryId = findOwnerHistoryId(store);
@@ -30,7 +30,8 @@ export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: numbe
     throw new Error(`resolveSpatialAnchor: storey #${storeyExpressId} has no resolvable IfcLocalPlacement`);
   }
 
-  return { ownerHistoryId, bodyContextId, storeyId: storeyExpressId, storeyPlacementId };
+  const schema = (store.schemaVersion ?? 'IFC4') as SpatialAnchorSchema;
+  return { ownerHistoryId, bodyContextId, storeyId: storeyExpressId, storeyPlacementId, schema };
 }
 
 function findOwnerHistoryId(store: IfcDataStore): number | null {
@@ -72,8 +73,11 @@ function findBodyContextId(store: IfcDataStore): number | null {
 
 /**
  * Resolve the target storey's `ObjectPlacement` (an IfcLocalPlacement).
- * On IfcBuildingStorey the ObjectPlacement is positional attribute index 5
- * (inherited from IfcProduct).
+ *
+ * The attribute lives at the same positional index across IFC2X3 and IFC4
+ * (inherited from IfcProduct), but rather than hard-code an offset we walk
+ * the schema-resolved attribute name list — that way the lookup keeps
+ * working if the schema gen ever shifts inheritance.
  */
 function findStoreyPlacementId(store: IfcDataStore, storeyExpressId: number): number | null {
   if (!store.source) return null;
@@ -81,6 +85,12 @@ function findStoreyPlacementId(store: IfcDataStore, storeyExpressId: number): nu
   if (!ref) return null;
   const extractor = new EntityExtractor(store.source);
   const entity = extractor.extractEntity(ref);
-  const placement = entity?.attributes?.[5];
+  if (!entity) return null;
+
+  const attrNames = getAttributeNames(entity.type);
+  const placementIndex = attrNames.indexOf('ObjectPlacement');
+  const idx = placementIndex >= 0 ? placementIndex : 5;
+
+  const placement = entity.attributes?.[idx];
   return typeof placement === 'number' ? placement : null;
 }

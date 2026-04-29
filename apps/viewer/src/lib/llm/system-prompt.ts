@@ -129,7 +129,7 @@ function buildStoreCheatSheet(): string {
     '',
     '// Add a custom IfcCartesianPoint, then reference it from another entity',
     'const pt = bim.store.addEntity("arch", {',
-    '  type: "IFCCARTESIANPOINT",',
+    '  type: "IfcCartesianPoint",',
     '  attributes: [[1.0, 2.0, 0.0]],',
     '});',
     'console.log("Allocated", pt.expressId);',

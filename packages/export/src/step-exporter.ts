@@ -449,7 +449,14 @@ export class StepExporter {
       && options.applyMutations !== false
       && typeof this.mutationView.getNewEntities === 'function'
     ) ? this.mutationView.getNewEntities().length : 0;
-    if (options.deltaOnly && modifiedEntities.size === 0 && overlayNewEntityCount === 0) {
+    // Georef-only deltas (newGeorefLines populated but no entity changes) must
+    // still produce a non-empty DATA section.
+    if (
+      options.deltaOnly
+      && modifiedEntities.size === 0
+      && overlayNewEntityCount === 0
+      && newGeorefLines.length === 0
+    ) {
       const emptyContent = new TextEncoder().encode(header + 'DATA;\nENDSEC;\nEND-ISO-10303-21;\n');
       return {
         content: emptyContent,

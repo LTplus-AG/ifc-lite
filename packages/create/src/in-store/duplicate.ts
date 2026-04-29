@@ -23,22 +23,9 @@
  * already-extracted source attributes and does the bookkeeping.
  */
 
+import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
-
-const GUID_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
-
-function newGuid(): string {
-  const bytes = new Uint8Array(22);
-  if (typeof globalThis.crypto !== 'undefined' && globalThis.crypto.getRandomValues) {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 22; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  let result = '';
-  for (let i = 0; i < 22; i++) result += GUID_CHARS[bytes[i] % 64];
-  return result;
-}
 
 /** A 3D vector — STEP-local metres. */
 export type Vec3 = [number, number, number];
@@ -139,7 +126,7 @@ export function duplicateInStore(
         : sourceName);
 
   const cloned = source.attributes.slice();
-  cloned[0] = newGuid();                        // GlobalId
+  cloned[0] = generateIfcGuid();                        // GlobalId
   cloned[1] = `#${source.ownerHistoryId}`;       // OwnerHistory (preserved)
   cloned[2] = duplicateName;                    // Name
   cloned[5] = `#${placement.expressId}`;         // ObjectPlacement
@@ -154,7 +141,7 @@ export function duplicateInStore(
   let relContainedId: number | null = null;
   if (source.storeyId !== null) {
     const rel = editor.addEntity('IFCRELCONTAINEDINSPATIALSTRUCTURE', [
-      newGuid(),                          // GlobalId
+      generateIfcGuid(),                          // GlobalId
       `#${source.ownerHistoryId}`,         // OwnerHistory
       null,                                // Name
       null,                                // Description

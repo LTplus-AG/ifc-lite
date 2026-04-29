@@ -26,6 +26,10 @@ export class StoreNamespace {
    * Inject a new entity into the active model. Returns an `EntityRef`
    * pointing at the freshly-allocated expressId.
    *
+   * Pass `def.type` as the canonical IFC EXPRESS PascalCase name
+   * (e.g. `'IfcRectangleProfileDef'`). The internal STEP token form
+   * (`'IFCRECTANGLEPROFILEDEF'`) is also accepted.
+   *
    * Attribute conventions (mirror `EntityExtractor.extractEntity()`):
    *   - numbers → STEP integer / REAL literal
    *   - `"#42"` → entity reference
@@ -36,7 +40,7 @@ export class StoreNamespace {
    *
    * @example
    *   const profile = bim.store.addEntity('arch', {
-   *     type: 'IFCRECTANGLEPROFILEDEF',
+   *     type: 'IfcRectangleProfileDef',
    *     attributes: ['.AREA.', null, '#34', 0.6, 0.4],
    *   });
    */

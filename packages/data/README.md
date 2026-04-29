@@ -1,6 +1,6 @@
 # @ifc-lite/data
 
-Columnar data structures for IFClite. Provides TypedArray-based storage for IFC entities, properties, quantities, and relationships.
+Columnar data structures for IFClite. TypedArray-backed storage for entities, properties, quantities, and relationships — the layout that lets `@ifc-lite/parser` hold a 200 MB IFC file in ~30 MB of RAM and lets `@ifc-lite/query` filter it in milliseconds.
 
 ## Installation
 
@@ -8,48 +8,78 @@ Columnar data structures for IFClite. Provides TypedArray-based storage for IFC 
 npm install @ifc-lite/data
 ```
 
-## Quick Start
+## When to use this directly
+
+Most users get these structures for free as the output of `@ifc-lite/parser`'s `parseColumnar()`. Use this package directly when you're:
+
+- Building a custom data source (e.g. server-side parquet → IFClite tables)
+- Writing a tool that consumes the columnar format outside the parser pipeline
+- Looking up EPSG codes (the geo-reference index is shipped here)
+
+## Build an entity table
 
 ```typescript
-import { StringTableBuilder, EntityTableBuilder, RelationshipGraphBuilder } from '@ifc-lite/data';
-import type { EntityTable, RelationshipGraph } from '@ifc-lite/data';
+import { EntityTableBuilder, StringTableBuilder } from '@ifc-lite/data';
 
-// String interning for efficient storage
 const strings = new StringTableBuilder();
-const id = strings.intern('IFCWALL');
+const entities = new EntityTableBuilder();
 
-// Columnar entity storage (builder pattern)
-const entityBuilder = new EntityTableBuilder();
-// ... add entities ...
-const entities: EntityTable = entityBuilder.build();
+const wallTypeId = strings.intern('IFCWALL');
+const wallNameId = strings.intern('Wall A');
+const wallGuidId = strings.intern('1abc2def3...');
 
-// Relationship graph (builder pattern)
-const graphBuilder = new RelationshipGraphBuilder();
-// ... add relationships ...
-const graph: RelationshipGraph = graphBuilder.build();
+entities.add({
+  expressId: 42,
+  typeNameId: wallTypeId,
+  nameId: wallNameId,
+  globalIdId: wallGuidId,
+  // ... other columns
+});
+
+const table = entities.build();
+const stringTable = strings.build();
+
+console.log(table.count);                       // 1
+console.log(stringTable.get(table.name[0]));    // 'Wall A'
+console.log(table.getTypeName(42));             // 'IFCWALL'
 ```
 
-## Features
+## Relationship graph
 
-- Columnar (TypedArray) storage for entities, properties, and quantities
-- String table with interning for memory efficiency
-- Relationship graph with typed edges
-- IFC type enum for fast type comparisons
-- Spatial hierarchy representation
-- Local EPSG CRS index with exact-code lookup and text search
+Edges are stored CSR-style (compressed sparse row) — fast to traverse, compact in memory.
 
-## EPSG Lookup
+```typescript
+import { RelationshipGraphBuilder, RelationshipType } from '@ifc-lite/data';
+
+const builder = new RelationshipGraphBuilder();
+
+// Storey 100 contains walls 42, 43, 44
+builder.addEdge(100, 42, RelationshipType.CONTAINS);
+builder.addEdge(100, 43, RelationshipType.CONTAINS);
+builder.addEdge(100, 44, RelationshipType.CONTAINS);
+
+const graph = builder.build();
+
+const contained = graph.outgoing(100, RelationshipType.CONTAINS);
+console.log([...contained]); // [42, 43, 44]
+```
+
+## EPSG lookup
+
+The full EPSG database ships as a pre-built index — geo-referenced models can resolve coordinate systems offline at runtime.
 
 ```typescript
 import { lookupEpsgByCode, searchEpsgIndex } from '@ifc-lite/data';
 
 const lv95 = await lookupEpsgByCode(2056);
-const search = await searchEpsgIndex('web mercator');
+// { code: 2056, name: 'CH1903+ / LV95', kind: 'projected', ... }
+
+const matches = await searchEpsgIndex('web mercator');
+// → top text-search results; ordered by relevance
+console.log(matches.map(m => `${m.code} ${m.name}`));
 ```
 
-The EPSG search index is generated ahead of time and committed to the repo, so
-normal builds stay offline and fast. Refresh it explicitly with
-`pnpm generate:epsg-index`.
+The index is generated at build time and committed to the repo, so normal builds stay offline. Refresh it with `pnpm generate:epsg-index`.
 
 ## API
 

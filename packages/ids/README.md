@@ -1,13 +1,6 @@
 # @ifc-lite/ids
 
-IDS (Information Delivery Specification) support for IFC-Lite.
-
-## Features
-
-- **Full IDS 1.0 Support**: Parse and validate buildingSMART IDS XML files
-- **All Facet Types**: Entity, Attribute, Property, Classification, Material, PartOf
-- **Multi-Language Reports**: Human-readable translations in English, German, French
-- **Deep Viewer Integration**: Color-coded results, bidirectional selection, entity isolation
+IDS (Information Delivery Specification) support for IFClite. Parses buildingSMART IDS XML files and validates an `IfcDataStore` against them — every facet type, every constraint type, with multi-language reports.
 
 ## Installation
 
@@ -15,62 +8,78 @@ IDS (Information Delivery Specification) support for IFC-Lite.
 npm install @ifc-lite/ids
 ```
 
-## Usage
+## Validate against an IDS file
 
 ```typescript
 import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
 
-// Parse IDS file
-const idsSpec = parseIDS(xmlContent);
+const idsXml = await fetch('project-requirements.ids').then(r => r.text());
+const idsSpec = parseIDS(idsXml);
 
-// Create translation service
 const translator = createTranslationService('en');
+const report = await validateIDS(idsSpec, store, { translator });
 
-// Validate against IFC data
-const report = await validateIDS(idsSpec, ifcDataStore, { translator });
+console.log(`Overall: ${report.totalPassed} / ${report.totalChecked} passed`);
 
-// Get human-readable results
-for (const specResult of report.specificationResults) {
-  console.log(`${specResult.specificationName}: ${specResult.passRate}% passed`);
+for (const spec of report.specificationResults) {
+  console.log(`\n${spec.specificationName}: ${spec.passRate}%`);
 
-  for (const entityResult of specResult.entityResults) {
-    if (!entityResult.passed) {
-      for (const reqResult of entityResult.requirementResults) {
-        if (!reqResult.passed) {
-          console.log(`  - ${translator.describeFailure(reqResult)}`);
-        }
+  for (const entity of spec.entityResults) {
+    if (!entity.passed) {
+      for (const req of entity.requirementResults.filter(r => !r.passed)) {
+        console.log(`  ✗ ${entity.entityType} #${entity.expressId}: ${translator.describeFailure(req)}`);
       }
     }
   }
 }
 ```
 
-## Supported Languages
+## Multi-language reports
 
-- English (en)
-- German (de)
-- French (fr)
+Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`).
 
-## IDS Facets
+```typescript
+const de = createTranslationService('de');
+const report = await validateIDS(idsSpec, store, { translator: de });
+// Failures now read: "Anforderung 'FireRating' nicht erfüllt..."
+```
 
-| Facet | Description |
-|-------|-------------|
-| Entity | Match by IFC entity type (e.g., IfcWall, IfcDoor) |
-| Attribute | Match by IFC attribute value (Name, Description, etc.) |
-| Property | Match by property set and property value |
-| Classification | Match by classification system and code |
-| Material | Match by material assignment |
-| PartOf | Match by spatial/compositional relationship |
+## Inspect an IDS specification
 
-## Constraint Types
+```typescript
+const idsSpec = parseIDS(idsXml);
 
-| Constraint | Description |
-|------------|-------------|
-| SimpleValue | Exact match |
-| Pattern | Regex pattern matching |
-| Enumeration | One of a list of values |
-| Bounds | Numeric range (min/max inclusive/exclusive) |
+for (const spec of idsSpec.specifications) {
+  console.log(`Spec: ${spec.name} (${spec.identifier})`);
+  console.log(`  Applies to: ${spec.applicability.facets.length} facet(s)`);
+  console.log(`  Requires:   ${spec.requirements.facets.length} facet(s)`);
+}
+```
+
+## Supported facets
+
+| Facet | Matches |
+|---|---|
+| `Entity` | IFC entity type (`IfcWall`, `IfcDoor`, …) |
+| `Attribute` | IfcRoot attributes (`Name`, `Description`, `Tag`, …) |
+| `Property` | Property set + property name + value |
+| `Classification` | Classification system + reference code |
+| `Material` | Material assignment |
+| `PartOf` | Spatial / compositional relationship |
+
+## Supported constraints
+
+| Constraint | Matches |
+|---|---|
+| `SimpleValue` | Exact match |
+| `Pattern` | Regex match |
+| `Enumeration` | One-of-list |
+| `Bounds` | Numeric range (min/max, inclusive/exclusive) |
+
+## API
+
+See the [IDS Guide](../../docs/guide/ids.md) and [API Reference](../../docs/api/typescript.md#ifc-liteids).
 
 ## License
 
-MPL-2.0
+[MPL-2.0](../../LICENSE)

@@ -1,61 +1,57 @@
 # @ifc-lite/codegen
 
-TypeScript code generator from IFC EXPRESS schemas.
+TypeScript code generator for IFC EXPRESS schemas. Parses official `.exp` schema files from buildingSMART and emits typed TypeScript: 1000+ entity interfaces with full inheritance, schema metadata for runtime introspection, and exhaustive enum unions.
 
-## Overview
+This is a build-time tool — you don't depend on it at runtime. The generated output ships with `@ifc-lite/parser`.
 
-This package parses official IFC EXPRESS schema files (.exp) from buildingSMART and generates:
-- TypeScript entity interfaces with full inheritance
-- Schema registry with type metadata
-- Attribute definitions and type information
-- Enum definitions
-
-## Why?
-
-Instead of manually implementing 1000+ IFC entity types, we generate them automatically from the official schemas. This gives us:
-- ✅ 100% schema coverage
-- ✅ Automatic updates when schemas change
-- ✅ Type-safe TypeScript
-- ✅ Consistent with IFC standard
-
-## Usage
-
-### Generate code from schema
+## Installation
 
 ```bash
-npm run generate:ifc4      # Generate from IFC4 schema
-npm run generate:ifc4x3    # Generate from IFC4X3 schema
+npm install --save-dev @ifc-lite/codegen
 ```
 
-### Programmatic usage
+## Generate from the official IFC schema
+
+```bash
+# IFC4 (776 entities)
+npx ifc-lite-codegen ./schemas/IFC4.exp --out ./src/generated
+
+# IFC4X3 (876 entities, includes infrastructure: roads, bridges, alignments)
+npx ifc-lite-codegen ./schemas/IFC4X3.exp --out ./src/generated
+```
+
+Generated files (one per output directory):
+
+```
+src/generated/
+├── entities.ts          ← TypeScript interfaces for every entity
+├── schema-registry.ts   ← runtime metadata (parent, attributes, ...)
+├── types.ts             ← enum unions and SELECT types
+└── index.ts             ← barrel export
+```
+
+## Programmatic usage
 
 ```typescript
 import { parseExpressSchema, generateTypeScript } from '@ifc-lite/codegen';
+import { writeFile } from 'node:fs/promises';
 
 const schema = parseExpressSchema('./schemas/IFC4.exp');
-const code = generateTypeScript(schema);
+
+console.log(`Parsed ${schema.entities.length} entities, ${schema.types.length} types`);
+
+const generated = generateTypeScript(schema, {
+  inheritanceChain: true,
+  emitEnums: true,
+});
+
+await writeFile('./src/generated/entities.ts', generated.entities);
+await writeFile('./src/generated/schema-registry.ts', generated.schemaRegistry);
 ```
 
-## Architecture
+## What you get
 
-```
-IFC4.exp (EXPRESS schema)
-    ↓
-ExpressParser
-    ↓
-Schema AST (entities, types, enums)
-    ↓
-TypeScriptGenerator
-    ↓
-Generated files:
-  - entities.ts (interfaces)
-  - schema-registry.ts (metadata)
-  - types.ts (enums, selects)
-```
-
-## EXPRESS Schema Format
-
-EXPRESS is a data modeling language defined in ISO 10303-11. Example:
+For an EXPRESS entity like:
 
 ```express
 ENTITY IfcWall
@@ -64,38 +60,38 @@ ENTITY IfcWall
 END_ENTITY;
 ```
 
-## Generated Output
+You get a TypeScript interface with full inheritance:
 
 ```typescript
 export interface IfcWall extends IfcBuildingElement {
   PredefinedType?: IfcWallTypeEnum;
 }
+```
 
-export const SCHEMA_REGISTRY = {
-  IfcWall: {
-    parent: 'IfcBuildingElement',
-    attributes: [
-      { name: 'PredefinedType', type: 'IfcWallTypeEnum', optional: true }
-    ]
-  }
+Plus runtime metadata for the same entity:
+
+```typescript
+SCHEMA_REGISTRY.IfcWall = {
+  parent: 'IfcBuildingElement',
+  inheritanceChain: ['IfcRoot', 'IfcObjectDefinition', /* ... */, 'IfcWall'],
+  attributes: [
+    { name: 'PredefinedType', type: 'IfcWallTypeEnum', optional: true },
+  ],
+  allAttributes: [/* every inherited attribute, in inheritance order */],
 };
 ```
 
-## Testing
+## Why generate vs. hand-write
 
-The generator includes comprehensive tests:
-- EXPRESS parser tests (tokenization, entity parsing, type parsing)
-- TypeScript generator tests (interface generation, inheritance)
-- Integration tests (generate from real schemas, validate output)
+- **Coverage:** 776 IFC4 entities and 876 IFC4X3 entities — manual implementation gets ~7% there.
+- **Updates:** when buildingSMART releases a new schema, regenerate; no manual edits.
+- **Consistency:** every entity follows the same shape. Types, names, optional-ness all match the spec exactly.
+- **Type safety:** TypeScript catches schema-violating attribute access at compile time.
 
-```bash
-npm test
-```
+## API
 
-## Integration with Parser
-
-This package is **standalone** and does not depend on `@ifc-lite/parser`. Once the generated code is validated, it can be integrated into the parser package.
+See the [API Reference](../../docs/api/typescript.md#ifc-litecodegen).
 
 ## License
 
-MIT
+[MPL-2.0](../../LICENSE)

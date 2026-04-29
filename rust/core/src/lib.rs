@@ -75,6 +75,7 @@ pub mod legacy_entities;
 pub mod model_bounds;
 pub mod parser;
 pub mod schema_gen;
+pub mod schema_helpers;
 pub mod streaming;
 pub mod units;
 
@@ -85,7 +86,7 @@ pub use fast_parse::{
     extract_face_indices_from_entity, extract_first_entity_ref, parse_coordinates_direct,
     parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
 };
-pub use generated::{has_geometry_by_name, IfcType};
+pub use generated::IfcType;
 pub use georef::{GeoRefExtractor, GeoReference, RtcOffset};
 pub use legacy_entities::{
     get_legacy_entity_info, is_legacy_entity, map_legacy_to_base_type, LegacyEntityInfo,
@@ -93,5 +94,6 @@ pub use legacy_entities::{
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{parse_entity, EntityScanner, Token};
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
+pub use schema_helpers::has_geometry_by_name;
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{extract_length_unit_scale, get_si_prefix_multiplier};

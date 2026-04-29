@@ -704,6 +704,31 @@ export class Renderer {
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
 
+        // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
+        // Callers supply a fresh Map when contents change (same convention as hiddenIds/isolatedIds).
+        const txOverrides = options.transparencyOverrides;
+        const hasTxOverrides = txOverrides != null && txOverrides.size > 0;
+        const alphaForMesh = (expressId: number, fallback: number): number => {
+            if (!hasTxOverrides) return fallback;
+            const a = txOverrides!.get(expressId);
+            return a !== undefined ? a : fallback;
+        };
+        // alphaForBatch walks batch.expressIds per frame. For typical batch sizes
+        // the cost is well below noise vs. the GPU work, and avoiding a cache
+        // removes the stale-on-mutation bug class entirely.
+        const alphaForBatch = (
+            batch: { expressIds: number[]; color: [number, number, number, number] },
+            fallback: number,
+        ): number => {
+            if (!hasTxOverrides) return fallback;
+            let minAlpha = Infinity;
+            for (const eid of batch.expressIds) {
+                const a = txOverrides!.get(eid);
+                if (a !== undefined && a < minAlpha) minAlpha = a;
+            }
+            return minAlpha === Infinity ? fallback : minAlpha;
+        };
+
         // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
         // Only create individual meshes for selected elements (for highlighting)
         // Batches are filtered at render time - fully visible batches render normally,
@@ -762,7 +787,7 @@ export class Renderer {
             const transparentMeshes: typeof meshes = [];
 
             for (const mesh of meshes) {
-                const alpha = mesh.color[3];
+                const alpha = alphaForMesh(mesh.expressId, mesh.color[3]);
                 const transparency = mesh.material?.transparency ?? 0.0;
                 const isTransparent = alpha < 0.99 || transparency > 0.01;
 
@@ -968,7 +993,8 @@ export class Renderer {
                     meshBuf[32] = mesh.color[0];
                     meshBuf[33] = mesh.color[1];
                     meshBuf[34] = mesh.color[2];
-                    meshBuf[35] = mesh.color[3];
+                    // Selected meshes always keep their own alpha so highlights stay opaque
+                    meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
                     meshBuf[36] = mesh.material?.metallic ?? 0.0;
                     meshBuf[37] = mesh.material?.roughness ?? 0.6;
                     meshBuf[38] = 0; meshBuf[39] = 0;
@@ -1124,7 +1150,7 @@ export class Renderer {
                         }
                     }
 
-                    const alpha = batch.color[3];
+                    const alpha = alphaForBatch(batch, batch.color[3]);
                     if (alpha < 0.99) {
                         transparentBatches.push(batch);
                     } else {
@@ -1187,7 +1213,7 @@ export class Renderer {
                     tpl[32] = batch.color[0];
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
-                    tpl[35] = batch.color[3];
+                    tpl[35] = alphaForBatch(batch, batch.color[3]);
 
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
 
@@ -1223,8 +1249,9 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            // Use opaque or transparent pipeline based on alpha
-                            const isTransparent = color[3] < 0.99;
+                            // Use opaque or transparent pipeline based on resolved alpha
+                            // (not the parent batch's color[3] — that ignores transparencyOverrides)
+                            const isTransparent = alphaForBatch(subBatch, color[3]) < 0.99;
                             if (isTransparent) {
                                 pass.setPipeline(this.pipeline.getTransparentPipeline());
                             } else {
@@ -1333,7 +1360,7 @@ export class Renderer {
                         tpl.set(viewProj, 0);
                         tpl.set(mesh.transform.m, 16);
                         tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
-                        tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
+                        tpl[34] = mesh.color[2]; tpl[35] = alphaForMesh(mesh.expressId, mesh.color[3]);
                         tpl[36] = mesh.material?.metallic ?? 0.0;
                         tpl[37] = mesh.material?.roughness ?? 0.6;
                         tpl[38] = 0; tpl[39] = 0;

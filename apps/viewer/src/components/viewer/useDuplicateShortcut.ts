@@ -45,14 +45,17 @@ export function useDuplicateShortcut() {
       const ref = resolveEntityRef(selectedId);
       if (!ref) return;
 
-      // Match the menu's canEdit gating — silently no-op on
-      // native-metadata models so the browser bookmark default
-      // doesn't fire either.
-      const view = getMutationView(ref.modelId);
-      if (!view) return;
-
+      // Suppress the browser's bookmark default for any duplicate
+      // shortcut we recognise — even when the model has no editable
+      // mutation view, otherwise Ctrl/⌘+D opens the bookmark dialog
+      // while we're "silently no-op'ing" below.
       e.preventDefault();
       e.stopPropagation();
+
+      // Match the menu's canEdit gating — silently no-op on
+      // native-metadata models.
+      const view = getMutationView(ref.modelId);
+      if (!view) return;
 
       // ⌘D + Shift = +Z (up), ⌘D + Alt = +Y (north), default = +X (east).
       // Power users can chain modifiers without leaving the keyboard;

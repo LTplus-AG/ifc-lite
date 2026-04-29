@@ -70,22 +70,43 @@ export function AnnotationLayer() {
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const canvas = container.parentElement?.querySelector('canvas') as HTMLCanvasElement | null;
-    if (!canvas) {
-      // No canvas yet (initial mount before viewport renders) — the
-      // ResizeObserver below will fire once the canvas appears via a
-      // separate effect.
-      return;
-    }
+    const parent = container.parentElement;
+    if (!parent) return;
 
-    const measure = () => {
+    let observer: ResizeObserver | null = null;
+
+    const measure = (canvas: HTMLCanvasElement) => {
       const rect = canvas.getBoundingClientRect();
       setBounds({ width: rect.width, height: rect.height });
     };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(canvas);
-    return () => observer.disconnect();
+
+    const bind = (canvas: HTMLCanvasElement) => {
+      measure(canvas);
+      observer = new ResizeObserver(() => measure(canvas));
+      observer.observe(canvas);
+    };
+
+    const initialCanvas = parent.querySelector('canvas') as HTMLCanvasElement | null;
+    if (initialCanvas) {
+      bind(initialCanvas);
+      return () => observer?.disconnect();
+    }
+
+    // Canvas not mounted yet (initial mount before viewport renders) —
+    // watch the parent for the canvas to appear, then bind once it does.
+    const mutationObserver = new MutationObserver(() => {
+      const canvas = parent.querySelector('canvas') as HTMLCanvasElement | null;
+      if (canvas) {
+        bind(canvas);
+        mutationObserver.disconnect();
+      }
+    });
+    mutationObserver.observe(parent, { childList: true, subtree: true });
+
+    return () => {
+      mutationObserver.disconnect();
+      observer?.disconnect();
+    };
   }, []);
 
   // Stable list view so React doesn't churn when the Map identity

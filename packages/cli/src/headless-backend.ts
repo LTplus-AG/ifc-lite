@@ -118,7 +118,11 @@ export function normalizePropertyValue(value: unknown): string | number | boolea
   }
   try {
     return JSON.stringify(value);
-  } catch {
+  } catch (err) {
+    // Cyclic structures or BigInt values that JSON.stringify can't handle —
+    // log so the CLI surface is debuggable and fall back to String coercion.
+    // eslint-disable-next-line no-console
+    console.warn('[headless-backend] normalizePropertyValue: JSON.stringify failed', err);
     return String(value);
   }
 }

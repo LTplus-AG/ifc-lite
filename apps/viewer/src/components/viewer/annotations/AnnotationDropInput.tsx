@@ -59,11 +59,12 @@ export function AnnotationDropInput({
       if (node.contains(e.target as Node)) return;
       // Empty draft on outside-click → silent cancel; non-empty
       // → commit the draft (matches "blur to save" feel without
-      // destroying typed content).
-      if (draft.trim().length > 0) {
-        onSave(draft);
-      } else {
+      // destroying typed content). An over-limit draft is rejected
+      // consistently with the disabled save button.
+      if (draft.trim().length === 0 || draft.length > MAX_NOTE_LEN) {
         onCancel();
+      } else {
+        onSave(draft);
       }
     };
     const id = window.setTimeout(() => {
@@ -79,8 +80,9 @@ export function AnnotationDropInput({
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        if (draft.trim().length === 0) {
-          onCancel();
+        if (draft.trim().length === 0 || draft.length > MAX_NOTE_LEN) {
+          // Over-limit Enter does nothing — match the disabled button.
+          if (draft.trim().length === 0) onCancel();
         } else {
           onSave(draft);
         }
@@ -184,7 +186,11 @@ export function AnnotationDropInput({
           <Button
             size="sm"
             className="h-7 px-2 text-[11px] bg-amber-500 hover:bg-amber-500/90 text-white"
-            onClick={() => (draft.trim().length === 0 ? onCancel() : onSave(draft))}
+            onClick={() => {
+              if (overHardLimit) return;
+              if (draft.trim().length === 0) onCancel();
+              else onSave(draft);
+            }}
             disabled={overHardLimit}
           >
             <Check className="h-3 w-3 mr-1" />

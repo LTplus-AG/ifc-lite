@@ -406,6 +406,12 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       searchFilterError: null,
       searchFilter: { rules: [], combinator: 'AND', limit: 500 },
       searchFilterSchema: new Map(),
+
+      // Annotations — drop draft + selection so a new file doesn't
+      // inherit the previous file's pin authoring state. Persisted
+      // pins themselves stay in localStorage (cross-file workspace).
+      draft: null,
+      selectedAnnotationId: null,
     });
   },
 }));

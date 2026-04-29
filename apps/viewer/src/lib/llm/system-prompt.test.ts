@@ -101,7 +101,7 @@ test('system prompt includes the BIM.STORE cheat sheet and routing rule', () => 
   assert.match(prompt, /bim\.store\.removeEntity\(unwantedRef\)/);
 
   // Routing rule disambiguating store / mutate / create
-  assert.match(prompt, /bim\.store\.setPositionalAttribute\(entity, index, value\)`? for non-IfcRoot edits/);
+  assert.match(prompt, /bim\.store\.setPositionalAttribute\(entity, index, value\)`? for positional STEP-argument edits/);
   assert.match(prompt, /Do NOT use `bim\.create` for these/);
 });
 

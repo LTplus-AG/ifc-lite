@@ -4,18 +4,34 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from './modelSlice.js';
 import type { FederatedModel } from '../types.js';
 
 type ModelTestState = ModelSlice & ModelCrossSliceState;
 
-// Helper to create a mock model
+// Typed setter / getter shim that mirrors zustand's StateCreator
+// signature without the broader middleware machinery the test doesn't
+// need. Using StateCreator's exact types here would pull in the whole
+// store; the local aliases below are tight enough for this test.
+type TestSetState = (
+  partial:
+    | Partial<ModelTestState>
+    | ((state: ModelTestState) => Partial<ModelTestState>),
+) => void;
+type TestGetState = () => ModelTestState;
+
+// Helper to create a mock model. `IfcDataStore` and `GeometryResult` are
+// large interfaces that the slice never inspects on these paths — the
+// double-cast through `unknown` is the minimum that satisfies the
+// compiler without an `any`.
 function createMockModel(id: string, name: string): FederatedModel {
   return {
     id,
     name,
-    ifcDataStore: {} as any,
-    geometryResult: {} as any,
+    ifcDataStore: {} as unknown as IfcDataStore,
+    geometryResult: {} as unknown as GeometryResult,
     visible: true,
     collapsed: false,
     schemaVersion: 'IFC4',
@@ -28,10 +44,9 @@ function createMockModel(id: string, name: string): FederatedModel {
 
 describe('ModelSlice', () => {
   let state: ModelTestState;
-  let setState: (partial: Partial<ModelTestState> | ((state: ModelTestState) => Partial<ModelTestState>)) => void;
+  let setState: TestSetState;
 
   beforeEach(() => {
-    // Create a mock set function that updates state
     setState = (partial) => {
       if (typeof partial === 'function') {
         const updates = partial(state);
@@ -41,10 +56,16 @@ describe('ModelSlice', () => {
       }
     };
 
-    // Seed cross-slice fields owned by dataSlice. The slice writes them
-    // through cross-slice set() calls; the test mock has to provide them
-    // so the typed StateCreator is satisfied.
-    const slice = createModelSlice(setState as any, (() => state) as any, {} as any);
+    const getState: TestGetState = () => state;
+
+    // The slice's StateCreator signature includes a third middleware
+    // argument (store API) that the slice's body never reads. We pass
+    // `undefined` cast to the empty middleware shape rather than `any`.
+    const slice = createModelSlice(
+      setState as Parameters<typeof createModelSlice>[0],
+      getState as Parameters<typeof createModelSlice>[1],
+      undefined as unknown as Parameters<typeof createModelSlice>[2],
+    );
     state = { ...slice, ifcDataStore: null, geometryResult: null };
   });
 

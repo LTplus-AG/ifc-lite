@@ -40,13 +40,16 @@ export const AnnotationPin = forwardRef<HTMLButtonElement, AnnotationPinProps>(
         ref={ref}
         type="button"
         title={preview}
+        aria-label={preview ? `Annotation ${index}: ${preview}` : `Annotation ${index}`}
         onClick={onClick}
         onContextMenu={onContextMenu}
         className={cn(
           // 24×24 invisible hit-target around a 14px dot — touch comfort
           // without bloating the visual.
           'group relative inline-flex h-6 w-6 items-center justify-center',
-          'cursor-pointer outline-none focus-visible:outline-none',
+          // Keyboard focus ring uses the same emerald accent as selection.
+          'cursor-pointer outline-none rounded-full',
+          'focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
         )}
       >
         <span

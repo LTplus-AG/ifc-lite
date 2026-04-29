@@ -87,6 +87,28 @@ function clampNote(note: string): string {
 
 // ── Persistence ──────────────────────────────────────────────────────
 
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+function isValidPosition(v: unknown): v is AnnotationPosition {
+  if (!v || typeof v !== 'object') return false;
+  const p = v as Record<string, unknown>;
+  return isFiniteNumber(p.x) && isFiniteNumber(p.y) && isFiniteNumber(p.z);
+}
+
+function isValidAnnotation(v: unknown): v is Annotation {
+  if (!v || typeof v !== 'object') return false;
+  const a = v as Record<string, unknown>;
+  if (typeof a.id !== 'string' || a.id.length === 0) return false;
+  if (typeof a.note !== 'string') return false;
+  if (!isValidPosition(a.position)) return false;
+  if (a.entityExpressId !== null && !isFiniteNumber(a.entityExpressId)) return false;
+  if (a.modelId !== null && typeof a.modelId !== 'string') return false;
+  if (!isFiniteNumber(a.createdAt) || !isFiniteNumber(a.updatedAt)) return false;
+  return true;
+}
+
 function loadFromStorage(): Map<string, Annotation> {
   try {
     if (typeof localStorage === 'undefined') return new Map();
@@ -96,11 +118,17 @@ function loadFromStorage(): Map<string, Annotation> {
     if (!Array.isArray(parsed)) return new Map();
     const map = new Map<string, Annotation>();
     for (const item of parsed) {
-      if (!item || typeof item.id !== 'string') continue;
-      map.set(item.id, item as Annotation);
+      if (!isValidAnnotation(item)) {
+        // eslint-disable-next-line no-console
+        console.warn(`[annotations] skipping malformed entry from ${STORAGE_KEY}`, item);
+        continue;
+      }
+      map.set(item.id, item);
     }
     return map;
-  } catch {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[annotations] failed to load from ${STORAGE_KEY}`, err);
     return new Map();
   }
 }
@@ -110,8 +138,11 @@ function saveToStorage(annotations: Map<string, Annotation>): void {
     if (typeof localStorage === 'undefined') return;
     const arr = Array.from(annotations.values());
     localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-  } catch {
-    // Quota exceeded / private mode — annotations stay in memory.
+  } catch (err) {
+    // Quota exceeded / private mode — annotations stay in memory but
+    // the warning makes the failure debuggable.
+    // eslint-disable-next-line no-console
+    console.warn(`[annotations] failed to persist to ${STORAGE_KEY}`, err);
   }
 }
 

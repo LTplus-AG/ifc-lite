@@ -92,4 +92,37 @@ describe('addColumnToStore', () => {
       expect(id).toBeGreaterThan(100);
     }
   });
+
+  // Federated-model parity: each StoreEditor scopes its allocations to
+  // a single store + view, so two builders running against two stores
+  // emit independent id sequences. This guards against accidental
+  // cross-model state coupling regressing the multi-model viewer flow.
+  it('allocates ids independently across two model contexts (federation)', () => {
+    const storeA = makeStore(50);
+    const viewA = new MutablePropertyView(null, 'arch');
+    const editorA = new StoreEditor(storeA, viewA);
+
+    const storeB = makeStore(200);
+    const viewB = new MutablePropertyView(null, 'struct');
+    const editorB = new StoreEditor(storeB, viewB);
+
+    const resultA = addColumnToStore(
+      editorA,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { Position: [1, 1, 0], Width: 0.3, Depth: 0.4, Height: 3 },
+    );
+    const resultB = addColumnToStore(
+      editorB,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { Position: [2, 2, 0], Width: 0.3, Depth: 0.4, Height: 3 },
+    );
+
+    // Each model's column id sits above its own watermark.
+    expect(resultA.columnId).toBeGreaterThan(50);
+    expect(resultB.columnId).toBeGreaterThan(200);
+
+    // The two views are siloed — neither sees the other's overlays.
+    expect(viewA.getNewEntities().some((e) => e.expressId === resultB.columnId)).toBe(false);
+    expect(viewB.getNewEntities().some((e) => e.expressId === resultA.columnId)).toBe(false);
+  });
 });

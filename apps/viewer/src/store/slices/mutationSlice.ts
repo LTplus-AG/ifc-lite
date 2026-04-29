@@ -23,6 +23,7 @@ import {
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getEntityBounds } from '@/utils/viewportUtils';
+import { toGlobalIdFromModels } from '../globalId.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -451,7 +452,19 @@ export const createMutationSlice: StateCreator<
       newEditors.delete(modelId);
       const newDirty = new Set(state.dirtyModels);
       newDirty.delete(modelId);
-      return { mutationViews: newViews, storeEditors: newEditors, dirtyModels: newDirty };
+      // Drop any stashed undo payloads owned by this model so they don't
+      // leak into future mutation views with the same id.
+      const newRemoved = new Map(state.removedNewEntities);
+      const prefix = `${modelId}:`;
+      for (const key of [...newRemoved.keys()]) {
+        if (key.startsWith(prefix)) newRemoved.delete(key);
+      }
+      return {
+        mutationViews: newViews,
+        storeEditors: newEditors,
+        dirtyModels: newDirty,
+        removedNewEntities: newRemoved,
+      };
     });
   },
 
@@ -822,11 +835,10 @@ export const createMutationSlice: StateCreator<
     if (!editor) return { error: 'Failed to create store editor' };
 
     // Source's bounding box drives the offset magnitude. Multi-model
-    // federations key meshes by globalId, so we look up via the model's
-    // idOffset; the legacy single-model path uses the local express id
-    // directly (offset = 0).
-    const idOffset = model.idOffset ?? 0;
-    const sourceGlobalId = sourceExpressId + idOffset;
+    // federations key meshes by globalId — route through the central
+    // conversion helper so federation/single-model semantics stay in
+    // one place (legacy stores fall through to expressId === globalId).
+    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, sourceExpressId);
     const meshes = state.geometryResult?.meshes;
     const sourceBounds = getEntityBounds(meshes ?? null, sourceGlobalId);
     const bbox: ViewerBox = sourceBounds
@@ -857,7 +869,7 @@ export const createMutationSlice: StateCreator<
     // remain scoped to the new id.
     view.setEntityAlias(newId, sourceExpressId);
 
-    const newGlobalId = newId + idOffset;
+    const newGlobalId = toGlobalIdFromModels(state.models, modelId, newId);
 
     // Mirror the source's meshes into the geometry result with the
     // offset applied so the duplicate is visible immediately. Without
@@ -1018,7 +1030,17 @@ export const createMutationSlice: StateCreator<
         }
       }
     } else if (mutation.type === 'CREATE_ENTITY') {
-      // Undo of a create: tombstone-like — just delete it from the overlay.
+      // Undo of a create: stash the NewEntity payload so a subsequent redo
+      // can restore it. Without this, redo finds an empty stash and becomes
+      // a no-op for the create-then-undo-then-redo path.
+      const overlay = view.getNewEntity(mutation.entityId);
+      if (overlay) {
+        set((s) => {
+          const next = new Map(s.removedNewEntities);
+          next.set(`${modelId}:${mutation.entityId}`, overlay);
+          return { removedNewEntities: next };
+        });
+      }
       // The view's `deleteEntity` returns false if it's already gone, which
       // is fine for redo to re-establish.
       view.deleteEntity(mutation.entityId);

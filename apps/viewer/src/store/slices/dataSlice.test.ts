@@ -19,9 +19,16 @@ const createMockMesh = (expressId: number, color: [number, number, number, numbe
   ifcType: 'IfcWall',
 });
 
+type TestSetState = (
+  partial:
+    | Partial<DataTestState>
+    | ((state: DataTestState) => Partial<DataTestState>),
+) => void;
+type TestGetState = () => DataTestState;
+
 describe('DataSlice', () => {
   let state: DataTestState;
-  let setState: (partial: Partial<DataTestState> | ((state: DataTestState) => Partial<DataTestState>)) => void;
+  let setState: TestSetState;
 
   beforeEach(() => {
     setState = (partial) => {
@@ -33,10 +40,16 @@ describe('DataSlice', () => {
       }
     };
 
+    const getState: TestGetState = () => state;
+
     // Seed the cross-slice fields owned by ModelSlice. dataSlice's
     // updaters look up the active model in this map, so the test mock
     // has to provide it for the typed StateCreator to be satisfiable.
-    const slice = createDataSlice(setState as any, (() => state) as any, {} as any);
+    const slice = createDataSlice(
+      setState as Parameters<typeof createDataSlice>[0],
+      getState as Parameters<typeof createDataSlice>[1],
+      undefined as unknown as Parameters<typeof createDataSlice>[2],
+    );
     state = { ...slice, activeModelId: null, models: new Map() };
   });
 

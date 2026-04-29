@@ -11,11 +11,11 @@
  * cursor flow.
  *
  * What lands in the overlay (4 new entities + 1 new spatial rel):
- *   1. IFCCARTESIANPOINT — the new world position
- *   2. IFCAXIS2PLACEMENT3D — wraps the new point, reuses source axes
- *   3. IFCLOCALPLACEMENT — chains to the source's parent placement
+ *   1. IfcCartesianPoint — the new world position
+ *   2. IfcAxis2Placement3D — wraps the new point, reuses source axes
+ *   3. IfcLocalPlacement — chains to the source's parent placement
  *   4. {SourceType} — new GUID + new placement, same Representation ref
- *   5. IFCRELCONTAINEDINSPATIALSTRUCTURE — anchors the new entity to
+ *   5. IfcRelContainedInSpatialStructure — anchors the new entity to
  *      the same storey the source belongs to (or skipped if the
  *      source isn't spatially contained)
  *
@@ -42,7 +42,7 @@ export type Vec3 = [number, number, number];
  * builder stays parser-free.
  */
 export interface SourceAssociation {
-  /** Existing rel's IFC type (e.g. `'IFCRELDEFINESBYPROPERTIES'`). */
+  /** Existing rel's IFC type (e.g. `'IfcRelDefinesByProperties'`). */
   relType: string;
   /** Existing rel's OwnerHistory expressId. Reused on the new rel. */
   ownerHistoryId: number;
@@ -52,17 +52,17 @@ export interface SourceAssociation {
   description: string | null;
   /**
    * The existing rel's `Relating*` reference (positional index 5):
-   * - `IFCRELDEFINESBYPROPERTIES.RelatingPropertyDefinition` → IfcPropertySet / IfcElementQuantity
-   * - `IFCRELDEFINESBYTYPE.RelatingType` → Type entity
-   * - `IFCRELASSOCIATESMATERIAL.RelatingMaterial`
-   * - `IFCRELASSOCIATESCLASSIFICATION.RelatingClassification`
-   * - `IFCRELASSOCIATESDOCUMENT.RelatingDocument`
+   * - `IfcRelDefinesByProperties.RelatingPropertyDefinition` → IfcPropertySet / IfcElementQuantity
+   * - `IfcRelDefinesByType.RelatingType` → Type entity
+   * - `IfcRelAssociatesMaterial.RelatingMaterial`
+   * - `IfcRelAssociatesClassification.RelatingClassification`
+   * - `IfcRelAssociatesDocument.RelatingDocument`
    */
   relatingExpressId: number;
 }
 
 export interface SourceAttributes {
-  /** Source entity type (e.g. `'IFCWALL'`, `'IFCCOLUMN'`). */
+  /** Source entity type (e.g. `'IfcWall'`, `'IfcColumn'`). */
   type: string;
   /** Source positional attributes as parsed by EntityExtractor. */
   attributes: IfcAttributeValue[];
@@ -139,7 +139,7 @@ export function duplicateInStore(
   ];
 
   // 1. New IfcCartesianPoint at the offset position.
-  const point = editor.addEntity('IFCCARTESIANPOINT', [
+  const point = editor.addEntity('IfcCartesianPoint', [
     [newLocation[0], newLocation[1], newLocation[2]],
   ]);
 
@@ -147,7 +147,7 @@ export function duplicateInStore(
   //    axis + ref-direction so the duplicate keeps the source's
   //    rotation. The two ref args are passed through as the verbatim
   //    STEP tokens captured at extraction time (`"#N"` or `"$"`).
-  const axisPlacement = editor.addEntity('IFCAXIS2PLACEMENT3D', [
+  const axisPlacement = editor.addEntity('IfcAxis2Placement3D', [
     `#${point.expressId}`,
     source.axisRef,
     source.refDirectionRef,
@@ -155,7 +155,7 @@ export function duplicateInStore(
 
   // 3. New IfcLocalPlacement chained to the source's parent (or `$`
   //    if the source sat at the spatial root).
-  const placement = editor.addEntity('IFCLOCALPLACEMENT', [
+  const placement = editor.addEntity('IfcLocalPlacement', [
     source.parentPlacementId !== null ? `#${source.parentPlacementId}` : null,
     `#${axisPlacement.expressId}`,
   ]);
@@ -185,7 +185,7 @@ export function duplicateInStore(
   //    storey context.
   let relContainedId: number | null = null;
   if (source.storeyId !== null) {
-    const rel = editor.addEntity('IFCRELCONTAINEDINSPATIALSTRUCTURE', [
+    const rel = editor.addEntity('IfcRelContainedInSpatialStructure', [
       generateIfcGuid(),                          // GlobalId
       `#${source.ownerHistoryId}`,         // OwnerHistory
       null,                                // Name

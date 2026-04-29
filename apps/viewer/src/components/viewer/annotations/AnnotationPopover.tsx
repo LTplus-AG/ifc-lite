@@ -65,6 +65,14 @@ export function AnnotationPopover({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Reset editor state when the popover is reused for a different
+  // annotation. Without this, switching pins would carry the previous
+  // pin's draft into the new popover.
+  useEffect(() => {
+    setEditing(annotation.note.length === 0);
+    setDraft(annotation.note);
+  }, [annotation.id, annotation.note]);
+
   // When the user enters edit mode, focus + select the textarea so
   // typing replaces the existing body cleanly.
   useEffect(() => {

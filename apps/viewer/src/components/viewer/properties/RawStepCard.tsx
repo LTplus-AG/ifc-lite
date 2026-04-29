@@ -121,14 +121,23 @@ export function RawStepCard({
   const currentId = navStack.length > 0 ? navStack[navStack.length - 1] : entityId;
   const isAtRoot = navStack.length === 0;
 
-  // Resolve the current entity's type for the header. The 3D-selected
-  // root carries its type via the `entityType` prop; any drilled-into
-  // entity has to be looked up against the data store.
+  // Resolve the current entity's type for the header. Lookup order:
+  //   1. The 3D-selected root carries its type via `entityType`.
+  //   2. The parsed data store knows source-buffer entities by id.
+  //   3. Overlay-only entities (drill-create / duplicate) live in the
+  //      mutation view's `newEntities` map — without this fallback
+  //      drilled overlay entities would lose schema-aware attribute
+  //      labels and render as `#<id>`.
   const currentType = useMemo(() => {
     if (currentId === entityId) return entityType;
     const t = dataStore?.entities.getTypeName(currentId);
-    return t || `#${currentId}`;
-  }, [currentId, entityId, entityType, dataStore]);
+    if (t) return t;
+    const view = getMutationView(modelId);
+    const overlay = view?.getNewEntity(currentId);
+    if (overlay) return overlay.type;
+    return `#${currentId}`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, entityId, entityType, dataStore, modelId, getMutationView, mutationVersion]);
 
   // Resolve display tokens for the *current* entity. Tokenize the raw
   // STEP body when source bytes exist, fall back to overlay-only

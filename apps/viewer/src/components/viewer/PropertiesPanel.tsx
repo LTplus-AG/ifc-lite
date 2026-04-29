@@ -1588,7 +1588,7 @@ export function PropertiesPanel() {
           <TabsContent value="raw-step" className="m-0 p-3 overflow-hidden">
             {selectedEntity && !isNativeLazySelection ? (
               <RawStepCard
-                modelId={selectedEntity.modelId}
+                modelId={selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId}
                 entityId={selectedEntity.expressId}
                 entityType={entityType}
                 dataStore={activeDataStore ?? null}

@@ -63,17 +63,17 @@ describe('duplicateInStore', () => {
     const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
 
     const point = byId.get(result.newPointId);
-    expect(point?.type).toBe('IFCCARTESIANPOINT');
+    expect(point?.type).toBe('IfcCartesianPoint');
     expect(point?.attributes[0]).toEqual([11, 20, 0]); // +1m on X by default
 
     const axis = byId.get(result.newAxisPlacementId);
-    expect(axis?.type).toBe('IFCAXIS2PLACEMENT3D');
+    expect(axis?.type).toBe('IfcAxis2Placement3D');
     expect(axis?.attributes[0]).toBe(`#${result.newPointId}`);
     expect(axis?.attributes[1]).toBe('#3');           // Axis preserved
     expect(axis?.attributes[2]).toBe('#4');           // RefDirection preserved
 
     const placement = byId.get(result.newPlacementId);
-    expect(placement?.type).toBe('IFCLOCALPLACEMENT');
+    expect(placement?.type).toBe('IfcLocalPlacement');
     expect(placement?.attributes[0]).toBe('#7');      // chained to parent
     expect(placement?.attributes[1]).toBe(`#${result.newAxisPlacementId}`);
 
@@ -89,7 +89,7 @@ describe('duplicateInStore', () => {
     expect(wall?.attributes[8]).toBe('.STANDARD.');     // PredefinedType preserved
 
     const rel = byId.get(result.relContainedId!);
-    expect(rel?.type).toBe('IFCRELCONTAINEDINSPATIALSTRUCTURE');
+    expect(rel?.type).toBe('IfcRelContainedInSpatialStructure');
     expect(rel?.attributes[4]).toEqual([`#${result.newId}`]);
     expect(rel?.attributes[5]).toBe('#11');
   });
@@ -116,7 +116,7 @@ describe('duplicateInStore', () => {
 
     expect(result.relContainedId).toBeNull();
     const types = view.getNewEntities().map((e) => e.type);
-    expect(types).not.toContain('IFCRELCONTAINEDINSPATIALSTRUCTURE');
+    expect(types).not.toContain('IfcRelContainedInSpatialStructure');
   });
 
   it('uses `$` for parent placement when source sat at the spatial root', () => {

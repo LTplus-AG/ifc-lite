@@ -46,10 +46,18 @@ export function getRecentFiles(): RecentFileEntry[] {
   catch { return []; }
 }
 
+// Path-aware dedup key: when a native filesystem path is available it
+// uniquely identifies the file (so `A/model.ifc` and `B/model.ifc` are
+// kept separate); otherwise fall back to the name (browser uploads
+// don't expose paths).
+function recentKey(f: { name: string; path?: string }): string {
+  return f.path ? `path:${f.path}` : `name:${f.name}`;
+}
+
 export function recordRecentFiles(files: RecentFileInput[]) {
   try {
-    const names = new Set(files.map(f => f.name));
-    const existing = getRecentFiles().filter(f => !names.has(f.name));
+    const incomingKeys = new Set(files.map(recentKey));
+    const existing = getRecentFiles().filter(f => !incomingKeys.has(recentKey(f)));
     const entries: RecentFileEntry[] = files.map(f => ({
       name: f.name,
       size: f.size,
@@ -58,7 +66,10 @@ export function recordRecentFiles(files: RecentFileInput[]) {
       modifiedMs: f.modifiedMs ?? null,
     }));
     localStorage.setItem(KEY, JSON.stringify([...entries, ...existing].slice(0, 10)));
-  } catch { /* noop */ }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[recent-files] failed to persist recent files metadata', err);
+  }
 }
 
 /** Format bytes into human-readable size */

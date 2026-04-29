@@ -247,6 +247,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'V', description: 'Select tool', category: 'Tools' },
   { key: 'C', description: 'Walk mode', category: 'Tools' },
   { key: 'M', description: 'Measure tool', category: 'Tools' },
+  { key: 'P', description: 'Annotate tool — drop a pin with a note', category: 'Tools' },
   { key: 'X', description: 'Section tool', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },

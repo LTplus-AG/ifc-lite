@@ -52,13 +52,6 @@ async function getInvoke(): Promise<InvokeFn> {
   return core.invoke as InvokeFn;
 }
 
-interface NativeMetadataBootstrapPayload {
-  cacheKey: string;
-  schemaVersion: string;
-  entityCount: number;
-  spatialTree: NativeMetadataSnapshot['spatialTree'];
-}
-
 function toSchemaVersion(schemaVersion: string): NativeMetadataSnapshot['schemaVersion'] {
   if (schemaVersion === 'IFC4X3' || schemaVersion === 'IFC4' || schemaVersion === 'IFC5') {
     return schemaVersion;
@@ -82,18 +75,17 @@ export function nativeMetadataSnapshotFromBootstrap(
 
 export async function bootstrapNativeMetadata(path: string, cacheKey: string): Promise<NativeMetadataSnapshot> {
   const invoke = await getInvoke();
-  const result = await invoke<NativeMetadataBootstrapPayload>('bootstrap_native_metadata', {
+  // The Tauri command returns a bootstrap-shaped payload (typeName /
+  // kind unfolded). Route through the shared `nativeMetadataSnapshotFromBootstrap`
+  // helper so both constructors apply the same `spatialNodeFromBootstrap`
+  // normalization — without this the `from cached snapshot` and
+  // `bootstrap fresh` paths produce subtly different shapes and the
+  // property panel reads break for the freshly-bootstrapped case.
+  const result = await invoke<MetadataBootstrapPayload>('bootstrap_native_metadata', {
     path,
     cacheKey,
   });
-  return {
-    mode: 'desktop-lazy',
-    cacheKey: result.cacheKey,
-    filePath: path,
-    schemaVersion: toSchemaVersion(result.schemaVersion),
-    entityCount: result.entityCount,
-    spatialTree: result.spatialTree ?? null,
-  };
+  return nativeMetadataSnapshotFromBootstrap(path, result);
 }
 
 export async function restoreNativeMetadataSnapshot(cacheKey: string): Promise<NativeMetadataSnapshot | null> {

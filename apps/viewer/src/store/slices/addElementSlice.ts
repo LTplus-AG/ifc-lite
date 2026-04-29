@@ -103,6 +103,34 @@ export interface AddElementMemberParams {
   Height: number;
 }
 
+/**
+ * Auto-space generation settings — ties into `generateSpacesFromWalls`.
+ * Lives here so the panel form survives type-switches.
+ */
+export interface AddElementAutoSpaceParams {
+  /** Wall-end snap tolerance in metres (collapses tiny gaps). */
+  SnapTolerance: number;
+  /** Drop detected regions below this area (m²). */
+  MinArea: number;
+  /** IfcSpace extrusion height (m). */
+  Height: number;
+  /** Naming pattern; `{n}` = 1-based index. */
+  NamePattern: string;
+  /** IfcSpaceTypeEnum value (without dots). */
+  PredefinedType: string;
+}
+
+/** Live preview from the most recent dry-run detection (cleared on commit). */
+export interface AddElementAutoSpacePreview {
+  storeyExpressId: number;
+  /** CCW outlines in IFC storey-local 2D (X/Y, m). */
+  outlines: Array<Array<[number, number]>>;
+  /** Per-region metadata for the panel summary. */
+  regions: Array<{ area: number }>;
+  wallsConsidered: number;
+  wallsContributing: number;
+}
+
 export interface AddElementSlice {
   addElementType: AddElementType;
   /** Target storey expressId; `null` ⇒ auto-pick first storey on click. */
@@ -119,6 +147,8 @@ export interface AddElementSlice {
   addElementRoofParams: AddElementRoofParams;
   addElementPlateParams: AddElementPlateParams;
   addElementMemberParams: AddElementMemberParams;
+  addElementAutoSpaceParams: AddElementAutoSpaceParams;
+  addElementAutoSpacePreview: AddElementAutoSpacePreview | null;
 
   /** Rectangle (2 clicks) or polygon (N clicks + Enter to close). */
   addElementSlabMode: AddElementSlabMode;
@@ -140,6 +170,8 @@ export interface AddElementSlice {
   setAddElementRoofParams: (p: Partial<AddElementRoofParams>) => void;
   setAddElementPlateParams: (p: Partial<AddElementPlateParams>) => void;
   setAddElementMemberParams: (p: Partial<AddElementMemberParams>) => void;
+  setAddElementAutoSpaceParams: (p: Partial<AddElementAutoSpaceParams>) => void;
+  setAddElementAutoSpacePreview: (preview: AddElementAutoSpacePreview | null) => void;
   setAddElementSlabMode: (m: AddElementSlabMode) => void;
   appendAddElementPendingPoint: (p: AddElementVec3) => void;
   setAddElementHoverPoint: (p: AddElementVec3 | null) => void;
@@ -158,6 +190,13 @@ const ADD_ELEMENT_DEFAULTS = {
   roof: { Width: 8, Depth: 8, Thickness: 0.3 } as AddElementRoofParams,
   plate: { Width: 1, Depth: 1, Thickness: 0.02 } as AddElementPlateParams,
   member: { Width: 0.1, Height: 0.1 } as AddElementMemberParams,
+  autoSpace: {
+    SnapTolerance: 0.05,
+    MinArea: 0.5,
+    Height: 3,
+    NamePattern: 'Space {n}',
+    PredefinedType: 'INTERNAL',
+  } as AddElementAutoSpaceParams,
 };
 
 export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddElementSlice> = (set) => ({
@@ -174,6 +213,8 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
   addElementRoofParams: { ...ADD_ELEMENT_DEFAULTS.roof },
   addElementPlateParams: { ...ADD_ELEMENT_DEFAULTS.plate },
   addElementMemberParams: { ...ADD_ELEMENT_DEFAULTS.member },
+  addElementAutoSpaceParams: { ...ADD_ELEMENT_DEFAULTS.autoSpace },
+  addElementAutoSpacePreview: null,
   addElementSlabMode: 'rectangle',
   addElementPendingPoints: [],
   addElementHoverPoint: null,
@@ -205,6 +246,10 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
     set((s) => ({ addElementPlateParams: { ...s.addElementPlateParams, ...p } })),
   setAddElementMemberParams: (p) =>
     set((s) => ({ addElementMemberParams: { ...s.addElementMemberParams, ...p } })),
+  setAddElementAutoSpaceParams: (p) =>
+    set((s) => ({ addElementAutoSpaceParams: { ...s.addElementAutoSpaceParams, ...p } })),
+  setAddElementAutoSpacePreview: (preview) =>
+    set({ addElementAutoSpacePreview: preview }),
   setAddElementSlabMode: (addElementSlabMode) =>
     set({ addElementSlabMode, addElementPendingPoints: [], addElementHoverPoint: null }),
   appendAddElementPendingPoint: (p) =>

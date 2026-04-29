@@ -23,6 +23,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useIfc } from '@/hooks/useIfc';
 import type { AddElementVec3 } from '@/store/slices/addElementSlice';
 
 type Pt = { x: number; y: number };
@@ -38,7 +39,11 @@ export function AddElementOverlay() {
   const slabMode = useViewerStore((s) => s.addElementSlabMode);
   const pendingPoints = useViewerStore((s) => s.addElementPendingPoints);
   const hoverPoint = useViewerStore((s) => s.addElementHoverPoint);
+  const autoSpacePreview = useViewerStore((s) => s.addElementAutoSpacePreview);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
+  const { models, ifcDataStore } = useIfc();
+  const addElementModelId = useViewerStore((s) => s.addElementModelId);
+  const activeModelId = useViewerStore((s) => s.activeModelId);
 
   // Camera realtime updates intentionally bypass React renders for
   // performance (see `updateCameraRotationRealtime`), so we drive our
@@ -79,12 +84,27 @@ export function AddElementOverlay() {
   if (activeTool !== 'addElement') return null;
   if (!projection) return null;
 
+  // Resolve storey elevation for the auto-space preview projection.
+  // IFC Z (storey elevation) maps directly to renderer Y (Y-up).
+  let storeyElevation = 0;
+  if (autoSpacePreview) {
+    const effectiveModelId = addElementModelId ?? activeModelId ?? null;
+    const ds = effectiveModelId
+      ? models.get(effectiveModelId)?.ifcDataStore ?? ifcDataStore
+      : ifcDataStore;
+    const elev = ds?.spatialHierarchy?.storeyElevations?.get(autoSpacePreview.storeyExpressId);
+    if (typeof elev === 'number' && Number.isFinite(elev)) storeyElevation = elev;
+  }
+  const ifcToRenderer = (xy: [number, number]) =>
+    projection({ x: xy[0], y: storeyElevation, z: -xy[1] });
+
   const screenPending = pendingPoints
     .map(projection)
     .filter((p): p is Pt => p !== null);
   const hover = hoverPoint ? projection(hoverPoint) : null;
+  const hasPreview = !!autoSpacePreview && autoSpacePreview.outlines.length > 0;
 
-  if (screenPending.length === 0 && !hover) return null;
+  if (screenPending.length === 0 && !hover && !hasPreview) return null;
 
   return (
     <svg
@@ -131,6 +151,36 @@ export function AddElementOverlay() {
       {screenPending.map((p, i) => (
         <circle key={i} cx={p.x} cy={p.y} r={4.5} fill="white" stroke={PRIMARY} strokeWidth={2} />
       ))}
+
+      {/* Auto-space preview: candidate outlines from the wall-graph
+          face finder. Distinct from the click-to-place preview to
+          avoid confusion when both are active. */}
+      {hasPreview && autoSpacePreview!.outlines.map((outline, idx) => {
+        const pts: Pt[] = [];
+        for (const xy of outline) {
+          const sp = ifcToRenderer(xy);
+          if (sp) pts.push(sp);
+        }
+        if (pts.length < 3) return null;
+        const polygon = pts.map((p) => `${p.x},${p.y}`).join(' ');
+        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+        const region = autoSpacePreview!.regions[idx];
+        return (
+          <g key={`auto-${idx}`}>
+            <polygon
+              points={polygon}
+              fill={PRIMARY_LIGHT}
+              stroke={PRIMARY}
+              strokeWidth={1.5}
+              strokeDasharray="4,3"
+            />
+            {region && (
+              <Label x={cx} y={cy} text={`${region.area.toFixed(1)} m²`} />
+            )}
+          </g>
+        );
+      })}
     </svg>
   );
 }

@@ -45,6 +45,23 @@ export {
   type Vec3 as DuplicateVec3,
 } from './in-store/duplicate.js';
 export { resolveDuplicateSource } from './in-store/resolve-source.js';
+export {
+  detectEnclosedAreas,
+  type Vec2 as AutoSpaceVec2,
+  type Segment as AutoSpaceSegment,
+  type DetectedSpace,
+  type DetectOptions as AutoSpaceDetectOptions,
+} from './in-store/auto-space-detect.js';
+export {
+  extractWallSegmentsForStorey,
+  type OverlayWallReader,
+  type WallExtractionResult,
+} from './in-store/extract-walls.js';
+export {
+  generateSpacesFromWalls,
+  type GenerateSpacesOptions,
+  type GenerateSpacesResult,
+} from './in-store/generate-spaces.js';
 
 export type {
   // Geometry primitives

@@ -26,10 +26,13 @@ import {
   resolveSpatialAnchor,
   duplicateInStore,
   resolveDuplicateSource,
+  generateSpacesFromWalls,
   type BeamInStoreParams,
   type ColumnInStoreParams,
   type DoorInStoreParams,
   type DuplicateInStoreOptions,
+  type GenerateSpacesOptions,
+  type GenerateSpacesResult,
   type MemberInStoreParams,
   type PlateInStoreParams,
   type RoofInStoreParams,
@@ -336,6 +339,17 @@ export interface MutationSlice {
     storeyExpressId: number,
     params: MemberInStoreParams
   ) => { expressId: number } | { error: string };
+  /**
+   * Auto-generate IfcSpace volumes for every enclosed area formed by
+   * the storey's walls (existing + overlay). When `dryRun: true` the
+   * detection runs but no IfcSpace is emitted — useful for live UI
+   * previews.
+   */
+  generateSpacesFromWalls: (
+    modelId: string,
+    storeyExpressId: number,
+    options?: GenerateSpacesOptions,
+  ) => GenerateSpacesResult | { error: string };
   /**
    * Duplicate an existing IfcRoot product in a chosen direction.
    * Offset magnitude is one source-bbox dimension along the picked
@@ -1023,6 +1037,73 @@ export const createMutationSlice: StateCreator<
     get, set, modelId, storeyExpressId, 'IFCMEMBER', 'add member',
     (editor, anchor) => addMemberToStore(editor, anchor, params).memberId,
   ),
+
+  generateSpacesFromWalls: (modelId, storeyExpressId, options) => {
+    const state = get();
+    const model = state.models.get(modelId);
+    const dataStore = model?.ifcDataStore;
+    if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
+    const view = state.mutationViews.get(modelId);
+    if (!view) return { error: 'Model has no editable mutation view yet' };
+
+    // For dryRun the editor isn't strictly needed — we still create
+    // one (cheap) so the helper signature can stay uniform.
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { error: 'Failed to create store editor' };
+
+    let result: GenerateSpacesResult;
+    try {
+      result = generateSpacesFromWalls(
+        editor,
+        dataStore,
+        storeyExpressId,
+        options,
+        // The view exposes getNewEntities — pass it in so overlay-only
+        // walls (placed via the Add Element tool) participate in the
+        // detection without needing a flush to STEP first.
+        {
+          getNewEntities: () => view.getNewEntities(),
+        },
+      );
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to generate spaces' };
+    }
+
+    // dryRun → nothing emitted; skip undo / dirty bookkeeping.
+    if (!result.emitted.length) return result;
+
+    set((s) => {
+      const newUndoStacks = new Map(s.undoStacks);
+      const stack = [...(newUndoStacks.get(modelId) ?? [])];
+      const ts = Date.now();
+      for (const e of result.emitted) {
+        stack.push({
+          id: `mut_ifcspace_${e.result.spaceId}_${ts}_${Math.random().toString(36).substring(2, 9)}`,
+          type: 'CREATE_ENTITY',
+          timestamp: ts,
+          modelId,
+          entityId: e.result.spaceId,
+          attributeName: 'IFCSPACE',
+        });
+      }
+      newUndoStacks.set(modelId, stack);
+
+      const newRedoStacks = new Map(s.redoStacks);
+      newRedoStacks.set(modelId, []);
+
+      const newDirty = new Set(s.dirtyModels);
+      newDirty.add(modelId);
+
+      return {
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: s.mutationVersion + 1,
+      };
+    });
+
+    return result;
+  },
 
   duplicateEntity: (modelId, sourceExpressId, direction = DUPLICATE_DEFAULT_DIRECTION, options) => {
     const state = get();

@@ -13,8 +13,9 @@
  * elements in a row; Esc returns to the select tool.
  */
 
-import { useEffect, useMemo } from 'react';
-import { Box, Cog, DoorOpen, Home, Layers, Minus, Square, SquareDashedBottom, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Box, Cog, DoorOpen, Home, Layers, Minus, Square, SquareDashedBottom, Wand2, X } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -348,6 +349,15 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
           )}
         </section>
 
+        {/* Auto Spaces — wall-graph face finder, runs only when the
+            current type is 'space' so the panel stays focused. */}
+        {addElementType === 'space' && (
+          <AutoSpacesSection
+            modelId={effectiveModelId}
+            storeyId={addElementStoreyId ?? storeyOptions[0]?.expressId ?? null}
+          />
+        )}
+
         {/* Click-state guidance — drives the user through the multi-click flow */}
         <DropGuidance
           ready={ready}
@@ -491,6 +501,183 @@ interface NumberFieldProps {
   value: number;
   min: number;
   onChange: (v: number) => void;
+}
+
+interface AutoSpacesSectionProps {
+  modelId: string | null;
+  storeyId: number | null;
+}
+
+/**
+ * Compact "Auto Spaces" pane: wires the per-storey wall-graph face
+ * finder to the viewer slice. Preview button runs detection without
+ * emitting; Generate commits each candidate as an IfcSpace.
+ */
+function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
+  const params = useViewerStore((s) => s.addElementAutoSpaceParams);
+  const setParams = useViewerStore((s) => s.setAddElementAutoSpaceParams);
+  const preview = useViewerStore((s) => s.addElementAutoSpacePreview);
+  const setPreview = useViewerStore((s) => s.setAddElementAutoSpacePreview);
+  const generate = useViewerStore((s) => s.generateSpacesFromWalls);
+  const [busy, setBusy] = useState(false);
+
+  const ready = modelId !== null && storeyId !== null;
+
+  const runPreview = () => {
+    if (!ready || busy) return;
+    setBusy(true);
+    try {
+      const result = generate(modelId!, storeyId!, {
+        snapTolerance: params.SnapTolerance,
+        minArea: params.MinArea,
+        height: params.Height,
+        namePattern: params.NamePattern,
+        predefinedType: params.PredefinedType,
+        dryRun: true,
+      });
+      if ('error' in result) {
+        toast.error(result.error);
+        setPreview(null);
+        return;
+      }
+      setPreview({
+        storeyExpressId: storeyId!,
+        outlines: result.detected.map((d) => d.outline.map((p) => [p[0], p[1]])),
+        regions: result.detected.map((d) => ({ area: d.area })),
+        wallsConsidered: result.wallsConsidered,
+        wallsContributing: result.wallsContributing,
+      });
+      if (result.detected.length === 0) {
+        toast.info('No enclosed regions detected. Check wall geometry or snap tolerance.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runCommit = () => {
+    if (!ready || busy) return;
+    setBusy(true);
+    try {
+      const result = generate(modelId!, storeyId!, {
+        snapTolerance: params.SnapTolerance,
+        minArea: params.MinArea,
+        height: params.Height,
+        namePattern: params.NamePattern,
+        predefinedType: params.PredefinedType,
+      });
+      if ('error' in result) {
+        toast.error(result.error);
+        return;
+      }
+      setPreview(null);
+      const count = result.emitted.length;
+      if (count === 0) {
+        toast.info('No enclosed regions to generate.');
+      } else {
+        toast.success(`Generated ${count} IfcSpace${count === 1 ? '' : 's'}.`);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="space-y-2 pt-1">
+      <div className="flex items-center gap-1.5">
+        <Wand2 className="h-3 w-3 text-emerald-600" />
+        <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          Auto Spaces (from walls)
+        </Label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label="Snap" suffix="m"
+          value={params.SnapTolerance} min={0.001}
+          onChange={(v) => setParams({ SnapTolerance: v })}
+        />
+        <NumberField
+          label="Min area" suffix="m²"
+          value={params.MinArea} min={0}
+          onChange={(v) => setParams({ MinArea: v })}
+        />
+        <NumberField
+          label="Height" suffix="m"
+          value={params.Height} min={0.01}
+          onChange={(v) => setParams({ Height: v })}
+        />
+        <div className="space-y-1">
+          <Label className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400" htmlFor="auto-space-type">
+            Type
+          </Label>
+          <Select
+            value={params.PredefinedType}
+            onValueChange={(v) => setParams({ PredefinedType: v })}
+          >
+            <SelectTrigger id="auto-space-type" className="h-8 font-mono text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="INTERNAL" className="font-mono text-xs">INTERNAL</SelectItem>
+              <SelectItem value="EXTERNAL" className="font-mono text-xs">EXTERNAL</SelectItem>
+              <SelectItem value="SPACE" className="font-mono text-xs">SPACE</SelectItem>
+              <SelectItem value="PARKING" className="font-mono text-xs">PARKING</SelectItem>
+              <SelectItem value="GFA" className="font-mono text-xs">GFA</SelectItem>
+              <SelectItem value="USERDEFINED" className="font-mono text-xs">USERDEFINED</SelectItem>
+              <SelectItem value="NOTDEFINED" className="font-mono text-xs">NOTDEFINED</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="auto-space-name" className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+          Name pattern <span className="text-zinc-400 dark:text-zinc-600 ml-1">({'{n}'} = index)</span>
+        </Label>
+        <Input
+          id="auto-space-name"
+          type="text"
+          value={params.NamePattern}
+          onChange={(e) => setParams({ NamePattern: e.target.value })}
+          className="h-8 font-mono text-xs"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 pt-1">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={runPreview}
+          disabled={!ready || busy}
+          className="h-8 text-[11px] font-mono"
+        >
+          Preview
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          onClick={runCommit}
+          disabled={!ready || busy}
+          className="h-8 text-[11px] font-mono bg-emerald-600 hover:bg-emerald-700"
+        >
+          Generate
+        </Button>
+      </div>
+
+      {preview && (
+        <div className="rounded-sm border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 px-2 py-1.5 text-[10px] font-mono text-emerald-800 dark:text-emerald-300 leading-snug">
+          {preview.regions.length} region{preview.regions.length === 1 ? '' : 's'} detected
+          {' · '}{preview.wallsContributing}/{preview.wallsConsidered} walls
+          {preview.regions.length > 0 && (
+            <span className="block opacity-80">
+              Total area: {preview.regions.reduce((sum, r) => sum + r.area, 0).toFixed(1)} m²
+            </span>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function NumberField({ label, suffix, value, min, onChange }: NumberFieldProps) {

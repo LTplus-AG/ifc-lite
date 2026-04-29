@@ -275,4 +275,37 @@ describe('ModelSlice', () => {
       assert.strictEqual(visible.length, 0);
     });
   });
+
+  describe('resolveGlobalIdFromModels — overlay-allocated ids', () => {
+    it('falls through to mutation views when the id is past maxExpressId', () => {
+      const model = createMockModel('model-1', 'First');
+      model.idOffset = 0;
+      model.maxExpressId = 10_000;
+      state.addModel(model);
+
+      // Seed a fake mutation view with a fresh overlay entity. Cast
+      // through `unknown` since the test mock only exposes the
+      // `getNewEntity` shape the resolver consults.
+      state = {
+        ...state,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mutationViews: new Map([
+          ['model-1', { getNewEntity: (id: number) => (id === 11_001 ? { expressId: id } : null) }],
+        ]) as any,
+      };
+
+      // Inside the parsed range — first pass resolves it.
+      const within = state.resolveGlobalIdFromModels(42);
+      assert.deepStrictEqual(within, { modelId: 'model-1', expressId: 42 });
+
+      // Above the parsed range but in the overlay — second pass resolves it.
+      const overlay = state.resolveGlobalIdFromModels(11_001);
+      assert.deepStrictEqual(overlay, { modelId: 'model-1', expressId: 11_001 });
+
+      // Above the parsed range and NOT in the overlay — returns null
+      // so callers can fall back to the legacy single-model path.
+      const phantom = state.resolveGlobalIdFromModels(99_999);
+      assert.strictEqual(phantom, null);
+    });
+  });
 });

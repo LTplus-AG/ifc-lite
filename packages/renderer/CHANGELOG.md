@@ -1,5 +1,108 @@
 # @ifc-lite/renderer
 
+## 1.17.0
+
+### Minor Changes
+
+- [#597](https://github.com/louistrue/ifc-lite/pull/597) [`370e084`](https://github.com/louistrue/ifc-lite/commit/370e084e94e8fce930bddf948344c4b639d196f3) Thanks [@joepaddock-uk](https://github.com/joepaddock-uk)! - Add `transparencyOverrides?: Map<expressId, alpha>` to `RenderOptions` for
+  per-frame alpha control (X-Ray mode).
+
+  Non-selected meshes/batches whose `expressId` appears in the map render at the
+  override alpha through the existing transparent pipeline. Selected meshes are
+  exempt so highlight rendering stays opaque. Mixed batches (some entries
+  overridden, some not) take the minimum override alpha — the selection
+  highlight pass then re-renders selected meshes opaque on top, so the user sees
+  selection in full while the rest fades.
+
+  Use case: viewers that want a true see-through "X-Ray" effect (selection visible
+  through ghosted geometry) instead of fully hiding non-selected elements via
+  `isolatedIds`.
+
+  Per-batch alpha resolution walks `batch.expressIds` per frame. For typical batch
+  sizes the cost is well below noise vs. the GPU work, and callers supply a fresh
+  Map when contents change (same convention as `hiddenIds`/`isolatedIds`). Routing
+  is purely per-frame — no mutation of `batch.color`, so IFC-declared alpha baked
+  into cached batches stays untouched.
+
+  Also fixes a correctness bug in partial sub-batch pipeline selection: when
+  X-Ray + hide/isolate combine, the pipeline now uses the resolved override alpha
+  (via `alphaForBatch`) instead of the parent batch's original `color[3]`, ensuring
+  transparent overrides route through the transparent pipeline with proper blending.
+
+### Patch Changes
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Add the `bim.store.*` namespace — high-level editing of an already-parsed
+  `IfcDataStore` via the existing mutation overlay. Closes the merge-roundtrip
+  gap from #592 (you can edit `IfcRectangleProfileDef.XDim` or drop a fresh
+  `IfcColumn` into a model without round-tripping through a script + re-parse).
+
+  **`@ifc-lite/mutations`** — new `StoreEditor` facade plus four
+  `MutablePropertyView` extensions: positional-attribute mutations, overlay
+  entity creation/deletion (with watermark seeding), and three helpers used by
+  the viewer's undo/redo (`removePositionalMutation`, `restoreFromTombstone`,
+  `restoreNewEntity`).
+
+  **`@ifc-lite/create`** — new `in-store/` module: `addColumnToStore` builds a
+  12-entity IfcColumn sub-graph (placement, profile, extruded solid,
+  representation, product shape, rel-contained-in-spatial-structure) anchored
+  to a target `IfcBuildingStorey`. `resolveSpatialAnchor` walks the parsed
+  store to find the IfcOwnerHistory, the 'Body' representation context, and
+  the storey's local placement.
+
+  **`@ifc-lite/sdk`** — new `StoreNamespace` exposed as `bim.store` on
+  `BimContext`. Methods: `addEntity`, `removeEntity`, `setPositionalAttribute`,
+  `addColumn`. Backed by `StoreBackendMethods` on `BimBackend`; the
+  `RemoteBackend` proxy round-trips them through the transport.
+
+  **`@ifc-lite/sandbox`** — `bim.store.*` is bridged into the QuickJS sandbox
+  with full TypeScript types via `bim-globals.d.ts` and an LLM cheat sheet in
+  the system prompt. Gated on a new `store: true` permission (default
+  `false`, mirrors the existing `mutate` permission pattern).
+
+  **`@ifc-lite/cli`** — `HeadlessBackend.store` is now functional (was a
+  no-op before). Scripts run via the CLI can edit a parsed model and export it
+  with mutations applied.
+
+  **`@ifc-lite/viewer`** — three new UI surfaces:
+
+  - Raw STEP tab in `PropertiesPanel` — lists every positional STEP argument
+    with an inline pen-icon editor for scalar values (numbers, refs, enums,
+    null). Mutated rows show a purple dot and tinted background.
+  - `EntityContextMenu` gains "Delete entity" (red, calls `removeEntity`
+    with toast + undo support) and "Add column here…" (emerald, only enabled
+    when the right-clicked entity is an `IfcBuildingStorey`).
+  - `AddColumnDialog` modal — storey picker sorted by elevation, position
+    (storey-local metres), cross-section, height, name, optional collapsible
+    for Description/ObjectType/Tag. Anchor-resolution failures surface
+    inline, not as thrown exceptions.
+
+  Plus four new actions on `mutationSlice` (`setPositionalAttribute`,
+  `removeEntity`, `addColumn`, dialog open/close) backed by per-model
+  `StoreEditor` caches, with undo/redo wired for `UPDATE_POSITIONAL_ATTRIBUTE`,
+  `CREATE_ENTITY`, and `DELETE_ENTITY`.
+
+  **`@ifc-lite/parser`** — `package.json` `exports` re-ordered to put `types`
+  before `import` so downstream consumers using TS5 `nodenext` resolution
+  pick up the type declarations.
+
+  **`@ifc-lite/geometry`** — re-exports `MetadataBootstrapEntitySummary` and
+  `MetadataBootstrapSpatialNode` from the package index (used by viewer
+  desktop services).
+
+  **`@ifc-lite/renderer`** — `GPUBufferDescriptor` ambient declaration gains
+  `mappedAtCreation?: boolean`. Internal change; the renderer was already
+  using it at runtime to skip a Mojo IPC round-trip on Chrome/Dawn.
+
+- [#576](https://github.com/louistrue/ifc-lite/pull/576) [`1309f8c`](https://github.com/louistrue/ifc-lite/commit/1309f8cba128b3b6237ebfb9831bf359c426a742) Thanks [@louistrue](https://github.com/louistrue)! - Support real alpha-blended colour overlays so 4D phase tints composite
+  over the underlying material instead of replacing it. Previously the
+  overlay pipeline only respected the RGB channels; alpha below 1.0 produced
+  muddy opaque colour. With this change the overlay path honours per-entity
+  alpha + skips the glass-fresnel branch, so the 4D animator's preparation
+  ghost and palette-intensity slider render as proper translucent tints.
+- Updated dependencies [[`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c), [`945bb30`](https://github.com/louistrue/ifc-lite/commit/945bb30061ca044f4a51001f7299c17350ce99cf), [`18c6a37`](https://github.com/louistrue/ifc-lite/commit/18c6a37f1cc1426daa32ee60457dd0580a5257f5)]:
+  - @ifc-lite/geometry@1.16.6
+  - @ifc-lite/wasm@1.16.7
+
 ## 1.16.0
 
 ### Minor Changes

@@ -1,5 +1,518 @@
 # @ifc-lite/viewer
 
+## 1.18.0
+
+### Minor Changes
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Add Element tool — instant 3D appearance, off-surface placement, 3D ghost preview.
+
+  Three UX-blocker fixes that turn the Add Element tool into a real
+  authoring surface (previously every drop emitted STEP into the overlay
+  but the user saw nothing in the 3D scene until export+reparse).
+
+  - **Instant 3D appearance.** Every `add*` action now also builds a
+    renderer-frame mesh for the new element and injects it via the
+    same `appendGeometryBatch` action `duplicateEntity` uses. Walls,
+    beams, and members are oriented thickness-extruded boxes;
+    columns, doors, and windows are axis-aligned boxes;
+    slabs / roofs / plates / spaces are polygon extrusions (with fan
+    triangulation good enough for typical room shapes). Storey
+    elevation is read from the spatial hierarchy so multi-storey
+    placements drop on the right floor. The new mesh is tagged with
+    the federation-aware globalId so picking + selection work
+    immediately and the property panel opens on the new entity.
+  - **Off-surface placement.** A new
+    `raycastStoreyFloor()` helper unprojects the cursor to a ray and
+    intersects the storey floor plane (renderer Y =
+    `storeyElevation`). The hover preview and click handler both
+    fall back to it when the scene raycast misses, so columns can
+    drop onto empty floor outside the existing geometry. Snap-to-
+    surface still wins whenever there is a mesh under the cursor.
+  - **3D ghost preview.** The SVG overlay now projects the about-to-
+    commit element's 8 corners (or polygon ring) to screen and
+    renders the silhouette via a convex-hull outline. Single-click
+    types (column / door / window) show the ghost on hover before
+    any clicks; two-click types (wall / beam / member) show it once
+    the start point is placed. The ghost reads live per-type form
+    params, so adjusting Width / Height / Thickness updates it in
+    real time.
+
+  Also includes a panel polish: when the active type is `space` an
+  **Auto Spaces** section appears with snap tolerance, min area,
+  height, naming pattern, and IfcSpaceTypeEnum settings + Preview /
+  Generate buttons that drive the wall-graph face finder.
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Annotate-in-3D — drop pins on the scene with notes.
+
+  Press `P` (or pick the new `MapPin` button on the main toolbar),
+  click anywhere in the 3D scene, type a note. A pin lands at the
+  world point you clicked on, persists to localStorage, and re-anchors
+  itself as you orbit / pan. Pins are 14px amber dots with a
+  1-character glyph (numbered ≤ 9, dot beyond), drop shadow, idle-pulse
+  on first paint (respects `prefers-reduced-motion`), emerald selection
+  ring matching the existing constructive accent.
+
+  Flow:
+
+  - `P` toggles the Annotate tool. Toolbar gains a `MapPin` button
+    with an amber active-tone, distinct from the primary blue used
+    for Select / Walk / Measure / Section.
+  - Cursor switches to crosshair while annotating.
+  - Click → raycast into the scene → on hit, an inline note input
+    drops at the click site with a guiding "What's worth noting?"
+    label and the entity context inline (e.g. `· IfcSlab #2036`).
+    Misses are silent — annotations are anchored to surface points
+    by design, not floating in space.
+  - `Enter` saves, `⇧Enter` newline, `Esc` cancels. Outside-click
+    saves a non-empty draft and silently cancels an empty one.
+  - Click an existing pin → popover with note + relative time +
+    pen / trash icons. Edit mode mirrors the drop-input treatment.
+  - Tool stays active across drops so you can drop several pins
+    in sequence.
+
+  Architecture:
+
+  - New `annotationsSlice` — Map-keyed store (`begin/commit/cancel
+Draft`, `update`, `remove`, `select`, `clearAll`). Notes are
+    clamped at 2000 chars, soft-warned at 200. Persists to
+    `ifc-lite:annotations:v1` in localStorage and survives a fresh
+    slice instantiation. Covered by 9 unit tests.
+  - New DOM-billboard overlay (`AnnotationLayer`) sitting on top of
+    the WebGPU canvas. A single rAF loop re-projects every pin's
+    world position to screen via `cameraCallbacks.projectToScreen`,
+    skipping `setState` when nothing changed (so the loop is cheap
+    when the camera is still). Pointer-events: none on the wrapper
+    so empty space passes through to canvas controls; pins +
+    popover opt back into pointer events explicitly.
+  - `AnnotationPin`, `AnnotationPopover`, `AnnotationDropInput` —
+    composable components, all amber-accented, edge-clamped,
+    backdrop-blurred where it matters.
+
+  Pins are NOT IFC entities — they live alongside the model as an
+  authoring overlay. Future PRs will wire BCF round-trip and
+  IfcAnnotation export, plus an annotations-list panel and category
+  tags.
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Auto Spaces — diagnostics, broader wall coverage, and a sweep of
+  review feedback.
+
+  **Auto Spaces detection.** The "no enclosed regions detected"
+  failure mode now surfaces actionable counts — both in devtools
+  and in the panel itself.
+
+  - `extract-walls.ts` now tries the standard `Axis` representation
+    (`IfcShapeRepresentation` with `RepresentationIdentifier='Axis'`,
+    `IfcPolyline` items) **before** falling back to the
+    `addWallToStore` rectangle-profile convention. That covers
+    walls authored by Revit / ArchiCAD / IfcOpenShell — the previous
+    extractor only handled walls placed via the Add Element tool.
+    The placement chain is read once and the polyline endpoints are
+    transformed through it, so rotated walls work.
+  - Every wall that gets dropped is recorded with a typed reason
+    (`no-axis-or-rect-profile`, `placement-not-resolvable`,
+    `zero-length-axis`, …) — the panel summarises them as
+    `"3× no-axis-or-rect-profile, 1× zero-length-axis"`.
+  - `detectEnclosedAreas` exposes a
+    `detectEnclosedAreasWithStats(...)` companion that returns
+    per-stage counts (vertices, edges-after-split, faces total,
+    outer / below-min-area drops, largest area). The intersection
+    splitter's iteration cap now scales with input size
+    (`max(100, segments * 10)`) so dense floor plans don't bail
+    out early.
+  - `generateSpacesFromWalls` always logs a `console.info`
+    one-liner and threads a new `debug?: boolean` flag down to the
+    extractor + detector for verbose tracing. The viewer's Auto
+    Spaces panel exposes a "Verbose console logging" checkbox.
+  - The Auto Spaces diagnostic block now shows the graph stats
+    (`123v / 456e / 78f`), the drop counts, and per-reason wall
+    skips. Two amber hints fire automatically when walls were
+    extracted but no faces formed (likely snap tolerance), or
+    when nothing extracted (likely an unsupported geometry shape).
+
+  **Review-feedback sweep (PR #598).**
+
+  - `addElementMeshes.linearBox()` and the SVG `linearBoxCorners`
+    helper honour each endpoint's Y so a sloped beam previews as
+    a sloped prism instead of being flattened to the start.
+  - `bridge-store.requireStoreyId` rejects `0` (EXPRESS ids are
+    1-based, `#0` is never valid).
+  - `addWindow` / `addDoor` `tsParamTypes` include
+    `UserDefinedPartitioningType` / `UserDefinedOperationType`
+    so typed sandbox callers can hit the IFC4 round-trip without
+    casts.
+  - `AnnotationLayer.resolveEntityType` no longer falls back to
+    `ifcDataStore` when the annotation's `modelId` is missing
+    from a federated `models` map (would resolve the wrong
+    entity in multi-model sessions). Single-model sessions keep
+    the fallback.
+  - `addDoorToStore` / `addWindowToStore` validate
+    `OperationType` / `PartitioningType` against the IFC4 enum
+    and re-route unknown values through
+    `.USERDEFINED.` + `User-defined…Type` so custom labels
+    round-trip cleanly.
+  - `addWallToStore` defaults `PredefinedType` to `.NOTDEFINED.`
+    (was `.STANDARD.`) to match the rest of the in-store
+    builders.
+  - `duplicateInStore` / `resolveDuplicateSource` allow
+    `OwnerHistory` to be `null` (IFC4 made it optional). The
+    duplicate emits a bare `$` token instead of `#null` for the
+    omitted case.
+  - `StoreEditor.addEntity` accepts an injected schema-aware
+    normalizer (`setEntityTypeNormalizer`); `@ifc-lite/sdk`
+    registers `normalizeIfcTypeName` + `isKnownType` at load
+    time so direct callers — CLI scripts, sandbox bridge,
+    unit tests — see registry-grade rejection of typos like
+    `IfcWal`, plus canonical PascalCase on `EntityRef.type`.
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Auto Spaces — generate IfcSpace volumes from a storey's walls.
+
+  Pick the **Space** type in the Add Element panel and the new **Auto
+  Spaces** section appears underneath the dimensions. Hit **Preview** to
+  see every enclosed region the wall graph forms (live SVG overlay,
+  labelled with area), then **Generate** to commit one IfcSpace per
+  region. Settings: snap tolerance (collapse sloppy wall ends), min area
+  (drop closets and slivers), height (extrusion), name pattern, and
+  IfcSpaceTypeEnum.
+
+  **`@ifc-lite/create`** — three new modules, all parser-pure:
+
+  - `auto-space-detect.ts` — planar-graph face finder. Snap →
+    resolve crossings → DCEL half-edge graph → leftmost-turn cycle
+    walk → drop unbounded faces → filter by min area. Handles
+    multi-component layouts (two non-touching rooms find both),
+    T-junctions, and snap-induced corner merges. 8 fixture tests.
+  - `extract-walls.ts` — pulls every wall axis on a target storey
+    from a parsed `IfcDataStore`. Walks
+    IfcRelContainedInSpatialStructure → IfcWall → placement chain →
+    IfcRectangleProfileDef.XDim. Optional overlay reader includes
+    walls created via the Add Element tool without a re-parse.
+  - `generate-spaces.ts` — orchestration: extract → detect → emit
+    via `addSpaceToStore` polygon mode. `dryRun` runs detection only.
+
+  **`@ifc-lite/viewer`** — `mutationSlice.generateSpacesFromWalls`
+  returns the detection result. `AddElementPanel` gains the Auto Spaces
+  section; `AddElementOverlay` projects detected outlines back to screen
+  using the storey's elevation so the preview tracks the camera in
+  real time.
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Add the `bim.store.*` namespace — high-level editing of an already-parsed
+  `IfcDataStore` via the existing mutation overlay. Closes the merge-roundtrip
+  gap from #592 (you can edit `IfcRectangleProfileDef.XDim` or drop a fresh
+  `IfcColumn` into a model without round-tripping through a script + re-parse).
+
+  **`@ifc-lite/mutations`** — new `StoreEditor` facade plus four
+  `MutablePropertyView` extensions: positional-attribute mutations, overlay
+  entity creation/deletion (with watermark seeding), and three helpers used by
+  the viewer's undo/redo (`removePositionalMutation`, `restoreFromTombstone`,
+  `restoreNewEntity`).
+
+  **`@ifc-lite/create`** — new `in-store/` module: `addColumnToStore` builds a
+  12-entity IfcColumn sub-graph (placement, profile, extruded solid,
+  representation, product shape, rel-contained-in-spatial-structure) anchored
+  to a target `IfcBuildingStorey`. `resolveSpatialAnchor` walks the parsed
+  store to find the IfcOwnerHistory, the 'Body' representation context, and
+  the storey's local placement.
+
+  **`@ifc-lite/sdk`** — new `StoreNamespace` exposed as `bim.store` on
+  `BimContext`. Methods: `addEntity`, `removeEntity`, `setPositionalAttribute`,
+  `addColumn`. Backed by `StoreBackendMethods` on `BimBackend`; the
+  `RemoteBackend` proxy round-trips them through the transport.
+
+  **`@ifc-lite/sandbox`** — `bim.store.*` is bridged into the QuickJS sandbox
+  with full TypeScript types via `bim-globals.d.ts` and an LLM cheat sheet in
+  the system prompt. Gated on a new `store: true` permission (default
+  `false`, mirrors the existing `mutate` permission pattern).
+
+  **`@ifc-lite/cli`** — `HeadlessBackend.store` is now functional (was a
+  no-op before). Scripts run via the CLI can edit a parsed model and export it
+  with mutations applied.
+
+  **`@ifc-lite/viewer`** — three new UI surfaces:
+
+  - Raw STEP tab in `PropertiesPanel` — lists every positional STEP argument
+    with an inline pen-icon editor for scalar values (numbers, refs, enums,
+    null). Mutated rows show a purple dot and tinted background.
+  - `EntityContextMenu` gains "Delete entity" (red, calls `removeEntity`
+    with toast + undo support) and "Add column here…" (emerald, only enabled
+    when the right-clicked entity is an `IfcBuildingStorey`).
+  - `AddColumnDialog` modal — storey picker sorted by elevation, position
+    (storey-local metres), cross-section, height, name, optional collapsible
+    for Description/ObjectType/Tag. Anchor-resolution failures surface
+    inline, not as thrown exceptions.
+
+  Plus four new actions on `mutationSlice` (`setPositionalAttribute`,
+  `removeEntity`, `addColumn`, dialog open/close) backed by per-model
+  `StoreEditor` caches, with undo/redo wired for `UPDATE_POSITIONAL_ATTRIBUTE`,
+  `CREATE_ENTITY`, and `DELETE_ENTITY`.
+
+  **`@ifc-lite/parser`** — `package.json` `exports` re-ordered to put `types`
+  before `import` so downstream consumers using TS5 `nodenext` resolution
+  pick up the type declarations.
+
+  **`@ifc-lite/geometry`** — re-exports `MetadataBootstrapEntitySummary` and
+  `MetadataBootstrapSpatialNode` from the package index (used by viewer
+  desktop services).
+
+  **`@ifc-lite/renderer`** — `GPUBufferDescriptor` ambient declaration gains
+  `mappedAtCreation?: boolean`. Internal change; the renderer was already
+  using it at runtime to skip a Mojo IPC round-trip on Chrome/Dawn.
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Duplicate-from-selection — pick any IfcRoot product, hit `⌘D` (or
+  right-click → Duplicate), get a fully-functional clone. The
+  duplicate is a first-class entity in the property panel, exports
+  cleanly to STEP with all its property associations preserved, and
+  ships in 6 directional variants sized to the source's bounding box.
+
+  **`@ifc-lite/create`**
+
+  - New `duplicateInStore(editor, source, options)` pure builder.
+    Emits a fresh placement chain (`IfcCartesianPoint` →
+    `IfcAxis2Placement3D` → `IfcLocalPlacement`) plus the duplicate
+    `IfcRoot` with a new GUID and the source's `Representation`
+    reference reused (geometry shared). Optional fresh
+    `IfcRelContainedInSpatialStructure` anchors to the source's
+    storey. Offset is configurable via `options.offset` — the slice
+    sizes it to the source's bbox.
+  - New `resolveDuplicateSource(store, expressId)` walks the parsed
+    `IfcDataStore` for placement / parent / location / storey /
+    associations.
+  - New `SourceAssociation` shape captures one
+    `IfcRelDefines*` / `IfcRelAssociates*` edge that references
+    the source. The builder replays each one against the duplicate
+    so the exported STEP carries identical psets / qsets /
+    materials / classifications / documents / type binding —
+    without modifying any existing rel.
+  - Resolver scans the five association rel types
+    (`IFCRELDEFINESBYPROPERTIES`, `IFCRELDEFINESBYTYPE`,
+    `IFCRELASSOCIATESMATERIAL`, `…CLASSIFICATION`, `…DOCUMENT`)
+    by direct numeric membership in `RelatedObjects`.
+  - `DuplicateBuildResult.associationRelIds: number[]` exposes the
+    fresh rel ids for caller introspection.
+  - 7 unit tests in `duplicate.test.ts`: full graph emission,
+    custom offset, no-storey path, root-placement parent, attribute
+    count guard, association replay (3 rel types in one go), and
+    the no-associations case.
+
+  **`@ifc-lite/mutations`**
+
+  - New `setEntityAlias(overlayId, sourceId | null)` /
+    `getEntityAlias(id)` / `resolveBaseEntityId(id)` public surface
+    on `MutablePropertyView`. Aliases redirect base property and
+    quantity reads from the duplicate to its source — so the
+    duplicate inherits psets/qsets without eagerly cloning them
+    into the overlay.
+  - Override slots stay scoped to the original (overlay) id, so
+    edits on the duplicate don't bleed into the source. Verified
+    by 4 new unit tests including the source-untouched path,
+    chain-cap (one hop, not transitive), and the self-alias guard.
+
+  **`@ifc-lite/viewer`**
+
+  - New `duplicateEntity(modelId, sourceExpressId, direction?)`
+    slice action. Wraps the create-package builder, sets the
+    mutation-view alias, and clones the source's mesh data into
+    the geometry result with the offset applied — so the duplicate
+    appears in 3D the moment the action fires, not just in the
+    export overlay. Per-vertex `entityIds` arrays are filled with
+    the new globalId so picking and selection resolve correctly.
+  - New `DuplicateDirection` type (`+X` / `-X` / `+Y` / `-Y` /
+    `+Z` / `-Z`). Magnitude per axis = the source's bounding-box
+    dimension on that axis, so a 3m wall steps 3m and a 0.4m
+    column steps 0.4m. Falls back to a 1m step when the source
+    has no mesh in geometry.
+  - Right-click menu's "Duplicate" item is now a `DuplicateRow`:
+    primary clickable label on the left (defaults to +X), 6 axis
+    chips on the right (→ ← ↗ ↙ ↑ ↓). Tooltips spell out
+    "+X (east)" through "−Z (down)".
+  - `⌘D` defaults to +X. `⇧⌘D` = +Z (up), `⌥⌘D` = +Y (north) —
+    modifier shortcuts for power users without forcing a mouse
+    trip to the chip row. Selection moves to the new globalId so
+    a Cmd+D chain ("stamp a row of columns") works without
+    re-clicking.
+  - **`resolveGlobalIdFromModels` two-pass overlay fallback** —
+    the federation resolver previously gated each model's id range
+    at parse-time `maxExpressId`, which excluded every
+    overlay-allocated id from selection. The fix: a second pass
+    consults each model's mutation view via `getNewEntity(localId)`
+    so overlay duplicates resolve to the right model with the
+    right local id. Without this, the property panel saw the
+    duplicate as "UNKNOWN / Unknown / no property sets" because
+    the alias couldn't take effect on a wrongly-resolved id.
+  - PropertiesPanel falls back to the overlay `NewEntity` record
+    for type / name / GUID / Description / ObjectType when the
+    parsed `entityNode` comes up empty. The bSDD attribute list
+    synthesises from the schema-defined positional names. The
+    Materials / Classifications / Documents / structural
+    Relationships sections all route through a new
+    `lookupExpressId` (alias-resolved) so they query the source's
+    parsed maps directly.
+
+  After: a freshly-duplicated wall is genuinely first-class — name
+  reads, properties show, quantities show, material layers show,
+  classifications show, documents show, and a round-tripped STEP
+  file carries every association.
+
+- [#576](https://github.com/louistrue/ifc-lite/pull/576) [`1309f8c`](https://github.com/louistrue/ifc-lite/commit/1309f8cba128b3b6237ebfb9831bf359c426a742) Thanks [@louistrue](https://github.com/louistrue)! - Add the full IfcTask / 4D construction-schedule experience to the viewer.
+
+  **Gantt panel** — a lower-panel workspace combining a task tree, a zoomable
+  SVG timeline with task bars / milestones / dependency arrows / playback
+  cursor, a toolbar (work-schedule filter, play / pause / loop / speed, time
+  scale), and an empty state. Live Gantt ↔ 3D selection highlight (one-way,
+  no isolation) and playback-driven visibility through the rendererʼs
+  hidden-entity channel.
+
+  **Schedule editing** — Inspector Task card (name, identification,
+  predefined type, milestone, start / finish / duration with any-two-of-three
+  reconciliation, assigned products, delete with cascade). Undo / redo
+  (descriptor-based lightweight snapshots for field edits; full snapshot for
+  structural edits), store-scoped transactions (drag-coalesced), add / delete /
+  reorder tasks. IFC STEP export routes through a centralised schedule splice
+  helper so generated / edited schedules round-trip cleanly on every export
+  surface.
+
+  **Generate from hierarchy** — a Generate Schedule dialog produces a work
+  schedule + tasks from the modelʼs spatial hierarchy (Storey / Building) or
+  geometry (Height-slice, with optional Class / Type / Name subgroup). Linked
+  FS dependencies and ghost-preparation look-ahead are opt-in.
+
+  **4D animation** — Synchro-style phased lifecycle (preparation ghost →
+  ramp-in → active task-type colour → settling fade → complete), demolition
+  inversion, customizable palette, and configurable palette intensity /
+  look-ahead / hide-untasked products. Animation layers live in a priority-
+  composited overlay registry (`registerOverlayLayer`), with a single
+  compositor hook owning the write to the rendererʼs hidden-entity + colour-
+  override channels.
+
+  **LLM integration** — built-in "Construction schedule (4D)" script template,
+  PDF / spreadsheet chat attachments, and `bim.schedule.*` read APIs reachable
+  from the sandbox.
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Raw STEP tab — drill into `#N` references and a tighter dev-leaning
+  visual treatment.
+
+  **Reference drill-through**
+
+  - Each `#N` token in the Raw STEP card is now a clickable chip.
+    Click → drills into the target entity and shows its positional
+    arguments inline; the breadcrumb at the top of the card tracks
+    the path back to the 3D-selected entity.
+  - **Auto-skip wrappers** — when the click target itself has only
+    a single positional arg and that arg is also a `#N`, the card
+    follows the chain in one click and lands on the first
+    "meaningful" entity. Capped at 16 hops to defend against
+    cyclic STEP graphs. So a real-world case like
+    `IfcRelDefinesByProperties → IfcPropertySet` steps cleanly,
+    and pure pass-through wrappers don't waste user clicks.
+  - Drill state resets when the 3D selection changes — drilling
+    stays scoped to a single click. Each breadcrumb segment is
+    clickable to jump back to that depth.
+  - Editing a `#N` ref still works via the pen icon — clicking the
+    chip itself navigates instead of entering edit mode, but the
+    hover-revealed pen still flips to inline-edit so a user can
+    re-type the reference target.
+  - Tombstoned entities short-circuit the auto-follow so the drill
+    doesn't render a deleted entity's body.
+
+  **True STEP literals on display**
+
+  - Tokens are read directly from the source bytes via a new
+    `extractRawStepTokens` helper, so refs render as `#42`, enums
+    stay `.AREA.`, and strings keep their on-disk quoted form. The
+    EntityExtractor's parsed JS shape strips reference prefixes
+    (it parses `#42` into the integer `42`), so the previous
+    formatter had no way to recover the distinction — `OwnerHistory`
+    would render as `18` instead of `#18`. Fixed.
+  - Overlay overrides serialize back through `serializeStepToken`
+    for parity with the unmodified base tokens.
+
+  **Overlay-aware row display**
+
+  - Edits to positional attributes now reflect immediately in the
+    row body. Previously the card re-extracted from the source
+    buffer and ignored the overlay map, so the displayed value
+    snapped back to the original after Save (only the purple
+    overlay-override dot updated correctly).
+
+  **Dev-leaning tab styling**
+
+  - Raw STEP tab restyled — replaces the "Raw" plain-text label
+    with a `</>` bracket glyph, shrinks the trigger to icon-only
+    width via `flex: 0 0 auto`. Frees up width so Properties /
+    Quantities / bSDD keep their text visible at the default
+    panel size, and signals "developer view" with a terminal-green
+    accent on hover / active state.
+
+  **Add-Column UI removed**
+
+  - The original `AddColumnDialog` + context-menu "Add column
+    here…" + EditToolbar "Column" button — premature for the
+    current workflow (single hard-coded element type with no
+    geometry preview). Removed cleanly:
+    `AddColumnDialog.tsx` (deleted), the `addColumnDialog` slice
+    state, the constructive `MenuItem` tone (only used by that
+    item), and the context-menu / toolbar entry points.
+  - Kept: the `addColumn` slice action and the
+    `bim.store.addColumn` SDK surface — those still drive scripts
+    and programmatic flows, just no UI affordance for now.
+
+  **Tombstoned mesh actually disappears**
+
+  - Delete entity now pairs the overlay tombstone with
+    `hideEntity(globalId)` so the rendered mesh is hidden from the
+    GPU buffers (and stops being pickable). Undo of `DELETE_ENTITY`
+    pairs `restoreFromTombstone` with `showEntity` so the entity
+    returns to the scene; redo re-hides. Symmetrical round-trip.
+
+- [#588](https://github.com/louistrue/ifc-lite/pull/588) [`b75f0cc`](https://github.com/louistrue/ifc-lite/commit/b75f0cccb06c89f5e30272d6c04f986f3b47e574) Thanks [@louistrue](https://github.com/louistrue)! - Replace the SQL tab in the advanced search modal with a clean
+  chip-based **Filter** tab. Storey / IFC type / Predefined type / Name /
+  Property / Quantity rules compose with AND/OR + IsSet/IsNotSet and
+  run through an in-memory evaluator that scales to 4M-entity models
+  via `entityIndex.byType` / `spatialHierarchy.byStorey` prefilter,
+  cheap-first per-entity rule ordering, and async chunked yielding
+  with cancel + progress. The DuckDB engine, SQL editor, schema
+  browser, templates, error rewriter, and saved-SQL-queries module
+  have been removed — Builder is the whole UI now, with a single Run
+  button and CSV/JSON export. Builder dropdowns are schema-aware
+  (storeys + IFC types load eagerly, pset / qto names load lazily on
+  first use), the inline search-bar query promotes to a Name rule
+  with one click, multi-model row clicks route to the correct model,
+  and saved presets persist named `{name, combinator, rules}`
+  snapshots in localStorage.
+
+### Patch Changes
+
+- [#588](https://github.com/louistrue/ifc-lite/pull/588) [`b75f0cc`](https://github.com/louistrue/ifc-lite/commit/b75f0cccb06c89f5e30272d6c04f986f3b47e574) Thanks [@louistrue](https://github.com/louistrue)! - Address PR #588 review feedback that survived the Filter migration:
+
+  - Inline-bar Enter now flushes the 80ms debounce by re-scanning against
+    the live `searchQuery`, so committing inside the debounce window
+    selects the entity matching what the input shows (not the prior
+    query) and records the correct recent.
+  - The 50ms `frameSelection` timer in the inline bar is tracked via a
+    ref and cleared on rapid selection changes / unmount instead of
+    leaking orphan callbacks.
+  - Shift+Enter additive selection in the inline bar and the row-level
+    additive path in the Search modal now TOGGLE via `toggleEntitySelection`,
+    so the same interaction can deselect a previously-added row.
+  - New `addEntitiesToSelection` batch action on the selection slice;
+    the Search modal's "Select all" path uses it so a 5K-row select-all
+    dispatches one Zustand `set` instead of N.
+  - Tier-0 scoring now keeps the max across name/type/objectType/description
+    fields (matching Tier-1's behaviour). Without this, an entity with a
+    substring name hit and a type-exact hit ranked lower than it should
+    on Tier-0, breaking the comparable-ordering guarantee when results
+    came from a mix of Tier-0 and Tier-1 models.
+
+- Updated dependencies [[`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c), [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c), [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c), [`1309f8c`](https://github.com/louistrue/ifc-lite/commit/1309f8cba128b3b6237ebfb9831bf359c426a742), [`1309f8c`](https://github.com/louistrue/ifc-lite/commit/1309f8cba128b3b6237ebfb9831bf359c426a742), [`1309f8c`](https://github.com/louistrue/ifc-lite/commit/1309f8cba128b3b6237ebfb9831bf359c426a742), [`1309f8c`](https://github.com/louistrue/ifc-lite/commit/1309f8cba128b3b6237ebfb9831bf359c426a742), [`16d7a63`](https://github.com/louistrue/ifc-lite/commit/16d7a6361a78bb39a2bd61bba6990db5d3df0c04), [`945bb30`](https://github.com/louistrue/ifc-lite/commit/945bb30061ca044f4a51001f7299c17350ce99cf), [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c), [`370e084`](https://github.com/louistrue/ifc-lite/commit/370e084e94e8fce930bddf948344c4b639d196f3), [`18c6a37`](https://github.com/louistrue/ifc-lite/commit/18c6a37f1cc1426daa32ee60457dd0580a5257f5)]:
+  - @ifc-lite/mutations@1.15.0
+  - @ifc-lite/sdk@1.15.0
+  - @ifc-lite/sandbox@1.15.0
+  - @ifc-lite/parser@2.2.0
+  - @ifc-lite/geometry@1.16.6
+  - @ifc-lite/renderer@1.17.0
+  - @ifc-lite/query@1.14.7
+  - @ifc-lite/wasm@1.16.7
+  - @ifc-lite/export@1.18.0
+
 ## 1.17.6
 
 ### Patch Changes

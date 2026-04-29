@@ -6,8 +6,14 @@ import { normalizeIfcTypeName } from '@ifc-lite/parser';
 import type {
   AddBeamInStoreParams,
   AddColumnInStoreParams,
+  AddDoorInStoreParams,
+  AddMemberInStoreParams,
+  AddPlateInStoreParams,
+  AddRoofInStoreParams,
   AddSlabInStoreParams,
+  AddSpaceInStoreParams,
   AddWallInStoreParams,
+  AddWindowInStoreParams,
   BimBackend,
   EntityRef,
 } from '../types.js';
@@ -136,5 +142,52 @@ export class StoreNamespace {
    */
   addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef {
     return this.backend.store.addBeam(modelId, storeyExpressId, params);
+  }
+
+  /** Add a free-standing IfcDoor (Width × Height + thin frame depth). */
+  addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef {
+    return this.backend.store.addDoor(modelId, storeyExpressId, params);
+  }
+
+  /** Add a free-standing IfcWindow (Width × Height + thin frame depth). */
+  addWindow(modelId: string, storeyExpressId: number, params: AddWindowInStoreParams): EntityRef {
+    return this.backend.store.addWindow(modelId, storeyExpressId, params);
+  }
+
+  /**
+   * Add an IfcSpace (room/zone) — rectangle or polygon footprint
+   * extruded vertically by `Height`. Aggregated into the storey via
+   * IfcRelAggregates (spaces are spatial-structure children, not
+   * IfcRelContainedInSpatialStructure products).
+   */
+  addSpace(modelId: string, storeyExpressId: number, params: AddSpaceInStoreParams): EntityRef {
+    return this.backend.store.addSpace(modelId, storeyExpressId, params);
+  }
+
+  /**
+   * Add an IfcRoof — flat-roof slab variant. Same rectangle/polygon
+   * profile shapes as `addSlab` but emits an IfcRoof entity with
+   * `.FLAT_ROOF.` PredefinedType.
+   */
+  addRoof(modelId: string, storeyExpressId: number, params: AddRoofInStoreParams): EntityRef {
+    return this.backend.store.addRoof(modelId, storeyExpressId, params);
+  }
+
+  /**
+   * Add an IfcPlate (thin flat element) — rectangle or polygon
+   * profile extruded by Thickness. PredefinedType defaults to
+   * NOTDEFINED; pass `'CURTAIN_PANEL'` / `'SHEET'` to override.
+   */
+  addPlate(modelId: string, storeyExpressId: number, params: AddPlateInStoreParams): EntityRef {
+    return this.backend.store.addPlate(modelId, storeyExpressId, params);
+  }
+
+  /**
+   * Add an IfcMember (generic structural member — brace, post, strut)
+   * between `Start` and `End`. Same axial extrusion as `addBeam`;
+   * choose the PredefinedType to disambiguate the role.
+   */
+  addMember(modelId: string, storeyExpressId: number, params: AddMemberInStoreParams): EntityRef {
+    return this.backend.store.addMember(modelId, storeyExpressId, params);
   }
 }

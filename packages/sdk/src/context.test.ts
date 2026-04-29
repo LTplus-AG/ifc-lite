@@ -62,6 +62,12 @@ function createMockBackend() {
     addWall: vi.fn((modelId: string) => ({ modelId, expressId: 100 })),
     addSlab: vi.fn((modelId: string) => ({ modelId, expressId: 101 })),
     addBeam: vi.fn((modelId: string) => ({ modelId, expressId: 102 })),
+    addDoor: vi.fn((modelId: string) => ({ modelId, expressId: 103 })),
+    addWindow: vi.fn((modelId: string) => ({ modelId, expressId: 104 })),
+    addSpace: vi.fn((modelId: string) => ({ modelId, expressId: 105 })),
+    addRoof: vi.fn((modelId: string) => ({ modelId, expressId: 106 })),
+    addPlate: vi.fn((modelId: string) => ({ modelId, expressId: 107 })),
+    addMember: vi.fn((modelId: string) => ({ modelId, expressId: 108 })),
   };
   const spatial = {
     queryBounds: vi.fn(() => []),

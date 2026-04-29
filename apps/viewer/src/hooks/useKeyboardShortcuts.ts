@@ -159,10 +159,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // the global Esc handler (which exits the tool).
     if (activeTool === 'addElement') {
       const state = useViewerStore.getState();
-      if (key === 'enter' && state.addElementType === 'slab' && state.addElementSlabMode === 'polygon') {
+      const polygonable = ['slab', 'roof', 'plate', 'space'].includes(state.addElementType);
+      if (key === 'enter' && polygonable && state.addElementSlabMode === 'polygon') {
         e.preventDefault();
         // Lazy import keeps this module out of the keyboard hook's
-        // synchronous bundle (the slab close handler pulls in toast).
+        // synchronous bundle (the close handler pulls in toast).
         import('@/components/viewer/selectionHandlers').then((mod) => mod.commitAddElementSlabPolygon());
         return;
       }

@@ -13,19 +13,37 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import {
   addBeamToStore,
   addColumnToStore,
+  addDoorToStore,
+  addMemberToStore,
+  addPlateToStore,
+  addRoofToStore,
   addSlabToStore,
+  addSpaceToStore,
   addWallToStore,
+  addWindowToStore,
   resolveSpatialAnchor,
   type BeamInStoreParams,
   type ColumnInStoreParams,
+  type DoorInStoreParams,
+  type MemberInStoreParams,
+  type PlateInStoreParams,
+  type RoofInStoreParams,
   type SlabInStoreParams,
+  type SpaceInStoreParams,
   type WallInStoreParams,
+  type WindowInStoreParams,
 } from '@ifc-lite/create';
 import type {
   AddBeamInStoreParams,
   AddColumnInStoreParams,
+  AddDoorInStoreParams,
+  AddMemberInStoreParams,
+  AddPlateInStoreParams,
+  AddRoofInStoreParams,
   AddSlabInStoreParams,
+  AddSpaceInStoreParams,
   AddWallInStoreParams,
+  AddWindowInStoreParams,
   EntityRef,
   StoreBackendMethods,
 } from '@ifc-lite/sdk';
@@ -124,6 +142,60 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
       const result = addBeamToStore(editor, anchor, params as BeamInStoreParams);
       return { modelId: normalizedModelId, expressId: result.beamId };
+    },
+    addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) throw new Error(`bim.store.addDoor: no model loaded for id "${modelId}"`);
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addDoorToStore(editor, anchor, params as DoorInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.doorId };
+    },
+    addWindow(modelId: string, storeyExpressId: number, params: AddWindowInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) throw new Error(`bim.store.addWindow: no model loaded for id "${modelId}"`);
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addWindowToStore(editor, anchor, params as WindowInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.windowId };
+    },
+    addSpace(modelId: string, storeyExpressId: number, params: AddSpaceInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) throw new Error(`bim.store.addSpace: no model loaded for id "${modelId}"`);
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addSpaceToStore(editor, anchor, params as SpaceInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.spaceId };
+    },
+    addRoof(modelId: string, storeyExpressId: number, params: AddRoofInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) throw new Error(`bim.store.addRoof: no model loaded for id "${modelId}"`);
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addRoofToStore(editor, anchor, params as RoofInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.roofId };
+    },
+    addPlate(modelId: string, storeyExpressId: number, params: AddPlateInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) throw new Error(`bim.store.addPlate: no model loaded for id "${modelId}"`);
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addPlateToStore(editor, anchor, params as PlateInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.plateId };
+    },
+    addMember(modelId: string, storeyExpressId: number, params: AddMemberInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) throw new Error(`bim.store.addMember: no model loaded for id "${modelId}"`);
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addMemberToStore(editor, anchor, params as MemberInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.memberId };
     },
   };
 }

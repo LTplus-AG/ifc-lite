@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo } from 'react';
-import { Box, Layers, Minus, Square, X } from 'lucide-react';
+import { Box, Cog, DoorOpen, Home, Layers, Minus, Square, SquareDashedBottom, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,6 +44,12 @@ const ELEMENT_OPTIONS: ElementOption[] = [
   { type: 'slab', label: 'Slab', Icon: Square, hint: 'Rectangle: 2 corner clicks. Polygon: N clicks + Enter to close. Extruded up by Thickness.' },
   { type: 'beam', label: 'Beam', Icon: Layers, hint: 'Click Start, then End. Cross-section (Width × Height) is centred on the beam axis.' },
   { type: 'column', label: 'Column', Icon: Box, hint: 'Single click sets the base centre. Width × Depth cross-section, extruded up by Height.' },
+  { type: 'door', label: 'Door', Icon: DoorOpen, hint: 'Single click sets the bottom-centre. Width × Height leaf with a thin frame depth. Free-standing — refine wall hosting via Raw STEP if needed.' },
+  { type: 'window', label: 'Window', Icon: SquareDashedBottom, hint: 'Single click sets the sill-centre. Width × Height sash with a thin frame depth.' },
+  { type: 'space', label: 'Space', Icon: Home, hint: 'Rectangle: 2 corner clicks. Polygon: N clicks + Enter. Extruded up by Height into a room volume; aggregated to the storey via IfcRelAggregates.' },
+  { type: 'roof', label: 'Roof', Icon: Square, hint: 'Same shape as a slab — flat-roof emit with .FLAT_ROOF. PredefinedType. Pitched roofs need IfcCreator.addIfcGableRoof.' },
+  { type: 'plate', label: 'Plate', Icon: Square, hint: 'Thin flat plate (steel / gusset). Rectangle or polygon profile, extruded by Thickness.' },
+  { type: 'member', label: 'Member', Icon: Cog, hint: 'Generic structural member (brace, post, strut). Click Start, then End. Pick PredefinedType to set role.' },
 ];
 
 interface StoreyOption {
@@ -74,6 +80,18 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
   const setBeamParams = useViewerStore((s) => s.setAddElementBeamParams);
   const columnParams = useViewerStore((s) => s.addElementColumnParams);
   const setColumnParams = useViewerStore((s) => s.setAddElementColumnParams);
+  const doorParams = useViewerStore((s) => s.addElementDoorParams);
+  const setDoorParams = useViewerStore((s) => s.setAddElementDoorParams);
+  const windowParams = useViewerStore((s) => s.addElementWindowParams);
+  const setWindowParams = useViewerStore((s) => s.setAddElementWindowParams);
+  const spaceParams = useViewerStore((s) => s.addElementSpaceParams);
+  const setSpaceParams = useViewerStore((s) => s.setAddElementSpaceParams);
+  const roofParams = useViewerStore((s) => s.addElementRoofParams);
+  const setRoofParams = useViewerStore((s) => s.setAddElementRoofParams);
+  const plateParams = useViewerStore((s) => s.addElementPlateParams);
+  const setPlateParams = useViewerStore((s) => s.setAddElementPlateParams);
+  const memberParams = useViewerStore((s) => s.addElementMemberParams);
+  const setMemberParams = useViewerStore((s) => s.setAddElementMemberParams);
 
   const slabMode = useViewerStore((s) => s.addElementSlabMode);
   const setSlabMode = useViewerStore((s) => s.setAddElementSlabMode);
@@ -159,7 +177,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
           <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
             Type
           </Label>
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-3 gap-1">
             {ELEMENT_OPTIONS.map(({ type, label, Icon }) => {
               const selected = addElementType === type;
               return (
@@ -169,7 +187,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
                   onClick={() => setAddElementType(type)}
                   aria-pressed={selected}
                   className={[
-                    'flex items-center justify-center gap-1.5 h-8 px-2 rounded-sm text-[12px] font-mono uppercase tracking-wide',
+                    'flex items-center justify-center gap-1 h-8 px-1.5 rounded-sm text-[10px] font-mono uppercase tracking-wide',
                     'border transition-colors',
                     'outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
                     selected
@@ -178,7 +196,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
                   ].join(' ')}
                 >
                   <Icon className="h-3 w-3 shrink-0" />
-                  <span>{label}</span>
+                  <span className="truncate">{label}</span>
                 </button>
               );
             })}
@@ -242,10 +260,11 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
         </section>
 
         {/* Slab mode toggle — rectangle (2 clicks) vs polygon (N clicks + Enter) */}
-        {addElementType === 'slab' && (
+        {/* Profile mode toggle — applies to slab, roof, plate, space (anything that supports both rect + polygon) */}
+        {(addElementType === 'slab' || addElementType === 'roof' || addElementType === 'plate' || addElementType === 'space') && (
           <section className="space-y-1.5">
             <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              Slab profile
+              {activeOption.label} profile
             </Label>
             <div className="grid grid-cols-2 gap-1">
               <ModeChip selected={slabMode === 'rectangle'} onClick={() => setSlabMode('rectangle')}>
@@ -261,7 +280,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
         {/* Type-specific dimensions */}
         <section className="space-y-2 pt-1">
           <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-            {activeOption.label} {addElementType === 'slab' && slabMode === 'rectangle' ? '— Thickness' : 'dimensions'}
+            {activeOption.label} dimensions
           </Label>
 
           {addElementType === 'wall' && (
@@ -271,11 +290,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
             </div>
           )}
 
-          {addElementType === 'slab' && slabMode === 'rectangle' && (
-            <NumberField label="Thickness" suffix="m" value={slabParams.Thickness} min={0.01} onChange={(v) => setSlabParams({ Thickness: v })} />
-          )}
-
-          {addElementType === 'slab' && slabMode === 'polygon' && (
+          {addElementType === 'slab' && (
             <NumberField label="Thickness" suffix="m" value={slabParams.Thickness} min={0.01} onChange={(v) => setSlabParams({ Thickness: v })} />
           )}
 
@@ -291,6 +306,41 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
               <NumberField label="Width" suffix="m" value={columnParams.Width} min={0.01} onChange={(v) => setColumnParams({ Width: v })} />
               <NumberField label="Depth" suffix="m" value={columnParams.Depth} min={0.01} onChange={(v) => setColumnParams({ Depth: v })} />
               <NumberField label="Height" suffix="m" value={columnParams.Height} min={0.01} onChange={(v) => setColumnParams({ Height: v })} />
+            </div>
+          )}
+
+          {addElementType === 'door' && (
+            <div className="grid grid-cols-3 gap-2">
+              <NumberField label="Width" suffix="m" value={doorParams.Width} min={0.01} onChange={(v) => setDoorParams({ Width: v })} />
+              <NumberField label="Height" suffix="m" value={doorParams.Height} min={0.01} onChange={(v) => setDoorParams({ Height: v })} />
+              <NumberField label="Frame" suffix="m" value={doorParams.FrameThickness} min={0.005} onChange={(v) => setDoorParams({ FrameThickness: v })} />
+            </div>
+          )}
+
+          {addElementType === 'window' && (
+            <div className="grid grid-cols-3 gap-2">
+              <NumberField label="Width" suffix="m" value={windowParams.Width} min={0.01} onChange={(v) => setWindowParams({ Width: v })} />
+              <NumberField label="Height" suffix="m" value={windowParams.Height} min={0.01} onChange={(v) => setWindowParams({ Height: v })} />
+              <NumberField label="Frame" suffix="m" value={windowParams.FrameThickness} min={0.005} onChange={(v) => setWindowParams({ FrameThickness: v })} />
+            </div>
+          )}
+
+          {addElementType === 'space' && (
+            <NumberField label="Height" suffix="m" value={spaceParams.Height} min={0.01} onChange={(v) => setSpaceParams({ Height: v })} />
+          )}
+
+          {addElementType === 'roof' && (
+            <NumberField label="Thickness" suffix="m" value={roofParams.Thickness} min={0.01} onChange={(v) => setRoofParams({ Thickness: v })} />
+          )}
+
+          {addElementType === 'plate' && (
+            <NumberField label="Thickness" suffix="m" value={plateParams.Thickness} min={0.001} onChange={(v) => setPlateParams({ Thickness: v })} />
+          )}
+
+          {addElementType === 'member' && (
+            <div className="grid grid-cols-2 gap-2">
+              <NumberField label="Width" suffix="m" value={memberParams.Width} min={0.01} onChange={(v) => setMemberParams({ Width: v })} />
+              <NumberField label="Height" suffix="m" value={memberParams.Height} min={0.01} onChange={(v) => setMemberParams({ Height: v })} />
             </div>
           )}
         </section>
@@ -367,10 +417,12 @@ function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onCl
 
   let primary: string;
   let secondary: string;
-  if (type === 'column') {
-    primary = 'Click in 3D to drop the column.';
+  // Single-click placements share the same prompt shape.
+  if (type === 'column' || type === 'door' || type === 'window') {
+    primary = `Click in 3D to drop the ${type}.`;
     secondary = 'Keep clicking to place more — Esc to exit.';
-  } else if (type === 'wall' || type === 'beam') {
+  } else if (type === 'wall' || type === 'beam' || type === 'member') {
+    // Two-click axial placements (start → end).
     if (pendingCount === 0) {
       primary = `Click the ${type} start point.`;
       secondary = 'Snap to vertex/edge for precise placement.';
@@ -381,10 +433,11 @@ function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onCl
         : 'Esc to restart.';
     }
   } else {
-    // slab
+    // slab / roof / plate / space — rectangle (2 clicks) or polygon (N + Enter).
+    const polygonable = `${type[0].toUpperCase()}${type.slice(1)}`;
     if (slabMode === 'rectangle') {
       if (pendingCount === 0) {
-        primary = 'Click the first slab corner.';
+        primary = `Click the first ${type} corner.`;
         secondary = 'A second click sets the opposite corner.';
       } else {
         primary = 'Click the opposite corner.';
@@ -392,7 +445,7 @@ function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onCl
       }
     } else {
       if (pendingCount === 0) {
-        primary = 'Click the polygon\'s first point.';
+        primary = `Click the ${polygonable} polygon's first point.`;
         secondary = 'Need at least 3 points; press Enter to close.';
       } else if (pendingCount < 3) {
         primary = `Click point ${pendingCount + 1} (need at least 3).`;

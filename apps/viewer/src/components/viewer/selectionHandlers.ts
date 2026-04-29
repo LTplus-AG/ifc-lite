@@ -277,20 +277,33 @@ async function handleAddElementDrop(point: { x: number; y: number; z: number }):
   const state = useViewerStore.getState();
   const type = state.addElementType;
 
+  // Single-click placements: column / door / window all drop on one click.
   if (type === 'column') {
     const ifc = rendererPointToIfcStoreyLocal(point);
     const p = state.addElementColumnParams;
-    const result = state.addColumn(modelId, storeyId, {
-      Position: ifc,
-      Width: p.Width,
-      Depth: p.Depth,
-      Height: p.Height,
-    });
-    finishAddElement(result, modelId, 'Column');
+    finishAddElement(state.addColumn(modelId, storeyId, {
+      Position: ifc, Width: p.Width, Depth: p.Depth, Height: p.Height,
+    }), modelId, 'Column');
+    return;
+  }
+  if (type === 'door') {
+    const ifc = rendererPointToIfcStoreyLocal(point);
+    const p = state.addElementDoorParams;
+    finishAddElement(state.addDoor(modelId, storeyId, {
+      Position: ifc, Width: p.Width, Height: p.Height, FrameThickness: p.FrameThickness,
+    }), modelId, 'Door');
+    return;
+  }
+  if (type === 'window') {
+    const ifc = rendererPointToIfcStoreyLocal(point);
+    const p = state.addElementWindowParams;
+    finishAddElement(state.addWindow(modelId, storeyId, {
+      Position: ifc, Width: p.Width, Height: p.Height, FrameThickness: p.FrameThickness,
+    }), modelId, 'Window');
     return;
   }
 
-  if (type === 'wall' || type === 'beam') {
+  if (type === 'wall' || type === 'beam' || type === 'member') {
     const pending = state.addElementPendingPoints;
     if (pending.length === 0) {
       // Start point — store the renderer-frame point and wait for end.
@@ -302,27 +315,25 @@ async function handleAddElementDrop(point: { x: number; y: number; z: number }):
     const endIfc = rendererPointToIfcStoreyLocal(point);
     if (type === 'wall') {
       const p = state.addElementWallParams;
-      const result = state.addWall(modelId, storeyId, {
-        Start: startIfc,
-        End: endIfc,
-        Thickness: p.Thickness,
-        Height: p.Height,
-      });
-      finishAddElement(result, modelId, 'Wall');
-    } else {
+      finishAddElement(state.addWall(modelId, storeyId, {
+        Start: startIfc, End: endIfc, Thickness: p.Thickness, Height: p.Height,
+      }), modelId, 'Wall');
+    } else if (type === 'beam') {
       const p = state.addElementBeamParams;
-      const result = state.addBeam(modelId, storeyId, {
-        Start: startIfc,
-        End: endIfc,
-        Width: p.Width,
-        Height: p.Height,
-      });
-      finishAddElement(result, modelId, 'Beam');
+      finishAddElement(state.addBeam(modelId, storeyId, {
+        Start: startIfc, End: endIfc, Width: p.Width, Height: p.Height,
+      }), modelId, 'Beam');
+    } else {
+      // member
+      const p = state.addElementMemberParams;
+      finishAddElement(state.addMember(modelId, storeyId, {
+        Start: startIfc, End: endIfc, Width: p.Width, Height: p.Height,
+      }), modelId, 'Member');
     }
     return;
   }
 
-  if (type === 'slab') {
+  if (type === 'slab' || type === 'roof' || type === 'plate' || type === 'space') {
     if (state.addElementSlabMode === 'rectangle') {
       const pending = state.addElementPendingPoints;
       if (pending.length === 0) {
@@ -336,52 +347,104 @@ async function handleAddElementDrop(point: { x: number; y: number; z: number }):
       const width = Math.abs(oppositeIfc[0] - cornerIfc[0]);
       const depth = Math.abs(oppositeIfc[1] - cornerIfc[1]);
       if (width <= 0 || depth <= 0) {
-        toast.error("Slab corners must span a non-zero rectangle");
+        toast.error(`${capitalize(type)} corners must span a non-zero rectangle`);
         return;
       }
-      const p = state.addElementSlabParams;
-      const result = state.addSlab(modelId, storeyId, {
-        Position: [minX, minY, 0],
-        Width: width,
-        Depth: depth,
-        Thickness: p.Thickness,
-      });
-      finishAddElement(result, modelId, 'Slab');
-      return;
+      const position: [number, number, number] = [minX, minY, 0];
+      switch (type) {
+        case 'slab': {
+          const p = state.addElementSlabParams;
+          finishAddElement(state.addSlab(modelId, storeyId, {
+            Position: position, Width: width, Depth: depth, Thickness: p.Thickness,
+          }), modelId, 'Slab');
+          return;
+        }
+        case 'roof': {
+          const p = state.addElementRoofParams;
+          finishAddElement(state.addRoof(modelId, storeyId, {
+            Position: position, Width: width, Depth: depth, Thickness: p.Thickness,
+          }), modelId, 'Roof');
+          return;
+        }
+        case 'plate': {
+          const p = state.addElementPlateParams;
+          finishAddElement(state.addPlate(modelId, storeyId, {
+            Position: position, Width: width, Depth: depth, Thickness: p.Thickness,
+          }), modelId, 'Plate');
+          return;
+        }
+        case 'space': {
+          const p = state.addElementSpaceParams;
+          finishAddElement(state.addSpace(modelId, storeyId, {
+            Position: position, Width: width, Depth: depth, Height: p.Height,
+          }), modelId, 'Space');
+          return;
+        }
+      }
     }
-    // Polygon mode — append; close handled by Enter / double-click.
+    // Polygon mode — append; close handled by Enter.
     state.appendAddElementPendingPoint({ x: point.x, y: point.y, z: point.z });
     return;
   }
 }
 
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /**
- * Close an in-progress slab polygon. Triggered by Enter or
- * double-click. Requires ≥3 points (matches IFC's polygon constraint).
+ * Close an in-progress polygon for any slab-style type
+ * (slab / roof / plate / space). Triggered by Enter. Requires
+ * ≥3 points; the builder's auto-closure handles the trailing edge.
  */
 export function commitAddElementSlabPolygon(): void {
   const state = useViewerStore.getState();
   if (state.activeTool !== 'addElement') return;
-  if (state.addElementType !== 'slab' || state.addElementSlabMode !== 'polygon') return;
+  const type = state.addElementType;
+  const polygonable = type === 'slab' || type === 'roof' || type === 'plate' || type === 'space';
+  if (!polygonable || state.addElementSlabMode !== 'polygon') return;
   const pending = state.addElementPendingPoints;
   if (pending.length < 3) {
-    toast.error('Slab polygon needs at least 3 points');
+    toast.error(`${capitalize(type)} polygon needs at least 3 points`);
     return;
   }
   const ctx = resolveAddElementContext();
   if (!ctx) return;
   const { modelId, storeyId } = ctx;
-  const p = state.addElementSlabParams;
-  // Convert each renderer-frame point to IFC X/Y at dispatch time.
-  const result = state.addSlab(modelId, storeyId, {
-    Profile: 'polygon',
-    OuterCurve: pending.map((pt) => {
-      const ifc = rendererPointToIfcStoreyLocal(pt);
-      return [ifc[0], ifc[1]];
-    }),
-    Thickness: p.Thickness,
+  const outer = pending.map((pt) => {
+    const ifc = rendererPointToIfcStoreyLocal(pt);
+    return [ifc[0], ifc[1]] as [number, number];
   });
-  finishAddElement(result, modelId, 'Slab');
+  switch (type) {
+    case 'slab': {
+      const p = state.addElementSlabParams;
+      finishAddElement(state.addSlab(modelId, storeyId, {
+        Profile: 'polygon', OuterCurve: outer, Thickness: p.Thickness,
+      }), modelId, 'Slab');
+      return;
+    }
+    case 'roof': {
+      const p = state.addElementRoofParams;
+      finishAddElement(state.addRoof(modelId, storeyId, {
+        Profile: 'polygon', OuterCurve: outer, Thickness: p.Thickness,
+      }), modelId, 'Roof');
+      return;
+    }
+    case 'plate': {
+      const p = state.addElementPlateParams;
+      finishAddElement(state.addPlate(modelId, storeyId, {
+        Profile: 'polygon', OuterCurve: outer, Thickness: p.Thickness,
+      }), modelId, 'Plate');
+      return;
+    }
+    case 'space': {
+      const p = state.addElementSpaceParams;
+      finishAddElement(state.addSpace(modelId, storeyId, {
+        Profile: 'polygon', OuterCurve: outer, Height: p.Height,
+      }), modelId, 'Space');
+      return;
+    }
+  }
 }
 
 /**

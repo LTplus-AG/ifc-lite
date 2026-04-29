@@ -234,6 +234,197 @@ export function buildStoreNamespace(): NamespaceSchema {
         },
         returns: 'value',
       },
+      {
+        name: 'addDoor',
+        doc: 'Add a free-standing IfcDoor anchored to an IfcBuildingStorey.',
+        args: ['string', 'number', 'dump'],
+        paramNames: ['modelId', 'storeyExpressId', 'params'],
+        tsParamTypes: [
+          'string',
+          'number',
+          '{ Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; OperationType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+        ],
+        tsReturn: '{ modelId: string; expressId: number }',
+        call: (sdk, args) => {
+          const storeyExpressId = requireStoreyId(args[1] as number, 'addDoor');
+          const params = args[2] as Parameters<typeof sdk.store.addDoor>[2];
+          requirePositionVec3(params?.Position, 'addDoor');
+          requirePositiveDims(params, ['Width', 'Height'], 'addDoor');
+          if (params.FrameThickness !== undefined) requirePositiveDims(params, ['FrameThickness'], 'addDoor');
+          return sdk.store.addDoor(args[0] as string, storeyExpressId, params);
+        },
+        returns: 'value',
+      },
+      {
+        name: 'addWindow',
+        doc: 'Add a free-standing IfcWindow anchored to an IfcBuildingStorey.',
+        args: ['string', 'number', 'dump'],
+        paramNames: ['modelId', 'storeyExpressId', 'params'],
+        tsParamTypes: [
+          'string',
+          'number',
+          '{ Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; PartitioningType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+        ],
+        tsReturn: '{ modelId: string; expressId: number }',
+        call: (sdk, args) => {
+          const storeyExpressId = requireStoreyId(args[1] as number, 'addWindow');
+          const params = args[2] as Parameters<typeof sdk.store.addWindow>[2];
+          requirePositionVec3(params?.Position, 'addWindow');
+          requirePositiveDims(params, ['Width', 'Height'], 'addWindow');
+          if (params.FrameThickness !== undefined) requirePositiveDims(params, ['FrameThickness'], 'addWindow');
+          return sdk.store.addWindow(args[0] as string, storeyExpressId, params);
+        },
+        returns: 'value',
+      },
+      {
+        name: 'addSpace',
+        doc: 'Add an IfcSpace (room) — rectangle or polygon footprint extruded by Height. Aggregated under the storey via IfcRelAggregates.',
+        args: ['string', 'number', 'dump'],
+        paramNames: ['modelId', 'storeyExpressId', 'params'],
+        tsParamTypes: [
+          'string',
+          'number',
+          '{ Position: [number, number, number]; Width: number; Depth: number; Height: number; Profile?: "rectangle"; Name?: string; LongName?: string; Description?: string; ObjectType?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Height: number; Name?: string; LongName?: string; Description?: string; ObjectType?: string }',
+        ],
+        tsReturn: '{ modelId: string; expressId: number }',
+        call: (sdk, args) => {
+          const storeyExpressId = requireStoreyId(args[1] as number, 'addSpace');
+          const params = args[2] as Parameters<typeof sdk.store.addSpace>[2];
+          if (!params) throw new Error('bim.store.addSpace: params is required');
+          requirePositiveDims(params, ['Height'], 'addSpace');
+          validateProfileParams(params, 'addSpace', ['Width', 'Depth']);
+          return sdk.store.addSpace(args[0] as string, storeyExpressId, params);
+        },
+        returns: 'value',
+      },
+      {
+        name: 'addRoof',
+        doc: 'Add an IfcRoof (flat-roof slab variant). Two modes: rectangle or polygon.',
+        args: ['string', 'number', 'dump'],
+        paramNames: ['modelId', 'storeyExpressId', 'params'],
+        tsParamTypes: [
+          'string',
+          'number',
+          '{ Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+        ],
+        tsReturn: '{ modelId: string; expressId: number }',
+        call: (sdk, args) => {
+          const storeyExpressId = requireStoreyId(args[1] as number, 'addRoof');
+          const params = args[2] as Parameters<typeof sdk.store.addRoof>[2];
+          if (!params) throw new Error('bim.store.addRoof: params is required');
+          requirePositiveDims(params, ['Thickness'], 'addRoof');
+          validateProfileParams(params, 'addRoof', ['Width', 'Depth']);
+          return sdk.store.addRoof(args[0] as string, storeyExpressId, params);
+        },
+        returns: 'value',
+      },
+      {
+        name: 'addPlate',
+        doc: 'Add an IfcPlate (thin flat element). Two modes: rectangle or polygon.',
+        args: ['string', 'number', 'dump'],
+        paramNames: ['modelId', 'storeyExpressId', 'params'],
+        tsParamTypes: [
+          'string',
+          'number',
+          '{ Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+        ],
+        tsReturn: '{ modelId: string; expressId: number }',
+        call: (sdk, args) => {
+          const storeyExpressId = requireStoreyId(args[1] as number, 'addPlate');
+          const params = args[2] as Parameters<typeof sdk.store.addPlate>[2];
+          if (!params) throw new Error('bim.store.addPlate: params is required');
+          requirePositiveDims(params, ['Thickness'], 'addPlate');
+          validateProfileParams(params, 'addPlate', ['Width', 'Depth']);
+          return sdk.store.addPlate(args[0] as string, storeyExpressId, params);
+        },
+        returns: 'value',
+      },
+      {
+        name: 'addMember',
+        doc: 'Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular cross-section.',
+        args: ['string', 'number', 'dump'],
+        paramNames: ['modelId', 'storeyExpressId', 'params'],
+        tsParamTypes: [
+          'string',
+          'number',
+          '{ Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+        ],
+        tsReturn: '{ modelId: string; expressId: number }',
+        call: (sdk, args) => {
+          const storeyExpressId = requireStoreyId(args[1] as number, 'addMember');
+          const params = args[2] as Parameters<typeof sdk.store.addMember>[2];
+          requireAxisVec3(params?.Start, 'addMember', 'Start');
+          requireAxisVec3(params?.End, 'addMember', 'End');
+          requirePositiveDims(params, ['Width', 'Height'], 'addMember');
+          return sdk.store.addMember(args[0] as string, storeyExpressId, params);
+        },
+        returns: 'value',
+      },
     ],
   };
+}
+
+// ---------------------------------------------------------------------
+// Local validation helpers — keeps the addX call-handlers terse while
+// still throwing precise errors at the bridge boundary. Mirrors the
+// ad-hoc checks the earlier addColumn/addWall paths use.
+// ---------------------------------------------------------------------
+
+function requireStoreyId(id: number, op: string): number {
+  if (!Number.isInteger(id) || id < 0) {
+    throw new Error(`bim.store.${op}: storeyExpressId must be a non-negative integer, got ${id}`);
+  }
+  return id;
+}
+
+function requirePositionVec3(pos: unknown, op: string): asserts pos is [number, number, number] {
+  if (!Array.isArray(pos) || pos.length !== 3 || !pos.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+    throw new Error(`bim.store.${op}: params.Position must be [x, y, z] of finite numbers`);
+  }
+}
+
+function requireAxisVec3(pos: unknown, op: string, fieldName: string): asserts pos is [number, number, number] {
+  if (!Array.isArray(pos) || pos.length !== 3 || !pos.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+    throw new Error(`bim.store.${op}: params.${fieldName} must be [x, y, z] of finite numbers`);
+  }
+}
+
+function requirePositiveDims(params: unknown, keys: ReadonlyArray<string>, op: string): void {
+  const obj = params as Record<string, unknown>;
+  for (const key of keys) {
+    const v = obj?.[key];
+    if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
+      throw new Error(`bim.store.${op}: params.${key} must be a finite number > 0, got ${v}`);
+    }
+  }
+}
+
+/**
+ * Validate a discriminated rectangle/polygon profile params object —
+ * shared between addSlab / addSpace / addRoof / addPlate. Skips
+ * Position when the polygon path omits it (defaults to [0,0,0]).
+ */
+function validateProfileParams(
+  params: { Profile?: unknown; Position?: unknown; OuterCurve?: unknown },
+  op: string,
+  rectDims: ReadonlyArray<string>,
+): void {
+  if (params.Profile === 'polygon') {
+    if (!Array.isArray(params.OuterCurve) || params.OuterCurve.length < 3) {
+      throw new Error(`bim.store.${op}: polygon OuterCurve needs at least 3 points`);
+    }
+    for (const pt of params.OuterCurve) {
+      if (!Array.isArray(pt) || pt.length !== 2
+          || typeof pt[0] !== 'number' || !Number.isFinite(pt[0])
+          || typeof pt[1] !== 'number' || !Number.isFinite(pt[1])) {
+        throw new Error(`bim.store.${op}: each OuterCurve point must be [number, number] of finite values`);
+      }
+    }
+    if (params.Position !== undefined) {
+      requirePositionVec3(params.Position, op);
+    }
+  } else {
+    requirePositionVec3((params as { Position: unknown }).Position, op);
+    requirePositiveDims(params, rectDims, op);
+  }
 }

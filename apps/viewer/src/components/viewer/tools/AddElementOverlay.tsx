@@ -101,7 +101,8 @@ export function AddElementOverlay() {
         </filter>
       </defs>
 
-      {type === 'wall' || type === 'beam' ? (
+      {/* Two-click axial placements share the same start→end preview. */}
+      {type === 'wall' || type === 'beam' || type === 'member' ? (
         <WallBeamPreview
           pending={screenPending}
           hover={hover}
@@ -110,7 +111,8 @@ export function AddElementOverlay() {
         />
       ) : null}
 
-      {type === 'slab' && slabMode === 'rectangle' ? (
+      {/* Rectangle profile (slab / roof / plate / space) — flat rect on storey floor. */}
+      {(type === 'slab' || type === 'roof' || type === 'plate' || type === 'space') && slabMode === 'rectangle' ? (
         <SlabRectanglePreview
           pending={screenPending}
           hover={hover}
@@ -120,7 +122,8 @@ export function AddElementOverlay() {
         />
       ) : null}
 
-      {type === 'slab' && slabMode === 'polygon' ? (
+      {/* Polygon profile (same set of types) — pending polyline + ghost close. */}
+      {(type === 'slab' || type === 'roof' || type === 'plate' || type === 'space') && slabMode === 'polygon' ? (
         <SlabPolygonPreview pending={screenPending} hover={hover} />
       ) : null}
 

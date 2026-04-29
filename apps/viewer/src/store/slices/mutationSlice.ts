@@ -15,16 +15,28 @@ import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import {
   addBeamToStore,
   addColumnToStore,
+  addDoorToStore,
+  addMemberToStore,
+  addPlateToStore,
+  addRoofToStore,
   addSlabToStore,
+  addSpaceToStore,
   addWallToStore,
+  addWindowToStore,
   resolveSpatialAnchor,
   duplicateInStore,
   resolveDuplicateSource,
   type BeamInStoreParams,
   type ColumnInStoreParams,
+  type DoorInStoreParams,
   type DuplicateInStoreOptions,
+  type MemberInStoreParams,
+  type PlateInStoreParams,
+  type RoofInStoreParams,
   type SlabInStoreParams,
+  type SpaceInStoreParams,
   type WallInStoreParams,
+  type WindowInStoreParams,
 } from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -287,6 +299,42 @@ export interface MutationSlice {
     modelId: string,
     storeyExpressId: number,
     params: BeamInStoreParams
+  ) => { expressId: number } | { error: string };
+  /** Add a free-standing IfcDoor anchored to a storey. */
+  addDoor: (
+    modelId: string,
+    storeyExpressId: number,
+    params: DoorInStoreParams
+  ) => { expressId: number } | { error: string };
+  /** Add a free-standing IfcWindow anchored to a storey. */
+  addWindow: (
+    modelId: string,
+    storeyExpressId: number,
+    params: WindowInStoreParams
+  ) => { expressId: number } | { error: string };
+  /** Add an IfcSpace (room) — rectangle or polygon footprint. */
+  addSpace: (
+    modelId: string,
+    storeyExpressId: number,
+    params: SpaceInStoreParams
+  ) => { expressId: number } | { error: string };
+  /** Add an IfcRoof (flat roof) — slab-like rectangle or polygon. */
+  addRoof: (
+    modelId: string,
+    storeyExpressId: number,
+    params: RoofInStoreParams
+  ) => { expressId: number } | { error: string };
+  /** Add an IfcPlate (thin flat element) — slab-like rectangle or polygon. */
+  addPlate: (
+    modelId: string,
+    storeyExpressId: number,
+    params: PlateInStoreParams
+  ) => { expressId: number } | { error: string };
+  /** Add an IfcMember (generic structural — brace, post, strut). */
+  addMember: (
+    modelId: string,
+    storeyExpressId: number,
+    params: MemberInStoreParams
   ) => { expressId: number } | { error: string };
   /**
    * Duplicate an existing IfcRoot product in a chosen direction.
@@ -945,6 +993,36 @@ export const createMutationSlice: StateCreator<
       (editor, anchor) => addBeamToStore(editor, anchor, params).beamId,
     );
   },
+
+  addDoor: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, 'IFCDOOR', 'add door',
+    (editor, anchor) => addDoorToStore(editor, anchor, params).doorId,
+  ),
+
+  addWindow: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, 'IFCWINDOW', 'add window',
+    (editor, anchor) => addWindowToStore(editor, anchor, params).windowId,
+  ),
+
+  addSpace: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, 'IFCSPACE', 'add space',
+    (editor, anchor) => addSpaceToStore(editor, anchor, params).spaceId,
+  ),
+
+  addRoof: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, 'IFCROOF', 'add roof',
+    (editor, anchor) => addRoofToStore(editor, anchor, params).roofId,
+  ),
+
+  addPlate: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, 'IFCPLATE', 'add plate',
+    (editor, anchor) => addPlateToStore(editor, anchor, params).plateId,
+  ),
+
+  addMember: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, 'IFCMEMBER', 'add member',
+    (editor, anchor) => addMemberToStore(editor, anchor, params).memberId,
+  ),
 
   duplicateEntity: (modelId, sourceExpressId, direction = DUPLICATE_DEFAULT_DIRECTION, options) => {
     const state = get();

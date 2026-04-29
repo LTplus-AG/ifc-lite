@@ -43,13 +43,25 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
   addBeamToStore,
   addColumnToStore,
+  addDoorToStore,
+  addMemberToStore,
+  addPlateToStore,
+  addRoofToStore,
   addSlabToStore,
+  addSpaceToStore,
   addWallToStore,
+  addWindowToStore,
   resolveSpatialAnchor,
   type BeamInStoreParams,
   type ColumnInStoreParams,
+  type DoorInStoreParams,
+  type MemberInStoreParams,
+  type PlateInStoreParams,
+  type RoofInStoreParams,
   type SlabInStoreParams,
+  type SpaceInStoreParams,
   type WallInStoreParams,
+  type WindowInStoreParams,
 } from '@ifc-lite/create';
 import { EntityNode } from '@ifc-lite/query';
 import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
@@ -448,6 +460,42 @@ export class HeadlessBackend implements BimBackend {
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addBeamToStore(editor, anchor, params);
         return { modelId, expressId: result.beamId };
+      },
+      addDoor(modelId: string, storeyExpressId: number, params: DoorInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addDoorToStore(editor, anchor, params);
+        return { modelId, expressId: result.doorId };
+      },
+      addWindow(modelId: string, storeyExpressId: number, params: WindowInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addWindowToStore(editor, anchor, params);
+        return { modelId, expressId: result.windowId };
+      },
+      addSpace(modelId: string, storeyExpressId: number, params: SpaceInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addSpaceToStore(editor, anchor, params);
+        return { modelId, expressId: result.spaceId };
+      },
+      addRoof(modelId: string, storeyExpressId: number, params: RoofInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addRoofToStore(editor, anchor, params);
+        return { modelId, expressId: result.roofId };
+      },
+      addPlate(modelId: string, storeyExpressId: number, params: PlateInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addPlateToStore(editor, anchor, params);
+        return { modelId, expressId: result.plateId };
+      },
+      addMember(modelId: string, storeyExpressId: number, params: MemberInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addMemberToStore(editor, anchor, params);
+        return { modelId, expressId: result.memberId };
       },
     };
   }

@@ -29,6 +29,12 @@ export { addColumnToStore, type ColumnInStoreParams, type ColumnBuildResult } fr
 export { addWallToStore, type WallInStoreParams, type WallBuildResult } from './in-store/wall.js';
 export { addSlabToStore, type SlabInStoreParams, type SlabRectangleParams, type SlabPolygonParams, type SlabBuildResult } from './in-store/slab.js';
 export { addBeamToStore, type BeamInStoreParams, type BeamBuildResult } from './in-store/beam.js';
+export { addDoorToStore, type DoorInStoreParams, type DoorBuildResult } from './in-store/door.js';
+export { addWindowToStore, type WindowInStoreParams, type WindowBuildResult } from './in-store/window.js';
+export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './in-store/space.js';
+export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './in-store/roof.js';
+export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';
+export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } from './in-store/member.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
 export type { SpatialAnchor } from './in-store/anchor.js';
 export {

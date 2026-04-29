@@ -20,7 +20,17 @@
 
 import { type StateCreator } from 'zustand';
 
-export type AddElementType = 'wall' | 'slab' | 'beam' | 'column';
+export type AddElementType =
+  | 'wall'
+  | 'slab'
+  | 'beam'
+  | 'column'
+  | 'door'
+  | 'window'
+  | 'space'
+  | 'roof'
+  | 'plate'
+  | 'member';
 export type AddElementSlabMode = 'rectangle' | 'polygon';
 
 /**
@@ -58,6 +68,41 @@ export interface AddElementColumnParams {
   Height: number;
 }
 
+export interface AddElementDoorParams {
+  Width: number;
+  Height: number;
+  FrameThickness: number;
+}
+
+export interface AddElementWindowParams {
+  Width: number;
+  Height: number;
+  FrameThickness: number;
+}
+
+export interface AddElementSpaceParams {
+  Width: number;
+  Depth: number;
+  Height: number;
+}
+
+export interface AddElementRoofParams {
+  Width: number;
+  Depth: number;
+  Thickness: number;
+}
+
+export interface AddElementPlateParams {
+  Width: number;
+  Depth: number;
+  Thickness: number;
+}
+
+export interface AddElementMemberParams {
+  Width: number;
+  Height: number;
+}
+
 export interface AddElementSlice {
   addElementType: AddElementType;
   /** Target storey expressId; `null` ⇒ auto-pick first storey on click. */
@@ -68,6 +113,12 @@ export interface AddElementSlice {
   addElementSlabParams: AddElementSlabParams;
   addElementBeamParams: AddElementBeamParams;
   addElementColumnParams: AddElementColumnParams;
+  addElementDoorParams: AddElementDoorParams;
+  addElementWindowParams: AddElementWindowParams;
+  addElementSpaceParams: AddElementSpaceParams;
+  addElementRoofParams: AddElementRoofParams;
+  addElementPlateParams: AddElementPlateParams;
+  addElementMemberParams: AddElementMemberParams;
 
   /** Rectangle (2 clicks) or polygon (N clicks + Enter to close). */
   addElementSlabMode: AddElementSlabMode;
@@ -83,6 +134,12 @@ export interface AddElementSlice {
   setAddElementSlabParams: (p: Partial<AddElementSlabParams>) => void;
   setAddElementBeamParams: (p: Partial<AddElementBeamParams>) => void;
   setAddElementColumnParams: (p: Partial<AddElementColumnParams>) => void;
+  setAddElementDoorParams: (p: Partial<AddElementDoorParams>) => void;
+  setAddElementWindowParams: (p: Partial<AddElementWindowParams>) => void;
+  setAddElementSpaceParams: (p: Partial<AddElementSpaceParams>) => void;
+  setAddElementRoofParams: (p: Partial<AddElementRoofParams>) => void;
+  setAddElementPlateParams: (p: Partial<AddElementPlateParams>) => void;
+  setAddElementMemberParams: (p: Partial<AddElementMemberParams>) => void;
   setAddElementSlabMode: (m: AddElementSlabMode) => void;
   appendAddElementPendingPoint: (p: AddElementVec3) => void;
   setAddElementHoverPoint: (p: AddElementVec3 | null) => void;
@@ -95,6 +152,12 @@ const ADD_ELEMENT_DEFAULTS = {
   slab: { Width: 5, Depth: 5, Thickness: 0.3 } as AddElementSlabParams,
   beam: { Width: 0.3, Height: 0.5 } as AddElementBeamParams,
   column: { Width: 0.4, Depth: 0.4, Height: 3 } as AddElementColumnParams,
+  door: { Width: 0.9, Height: 2.1, FrameThickness: 0.05 } as AddElementDoorParams,
+  window: { Width: 1.2, Height: 1.5, FrameThickness: 0.05 } as AddElementWindowParams,
+  space: { Width: 4, Depth: 4, Height: 3 } as AddElementSpaceParams,
+  roof: { Width: 8, Depth: 8, Thickness: 0.3 } as AddElementRoofParams,
+  plate: { Width: 1, Depth: 1, Thickness: 0.02 } as AddElementPlateParams,
+  member: { Width: 0.1, Height: 0.1 } as AddElementMemberParams,
 };
 
 export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddElementSlice> = (set) => ({
@@ -105,6 +168,12 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
   addElementSlabParams: { ...ADD_ELEMENT_DEFAULTS.slab },
   addElementBeamParams: { ...ADD_ELEMENT_DEFAULTS.beam },
   addElementColumnParams: { ...ADD_ELEMENT_DEFAULTS.column },
+  addElementDoorParams: { ...ADD_ELEMENT_DEFAULTS.door },
+  addElementWindowParams: { ...ADD_ELEMENT_DEFAULTS.window },
+  addElementSpaceParams: { ...ADD_ELEMENT_DEFAULTS.space },
+  addElementRoofParams: { ...ADD_ELEMENT_DEFAULTS.roof },
+  addElementPlateParams: { ...ADD_ELEMENT_DEFAULTS.plate },
+  addElementMemberParams: { ...ADD_ELEMENT_DEFAULTS.member },
   addElementSlabMode: 'rectangle',
   addElementPendingPoints: [],
   addElementHoverPoint: null,
@@ -123,6 +192,18 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
     set((s) => ({ addElementBeamParams: { ...s.addElementBeamParams, ...p } })),
   setAddElementColumnParams: (p) =>
     set((s) => ({ addElementColumnParams: { ...s.addElementColumnParams, ...p } })),
+  setAddElementDoorParams: (p) =>
+    set((s) => ({ addElementDoorParams: { ...s.addElementDoorParams, ...p } })),
+  setAddElementWindowParams: (p) =>
+    set((s) => ({ addElementWindowParams: { ...s.addElementWindowParams, ...p } })),
+  setAddElementSpaceParams: (p) =>
+    set((s) => ({ addElementSpaceParams: { ...s.addElementSpaceParams, ...p } })),
+  setAddElementRoofParams: (p) =>
+    set((s) => ({ addElementRoofParams: { ...s.addElementRoofParams, ...p } })),
+  setAddElementPlateParams: (p) =>
+    set((s) => ({ addElementPlateParams: { ...s.addElementPlateParams, ...p } })),
+  setAddElementMemberParams: (p) =>
+    set((s) => ({ addElementMemberParams: { ...s.addElementMemberParams, ...p } })),
   setAddElementSlabMode: (addElementSlabMode) =>
     set({ addElementSlabMode, addElementPendingPoints: [] }),
   appendAddElementPendingPoint: (p) =>

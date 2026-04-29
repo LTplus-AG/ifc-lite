@@ -421,6 +421,124 @@ export interface AddBeamInStoreParams {
   Tag?: string;
 }
 
+export interface AddDoorInStoreParams {
+  Position: [number, number, number];
+  Width: number;
+  Height: number;
+  FrameThickness?: number;
+  PredefinedType?: 'DOOR' | 'GATE' | 'TRAPDOOR' | 'USERDEFINED' | 'NOTDEFINED';
+  OperationType?: string;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export interface AddWindowInStoreParams {
+  Position: [number, number, number];
+  Width: number;
+  Height: number;
+  FrameThickness?: number;
+  PredefinedType?: 'WINDOW' | 'SKYLIGHT' | 'LIGHTDOME' | 'USERDEFINED' | 'NOTDEFINED';
+  PartitioningType?: string;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export type AddSpaceInStoreParams = AddSpaceRectangleParams | AddSpacePolygonParams;
+
+export interface AddSpaceRectangleParams {
+  Position: [number, number, number];
+  Width: number;
+  Depth: number;
+  Height: number;
+  Profile?: 'rectangle';
+  Name?: string;
+  LongName?: string;
+  Description?: string;
+  ObjectType?: string;
+}
+
+export interface AddSpacePolygonParams {
+  Profile: 'polygon';
+  OuterCurve: Array<[number, number]>;
+  Position?: [number, number, number];
+  Height: number;
+  Name?: string;
+  LongName?: string;
+  Description?: string;
+  ObjectType?: string;
+}
+
+export type AddRoofInStoreParams = AddRoofRectangleParams | AddRoofPolygonParams;
+
+export interface AddRoofRectangleParams {
+  Position: [number, number, number];
+  Width: number;
+  Depth: number;
+  Thickness: number;
+  Profile?: 'rectangle';
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export interface AddRoofPolygonParams {
+  Profile: 'polygon';
+  OuterCurve: Array<[number, number]>;
+  Position?: [number, number, number];
+  Thickness: number;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export type AddPlateInStoreParams = AddPlateRectangleParams | AddPlatePolygonParams;
+
+export interface AddPlateRectangleParams {
+  Position: [number, number, number];
+  Width: number;
+  Depth: number;
+  Thickness: number;
+  Profile?: 'rectangle';
+  PredefinedType?: 'CURTAIN_PANEL' | 'SHEET' | 'USERDEFINED' | 'NOTDEFINED';
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export interface AddPlatePolygonParams {
+  Profile: 'polygon';
+  OuterCurve: Array<[number, number]>;
+  Position?: [number, number, number];
+  Thickness: number;
+  PredefinedType?: 'CURTAIN_PANEL' | 'SHEET' | 'USERDEFINED' | 'NOTDEFINED';
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export interface AddMemberInStoreParams {
+  Start: [number, number, number];
+  End: [number, number, number];
+  Width: number;
+  Height: number;
+  PredefinedType?:
+    | 'BRACE' | 'CHORD' | 'COLLAR' | 'MEMBER' | 'MULLION' | 'PLATE'
+    | 'POST' | 'PURLIN' | 'RAFTER' | 'STRINGER' | 'STRUT' | 'STUD'
+    | 'USERDEFINED' | 'NOTDEFINED';
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
 export interface StoreBackendMethods {
   addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef;
   removeEntity(ref: EntityRef): boolean;
@@ -429,13 +547,20 @@ export interface StoreBackendMethods {
    * High-level builders: drop an element into an existing parsed model,
    * anchored to a target IfcBuildingStorey. Each emits the full STEP
    * sub-graph (placement → profile → solid → representation +
-   * IfcRelContainedInSpatialStructure) into the overlay so the element
-   * appears alongside the existing model on export.
+   * IfcRelContainedInSpatialStructure / IfcRelAggregates for spaces)
+   * into the overlay so the element appears alongside the existing
+   * model on export.
    */
   addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef;
   addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef;
   addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef;
   addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef;
+  addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef;
+  addWindow(modelId: string, storeyExpressId: number, params: AddWindowInStoreParams): EntityRef;
+  addSpace(modelId: string, storeyExpressId: number, params: AddSpaceInStoreParams): EntityRef;
+  addRoof(modelId: string, storeyExpressId: number, params: AddRoofInStoreParams): EntityRef;
+  addPlate(modelId: string, storeyExpressId: number, params: AddPlateInStoreParams): EntityRef;
+  addMember(modelId: string, storeyExpressId: number, params: AddMemberInStoreParams): EntityRef;
 }
 
 export interface SpatialBackendMethods {

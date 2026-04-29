@@ -1,6 +1,6 @@
 # @ifc-lite/drawing-2d
 
-2D architectural drawings from 3D IFC models. Generates floor plans, sections, and elevations as vector SVG with cut lines, projection lines, hidden lines, material hatching, and architectural symbols (door swings, stair arrows, window frames). Optionally GPU-accelerated.
+2D architectural drawings from 3D IFC models. Generates floor plans and sections as vector SVG with cut lines, projection lines, hidden lines, material hatching, and architectural symbols (door swings, stair arrows, window frames). Optionally GPU-accelerated.
 
 ## Installation
 
@@ -11,98 +11,124 @@ npm install @ifc-lite/drawing-2d
 ## Floor plan
 
 ```typescript
-import { generateFloorPlan, exportToSVG } from '@ifc-lite/drawing-2d';
+import { generateFloorPlan, exportToSVG, PAPER_SIZES, COMMON_SCALES } from '@ifc-lite/drawing-2d';
 
-// Cut at 1.2m above floor level (standard architectural plan height)
+// Cut at 1.2 m above floor level (standard architectural plan height)
 const drawing = await generateFloorPlan(meshes, 1.2, {
   includeHiddenLines: true,
   includeMaterialHatching: true,
 });
 
 const svg = exportToSVG(drawing, {
+  paperSize: PAPER_SIZES.A3_LANDSCAPE,
+  scale: COMMON_SCALES.find((s) => s.factor === 50), // 1:50
   showHatching: true,
-  scale: 1 / 50, // 1:50
-  paperSize: 'A3',
+  showHiddenLines: true,
 });
 
-// Render in the browser
 document.body.innerHTML = svg;
 ```
 
 ## Section cut
 
-```typescript
-import { generateSection } from '@ifc-lite/drawing-2d';
+`generateSection` cuts vertically along the X or Z axis (use `generateFloorPlan` for horizontal cuts).
 
-// Vertical section through plane y = 5 (looking +Y)
-const section = await generateSection(meshes, {
-  plane: { axis: 'y', position: 5, normal: [0, 1, 0] },
-  depth: 20,                     // how far behind the cut to render
+```typescript
+import { generateSection, exportToSVG } from '@ifc-lite/drawing-2d';
+
+// Vertical section through plane x = 5
+const drawing = await generateSection(meshes, 'x', 5, {
   includeHiddenLines: false,
   includeProjectionLines: true,
 });
 
-const svg = exportToSVG(section);
+const svg = exportToSVG(drawing);
 ```
 
-Supported plane axes: `'x'` (transverse section), `'y'` (longitudinal), `'z'` (horizontal — useful for ceiling plans). For arbitrary cut directions pass an explicit `normal` plus `position`.
-
-## Elevation
+For arbitrary sections (custom plane, projection depth, scale), use `Drawing2DGenerator` + `createSectionConfig` directly:
 
 ```typescript
-import { generateElevation } from '@ifc-lite/drawing-2d';
+import { Drawing2DGenerator, createSectionConfig } from '@ifc-lite/drawing-2d';
 
-const elevation = await generateElevation(meshes, {
-  direction: 'north',  // 'north' | 'south' | 'east' | 'west'
-  showShadows: false,
+const generator = new Drawing2DGenerator();
+await generator.initialize();
+
+const config = createSectionConfig('y', 2.5, { projectionDepth: 5, scale: 50 });
+const drawing = await generator.generate(meshes, config, {
+  includeHiddenLines: true,
+  includeMaterialHatching: true,
 });
 
-document.body.innerHTML = exportToSVG(elevation);
+generator.dispose();
 ```
+
+## Graphic overrides
+
+Apply named graphic presets (architectural, fire-safety, structural, MEP, monochrome) via the override engine:
+
+```typescript
+import {
+  createOverrideEngine,
+  getBuiltInPreset,
+  ifcTypeCriterion,
+} from '@ifc-lite/drawing-2d';
+
+// Use a built-in preset
+const fireSafety = getBuiltInPreset('fire-safety');
+const engine = createOverrideEngine(fireSafety?.rules);
+
+// Or define custom rules
+const custom = createOverrideEngine([
+  {
+    id: 'highlight-walls',
+    name: 'Highlight load-bearing walls',
+    enabled: true,
+    priority: 10,
+    criteria: ifcTypeCriterion(['IfcWall', 'IfcWallStandardCase']),
+    style: { strokeColor: '#d62828', strokeWidth: 0.7 },
+  },
+]);
+
+// Resolve the style for an element
+const result = engine.applyOverrides({
+  expressId: 12345,
+  ifcType: 'IfcWall',
+  properties: { /* psets keyed by name */ },
+});
+console.log(result.style);
+```
+
+Built-in presets: `architectural` (default), `structural`, `mep`, `fire-safety`, `monochrome`. List them via `BUILT_IN_PRESETS` or look one up with `getBuiltInPreset(id)`.
 
 ## Drawing sheets
 
-Compose multiple drawings on a single sheet with frame, title block, and scale bar:
+For presentation output, the package ships paper sizes, drawing frames, title blocks, scale bars, and north arrows as composable building blocks rather than a single one-shot helper. Bring in the pieces you need from the `sheet` module:
 
 ```typescript
-import { createSheet, exportSheetToSVG } from '@ifc-lite/drawing-2d';
-
-const sheet = createSheet({
-  paperSize: 'A1',
-  orientation: 'landscape',
-  titleBlock: {
-    project: 'Office Tower',
-    drawing: 'Ground Floor Plan',
-    scale: '1:100',
-    revision: 'A',
-    drawn: 'LT',
-    date: '2026-04-29',
-  },
-  drawings: [
-    { drawing: floorPlan, position: { x: 50, y: 50 }, scale: 1 / 100 },
-    { drawing: section, position: { x: 50, y: 400 }, scale: 1 / 100 },
-  ],
-});
-
-const svg = exportSheetToSVG(sheet);
+import {
+  // Paper
+  PAPER_SIZE_REGISTRY,
+  getDefaultPaperSize,
+  // Frames
+  createFrame,
+  renderFrame,           // returns { svgElements, innerBounds }
+  // Title blocks
+  createTitleBlock,
+  renderTitleBlock,      // returns { svgElements, ... }
+  DEFAULT_TITLE_BLOCK_FIELDS,
+  // Scale bar / north arrow
+  DEFAULT_SCALE_BAR,
+  DEFAULT_NORTH_ARROW,
+  renderScaleBar,
+  renderNorthArrow,
+} from '@ifc-lite/drawing-2d';
 ```
 
-## Graphic override presets
-
-```typescript
-import { applyGraphicPreset } from '@ifc-lite/drawing-2d';
-
-applyGraphicPreset(drawing, 'fire-safety');
-//   - Highlights egress paths
-//   - Tints fire-rated walls red
-//   - Colours fire-protection equipment
-
-// Other presets: 'architectural' (default), 'structural', 'mep', 'fire-safety'
-```
+Each renderer returns SVG fragments that you wrap in your own `<svg>` document — see the [2D Drawings Guide](https://louistrue.github.io/ifc-lite/guide/drawing-2d/) for a worked sheet-composition example.
 
 ## API
 
-See the [2D Drawings Guide](../../docs/guide/drawing-2d.md) and [API Reference](../../docs/api/typescript.md#ifc-litedrawing-2d).
+See the [2D Drawings Guide](https://louistrue.github.io/ifc-lite/guide/drawing-2d/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litedrawing-2d).
 
 ## License
 

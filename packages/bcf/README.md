@@ -88,7 +88,7 @@ const back = uuidToIfcGuid(uuid);
 
 ## API
 
-See the [BCF Guide](../../docs/guide/bcf.md) and [API Reference](../../docs/api/typescript.md#ifc-litebcf).
+See the [BCF Guide](https://louistrue.github.io/ifc-lite/guide/bcf/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litebcf).
 
 ## License
 

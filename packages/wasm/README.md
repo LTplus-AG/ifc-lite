@@ -12,67 +12,95 @@ npm install @ifc-lite/wasm
 
 ## Direct WASM use
 
+`IfcAPI` methods take the raw IFC text (a `string`), not a `Uint8Array`. Decode the buffer first.
+
 ```typescript
 import init, { IfcAPI } from '@ifc-lite/wasm';
 
-await init();                    // load and instantiate the WASM module
+await init();                         // load and instantiate the WASM module
 
 const api = new IfcAPI();
-const buffer = new Uint8Array(await file.arrayBuffer());
+const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
+const content = new TextDecoder().decode(buffer);
 
-// Parse a STEP file — returns a parse handle the other methods key off
-const handle = api.parse(buffer);
+// Lightweight parse — returns { entityCount, ... }
+const result = await api.parse(content);
+console.log(`Entities: ${result.entityCount}`);
 
-console.log(`Schema: ${api.getSchemaVersion(handle)}`);
-console.log(`Entities: ${api.getEntityCount(handle)}`);
-
-// Process geometry — returns a MeshCollection with TypedArray vertex buffers
-const meshes = api.processGeometry(handle);
+// Tessellated meshes — each entry has expressId, positions, indices, normals, color
+const meshes = api.parseMeshes(content);
 console.log(`${meshes.length} meshes`);
+for (let i = 0; i < meshes.length; i++) {
+  const mesh = meshes.get(i);
+  console.log(mesh.ifcType, mesh.expressId, mesh.vertexCount, 'vertices');
+}
 
-api.dispose(handle);              // free the Rust-side parse state
+meshes.free();                        // free the Rust-side mesh buffer
+api.free();                           // free the API instance
+```
+
+## Streaming mesh batches
+
+For progressive rendering, stream meshes in batches and yield to the browser between them:
+
+```typescript
+import init, { IfcAPI } from '@ifc-lite/wasm';
+
+await init();
+const api = new IfcAPI();
+
+await api.parseMeshesAsync(content, {
+  batchSize: 100,
+  onRtcOffset: ({ x, y, z, hasRtc }) => {
+    if (hasRtc) viewer.setWorldOffset(x, y, z);
+  },
+  onBatch: (meshes, progress) => {
+    for (const mesh of meshes) scene.add(toThreeMesh(mesh));
+    console.log(`${progress.percent}%`);
+  },
+  onComplete: ({ totalMeshes }) => console.log(`Done — ${totalMeshes} meshes`),
+});
 ```
 
 ## Zero-copy GPU upload
 
-The bindings expose handles into WASM linear memory so you can pump vertex data straight into a `GPUBuffer` without intermediate copies:
+`parseToGpuGeometry` returns interleaved (position + normal) vertex data with pointers into WASM linear memory, ready for direct `GPUBuffer` upload:
 
 ```typescript
-import init, { ZeroCopyMesh, IfcAPI } from '@ifc-lite/wasm';
+import init, { IfcAPI } from '@ifc-lite/wasm';
 
 await init();
-
 const api = new IfcAPI();
-const handle = api.parse(buffer);
-const zcMeshes = api.processGeometryZeroCopy(handle);
+const gpuGeom = api.parseToGpuGeometry(content);
+const memory = api.getMemory();
 
-for (let i = 0; i < zcMeshes.length; i++) {
-  const mesh: ZeroCopyMesh = zcMeshes.get(i);
+// Direct views into WASM memory — no intermediate copy
+const vertexView = new Float32Array(memory.buffer, gpuGeom.vertexDataPtr, gpuGeom.vertexDataLen);
+const indexView = new Uint32Array(memory.buffer, gpuGeom.indicesPtr, gpuGeom.indicesLen);
 
-  // Direct view into WASM memory — no allocation, no copy
-  const vertices = mesh.vertexView();   // Float32Array
-  const indices = mesh.indexView();     // Uint32Array
+device.queue.writeBuffer(gpuVertexBuffer, 0, vertexView);
+device.queue.writeBuffer(gpuIndexBuffer, 0, indexView);
 
-  device.queue.writeBuffer(gpuVertexBuffer, 0, vertices);
-  device.queue.writeBuffer(gpuIndexBuffer, 0, indices);
-}
+// IMPORTANT: views are only valid until the next WASM allocation. Free immediately after upload.
+gpuGeom.free();
 ```
+
+For deduplicated geometry (one mesh per shape, per-instance transforms), use `parseToGpuInstancedGeometry(content)` and iterate `GpuInstancedGeometryCollection`.
 
 ## Georeferencing
 
 ```typescript
-import init, { GeoReferenceJs } from '@ifc-lite/wasm';
+import init, { IfcAPI } from '@ifc-lite/wasm';
 
 await init();
-
 const api = new IfcAPI();
-const handle = api.parse(buffer);
-const georef: GeoReferenceJs | null = api.getGeoReference(handle);
+const georef = api.getGeoReference(content);
 
 if (georef) {
   console.log(`CRS: ${georef.crsName}`);
   const [e, n, h] = georef.localToMap(10, 20, 5);
   console.log(`Local (10,20,5) → Map (${e}, ${n}, ${h})`);
+  georef.free();
 }
 ```
 
@@ -80,15 +108,17 @@ if (georef) {
 
 | Class | Purpose |
 |---|---|
-| `IfcAPI` | Top-level parser entry point |
+| `IfcAPI` | Top-level parser entry point — `parse`, `parseMeshes`, `parseMeshesAsync`, `parseToGpuGeometry`, `parseZeroCopy`, `getGeoReference`, `extractProfiles`, `parseSymbolicRepresentations`, … |
 | `MeshCollection`, `MeshDataJs` | Tessellated geometry output |
+| `MeshCollectionWithRtc`, `RtcOffsetJs` | Mesh collection with relative-to-centre offset for large-coordinate models |
 | `InstancedMeshCollection`, `InstancedGeometry`, `InstanceData` | Instanced geometry path (deduplicated meshes + per-instance transforms) |
 | `ZeroCopyMesh`, `GpuGeometry`, `GpuMeshMetadata` | Zero-copy GPU upload handles |
-| `GpuInstancedGeometry`, `GpuInstancedGeometryCollection` | Zero-copy instanced path |
-| `RtcOffsetJs` | Relative-to-centre offset for large-coordinate models |
+| `GpuInstancedGeometry`, `GpuInstancedGeometryCollection`, `GpuInstancedGeometryRef` | Zero-copy instanced path |
 | `GeoReferenceJs` | Georeferencing transform |
-| `ProfileCollection`, `ProfileEntryJs` | Cross-section profile data |
+| `ProfileCollection`, `ProfileEntryJs` | Cross-section profile data (extruded-area solids) |
 | `SymbolicRepresentationCollection`, `SymbolicCircle`, `SymbolicPolyline` | 2D symbolic representations (for plan / annotation views) |
+
+All classes implement `free()` and `[Symbol.dispose]()` — call `free()` (or use `using`) to release Rust-side memory.
 
 ## When to use a higher-level package instead
 
@@ -105,7 +135,7 @@ This package ships the bindings only. The Rust source lives in [`rust/wasm-bindi
 
 ## API
 
-See the [WASM API Reference](../../docs/api/wasm.md).
+See the [WASM API Reference](https://louistrue.github.io/ifc-lite/api/wasm/).
 
 ## License
 

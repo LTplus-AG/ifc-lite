@@ -83,7 +83,7 @@ The index is generated at build time and committed to the repo, so normal builds
 
 ## API
 
-See the [API Reference](../../docs/api/typescript.md#ifc-litedata).
+See the [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litedata).
 
 ## License
 

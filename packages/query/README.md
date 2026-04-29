@@ -88,7 +88,7 @@ Tables exposed: `entities`, `properties`, `quantities`, `relationships`. Useful 
 
 ## API
 
-See the [Querying Guide](../../docs/guide/querying.md) and [API Reference](../../docs/api/typescript.md#ifc-litequery).
+See the [Querying Guide](https://louistrue.github.io/ifc-lite/guide/querying/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litequery).
 
 ## License
 

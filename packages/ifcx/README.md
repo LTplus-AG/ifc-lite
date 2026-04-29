@@ -72,7 +72,7 @@ const ifcx = exporter.export({ includeGeometry: true });
 
 ## API
 
-See the [Parsing Guide](../../docs/guide/parsing.md) and [API Reference](../../docs/api/typescript.md#ifc-liteifcx).
+See the [Parsing Guide](https://louistrue.github.io/ifc-lite/guide/parsing/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-liteifcx).
 
 ## License
 

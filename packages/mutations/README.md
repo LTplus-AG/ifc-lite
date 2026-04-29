@@ -166,14 +166,7 @@ Pair this with `exportToStep(store, { applyMutations: true })` from `@ifc-lite/e
 
 ## API
 
-See the [Property Editing Guide](../../docs/guide/mutations.md) (covers
-both property and store-level edits) and the
-[API Reference](../../docs/api/typescript.md#ifc-litemutations).
-
-For higher-level builders that emit fully-anchored sub-graphs (e.g. an
-`IfcColumn` with placement, profile, and rel-contained-in-spatial-structure)
-into a `StoreEditor`, see [`@ifc-lite/create`](../create) — specifically
-`addColumnToStore` and `resolveSpatialAnchor`.
+See the [Property Editing Guide](https://louistrue.github.io/ifc-lite/guide/mutations/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litemutations).
 
 ## License
 

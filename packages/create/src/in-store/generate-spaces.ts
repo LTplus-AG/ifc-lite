@@ -31,9 +31,9 @@ import {
 import { addSpaceToStore, type SpaceBuildResult } from './space.js';
 
 export interface GenerateSpacesOptions {
-  /** Snap tolerance for wall-end vertex merge. Default 0.05 m. */
+  /** Snap tolerance for wall-end vertex merge in METRES. Default 0.1 m. */
   snapTolerance?: number;
-  /** Drop detected regions below this area. Default 0.5 m². */
+  /** Drop detected regions below this area in m². Default 0.5 m². */
   minArea?: number;
   /** IfcSpace extrusion height (m). Default 3. */
   height?: number;
@@ -56,6 +56,13 @@ export interface GenerateSpacesOptions {
    * carries detection stats unconditionally.
    */
   debug?: boolean;
+  /**
+   * Additional element types to treat as space dividers (passed to
+   * the wall extractor verbatim — case-insensitive). The defaults
+   * already cover walls, curtain walls, virtual elements, plates,
+   * members, and railings.
+   */
+  extraDividerTypes?: string[];
 }
 
 export interface GenerateSpacesResult {
@@ -90,12 +97,18 @@ export function generateSpacesFromWalls(
   const log = debug ? (...args: unknown[]) => console.debug('[generate-spaces]', ...args) : () => {};
   log(`storey #${storeyExpressId}: starting auto-space generation`);
 
-  const extraction = extractWallSegmentsForStorey(store, storeyExpressId, overlay, { debug });
-  log(`extracted ${extraction.segments.length} segments from ${extraction.considered} walls (${extraction.skipped.length} skipped)`);
+  const extraction = extractWallSegmentsForStorey(store, storeyExpressId, overlay, {
+    debug,
+    extraDividerTypes: options.extraDividerTypes,
+  });
+  log(`extracted ${extraction.segments.length} segments from ${extraction.considered} walls (${extraction.skipped.length} skipped); unitScale=${extraction.lengthUnitScale}`);
 
+  // Snap tolerance / min area are user-friendly metres. Segments are
+  // also already converted to metres by the extractor, so no further
+  // unit-scaling is needed here.
   const detection = detectEnclosedAreasWithStats(extraction.segments, {
-    snapTolerance: options.snapTolerance,
-    minArea: options.minArea,
+    snapTolerance: options.snapTolerance ?? 0.1,
+    minArea: options.minArea ?? 0.5,
     debug,
   });
   const detected = detection.spaces;
@@ -103,10 +116,13 @@ export function generateSpacesFromWalls(
   // Always log a one-liner summary at info level so users see something
   // in devtools without flipping the debug flag — the most common
   // failure ("no regions detected") becomes self-explanatory.
+  const unitNote = extraction.lengthUnitScale === 1 ? 'metres'
+    : extraction.lengthUnitScale === 0.001 ? 'millimetres'
+    : `scale ${extraction.lengthUnitScale}`;
   console.info(
     `[auto-spaces] storey #${storeyExpressId}: ${detected.length} region(s) from ${extraction.contributingWallIds.length}/${extraction.considered} walls — ` +
     `${detection.stats.vertices}v / ${detection.stats.segmentsAfterSplit}e / ${detection.stats.faces}f ` +
-    `(dropped ${detection.stats.outerFacesDropped} outer + ${detection.stats.belowMinAreaDropped} small).`,
+    `(dropped ${detection.stats.outerFacesDropped} outer + ${detection.stats.belowMinAreaDropped} small) [${unitNote}].`,
   );
 
   const emitted: GenerateSpacesResult['emitted'] = [];

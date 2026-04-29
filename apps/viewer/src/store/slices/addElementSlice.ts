@@ -206,7 +206,7 @@ const ADD_ELEMENT_DEFAULTS = {
   plate: { Width: 1, Depth: 1, Thickness: 0.02 } as AddElementPlateParams,
   member: { Width: 0.1, Height: 0.1 } as AddElementMemberParams,
   autoSpace: {
-    SnapTolerance: 0.05,
+    SnapTolerance: 0.1,
     MinArea: 0.5,
     Height: 3,
     NamePattern: 'Space {n}',

@@ -101,6 +101,24 @@ describe('detectEnclosedAreas', () => {
     expect(areas[1]).toBeCloseTo(12, 5);
   });
 
+  it('T-junction snap: closes a room when wall axes end at perpendicular interiors', () => {
+    // Real IFC walls don't share corner vertices — each wall's axis
+    // ends at the inside face of the perpendicular wall, so the
+    // endpoints land on each other's interior. Without T-junction
+    // snap the room never closes.
+    const segs: Segment[] = [
+      // Outer 4×3 box, but each wall's axis is short by 0.1 m at
+      // each end (mimicking 200 mm thick perpendicular walls).
+      seg([0.1, 0],   [3.9, 0]),    // bottom
+      seg([4,   0.1], [4,   2.9]),  // right
+      seg([3.9, 3],   [0.1, 3]),    // top
+      seg([0,   2.9], [0,   0.1]),  // left
+    ];
+    const rooms = detectEnclosedAreas(segs, { snapTolerance: 0.2 });
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].area).toBeGreaterThan(11);
+  });
+
   it('produces CCW outlines (positive shoelace area)', () => {
     const segs: Segment[] = [
       seg([0, 0], [4, 0]),

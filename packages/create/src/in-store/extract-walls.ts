@@ -30,7 +30,12 @@
  * didn't contribute to the planar graph.
  */
 
-import { EntityExtractor, type IfcDataStore, type IfcAttributeValue } from '@ifc-lite/parser';
+import {
+  EntityExtractor,
+  extractLengthUnitScale,
+  type IfcDataStore,
+  type IfcAttributeValue,
+} from '@ifc-lite/parser';
 import type { Segment, Vec2 } from './auto-space-detect.js';
 
 /**
@@ -68,6 +73,12 @@ export interface WallExtractionResult {
   skipped: WallSkip[];
   /** Best-effort total wall count visible on the storey (existing + overlay). */
   considered: number;
+  /**
+   * Length-unit scale that was applied to the extracted segments
+   * (e.g. `0.001` for a millimetre model). Reported so callers can
+   * scale their snap tolerance / min area to match.
+   */
+  lengthUnitScale: number;
 }
 
 export interface ExtractWallSegmentsOptions {
@@ -77,7 +88,32 @@ export interface ExtractWallSegmentsOptions {
    * "no enclosed regions detected" in the Auto Spaces flow.
    */
   debug?: boolean;
+  /**
+   * Additional element types to treat as space dividers. Defaults to
+   * the standard wall set; pass extras here to broaden coverage on
+   * unusual models. Names are case-insensitive (`'IfcMember'` etc.).
+   */
+  extraDividerTypes?: string[];
 }
+
+/**
+ * Element types treated as "wall-like" dividers by default. Extends
+ * the obvious walls with curtain walls (often the only divider on a
+ * storey full of glazing), virtual walls (used by IFC exports for
+ * hypothetical room boundaries), and plates / members (used as
+ * partition panels in some pre-fab workflows). Callers can extend
+ * via `options.extraDividerTypes` for vendor-specific cases.
+ */
+const DEFAULT_DIVIDER_TYPES = new Set([
+  'ifcwall',
+  'ifcwallstandardcase',
+  'ifcwallelementedcase',
+  'ifccurtainwall',
+  'ifcvirtualelement',
+  'ifcplate',
+  'ifcmember',
+  'ifcrailing',
+]);
 
 const AXIS_EPS = 1e-6;
 
@@ -93,19 +129,39 @@ export function extractWallSegmentsForStorey(
   const debug = !!options.debug;
   const log = debug ? (...args: unknown[]) => console.debug('[extract-walls]', ...args) : () => {};
 
+  // Resolve the model's length unit so the segments we hand to the
+  // detector are always in METRES — without this a millimetre model
+  // would produce coords like (31614, 23345) and the panel's
+  // metre-based snap tolerance would be effectively zero.
+  let lengthUnitScale = 1.0;
+  if (store.source) {
+    try {
+      lengthUnitScale = extractLengthUnitScale(store.source, store.entityIndex);
+      if (!Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) lengthUnitScale = 1.0;
+    } catch {
+      lengthUnitScale = 1.0;
+    }
+  }
+  log(`length unit scale = ${lengthUnitScale} (raw → metres)`);
+
   if (!store.source) {
     log('no source bytes on data store — extraction cannot run');
-    return { segments, contributingWallIds: contributing, skipped, considered: 0 };
+    return { segments, contributingWallIds: contributing, skipped, considered: 0, lengthUnitScale };
+  }
+
+  const dividerTypes = new Set(DEFAULT_DIVIDER_TYPES);
+  if (options.extraDividerTypes) {
+    for (const t of options.extraDividerTypes) dividerTypes.add(t.toLowerCase());
   }
 
   const extractor = new EntityExtractor(store.source);
-  const wallIds = collectWallIdsOnStorey(store, storeyExpressId, log);
-  log(`storey #${storeyExpressId}: ${wallIds.length} contained walls`);
+  const dividerIds = collectDividerIdsOnStorey(store, storeyExpressId, dividerTypes, log);
+  log(`storey #${storeyExpressId}: ${dividerIds.length} contained divider element(s)`);
 
-  for (const id of wallIds) {
+  for (const id of dividerIds) {
     const result = extractWallAxisFromSource(store, extractor, id, log);
     if (result.segment) {
-      segments.push(result.segment);
+      segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
     } else {
       skipped.push({ wallId: id, reason: result.reason ?? 'no-axis-or-rect-profile' });
@@ -115,10 +171,12 @@ export function extractWallSegmentsForStorey(
   let overlayCount = 0;
   if (overlay) {
     for (const ent of overlay.getNewEntities()) {
-      if (!isWallType(ent.type)) continue;
+      if (!dividerTypes.has(ent.type.toLowerCase())) continue;
       overlayCount++;
       const result = extractWallAxisFromOverlay(store, extractor, overlay, ent, log);
       if (result.segment) {
+        // Overlay walls are authored via addWallToStore which emits
+        // metre coords — don't double-scale.
         segments.push(result.segment);
         contributing.push(ent.expressId);
       } else {
@@ -144,48 +202,118 @@ export function extractWallSegmentsForStorey(
     segments,
     contributingWallIds: contributing,
     skipped,
-    considered: wallIds.length + overlayCount,
+    considered: dividerIds.length + overlayCount,
+    lengthUnitScale,
   };
 }
 
-function isWallType(type: string): boolean {
-  const lower = type.toLowerCase();
-  return lower === 'ifcwall' || lower === 'ifcwallstandardcase';
+function scaleSegment(seg: Segment, scale: number): Segment {
+  if (scale === 1) return seg;
+  return {
+    a: [seg.a[0] * scale, seg.a[1] * scale],
+    b: [seg.b[0] * scale, seg.b[1] * scale],
+  };
+}
+
+function isDividerType(type: string, dividerTypes: Set<string>): boolean {
+  return dividerTypes.has(type.toLowerCase());
 }
 
 type Logger = (...args: unknown[]) => void;
 
-function collectWallIdsOnStorey(store: IfcDataStore, storeyId: number, log: Logger): number[] {
-  // ContainedInSpatialStructure → element membership lookup. Walls
-  // on the storey are anchored by `IfcRelContainedInSpatialStructure`
-  // with `RelatingStructure = #storeyId`.
+function collectDividerIdsOnStorey(
+  store: IfcDataStore,
+  storeyId: number,
+  dividerTypes: Set<string>,
+  log: Logger,
+): number[] {
   const ids: number[] = [];
   const seen = new Set<number>();
-  const containedRels = store.entityIndex.byType.get('IFCRELCONTAINEDINSPATIALSTRUCTURE') ?? [];
-  log(`scanning ${containedRels.length} IfcRelContainedInSpatialStructure rels for storey #${storeyId}`);
   if (!store.source) return ids;
   const extractor = new EntityExtractor(store.source);
-  let matchingRels = 0;
-  for (const relId of containedRels) {
+
+  const visitMember = (memberId: number) => {
+    if (seen.has(memberId)) return;
+    const memberType = store.entities.getTypeName(memberId);
+    if (memberType && isDividerType(memberType, dividerTypes)) {
+      seen.add(memberId);
+      ids.push(memberId);
+      return;
+    }
+    // Member is a sub-structure (IfcSpace, IfcBuildingPart, …);
+    // descend through its IfcRelAggregates / contained children too.
+    descendAggregate(memberId);
+  };
+
+  const descendAggregate = (parentId: number) => {
+    // Avoid revisiting parents we've already walked (cycles are
+    // theoretically possible in malformed IFC).
+    if (seen.has(parentId)) return;
+    seen.add(parentId);
+    // Anything `IfcRelContainedInSpatialStructure`-anchored to this
+    // sub-structure should still be reachable.
+    walkContainmentInto(parentId);
+    // And recurse through aggregation.
+    const aggRels = store.entityIndex.byType.get('IFCRELAGGREGATES') ?? [];
+    for (const relId of aggRels) {
+      const ref = store.entityIndex.byId.get(relId);
+      if (!ref) continue;
+      const rel = extractor.extractEntity(ref);
+      if (!rel) continue;
+      const relating = rel.attributes[4];
+      if (typeof relating !== 'number' || relating !== parentId) continue;
+      const related = rel.attributes[5];
+      if (!Array.isArray(related)) continue;
+      for (const child of related) {
+        if (typeof child !== 'number') continue;
+        visitMember(child);
+      }
+    }
+  };
+
+  const walkContainmentInto = (parentId: number) => {
+    const containedRels = store.entityIndex.byType.get('IFCRELCONTAINEDINSPATIALSTRUCTURE') ?? [];
+    for (const relId of containedRels) {
+      const ref = store.entityIndex.byId.get(relId);
+      if (!ref) continue;
+      const rel = extractor.extractEntity(ref);
+      if (!rel) continue;
+      const relating = rel.attributes[5];
+      if (typeof relating !== 'number' || relating !== parentId) continue;
+      const related = rel.attributes[4];
+      if (!Array.isArray(related)) continue;
+      for (const member of related) {
+        if (typeof member !== 'number') continue;
+        visitMember(member);
+      }
+    }
+  };
+
+  // Mark the storey itself as seen but DON'T push it (we want its
+  // children, not the storey id).
+  seen.add(storeyId);
+  walkContainmentInto(storeyId);
+
+  // Some authoring tools attach elements via IfcRelAggregates to the
+  // storey instead of containment (or in addition). Walk both
+  // unconditionally to keep coverage broad.
+  const aggRels = store.entityIndex.byType.get('IFCRELAGGREGATES') ?? [];
+  for (const relId of aggRels) {
     const ref = store.entityIndex.byId.get(relId);
     if (!ref) continue;
     const rel = extractor.extractEntity(ref);
     if (!rel) continue;
-    const relating = rel.attributes[5];
+    const relating = rel.attributes[4];
     if (typeof relating !== 'number' || relating !== storeyId) continue;
-    matchingRels++;
-    const related = rel.attributes[4];
+    const related = rel.attributes[5];
     if (!Array.isArray(related)) continue;
-    for (const member of related) {
-      if (typeof member !== 'number') continue;
-      const memberType = store.entities.getTypeName(member);
-      if (!memberType || !isWallType(memberType)) continue;
-      if (seen.has(member)) continue;
-      seen.add(member);
-      ids.push(member);
+    for (const child of related) {
+      if (typeof child !== 'number') continue;
+      visitMember(child);
     }
   }
-  log(`${matchingRels} containment rels reference this storey`);
+
+  log(`collected ${ids.length} divider candidate(s) — types: ${[...dividerTypes].join(', ')}`);
   return ids;
 }
 

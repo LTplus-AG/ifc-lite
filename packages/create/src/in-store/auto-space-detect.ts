@@ -152,15 +152,56 @@ export function detectEnclosedAreasWithStats(
   }
   log(`after snap: ${vertices.length} vertices, ${indexedSegs.length} segments`);
 
-  // ── 2. Resolve intersections (split at crossings) ──
-  // Brute-force O(n²): fine for the wall counts a single storey
-  // typically has (dozens, not thousands). Iteration cap scales with
-  // the input — heavy floor plans with many T-junctions can require
-  // significantly more passes than the original 50-iteration default.
+  // ── 1b. Snap dangling endpoints onto nearby edge interiors ──
+  // Walls extracted from real IFC files often DON'T share corner
+  // vertices: each wall's axis runs centreline-to-centreline, but
+  // adjacent perpendicular walls have axes ending at the inside
+  // face of the partner wall — so the endpoints land on each
+  // other's interior, not at the same point. A pure endpoint snap
+  // misses this; we project each unique endpoint onto every nearby
+  // segment and, when within snap tolerance, mark the projection
+  // as the canonical vertex (and queue the host segment to be
+  // split there).
   const splitSegs: Array<[number, number]> = [];
   for (let i = 0; i < indexedSegs.length; i++) {
     splitSegs.push([...indexedSegs[i]]);
   }
+  const snapSq = snap * snap;
+  let tjunctionPasses = 0;
+  let tjunctionsApplied = false;
+  do {
+    tjunctionsApplied = false;
+    tjunctionPasses++;
+    // Snapshot endpoints we need to test — segs grow during the loop,
+    // but the new pieces share endpoints with the originals so we
+    // don't have to re-scan them.
+    const endpointIds = new Set<number>();
+    for (const [a, b] of splitSegs) { endpointIds.add(a); endpointIds.add(b); }
+    for (const vid of endpointIds) {
+      const p = vertices[vid].pt;
+      for (let s = 0; s < splitSegs.length; s++) {
+        const [a, b] = splitSegs[s];
+        if (a === vid || b === vid) continue;
+        const proj = closestPointOnSegment(p, vertices[a].pt, vertices[b].pt);
+        if (!proj) continue;
+        const dx = proj.point[0] - p[0];
+        const dy = proj.point[1] - p[1];
+        if (dx * dx + dy * dy > snapSq) continue;
+        // Strictly interior — skip projections that land on the
+        // segment endpoints (those are handled by the regular vertex
+        // snap and would degenerate the split).
+        if (proj.t < 1e-6 || proj.t > 1 - 1e-6) continue;
+        // Insert the dangling endpoint as the split vertex (its
+        // coords are already in `vertices[vid]`); split the host edge.
+        splitSegs[s] = [a, vid];
+        splitSegs.push([vid, b]);
+        tjunctionsApplied = true;
+        break;
+      }
+      if (tjunctionsApplied) break;
+    }
+  } while (tjunctionsApplied && tjunctionPasses < Math.max(50, indexedSegs.length * 5));
+  log(`T-junction snap: ${tjunctionPasses} pass(es)`);
 
   const maxIterations = Math.max(100, indexedSegs.length * 10);
   let changed = true;
@@ -356,6 +397,24 @@ export function detectEnclosedAreasWithStats(
   out.sort((a, b) => b.area - a.area);
   log(`detected ${out.length} interior region(s); dropped ${stats.outerFacesDropped} outer + ${stats.belowMinAreaDropped} below min-area`);
   return { spaces: out, stats };
+}
+
+/**
+ * Closest point on segment ab to a query point q, plus the
+ * parametric distance `t ∈ [0, 1]` along ab. Returns null for
+ * zero-length segments.
+ */
+function closestPointOnSegment(
+  q: Vec2, a: Vec2, b: Vec2,
+): { point: Vec2; t: number } | null {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-12) return null;
+  let t = ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / len2;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  return { point: [a[0] + t * dx, a[1] + t * dy], t };
 }
 
 /**

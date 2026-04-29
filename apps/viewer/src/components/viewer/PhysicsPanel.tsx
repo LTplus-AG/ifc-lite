@@ -142,6 +142,7 @@ export function PhysicsPanel({ onClose }: PhysicsPanelProps) {
         tiltThreshold: settings.tiltThreshold,
         adjacencyTolerance: settings.adjacencyTolerance,
         colliderStrategy: settings.colliderStrategy,
+        debug: settings.debug,
       };
       try {
         const next = await bim.physics.simulate(target.ref.modelId, options);
@@ -367,6 +368,16 @@ function SettingsBlock({ settings, onChange }: SettingsBlockProps) {
           Auto picks convex for columns/beams/members and trimesh for slabs/walls.
         </p>
       </div>
+      <label className="flex items-center gap-2 text-xs cursor-pointer pt-1">
+        <input
+          type="checkbox"
+          checked={settings.debug}
+          onChange={(e) => onChange({ debug: e.target.checked })}
+          className="accent-primary"
+        />
+        <span>Debug logging</span>
+        <span className="text-[10px] text-muted-foreground">(see browser console)</span>
+      </label>
     </section>
   );
 }

@@ -85,6 +85,15 @@ export interface SimulateOptions {
    * long simulations.
    */
   trajectoryStride?: number;
+
+  /**
+   * Emit `console.info` / `console.warn` lines from the simulator at world
+   * build time and at progress checkpoints. Useful for diagnosing
+   * "why does this model explode?" — gravity axis, anchor counts, joint
+   * counts, max speeds, and the top N most-moved bodies all show up.
+   * Off by default.
+   */
+  debug?: boolean;
 }
 
 /** Per-frame body poses, indexed `frame * bodyCount * 7 + bodyIndex * 7`. */
@@ -118,6 +127,7 @@ export interface ResolvedSimulateOptions {
   colliderStrategy: ColliderStrategy;
   captureTrajectory: boolean;
   trajectoryStride: number;
+  debug: boolean;
 }
 
 export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
@@ -135,6 +145,7 @@ export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
   colliderStrategy: 'auto',
   captureTrajectory: false,
   trajectoryStride: 1,
+  debug: false,
 };
 
 export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimulateOptions {
@@ -158,6 +169,7 @@ export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimul
     colliderStrategy: opts?.colliderStrategy ?? DEFAULT_OPTIONS.colliderStrategy,
     captureTrajectory: opts?.captureTrajectory ?? DEFAULT_OPTIONS.captureTrajectory,
     trajectoryStride: Math.max(1, Math.floor(opts?.trajectoryStride ?? DEFAULT_OPTIONS.trajectoryStride)),
+    debug: opts?.debug ?? DEFAULT_OPTIONS.debug,
   };
 }
 

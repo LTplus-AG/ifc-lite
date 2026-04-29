@@ -417,6 +417,13 @@ export interface PhysicsSimulateOptions {
   captureTrajectory?: boolean;
   /** Sample every Nth physics step into the trajectory. Default `1`. */
   trajectoryStride?: number;
+  /**
+   * Emit `console.info` / `console.warn` lines from the simulator. Useful
+   * for diagnosing "why did this model explode?" — gravity, anchor
+   * counts, joint counts, max speeds, and the top movers all show up.
+   * Off by default.
+   */
+  debug?: boolean;
 }
 
 /** Per-frame body poses for animation playback. */

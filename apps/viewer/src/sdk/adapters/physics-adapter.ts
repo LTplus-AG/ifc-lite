@@ -193,5 +193,6 @@ function toEngineOptions(
     // The viewer always wants playback by default — caller can override.
     captureTrajectory: options.captureTrajectory ?? true,
     trajectoryStride: options.trajectoryStride,
+    debug: options.debug,
   };
 }

@@ -103,17 +103,20 @@ export function simulate(
 ): SimulationResult {
   const built = buildWorld(meshes, rawOptions);
   const recorder = createRecorder(built);
+  const checkpoints = built.options.debug ? buildDebugCheckpoints(built.steps) : null;
   try {
     if (recorder) recorder.recordFrame(0);
     for (let i = 0; i < built.steps; i++) {
       built.world.step();
       if (recorder) recorder.recordFrame(i + 1);
+      if (checkpoints && checkpoints.has(i + 1)) {
+        logCheckpoint(built, i + 1);
+      }
     }
-    // recordFrame is a no-op when the loop already covered this step on a
-    // stride boundary; otherwise it captures the terminal pose so the
-    // trajectory ends on the exact state `collect` classifies on.
     if (recorder && built.steps > 0) recorder.recordFrame(built.steps);
-    return collect(built, recorder?.finalize());
+    const result = collect(built, recorder?.finalize());
+    if (built.options.debug) logFinalSummary(built, result);
+    return result;
   } finally {
     built.world.free();
   }
@@ -129,17 +132,23 @@ export async function simulateAsync(
 ): Promise<SimulationResult> {
   const built = buildWorld(meshes, rawOptions);
   const recorder = createRecorder(built);
+  const checkpoints = built.options.debug ? buildDebugCheckpoints(built.steps) : null;
   try {
     if (recorder) recorder.recordFrame(0);
     for (let i = 0; i < built.steps; i++) {
       built.world.step();
       if (recorder) recorder.recordFrame(i + 1);
+      if (checkpoints && checkpoints.has(i + 1)) {
+        logCheckpoint(built, i + 1);
+      }
       if ((i + 1) % STEPS_PER_YIELD === 0 && i + 1 < built.steps) {
         await yieldToEventLoop();
       }
     }
     if (recorder && built.steps > 0) recorder.recordFrame(built.steps);
-    return collect(built, recorder?.finalize());
+    const result = collect(built, recorder?.finalize());
+    if (built.options.debug) logFinalSummary(built, result);
+    return result;
   } finally {
     built.world.free();
   }
@@ -353,7 +362,9 @@ function buildWorld(
   const totalSeconds = Math.max(options.durationSeconds, 0);
   const steps = Math.ceil(totalSeconds / world.timestep);
 
-  return { world, entries, jointPairs, steps, options };
+  const built: BuiltWorld = { world, entries, jointPairs, steps, options };
+  if (options.debug) logBuildSummary(built, meshes, modelFloor, downAxis);
+  return built;
 }
 
 function buildColliderDesc(
@@ -569,4 +580,193 @@ function gravityDownAxis(gravity: readonly [number, number, number]): 0 | 1 | 2 
     idx = 1;
   }
   return idx;
+}
+
+// ─── Debug logging ───────────────────────────────────────────────────
+//
+// All console output is gated on `options.debug`. The intent is to give a
+// reproducible trace from a single click — gravity vector, anchor counts,
+// joint counts, model bounds, then a few step-progress checkpoints, then a
+// final summary of the most-moved bodies. Useful for diagnosing "why did
+// my building explode?" without a JS debugger attached.
+
+function logBuildSummary(
+  built: BuiltWorld,
+  meshes: readonly PhysicsMesh[],
+  modelFloor: number,
+  downAxis: 0 | 1 | 2,
+): void {
+  const { entries, jointPairs, options } = built;
+  const anchorReasonCounts = { explicit: 0, ifcType: 0, lowestElement: 0 };
+  let dynamic = 0;
+  for (const e of entries) {
+    if (!e.anchored) {
+      dynamic++;
+      continue;
+    }
+    if (e.anchorReason) anchorReasonCounts[e.anchorReason]++;
+  }
+
+  // Build-time AABB stats over input meshes.
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let aabbCount = 0;
+  for (const m of meshes) {
+    const box = meshAABB(m);
+    if (!box) continue;
+    aabbCount++;
+    if (box.min[0] < minX) minX = box.min[0];
+    if (box.min[1] < minY) minY = box.min[1];
+    if (box.min[2] < minZ) minZ = box.min[2];
+    if (box.max[0] > maxX) maxX = box.max[0];
+    if (box.max[1] > maxY) maxY = box.max[1];
+    if (box.max[2] > maxZ) maxZ = box.max[2];
+  }
+  const span: [number, number, number] =
+    aabbCount > 0
+      ? [maxX - minX, maxY - minY, maxZ - minZ]
+      : [0, 0, 0];
+
+  // Collider strategy effective per IFC type bucket.
+  const typeCounts = new Map<string, number>();
+  for (const e of entries) typeCounts.set(e.ifcType, (typeCounts.get(e.ifcType) ?? 0) + 1);
+  const topTypes = [...typeCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([t, n]) => `${t}=${n}`)
+    .join(', ');
+
+  console.info('[Physics] ─── world build ───');
+  console.info(
+    `[Physics] gravity=(${options.gravity.map(fmt).join(', ')}) downAxis=${'XYZ'[downAxis]} ` +
+      `dt=${fmt(options.timeStep)}s steps=${built.steps} duration=${fmt(options.durationSeconds)}s`,
+  );
+  console.info(
+    `[Physics] meshes input=${meshes.length}, kept=${aabbCount}, removed=${options.remove.length}`,
+  );
+  console.info(
+    `[Physics] bodies total=${entries.length} dynamic=${dynamic} anchored=${entries.length - dynamic} ` +
+      `(explicit=${anchorReasonCounts.explicit} ifcType=${anchorReasonCounts.ifcType} ` +
+      `lowestElement=${anchorReasonCounts.lowestElement})`,
+  );
+  console.info(
+    `[Physics] joints=${jointPairs.length} colliderStrategy=${options.colliderStrategy} ` +
+      `connections=${options.connections.length}`,
+  );
+  console.info(
+    `[Physics] model bounds min=(${fmt(minX)}, ${fmt(minY)}, ${fmt(minZ)}) ` +
+      `max=(${fmt(maxX)}, ${fmt(maxY)}, ${fmt(maxZ)}) ` +
+      `span=(${span.map(fmt).join(', ')}) floor[axis ${'XYZ'[downAxis]}]=${fmt(modelFloor)}`,
+  );
+  if (topTypes) console.info(`[Physics] top types: ${topTypes}`);
+
+  // Sanity warnings: most common explosion causes.
+  if (Math.max(Math.abs(minX), Math.abs(minY), Math.abs(minZ), Math.abs(maxX), Math.abs(maxY), Math.abs(maxZ)) > 1e5) {
+    console.warn(
+      '[Physics] Coordinates exceed ±100km — float precision will compound and ' +
+        'sims may explode. Apply an RTC offset upstream.',
+    );
+  }
+  if (entries.length - dynamic === 0) {
+    console.warn(
+      '[Physics] No anchored bodies and no lowest-element fallback fired. The ' +
+        'whole structure will free-fall.',
+    );
+  }
+  if (jointPairs.length === 0 && entries.length > 1) {
+    console.warn(
+      '[Physics] Zero joints inferred. Adjacency tolerance (' +
+        fmt(options.adjacencyTolerance) +
+        'm) may be too small for this model.',
+    );
+  }
+}
+
+/**
+ * Pick a small set of step indices to log progress at — start, 25%, 50%,
+ * 75%, end. Avoids one-line-per-step spam while still showing the
+ * trajectory's evolution.
+ */
+function buildDebugCheckpoints(steps: number): Set<number> {
+  if (steps <= 0) return new Set();
+  const fractions = [0.25, 0.5, 0.75, 1];
+  const out = new Set<number>();
+  for (const f of fractions) {
+    const idx = Math.max(1, Math.min(steps, Math.round(steps * f)));
+    out.add(idx);
+  }
+  return out;
+}
+
+function logCheckpoint(built: BuiltWorld, stepIndex: number): void {
+  const { entries, world, options } = built;
+  let maxSpeed = 0;
+  let maxSpeedId = 0;
+  let maxDist = 0;
+  let maxDistId = 0;
+  let movingBodies = 0;
+  const downAxis = gravityDownAxis(options.gravity);
+  for (const e of entries) {
+    const body = world.bodies.get(e.handle);
+    if (!body) continue;
+    const v = body.linvel();
+    const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (speed > maxSpeed) {
+      maxSpeed = speed;
+      maxSpeedId = e.expressId;
+    }
+    if (speed > 0.01) movingBodies++;
+    const t = body.translation();
+    const dx = t.x - e.startTranslation.x;
+    const dy = t.y - e.startTranslation.y;
+    const dz = t.z - e.startTranslation.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist > maxDist) {
+      maxDist = dist;
+      maxDistId = e.expressId;
+    }
+  }
+  console.info(
+    `[Physics] step=${stepIndex}/${built.steps} t=${fmt(stepIndex * options.timeStep)}s ` +
+      `moving=${movingBodies}/${entries.length} ` +
+      `maxSpeed=${fmt(maxSpeed)}m/s (#${maxSpeedId}) ` +
+      `maxDisp=${fmt(maxDist)}m (#${maxDistId}) ` +
+      `down=${'XYZ'[downAxis]}`,
+  );
+  if (maxSpeed > 1000) {
+    console.warn(
+      `[Physics] step=${stepIndex}: max speed ${fmt(maxSpeed)} m/s — likely a ` +
+        'penetration impulse blowup.',
+    );
+  }
+}
+
+function logFinalSummary(built: BuiltWorld, result: SimulationResult): void {
+  const top = result.bodies
+    .slice()
+    .sort((a, b) => b.displacement - a.displacement)
+    .slice(0, 8);
+  console.info(
+    `[Physics] result falling=${result.falling.length} tilted=${result.tilted.length} ` +
+      `stable=${result.stable.length} anchored=${result.anchored.length} ` +
+      `bodies=${built.entries.length}`,
+  );
+  if (top.length > 0) {
+    console.info('[Physics] top movers (id · type · disp · vert · ang):');
+    for (const b of top) {
+      console.info(
+        `[Physics]   #${b.expressId} ${b.ifcType} ` +
+          `disp=${fmt(b.displacement)}m ` +
+          `vert=${fmt(b.verticalDisplacement)}m ` +
+          `ang=${fmt(b.angularDisplacement)}rad ` +
+          `→ ${b.stability}`,
+      );
+    }
+  }
+}
+
+function fmt(n: number): string {
+  if (!Number.isFinite(n)) return String(n);
+  if (Math.abs(n) < 0.0001 || Math.abs(n) > 1e5) return n.toExponential(2);
+  return n.toFixed(3);
 }

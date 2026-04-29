@@ -252,6 +252,7 @@ export function EntityContextMenu() {
         tiltThreshold: physicsSettings.tiltThreshold,
         adjacencyTolerance: physicsSettings.adjacencyTolerance,
         colliderStrategy: physicsSettings.colliderStrategy,
+        debug: physicsSettings.debug,
       });
     } catch (err) {
       console.error('[Physics] simulation failed:', err);

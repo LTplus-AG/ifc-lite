@@ -24,6 +24,8 @@ export interface PhysicsPanelSettings {
   tiltThreshold: number;
   adjacencyTolerance: number;
   colliderStrategy: PhysicsColliderStrategy;
+  /** When true, the simulator prints diagnostics to the browser console. */
+  debug: boolean;
 }
 
 export interface PhysicsRemovedTarget {
@@ -91,6 +93,7 @@ export const PHYSICS_DEFAULT_SETTINGS: PhysicsPanelSettings = {
   tiltThreshold: 0.05,
   adjacencyTolerance: 0.05,
   colliderStrategy: 'auto',
+  debug: false,
 };
 
 export const createPhysicsSlice: StateCreator<PhysicsSlice, [], [], PhysicsSlice> = (set) => ({

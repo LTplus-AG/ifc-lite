@@ -224,8 +224,8 @@ declare const bim: {
     addColumn(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcWall from Start to End anchored to an IfcBuildingStorey. Returns the new wall entity ref. */
     addWall(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Thickness: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
-    /** Add an IfcSlab anchored to an IfcBuildingStorey. Position is the minimum corner. */
-    addSlab(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcSlab anchored to an IfcBuildingStorey. Two modes: rectangle (Position + Width + Depth) or polygon (OuterCurve = Array<[x, y]> with ≥3 points). */
+    addSlab(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcBeam from Start to End with a centred rectangular cross-section. */
     addBeam(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
   };

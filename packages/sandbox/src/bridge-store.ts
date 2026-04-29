@@ -139,13 +139,13 @@ export function buildStoreNamespace(): NamespaceSchema {
       },
       {
         name: 'addSlab',
-        doc: 'Add an IfcSlab anchored to an IfcBuildingStorey. Position is the minimum corner.',
+        doc: 'Add an IfcSlab anchored to an IfcBuildingStorey. Two modes: rectangle (Position + Width + Depth) or polygon (OuterCurve = Array<[x, y]> with ≥3 points).',
         args: ['string', 'number', 'dump'],
         paramNames: ['modelId', 'storeyExpressId', 'params'],
         tsParamTypes: [
           'string',
           'number',
-          '{ Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+          '{ Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
         ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
@@ -154,16 +154,42 @@ export function buildStoreNamespace(): NamespaceSchema {
             throw new Error(`bim.store.addSlab: storeyExpressId must be a non-negative integer, got ${storeyExpressId}`);
           }
           const params = args[2] as Parameters<typeof sdk.store.addSlab>[2];
-          if (!params || !Array.isArray(params.Position) || params.Position.length !== 3) {
-            throw new Error('bim.store.addSlab: params.Position must be [x, y, z]');
+          if (!params) {
+            throw new Error('bim.store.addSlab: params is required');
           }
-          if (!params.Position.every((n) => typeof n === 'number' && Number.isFinite(n))) {
-            throw new Error('bim.store.addSlab: params.Position values must be finite numbers');
+          const thickness = (params as { Thickness?: unknown }).Thickness;
+          if (typeof thickness !== 'number' || !Number.isFinite(thickness) || thickness <= 0) {
+            throw new Error(`bim.store.addSlab: params.Thickness must be a finite number > 0, got ${thickness}`);
           }
-          for (const key of ['Width', 'Depth', 'Thickness'] as const) {
-            const v = params[key];
-            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
-              throw new Error(`bim.store.addSlab: params.${key} must be a finite number > 0, got ${v}`);
+          if ((params as { Profile?: unknown }).Profile === 'polygon') {
+            const polygon = params as { Profile: 'polygon'; OuterCurve: unknown; Position?: unknown };
+            if (!Array.isArray(polygon.OuterCurve) || polygon.OuterCurve.length < 3) {
+              throw new Error('bim.store.addSlab: polygon OuterCurve needs at least 3 points');
+            }
+            for (const pt of polygon.OuterCurve) {
+              if (!Array.isArray(pt) || pt.length !== 2
+                  || typeof pt[0] !== 'number' || !Number.isFinite(pt[0])
+                  || typeof pt[1] !== 'number' || !Number.isFinite(pt[1])) {
+                throw new Error('bim.store.addSlab: each OuterCurve point must be [number, number] of finite values');
+              }
+            }
+            if (polygon.Position !== undefined) {
+              if (!Array.isArray(polygon.Position) || polygon.Position.length !== 3
+                  || !polygon.Position.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+                throw new Error('bim.store.addSlab: params.Position must be [x, y, z] of finite numbers');
+              }
+            }
+          } else {
+            const rect = params as { Position: unknown; Width: unknown; Depth: unknown };
+            if (!Array.isArray(rect.Position) || rect.Position.length !== 3
+                || !rect.Position.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+              throw new Error('bim.store.addSlab: params.Position must be [x, y, z] of finite numbers');
+            }
+            for (const key of ['Width', 'Depth'] as const) {
+              const v = (rect as Record<string, unknown>)[key];
+              if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
+                throw new Error(`bim.store.addSlab: params.${key} must be a finite number > 0, got ${v}`);
+              }
             }
           }
           return sdk.store.addSlab(args[0] as string, storeyExpressId, params);

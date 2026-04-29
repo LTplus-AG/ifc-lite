@@ -40,10 +40,10 @@ interface ElementOption {
 }
 
 const ELEMENT_OPTIONS: ElementOption[] = [
-  { type: 'wall', label: 'Wall', Icon: Minus, hint: 'Length × Thickness, extruded up by Height. Drops along storey-local +X from the click.' },
-  { type: 'slab', label: 'Slab', Icon: Square, hint: 'Width × Depth rectangle, extruded up by Thickness. Click sets the minimum corner.' },
-  { type: 'beam', label: 'Beam', Icon: Layers, hint: 'Width × Height cross-section, extruded along storey-local +X for Length. Click sets the start.' },
-  { type: 'column', label: 'Column', Icon: Box, hint: 'Width × Depth cross-section, extruded up by Height. Click sets the base centre.' },
+  { type: 'wall', label: 'Wall', Icon: Minus, hint: 'Click Start, then End. Cross-section = Thickness × Height, profile spans the click-to-click axis.' },
+  { type: 'slab', label: 'Slab', Icon: Square, hint: 'Rectangle: 2 corner clicks. Polygon: N clicks + Enter to close. Extruded up by Thickness.' },
+  { type: 'beam', label: 'Beam', Icon: Layers, hint: 'Click Start, then End. Cross-section (Width × Height) is centred on the beam axis.' },
+  { type: 'column', label: 'Column', Icon: Box, hint: 'Single click sets the base centre. Width × Depth cross-section, extruded up by Height.' },
 ];
 
 interface StoreyOption {
@@ -74,6 +74,12 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
   const setBeamParams = useViewerStore((s) => s.setAddElementBeamParams);
   const columnParams = useViewerStore((s) => s.addElementColumnParams);
   const setColumnParams = useViewerStore((s) => s.setAddElementColumnParams);
+
+  const slabMode = useViewerStore((s) => s.addElementSlabMode);
+  const setSlabMode = useViewerStore((s) => s.setAddElementSlabMode);
+  const pendingPoints = useViewerStore((s) => s.addElementPendingPoints);
+  const hoverPoint = useViewerStore((s) => s.addElementHoverPoint);
+  const clearPending = useViewerStore((s) => s.clearAddElementPending);
 
   const activeModelId = useViewerStore((s) => s.activeModelId);
 
@@ -235,33 +241,48 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
           )}
         </section>
 
+        {/* Slab mode toggle — rectangle (2 clicks) vs polygon (N clicks + Enter) */}
+        {addElementType === 'slab' && (
+          <section className="space-y-1.5">
+            <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+              Slab profile
+            </Label>
+            <div className="grid grid-cols-2 gap-1">
+              <ModeChip selected={slabMode === 'rectangle'} onClick={() => setSlabMode('rectangle')}>
+                Rectangle (2 clicks)
+              </ModeChip>
+              <ModeChip selected={slabMode === 'polygon'} onClick={() => setSlabMode('polygon')}>
+                Polygon (N + Enter)
+              </ModeChip>
+            </div>
+          </section>
+        )}
+
         {/* Type-specific dimensions */}
         <section className="space-y-2 pt-1">
           <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-            {activeOption.label} dimensions
+            {activeOption.label} {addElementType === 'slab' && slabMode === 'rectangle' ? '— Thickness' : 'dimensions'}
           </Label>
 
           {addElementType === 'wall' && (
-            <div className="grid grid-cols-3 gap-2">
-              <NumberField label="Length" suffix="m" value={wallParams.Length} min={0.01} onChange={(v) => setWallParams({ Length: v })} />
+            <div className="grid grid-cols-2 gap-2">
               <NumberField label="Thickness" suffix="m" value={wallParams.Thickness} min={0.01} onChange={(v) => setWallParams({ Thickness: v })} />
               <NumberField label="Height" suffix="m" value={wallParams.Height} min={0.01} onChange={(v) => setWallParams({ Height: v })} />
             </div>
           )}
 
-          {addElementType === 'slab' && (
-            <div className="grid grid-cols-3 gap-2">
-              <NumberField label="Width" suffix="m" value={slabParams.Width} min={0.01} onChange={(v) => setSlabParams({ Width: v })} />
-              <NumberField label="Depth" suffix="m" value={slabParams.Depth} min={0.01} onChange={(v) => setSlabParams({ Depth: v })} />
-              <NumberField label="Thickness" suffix="m" value={slabParams.Thickness} min={0.01} onChange={(v) => setSlabParams({ Thickness: v })} />
-            </div>
+          {addElementType === 'slab' && slabMode === 'rectangle' && (
+            <NumberField label="Thickness" suffix="m" value={slabParams.Thickness} min={0.01} onChange={(v) => setSlabParams({ Thickness: v })} />
+          )}
+
+          {addElementType === 'slab' && slabMode === 'polygon' && (
+            <NumberField label="Thickness" suffix="m" value={slabParams.Thickness} min={0.01} onChange={(v) => setSlabParams({ Thickness: v })} />
           )}
 
           {addElementType === 'beam' && (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <NumberField label="Width" suffix="m" value={beamParams.Width} min={0.01} onChange={(v) => setBeamParams({ Width: v })} />
               <NumberField label="Height" suffix="m" value={beamParams.Height} min={0.01} onChange={(v) => setBeamParams({ Height: v })} />
-              <NumberField label="Length" suffix="m" value={beamParams.Length} min={0.01} onChange={(v) => setBeamParams({ Length: v })} />
             </div>
           )}
 
@@ -274,32 +295,137 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
           )}
         </section>
 
-        {/* Drop guidance */}
-        <section
-          className={[
-            'mt-2 rounded-sm border p-3 text-[11px] font-mono leading-relaxed',
-            ready
-              ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300'
-              : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-500 dark:text-zinc-400',
-          ].join(' ')}
-          aria-live="polite"
-        >
-          {ready ? (
-            <>
-              <span className="block font-semibold">Click in 3D to drop the {activeOption.label.toLowerCase()}.</span>
-              <span className="block text-[10px] opacity-80 mt-0.5">Keep clicking to place more — Esc to exit.</span>
-            </>
-          ) : (
-            <span>Authoring is disabled until a model with a building storey is loaded.</span>
-          )}
-        </section>
+        {/* Click-state guidance — drives the user through the multi-click flow */}
+        <DropGuidance
+          ready={ready}
+          type={addElementType}
+          slabMode={slabMode}
+          pendingCount={pendingPoints.length}
+          hoverDistance={pendingPoints.length > 0 && hoverPoint
+            ? distance2D(pendingPoints[pendingPoints.length - 1], hoverPoint)
+            : null}
+          onClearPending={clearPending}
+        />
 
         <p className="text-[10px] font-mono text-zinc-400 dark:text-zinc-600 leading-snug">
-          Z is fixed to the storey floor. Refine the placement after dropping via the Raw STEP
-          tab on the new entity.
+          Snap to vertices, edges, and faces is on by default — toggle with <span className="font-semibold">S</span>.
+          Z is fixed to the storey floor; refine via the Raw STEP tab after dropping.
         </p>
       </div>
     </div>
+  );
+}
+
+function distance2D(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+interface ModeChipProps {
+  selected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+function ModeChip({ selected, onClick, children }: ModeChipProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={[
+        'h-7 px-2 rounded-sm text-[11px] font-mono uppercase tracking-wide',
+        'border transition-colors',
+        'outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+        selected
+          ? 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600'
+          : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200 hover:border-emerald-300 dark:hover:border-emerald-800',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  );
+}
+
+interface DropGuidanceProps {
+  ready: boolean;
+  type: AddElementType;
+  slabMode: 'rectangle' | 'polygon';
+  pendingCount: number;
+  hoverDistance: number | null;
+  onClearPending: () => void;
+}
+
+/** Stateful guidance pane — mirrors the multi-click flow so the user always knows what comes next. */
+function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onClearPending }: DropGuidanceProps) {
+  if (!ready) {
+    return (
+      <section className="mt-2 rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 p-3 text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+        Authoring is disabled until a model with a building storey is loaded.
+      </section>
+    );
+  }
+
+  let primary: string;
+  let secondary: string;
+  if (type === 'column') {
+    primary = 'Click in 3D to drop the column.';
+    secondary = 'Keep clicking to place more — Esc to exit.';
+  } else if (type === 'wall' || type === 'beam') {
+    if (pendingCount === 0) {
+      primary = `Click the ${type} start point.`;
+      secondary = 'Snap to vertex/edge for precise placement.';
+    } else {
+      primary = `Click the ${type} end point.`;
+      secondary = hoverDistance !== null
+        ? `Length so far: ${hoverDistance.toFixed(2)} m — Esc to restart.`
+        : 'Esc to restart.';
+    }
+  } else {
+    // slab
+    if (slabMode === 'rectangle') {
+      if (pendingCount === 0) {
+        primary = 'Click the first slab corner.';
+        secondary = 'A second click sets the opposite corner.';
+      } else {
+        primary = 'Click the opposite corner.';
+        secondary = 'Esc to restart, or switch to Polygon mode for irregular outlines.';
+      }
+    } else {
+      if (pendingCount === 0) {
+        primary = 'Click the polygon\'s first point.';
+        secondary = 'Need at least 3 points; press Enter to close.';
+      } else if (pendingCount < 3) {
+        primary = `Click point ${pendingCount + 1} (need at least 3).`;
+        secondary = 'Esc to restart.';
+      } else {
+        primary = `Click point ${pendingCount + 1} or press Enter to close.`;
+        secondary = 'Esc to restart the polygon.';
+      }
+    }
+  }
+
+  return (
+    <section
+      className="mt-2 rounded-sm border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-[11px] font-mono leading-relaxed text-emerald-800 dark:text-emerald-300"
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-2 justify-between">
+        <div className="min-w-0">
+          <span className="block font-semibold">{primary}</span>
+          <span className="block text-[10px] opacity-80 mt-0.5">{secondary}</span>
+        </div>
+        {pendingCount > 0 && (
+          <button
+            type="button"
+            onClick={onClearPending}
+            className="shrink-0 text-[10px] underline-offset-2 hover:underline opacity-80 hover:opacity-100"
+            aria-label="Discard pending points"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 

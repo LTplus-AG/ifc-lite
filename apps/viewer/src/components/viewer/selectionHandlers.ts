@@ -39,15 +39,34 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     return; // Skip click handling for measure tool
   }
 
-  // Add-element tool — drop a wall/slab/beam/column at the cursor's
-  // world point. Mirrors the annotate flow: raycasts the scene; if
-  // the click misses geometry we silently no-op (no floating
-  // elements). The renderer is Y-up, IFC is Z-up — convert as we
-  // hand off to the storey-local builders.
+  // Add-element tool — multi-click placement (start→end for walls/beams,
+  // corner→opposite for slab rectangle, N+Enter for slab polygon, single
+  // for columns). Uses magnetic snap so points lock to vertices/edges
+  // when the cursor is near them — same UX as the measure tool.
   if (tool === 'addElement') {
-    const result = renderer.raycastScene(x, y, ctx.getPickOptions());
-    if (!result?.intersection) return;
-    await handleAddElementDrop(result.intersection.point);
+    const currentLock = ctx.edgeLockStateRef.current;
+    const result = renderer.raycastSceneMagnetic(x, y, {
+      edge: currentLock.edge,
+      meshExpressId: currentLock.meshExpressId,
+      lockStrength: currentLock.lockStrength,
+    }, {
+      hiddenIds: ctx.hiddenEntitiesRef.current,
+      isolatedIds: ctx.isolatedEntitiesRef.current,
+      snapOptions: ctx.snapEnabledRef.current ? {
+        snapToVertices: true,
+        snapToEdges: true,
+        snapToFaces: true,
+        screenSnapRadius: 40,
+      } : {
+        snapToVertices: false,
+        snapToEdges: false,
+        snapToFaces: false,
+        screenSnapRadius: 0,
+      },
+    });
+    const point = result.snapTarget?.position ?? result.intersection?.point ?? null;
+    if (!point) return;
+    await handleAddElementDrop(point);
     return;
   }
 
@@ -133,96 +152,170 @@ function resolveActiveModelId(): string | null {
 }
 
 /**
- * Handle a click landing on the scene while the addElement tool is
- * active. Reads the panel state from the store, converts the click
- * point from renderer Y-up to IFC Z-up storey-local (Z forced to 0 so
- * the element always sits on the storey floor — users can refine via
- * Raw STEP), then dispatches the matching builder action.
+ * Convert a renderer Y-up world point to IFC Z-up storey-local
+ * coordinates with Z forced to the storey floor (0). Mirrors the
+ * matrix in `packages/renderer/src/pipeline.ts`. Z is clamped so the
+ * click landing on a vertical surface doesn't lift the element above
+ * the floor — matches construction-tool placement intuition. Refine
+ * via the Raw STEP tab if needed.
  */
-async function handleAddElementDrop(point: { x: number; y: number; z: number }): Promise<void> {
+export function rendererPointToIfcStoreyLocal(point: { x: number; y: number; z: number }): [number, number, number] {
+  return [point.x, -point.z, 0];
+}
+
+/**
+ * Resolve the active model + storey + a snap-aware world point. Surfaces
+ * the same toast errors all add-element entry points share.
+ */
+function resolveAddElementContext(): { modelId: string; storeyId: number } | null {
   const state = useViewerStore.getState();
   const modelId = state.addElementModelId ?? resolveActiveModelId();
   if (!modelId) {
     toast.error("Couldn't add element: no model loaded");
-    return;
+    return null;
   }
-
   const storeyId = state.addElementStoreyId ?? firstStoreyExpressId(modelId);
   if (storeyId === null) {
     toast.error("Couldn't add element: model has no IfcBuildingStorey");
-    return;
+    return null;
   }
+  return { modelId, storeyId };
+}
 
-  // Renderer Y-up → IFC Z-up conversion (mirrors the matrix in
-  // packages/renderer/src/pipeline.ts). Z forced to 0 so the element
-  // sits on the storey floor; the click landing on a vertical surface
-  // higher up doesn't lift the element along Z (matches how
-  // construction-tool placement actually feels).
-  const ifcX = point.x;
-  const ifcY = -point.z;
-  const start: [number, number, number] = [ifcX, ifcY, 0];
-
-  const type = state.addElementType;
-  let result: { expressId: number } | { error: string };
-  let label: string;
-
-  switch (type) {
-    case 'wall': {
-      const p = state.addElementWallParams;
-      result = state.addWall(modelId, storeyId, {
-        Start: start,
-        End: [start[0] + p.Length, start[1], start[2]],
-        Thickness: p.Thickness,
-        Height: p.Height,
-      });
-      label = 'Wall';
-      break;
-    }
-    case 'slab': {
-      const p = state.addElementSlabParams;
-      result = state.addSlab(modelId, storeyId, {
-        Position: start,
-        Width: p.Width,
-        Depth: p.Depth,
-        Thickness: p.Thickness,
-      });
-      label = 'Slab';
-      break;
-    }
-    case 'beam': {
-      const p = state.addElementBeamParams;
-      result = state.addBeam(modelId, storeyId, {
-        Start: start,
-        End: [start[0] + p.Length, start[1], start[2]],
-        Width: p.Width,
-        Height: p.Height,
-      });
-      label = 'Beam';
-      break;
-    }
-    case 'column': {
-      const p = state.addElementColumnParams;
-      result = state.addColumn(modelId, storeyId, {
-        Position: start,
-        Width: p.Width,
-        Depth: p.Depth,
-        Height: p.Height,
-      });
-      label = 'Column';
-      break;
-    }
-  }
-
+/** Common post-place: pick the new entity's global id, toast, clear pending. */
+function finishAddElement(
+  result: { expressId: number } | { error: string },
+  modelId: string,
+  label: string,
+): void {
+  const state = useViewerStore.getState();
   if ('error' in result) {
     toast.error(`Couldn't add ${label.toLowerCase()}: ${result.error}`);
     return;
   }
-
-  // Federation-aware: select the new entity by its global id so the
-  // 3D viewport can flash it into focus.
   const globalId = toGlobalIdFromModels(state.models, modelId, result.expressId);
   state.setSelectedEntityId(globalId);
+  state.clearAddElementPending();
   toast.success(`${label} #${result.expressId} added — undo to remove`);
+}
+
+/**
+ * Handle a click landing on the scene while the addElement tool is
+ * active. Implements a per-type click state machine:
+ *
+ *   - column: 1 click → place
+ *   - wall / beam: 1st click → start, 2nd click → end + place
+ *   - slab (rectangle): 1st click → corner, 2nd click → opposite + place
+ *   - slab (polygon): N clicks accumulate; Enter / double-click closes
+ *     (handled in the keyboard layer; this function only appends)
+ */
+async function handleAddElementDrop(point: { x: number; y: number; z: number }): Promise<void> {
+  const ctx = resolveAddElementContext();
+  if (!ctx) return;
+  const { modelId, storeyId } = ctx;
+
+  const state = useViewerStore.getState();
+  const ifc = rendererPointToIfcStoreyLocal(point);
+  const type = state.addElementType;
+
+  if (type === 'column') {
+    const p = state.addElementColumnParams;
+    const result = state.addColumn(modelId, storeyId, {
+      Position: ifc,
+      Width: p.Width,
+      Depth: p.Depth,
+      Height: p.Height,
+    });
+    finishAddElement(result, modelId, 'Column');
+    return;
+  }
+
+  if (type === 'wall' || type === 'beam') {
+    const pending = state.addElementPendingPoints;
+    if (pending.length === 0) {
+      // Start point — store and wait for end.
+      state.appendAddElementPendingPoint({ x: ifc[0], y: ifc[1], z: ifc[2] });
+      return;
+    }
+    // End point — emit.
+    const start = pending[0];
+    if (type === 'wall') {
+      const p = state.addElementWallParams;
+      const result = state.addWall(modelId, storeyId, {
+        Start: [start.x, start.y, start.z],
+        End: ifc,
+        Thickness: p.Thickness,
+        Height: p.Height,
+      });
+      finishAddElement(result, modelId, 'Wall');
+    } else {
+      const p = state.addElementBeamParams;
+      const result = state.addBeam(modelId, storeyId, {
+        Start: [start.x, start.y, start.z],
+        End: ifc,
+        Width: p.Width,
+        Height: p.Height,
+      });
+      finishAddElement(result, modelId, 'Beam');
+    }
+    return;
+  }
+
+  if (type === 'slab') {
+    if (state.addElementSlabMode === 'rectangle') {
+      const pending = state.addElementPendingPoints;
+      if (pending.length === 0) {
+        state.appendAddElementPendingPoint({ x: ifc[0], y: ifc[1], z: ifc[2] });
+        return;
+      }
+      const corner = pending[0];
+      const minX = Math.min(corner.x, ifc[0]);
+      const minY = Math.min(corner.y, ifc[1]);
+      const width = Math.abs(ifc[0] - corner.x);
+      const depth = Math.abs(ifc[1] - corner.y);
+      if (width <= 0 || depth <= 0) {
+        toast.error("Slab corners must span a non-zero rectangle");
+        return;
+      }
+      const p = state.addElementSlabParams;
+      const result = state.addSlab(modelId, storeyId, {
+        Position: [minX, minY, 0],
+        Width: width,
+        Depth: depth,
+        Thickness: p.Thickness,
+      });
+      finishAddElement(result, modelId, 'Slab');
+      return;
+    }
+    // Polygon mode — append; close handled by Enter / double-click.
+    state.appendAddElementPendingPoint({ x: ifc[0], y: ifc[1], z: ifc[2] });
+    return;
+  }
+}
+
+/**
+ * Close an in-progress slab polygon. Triggered by Enter or
+ * double-click. Requires ≥3 points (matches IFC's polygon constraint).
+ */
+export function commitAddElementSlabPolygon(): void {
+  const state = useViewerStore.getState();
+  if (state.activeTool !== 'addElement') return;
+  if (state.addElementType !== 'slab' || state.addElementSlabMode !== 'polygon') return;
+  const pending = state.addElementPendingPoints;
+  if (pending.length < 3) {
+    toast.error('Slab polygon needs at least 3 points');
+    return;
+  }
+  const ctx = resolveAddElementContext();
+  if (!ctx) return;
+  const { modelId, storeyId } = ctx;
+  const p = state.addElementSlabParams;
+  const result = state.addSlab(modelId, storeyId, {
+    Profile: 'polygon',
+    OuterCurve: pending.map((pt) => [pt.x, pt.y] as [number, number]),
+    Thickness: p.Thickness,
+  });
+  finishAddElement(result, modelId, 'Slab');
 }
 
 /**

@@ -154,6 +154,25 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       resetVisibilityForHomeFromStore();
     }
 
+    // Add-element tool shortcuts — Enter commits an in-progress slab
+    // polygon; Esc clears any pending points before falling through to
+    // the global Esc handler (which exits the tool).
+    if (activeTool === 'addElement') {
+      const state = useViewerStore.getState();
+      if (key === 'enter' && state.addElementType === 'slab' && state.addElementSlabMode === 'polygon') {
+        e.preventDefault();
+        // Lazy import keeps this module out of the keyboard hook's
+        // synchronous bundle (the slab close handler pulls in toast).
+        import('@/components/viewer/selectionHandlers').then((mod) => mod.commitAddElementSlabPolygon());
+        return;
+      }
+      if (key === 'escape' && state.addElementPendingPoints.length > 0) {
+        e.preventDefault();
+        state.clearAddElementPending();
+        return;
+      }
+    }
+
     // Measure tool shortcuts
     if (activeTool === 'measure') {
       // Cancel active measurement with ESC

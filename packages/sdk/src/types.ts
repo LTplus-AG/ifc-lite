@@ -381,10 +381,28 @@ export interface AddWallInStoreParams {
   Tag?: string;
 }
 
-export interface AddSlabInStoreParams {
+export type AddSlabInStoreParams = AddSlabRectangleParams | AddSlabPolygonParams;
+
+export interface AddSlabRectangleParams {
   Position: [number, number, number];
   Width: number;
   Depth: number;
+  Thickness: number;
+  /** `'rectangle'` (or omit) selects the IfcRectangleProfileDef path. */
+  Profile?: 'rectangle';
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+export interface AddSlabPolygonParams {
+  /** `'polygon'` selects the IfcArbitraryClosedProfileDef path. */
+  Profile: 'polygon';
+  /** Closed outline as 2D storey-local points (≥3). Auto-closed at emit time. */
+  OuterCurve: Array<[number, number]>;
+  /** Local placement origin (metres). Defaults to `[0, 0, 0]`. */
+  Position?: [number, number, number];
   Thickness: number;
   Name?: string;
   Description?: string;

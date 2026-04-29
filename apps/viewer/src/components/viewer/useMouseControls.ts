@@ -22,6 +22,7 @@ import type {
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { useViewerStore } from '@/store';
 import {
   handleMeasureDown,
   handleMeasureDrag,
@@ -366,6 +367,20 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // Show snap indicators to help user see where they can snap
       if (tool === 'measure' && !mouseState.isDragging && snapEnabledRef.current) {
         if (handleMeasureHover(ctx, x, y)) return;
+      }
+
+      // Add-element tool hover preview — same snap visualization as
+      // the measure tool plus a live "hoverPoint" stash for the panel
+      // (so users see updated dimensions as they move the cursor).
+      if (tool === 'addElement' && !mouseState.isDragging && snapEnabledRef.current) {
+        if (handleMeasureHover(ctx, x, y)) {
+          const snapTarget = useViewerStore.getState().snapTarget;
+          const pos = snapTarget?.position ?? null;
+          if (pos) {
+            useViewerStore.getState().setAddElementHoverPoint({ x: pos.x, y: pos.y, z: pos.z });
+          }
+          return;
+        }
       }
 
       // Handle orbit/pan for other tools (or measure tool with shift+drag or no active measurement)

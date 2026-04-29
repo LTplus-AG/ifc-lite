@@ -102,6 +102,8 @@ export type {
   AddColumnInStoreParams,
   AddWallInStoreParams,
   AddSlabInStoreParams,
+  AddSlabRectangleParams,
+  AddSlabPolygonParams,
   AddBeamInStoreParams,
   SpatialBackendMethods,
   ExportBackendMethods,

@@ -27,7 +27,7 @@ export { IfcCreator } from './ifc-creator.js';
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
 export { addColumnToStore, type ColumnInStoreParams, type ColumnBuildResult } from './in-store/column.js';
 export { addWallToStore, type WallInStoreParams, type WallBuildResult } from './in-store/wall.js';
-export { addSlabToStore, type SlabInStoreParams, type SlabBuildResult } from './in-store/slab.js';
+export { addSlabToStore, type SlabInStoreParams, type SlabRectangleParams, type SlabPolygonParams, type SlabBuildResult } from './in-store/slab.js';
 export { addBeamToStore, type BeamInStoreParams, type BeamBuildResult } from './in-store/beam.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
 export type { SpatialAnchor } from './in-store/anchor.js';

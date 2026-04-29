@@ -59,4 +59,65 @@ describe('addSlabToStore', () => {
       { Position: [0, 0, 0], Width: 0, Depth: 1, Thickness: 0.3 },
     )).toThrow(/positive/);
   });
+
+  it('emits an arbitrary closed profile when given a polygon outline', () => {
+    const store = makeStore(40);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    const result = addSlabToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      {
+        Profile: 'polygon',
+        OuterCurve: [[0, 0], [4, 0], [4, 3], [2, 5], [0, 3]],
+        Thickness: 0.3,
+      },
+    );
+
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    const profile = byId.get(result.profileId);
+    expect(profile?.type).toBe('IfcArbitraryClosedProfileDef');
+
+    // Polyline is auto-closed (input ends at [0,3], so a closing edge to [0,0]
+    // is appended → 6 IfcCartesianPoints total).
+    const polylineRef = profile?.attributes[2] as string;
+    const polyline = byId.get(Number(polylineRef.replace('#', '')));
+    expect(polyline?.type).toBe('IfcPolyline');
+    const refList = polyline?.attributes[0] as string[];
+    expect(refList).toHaveLength(6);
+
+    const firstPt = byId.get(Number(refList[0].replace('#', '')));
+    const lastPt = byId.get(Number(refList[refList.length - 1].replace('#', '')));
+    expect(firstPt?.attributes[0]).toEqual([0, 0]);
+    expect(lastPt?.attributes[0]).toEqual([0, 0]); // closing point
+  });
+
+  it('rejects polygon outlines with fewer than 3 points', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(10), view);
+    expect(() => addSlabToStore(
+      editor,
+      { ownerHistoryId: 1, bodyContextId: 2, storeyId: 3, storeyPlacementId: 4 },
+      { Profile: 'polygon', OuterCurve: [[0, 0], [1, 0]], Thickness: 0.3 },
+    )).toThrow(/at least 3/);
+  });
+
+  it('does not duplicate the closing point when caller already closed the loop', () => {
+    const store = makeStore(40);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    const result = addSlabToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      {
+        Profile: 'polygon',
+        OuterCurve: [[0, 0], [3, 0], [3, 3], [0, 3], [0, 0]],
+        Thickness: 0.3,
+      },
+    );
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    const polyline = byId.get(Number((byId.get(result.profileId)?.attributes[2] as string).replace('#', '')));
+    expect((polyline?.attributes[0] as string[])).toHaveLength(5); // 4 unique + closing
+  });
 });

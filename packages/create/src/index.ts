@@ -23,6 +23,12 @@
 
 export { IfcCreator } from './ifc-creator.js';
 
+// In-store builders — emit elements into an existing parsed IfcDataStore
+// via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
+export { addColumnToStore, type ColumnInStoreParams, type ColumnBuildResult } from './in-store/column.js';
+export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
+export type { SpatialAnchor } from './in-store/anchor.js';
+
 export type {
   // Geometry primitives
   Point3D,

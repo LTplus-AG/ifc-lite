@@ -99,6 +99,7 @@ export type {
   ViewerBackendMethods,
   MutateBackendMethods,
   StoreBackendMethods,
+  AddColumnInStoreParams,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,

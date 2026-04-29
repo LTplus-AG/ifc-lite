@@ -220,6 +220,8 @@ declare const bim: {
     removeEntity(entity: unknown): boolean;
     /** Edit a non-IfcRoot attribute by zero-based STEP argument index (e.g. IfcRectangleProfileDef.XDim is index 3). */
     setPositionalAttribute(entity: unknown, index: number, value: unknown): void;
+    /** Add an IfcColumn to a parsed model anchored to an existing IfcBuildingStorey. Returns the new column entity ref. */
+    addColumn(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
   };
   /** Lens visualization */
   lens: {

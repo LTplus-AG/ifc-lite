@@ -40,6 +40,7 @@ import type {
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { addColumnToStore, resolveSpatialAnchor, type ColumnInStoreParams } from '@ifc-lite/create';
 import { EntityNode } from '@ifc-lite/query';
 import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import {
@@ -398,6 +399,7 @@ export class HeadlessBackend implements BimBackend {
 
   private createStoreAdapter(): StoreBackendMethods {
     const get = () => this.getOrCreateStoreEditor();
+    const dataStore = () => this.dataStore;
     return {
       addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
         const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
@@ -408,6 +410,12 @@ export class HeadlessBackend implements BimBackend {
       },
       setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void {
         get().setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
+      },
+      addColumn(modelId: string, storeyExpressId: number, params: ColumnInStoreParams): EntityRef {
+        const editor = get();
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const result = addColumnToStore(editor, anchor, params);
+        return { modelId, expressId: result.columnId };
       },
     };
   }

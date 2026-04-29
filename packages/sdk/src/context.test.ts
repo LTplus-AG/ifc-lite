@@ -58,6 +58,7 @@ function createMockBackend() {
     addEntity: vi.fn((modelId: string) => ({ modelId, expressId: 1 })),
     removeEntity: vi.fn(() => true),
     setPositionalAttribute: vi.fn(),
+    addColumn: vi.fn((modelId: string) => ({ modelId, expressId: 99 })),
   };
   const spatial = {
     queryBounds: vi.fn(() => []),
@@ -443,6 +444,29 @@ describe('MutateNamespace', () => {
       attributes: ['.AREA.', null, '#34', 0.6, 0.4],
     });
     expect(ref).toEqual({ modelId: 'arch', expressId: 11 });
+  });
+
+  it('bim.store.addColumn forwards modelId, storeyExpressId, and params to the backend', () => {
+    const { backend, store } = createMockBackend();
+    store.addColumn.mockReturnValue({ modelId: 'arch', expressId: 99 });
+    const bim = createBimContext({ backend });
+
+    const ref = bim.store.addColumn('arch', 12, {
+      Position: [1, 1, 0],
+      Width: 0.3,
+      Depth: 0.4,
+      Height: 3,
+      Name: 'Column 1',
+    });
+
+    expect(store.addColumn).toHaveBeenCalledWith('arch', 12, {
+      Position: [1, 1, 0],
+      Width: 0.3,
+      Depth: 0.4,
+      Height: 3,
+      Name: 'Column 1',
+    });
+    expect(ref).toEqual({ modelId: 'arch', expressId: 99 });
   });
 
   it('bim.store.removeEntity / setPositionalAttribute pass through to the backend', () => {

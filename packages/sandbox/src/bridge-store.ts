@@ -62,6 +62,26 @@ export function buildStoreNamespace(): NamespaceSchema {
         },
         returns: 'void',
       },
+      {
+        name: 'addColumn',
+        doc: 'Add an IfcColumn to a parsed model anchored to an existing IfcBuildingStorey. Returns the new column entity ref.',
+        args: ['string', 'number', 'dump'],
+        paramNames: ['modelId', 'storeyExpressId', 'params'],
+        tsParamTypes: [
+          'string',
+          'number',
+          '{ Position: [number, number, number]; Width: number; Depth: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+        ],
+        tsReturn: '{ modelId: string; expressId: number }',
+        call: (sdk, args) => {
+          const params = args[2] as Parameters<typeof sdk.store.addColumn>[2];
+          if (!params || !Array.isArray(params.Position) || params.Position.length !== 3) {
+            throw new Error('bim.store.addColumn: params.Position must be [x, y, z]');
+          }
+          return sdk.store.addColumn(args[0] as string, args[1] as number, params);
+        },
+        returns: 'value',
+      },
     ],
   };
 }

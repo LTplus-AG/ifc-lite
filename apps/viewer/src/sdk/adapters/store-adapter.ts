@@ -10,7 +10,8 @@
  */
 
 import { StoreEditor } from '@ifc-lite/mutations';
-import type { EntityRef, StoreBackendMethods } from '@ifc-lite/sdk';
+import { addColumnToStore, resolveSpatialAnchor, type ColumnInStoreParams } from '@ifc-lite/create';
+import type { AddColumnInStoreParams, EntityRef, StoreBackendMethods } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
@@ -20,16 +21,20 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // cheap, but caching avoids re-scanning the entity index on every call.
   const editors = new WeakMap<object, StoreEditor>();
 
-  function getEditor(modelId: string): StoreEditor | null {
+  function resolveDataStore(modelId: string) {
     const state = store.getState();
+    const refModelId = modelId === 'legacy' ? LEGACY_MODEL_ID : modelId;
+    const model = getModelForRef(state, refModelId);
+    return model?.ifcDataStore ?? null;
+  }
+
+  function getEditor(modelId: string): StoreEditor | null {
     const view = getOrCreateMutationView(store, modelId);
     if (!view) return null;
     let editor = editors.get(view);
     if (editor) return editor;
 
-    const refModelId = modelId === 'legacy' ? LEGACY_MODEL_ID : modelId;
-    const model = getModelForRef(state, refModelId);
-    const dataStore = model?.ifcDataStore;
+    const dataStore = resolveDataStore(modelId);
     if (!dataStore) return null;
 
     editor = new StoreEditor(dataStore, view);
@@ -58,6 +63,17 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
         throw new Error(`bim.store.setPositionalAttribute: no model loaded for id "${ref.modelId}"`);
       }
       editor.setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
+    },
+    addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      if (!editor || !dataStore) {
+        throw new Error(`bim.store.addColumn: no model loaded for id "${modelId}"`);
+      }
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+      const result = addColumnToStore(editor, anchor, params as ColumnInStoreParams);
+      return { modelId: normalizedModelId, expressId: result.columnId };
     },
   };
 }

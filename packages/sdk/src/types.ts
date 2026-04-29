@@ -359,10 +359,26 @@ export interface MutateBackendMethods {
  * the underlying store buffer is never mutated; changes materialise on
  * the next `bim.export.ifc()`.
  */
+export interface AddColumnInStoreParams {
+  Position: [number, number, number];
+  Width: number;
+  Depth: number;
+  Height: number;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
 export interface StoreBackendMethods {
   addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef;
   removeEntity(ref: EntityRef): boolean;
   setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void;
+  /**
+   * High-level builder: add an IfcColumn to an existing parsed model,
+   * anchored to a target IfcBuildingStorey. Returns the new column's ref.
+   */
+  addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef;
 }
 
 export interface SpatialBackendMethods {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { BimBackend, EntityRef } from '../types.js';
+import type { AddColumnInStoreParams, BimBackend, EntityRef } from '../types.js';
 
 /**
  * `bim.store` — document-level edits on a parsed model.
@@ -64,5 +64,27 @@ export class StoreNamespace {
    */
   setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void {
     this.backend.store.setPositionalAttribute(ref, index, value);
+  }
+
+  /**
+   * Add an IfcColumn to a parsed model, anchored to an existing storey.
+   * Emits the full STEP sub-graph (placement, profile, extruded solid,
+   * representation, IfcRelContainedInSpatialStructure) into the overlay
+   * so the column appears next to the existing model on export.
+   *
+   * `Position` is the base centre in storey-local coordinates (metres),
+   * `Width`×`Depth` is the centred rectangular cross-section, and
+   * `Height` is the +Z extrusion length.
+   *
+   * @example
+   *   const storeyId = bim.query.byType('IfcBuildingStorey')[0].ref.expressId;
+   *   const col = bim.store.addColumn('arch', storeyId, {
+   *     Position: [1, 1, 0],
+   *     Width: 0.3, Depth: 0.4, Height: 3,
+   *     Name: 'Column 1',
+   *   });
+   */
+  addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
+    return this.backend.store.addColumn(modelId, storeyExpressId, params);
   }
 }

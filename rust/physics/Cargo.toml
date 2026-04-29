@@ -1,0 +1,22 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[package]
+name = "ifc-lite-physics"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rigid-body plausibility checks (\"what if I remove this column?\") for IFC models"
+keywords = ["ifc", "bim", "physics", "rapier", "aec"]
+categories = ["simulation", "science"]
+
+[dependencies]
+rapier3d = "0.32"
+serde = { version = "1.0", features = ["derive"] }
+rustc-hash = "1.1"
+
+[dev-dependencies]
+approx = "0.5"

@@ -16,6 +16,8 @@ use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io, path::Path, str::Utf8Error};
 
+pub mod physics;
+
 /// Streaming configuration for chunked geometry delivery.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StreamOptions {

@@ -24,6 +24,9 @@ import type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  PhysicsBackendMethods,
+  PhysicsSimulateOptions,
+  PhysicsSimulationResult,
   EntityRef,
   EntityData,
   EntityAttributeData,
@@ -132,6 +135,7 @@ export class HeadlessBackend implements BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly physics: PhysicsBackendMethods;
 
   private store: IfcDataStore;
   private modelName: string;
@@ -150,6 +154,7 @@ export class HeadlessBackend implements BimBackend {
     this.lens = this.createLensAdapter();
     this.files = this.createFilesAdapter();
     this.schedule = this.createScheduleAdapter();
+    this.physics = this.createPhysicsAdapter();
   }
 
   subscribe(_event: BimEventType, _handler: (data: unknown) => void): () => void {
@@ -539,6 +544,22 @@ export class HeadlessBackend implements BimBackend {
       tasks: (modelId) => extract(modelId).tasks,
       workSchedules: (modelId) => extract(modelId).workSchedules,
       sequences: (modelId) => extract(modelId).sequences,
+    };
+  }
+
+  private createPhysicsAdapter(): PhysicsBackendMethods {
+    return {
+      simulate(_modelId: string | null, _options: PhysicsSimulateOptions): PhysicsSimulationResult {
+        // Headless mode parses IFC but does not run the geometry pipeline,
+        // so there are no triangulated meshes to feed into the physics engine.
+        // Run physics through the viewer-backed flow, or call
+        // `ifc-lite-engine`'s native `physics::simulate` directly with a
+        // processed mesh set.
+        throw new Error(
+          'physics.simulate is unavailable in HeadlessBackend — no mesh pipeline. ' +
+          'Use a viewer-backed BimBackend or ifc-lite-engine::physics::simulate.',
+        );
+      },
     };
   }
 }

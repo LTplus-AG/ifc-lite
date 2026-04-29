@@ -103,6 +103,14 @@ export type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  PhysicsBackendMethods,
+
+  // Physics — rigid-body what-if simulation
+  PhysicsAnchorReason,
+  PhysicsBodyOutcome,
+  PhysicsSimulateOptions,
+  PhysicsSimulationResult,
+  PhysicsStability,
 
   // Schedule data
   ScheduleExtractionData,
@@ -149,6 +157,7 @@ export { EventsNamespace } from './namespaces/events.js';
 export { CreateNamespace } from './namespaces/create.js';
 export { FilesNamespace } from './namespaces/files.js';
 export { ScheduleNamespace } from './namespaces/schedule.js';
+export { PhysicsNamespace } from './namespaces/physics.js';
 
 // bSDD — buildingSMART Data Dictionary property/classification lookup
 export { BsddNamespace } from './namespaces/bsdd.js';

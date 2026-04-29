@@ -356,6 +356,84 @@ export interface SpatialBackendMethods {
   queryFrustum(modelId: string, frustum: SpatialFrustum): EntityRef[];
 }
 
+// ============================================================================
+// Physics — rigid-body what-if simulation ("if I remove this column, …")
+//
+// Shape mirrors `@ifc-lite/physics` (and the Rust `ifc-lite-physics` crate)
+// one-for-one. Defined here too so the SDK stays self-contained — consumers
+// don't pull `@dimforge/rapier3d-compat` into their bundle just to type-check
+// against the SDK surface.
+//
+// This is a plausibility check, NOT structural engineering. No bending,
+// buckling, or material yield. Route real analysis through
+// `IfcStructuralAnalysisModel` and an FEM solver.
+// ============================================================================
+
+export type PhysicsAnchorReason = 'explicit' | 'ifcType' | 'lowestElement';
+
+export type PhysicsStability = 'stable' | 'tilted' | 'falling' | 'removed';
+
+export interface PhysicsSimulateOptions {
+  /** Express IDs to delete from the world before stepping. */
+  remove?: number[];
+  /** Express IDs to keep fixed regardless of inferred anchoring. */
+  anchor?: number[];
+  /** Gravity in m/s² (IFC Z-up). Default: `[0, 0, -9.81]`. */
+  gravity?: [number, number, number];
+  /** Total simulated time in seconds. Default: `3.0`. */
+  durationSeconds?: number;
+  /** Per-step time delta. Default: `1/60`. */
+  timeStep?: number;
+  /** AABB-touch tolerance for joint inference, meters. Default: `0.05`. */
+  adjacencyTolerance?: number;
+  /** Vertical displacement above which a body is `falling`. Default: `0.20`. */
+  fallThreshold?: number;
+  /** Angular displacement above which a non-falling body is `tilted`. Default: `0.05` rad. */
+  tiltThreshold?: number;
+  /** Tolerance for ground-contact anchoring. Default: `0.05` m. */
+  groundAnchorTolerance?: number;
+  /** IFC types to anchor regardless of position. Default: footings, piles, foundations. */
+  anchorIfcTypes?: string[];
+}
+
+export interface PhysicsBodyOutcome {
+  expressId: number;
+  ifcType: string;
+  stability: PhysicsStability;
+  anchored: boolean;
+  anchorReason: PhysicsAnchorReason | null;
+  /** Translation magnitude from start to end position, meters. */
+  displacement: number;
+  /** Vertical (Z) displacement, signed. Negative = fell. */
+  verticalDisplacement: number;
+  /** Final angular displacement in radians. */
+  angularDisplacement: number;
+}
+
+export interface PhysicsSimulationResult {
+  bodies: PhysicsBodyOutcome[];
+  removed: number[];
+  stable: number[];
+  falling: number[];
+  tilted: number[];
+  anchored: number[];
+  /** Connection graph used for joint inference: pairs of express IDs welded together. */
+  joints: Array<[number, number]>;
+}
+
+export interface PhysicsBackendMethods {
+  /**
+   * Simulate the active model (or `modelId` if given). Backend implementations
+   * own the mesh source and feed it to the underlying physics engine; the SDK
+   * never has to ship raw geometry across the transport boundary.
+   *
+   * Backends are responsible for ensuring the underlying engine is ready
+   * (e.g. `await physics.init()` for the JS Rapier WASM build) before the
+   * first call.
+   */
+  simulate(modelId: string | null, options: PhysicsSimulateOptions): PhysicsSimulationResult;
+}
+
 export interface ExportBackendMethods {
   csv(refs: unknown, options: unknown): string;
   json(refs: unknown, columns: unknown): Record<string, unknown>[];
@@ -503,6 +581,7 @@ export interface BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly physics: PhysicsBackendMethods;
 
   /** Subscribe to viewer events */
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void;

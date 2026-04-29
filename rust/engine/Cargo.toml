@@ -8,6 +8,7 @@ repository.workspace = true
 description = "Stable backend-neutral IFC engine facade built on the shared processing pipeline"
 
 [dependencies]
+ifc-lite-physics.workspace = true
 ifc-lite-processing.workspace = true
 memmap2 = "0.9.10"
 serde = { version = "1.0", features = ["derive"] }

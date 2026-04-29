@@ -69,18 +69,18 @@ export function addColumnToStore(
 
   // Local placement chain: IfcCartesianPoint → IfcAxis2Placement3D →
   // IfcLocalPlacement (parent = storey placement).
-  const colOriginPt = editor.addEntity('IFCCARTESIANPOINT', [params.Position]).expressId;
-  const colAxis = editor.addEntity('IFCAXIS2PLACEMENT3D', [`#${colOriginPt}`, null, null]).expressId;
-  const placementId = editor.addEntity('IFCLOCALPLACEMENT', [
+  const colOriginPt = editor.addEntity('IfcCartesianPoint', [params.Position]).expressId;
+  const colAxis = editor.addEntity('IfcAxis2Placement3D', [`#${colOriginPt}`, null, null]).expressId;
+  const placementId = editor.addEntity('IfcLocalPlacement', [
     `#${storeyPlacementId}`,
     `#${colAxis}`,
   ]).expressId;
 
   // Rectangle profile centred at origin: IfcCartesianPoint(0,0) →
   // IfcAxis2Placement2D → IfcRectangleProfileDef.
-  const profileOriginPt = editor.addEntity('IFCCARTESIANPOINT', [[0, 0]]).expressId;
-  const profilePos = editor.addEntity('IFCAXIS2PLACEMENT2D', [`#${profileOriginPt}`, null]).expressId;
-  const profileId = editor.addEntity('IFCRECTANGLEPROFILEDEF', [
+  const profileOriginPt = editor.addEntity('IfcCartesianPoint', [[0, 0]]).expressId;
+  const profilePos = editor.addEntity('IfcAxis2Placement2D', [`#${profileOriginPt}`, null]).expressId;
+  const profileId = editor.addEntity('IfcRectangleProfileDef', [
     '.AREA.',
     null,
     `#${profilePos}`,
@@ -90,10 +90,10 @@ export function addColumnToStore(
 
   // Extruded solid: another local origin point, axis placement, +Z direction,
   // then IfcExtrudedAreaSolid(Profile, Position, ExtrudedDirection, Depth).
-  const solidOriginPt = editor.addEntity('IFCCARTESIANPOINT', [[0, 0, 0]]).expressId;
-  const solidAxis = editor.addEntity('IFCAXIS2PLACEMENT3D', [`#${solidOriginPt}`, null, null]).expressId;
-  const extrudeDirection = editor.addEntity('IFCDIRECTION', [[0, 0, 1]]).expressId;
-  const solidId = editor.addEntity('IFCEXTRUDEDAREASOLID', [
+  const solidOriginPt = editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
+  const solidAxis = editor.addEntity('IfcAxis2Placement3D', [`#${solidOriginPt}`, null, null]).expressId;
+  const extrudeDirection = editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId;
+  const solidId = editor.addEntity('IfcExtrudedAreaSolid', [
     `#${profileId}`,
     `#${solidAxis}`,
     `#${extrudeDirection}`,
@@ -101,13 +101,13 @@ export function addColumnToStore(
   ]).expressId;
 
   // Shape representation in the Body context, then product shape.
-  const shapeRepId = editor.addEntity('IFCSHAPEREPRESENTATION', [
+  const shapeRepId = editor.addEntity('IfcShapeRepresentation', [
     `#${bodyContextId}`,
     'Body',
     'SweptSolid',
     [`#${solidId}`],
   ]).expressId;
-  const productShapeId = editor.addEntity('IFCPRODUCTDEFINITIONSHAPE', [
+  const productShapeId = editor.addEntity('IfcProductDefinitionShape', [
     null,
     null,
     [`#${shapeRepId}`],
@@ -129,12 +129,12 @@ export function addColumnToStore(
   if ((anchor.schema ?? 'IFC4') !== 'IFC2X3') {
     columnAttrs.push('.COLUMN.');
   }
-  const columnId = editor.addEntity('IFCCOLUMN', columnAttrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
+  const columnId = editor.addEntity('IfcColumn', columnAttrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
 
   // Link column → storey via a fresh IfcRelContainedInSpatialStructure.
   // Adding a parallel relationship is simpler than mutating the storey's
   // existing one and produces an equivalent result on import.
-  const relContainedId = editor.addEntity('IFCRELCONTAINEDINSPATIALSTRUCTURE', [
+  const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
     generateIfcGuid(),
     `#${ownerHistoryId}`,
     null,

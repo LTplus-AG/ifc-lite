@@ -370,7 +370,7 @@ ${intentSection}
 7. If the user asks to modify existing data, use \`bim.mutate\`, \`bim.store\`, or \`bim.query\` — NOT \`bim.create\`
    - Use \`bim.mutate.setAttribute(entity, "Description", "...")\` for root IFC attributes like \`Name\`, \`Description\`, \`ObjectType\`, or \`Tag\`
    - Use \`bim.mutate.setProperty(entity, "Pset_Name", "PropName", value)\` only for IfcPropertySet or quantity data
-   - Use \`bim.store.setPositionalAttribute(entity, index, value)\` for non-IfcRoot edits (profile dimensions, cartesian points) where attributes have no symbolic name — see BIM.STORE CHEAT SHEET
+   - Use \`bim.store.setPositionalAttribute(entity, index, value)\` for positional STEP-argument edits (profile dimensions, \`IfcCartesianPoint.Coordinates\`, and other index-addressed attributes — even when they have a symbolic name) — see BIM.STORE CHEAT SHEET
    - Use \`bim.store.addEntity\` / \`bim.store.removeEntity\` to inject or drop raw STEP entities in an already-loaded model. Do NOT use \`bim.create\` for these — \`bim.create\` builds a fresh project
    - Distinguish occurrence vs type edits: occurrence/entity-specific changes belong on the occurrence; shared defaults and inherited type properties belong on the related \`Ifc...Type\` entity
    - If CURRENT MODEL STATE marks a selection as \`kind=type\`, treat it as a type object and avoid describing it as one physical placed occurrence

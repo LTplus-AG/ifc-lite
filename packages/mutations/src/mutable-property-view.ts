@@ -783,10 +783,14 @@ export class MutablePropertyView {
     if (!type || typeof type !== 'string') {
       throw new Error('createEntity: type is required');
     }
+    // Preserve the type string the caller passed (canonical PascalCase per
+    // the public contract). UPPERCASE STEP tokens still work because the
+    // STEP exporter upper-cases at write time — but `NewEntity.type` no
+    // longer mangles `IfcColumn` into `IFCCOLUMN` for downstream consumers.
     const expressId = ++this.nextAllocatedId;
     const entity: NewEntity = {
       expressId,
-      type: type.toUpperCase(),
+      type: type.trim(),
       attributes: attributes.slice(),
     };
     this.newEntities.set(expressId, entity);
@@ -1007,6 +1011,7 @@ export class MutablePropertyView {
     this.positionalAttrMutations.clear();
     this.newEntities.clear();
     this.tombstones.clear();
+    this.entityAliases.clear();
     this.nextAllocatedId = 0;
     this.mutationHistory = [];
   }
@@ -1053,6 +1058,39 @@ export class MutablePropertyView {
               QuantityType.Count,
             );
           }
+          break;
+
+        case 'UPDATE_POSITIONAL_ATTRIBUTE': {
+          // attributeName is `@<index>` for positional mutations.
+          const attr = mutation.attributeName ?? '';
+          if (!attr.startsWith('@')) break;
+          const index = Number(attr.slice(1));
+          if (!Number.isInteger(index) || index < 0) break;
+          if (mutation.newValue === undefined) break;
+          this.setPositionalAttribute(
+            mutation.entityId,
+            index,
+            mutation.newValue as IfcAttributeValue,
+          );
+          break;
+        }
+
+        case 'CREATE_ENTITY': {
+          // Replay creates rely on the importer providing the entity body
+          // via `restoreNewEntity` separately. The history record alone
+          // doesn't carry the type+attributes payload — applying a bare
+          // CREATE_ENTITY would lose the entity. We log and skip rather
+          // than silently dropping it, so callers see they need to
+          // restore the payload through the dedicated path.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `applyMutations: CREATE_ENTITY for #${mutation.entityId} requires a NewEntity payload — restore via restoreNewEntity()`,
+          );
+          break;
+        }
+
+        case 'DELETE_ENTITY':
+          this.deleteEntity(mutation.entityId);
           break;
       }
     }

@@ -219,12 +219,13 @@ const view = new MutablePropertyView(propertyTable, modelId);
 const editor = new StoreEditor(dataStore, view);
 
 // Add a fresh entity with positional STEP attributes.
-// Pass the canonical IFC EXPRESS PascalCase name; UPPERCASE STEP tokens
-// are accepted too — both are normalized to the same internal form.
+// Pass the canonical IFC EXPRESS PascalCase name; the public API surface
+// (StoreEditor / bim.store) is consistently PascalCase. Internally,
+// StepExporter upper-cases at the STEP write boundary.
 const profile = editor.addEntity('IfcRectangleProfileDef', [
   '.AREA.', null, '#34', 0.6, 0.4,
 ]);
-// → { expressId: <new>, type: 'IFCRECTANGLEPROFILEDEF', byteOffset: -1, ... }
+// → { expressId: <new>, type: 'IfcRectangleProfileDef', byteOffset: -1, ... }
 
 // Override a single positional argument on an existing entity by index.
 editor.setPositionalAttribute(profile.expressId, 3, 0.7);  // XDim → 0.7

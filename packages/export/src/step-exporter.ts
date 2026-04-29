@@ -627,7 +627,10 @@ export class StepExporter {
       && typeof this.mutationView.getNewEntities === 'function'
     ) {
       for (const entity of this.mutationView.getNewEntities()) {
-        const line = `#${entity.expressId}=${entity.type}(${serializeStepArgs(entity.attributes)});`;
+        // STEP requires UPPERCASE entity type tokens. `NewEntity.type` is
+        // stored in canonical PascalCase per the public API contract; the
+        // upper-case happens here at the file-format boundary.
+        const line = `#${entity.expressId}=${entity.type.toUpperCase()}(${serializeStepArgs(entity.attributes)});`;
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema);
           if (converted !== null) {

@@ -38,7 +38,7 @@ describe('addColumnToStore', () => {
     const byId = new Map(newEntities.map((e) => [e.expressId, e]));
 
     const column = byId.get(result.columnId);
-    expect(column?.type).toBe('IFCCOLUMN');
+    expect(column?.type).toBe('IfcColumn');
     expect(column?.attributes[1]).toBe('#5');               // OwnerHistory
     expect(column?.attributes[2]).toBe('Column 1');          // Name
     expect(column?.attributes[5]).toBe(`#${result.placementId}`);
@@ -46,25 +46,25 @@ describe('addColumnToStore', () => {
     expect(column?.attributes[8]).toBe('.COLUMN.');
 
     const placement = byId.get(result.placementId);
-    expect(placement?.type).toBe('IFCLOCALPLACEMENT');
+    expect(placement?.type).toBe('IfcLocalPlacement');
     expect(placement?.attributes[0]).toBe('#54');            // chained from storey placement
 
     const profile = byId.get(result.profileId);
-    expect(profile?.type).toBe('IFCRECTANGLEPROFILEDEF');
+    expect(profile?.type).toBe('IfcRectangleProfileDef');
     expect(profile?.attributes[3]).toBe(0.3);
     expect(profile?.attributes[4]).toBe(0.4);
 
     const solid = byId.get(result.solidId);
-    expect(solid?.type).toBe('IFCEXTRUDEDAREASOLID');
+    expect(solid?.type).toBe('IfcExtrudedAreaSolid');
     expect(solid?.attributes[3]).toBe(3);
 
     const shapeRep = byId.get(result.shapeRepId);
-    expect(shapeRep?.type).toBe('IFCSHAPEREPRESENTATION');
+    expect(shapeRep?.type).toBe('IfcShapeRepresentation');
     expect(shapeRep?.attributes[0]).toBe('#14');             // Body context
     expect(shapeRep?.attributes[2]).toBe('SweptSolid');
 
     const rel = byId.get(result.relContainedId);
-    expect(rel?.type).toBe('IFCRELCONTAINEDINSPATIALSTRUCTURE');
+    expect(rel?.type).toBe('IfcRelContainedInSpatialStructure');
     expect(rel?.attributes[5]).toBe('#43');                  // RelatingStructure (storey)
     expect(rel?.attributes[4]).toEqual([`#${result.columnId}`]); // RelatedElements
   });

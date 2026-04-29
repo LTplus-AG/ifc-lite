@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { normalizeIfcTypeName } from '@ifc-lite/parser';
 import type { AddColumnInStoreParams, BimBackend, EntityRef } from '../types.js';
 
 /**
@@ -27,8 +28,10 @@ export class StoreNamespace {
    * pointing at the freshly-allocated expressId.
    *
    * Pass `def.type` as the canonical IFC EXPRESS PascalCase name
-   * (e.g. `'IfcRectangleProfileDef'`). The internal STEP token form
-   * (`'IFCRECTANGLEPROFILEDEF'`) is also accepted.
+   * (e.g. `'IfcRectangleProfileDef'`). UPPERCASE STEP tokens are also
+   * accepted and silently normalized to PascalCase against the schema
+   * registry, so the returned `entity.type` always reflects the
+   * canonical form regardless of how the caller spelled it.
    *
    * Attribute conventions (mirror `EntityExtractor.extractEntity()`):
    *   - numbers → STEP integer / REAL literal
@@ -45,7 +48,10 @@ export class StoreNamespace {
    *   });
    */
   addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
-    return this.backend.store.addEntity(modelId, def);
+    return this.backend.store.addEntity(modelId, {
+      type: normalizeIfcTypeName(def.type),
+      attributes: def.attributes,
+    });
   }
 
   /**

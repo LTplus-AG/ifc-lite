@@ -434,13 +434,15 @@ describe('MutateNamespace', () => {
     store.addEntity.mockReturnValue({ modelId: 'arch', expressId: 11 });
     const bim = createBimContext({ backend });
 
+    // UPPERCASE STEP token at the API boundary — should be normalized to
+    // canonical PascalCase before being forwarded to the backend.
     const ref = bim.store.addEntity('arch', {
       type: 'IFCRECTANGLEPROFILEDEF',
       attributes: ['.AREA.', null, '#34', 0.6, 0.4],
     });
 
     expect(store.addEntity).toHaveBeenCalledWith('arch', {
-      type: 'IFCRECTANGLEPROFILEDEF',
+      type: 'IfcRectangleProfileDef',
       attributes: ['.AREA.', null, '#34', 0.6, 0.4],
     });
     expect(ref).toEqual({ modelId: 'arch', expressId: 11 });

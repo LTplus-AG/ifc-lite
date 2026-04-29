@@ -86,6 +86,30 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
             &physics_hooks,
             &event_handler,
         );
+        // Cap dynamic-body linear speed: a single bad contact penetration
+        // can launch a body past escape velocity and ruin the run. Default
+        // 50 m/s — generous for free-fall, tight enough to neutralize
+        // numerical garbage. Mirrors the JS path exactly.
+        if options.max_linear_speed.is_finite() && options.max_linear_speed > 0.0 {
+            let cap = options.max_linear_speed;
+            let cap2 = cap * cap;
+            for entry in &build.entries {
+                if entry.anchored {
+                    continue;
+                }
+                if let Some(body) = build.bodies.get_mut(entry.handle) {
+                    let v = body.linvel();
+                    let speed2 = v.x * v.x + v.y * v.y + v.z * v.z;
+                    if speed2 > cap2 {
+                        let scale = cap / speed2.sqrt();
+                        let vx = v.x * scale;
+                        let vy = v.y * scale;
+                        let vz = v.z * scale;
+                        body.set_linvel(Vector::new(vx, vy, vz), true);
+                    }
+                }
+            }
+        }
         if options.capture_trajectory && (step_index + 1) % stride == 0 {
             record_pose(&mut trajectory_poses, &build.bodies, &build.entries);
         }

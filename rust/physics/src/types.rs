@@ -197,6 +197,51 @@ pub struct SimulateOptions {
 
     /// Sample every Nth step for the trajectory. Default 1 (every step).
     pub trajectory_stride: usize,
+
+    /// Hard upper bound on linear speed in m/s applied to every dynamic
+    /// body after each step. Acts as a safety net for unwelded contact
+    /// impulses; without it a single bad penetration can launch a body
+    /// past escape velocity. Default `50.0`. Set to `f32::INFINITY` to
+    /// disable.
+    pub max_linear_speed: f32,
+}
+
+fn default_exclude_ifc_types() -> Vec<String> {
+    [
+        // Abstract volumes
+        "IfcOpeningElement",
+        "IfcSpace",
+        "IfcZone",
+        "IfcVirtualElement",
+        // Furniture
+        "IfcFurnishingElement",
+        "IfcSystemFurnitureElement",
+        // Architectural finishes & non-load-bearing
+        "IfcWindow",
+        "IfcDoor",
+        "IfcRailing",
+        "IfcCovering",
+        "IfcCurtainWall",
+        // Lighting / sanitary terminals
+        "IfcLamp",
+        "IfcLightFixture",
+        "IfcSanitaryTerminal",
+        // MEP — distribution / flow systems
+        "IfcFlowSegment",
+        "IfcFlowTerminal",
+        "IfcFlowController",
+        "IfcFlowFitting",
+        "IfcFlowMovingDevice",
+        "IfcFlowStorageDevice",
+        "IfcFlowTreatmentDevice",
+        "IfcDistributionElement",
+        "IfcDistributionFlowElement",
+        "IfcDistributionControlElement",
+        "IfcEnergyConversionDevice",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
 }
 
 /// Per-frame body poses, indexed `frame * body_count * 7 + body_index * 7`.
@@ -227,15 +272,11 @@ impl Default for SimulateOptions {
                 "IfcPile".to_string(),
                 "IfcFoundation".to_string(),
             ],
-            exclude_ifc_types: vec![
-                "IfcOpeningElement".to_string(),
-                "IfcSpace".to_string(),
-                "IfcZone".to_string(),
-                "IfcVirtualElement".to_string(),
-            ],
+            exclude_ifc_types: default_exclude_ifc_types(),
             collider_strategy: ColliderStrategy::Auto,
             capture_trajectory: false,
             trajectory_stride: 1,
+            max_linear_speed: 50.0,
         }
     }
 }

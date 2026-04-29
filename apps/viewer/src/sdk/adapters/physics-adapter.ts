@@ -195,5 +195,6 @@ function toEngineOptions(
     captureTrajectory: options.captureTrajectory ?? true,
     trajectoryStride: options.trajectoryStride,
     debug: options.debug,
+    maxLinearSpeed: options.maxLinearSpeed,
   };
 }

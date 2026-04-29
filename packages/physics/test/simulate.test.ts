@@ -147,14 +147,37 @@ describe('@ifc-lite/physics', () => {
     expect(traj.frameDt).toBeCloseTo(1 / 60, 4);
   });
 
-  it('excludes IfcOpeningElement and IfcSpace by default', () => {
+  it('excludes abstract volumes, furniture, openings and MEP by default', () => {
     const slab = cube(1, 'IfcSlab', [0, 0, 0.05], [4, 4, 0.1]);
     const opening = cube(2, 'IfcOpeningElement', [1, 0, 1], [0.3, 0.3, 0.3]);
     const space = cube(3, 'IfcSpace', [0, 0, 1.5], [3, 3, 3]);
-    const result = simulate([slab, opening, space], { durationSeconds: 0.5 });
-    expect(result.bodies.find(b => b.expressId === 2)).toBeUndefined();
-    expect(result.bodies.find(b => b.expressId === 3)).toBeUndefined();
+    const chair = cube(4, 'IfcFurnishingElement', [2, 0, 1], [0.5, 0.5, 0.5]);
+    const door = cube(5, 'IfcDoor', [-1, 0, 1], [0.9, 0.1, 2]);
+    const window = cube(6, 'IfcWindow', [1.5, 0, 2], [0.9, 0.1, 1.2]);
+    const pipe = cube(7, 'IfcFlowSegment', [0, 0, 3], [0.1, 2, 0.1]);
+    const result = simulate([slab, opening, space, chair, door, window, pipe], {
+      durationSeconds: 0.3,
+    });
+    for (const id of [2, 3, 4, 5, 6, 7]) {
+      expect(result.bodies.find(b => b.expressId === id)).toBeUndefined();
+    }
     expect(result.bodies.find(b => b.expressId === 1)).toBeDefined();
+  });
+
+  it('clamps dynamic body speed to maxLinearSpeed', () => {
+    const slab = cube(1, 'IfcSlab', [0, 0, 0.05], [4, 4, 0.1]);
+    const block = cube(2, 'IfcBeam', [0, 0, 30], [0.5, 0.5, 0.5]);
+    const result = simulate([slab, block], {
+      durationSeconds: 1.5,
+      maxLinearSpeed: 5,
+    });
+    // After ~1.5s of free fall under gravity, an unclamped body would be
+    // moving ~14.7 m/s. With maxLinearSpeed=5 it can't exceed that.
+    const blockBody = result.bodies.find(b => b.expressId === 2);
+    expect(blockBody).toBeDefined();
+    // We don't expose final velocity in the result, but capped fall speed
+    // means the body can't have travelled more than `cap × duration` m.
+    expect(Math.abs(blockBody!.verticalDisplacement)).toBeLessThan(5 * 1.5 + 1);
   });
 
   it('respects Y-down gravity for Y-up meshes', () => {

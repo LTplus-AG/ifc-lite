@@ -430,6 +430,13 @@ export interface PhysicsSimulateOptions {
    * Off by default.
    */
   debug?: boolean;
+
+  /**
+   * Hard cap on dynamic-body linear speed in m/s, applied after each
+   * solver step. Default `50`. Acts as a safety net so a single bad
+   * collider penetration can't launch a body past escape velocity.
+   */
+  maxLinearSpeed?: number;
 }
 
 /** Per-frame body poses for animation playback. */

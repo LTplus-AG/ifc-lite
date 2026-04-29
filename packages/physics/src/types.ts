@@ -69,11 +69,21 @@ export interface SimulateOptions {
   anchorIfcTypes?: string[];
 
   /**
-   * IFC types to skip entirely. Default excludes abstract volumes that
-   * occupy the same space as physical hosts and create spurious
-   * penetration impulses: `IfcOpeningElement` (the window/door voids cut
-   * into walls), `IfcSpace` / `IfcZone` (room volumes), and
-   * `IfcVirtualElement` (placeholder geometry).
+   * IFC types to skip entirely. The default excludes (a) abstract volumes
+   * that overlap their physical hosts and create spurious penetration
+   * impulses, plus (b) architectural finishes / MEP elements that aren't
+   * load-bearing and only add noise to the solver. Override the list to
+   * include any of them.
+   *
+   * Default-out:
+   *   IfcOpeningElement, IfcSpace, IfcZone, IfcVirtualElement,
+   *   IfcFurnishingElement, IfcSystemFurnitureElement,
+   *   IfcWindow, IfcDoor, IfcRailing, IfcCovering, IfcCurtainWall,
+   *   IfcLamp, IfcLightFixture, IfcSanitaryTerminal,
+   *   IfcFlowSegment, IfcFlowTerminal, IfcFlowController, IfcFlowFitting,
+   *   IfcFlowMovingDevice, IfcFlowStorageDevice, IfcFlowTreatmentDevice,
+   *   IfcDistributionElement, IfcDistributionFlowElement,
+   *   IfcDistributionControlElement, IfcEnergyConversionDevice.
    */
   excludeIfcTypes?: string[];
 
@@ -103,6 +113,18 @@ export interface SimulateOptions {
    * Off by default.
    */
   debug?: boolean;
+
+  /**
+   * Hard upper bound on linear speed in m/s. After every solver step,
+   * any dynamic body exceeding this limit is rescaled to it. Acts as a
+   * safety net for the rare case where unwelded contact resolution
+   * generates an absurd impulse — without it a single bad contact can
+   * launch a body to escape velocity and ruin the whole frame.
+   * Default `50` m/s — well above terminal velocity for falling rubble
+   * and far below the 1e+5 m/s blowups that come out of a misbehaving
+   * solver. Set to `Infinity` to disable.
+   */
+  maxLinearSpeed?: number;
 }
 
 /** Per-frame body poses, indexed `frame * bodyCount * 7 + bodyIndex * 7`. */
@@ -138,6 +160,7 @@ export interface ResolvedSimulateOptions {
   captureTrajectory: boolean;
   trajectoryStride: number;
   debug: boolean;
+  maxLinearSpeed: number;
 }
 
 export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
@@ -152,11 +175,43 @@ export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
   tiltThreshold: 0.05,
   groundAnchorTolerance: 0.05,
   anchorIfcTypes: ['IfcFooting', 'IfcPile', 'IfcFoundation'],
-  excludeIfcTypes: ['IfcOpeningElement', 'IfcSpace', 'IfcZone', 'IfcVirtualElement'],
+  excludeIfcTypes: [
+    // Abstract volumes
+    'IfcOpeningElement',
+    'IfcSpace',
+    'IfcZone',
+    'IfcVirtualElement',
+    // Furniture
+    'IfcFurnishingElement',
+    'IfcSystemFurnitureElement',
+    // Architectural finishes & non-load-bearing
+    'IfcWindow',
+    'IfcDoor',
+    'IfcRailing',
+    'IfcCovering',
+    'IfcCurtainWall',
+    // Lighting / sanitary terminals
+    'IfcLamp',
+    'IfcLightFixture',
+    'IfcSanitaryTerminal',
+    // MEP — distribution / flow systems
+    'IfcFlowSegment',
+    'IfcFlowTerminal',
+    'IfcFlowController',
+    'IfcFlowFitting',
+    'IfcFlowMovingDevice',
+    'IfcFlowStorageDevice',
+    'IfcFlowTreatmentDevice',
+    'IfcDistributionElement',
+    'IfcDistributionFlowElement',
+    'IfcDistributionControlElement',
+    'IfcEnergyConversionDevice',
+  ],
   colliderStrategy: 'auto',
   captureTrajectory: false,
   trajectoryStride: 1,
   debug: false,
+  maxLinearSpeed: 50,
 };
 
 export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimulateOptions {
@@ -182,6 +237,10 @@ export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimul
     captureTrajectory: opts?.captureTrajectory ?? DEFAULT_OPTIONS.captureTrajectory,
     trajectoryStride: Math.max(1, Math.floor(opts?.trajectoryStride ?? DEFAULT_OPTIONS.trajectoryStride)),
     debug: opts?.debug ?? DEFAULT_OPTIONS.debug,
+    maxLinearSpeed:
+      opts?.maxLinearSpeed !== undefined && opts.maxLinearSpeed > 0
+        ? opts.maxLinearSpeed
+        : DEFAULT_OPTIONS.maxLinearSpeed,
   };
 }
 

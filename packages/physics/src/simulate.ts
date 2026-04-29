@@ -108,6 +108,7 @@ export function simulate(
     if (recorder) recorder.recordFrame(0);
     for (let i = 0; i < built.steps; i++) {
       built.world.step();
+      clampVelocities(built);
       if (recorder) recorder.recordFrame(i + 1);
       if (checkpoints && checkpoints.has(i + 1)) {
         logCheckpoint(built, i + 1);
@@ -137,6 +138,7 @@ export async function simulateAsync(
     if (recorder) recorder.recordFrame(0);
     for (let i = 0; i < built.steps; i++) {
       built.world.step();
+      clampVelocities(built);
       if (recorder) recorder.recordFrame(i + 1);
       if (checkpoints && checkpoints.has(i + 1)) {
         logCheckpoint(built, i + 1);
@@ -699,6 +701,32 @@ function logBuildSummary(
  * 75%, end. Avoids one-line-per-step spam while still showing the
  * trajectory's evolution.
  */
+/**
+ * Cap every dynamic body's linear speed to `options.maxLinearSpeed` after
+ * each solver step. Architectural models routinely contain non-load-bearing
+ * elements (furniture, cladding, MEP) that aren't connected to anything;
+ * a single bad collider penetration can launch one to escape velocity and
+ * blow up the rest of the frame. Default 50 m/s — generous enough not to
+ * affect realistic falls but tight enough to neutralize numerical garbage.
+ *
+ * Keeps angular velocity untouched; rotation rarely runs away on its own.
+ */
+function clampVelocities(built: BuiltWorld): void {
+  const cap = built.options.maxLinearSpeed;
+  if (!Number.isFinite(cap) || cap <= 0) return;
+  const cap2 = cap * cap;
+  for (const e of built.entries) {
+    if (e.anchored) continue;
+    const body = built.world.bodies.get(e.handle);
+    if (!body) continue;
+    const v = body.linvel();
+    const speed2 = v.x * v.x + v.y * v.y + v.z * v.z;
+    if (speed2 <= cap2) continue;
+    const scale = cap / Math.sqrt(speed2);
+    body.setLinvel({ x: v.x * scale, y: v.y * scale, z: v.z * scale }, true);
+  }
+}
+
 function buildDebugCheckpoints(steps: number): Set<number> {
   if (steps <= 0) return new Set();
   const fractions = [0.25, 0.5, 0.75, 1];

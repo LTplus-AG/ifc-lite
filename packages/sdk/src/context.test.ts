@@ -54,6 +54,11 @@ function createMockBackend() {
     undo: vi.fn(() => false),
     redo: vi.fn(() => false),
   };
+  const store = {
+    addEntity: vi.fn((modelId: string) => ({ modelId, expressId: 1 })),
+    removeEntity: vi.fn(() => true),
+    setPositionalAttribute: vi.fn(),
+  };
   const spatial = {
     queryBounds: vi.fn(() => []),
     raycast: vi.fn(() => []),
@@ -86,6 +91,7 @@ function createMockBackend() {
     visibility,
     viewer,
     mutate,
+    store,
     spatial,
     export: exportNs,
     lens,
@@ -93,7 +99,7 @@ function createMockBackend() {
     subscribe: vi.fn(() => () => {}),
   };
 
-  return { backend, model, query, selection, visibility, viewer, mutate, spatial, export: exportNs, lens, files };
+  return { backend, model, query, selection, visibility, viewer, mutate, store, spatial, export: exportNs, lens, files };
 }
 
 describe('BimContext', () => {
@@ -422,6 +428,38 @@ describe('ViewerNamespace', () => {
 });
 
 describe('MutateNamespace', () => {
+  it('bim.store.addEntity routes through the store backend with the expected def', () => {
+    const { backend, store } = createMockBackend();
+    store.addEntity.mockReturnValue({ modelId: 'arch', expressId: 11 });
+    const bim = createBimContext({ backend });
+
+    const ref = bim.store.addEntity('arch', {
+      type: 'IFCRECTANGLEPROFILEDEF',
+      attributes: ['.AREA.', null, '#34', 0.6, 0.4],
+    });
+
+    expect(store.addEntity).toHaveBeenCalledWith('arch', {
+      type: 'IFCRECTANGLEPROFILEDEF',
+      attributes: ['.AREA.', null, '#34', 0.6, 0.4],
+    });
+    expect(ref).toEqual({ modelId: 'arch', expressId: 11 });
+  });
+
+  it('bim.store.removeEntity / setPositionalAttribute pass through to the backend', () => {
+    const { backend, store } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    bim.store.removeEntity({ modelId: 'arch', expressId: 35 });
+    bim.store.setPositionalAttribute({ modelId: 'arch', expressId: 35 }, 3, 0.6);
+
+    expect(store.removeEntity).toHaveBeenCalledWith({ modelId: 'arch', expressId: 35 });
+    expect(store.setPositionalAttribute).toHaveBeenCalledWith(
+      { modelId: 'arch', expressId: 35 },
+      3,
+      0.6,
+    );
+  });
+
   it('setProperty() calls mutate.setProperty', () => {
     const { backend, mutate } = createMockBackend();
     const bim = createBimContext({ backend });

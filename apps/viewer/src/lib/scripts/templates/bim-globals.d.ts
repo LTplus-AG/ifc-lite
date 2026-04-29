@@ -212,6 +212,15 @@ declare const bim: {
     /** Redo undone mutation */
     redo(modelId: string): void;
   };
+  /** Document-level edits — add, remove, and edit positional STEP arguments on entities of a parsed model */
+  store: {
+    /** Inject a new entity into the active model. Returns an EntityRef for the freshly-allocated expressId. */
+    addEntity(modelId: string, def: unknown): { modelId: string; expressId: number };
+    /** Remove an entity. Tombstones existing entities; forgets overlay-only ones. Returns false if the id is unknown. */
+    removeEntity(entity: unknown): boolean;
+    /** Edit a non-IfcRoot attribute by zero-based STEP argument index (e.g. IfcRectangleProfileDef.XDim is index 3). */
+    setPositionalAttribute(entity: unknown, index: number, value: unknown): void;
+  };
   /** Lens visualization */
   lens: {
     /** Get built-in lens presets */

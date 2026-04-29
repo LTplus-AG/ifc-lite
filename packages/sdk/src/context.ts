@@ -17,6 +17,7 @@ import { ModelNamespace } from './namespaces/model.js';
 import { QueryNamespace, QueryBuilder } from './namespaces/query.js';
 import { ViewerNamespace } from './namespaces/viewer.js';
 import { MutateNamespace } from './namespaces/mutate.js';
+import { StoreNamespace } from './namespaces/store.js';
 import { LensNamespace } from './namespaces/lens.js';
 import { ExportNamespace } from './namespaces/export.js';
 import { IDSNamespace } from './namespaces/ids.js';
@@ -36,6 +37,7 @@ export class BimContext {
   readonly model: ModelNamespace;
   readonly viewer: ViewerNamespace;
   readonly mutate: MutateNamespace;
+  readonly store: StoreNamespace;
   readonly lens: LensNamespace;
   readonly export: ExportNamespace;
   readonly ids: IDSNamespace;
@@ -67,6 +69,7 @@ export class BimContext {
     this._queryNamespace = new QueryNamespace(this._backend);
     this.viewer = new ViewerNamespace(this._backend);
     this.mutate = new MutateNamespace(this._backend);
+    this.store = new StoreNamespace(this._backend);
     this.lens = new LensNamespace();
     this.export = new ExportNamespace(this._backend);
     this.ids = new IDSNamespace();

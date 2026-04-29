@@ -165,7 +165,7 @@ export function useSandbox(config?: SandboxConfig) {
       // Create a fresh sandbox for every execution — full isolation
       const { createSandbox } = await import('@ifc-lite/sandbox');
       sandbox = await createSandbox(bim, {
-        permissions: { model: true, query: true, viewer: true, mutate: true, lens: true, export: true, files: true, ...config?.permissions },
+        permissions: { model: true, query: true, viewer: true, mutate: true, store: true, lens: true, export: true, files: true, ...config?.permissions },
         limits: { timeoutMs: 30_000, ...config?.limits },
       });
       activeSandboxRef.current = sandbox;

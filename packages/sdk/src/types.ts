@@ -350,6 +350,21 @@ export interface MutateBackendMethods {
   redo(modelId: string): boolean;
 }
 
+/**
+ * Document-level edits — adding, removing, and editing positional STEP
+ * arguments on entities in a parsed `IfcDataStore`. Complements the
+ * property/attribute-level edits exposed by `MutateBackendMethods`.
+ *
+ * Implementations route into a per-model `MutablePropertyView` overlay so
+ * the underlying store buffer is never mutated; changes materialise on
+ * the next `bim.export.ifc()`.
+ */
+export interface StoreBackendMethods {
+  addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef;
+  removeEntity(ref: EntityRef): boolean;
+  setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void;
+}
+
 export interface SpatialBackendMethods {
   queryBounds(modelId: string, bounds: AABB): EntityRef[];
   raycast(modelId: string, origin: [number, number, number], direction: [number, number, number]): EntityRef[];
@@ -498,6 +513,7 @@ export interface BimBackend {
   readonly visibility: VisibilityBackendMethods;
   readonly viewer: ViewerBackendMethods;
   readonly mutate: MutateBackendMethods;
+  readonly store: StoreBackendMethods;
   readonly spatial: SpatialBackendMethods;
   readonly export: ExportBackendMethods;
   readonly lens: LensBackendMethods;

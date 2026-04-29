@@ -19,6 +19,7 @@ import type {
   VisibilityBackendMethods,
   ViewerBackendMethods,
   MutateBackendMethods,
+  StoreBackendMethods,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
@@ -38,6 +39,7 @@ import type {
   ModelInfo,
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { EntityNode } from '@ifc-lite/query';
 import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import {
@@ -49,7 +51,7 @@ import {
   extractRelationshipsOnDemand,
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
-import { exportToStep, type StepExportOptions } from '@ifc-lite/export';
+import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 
 const MODEL_ID = 'default';
 
@@ -127,17 +129,20 @@ export class HeadlessBackend implements BimBackend {
   readonly visibility: VisibilityBackendMethods;
   readonly viewer: ViewerBackendMethods;
   readonly mutate: MutateBackendMethods;
+  readonly store: StoreBackendMethods;
   readonly spatial: SpatialBackendMethods;
   readonly export: ExportBackendMethods;
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
 
-  private store: IfcDataStore;
+  private dataStore: IfcDataStore;
   private modelName: string;
+  private mutationView: MutablePropertyView | null = null;
+  private storeEditor: StoreEditor | null = null;
 
   constructor(store: IfcDataStore, modelName: string) {
-    this.store = store;
+    this.dataStore = store;
     this.modelName = modelName;
     this.model = this.createModelAdapter();
     this.query = this.createQueryAdapter();
@@ -145,6 +150,7 @@ export class HeadlessBackend implements BimBackend {
     this.visibility = this.createVisibilityAdapter();
     this.viewer = this.createViewerAdapter();
     this.mutate = this.createMutateAdapter();
+    this.store = this.createStoreAdapter();
     this.spatial = this.createSpatialAdapter();
     this.export = this.createExportAdapter();
     this.lens = this.createLensAdapter();
@@ -157,7 +163,7 @@ export class HeadlessBackend implements BimBackend {
   }
 
   private createModelAdapter(): ModelBackendMethods {
-    const store = this.store;
+    const store = this.dataStore;
     const name = this.modelName;
     return {
       list(): ModelInfo[] {
@@ -177,7 +183,7 @@ export class HeadlessBackend implements BimBackend {
   }
 
   private createQueryAdapter(): QueryBackendMethods {
-    const store = this.store;
+    const store = this.dataStore;
 
     function getEntityData(ref: EntityRef): EntityData | null {
       // Verify the entity actually exists in the parsed data
@@ -383,6 +389,29 @@ export class HeadlessBackend implements BimBackend {
     };
   }
 
+  private getOrCreateStoreEditor(): StoreEditor {
+    if (this.storeEditor) return this.storeEditor;
+    this.mutationView = new MutablePropertyView(this.dataStore.properties || null, MODEL_ID);
+    this.storeEditor = new StoreEditor(this.dataStore, this.mutationView);
+    return this.storeEditor;
+  }
+
+  private createStoreAdapter(): StoreBackendMethods {
+    const get = () => this.getOrCreateStoreEditor();
+    return {
+      addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
+        const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
+        return { modelId, expressId: ref.expressId };
+      },
+      removeEntity(ref: EntityRef): boolean {
+        return get().removeEntity(ref.expressId);
+      },
+      setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void {
+        get().setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
+      },
+    };
+  }
+
   private createSpatialAdapter(): SpatialBackendMethods {
     return {
       queryBounds() { return []; },
@@ -392,7 +421,7 @@ export class HeadlessBackend implements BimBackend {
   }
 
   private createExportAdapter(): ExportBackendMethods {
-    const store = this.store;
+    const store = this.dataStore;
     const queryAdapter = this.query;
 
     function escapeCsv(value: string, sep: string): string {
@@ -470,20 +499,26 @@ export class HeadlessBackend implements BimBackend {
         }
         return result;
       },
-      ifc(refs: unknown, options: unknown): string {
+      ifc: (refs: unknown, options: unknown): string => {
         const entityRefs = refs as EntityRef[];
         const opts = (options ?? {}) as Record<string, unknown>;
         const schema = (opts.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3') ?? store.schemaVersion ?? 'IFC4';
 
-        // If refs are provided, filter export to only those entities
-        const exportOpts: Record<string, unknown> = { schema };
+        const exportOpts: Partial<StepExportOptions> = { schema };
         if (entityRefs && entityRefs.length > 0) {
           const isolatedIds = new Set(entityRefs.map(r => r.expressId));
           exportOpts.visibleOnly = true;
           exportOpts.isolatedEntityIds = isolatedIds;
           exportOpts.hiddenEntityIds = new Set<number>();
         }
-        return exportToStep(store, exportOpts as Partial<StepExportOptions>);
+        // Route through StepExporter directly so any bim.store.* / bim.mutate.*
+        // overlay state on this backend's MutablePropertyView is included.
+        if (this.mutationView) {
+          const exporter = new StepExporter(store, this.mutationView);
+          const result = exporter.export({ schema: 'IFC4', ...exportOpts });
+          return new TextDecoder().decode(result.content);
+        }
+        return exportToStep(store, exportOpts);
       },
       download(_content: string, _filename: string, _mimeType: string): void {
         /* no-op — CLI writes to stdout/file directly */
@@ -511,7 +546,7 @@ export class HeadlessBackend implements BimBackend {
   }
 
   private createScheduleAdapter(): ScheduleBackendMethods {
-    const store = this.store;
+    const store = this.dataStore;
     const modelName = this.modelName;
     let cached: ReturnType<ScheduleBackendMethods['data']> | null = null;
 

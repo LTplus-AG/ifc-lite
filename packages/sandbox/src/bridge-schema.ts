@@ -24,6 +24,7 @@ import { buildModelNamespace } from './bridge-model.js';
 import { buildQueryNamespace } from './bridge-query.js';
 import { buildViewerNamespace } from './bridge-viewer.js';
 import { buildMutateNamespace } from './bridge-mutate.js';
+import { buildStoreNamespace } from './bridge-store.js';
 import { buildCreateMethods } from './bridge-create.js';
 import { buildFilesNamespace } from './bridge-files.js';
 import { buildExportNamespace } from './bridge-export.js';
@@ -141,6 +142,9 @@ export const NAMESPACE_SCHEMAS: NamespaceSchema[] = [
 
   // ── bim.mutate ─────────────────────────────────────────────
   buildMutateNamespace(),
+
+  // ── bim.store ──────────────────────────────────────────────
+  buildStoreNamespace(),
 
   // ── bim.lens ───────────────────────────────────────────────
   {

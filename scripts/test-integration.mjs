@@ -26,6 +26,11 @@ const fixturePath = join(ROOT_DIR, 'tests/models/various/test-colors.ifc');
 let ifcData;
 try {
   ifcData = readFileSync(fixturePath, 'utf-8');
+  if (ifcData.startsWith('version https://git-lfs.github.com/spec/')) {
+    console.error(`❌ Fixture is still a Git LFS pointer: ${fixturePath}`);
+    console.error('   Run `pnpm fixtures` from the repo root to download the real bytes.');
+    process.exit(2);
+  }
 } catch (err) {
   if (err.code === 'ENOENT') {
     console.error(`❌ Fixture not found: ${fixturePath}`);

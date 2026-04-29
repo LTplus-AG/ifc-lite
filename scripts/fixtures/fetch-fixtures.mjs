@@ -19,7 +19,7 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -31,7 +31,8 @@ const args = process.argv.slice(2);
 const CHECK_ONLY = args.includes('--check');
 const LIST_ONLY = args.includes('--list');
 const ONLY = args.filter((a) => !a.startsWith('--'));
-const CONCURRENCY = Math.max(1, parseInt(process.env.FIXTURE_CONCURRENCY || '6', 10));
+const parsedConcurrency = Number.parseInt(process.env.FIXTURE_CONCURRENCY || '6', 10);
+const CONCURRENCY = Number.isFinite(parsedConcurrency) && parsedConcurrency > 0 ? parsedConcurrency : 6;
 const RETRIES = 4;
 
 if (!existsSync(MANIFEST_PATH)) {
@@ -40,12 +41,40 @@ if (!existsSync(MANIFEST_PATH)) {
 }
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+if (!manifest || typeof manifest !== 'object') {
+  console.error(`error: ${MANIFEST_PATH} is not a JSON object`);
+  process.exit(2);
+}
 if (manifest.version !== 1) {
   console.error(`error: unsupported manifest.version ${manifest.version}`);
   process.exit(2);
 }
+if (!Array.isArray(manifest.files)) {
+  console.error(`error: ${MANIFEST_PATH} is missing a "files" array`);
+  process.exit(2);
+}
 
-const baseUrl = (process.env.IFC_LITE_FIXTURE_BASE_URL || manifest.base_url).replace(/\/+$/, '');
+const rawBaseUrl = process.env.IFC_LITE_FIXTURE_BASE_URL || manifest.base_url;
+if (typeof rawBaseUrl !== 'string' || rawBaseUrl.length === 0) {
+  console.error('error: manifest.base_url (or IFC_LITE_FIXTURE_BASE_URL) is required');
+  process.exit(2);
+}
+const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+
+/** Resolve a manifest-relative fixture path, refusing anything that would
+ *  escape `tests/models/`. Defends against a tampered manifest that lists
+ *  e.g. `../../etc/passwd`. */
+function resolveFixturePath(relPath) {
+  if (typeof relPath !== 'string' || relPath.length === 0) {
+    throw new Error(`invalid manifest entry path: ${JSON.stringify(relPath)}`);
+  }
+  const abs = resolve(MODELS_DIR, relPath);
+  const rel = relative(MODELS_DIR, abs);
+  if (rel === '' || rel.startsWith('..')) {
+    throw new Error(`manifest path escapes tests/models/: ${relPath}`);
+  }
+  return abs;
+}
 
 let entries = manifest.files;
 if (ONLY.length) {
@@ -64,7 +93,7 @@ async function sha256OfFile(path) {
 }
 
 function classify(entry) {
-  const abs = resolve(MODELS_DIR, entry.path);
+  const abs = resolveFixturePath(entry.path);
   if (!existsSync(abs)) return { state: 'missing', abs };
   const st = statSync(abs);
   // LFS pointer files are always small; skip the hash if size mismatches.
@@ -73,7 +102,13 @@ function classify(entry) {
 }
 
 async function fetchOne(entry) {
-  const { abs, state } = classify(entry);
+  let abs;
+  let state;
+  try {
+    ({ abs, state } = classify(entry));
+  } catch (err) {
+    return { entry, action: 'error', error: err };
+  }
   if (state === 'unchecked') {
     const got = await sha256OfFile(abs);
     if (got === entry.sha256) {
@@ -104,7 +139,8 @@ async function fetchOne(entry) {
       return { entry, action: 'fetched' };
     } catch (err) {
       lastErr = err;
-      try { unlinkSync(tmp); } catch {}
+      // cleanup — best-effort; tmp may not exist if fetch failed before write
+      try { unlinkSync(tmp); } catch { /* ignore */ }
       if (attempt < RETRIES) {
         const wait = 500 * 2 ** (attempt - 1);
         await sleep(wait);
@@ -142,17 +178,25 @@ for (const r of results) {
   else if (r.action === 'error') errors.push(r);
 }
 
+if (errors.length) {
+  for (const e of errors) {
+    console.error(`error: ${e.entry.path}: ${e.error?.message || e.error}`);
+  }
+}
+
 if (LIST_ONLY) {
   for (const r of results) {
     if (r.action === 'needed') console.log(r.entry.path);
   }
-  process.exit(needed === 0 ? 0 : 1);
+  process.exit(needed === 0 && errors.length === 0 ? 0 : 1);
 }
 
 if (CHECK_ONLY) {
-  if (needed) {
-    console.error(`fixtures missing or out of date: ${needed} of ${entries.length}`);
-    console.error('run: pnpm fixtures');
+  if (needed || errors.length) {
+    if (needed) {
+      console.error(`fixtures missing or out of date: ${needed} of ${entries.length}`);
+      console.error('run: pnpm fixtures');
+    }
     process.exit(1);
   }
   console.error(`all ${entries.length} fixtures present and verified`);
@@ -163,9 +207,8 @@ const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 console.error(
   `fixtures: fetched=${fetched} skipped=${skipped} errors=${errors.length} in ${elapsed}s`,
 );
+// Per-entry error lines were already printed once near the top of the
+// summary section.
 if (errors.length) {
-  for (const e of errors) {
-    console.error(`  ${e.entry.path}: ${e.error?.message || e.error}`);
-  }
   process.exit(1);
 }

@@ -12,6 +12,11 @@ const fixturePath = path.join(__dirname, '../tests/models/various/01_Snowdon_Tow
 let ifc;
 try {
   ifc = fs.readFileSync(fixturePath, 'utf8');
+  if (ifc.startsWith('version https://git-lfs.github.com/spec/')) {
+    console.error(`Fixture is still a Git LFS pointer: ${fixturePath}`);
+    console.error('Run `pnpm fixtures` from the repo root to download the real bytes.');
+    process.exit(2);
+  }
 } catch (err) {
   if (err.code === 'ENOENT') {
     console.error(`Fixture not found: ${fixturePath}`);

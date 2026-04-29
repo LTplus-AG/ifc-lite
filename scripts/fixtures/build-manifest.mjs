@@ -13,9 +13,10 @@
 // must NOT rely on `git ls-files` — fixtures are gitignored after the
 // migration, so that path would silently produce an empty catalogue.
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, relative, posix } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const MODELS_DIR = resolve(ROOT, 'tests/models');
@@ -37,9 +38,9 @@ function parseLfsPointer(text) {
   return { sha256: m[1], size: parseInt(m[2], 10) };
 }
 
-function sha256OfFile(path) {
+async function sha256OfFile(path) {
   const h = createHash('sha256');
-  h.update(readFileSync(path));
+  await pipeline(createReadStream(path), h);
   return h.digest('hex');
 }
 
@@ -73,7 +74,7 @@ for (const { abs, size, name } of walk(MODELS_DIR)) {
     }
   }
   if (!entry) {
-    entry = { path: relFromModels, sha256: sha256OfFile(abs), size, source: 'inline' };
+    entry = { path: relFromModels, sha256: await sha256OfFile(abs), size, source: 'inline' };
   }
   files.push(entry);
 }

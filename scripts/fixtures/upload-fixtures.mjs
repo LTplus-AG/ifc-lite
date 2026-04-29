@@ -19,7 +19,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -27,8 +27,35 @@ const MODELS_DIR = resolve(ROOT, 'tests/models');
 const MANIFEST_PATH = resolve(MODELS_DIR, 'manifest.json');
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+if (!manifest || typeof manifest !== 'object') {
+  console.error(`error: ${MANIFEST_PATH} is not a JSON object`);
+  process.exit(2);
+}
+if (typeof manifest.release_tag !== 'string' || manifest.release_tag.length === 0) {
+  console.error(`error: ${MANIFEST_PATH} is missing a non-empty "release_tag"`);
+  process.exit(2);
+}
+if (!Array.isArray(manifest.files)) {
+  console.error(`error: ${MANIFEST_PATH} is missing a "files" array`);
+  process.exit(2);
+}
 const TAG = manifest.release_tag;
 const REPO = process.env.IFC_LITE_FIXTURE_REPO || 'louistrue/ifc-lite';
+
+/** Resolve a manifest-relative path, refusing anything that would escape
+ *  `tests/models/`. Defends against a tampered manifest causing the upload
+ *  script to read/upload arbitrary files on the maintainer's machine. */
+function resolveFixturePath(relPath) {
+  if (typeof relPath !== 'string' || relPath.length === 0) {
+    throw new Error(`invalid manifest entry path: ${JSON.stringify(relPath)}`);
+  }
+  const abs = resolve(MODELS_DIR, relPath);
+  const rel = relative(MODELS_DIR, abs);
+  if (rel === '' || rel.startsWith('..')) {
+    throw new Error(`manifest path escapes tests/models/: ${relPath}`);
+  }
+  return abs;
+}
 
 function gh(...args) {
   return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -45,7 +72,13 @@ console.error(`Verifying local copies against manifest (${manifest.files.length}
 const missing = [];
 const wrong = [];
 for (const entry of manifest.files) {
-  const abs = resolve(MODELS_DIR, entry.path);
+  let abs;
+  try {
+    abs = resolveFixturePath(entry.path);
+  } catch (err) {
+    wrong.push({ entry, why: err.message });
+    continue;
+  }
   if (!existsSync(abs)) {
     missing.push(entry);
     continue;
@@ -64,7 +97,12 @@ if (missing.length || wrong.length) {
   console.error('Cannot upload — local fixtures don\'t match manifest:');
   for (const e of missing) console.error(`  missing: ${e.path}`);
   for (const w of wrong) console.error(`  ${w.why}: ${w.entry.path}`);
-  console.error('\nFix: run `git lfs pull` and ensure all files in tests/models/ are real, not pointers.');
+  console.error(
+    '\nFix: place the real bytes for each fixture under tests/models/ and re-run.\n' +
+    '     (For the initial migration upload only: `git lfs pull` while LFS\n' +
+    '      still has the bytes. After migration, copy in any new fixtures\n' +
+    '      directly — see tests/models/README.md for the full runbook.)',
+  );
   process.exit(2);
 }
 console.error('  all files match.');
@@ -109,7 +147,9 @@ for (const entry of manifest.files) {
     skipped++;
     continue;
   }
-  const abs = resolve(MODELS_DIR, entry.path);
+  // Already validated in the verify pass above; resolve again for the
+  // upload command so we don't trust unchecked entry.path.
+  const abs = resolveFixturePath(entry.path);
   console.error(`  uploading ${entry.path} as ${assetName} (${(entry.size / 1024 / 1024).toFixed(1)} MiB)...`);
   try {
     gh(

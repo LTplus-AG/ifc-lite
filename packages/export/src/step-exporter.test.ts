@@ -368,4 +368,82 @@ describe('StepExporter', () => {
       expect(isValidIfcGuid(guid)).toBe(true);
     }
   });
+
+  it('emits overlay-created entities at the end of the DATA section', () => {
+    const dataStore = buildMockDataStore([
+      [10, 'IFCCARTESIANPOINT', '#10=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(10);
+    const point = view.createEntity('IFCCARTESIANPOINT', [[1, 2, 3]]);
+    view.createEntity('IFCDIRECTION', [[0, 0, 1]]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(point.expressId).toBe(11);
+    expect(content).toContain('#10=IFCCARTESIANPOINT((0.,0.,0.));');
+    expect(content).toContain('#11=IFCCARTESIANPOINT((1,2,3));');
+    expect(content).toContain('#12=IFCDIRECTION((0,0,1));');
+    expect(result.stats.newEntityCount).toBe(2);
+  });
+
+  it('skips tombstoned entities in the export', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [2, 'IFCCARTESIANPOINT', '#2=IFCCARTESIANPOINT((1.,1.,1.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.deleteEntity(2);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#1=IFCCARTESIANPOINT((0.,0.,0.));');
+    expect(content).not.toContain('#2=IFCCARTESIANPOINT');
+  });
+
+  it('applies positional attribute mutations to non-IfcRoot entities', () => {
+    const dataStore = buildMockDataStore([
+      [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.3,0.4);'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setPositionalAttribute(35, 3, 0.6);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.6,0.4);');
+    expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  it('honours applyMutations: false for overlay state', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    view.createEntity('IFCDIRECTION', [[1, 0, 0]]);
+    view.deleteEntity(1);
+    view.setPositionalAttribute(1, 0, [9, 9, 9]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: false,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#1=IFCCARTESIANPOINT((0.,0.,0.));');
+    expect(content).not.toContain('IFCDIRECTION');
+    expect(result.stats.newEntityCount).toBe(0);
+  });
 });

@@ -9,6 +9,19 @@
 import type { PropertyValueType } from '@ifc-lite/data';
 
 /**
+ * IFC STEP attribute value, as produced by `EntityExtractor.extractEntity()`.
+ *
+ * Mirrors the parser's `IfcAttributeValue` to keep `@ifc-lite/mutations` free
+ * of a `@ifc-lite/parser` dependency (parser → ifcx → mutations would cycle).
+ */
+export type IfcAttributeValue =
+  | string
+  | number
+  | boolean
+  | null
+  | IfcAttributeValue[];
+
+/**
  * Property value types supported by mutations
  */
 export type PropertyValue = string | number | boolean | null | PropertyValue[];
@@ -25,7 +38,10 @@ export type MutationType =
   | 'CREATE_QUANTITY'
   | 'UPDATE_QUANTITY'
   | 'DELETE_QUANTITY'
-  | 'UPDATE_ATTRIBUTE';
+  | 'UPDATE_ATTRIBUTE'
+  | 'UPDATE_POSITIONAL_ATTRIBUTE'
+  | 'CREATE_ENTITY'
+  | 'DELETE_ENTITY';
 
 /**
  * A single mutation operation
@@ -115,6 +131,54 @@ export interface AttributeMutation {
   value: string;
   /** Previous value (for undo) */
   oldValue?: string;
+}
+
+/**
+ * In-memory record for an entity created via the overlay.
+ *
+ * `attributes` is the positional STEP argument list for the entity, in the
+ * same shape that `EntityExtractor.extractEntity()` produces. Numbers become
+ * STEP integer/REAL literals; strings/booleans/null are emitted literally;
+ * nested arrays are emitted as STEP lists. Use a string `"#42"` for entity
+ * references, `".AREA."` for enums, `"$"` for explicit unset.
+ */
+export interface NewEntity {
+  expressId: number;
+  type: string;
+  attributes: IfcAttributeValue[];
+}
+
+/**
+ * Minimal `EntityRef` shape consumed by `StoreEditor`. Structurally compatible
+ * with `@ifc-lite/parser`'s `EntityRef`.
+ */
+export interface MutationEntityRef {
+  expressId: number;
+  type: string;
+  byteOffset: number;
+  byteLength: number;
+  lineNumber: number;
+}
+
+/**
+ * Minimal entity-by-id index shape. Compatible with `Map<number, EntityRef>`
+ * and the parser's `CompactEntityIndex`. Only the read methods are required
+ * — the overlay never mutates the underlying index.
+ */
+export interface MutationEntityByIdIndex {
+  get(expressId: number): MutationEntityRef | undefined;
+  has(expressId: number): boolean;
+  readonly size: number;
+  keys(): IterableIterator<number>;
+}
+
+/**
+ * Minimal `IfcDataStore` shape consumed by `StoreEditor`.
+ */
+export interface MutationStoreShape {
+  entityIndex: {
+    byId: MutationEntityByIdIndex;
+  };
 }
 
 /**

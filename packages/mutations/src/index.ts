@@ -8,6 +8,7 @@
 
 export * from './types.js';
 export { MutablePropertyView, type PropertyExtractor, type QuantityExtractor } from './mutable-property-view.js';
+export { StoreEditor, OVERLAY_BYTE_OFFSET } from './store-editor.js';
 export { ChangeSetManager } from './change-set.js';
 export {
   BulkQueryEngine,

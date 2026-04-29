@@ -14,7 +14,7 @@
 
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
-import type { PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, Mutation } from './types.js';
+import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, Mutation, NewEntity } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
 
 /**
@@ -43,12 +43,32 @@ export class MutablePropertyView {
   private newPsets: Map<number, Map<string, PropertySet>> = new Map(); // entityId -> psetName -> PropertySet
   private newQsets: Map<number, Map<string, QuantitySet>> = new Map(); // entityId -> qsetName -> QuantitySet
   private attributeMutations: Map<string, AttributeMutation> = new Map(); // `${entityId}:attr:${attrName}`
+  private positionalAttrMutations: Map<number, Map<number, IfcAttributeValue>> = new Map(); // entityId -> argIndex -> value
+  private newEntities: Map<number, NewEntity> = new Map();
+  private tombstones: Set<number> = new Set();
+  private nextAllocatedId: number = 0;
   private mutationHistory: Mutation[] = [];
   private modelId: string;
 
   constructor(baseTable: PropertyTable | null, modelId: string) {
     this.baseTable = baseTable;
     this.modelId = modelId;
+  }
+
+  /**
+   * Seed the express-ID allocator. Should be called once after parsing with
+   * the highest existing expressId in the store; subsequent `createEntity`
+   * calls allocate IDs strictly above this watermark.
+   */
+  setExpressIdWatermark(maxExistingId: number): void {
+    if (maxExistingId > this.nextAllocatedId) {
+      this.nextAllocatedId = maxExistingId;
+    }
+  }
+
+  /** The next expressId that `createEntity` would allocate. */
+  peekNextExpressId(): number {
+    return this.nextAllocatedId + 1;
   }
 
   /**
@@ -660,6 +680,135 @@ export class MutablePropertyView {
   }
 
   /**
+   * Set a positional STEP argument on an entity by zero-based index.
+   *
+   * This is the only path for editing non-IfcRoot entities (e.g. profile
+   * dimensions on `IfcRectangleProfileDef`) where attributes have no symbolic
+   * names. Values follow the same conventions as `NewEntity.attributes`:
+   * numbers become `#expressId` references when paired with a reference slot,
+   * otherwise REAL/INTEGER literals; strings become quoted STEP strings;
+   * `null` becomes `$`.
+   */
+  setPositionalAttribute(
+    entityId: number,
+    index: number,
+    value: IfcAttributeValue,
+    skipHistory: boolean = false,
+  ): Mutation {
+    if (!Number.isInteger(index) || index < 0) {
+      throw new Error(`setPositionalAttribute: index must be a non-negative integer, got ${index}`);
+    }
+
+    let entityMap = this.positionalAttrMutations.get(entityId);
+    if (!entityMap) {
+      entityMap = new Map();
+      this.positionalAttrMutations.set(entityId, entityMap);
+    }
+    const oldValue = entityMap.has(index) ? entityMap.get(index)! : null;
+    entityMap.set(index, value);
+
+    const mutation: Mutation = {
+      id: generateMutationId(),
+      type: 'UPDATE_POSITIONAL_ATTRIBUTE',
+      timestamp: Date.now(),
+      modelId: this.modelId,
+      entityId,
+      attributeName: `@${index}`,
+      oldValue: oldValue as PropertyValue,
+      newValue: value as PropertyValue,
+    };
+
+    if (!skipHistory) {
+      this.mutationHistory.push(mutation);
+    }
+    return mutation;
+  }
+
+  /** Get all positional argument overrides for an entity, keyed by index. */
+  getPositionalMutationsForEntity(entityId: number): Map<number, IfcAttributeValue> | null {
+    return this.positionalAttrMutations.get(entityId) ?? null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Entity-level mutations (create / delete)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Create a new entity in the overlay. Returns the freshly-allocated
+   * expressId. Callers must ensure `setExpressIdWatermark` has been seeded
+   * from the underlying store before calling this for the first time.
+   */
+  createEntity(type: string, attributes: IfcAttributeValue[]): NewEntity {
+    if (!type || typeof type !== 'string') {
+      throw new Error('createEntity: type is required');
+    }
+    const expressId = ++this.nextAllocatedId;
+    const entity: NewEntity = {
+      expressId,
+      type: type.toUpperCase(),
+      attributes: attributes.slice(),
+    };
+    this.newEntities.set(expressId, entity);
+
+    this.mutationHistory.push({
+      id: generateMutationId(),
+      type: 'CREATE_ENTITY',
+      timestamp: Date.now(),
+      modelId: this.modelId,
+      entityId: expressId,
+      attributeName: entity.type,
+    });
+    return entity;
+  }
+
+  /**
+   * Mark an entity for deletion. Existing entities are tombstoned; new
+   * entities (from `createEntity`) are simply forgotten. Returns false if
+   * the id is unknown to this view.
+   */
+  deleteEntity(expressId: number): boolean {
+    if (this.newEntities.has(expressId)) {
+      this.newEntities.delete(expressId);
+      this.mutationHistory.push({
+        id: generateMutationId(),
+        type: 'DELETE_ENTITY',
+        timestamp: Date.now(),
+        modelId: this.modelId,
+        entityId: expressId,
+      });
+      return true;
+    }
+    if (this.tombstones.has(expressId)) return false;
+    this.tombstones.add(expressId);
+    this.mutationHistory.push({
+      id: generateMutationId(),
+      type: 'DELETE_ENTITY',
+      timestamp: Date.now(),
+      modelId: this.modelId,
+      entityId: expressId,
+    });
+    return true;
+  }
+
+  /** Returns all overlay-created entities in insertion order. */
+  getNewEntities(): NewEntity[] {
+    return Array.from(this.newEntities.values());
+  }
+
+  /** Look up a single overlay-created entity. */
+  getNewEntity(expressId: number): NewEntity | null {
+    return this.newEntities.get(expressId) ?? null;
+  }
+
+  isDeleted(expressId: number): boolean {
+    return this.tombstones.has(expressId);
+  }
+
+  getTombstones(): Set<number> {
+    return new Set(this.tombstones);
+  }
+
+  /**
    * Get mutated attributes for an entity.
    * Returns only attributes that have been added/modified via mutations.
    */
@@ -760,6 +909,10 @@ export class MutablePropertyView {
     this.deletedQsets.clear();
     this.newPsets.clear();
     this.newQsets.clear();
+    this.positionalAttrMutations.clear();
+    this.newEntities.clear();
+    this.tombstones.clear();
+    this.nextAllocatedId = 0;
     this.mutationHistory = [];
   }
 

@@ -47,6 +47,17 @@ export interface MutationSlice {
   mutationVersion: number;
   /** Georeferencing mutations per model */
   georefMutations: Map<string, GeorefMutationData>;
+  /**
+   * "Add Column" dialog state. Held in the mutation slice because the
+   * dialog drives a store-level mutation; mounted at the ViewerLayout
+   * level so it can be opened from the context menu, the edit toolbar,
+   * or any other future entry point.
+   */
+  addColumnDialog: {
+    isOpen: boolean;
+    modelId: string | null;
+    storeyExpressId: number | null;
+  };
 
   // Actions - Georeferencing Mutations
   /** Set a georeferencing field value */
@@ -161,6 +172,10 @@ export interface MutationSlice {
     storeyExpressId: number,
     params: ColumnInStoreParams
   ) => { expressId: number } | { error: string };
+  /** Open the Add Column dialog with optional pre-filled storey. */
+  openAddColumnDialog: (modelId: string, storeyExpressId: number | null) => void;
+  /** Close the Add Column dialog and clear its inputs. */
+  closeAddColumnDialog: () => void;
 
   // Actions - Undo/Redo
   /** Undo last mutation for a model */
@@ -258,6 +273,7 @@ export const createMutationSlice: StateCreator<
   dirtyModels: new Set(),
   mutationVersion: 0,
   georefMutations: new Map(),
+  addColumnDialog: { isOpen: false, modelId: null, storeyExpressId: null },
 
   // Georeferencing Mutations
   setGeorefField: (modelId, entity, field, value, oldValue) => {
@@ -689,6 +705,14 @@ export const createMutationSlice: StateCreator<
     });
 
     return { expressId: columnId };
+  },
+
+  openAddColumnDialog: (modelId, storeyExpressId) => {
+    set({ addColumnDialog: { isOpen: true, modelId, storeyExpressId } });
+  },
+
+  closeAddColumnDialog: () => {
+    set({ addColumnDialog: { isOpen: false, modelId: null, storeyExpressId: null } });
   },
 
   // Undo/Redo

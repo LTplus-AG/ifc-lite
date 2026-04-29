@@ -18,6 +18,8 @@ import {
   Maximize2,
   Building2,
   Save,
+  Trash2,
+  Columns3,
 } from 'lucide-react';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
@@ -28,6 +30,7 @@ import {
   executeBasketSaveView,
 } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
+import { toast } from '@/components/ui/toast';
 
 export function EntityContextMenu() {
   const contextMenu = useViewerStore((s) => s.contextMenu);
@@ -36,6 +39,10 @@ export function EntityContextMenu() {
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
+  // Store-level mutations
+  const removeEntity = useViewerStore((s) => s.removeEntity);
+  const openAddColumnDialog = useViewerStore((s) => s.openAddColumnDialog);
+  const getMutationView = useViewerStore((s) => s.getMutationView);
   // Basket actions
   const menuRef = useRef<HTMLDivElement>(null);
   const { ifcDataStore, models } = useIfc();
@@ -206,6 +213,47 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [resolvedExpressId, activeDataStore, closeContextMenu]);
 
+  // Right-clicked entity's type — drives storey-only affordances.
+  const contextEntityType = useMemo(() => {
+    if (!resolvedExpressId || !activeDataStore) return '';
+    return activeDataStore.entities.getTypeName(resolvedExpressId) || '';
+  }, [resolvedExpressId, activeDataStore]);
+
+  const isStorey = contextEntityType === 'IfcBuildingStorey';
+
+  // Mutation view is required to drive bim.store.* — native-metadata-only
+  // models don't have one, so the destructive/create options stay disabled
+  // there with a tooltip-style title attribute.
+  const canEdit = useMemo(() => {
+    if (!contextEntityRef) return false;
+    return getMutationView(contextEntityRef.modelId) !== null;
+  }, [contextEntityRef, getMutationView]);
+
+  const handleDeleteEntity = useCallback(() => {
+    if (!contextEntityRef || !canEdit) {
+      closeContextMenu();
+      return;
+    }
+    const ok = removeEntity(contextEntityRef.modelId, contextEntityRef.expressId);
+    if (ok) {
+      // Drop the selection so the right panel doesn't cling to a tombstoned id.
+      setSelectedEntityId(null);
+      toast.success(`${contextEntityType || 'Entity'} #${contextEntityRef.expressId} deleted — undo to restore`);
+    } else {
+      toast.error('Delete failed — entity not found in store overlay');
+    }
+    closeContextMenu();
+  }, [contextEntityRef, canEdit, contextEntityType, removeEntity, setSelectedEntityId, closeContextMenu]);
+
+  const handleAddColumnHere = useCallback(() => {
+    if (!contextEntityRef || !isStorey) {
+      closeContextMenu();
+      return;
+    }
+    openAddColumnDialog(contextEntityRef.modelId, contextEntityRef.expressId);
+    closeContextMenu();
+  }, [contextEntityRef, isStorey, openAddColumnDialog, closeContextMenu]);
+
   if (!contextMenu.isOpen) {
     return null;
   }
@@ -257,6 +305,30 @@ export function EntityContextMenu() {
           <div className="h-px bg-border my-1" />
 
           <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
+
+          {/* Store-level mutations (bim.store.*). Only surface when there's a
+              live mutation view on the model — otherwise these would silently
+              no-op and confuse users. */}
+          {canEdit && (
+            <>
+              <div className="h-px bg-border my-1" />
+
+              {isStorey && (
+                <MenuItem
+                  icon={Columns3}
+                  label="Add column here…"
+                  tone="constructive"
+                  onClick={handleAddColumnHere}
+                />
+              )}
+              <MenuItem
+                icon={Trash2}
+                label="Delete entity"
+                tone="destructive"
+                onClick={handleDeleteEntity}
+              />
+            </>
+          )}
         </>
       )}
 
@@ -269,21 +341,42 @@ export function EntityContextMenu() {
   );
 }
 
+type MenuItemTone = 'default' | 'destructive' | 'constructive';
+
 interface MenuItemProps {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /**
+   * Visual tone:
+   * - `default`     muted icon, neutral hover
+   * - `destructive` red-toned icon and red-tinted hover (Delete entity)
+   * - `constructive` emerald-toned icon and green-tinted hover (Add column…)
+   */
+  tone?: MenuItemTone;
 }
 
-function MenuItem({ icon: Icon, label, onClick, disabled }: MenuItemProps) {
+function MenuItem({ icon: Icon, label, onClick, disabled, tone = 'default' }: MenuItemProps) {
+  const iconClass =
+    tone === 'destructive'
+      ? 'h-4 w-4 text-red-500 dark:text-red-400'
+      : tone === 'constructive'
+        ? 'h-4 w-4 text-emerald-600 dark:text-emerald-400'
+        : 'h-4 w-4 text-muted-foreground';
+  const hoverClass =
+    tone === 'destructive'
+      ? 'hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-700 dark:hover:text-red-300'
+      : tone === 'constructive'
+        ? 'hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-700 dark:hover:text-emerald-300'
+        : 'hover:bg-muted';
   return (
     <button
-      className="w-full px-3 py-1.5 text-sm text-left flex items-center gap-2 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+      className={`w-full px-3 py-1.5 text-sm text-left flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${hoverClass}`}
       onClick={onClick}
       disabled={disabled}
     >
-      <Icon className="h-4 w-4 text-muted-foreground" />
+      <Icon className={iconClass} />
       <span>{label}</span>
     </button>
   );

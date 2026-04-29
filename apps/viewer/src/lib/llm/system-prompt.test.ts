@@ -91,6 +91,20 @@ test('system prompt includes selected entity IFC context when provided', () => {
   assert.match(prompt, /Selected entities: Tower: IfcCurtainWall "Facade Panel A", kind=occurrence, storey=Level 10@31.5m, psets=Pset_CurtainWallCommon, typePsets=Pset_CurtainWallTypeCommon, qsets=Qto_CurtainWallBaseQuantities, material=Aluminium, classifications=A-123 \| Tower: IfcWallType "Exterior Wall Type", kind=type, psets=Pset_WallCommon, classifications=A-WALL/);
 });
 
+test('system prompt includes the BIM.STORE cheat sheet and routing rule', () => {
+  const prompt = buildSystemPrompt();
+
+  // Section heading + the three method examples
+  assert.match(prompt, /## BIM\.STORE CHEAT SHEET/);
+  assert.match(prompt, /bim\.store\.setPositionalAttribute\(profile, 3, 0\.6\)/);
+  assert.match(prompt, /bim\.store\.addEntity\("arch"/);
+  assert.match(prompt, /bim\.store\.removeEntity\(unwantedRef\)/);
+
+  // Routing rule disambiguating store / mutate / create
+  assert.match(prompt, /bim\.store\.setPositionalAttribute\(entity, index, value\)`? for non-IfcRoot edits/);
+  assert.match(prompt, /Do NOT use `bim\.create` for these/);
+});
+
 test('system prompt includes method-specific create contract guidance', () => {
   const prompt = buildSystemPrompt();
   assert.match(prompt, /BIM\.CREATE CONTRACT CHEAT SHEET/);

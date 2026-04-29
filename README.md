@@ -37,6 +37,7 @@ Try it at [ifclite.com](https://www.ifclite.com/) to see it in action.
 - **Generate 2D drawings** like floor plans, sections, and elevations from 3D
 - **Collaborate** with BCF (BIM Collaboration Format) for issues and viewpoints
 - **Create IFC files** programmatically: walls, slabs, columns, beams, stairs, roofs with properties and quantities
+- **Edit parsed models in place** — change profile dimensions, drop in a new column, or remove stale entities without round-tripping through a file rebuild ([Property Editing](docs/guide/mutations.md))
 - **Look up bSDD** (buildingSMART Data Dictionary) to discover and add standard properties for any IFC entity
 - **Export** to IFC, CSV & JSON, glTF or Parquet
 

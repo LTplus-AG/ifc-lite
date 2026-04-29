@@ -128,6 +128,14 @@ pub struct SimulateOptions {
     /// Express IDs to keep fixed regardless of inferred anchoring.
     pub anchor: Vec<u32>,
 
+    /// Pre-computed connection pairs (e.g. from `IfcRelConnectsElements`,
+    /// `IfcRelConnectsPathElements`, or `IfcRelConnectsStructuralMember`).
+    /// Each pair becomes a fixed joint, in addition to whatever AABB-touch
+    /// inference produces. Order within a pair doesn't matter; duplicates
+    /// against the AABB pass are deduplicated. Pairs referencing express
+    /// IDs that aren't in `meshes` are silently skipped.
+    pub connections: Vec<[u32; 2]>,
+
     /// Gravity in m/s² (IFC Z-up). Default: `(0, 0, -9.81)`.
     pub gravity: [f32; 3],
 
@@ -161,6 +169,7 @@ impl Default for SimulateOptions {
         Self {
             remove: Vec::new(),
             anchor: Vec::new(),
+            connections: Vec::new(),
             gravity: [0.0, 0.0, -9.81],
             duration_seconds: 3.0,
             time_step: 1.0 / 60.0,

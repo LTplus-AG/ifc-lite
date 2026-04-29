@@ -139,17 +139,22 @@ export function simulate(
       }
     }
 
-    const jointPairs = inferJoints(aabbs, options.adjacencyTolerance);
+    const jointPairs = computeJoints(aabbs, options.adjacencyTolerance, options.connections);
     const handleToBody = new Map<number, RAPIER.RigidBody>();
     for (const e of entries) handleToBody.set(e.expressId, e.body);
     for (const [a, b] of jointPairs) {
       const ba = handleToBody.get(a);
       const bb = handleToBody.get(b);
       if (!ba || !bb) continue;
+      // Preserve current relative pose. Default zero anchors would yank
+      // far-apart bodies to coincide.
+      const ta = ba.translation();
+      const tb = bb.translation();
+      const offset = { x: ta.x - tb.x, y: ta.y - tb.y, z: ta.z - tb.z };
       const joint = RAPIER.JointData.fixed(
         { x: 0, y: 0, z: 0 },
         { x: 0, y: 0, z: 0, w: 1 },
-        { x: 0, y: 0, z: 0 },
+        offset,
         { x: 0, y: 0, z: 0, w: 1 },
       );
       world.createImpulseJoint(joint, ba, bb, true);
@@ -195,16 +200,46 @@ function buildColliderDesc(mesh: PhysicsMesh, center: [number, number, number]):
   return RAPIER.ColliderDesc.trimesh(recentered, new Uint32Array(tris));
 }
 
-function inferJoints(aabbs: Map<number, AABB>, eps: number): Array<[number, number]> {
-  const sorted = [...aabbs.entries()].sort((a, b) => a[0] - b[0]);
+function computeJoints(
+  aabbs: Map<number, AABB>,
+  eps: number,
+  explicit: Array<[number, number]>,
+): Array<[number, number]> {
+  const seen = new Set<string>();
   const pairs: Array<[number, number]> = [];
+
+  const normalize = (a: number, b: number): [number, number] | null => {
+    if (a === b) return null;
+    return a < b ? [a, b] : [b, a];
+  };
+
+  for (const [a, b] of explicit) {
+    const p = normalize(a, b);
+    if (!p) continue;
+    if (!aabbs.has(p[0]) || !aabbs.has(p[1])) continue;
+    const key = `${p[0]}-${p[1]}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      pairs.push(p);
+    }
+  }
+
+  const sorted = [...aabbs.entries()].sort((a, b) => a[0] - b[0]);
   for (let i = 0; i < sorted.length; i++) {
     const [idA, aabbA] = sorted[i];
     for (let j = i + 1; j < sorted.length; j++) {
       const [idB, aabbB] = sorted[j];
-      if (aabbTouches(aabbA, aabbB, eps)) pairs.push([idA, idB]);
+      if (!aabbTouches(aabbA, aabbB, eps)) continue;
+      const p = normalize(idA, idB);
+      if (!p) continue;
+      const key = `${p[0]}-${p[1]}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        pairs.push(p);
+      }
     }
   }
+
   return pairs;
 }
 

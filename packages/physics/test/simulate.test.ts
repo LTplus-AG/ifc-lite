@@ -73,6 +73,34 @@ describe('@ifc-lite/physics', () => {
     expect(result.stable).toContain(1);
   });
 
+  it('explicit connection welds far-apart elements together', () => {
+    const anchor = cube(1, 'IfcFooting', [0, 0, 0], [1, 1, 0.1]);
+    const floater = cube(2, 'IfcBeam', [5, 0, 1], [0.3, 0.3, 0.3]);
+
+    const baseline = simulate([anchor, floater], { durationSeconds: 1.0 });
+    expect(baseline.falling).toContain(2);
+
+    const linked = simulate([anchor, floater], {
+      durationSeconds: 1.0,
+      connections: [[1, 2]],
+    });
+    expect(linked.falling).not.toContain(2);
+    expect(linked.joints.some(([a, b]) => (a === 1 && b === 2) || (a === 2 && b === 1))).toBe(true);
+  });
+
+  it('deduplicates explicit connections against AABB-touch pairs', () => {
+    const slab = cube(1, 'IfcSlab', [0, 0, 0.05], [4, 4, 0.1]);
+    const column = cube(2, 'IfcColumn', [0, 0, 1.6], [0.3, 0.3, 3.0]);
+    const result = simulate([slab, column], {
+      durationSeconds: 0.5,
+      connections: [[1, 2], [2, 1]],
+    });
+    const matches = result.joints.filter(
+      ([a, b]) => (a === 1 && b === 2) || (a === 2 && b === 1),
+    );
+    expect(matches).toHaveLength(1);
+  });
+
   it('skips empty meshes', () => {
     const empty: PhysicsMesh = {
       expressId: 99,

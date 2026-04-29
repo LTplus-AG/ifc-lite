@@ -53,7 +53,12 @@ export class RemoteBackend implements BimBackend {
   readonly lens: LensBackendMethods = makeRemoteProxy('lens');
   readonly files: FilesBackendMethods = makeRemoteProxy('files');
   readonly schedule: ScheduleBackendMethods = makeRemoteProxy('schedule');
-  readonly physics: PhysicsBackendMethods = makeRemoteProxy('physics');
+  readonly physics: PhysicsBackendMethods = {
+    ready: () => Promise.reject(
+      new Error('RemoteBackend: physics.ready() is unsupported synchronously over the transport.'),
+    ),
+    ...makeRemoteProxy<{ simulate: PhysicsBackendMethods['simulate'] }>('physics'),
+  };
 
   constructor(private transport: Transport) {}
 

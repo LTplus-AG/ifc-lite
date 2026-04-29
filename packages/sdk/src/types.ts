@@ -378,6 +378,14 @@ export interface PhysicsSimulateOptions {
   remove?: number[];
   /** Express IDs to keep fixed regardless of inferred anchoring. */
   anchor?: number[];
+  /**
+   * Pre-computed connection pairs (typically derived by the backend from
+   * `IfcRelConnectsElements` / `IfcRelConnectsPathElements` /
+   * `IfcRelConnectsStructuralMember`). Each pair becomes a fixed joint.
+   * Most backends populate this automatically — callers usually leave it
+   * unset.
+   */
+  connections?: Array<[number, number]>;
   /** Gravity in m/s² (IFC Z-up). Default: `[0, 0, -9.81]`. */
   gravity?: [number, number, number];
   /** Total simulated time in seconds. Default: `3.0`. */
@@ -423,13 +431,18 @@ export interface PhysicsSimulationResult {
 
 export interface PhysicsBackendMethods {
   /**
+   * Resolves once the underlying physics engine has finished bootstrapping.
+   * For the browser/Node backend this awaits the Rapier WASM init step.
+   * Sync backends return an already-resolved Promise. UIs that gate the
+   * "Run simulation" affordance should await this once at startup.
+   */
+  ready(): Promise<void>;
+
+  /**
    * Simulate the active model (or `modelId` if given). Backend implementations
    * own the mesh source and feed it to the underlying physics engine; the SDK
-   * never has to ship raw geometry across the transport boundary.
-   *
-   * Backends are responsible for ensuring the underlying engine is ready
-   * (e.g. `await physics.init()` for the JS Rapier WASM build) before the
-   * first call.
+   * never has to ship raw geometry across the transport boundary. Throws if
+   * `ready()` has not yet resolved.
    */
   simulate(modelId: string | null, options: PhysicsSimulateOptions): PhysicsSimulationResult;
 }

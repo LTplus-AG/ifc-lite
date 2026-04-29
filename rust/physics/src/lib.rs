@@ -141,6 +141,58 @@ mod tests {
     }
 
     #[test]
+    fn explicit_connection_welds_unrelated_elements() {
+        // Two cubes that don't touch by AABB. Without an explicit connection
+        // the second one falls; with one it should hang on its anchored neighbor.
+        let anchor = cube(1, "IfcFooting", [0.0, 0.0, 0.0], [1.0, 1.0, 0.1]);
+        let floater = cube(2, "IfcBeam", [5.0, 0.0, 1.0], [0.3, 0.3, 0.3]);
+
+        let baseline = simulate(
+            &[anchor.clone(), floater.clone()],
+            &SimulateOptions {
+                duration_seconds: 1.0,
+                ..Default::default()
+            },
+        );
+        assert!(baseline.falling.contains(&2), "baseline: floater falls");
+
+        let with_link = simulate(
+            &[anchor, floater],
+            &SimulateOptions {
+                duration_seconds: 1.0,
+                connections: vec![[1, 2]],
+                ..Default::default()
+            },
+        );
+        assert!(
+            !with_link.falling.contains(&2),
+            "explicit connection should suspend floater; got falling={:?}",
+            with_link.falling,
+        );
+        assert!(with_link.joints.contains(&(1, 2)) || with_link.joints.contains(&(2, 1)));
+    }
+
+    #[test]
+    fn explicit_connections_are_deduplicated_against_aabb_pairs() {
+        let slab = cube(1, "IfcSlab", [0.0, 0.0, 0.05], [4.0, 4.0, 0.1]);
+        let column = cube(2, "IfcColumn", [0.0, 0.0, 1.6], [0.3, 0.3, 3.0]);
+        let result = simulate(
+            &[slab, column],
+            &SimulateOptions {
+                duration_seconds: 0.5,
+                connections: vec![[1, 2], [2, 1]], // duplicate + reversed
+                ..Default::default()
+            },
+        );
+        let count = result
+            .joints
+            .iter()
+            .filter(|p| **p == (1, 2) || **p == (2, 1))
+            .count();
+        assert_eq!(count, 1, "duplicate joints not collapsed: {:?}", result.joints);
+    }
+
+    #[test]
     fn empty_meshes_are_skipped() {
         let empty = PhysicsMesh {
             express_id: 99,

@@ -23,6 +23,14 @@ export class PhysicsNamespace {
   constructor(private backend: BimBackend) {}
 
   /**
+   * Resolves when the physics engine is ready to simulate. Call once at
+   * startup; subsequent calls return the same resolved promise.
+   */
+  ready(): Promise<void> {
+    return this.backend.physics.ready();
+  }
+
+  /**
    * Run a rigid-body simulation against the active model (or the named one).
    *
    * Single-model only at the moment — federated multi-model simulation is

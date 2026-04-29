@@ -131,12 +131,24 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
     }
 
     let mut joint_set = ImpulseJointSet::new();
-    let joint_pairs = infer_joints(&aabbs, options.adjacency_tolerance);
+    let joint_pairs = compute_joints(&aabbs, options.adjacency_tolerance, &options.connections);
     for &(a, b) in &joint_pairs {
         let (Some(&ha), Some(&hb)) = (handle_for.get(&a), handle_for.get(&b)) else {
             continue;
         };
-        joint_set.insert(ha, hb, FixedJointBuilder::new(), true);
+        // Preserve the bodies' current relative pose. A default fixed joint
+        // would glue both origins to coincide and yank far-apart bodies
+        // together, which is wrong for IFC elements that are connected by
+        // some load path but not co-located in space.
+        let body_a = bodies.get(ha).expect("inserted above");
+        let body_b = bodies.get(hb).expect("inserted above");
+        let pos_a = body_a.translation();
+        let pos_b = body_b.translation();
+        let offset = Vector::new(pos_a.x - pos_b.x, pos_a.y - pos_b.y, pos_a.z - pos_b.z);
+        let builder = FixedJointBuilder::new()
+            .local_anchor1(Vector::new(0.0, 0.0, 0.0))
+            .local_anchor2(offset);
+        joint_set.insert(ha, hb, builder, true);
     }
 
     WorldBuild {
@@ -229,19 +241,61 @@ fn density_for(ifc_type: &str) -> f32 {
     }
 }
 
-fn infer_joints(aabbs: &FxHashMap<u32, Aabb>, eps: f32) -> Vec<(u32, u32)> {
+/// Compute the union of AABB-touch joints and caller-supplied connections.
+///
+/// Caller-supplied pairs are typically derived from IFC relationships
+/// (`IfcRelConnectsElements`, `IfcRelConnectsPathElements`,
+/// `IfcRelConnectsStructuralMember`). They take precedence in the sense
+/// that the resulting joint list has no duplicates — order is normalized
+/// so `(a, b)` and `(b, a)` collapse.
+fn compute_joints(
+    aabbs: &FxHashMap<u32, Aabb>,
+    eps: f32,
+    explicit: &[[u32; 2]],
+) -> Vec<(u32, u32)> {
+    let mut seen: rustc_hash::FxHashSet<(u32, u32)> = rustc_hash::FxHashSet::default();
+    let mut pairs: Vec<(u32, u32)> = Vec::new();
+
+    let normalize = |a: u32, b: u32| -> Option<(u32, u32)> {
+        if a == b {
+            None
+        } else if a < b {
+            Some((a, b))
+        } else {
+            Some((b, a))
+        }
+    };
+
+    for pair in explicit {
+        let Some(p) = normalize(pair[0], pair[1]) else {
+            continue;
+        };
+        if !aabbs.contains_key(&p.0) || !aabbs.contains_key(&p.1) {
+            continue;
+        }
+        if seen.insert(p) {
+            pairs.push(p);
+        }
+    }
+
     let mut sorted: Vec<(u32, Aabb)> = aabbs.iter().map(|(id, b)| (*id, *b)).collect();
     sorted.sort_by_key(|(id, _)| *id);
 
-    let mut pairs: Vec<(u32, u32)> = Vec::new();
     for i in 0..sorted.len() {
         let (id_a, a) = sorted[i];
         for j in (i + 1)..sorted.len() {
             let (id_b, b) = sorted[j];
-            if a.touches(&b, eps) {
-                pairs.push((id_a, id_b));
+            if !a.touches(&b, eps) {
+                continue;
+            }
+            let Some(p) = normalize(id_a, id_b) else {
+                continue;
+            };
+            if seen.insert(p) {
+                pairs.push(p);
             }
         }
     }
+
     pairs
 }

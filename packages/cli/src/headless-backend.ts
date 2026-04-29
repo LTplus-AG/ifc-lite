@@ -549,6 +549,9 @@ export class HeadlessBackend implements BimBackend {
 
   private createPhysicsAdapter(): PhysicsBackendMethods {
     return {
+      ready(): Promise<void> {
+        return Promise.resolve();
+      },
       simulate(_modelId: string | null, _options: PhysicsSimulateOptions): PhysicsSimulationResult {
         // Headless mode parses IFC but does not run the geometry pipeline,
         // so there are no triangulated meshes to feed into the physics engine.

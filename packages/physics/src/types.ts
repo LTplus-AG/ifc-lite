@@ -34,6 +34,14 @@ export interface SimulateOptions {
   remove?: number[];
   /** Express IDs to keep fixed regardless of inferred anchoring. */
   anchor?: number[];
+  /**
+   * Pre-computed connection pairs (typically extracted from
+   * `IfcRelConnectsElements`, `IfcRelConnectsPathElements`, or
+   * `IfcRelConnectsStructuralMember`). Each pair becomes a fixed joint, in
+   * addition to AABB-touch inference. Pairs referencing express IDs not in
+   * `meshes` are silently skipped; duplicates against AABB are collapsed.
+   */
+  connections?: Array<[number, number]>;
   /** Gravity in m/s² (IFC Z-up). Default: `[0, 0, -9.81]`. */
   gravity?: [number, number, number];
   /** Total simulated time in seconds. Default: `3.0`. */
@@ -56,6 +64,7 @@ export interface SimulateOptions {
 export interface ResolvedSimulateOptions {
   remove: number[];
   anchor: number[];
+  connections: Array<[number, number]>;
   gravity: [number, number, number];
   durationSeconds: number;
   timeStep: number;
@@ -69,6 +78,7 @@ export interface ResolvedSimulateOptions {
 export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
   remove: [],
   anchor: [],
+  connections: [],
   gravity: [0, 0, -9.81],
   durationSeconds: 3.0,
   timeStep: 1 / 60,
@@ -83,6 +93,7 @@ export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimul
   return {
     remove: opts?.remove ?? DEFAULT_OPTIONS.remove.slice(),
     anchor: opts?.anchor ?? DEFAULT_OPTIONS.anchor.slice(),
+    connections: opts?.connections ?? [],
     gravity: opts?.gravity ?? [...DEFAULT_OPTIONS.gravity],
     durationSeconds: opts?.durationSeconds ?? DEFAULT_OPTIONS.durationSeconds,
     timeStep: opts?.timeStep ?? DEFAULT_OPTIONS.timeStep,

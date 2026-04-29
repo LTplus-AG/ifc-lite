@@ -18,6 +18,8 @@ import {
   Maximize2,
   Building2,
   Save,
+  Bomb,
+  RotateCcw,
 } from 'lucide-react';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
@@ -28,6 +30,9 @@ import {
   executeBasketSaveView,
 } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
+import { useBim } from '@/sdk/BimProvider';
+import { toast } from '@/components/ui/toast';
+import type { EntityRef } from '@ifc-lite/sdk';
 
 export function EntityContextMenu() {
   const contextMenu = useViewerStore((s) => s.contextMenu);
@@ -39,6 +44,7 @@ export function EntityContextMenu() {
   // Basket actions
   const menuRef = useRef<HTMLDivElement>(null);
   const { ifcDataStore, models } = useIfc();
+  const bim = useBim();
 
   // Resolve contextMenu.entityId (globalId) to original expressId and model
   // This is needed because IfcDataStore uses original expressIds, not globalIds
@@ -195,6 +201,50 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [resolvedExpressId, activeDataStore, setSelectedEntityIds, closeContextMenu]);
 
+  const handleSimulateRemoval = useCallback(async () => {
+    closeContextMenu();
+    if (!resolvedExpressId || !contextEntityRef) return;
+
+    try {
+      await bim.physics.ready();
+    } catch (err) {
+      console.error('[Physics] init failed:', err);
+      toast.error('Physics engine failed to load');
+      return;
+    }
+
+    let result;
+    try {
+      result = bim.physics.simulate({ remove: [contextEntityRef.expressId] });
+    } catch (err) {
+      console.error('[Physics] simulation failed:', err);
+      toast.error('Physics simulation failed');
+      return;
+    }
+
+    if (result.bodies.length === 0) {
+      toast.info('No geometry loaded — physics needs processed meshes');
+      return;
+    }
+
+    const refsFor = (ids: number[]): EntityRef[] =>
+      ids.map((expressId) => ({ modelId: contextEntityRef.modelId, expressId }));
+
+    bim.viewer.colorizeRgba(refsFor(result.falling), [0.86, 0.15, 0.15, 0.95]);
+    bim.viewer.colorizeRgba(refsFor(result.tilted), [0.96, 0.62, 0.04, 0.95]);
+    bim.viewer.colorizeRgba(refsFor(result.anchored), [0.20, 0.39, 0.92, 0.45]);
+
+    const summary =
+      `${result.falling.length} falling, ${result.tilted.length} tilted, ` +
+      `${result.anchored.length} anchored (${result.bodies.length} bodies, ${result.joints.length} joints)`;
+    toast.info(summary);
+  }, [resolvedExpressId, contextEntityRef, bim, closeContextMenu]);
+
+  const handleResetPhysicsColors = useCallback(() => {
+    bim.viewer.resetColors();
+    closeContextMenu();
+  }, [bim, closeContextMenu]);
+
   const handleCopyId = useCallback(() => {
     // Use resolvedExpressId (original ID) for IfcDataStore lookups
     if (resolvedExpressId && activeDataStore) {
@@ -256,6 +306,11 @@ export function EntityContextMenu() {
 
           <div className="h-px bg-border my-1" />
 
+          <MenuItem icon={Bomb} label="What if I remove this? (Physics)" onClick={handleSimulateRemoval} />
+          <MenuItem icon={RotateCcw} label="Reset physics colors" onClick={handleResetPhysicsColors} />
+
+          <div className="h-px bg-border my-1" />
+
           <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
         </>
       )}
@@ -263,6 +318,7 @@ export function EntityContextMenu() {
       {!contextMenu.entityId && (
         <>
           <MenuItem icon={Eye} label="Show all" onClick={handleShowAll} />
+          <MenuItem icon={RotateCcw} label="Reset physics colors" onClick={handleResetPhysicsColors} />
         </>
       )}
     </div>

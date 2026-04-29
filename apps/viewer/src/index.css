@@ -1034,6 +1034,35 @@ body {
   cursor: not-allowed;
 }
 
+/* Annotation pin idle introduction — fires once on mount, then settles.
+   Driven by a `prefers-reduced-motion` guard so accessibility users
+   don't get hit by the pulse. */
+@keyframes annotation-pin-idle {
+  0% {
+    transform: scale(0.7);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
+  }
+  60% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35),
+      0 0 0 1px rgba(0, 0, 0, 0.15);
+  }
+}
+
+.annotation-pin-idle {
+  animation: annotation-pin-idle 360ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .annotation-pin-idle {
+    animation: none;
+  }
+}
+
 /* Loading skeleton animation */
 @keyframes skeleton-pulse {
   0%, 100% {

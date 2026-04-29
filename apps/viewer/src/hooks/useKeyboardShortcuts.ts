@@ -88,6 +88,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       e.preventDefault();
       setActiveTool('section');
     }
+    if (key === 'p' && !ctrl && !shift) {
+      e.preventDefault();
+      setActiveTool('annotate');
+    }
 
     // Basket controls (automatic context source)
     // I = Isolate from current context

@@ -9,6 +9,8 @@
  */
 
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { useViewerStore } from '@/store';
+import { fromGlobalIdFromModels } from '@/store/globalId';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -34,6 +36,30 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // Measure tool now uses drag interaction (see mousedown/mousemove/mouseup)
   if (tool === 'measure') {
     return; // Skip click handling for measure tool
+  }
+
+  // Annotate tool — drop a pin at the cursor's world point.
+  // Raycasts the scene; if the click misses geometry the draft is
+  // not opened (annotations are anchored to surface points by
+  // design, not floating in space).
+  if (tool === 'annotate') {
+    const result = renderer.raycastScene(x, y, ctx.getPickOptions());
+    if (!result?.intersection) return;
+    const { intersection } = result;
+    const store = useViewerStore.getState();
+    // Federated models — resolve which model the hit globalId belongs
+    // to so the annotation carries enough context to render its
+    // popover header. Falls back to (null, expressId) when there's
+    // only the legacy single-model state.
+    const modelLookup = fromGlobalIdFromModels(store.models, intersection.expressId);
+    const modelId = modelLookup?.modelId ?? null;
+    const localExpressId = modelLookup?.expressId ?? intersection.expressId;
+    store.beginDraft(
+      { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z },
+      localExpressId ?? null,
+      modelId,
+    );
+    return;
   }
 
   const now = Date.now();

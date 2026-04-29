@@ -38,6 +38,7 @@ import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.
 import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
 import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js';
 import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
+import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotationsSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -128,7 +129,8 @@ export type ViewerState = LoadingSlice &
   ScheduleSlice &
   PlaybackSlice &
   OverlaySlice &
-  SearchSlice & {
+  SearchSlice &
+  AnnotationsSlice & {
     resetViewerState: () => void;
   };
 
@@ -163,6 +165,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createPlaybackSlice(...args),
   ...createOverlaySlice(...args),
   ...createSearchSlice(...args),
+  ...createAnnotationsSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that

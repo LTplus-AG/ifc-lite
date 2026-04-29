@@ -6,6 +6,7 @@ import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore
 import { Viewport } from './Viewport';
 import { ViewportOverlays } from './ViewportOverlays';
 import { ToolOverlays } from './ToolOverlays';
+import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { Section2DPanel } from './Section2DPanel';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -851,6 +852,7 @@ export function ViewportContainer() {
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
+      <AnnotationLayer />
       {bcfOverlayVisible && <BCFOverlay />}
       <ViewportOverlays />
       <ToolOverlays />

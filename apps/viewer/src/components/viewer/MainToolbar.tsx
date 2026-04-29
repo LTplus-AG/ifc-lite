@@ -10,6 +10,7 @@ import {
   PersonStanding,
   Ruler,
   Scissors,
+  MapPin,
   Eye,
   EyeOff,
   Equal,
@@ -86,7 +87,7 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-type Tool = 'select' | 'walk' | 'measure' | 'section';
+type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | string;
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
@@ -102,21 +103,39 @@ interface ToolButtonProps {
   shortcut?: string;
   activeTool: string;
   onToolChange: (tool: Tool) => void;
+  /**
+   * Tailwind classes applied when this tool is active. Defaults to the
+   * shared `bg-primary text-primary-foreground` shape; pass a per-tool
+   * accent (e.g. amber for Annotate) to set tools apart visually
+   * without breaking the toolbar's tool-button rhythm.
+   */
+  activeAccentClass?: string;
 }
 
-function ToolButton({ tool, icon: Icon, label, shortcut, activeTool, onToolChange }: ToolButtonProps) {
+function ToolButton({
+  tool,
+  icon: Icon,
+  label,
+  shortcut,
+  activeTool,
+  onToolChange,
+  activeAccentClass,
+}: ToolButtonProps) {
+  const isActive = activeTool === tool;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant={activeTool === tool ? 'default' : 'ghost'}
+          variant={isActive ? 'default' : 'ghost'}
           size="icon-sm"
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
             onToolChange(tool);
           }}
-          className={cn(activeTool === tool && 'bg-primary text-primary-foreground')}
+          className={cn(
+            isActive && (activeAccentClass ?? 'bg-primary text-primary-foreground'),
+          )}
         >
           <Icon className="h-4 w-4" />
         </Button>
@@ -1051,6 +1070,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       {/* ── Measurement & Section ── */}
       <ToolButton tool="measure" icon={Ruler} label="Measure" shortcut="M" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton tool="section" icon={Scissors} label="Section" shortcut="X" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton
+        tool="annotate"
+        icon={MapPin}
+        label="Annotate"
+        shortcut="P"
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
+        activeAccentClass="bg-amber-500 text-white hover:bg-amber-500/90"
+      />
 
       {/* Floorplan dropdown */}
       {availableStoreys.length > 0 && (

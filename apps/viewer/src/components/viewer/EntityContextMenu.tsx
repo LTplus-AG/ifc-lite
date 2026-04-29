@@ -32,6 +32,7 @@ import {
 import { useIfc } from '@/hooks/useIfc';
 import { useBim } from '@/sdk/BimProvider';
 import { toast } from '@/components/ui/toast';
+import { usePhysicsResultStore } from '@/sdk/physics-ui-store';
 import type { EntityRef } from '@ifc-lite/sdk';
 
 export function EntityContextMenu() {
@@ -45,6 +46,8 @@ export function EntityContextMenu() {
   const menuRef = useRef<HTMLDivElement>(null);
   const { ifcDataStore, models } = useIfc();
   const bim = useBim();
+  const setPhysicsResult = usePhysicsResultStore((s) => s.set);
+  const clearPhysicsResult = usePhysicsResultStore((s) => s.clear);
 
   // Resolve contextMenu.entityId (globalId) to original expressId and model
   // This is needed because IfcDataStore uses original expressIds, not globalIds
@@ -70,6 +73,18 @@ export function EntityContextMenu() {
       contextEntityRef: null,
     };
   }, [contextMenu.entityId, models, ifcDataStore]);
+
+  // Cached display fields used both in the menu header and in the physics
+  // panel that opens after a simulate.
+  const { entityName, entityType } = useMemo(() => {
+    if (!resolvedExpressId || !activeDataStore) {
+      return { entityName: '', entityType: '' };
+    }
+    return {
+      entityName: activeDataStore.entities.getName(resolvedExpressId) || '',
+      entityType: activeDataStore.entities.getTypeName(resolvedExpressId) || '',
+    };
+  }, [resolvedExpressId, activeDataStore]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -234,16 +249,23 @@ export function EntityContextMenu() {
     bim.viewer.colorizeRgba(refsFor(result.tilted), [0.96, 0.62, 0.04, 0.95]);
     bim.viewer.colorizeRgba(refsFor(result.anchored), [0.20, 0.39, 0.92, 0.45]);
 
+    setPhysicsResult(result, {
+      ref: contextEntityRef,
+      name: entityName,
+      ifcType: entityType,
+    });
+
     const summary =
       `${result.falling.length} falling, ${result.tilted.length} tilted, ` +
       `${result.anchored.length} anchored (${result.bodies.length} bodies, ${result.joints.length} joints)`;
     toast.info(summary);
-  }, [resolvedExpressId, contextEntityRef, bim, closeContextMenu]);
+  }, [resolvedExpressId, contextEntityRef, bim, closeContextMenu, setPhysicsResult, entityName, entityType]);
 
   const handleResetPhysicsColors = useCallback(() => {
     bim.viewer.resetColors();
+    clearPhysicsResult();
     closeContextMenu();
-  }, [bim, closeContextMenu]);
+  }, [bim, clearPhysicsResult, closeContextMenu]);
 
   const handleCopyId = useCallback(() => {
     // Use resolvedExpressId (original ID) for IfcDataStore lookups
@@ -258,15 +280,6 @@ export function EntityContextMenu() {
 
   if (!contextMenu.isOpen) {
     return null;
-  }
-
-  // Get entity info for display
-  // Use resolvedExpressId (original ID) for IfcDataStore lookups
-  let entityName = '';
-  let entityType = '';
-  if (resolvedExpressId && activeDataStore) {
-    entityName = activeDataStore.entities.getName(resolvedExpressId) || '';
-    entityType = activeDataStore.entities.getTypeName(resolvedExpressId) || '';
   }
 
   return (

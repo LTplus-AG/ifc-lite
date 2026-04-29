@@ -2604,6 +2604,7 @@ dependencies = [
  "ifc-lite-processing",
  "memmap2 0.9.10",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

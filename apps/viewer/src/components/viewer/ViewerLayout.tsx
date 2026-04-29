@@ -16,6 +16,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
 import { HoverTooltip } from './HoverTooltip';
+import { PhysicsResultPanel } from './PhysicsResultPanel';
 import { BCFPanel } from './BCFPanel';
 import { IDSPanel } from './IDSPanel';
 import { LensPanel } from './LensPanel';
@@ -203,6 +204,7 @@ export function ViewerLayout() {
         {/* Global Overlays */}
         <EntityContextMenu />
         <HoverTooltip />
+        <PhysicsResultPanel />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
 

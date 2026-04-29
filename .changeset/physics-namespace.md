@@ -19,8 +19,12 @@ preserve current relative pose instead of yanking origins together.
 bootstrapping (Rapier WASM init in the browser/Node case, no-op
 otherwise). The viewer's right-click menu now exposes "What if I
 remove this? (Physics)" and a "Reset physics colors" action; results
-colorize falling=red, tilted=orange, anchored=blue, with a toast
-summary.
+colorize falling=red, tilted=orange, anchored=blue, plus a persistent
+floating panel summarizes the run with re-run/reset controls.
+
+A native CLI binary `ifc-lite-physics` is also available (built from
+the `ifc-lite-engine` crate) for terminal use:
+`ifc-lite-physics model.ifc --remove 42 --json`.
 
 This is a plausibility check, not structural engineering: no bending,
 buckling, or material yield. Real analysis still belongs in an FEM tool

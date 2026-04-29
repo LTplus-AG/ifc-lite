@@ -15,6 +15,7 @@ import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardS
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
+import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BCFPanel } from './BCFPanel';
 import { IDSPanel } from './IDSPanel';
@@ -39,6 +40,8 @@ const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
 export function ViewerLayout() {
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
+  // ⌘D / Ctrl+D to duplicate the current selection.
+  useDuplicateShortcut();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Command palette state

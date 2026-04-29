@@ -28,6 +28,14 @@ export { IfcCreator } from './ifc-creator.js';
 export { addColumnToStore, type ColumnInStoreParams, type ColumnBuildResult } from './in-store/column.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
 export type { SpatialAnchor } from './in-store/anchor.js';
+export {
+  duplicateInStore,
+  type SourceAttributes,
+  type DuplicateInStoreOptions,
+  type DuplicateBuildResult,
+  type Vec3 as DuplicateVec3,
+} from './in-store/duplicate.js';
+export { resolveDuplicateSource } from './in-store/resolve-source.js';
 
 export type {
   // Geometry primitives

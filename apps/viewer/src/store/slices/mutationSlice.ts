@@ -12,7 +12,14 @@ import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lit
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
-import { addColumnToStore, resolveSpatialAnchor, type ColumnInStoreParams } from '@ifc-lite/create';
+import {
+  addColumnToStore,
+  resolveSpatialAnchor,
+  duplicateInStore,
+  resolveDuplicateSource,
+  type ColumnInStoreParams,
+  type DuplicateInStoreOptions,
+} from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 /** Tracks georeferencing field mutations per model */
@@ -160,6 +167,17 @@ export interface MutationSlice {
     modelId: string,
     storeyExpressId: number,
     params: ColumnInStoreParams
+  ) => { expressId: number } | { error: string };
+  /**
+   * Duplicate an existing IfcRoot product. Geometry is shared with
+   * the source via Representation reference; placement is offset
+   * (defaults to +1m on X) so the duplicate is visible. Returns the
+   * new entity's express id, or an error message.
+   */
+  duplicateEntity: (
+    modelId: string,
+    sourceExpressId: number,
+    options?: DuplicateInStoreOptions
   ) => { expressId: number } | { error: string };
 
   // Actions - Undo/Redo
@@ -689,6 +707,57 @@ export const createMutationSlice: StateCreator<
     });
 
     return { expressId: columnId };
+  },
+
+  duplicateEntity: (modelId, sourceExpressId, options) => {
+    const state = get();
+    const model = state.models.get(modelId);
+    const dataStore = model?.ifcDataStore;
+    if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
+
+    const view = state.mutationViews.get(modelId);
+    if (!view) return { error: 'Model has no editable mutation view yet' };
+
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { error: 'Failed to create store editor' };
+
+    let newId: number;
+    try {
+      const source = resolveDuplicateSource(dataStore, sourceExpressId);
+      const result = duplicateInStore(editor, source, options);
+      newId = result.newId;
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to duplicate' };
+    }
+
+    set((s) => {
+      const newUndoStacks = new Map(s.undoStacks);
+      const stack = newUndoStacks.get(modelId) || [];
+      const mutation: Mutation = {
+        id: `mut_dup_${newId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        type: 'CREATE_ENTITY',
+        timestamp: Date.now(),
+        modelId,
+        entityId: newId,
+        attributeName: 'DUPLICATE',
+      };
+      newUndoStacks.set(modelId, [...stack, mutation]);
+
+      const newRedoStacks = new Map(s.redoStacks);
+      newRedoStacks.set(modelId, []);
+
+      const newDirty = new Set(s.dirtyModels);
+      newDirty.add(modelId);
+
+      return {
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: s.mutationVersion + 1,
+      };
+    });
+
+    return { expressId: newId };
   },
 
   // Undo/Redo

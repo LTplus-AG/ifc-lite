@@ -19,6 +19,7 @@ import {
   Building2,
   Save,
   Trash2,
+  CopyPlus,
 } from 'lucide-react';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
@@ -40,6 +41,7 @@ export function EntityContextMenu() {
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   // Store-level mutations
   const removeEntity = useViewerStore((s) => s.removeEntity);
+  const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
   const getMutationView = useViewerStore((s) => s.getMutationView);
   // Basket actions
   const menuRef = useRef<HTMLDivElement>(null);
@@ -224,6 +226,27 @@ export function EntityContextMenu() {
     return getMutationView(contextEntityRef.modelId) !== null;
   }, [contextEntityRef, getMutationView]);
 
+  const handleDuplicate = useCallback(() => {
+    if (!contextEntityRef || !canEdit) {
+      closeContextMenu();
+      return;
+    }
+    const result = duplicateEntity(contextEntityRef.modelId, contextEntityRef.expressId);
+    if ('error' in result) {
+      toast.error(`Couldn't duplicate: ${result.error}`);
+    } else {
+      // Move selection onto the new entity so the property panel
+      // refreshes and the user can immediately tweak position via
+      // Raw STEP if the +1m offset isn't where they want it.
+      const newGlobalId = result.expressId; // legacy single-model path
+      // For multi-model, the SDK adapter normalizes; selection takes
+      // a globalId when models are federated. Try both shapes.
+      setSelectedEntityId(newGlobalId);
+      toast.success(`Duplicated as #${result.expressId} — undo to remove`);
+    }
+    closeContextMenu();
+  }, [contextEntityRef, canEdit, duplicateEntity, setSelectedEntityId, closeContextMenu]);
+
   const handleDeleteEntity = useCallback(() => {
     if (!contextEntityRef || !canEdit || !contextMenu.entityId) {
       closeContextMenu();
@@ -300,11 +323,17 @@ export function EntityContextMenu() {
           <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
 
           {/* Store-level mutations (bim.store.*). Only surfaced when there's
-              a live mutation view on the model — otherwise this would silently
-              no-op and confuse users. */}
+              a live mutation view on the model — otherwise these would
+              silently no-op and confuse users. */}
           {canEdit && (
             <>
               <div className="h-px bg-border my-1" />
+              <MenuItem
+                icon={CopyPlus}
+                label="Duplicate"
+                shortcut="⌘D"
+                onClick={handleDuplicate}
+              />
               <MenuItem
                 icon={Trash2}
                 label="Delete entity"
@@ -332,6 +361,8 @@ interface MenuItemProps {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /** Right-aligned keyboard hint (e.g. `'⌘D'`). */
+  shortcut?: string;
   /**
    * Visual tone:
    * - `default`     muted icon, neutral hover
@@ -340,7 +371,7 @@ interface MenuItemProps {
   tone?: MenuItemTone;
 }
 
-function MenuItem({ icon: Icon, label, onClick, disabled, tone = 'default' }: MenuItemProps) {
+function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, tone = 'default' }: MenuItemProps) {
   const iconClass =
     tone === 'destructive'
       ? 'h-4 w-4 text-red-500 dark:text-red-400'
@@ -356,7 +387,12 @@ function MenuItem({ icon: Icon, label, onClick, disabled, tone = 'default' }: Me
       disabled={disabled}
     >
       <Icon className={iconClass} />
-      <span>{label}</span>
+      <span className="flex-1 min-w-0">{label}</span>
+      {shortcut && (
+        <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
+          {shortcut}
+        </span>
+      )}
     </button>
   );
 }

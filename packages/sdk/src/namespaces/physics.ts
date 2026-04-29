@@ -33,15 +33,17 @@ export class PhysicsNamespace {
   /**
    * Run a rigid-body simulation against the active model (or the named one).
    *
+   * Async because real models block the main thread for seconds otherwise —
+   * the browser-backed adapter chunks stepping behind event-loop yields.
    * Single-model only at the moment — federated multi-model simulation is
    * intentionally out of scope for v1.
    */
-  simulate(options?: PhysicsSimulateOptions): PhysicsSimulationResult;
-  simulate(modelId: string, options?: PhysicsSimulateOptions): PhysicsSimulationResult;
+  simulate(options?: PhysicsSimulateOptions): Promise<PhysicsSimulationResult>;
+  simulate(modelId: string, options?: PhysicsSimulateOptions): Promise<PhysicsSimulationResult>;
   simulate(
     arg1?: string | PhysicsSimulateOptions,
     arg2?: PhysicsSimulateOptions,
-  ): PhysicsSimulationResult {
+  ): Promise<PhysicsSimulationResult> {
     if (typeof arg1 === 'string') {
       return this.backend.physics.simulate(arg1, arg2 ?? {});
     }

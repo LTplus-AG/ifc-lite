@@ -24,7 +24,7 @@
 
 import {
   init as physicsInit,
-  simulate,
+  simulateAsync,
   type PhysicsMesh,
   type SimulateOptions,
 } from '@ifc-lite/physics';
@@ -50,13 +50,16 @@ export function createPhysicsAdapter(store: StoreApi): PhysicsBackendMethods {
     ready(): Promise<void> {
       return physicsInit();
     },
-    simulate(modelId: string | null, options: PhysicsSimulateOptions): PhysicsSimulationResult {
+    simulate(
+      modelId: string | null,
+      options: PhysicsSimulateOptions,
+    ): Promise<PhysicsSimulationResult> {
       const idOffset = resolveIdOffset(store, modelId);
       const meshes = collectMeshes(store, modelId, idOffset);
       const meshIds = new Set(meshes.map(m => m.expressId));
       const ifcConnections = extractConnections(store, modelId, meshIds);
       const merged = mergeConnections(options.connections, ifcConnections);
-      return simulate(meshes, toEngineOptions(options, merged));
+      return simulateAsync(meshes, toEngineOptions(options, merged));
     },
   };
 }

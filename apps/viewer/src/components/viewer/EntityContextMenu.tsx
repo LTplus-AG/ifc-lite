@@ -228,12 +228,14 @@ export function EntityContextMenu() {
       return;
     }
 
+    toast.info('Running physics simulation…');
+
     let result;
     try {
       // Scope the simulation to the clicked element's model — without this
       // the backend falls back to the active/legacy model, which can mismatch
       // when right-clicking into a non-active model under federation.
-      result = bim.physics.simulate(contextEntityRef.modelId, {
+      result = await bim.physics.simulate(contextEntityRef.modelId, {
         remove: [contextEntityRef.expressId],
       });
     } catch (err) {

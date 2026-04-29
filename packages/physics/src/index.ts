@@ -20,7 +20,7 @@
  * checks through `IfcStructuralAnalysisModel` and an FEM solver.
  */
 
-export { init, simulate } from './simulate.js';
+export { init, simulate, simulateAsync } from './simulate.js';
 export { meshAABB, aabbCenter, aabbTouches } from './aabb.js';
 export { classifyAnchor, densityFor } from './anchor.js';
 export {

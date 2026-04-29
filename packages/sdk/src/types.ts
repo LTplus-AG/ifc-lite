@@ -452,10 +452,13 @@ export interface PhysicsBackendMethods {
   /**
    * Simulate the active model (or `modelId` if given). Backend implementations
    * own the mesh source and feed it to the underlying physics engine; the SDK
-   * never has to ship raw geometry across the transport boundary. Throws if
+   * never has to ship raw geometry across the transport boundary. Rejects if
    * `ready()` has not yet resolved.
+   *
+   * Returns a Promise because real models block the main thread for several
+   * seconds otherwise; backends are expected to chunk work and yield.
    */
-  simulate(modelId: string | null, options: PhysicsSimulateOptions): PhysicsSimulationResult;
+  simulate(modelId: string | null, options: PhysicsSimulateOptions): Promise<PhysicsSimulationResult>;
 }
 
 export interface ExportBackendMethods {

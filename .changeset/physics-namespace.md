@@ -43,6 +43,15 @@ members / footings / piles / plates (faster + more contact-stable) and
 falls back to trimesh for slabs / walls / roofs that routinely have
 openings.
 
+**`bim.physics.simulate(...)` now returns `Promise<PhysicsSimulationResult>`**
+(was synchronous). Real models block the main thread for several seconds
+under sync stepping, freezing the browser. The TS package adds a
+`simulateAsync` entry point that chunks Rapier stepping behind
+`setTimeout(0)` yields; the viewer adapter calls it. Sync `simulate`
+remains for Node tests and headless callers. CCD is now off by default
+(plausibility checks settle at low velocities; CCD doubled per-step
+cost).
+
 See `docs/guide/physics.md` for the full guide.
 
 This is a plausibility check, not structural engineering: no bending,

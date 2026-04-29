@@ -37,7 +37,7 @@ export function PhysicsResultPanel() {
       return;
     }
     try {
-      const next = bim.physics.simulate(removed.ref.modelId, {
+      const next = await bim.physics.simulate(removed.ref.modelId, {
         remove: [removed.ref.expressId],
       });
       const refsFor = (ids: number[]): EntityRef[] =>

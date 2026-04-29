@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { init, simulate, type PhysicsMesh } from '../src/index.js';
+import { init, simulate, simulateAsync, type PhysicsMesh } from '../src/index.js';
 
 function cube(
   expressId: number,
@@ -119,6 +119,16 @@ describe('@ifc-lite/physics', () => {
       colliderStrategy: 'trimesh',
     });
     expect(result.bodies).toHaveLength(2);
+  });
+
+  it('simulateAsync produces the same classification as the sync entry point', async () => {
+    const slab = cube(1, 'IfcSlab', [0, 0, 0.05], [4, 4, 0.1]);
+    const column = cube(2, 'IfcColumn', [0, 0, 1.6], [0.3, 0.3, 3.0]);
+    const sync = simulate([slab, column], { durationSeconds: 0.5 });
+    const async = await simulateAsync([slab, column], { durationSeconds: 0.5 });
+    expect(async.bodies.length).toBe(sync.bodies.length);
+    expect(async.anchored).toEqual(sync.anchored);
+    expect(async.falling).toEqual(sync.falling);
   });
 
   it('skips empty meshes', () => {

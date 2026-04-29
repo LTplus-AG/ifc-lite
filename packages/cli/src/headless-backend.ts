@@ -552,15 +552,20 @@ export class HeadlessBackend implements BimBackend {
       ready(): Promise<void> {
         return Promise.resolve();
       },
-      simulate(_modelId: string | null, _options: PhysicsSimulateOptions): PhysicsSimulationResult {
+      simulate(
+        _modelId: string | null,
+        _options: PhysicsSimulateOptions,
+      ): Promise<PhysicsSimulationResult> {
         // Headless mode parses IFC but does not run the geometry pipeline,
         // so there are no triangulated meshes to feed into the physics engine.
         // Run physics through the viewer-backed flow, or call
         // `ifc-lite-engine`'s native `physics::simulate` directly with a
         // processed mesh set.
-        throw new Error(
-          'physics.simulate is unavailable in HeadlessBackend — no mesh pipeline. ' +
-          'Use a viewer-backed BimBackend or ifc-lite-engine::physics::simulate.',
+        return Promise.reject(
+          new Error(
+            'physics.simulate is unavailable in HeadlessBackend — no mesh pipeline. ' +
+            'Use a viewer-backed BimBackend or ifc-lite-engine::physics::simulate.',
+          ),
         );
       },
     };

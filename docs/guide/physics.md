@@ -45,7 +45,8 @@ The same simulator is exposed two ways:
 
 | Surface | Engine | When to use |
 |---|---|---|
-| `bim.physics.simulate()` (SDK) | `@ifc-lite/physics` (JS Rapier WASM) | Browser viewer, Node CLI / scripts |
+| `bim.physics.simulate()` (SDK, async) | `@ifc-lite/physics` (JS Rapier WASM) | Browser viewer, Node CLI / scripts |
+| `simulate()` / `simulateAsync()` (TS package) | `@ifc-lite/physics` directly | Custom integrations |
 | `ifc-lite-physics` binary | `ifc-lite-physics` Rust crate | Terminal automation, CI, no JS toolchain |
 
 Both produce the same `SimulationResult` shape.
@@ -84,7 +85,8 @@ const bim = createBimContext({ backend });
 await bim.physics.ready();
 
 // "What happens if I remove express id 42?"
-const result = bim.physics.simulate({ remove: [42] });
+// simulate(...) is async — chunked stepping keeps the UI responsive.
+const result = await bim.physics.simulate({ remove: [42] });
 
 console.log(`${result.falling.length} elements would fall`);
 console.log(`${result.tilted.length} would tip`);

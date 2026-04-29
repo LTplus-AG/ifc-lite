@@ -15,28 +15,29 @@
 
 import { useMemo } from 'react';
 import { FileBox, Info, Sparkles } from 'lucide-react';
-import { EntityExtractor, getAttributeNames } from '@ifc-lite/parser';
+import { getAttributeNames } from '@ifc-lite/parser';
 import type { EntityRef } from '@ifc-lite/parser';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { RawStepRow } from './RawStepRow';
+import { extractRawStepTokens, serializeStepToken } from './raw-step-format';
 
 /**
- * Apply positional overrides on top of a base attribute list. The
- * overlay is keyed by zero-based index — out-of-range indices are
- * ignored (the StoreEditor refuses them on write, but stay defensive
- * here). Returns a fresh array so React detects the change.
+ * Apply per-index overlay overrides on top of the base STEP tokens.
+ * Returns a fresh array so React detects the change. Out-of-range
+ * indices are ignored — the StoreEditor refuses them on write, but
+ * stay defensive in case the override map outlives the entity.
  */
-function mergeWithOverlay(
-  base: unknown[],
+function applyOverlayTokens(
+  base: string[],
   overlay: Map<number, IfcAttributeValue> | null,
-): unknown[] {
+): string[] {
   if (!overlay || overlay.size === 0) return base;
   const merged = base.slice();
   for (const [index, value] of overlay) {
     if (index >= 0 && index < merged.length) {
-      merged[index] = value;
+      merged[index] = serializeStepToken(value);
     }
   }
   return merged;
@@ -64,42 +65,49 @@ export function RawStepCard({
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const getMutationView = useViewerStore((s) => s.getMutationView);
 
-  // Resolve attributes — prefer the parsed source buffer, fall back
-  // to overlay-only NewEntity records for entities that were created
-  // entirely through `bim.store.addEntity` / `addColumn`. Then merge
-  // the per-index positional overlay on top so the displayed value
-  // reflects edits the moment they're confirmed.
-  const { attributes, isOverlayOnly, overlayMap } = useMemo(() => {
+  // Resolve display tokens. We tokenize the raw STEP body directly
+  // so refs render as `#N`, enums stay `.AREA.`, and strings keep
+  // their on-disk form — the EntityExtractor's parsed JS shape loses
+  // that distinction (a ref `#42` comes back as a plain `42`). For
+  // overlay-only entities we serialize the JS NewEntity attributes
+  // back to STEP token form. Per-index overrides land on top.
+  const { tokens, isOverlayOnly, overlayMap } = useMemo(() => {
     const view = getMutationView(modelId);
     const overlay = view?.getPositionalMutationsForEntity(entityId) ?? null;
 
     if (!dataStore) {
-      return { attributes: null, isOverlayOnly: false, overlayMap: overlay };
+      return { tokens: null as string[] | null, isOverlayOnly: false, overlayMap: overlay };
     }
 
-    // Source-buffer entity: extract positional args from STEP text.
+    // Source-buffer entity: tokenize the raw STEP text directly.
     const ref: EntityRef | undefined = dataStore.entityIndex.byId.get(entityId);
     if (ref && ref.byteLength > 0 && dataStore.source) {
-      const extractor = new EntityExtractor(dataStore.source);
-      const parsed = extractor.extractEntity(ref);
-      if (parsed) {
-        const merged = mergeWithOverlay(parsed.attributes, overlay);
-        return { attributes: merged, isOverlayOnly: false, overlayMap: overlay };
+      const baseTokens = extractRawStepTokens(dataStore.source, ref.byteOffset, ref.byteLength);
+      if (baseTokens) {
+        return {
+          tokens: applyOverlayTokens(baseTokens, overlay),
+          isOverlayOnly: false,
+          overlayMap: overlay,
+        };
       }
     }
 
-    // Overlay-only entity: read from MutablePropertyView and apply
-    // any positional overrides on top (rare for fresh entities, but
-    // setPositionalAttribute is legal on them too).
+    // Overlay-only entity: serialize the JS attribute list to STEP
+    // tokens, then apply per-index overrides (rare for fresh
+    // entities, but setPositionalAttribute is legal on them).
     if (view) {
       const overlayEntity = view.getNewEntity(entityId);
       if (overlayEntity) {
-        const merged = mergeWithOverlay(overlayEntity.attributes as unknown[], overlay);
-        return { attributes: merged, isOverlayOnly: true, overlayMap: overlay };
+        const baseTokens = (overlayEntity.attributes as IfcAttributeValue[]).map(serializeStepToken);
+        return {
+          tokens: applyOverlayTokens(baseTokens, overlay),
+          isOverlayOnly: true,
+          overlayMap: overlay,
+        };
       }
     }
 
-    return { attributes: null, isOverlayOnly: false, overlayMap: overlay };
+    return { tokens: null as string[] | null, isOverlayOnly: false, overlayMap: overlay };
     // mutationVersion forces this hook to re-run when any overlay
     // (positional or overlay-entity) changes — overlay maps are
     // mutated in place, so identity-based memoization isn't enough.
@@ -116,7 +124,7 @@ export function RawStepCard({
     return new Set(overlayMap.keys());
   }, [overlayMap]);
 
-  if (!attributes || attributes.length === 0) {
+  if (!tokens || tokens.length === 0) {
     return (
       <div className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-6 text-center">
         <FileBox className="h-5 w-5 mx-auto mb-2 text-zinc-400" />
@@ -155,7 +163,7 @@ export function RawStepCard({
 
       {/* Rows */}
       <div className="divide-y-0">
-        {attributes.map((value, idx) => {
+        {tokens.map((token, idx) => {
           const name = attributeNames[idx] || `Arg ${idx}`;
           return (
             <RawStepRow
@@ -164,7 +172,7 @@ export function RawStepCard({
               entityId={entityId}
               index={idx}
               name={name}
-              currentValue={value}
+              displayToken={token}
               isMutated={mutatedIndices.has(idx)}
               enableEditing={enableEditing}
             />

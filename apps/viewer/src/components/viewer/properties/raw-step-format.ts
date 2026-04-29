@@ -24,55 +24,123 @@
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 
 /**
- * Format a parsed attribute (the shape returned by
- * `EntityExtractor.extractEntity().attributes[i]`) into a display token
- * that closely mirrors the on-disk STEP literal. The result is meant to
- * be read by humans — it's not guaranteed to round-trip through the parser
- * for typed values, but it's accurate for the common cases.
+ * Tokenize the inside of a STEP entity body (`,`-separated arguments)
+ * with awareness of nested parens and quoted strings. Same semantics
+ * as `splitTopLevelArgs` in `@ifc-lite/export` (kept inline here to
+ * avoid leaking a private util across the package boundary).
  */
-export function formatRawStepValue(value: unknown): string {
+function splitTopLevelArgs(text: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let depth = 0;
+  let inString = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      current += ch;
+      if (ch === "'") {
+        // STEP escapes a single quote by doubling it (`''`).
+        if (text[i + 1] === "'") {
+          current += text[i + 1];
+          i++;
+        } else {
+          inString = false;
+        }
+      }
+    } else if (ch === "'") {
+      inString = true;
+      current += ch;
+    } else if (ch === '(') {
+      depth++;
+      current += ch;
+    } else if (ch === ')') {
+      depth--;
+      current += ch;
+    } else if (ch === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim() || parts.length > 0) parts.push(current.trim());
+  return parts;
+}
+
+/**
+ * Read raw positional argument tokens directly from the STEP source
+ * buffer for an entity. Returns `null` if the entity body can't be
+ * parsed (mismatched parens, no source bytes, …).
+ *
+ * Each token is the verbatim on-disk literal — `#42` for refs,
+ * `.AREA.` for enums, `'My Column'` for strings, `1.5` for numbers.
+ * This is the most faithful representation for the "Raw STEP" view
+ * and it side-steps the need to round-trip references through the
+ * EntityExtractor (which strips the `#` prefix when it parses them
+ * into JS numbers).
+ */
+export function extractRawStepTokens(
+  buffer: Uint8Array,
+  byteOffset: number,
+  byteLength: number,
+): string[] | null {
+  if (byteLength <= 0) return null;
+  const text = new TextDecoder().decode(
+    buffer.subarray(byteOffset, byteOffset + byteLength),
+  );
+  // Match #N=TYPE( ... ) — the trailing `;` is optional in case the
+  // ref slice doesn't include it.
+  const match = text.match(/^#\d+\s*=\s*[A-Z0-9_]+\(([\s\S]*)\)\s*;?\s*$/i);
+  if (!match) return null;
+  return splitTopLevelArgs(match[1]);
+}
+
+/**
+ * Serialize an overlay attribute value to the canonical STEP token
+ * form. Mirrors `serializeStepValue` in `@ifc-lite/export` for the
+ * conventions the StoreEditor / setPositionalAttribute API document.
+ *
+ * Used to render the displayed value when a positional override
+ * exists — the override is held as a JS value (number / string /
+ * null / array), but the row UI needs a STEP literal to look right
+ * next to the unmodified base tokens.
+ */
+export function serializeStepToken(value: IfcAttributeValue): string {
   if (value === null || value === undefined) return '$';
   if (typeof value === 'boolean') return value ? '.T.' : '.F.';
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return '$';
-    return Number.isInteger(value) ? String(value) : String(value);
+    return String(value);
   }
   if (typeof value === 'string') {
-    // The parser strips reference prefixes and decodes strings already,
-    // so we re-add the conventions for display fidelity.
-    if (/^#\d+$/.test(value)) return value;
-    if (/^\.[A-Z0-9_]+\.$/i.test(value)) return value.toUpperCase();
-    if (/^[A-Z][A-Z0-9_]*$/i.test(value) && value === value.toUpperCase()) return value;
-    return `'${value}'`;
+    const trimmed = value.trim();
+    // Strings tagged as references / enums / wildcards pass through
+    // unchanged — the StoreEditor's input convention already keeps
+    // them in canonical form.
+    if (trimmed === '$' || trimmed === '*') return trimmed;
+    if (/^#\d+$/.test(trimmed)) return trimmed;
+    if (/^\.[A-Z0-9_]+\.$/i.test(trimmed)) return trimmed.toUpperCase();
+    return `'${value.replace(/'/g, "''")}'`;
   }
   if (Array.isArray(value)) {
-    // Typed values come through as `[typeName, innerValue]` from the
-    // parser. They render as `IFCLABEL('foo')` so they're recognisable.
-    if (
-      value.length === 2 &&
-      typeof value[0] === 'string' &&
-      /^IFC/i.test(value[0])
-    ) {
-      return `${(value[0] as string).toUpperCase()}(${formatRawStepValue(value[1])})`;
-    }
-    return `(${value.map(formatRawStepValue).join(',')})`;
+    return `(${value.map(serializeStepToken).join(',')})`;
   }
-  // Fallback — shouldn't happen with parser output, but stay defensive.
   return String(value);
 }
 
 /**
- * Coarse classifier for "is this value safe to inline-edit?" The Raw
- * STEP row pen icon is hidden for typed values and lists; users can
- * still see them, just not edit them through the row UI.
+ * Coarse classifier for "is this token safe to inline-edit?" Lists
+ * (`(...)`) and typed values (`IFCLABEL(...)`) are display-only —
+ * the row UI hides the pen icon for them and tells the user to
+ * reach for the script panel.
  */
-export function isInlineEditable(value: unknown): boolean {
-  if (value === null || value === undefined) return true;
-  if (typeof value === 'boolean') return true;
-  if (typeof value === 'number') return true;
-  if (typeof value === 'string') return true;
-  // Arrays + typed values: punt to the script editor for now.
-  return false;
+export function isInlineEditableToken(token: string): boolean {
+  const t = token.trim();
+  if (!t) return true;
+  if (t.startsWith('(')) return false;
+  if (/^[A-Z][A-Z0-9_]*\(/i.test(t)) return false;
+  return true;
 }
 
 /**

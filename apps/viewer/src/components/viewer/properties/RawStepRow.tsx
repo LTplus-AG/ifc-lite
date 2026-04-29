@@ -14,7 +14,7 @@ import { PenLine, X, Check, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
-import { formatRawStepValue, isInlineEditable, parseRawStepInput } from './raw-step-format';
+import { isInlineEditableToken, parseRawStepInput } from './raw-step-format';
 
 interface RawStepRowProps {
   modelId: string;
@@ -23,8 +23,9 @@ interface RawStepRowProps {
   index: number;
   /** Schema attribute name (or `Arg N` fallback). */
   name: string;
-  /** Current value as parsed by EntityExtractor — null/number/string/array. */
-  currentValue: unknown;
+  /** Current value as a STEP token (verbatim from source, or
+   *  serialized from an overlay override). */
+  displayToken: string;
   /** Whether this index has an active overlay override. */
   isMutated: boolean;
   /** Set false to lock the row (e.g. native-metadata model). */
@@ -36,7 +37,7 @@ export function RawStepRow({
   entityId,
   index,
   name,
-  currentValue,
+  displayToken,
   isMutated,
   enableEditing,
 }: RawStepRowProps) {
@@ -47,8 +48,8 @@ export function RawStepRow({
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const editable = enableEditing && isInlineEditable(currentValue);
-  const display = formatRawStepValue(currentValue);
+  const editable = enableEditing && isInlineEditableToken(displayToken);
+  const display = displayToken;
 
   const inputRef = useCallback((node: HTMLInputElement | null) => {
     if (node) {

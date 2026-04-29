@@ -23,7 +23,13 @@ import { type StateCreator } from 'zustand';
 export type AddElementType = 'wall' | 'slab' | 'beam' | 'column';
 export type AddElementSlabMode = 'rectangle' | 'polygon';
 
-/** A single accumulated 3D click point in IFC Z-up storey-local space. */
+/**
+ * A single accumulated 3D click point in **renderer-frame** Y-up world
+ * coordinates (the same space the camera projects from). The IFC
+ * conversion happens at builder dispatch time so the live preview can
+ * project each pending point to screen without needing to know the
+ * target storey's elevation.
+ */
 export interface AddElementVec3 {
   x: number;
   y: number;

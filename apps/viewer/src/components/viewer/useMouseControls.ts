@@ -30,7 +30,7 @@ import {
   handleMeasureUp,
   updateMeasureScreenCoords,
 } from './measureHandlers.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover } from './selectionHandlers.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -369,18 +369,11 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         if (handleMeasureHover(ctx, x, y)) return;
       }
 
-      // Add-element tool hover preview — same snap visualization as
-      // the measure tool plus a live "hoverPoint" stash for the panel
-      // (so users see updated dimensions as they move the cursor).
-      if (tool === 'addElement' && !mouseState.isDragging && snapEnabledRef.current) {
-        if (handleMeasureHover(ctx, x, y)) {
-          const snapTarget = useViewerStore.getState().snapTarget;
-          const pos = snapTarget?.position ?? null;
-          if (pos) {
-            useViewerStore.getState().setAddElementHoverPoint({ x: pos.x, y: pos.y, z: pos.z });
-          }
-          return;
-        }
+      // Add-element tool hover preview. Always runs (regardless of
+      // snap toggle) so the live edge/rectangle/polygon overlay can
+      // track the cursor; magnetic snap is layered on when enabled.
+      if (tool === 'addElement' && !mouseState.isDragging) {
+        if (handleAddElementHover(ctx, x, y)) return;
       }
 
       // Handle orbit/pan for other tools (or measure tool with shift+drag or no active measurement)

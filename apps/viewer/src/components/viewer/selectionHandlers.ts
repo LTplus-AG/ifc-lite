@@ -164,6 +164,66 @@ export function rendererPointToIfcStoreyLocal(point: { x: number; y: number; z: 
 }
 
 /**
+ * Update the live hover preview for the add-element tool. Runs the
+ * same magnetic raycast as the click handler and keeps `hoverPoint`
+ * in sync with whatever the next click would place. Used by the
+ * 3D-overlay preview so the user sees the in-progress edge / rectangle
+ * / polygon segment as they move the cursor.
+ *
+ * Returns true when handled so the mouse-controls hook can early-out
+ * before falling through to the generic hover-tooltip path.
+ */
+export function handleAddElementHover(ctx: MouseHandlerContext, x: number, y: number): boolean {
+  const { renderer } = ctx;
+  if (!ctx.measureRaycastPendingRef.current) {
+    ctx.measureRaycastPendingRef.current = true;
+    ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
+      ctx.measureRaycastPendingRef.current = false;
+      ctx.measureRaycastFrameRef.current = null;
+
+      const currentLock = ctx.edgeLockStateRef.current;
+      const result = renderer.raycastSceneMagnetic(x, y, {
+        edge: currentLock.edge,
+        meshExpressId: currentLock.meshExpressId,
+        lockStrength: currentLock.lockStrength,
+      }, {
+        hiddenIds: ctx.hiddenEntitiesRef.current,
+        isolatedIds: ctx.isolatedEntitiesRef.current,
+        snapOptions: ctx.snapEnabledRef.current ? {
+          snapToVertices: true,
+          snapToEdges: true,
+          snapToFaces: true,
+          screenSnapRadius: 40,
+        } : {
+          snapToVertices: false,
+          snapToEdges: false,
+          snapToFaces: false,
+          screenSnapRadius: 0,
+        },
+      });
+
+      const point = result.snapTarget?.position ?? result.intersection?.point ?? null;
+      const store = useViewerStore.getState();
+      store.setAddElementHoverPoint(point ? { x: point.x, y: point.y, z: point.z } : null);
+
+      // Mirror measure's snap-viz behaviour so vertex/edge/face indicators
+      // appear under the cursor with the same UX shape.
+      ctx.setSnapTarget(result.snapTarget ?? null);
+      if (result.snapTarget) {
+        if (result.edgeLock.shouldRelease) {
+          ctx.clearEdgeLock();
+        } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
+          ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
+        }
+      } else {
+        ctx.clearEdgeLock();
+      }
+    });
+  }
+  return true;
+}
+
+/**
  * Resolve the active model + storey + a snap-aware world point. Surfaces
  * the same toast errors all add-element entry points share.
  */
@@ -215,10 +275,10 @@ async function handleAddElementDrop(point: { x: number; y: number; z: number }):
   const { modelId, storeyId } = ctx;
 
   const state = useViewerStore.getState();
-  const ifc = rendererPointToIfcStoreyLocal(point);
   const type = state.addElementType;
 
   if (type === 'column') {
+    const ifc = rendererPointToIfcStoreyLocal(point);
     const p = state.addElementColumnParams;
     const result = state.addColumn(modelId, storeyId, {
       Position: ifc,
@@ -233,17 +293,18 @@ async function handleAddElementDrop(point: { x: number; y: number; z: number }):
   if (type === 'wall' || type === 'beam') {
     const pending = state.addElementPendingPoints;
     if (pending.length === 0) {
-      // Start point — store and wait for end.
-      state.appendAddElementPendingPoint({ x: ifc[0], y: ifc[1], z: ifc[2] });
+      // Start point — store the renderer-frame point and wait for end.
+      state.appendAddElementPendingPoint({ x: point.x, y: point.y, z: point.z });
       return;
     }
-    // End point — emit.
-    const start = pending[0];
+    // End point — convert both points to IFC at dispatch time.
+    const startIfc = rendererPointToIfcStoreyLocal(pending[0]);
+    const endIfc = rendererPointToIfcStoreyLocal(point);
     if (type === 'wall') {
       const p = state.addElementWallParams;
       const result = state.addWall(modelId, storeyId, {
-        Start: [start.x, start.y, start.z],
-        End: ifc,
+        Start: startIfc,
+        End: endIfc,
         Thickness: p.Thickness,
         Height: p.Height,
       });
@@ -251,8 +312,8 @@ async function handleAddElementDrop(point: { x: number; y: number; z: number }):
     } else {
       const p = state.addElementBeamParams;
       const result = state.addBeam(modelId, storeyId, {
-        Start: [start.x, start.y, start.z],
-        End: ifc,
+        Start: startIfc,
+        End: endIfc,
         Width: p.Width,
         Height: p.Height,
       });
@@ -265,14 +326,15 @@ async function handleAddElementDrop(point: { x: number; y: number; z: number }):
     if (state.addElementSlabMode === 'rectangle') {
       const pending = state.addElementPendingPoints;
       if (pending.length === 0) {
-        state.appendAddElementPendingPoint({ x: ifc[0], y: ifc[1], z: ifc[2] });
+        state.appendAddElementPendingPoint({ x: point.x, y: point.y, z: point.z });
         return;
       }
-      const corner = pending[0];
-      const minX = Math.min(corner.x, ifc[0]);
-      const minY = Math.min(corner.y, ifc[1]);
-      const width = Math.abs(ifc[0] - corner.x);
-      const depth = Math.abs(ifc[1] - corner.y);
+      const cornerIfc = rendererPointToIfcStoreyLocal(pending[0]);
+      const oppositeIfc = rendererPointToIfcStoreyLocal(point);
+      const minX = Math.min(cornerIfc[0], oppositeIfc[0]);
+      const minY = Math.min(cornerIfc[1], oppositeIfc[1]);
+      const width = Math.abs(oppositeIfc[0] - cornerIfc[0]);
+      const depth = Math.abs(oppositeIfc[1] - cornerIfc[1]);
       if (width <= 0 || depth <= 0) {
         toast.error("Slab corners must span a non-zero rectangle");
         return;
@@ -288,7 +350,7 @@ async function handleAddElementDrop(point: { x: number; y: number; z: number }):
       return;
     }
     // Polygon mode — append; close handled by Enter / double-click.
-    state.appendAddElementPendingPoint({ x: ifc[0], y: ifc[1], z: ifc[2] });
+    state.appendAddElementPendingPoint({ x: point.x, y: point.y, z: point.z });
     return;
   }
 }
@@ -310,9 +372,13 @@ export function commitAddElementSlabPolygon(): void {
   if (!ctx) return;
   const { modelId, storeyId } = ctx;
   const p = state.addElementSlabParams;
+  // Convert each renderer-frame point to IFC X/Y at dispatch time.
   const result = state.addSlab(modelId, storeyId, {
     Profile: 'polygon',
-    OuterCurve: pending.map((pt) => [pt.x, pt.y] as [number, number]),
+    OuterCurve: pending.map((pt) => {
+      const ifc = rendererPointToIfcStoreyLocal(pt);
+      return [ifc[0], ifc[1]];
+    }),
     Thickness: p.Thickness,
   });
   finishAddElement(result, modelId, 'Slab');

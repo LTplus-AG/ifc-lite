@@ -461,6 +461,16 @@ export function Viewport({
     } else {
       canvas.style.cursor = 'default';
     }
+
+    // Clear add-element pending state + hover point when leaving the
+    // tool so the SVG overlay doesn't paint stale geometry from a
+    // previous session.
+    if (activeTool !== 'addElement') {
+      const state = useViewerStore.getState();
+      if (state.addElementPendingPoints.length > 0 || state.addElementHoverPoint !== null) {
+        state.clearAddElementPending();
+      }
+    }
   }, [activeTool, activeMeasurement, cancelMeasurement]);
 
   // Helper: calculate scale bar value (world-space size for 96px scale bar)

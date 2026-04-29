@@ -96,7 +96,7 @@ const lod1 = await generateLod1(bytes, { quality: 'medium' });
 
 ## API
 
-See the [Exporting Guide](../../docs/guide/exporting.md) and [API Reference](../../docs/api/typescript.md#ifc-liteexport).
+See the [Exporting Guide](https://louistrue.github.io/ifc-lite/guide/exporting/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-liteexport).
 
 ## License
 

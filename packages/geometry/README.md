@@ -62,7 +62,7 @@ if (result.coordinateInfo?.hasLargeCoordinates) {
 
 ## API
 
-See the [Geometry Guide](../../docs/guide/geometry.md) and [API Reference](../../docs/api/typescript.md#ifc-litegeometry).
+See the [Geometry Guide](https://louistrue.github.io/ifc-lite/guide/geometry/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litegeometry).
 
 ## License
 

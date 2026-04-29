@@ -102,7 +102,7 @@ applyGraphicPreset(drawing, 'fire-safety');
 
 ## API
 
-See the [2D Drawings Guide](../../docs/guide/drawing-2d.md) and [API Reference](../../docs/api/typescript.md#ifc-litedrawing-2d).
+See the [2D Drawings Guide](https://louistrue.github.io/ifc-lite/guide/drawing-2d/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litedrawing-2d).
 
 ## License
 

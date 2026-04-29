@@ -78,7 +78,7 @@ for (const spec of idsSpec.specifications) {
 
 ## API
 
-See the [IDS Guide](../../docs/guide/ids.md) and [API Reference](../../docs/api/typescript.md#ifc-liteids).
+See the [IDS Guide](https://louistrue.github.io/ifc-lite/guide/ids/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-liteids).
 
 ## License
 

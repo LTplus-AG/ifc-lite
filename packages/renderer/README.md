@@ -91,7 +91,7 @@ const { modelId, expressId } = federationRegistry.fromGlobalId(hit.expressId);
 
 ## API
 
-See the [Rendering Guide](../../docs/guide/rendering.md) and [API Reference](../../docs/api/typescript.md#ifc-literenderer).
+See the [Rendering Guide](https://louistrue.github.io/ifc-lite/guide/rendering/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-literenderer).
 
 ## License
 

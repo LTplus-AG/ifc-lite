@@ -92,7 +92,7 @@ const hit = await renderer.pick(120, 240);
 if (hit) console.log(`Picked expressId ${hit.expressId}`);
 ```
 
-For Three.js or Babylon.js, parse + extract geometry the same way and feed `meshes` to your engine. See [Three.js integration](docs/tutorials/threejs-integration.md) and [Babylon.js integration](docs/tutorials/babylonjs-integration.md).
+For Three.js or Babylon.js, parse + extract geometry the same way and feed `meshes` to your engine. See [Three.js integration](https://louistrue.github.io/ifc-lite/tutorials/threejs-integration/) and [Babylon.js integration](https://louistrue.github.io/ifc-lite/tutorials/babylonjs-integration/).
 
 ## Query entities
 
@@ -179,10 +179,10 @@ const ifcx = new Ifc5Exporter(store, meshes).export({ includeGeometry: true });
 
 | Setup | Best for | You get |
 |-------|----------|---------|
-| [**Browser (WebGPU)**](docs/guide/quickstart.md) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
-| [**Three.js / Babylon.js**](docs/tutorials/threejs-integration.md) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
-| [**Server**](docs/guide/server.md) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
-| [**Desktop (Tauri)**](docs/guide/desktop.md) | Offline use, very large files (500 MB+) | Native app with multi-threading and direct filesystem access |
+| [**Browser (WebGPU)**](https://louistrue.github.io/ifc-lite/guide/quickstart/) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
+| [**Three.js / Babylon.js**](https://louistrue.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
+| [**Server**](https://louistrue.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
+| [**Desktop (Tauri)**](https://louistrue.github.io/ifc-lite/guide/desktop/) | Offline use, very large files (500 MB+) | Native app with multi-threading and direct filesystem access |
 
 Not sure? Start with the browser setup. You can add a server or switch engines later.
 
@@ -202,7 +202,7 @@ Not sure? Start with the browser setup. You can add a server or switch engines l
 | Connect to a server backend | + `@ifc-lite/server-client` |
 | BCF issue tracking | + `@ifc-lite/bcf` |
 
-Full list: [API Reference](docs/api/typescript.md) (25 TypeScript packages, 4 Rust crates).
+Full list: [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/) (25 TypeScript packages, 4 Rust crates).
 
 ## Performance
 
@@ -212,7 +212,7 @@ Full list: [API Reference](docs/api/typescript.md) (25 TypeScript packages, 4 Ru
 - **Schema coverage:** 100% of IFC4 (776 entities) and IFC4X3 (876 entities).
 - **Parse throughput:** ~1,259 MB/s tokenization on a typical M1 / M2 laptop.
 
-See [benchmarks](docs/guide/performance.md) for full numbers across model sizes and hardware.
+See [benchmarks](https://louistrue.github.io/ifc-lite/guide/performance/) for full numbers across model sizes and hardware.
 
 ## Examples
 
@@ -225,12 +225,12 @@ Ready-to-run projects in [`examples/`](examples/):
 
 | | |
 |---|---|
-| **Start here** | [Quick Start](docs/guide/quickstart.md) · [Installation](docs/guide/installation.md) · [Browser Requirements](docs/guide/browser-requirements.md) |
-| **Guides** | [Parsing](docs/guide/parsing.md) · [Geometry](docs/guide/geometry.md) · [Rendering](docs/guide/rendering.md) · [Querying](docs/guide/querying.md) · [Exporting](docs/guide/exporting.md) |
-| **BIM features** | [Federation](docs/guide/federation.md) · [BCF](docs/guide/bcf.md) · [IDS Validation](docs/guide/ids.md) · [bSDD](docs/guide/bsdd.md) · [2D Drawings](docs/guide/drawing-2d.md) · [IFC Creation](docs/guide/creation.md) · [Property Editing](docs/guide/mutations.md) |
-| **Tutorials** | [Build a Viewer](docs/tutorials/building-viewer.md) · [Three.js](docs/tutorials/threejs-integration.md) · [Babylon.js](docs/tutorials/babylonjs-integration.md) · [Custom Queries](docs/tutorials/custom-queries.md) |
-| **Deep dives** | [Architecture](docs/architecture/overview.md) · [Data Flow](docs/architecture/data-flow.md) · [Performance](docs/guide/performance.md) |
-| **API** | [TypeScript](docs/api/typescript.md) · [Rust](docs/api/rust.md) · [WASM](docs/api/wasm.md) |
+| **Start here** | [Quick Start](https://louistrue.github.io/ifc-lite/guide/quickstart/) · [Installation](https://louistrue.github.io/ifc-lite/guide/installation/) · [Browser Requirements](https://louistrue.github.io/ifc-lite/guide/browser-requirements/) |
+| **Guides** | [Parsing](https://louistrue.github.io/ifc-lite/guide/parsing/) · [Geometry](https://louistrue.github.io/ifc-lite/guide/geometry/) · [Rendering](https://louistrue.github.io/ifc-lite/guide/rendering/) · [Querying](https://louistrue.github.io/ifc-lite/guide/querying/) · [Exporting](https://louistrue.github.io/ifc-lite/guide/exporting/) |
+| **BIM features** | [Federation](https://louistrue.github.io/ifc-lite/guide/federation/) · [BCF](https://louistrue.github.io/ifc-lite/guide/bcf/) · [IDS Validation](https://louistrue.github.io/ifc-lite/guide/ids/) · [2D Drawings](https://louistrue.github.io/ifc-lite/guide/drawing-2d/) · [Property Editing](https://louistrue.github.io/ifc-lite/guide/mutations/) |
+| **Tutorials** | [Build a Viewer](https://louistrue.github.io/ifc-lite/tutorials/building-viewer/) · [Three.js](https://louistrue.github.io/ifc-lite/tutorials/threejs-integration/) · [Babylon.js](https://louistrue.github.io/ifc-lite/tutorials/babylonjs-integration/) · [Custom Queries](https://louistrue.github.io/ifc-lite/tutorials/custom-queries/) |
+| **Deep dives** | [Architecture](https://louistrue.github.io/ifc-lite/architecture/overview/) · [Data Flow](https://louistrue.github.io/ifc-lite/architecture/data-flow/) · [Performance](https://louistrue.github.io/ifc-lite/guide/performance/) |
+| **API** | [TypeScript](https://louistrue.github.io/ifc-lite/api/typescript/) · [Rust](https://louistrue.github.io/ifc-lite/api/rust/) · [WASM](https://louistrue.github.io/ifc-lite/api/wasm/) |
 
 ## Contributing
 
@@ -248,7 +248,7 @@ For benchmark fixtures, fetch only what you need:
 git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 ```
 
-See the [Contributing Guide](docs/contributing/setup.md) and [Release Process](RELEASE.md).
+See the [Contributing Guide](https://louistrue.github.io/ifc-lite/contributing/setup/) and [Release Process](RELEASE.md).
 
 ## Community
 

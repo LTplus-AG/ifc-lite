@@ -401,6 +401,9 @@ importers:
       '@ifc-lite/cache':
         specifier: workspace:^
         version: link:../../packages/cache
+      '@ifc-lite/create':
+        specifier: workspace:^
+        version: link:../../packages/create
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../../packages/data
@@ -410,6 +413,9 @@ importers:
       '@ifc-lite/embed-protocol':
         specifier: workspace:^
         version: link:../../packages/embed-protocol
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../../packages/encoding
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../../packages/export
@@ -422,6 +428,12 @@ importers:
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../../packages/ifcx
+      '@ifc-lite/lens':
+        specifier: workspace:^
+        version: link:../../packages/lens
+      '@ifc-lite/lists':
+        specifier: workspace:^
+        version: link:../../packages/lists
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../../packages/mutations

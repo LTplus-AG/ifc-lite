@@ -225,6 +225,13 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     // Yield to browser so dialog shell + spinner paint first
     initTimerRef.current = setTimeout(() => {
       const dataStore = selectedModel.ifcDataStore;
+      // The early return above already gates on `selectedModel?.ifcDataStore`,
+      // but the closure-captured `selectedModel` reference is union-typed,
+      // so re-narrow here for the timeout callback.
+      if (!dataStore) {
+        setIsInitializing(false);
+        return;
+      }
       const entities = dataStore.entities;
 
       // Storeys

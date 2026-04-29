@@ -4,8 +4,10 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createDataSlice, type DataSlice } from './dataSlice.js';
+import { createDataSlice, type DataSlice, type DataCrossSliceState } from './dataSlice.js';
 import { DATA_DEFAULTS } from '../constants.js';
+
+type DataTestState = DataSlice & DataCrossSliceState;
 
 // Mock mesh data for testing
 const createMockMesh = (expressId: number, color: [number, number, number, number] = [1, 0, 0, 1]) => ({
@@ -18,8 +20,8 @@ const createMockMesh = (expressId: number, color: [number, number, number, numbe
 });
 
 describe('DataSlice', () => {
-  let state: DataSlice;
-  let setState: (partial: Partial<DataSlice> | ((state: DataSlice) => Partial<DataSlice>)) => void;
+  let state: DataTestState;
+  let setState: (partial: Partial<DataTestState> | ((state: DataTestState) => Partial<DataTestState>)) => void;
 
   beforeEach(() => {
     setState = (partial) => {
@@ -31,7 +33,11 @@ describe('DataSlice', () => {
       }
     };
 
-    state = createDataSlice(setState, () => state, {} as any);
+    // Seed the cross-slice fields owned by ModelSlice. dataSlice's
+    // updaters look up the active model in this map, so the test mock
+    // has to provide it for the typed StateCreator to be satisfiable.
+    const slice = createDataSlice(setState as any, (() => state) as any, {} as any);
+    state = { ...slice, activeModelId: null, models: new Map() };
   });
 
   describe('initial state', () => {

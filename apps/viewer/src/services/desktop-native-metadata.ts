@@ -6,9 +6,40 @@ import type {
   NativeMetadataEntityDetails,
   NativeMetadataEntitySummary,
   NativeMetadataSnapshot,
+  NativeMetadataSpatialNode,
 } from '@/store/types';
-import type { MetadataBootstrapPayload } from '@ifc-lite/geometry';
+import type {
+  MetadataBootstrapPayload,
+  MetadataBootstrapEntitySummary,
+  MetadataBootstrapSpatialNode,
+} from '@ifc-lite/geometry';
 import { getNativeModelSnapshot, setNativeModelSnapshot } from './desktop-cache';
+
+function bootstrapKindToNative(kind: string): 'spatial' | 'element' {
+  return kind === 'spatial' ? 'spatial' : 'element';
+}
+
+function summaryFromBootstrap(node: MetadataBootstrapEntitySummary): NativeMetadataEntitySummary {
+  return {
+    expressId: node.expressId,
+    type: node.typeName,
+    name: node.name,
+    globalId: node.globalId ?? null,
+    kind: bootstrapKindToNative(node.kind),
+    hasChildren: node.hasChildren,
+    elementCount: node.elementCount,
+    elevation: node.elevation ?? null,
+  };
+}
+
+function spatialNodeFromBootstrap(node: MetadataBootstrapSpatialNode | null): NativeMetadataSpatialNode | null {
+  if (!node) return null;
+  return {
+    ...summaryFromBootstrap(node),
+    children: node.children.map((c) => spatialNodeFromBootstrap(c)).filter((n): n is NativeMetadataSpatialNode => n !== null),
+    elements: node.elements.map(summaryFromBootstrap),
+  };
+}
 
 type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -45,7 +76,7 @@ export function nativeMetadataSnapshotFromBootstrap(
     filePath: path,
     schemaVersion: toSchemaVersion(payload.schemaVersion),
     entityCount: payload.entityCount,
-    spatialTree: payload.spatialTree ?? null,
+    spatialTree: spatialNodeFromBootstrap(payload.spatialTree ?? null),
   };
 }
 

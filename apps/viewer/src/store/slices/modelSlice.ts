@@ -13,7 +13,19 @@
 
 import type { StateCreator } from 'zustand';
 import type { FederatedModel } from '../types.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
+
+/**
+ * Cross-slice fields the model actions write to. `ifcDataStore` and
+ * `geometryResult` are owned by `dataSlice` but `modelSlice`'s set()
+ * calls need to keep them in sync with the active model.
+ */
+export interface ModelCrossSliceState {
+  ifcDataStore: IfcDataStore | null;
+  geometryResult: GeometryResult | null;
+}
 
 export interface ModelSlice {
   // State
@@ -72,7 +84,7 @@ export interface ModelSlice {
   resolveGlobalIdFromModels: (globalId: number) => GlobalIdLookup | null;
 }
 
-export const createModelSlice: StateCreator<ModelSlice, [], [], ModelSlice> = (set, get) => ({
+export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [], [], ModelSlice> = (set, get) => ({
   // Initial state
   models: new Map(),
   activeModelId: null,

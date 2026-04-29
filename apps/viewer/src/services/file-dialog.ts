@@ -139,7 +139,10 @@ export async function openGenericFileDialog(options: GenericFileDialogOptions = 
     const bytes = await readNativeFile(normalizedPath);
     const pathSegments = normalizedPath.split(/[\\/]/);
     const name = pathSegments[pathSegments.length - 1] || 'document';
-    return new File([bytes], name, { type: 'application/octet-stream' });
+    // Slice to a fresh ArrayBuffer view — TS5+ narrows `Uint8Array` to
+    // `Uint8Array<ArrayBufferLike>` which `BlobPart` doesn't accept.
+    const blobPart = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).slice();
+    return new File([blobPart], name, { type: 'application/octet-stream' });
   } catch (error) {
     console.warn('[FileDialog] Failed to open generic native file dialog:', error);
     return null;

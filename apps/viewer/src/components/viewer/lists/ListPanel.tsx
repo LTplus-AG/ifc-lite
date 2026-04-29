@@ -72,6 +72,9 @@ export function ListPanel({ onClose }: ListPanelProps) {
     const providers: ListDataProvider[] = [];
     if (models.size > 0) {
       for (const [, model] of models) {
+        // Skip native-metadata models — they don't have a parsed
+        // IfcDataStore, so the list provider can't query them.
+        if (!model.ifcDataStore) continue;
         providers.push(createListDataProvider(model.ifcDataStore));
       }
     } else if (ifcDataStore) {

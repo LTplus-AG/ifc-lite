@@ -4,8 +4,10 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createModelSlice, type ModelSlice } from './modelSlice.js';
+import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from './modelSlice.js';
 import type { FederatedModel } from '../types.js';
+
+type ModelTestState = ModelSlice & ModelCrossSliceState;
 
 // Helper to create a mock model
 function createMockModel(id: string, name: string): FederatedModel {
@@ -25,8 +27,8 @@ function createMockModel(id: string, name: string): FederatedModel {
 }
 
 describe('ModelSlice', () => {
-  let state: ModelSlice;
-  let setState: (partial: Partial<ModelSlice> | ((state: ModelSlice) => Partial<ModelSlice>)) => void;
+  let state: ModelTestState;
+  let setState: (partial: Partial<ModelTestState> | ((state: ModelTestState) => Partial<ModelTestState>)) => void;
 
   beforeEach(() => {
     // Create a mock set function that updates state
@@ -39,8 +41,11 @@ describe('ModelSlice', () => {
       }
     };
 
-    // Create slice with mock set function
-    state = createModelSlice(setState, () => state, {} as any);
+    // Seed cross-slice fields owned by dataSlice. The slice writes them
+    // through cross-slice set() calls; the test mock has to provide them
+    // so the typed StateCreator is satisfied.
+    const slice = createModelSlice(setState as any, (() => state) as any, {} as any);
+    state = { ...slice, ifcDataStore: null, geometryResult: null };
   });
 
   describe('initial state', () => {

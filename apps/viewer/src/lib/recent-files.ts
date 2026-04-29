@@ -24,7 +24,20 @@ export interface RecentFileEntry {
   name: string;
   size: number;
   timestamp: number;
+  /** Native filesystem path (Tauri only) — enables direct re-open from disk. */
+  path?: string;
+  /** Last-modified epoch in ms when known (Tauri stat). */
+  modifiedMs?: number | null;
 }
+
+// Input shape for `recordRecentFiles` — accepts the optional native fields
+// so callers can persist a path / modifiedMs without lying about the type.
+export type RecentFileInput = {
+  name: string;
+  size: number;
+  path?: string;
+  modifiedMs?: number | null;
+};
 
 // ── localStorage (metadata) ─────────────────────────────────────────────
 
@@ -33,7 +46,7 @@ export function getRecentFiles(): RecentFileEntry[] {
   catch { return []; }
 }
 
-export function recordRecentFiles(files: { name: string; size: number }[]) {
+export function recordRecentFiles(files: RecentFileInput[]) {
   try {
     const names = new Set(files.map(f => f.name));
     const existing = getRecentFiles().filter(f => !names.has(f.name));
@@ -41,6 +54,8 @@ export function recordRecentFiles(files: { name: string; size: number }[]) {
       name: f.name,
       size: f.size,
       timestamp: Date.now(),
+      path: f.path,
+      modifiedMs: f.modifiedMs ?? null,
     }));
     localStorage.setItem(KEY, JSON.stringify([...entries, ...existing].slice(0, 10)));
   } catch { /* noop */ }

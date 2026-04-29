@@ -22,6 +22,9 @@ export {
   type StreamingOptions,
   type StreamingProgress,
   type GeometryBatch,
+  type MetadataBootstrapPayload,
+  type MetadataBootstrapEntitySummary,
+  type MetadataBootstrapSpatialNode,
 } from './platform-bridge.js';
 
 // Support components

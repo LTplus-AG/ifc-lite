@@ -84,14 +84,11 @@ if (csvFile) {
 
   // Discover every loaded product once so we can resolve `products` values
   // (IFC type OR globalId substring) into a list of expressIds.
-  const allProducts = bim
-    .query()
-    .byType(
-      'IfcWall', 'IfcSlab', 'IfcColumn', 'IfcBeam', 'IfcRoof', 'IfcStair',
-      'IfcDoor', 'IfcWindow', 'IfcRailing', 'IfcFooting', 'IfcCurtainWall',
-      'IfcMember', 'IfcPlate', 'IfcFurnishingElement', 'IfcBuildingElementProxy',
-    )
-    .toArray()
+  const allProducts = bim.query.byType(
+    'IfcWall', 'IfcSlab', 'IfcColumn', 'IfcBeam', 'IfcRoof', 'IfcStair',
+    'IfcDoor', 'IfcWindow', 'IfcRailing', 'IfcFooting', 'IfcCurtainWall',
+    'IfcMember', 'IfcPlate', 'IfcFurnishingElement', 'IfcBuildingElementProxy',
+  )
 
   // Minimum character count before we fall back to a globalId prefix match;
   // avoids accidental wildcarding when the CSV column holds short tokens.

@@ -158,8 +158,11 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
   const vertexTable = parquet.readParquet(vertexParquetData);
   const indexTable = parquet.readParquet(indexParquetData);
 
-  // Convert to Arrow tables for easier access
-  const arrow = await import('apache-arrow');
+  // Convert to Arrow tables for easier access. apache-arrow's browser
+  // export map hides the `.d.ts` from TS5's strict resolver — `any`
+  // here mirrors what the rest of server-client does.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const arrow: any = await import('apache-arrow');
 
   const meshArrow = arrow.tableFromIPC(meshTable.intoIPCStream());
   const vertexArrow = arrow.tableFromIPC(vertexTable.intoIPCStream());
@@ -289,7 +292,10 @@ export async function decodeOptimizedParquetGeometry(
 ): Promise<MeshData[]> {
   // Initialize WASM module (only runs once)
   const parquet = await ensureParquetInit();
-  const arrow = await import('apache-arrow');
+  // apache-arrow's browser export map hides the `.d.ts` from TS5's
+  // strict resolver — fall back to `any` for the dynamic import.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const arrow: any = await import('apache-arrow');
 
   const view = new DataView(data);
   let offset = 0;

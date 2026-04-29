@@ -381,8 +381,13 @@ export class ParquetExporter {
 
     private async toParquet(columns: Record<string, any[]>): Promise<Uint8Array> {
         try {
-            // Dynamic imports for better tree-shaking
-            const arrow = await import('apache-arrow');
+            // Dynamic imports for better tree-shaking. The package's
+            // browser/node exports map keeps `Arrow.dom.mjs` opaque to
+            // TS5's strict resolver, so the import is typed `any` here
+            // and consumers fall back to runtime checks. See:
+            // https://github.com/apache/arrow/issues/35835
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const arrow: any = await import('apache-arrow');
 
             // Build Arrow vectors from column data
             const vectors: Record<string, any> = {};

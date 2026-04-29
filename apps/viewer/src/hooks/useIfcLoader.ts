@@ -281,15 +281,23 @@ export function useIfcLoader() {
         return 'IFC2X3';
       };
 
+      // Native renderer streaming path is currently disabled — the
+      // `huge native file` block further down handles real desktop
+      // streaming. This branch is retained as a scaffold for the future
+      // always-on native renderer integration.
+      const NATIVE_RENDERER_PATH_ENABLED = false as boolean;
       if (
+        NATIVE_RENDERER_PATH_ENABLED &&
         isNativeFileHandle(file) &&
-        fileName.toLowerCase().endsWith('.ifc') &&
-        false
+        fileName.toLowerCase().endsWith('.ifc')
       ) {
+        // Re-narrow `file` for the body — TS occasionally drops the
+        // type-predicate result inside a dead branch.
+        const nativeFile: NativeFileHandle = file;
         const harnessRequest = getActiveHarnessRequest();
-        const nativeCacheKey = computeNativeCacheKey(file);
-        const shouldUseNativeCache = file.size >= CACHE_SIZE_THRESHOLD;
-        const hugeNativeMode = file.size >= HUGE_NATIVE_FILE_THRESHOLD;
+        const nativeCacheKey = computeNativeCacheKey(nativeFile);
+        const shouldUseNativeCache = nativeFile.size >= CACHE_SIZE_THRESHOLD;
+        const hugeNativeMode = nativeFile.size >= HUGE_NATIVE_FILE_THRESHOLD;
         let firstBatchWaitMs: number | null = null;
         let firstVisibleGeometryMs: number | null = null;
         let modelOpenMs: number | null = null;
@@ -312,7 +320,7 @@ export function useIfcLoader() {
         let nativeGeometryCacheHit = false;
         let nativeMetadataSnapshotHit = false;
         let nativeMetadataSource: 'snapshot' | 'ifc-parse' = 'ifc-parse';
-        let nativeMetadataStartGate: 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete' = 'immediate';
+        let nativeMetadataStartGate = 'immediate' as 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete';
         let finalCoordinateInfo: CoordinateInfo | null = null;
 
         console.log(`[useIfc] Native renderer load: ${fileName}, size: ${fileSizeMB.toFixed(2)}MB`);
@@ -727,7 +735,7 @@ export function useIfcLoader() {
         let fullNativeDataStore: IfcDataStore | null = null;
         let nativeLoadStage: 'open' | 'streamGeometry' | 'finalizeGeometry' | 'hydrateMetadata' | 'complete' = 'open';
         let nativeMetadataSource: 'snapshot' | 'ifc-parse' = 'ifc-parse';
-        let nativeMetadataStartGate: 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete' = 'immediate';
+        let nativeMetadataStartGate = 'immediate' as 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete';
 
         setGeometryResult(null);
 
@@ -1638,8 +1646,10 @@ export function useIfcLoader() {
       }
 
       // Try server parsing first (enabled by default for multi-core performance)
-      // Only for IFC4 STEP files (server doesn't support IFCX)
-      if (format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      // Only for IFC4 STEP files (server doesn't support IFCX). Native
+      // file handles (Tauri) don't have an HTTP-uploadable body, so skip
+      // the server path and fall through to the WASM loader.
+      if (format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '' && !isNativeFileHandle(file)) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
@@ -1792,7 +1802,9 @@ export function useIfcLoader() {
           if (geometryIteratorClosed || typeof geometryIterator.return !== 'function') return;
           geometryIteratorClosed = true;
           try {
-            await geometryIterator.return();
+            // `AsyncIterator.return()` is signed as taking a value in
+            // current TS libs; callers conventionally pass `undefined`.
+            await geometryIterator.return(undefined);
           } catch {
             // Ignore iterator shutdown failures during recovery.
           }

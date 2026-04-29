@@ -49,9 +49,11 @@ function getEsbuild(): Promise<EsbuildLike | null> {
       // Resolve WASM binary URL
       let wasmURL: string | undefined;
       try {
-        // Vite: import the .wasm as a URL asset (works in dev + production)
-        // @ts-expect-error — Vite-specific ?url suffix for asset imports; no .d.ts available
-        const wasmMod = await import('esbuild-wasm/esbuild.wasm?url');
+        // Vite: import the .wasm as a URL asset (works in dev + production).
+        // The `?url` suffix is a Vite-specific resolver hint that older TS
+        // versions errored on; current versions resolve it via the bundler
+        // module-resolution mode without needing @ts-expect-error.
+        const wasmMod = await import('esbuild-wasm/esbuild.wasm?url' as string);
         wasmURL = (wasmMod as { default: string }).default;
       } catch {
         // Fallback: CDN (version-pinned to match installed package)

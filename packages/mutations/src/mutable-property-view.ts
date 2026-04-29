@@ -46,6 +46,24 @@ export class MutablePropertyView {
   private positionalAttrMutations: Map<number, Map<number, IfcAttributeValue>> = new Map(); // entityId -> argIndex -> value
   private newEntities: Map<number, NewEntity> = new Map();
   private tombstones: Set<number> = new Set();
+  /**
+   * Overlay-entity → source-entity aliases for property/quantity reads.
+   *
+   * When the viewer duplicates an existing entity, the new entity has
+   * no row in the parsed property table — `getBasePropertiesForEntity`
+   * would return `[]` and the property panel would show "No property
+   * sets". Aliasing redirects the BASE read to the source entity so
+   * the duplicate inherits its psets / qsets visually, while overlay
+   * mutations (overrides, creates, deletes) stay scoped to the
+   * overlay-entity's own id — so editing a property on the duplicate
+   * doesn't bleed into the source.
+   *
+   * Aliases follow at most one hop (no chains). They never affect
+   * STEP export — the export overlay emits the duplicate exactly as
+   * the StoreEditor recorded it, with whatever new IfcRel*ByProperties
+   * the caller chose to add.
+   */
+  private entityAliases: Map<number, number> = new Map();
   private nextAllocatedId: number = 0;
   private mutationHistory: Mutation[] = [];
   private modelId: string;
@@ -88,13 +106,18 @@ export class MutablePropertyView {
 
   /**
    * Get base properties for an entity (before mutations)
-   * Uses on-demand extraction if available, otherwise falls back to base table
+   * Uses on-demand extraction if available, otherwise falls back to base table.
+   *
+   * Follows the entityAliases map for overlay duplicates so a fresh
+   * duplicate inherits its source's psets without paying the cost of
+   * eagerly cloning them into the overlay.
    */
   private getBasePropertiesForEntity(entityId: number): PropertySet[] {
+    const baseId = this.resolveBaseEntityId(entityId);
     // Prefer on-demand extraction if available (client-side WASM parsing)
     if (this.onDemandExtractor) {
       // Normalize the result to PropertySet[] (globalId defaults to empty string)
-      return this.onDemandExtractor(entityId).map(pset => ({
+      return this.onDemandExtractor(baseId).map(pset => ({
         name: pset.name,
         globalId: pset.globalId || '',
         properties: pset.properties.map(prop => ({
@@ -106,7 +129,7 @@ export class MutablePropertyView {
     }
     // Fallback to pre-built property table
     if (this.baseTable) {
-      return this.baseTable.getForEntity(entityId);
+      return this.baseTable.getForEntity(baseId);
     }
     return [];
   }
@@ -446,10 +469,14 @@ export class MutablePropertyView {
 
   /**
    * Get base quantities for an entity (before mutations)
+   *
+   * Follows the entityAliases map for overlay duplicates so a fresh
+   * duplicate inherits its source's qsets.
    */
   private getBaseQuantitiesForEntity(entityId: number): QuantitySet[] {
+    const baseId = this.resolveBaseEntityId(entityId);
     if (this.quantityExtractor) {
-      return this.quantityExtractor(entityId);
+      return this.quantityExtractor(baseId);
     }
     return [];
   }
@@ -826,6 +853,40 @@ export class MutablePropertyView {
    */
   restoreFromTombstone(expressId: number): boolean {
     return this.tombstones.delete(expressId);
+  }
+
+  /**
+   * Alias an overlay-only entity to a source entity for property /
+   * quantity reads. Used by the duplicate flow so a fresh duplicate
+   * inherits its source's psets / qsets in the property panel without
+   * eagerly cloning them. Edits on the duplicate stay scoped to the
+   * duplicate's own id (override slots are keyed by entity id, not
+   * by base id).
+   *
+   * Pass `null` as the source to clear an existing alias.
+   */
+  setEntityAlias(overlayId: number, sourceId: number | null): void {
+    if (sourceId === null) {
+      this.entityAliases.delete(overlayId);
+      return;
+    }
+    if (sourceId === overlayId) return;
+    this.entityAliases.set(overlayId, sourceId);
+  }
+
+  /** Read the alias for a given overlay id, or null if none. */
+  getEntityAlias(overlayId: number): number | null {
+    return this.entityAliases.get(overlayId) ?? null;
+  }
+
+  /**
+   * Resolve to the base id used for property/quantity reads. Returns
+   * the input id when no alias is set. Aliases follow at most one
+   * hop — chained duplicates resolve to their immediate source, not
+   * the original.
+   */
+  resolveBaseEntityId(entityId: number): number {
+    return this.entityAliases.get(entityId) ?? entityId;
   }
 
   /**

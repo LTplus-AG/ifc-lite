@@ -851,6 +851,12 @@ export const createMutationSlice: StateCreator<
       return { error: err instanceof Error ? err.message : 'Failed to duplicate' };
     }
 
+    // Alias the duplicate to its source for base property / quantity
+    // reads — so the property panel shows the source's psets without
+    // us eagerly cloning them. The duplicate's own override slots
+    // remain scoped to the new id.
+    view.setEntityAlias(newId, sourceExpressId);
+
     const newGlobalId = newId + idOffset;
 
     // Mirror the source's meshes into the geometry result with the

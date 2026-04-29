@@ -131,6 +131,22 @@ describe('@ifc-lite/physics', () => {
     expect(async.falling).toEqual(sync.falling);
   });
 
+  it('captureTrajectory records per-frame poses for animation playback', () => {
+    const slab = cube(1, 'IfcSlab', [0, 0, 0.05], [4, 4, 0.1]);
+    const column = cube(2, 'IfcColumn', [0, 0, 1.6], [0.3, 0.3, 3.0]);
+    const result = simulate([slab, column], {
+      durationSeconds: 0.5,
+      captureTrajectory: true,
+    });
+    expect(result.trajectory).toBeDefined();
+    const traj = result.trajectory!;
+    expect(traj.bodyOrder).toEqual([1, 2]);
+    // 30 steps + 1 initial frame, give or take rounding.
+    expect(traj.frameCount).toBeGreaterThanOrEqual(30);
+    expect(traj.poses.length).toBe(traj.frameCount * 2 * 7);
+    expect(traj.frameDt).toBeCloseTo(1 / 60, 4);
+  });
+
   it('skips empty meshes', () => {
     const empty: PhysicsMesh = {
       expressId: 99,

@@ -32,6 +32,17 @@ export interface PhysicsRemovedTarget {
   ifcType: string;
 }
 
+export interface PhysicsPlaybackState {
+  /** True while the timeline is auto-advancing. */
+  isPlaying: boolean;
+  /** Current playback frame index (0..frameCount-1). */
+  frame: number;
+  /** Wall-clock multiplier (1 = real time). */
+  speed: number;
+  /** Loop the animation when it reaches the last frame. */
+  loop: boolean;
+}
+
 export interface PhysicsSliceState {
   /** Right-panel visibility — same convention as bcfPanelVisible. */
   physicsPanelVisible: boolean;
@@ -43,6 +54,8 @@ export interface PhysicsSliceState {
   physicsRemoved: PhysicsRemovedTarget | null;
   /** User-tunable simulation knobs. */
   physicsSettings: PhysicsPanelSettings;
+  /** Animation playback state for the latest result's trajectory. */
+  physicsPlayback: PhysicsPlaybackState;
 }
 
 export interface PhysicsSlice extends PhysicsSliceState {
@@ -55,7 +68,15 @@ export interface PhysicsSlice extends PhysicsSliceState {
   ) => void;
   clearPhysicsResult: () => void;
   updatePhysicsSettings: (patch: Partial<PhysicsPanelSettings>) => void;
+  setPhysicsPlayback: (patch: Partial<PhysicsPlaybackState>) => void;
 }
+
+const PLAYBACK_DEFAULT: PhysicsPlaybackState = {
+  isPlaying: false,
+  frame: 0,
+  speed: 1,
+  loop: false,
+};
 
 export const PHYSICS_DEFAULT_SETTINGS: PhysicsPanelSettings = {
   durationSeconds: 1.5,
@@ -71,15 +92,30 @@ export const createPhysicsSlice: StateCreator<PhysicsSlice, [], [], PhysicsSlice
   physicsResult: null,
   physicsRemoved: null,
   physicsSettings: { ...PHYSICS_DEFAULT_SETTINGS },
+  physicsPlayback: { ...PLAYBACK_DEFAULT },
 
   setPhysicsPanelVisible: (physicsPanelVisible) => set({ physicsPanelVisible }),
   togglePhysicsPanel: () =>
     set((state) => ({ physicsPanelVisible: !state.physicsPanelVisible })),
   setPhysicsRunning: (physicsRunning) => set({ physicsRunning }),
   setPhysicsResult: (physicsResult, physicsRemoved) =>
-    set({ physicsResult, physicsRemoved, physicsRunning: false }),
+    set({
+      physicsResult,
+      physicsRemoved,
+      physicsRunning: false,
+      // Reset to the start of the new trajectory; if the user already had
+      // playback running, the RAF driver will pick the new frame up.
+      physicsPlayback: { ...PLAYBACK_DEFAULT },
+    }),
   clearPhysicsResult: () =>
-    set({ physicsResult: null, physicsRemoved: null, physicsRunning: false }),
+    set({
+      physicsResult: null,
+      physicsRemoved: null,
+      physicsRunning: false,
+      physicsPlayback: { ...PLAYBACK_DEFAULT },
+    }),
   updatePhysicsSettings: (patch) =>
     set((state) => ({ physicsSettings: { ...state.physicsSettings, ...patch } })),
+  setPhysicsPlayback: (patch) =>
+    set((state) => ({ physicsPlayback: { ...state.physicsPlayback, ...patch } })),
 });

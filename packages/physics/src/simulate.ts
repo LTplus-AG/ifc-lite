@@ -32,6 +32,7 @@ import {
   type ResolvedSimulateOptions,
   type SimulateOptions,
   type SimulationResult,
+  type SimulationTrajectory,
   type Stability,
   resolveOptions,
 } from './types.js';
@@ -94,11 +95,14 @@ export function simulate(
   rawOptions?: SimulateOptions,
 ): SimulationResult {
   const built = buildWorld(meshes, rawOptions);
+  const recorder = createRecorder(built);
   try {
+    if (recorder) recorder.recordFrame(0);
     for (let i = 0; i < built.steps; i++) {
       built.world.step();
+      if (recorder) recorder.recordFrame(i + 1);
     }
-    return collect(built);
+    return collect(built, recorder?.finalize());
   } finally {
     built.world.free();
   }
@@ -113,17 +117,83 @@ export async function simulateAsync(
   rawOptions?: SimulateOptions,
 ): Promise<SimulationResult> {
   const built = buildWorld(meshes, rawOptions);
+  const recorder = createRecorder(built);
   try {
+    if (recorder) recorder.recordFrame(0);
     for (let i = 0; i < built.steps; i++) {
       built.world.step();
+      if (recorder) recorder.recordFrame(i + 1);
       if ((i + 1) % STEPS_PER_YIELD === 0 && i + 1 < built.steps) {
         await yieldToEventLoop();
       }
     }
-    return collect(built);
+    return collect(built, recorder?.finalize());
   } finally {
     built.world.free();
   }
+}
+
+interface TrajectoryRecorder {
+  /** Step index after the most recent world.step(). 0 = initial pose. */
+  recordFrame(stepIndex: number): void;
+  finalize(): SimulationTrajectory;
+}
+
+function createRecorder(built: BuiltWorld): TrajectoryRecorder | null {
+  const { options, entries, steps } = built;
+  if (!options.captureTrajectory) return null;
+  const stride = Math.max(1, options.trajectoryStride | 0);
+
+  // We always record frame 0 (initial), plus every `stride`-th step. The
+  // last sample beyond `steps` is dropped.
+  const frameCount = 1 + Math.floor(steps / stride);
+  const bodyCount = entries.length;
+  const poses = new Float32Array(frameCount * bodyCount * 7);
+  const bodyOrder = entries.map((e) => e.expressId);
+  let nextFrameIndex = 0;
+
+  return {
+    recordFrame(stepIndex: number) {
+      // Step 0 = initial state; subsequent steps recorded only when on a
+      // stride boundary AND we still have room in the pre-allocated buffer.
+      if (stepIndex !== 0 && stepIndex % stride !== 0) return;
+      if (nextFrameIndex >= frameCount) return;
+      const base = nextFrameIndex * bodyCount * 7;
+      for (let b = 0; b < bodyCount; b++) {
+        const e = entries[b];
+        const t = e.body.translation();
+        const r = e.body.rotation();
+        const o = base + b * 7;
+        poses[o] = t.x;
+        poses[o + 1] = t.y;
+        poses[o + 2] = t.z;
+        poses[o + 3] = r.x;
+        poses[o + 4] = r.y;
+        poses[o + 5] = r.z;
+        poses[o + 6] = r.w;
+      }
+      nextFrameIndex++;
+    },
+    finalize() {
+      // If the run was shorter than expected (rare — happens if duration
+      // was 0), trim the buffer so `frameCount` matches the truth.
+      if (nextFrameIndex < frameCount) {
+        const trimmed = poses.slice(0, nextFrameIndex * bodyCount * 7);
+        return {
+          frameCount: nextFrameIndex,
+          frameDt: built.world.timestep * stride,
+          bodyOrder,
+          poses: trimmed,
+        };
+      }
+      return {
+        frameCount,
+        frameDt: built.world.timestep * stride,
+        bodyOrder,
+        poses,
+      };
+    },
+  };
 }
 
 function yieldToEventLoop(): Promise<void> {
@@ -329,7 +399,10 @@ function computeJoints(
   return pairs;
 }
 
-function collect(built: BuiltWorld): SimulationResult {
+function collect(
+  built: BuiltWorld,
+  trajectory?: SimulationTrajectory,
+): SimulationResult {
   const { entries, jointPairs, options } = built;
   const bodies: BodyOutcome[] = [];
   const stable: number[] = [];
@@ -395,6 +468,7 @@ function collect(built: BuiltWorld): SimulationResult {
     tilted,
     anchored,
     joints: jointPairs,
+    trajectory,
   };
 }
 

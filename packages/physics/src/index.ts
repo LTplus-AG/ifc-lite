@@ -31,9 +31,11 @@ export type {
   AABB,
   AnchorReason,
   BodyOutcome,
+  ColliderStrategy,
   PhysicsMesh,
   ResolvedSimulateOptions,
   SimulateOptions,
   SimulationResult,
+  SimulationTrajectory,
   Stability,
 } from './types.js';

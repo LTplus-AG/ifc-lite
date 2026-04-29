@@ -7,7 +7,7 @@
 use rapier3d::prelude::*;
 
 use crate::types::{
-    BodyOutcome, PhysicsMesh, SimulateOptions, SimulationResult, Stability,
+    BodyOutcome, PhysicsMesh, SimulateOptions, SimulationResult, SimulationTrajectory, Stability,
 };
 use crate::world::build_world;
 
@@ -30,7 +30,33 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
 
     let total = options.duration_seconds.max(0.0);
     let steps = (total / dt).ceil() as usize;
-    for _ in 0..steps {
+    let stride = options.trajectory_stride.max(1);
+    let body_count = build.entries.len();
+    let mut trajectory_poses: Vec<f32> = if options.capture_trajectory {
+        // Pre-allocate: 1 (initial) + steps/stride frames worst-case.
+        let estimated_frames = 1 + steps / stride;
+        Vec::with_capacity(estimated_frames * body_count * 7)
+    } else {
+        Vec::new()
+    };
+    let record_pose =
+        |poses: &mut Vec<f32>, bodies: &RigidBodySet, entries: &[crate::world::BodyEntry]| {
+            for entry in entries {
+                if let Some(body) = bodies.get(entry.handle) {
+                    let t = body.translation();
+                    let r = body.rotation();
+                    poses.extend_from_slice(&[t.x, t.y, t.z, r.x, r.y, r.z, r.w]);
+                } else {
+                    poses.extend_from_slice(&[0.0; 7]);
+                }
+            }
+        };
+
+    if options.capture_trajectory {
+        record_pose(&mut trajectory_poses, &build.bodies, &build.entries);
+    }
+
+    for step_index in 0..steps {
         physics_pipeline.step(
             gravity,
             &params,
@@ -45,6 +71,9 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
             &physics_hooks,
             &event_handler,
         );
+        if options.capture_trajectory && (step_index + 1) % stride == 0 {
+            record_pose(&mut trajectory_poses, &build.bodies, &build.entries);
+        }
     }
 
     let mut bodies_out: Vec<BodyOutcome> = Vec::with_capacity(build.entries.len());
@@ -112,6 +141,22 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
     removed_sorted.sort_unstable();
     removed_sorted.dedup();
 
+    let trajectory = if options.capture_trajectory {
+        let frame_count = if body_count == 0 {
+            0
+        } else {
+            trajectory_poses.len() / (body_count * 7)
+        };
+        Some(SimulationTrajectory {
+            frame_count,
+            frame_dt: dt * stride as f32,
+            body_order: build.entries.iter().map(|e| e.express_id).collect(),
+            poses: trajectory_poses,
+        })
+    } else {
+        None
+    };
+
     SimulationResult {
         bodies: bodies_out,
         removed: removed_sorted,
@@ -120,5 +165,6 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
         tilted,
         anchored,
         joints: build.joint_pairs,
+        trajectory,
     }
 }

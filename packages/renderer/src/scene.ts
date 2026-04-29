@@ -1620,4 +1620,249 @@ export class Scene {
       isolatedIds,
     );
   }
+
+  // ─── Physics animation playback ───────────────────────────────────────
+  //
+  // The renderer doesn't have per-mesh model matrices: meshes get merged
+  // into batched vertex buffers at upload time with their world-space
+  // positions baked in. To play back a physics simulation we patch the
+  // affected slice of each batch's vertex buffer per frame via
+  // `device.queue.writeBuffer`. The slice for a given express id is
+  // computed by walking its bucket's mesh order and summing vertex counts.
+  //
+  // Only the bodies in `expressIds` get their original 7-float-stride
+  // slice snapshotted, so the memory cost scales with how many elements
+  // the user is animating, not the whole model.
+
+  private physicsAnim: PhysicsAnimState | null = null;
+
+  /**
+   * Snapshot the original GPU vertex slices for a set of bodies. Call
+   * before driving frames via `applyPhysicsAnimationFrame`. Repeated calls
+   * replace the snapshot.
+   */
+  beginPhysicsAnimation(expressIds: Iterable<number>): void {
+    const registry = new Map<number, AnimEntry[]>();
+    for (const id of expressIds) {
+      const pieces = this.meshDataMap.get(id);
+      if (!pieces) continue;
+      const entries: AnimEntry[] = [];
+      for (const piece of pieces) {
+        const bucket = this.meshDataBucket.get(piece);
+        if (!bucket || !bucket.batchedMesh) continue;
+        const vertexStart = findVertexStartInBucket(bucket, piece);
+        if (vertexStart < 0) continue;
+        const vertexCount = piece.positions.length / 3;
+        if (vertexCount === 0) continue;
+        const originalStride7 = new Float32Array(vertexCount * 7);
+        fillOriginalSlice(originalStride7, piece);
+        entries.push({
+          batch: bucket.batchedMesh,
+          vertexStart,
+          vertexCount,
+          originalStride7,
+          centroid: computeAabbCenter(piece.positions),
+        });
+      }
+      if (entries.length > 0) registry.set(id, entries);
+    }
+    this.physicsAnim = { registry, displaced: new Set() };
+  }
+
+  /**
+   * Apply per-body translation + rotation to the patched vertex buffers.
+   * Bodies absent from `transforms` are reset to their original baked
+   * positions if they were displaced in a previous frame.
+   */
+  applyPhysicsAnimationFrame(
+    transforms: Map<number, AnimTransform>,
+    device: GPUDevice,
+  ): void {
+    const state = this.physicsAnim;
+    if (!state) return;
+
+    const newDisplaced = new Set<number>();
+
+    for (const [id, transform] of transforms) {
+      const entries = state.registry.get(id);
+      if (!entries) continue;
+      newDisplaced.add(id);
+      for (const entry of entries) {
+        const out = new Float32Array(entry.vertexCount * 7);
+        applyTransformIntoSlice(out, entry.originalStride7, entry.centroid, transform);
+        device.queue.writeBuffer(
+          entry.batch.vertexBuffer,
+          entry.vertexStart * 7 * 4,
+          out.buffer,
+          out.byteOffset,
+          out.byteLength,
+        );
+      }
+    }
+
+    // Reset bodies that moved last frame but aren't transformed this frame.
+    for (const id of state.displaced) {
+      if (newDisplaced.has(id)) continue;
+      const entries = state.registry.get(id);
+      if (!entries) continue;
+      for (const entry of entries) {
+        device.queue.writeBuffer(
+          entry.batch.vertexBuffer,
+          entry.vertexStart * 7 * 4,
+          entry.originalStride7.buffer,
+          entry.originalStride7.byteOffset,
+          entry.originalStride7.byteLength,
+        );
+      }
+    }
+
+    state.displaced = newDisplaced;
+  }
+
+  /**
+   * Restore every animated body to its baked position and drop the
+   * snapshot. Cheap to call when no animation is active.
+   */
+  endPhysicsAnimation(device: GPUDevice): void {
+    const state = this.physicsAnim;
+    if (!state) return;
+    for (const id of state.displaced) {
+      const entries = state.registry.get(id);
+      if (!entries) continue;
+      for (const entry of entries) {
+        device.queue.writeBuffer(
+          entry.batch.vertexBuffer,
+          entry.vertexStart * 7 * 4,
+          entry.originalStride7.buffer,
+          entry.originalStride7.byteOffset,
+          entry.originalStride7.byteLength,
+        );
+      }
+    }
+    this.physicsAnim = null;
+  }
+}
+
+interface AnimEntry {
+  batch: BatchedMesh;
+  /** First vertex index of this mesh inside the batch's merged buffer. */
+  vertexStart: number;
+  /** Vertex count for this mesh. */
+  vertexCount: number;
+  /** 7-floats-per-vertex snapshot (pos.xyz + normal.xyz + entityId-as-f32). */
+  originalStride7: Float32Array;
+  /** AABB center used as rotation pivot. Matches the physics body translation. */
+  centroid: [number, number, number];
+}
+
+interface PhysicsAnimState {
+  registry: Map<number, AnimEntry[]>;
+  /** Bodies whose buffer slice currently differs from their original snapshot. */
+  displaced: Set<number>;
+}
+
+export interface AnimTransform {
+  /** World-space translation of the body's centroid at this frame. */
+  tx: number;
+  ty: number;
+  tz: number;
+  /** World-space rotation as a quaternion (x, y, z, w). */
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
+}
+
+function findVertexStartInBucket(bucket: BatchBucket, target: MeshData): number {
+  let start = 0;
+  for (const piece of bucket.meshData) {
+    if (piece === target) return start;
+    start += piece.positions.length / 3;
+  }
+  return -1;
+}
+
+function fillOriginalSlice(out: Float32Array, piece: MeshData): void {
+  const positions = piece.positions;
+  const normals = piece.normals;
+  const vc = positions.length / 3;
+  const u32 = new Uint32Array(out.buffer, out.byteOffset, out.length);
+  const perVertexIds = piece.entityIds;
+  const fallbackId = piece.expressId >>> 0;
+  const hasNormals = normals.length > 0;
+  for (let i = 0; i < vc; i++) {
+    const o = i * 7;
+    const s = i * 3;
+    out[o] = positions[s];
+    out[o + 1] = positions[s + 1];
+    out[o + 2] = positions[s + 2];
+    out[o + 3] = hasNormals ? normals[s] : 0;
+    out[o + 4] = hasNormals ? normals[s + 1] : 0;
+    out[o + 5] = hasNormals ? normals[s + 2] : 0;
+    u32[o + 6] = perVertexIds ? perVertexIds[i] : fallbackId;
+  }
+}
+
+function computeAabbCenter(positions: Float32Array | number[]): [number, number, number] {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    const x = positions[i], y = positions[i + 1], z = positions[i + 2];
+    if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
+  }
+  return [(minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5];
+}
+
+function applyTransformIntoSlice(
+  out: Float32Array,
+  original: Float32Array,
+  centroid: [number, number, number],
+  transform: AnimTransform,
+): void {
+  const cx = centroid[0], cy = centroid[1], cz = centroid[2];
+  const { tx, ty, tz, qx, qy, qz, qw } = transform;
+  const u32In = new Uint32Array(original.buffer, original.byteOffset, original.length);
+  const u32Out = new Uint32Array(out.buffer, out.byteOffset, out.length);
+  const vc = out.length / 7;
+  for (let i = 0; i < vc; i++) {
+    const o = i * 7;
+    // Position relative to original centroid → rotate → add new world translation.
+    const lx = original[o] - cx;
+    const ly = original[o + 1] - cy;
+    const lz = original[o + 2] - cz;
+    const [rx, ry, rz] = quatRotate(qx, qy, qz, qw, lx, ly, lz);
+    out[o] = rx + tx;
+    out[o + 1] = ry + ty;
+    out[o + 2] = rz + tz;
+    // Rotate normals (no translation).
+    const [nrx, nry, nrz] = quatRotate(qx, qy, qz, qw, original[o + 3], original[o + 4], original[o + 5]);
+    out[o + 3] = nrx;
+    out[o + 4] = nry;
+    out[o + 5] = nrz;
+    // Preserve entity-id lane verbatim.
+    u32Out[o + 6] = u32In[o + 6];
+  }
+}
+
+/** v' = q * v * q^-1, expanded for unit quaternions (no normalization). */
+function quatRotate(
+  qx: number,
+  qy: number,
+  qz: number,
+  qw: number,
+  vx: number,
+  vy: number,
+  vz: number,
+): [number, number, number] {
+  // t = 2 * (q.xyz × v)
+  const tx = 2 * (qy * vz - qz * vy);
+  const ty = 2 * (qz * vx - qx * vz);
+  const tz = 2 * (qx * vy - qy * vx);
+  // v' = v + qw * t + (q.xyz × t)
+  return [
+    vx + qw * tx + (qy * tz - qz * ty),
+    vy + qw * ty + (qz * tx - qx * tz),
+    vz + qw * tz + (qx * ty - qy * tx),
+  ];
 }

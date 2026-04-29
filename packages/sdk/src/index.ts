@@ -111,6 +111,7 @@ export type {
   PhysicsColliderStrategy,
   PhysicsSimulateOptions,
   PhysicsSimulationResult,
+  PhysicsSimulationTrajectory,
   PhysicsStability,
 
   // Schedule data

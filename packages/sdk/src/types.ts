@@ -413,6 +413,25 @@ export interface PhysicsSimulateOptions {
   anchorIfcTypes?: string[];
   /** Collider shape strategy. Default: `auto`. */
   colliderStrategy?: PhysicsColliderStrategy;
+  /** Record per-frame poses so the result can be played back as an animation. */
+  captureTrajectory?: boolean;
+  /** Sample every Nth physics step into the trajectory. Default `1`. */
+  trajectoryStride?: number;
+}
+
+/** Per-frame body poses for animation playback. */
+export interface PhysicsSimulationTrajectory {
+  /** Number of recorded frames (including the initial pose at frame 0). */
+  frameCount: number;
+  /** Wall-clock seconds between consecutive recorded frames. */
+  frameDt: number;
+  /** Express IDs in the order their poses appear in `poses`. */
+  bodyOrder: number[];
+  /**
+   * Flat float buffer: per frame, per body, 7 floats — translation (x,y,z)
+   * followed by rotation quaternion (x,y,z,w). World-space.
+   */
+  poses: Float32Array;
 }
 
 export interface PhysicsBodyOutcome {
@@ -438,6 +457,8 @@ export interface PhysicsSimulationResult {
   anchored: number[];
   /** Connection graph used for joint inference: pairs of express IDs welded together. */
   joints: Array<[number, number]>;
+  /** Per-frame trajectory, present only when `captureTrajectory` was set. */
+  trajectory?: PhysicsSimulationTrajectory;
 }
 
 export interface PhysicsBackendMethods {

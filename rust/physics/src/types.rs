@@ -185,6 +185,23 @@ pub struct SimulateOptions {
 
     /// How to convert each mesh into a collider shape.
     pub collider_strategy: ColliderStrategy,
+
+    /// If true, record per-frame body poses so the caller can play back
+    /// the simulation as an animation.
+    pub capture_trajectory: bool,
+
+    /// Sample every Nth step for the trajectory. Default 1 (every step).
+    pub trajectory_stride: usize,
+}
+
+/// Per-frame body poses, indexed `frame * body_count * 7 + body_index * 7`.
+/// Each pose: translation (x, y, z) then rotation quaternion (x, y, z, w).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimulationTrajectory {
+    pub frame_count: usize,
+    pub frame_dt: f32,
+    pub body_order: Vec<u32>,
+    pub poses: Vec<f32>,
 }
 
 impl Default for SimulateOptions {
@@ -206,6 +223,8 @@ impl Default for SimulateOptions {
                 "IfcFoundation".to_string(),
             ],
             collider_strategy: ColliderStrategy::Auto,
+            capture_trajectory: false,
+            trajectory_stride: 1,
         }
     }
 }
@@ -238,4 +257,7 @@ pub struct SimulationResult {
     /// Connection graph used for joint inference: pairs of express IDs whose
     /// AABBs touched within `adjacency_tolerance` and were welded together.
     pub joints: Vec<(u32, u32)>,
+    /// Per-frame poses, present only when `capture_trajectory` was set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trajectory: Option<SimulationTrajectory>,
 }

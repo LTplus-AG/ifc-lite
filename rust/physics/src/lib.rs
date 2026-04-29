@@ -31,7 +31,7 @@ mod world;
 pub use simulate::simulate;
 pub use types::{
     Aabb, AnchorReason, BodyOutcome, ColliderStrategy, PhysicsMesh, SimulateOptions,
-    SimulationResult, Stability,
+    SimulationResult, SimulationTrajectory, Stability,
 };
 
 #[cfg(test)]
@@ -223,6 +223,44 @@ mod tests {
             },
         );
         assert_eq!(result.bodies.len(), 2);
+    }
+
+    #[test]
+    fn capture_trajectory_records_per_frame_poses() {
+        let slab = cube(1, "IfcSlab", [0.0, 0.0, 0.05], [4.0, 4.0, 0.1]);
+        let column = cube(2, "IfcColumn", [0.0, 0.0, 1.6], [0.3, 0.3, 3.0]);
+        let result = simulate(
+            &[slab, column],
+            &SimulateOptions {
+                duration_seconds: 0.5,
+                capture_trajectory: true,
+                trajectory_stride: 1,
+                ..Default::default()
+            },
+        );
+        let trajectory = result.trajectory.expect("trajectory captured");
+        assert_eq!(trajectory.body_order, vec![1, 2]);
+        // dt = 1/60 ≈ 0.0167; 0.5s ⇒ 30 steps; +1 initial frame ⇒ 31.
+        assert!(trajectory.frame_count >= 30);
+        assert_eq!(trajectory.poses.len(), trajectory.frame_count * 2 * 7);
+    }
+
+    #[test]
+    fn trajectory_stride_thins_frames() {
+        let slab = cube(1, "IfcSlab", [0.0, 0.0, 0.05], [4.0, 4.0, 0.1]);
+        let result = simulate(
+            &[slab],
+            &SimulateOptions {
+                duration_seconds: 0.5,
+                capture_trajectory: true,
+                trajectory_stride: 5,
+                ..Default::default()
+            },
+        );
+        let trajectory = result.trajectory.expect("trajectory captured");
+        // 30 / 5 = 6 stride frames + 1 initial = 7
+        assert!(trajectory.frame_count <= 8);
+        assert!(trajectory.frame_count >= 6);
     }
 
     #[test]

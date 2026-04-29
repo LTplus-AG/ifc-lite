@@ -173,5 +173,8 @@ function toEngineOptions(
     groundAnchorTolerance: options.groundAnchorTolerance,
     anchorIfcTypes: options.anchorIfcTypes,
     colliderStrategy: options.colliderStrategy,
+    // The viewer always wants playback by default — caller can override.
+    captureTrajectory: options.captureTrajectory ?? true,
+    trajectoryStride: options.trajectoryStride,
   };
 }

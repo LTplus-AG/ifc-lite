@@ -30,6 +30,7 @@ import {
   type ViewportStateRefs,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
+import { usePhysicsPlaybackDriver } from '../../hooks/usePhysicsPlaybackDriver.js';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
@@ -66,6 +67,11 @@ export function Viewport({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Drives the physics simulation playback (per-frame mesh transforms).
+  // Mounted here because the hook needs the renderer ref to be set up
+  // already; the global ref is wired below in the init effect.
+  usePhysicsPlaybackDriver();
 
   const focusViewportForKeyboardShortcuts = useCallback(() => {
     const canvas = canvasRef.current;

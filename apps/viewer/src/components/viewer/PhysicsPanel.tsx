@@ -22,7 +22,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   Bomb,
+  Pause,
   Play,
+  Repeat,
   RefreshCw,
   RotateCcw,
   Settings,
@@ -40,7 +42,7 @@ import type {
   PhysicsSimulateOptions,
   PhysicsSimulationResult,
 } from '@ifc-lite/sdk';
-import type { PhysicsPanelSettings } from '@/store/slices/physicsSlice';
+import type { PhysicsPanelSettings, PhysicsPlaybackState } from '@/store/slices/physicsSlice';
 
 interface PhysicsPanelProps {
   onClose: () => void;
@@ -53,10 +55,12 @@ export function PhysicsPanel({ onClose }: PhysicsPanelProps) {
   const removed = useViewerStore((s) => s.physicsRemoved);
   const running = useViewerStore((s) => s.physicsRunning);
   const settings = useViewerStore((s) => s.physicsSettings);
+  const playback = useViewerStore((s) => s.physicsPlayback);
   const setRunning = useViewerStore((s) => s.setPhysicsRunning);
   const setResult = useViewerStore((s) => s.setPhysicsResult);
   const clearResult = useViewerStore((s) => s.clearPhysicsResult);
   const updateSettings = useViewerStore((s) => s.updatePhysicsSettings);
+  const setPlayback = useViewerStore((s) => s.setPhysicsPlayback);
 
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
@@ -237,6 +241,16 @@ export function PhysicsPanel({ onClose }: PhysicsPanelProps) {
             </Button>
           </div>
         </section>
+
+        {/* Playback */}
+        {result?.trajectory && (
+          <PlaybackBlock
+            frameCount={result.trajectory.frameCount}
+            frameDt={result.trajectory.frameDt}
+            playback={playback}
+            onChange={setPlayback}
+          />
+        )}
 
         {/* Settings */}
         {showSettings && (
@@ -436,6 +450,95 @@ function EmptyState() {
         Falling = the element drops once the target is gone. Tilted = it
         leans but stays. Anchored = treated as fixed (footings, piles, slabs
         on the model floor).
+      </p>
+    </section>
+  );
+}
+
+interface PlaybackBlockProps {
+  frameCount: number;
+  frameDt: number;
+  playback: PhysicsPlaybackState;
+  onChange: (patch: Partial<PhysicsPlaybackState>) => void;
+}
+
+const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4];
+
+function PlaybackBlock({ frameCount, frameDt, playback, onChange }: PlaybackBlockProps) {
+  const totalSeconds = frameCount * frameDt;
+  const currentSeconds = playback.frame * frameDt;
+  const atEnd = playback.frame >= frameCount - 1;
+
+  return (
+    <section className="px-3 py-3 border-b border-border space-y-2">
+      <div className="flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
+        <span>Playback</span>
+        <span className="tabular-nums normal-case text-[10px] text-muted-foreground">
+          {currentSeconds.toFixed(2)}s / {totalSeconds.toFixed(2)}s
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="inline-flex items-center justify-center h-7 w-7 rounded border border-border hover:bg-accent"
+          onClick={() => {
+            if (atEnd && !playback.isPlaying) {
+              // Restart from the beginning when hitting Play after finish.
+              onChange({ frame: 0, isPlaying: true });
+            } else {
+              onChange({ isPlaying: !playback.isPlaying });
+            }
+          }}
+          title={playback.isPlaying ? 'Pause' : atEnd ? 'Replay' : 'Play'}
+        >
+          {playback.isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+        </button>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center h-7 w-7 rounded border border-border hover:bg-accent"
+          onClick={() => onChange({ frame: 0, isPlaying: false })}
+          title="Restart"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className={
+            'inline-flex items-center justify-center h-7 w-7 rounded border ' +
+            (playback.loop ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-accent')
+          }
+          onClick={() => onChange({ loop: !playback.loop })}
+          title="Loop"
+        >
+          <Repeat className="h-3.5 w-3.5" />
+        </button>
+        <select
+          className="text-xs bg-background border border-border rounded px-1 h-7"
+          value={playback.speed}
+          onChange={(e) => onChange({ speed: Number(e.target.value) })}
+          title="Playback speed"
+        >
+          {SPEED_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s}×
+            </option>
+          ))}
+        </select>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={Math.max(0, frameCount - 1)}
+        step={1}
+        value={playback.frame}
+        onChange={(e) =>
+          onChange({ frame: Number(e.target.value), isPlaying: false })
+        }
+        className="w-full accent-primary"
+      />
+      <p className="text-[10px] text-muted-foreground leading-tight">
+        Scrub the timeline to inspect any moment, or hit Play to watch the
+        what-if collapse unfold.
       </p>
     </section>
   );

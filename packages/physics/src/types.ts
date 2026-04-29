@@ -70,6 +70,36 @@ export interface SimulateOptions {
 
   /** How to convert each mesh into a collider shape. Default: `auto`. */
   colliderStrategy?: ColliderStrategy;
+
+  /**
+   * If true, record per-frame body poses so the caller can play back the
+   * simulation as an animation. Adds memory proportional to
+   * `bodies × frames × 7 floats × 4 bytes`. Off by default — only the
+   * viewer enables this.
+   */
+  captureTrajectory?: boolean;
+
+  /**
+   * Sample every Nth physics step for the trajectory. Default `1` (every
+   * step). Use larger values to halve / third the memory footprint on
+   * long simulations.
+   */
+  trajectoryStride?: number;
+}
+
+/** Per-frame body poses, indexed `frame * bodyCount * 7 + bodyIndex * 7`. */
+export interface SimulationTrajectory {
+  /** Number of recorded frames. */
+  frameCount: number;
+  /** Wall-clock seconds between consecutive recorded frames. */
+  frameDt: number;
+  /** Express IDs in the order their poses appear in `poses`. */
+  bodyOrder: number[];
+  /**
+   * Flat float buffer: per frame, per body, 7 floats — translation (x,y,z)
+   * followed by rotation quaternion (x,y,z,w). World-space.
+   */
+  poses: Float32Array;
 }
 
 /** Resolved options with all defaults filled in. */
@@ -86,6 +116,8 @@ export interface ResolvedSimulateOptions {
   groundAnchorTolerance: number;
   anchorIfcTypes: string[];
   colliderStrategy: ColliderStrategy;
+  captureTrajectory: boolean;
+  trajectoryStride: number;
 }
 
 export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
@@ -101,6 +133,8 @@ export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
   groundAnchorTolerance: 0.05,
   anchorIfcTypes: ['IfcFooting', 'IfcPile', 'IfcFoundation'],
   colliderStrategy: 'auto',
+  captureTrajectory: false,
+  trajectoryStride: 1,
 };
 
 export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimulateOptions {
@@ -117,6 +151,8 @@ export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimul
     groundAnchorTolerance: opts?.groundAnchorTolerance ?? DEFAULT_OPTIONS.groundAnchorTolerance,
     anchorIfcTypes: opts?.anchorIfcTypes ?? DEFAULT_OPTIONS.anchorIfcTypes.slice(),
     colliderStrategy: opts?.colliderStrategy ?? DEFAULT_OPTIONS.colliderStrategy,
+    captureTrajectory: opts?.captureTrajectory ?? DEFAULT_OPTIONS.captureTrajectory,
+    trajectoryStride: Math.max(1, Math.floor(opts?.trajectoryStride ?? DEFAULT_OPTIONS.trajectoryStride)),
   };
 }
 
@@ -143,4 +179,6 @@ export interface SimulationResult {
   anchored: number[];
   /** Connection graph used for joint inference: pairs of express IDs welded together. */
   joints: Array<[number, number]>;
+  /** Per-frame trajectory, present only when `captureTrajectory` was set. */
+  trajectory?: SimulationTrajectory;
 }

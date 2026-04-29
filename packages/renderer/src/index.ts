@@ -11,6 +11,7 @@ export { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 export type { ProjectionMode } from './camera-controls.js';
 export { Scene } from './scene.js';
+export type { AnimTransform } from './scene.js';
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
@@ -50,6 +51,7 @@ import { WebGPUDevice } from './device.js';
 import { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
+import type { AnimTransform } from './scene.js';
 import { Picker } from './picker.js';
 import { MathUtils } from './math.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
@@ -1654,6 +1656,34 @@ export class Renderer {
      */
     requestRender(): void {
         this._renderRequested = true;
+    }
+
+    /**
+     * Begin a physics-animation session. Snapshots the GPU vertex slices
+     * for `expressIds` so subsequent `applyPhysicsAnimationFrame` calls can
+     * patch them in place. Call `endPhysicsAnimation` to restore originals.
+     */
+    beginPhysicsAnimation(expressIds: Iterable<number>): void {
+        this.scene.beginPhysicsAnimation(expressIds);
+    }
+
+    /**
+     * Apply per-body translation + rotation to the patched vertex buffers.
+     * Bodies absent from `transforms` are reset to their original baked
+     * positions if they were displaced in the previous call. The renderer
+     * is asked to redraw automatically.
+     */
+    applyPhysicsAnimationFrame(transforms: Map<number, AnimTransform>): void {
+        this.scene.applyPhysicsAnimationFrame(transforms, this.device.getDevice());
+        this.requestRender();
+    }
+
+    /**
+     * Restore every animated body and drop the snapshot.
+     */
+    endPhysicsAnimation(): void {
+        this.scene.endPhysicsAnimation(this.device.getDevice());
+        this.requestRender();
     }
 
     /**

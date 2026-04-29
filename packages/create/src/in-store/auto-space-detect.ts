@@ -44,6 +44,25 @@ export interface DetectOptions {
   snapTolerance?: number;
   /** Faces below this area are dropped. Default 0.5 m². */
   minArea?: number;
+  /**
+   * When true, the detector emits `console.debug` messages tracing the
+   * pipeline (vertex/edge counts, face areas, drop reasons). Surfaces
+   * the data needed to diagnose "no enclosed regions detected" without
+   * touching the algorithm.
+   */
+  debug?: boolean;
+}
+
+export interface DetectStats {
+  inputSegments: number;
+  vertices: number;
+  segmentsAfterSplit: number;
+  edges: number;
+  faces: number;
+  outerFacesDropped: number;
+  belowMinAreaDropped: number;
+  /** Largest detected interior face area (m²). 0 when no face passed. */
+  largestArea: number;
 }
 
 const DEFAULT_SNAP = 0.05;
@@ -78,9 +97,37 @@ export function detectEnclosedAreas(
   segments: Segment[],
   options: DetectOptions = {},
 ): DetectedSpace[] {
+  return detectEnclosedAreasWithStats(segments, options).spaces;
+}
+
+/**
+ * Same pipeline as `detectEnclosedAreas`, but returns the per-stage
+ * counts alongside the spaces so callers can surface diagnostic
+ * information (used by the orchestrator + viewer Auto Spaces panel).
+ */
+export function detectEnclosedAreasWithStats(
+  segments: Segment[],
+  options: DetectOptions = {},
+): { spaces: DetectedSpace[]; stats: DetectStats } {
   const snap = options.snapTolerance ?? DEFAULT_SNAP;
   const minArea = options.minArea ?? DEFAULT_MIN_AREA;
-  if (segments.length < 3) return [];
+  const debug = !!options.debug;
+  const log = debug ? (...args: unknown[]) => console.debug('[auto-space-detect]', ...args) : () => {};
+  const stats: DetectStats = {
+    inputSegments: segments.length,
+    vertices: 0,
+    segmentsAfterSplit: 0,
+    edges: 0,
+    faces: 0,
+    outerFacesDropped: 0,
+    belowMinAreaDropped: 0,
+    largestArea: 0,
+  };
+  log(`input: ${segments.length} segments, snapTolerance=${snap}, minArea=${minArea}`);
+  if (segments.length < 3) {
+    log('input below 3 segments — no faces possible');
+    return { spaces: [], stats };
+  }
 
   // ── 1. Snap endpoints ──
   const vertices: Vertex[] = [];
@@ -103,18 +150,22 @@ export function detectEnclosedAreas(
     if (ai === bi) continue; // zero-length, post-snap
     indexedSegs.push([ai, bi]);
   }
+  log(`after snap: ${vertices.length} vertices, ${indexedSegs.length} segments`);
 
   // ── 2. Resolve intersections (split at crossings) ──
   // Brute-force O(n²): fine for the wall counts a single storey
-  // typically has (dozens, not thousands).
+  // typically has (dozens, not thousands). Iteration cap scales with
+  // the input — heavy floor plans with many T-junctions can require
+  // significantly more passes than the original 50-iteration default.
   const splitSegs: Array<[number, number]> = [];
   for (let i = 0; i < indexedSegs.length; i++) {
     splitSegs.push([...indexedSegs[i]]);
   }
 
+  const maxIterations = Math.max(100, indexedSegs.length * 10);
   let changed = true;
   let guard = 0;
-  while (changed && guard < 50) {
+  while (changed && guard < maxIterations) {
     changed = false;
     guard++;
     outer: for (let i = 0; i < splitSegs.length; i++) {
@@ -155,6 +206,12 @@ export function detectEnclosedAreas(
     }
   }
 
+  if (changed && guard >= maxIterations) {
+    // Iteration cap hit before the splitter converged — detection
+    // results may be incomplete, but emit them rather than failing.
+    log(`intersection splitter hit iteration cap ${maxIterations}; results may be incomplete`);
+  }
+
   // Deduplicate (a, b) and (b, a) pairs.
   const undirected = new Set<string>();
   const finalSegs: Array<[number, number]> = [];
@@ -165,8 +222,14 @@ export function detectEnclosedAreas(
     undirected.add(key);
     finalSegs.push([a, b]);
   }
+  stats.vertices = vertices.length;
+  stats.segmentsAfterSplit = finalSegs.length;
+  log(`after intersect-split: ${finalSegs.length} unique edges`);
 
-  if (finalSegs.length < 3) return [];
+  if (finalSegs.length < 3) {
+    log('after split: fewer than 3 edges — no faces possible');
+    return { spaces: [], stats };
+  }
 
   // ── 3. Build half-edge graph ──
   const edges: HalfEdge[] = [];
@@ -259,6 +322,10 @@ export function detectEnclosedAreas(
     return { idx, signed, area: Math.abs(signed) };
   });
 
+  stats.edges = edges.length;
+  stats.faces = faceCycles.length;
+  log(`half-edge graph: ${edges.length} half-edges, ${faceCycles.length} faces total`);
+
   // ── 6. Drop outer faces + filter by min area + emit CCW outlines ──
   // With the leftmost-turn walk every interior (enclosed) face winds
   // CCW (signed area > 0); the unbounded face surrounding each
@@ -267,19 +334,28 @@ export function detectEnclosedAreas(
   // since each component contributes its own outer face.
   const out: DetectedSpace[] = [];
   for (const f of faceAreas) {
-    if (f.signed <= 0) continue;
-    if (f.area < minArea) continue;
+    if (f.signed <= 0) {
+      stats.outerFacesDropped++;
+      continue;
+    }
+    if (f.area < minArea) {
+      stats.belowMinAreaDropped++;
+      log(`face #${f.idx}: dropped (area=${f.area.toFixed(3)} < minArea=${minArea})`);
+      continue;
+    }
     const cycle = faceCycles[f.idx];
     const outline: Vec2[] = cycle.map((eid) => {
       const v = vertices[edges[eid].origin].pt;
       return [v[0], v[1]];
     });
     out.push({ outline, area: f.area });
+    if (f.area > stats.largestArea) stats.largestArea = f.area;
   }
 
   // Stable sort: largest area first so the UI shows "main rooms" up top.
   out.sort((a, b) => b.area - a.area);
-  return out;
+  log(`detected ${out.length} interior region(s); dropped ${stats.outerFacesDropped} outer + ${stats.belowMinAreaDropped} below min-area`);
+  return { spaces: out, stats };
 }
 
 /**

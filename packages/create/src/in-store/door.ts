@@ -27,6 +27,34 @@ import {
   ifcElementHeader,
 } from './_emit-helpers.js';
 
+/**
+ * IfcDoorTypeOperationEnum (IFC4). Anything outside this set is
+ * normalised to USERDEFINED + UserDefinedOperationType so the exported
+ * STEP carries a valid enum token.
+ */
+const DOOR_OPERATION_ENUM = new Set([
+  'SINGLE_SWING_LEFT',
+  'SINGLE_SWING_RIGHT',
+  'DOUBLE_DOOR_SINGLE_SWING',
+  'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_LEFT',
+  'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_RIGHT',
+  'DOUBLE_SWING_LEFT',
+  'DOUBLE_SWING_RIGHT',
+  'DOUBLE_DOOR_DOUBLE_SWING',
+  'SLIDING_TO_LEFT',
+  'SLIDING_TO_RIGHT',
+  'DOUBLE_DOOR_SLIDING',
+  'FOLDING_TO_LEFT',
+  'FOLDING_TO_RIGHT',
+  'DOUBLE_DOOR_FOLDING',
+  'REVOLVING',
+  'ROLLINGUP',
+  'SWING_FIXED_LEFT',
+  'SWING_FIXED_RIGHT',
+  'USERDEFINED',
+  'NOTDEFINED',
+]);
+
 export interface DoorInStoreParams {
   /** Bottom-centre of the door leaf, in storey-local coordinates. */
   Position: [number, number, number];
@@ -81,11 +109,18 @@ export function addDoorToStore(
   // OverallHeight / OverallWidth are present on IfcDoor in both schemas.
   attrs.push(params.Height, params.Width);
   if (!isIFC2X3) {
-    const operationType = params.OperationType ?? 'SINGLE_SWING_LEFT';
+    // Free-form values outside IfcDoorTypeOperationEnum are normalised
+    // to USERDEFINED + UserDefinedOperationType so the exported STEP
+    // carries a valid enum token rather than `.<value>.`.
+    const requested = params.OperationType ?? 'SINGLE_SWING_LEFT';
+    const isKnownEnum = DOOR_OPERATION_ENUM.has(requested);
+    const operationType = isKnownEnum ? requested : 'USERDEFINED';
+    const userDefined = operationType === 'USERDEFINED'
+      ? (isKnownEnum ? params.UserDefinedOperationType ?? null : requested)
+      : null;
     attrs.push(`.${params.PredefinedType ?? 'NOTDEFINED'}.`);
     attrs.push(`.${operationType}.`);
-    // UserDefinedOperationType is only meaningful when OperationType=USERDEFINED.
-    attrs.push(operationType === 'USERDEFINED' ? params.UserDefinedOperationType ?? null : null);
+    attrs.push(userDefined);
   }
 
   const doorId = editor.addEntity('IfcDoor', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;

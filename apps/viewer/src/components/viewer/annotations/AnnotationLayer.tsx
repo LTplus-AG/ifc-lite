@@ -180,12 +180,24 @@ export function AnnotationLayer() {
   // against whichever data store the annotation was anchored to.
   const resolveEntityType = (modelId: string | null, expressId: number | null): string | null => {
     if (expressId === null) return null;
-    // Fall back to the active ifcDataStore when the annotation's
-    // modelId is missing or no longer present in `models` (single-model
-    // session, or the federated model unloaded).
-    const dataStore = modelId
-      ? models.get(modelId)?.ifcDataStore ?? ifcDataStore
-      : ifcDataStore;
+    // Federation safety: when the annotation carries a modelId that
+    // isn't in the current `models` map, falling back to
+    // `ifcDataStore` would silently resolve `expressId` against the
+    // wrong model (the same id can exist in many federated models).
+    // The fallback is therefore restricted to single-model sessions.
+    let dataStore: typeof ifcDataStore | null;
+    if (!modelId) {
+      dataStore = ifcDataStore;
+    } else {
+      const scoped = models.get(modelId)?.ifcDataStore;
+      if (scoped) {
+        dataStore = scoped;
+      } else if (models.size <= 1) {
+        dataStore = ifcDataStore;
+      } else {
+        return null;
+      }
+    }
     if (!dataStore?.entities) return null;
     return dataStore.entities.getTypeName(expressId) || null;
   };

@@ -19,6 +19,25 @@ import {
   ifcElementHeader,
 } from './_emit-helpers.js';
 
+/**
+ * IfcWindowTypePartitioningEnum (IFC4). Anything outside this set is
+ * normalised to USERDEFINED + UserDefinedPartitioningType so the
+ * exported STEP carries a valid enum token.
+ */
+const WINDOW_PARTITIONING_ENUM = new Set([
+  'SINGLE_PANEL',
+  'DOUBLE_PANEL_VERTICAL',
+  'DOUBLE_PANEL_HORIZONTAL',
+  'TRIPLE_PANEL_VERTICAL',
+  'TRIPLE_PANEL_BOTTOM',
+  'TRIPLE_PANEL_TOP',
+  'TRIPLE_PANEL_LEFT',
+  'TRIPLE_PANEL_RIGHT',
+  'TRIPLE_PANEL_HORIZONTAL',
+  'USERDEFINED',
+  'NOTDEFINED',
+]);
+
 export interface WindowInStoreParams {
   /** Sill-centre of the window, in storey-local coordinates. */
   Position: [number, number, number];
@@ -70,10 +89,19 @@ export function addWindowToStore(
   const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Window');
   attrs.push(params.Height, params.Width);
   if (!isIFC2X3) {
-    const partitioningType = params.PartitioningType ?? 'NOTDEFINED';
+    // Free-form values that aren't part of IfcWindowTypePartitioningEnum
+    // are normalised to .USERDEFINED. + UserDefinedPartitioningType so
+    // they round-trip through STEP without producing invalid `.<value>.`
+    // enum tokens.
+    const requested = params.PartitioningType ?? 'NOTDEFINED';
+    const isKnownEnum = WINDOW_PARTITIONING_ENUM.has(requested);
+    const partitioningType = isKnownEnum ? requested : 'USERDEFINED';
+    const userDefined = partitioningType === 'USERDEFINED'
+      ? (isKnownEnum ? params.UserDefinedPartitioningType ?? null : requested)
+      : null;
     attrs.push(`.${params.PredefinedType ?? 'NOTDEFINED'}.`);
     attrs.push(`.${partitioningType}.`);
-    attrs.push(partitioningType === 'USERDEFINED' ? params.UserDefinedPartitioningType ?? null : null);
+    attrs.push(userDefined);
   }
 
   const windowId = editor.addEntity('IfcWindow', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;

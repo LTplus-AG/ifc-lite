@@ -44,8 +44,11 @@ export type Vec3 = [number, number, number];
 export interface SourceAssociation {
   /** Existing rel's IFC type (e.g. `'IfcRelDefinesByProperties'`). */
   relType: string;
-  /** Existing rel's OwnerHistory expressId. Reused on the new rel. */
-  ownerHistoryId: number;
+  /**
+   * Existing rel's OwnerHistory expressId, or `null` when the source
+   * rel omits it (`$`). IFC4 makes `IfcRoot.OwnerHistory` optional.
+   */
+  ownerHistoryId: number | null;
   /** Existing rel's Name attribute (parsed; null when `$`). */
   name: string | null;
   /** Existing rel's Description attribute (parsed; null when `$`). */
@@ -74,8 +77,13 @@ export interface SourceAttributes {
   sourceLocation: Vec3;
   /** Express id of the source's Representation (positional index 6 on IfcProduct). May be null. */
   representationId: number | null;
-  /** OwnerHistory expressId from the source (positional index 1 on IfcRoot). */
-  ownerHistoryId: number;
+  /**
+   * OwnerHistory expressId from the source (positional index 1 on
+   * IfcRoot), or `null` when the source omitted it. IFC4 made
+   * `IfcRoot.OwnerHistory` optional, so a duplicate has to be able
+   * to round-trip the missing case.
+   */
+  ownerHistoryId: number | null;
   /** The IfcAxis2Placement3D's `Axis` ref (index 1), or `null` when omitted (`$` in STEP). Reused on the new placement so the duplicate keeps source rotation. */
   axisRef: string | null;
   /** The IfcAxis2Placement3D's `RefDirection` ref (index 2), or `null` when omitted. */
@@ -171,9 +179,11 @@ export function duplicateInStore(
         : sourceName);
 
   const cloned = source.attributes.slice();
-  cloned[0] = generateIfcGuid();                        // GlobalId
-  cloned[1] = `#${source.ownerHistoryId}`;       // OwnerHistory (preserved)
-  cloned[2] = duplicateName;                    // Name
+  cloned[0] = generateIfcGuid();                                  // GlobalId
+  cloned[1] = source.ownerHistoryId !== null
+    ? `#${source.ownerHistoryId}`
+    : null;                                                       // OwnerHistory (preserved; null when source omitted it)
+  cloned[2] = duplicateName;                                      // Name
   cloned[5] = `#${placement.expressId}`;         // ObjectPlacement
   // cloned[6] (Representation) intentionally untouched — share geometry.
   // cloned[7] (Tag) — leave the source tag; STEP allows duplicate tags.
@@ -186,12 +196,12 @@ export function duplicateInStore(
   let relContainedId: number | null = null;
   if (source.storeyId !== null) {
     const rel = editor.addEntity('IfcRelContainedInSpatialStructure', [
-      generateIfcGuid(),                          // GlobalId
-      `#${source.ownerHistoryId}`,         // OwnerHistory
-      null,                                // Name
-      null,                                // Description
-      [`#${duplicate.expressId}`],         // RelatedElements
-      `#${source.storeyId}`,               // RelatingStructure
+      generateIfcGuid(),                                            // GlobalId
+      source.ownerHistoryId !== null ? `#${source.ownerHistoryId}` : null, // OwnerHistory
+      null,                                                         // Name
+      null,                                                         // Description
+      [`#${duplicate.expressId}`],                                  // RelatedElements
+      `#${source.storeyId}`,                                        // RelatingStructure
     ]);
     relContainedId = rel.expressId;
   }
@@ -206,12 +216,12 @@ export function duplicateInStore(
   if (source.associations && source.associations.length > 0) {
     for (const assoc of source.associations) {
       const rel = editor.addEntity(assoc.relType, [
-        generateIfcGuid(),                          // GlobalId
-        `#${assoc.ownerHistoryId}`,                  // OwnerHistory
-        assoc.name,                                  // Name (parsed; may be null)
-        assoc.description,                           // Description
-        [`#${duplicate.expressId}`],                 // RelatedObjects
-        `#${assoc.relatingExpressId}`,               // Relating*
+        generateIfcGuid(),                                                  // GlobalId
+        assoc.ownerHistoryId !== null ? `#${assoc.ownerHistoryId}` : null,  // OwnerHistory
+        assoc.name,                                                         // Name (parsed; may be null)
+        assoc.description,                                                  // Description
+        [`#${duplicate.expressId}`],                                        // RelatedObjects
+        `#${assoc.relatingExpressId}`,                                      // Relating*
       ]);
       associationRelIds.push(rel.expressId);
     }

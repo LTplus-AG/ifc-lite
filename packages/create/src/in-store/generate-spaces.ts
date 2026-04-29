@@ -18,8 +18,16 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
-import { extractWallSegmentsForStorey, type OverlayWallReader } from './extract-walls.js';
-import { detectEnclosedAreas, type DetectedSpace } from './auto-space-detect.js';
+import {
+  extractWallSegmentsForStorey,
+  type OverlayWallReader,
+  type WallSkip,
+} from './extract-walls.js';
+import {
+  detectEnclosedAreasWithStats,
+  type DetectedSpace,
+  type DetectStats,
+} from './auto-space-detect.js';
 import { addSpaceToStore, type SpaceBuildResult } from './space.js';
 
 export interface GenerateSpacesOptions {
@@ -40,6 +48,14 @@ export interface GenerateSpacesOptions {
   longName?: string;
   /** When true, runs detection but doesn't emit any IfcSpace. */
   dryRun?: boolean;
+  /**
+   * When true, every stage of the pipeline (wall extraction →
+   * detection) emits `console.debug` messages so the viewer's
+   * Auto Spaces "no regions detected" failure mode can be diagnosed
+   * from devtools without touching the algorithm. The result also
+   * carries detection stats unconditionally.
+   */
+  debug?: boolean;
 }
 
 export interface GenerateSpacesResult {
@@ -47,8 +63,12 @@ export interface GenerateSpacesResult {
   wallsConsidered: number;
   /** Walls that contributed an axis segment to the planar graph. */
   wallsContributing: number;
-  /** Enclosed regions detected (before min-area filter, in candidate count). */
+  /** Walls dropped by the extractor, with the reason (best-effort). */
+  wallsSkipped: WallSkip[];
+  /** Enclosed regions detected (after min-area + outer-face filter). */
   detected: DetectedSpace[];
+  /** Per-stage planar-graph statistics — surfaced for diagnostics. */
+  detectionStats: DetectStats;
   /** Per-region builder result. Empty when `dryRun: true`. */
   emitted: Array<{ region: DetectedSpace; result: SpaceBuildResult; name: string }>;
 }
@@ -66,18 +86,37 @@ export function generateSpacesFromWalls(
     throw new Error('generateSpacesFromWalls: height must be positive');
   }
 
-  const extraction = extractWallSegmentsForStorey(store, storeyExpressId, overlay);
-  const detected = detectEnclosedAreas(extraction.segments, {
+  const debug = !!options.debug;
+  const log = debug ? (...args: unknown[]) => console.debug('[generate-spaces]', ...args) : () => {};
+  log(`storey #${storeyExpressId}: starting auto-space generation`);
+
+  const extraction = extractWallSegmentsForStorey(store, storeyExpressId, overlay, { debug });
+  log(`extracted ${extraction.segments.length} segments from ${extraction.considered} walls (${extraction.skipped.length} skipped)`);
+
+  const detection = detectEnclosedAreasWithStats(extraction.segments, {
     snapTolerance: options.snapTolerance,
     minArea: options.minArea,
+    debug,
   });
+  const detected = detection.spaces;
+
+  // Always log a one-liner summary at info level so users see something
+  // in devtools without flipping the debug flag — the most common
+  // failure ("no regions detected") becomes self-explanatory.
+  console.info(
+    `[auto-spaces] storey #${storeyExpressId}: ${detected.length} region(s) from ${extraction.contributingWallIds.length}/${extraction.considered} walls — ` +
+    `${detection.stats.vertices}v / ${detection.stats.segmentsAfterSplit}e / ${detection.stats.faces}f ` +
+    `(dropped ${detection.stats.outerFacesDropped} outer + ${detection.stats.belowMinAreaDropped} small).`,
+  );
 
   const emitted: GenerateSpacesResult['emitted'] = [];
   if (options.dryRun || detected.length === 0) {
     return {
-      wallsConsidered: extraction.contributingWallIds.length + extraction.skippedWallIds.length,
+      wallsConsidered: extraction.considered,
       wallsContributing: extraction.contributingWallIds.length,
+      wallsSkipped: extraction.skipped,
       detected,
+      detectionStats: detection.stats,
       emitted,
     };
   }
@@ -101,9 +140,11 @@ export function generateSpacesFromWalls(
   });
 
   return {
-    wallsConsidered: extraction.contributingWallIds.length + extraction.skippedWallIds.length,
+    wallsConsidered: extraction.considered,
     wallsContributing: extraction.contributingWallIds.length,
+    wallsSkipped: extraction.skipped,
     detected,
+    detectionStats: detection.stats,
     emitted,
   };
 }

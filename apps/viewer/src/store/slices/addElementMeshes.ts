@@ -130,7 +130,14 @@ export function buildElementMesh(ctx: ElementBuildContext): MeshData | null {
   }
 }
 
-/** Linear segment extruded into a thickness × height box (wall / beam / member shape). */
+/**
+ * Linear segment extruded into a thickness × height box (wall / beam /
+ * member shape). The bottom ring follows the segment's actual start/end
+ * Z so a sloped beam previews as a sloped prism instead of pinning to
+ * `startIfc[2]`. Walls reject sloped axes upstream
+ * (`addWallToStore` enforces planar XY); beams / members do not, which
+ * is why this routine has to honour both endpoints' Z.
+ */
 function buildLinearBox(
   globalId: number,
   type: AddElementType,
@@ -142,25 +149,30 @@ function buildLinearBox(
 ): MeshData | null {
   const dx = endIfc[0] - startIfc[0];
   const dy = endIfc[1] - startIfc[1];
-  const len = Math.hypot(dx, dy);
-  if (len < 1e-6) return null;
-  const ax = dx / len;       // axis X
-  const ay = dy / len;       // axis Y (in IFC ground plane)
-  const nx = -ay;            // perpendicular in ground plane
+  // Cross-section plane is perpendicular to the ground-plane axis;
+  // even on sloped segments we keep the cross-section vertical so
+  // walls/beams/members read like building elements (extrusion is
+  // along +Z, not perpendicular to the segment direction).
+  const lenXY = Math.hypot(dx, dy);
+  if (lenXY < 1e-6) return null;
+  const ax = dx / lenXY;
+  const ay = dy / lenXY;
+  const nx = -ay;
   const ny = ax;
   const half = thickness / 2;
-  // Eight corners in IFC storey-local space.
-  const baseZ = startIfc[2];
-  const topZ = baseZ + height;
+  const startBaseZ = startIfc[2];
+  const endBaseZ = endIfc[2];
+  const startTopZ = startBaseZ + height;
+  const endTopZ = endBaseZ + height;
   const ifcCorners: Vec3[] = [
-    [startIfc[0] + nx * half, startIfc[1] + ny * half, baseZ],
-    [endIfc[0]   + nx * half, endIfc[1]   + ny * half, baseZ],
-    [endIfc[0]   - nx * half, endIfc[1]   - ny * half, baseZ],
-    [startIfc[0] - nx * half, startIfc[1] - ny * half, baseZ],
-    [startIfc[0] + nx * half, startIfc[1] + ny * half, topZ],
-    [endIfc[0]   + nx * half, endIfc[1]   + ny * half, topZ],
-    [endIfc[0]   - nx * half, endIfc[1]   - ny * half, topZ],
-    [startIfc[0] - nx * half, startIfc[1] - ny * half, topZ],
+    [startIfc[0] + nx * half, startIfc[1] + ny * half, startBaseZ],
+    [endIfc[0]   + nx * half, endIfc[1]   + ny * half, endBaseZ],
+    [endIfc[0]   - nx * half, endIfc[1]   - ny * half, endBaseZ],
+    [startIfc[0] - nx * half, startIfc[1] - ny * half, startBaseZ],
+    [startIfc[0] + nx * half, startIfc[1] + ny * half, startTopZ],
+    [endIfc[0]   + nx * half, endIfc[1]   + ny * half, endTopZ],
+    [endIfc[0]   - nx * half, endIfc[1]   - ny * half, endTopZ],
+    [startIfc[0] - nx * half, startIfc[1] - ny * half, startTopZ],
   ];
   return buildBoxFromIfcCorners(globalId, type, ifcCorners, storeyElevation);
 }

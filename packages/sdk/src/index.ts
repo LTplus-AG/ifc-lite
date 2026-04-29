@@ -25,6 +25,24 @@
  */
 
 // ============================================================================
+// Schema-aware normalizer wiring
+// ============================================================================
+// The mutations package can't import the parser registry (cycle), so it
+// only enforces a regex shape on `addEntity()` types. By registering
+// the parser's registry helpers at SDK load time we promote that to
+// a full schema-registry check — typos like `IfcWal` get rejected,
+// and callers see canonical PascalCase on `EntityRef.type`.
+import { normalizeIfcTypeName, isKnownType } from '@ifc-lite/parser';
+import { setEntityTypeNormalizer } from '@ifc-lite/mutations';
+setEntityTypeNormalizer((type) => {
+  // Reject anything the schema registry doesn't know about. Vendor
+  // extensions are intentionally not allowed via this path — scripts
+  // should consume the raw-attribute API for those.
+  if (!isKnownType(type)) return '';
+  return normalizeIfcTypeName(type);
+});
+
+// ============================================================================
 // Core
 // ============================================================================
 

@@ -252,7 +252,7 @@ export function buildStoreNamespace(): NamespaceSchema {
         tsParamTypes: [
           'string',
           'number',
-          '{ Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; OperationType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+          '{ Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; OperationType?: string; UserDefinedOperationType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
         ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
@@ -273,7 +273,7 @@ export function buildStoreNamespace(): NamespaceSchema {
         tsParamTypes: [
           'string',
           'number',
-          '{ Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; PartitioningType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+          '{ Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; PartitioningType?: string; UserDefinedPartitioningType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
         ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
@@ -381,8 +381,10 @@ export function buildStoreNamespace(): NamespaceSchema {
 // ---------------------------------------------------------------------
 
 function requireStoreyId(id: number, op: string): number {
-  if (!Number.isInteger(id) || id < 0) {
-    throw new Error(`bim.store.${op}: storeyExpressId must be a non-negative integer, got ${id}`);
+  // EXPRESS ids are 1-based — `#0` is never a valid reference, so
+  // reject zero alongside negatives / non-integers.
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(`bim.store.${op}: storeyExpressId must be a positive integer, got ${id}`);
   }
   return id;
 }

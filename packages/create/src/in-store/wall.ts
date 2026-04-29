@@ -133,7 +133,10 @@ export function addWallToStore(
     params.Tag ?? null,
   ];
   if ((anchor.schema ?? 'IFC4') !== 'IFC2X3') {
-    wallAttrs.push('.STANDARD.');
+    // Default to NOTDEFINED so we don't make a semantic claim about
+    // the wall's classification — matches addDoorToStore /
+    // addWindowToStore and lets callers override via Raw STEP.
+    wallAttrs.push('.NOTDEFINED.');
   }
   const wallId = editor.addEntity('IfcWall', wallAttrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
 

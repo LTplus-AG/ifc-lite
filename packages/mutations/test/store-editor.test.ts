@@ -142,4 +142,25 @@ describe('StoreEditor', () => {
     expect(() => editor.addEntity('IfcWall', [])).not.toThrow();
     expect(() => editor.addEntity('IFCRECTANGLEPROFILEDEF', [])).not.toThrow();
   });
+
+  it('addEntity routes through a registered normalizer (canonical name + registry check)', async () => {
+    const { setEntityTypeNormalizer } = await import('../src/store-editor.js');
+    const store = makeStore(5);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    // Normalizer that accepts only IFCWALL / IfcWall and reports
+    // canonical PascalCase. Returning "" signals "not in registry".
+    setEntityTypeNormalizer((t) => {
+      const upper = t.toUpperCase();
+      if (upper === 'IFCWALL') return 'IfcWall';
+      return '';
+    });
+    try {
+      const ref = editor.addEntity('IFCWALL', []);
+      expect(ref.type).toBe('IfcWall');
+      expect(() => editor.addEntity('IfcWal', [])).toThrow(/registry/);
+    } finally {
+      setEntityTypeNormalizer(null);
+    }
+  });
 });

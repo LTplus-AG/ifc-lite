@@ -129,6 +129,21 @@ export interface AddElementAutoSpacePreview {
   regions: Array<{ area: number }>;
   wallsConsidered: number;
   wallsContributing: number;
+  /**
+   * Diagnostic counts from the planar-graph pipeline. Surfaced
+   * verbatim in the Auto Spaces panel so users can spot pipeline
+   * failures (e.g. zero edges after intersect-split → walls don't
+   * connect).
+   */
+  diagnostics?: {
+    vertices: number;
+    edgesAfterSplit: number;
+    facesTotal: number;
+    outerFacesDropped: number;
+    belowMinAreaDropped: number;
+    largestArea: number;
+    skipReasons: Record<string, number>;
+  };
 }
 
 export interface AddElementSlice {

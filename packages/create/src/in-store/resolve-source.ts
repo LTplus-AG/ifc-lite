@@ -80,15 +80,12 @@ export function resolveDuplicateSource(
   }
 
   const attrs = sourceEntity.attributes;
+  // OwnerHistory is optional in IFC4, so null is a valid round-trip
+  // value here. The duplicate flow re-emits null on the new entity.
   const ownerHistoryId = asNumber(attrs[1]);
   const placementId = asNumber(attrs[5]);
   const representationId = asNumber(attrs[6]);
 
-  if (ownerHistoryId === null) {
-    throw new Error(
-      `resolveDuplicateSource: #${sourceExpressId} has no OwnerHistory — only IfcRoot products can be duplicated`,
-    );
-  }
   if (placementId === null) {
     throw new Error(
       `resolveDuplicateSource: #${sourceExpressId} has no ObjectPlacement — only IfcProduct can be duplicated`,
@@ -206,7 +203,10 @@ function collectSourceAssociations(
 
       const ownerHistoryId = asNumber(entity.attributes[1]);
       const relatingExpressId = asNumber(entity.attributes[5]);
-      if (ownerHistoryId === null || relatingExpressId === null) continue;
+      // RelatingPropertyDefinition / RelatingType / etc. is required
+      // by the schema, so a missing one is a hard skip. OwnerHistory
+      // is optional (IFC4) — null is fine and round-trips cleanly.
+      if (relatingExpressId === null) continue;
 
       const name = typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null;
       const description = typeof entity.attributes[3] === 'string' ? entity.attributes[3] : null;

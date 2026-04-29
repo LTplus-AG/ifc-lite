@@ -523,6 +523,8 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
 
   const ready = modelId !== null && storeyId !== null;
 
+  const [debugLogging, setDebugLogging] = useState(false);
+
   const runPreview = () => {
     if (!ready || busy) return;
     setBusy(true);
@@ -534,11 +536,16 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
         namePattern: params.NamePattern,
         predefinedType: params.PredefinedType,
         dryRun: true,
+        debug: debugLogging,
       });
       if ('error' in result) {
         toast.error(result.error);
         setPreview(null);
         return;
+      }
+      const skipReasons: Record<string, number> = {};
+      for (const s of result.wallsSkipped) {
+        skipReasons[s.reason] = (skipReasons[s.reason] ?? 0) + 1;
       }
       setPreview({
         storeyExpressId: storeyId!,
@@ -546,6 +553,15 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
         regions: result.detected.map((d) => ({ area: d.area })),
         wallsConsidered: result.wallsConsidered,
         wallsContributing: result.wallsContributing,
+        diagnostics: {
+          vertices: result.detectionStats.vertices,
+          edgesAfterSplit: result.detectionStats.segmentsAfterSplit,
+          facesTotal: result.detectionStats.faces,
+          outerFacesDropped: result.detectionStats.outerFacesDropped,
+          belowMinAreaDropped: result.detectionStats.belowMinAreaDropped,
+          largestArea: result.detectionStats.largestArea,
+          skipReasons,
+        },
       });
       if (result.detected.length === 0) {
         toast.info('No enclosed regions detected. Check wall geometry or snap tolerance.');
@@ -565,6 +581,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
         height: params.Height,
         namePattern: params.NamePattern,
         predefinedType: params.PredefinedType,
+        debug: debugLogging,
       });
       if ('error' in result) {
         toast.error(result.error);
@@ -665,14 +682,50 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
         </Button>
       </div>
 
+      <label className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-500 dark:text-zinc-400 select-none cursor-pointer">
+        <input
+          type="checkbox"
+          checked={debugLogging}
+          onChange={(e) => setDebugLogging(e.target.checked)}
+          className="h-3 w-3 accent-emerald-600"
+        />
+        Verbose console logging (open devtools)
+      </label>
+
       {preview && (
         <div className="rounded-sm border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 px-2 py-1.5 text-[10px] font-mono text-emerald-800 dark:text-emerald-300 leading-snug">
-          {preview.regions.length} region{preview.regions.length === 1 ? '' : 's'} detected
-          {' · '}{preview.wallsContributing}/{preview.wallsConsidered} walls
+          <div>
+            {preview.regions.length} region{preview.regions.length === 1 ? '' : 's'} detected
+            {' · '}{preview.wallsContributing}/{preview.wallsConsidered} walls
+          </div>
           {preview.regions.length > 0 && (
-            <span className="block opacity-80">
+            <div className="opacity-80">
               Total area: {preview.regions.reduce((sum, r) => sum + r.area, 0).toFixed(1)} m²
-            </span>
+            </div>
+          )}
+          {preview.diagnostics && (
+            <div className="opacity-80 mt-1">
+              graph: {preview.diagnostics.vertices}v / {preview.diagnostics.edgesAfterSplit}e / {preview.diagnostics.facesTotal}f
+              {' · '}dropped {preview.diagnostics.outerFacesDropped} outer + {preview.diagnostics.belowMinAreaDropped} small
+            </div>
+          )}
+          {preview.diagnostics && Object.keys(preview.diagnostics.skipReasons).length > 0 && (
+            <div className="opacity-80">
+              skipped walls:{' '}
+              {Object.entries(preview.diagnostics.skipReasons)
+                .map(([reason, count]) => `${count}× ${reason}`)
+                .join(', ')}
+            </div>
+          )}
+          {preview.regions.length === 0 && preview.wallsContributing > 0 && (
+            <div className="mt-1 text-amber-700 dark:text-amber-400">
+              Walls extracted but no enclosed regions formed — check that walls actually meet at corners (try a larger Snap value).
+            </div>
+          )}
+          {preview.wallsContributing === 0 && preview.wallsConsidered > 0 && (
+            <div className="mt-1 text-amber-700 dark:text-amber-400">
+              No wall axes could be extracted. Toggle &quot;Verbose console logging&quot; for per-wall diagnostics.
+            </div>
           )}
         </div>
       )}

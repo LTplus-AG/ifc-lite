@@ -28,6 +28,30 @@ import type {
 /** Sentinel byteOffset that flags an `EntityRef` as overlay-only (no source bytes). */
 export const OVERLAY_BYTE_OFFSET = -1;
 
+/**
+ * Schema-aware normaliser injected from outside the package.
+ *
+ * `@ifc-lite/mutations` cannot import `@ifc-lite/parser` (cycle), so
+ * the canonical-name registry isn't reachable here. The SDK / viewer
+ * boundary calls `setEntityTypeNormalizer` once at startup with the
+ * parser's `normalizeIfcTypeName` helper, and from then on every
+ * `addEntity()` call resolves to canonical PascalCase before forwarding
+ * to the overlay. Direct callers that don't wire a normalizer fall
+ * back to the lightweight regex check below — typos still surface,
+ * just without registry-grade rejection.
+ */
+export type EntityTypeNormalizer = (type: string) => string;
+
+let configuredNormalizer: EntityTypeNormalizer | null = null;
+
+/**
+ * Register the canonical-name resolver. Pass `null` to clear it (used
+ * by tests). Calling repeatedly is fine — last write wins.
+ */
+export function setEntityTypeNormalizer(fn: EntityTypeNormalizer | null): void {
+  configuredNormalizer = fn;
+}
+
 export class StoreEditor {
   private store: IfcDataStore;
   private view: MutablePropertyView;
@@ -80,11 +104,27 @@ export class StoreEditor {
       );
     }
 
+    // When a schema-aware normaliser is configured, resolve the
+    // canonical PascalCase name (e.g. "IFCWALL" → "IfcWall") and
+    // reject typos that aren't in the registry. The `Ifc${string}`
+    // shape passes the regex above but `IfcWal` would slip through;
+    // the normaliser is what catches that.
+    let canonical = trimmed;
+    if (configuredNormalizer) {
+      const resolved = configuredNormalizer(trimmed);
+      if (!resolved) {
+        throw new Error(
+          `StoreEditor.addEntity: type "${type}" is not in the IFC schema registry (typo? vendor extension?)`,
+        );
+      }
+      canonical = resolved;
+    }
+
     // Re-seed every call: cheap (one comparison + at most one write inside the
     // view), and recovers from `view.clear()`, which resets the allocator to 0
     // and would otherwise hand out colliding ids on the next addEntity().
     this.view.setExpressIdWatermark(this.maxExistingId);
-    const created = this.view.createEntity(trimmed, attributes);
+    const created = this.view.createEntity(canonical, attributes);
     return {
       expressId: created.expressId,
       type: created.type,

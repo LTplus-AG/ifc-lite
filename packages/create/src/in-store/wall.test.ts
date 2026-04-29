@@ -39,7 +39,7 @@ describe('addWallToStore', () => {
     expect(wall?.type).toBe('IfcWall');
     expect(wall?.attributes[2]).toBe('North Wall');
     expect(wall?.attributes[5]).toBe(`#${result.placementId}`);
-    expect(wall?.attributes[8]).toBe('.STANDARD.');
+    expect(wall?.attributes[8]).toBe('.NOTDEFINED.');
 
     const profile = byId.get(result.profileId);
     expect(profile?.type).toBe('IfcRectangleProfileDef');

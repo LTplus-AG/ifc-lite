@@ -324,7 +324,12 @@ function SingleClickGhost({
   );
 }
 
-/** Eight renderer-frame corners of a thickness-extruded segment (wall/beam/member). */
+/**
+ * Eight renderer-frame corners of a thickness-extruded segment
+ * (wall / beam / member). Bottom and top rings each track their
+ * endpoint's Y so a sloped beam previews as a sloped prism instead of
+ * being flattened to the start elevation.
+ */
 function linearBoxCorners(
   startWorld: AddElementVec3,
   endWorld: AddElementVec3,
@@ -339,17 +344,19 @@ function linearBoxCorners(
   // Perpendicular in the ground plane (renderer X/Z, Y is up).
   const nx = -az, nz = ax;
   const half = thickness / 2;
-  const baseY = startWorld.y;
-  const topY = baseY + height;
+  const startBaseY = startWorld.y;
+  const endBaseY = endWorld.y;
+  const startTopY = startBaseY + height;
+  const endTopY = endBaseY + height;
   return [
-    [startWorld.x + nx * half, baseY, startWorld.z + nz * half],
-    [endWorld.x   + nx * half, baseY, endWorld.z   + nz * half],
-    [endWorld.x   - nx * half, baseY, endWorld.z   - nz * half],
-    [startWorld.x - nx * half, baseY, startWorld.z - nz * half],
-    [startWorld.x + nx * half, topY,  startWorld.z + nz * half],
-    [endWorld.x   + nx * half, topY,  endWorld.z   + nz * half],
-    [endWorld.x   - nx * half, topY,  endWorld.z   - nz * half],
-    [startWorld.x - nx * half, topY,  startWorld.z - nz * half],
+    [startWorld.x + nx * half, startBaseY, startWorld.z + nz * half],
+    [endWorld.x   + nx * half, endBaseY,   endWorld.z   + nz * half],
+    [endWorld.x   - nx * half, endBaseY,   endWorld.z   - nz * half],
+    [startWorld.x - nx * half, startBaseY, startWorld.z - nz * half],
+    [startWorld.x + nx * half, startTopY,  startWorld.z + nz * half],
+    [endWorld.x   + nx * half, endTopY,    endWorld.z   + nz * half],
+    [endWorld.x   - nx * half, endTopY,    endWorld.z   - nz * half],
+    [startWorld.x - nx * half, startTopY,  startWorld.z - nz * half],
   ];
 }
 

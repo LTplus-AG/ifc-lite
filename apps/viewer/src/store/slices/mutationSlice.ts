@@ -21,6 +21,101 @@ import {
   type DuplicateInStoreOptions,
 } from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import type { MeshData } from '@ifc-lite/geometry';
+import { getEntityBounds } from '@/utils/viewportUtils';
+
+/**
+ * IFC-space directions for {@link MutationSlice.duplicateEntity}.
+ *
+ * Axes match the IFC storey-local frame, which the user already sees
+ * in the Raw STEP tab:
+ * - +X / -X — east / west
+ * - +Y / -Y — north / south
+ * - +Z / -Z — up / down
+ *
+ * The slice converts these to a viewer-space delta when cloning the
+ * source's meshes for immediate render.
+ */
+export type DuplicateDirection = '+X' | '-X' | '+Y' | '-Y' | '+Z' | '-Z';
+
+/** Default direction used when neither the menu nor `⌘D` provides one. */
+export const DUPLICATE_DEFAULT_DIRECTION: DuplicateDirection = '+X';
+
+/** Fallback step in metres when the source has no mesh in geometry. */
+const DUPLICATE_FALLBACK_STEP = 1;
+
+interface ViewerBox {
+  /** Per-axis sizes in viewer scene coordinates. */
+  size: { x: number; y: number; z: number };
+}
+
+/**
+ * Compute the IFC-space offset for a directional duplicate, sized to
+ * the source's bounding box so the duplicate sits next to the source
+ * (edge-to-edge) rather than overlapping it.
+ *
+ * Mapping (renderer is Y-up, IFC is Z-up):
+ *   viewer X  = IFC X     (matching axis)
+ *   viewer Y  = IFC Z     (up)
+ *   viewer Z  = -IFC Y    (forward)
+ */
+function ifcOffsetForDirection(dir: DuplicateDirection, bbox: ViewerBox): [number, number, number] {
+  const sx = bbox.size.x || DUPLICATE_FALLBACK_STEP;
+  const sy = bbox.size.z || DUPLICATE_FALLBACK_STEP; // viewer Z → IFC Y
+  const sz = bbox.size.y || DUPLICATE_FALLBACK_STEP; // viewer Y → IFC Z
+  switch (dir) {
+    case '+X': return [sx, 0, 0];
+    case '-X': return [-sx, 0, 0];
+    case '+Y': return [0, sy, 0];
+    case '-Y': return [0, -sy, 0];
+    case '+Z': return [0, 0, sz];
+    case '-Z': return [0, 0, -sz];
+  }
+}
+
+/** Convert an IFC-space delta to the viewer's Y-up scene frame. */
+function viewerDeltaFromIfc(ifc: [number, number, number]): { x: number; y: number; z: number } {
+  return { x: ifc[0], y: ifc[2], z: -ifc[1] };
+}
+
+/**
+ * Clone every mesh tagged with `sourceGlobalId` and translate its
+ * vertex positions by `viewerOffset`. Normals are reused (translation
+ * doesn't affect orientation). Returns an empty array when the source
+ * isn't currently in the geometry result — caller falls back to
+ * relying on the export-only overlay.
+ */
+function cloneMeshesWithOffset(
+  meshes: MeshData[] | undefined,
+  sourceGlobalId: number,
+  newGlobalId: number,
+  viewerOffset: { x: number; y: number; z: number },
+): MeshData[] {
+  if (!meshes || meshes.length === 0) return [];
+  const out: MeshData[] = [];
+  for (const m of meshes) {
+    if (m.expressId !== sourceGlobalId) continue;
+    const positions = new Float32Array(m.positions.length);
+    for (let i = 0; i < m.positions.length; i += 3) {
+      positions[i]     = m.positions[i]     + viewerOffset.x;
+      positions[i + 1] = m.positions[i + 1] + viewerOffset.y;
+      positions[i + 2] = m.positions[i + 2] + viewerOffset.z;
+    }
+    out.push({
+      expressId: newGlobalId,
+      positions,
+      normals: m.normals,
+      indices: m.indices,
+      color: m.color,
+      ifcType: m.ifcType,
+      modelIndex: m.modelIndex,
+      // Per-vertex entity ids only matter for color-merged batches;
+      // a single-mesh duplicate carries one expressId everywhere.
+      entityIds: m.entityIds ? new Uint32Array(m.entityIds.length).fill(newGlobalId) : undefined,
+    });
+  }
+  return out;
+}
 
 /** Tracks georeferencing field mutations per model */
 export interface GeorefMutationData {
@@ -169,16 +264,21 @@ export interface MutationSlice {
     params: ColumnInStoreParams
   ) => { expressId: number } | { error: string };
   /**
-   * Duplicate an existing IfcRoot product. Geometry is shared with
-   * the source via Representation reference; placement is offset
-   * (defaults to +1m on X) so the duplicate is visible. Returns the
-   * new entity's express id, or an error message.
+   * Duplicate an existing IfcRoot product in a chosen direction.
+   * Offset magnitude is one source-bbox dimension along the picked
+   * IFC axis (so a 3m wall steps 3m, a 0.4m column steps 0.4m).
+   * Geometry is shared with the source via Representation reference
+   * AND mirrored into the renderer's mesh list with the offset
+   * applied — so the duplicate appears in 3D the moment the action
+   * fires, not just in the export overlay. Returns the new entity's
+   * express id, or an error message.
    */
   duplicateEntity: (
     modelId: string,
     sourceExpressId: number,
+    direction?: DuplicateDirection,
     options?: DuplicateInStoreOptions
-  ) => { expressId: number } | { error: string };
+  ) => { expressId: number; globalId: number } | { error: string };
 
   // Actions - Undo/Redo
   /** Undo last mutation for a model */
@@ -709,7 +809,7 @@ export const createMutationSlice: StateCreator<
     return { expressId: columnId };
   },
 
-  duplicateEntity: (modelId, sourceExpressId, options) => {
+  duplicateEntity: (modelId, sourceExpressId, direction = DUPLICATE_DEFAULT_DIRECTION, options) => {
     const state = get();
     const model = state.models.get(modelId);
     const dataStore = model?.ifcDataStore;
@@ -721,14 +821,43 @@ export const createMutationSlice: StateCreator<
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { error: 'Failed to create store editor' };
 
+    // Source's bounding box drives the offset magnitude. Multi-model
+    // federations key meshes by globalId, so we look up via the model's
+    // idOffset; the legacy single-model path uses the local express id
+    // directly (offset = 0).
+    const idOffset = model.idOffset ?? 0;
+    const sourceGlobalId = sourceExpressId + idOffset;
+    const meshes = state.geometryResult?.meshes;
+    const sourceBounds = getEntityBounds(meshes ?? null, sourceGlobalId);
+    const bbox: ViewerBox = sourceBounds
+      ? {
+          size: {
+            x: Math.max(sourceBounds.max.x - sourceBounds.min.x, 0),
+            y: Math.max(sourceBounds.max.y - sourceBounds.min.y, 0),
+            z: Math.max(sourceBounds.max.z - sourceBounds.min.z, 0),
+          },
+        }
+      : { size: { x: DUPLICATE_FALLBACK_STEP, y: DUPLICATE_FALLBACK_STEP, z: DUPLICATE_FALLBACK_STEP } };
+
+    const ifcDelta = ifcOffsetForDirection(direction, bbox);
+    const viewerDelta = viewerDeltaFromIfc(ifcDelta);
+
     let newId: number;
     try {
       const source = resolveDuplicateSource(dataStore, sourceExpressId);
-      const result = duplicateInStore(editor, source, options);
+      const result = duplicateInStore(editor, source, { ...options, offset: ifcDelta });
       newId = result.newId;
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Failed to duplicate' };
     }
+
+    const newGlobalId = newId + idOffset;
+
+    // Mirror the source's meshes into the geometry result with the
+    // offset applied so the duplicate is visible immediately. Without
+    // this the entity exists only in the export overlay — STEP-correct
+    // but invisible — and the user can't tell anything happened.
+    const clonedMeshes = cloneMeshesWithOffset(meshes, sourceGlobalId, newGlobalId, viewerDelta);
 
     set((s) => {
       const newUndoStacks = new Map(s.undoStacks);
@@ -757,7 +886,16 @@ export const createMutationSlice: StateCreator<
       };
     });
 
-    return { expressId: newId };
+    // Append cloned meshes via the existing data slice action so the
+    // renderer picks them up via its standard tick.
+    if (clonedMeshes.length > 0) {
+      const cross = get() as unknown as {
+        appendGeometryBatch?: (batch: MeshData[]) => void;
+      };
+      cross.appendGeometryBatch?.(clonedMeshes);
+    }
+
+    return { expressId: newId, globalId: newGlobalId };
   },
 
   // Undo/Redo

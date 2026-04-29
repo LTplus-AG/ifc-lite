@@ -54,12 +54,17 @@ export function useDuplicateShortcut() {
       e.preventDefault();
       e.stopPropagation();
 
-      const result = duplicateEntity(ref.modelId, ref.expressId);
+      // ⌘D + Shift = +Z (up), ⌘D + Alt = +Y (north), default = +X (east).
+      // Power users can chain modifiers without leaving the keyboard;
+      // the menu's chip row covers everyone else.
+      const direction = e.shiftKey ? '+Z' : e.altKey ? '+Y' : '+X';
+
+      const result = duplicateEntity(ref.modelId, ref.expressId, direction);
       if ('error' in result) {
         toast.error(`Couldn't duplicate: ${result.error}`);
       } else {
-        setSelectedEntityId(result.expressId);
-        toast.success(`Duplicated as #${result.expressId} — undo to remove`);
+        setSelectedEntityId(result.globalId);
+        toast.success(`Duplicated as #${result.expressId} (${direction}) — undo to remove`);
       }
     };
 

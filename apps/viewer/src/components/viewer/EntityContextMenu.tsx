@@ -22,6 +22,7 @@ import {
   CopyPlus,
 } from 'lucide-react';
 import { useViewerStore, resolveEntityRef } from '@/store';
+import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import {
   executeBasketSet,
@@ -226,26 +227,26 @@ export function EntityContextMenu() {
     return getMutationView(contextEntityRef.modelId) !== null;
   }, [contextEntityRef, getMutationView]);
 
-  const handleDuplicate = useCallback(() => {
-    if (!contextEntityRef || !canEdit) {
+  const handleDuplicate = useCallback(
+    (direction: DuplicateDirection = '+X') => {
+      if (!contextEntityRef || !canEdit) {
+        closeContextMenu();
+        return;
+      }
+      const result = duplicateEntity(contextEntityRef.modelId, contextEntityRef.expressId, direction);
+      if ('error' in result) {
+        toast.error(`Couldn't duplicate: ${result.error}`);
+      } else {
+        // Move selection onto the new entity so the property panel
+        // refreshes and the user can keep iterating (Cmd+D again
+        // duplicates the duplicate, like a stamp tool).
+        setSelectedEntityId(result.globalId);
+        toast.success(`Duplicated as #${result.expressId} (${direction}) — undo to remove`);
+      }
       closeContextMenu();
-      return;
-    }
-    const result = duplicateEntity(contextEntityRef.modelId, contextEntityRef.expressId);
-    if ('error' in result) {
-      toast.error(`Couldn't duplicate: ${result.error}`);
-    } else {
-      // Move selection onto the new entity so the property panel
-      // refreshes and the user can immediately tweak position via
-      // Raw STEP if the +1m offset isn't where they want it.
-      const newGlobalId = result.expressId; // legacy single-model path
-      // For multi-model, the SDK adapter normalizes; selection takes
-      // a globalId when models are federated. Try both shapes.
-      setSelectedEntityId(newGlobalId);
-      toast.success(`Duplicated as #${result.expressId} — undo to remove`);
-    }
-    closeContextMenu();
-  }, [contextEntityRef, canEdit, duplicateEntity, setSelectedEntityId, closeContextMenu]);
+    },
+    [contextEntityRef, canEdit, duplicateEntity, setSelectedEntityId, closeContextMenu],
+  );
 
   const handleDeleteEntity = useCallback(() => {
     if (!contextEntityRef || !canEdit || !contextMenu.entityId) {
@@ -328,12 +329,7 @@ export function EntityContextMenu() {
           {canEdit && (
             <>
               <div className="h-px bg-border my-1" />
-              <MenuItem
-                icon={CopyPlus}
-                label="Duplicate"
-                shortcut="⌘D"
-                onClick={handleDuplicate}
-              />
+              <DuplicateRow onDuplicate={handleDuplicate} />
               <MenuItem
                 icon={Trash2}
                 label="Delete entity"
@@ -369,6 +365,66 @@ interface MenuItemProps {
    * - `destructive` red-toned icon and red-tinted hover (Delete entity)
    */
   tone?: MenuItemTone;
+}
+
+/**
+ * Inline directional duplicate row — primary label on the left
+ * (clickable, fires the default +X duplicate), six axis chips on
+ * the right for explicit direction control. Mirrors the column
+ * placement axes the user already sees on the Raw STEP tab.
+ *
+ * Why six chips and not a sub-menu: a flyout for six options is
+ * wasted real estate, and the chip arrows let the user "see and
+ * pick" in one motion.
+ */
+function DuplicateRow({ onDuplicate }: { onDuplicate: (dir: DuplicateDirection) => void }) {
+  return (
+    <div className="px-3 py-1.5 flex items-center gap-2 hover:bg-muted/40">
+      <button
+        type="button"
+        onClick={() => onDuplicate('+X')}
+        className="flex items-center gap-2 text-sm text-left flex-1 min-w-0 hover:text-foreground"
+        title="Duplicate one bbox-width along +X (default)"
+      >
+        <CopyPlus className="h-4 w-4 text-muted-foreground" />
+        <span>Duplicate</span>
+        <span className="ml-auto text-[10px] font-mono text-muted-foreground/70">⌘D</span>
+      </button>
+      <div className="flex items-center gap-0.5 shrink-0 border-l border-border/60 pl-2">
+        <DirectionChip dir="+X" label="→" tooltip="Duplicate +X (east)" onClick={() => onDuplicate('+X')} />
+        <DirectionChip dir="-X" label="←" tooltip="Duplicate −X (west)" onClick={() => onDuplicate('-X')} />
+        <DirectionChip dir="+Y" label="↗" tooltip="Duplicate +Y (north)" onClick={() => onDuplicate('+Y')} />
+        <DirectionChip dir="-Y" label="↙" tooltip="Duplicate −Y (south)" onClick={() => onDuplicate('-Y')} />
+        <DirectionChip dir="+Z" label="↑" tooltip="Duplicate +Z (up)" onClick={() => onDuplicate('+Z')} />
+        <DirectionChip dir="-Z" label="↓" tooltip="Duplicate −Z (down)" onClick={() => onDuplicate('-Z')} />
+      </div>
+    </div>
+  );
+}
+
+function DirectionChip({
+  dir,
+  label,
+  tooltip,
+  onClick,
+}: {
+  dir: DuplicateDirection;
+  label: string;
+  tooltip: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={tooltip}
+      aria-label={tooltip}
+      className="h-5 w-5 flex items-center justify-center rounded text-[11px] font-mono leading-none text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-foreground transition-colors"
+      data-direction={dir}
+    >
+      {label}
+    </button>
+  );
 }
 
 function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, tone = 'default' }: MenuItemProps) {

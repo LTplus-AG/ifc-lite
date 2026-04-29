@@ -293,6 +293,23 @@ mod tests {
     }
 
     #[test]
+    fn opening_and_space_meshes_are_excluded_by_default() {
+        let slab = cube(1, "IfcSlab", [0.0, 0.0, 0.05], [4.0, 4.0, 0.1]);
+        let opening = cube(2, "IfcOpeningElement", [1.0, 0.0, 1.0], [0.3, 0.3, 0.3]);
+        let space = cube(3, "IfcSpace", [0.0, 0.0, 1.5], [3.0, 3.0, 3.0]);
+        let result = simulate(
+            &[slab, opening, space],
+            &SimulateOptions {
+                duration_seconds: 0.5,
+                ..Default::default()
+            },
+        );
+        assert!(!result.bodies.iter().any(|b| b.express_id == 2));
+        assert!(!result.bodies.iter().any(|b| b.express_id == 3));
+        assert!(result.bodies.iter().any(|b| b.express_id == 1));
+    }
+
+    #[test]
     fn empty_meshes_are_skipped() {
         let empty = PhysicsMesh {
             express_id: 99,

@@ -238,6 +238,10 @@ function buildWorld(
   const removed = new Set(options.remove);
   const explicitAnchors = new Set(options.anchor);
   const anchorTypes = new Set(options.anchorIfcTypes);
+  // Excluded types (IfcOpeningElement, IfcSpace, …) never become bodies —
+  // they're abstract volumes that overlap their host and would otherwise
+  // generate spurious penetration impulses.
+  const excludedTypes = new Set(options.excludeIfcTypes);
 
   // The renderer can be Y-up while IFC convention is Z-up. Pick the AABB
   // axis whose negative direction gravity points along; everything else
@@ -248,6 +252,7 @@ function buildWorld(
   let modelFloor = Infinity;
   for (const m of meshes) {
     if (removed.has(m.expressId)) continue;
+    if (excludedTypes.has(m.ifcType)) continue;
     const box = meshAABB(m);
     if (!box) continue;
     aabbs.set(m.expressId, box);
@@ -286,8 +291,15 @@ function buildWorld(
     const center = aabbCenter(aabb);
     const desc = anchored ? RAPIER.RigidBodyDesc.fixed() : RAPIER.RigidBodyDesc.dynamic();
     desc.setTranslation(center[0], center[1], center[2]);
-    // CCD is intentionally off — plausibility checks settle at low
-    // velocities and CCD doubles per-step solver work.
+    if (!anchored) {
+      // Small linear + angular damping bleeds residual energy from the
+      // moment colliders touch. Without it cantilever beams keep wiggling
+      // for the entire run because there's no friction model. CCD is left
+      // off — plausibility checks settle at low velocities and CCD
+      // doubles per-step solver work.
+      desc.setLinearDamping(0.5);
+      desc.setAngularDamping(0.8);
+    }
     const body = world.createRigidBody(desc);
 
     const colliderDesc = buildColliderDesc(mesh, center, options.colliderStrategy);

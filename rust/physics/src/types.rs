@@ -183,6 +183,11 @@ pub struct SimulateOptions {
     /// IFC types to treat as anchors regardless of position.
     pub anchor_ifc_types: Vec<String>,
 
+    /// IFC types to skip entirely. Defaults to abstract volumes that
+    /// overlap their physical hosts (`IfcOpeningElement`, `IfcSpace`,
+    /// `IfcZone`, `IfcVirtualElement`).
+    pub exclude_ifc_types: Vec<String>,
+
     /// How to convert each mesh into a collider shape.
     pub collider_strategy: ColliderStrategy,
 
@@ -221,6 +226,12 @@ impl Default for SimulateOptions {
                 "IfcFooting".to_string(),
                 "IfcPile".to_string(),
                 "IfcFoundation".to_string(),
+            ],
+            exclude_ifc_types: vec![
+                "IfcOpeningElement".to_string(),
+                "IfcSpace".to_string(),
+                "IfcZone".to_string(),
+                "IfcVirtualElement".to_string(),
             ],
             collider_strategy: ColliderStrategy::Auto,
             capture_trajectory: false,

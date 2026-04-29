@@ -51,9 +51,14 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
         .iter()
         .map(String::as_str)
         .collect();
+    let excluded_types: FxHashSet<&str> = options
+        .exclude_ifc_types
+        .iter()
+        .map(String::as_str)
+        .collect();
 
     let down_axis = gravity_down_axis(options.gravity);
-    let model_floor = compute_model_floor(meshes, down_axis, &removed);
+    let model_floor = compute_model_floor(meshes, down_axis, &removed, &excluded_types);
 
     let mut entries: Vec<BodyEntry> = Vec::with_capacity(meshes.len());
     let mut aabbs: FxHashMap<u32, Aabb> = FxHashMap::default();
@@ -61,7 +66,10 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
     let mut lowest_with_no_anchor: Option<(u32, f32)> = None;
 
     for mesh in meshes {
-        if mesh.is_empty() || removed.contains(&mesh.express_id) {
+        if mesh.is_empty()
+            || removed.contains(&mesh.express_id)
+            || excluded_types.contains(mesh.ifc_type.as_str())
+        {
             continue;
         }
         let Some(aabb) = mesh.aabb() else {
@@ -88,8 +96,13 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
         } else {
             // CCD off for parity with the JS path. Plausibility checks
             // settle at low velocities and CCD doubles per-step solver work
-            // for every dynamic body.
-            RigidBodyBuilder::dynamic().translation(translation).build()
+            // for every dynamic body. Small damping bleeds residual energy
+            // so cantilever beams settle instead of wiggling forever.
+            RigidBodyBuilder::dynamic()
+                .translation(translation)
+                .linear_damping(0.5)
+                .angular_damping(0.8)
+                .build()
         };
 
         let start_translation = body.translation();
@@ -193,13 +206,17 @@ fn compute_model_floor(
     meshes: &[PhysicsMesh],
     axis: usize,
     removed: &FxHashSet<u32>,
+    excluded_types: &FxHashSet<&str>,
 ) -> f32 {
     let mut floor = f32::INFINITY;
     for mesh in meshes {
         // Removed elements shouldn't drag the floor below the remaining
         // structure — otherwise yanking out the lowest support makes the
-        // engine think nothing touches the ground anymore.
-        if removed.contains(&mesh.express_id) {
+        // engine think nothing touches the ground anymore. Excluded
+        // abstract types (openings/spaces) likewise.
+        if removed.contains(&mesh.express_id)
+            || excluded_types.contains(mesh.ifc_type.as_str())
+        {
             continue;
         }
         if let Some(aabb) = mesh.aabb() {

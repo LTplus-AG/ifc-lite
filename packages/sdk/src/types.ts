@@ -411,6 +411,12 @@ export interface PhysicsSimulateOptions {
   groundAnchorTolerance?: number;
   /** IFC types to anchor regardless of position. Default: footings, piles, foundations. */
   anchorIfcTypes?: string[];
+  /**
+   * IFC types to skip entirely. Defaults to abstract volumes that overlap
+   * physical hosts: `IfcOpeningElement`, `IfcSpace`, `IfcZone`,
+   * `IfcVirtualElement`.
+   */
+  excludeIfcTypes?: string[];
   /** Collider shape strategy. Default: `auto`. */
   colliderStrategy?: PhysicsColliderStrategy;
   /** Record per-frame poses so the result can be played back as an animation. */

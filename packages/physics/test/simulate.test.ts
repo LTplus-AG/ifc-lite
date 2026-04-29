@@ -147,6 +147,16 @@ describe('@ifc-lite/physics', () => {
     expect(traj.frameDt).toBeCloseTo(1 / 60, 4);
   });
 
+  it('excludes IfcOpeningElement and IfcSpace by default', () => {
+    const slab = cube(1, 'IfcSlab', [0, 0, 0.05], [4, 4, 0.1]);
+    const opening = cube(2, 'IfcOpeningElement', [1, 0, 1], [0.3, 0.3, 0.3]);
+    const space = cube(3, 'IfcSpace', [0, 0, 1.5], [3, 3, 3]);
+    const result = simulate([slab, opening, space], { durationSeconds: 0.5 });
+    expect(result.bodies.find(b => b.expressId === 2)).toBeUndefined();
+    expect(result.bodies.find(b => b.expressId === 3)).toBeUndefined();
+    expect(result.bodies.find(b => b.expressId === 1)).toBeDefined();
+  });
+
   it('respects Y-down gravity for Y-up meshes', () => {
     // Same setup as the Z-up anchoring test, rotated so Y is up.
     const slab = cube(1, 'IfcSlab', [0, 0.05, 0], [4, 0.1, 4]);

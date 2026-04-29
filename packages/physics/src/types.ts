@@ -68,6 +68,15 @@ export interface SimulateOptions {
   /** IFC types to treat as anchors regardless of position. Default: footings, piles, foundations. */
   anchorIfcTypes?: string[];
 
+  /**
+   * IFC types to skip entirely. Default excludes abstract volumes that
+   * occupy the same space as physical hosts and create spurious
+   * penetration impulses: `IfcOpeningElement` (the window/door voids cut
+   * into walls), `IfcSpace` / `IfcZone` (room volumes), and
+   * `IfcVirtualElement` (placeholder geometry).
+   */
+  excludeIfcTypes?: string[];
+
   /** How to convert each mesh into a collider shape. Default: `auto`. */
   colliderStrategy?: ColliderStrategy;
 
@@ -124,6 +133,7 @@ export interface ResolvedSimulateOptions {
   tiltThreshold: number;
   groundAnchorTolerance: number;
   anchorIfcTypes: string[];
+  excludeIfcTypes: string[];
   colliderStrategy: ColliderStrategy;
   captureTrajectory: boolean;
   trajectoryStride: number;
@@ -142,6 +152,7 @@ export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
   tiltThreshold: 0.05,
   groundAnchorTolerance: 0.05,
   anchorIfcTypes: ['IfcFooting', 'IfcPile', 'IfcFoundation'],
+  excludeIfcTypes: ['IfcOpeningElement', 'IfcSpace', 'IfcZone', 'IfcVirtualElement'],
   colliderStrategy: 'auto',
   captureTrajectory: false,
   trajectoryStride: 1,
@@ -166,6 +177,7 @@ export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimul
     tiltThreshold: opts?.tiltThreshold ?? DEFAULT_OPTIONS.tiltThreshold,
     groundAnchorTolerance: opts?.groundAnchorTolerance ?? DEFAULT_OPTIONS.groundAnchorTolerance,
     anchorIfcTypes: opts?.anchorIfcTypes?.slice() ?? DEFAULT_OPTIONS.anchorIfcTypes.slice(),
+    excludeIfcTypes: opts?.excludeIfcTypes?.slice() ?? DEFAULT_OPTIONS.excludeIfcTypes.slice(),
     colliderStrategy: opts?.colliderStrategy ?? DEFAULT_OPTIONS.colliderStrategy,
     captureTrajectory: opts?.captureTrajectory ?? DEFAULT_OPTIONS.captureTrajectory,
     trajectoryStride: Math.max(1, Math.floor(opts?.trajectoryStride ?? DEFAULT_OPTIONS.trajectoryStride)),

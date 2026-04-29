@@ -189,6 +189,7 @@ function toEngineOptions(
     tiltThreshold: options.tiltThreshold,
     groundAnchorTolerance: options.groundAnchorTolerance,
     anchorIfcTypes: options.anchorIfcTypes,
+    excludeIfcTypes: options.excludeIfcTypes,
     colliderStrategy: options.colliderStrategy,
     // The viewer always wants playback by default — caller can override.
     captureTrajectory: options.captureTrajectory ?? true,

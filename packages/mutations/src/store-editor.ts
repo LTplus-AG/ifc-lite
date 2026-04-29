@@ -59,11 +59,32 @@ export class StoreEditor {
    *   - arrays → STEP list `(a,b,c)`
    */
   addEntity(type: string, attributes: IfcAttributeValue[]): EntityRef {
+    // Defense in depth: reject obviously-invalid `type` at the editor
+    // boundary so a typo doesn't end up as an invalid STEP record on
+    // export. The SDK normalizes via the parser registry; this guard
+    // catches direct-editor callers (CLI scripts, sandbox bridge,
+    // unit tests) that don't go through that path.
+    if (typeof type !== 'string') {
+      throw new TypeError(`StoreEditor.addEntity: type must be a string, got ${typeof type}`);
+    }
+    const trimmed = type.trim();
+    if (trimmed.length === 0) {
+      throw new Error('StoreEditor.addEntity: type cannot be empty');
+    }
+    // STEP entity tokens always start with "IFC" / "Ifc". Accept either
+    // PascalCase (`IfcWall`) or the all-caps STEP form (`IFCWALL`); the
+    // exporter handles the case conversion at the file-format boundary.
+    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9]*$/.test(trimmed)) {
+      throw new Error(
+        `StoreEditor.addEntity: type "${type}" is not a recognizable IFC entity name (expected e.g. "IfcWall")`,
+      );
+    }
+
     // Re-seed every call: cheap (one comparison + at most one write inside the
     // view), and recovers from `view.clear()`, which resets the allocator to 0
     // and would otherwise hand out colliding ids on the next addEntity().
     this.view.setExpressIdWatermark(this.maxExistingId);
-    const created = this.view.createEntity(type, attributes);
+    const created = this.view.createEntity(trimmed, attributes);
     return {
       expressId: created.expressId,
       type: created.type,

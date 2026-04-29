@@ -118,4 +118,28 @@ describe('StoreEditor', () => {
     expect(ref.expressId).toBe(11);
     expect(ref.expressId).toBeGreaterThan(10);
   });
+
+  it('addEntity rejects empty / non-string / non-IFC type names', () => {
+    const store = makeStore(5);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    // empty string
+    expect(() => editor.addEntity('', [])).toThrow(/empty/);
+    // whitespace-only string also counts as empty
+    expect(() => editor.addEntity('   ', [])).toThrow(/empty/);
+    // non-string
+    expect(() => editor.addEntity(undefined as unknown as string, [])).toThrow(/string/);
+    // not an IFC name
+    expect(() => editor.addEntity('Wall', [])).toThrow(/IFC entity name/);
+    expect(() => editor.addEntity('SomeRandomThing', [])).toThrow(/IFC entity name/);
+  });
+
+  it('addEntity accepts both PascalCase and UPPERCASE IFC names', () => {
+    const store = makeStore(5);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    expect(() => editor.addEntity('IfcWall', [])).not.toThrow();
+    expect(() => editor.addEntity('IFCRECTANGLEPROFILEDEF', [])).not.toThrow();
+  });
 });

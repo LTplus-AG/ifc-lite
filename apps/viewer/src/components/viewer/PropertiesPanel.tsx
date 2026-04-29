@@ -1045,7 +1045,12 @@ export function PropertiesPanel() {
     );
   }
 
-  if (!selectedEntityId || (!isNativeLazySelection && (!modelQuery || !entityNode))) {
+  // Newly-created/duplicated entities live only in the mutation overlay,
+  // so the synthesized attributes + Raw STEP tab fall back to
+  // `overlayEntity` when `entityNode` is empty. Without including
+  // `overlayEntity` here the panel collapses to the model-metadata
+  // view the moment a fresh add lands.
+  if (!selectedEntityId || (!isNativeLazySelection && (!modelQuery || (!entityNode && !overlayEntity)))) {
     // Show model metadata when a single model is loaded and nothing selected.
     // Handles both federated models (models.size >= 1) and legacy single-model path (models.size === 0).
     if (models.size === 1) {

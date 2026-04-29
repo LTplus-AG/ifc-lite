@@ -251,9 +251,22 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. The
 | `"My Column"` (string) | quoted STEP string |
 | `[1, 2, 3]` | STEP list `(1,2,3)` — recursive |
 
-### High-Level Builders — `addColumnToStore`
+### High-Level Builders — `addColumnToStore` / `addWallToStore` / …
 
-For full element-with-geometry inserts, `@ifc-lite/create` provides anchored builders that emit a complete sub-graph (placement, profile, extruded solid, representation, product shape, rel-contained-in-spatial-structure) into the overlay:
+For full element-with-geometry inserts, `@ifc-lite/create` provides anchored builders that emit a complete sub-graph (placement, profile, extruded solid, representation, product shape, rel-contained-in-spatial-structure) into the overlay. The same builder backs every Add Element panel chip in the viewer — and the SDK / sandbox `bim.store.*` namespace.
+
+| Builder | Signature highlights | Profile modes |
+|---|---|---|
+| `addColumnToStore` | `Position`, `Width × Depth × Height` | rectangle |
+| `addWallToStore` | `Start`, `End`, `Thickness`, `Height` (planar XY axis enforced) | linear |
+| `addBeamToStore` | `Start`, `End`, `Width × Height` cross-section | linear |
+| `addMemberToStore` | `Start`, `End`, `Width × Height`, `PredefinedType` | linear |
+| `addSlabToStore` | `Position` + `Width × Depth × Thickness` **or** `OuterCurve` polygon | rectangle / polygon |
+| `addRoofToStore` | same shape as slab; emits `.FLAT_ROOF.` PredefinedType | rectangle / polygon |
+| `addPlateToStore` | same shape as slab — thin extruded plate | rectangle / polygon |
+| `addSpaceToStore` | rectangle or polygon footprint, extruded by `Height`. Aggregated to its storey via `IfcRelAggregates` | rectangle / polygon |
+| `addDoorToStore` | `Position`, `Width × Height`, optional `OperationType` + `UserDefinedOperationType` | n/a |
+| `addWindowToStore` | `Position`, `Width × Height`, optional `PartitioningType` + `UserDefinedPartitioningType` | n/a |
 
 ```typescript
 import { StoreEditor } from '@ifc-lite/mutations';
@@ -275,6 +288,30 @@ const result = addColumnToStore(editor, anchor, {
 ```
 
 The column lands in the existing spatial hierarchy, references the model's own owner history and 'Body' subcontext, and exports as a set of new STEP entities the next time you call `StepExporter.export({ applyMutations: true })`. No script + re-parse round-trip needed.
+
+#### IFC4 vs IFC2X3
+
+Builders read the schema from the resolved anchor (`anchor.schema`) and drop attribute-tail slots that don't exist in IFC2X3. For example `IfcWall.PredefinedType` and `IfcDoor.OperationType` are emitted on IFC4 only; on IFC2X3 the corresponding STEP records are 8 / 10 attributes wide. `USERDEFINED` enums round-trip through their companion `User-defined…` slot, so a custom `OperationType: 'USERDEFINED'` + `UserDefinedOperationType: 'Sliding-Curve'` exports as `.USERDEFINED.,'Sliding-Curve'`.
+
+#### Auto Spaces — generate IfcSpace from a storey's walls
+
+For room generation, `@ifc-lite/create` ships a planar-graph face finder that turns a storey's wall axes into a CCW polygon per enclosed region:
+
+```typescript
+import { generateSpacesFromWalls } from '@ifc-lite/create';
+
+const result = generateSpacesFromWalls(editor, dataStore, storeyExpressId, {
+  snapTolerance: 0.05,    // collapse sloppy wall ends within 5 cm
+  minArea: 0.5,           // drop closets / slivers
+  height: 3,              // IfcSpace extrusion in m
+  namePattern: 'Space {n}',
+  predefinedType: 'INTERNAL',
+  // dryRun: true,        // detect-only — no IfcSpace emitted
+});
+// → { wallsConsidered, wallsContributing, detected: DetectedSpace[], emitted: [...] }
+```
+
+The detector also picks up overlay walls (placed via `addWallToStore` since the model was parsed) when you pass an `OverlayWallReader` — the viewer wires this in automatically so the Auto Spaces button works on freshly-drawn walls without a re-parse. `detectEnclosedAreas(segments, options)` is exported as the pure pipeline step if you want detection without IFC emission.
 
 ### `bim.store.*` — Scripting & SDK
 
@@ -304,11 +341,12 @@ The sandbox gates `bim.store.*` behind a `store: true` permission (default `fals
 
 The viewer surfaces store-level edits in three places — see [Viewer Integration](#viewer-integration) below for the full UX:
 
-  - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`.
+  - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`. The tab also opens for overlay-only entities (freshly added or duplicated) so newly-created walls / columns / spaces are immediately inspectable, even before export.
   - **Right-click → Delete entity** — calls `removeEntity`, surfaces a toast with undo support.
   - **Right-click on a storey → Add Column here…** — opens the Add Column dialog, calls `addColumn` on submit, and selects the new column in the 3D scene.
+  - **Add Element panel** (command palette → `Add element` or shortcut). Right-side panel with chips for every supported type, per-type form, click-to-place flow, and a 3D ghost preview that updates live as you adjust dimensions. Snap-to-vertex/edge/face is on by default (toggle with `S`); placements off-surface fall back to the storey floor plane so you can drop columns / walls into empty rooms. Picking the `Space` chip reveals an **Auto Spaces** sub-panel that runs the wall-graph face finder with adjustable snap tolerance / min area / height / naming pattern and a Preview button before commit.
 
-All three paths route through the same `mutationSlice` actions that wrap `StoreEditor`, so undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`) covers store-level edits identically to property edits.
+All paths route through the same `mutationSlice` actions that wrap `StoreEditor`, so undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`) covers store-level edits identically to property edits. Each commit also injects a renderer-frame mesh into the geometry pipeline so the new element appears in 3D the moment the action fires — no export+reparse round-trip required.
 
 ### When to use what
 
@@ -317,7 +355,9 @@ All three paths route through the same `mutationSlice` actions that wrap `StoreE
 | Edit an IfcRoot named attribute (Name, FireRating, ObjectType, …) | `setProperty` / `setAttribute` (see above) |
 | Edit a positional STEP arg on a non-IfcRoot entity (profile dim, cartesian point, …) | `setPositionalAttribute` / `bim.store.setPositionalAttribute` |
 | Inject a small raw STEP entity (a point, a profile, a unit) | `addEntity` / `bim.store.addEntity` |
-| Drop a fully-formed building element with geometry | `addColumnToStore` / `bim.store.addColumn` |
+| Drop a fully-formed building element with geometry | `addColumnToStore` / `addWallToStore` / `addSlabToStore` / `addBeamToStore` / `addDoorToStore` / `addWindowToStore` / `addSpaceToStore` / `addRoofToStore` / `addPlateToStore` / `addMemberToStore` (or `bim.store.add{Column,Wall,Slab,…}`) |
+| Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Add Element → Space → Auto Spaces** in the viewer) |
+| Duplicate any IfcRoot product (psets, qsets, materials, type associations preserved) | `duplicateInStore` / right-click → Duplicate |
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |
 | Build a brand-new IFC file from scratch | `IfcCreator` (see [API Reference](../api/typescript.md#ifc-litecreate)) |
 

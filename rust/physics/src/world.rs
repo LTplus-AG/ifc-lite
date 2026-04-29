@@ -52,7 +52,8 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
         .map(String::as_str)
         .collect();
 
-    let model_floor = compute_model_floor(meshes);
+    let down_axis = gravity_down_axis(options.gravity);
+    let model_floor = compute_model_floor(meshes, down_axis);
 
     let mut entries: Vec<BodyEntry> = Vec::with_capacity(meshes.len());
     let mut aabbs: FxHashMap<u32, Aabb> = FxHashMap::default();
@@ -75,6 +76,7 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
             options.ground_anchor_tolerance,
             &explicit_anchors,
             &anchor_types,
+            down_axis,
         );
         let anchored = anchor_reason.is_some();
 
@@ -111,9 +113,10 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
         handle_for.insert(mesh.express_id, handle);
 
         if !anchored {
+            let along = aabb.min[down_axis];
             match lowest_with_no_anchor {
-                Some((_, current_min_z)) if aabb.min[2] >= current_min_z => {}
-                _ => lowest_with_no_anchor = Some((mesh.express_id, aabb.min[2])),
+                Some((_, current_min)) if along >= current_min => {}
+                _ => lowest_with_no_anchor = Some((mesh.express_id, along)),
             }
         }
     }
@@ -161,12 +164,31 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
     }
 }
 
-fn compute_model_floor(meshes: &[PhysicsMesh]) -> f32 {
+/// Pick the world-space axis that gravity points along (0=X, 1=Y, 2=Z).
+///
+/// IFC convention is Z-up so gravity defaults to `(0, 0, -9.81)` and
+/// `down_axis` is 2. The viewer pipeline converts geometry to Y-up, so
+/// callers passing `(0, -9.81, 0)` get axis 1 here. Floor and ground-
+/// touch heuristics use this axis instead of hardcoded Z.
+fn gravity_down_axis(gravity: [f32; 3]) -> usize {
+    let mut idx = 2usize;
+    let mut val = gravity[2];
+    if gravity[0] < val {
+        idx = 0;
+        val = gravity[0];
+    }
+    if gravity[1] < val {
+        idx = 1;
+    }
+    idx
+}
+
+fn compute_model_floor(meshes: &[PhysicsMesh], axis: usize) -> f32 {
     let mut floor = f32::INFINITY;
     for mesh in meshes {
         if let Some(aabb) = mesh.aabb() {
-            if aabb.min[2] < floor {
-                floor = aabb.min[2];
+            if aabb.min[axis] < floor {
+                floor = aabb.min[axis];
             }
         }
     }
@@ -185,6 +207,7 @@ fn classify_anchor(
     ground_tolerance: f32,
     explicit: &FxHashSet<u32>,
     anchor_types: &FxHashSet<&str>,
+    down_axis: usize,
 ) -> Option<AnchorReason> {
     if explicit.contains(&express_id) {
         return Some(AnchorReason::Explicit);
@@ -192,7 +215,7 @@ fn classify_anchor(
     if anchor_types.contains(ifc_type) {
         return Some(AnchorReason::IfcType);
     }
-    let touches_ground = (aabb.min[2] - model_floor).abs() <= ground_tolerance;
+    let touches_ground = (aabb.min[down_axis] - model_floor).abs() <= ground_tolerance;
     if touches_ground
         && matches!(ifc_type, "IfcSlab" | "IfcFooting" | "IfcPile" | "IfcFoundation")
     {

@@ -9,6 +9,8 @@ const GROUND_CONTACT_TYPES = new Set(['IfcSlab', 'IfcFooting', 'IfcPile', 'IfcFo
 export interface AnchorContext {
   modelFloor: number;
   groundTolerance: number;
+  /** AABB axis (0=X, 1=Y, 2=Z) along which gravity points. Default 2 (IFC Z-up). */
+  downAxis: 0 | 1 | 2;
   explicitAnchors: Set<number>;
   anchorTypes: Set<string>;
 }
@@ -29,7 +31,7 @@ export function classifyAnchor(
 ): AnchorReason | null {
   if (ctx.explicitAnchors.has(expressId)) return 'explicit';
   if (ctx.anchorTypes.has(ifcType)) return 'ifcType';
-  const touchesGround = Math.abs(aabb.min[2] - ctx.modelFloor) <= ctx.groundTolerance;
+  const touchesGround = Math.abs(aabb.min[ctx.downAxis] - ctx.modelFloor) <= ctx.groundTolerance;
   if (touchesGround && GROUND_CONTACT_TYPES.has(ifcType)) return 'ifcType';
   return null;
 }

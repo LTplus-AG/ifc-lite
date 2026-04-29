@@ -209,6 +209,11 @@ function buildWorld(
   const explicitAnchors = new Set(options.anchor);
   const anchorTypes = new Set(options.anchorIfcTypes);
 
+  // The renderer can be Y-up while IFC convention is Z-up. Pick the AABB
+  // axis whose negative direction gravity points along; everything else
+  // (floor, ground anchoring, fall classification) keys off this.
+  const downAxis = gravityDownAxis(options.gravity);
+
   const aabbs = new Map<number, AABB>();
   let modelFloor = Infinity;
   for (const m of meshes) {
@@ -216,7 +221,7 @@ function buildWorld(
     const box = meshAABB(m);
     if (!box) continue;
     aabbs.set(m.expressId, box);
-    if (box.min[2] < modelFloor) modelFloor = box.min[2];
+    if (box.min[downAxis] < modelFloor) modelFloor = box.min[downAxis];
   }
   if (!Number.isFinite(modelFloor)) modelFloor = 0;
 
@@ -228,7 +233,7 @@ function buildWorld(
   world.timestep = Math.max(options.timeStep, 1e-4);
 
   const entries: BodyEntry[] = [];
-  let lowestUnanchored: { id: number; minZ: number } | null = null;
+  let lowestUnanchored: { id: number; along: number } | null = null;
 
   for (const mesh of meshes) {
     if (removed.has(mesh.expressId)) continue;
@@ -237,6 +242,7 @@ function buildWorld(
     const reason = classifyAnchor(mesh.expressId, mesh.ifcType, aabb, {
       modelFloor,
       groundTolerance: options.groundAnchorTolerance,
+      downAxis,
       explicitAnchors,
       anchorTypes,
     });
@@ -269,8 +275,9 @@ function buildWorld(
     });
 
     if (!anchored) {
-      if (!lowestUnanchored || aabb.min[2] < lowestUnanchored.minZ) {
-        lowestUnanchored = { id: mesh.expressId, minZ: aabb.min[2] };
+      const along = aabb.min[downAxis];
+      if (!lowestUnanchored || along < lowestUnanchored.along) {
+        lowestUnanchored = { id: mesh.expressId, along };
       }
     }
   }
@@ -404,6 +411,7 @@ function collect(
   trajectory?: SimulationTrajectory,
 ): SimulationResult {
   const { entries, jointPairs, options } = built;
+  const downAxis = gravityDownAxis(options.gravity);
   const bodies: BodyOutcome[] = [];
   const stable: number[] = [];
   const falling: number[] = [];
@@ -417,7 +425,9 @@ function collect(
     const dy = t.y - e.startTranslation.y;
     const dz = t.z - e.startTranslation.z;
     const displacement = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    const vertical = dz;
+    // `vertical` is positive = up, negative = fell, regardless of which
+    // axis is "up" in the caller's frame.
+    const vertical = downAxis === 0 ? dx : downAxis === 1 ? dy : dz;
 
     // Quaternion delta: q_curr * q_start^-1. Pure translation → identity.
     const inv = quatInverse(e.startRotation);
@@ -498,4 +508,25 @@ function quatAngle(q: Quat): number {
   // 2 * acos(|w|), clamped for numerical safety.
   const w = Math.min(1, Math.max(-1, Math.abs(q.w)));
   return 2 * Math.acos(w);
+}
+
+/**
+ * Pick the AABB axis that gravity points along (0=X, 1=Y, 2=Z).
+ *
+ * IFC convention is Z-up so gravity defaults to `[0, 0, -9.81]` and this
+ * returns 2. The viewer pipeline converts geometry to Y-up, so callers
+ * passing `[0, -9.81, 0]` get axis 1. Floor / ground-touch / fall
+ * heuristics use this axis instead of hardcoded Z.
+ */
+function gravityDownAxis(gravity: readonly [number, number, number]): 0 | 1 | 2 {
+  let idx: 0 | 1 | 2 = 2;
+  let val = gravity[2];
+  if (gravity[0] < val) {
+    idx = 0;
+    val = gravity[0];
+  }
+  if (gravity[1] < val) {
+    idx = 1;
+  }
+  return idx;
 }

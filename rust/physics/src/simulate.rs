@@ -28,6 +28,18 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
     let physics_hooks = ();
     let event_handler = ();
 
+    // The "down" axis for fall classification is whichever component of
+    // gravity is most negative — Z for IFC Z-up data, Y for the viewer's
+    // Y-up frame.
+    let down_axis = {
+        let g = options.gravity;
+        let mut idx = 2usize;
+        let mut val = g[2];
+        if g[0] < val { idx = 0; val = g[0]; }
+        if g[1] < val { idx = 1; }
+        idx
+    };
+
     let total = options.duration_seconds.max(0.0);
     let steps = (total / dt).ceil() as usize;
     let stride = options.trajectory_stride.max(1);
@@ -94,7 +106,14 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
         let dy = translation.y - entry.start_translation.y;
         let dz = translation.z - entry.start_translation.z;
         let displacement = (dx * dx + dy * dy + dz * dz).sqrt();
-        let vertical = dz;
+        // `vertical` reports motion along the gravity axis with the sign
+        // convention that *negative = fell* (matches the docs and the JS
+        // sibling). Pull the right component for whichever axis is "up".
+        let vertical = match down_axis {
+            0 => dx,
+            1 => dy,
+            _ => dz,
+        };
 
         let delta_rot = rotation * entry.start_rotation.inverse();
         let (_axis, angular_raw) = delta_rot.to_axis_angle();

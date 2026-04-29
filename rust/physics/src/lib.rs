@@ -264,6 +264,35 @@ mod tests {
     }
 
     #[test]
+    fn y_up_gravity_anchors_floor_slab_correctly() {
+        // Same scene as `floor_anchors_via_ifc_type`, but rotated so Y is up.
+        // The slab's underside is at Y=0; the column rests on it from above.
+        // With gravity along -Y, the engine should anchor the slab and keep
+        // the column stable — not let it fall sideways.
+        let slab = cube(1, "IfcSlab", [0.0, 0.05, 0.0], [4.0, 0.1, 4.0]);
+        let column = cube(2, "IfcColumn", [0.0, 1.6, 0.0], [0.3, 3.0, 0.3]);
+        let result = simulate(
+            &[slab, column],
+            &SimulateOptions {
+                duration_seconds: 1.0,
+                gravity: [0.0, -9.81, 0.0],
+                ..Default::default()
+            },
+        );
+        assert!(
+            result.anchored.contains(&1),
+            "slab should be anchored under Y-down gravity; got anchored={:?}",
+            result.anchored,
+        );
+        assert!(
+            result.stable.contains(&2),
+            "column should be stable on anchored slab; got falling={:?} tilted={:?}",
+            result.falling,
+            result.tilted,
+        );
+    }
+
+    #[test]
     fn empty_meshes_are_skipped() {
         let empty = PhysicsMesh {
             express_id: 99,

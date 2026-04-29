@@ -164,7 +164,11 @@ function toEngineOptions(
     remove: options.remove,
     anchor: options.anchor,
     connections,
-    gravity: options.gravity,
+    // The renderer is Y-up internally (the geometry layer converts IFC's
+    // Z-up coordinates during mesh parsing). We feed those Y-up positions
+    // straight into physics, so gravity has to point along -Y or bodies
+    // get yanked sideways. Caller can still override.
+    gravity: options.gravity ?? [0, -9.81, 0],
     durationSeconds: options.durationSeconds,
     timeStep: options.timeStep,
     adjacencyTolerance: options.adjacencyTolerance,

@@ -147,6 +147,19 @@ describe('@ifc-lite/physics', () => {
     expect(traj.frameDt).toBeCloseTo(1 / 60, 4);
   });
 
+  it('respects Y-down gravity for Y-up meshes', () => {
+    // Same setup as the Z-up anchoring test, rotated so Y is up.
+    const slab = cube(1, 'IfcSlab', [0, 0.05, 0], [4, 0.1, 4]);
+    const column = cube(2, 'IfcColumn', [0, 1.6, 0], [0.3, 3.0, 0.3]);
+    const result = simulate([slab, column], {
+      durationSeconds: 1.0,
+      gravity: [0, -9.81, 0],
+    });
+    expect(result.anchored).toContain(1);
+    expect(result.stable).toContain(2);
+    expect(result.falling).not.toContain(2);
+  });
+
   it('skips empty meshes', () => {
     const empty: PhysicsMesh = {
       expressId: 99,

@@ -50,6 +50,7 @@ import { RelationshipsCard } from './properties/RelationshipsCard';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
+import { RawStepCard } from './properties/RawStepCard';
 
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean };
 type DisplayPropertySet = {
@@ -1311,6 +1312,14 @@ export function PropertiesPanel() {
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">bSDD</span>
           </TabsTrigger>
+          <TabsTrigger
+            value="raw-step"
+            title="Raw STEP"
+            className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
+          >
+            <FileBox className="h-3 w-3 shrink-0 panel-compact-icon" />
+            <span className="panel-compact-text">Raw</span>
+          </TabsTrigger>
         </TabsList>
 
         <ScrollArea className="flex-1 bg-white dark:bg-black">
@@ -1480,6 +1489,24 @@ export function PropertiesPanel() {
                 existingQuants={renderedExistingQuants}
                 existingAttributes={renderedExistingAttributeNames}
               />
+            )}
+          </TabsContent>
+
+          <TabsContent value="raw-step" className="m-0 p-3 overflow-hidden">
+            {selectedEntity && !isNativeLazySelection ? (
+              <RawStepCard
+                modelId={selectedEntity.modelId}
+                entityId={selectedEntity.expressId}
+                entityType={entityType}
+                dataStore={activeDataStore ?? null}
+                enableEditing={editMode}
+              />
+            ) : (
+              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">
+                {isNativeLazySelection
+                  ? 'Raw STEP is not available for native-metadata selections'
+                  : 'Select an entity to inspect raw STEP arguments'}
+              </p>
             )}
           </TabsContent>
         </ScrollArea>

@@ -15,6 +15,7 @@ import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardS
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
+import { AddColumnDialog } from './AddColumnDialog';
 import { HoverTooltip } from './HoverTooltip';
 import { BCFPanel } from './BCFPanel';
 import { IDSPanel } from './IDSPanel';
@@ -205,6 +206,7 @@ export function ViewerLayout() {
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
+        <AddColumnDialog />
 
         {/* Main Toolbar */}
         <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />

@@ -20,6 +20,7 @@ import {
   Tag,
   Layers,
   Ruler,
+  Columns3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1239,6 +1240,8 @@ interface EditToolbarProps {
  * Schema-aware: filters available property/quantity sets based on entity type.
  */
 export function EditToolbar({ modelId, entityId, entityType, existingPsets, existingQtos, schemaVersion }: EditToolbarProps) {
+  const openAddColumnDialog = useViewerStore((s) => s.openAddColumnDialog);
+  const isStorey = entityType === 'IfcBuildingStorey';
   return (
     <div className="panel-container flex items-center justify-between gap-2 mb-3 pb-2 border-b border-purple-200 dark:border-purple-800 bg-purple-50/30 dark:bg-purple-950/20 -mx-3 -mt-3 px-3 pt-3">
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1265,6 +1268,23 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
           entityId={entityId}
           entityType={entityType}
         />
+        {isStorey && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                title="Add column to this storey"
+                className="panel-action-button h-7 min-w-0 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                onClick={() => openAddColumnDialog(modelId, entityId)}
+              >
+                <Columns3 className="h-3 w-3 shrink-0 panel-compact-icon" />
+                <span className="panel-compact-text">Column</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Add an IfcColumn anchored to this storey</TooltipContent>
+          </Tooltip>
+        )}
       </div>
       <UndoRedoButtons modelId={modelId} />
     </div>

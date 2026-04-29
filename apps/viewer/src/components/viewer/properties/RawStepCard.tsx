@@ -18,8 +18,29 @@ import { FileBox, Info, Sparkles } from 'lucide-react';
 import { EntityExtractor, getAttributeNames } from '@ifc-lite/parser';
 import type { EntityRef } from '@ifc-lite/parser';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { RawStepRow } from './RawStepRow';
+
+/**
+ * Apply positional overrides on top of a base attribute list. The
+ * overlay is keyed by zero-based index — out-of-range indices are
+ * ignored (the StoreEditor refuses them on write, but stay defensive
+ * here). Returns a fresh array so React detects the change.
+ */
+function mergeWithOverlay(
+  base: unknown[],
+  overlay: Map<number, IfcAttributeValue> | null,
+): unknown[] {
+  if (!overlay || overlay.size === 0) return base;
+  const merged = base.slice();
+  for (const [index, value] of overlay) {
+    if (index >= 0 && index < merged.length) {
+      merged[index] = value;
+    }
+  }
+  return merged;
+}
 
 interface RawStepCardProps {
   modelId: string;
@@ -45,9 +66,16 @@ export function RawStepCard({
 
   // Resolve attributes — prefer the parsed source buffer, fall back
   // to overlay-only NewEntity records for entities that were created
-  // entirely through `bim.store.addEntity` / `addColumn`.
-  const { attributes, isOverlayOnly } = useMemo(() => {
-    if (!dataStore) return { attributes: null, isOverlayOnly: false };
+  // entirely through `bim.store.addEntity` / `addColumn`. Then merge
+  // the per-index positional overlay on top so the displayed value
+  // reflects edits the moment they're confirmed.
+  const { attributes, isOverlayOnly, overlayMap } = useMemo(() => {
+    const view = getMutationView(modelId);
+    const overlay = view?.getPositionalMutationsForEntity(entityId) ?? null;
+
+    if (!dataStore) {
+      return { attributes: null, isOverlayOnly: false, overlayMap: overlay };
+    }
 
     // Source-buffer entity: extract positional args from STEP text.
     const ref: EntityRef | undefined = dataStore.entityIndex.byId.get(entityId);
@@ -55,23 +83,26 @@ export function RawStepCard({
       const extractor = new EntityExtractor(dataStore.source);
       const parsed = extractor.extractEntity(ref);
       if (parsed) {
-        return { attributes: parsed.attributes, isOverlayOnly: false };
+        const merged = mergeWithOverlay(parsed.attributes, overlay);
+        return { attributes: merged, isOverlayOnly: false, overlayMap: overlay };
       }
     }
 
-    // Overlay-only entity: read from MutablePropertyView.
-    const view = getMutationView(modelId);
+    // Overlay-only entity: read from MutablePropertyView and apply
+    // any positional overrides on top (rare for fresh entities, but
+    // setPositionalAttribute is legal on them too).
     if (view) {
-      const overlay = view.getNewEntity(entityId);
-      if (overlay) {
-        return { attributes: overlay.attributes as unknown[], isOverlayOnly: true };
+      const overlayEntity = view.getNewEntity(entityId);
+      if (overlayEntity) {
+        const merged = mergeWithOverlay(overlayEntity.attributes as unknown[], overlay);
+        return { attributes: merged, isOverlayOnly: true, overlayMap: overlay };
       }
     }
 
-    return { attributes: null, isOverlayOnly: false };
-    // mutationVersion is not used in the hook body, but it forces a
-    // recomputation when the overlay changes (overlay-only entities
-    // change shape on edit; source entities don't).
+    return { attributes: null, isOverlayOnly: false, overlayMap: overlay };
+    // mutationVersion forces this hook to re-run when any overlay
+    // (positional or overlay-entity) changes — overlay maps are
+    // mutated in place, so identity-based memoization isn't enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataStore, entityId, modelId, getMutationView, mutationVersion]);
 
@@ -79,14 +110,11 @@ export function RawStepCard({
   // generated registry doesn't know — never invent a name.
   const attributeNames = useMemo(() => getAttributeNames(entityType) ?? [], [entityType]);
 
-  // Per-row mutation overlay map.
+  // Per-row mutation indicator — drives the purple dot.
   const mutatedIndices = useMemo(() => {
-    const view = getMutationView(modelId);
-    const map = view?.getPositionalMutationsForEntity(entityId);
-    if (!map) return new Set<number>();
-    return new Set(map.keys());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, entityId, getMutationView, mutationVersion]);
+    if (!overlayMap) return new Set<number>();
+    return new Set(overlayMap.keys());
+  }, [overlayMap]);
 
   if (!attributes || attributes.length === 0) {
     return (

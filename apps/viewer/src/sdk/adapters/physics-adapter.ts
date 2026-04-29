@@ -7,9 +7,15 @@
  *
  * Pulls every loaded mesh, extracts caller-relevant IFC connection
  * relationships (`IfcRelConnectsElements`, `IfcRelConnectsPathElements`,
- * `IfcRelConnectsStructuralMember`), and hands them to Rapier (via the JS
- * WASM build). The transport boundary never sees raw geometry; it only sees
- * the small SimulationResult JSON.
+ * `IfcRelConnectsStructuralMember`, `IfcRelConnectsWithRealizingElements`),
+ * and hands them to Rapier (via the JS WASM build). The transport boundary
+ * never sees raw geometry; it only sees the small SimulationResult JSON.
+ *
+ * **ID space convention.** Federated `geometryResult.meshes[].expressId` is
+ * a *global* id (`localExpressId + idOffset`), but `dataStore.relationships`
+ * keys on local express ids and the SDK contract speaks local ids too. We
+ * normalize meshes to local ids on the way in so all of physics — `remove`,
+ * `anchor`, IFC connections, and the result body ids — stays in one space.
  *
  * `init()` from `@ifc-lite/physics` boots the Rapier WASM module — it's
  * exposed via `bim.physics.ready()` so the UI can gate the trigger
@@ -45,7 +51,8 @@ export function createPhysicsAdapter(store: StoreApi): PhysicsBackendMethods {
       return physicsInit();
     },
     simulate(modelId: string | null, options: PhysicsSimulateOptions): PhysicsSimulationResult {
-      const meshes = collectMeshes(store, modelId);
+      const idOffset = resolveIdOffset(store, modelId);
+      const meshes = collectMeshes(store, modelId, idOffset);
       const meshIds = new Set(meshes.map(m => m.expressId));
       const ifcConnections = extractConnections(store, modelId, meshIds);
       const merged = mergeConnections(options.connections, ifcConnections);
@@ -54,7 +61,18 @@ export function createPhysicsAdapter(store: StoreApi): PhysicsBackendMethods {
   };
 }
 
-function collectMeshes(store: StoreApi, requested: string | null): PhysicsMesh[] {
+function resolveIdOffset(store: StoreApi, requested: string | null): number {
+  const state = store.getState();
+  const targetId = requested ?? LEGACY_MODEL_ID;
+  const model = state.models.get(targetId);
+  return model?.idOffset ?? 0;
+}
+
+function collectMeshes(
+  store: StoreApi,
+  requested: string | null,
+  idOffset: number,
+): PhysicsMesh[] {
   const state = store.getState();
   const targetId = requested ?? LEGACY_MODEL_ID;
   const result: PhysicsMesh[] = [];
@@ -67,7 +85,9 @@ function collectMeshes(store: StoreApi, requested: string | null): PhysicsMesh[]
     if (!m.positions || m.positions.length < 9) continue;
     if (!m.indices || m.indices.length < 3) continue;
     result.push({
-      expressId: m.expressId,
+      // Federated meshes carry global ids; convert back to local so physics,
+      // the relationship graph, and SDK callers all share one id space.
+      expressId: m.expressId - idOffset,
       ifcType: m.ifcType ?? 'IfcBuildingElement',
       positions: m.positions,
       indices: m.indices,

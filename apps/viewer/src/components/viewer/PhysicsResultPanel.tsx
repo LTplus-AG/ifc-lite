@@ -37,7 +37,9 @@ export function PhysicsResultPanel() {
       return;
     }
     try {
-      const next = bim.physics.simulate({ remove: [removed.ref.expressId] });
+      const next = bim.physics.simulate(removed.ref.modelId, {
+        remove: [removed.ref.expressId],
+      });
       const refsFor = (ids: number[]): EntityRef[] =>
         ids.map((expressId) => ({ modelId: removed.ref.modelId, expressId }));
       bim.viewer.colorizeRgba(refsFor(next.falling), [0.86, 0.15, 0.15, 0.95]);

@@ -139,17 +139,22 @@ export const DEFAULT_OPTIONS: ResolvedSimulateOptions = {
 
 export function resolveOptions(opts: SimulateOptions | undefined): ResolvedSimulateOptions {
   return {
-    remove: opts?.remove ?? DEFAULT_OPTIONS.remove.slice(),
-    anchor: opts?.anchor ?? DEFAULT_OPTIONS.anchor.slice(),
-    connections: opts?.connections ?? [],
-    gravity: opts?.gravity ?? [...DEFAULT_OPTIONS.gravity],
+    // Defensive copies — callers commonly reuse the same option object
+    // across runs and we don't want mutations to leak back into them, nor
+    // share references with DEFAULT_OPTIONS.
+    remove: opts?.remove?.slice() ?? DEFAULT_OPTIONS.remove.slice(),
+    anchor: opts?.anchor?.slice() ?? DEFAULT_OPTIONS.anchor.slice(),
+    connections:
+      opts?.connections?.map(([a, b]) => [a, b] as [number, number]) ??
+      DEFAULT_OPTIONS.connections.slice(),
+    gravity: opts?.gravity ? [...opts.gravity] : [...DEFAULT_OPTIONS.gravity],
     durationSeconds: opts?.durationSeconds ?? DEFAULT_OPTIONS.durationSeconds,
     timeStep: opts?.timeStep ?? DEFAULT_OPTIONS.timeStep,
     adjacencyTolerance: opts?.adjacencyTolerance ?? DEFAULT_OPTIONS.adjacencyTolerance,
     fallThreshold: opts?.fallThreshold ?? DEFAULT_OPTIONS.fallThreshold,
     tiltThreshold: opts?.tiltThreshold ?? DEFAULT_OPTIONS.tiltThreshold,
     groundAnchorTolerance: opts?.groundAnchorTolerance ?? DEFAULT_OPTIONS.groundAnchorTolerance,
-    anchorIfcTypes: opts?.anchorIfcTypes ?? DEFAULT_OPTIONS.anchorIfcTypes.slice(),
+    anchorIfcTypes: opts?.anchorIfcTypes?.slice() ?? DEFAULT_OPTIONS.anchorIfcTypes.slice(),
     colliderStrategy: opts?.colliderStrategy ?? DEFAULT_OPTIONS.colliderStrategy,
     captureTrajectory: opts?.captureTrajectory ?? DEFAULT_OPTIONS.captureTrajectory,
     trajectoryStride: Math.max(1, Math.floor(opts?.trajectoryStride ?? DEFAULT_OPTIONS.trajectoryStride)),

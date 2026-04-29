@@ -65,7 +65,20 @@ export function usePhysicsPlaybackDriver(): void {
     lastFrameAppliedRef.current = -1;
 
     return () => {
-      // No teardown here — the next effect run handles it.
+      // On unmount (or before the next snapshot effect runs), restore the
+      // baked vertex positions so we don't leave the renderer in a
+      // half-transformed state.
+      if (!activeTrajectoryRef.current) return;
+      const r = getGlobalRenderer();
+      if (!r) return;
+      try {
+        r.endPhysicsAnimation();
+      } catch (err) {
+        console.error('[Physics] endPhysicsAnimation failed during cleanup:', err);
+      } finally {
+        activeTrajectoryRef.current = null;
+        lastFrameAppliedRef.current = -1;
+      }
     };
   }, [result, removed]);
 
@@ -96,7 +109,14 @@ export function usePhysicsPlaybackDriver(): void {
       }
     };
 
-    apply(playback.frame);
+    // Clamp incoming frame to the new trajectory's range. Without this, a
+    // re-run with fewer frames would index past `poses` and feed garbage
+    // transforms into the renderer.
+    const startFrame = Math.max(0, Math.min(frameCount - 1, playback.frame));
+    if (startFrame !== playback.frame) {
+      setPlayback({ frame: startFrame });
+    }
+    apply(startFrame);
 
     if (!playback.isPlaying) return;
 
@@ -108,7 +128,7 @@ export function usePhysicsPlaybackDriver(): void {
       const advance = Math.floor(accumulated / traj.frameDt);
       if (advance > 0) {
         accumulated -= advance * traj.frameDt;
-        let next = playback.frame + advance;
+        let next = startFrame + advance;
         if (next >= frameCount) {
           if (playback.loop) {
             next = next % frameCount;

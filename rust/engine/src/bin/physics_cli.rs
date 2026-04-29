@@ -58,9 +58,15 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             "--duration" => {
                 let value = iter.next().ok_or("--duration expects a number of seconds")?;
-                duration = value
+                let parsed: f32 = value
                     .parse::<f32>()
                     .map_err(|e| format!("invalid --duration '{value}': {e}"))?;
+                if !parsed.is_finite() || parsed <= 0.0 {
+                    return Err(format!(
+                        "invalid --duration '{value}': must be a positive number of seconds",
+                    ));
+                }
+                duration = parsed;
             }
             "--json" => as_json = true,
             "-h" | "--help" => {

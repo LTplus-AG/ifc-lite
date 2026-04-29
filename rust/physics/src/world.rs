@@ -53,7 +53,7 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
         .collect();
 
     let down_axis = gravity_down_axis(options.gravity);
-    let model_floor = compute_model_floor(meshes, down_axis);
+    let model_floor = compute_model_floor(meshes, down_axis, &removed);
 
     let mut entries: Vec<BodyEntry> = Vec::with_capacity(meshes.len());
     let mut aabbs: FxHashMap<u32, Aabb> = FxHashMap::default();
@@ -86,10 +86,10 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
         let body = if anchored {
             RigidBodyBuilder::fixed().translation(translation).build()
         } else {
-            RigidBodyBuilder::dynamic()
-                .translation(translation)
-                .ccd_enabled(true)
-                .build()
+            // CCD off for parity with the JS path. Plausibility checks
+            // settle at low velocities and CCD doubles per-step solver work
+            // for every dynamic body.
+            RigidBodyBuilder::dynamic().translation(translation).build()
         };
 
         let start_translation = body.translation();
@@ -148,9 +148,15 @@ pub(crate) fn build_world(meshes: &[PhysicsMesh], options: &SimulateOptions) -> 
         let pos_a = body_a.translation();
         let pos_b = body_b.translation();
         let offset = Vector::new(pos_a.x - pos_b.x, pos_a.y - pos_b.y, pos_a.z - pos_b.z);
+        // IFC tessellation routinely shares vertices between adjacent walls,
+        // slabs and columns. Welded bodies start out interpenetrating, and
+        // contact resolution between them fights the joint constraint
+        // (corrective impulses stack up and the structure explodes). Disable
+        // contacts on welded pairs so the joint wins cleanly.
         let builder = FixedJointBuilder::new()
             .local_anchor1(Vector::new(0.0, 0.0, 0.0))
-            .local_anchor2(offset);
+            .local_anchor2(offset)
+            .contacts_enabled(false);
         joint_set.insert(ha, hb, builder, true);
     }
 
@@ -183,9 +189,19 @@ fn gravity_down_axis(gravity: [f32; 3]) -> usize {
     idx
 }
 
-fn compute_model_floor(meshes: &[PhysicsMesh], axis: usize) -> f32 {
+fn compute_model_floor(
+    meshes: &[PhysicsMesh],
+    axis: usize,
+    removed: &FxHashSet<u32>,
+) -> f32 {
     let mut floor = f32::INFINITY;
     for mesh in meshes {
+        // Removed elements shouldn't drag the floor below the remaining
+        // structure — otherwise yanking out the lowest support makes the
+        // engine think nothing touches the ground anymore.
+        if removed.contains(&mesh.express_id) {
+            continue;
+        }
         if let Some(aabb) = mesh.aabb() {
             if aabb.min[axis] < floor {
                 floor = aabb.min[axis];

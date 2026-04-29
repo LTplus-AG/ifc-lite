@@ -56,6 +56,12 @@ export interface PhysicsSliceState {
   physicsSettings: PhysicsPanelSettings;
   /** Animation playback state for the latest result's trajectory. */
   physicsPlayback: PhysicsPlaybackState;
+  /**
+   * EntityRefs the physics panel currently has tinted in the viewer.
+   * Tracked so resetting only clears physics tints — lens / IDS /
+   * BCF overlays painting other entities aren't clobbered.
+   */
+  physicsPaintedRefs: EntityRef[];
 }
 
 export interface PhysicsSlice extends PhysicsSliceState {
@@ -69,6 +75,7 @@ export interface PhysicsSlice extends PhysicsSliceState {
   clearPhysicsResult: () => void;
   updatePhysicsSettings: (patch: Partial<PhysicsPanelSettings>) => void;
   setPhysicsPlayback: (patch: Partial<PhysicsPlaybackState>) => void;
+  setPhysicsPaintedRefs: (refs: EntityRef[]) => void;
 }
 
 const PLAYBACK_DEFAULT: PhysicsPlaybackState = {
@@ -93,6 +100,7 @@ export const createPhysicsSlice: StateCreator<PhysicsSlice, [], [], PhysicsSlice
   physicsRemoved: null,
   physicsSettings: { ...PHYSICS_DEFAULT_SETTINGS },
   physicsPlayback: { ...PLAYBACK_DEFAULT },
+  physicsPaintedRefs: [],
 
   setPhysicsPanelVisible: (physicsPanelVisible) => set({ physicsPanelVisible }),
   togglePhysicsPanel: () =>
@@ -113,9 +121,11 @@ export const createPhysicsSlice: StateCreator<PhysicsSlice, [], [], PhysicsSlice
       physicsRemoved: null,
       physicsRunning: false,
       physicsPlayback: { ...PLAYBACK_DEFAULT },
+      physicsPaintedRefs: [],
     }),
   updatePhysicsSettings: (patch) =>
     set((state) => ({ physicsSettings: { ...state.physicsSettings, ...patch } })),
   setPhysicsPlayback: (patch) =>
     set((state) => ({ physicsPlayback: { ...state.physicsPlayback, ...patch } })),
+  setPhysicsPaintedRefs: (physicsPaintedRefs) => set({ physicsPaintedRefs }),
 });

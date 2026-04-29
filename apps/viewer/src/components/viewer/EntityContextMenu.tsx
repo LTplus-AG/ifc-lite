@@ -50,6 +50,8 @@ export function EntityContextMenu() {
   const setPhysicsPanelVisible = useViewerStore((s) => s.setPhysicsPanelVisible);
   const clearPhysicsResult = useViewerStore((s) => s.clearPhysicsResult);
   const physicsSettings = useViewerStore((s) => s.physicsSettings);
+  const physicsPaintedRefs = useViewerStore((s) => s.physicsPaintedRefs);
+  const setPhysicsPaintedRefs = useViewerStore((s) => s.setPhysicsPaintedRefs);
 
   // Resolve contextMenu.entityId (globalId) to original expressId and model
   // This is needed because IfcDataStore uses original expressIds, not globalIds
@@ -225,6 +227,11 @@ export function EntityContextMenu() {
     // Reveal the dedicated panel before running so the user gets feedback
     // (running spinner, settings) the moment they trigger.
     setPhysicsPanelVisible(true);
+    // Wipe only what physics painted last time, not other viewer overlays.
+    if (physicsPaintedRefs.length > 0) {
+      bim.viewer.resetColors(physicsPaintedRefs);
+      setPhysicsPaintedRefs([]);
+    }
     setPhysicsRunning(true);
 
     try {
@@ -262,9 +269,13 @@ export function EntityContextMenu() {
     const refsFor = (ids: number[]): EntityRef[] =>
       ids.map((expressId) => ({ modelId: contextEntityRef.modelId, expressId }));
 
-    bim.viewer.colorizeRgba(refsFor(result.falling), [0.86, 0.15, 0.15, 0.95]);
-    bim.viewer.colorizeRgba(refsFor(result.tilted), [0.96, 0.62, 0.04, 0.95]);
-    bim.viewer.colorizeRgba(refsFor(result.anchored), [0.20, 0.39, 0.92, 0.45]);
+    const fallingRefs = refsFor(result.falling);
+    const tiltedRefs = refsFor(result.tilted);
+    const anchoredRefs = refsFor(result.anchored);
+    bim.viewer.colorizeRgba(fallingRefs, [0.86, 0.15, 0.15, 0.95]);
+    bim.viewer.colorizeRgba(tiltedRefs, [0.96, 0.62, 0.04, 0.95]);
+    bim.viewer.colorizeRgba(anchoredRefs, [0.20, 0.39, 0.92, 0.45]);
+    setPhysicsPaintedRefs([...fallingRefs, ...tiltedRefs, ...anchoredRefs]);
 
     setPhysicsResult(result, {
       ref: contextEntityRef,
@@ -279,16 +290,21 @@ export function EntityContextMenu() {
     setPhysicsResult,
     setPhysicsRunning,
     setPhysicsPanelVisible,
+    setPhysicsPaintedRefs,
+    physicsPaintedRefs,
     physicsSettings,
     entityName,
     entityType,
   ]);
 
   const handleResetPhysicsColors = useCallback(() => {
-    bim.viewer.resetColors();
+    if (physicsPaintedRefs.length > 0) {
+      bim.viewer.resetColors(physicsPaintedRefs);
+      setPhysicsPaintedRefs([]);
+    }
     clearPhysicsResult();
     closeContextMenu();
-  }, [bim, clearPhysicsResult, closeContextMenu]);
+  }, [bim, clearPhysicsResult, closeContextMenu, physicsPaintedRefs, setPhysicsPaintedRefs]);
 
   const handleCopyId = useCallback(() => {
     // Use resolvedExpressId (original ID) for IfcDataStore lookups

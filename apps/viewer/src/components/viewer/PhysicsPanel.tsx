@@ -56,11 +56,13 @@ export function PhysicsPanel({ onClose }: PhysicsPanelProps) {
   const running = useViewerStore((s) => s.physicsRunning);
   const settings = useViewerStore((s) => s.physicsSettings);
   const playback = useViewerStore((s) => s.physicsPlayback);
+  const paintedRefs = useViewerStore((s) => s.physicsPaintedRefs);
   const setRunning = useViewerStore((s) => s.setPhysicsRunning);
   const setResult = useViewerStore((s) => s.setPhysicsResult);
   const clearResult = useViewerStore((s) => s.clearPhysicsResult);
   const updateSettings = useViewerStore((s) => s.updatePhysicsSettings);
   const setPlayback = useViewerStore((s) => s.setPhysicsPlayback);
+  const setPaintedRefs = useViewerStore((s) => s.setPhysicsPaintedRefs);
 
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
@@ -87,20 +89,43 @@ export function PhysicsPanel({ onClose }: PhysicsPanelProps) {
     };
   }, [selectedEntity, selectedEntityId, models, ifcDataStore]);
 
+  /**
+   * Wipe only the entities the previous physics run tinted, leaving any
+   * other viewer overlays (lens, IDS, BCF) untouched. Use this before
+   * starting a new run so falling/tilted bodies that are no longer part of
+   * the result stop looking colorized.
+   */
+  const clearPhysicsPaint = useCallback(() => {
+    if (paintedRefs.length > 0) {
+      bim.viewer.resetColors(paintedRefs);
+      setPaintedRefs([]);
+    }
+  }, [bim, paintedRefs, setPaintedRefs]);
+
   const applyColorize = useCallback(
     (modelId: string, falling: number[], tilted: number[], anchored: number[]) => {
       const refsFor = (ids: number[]): EntityRef[] =>
         ids.map((expressId) => ({ modelId, expressId }));
-      bim.viewer.colorizeRgba(refsFor(falling), [0.86, 0.15, 0.15, 0.95]);
-      bim.viewer.colorizeRgba(refsFor(tilted), [0.96, 0.62, 0.04, 0.95]);
-      bim.viewer.colorizeRgba(refsFor(anchored), [0.20, 0.39, 0.92, 0.45]);
+      const fallingRefs = refsFor(falling);
+      const tiltedRefs = refsFor(tilted);
+      const anchoredRefs = refsFor(anchored);
+      bim.viewer.colorizeRgba(fallingRefs, [0.86, 0.15, 0.15, 0.95]);
+      bim.viewer.colorizeRgba(tiltedRefs, [0.96, 0.62, 0.04, 0.95]);
+      bim.viewer.colorizeRgba(anchoredRefs, [0.20, 0.39, 0.92, 0.45]);
+      setPaintedRefs([...fallingRefs, ...tiltedRefs, ...anchoredRefs]);
     },
-    [bim],
+    [bim, setPaintedRefs],
   );
 
   const runSimulation = useCallback(
     async (target: NonNullable<typeof selectedTarget> | typeof removed) => {
       if (!target) return;
+      // Drop the previous run's tints + result up front so the panel and
+      // viewport never show a stale collapse alongside an in-flight new
+      // simulation. If the run errors, we stay clean instead of leaving
+      // half of last run's coloring around.
+      clearPhysicsPaint();
+      clearResult();
       setRunning(true);
       try {
         await bim.physics.ready();
@@ -133,7 +158,7 @@ export function PhysicsPanel({ onClose }: PhysicsPanelProps) {
         setRunning(false);
       }
     },
-    [bim, settings, applyColorize, setRunning, setResult],
+    [bim, settings, applyColorize, clearPhysicsPaint, clearResult, setRunning, setResult],
   );
 
   const handleRunFromSelection = useCallback(() => {
@@ -147,9 +172,9 @@ export function PhysicsPanel({ onClose }: PhysicsPanelProps) {
   }, [runSimulation, removed]);
 
   const handleReset = useCallback(() => {
-    bim.viewer.resetColors();
+    clearPhysicsPaint();
     clearResult();
-  }, [bim, clearResult]);
+  }, [clearPhysicsPaint, clearResult]);
 
   const total = result?.bodies.length ?? 0;
   const fallingPct = total > 0 && result ? Math.round((result.falling.length / total) * 100) : 0;

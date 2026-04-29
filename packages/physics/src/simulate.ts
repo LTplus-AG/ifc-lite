@@ -69,7 +69,14 @@ export function init(): Promise<void> {
 interface BodyEntry {
   expressId: number;
   ifcType: string;
-  body: RAPIER.RigidBody;
+  /**
+   * Stable body identifier owned by the world. We deliberately store the
+   * handle (a numeric id) rather than the `RigidBody` wrapper because
+   * holding wrappers across `world.free()` triggers wasm-bindgen's
+   * "attempted to take ownership of Rust value while it was borrowed"
+   * panic. Look bodies up via `world.bodies.get(handle)` on demand.
+   */
+  handle: RAPIER.RigidBodyHandle;
   anchored: boolean;
   anchorReason: AnchorReason | null;
   startTranslation: { x: number; y: number; z: number };
@@ -102,6 +109,10 @@ export function simulate(
       built.world.step();
       if (recorder) recorder.recordFrame(i + 1);
     }
+    // recordFrame is a no-op when the loop already covered this step on a
+    // stride boundary; otherwise it captures the terminal pose so the
+    // trajectory ends on the exact state `collect` classifies on.
+    if (recorder && built.steps > 0) recorder.recordFrame(built.steps);
     return collect(built, recorder?.finalize());
   } finally {
     built.world.free();
@@ -127,6 +138,7 @@ export async function simulateAsync(
         await yieldToEventLoop();
       }
     }
+    if (recorder && built.steps > 0) recorder.recordFrame(built.steps);
     return collect(built, recorder?.finalize());
   } finally {
     built.world.free();
@@ -144,9 +156,12 @@ function createRecorder(built: BuiltWorld): TrajectoryRecorder | null {
   if (!options.captureTrajectory) return null;
   const stride = Math.max(1, options.trajectoryStride | 0);
 
-  // We always record frame 0 (initial), plus every `stride`-th step. The
-  // last sample beyond `steps` is dropped.
-  const frameCount = 1 + Math.floor(steps / stride);
+  // We always record frame 0 (initial), each stride boundary, AND the
+  // terminal step when steps doesn't divide cleanly into stride — so the
+  // last recorded pose matches the state `collect` classifies on.
+  const needsTerminalFrame = steps > 0 && steps % stride !== 0;
+  const frameCount =
+    1 + Math.floor(steps / stride) + (needsTerminalFrame ? 1 : 0);
   const bodyCount = entries.length;
   const poses = new Float32Array(frameCount * bodyCount * 7);
   const bodyOrder = entries.map((e) => e.expressId);
@@ -156,13 +171,19 @@ function createRecorder(built: BuiltWorld): TrajectoryRecorder | null {
     recordFrame(stepIndex: number) {
       // Step 0 = initial state; subsequent steps recorded only when on a
       // stride boundary AND we still have room in the pre-allocated buffer.
-      if (stepIndex !== 0 && stepIndex % stride !== 0) return;
+      // The simulator also explicitly calls us with `stepIndex === built.steps`
+      // when the run ended off a stride boundary, so the trajectory's
+      // final pose matches what `collect` classifies on.
+      const onBoundary = stepIndex === 0 || stepIndex % stride === 0;
+      if (!onBoundary && stepIndex !== built.steps) return;
       if (nextFrameIndex >= frameCount) return;
       const base = nextFrameIndex * bodyCount * 7;
       for (let b = 0; b < bodyCount; b++) {
         const e = entries[b];
-        const t = e.body.translation();
-        const r = e.body.rotation();
+        const body = built.world.bodies.get(e.handle);
+        if (!body) continue;
+        const t = body.translation();
+        const r = body.rotation();
         const o = base + b * 7;
         poses[o] = t.x;
         poses[o + 1] = t.y;
@@ -234,6 +255,11 @@ function buildWorld(
 
   const entries: BodyEntry[] = [];
   let lowestUnanchored: { id: number; along: number } | null = null;
+  // Body wrappers held only during the build phase. We need the wrapper
+  // for collider parenting and joint anchor reads, but they must NOT
+  // leak past the end of buildWorld — wasm-bindgen treats live wrapper
+  // references as borrows and `world.free()` panics when one is alive.
+  const tempBodies = new Map<number, RAPIER.RigidBody>();
 
   for (const mesh of meshes) {
     if (removed.has(mesh.expressId)) continue;
@@ -251,9 +277,8 @@ function buildWorld(
     const center = aabbCenter(aabb);
     const desc = anchored ? RAPIER.RigidBodyDesc.fixed() : RAPIER.RigidBodyDesc.dynamic();
     desc.setTranslation(center[0], center[1], center[2]);
-    // CCD is intentionally off — for plausibility checks elements settle
-    // under gravity at low velocities, and CCD doubles per-step work for
-    // every dynamic body.
+    // CCD is intentionally off — plausibility checks settle at low
+    // velocities and CCD doubles per-step solver work.
     const body = world.createRigidBody(desc);
 
     const colliderDesc = buildColliderDesc(mesh, center, options.colliderStrategy);
@@ -264,15 +289,17 @@ function buildWorld(
 
     const t = body.translation();
     const r = body.rotation();
+    const handle = body.handle;
     entries.push({
       expressId: mesh.expressId,
       ifcType: mesh.ifcType,
-      body,
+      handle,
       anchored,
       anchorReason: reason,
       startTranslation: { x: t.x, y: t.y, z: t.z },
       startRotation: { x: r.x, y: r.y, z: r.z, w: r.w },
     });
+    tempBodies.set(mesh.expressId, body);
 
     if (!anchored) {
       const along = aabb.min[downAxis];
@@ -285,18 +312,19 @@ function buildWorld(
   if (!entries.some((e) => e.anchored) && lowestUnanchored) {
     const fallback = entries.find((e) => e.expressId === lowestUnanchored!.id);
     if (fallback) {
-      fallback.body.setBodyType(RAPIER.RigidBodyType.Fixed, true);
+      const fallbackBody = tempBodies.get(fallback.expressId);
+      if (fallbackBody) {
+        fallbackBody.setBodyType(RAPIER.RigidBodyType.Fixed, true);
+      }
       fallback.anchored = true;
       fallback.anchorReason = 'lowestElement';
     }
   }
 
   const jointPairs = computeJoints(aabbs, options.adjacencyTolerance, options.connections);
-  const handleToBody = new Map<number, RAPIER.RigidBody>();
-  for (const e of entries) handleToBody.set(e.expressId, e.body);
   for (const [a, b] of jointPairs) {
-    const ba = handleToBody.get(a);
-    const bb = handleToBody.get(b);
+    const ba = tempBodies.get(a);
+    const bb = tempBodies.get(b);
     if (!ba || !bb) continue;
     // Preserve current relative pose. Default zero anchors would yank
     // far-apart bodies to coincide.
@@ -309,8 +337,18 @@ function buildWorld(
       offset,
       { x: 0, y: 0, z: 0, w: 1 },
     );
-    world.createImpulseJoint(joint, ba, bb, true);
+    const impulseJoint = world.createImpulseJoint(joint, ba, bb, true);
+    // IFC tessellation routinely shares vertices between adjacent walls,
+    // slabs and columns, so welded bodies start out interpenetrating. The
+    // joint says "stay together" while the contact resolver says "get
+    // apart" — those huge corrective impulses send the model exploding
+    // upward. Disabling contacts on welded pairs lets the joint constraint
+    // win cleanly. Pairs that aren't welded still collide as normal.
+    impulseJoint.setContactsEnabled(false);
   }
+  // Drop every wrapper so the world owns the only references when callers
+  // eventually free it.
+  tempBodies.clear();
 
   const totalSeconds = Math.max(options.durationSeconds, 0);
   const steps = Math.ceil(totalSeconds / world.timestep);
@@ -419,8 +457,10 @@ function collect(
   const anchored: number[] = [];
 
   for (const e of entries) {
-    const t = e.body.translation();
-    const r = e.body.rotation();
+    const body = built.world.bodies.get(e.handle);
+    if (!body) continue;
+    const t = body.translation();
+    const r = body.rotation();
     const dx = t.x - e.startTranslation.x;
     const dy = t.y - e.startTranslation.y;
     const dz = t.z - e.startTranslation.z;

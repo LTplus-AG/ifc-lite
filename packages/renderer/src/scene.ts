@@ -1639,9 +1639,16 @@ export class Scene {
   /**
    * Snapshot the original GPU vertex slices for a set of bodies. Call
    * before driving frames via `applyPhysicsAnimationFrame`. Repeated calls
-   * replace the snapshot.
+   * restore the previous session's displaced slices first, so re-running a
+   * simulation never starts from a half-transformed state.
    */
-  beginPhysicsAnimation(expressIds: Iterable<number>): void {
+  beginPhysicsAnimation(expressIds: Iterable<number>, device: GPUDevice): void {
+    // Roll any leftover transforms back before we replace the registry —
+    // otherwise the GPU buffer keeps the old snapshot's poses while the
+    // recorded "originals" point at the new bodies.
+    if (this.physicsAnim) {
+      this.endPhysicsAnimation(device);
+    }
     const registry = new Map<number, AnimEntry[]>();
     for (const id of expressIds) {
       const pieces = this.meshDataMap.get(id);

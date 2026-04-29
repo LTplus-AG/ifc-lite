@@ -6,7 +6,9 @@ import type { AABB, PhysicsMesh } from './types.js';
 
 export function meshAABB(mesh: PhysicsMesh): AABB | null {
   const positions = mesh.positions;
-  if (!positions || positions.length < 3) {
+  // Fail closed on malformed buffers — physics world construction
+  // downstream assumes triplets and finite coordinates.
+  if (!positions || positions.length < 3 || positions.length % 3 !== 0) {
     return null;
   }
   let minX = Infinity;
@@ -19,6 +21,9 @@ export function meshAABB(mesh: PhysicsMesh): AABB | null {
     const x = positions[i];
     const y = positions[i + 1];
     const z = positions[i + 2];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      return null;
+    }
     if (x < minX) minX = x;
     if (y < minY) minY = y;
     if (z < minZ) minZ = z;

@@ -44,9 +44,12 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
     let steps = (total / dt).ceil() as usize;
     let stride = options.trajectory_stride.max(1);
     let body_count = build.entries.len();
+    let needs_terminal_frame = steps > 0 && steps % stride != 0;
     let mut trajectory_poses: Vec<f32> = if options.capture_trajectory {
-        // Pre-allocate: 1 (initial) + steps/stride frames worst-case.
-        let estimated_frames = 1 + steps / stride;
+        // Pre-allocate: 1 (initial) + steps/stride frames + optional
+        // terminal frame when steps doesn't divide cleanly by stride.
+        let estimated_frames =
+            1 + steps / stride + if needs_terminal_frame { 1 } else { 0 };
         Vec::with_capacity(estimated_frames * body_count * 7)
     } else {
         Vec::new()
@@ -86,6 +89,13 @@ pub fn simulate(meshes: &[PhysicsMesh], options: &SimulateOptions) -> Simulation
         if options.capture_trajectory && (step_index + 1) % stride == 0 {
             record_pose(&mut trajectory_poses, &build.bodies, &build.entries);
         }
+    }
+
+    // If `steps` didn't land on a stride boundary the recorder above missed
+    // the final pose, but `bodies_out` is computed from that very pose. Make
+    // sure the trajectory ends on the same state callers see classified.
+    if options.capture_trajectory && needs_terminal_frame {
+        record_pose(&mut trajectory_poses, &build.bodies, &build.entries);
     }
 
     let mut bodies_out: Vec<BodyOutcome> = Vec::with_capacity(build.entries.len());

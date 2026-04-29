@@ -330,6 +330,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       physicsResult: null,
       physicsRemoved: null,
       physicsPlayback: { isPlaying: false, frame: 0, speed: 1, loop: false },
+      physicsPaintedRefs: [],
 
       // IDS - reset panel but keep document and results
       idsPanelVisible: false,

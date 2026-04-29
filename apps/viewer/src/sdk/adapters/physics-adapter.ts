@@ -37,6 +37,7 @@ import type {
 
 import type { StoreApi } from './types.js';
 import { LEGACY_MODEL_ID } from './model-compat.js';
+import { fromGlobalIdFromModels } from '../../store/globalId.js';
 
 const CONNECTION_REL_TYPES = [
   RelationshipType.ConnectsElements,
@@ -54,43 +55,56 @@ export function createPhysicsAdapter(store: StoreApi): PhysicsBackendMethods {
       modelId: string | null,
       options: PhysicsSimulateOptions,
     ): Promise<PhysicsSimulationResult> {
-      const idOffset = resolveIdOffset(store, modelId);
-      const meshes = collectMeshes(store, modelId, idOffset);
-      const meshIds = new Set(meshes.map(m => m.expressId));
-      const ifcConnections = extractConnections(store, modelId, meshIds);
-      const merged = mergeConnections(options.connections, ifcConnections);
-      return simulateAsync(meshes, toEngineOptions(options, merged));
+      try {
+        const resolved = resolveModelId(store, modelId);
+        const meshes = collectMeshes(store, resolved);
+        const meshIds = new Set(meshes.map((m) => m.expressId));
+        const ifcConnections = extractConnections(store, resolved, meshIds);
+        const merged = mergeConnections(options.connections, ifcConnections);
+        return simulateAsync(meshes, toEngineOptions(options, merged));
+      } catch (err) {
+        return Promise.reject(err);
+      }
     },
   };
 }
 
-function resolveIdOffset(store: StoreApi, requested: string | null): number {
+/**
+ * Resolve the caller's modelId to a known model. Returns the legacy model
+ * id when `requested` is null (back-compat with single-model callers).
+ * Throws when a non-null id isn't registered — silently falling back to
+ * the legacy store would run physics against the wrong geometry.
+ */
+function resolveModelId(store: StoreApi, requested: string | null): string {
+  if (requested === null) return LEGACY_MODEL_ID;
   const state = store.getState();
-  const targetId = requested ?? LEGACY_MODEL_ID;
-  const model = state.models.get(targetId);
-  return model?.idOffset ?? 0;
+  if (state.models.has(requested)) return requested;
+  // Single-model legacy behavior: if the ONLY model is the legacy store,
+  // accept the legacy alias as a no-op.
+  if (state.models.size === 0 && requested === LEGACY_MODEL_ID) {
+    return requested;
+  }
+  throw new Error(`physics.simulate: unknown modelId '${requested}'`);
 }
 
-function collectMeshes(
-  store: StoreApi,
-  requested: string | null,
-  idOffset: number,
-): PhysicsMesh[] {
+function collectMeshes(store: StoreApi, modelId: string): PhysicsMesh[] {
   const state = store.getState();
-  const targetId = requested ?? LEGACY_MODEL_ID;
   const result: PhysicsMesh[] = [];
 
-  const model = state.models.get(targetId);
+  const model = state.models.get(modelId);
   const geometry = model?.geometryResult ?? state.geometryResult;
   if (!geometry) return result;
 
   for (const m of geometry.meshes) {
     if (!m.positions || m.positions.length < 9) continue;
     if (!m.indices || m.indices.length < 3) continue;
+    // Federated meshes carry global ids (`localExpressId + idOffset`).
+    // Route through the registry helper instead of subtracting `idOffset`
+    // ad-hoc — that's the path the rest of the viewer uses.
+    const local = fromGlobalIdFromModels(state.models, m.expressId);
+    const expressId = local && local.modelId === modelId ? local.expressId : m.expressId;
     result.push({
-      // Federated meshes carry global ids; convert back to local so physics,
-      // the relationship graph, and SDK callers all share one id space.
-      expressId: m.expressId - idOffset,
+      expressId,
       ifcType: m.ifcType ?? 'IfcBuildingElement',
       positions: m.positions,
       indices: m.indices,
@@ -107,12 +121,11 @@ function collectMeshes(
  */
 function extractConnections(
   store: StoreApi,
-  requested: string | null,
+  modelId: string,
   meshIds: Set<number>,
 ): Array<[number, number]> {
   const state = store.getState();
-  const targetId = requested ?? LEGACY_MODEL_ID;
-  const model = state.models.get(targetId);
+  const model = state.models.get(modelId);
   const dataStore = model?.ifcDataStore ?? state.ifcDataStore;
   if (!dataStore) return [];
 

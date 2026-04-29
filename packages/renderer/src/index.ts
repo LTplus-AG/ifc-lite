@@ -1661,10 +1661,12 @@ export class Renderer {
     /**
      * Begin a physics-animation session. Snapshots the GPU vertex slices
      * for `expressIds` so subsequent `applyPhysicsAnimationFrame` calls can
-     * patch them in place. Call `endPhysicsAnimation` to restore originals.
+     * patch them in place. Any prior session is restored before the new
+     * snapshot is taken, so re-running never starts from a half-transformed
+     * state. Call `endPhysicsAnimation` to restore originals.
      */
     beginPhysicsAnimation(expressIds: Iterable<number>): void {
-        this.scene.beginPhysicsAnimation(expressIds);
+        this.scene.beginPhysicsAnimation(expressIds, this.device.getDevice());
     }
 
     /**

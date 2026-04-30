@@ -923,36 +923,62 @@ fn process_cylindrical_face(
         .map(|p| inv_transform.transform_point(p))
         .collect();
 
-    // Determine angular extent (from local x,y) and height extent (from local z)
-    let mut min_angle = f64::MAX;
-    let mut max_angle = f64::MIN;
+    // Determine angular extent via the largest-gap-on-the-circle algorithm
+    // (same approach as SoR). Robust to faces that straddle θ=π — the
+    // previous min/max + wrap heuristic could give a 270° span for a
+    // half-cylinder face whose samples cluster at the seam, leaving a
+    // visible misalignment with the opposite half.
+    let mut angles: Vec<f64> = local_points
+        .iter()
+        .map(|p| {
+            let mut a = p.y.atan2(p.x);
+            if a < 0.0 {
+                a += std::f64::consts::TAU;
+            }
+            a
+        })
+        .collect();
+    angles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    angles.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+
+    let (min_angle, max_angle) = if angles.len() < 2 {
+        (0.0, std::f64::consts::TAU)
+    } else {
+        let n = angles.len();
+        let mut max_gap = 0.0;
+        let mut max_gap_idx = 0usize;
+        for i in 0..n {
+            let next = if i + 1 < n {
+                angles[i + 1]
+            } else {
+                angles[0] + std::f64::consts::TAU
+            };
+            let gap = next - angles[i];
+            if gap > max_gap {
+                max_gap = gap;
+                max_gap_idx = i;
+            }
+        }
+        let start = angles[(max_gap_idx + 1) % n];
+        let end_raw = angles[max_gap_idx];
+        let end = if end_raw < start {
+            end_raw + std::f64::consts::TAU
+        } else {
+            end_raw
+        };
+        let span = end - start;
+        if span < 1e-6 || span > std::f64::consts::TAU - 1e-6 {
+            (0.0, std::f64::consts::TAU)
+        } else {
+            (start, end)
+        }
+    };
+
     let mut min_z = f64::MAX;
     let mut max_z = f64::MIN;
-
     for p in &local_points {
-        let angle = p.y.atan2(p.x);
-        min_angle = min_angle.min(angle);
-        max_angle = max_angle.max(angle);
         min_z = min_z.min(p.z);
         max_z = max_z.max(p.z);
-    }
-
-    // Handle angle wrapping (if angles span across -pi/pi boundary)
-    if max_angle - min_angle > std::f64::consts::PI * 1.5 {
-        // Likely wraps around, recalculate with positive angles
-        let positive_angles: Vec<f64> = local_points
-            .iter()
-            .map(|p| {
-                let a = p.y.atan2(p.x);
-                if a < 0.0 {
-                    a + 2.0 * std::f64::consts::PI
-                } else {
-                    a
-                }
-            })
-            .collect();
-        min_angle = positive_angles.iter().cloned().fold(f64::MAX, f64::min);
-        max_angle = positive_angles.iter().cloned().fold(f64::MIN, f64::max);
     }
 
     // Tessellation parameters

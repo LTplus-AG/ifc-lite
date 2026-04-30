@@ -9,6 +9,78 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 
+/// Build a rotation-minimising frame (RMF) for sweeping a circular cross-section
+/// along `curve_points`. Returns `(tangents, perp1s, perp2s)`, each of length
+/// `curve_points.len()`.
+///
+/// The previous implementation re-picked the cross-section's `up` vector at
+/// every sample based on `tangent.x.abs() < 0.9`. When two consecutive tangents
+/// straddled that threshold, `up` flipped, swapping the sign of `perp1` between
+/// rings — visible as a twisted / flat-ribbon tube at sharp bends.
+///
+/// RMF instead picks `up` ONCE for the first sample, then propagates the frame
+/// by rotating it from `tangents[i-1]` onto `tangents[i]` (the minimum rotation
+/// that aligns them). When consecutive tangents are parallel the frame stays
+/// untouched.
+fn build_tube_rmf(
+    curve_points: &[Point3<f64>],
+) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+    let n = curve_points.len();
+    let mut tangents = Vec::with_capacity(n);
+    let mut perp1s = Vec::with_capacity(n);
+    let mut perp2s = Vec::with_capacity(n);
+    if n < 2 {
+        return (tangents, perp1s, perp2s);
+    }
+
+    for i in 0..n {
+        let t = if i == 0 {
+            (curve_points[1] - curve_points[0]).normalize()
+        } else if i == n - 1 {
+            (curve_points[i] - curve_points[i - 1]).normalize()
+        } else {
+            ((curve_points[i + 1] - curve_points[i - 1]) / 2.0).normalize()
+        };
+        tangents.push(t);
+    }
+
+    let up0 = if tangents[0].x.abs() < 0.9 {
+        Vector3::new(1.0, 0.0, 0.0)
+    } else {
+        Vector3::new(0.0, 1.0, 0.0)
+    };
+    let mut perp1 = tangents[0].cross(&up0).normalize();
+    let mut perp2 = tangents[0].cross(&perp1).normalize();
+    perp1s.push(perp1);
+    perp2s.push(perp2);
+
+    for i in 1..n {
+        let prev = tangents[i - 1];
+        let curr = tangents[i];
+        let cos_a = prev.dot(&curr).clamp(-1.0, 1.0);
+        let axis = prev.cross(&curr);
+        let axis_norm = axis.norm();
+        // Skip rotation when tangents are (nearly) parallel — frame is preserved.
+        // Anti-parallel (cos_a ≈ -1) leaves axis ill-defined, but a 180° turn
+        // between consecutive samples on a swept-disk directrix is physically
+        // implausible; we keep the previous frame and accept the degraded case.
+        if axis_norm > 1e-9 && cos_a < 1.0 - 1e-12 {
+            let axis = axis / axis_norm;
+            let sin_a = (1.0 - cos_a * cos_a).max(0.0).sqrt();
+            // Rodrigues' rotation of `perp1` around `axis` by angle = acos(cos_a)
+            perp1 = perp1 * cos_a
+                + axis.cross(&perp1) * sin_a
+                + axis * axis.dot(&perp1) * (1.0 - cos_a);
+            perp1 = perp1.normalize();
+            perp2 = curr.cross(&perp1).normalize();
+        }
+        perp1s.push(perp1);
+        perp2s.push(perp2);
+    }
+
+    (tangents, perp1s, perp2s)
+}
+
 /// SweptDiskSolid processor
 /// Handles IfcSweptDiskSolid - sweeps a circular profile along a curve
 pub struct SweptDiskSolidProcessor {
@@ -98,29 +170,15 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         let mut positions = Vec::new();
         let mut indices = Vec::new();
 
+        // Build a rotation-minimising frame across all sample points up-front.
+        // (Per-iteration `up` selection caused frame flips at sharp bends.)
+        let (_, perp1s, perp2s) = build_tube_rmf(&curve_points);
+
         // For each point on the curve, create a ring of vertices
         for i in 0..curve_points.len() {
             let p = curve_points[i];
-
-            // Calculate tangent direction
-            let tangent = if i == 0 {
-                (curve_points[1] - curve_points[0]).normalize()
-            } else if i == curve_points.len() - 1 {
-                (curve_points[i] - curve_points[i - 1]).normalize()
-            } else {
-                ((curve_points[i + 1] - curve_points[i - 1]) / 2.0).normalize()
-            };
-
-            // Create perpendicular vectors using cross product
-            // First, find a vector not parallel to tangent
-            let up = if tangent.x.abs() < 0.9 {
-                Vector3::new(1.0, 0.0, 0.0)
-            } else {
-                Vector3::new(0.0, 1.0, 0.0)
-            };
-
-            let perp1 = tangent.cross(&up).normalize();
-            let perp2 = tangent.cross(&perp1).normalize();
+            let perp1 = perp1s[i];
+            let perp2 = perp2s[i];
 
             // Create ring of vertices
             for j in 0..segments {
@@ -428,5 +486,61 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
 impl Default for RevolvedAreaSolidProcessor {
     fn default() -> Self {
         Self::new(IfcSchema::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rmf_is_constant_on_a_straight_line() {
+        // Three collinear samples → tangents identical → frame must not change.
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(2.0, 0.0, 0.0),
+        ];
+        let (tangents, perp1s, perp2s) = build_tube_rmf(&pts);
+        assert_eq!(tangents.len(), 3);
+        for i in 1..3 {
+            assert!((tangents[i] - tangents[0]).norm() < 1e-9);
+            assert!((perp1s[i] - perp1s[0]).norm() < 1e-9);
+            assert!((perp2s[i] - perp2s[0]).norm() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn rmf_does_not_flip_at_sharp_bends() {
+        // L-shape (0,0,0) → (1,0,0) → (1,1,0). The previous implementation
+        // re-picked `up` per cross-section based on `tangent.x.abs() < 0.9`:
+        // at i=0 tangent is +X (|x|=1, picks up=Y) → perp1 = +Z; at i=1 the
+        // midpoint tangent is (1/√2, 1/√2, 0) (|x|≈0.71 < 0.9, picks up=X)
+        // → perp1 = -Z. The sign flip mirrors the cross-section ring and
+        // produces a twisted/flat-ribbon tube. RMF must propagate +Z through.
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+        ];
+        let (_, perp1s, _) = build_tube_rmf(&pts);
+        assert_eq!(perp1s.len(), 3);
+        for (i, p) in perp1s.iter().enumerate() {
+            assert!(
+                p.z > 0.5,
+                "perp1 at i={i} flipped or rotated out of +Z half-space: {p:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rmf_handles_degenerate_inputs() {
+        let empty: Vec<Point3<f64>> = Vec::new();
+        let (t, p1, p2) = build_tube_rmf(&empty);
+        assert!(t.is_empty() && p1.is_empty() && p2.is_empty());
+
+        let single = vec![Point3::new(0.0, 0.0, 0.0)];
+        let (t, p1, p2) = build_tube_rmf(&single);
+        assert!(t.is_empty() && p1.is_empty() && p2.is_empty());
     }
 }

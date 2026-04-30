@@ -1141,10 +1141,25 @@ impl ProfileProcessor {
             if trimmed.is_empty() {
                 continue;
             }
-            if !result.is_empty() {
-                result.extend(trimmed.into_iter().skip(1));
-            } else {
-                result.extend(trimmed);
+            // Drop the first point of the next segment ONLY when it coincides with
+            // the last point already in `result` — i.e. the segments share their
+            // junction vertex and concatenating verbatim would duplicate it.
+            // Composite curves whose adjacent segments are not coordinate-identical
+            // at the boundary (e.g. floating-point drift, or segments stitched
+            // together at deliberately distinct points) must keep the first vertex
+            // or the directrix gets distorted.
+            const JUNCTION_EPS: f64 = 1e-6;
+            let mut iter = trimmed.into_iter();
+            if let Some(first) = iter.next() {
+                let coincident = result.last().map_or(false, |last| {
+                    (first.x - last.x).abs() < JUNCTION_EPS
+                        && (first.y - last.y).abs() < JUNCTION_EPS
+                        && (first.z - last.z).abs() < JUNCTION_EPS
+                });
+                if !coincident {
+                    result.push(first);
+                }
+                result.extend(iter);
             }
         }
 
@@ -2169,6 +2184,40 @@ mod tests {
             .get_polyline_points_trimmed(&curve, &mut decoder, Some(-5.0), Some(99.0))
             .unwrap();
         assert_eq!(pts.len(), 2);
+    }
+
+    #[test]
+    fn test_composite_curve_trim_keeps_non_coincident_junction() {
+        // Two segments whose endpoints don't coincide at the boundary
+        // (a real-world artefact: model drift, mismatched cartesian points).
+        // seg 0: (0,0,0)→(0,2,0); seg 1: (0,2.5,0)→(0,4.5,0).
+        // Concatenating segments [0,2] must preserve all 4 distinct points —
+        // dropping the first point of seg 1 would erase the gap and bend the
+        // directrix.
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,2.5,0.0));
+#4=IFCCARTESIANPOINT((0.0,4.5,0.0));
+#5=IFCPOLYLINE((#1,#2));
+#6=IFCPOLYLINE((#3,#4));
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
+#8=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
+#9=IFCCOMPOSITECURVE((#7,#8),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let curve = decoder.decode_by_id(9).unwrap();
+
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.0), Some(2.0))
+            .unwrap();
+        assert_eq!(pts.len(), 4, "got points: {:?}", pts);
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[1], Point3::new(0.0, 2.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[2], Point3::new(0.0, 2.5, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[3], Point3::new(0.0, 4.5, 0.0), 1e-9));
     }
 
     #[test]

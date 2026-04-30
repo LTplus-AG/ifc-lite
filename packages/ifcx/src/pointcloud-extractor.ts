@@ -165,14 +165,31 @@ function isInvisible(lineage: ComposedNode[]): boolean {
 // ─── geometry math (z-up → y-up, in-place on the decoded positions) ─────────
 
 function transformPositionsZUpToYUp(positions: Float32Array, transform: Float32Array | null): void {
+  // Pre-validate the homogeneous denominator using a representative point
+  // (the first one). USD `xformop` matrices are typically affine — w is
+  // either 1 (identity-bottom-row) or a rigid-body homogeneous coord — so
+  // checking the first point is sufficient to catch a malformed file.
+  // Without the guard, a zero-w matrix produces ±Infinity / NaN
+  // coordinates and a poisoned bbox.
+  if (transform && positions.length >= 3) {
+    const x0 = positions[0], y0 = positions[1], z0 = positions[2];
+    const w = transform[3] * x0 + transform[7] * y0 + transform[11] * z0 + transform[15];
+    if (!Number.isFinite(w) || Math.abs(w) < 1e-12) {
+      throw new Error(
+        'IFCx pointcloud: usd::xformop produces non-finite homogeneous w; ' +
+        'matrix is malformed or singular',
+      );
+    }
+  }
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i], y = positions[i + 1], z = positions[i + 2];
     let wx: number, wy: number, wz: number;
     if (transform) {
       const w = transform[3] * x + transform[7] * y + transform[11] * z + transform[15];
-      wx = (transform[0] * x + transform[4] * y + transform[8] * z + transform[12]) / w;
-      wy = (transform[1] * x + transform[5] * y + transform[9] * z + transform[13]) / w;
-      wz = (transform[2] * x + transform[6] * y + transform[10] * z + transform[14]) / w;
+      const invW = 1 / w;
+      wx = (transform[0] * x + transform[4] * y + transform[8] * z + transform[12]) * invW;
+      wy = (transform[1] * x + transform[5] * y + transform[9] * z + transform[13]) * invW;
+      wz = (transform[2] * x + transform[6] * y + transform[10] * z + transform[14]) * invW;
     } else {
       wx = x; wy = y; wz = z;
     }

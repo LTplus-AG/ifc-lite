@@ -278,10 +278,23 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
   const bField = findField(entry.prototype, 'colorBlue');
   const hasRgb = !!(rField && gField && bField);
   const iField = findField(entry.prototype, 'intensity');
+  // Bit-packed (ScaledInteger) intensity isn't supported yet — surface
+  // the limitation explicitly rather than silently dropping it.
+  if (iField && iField.kind === 'ScaledInteger') {
+    throw new Error(
+      'E57: intensity encoded as ScaledInteger (bit-packed integer codec not yet supported)',
+    );
+  }
 
   const positions = new Float32Array(entry.recordCount * 3);
   const colors = hasRgb ? new Float32Array(entry.recordCount * 3) : undefined;
-  const intensities = iField && iField.kind === 'Float' ? new Uint16Array(entry.recordCount) : undefined;
+  // Allocate intensity buffer for both Float and Integer kinds — only
+  // ScaledInteger is unsupported (rejected above). Otherwise
+  // Integer-encoded intensity (common with u16-range producers) was
+  // silently dropped.
+  const intensities = iField && (iField.kind === 'Float' || iField.kind === 'Integer')
+    ? new Uint16Array(entry.recordCount)
+    : undefined;
 
   // Walk DataPackets starting at binaryFileOffset.
   // Packet header (4 bytes):
@@ -388,10 +401,30 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
     }
     if (intensities && iField) {
       const iStart = fieldOffsets.get('intensity')!.start;
-      const stride = iField.precision === 'single' ? 4 : 8;
-      for (let i = 0; i < take; i++) {
-        const v = stride === 4 ? view.getFloat32(iStart + i * stride, true) : view.getFloat64(iStart + i * stride, true);
-        intensities[written + i] = Math.min(65535, Math.max(0, Math.round(v * 65535)));
+      if (iField.kind === 'Float') {
+        const stride = iField.precision === 'single' ? 4 : 8;
+        for (let i = 0; i < take; i++) {
+          const v = stride === 4 ? view.getFloat32(iStart + i * stride, true) : view.getFloat64(iStart + i * stride, true);
+          intensities[written + i] = Math.min(65535, Math.max(0, Math.round(v * 65535)));
+        }
+      } else {
+        // Integer-encoded intensity — pick element width from declared
+        // range (same logic as the integer color channels).
+        const min = iField.minimum ?? 0;
+        const max = iField.maximum ?? 65535;
+        const span = max - min;
+        const inv = span > 0 ? 1 / span : 1;
+        const widest = Math.max(Math.abs(min), Math.abs(max));
+        const stride = widest > 255 ? 2 : 1;
+        const signed = min < 0;
+        for (let i = 0; i < take; i++) {
+          const off = iStart + i * stride;
+          const raw = stride === 2
+            ? (signed ? view.getInt16(off, true) : view.getUint16(off, true))
+            : (signed ? view.getInt8(off) : view.getUint8(off));
+          const norm = (raw - min) * inv;
+          intensities[written + i] = Math.min(65535, Math.max(0, Math.round(norm * 65535)));
+        }
       }
     }
 
@@ -516,17 +549,23 @@ export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
   });
   if (chunks.length === 1) return chunks[0];
 
-  // Concatenate
+  // Concatenate. Use some() so a single scan that lacks color/intensity
+  // doesn't drop the channel for the whole merged cloud — we just leave
+  // its slice at the default zeros and emit the channel anyway.
   let total = 0;
   for (const c of chunks) total += c.pointCount;
   const positions = new Float32Array(total * 3);
-  const hasColors = chunks.every((c) => c.colors);
-  const hasIntensity = chunks.every((c) => c.intensities);
+  const hasColors = chunks.some((c) => c.colors);
+  const hasIntensity = chunks.some((c) => c.intensities);
   const colors = hasColors ? new Float32Array(total * 3) : undefined;
   const intensities = hasIntensity ? new Uint16Array(total) : undefined;
   let off = 0;
   for (const c of chunks) {
     positions.set(c.positions, off * 3);
+    // Per-chunk conditional set: chunks without a channel just leave
+    // their slice at the default zero, which renders as black for
+    // colors / unlit for intensity. Better than dropping the whole
+    // channel because of a single mixed-attribute file.
     if (colors && c.colors) colors.set(c.colors, off * 3);
     if (intensities && c.intensities) intensities.set(c.intensities, off);
     off += c.pointCount;

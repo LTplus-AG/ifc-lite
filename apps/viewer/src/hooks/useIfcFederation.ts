@@ -594,13 +594,21 @@ export function useIfcFederation() {
           asset.expressId = asset.expressId + idOffset;
         }
       }
-      // Also track the streamed renderer handle's expressId — the
-      // streaming ingest assigned a synthetic local id which now needs
-      // the same offset applied so picks resolve correctly.
+      // Streamed point cloud: the GPU asset was opened with a synthetic
+      // local expressId. After registerModelOffset() hands us an
+      // idOffset, the renderer needs to emit the post-offset globalId
+      // in picking + selection outputs — otherwise picks resolve to
+      // the local id and collide across federated models. The shader
+      // reads expressId from a per-asset uniform (`flags.x`) so this
+      // is just a metadata update; no GPU buffer rewrite.
       if (idOffset > 0 && pointCloudHandleId !== undefined) {
-        // No mutation needed: the renderer node already stores the
-        // pre-offset expressId; we re-tag the federation map elsewhere.
-        // Future: extend Renderer.relabelPointCloudAsset(handle, newId).
+        const renderer = getGlobalRenderer();
+        if (renderer && parsedGeometry.pointClouds && parsedGeometry.pointClouds.length > 0) {
+          // Use the asset that's already had idOffset folded in above
+          // as the source of truth for the global id.
+          const asset = parsedGeometry.pointClouds[0];
+          renderer.relabelPointCloudAsset({ id: pointCloudHandleId }, asset.expressId);
+        }
       }
 
       // =========================================================================

@@ -159,16 +159,27 @@ export function createDecodeWorkerSource(
       }
       abortIfAborted(signal);
       const id = sourceId;
-      const resp = await session.send<Extract<WorkerResponse, { kind: 'chunk' }>>(
-        (requestId) => ({
-          kind: 'next',
-          requestId,
-          sourceId: id,
-          maxPoints,
-        }),
-      );
-      if (!resp.chunk) return null;
-      return chunkFromWire(resp.chunk);
+      // Propagate aborts that fire WHILE the worker is decoding —
+      // without this, cancel() returns immediately to the caller but
+      // the worker keeps grinding on a soon-to-be-discarded chunk.
+      const abortListener = () => {
+        session.notify({ kind: 'abort', sourceId: id });
+      };
+      signal?.addEventListener('abort', abortListener, { once: true });
+      try {
+        const resp = await session.send<Extract<WorkerResponse, { kind: 'chunk' }>>(
+          (requestId) => ({
+            kind: 'next',
+            requestId,
+            sourceId: id,
+            maxPoints,
+          }),
+        );
+        if (!resp.chunk) return null;
+        return chunkFromWire(resp.chunk);
+      } finally {
+        signal?.removeEventListener('abort', abortListener);
+      }
     },
     close(): void {
       if (sourceId !== null) {

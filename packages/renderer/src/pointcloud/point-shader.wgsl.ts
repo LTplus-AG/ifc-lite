@@ -32,7 +32,8 @@ export const pointShaderSource = `
       // x = sizeMode, y = worldRadius (m), z = viewportWidth, w = viewportHeight
       sizing: vec4<f32>,
       sectionPlane: vec4<f32>,
-      // x = unused, y = sectionEnabled, z = roundShape, w = unused
+      // x = assetExpressId (federation-aware globalId), y = sectionEnabled,
+      // z = roundShape, w = unused
       flags: vec4<u32>,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
@@ -194,7 +195,12 @@ export const pointShaderSource = `
 
       var output: FragmentOutput;
       output.color = input.color;
-      let id = input.entityId;
+      // Prefer the asset-level expressId from the uniform when it's set
+      // (federation needs to relabel post-stream, so we can't rely on
+      // the per-vertex attribute that was baked at upload time).
+      // flags.x == 0 → fall back to per-vertex value to preserve the
+      // legacy contract during the upload-only rendering window.
+      let id = select(input.entityId, uniforms.flags.x, uniforms.flags.x != 0u);
       output.objectId = vec4<f32>(
         f32((id >> 0u) & 0xffu) / 255.0,
         f32((id >> 8u) & 0xffu) / 255.0,

@@ -202,6 +202,20 @@ export class PointCloudRenderer {
     this.nodeOwners.delete(handle.id);
   }
 
+  /**
+   * Reassign a streamed asset's `expressId` after upload — used by
+   * `useIfcFederation` when the FederationRegistry hands out an
+   * `idOffset` for the model. The shader reads expressId from a
+   * per-asset uniform (flags.x), so this is just a metadata update;
+   * the next frame writes the new value into the GPU uniform without
+   * touching the per-vertex attributes.
+   */
+  relabelAsset(handle: PointCloudAssetHandle, newExpressId: number): void {
+    const node = this.nodes.get(handle.id);
+    if (!node) return;
+    node.meta.expressId = newExpressId >>> 0;
+  }
+
   // ─── lifecycle / queries ─────────────────────────────────────────────────
 
   clear(): void {
@@ -356,7 +370,11 @@ export class PointCloudRenderer {
     u[46] = sectionNormal[2];
     u[47] = sectionDist;
     // flags (u32 view) — bytes 192..207 = u32 indices 48..51
-    uU32[48] = 0;
+    // flags.x = the asset's CURRENT expressId. The shader uses this
+    // when non-zero so the federation registry can relabel a streamed
+    // asset post-upload (its per-vertex entityId attribute is baked
+    // at upload and would otherwise stay at the synthetic local ID).
+    uU32[48] = node.meta.expressId >>> 0;
     uU32[49] = sectionEnabled ? 1 : 0;
     uU32[50] = this.options.roundShape ? 1 : 0;
     uU32[51] = 0;

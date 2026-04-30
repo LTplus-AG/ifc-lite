@@ -134,6 +134,16 @@ export function parseXml(xml: string): XmlElement {
     i = tagEnd + 1;
   }
   flushText(n);
+  // Truncated input — `<root><child>` with no closes — would otherwise
+  // return a partial tree and silently produce wrong metadata. Reject
+  // hard so callers (E57 in particular) fail fast on a corrupt XML
+  // section rather than ingesting half a scan list.
+  if (stack.length !== 1) {
+    throw new Error(`XML: unclosed tag <${stack[stack.length - 1].name}>`);
+  }
+  if (root.name === '') {
+    throw new Error('XML: missing root element');
+  }
   return root;
 }
 

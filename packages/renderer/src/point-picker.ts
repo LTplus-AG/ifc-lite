@@ -53,7 +53,8 @@ export function decodePickSample(value: number): DecodedPickSample {
   return { meshIndexPlusOne: value, pointExpressId: 0, kind: 'mesh' };
 }
 
-const UNIFORM_BYTES = 96; // mat4x4 (64) + vec4 viewport+pad (16) + vec4 sizing (16)
+// mat4x4 (64) + vec4 viewport (16) + vec4 sizing (16) + vec4 entityIdOverride (16)
+const UNIFORM_BYTES = 112;
 
 export class PointPicker {
   private device: GPUDevice;
@@ -95,6 +96,9 @@ struct U {
   viewport: vec4<f32>,        // x, y = w, h; z, w = unused
   sizing: vec4<f32>,          // x = sizeMode, y = worldRadius,
                               // z = pointSizePx, w = clickToleranceExtraPx
+  // x = assetExpressId override (federation-aware globalId);
+  // 0 means "use the per-vertex entityId attribute".
+  entityIdOverride: vec4<u32>,
 }
 @binding(0) @group(0) var<uniform> u: U;
 
@@ -166,7 +170,11 @@ fn fs_main(input: VOut) -> @location(0) u32 {
   if (dot(input.quadUv, input.quadUv) > 1.0) {
     discard;
   }
-  return 0x80000000u | (input.entityId & 0x7FFFFFFFu);
+  // Prefer the asset-level expressId override when set (federation
+  // relabels apply post-stream so the per-vertex attribute can go
+  // stale). Fallback to the per-vertex value when no override is set.
+  let id = select(input.entityId, u.entityIdOverride.x, u.entityIdOverride.x != 0u);
+  return 0x80000000u | (id & 0x7FFFFFFFu);
 }
 `,
     });
@@ -216,10 +224,15 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     sizing: { sizeMode: 0 | 1 | 2; worldRadius: number; pointSizePx: number; clickTolerancePx: number },
   ): void {
     if (this.destroyed || nodes.length === 0) return;
-    this.writeUniforms(viewProj, viewport, sizing);
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bindGroup);
+    // Per-node uniform write so federation-relabelled IDs surface in
+    // the picker too. The per-vertex `entityId` attribute is baked at
+    // upload time and goes stale once the FederationRegistry assigns
+    // an idOffset to the model — the override forces the picker to
+    // emit the asset's CURRENT expressId regardless.
     for (const node of nodes) {
+      this.writeUniforms(viewProj, viewport, sizing, node.expressId >>> 0);
       for (const chunk of node.chunks) {
         if (chunk.pointCount === 0) continue;
         pass.setVertexBuffer(0, chunk.vertexBuffer);
@@ -232,8 +245,10 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     viewProj: Float32Array,
     viewport: { width: number; height: number },
     sizing: { sizeMode: number; worldRadius: number; pointSizePx: number; clickTolerancePx: number },
+    entityIdOverride: number,
   ): void {
     const u = this.uniformScratch;
+    const u32 = this.uniformU32;
     u.set(viewProj.subarray(0, 16), 0);
     u[16] = Math.max(1, viewport.width);
     u[17] = Math.max(1, viewport.height);
@@ -243,7 +258,13 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     u[21] = sizing.worldRadius;
     u[22] = sizing.pointSizePx;
     u[23] = sizing.clickTolerancePx;
-    void this.uniformU32; // referenced for byte-view symmetry; not needed yet
+    // entityIdOverride at u32 offset 24..27. 0 means "use per-vertex
+    // attribute" (the shader's select(...) will pick the per-vertex
+    // value); any non-zero value wins.
+    u32[24] = entityIdOverride >>> 0;
+    u32[25] = 0;
+    u32[26] = 0;
+    u32[27] = 0;
     this.device.queue.writeBuffer(this.uniformBuffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
   }
 

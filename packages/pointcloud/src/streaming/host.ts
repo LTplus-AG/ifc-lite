@@ -71,6 +71,12 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
   const maxPoints = opts.maxPointsInMemory ?? DEFAULT_MAX_POINTS;
   const maxFile = opts.maxFileSize ?? DEFAULT_MAX_FILE;
   const chunkSize = opts.chunkSize ?? DEFAULT_CHUNK;
+  // chunkSize <= 0 would let the source.next() loop emit empty chunks
+  // forever without advancing its cursor. Fail loudly so callers can't
+  // accidentally lock up the worker.
+  if (!Number.isFinite(chunkSize) || chunkSize <= 0) {
+    throw new Error(`streamPointCloud: chunkSize must be a positive finite number (got ${chunkSize})`);
+  }
 
   const localAbort = new AbortController();
   const composed = composeAbort(opts.signal, localAbort.signal);
@@ -160,8 +166,11 @@ function composeAbort(...signals: Array<AbortSignal | undefined>): AbortSignal {
   const filtered = signals.filter((s): s is AbortSignal => s !== undefined);
   if (filtered.length === 0) return new AbortController().signal;
   if (filtered.length === 1) return filtered[0];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const anyApi = (AbortSignal as any).any as ((s: AbortSignal[]) => AbortSignal) | undefined;
+  // Avoid `as any` per repo TypeScript rules — narrow to a concrete shape.
+  type AbortSignalCtorWithAny = typeof AbortSignal & {
+    any?: (signals: AbortSignal[]) => AbortSignal;
+  };
+  const anyApi = (AbortSignal as AbortSignalCtorWithAny).any;
   if (typeof anyApi === 'function') return anyApi(filtered);
   const ctrl = new AbortController();
   for (const s of filtered) {

@@ -174,6 +174,9 @@ export class LazStreamingSource implements StreamingPointSource {
 
   async next(maxPoints: number, signal?: AbortSignal): Promise<DecodedPointChunk | null> {
     abortIfAborted(signal);
+    if (!Number.isFinite(maxPoints) || maxPoints <= 0) {
+      throw new Error(`LazStreamingSource: maxPoints must be > 0 (got ${maxPoints})`);
+    }
     if (!this.header || !this.mod || !this.laszip || !this.pointBuffer) {
       throw new Error('LazStreamingSource: open() must be awaited before next()');
     }

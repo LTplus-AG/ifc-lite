@@ -84,6 +84,11 @@ export class LasStreamingSource implements StreamingPointSource {
 
   async next(maxPoints: number, signal?: AbortSignal): Promise<DecodedPointChunk | null> {
     abortIfAborted(signal);
+    if (!Number.isFinite(maxPoints) || maxPoints <= 0) {
+      // 0/negative would emit empty chunks without advancing the cursor,
+      // creating a non-terminating loop in the host.
+      throw new Error(`LasStreamingSource: maxPoints must be > 0 (got ${maxPoints})`);
+    }
     if (!this.header) {
       throw new Error('LasStreamingSource: open() must be awaited before next()');
     }

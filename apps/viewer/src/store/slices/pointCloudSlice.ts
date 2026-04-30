@@ -18,7 +18,7 @@ export type PointSizeModeUi = 'fixed-px' | 'adaptive-world' | 'attenuated';
 export interface PointCloudSlice {
   pointCloudColorMode: PointColorModeUi;
   pointCloudFixedColor: [number, number, number, number];
-  /** Splat sizing strategy. Default: 'attenuated'. */
+  /** Splat sizing strategy. Default: 'fixed-px' (sized by the px slider). */
   pointCloudSizeMode: PointSizeModeUi;
   /** Splat size in pixels (fixed/attenuated) or upper cap (attenuated). 1..20. */
   pointCloudPointSize: number;
@@ -49,20 +49,32 @@ export interface PointCloudSlice {
   incrementPointCloudAssetCount: (n?: number) => void;
 }
 
-export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointCloudSlice> = (set) => ({
-  pointCloudColorMode: 'rgb',
-  pointCloudFixedColor: [1, 1, 1, 1],
+/**
+ * Single source of truth for the slice's runtime field defaults.
+ * Both the slice initializer and `resetViewerState` consume this so
+ * the two paths can't drift.
+ */
+export const POINT_CLOUD_DEFAULTS = {
   // Fixed-px is the default so the size slider feels responsive on first
-  // contact. `attenuated` is technically nicer at extreme zooms but its
-  // "slider = upper cap" semantic confuses users at typical wide views
-  // because the projected world radius sits well below the cap.
-  pointCloudSizeMode: 'fixed-px',
+  // contact. `attenuated` is nicer at extreme zooms but its "slider =
+  // upper cap" semantic confuses users at typical wide views because the
+  // projected world radius sits well below the cap.
+  pointCloudColorMode: 'rgb' as PointColorModeUi,
+  pointCloudFixedColor: [1, 1, 1, 1] as [number, number, number, number],
+  pointCloudSizeMode: 'fixed-px' as PointSizeModeUi,
   pointCloudPointSize: 4,
   pointCloudWorldRadius: 0.02,
   pointCloudRoundShape: true,
   pointCloudEdlEnabled: true,
   pointCloudEdlStrength: 1,
   pointCloudAssetCount: 0,
+} as const;
+
+export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointCloudSlice> = (set) => ({
+  ...POINT_CLOUD_DEFAULTS,
+  // Re-spread typed-array fields so consumers get fresh references
+  // instead of the readonly literal in POINT_CLOUD_DEFAULTS.
+  pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
   setPointCloudColorMode: (mode) => set({ pointCloudColorMode: mode }),
   setPointCloudFixedColor: (rgba) => set({ pointCloudFixedColor: rgba }),
   setPointCloudSizeMode: (mode) => set({ pointCloudSizeMode: mode }),

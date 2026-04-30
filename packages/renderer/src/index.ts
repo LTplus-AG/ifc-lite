@@ -331,6 +331,21 @@ export class Renderer {
     }
 
     /**
+     * Reassign a streamed point-cloud's expressId after upload. Use
+     * this when the federation registry assigns a new model offset and
+     * the renderer needs to emit the post-offset globalId in picking
+     * outputs. The change takes effect on the next render — no GPU
+     * buffer rewrite needed.
+     */
+    relabelPointCloudAsset(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        newExpressId: number,
+    ): void {
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
+        this.requestRender();
+    }
+
+    /**
      * Compute model bounds from triangle meshes + remaining point clouds.
      * Called from removeAsset / clear paths so bounds shrink correctly.
      * Triangle meshes still drive the bounds when present (existing
@@ -338,37 +353,24 @@ export class Renderer {
      * extents over whatever the mesh path left.
      */
     private recomputeModelBounds(): void {
-        // Mesh-side bounds aren't kept on `this.modelBounds` directly —
-        // they're maintained by the geometry-streaming + scene paths.
-        // For now we just re-derive from point clouds plus whatever the
-        // most-recent mesh batch update produced. If both are empty,
-        // null out so callers can fall back to defaults.
+        // Always recompute from scratch: take mesh bounds as the
+        // baseline, then fold in the CURRENT point-cloud bounds on
+        // top. Folding only-up via expandModelBoundsForPointClouds()
+        // is correct when pc bounds grow but never shrinks them when
+        // an asset is removed, leaving stale oversized extents until
+        // every point cloud is gone.
+        const meshBounds = this.computeMeshBounds();
         const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
-        if (!pcBounds && (!this.modelBounds || !Number.isFinite(this.modelBounds.min.x))) {
+
+        if (!meshBounds && !pcBounds) {
             this.modelBounds = null;
             return;
         }
-        if (pcBounds && !this.modelBounds) {
-            this.modelBounds = {
-                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
-                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
-            };
-            return;
-        }
-        // When pcBounds disappear (cleared) but the existing modelBounds
-        // were grown to cover them, we'd ideally subtract. The mesh path
-        // already maintains its own bounds via `updateModelBounds`; calling
-        // `expandModelBoundsForPointClouds` again is a no-op when pcBounds
-        // is null. The user-visible regression CodeRabbit flagged is
-        // "stale oversized bounds after clear" — for that case we reset
-        // to the mesh-only bounds when point clouds vanish.
-        if (!pcBounds && this.modelBounds) {
-            // Ask the scene for fresh mesh bounds via the existing helper.
-            this.modelBounds = this.computeMeshBounds();
-            return;
-        }
-        if (pcBounds && this.modelBounds) {
-            // Otherwise just re-fold the new pc bounds in.
+        this.modelBounds = meshBounds ?? {
+            min: { x: pcBounds!.min[0], y: pcBounds!.min[1], z: pcBounds!.min[2] },
+            max: { x: pcBounds!.max[0], y: pcBounds!.max[1], z: pcBounds!.max[2] },
+        };
+        if (meshBounds && pcBounds) {
             this.expandModelBoundsForPointClouds();
         }
     }
@@ -1085,6 +1087,21 @@ export class Renderer {
                         boundsMax.y = Math.max(boundsMax.y, batch.bounds.max[1]);
                         boundsMax.z = Math.max(boundsMax.z, batch.bounds.max[2]);
                     }
+                }
+                // Fold in point-cloud bounds too — without this, a
+                // pure point-cloud scene falls through to the default
+                // [-100,100], and a mixed scene clips against a
+                // smaller mesh-only range while the point pipeline
+                // (which honours the same sectionPlaneData) keeps
+                // drawing points outside the slider's reach.
+                const pcBoundsForSection = this.pointCloudRenderer?.getBounds();
+                if (pcBoundsForSection) {
+                    boundsMin.x = Math.min(boundsMin.x, pcBoundsForSection.min[0]);
+                    boundsMin.y = Math.min(boundsMin.y, pcBoundsForSection.min[1]);
+                    boundsMin.z = Math.min(boundsMin.z, pcBoundsForSection.min[2]);
+                    boundsMax.x = Math.max(boundsMax.x, pcBoundsForSection.max[0]);
+                    boundsMax.y = Math.max(boundsMax.y, pcBoundsForSection.max[1]);
+                    boundsMax.z = Math.max(boundsMax.z, pcBoundsForSection.max[2]);
                 }
 
                 // If no batched meshes have bounds yet (streaming, degenerate

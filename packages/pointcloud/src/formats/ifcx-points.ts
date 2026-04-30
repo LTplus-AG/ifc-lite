@@ -34,6 +34,12 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
     throw new Error('points::array: positions must be an array of [x,y,z] triples');
   }
   const count = attr.positions.length;
+  if (count === 0) {
+    // Empty arrays would produce ±Infinity bbox, which poisons fit-to-view
+    // and section-plane logic downstream. Fail fast with a clear error
+    // instead of returning a sentinel "empty cloud".
+    throw new Error('points::array: positions must contain at least one point');
+  }
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     const p = attr.positions[i];
@@ -73,14 +79,26 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
 }
 
 export function decodePointsBase64(attr: PointsBase64Attribute): DecodedPointChunk {
+  if (typeof attr.positions !== 'string' || attr.positions.length === 0) {
+    throw new Error('points::base64: positions must be a non-empty base64 string');
+  }
   const positions = base64ToFloat32(attr.positions);
   if (positions.length % 3 !== 0) {
     throw new Error(`points::base64: positions buffer length (${positions.length}) ` +
       `is not a multiple of 3 floats`);
   }
   const count = positions.length / 3;
+  if (count === 0) {
+    throw new Error('points::base64: positions must contain at least one point');
+  }
   let colors: Float32Array | undefined;
-  if (attr.colors) {
+  // Use !== undefined so an empty string isn't silently treated as "no
+  // colors" — that would let a malformed payload downgrade to an
+  // uncolored cloud without surfacing the bug.
+  if (attr.colors !== undefined && attr.colors !== null) {
+    if (typeof attr.colors !== 'string' || attr.colors.length === 0) {
+      throw new Error('points::base64: colors must be a non-empty base64 string when provided');
+    }
     colors = base64ToFloat32(attr.colors);
     if (colors.length !== positions.length) {
       throw new Error(`points::base64: colors length (${colors.length}) ` +

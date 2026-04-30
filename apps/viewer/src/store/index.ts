@@ -40,7 +40,7 @@ import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js'
 import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
 import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotationsSlice.js';
 import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
-import { createPointCloudSlice, type PointCloudSlice } from './slices/pointCloudSlice.js';
+import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -421,16 +421,9 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
 
       // Point cloud — clear runtime fields so a new file doesn't
       // inherit the previous file's color mode / size / EDL state.
-      // Color/sizing defaults match createPointCloudSlice's initial state.
-      pointCloudColorMode: 'rgb',
-      pointCloudFixedColor: [1, 1, 1, 1],
-      pointCloudSizeMode: 'fixed-px',
-      pointCloudPointSize: 4,
-      pointCloudWorldRadius: 0.02,
-      pointCloudRoundShape: true,
-      pointCloudEdlEnabled: true,
-      pointCloudEdlStrength: 1,
-      pointCloudAssetCount: 0,
+      // Single-source-of-truth defaults shared with createPointCloudSlice.
+      ...POINT_CLOUD_DEFAULTS,
+      pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
     });
   },
 }));

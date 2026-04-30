@@ -21,7 +21,7 @@ import { logToDesktopTerminal } from '@/services/desktop-logger';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
 import { isTauri } from '@/lib/platform';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3 } from 'lucide-react';
-import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 
@@ -172,6 +172,30 @@ export function ViewportContainer() {
 
     // Legacy mode (no federation): use original geometryResult
     return geometryResult;
+  }, [storeModels, geometryResult, modelIdToIndex]);
+
+  /**
+   * Aggregate point clouds across visible models.
+   *
+   * Phase 0: identity-stamping with modelIndex. Returns the same array
+   * reference when nothing has changed so the consumer effect skips work.
+   */
+  const mergedPointClouds = useMemo(() => {
+    const collected: PointCloudAsset[] = [];
+    if (storeModels.size > 0) {
+      for (const [modelId, model] of storeModels) {
+        if (!model.visible) continue;
+        const assets = model.geometryResult?.pointClouds;
+        if (!assets || assets.length === 0) continue;
+        const modelIndex = modelIdToIndex.get(modelId) ?? 0;
+        for (const asset of assets) {
+          collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
+        }
+      }
+    } else if (geometryResult?.pointClouds) {
+      collected.push(...geometryResult.pointClouds);
+    }
+    return collected;
   }, [storeModels, geometryResult, modelIdToIndex]);
 
   // Extract georeferencing info merged with any live mutations (for Cesium overlay).
@@ -845,6 +869,7 @@ export function ViewportContainer() {
       <Viewport
         geometry={filteredGeometry}
         geometryVersion={geometryVersion}
+        pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}
         computedIsolatedIds={computedIsolatedIds}
         modelIdToIndex={modelIdToIndex}

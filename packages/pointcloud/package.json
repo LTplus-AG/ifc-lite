@@ -1,7 +1,7 @@
 {
-  "name": "@ifc-lite/ifcx",
-  "version": "2.0.2",
-  "description": "IFC5 (IFCX) parser for IFC-Lite",
+  "name": "@ifc-lite/pointcloud",
+  "version": "0.1.0",
+  "description": "Point cloud decoders and types for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,23 +12,20 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc && node ./scripts/verify-dist-hello-wall.mjs",
-    "dev": "pnpm exec tsc --watch"
-  },
-  "dependencies": {
-    "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/mutations": "workspace:^",
-    "@ifc-lite/pointcloud": "workspace:^"
+    "build": "pnpm exec tsc",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^1.6.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
   "repository": {
     "type": "git",
     "url": "https://github.com/louistrue/ifc-lite.git",
-    "directory": "packages/ifcx"
+    "directory": "packages/pointcloud"
   },
   "homepage": "https://louistrue.github.io/ifc-lite/",
   "bugs": "https://github.com/louistrue/ifc-lite/issues",
@@ -36,8 +33,9 @@
     "ifc",
     "ifc5",
     "ifcx",
+    "pointcloud",
+    "pcd",
     "bim",
-    "parser",
     "aec"
   ],
   "publishConfig": {

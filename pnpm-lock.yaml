@@ -781,6 +781,9 @@ importers:
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations
+      '@ifc-lite/pointcloud':
+        specifier: workspace:^
+        version: link:../pointcloud
     devDependencies:
       typescript:
         specifier: ^5.3.0
@@ -835,6 +838,15 @@ importers:
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
+    devDependencies:
+      typescript:
+        specifier: ^5.3.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@edge-runtime/vm@3.2.0)(@types/node@22.19.13)(happy-dom@20.8.9)(lightningcss@1.30.2)
+
+  packages/pointcloud:
     devDependencies:
       typescript:
         specifier: ^5.3.0

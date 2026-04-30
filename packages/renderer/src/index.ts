@@ -46,6 +46,10 @@ export {
 export { PickingManager } from './picking-manager.js';
 export { RaycastEngine } from './raycast-engine.js';
 
+// Point cloud rendering (Phase 0: IFCx pcd::base64 / points::array / points::base64)
+export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+export { PointRenderPipeline } from './pointcloud/point-pipeline.js';
+
 import { WebGPUDevice } from './device.js';
 import { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
@@ -74,6 +78,8 @@ import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, ty
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
+import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+import type { PointCloudAsset } from '@ifc-lite/geometry';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -111,6 +117,7 @@ export class Renderer {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     private postProcessor: PostProcessor | null = null;
+    private pointCloudRenderer: PointCloudRenderer | null = null;
     private visualEnhancementState: ResolvedVisualEnhancement = {
         enabled: true,
         edgeContrast: { enabled: true, intensity: 1.0 },
@@ -189,10 +196,73 @@ export class Renderer {
             contactRadius: 1.0,
             contactIntensity: 0.3,
         }, this.pipeline.getSampleCount());
+        this.pointCloudRenderer = new PointCloudRenderer(
+            this.device.getDevice(),
+            this.device.getFormat(),
+            'depth24plus-stencil8',
+            this.pipeline.getSampleCount(),
+        );
         this.camera.setAspect(width / height);
 
         // Update picking manager with initialized picker
         this.pickingManager.setPicker(this.picker);
+    }
+
+    /**
+     * Replace all loaded point clouds with `assets`.
+     *
+     * Phase 0 entry point — single-chunk inline assets from IFCx
+     * (`pcd::base64`, `points::array`, `points::base64`). Future phases
+     * accept streaming sources via a different overload.
+     */
+    setPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        this.pointCloudRenderer.setAssets(assets);
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+    }
+
+    /** Append additional point clouds without clearing existing ones. */
+    addPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        for (const asset of assets) {
+            this.pointCloudRenderer.addAsset(asset);
+        }
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+    }
+
+    /** Total number of point cloud assets currently uploaded. */
+    getPointCloudAssetCount(): number {
+        return this.pointCloudRenderer?.getNodeCount() ?? 0;
+    }
+
+    /** Drop all point cloud GPU resources. */
+    clearPointClouds(): void {
+        this.pointCloudRenderer?.clear();
+    }
+
+    private expandModelBoundsForPointClouds(): void {
+        const pcBounds = this.pointCloudRenderer?.getBounds();
+        if (!pcBounds) return;
+        if (!this.modelBounds) {
+            this.modelBounds = {
+                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
+                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
+            };
+            return;
+        }
+        const m = this.modelBounds;
+        m.min.x = Math.min(m.min.x, pcBounds.min[0]);
+        m.min.y = Math.min(m.min.y, pcBounds.min[1]);
+        m.min.z = Math.min(m.min.z, pcBounds.min[2]);
+        m.max.x = Math.max(m.max.x, pcBounds.max[0]);
+        m.max.y = Math.max(m.max.y, pcBounds.max[1]);
+        m.max.z = Math.max(m.max.z, pcBounds.max[2]);
     }
 
     /**
@@ -1502,6 +1572,18 @@ export class Renderer {
                 }
             }
 
+            // Draw point clouds (Phase 0: IFCx pcd::base64 / points::array / points::base64).
+            // Shares the depth buffer + section plane state with the mesh pipeline so
+            // points occlude triangles and vice versa. No-op when no assets are loaded.
+            if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
+                this.pointCloudRenderer.draw(pass, {
+                    viewProj,
+                    sectionPlane: sectionPlaneData
+                        ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
+                        : null,
+                });
+            }
+
             // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
             // Always show plane when sectionPlane options are provided (as preview or active)
             const modelBounds = this.getModelBounds();
@@ -1852,6 +1934,10 @@ export class Renderer {
         this.sectionPlaneRenderer = null;
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
+
+        // Point cloud GPU resources
+        this.pointCloudRenderer?.clear();
+        this.pointCloudRenderer = null;
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();

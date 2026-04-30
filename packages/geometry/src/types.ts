@@ -76,8 +76,41 @@ export interface CoordinateInfo {
   buildingRotation?: number;
 }
 
+/**
+ * A point cloud attached to an IFC entity.
+ *
+ * Phase 0 carries a single inline `chunk`; future phases will add a
+ * `source` reference for streaming sources (LAS/LAZ/Potree) and emit
+ * multiple chunks per asset.
+ *
+ * Coordinates in `chunk.positions` are in the entity's local space (any
+ * IFCx `usd::xformop` lineage transform has already been baked in by the
+ * extractor). The renderer applies its own RTC + Y-up flip on upload.
+ */
+export interface PointCloudAsset {
+  /** Express ID of the IFC entity that owns this scan. */
+  expressId: number;
+  /** IFC type name when known (`IfcPointCloud`, `IfcBuildingElementProxy`, ...). */
+  ifcType?: string;
+  /** Federation index — set when multiple models are loaded. */
+  modelIndex?: number;
+  /** A single chunk of decoded points (positions + optional rgb in 0..1). */
+  chunk: {
+    positions: Float32Array;
+    colors?: Float32Array;
+    pointCount: number;
+    bbox: { min: [number, number, number]; max: [number, number, number] };
+  };
+}
+
 export interface GeometryResult {
   meshes: MeshData[];
+  /**
+   * Optional point clouds emitted alongside meshes. Renderers that don't
+   * understand points are free to ignore this; the dedicated point pipeline
+   * in `@ifc-lite/renderer` consumes it via `Renderer.addPointClouds()`.
+   */
+  pointClouds?: PointCloudAsset[];
   totalTriangles: number;
   totalVertices: number;
   coordinateInfo: CoordinateInfo;

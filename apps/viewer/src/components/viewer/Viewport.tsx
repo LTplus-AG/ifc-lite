@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Renderer, type VisualEnhancementOptions } from '@ifc-lite/renderer';
-import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
+import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
 import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
 import {
   useSelectionState,
@@ -36,6 +36,7 @@ import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
+import { usePointCloudSync } from './usePointCloudSync.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
 
 interface ViewportProps {
@@ -43,6 +44,8 @@ interface ViewportProps {
   /** Monotonic counter that increments when geometry changes — used to trigger
    *  streaming effects even when the geometry array reference is stable. */
   geometryVersion?: number;
+  /** Point cloud assets aggregated across visible federated models. */
+  pointClouds?: ReadonlyArray<PointCloudAsset> | null;
   coordinateInfo?: CoordinateInfo;
   computedIsolatedIds?: Set<number> | null;
   modelIdToIndex?: Map<string, number>;
@@ -56,6 +59,7 @@ interface ViewportProps {
 export function Viewport({
   geometry,
   geometryVersion,
+  pointClouds,
   coordinateInfo,
   computedIsolatedIds,
   modelIdToIndex,
@@ -854,6 +858,12 @@ export function Viewport({
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,
+  });
+
+  usePointCloudSync({
+    rendererRef,
+    isInitialized,
+    pointClouds,
   });
 
   useRenderUpdates({

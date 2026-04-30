@@ -18,9 +18,10 @@ export class BlobByteSource {
   }
 
   async read(start: number, end: number): Promise<Uint8Array> {
+    const safeStart = Math.max(0, start);
     const safeEnd = Math.min(end, this.blob.size);
-    if (safeEnd <= start) return new Uint8Array(0);
-    const slice = this.blob.slice(start, safeEnd);
+    if (safeEnd <= safeStart) return new Uint8Array(0);
+    const slice = this.blob.slice(safeStart, safeEnd);
     const buf = await slice.arrayBuffer();
     return new Uint8Array(buf);
   }

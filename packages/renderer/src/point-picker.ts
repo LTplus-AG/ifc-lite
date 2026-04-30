@@ -129,16 +129,17 @@ fn vs_main(input: VIn, @builtin(vertex_index) vId: u32) -> VOut {
   let extraPx = u.sizing.w;
   let viewport = u.viewport.xy;
 
+  // halfPx is the RADIUS; pointSizePx is the user-facing diameter, so /2.
   var halfPx: f32;
   if (sizeMode == 0u) {
-    halfPx = max(0.5, pointSizePx);
+    halfPx = max(0.5, pointSizePx * 0.5);
   } else {
     let edgePos = u.viewProj * vec4<f32>(input.position + vec3<f32>(worldRadius, 0.0, 0.0), 1.0);
     let centerNdcX = clip.x / max(abs(clip.w), 1e-6);
     let edgeNdcX = edgePos.x / max(abs(edgePos.w), 1e-6);
     let projectedPx = abs(edgeNdcX - centerNdcX) * 0.5 * viewport.x;
     if (sizeMode == 2u) {
-      halfPx = clamp(projectedPx, 1.0, max(1.0, pointSizePx));
+      halfPx = clamp(projectedPx, 0.5, max(0.5, pointSizePx * 0.5));
     } else {
       halfPx = max(0.5, projectedPx);
     }

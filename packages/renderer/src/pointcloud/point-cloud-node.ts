@@ -141,6 +141,8 @@ export function uploadAssetToGpu(
   appendChunkToNode(device, node, {
     positions: asset.chunk.positions,
     colors: asset.chunk.colors,
+    classifications: asset.chunk.classifications,
+    intensities: asset.chunk.intensities,
     pointCount: asset.chunk.pointCount,
     bbox: asset.chunk.bbox,
   });

@@ -115,6 +115,13 @@ function combineTransforms(
 }
 
 function flattenMatrix(m: number[][]): Float32Array {
+  // USD `xformop` matrices use ROW-major layout with the convention
+  // `point' = point × M` — translation lives in row 3 (m[3][0..2]).
+  // Flattened as result[row*4+col], that puts tx/ty/tz at indices
+  // 12/13/14, which is exactly what transformPositionsZUpToYUp reads
+  // (`transform[12]` etc.). Don't transpose this — it would break the
+  // S1 buildingSMART sample which has its translation specifically in
+  // row 3.
   const result = new Float32Array(16);
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 4; col++) {

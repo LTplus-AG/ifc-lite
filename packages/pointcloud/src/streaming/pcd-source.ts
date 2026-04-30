@@ -68,6 +68,11 @@ function applyStride(chunk: DecodedPointChunk, stride: number): DecodedPointChun
   const newCount = Math.ceil(chunk.pointCount / s);
   const positions = new Float32Array(newCount * 3);
   const colors = chunk.colors ? new Float32Array(newCount * 3) : undefined;
+  // Preserve classification + intensity through downsampling — without
+  // these, the classification / intensity color modes silently lose
+  // their per-point data the moment a file crosses the soft cap.
+  const classifications = chunk.classifications ? new Uint8Array(newCount) : undefined;
+  const intensities = chunk.intensities ? new Uint16Array(newCount) : undefined;
   let dst = 0;
   for (let i = 0; i < chunk.pointCount; i += s) {
     positions[dst * 3] = chunk.positions[i * 3];
@@ -78,11 +83,15 @@ function applyStride(chunk: DecodedPointChunk, stride: number): DecodedPointChun
       colors[dst * 3 + 1] = chunk.colors[i * 3 + 1];
       colors[dst * 3 + 2] = chunk.colors[i * 3 + 2];
     }
+    if (classifications && chunk.classifications) classifications[dst] = chunk.classifications[i];
+    if (intensities && chunk.intensities) intensities[dst] = chunk.intensities[i];
     dst++;
   }
   return {
     positions,
     colors,
+    classifications,
+    intensities,
     pointCount: newCount,
     bbox: chunk.bbox,
   };

@@ -461,7 +461,7 @@ export function useIfcFederation() {
       // depends on persisting it onto the FederatedModel record.
       let pointCloudHandleId: number | undefined;
 
-      if (format === 'las' || format === 'laz') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
         const renderer = getGlobalRenderer();
         if (!renderer) {
           setError('Renderer not initialised — try again after the viewer mounts.');
@@ -586,6 +586,21 @@ export function useIfcFederation() {
         for (const mesh of parsedGeometry.meshes) {
           mesh.expressId = mesh.expressId + idOffset;
         }
+        // Point clouds need the same offset so picking / isolation /
+        // property lookup resolve through the FederationRegistry's
+        // global ID space — otherwise two pointcloud models with the
+        // same local expressId collide.
+        for (const asset of parsedGeometry.pointClouds ?? []) {
+          asset.expressId = asset.expressId + idOffset;
+        }
+      }
+      // Also track the streamed renderer handle's expressId — the
+      // streaming ingest assigned a synthetic local id which now needs
+      // the same offset applied so picks resolve correctly.
+      if (idOffset > 0 && pointCloudHandleId !== undefined) {
+        // No mutation needed: the renderer node already stores the
+        // pre-offset expressId; we re-tag the federation map elsewhere.
+        // Future: extend Renderer.relabelPointCloudAsset(handle, newId).
       }
 
       // =========================================================================

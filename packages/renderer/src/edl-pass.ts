@@ -88,7 +88,10 @@ export class EdlPass {
       ? '@group(0) @binding(0) var depthTex: texture_depth_multisampled_2d;'
       : '@group(0) @binding(0) var depthTex: texture_depth_2d;';
     const depthLoadExpr = this.isMultisampled
-      ? 'textureLoad(depthTex, c, 0u)'
+      // sample_index for texture_depth_multisampled_2d must be i32 per
+      // the WGSL spec; some browsers accept the unsigned form, but
+      // strict validators (Naga) reject it.
+      ? 'textureLoad(depthTex, c, 0)'
       : 'textureLoad(depthTex, c, 0)';
 
     const shader = this.device.createShaderModule({

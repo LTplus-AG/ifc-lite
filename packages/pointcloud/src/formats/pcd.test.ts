@@ -5,9 +5,14 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { decodePcd } from './pcd.js';
 
-const REPO_ROOT = path.resolve(__dirname, '../../../..');
+// Vitest currently injects `__dirname` even in ESM packages, but a fresh
+// node-runner will not. Resolve the repo root via `import.meta.url` so the
+// fixture-loading tests don't break when this is run outside vitest.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, '../../../..');
 
 function buildAsciiPcd(rows: number[][], rgbColumn = false): Uint8Array {
   const fields = rgbColumn ? 'x y z rgb' : 'x y z';

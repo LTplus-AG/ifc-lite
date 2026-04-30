@@ -1569,7 +1569,7 @@ export function useIfcLoader() {
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
-      if (format === 'las' || format === 'laz') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
         const renderer = getGlobalRenderer();
         if (!renderer) {
           setError('Renderer not initialised — try again after the viewer mounts.');
@@ -1596,10 +1596,25 @@ export function useIfcLoader() {
         try {
           await ingest.done;
         } catch (err) {
+          // Bail without touching store/UI state if a newer load
+          // session has already started — the more recent flow owns
+          // the spinner / model record now. Free the renderer handle
+          // so we don't leak the half-streamed asset.
+          if (loadSessionRef.current !== currentSession) {
+            renderer.removePointCloudAsset(ingest.rendererHandle);
+            return;
+          }
           const message = err instanceof Error ? err.message : String(err);
           updateModel(primaryModelId, { loadState: 'error', loadError: message });
           setError(`${format.toUpperCase()} parsing failed: ${message}`);
           setLoading(false);
+          return;
+        }
+        if (loadSessionRef.current !== currentSession) {
+          // A newer load already began. Drop our streamed asset and
+          // skip every store/UI mutation so we don't overwrite the
+          // newer model's state.
+          renderer.removePointCloudAsset(ingest.rendererHandle);
           return;
         }
         setGeometryResult(ingest.geometryResult);

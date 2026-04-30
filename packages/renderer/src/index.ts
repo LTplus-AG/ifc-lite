@@ -292,6 +292,8 @@ export class Renderer {
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
         this.pointCloudRenderer?.clear();
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
     }
 
     /**
@@ -322,6 +324,73 @@ export class Renderer {
 
     removePointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
         this.pointCloudRenderer?.removeAsset(handle);
+        // Bounds may have shrunk — recompute from scratch so fit-to-view
+        // and section-plane sliders see fresh extents.
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+    }
+
+    /**
+     * Compute model bounds from triangle meshes + remaining point clouds.
+     * Called from removeAsset / clear paths so bounds shrink correctly.
+     * Triangle meshes still drive the bounds when present (existing
+     * Scene-driven path), so this only re-folds in the point cloud
+     * extents over whatever the mesh path left.
+     */
+    private recomputeModelBounds(): void {
+        // Mesh-side bounds aren't kept on `this.modelBounds` directly —
+        // they're maintained by the geometry-streaming + scene paths.
+        // For now we just re-derive from point clouds plus whatever the
+        // most-recent mesh batch update produced. If both are empty,
+        // null out so callers can fall back to defaults.
+        const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
+        if (!pcBounds && (!this.modelBounds || !Number.isFinite(this.modelBounds.min.x))) {
+            this.modelBounds = null;
+            return;
+        }
+        if (pcBounds && !this.modelBounds) {
+            this.modelBounds = {
+                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
+                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
+            };
+            return;
+        }
+        // When pcBounds disappear (cleared) but the existing modelBounds
+        // were grown to cover them, we'd ideally subtract. The mesh path
+        // already maintains its own bounds via `updateModelBounds`; calling
+        // `expandModelBoundsForPointClouds` again is a no-op when pcBounds
+        // is null. The user-visible regression CodeRabbit flagged is
+        // "stale oversized bounds after clear" — for that case we reset
+        // to the mesh-only bounds when point clouds vanish.
+        if (!pcBounds && this.modelBounds) {
+            // Ask the scene for fresh mesh bounds via the existing helper.
+            this.modelBounds = this.computeMeshBounds();
+            return;
+        }
+        if (pcBounds && this.modelBounds) {
+            // Otherwise just re-fold the new pc bounds in.
+            this.expandModelBoundsForPointClouds();
+        }
+    }
+
+    /** Aggregate bounds across all batched + individual meshes. Returns
+     *  null if the scene has no mesh geometry. */
+    private computeMeshBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        let any = false;
+        for (const batch of this.scene.getBatchedMeshes()) {
+            if (!batch.bounds) continue;
+            any = true;
+            if (batch.bounds.min[0] < minX) minX = batch.bounds.min[0];
+            if (batch.bounds.min[1] < minY) minY = batch.bounds.min[1];
+            if (batch.bounds.min[2] < minZ) minZ = batch.bounds.min[2];
+            if (batch.bounds.max[0] > maxX) maxX = batch.bounds.max[0];
+            if (batch.bounds.max[1] > maxY) maxY = batch.bounds.max[1];
+            if (batch.bounds.max[2] > maxZ) maxZ = batch.bounds.max[2];
+        }
+        if (!any) return null;
+        return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
     }
 
     /** Apply rendering options (color mode, fixed override, point size). */

@@ -66,13 +66,25 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
   setPointCloudColorMode: (mode) => set({ pointCloudColorMode: mode }),
   setPointCloudFixedColor: (rgba) => set({ pointCloudFixedColor: rgba }),
   setPointCloudSizeMode: (mode) => set({ pointCloudSizeMode: mode }),
-  setPointCloudPointSize: (px) => set({ pointCloudPointSize: Math.max(1, Math.min(20, px)) }),
-  setPointCloudWorldRadius: (m) => set({ pointCloudWorldRadius: Math.max(1e-4, m) }),
+  // NaN/Infinity slip past Math.max+min unchanged ((NaN < x) === false),
+  // so guard with isFinite to keep invalid values out of GPU uniforms.
+  setPointCloudPointSize: (px) => set({
+    pointCloudPointSize: Number.isFinite(px) ? Math.max(1, Math.min(20, px)) : 4,
+  }),
+  setPointCloudWorldRadius: (m) => set({
+    pointCloudWorldRadius: Number.isFinite(m) ? Math.max(1e-4, m) : 0.02,
+  }),
   setPointCloudRoundShape: (enabled) => set({ pointCloudRoundShape: enabled }),
   setPointCloudEdlEnabled: (enabled) => set({ pointCloudEdlEnabled: enabled }),
-  setPointCloudEdlStrength: (strength) => set({ pointCloudEdlStrength: Math.max(0, Math.min(3, strength)) }),
-  setPointCloudAssetCount: (count) => set({ pointCloudAssetCount: Math.max(0, count) }),
+  setPointCloudEdlStrength: (strength) => set({
+    pointCloudEdlStrength: Number.isFinite(strength) ? Math.max(0, Math.min(3, strength)) : 1,
+  }),
+  setPointCloudAssetCount: (count) => set({
+    pointCloudAssetCount: Number.isFinite(count) ? Math.max(0, count) : 0,
+  }),
   incrementPointCloudAssetCount: (n = 1) => set((s) => ({
-    pointCloudAssetCount: Math.max(0, s.pointCloudAssetCount + n),
+    pointCloudAssetCount: Number.isFinite(n)
+      ? Math.max(0, s.pointCloudAssetCount + n)
+      : s.pointCloudAssetCount,
   })),
 });

@@ -83,37 +83,39 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
       );
     }
 
-    // First open with stride=1 to learn the true point count, then
-    // re-open with the right stride if we need to downsample.
     const probeFactory = opts.createSource ?? createDecodeWorkerSource;
-    let stride = 1;
-    let source = probeFactory({
-      format: opts.format,
-      blob: opts.blob,
-      label: opts.label,
-      stride: 1,
-    });
-    let info = await source.open(composed);
+    let source: ReturnType<typeof probeFactory> | undefined;
+    let totalEmitted = 0;
+    let bboxMin: [number, number, number] = [Infinity, Infinity, Infinity];
+    let bboxMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+    let info: PointSourceInfo | null = null;
 
-    if (info.totalPointCount > maxPoints) {
-      stride = Math.ceil(info.totalPointCount / maxPoints);
-      source.close();
+    try {
+      // First open with stride=1 to learn the true point count, then
+      // re-open with the right stride if we need to downsample.
+      let stride = 1;
       source = probeFactory({
         format: opts.format,
         blob: opts.blob,
         label: opts.label,
-        stride,
+        stride: 1,
       });
       info = await source.open(composed);
-    }
 
-    opts.onOpen?.({ ...info, stride });
+      if (info.totalPointCount > maxPoints) {
+        stride = Math.ceil(info.totalPointCount / maxPoints);
+        source.close();
+        source = probeFactory({
+          format: opts.format,
+          blob: opts.blob,
+          label: opts.label,
+          stride,
+        });
+        info = await source.open(composed);
+      }
 
-    let totalEmitted = 0;
-    let bboxMin: [number, number, number] = [Infinity, Infinity, Infinity];
-    let bboxMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+      opts.onOpen?.({ ...info, stride });
 
-    try {
       while (true) {
         if (composed.aborted) break;
         const chunk = await source.next(chunkSize, composed);
@@ -129,10 +131,12 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
         opts.onProgress?.(totalEmitted, info.totalPointCount);
       }
     } finally {
-      source.close();
+      // Catches probe + open + onOpen + decode failures uniformly so
+      // worker-backed sources don't leak the decoder on bad files.
+      source?.close();
     }
 
-    if (!composed.aborted) {
+    if (!composed.aborted && info) {
       const bbox: PointCloudBBox = Number.isFinite(bboxMin[0])
         ? { min: bboxMin, max: bboxMax }
         : info.bbox;

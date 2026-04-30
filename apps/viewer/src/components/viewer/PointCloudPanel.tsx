@@ -67,6 +67,7 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
           return (
             <button
               key={mode.value}
+              aria-pressed={active}
               onClick={() => setColorMode(mode.value)}
               title={mode.hint}
               className={cn(
@@ -91,6 +92,7 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
             return (
               <button
                 key={mode.value}
+                aria-pressed={active}
                 onClick={() => setSizeMode(mode.value)}
                 title={mode.hint}
                 className={cn(

@@ -51,13 +51,14 @@ export class LasStreamingSource implements StreamingPointSource {
     abortIfAborted(signal);
     const headerBytes = await this.bytes.read(0, HEADER_PROBE_BYTES);
     abortIfAborted(signal);
+    // Use locals through the whole probe so a partial failure (abort
+    // mid-RGB-probe, parse error) doesn't leave `this.header` set —
+    // otherwise a retry returns the cached info without re-running the
+    // RGB-scale detection and silently uses the wrong scale.
     const header = parseLasHeader(headerBytes);
-    this.header = header;
+    let rgbScale = 1;
 
     if (header.hasRgb) {
-      // Read a small slab of point records to decide on the RGB scale.
-      // Producers that store 8-bit values in u16 channels will all max out
-      // around 255; producers that use the full 16-bit range hit > 1024.
       const probeSize = Math.min(
         RGB_PROBE_RECORDS * header.pointRecordLength,
         Math.max(0, this.bytes.size - header.pointDataOffset),
@@ -67,12 +68,16 @@ export class LasStreamingSource implements StreamingPointSource {
           header.pointDataOffset,
           header.pointDataOffset + probeSize,
         );
+        abortIfAborted(signal);
         const max = sampleMaxRgbChannel(probe, header);
         // Threshold matches PDAL / cloudcompare behaviour: ≤ 255 → assume
         // 8-bit-in-u16 and rescale on decode so values reach 0..1 in float.
-        this.rgbScale = max > 0 && max <= 255 ? 65535 / 255 : 1;
+        rgbScale = max > 0 && max <= 255 ? 65535 / 255 : 1;
       }
     }
+
+    this.header = header;
+    this.rgbScale = rgbScale;
     this.cursor = 0;
     return this.toInfo(header);
   }

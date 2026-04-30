@@ -395,14 +395,22 @@ function writeColorChannel(
       colors[(written + i) * 3 + channelOffset] = clamp01(v);
     }
   } else if (field.kind === 'Integer') {
-    // Most-common int color encodings: u8 0..255 or u16 0..65535. We
-    // assume single-byte-per-record for this MVP; ScaledInteger paths
-    // throw earlier.
-    const span = (field.maximum ?? 255) - (field.minimum ?? 0);
+    // Pick element width from the declared range. E57 producers use
+    // either u8 (0..255 — most common) or u16 (0..65535). Both
+    // appear in real files; assuming u8 distorts u16-encoded colors.
+    const min = field.minimum ?? 0;
+    const max = field.maximum ?? 255;
+    const span = max - min;
     const inv = span > 0 ? 1 / span : 1;
+    const widest = Math.max(Math.abs(min), Math.abs(max));
+    const stride = widest > 255 ? 2 : 1;
+    const signed = min < 0;
     for (let i = 0; i < take; i++) {
-      const raw = view.getUint8(start + i);
-      colors[(written + i) * 3 + channelOffset] = clamp01((raw - (field.minimum ?? 0)) * inv);
+      const off = start + i * stride;
+      const raw = stride === 2
+        ? (signed ? view.getInt16(off, true) : view.getUint16(off, true))
+        : (signed ? view.getInt8(off) : view.getUint8(off));
+      colors[(written + i) * 3 + channelOffset] = clamp01((raw - min) * inv);
     }
   } else {
     throw new Error('E57: ScaledInteger color encoding not yet supported');

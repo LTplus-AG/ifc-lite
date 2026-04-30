@@ -46,6 +46,9 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
   }
   let colors: Float32Array | undefined;
   if (attr.colors) {
+    if (!Array.isArray(attr.colors)) {
+      throw new Error('points::array: colors must be an array of [r,g,b] triples');
+    }
     if (attr.colors.length !== count) {
       throw new Error(`points::array: colors length (${attr.colors.length}) ` +
         `does not match positions length (${count})`);
@@ -53,6 +56,9 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
     colors = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       const c = attr.colors[i];
+      if (!Array.isArray(c) || c.length < 3) {
+        throw new Error(`points::array: colors[${i}] must be an [r,g,b] triple`);
+      }
       colors[i * 3] = c[0];
       colors[i * 3 + 1] = c[1];
       colors[i * 3 + 2] = c[2];

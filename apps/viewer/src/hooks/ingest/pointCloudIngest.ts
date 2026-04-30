@@ -148,11 +148,20 @@ export function describeUnsupportedFormat(fileName: string): string | null {
 }
 
 /**
+ * Counter for synthetic expressIds when callers don't supply one.
+ * Multiple inline-LAS/LAZ/E57 ingests in the same session would
+ * otherwise collide on `1`, breaking federation lookup, picking, and
+ * BCF hooks. Bumping a process-local counter is enough — the
+ * FederationRegistry then layers in the per-model offset on top.
+ */
+let nextSyntheticExpressId = 1;
+
+/**
  * Stream a point cloud into the renderer. Returns immediately; await
  * `result.done` for completion.
  */
 export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudIngestResult {
-  const expressId = opts.expressId ?? 1;
+  const expressId = opts.expressId ?? nextSyntheticExpressId++;
   // Use 'IfcGeographicElement' for PLY/PCD/LAS/LAZ — IFC4 doesn't define
   // an IfcPointCloud entity, and IfcGeographicElement is the closest
   // semantic fit (a real-world geographic feature backed by a scan).

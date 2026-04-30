@@ -104,54 +104,72 @@ export class LazStreamingSource implements StreamingPointSource {
     if (this.header) return this.toInfo(this.header);
     abortIfAborted(signal);
 
-    const buf = await this.blob.arrayBuffer();
-    abortIfAborted(signal);
-    const bytes = new Uint8Array(buf);
-    const header = parseLasHeader(bytes);
-    this.header = header;
-    this.fileBytes = bytes;
+    // All allocations happen against locals first; only commit them to
+    // `this.*` after every step succeeds. On failure (abort, parse,
+    // wasm load), the catch frees the partial state so a retry doesn't
+    // hit the early-return at line 1 with a half-open instance.
+    let mod: LazPerfModule | undefined;
+    let filePtr = 0;
+    let pointPtr = 0;
+    let laszip: LasZipInstance | undefined;
+    try {
+      const buf = await this.blob.arrayBuffer();
+      abortIfAborted(signal);
+      const bytes = new Uint8Array(buf);
+      const header = parseLasHeader(bytes);
 
-    const mod = await loadLazPerf();
-    abortIfAborted(signal);
-    this.mod = mod;
+      mod = await loadLazPerf();
+      abortIfAborted(signal);
 
-    // Copy file bytes into wasm heap
-    const filePtr = mod._malloc(bytes.byteLength);
-    mod.HEAPU8.set(bytes, filePtr);
-    this.filePtr = filePtr;
+      filePtr = mod._malloc(bytes.byteLength);
+      mod.HEAPU8.set(bytes, filePtr);
 
-    const laszip = new mod.LASZip();
-    laszip.open(filePtr, bytes.byteLength);
-    this.laszip = laszip;
+      laszip = new mod.LASZip();
+      laszip.open(filePtr, bytes.byteLength);
 
-    const pointSize = laszip.getPointLength();
-    const pointPtr = mod._malloc(pointSize);
-    this.pointPtr = pointPtr;
-    this.pointBuffer = new Uint8Array(pointSize);
+      const pointSize = laszip.getPointLength();
+      pointPtr = mod._malloc(pointSize);
+      const pointBuffer = new Uint8Array(pointSize);
 
-    if (header.hasRgb) {
-      // We can't sample-without-decoding through laz-perf's LASZip
-      // (it's a forward-only iterator), so probe the first ~4096 points
-      // to learn the RGB scale, then reset the iterator by closing and
-      // re-opening LASZip.
-      const probe = Math.min(4096, header.pointCount);
-      const tempBuf = new Uint8Array(probe * pointSize);
-      for (let i = 0; i < probe; i++) {
-        laszip.getPoint(pointPtr);
-        tempBuf.set(mod.HEAPU8.subarray(pointPtr, pointPtr + pointSize), i * pointSize);
+      let rgbScale = 1;
+      if (header.hasRgb) {
+        // Forward-only iterator: probe the first ~4096 points, then
+        // reset by recreating the LASZip handle.
+        const probe = Math.min(4096, header.pointCount);
+        const tempBuf = new Uint8Array(probe * pointSize);
+        for (let i = 0; i < probe; i++) {
+          laszip.getPoint(pointPtr);
+          tempBuf.set(mod.HEAPU8.subarray(pointPtr, pointPtr + pointSize), i * pointSize);
+        }
+        const max = sampleMaxRgbChannel(tempBuf, header);
+        rgbScale = max > 0 && max <= 255 ? 65535 / 255 : 1;
+        laszip.delete();
+        laszip = new mod.LASZip();
+        laszip.open(filePtr, bytes.byteLength);
       }
-      const max = sampleMaxRgbChannel(tempBuf, header);
-      this.rgbScale = max > 0 && max <= 255 ? 65535 / 255 : 1;
 
-      // Reset iterator: delete + recreate the LASZip handle so getPoint
-      // starts at point 0 again.
-      laszip.delete();
-      const fresh = new mod.LASZip();
-      fresh.open(filePtr, bytes.byteLength);
-      this.laszip = fresh;
+      // Commit — every allocation succeeded.
+      this.fileBytes = bytes;
+      this.mod = mod;
+      this.filePtr = filePtr;
+      this.laszip = laszip;
+      this.pointPtr = pointPtr;
+      this.pointBuffer = pointBuffer;
+      this.rgbScale = rgbScale;
+      this.header = header;
+      this.cursor = 0;
+      return this.toInfo(header);
+    } catch (err) {
+      // Partial allocations — free what we got before throwing.
+      try { laszip?.delete(); } catch { /* cleanup — safe to ignore */ }
+      if (mod && pointPtr) {
+        try { mod._free(pointPtr); } catch { /* cleanup — safe to ignore */ }
+      }
+      if (mod && filePtr) {
+        try { mod._free(filePtr); } catch { /* cleanup — safe to ignore */ }
+      }
+      throw err;
     }
-    this.cursor = 0;
-    return this.toInfo(header);
   }
 
   async next(maxPoints: number, signal?: AbortSignal): Promise<DecodedPointChunk | null> {

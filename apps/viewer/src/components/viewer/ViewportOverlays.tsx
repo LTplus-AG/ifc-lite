@@ -22,11 +22,11 @@ import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/platform';
-
-const isDesktop = isTauri();
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { PointCloudPanel } from './PointCloudPanel';
+
+const isDesktop = isTauri();
 
 export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: boolean } = {}) {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);

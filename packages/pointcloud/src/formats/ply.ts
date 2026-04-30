@@ -136,6 +136,14 @@ export function decodePly(buffer: Uint8Array): DecodedPointChunk {
   const header = parsePlyHeader(buffer);
   const vertex = header.elements.find((e) => e.name === 'vertex');
   if (!vertex) throw new Error('PLY: no vertex element');
+  // Both decoders start at header.bodyOffset, so vertex MUST be the first
+  // element. Files that declare another element first would silently
+  // produce garbage point data otherwise. Reject deterministically.
+  if (header.elements[0] !== vertex) {
+    throw new Error(
+      `PLY: vertex element must appear first; saw "${header.elements[0]?.name}" first`,
+    );
+  }
 
   const xProp = vertex.properties.find((p) => p.name === 'x');
   const yProp = vertex.properties.find((p) => p.name === 'y');

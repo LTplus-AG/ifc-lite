@@ -43,9 +43,14 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
       }
     }
 
-    // Dispose handles whose model is no longer in the store.
+    // Dispose handles whose model disappeared OR whose model still
+    // exists but was rebound to a new handle (e.g. the user reloaded
+    // the same file and got a fresh streaming session). Without the
+    // rebind branch the old GPU buffers stay allocated for the rest
+    // of the session.
     for (const [modelId, handleId] of previousRef.current) {
-      if (!current.has(modelId)) {
+      const nextHandle = current.get(modelId);
+      if (nextHandle !== handleId) {
         renderer.removePointCloudAsset({ id: handleId });
         decCount(-1);
       }

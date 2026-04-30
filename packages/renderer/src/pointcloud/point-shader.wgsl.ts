@@ -116,17 +116,22 @@ export const pointShaderSource = `
       let viewport = uniforms.sizing.zw;
       let pointSizePx = uniforms.colorModeAndExtras.y;
 
+      // halfPx is the splat RADIUS in pixels. The user-facing
+      // pointSizePx is the diameter ("8 px point"), so divide by 2
+      // when feeding it to the pipeline. Without this the fixed and
+      // attenuated branches render splats at ~2x their requested size.
       var halfPx: f32;
       if (sizeMode == 0u) {
-        halfPx = max(0.5, pointSizePx);
+        halfPx = max(0.5, pointSizePx * 0.5);
       } else {
-        // Project world-radius offset to clip space, take pixel delta.
+        // Project a world-radius offset to clip space, take pixel delta.
+        // worldRadius is already a radius — no /2 needed here.
         let edgePos = uniforms.viewProj * (worldPos4 + vec4<f32>(worldRadius, 0.0, 0.0, 0.0));
         let centerNdcX = clipPos.x / max(abs(clipPos.w), 1e-6);
         let edgeNdcX = edgePos.x / max(abs(edgePos.w), 1e-6);
         let projectedPx = abs(edgeNdcX - centerNdcX) * 0.5 * viewport.x;
         if (sizeMode == 2u) {
-          halfPx = clamp(projectedPx, 1.0, max(1.0, pointSizePx));
+          halfPx = clamp(projectedPx, 0.5, max(0.5, pointSizePx * 0.5));
         } else {
           halfPx = max(0.5, projectedPx);
         }

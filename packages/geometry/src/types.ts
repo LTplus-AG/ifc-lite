@@ -97,7 +97,12 @@ export interface PointCloudAsset {
   /** A single chunk of decoded points (positions + optional rgb in 0..1). */
   chunk: {
     positions: Float32Array;
+    /** Per-point RGB in 0..1; absent → renderer defaults to gray. */
     colors?: Float32Array;
+    /** Per-point u8 LAS-style classification; absent → 0. */
+    classifications?: Uint8Array;
+    /** Per-point u16 intensity; absent → 0. */
+    intensities?: Uint16Array;
     pointCount: number;
     bbox: { min: [number, number, number]; max: [number, number, number] };
   };

@@ -80,9 +80,10 @@ export async function openIfcFileDialog(): Promise<NativeFileHandle | null> {
     const selected = await dialog.open({
       multiple: false,
       directory: false,
-      title: 'Open IFC or Point Cloud File',
+      title: 'Open IFC, Mesh or Point Cloud File',
       filters: [
-        { name: 'IFC Files', extensions: ['ifc', 'ifczip', 'ifcxml', 'ifcx', 'glb'] },
+        { name: 'IFC Files', extensions: ['ifc', 'ifczip', 'ifcxml', 'ifcx'] },
+        { name: 'Mesh Files', extensions: ['glb'] },
         { name: 'Point Clouds', extensions: ['las', 'laz', 'ply', 'pcd', 'e57'] },
         { name: 'All Files', extensions: ['*'] },
       ],

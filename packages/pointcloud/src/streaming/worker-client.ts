@@ -175,6 +175,11 @@ export function createDecodeWorkerSource(
         session.notify({ kind: 'close', sourceId });
         sourceId = null;
       }
+      // Clear cached open()-result too so a subsequent open() actually
+      // re-opens the worker source instead of returning stale info
+      // alongside a now-null sourceId (which would make next() throw
+      // "decode-worker source not opened").
+      info = null;
     },
   };
 }

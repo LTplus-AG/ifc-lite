@@ -418,6 +418,19 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // pins themselves stay in localStorage (cross-file workspace).
       draft: null,
       selectedAnnotationId: null,
+
+      // Point cloud — clear runtime fields so a new file doesn't
+      // inherit the previous file's color mode / size / EDL state.
+      // Color/sizing defaults match createPointCloudSlice's initial state.
+      pointCloudColorMode: 'rgb',
+      pointCloudFixedColor: [1, 1, 1, 1],
+      pointCloudSizeMode: 'fixed-px',
+      pointCloudPointSize: 4,
+      pointCloudWorldRadius: 0.02,
+      pointCloudRoundShape: true,
+      pointCloudEdlEnabled: true,
+      pointCloudEdlStrength: 1,
+      pointCloudAssetCount: 0,
     });
   },
 }));

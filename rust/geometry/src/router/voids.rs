@@ -1370,6 +1370,17 @@ impl GeometryRouter {
         let extend_backward = (open_min_proj - wall_min_proj).max(0.0); // How much wall extends before opening
         let extend_forward = (wall_max_proj - open_max_proj).max(0.0); // How much wall extends after opening
 
+        // Add a tiny padding past the wall on both sides so the opening's near/far
+        // faces never end up exactly coplanar with the wall's near/far faces.
+        // Exact coplanarity leaves 0-thickness sliver artifacts in the rectangular
+        // clip path (the "completely inside" check fails by an EPSILON). Scaled to
+        // wall depth so it stays imperceptible across mm/m unit systems.
+        // See issue #604.
+        let wall_extent_along_dir = (wall_max_proj - wall_min_proj).abs();
+        let coplanarity_pad = (wall_extent_along_dir * 1e-5).max(1e-6);
+        let extend_backward = extend_backward + coplanarity_pad;
+        let extend_forward = extend_forward + coplanarity_pad;
+
         // Extend opening bounds along the extrusion direction
         let extended_min = open_min - extrusion_direction * extend_backward;
         let extended_max = open_max + extrusion_direction * extend_forward;
@@ -2157,6 +2168,50 @@ mod reveal_tests {
                 "Reveal vertex Z={z} should stay within sub-mesh [0.0, 2.0]"
             );
         }
+    }
+
+    #[test]
+    fn test_extend_opening_pads_past_wall_on_exact_match() {
+        // Regression test for issue #604: when an opening's depth exactly matches
+        // its wall's depth along the extrusion axis, the extended bounds must NOT
+        // sit exactly on the wall faces — that produces 0-thickness CSG/clip
+        // artifacts. The extension should always overshoot the wall slightly.
+        let router = crate::router::GeometryRouter::new();
+
+        // Wall: 0.2 m thick along Y
+        let wall_min = Point3::new(0.0, 0.0, 0.0);
+        let wall_max = Point3::new(10.0, 0.2, 3.0);
+        // Opening exactly fills the wall in Y (0.0..0.2) — the failing case
+        let open_min = Point3::new(4.0, 0.0, 1.0);
+        let open_max = Point3::new(6.0, 0.2, 2.5);
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+
+        let (new_min, new_max) =
+            router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+
+        // Both faces must overshoot the wall, not sit exactly on it
+        assert!(
+            new_min.y < wall_min.y,
+            "extended opening min Y {} must be strictly below wall min Y {}",
+            new_min.y,
+            wall_min.y,
+        );
+        assert!(
+            new_max.y > wall_max.y,
+            "extended opening max Y {} must be strictly above wall max Y {}",
+            new_max.y,
+            wall_max.y,
+        );
+        // Padding must stay imperceptibly small (<< 1 mm for a 0.2 m wall)
+        let back_pad = wall_min.y - new_min.y;
+        let fwd_pad = new_max.y - wall_max.y;
+        assert!(back_pad > 0.0 && back_pad < 1e-3);
+        assert!(fwd_pad > 0.0 && fwd_pad < 1e-3);
+        // Cross-axis bounds untouched
+        assert_eq!(new_min.x, open_min.x);
+        assert_eq!(new_max.x, open_max.x);
+        assert_eq!(new_min.z, open_min.z);
+        assert_eq!(new_max.z, open_max.z);
     }
 
     #[test]

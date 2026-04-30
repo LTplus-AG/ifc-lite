@@ -46,7 +46,17 @@ export { LasStreamingSource } from './streaming/las-source.js';
 export { LazStreamingSource } from './streaming/laz-source.js';
 export { PlyStreamingSource } from './streaming/ply-source.js';
 export { PcdStreamingSource } from './streaming/pcd-source.js';
+export { E57StreamingSource } from './streaming/e57-source.js';
 export { parsePlyHeader } from './formats/ply.js';
+export {
+  parseE57FileHeader,
+  parseE57Xml,
+  stripPageCrc as stripE57PageCrc,
+  decodeE57,
+  decodeE57Scan,
+  type E57FileHeader,
+  type Data3DEntry,
+} from './formats/e57.js';
 export { BlobByteSource } from './streaming/blob-source.js';
 export {
   createDecodeWorkerSource,

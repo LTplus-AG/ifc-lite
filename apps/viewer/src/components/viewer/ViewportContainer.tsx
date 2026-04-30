@@ -20,6 +20,8 @@ import { openIfcFileDialog } from '@/services/file-dialog';
 import { logToDesktopTerminal } from '@/services/desktop-logger';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
 import { isTauri } from '@/lib/platform';
+import { toast } from '@/components/ui/toast';
+import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3 } from 'lucide-react';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
@@ -305,13 +307,22 @@ export function ViewportContainer() {
       return;
     }
 
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(e.dataTransfer.files).filter(
+    // Filter to supported files (IFC, IFCX, GLB, point clouds)
+    const allDropped = Array.from(e.dataTransfer.files);
+    const supportedFiles = allDropped.filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57')
     );
 
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) {
+      // Tell the user *why* — common case is a Recap project / SketchUp
+      // file dropped because they assumed our viewer would understand it.
+      const explained = allDropped.find((f) => describeUnsupportedFormat(f.name));
+      if (explained) {
+        toast.error(`${explained.name}: ${describeUnsupportedFormat(explained.name)}`);
+      }
+      return;
+    }
 
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
@@ -343,7 +354,7 @@ export function ViewportContainer() {
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57')
     );
 
     if (supportedFiles.length === 0) return;
@@ -555,7 +566,7 @@ export function ViewportContainer() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd"
+          accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57"
           multiple
           onChange={handleFileSelect}
           className="hidden"

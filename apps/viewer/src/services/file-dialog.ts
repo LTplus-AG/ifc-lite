@@ -83,7 +83,7 @@ export async function openIfcFileDialog(): Promise<NativeFileHandle | null> {
       title: 'Open IFC or Point Cloud File',
       filters: [
         { name: 'IFC Files', extensions: ['ifc', 'ifczip', 'ifcxml', 'ifcx', 'glb'] },
-        { name: 'Point Clouds', extensions: ['las', 'laz', 'ply', 'pcd'] },
+        { name: 'Point Clouds', extensions: ['las', 'laz', 'ply', 'pcd', 'e57'] },
         { name: 'All Files', extensions: ['*'] },
       ],
     });

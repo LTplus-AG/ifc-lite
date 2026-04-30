@@ -25,7 +25,7 @@ import type {
   StreamingPointSource,
 } from './types.js';
 
-export type DecodeWorkerFormat = 'las' | 'laz' | 'ply' | 'pcd';
+export type DecodeWorkerFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57';
 
 export interface DecodeWorkerOptions {
   /** Override the worker constructor — useful for tests or custom bundlers. */

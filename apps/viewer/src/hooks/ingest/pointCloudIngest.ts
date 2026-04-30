@@ -22,7 +22,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 
-export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd';
+export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57';
 
 /**
  * Minimal synthetic IfcDataStore for a point-cloud-only model so the
@@ -100,13 +100,49 @@ export function detectPointCloudFormat(
   if (lower.endsWith('.laz')) return 'laz';
   if (lower.endsWith('.ply')) return 'ply';
   if (lower.endsWith('.pcd')) return 'pcd';
-  if (buffer && buffer.byteLength >= 4) {
+  if (lower.endsWith('.e57')) return 'e57';
+  if (buffer && buffer.byteLength >= 8) {
     const view = new DataView(buffer, 0, Math.min(buffer.byteLength, 32));
     if (view.getUint32(0, true) === 0x4653414c) return 'las';
     // ASCII probe — first three bytes "ply" → PLY; "# .P" or ".PCD" → PCD.
     const b0 = view.getUint8(0), b1 = view.getUint8(1), b2 = view.getUint8(2);
     if (b0 === 0x70 /* p */ && b1 === 0x6c /* l */ && b2 === 0x79 /* y */) return 'ply';
     if (b0 === 0x23 /* # */ && view.byteLength > 4 && view.getUint8(2) === 0x2e /* . */) return 'pcd';
+    // E57 magic = "ASTM-E57" (8 bytes)
+    if (
+      view.getUint8(0) === 0x41 && view.getUint8(1) === 0x53
+      && view.getUint8(2) === 0x54 && view.getUint8(3) === 0x4d
+      && view.getUint8(4) === 0x2d && view.getUint8(5) === 0x45
+      && view.getUint8(6) === 0x35 && view.getUint8(7) === 0x37
+    ) return 'e57';
+  }
+  return null;
+}
+
+/**
+ * Map common unsupported formats to a user-facing explanation. Drop
+ * handlers call this when nothing else recognises a dropped file so the
+ * user sees "this is a Recap project, export to E57" instead of nothing
+ * happening.
+ */
+export function describeUnsupportedFormat(fileName: string): string | null {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.zip')) {
+    return 'ZIP archive — please extract first. .ply / .las / .laz / .e57 files inside will load.';
+  }
+  if (
+    lower.endsWith('.rwp') || lower.endsWith('.rwi')
+    || lower.endsWith('.rwcx') || lower.endsWith('.dmt')
+    || lower.endsWith('.lay') || lower.endsWith('.db1')
+  ) {
+    return 'Autodesk ReCap (.rwp/.rwi/.rwcx) is a proprietary format we cannot decode. Export to E57 or LAS from ReCap.';
+  }
+  if (lower.endsWith('.skp')) return 'SketchUp model — not a point cloud.';
+  if (lower.endsWith('.fls') || lower.endsWith('.lsproj')) {
+    return 'Faro Scene project — export to E57 from Scene to load it here.';
+  }
+  if (lower.endsWith('.pts') || lower.endsWith('.xyz')) {
+    return 'PTS / XYZ ASCII points — not yet supported (export to PLY or LAS).';
   }
   return null;
 }

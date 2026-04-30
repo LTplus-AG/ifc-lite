@@ -106,6 +106,46 @@ function physicalToLogical(physical: number, pageSize: number): number {
   return pages * payloadPerPage + within;
 }
 
+/**
+ * Read a CompressedVector binary-section header (E57 spec §6.4.2) and
+ * return the LOGICAL byte offset where its DataPackets actually start.
+ *
+ * Layout (32 bytes):
+ *   [ 0]  u8     sectionId           (must == 1 for CompressedVector)
+ *   [ 1]  u8[7]  reserved
+ *   [ 8]  u64 LE sectionLogicalLength
+ *   [16]  u64 LE dataPhysicalOffset
+ *   [24]  u64 LE indexPhysicalOffset
+ *
+ * The XML's `points@fileOffset` points at this section header — NOT at
+ * the first DataPacket. Reading packets straight at `fileOffset` puts
+ * the parser ~32 bytes off and the first u16 it reads is the low half
+ * of `sectionLogicalLength`, which usually decodes as a bytestreamCount
+ * of 0 (matched the user-reported `bytestreamCount (0) ≠ prototype
+ * length (7)` error exactly).
+ */
+export function resolveCompressedVectorDataOffset(
+  logical: Uint8Array,
+  physicalSectionOffset: number,
+  pageSize: number,
+): number {
+  const sectionLogical = physicalToLogical(physicalSectionOffset, pageSize);
+  if (sectionLogical + 32 > logical.length) {
+    throw new Error(
+      `E57: CompressedVector section header at logical ${sectionLogical} runs past end of file (length ${logical.length})`,
+    );
+  }
+  const view = new DataView(logical.buffer, logical.byteOffset + sectionLogical, 32);
+  const sectionId = view.getUint8(0);
+  if (sectionId !== 1) {
+    throw new Error(
+      `E57: expected CompressedVector section (id=1) at physical ${physicalSectionOffset}, got id=${sectionId}`,
+    );
+  }
+  const dataPhysicalOffset = readU64LE(view, 16);
+  return physicalToLogical(dataPhysicalOffset, pageSize);
+}
+
 // ─── XML model ──────────────────────────────────────────────────────────────
 
 interface PrototypeField {
@@ -202,8 +242,15 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
 
 /**
  * Decode the binary section starting at `entry.binaryFileOffset` in the
- * logical-bytes view. Returns one DecodedPointChunk per scan; caller can
- * concatenate or emit them as separate streaming chunks.
+ * logical-bytes view. NOTE: `binaryFileOffset` here must already point
+ * at the first DataPacket (i.e. AFTER the 32-byte CompressedVector
+ * section header) — `decodeE57` does this conversion via
+ * `resolveCompressedVectorDataOffset`. Callers passing the raw XML
+ * offset directly will see a "bytestreamCount ≠ prototype length"
+ * mismatch.
+ *
+ * Returns one DecodedPointChunk per scan; caller can concatenate or
+ * emit them as separate streaming chunks.
  *
  * Limitations (Phase-1 E57):
  *   - Only Float (single/double) prototype fields are decoded. Files
@@ -456,7 +503,17 @@ export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
   const entries = parseE57Xml(xmlText);
   if (entries.length === 0) return null;
 
-  const chunks = entries.map((e) => decodeE57Scan(logical, e));
+  // Resolve every entry's binary file offset through the
+  // CompressedVector section header. The XML's fileOffset is the
+  // section header (physical), not the first DataPacket.
+  const chunks = entries.map((entry) => {
+    const dataLogicalOffset = resolveCompressedVectorDataOffset(
+      logical,
+      entry.binaryFileOffset,
+      header.pageSize,
+    );
+    return decodeE57Scan(logical, { ...entry, binaryFileOffset: dataLogicalOffset });
+  });
   if (chunks.length === 1) return chunks[0];
 
   // Concatenate

@@ -3,7 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { parseE57FileHeader, parseE57Xml, stripPageCrc, decodeE57Scan, type Data3DEntry } from './e57.js';
+import {
+  parseE57FileHeader,
+  parseE57Xml,
+  resolveCompressedVectorDataOffset,
+  stripPageCrc,
+  decodeE57Scan,
+  type Data3DEntry,
+} from './e57.js';
 
 const enc = new TextEncoder();
 
@@ -230,5 +237,48 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
 
   it('throws when root is not <e57Root>', () => {
     expect(() => parseE57Xml('<other/>')).toThrow(/e57Root/);
+  });
+});
+
+describe('resolveCompressedVectorDataOffset (E57 §6.4.2)', () => {
+  it('reads the 32-byte section header and follows dataPhysicalOffset to the logical data start', () => {
+    // Build a logical buffer where:
+    //   bytes [0..32)   = section header at physical=0
+    //   bytes [32..)    = section header at physical=64 (data starts here)
+    //   bytes [64..)    = the bytes the section header "points at"
+    //
+    // We hand the function a logical buffer and a physical section
+    // offset of 0; the section header it reads says
+    // dataPhysicalOffset=64. It must convert that to the matching
+    // LOGICAL offset (which equals 64 when both header and data are
+    // inside page 0 so the CRC stripping doesn't shift anything).
+    const buf = new ArrayBuffer(128);
+    const bytes = new Uint8Array(buf);
+    const view = new DataView(buf);
+    // Section header @ offset 0
+    view.setUint8(0, 1); // sectionId
+    view.setBigUint64(8, 128n, true);   // sectionLogicalLength
+    view.setBigUint64(16, 64n, true);    // dataPhysicalOffset
+    view.setBigUint64(24, 0n, true);     // indexPhysicalOffset
+    // Section header bytes happen to also look like a non-data packet
+    // when read directly — proves why the resolver is needed.
+    expect(view.getUint16(4, true)).toBe(0); // first u16 of length is 0
+
+    const dataOffset = resolveCompressedVectorDataOffset(bytes, 0, 1024);
+    // physicalToLogical(64, 1024) = 64 (still inside page 0).
+    expect(dataOffset).toBe(64);
+  });
+
+  it('rejects a section header with the wrong sectionId', () => {
+    const bytes = new Uint8Array(32);
+    bytes[0] = 99; // wrong sectionId
+    expect(() => resolveCompressedVectorDataOffset(bytes, 0, 1024))
+      .toThrow(/section/i);
+  });
+
+  it('rejects when the section header runs past end of buffer', () => {
+    const bytes = new Uint8Array(16); // smaller than 32-byte header
+    expect(() => resolveCompressedVectorDataOffset(bytes, 0, 1024))
+      .toThrow(/out of bounds|past end/i);
   });
 });

@@ -1320,60 +1320,77 @@ fn process_surface_of_revolution_face(
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
     let axis_y = axis_dir.cross(&axis_x);
 
-    // Determine angular extent from the boundary edge points.
+    // Determine angular extent from the boundary edge points. We project each
+    // boundary point's radial vector to a [0, TAU) angle, then find the
+    // *largest gap* between sorted angles — the face occupies the complement.
+    // This robustly handles faces that straddle the θ=π discontinuity (e.g.
+    // a fillet at θ=−π/2..π) where naive min/max gives 3π/2 instead of π/2.
     let boundary = extract_edge_loop_points_for_bounds(face, decoder);
-    let (mut a_min, mut a_max) = if boundary.is_empty() {
+    let (a_min, span) = if boundary.is_empty() {
         (0.0, TAU)
     } else {
-        let mut mn = f64::INFINITY;
-        let mut mx = f64::NEG_INFINITY;
-        for p in &boundary {
-            let v = p - axis_origin;
-            let a = v.dot(&axis_y).atan2(v.dot(&axis_x));
-            mn = mn.min(a);
-            mx = mx.max(a);
-        }
-        if mx - mn > std::f64::consts::PI * 1.5 {
-            let mut pmn = f64::INFINITY;
-            let mut pmx = f64::NEG_INFINITY;
-            for p in &boundary {
+        let mut angles: Vec<f64> = boundary
+            .iter()
+            .map(|p| {
                 let v = p - axis_origin;
                 let mut a = v.dot(&axis_y).atan2(v.dot(&axis_x));
                 if a < 0.0 {
                     a += TAU;
                 }
-                pmn = pmn.min(a);
-                pmx = pmx.max(a);
-            }
-            (pmn, pmx)
+                a
+            })
+            .collect();
+        angles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        angles.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+
+        if angles.len() < 2 {
+            (0.0, TAU)
         } else {
-            (mn, mx)
+            let n = angles.len();
+            let mut max_gap = 0.0;
+            let mut max_gap_idx = 0usize;
+            for i in 0..n {
+                let next = if i + 1 < n { angles[i + 1] } else { angles[0] + TAU };
+                let gap = next - angles[i];
+                if gap > max_gap {
+                    max_gap = gap;
+                    max_gap_idx = i;
+                }
+            }
+            // The face occupies the complement of the largest gap. If the
+            // boundary samples are all on one side, the largest gap is on the
+            // other side, and the face spans angles[(idx+1)%n] → angles[idx]+TAU.
+            let start = angles[(max_gap_idx + 1) % n];
+            let end_raw = angles[max_gap_idx];
+            let end = if end_raw < start { end_raw + TAU } else { end_raw };
+            let s = end - start;
+            // If the gap is near zero or full, treat it as a full revolution.
+            if s < 1e-6 || s > TAU - 1e-6 {
+                (0.0, TAU)
+            } else {
+                (start, s)
+            }
         }
     };
-    if (a_max - a_min).abs() < 1e-6 {
-        a_min = 0.0;
-        a_max = TAU;
-    }
-    let span = a_max - a_min;
     let n_angle = ((span / (TAU / 24.0)).ceil() as usize).clamp(2, 32);
     let n_v = profile_pts.len();
 
-    // Generate vertices by rotating each profile sample around the axis.
+    // Generate vertices using cylindrical (r, axial) coordinates of each
+    // profile point — the profile's own angular position around the axis is
+    // irrelevant for the swept surface, only its (radius, axial) matters.
     let mut positions = Vec::with_capacity((n_angle + 1) * n_v * 3);
     for i in 0..=n_angle {
-        let a = a_min + span * (i as f64) / (n_angle as f64);
+        let theta = a_min + span * (i as f64) / (n_angle as f64);
+        let cos_t = theta.cos();
+        let sin_t = theta.sin();
         for p in &profile_pts {
-            // Decompose p relative to the axis frame at a=0.
             let r = p - axis_origin;
-            let radial_x = r.dot(&axis_x);
-            let radial_y = r.dot(&axis_y);
-            let axial = r.dot(&axis_dir);
-            let radius = (radial_x * radial_x + radial_y * radial_y).sqrt();
-            let base = radial_y.atan2(radial_x);
-            let total = base + a;
-            let new_x = radius * total.cos();
-            let new_y = radius * total.sin();
-            let world = axis_origin + axis_x * new_x + axis_y * new_y + axis_dir * axial;
+            let rx = r.dot(&axis_x);
+            let ry = r.dot(&axis_y);
+            let z = r.dot(&axis_dir);
+            let radius = (rx * rx + ry * ry).sqrt();
+            let world =
+                axis_origin + axis_x * (radius * cos_t) + axis_y * (radius * sin_t) + axis_dir * z;
             positions.push(world.x as f32);
             positions.push(world.y as f32);
             positions.push(world.z as f32);

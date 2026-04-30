@@ -46,6 +46,8 @@ import { useIfcCache, getCached } from './useIfcCache.js';
 import { useIfcServer } from './useIfcServer.js';
 
 import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
+import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
+import { getGlobalRenderer } from './useBCF.js';
 
 /**
  * Compute a fast content fingerprint from the first and last 4KB of a buffer.
@@ -1560,8 +1562,51 @@ export function useIfcLoader() {
       const fileReadMs = performance.now() - fileReadStart;
       console.log(`[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB, read in ${fileReadMs.toFixed(0)}ms`);
 
-      // Detect file format (IFCX/IFC5 vs IFC4 STEP vs GLB)
-      const format = detectFormat(buffer);
+      // Detect file format (IFCX/IFC5 vs IFC4 STEP vs GLB vs LAS/LAZ)
+      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
+      const format = pointCloudFormat ?? detectFormat(buffer);
+
+      // LAS / LAZ point clouds: stream chunks straight to the renderer.
+      // No on-disk cache, no server upload — the data goes worker → GPU.
+      if (format === 'las' || format === 'laz') {
+        const renderer = getGlobalRenderer();
+        if (!renderer) {
+          setError('Renderer not initialised — try again after the viewer mounts.');
+          updateModel(primaryModelId, { loadState: 'error', loadError: 'renderer-missing' });
+          setLoading(false);
+          return;
+        }
+        setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
+        setGeometryStreamingActive(false);
+        const blob = isNativeFileHandle(file) ? new Blob([buffer]) : (file as File);
+        const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
+        const ingest = ingestPointCloud({
+          format,
+          blob,
+          fileName: file.name,
+          buffer,
+          renderer,
+          onProgress: setProgress,
+          onAssetCountDelta: incCount,
+        });
+        try {
+          await ingest.done;
+        } catch (err) {
+          renderer.removePointCloudAsset(ingest.rendererHandle);
+          incCount(-1);
+          const message = err instanceof Error ? err.message : String(err);
+          updateModel(primaryModelId, { loadState: 'error', loadError: message });
+          setError(`${format.toUpperCase()} parsing failed: ${message}`);
+          setLoading(false);
+          return;
+        }
+        setGeometryResult(ingest.geometryResult);
+        setIfcDataStore(ingest.dataStore);
+        finalizePrimaryModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion);
+        setProgress({ phase: 'Complete', percent: 100 });
+        setLoading(false);
+        return;
+      }
 
       // IFCX files must be parsed client-side (server only supports IFC4 STEP)
       if (format === 'ifcx') {

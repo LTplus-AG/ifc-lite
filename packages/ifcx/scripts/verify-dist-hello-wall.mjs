@@ -43,6 +43,27 @@ async function main() {
   assert.deepStrictEqual(federatedWindowIds, [1, 2]);
   assert.deepStrictEqual(federatedResult.spatialHierarchy.byStorey.get(7), [4, 1, 2, 3]);
   assert.deepStrictEqual(federatedResult.spatialHierarchy.bySpace.get(6), [4, 1, 2]);
+
+  // Point Cloud samples — buildingSMART IFC5 fixtures whose nodes carry
+  // only the inline pcd / points schemas (no bsi::ifc::class). Regression
+  // guard for the entity extractor: if it skips them, `pointClouds` ends
+  // up empty and the viewer shows a blank canvas.
+  const smallPcd = loadFixture('Point_Cloud_point-cloud.ifcx');
+  const smallResult = await parseIfcx(smallPcd);
+  assert.strictEqual(smallResult.meshes.length, 0, 'small Point_Cloud should have 0 meshes');
+  assert.strictEqual(smallResult.pointClouds.length, 5, 'small Point_Cloud should expose 5 point cloud assets');
+  assert.ok(smallResult.entityCount >= 5, 'pointcloud nodes must become entities');
+  for (const pc of smallResult.pointClouds) {
+    assert.ok(pc.pointCount > 0, 'every extracted point cloud carries points');
+    assert.ok(Number.isFinite(pc.bbox.min[0]), 'pc bbox must be finite');
+  }
+
+  const bigPcd = loadFixture('Point_Cloud_S1-pointcloud.ifcx');
+  const bigResult = await parseIfcx(bigPcd);
+  assert.strictEqual(bigResult.pointClouds.length, 1);
+  assert.strictEqual(bigResult.pointClouds[0].pointCount, 101694,
+    'S1 sample should decode all 101,694 binary_compressed points');
+  assert.ok(bigResult.pointClouds[0].colors !== undefined, 'S1 sample carries RGB');
 }
 
 await main();

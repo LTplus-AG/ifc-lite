@@ -864,6 +864,7 @@ export function Viewport({
     rendererRef,
     isInitialized,
     pointClouds,
+    hasMeshes: (geometry?.length ?? 0) > 0,
   });
 
   useRenderUpdates({

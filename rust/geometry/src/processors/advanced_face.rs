@@ -960,11 +960,11 @@ fn process_cylindrical_face(
     let height = max_z - min_z;
 
     // Balance between accuracy and matching web-ifc's output
-    // Use ~15 degrees per segment (pi/12) for good curvature approximation
+    // Use ~10 degrees per segment for smooth handle/glazing curvature
     let angle_segments =
-        ((angle_span / (std::f64::consts::PI / 12.0)).ceil() as usize).clamp(3, 16);
+        ((angle_span / (std::f64::consts::PI / 18.0)).ceil() as usize).clamp(6, 32);
     // Height segments based on aspect ratio - at least 1, more for tall cylinders
-    let height_segments = ((height / (radius * 2.0)).ceil() as usize).clamp(1, 4);
+    let height_segments = ((height / (radius * 2.0)).ceil() as usize).clamp(1, 8);
 
     let mut positions = Vec::new();
     let mut indices = Vec::new();
@@ -1297,7 +1297,7 @@ fn process_surface_of_revolution_face(
             }
         }
     };
-    let n_angle = ((span / (TAU / 24.0)).ceil() as usize).clamp(2, 32);
+    let n_angle = ((span / (TAU / 36.0)).ceil() as usize).clamp(4, 48);
     let n_v = profile_pts.len();
 
     // Generate vertices using cylindrical (r, axial) coordinates of each

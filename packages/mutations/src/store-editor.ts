@@ -142,17 +142,16 @@ export class StoreEditor {
     // allocator to 0 and would otherwise hand out colliding ids on the
     // next addEntity().
     this.view.setExpressIdWatermark(this.maxExistingId);
-    let created = this.view.createEntity(canonical, attributes);
     // Defence against a stale watermark — the store may have grown after
     // construction (lazy index hydration, federated merge) without
-    // notifying us. If we just minted an id that's already present in
-    // the source index, drop the entity, refresh the watermark from the
-    // current store, and re-allocate.
-    if (this.store.entityIndex.byId.has(created.expressId)) {
-      this.view.deleteEntity(created.expressId);
+    // notifying us. Check whether the allocator's next id collides with
+    // the current source index BEFORE calling createEntity, so we don't
+    // emit phantom CREATE_ENTITY / DELETE_ENTITY pairs into the mutation
+    // history just to fix our own bookkeeping.
+    if (this.store.entityIndex.byId.has(this.view.peekNextExpressId())) {
       this.refreshWatermark();
-      created = this.view.createEntity(canonical, attributes);
     }
+    const created = this.view.createEntity(canonical, attributes);
     return {
       expressId: created.expressId,
       type: created.type,

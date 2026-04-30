@@ -308,7 +308,7 @@ function marshalValueWithGuard(
   vm: QuickJSContext,
   value: unknown,
   depth: number,
-  seen: WeakSet<object>,
+  stack: WeakSet<object>,
 ): QuickJSHandle {
   if (value === null || value === undefined) return vm.null;
   if (typeof value === 'string') return vm.newString(value);
@@ -318,25 +318,32 @@ function marshalValueWithGuard(
   if (depth >= MARSHAL_MAX_DEPTH) return vm.null;
   if (typeof value !== 'object') return vm.null;
 
-  // Cycle guard: a self-referencing object would otherwise blow the stack.
-  if (seen.has(value as object)) return vm.null;
-  seen.add(value as object);
-
-  if (Array.isArray(value)) {
-    const arr = vm.newArray();
-    for (let i = 0; i < value.length; i++) {
-      const item = marshalValueWithGuard(vm, value[i], depth + 1, seen);
-      vm.setProp(arr, i, item);
-      item.dispose();
+  // Cycle guard: only objects on the *current ancestor chain* count as a
+  // cycle. Removing on exit means an acyclic graph that legitimately
+  // shares a sub-object across siblings (e.g. `{ a: shared, b: shared }`)
+  // still serialises both occurrences fully.
+  const obj = value as object;
+  if (stack.has(obj)) return vm.null;
+  stack.add(obj);
+  try {
+    if (Array.isArray(value)) {
+      const arr = vm.newArray();
+      for (let i = 0; i < value.length; i++) {
+        const item = marshalValueWithGuard(vm, value[i], depth + 1, stack);
+        vm.setProp(arr, i, item);
+        item.dispose();
+      }
+      return arr;
     }
-    return arr;
-  }
 
-  const obj = vm.newObject();
-  for (const [k, v] of Object.entries(value as object)) {
-    const handle = marshalValueWithGuard(vm, v, depth + 1, seen);
-    vm.setProp(obj, k, handle);
-    handle.dispose();
+    const out = vm.newObject();
+    for (const [k, v] of Object.entries(obj)) {
+      const handle = marshalValueWithGuard(vm, v, depth + 1, stack);
+      vm.setProp(out, k, handle);
+      handle.dispose();
+    }
+    return out;
+  } finally {
+    stack.delete(obj);
   }
-  return obj;
 }

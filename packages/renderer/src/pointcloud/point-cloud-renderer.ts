@@ -376,4 +376,27 @@ export class PointCloudRenderer {
     }
     return null;
   }
+
+  /**
+   * Snapshot of nodes shaped for the picker — only the data the GPU
+   * picking pass actually needs (expressId, modelIndex, chunk vertex
+   * buffers + counts). Returns a fresh array; callers may iterate
+   * freely without worrying about mutation during a pick.
+   */
+  getPickNodes(): Array<{
+    expressId: number;
+    modelIndex?: number;
+    chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
+  }> {
+    const out: Array<{ expressId: number; modelIndex?: number; chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }> }> = [];
+    for (const node of this.nodes.values()) {
+      if (node.pointCount === 0) continue;
+      out.push({
+        expressId: node.meta.expressId,
+        modelIndex: node.meta.modelIndex,
+        chunks: node.chunks.map((c) => ({ vertexBuffer: c.vertexBuffer, pointCount: c.pointCount })),
+      });
+    }
+    return out;
+  }
 }

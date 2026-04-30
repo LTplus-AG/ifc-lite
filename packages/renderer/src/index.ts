@@ -44,7 +44,11 @@ export {
 
 // Extracted manager classes
 export { PickingManager } from './picking-manager.js';
+export type { PointPickProvider } from './picking-manager.js';
 export { RaycastEngine } from './raycast-engine.js';
+export { PointPicker, decodePickSample } from './point-picker.js';
+export type { PointPickNode, DecodedPickSample } from './point-picker.js';
+export type { PointPickSizing } from './picker.js';
 
 // Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
 export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
@@ -227,6 +231,24 @@ export class Renderer {
 
         // Update picking manager with initialized picker
         this.pickingManager.setPicker(this.picker);
+        // Provide a snapshot of pickable point nodes per pick. The
+        // sizing must mirror the live splat shader so click hit-testing
+        // matches what the user actually sees on screen.
+        this.pickingManager.setPointPickProvider(() => {
+            const pcr = this.pointCloudRenderer;
+            if (!pcr || !pcr.hasAssets()) return null;
+            const opts = pcr.getOptions();
+            const sizeMode = opts.sizeMode === 'fixed-px' ? 0 : opts.sizeMode === 'adaptive-world' ? 1 : 2;
+            return {
+                nodes: pcr.getPickNodes(),
+                sizing: {
+                    sizeMode: sizeMode as 0 | 1 | 2,
+                    worldRadius: opts.worldRadius,
+                    pointSizePx: opts.pointSize,
+                    clickTolerancePx: 2,
+                },
+            };
+        });
     }
 
     /**

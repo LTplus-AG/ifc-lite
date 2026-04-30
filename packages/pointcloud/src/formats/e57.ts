@@ -30,6 +30,12 @@
  */
 
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
+import {
+  childByName,
+  childrenByName,
+  parseXml,
+  textChild,
+} from '../xml-mini.js';
 
 const E57_MAGIC = 'ASTM-E57';
 
@@ -125,16 +131,18 @@ export interface Data3DEntry {
 const TEXT_DECODER = new TextDecoder();
 
 /**
- * Parse the E57 XML section. Uses the browser's `DOMParser` so this
- * function only runs in the worker / main thread (jsdom in tests).
+ * Parse the E57 XML section.
+ *
+ * Uses our own minimal SAX-style parser (`xml-mini.ts`) instead of
+ * `DOMParser` because dedicated Web Workers — where the decode runs —
+ * don't expose DOMParser. The shape we need (e57Root → data3D →
+ * vectorChild → prototype) is shallow and attribute-heavy, well within
+ * the mini parser's scope.
  */
 export function parseE57Xml(xmlText: string): Data3DEntry[] {
-  // jsdom isn't available in the package's vitest runs; the host
-  // (browser/worker) always provides DOMParser. Tests stub the parse.
-  const dom = new DOMParser().parseFromString(xmlText, 'application/xml');
-  const root = dom.documentElement;
-  if (!root || root.nodeName !== 'e57Root') {
-    throw new Error('E57: XML root is not <e57Root>');
+  const root = parseXml(xmlText);
+  if (root.name !== 'e57Root') {
+    throw new Error(`E57: XML root is not <e57Root> (saw <${root.name || '?'}>)`);
   }
   const data3D = childByName(root, 'data3D');
   if (!data3D) return [];
@@ -142,41 +150,39 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
   for (const scan of childrenByName(data3D, 'vectorChild')) {
     const points = childByName(scan, 'points');
     if (!points) continue;
-    if (points.getAttribute('type') !== 'CompressedVector') {
+    if (points.attrs.get('type') !== 'CompressedVector') {
       // Skip non-compressed-vector points (rare).
       continue;
     }
-    const fileOffsetAttr = points.getAttribute('fileOffset');
-    const recordCountAttr = points.getAttribute('recordCount');
+    const fileOffsetAttr = points.attrs.get('fileOffset');
+    const recordCountAttr = points.attrs.get('recordCount');
     if (!fileOffsetAttr || !recordCountAttr) continue;
     const proto = childByName(points, 'prototype');
     if (!proto) continue;
     const fields: PrototypeField[] = [];
-    for (let i = 0; i < proto.childNodes.length; i++) {
-      const f = proto.childNodes[i] as Element;
-      if (f.nodeType !== 1) continue;
-      const type = f.getAttribute('type') ?? '';
+    for (const f of proto.children) {
+      const type = f.attrs.get('type') ?? '';
       if (type === 'Float') {
         fields.push({
-          name: f.nodeName,
+          name: f.name,
           kind: 'Float',
-          precision: (f.getAttribute('precision') === 'single' ? 'single' : 'double'),
+          precision: f.attrs.get('precision') === 'single' ? 'single' : 'double',
         });
       } else if (type === 'ScaledInteger') {
         fields.push({
-          name: f.nodeName,
+          name: f.name,
           kind: 'ScaledInteger',
-          scale: Number(f.getAttribute('scale') ?? '1'),
-          offset: Number(f.getAttribute('offset') ?? '0'),
-          minimum: Number(f.getAttribute('minimum') ?? '0'),
-          maximum: Number(f.getAttribute('maximum') ?? '0'),
+          scale: Number(f.attrs.get('scale') ?? '1'),
+          offset: Number(f.attrs.get('offset') ?? '0'),
+          minimum: Number(f.attrs.get('minimum') ?? '0'),
+          maximum: Number(f.attrs.get('maximum') ?? '0'),
         });
       } else if (type === 'Integer') {
         fields.push({
-          name: f.nodeName,
+          name: f.name,
           kind: 'Integer',
-          minimum: Number(f.getAttribute('minimum') ?? '0'),
-          maximum: Number(f.getAttribute('maximum') ?? '0'),
+          minimum: Number(f.attrs.get('minimum') ?? '0'),
+          maximum: Number(f.attrs.get('maximum') ?? '0'),
         });
       }
       // Other types (e.g. String) ignored — never carry point data.
@@ -190,29 +196,6 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
     });
   }
   return entries;
-}
-
-function childByName(parent: Element, name: string): Element | null {
-  for (let i = 0; i < parent.childNodes.length; i++) {
-    const c = parent.childNodes[i];
-    if (c.nodeType === 1 && c.nodeName === name) return c as Element;
-  }
-  return null;
-}
-
-function childrenByName(parent: Element, name: string): Element[] {
-  const out: Element[] = [];
-  for (let i = 0; i < parent.childNodes.length; i++) {
-    const c = parent.childNodes[i];
-    if (c.nodeType === 1 && c.nodeName === name) out.push(c as Element);
-  }
-  return out;
-}
-
-function textChild(parent: Element, name: string): string | null {
-  const c = childByName(parent, name);
-  if (!c) return null;
-  return c.textContent?.trim() || null;
 }
 
 // ─── binary decode ──────────────────────────────────────────────────────────

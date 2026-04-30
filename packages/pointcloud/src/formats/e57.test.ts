@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { parseE57FileHeader, stripPageCrc, decodeE57Scan, type Data3DEntry } from './e57.js';
+import { parseE57FileHeader, parseE57Xml, stripPageCrc, decodeE57Scan, type Data3DEntry } from './e57.js';
 
 const enc = new TextEncoder();
 
@@ -170,5 +170,65 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
       ],
     };
     expect(() => decodeE57Scan(new Uint8Array(0), entry)).toThrow(/ScaledInteger/);
+  });
+});
+
+describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
+  it('extracts scans + prototype fields from a representative XML body', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<e57Root type="Structure">
+  <formatName type="String">ASTM E57 3D Imaging Data File</formatName>
+  <data3D type="Vector" allowHeterogeneousChildren="0">
+    <vectorChild type="Structure">
+      <guid type="String">{abc-1}</guid>
+      <name type="String">Scan One</name>
+      <points type="CompressedVector" fileOffset="1024" recordCount="3">
+        <prototype type="Structure">
+          <cartesianX type="Float" precision="double"/>
+          <cartesianY type="Float" precision="double"/>
+          <cartesianZ type="Float" precision="double"/>
+          <colorRed type="Integer" minimum="0" maximum="255"/>
+          <colorGreen type="Integer" minimum="0" maximum="255"/>
+          <colorBlue type="Integer" minimum="0" maximum="255"/>
+        </prototype>
+        <codecs type="Vector" allowHeterogeneousChildren="1"/>
+      </points>
+    </vectorChild>
+    <vectorChild type="Structure">
+      <guid type="String">{abc-2}</guid>
+      <points type="CompressedVector" fileOffset="65536" recordCount="42">
+        <prototype type="Structure">
+          <cartesianX type="ScaledInteger" scale="0.0001" offset="0" minimum="-1000" maximum="1000"/>
+          <cartesianY type="ScaledInteger" scale="0.0001" offset="0" minimum="-1000" maximum="1000"/>
+          <cartesianZ type="ScaledInteger" scale="0.0001" offset="0" minimum="-1000" maximum="1000"/>
+        </prototype>
+      </points>
+    </vectorChild>
+  </data3D>
+</e57Root>`;
+
+    const entries = parseE57Xml(xml);
+    expect(entries).toHaveLength(2);
+
+    expect(entries[0].guid).toBe('{abc-1}');
+    expect(entries[0].name).toBe('Scan One');
+    expect(entries[0].binaryFileOffset).toBe(1024);
+    expect(entries[0].recordCount).toBe(3);
+    expect(entries[0].prototype).toHaveLength(6);
+    expect(entries[0].prototype[0]).toEqual({
+      name: 'cartesianX', kind: 'Float', precision: 'double',
+    });
+    expect(entries[0].prototype[3]).toMatchObject({
+      name: 'colorRed', kind: 'Integer', minimum: 0, maximum: 255,
+    });
+
+    expect(entries[1].binaryFileOffset).toBe(65536);
+    expect(entries[1].prototype[0]).toMatchObject({
+      name: 'cartesianX', kind: 'ScaledInteger', scale: 0.0001,
+    });
+  });
+
+  it('throws when root is not <e57Root>', () => {
+    expect(() => parseE57Xml('<other/>')).toThrow(/e57Root/);
   });
 });

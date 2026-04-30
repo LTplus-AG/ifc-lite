@@ -15,6 +15,7 @@
 import type { Renderer } from '@ifc-lite/renderer';
 import {
   streamPointCloud,
+  type DecodedPointChunk,
   type StreamHandle,
 } from '@ifc-lite/pointcloud';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
@@ -189,7 +190,13 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       });
     },
     onChunk: (chunk) => {
-      opts.renderer.appendPointCloudChunk(handle, chunk);
+      // LAS / LAZ / E57 / typical scan-style PLY + PCD all store data
+      // Z-up by convention (LIDAR / surveying tradition). The renderer
+      // is Y-up internally — the IFCx ingest path applies the same
+      // swap inside `pointcloud-extractor.ts`. Without this, the scan
+      // shows up rotated 90° onto its side.
+      const yUp = swapZupChunkToYup(chunk);
+      opts.renderer.appendPointCloudChunk(handle, yUp);
       opts.renderer.requestRender();
     },
     onProgress: (loaded, total) => {
@@ -230,5 +237,39 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
     rendererHandle: handle,
     streamHandle: stream,
     done: stream.done,
+  };
+}
+
+/**
+ * Re-orient a Z-up chunk into the renderer's Y-up convention.
+ *   Z-up: X=right, Y=forward, Z=up
+ *   Y-up: X=right, Y=up,      Z=back   (negate Y to keep right-hand rule)
+ *
+ * Mirrors the geometry / pointcloud extractors' Z↔Y handling for IFCx.
+ * Allocates a fresh positions buffer so the source chunk's typed array
+ * (often a transferable from the worker) stays untouched.
+ */
+function swapZupChunkToYup(chunk: DecodedPointChunk): DecodedPointChunk {
+  const src = chunk.positions;
+  const positions = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i += 3) {
+    const x = src[i];
+    const y = src[i + 1];
+    const z = src[i + 2];
+    positions[i] = x;
+    positions[i + 1] = z;        // new Y = old Z
+    positions[i + 2] = -y;       // new Z = -old Y
+  }
+  // BBox transforms the same way. New min/max derive from the swapped
+  // axes; note the negation flips min and max on the Z-back axis.
+  const oldMin = chunk.bbox.min;
+  const oldMax = chunk.bbox.max;
+  return {
+    ...chunk,
+    positions,
+    bbox: {
+      min: [oldMin[0], oldMin[2], -oldMax[1]],
+      max: [oldMax[0], oldMax[2], -oldMin[1]],
+    },
   };
 }

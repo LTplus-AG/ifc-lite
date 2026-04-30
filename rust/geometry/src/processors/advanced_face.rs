@@ -68,8 +68,28 @@ pub(super) fn process_advanced_face(
         process_planar_face(face, decoder)
     } else {
         // Unsupported surface type - return empty geometry
+        #[cfg(feature = "debug_geometry")]
+        eprintln!(
+            "[ifc-lite][advanced_face] face #{} unsupported surface {}",
+            face.id, surface_type
+        );
         Ok((Vec::new(), Vec::new()))
     };
+
+    #[cfg(feature = "debug_geometry")]
+    {
+        if let Ok((ref pos, ref idx)) = result {
+            if pos.is_empty() || idx.is_empty() {
+                eprintln!(
+                    "[ifc-lite][advanced_face] face #{} surface={} produced 0 tris (verts={}, idx={})",
+                    face.id,
+                    surface_type,
+                    pos.len() / 3,
+                    idx.len() / 3,
+                );
+            }
+        }
+    }
 
     // When SameSense is false, flip triangle winding to correct face orientation
     if !same_sense {
@@ -883,107 +903,12 @@ fn process_cylindrical_face(
         Matrix4::identity()
     };
 
-    // Extract boundary edges to determine angular and height extent
-    let bounds_attr = face
-        .get(0)
-        .ok_or_else(|| Error::geometry("AdvancedFace missing Bounds".to_string()))?;
-
-    let bounds = bounds_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected bounds list".to_string()))?;
-
-    // Collect all boundary points to determine the extent
-    let mut boundary_points: Vec<Point3<f64>> = Vec::new();
-
-    for bound in bounds {
-        if let Some(bound_id) = bound.as_entity_ref() {
-            let bound_entity = decoder.decode_by_id(bound_id)?;
-            let loop_attr = bound_entity
-                .get(0)
-                .ok_or_else(|| Error::geometry("FaceBound missing Bound".to_string()))?;
-
-            if let Some(loop_entity) = decoder.resolve_ref(loop_attr)? {
-                if loop_entity
-                    .ifc_type
-                    .as_str()
-                    .eq_ignore_ascii_case("IFCEDGELOOP")
-                {
-                    if let Some(edges_attr) = loop_entity.get(0) {
-                        if let Some(edges) = edges_attr.as_list() {
-                            for edge_ref in edges {
-                                if let Some(edge_id) = edge_ref.as_entity_ref() {
-                                    if let Ok(oriented_edge) = decoder.decode_by_id(edge_id) {
-                                        // IfcOrientedEdge: 0=EdgeStart, 1=EdgeEnd, 2=EdgeElement, 3=Orientation
-                                        // EdgeStart/EdgeEnd can be * (null), get from EdgeElement if needed
-
-                                        // Try to get start vertex from OrientedEdge first
-                                        let start_vertex = oriented_edge
-                                            .get(0)
-                                            .and_then(|attr| {
-                                                decoder.resolve_ref(attr).ok().flatten()
-                                            });
-
-                                        // If null, get from EdgeElement (attribute 2)
-                                        let vertex = if start_vertex.is_some() {
-                                            start_vertex
-                                        } else if let Some(edge_elem_attr) =
-                                            oriented_edge.get(2)
-                                        {
-                                            // Get EdgeElement (IfcEdgeCurve)
-                                            if let Some(edge_curve) = decoder
-                                                .resolve_ref(edge_elem_attr)
-                                                .ok()
-                                                .flatten()
-                                            {
-                                                // IfcEdgeCurve: 0=EdgeStart, 1=EdgeEnd, 2=EdgeGeometry
-                                                edge_curve.get(0).and_then(|attr| {
-                                                    decoder.resolve_ref(attr).ok().flatten()
-                                                })
-                                            } else {
-                                                None
-                                            }
-                                        } else {
-                                            None
-                                        };
-
-                                        if let Some(vertex) = vertex {
-                                            // IfcVertexPoint: 0=VertexGeometry (IfcCartesianPoint)
-                                            if let Some(point_attr) = vertex.get(0) {
-                                                if let Some(point) = decoder
-                                                    .resolve_ref(point_attr)
-                                                    .ok()
-                                                    .flatten()
-                                                {
-                                                    if let Some(coords) =
-                                                        point.get(0).and_then(|v| v.as_list())
-                                                    {
-                                                        let x = coords
-                                                            .first()
-                                                            .and_then(|v| v.as_float())
-                                                            .unwrap_or(0.0);
-                                                        let y = coords
-                                                            .get(1)
-                                                            .and_then(|v| v.as_float())
-                                                            .unwrap_or(0.0);
-                                                        let z = coords
-                                                            .get(2)
-                                                            .and_then(|v| v.as_float())
-                                                            .unwrap_or(0.0);
-                                                        boundary_points
-                                                            .push(Point3::new(x, y, z));
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // Extract boundary points using the shared edge-loop sampler so that
+    // B-spline and circle edges contribute interpolated points (instead of
+    // collapsing the boundary to vertex corners). This is critical for the
+    // glazing-mullion fillet faces in IFC4 door exports, where each
+    // cylindrical face has B-spline edge curves running along the surface.
+    let boundary_points: Vec<Point3<f64>> = extract_edge_loop_points_for_bounds(face, decoder);
 
     if boundary_points.is_empty() {
         return Ok((Vec::new(), Vec::new()));

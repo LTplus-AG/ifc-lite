@@ -55,6 +55,9 @@ impl GeometryProcessor for AdvancedBrepProcessor {
         let mut all_positions = Vec::new();
         let mut all_indices = Vec::new();
 
+        #[cfg(feature = "debug_geometry")]
+        let mut empty_faces: Vec<(u32, String)> = Vec::new();
+
         for face_ref in faces {
             if let Some(face_id) = face_ref.as_entity_ref() {
                 let face = decoder.decode_by_id(face_id)?;
@@ -69,8 +72,28 @@ impl GeometryProcessor for AdvancedBrepProcessor {
                     for idx in indices {
                         all_indices.push(base_idx + idx);
                     }
+                } else {
+                    #[cfg(feature = "debug_geometry")]
+                    {
+                        let surface_kind = face
+                            .get(1)
+                            .and_then(|a| decoder.resolve_ref(a).ok().flatten())
+                            .map(|s| s.ifc_type.as_str().to_string())
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                        empty_faces.push((face_id, surface_kind));
+                    }
                 }
             }
+        }
+
+        #[cfg(feature = "debug_geometry")]
+        if !empty_faces.is_empty() {
+            eprintln!(
+                "[ifc-lite][advanced_brep] entity #{} produced {} empty face(s): {:?}",
+                entity.id,
+                empty_faces.len(),
+                empty_faces
+            );
         }
 
         Ok(Mesh {

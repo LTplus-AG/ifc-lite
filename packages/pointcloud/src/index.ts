@@ -44,6 +44,9 @@ export type {
 } from './streaming/types.js';
 export { LasStreamingSource } from './streaming/las-source.js';
 export { LazStreamingSource } from './streaming/laz-source.js';
+export { PlyStreamingSource } from './streaming/ply-source.js';
+export { PcdStreamingSource } from './streaming/pcd-source.js';
+export { parsePlyHeader } from './formats/ply.js';
 export { BlobByteSource } from './streaming/blob-source.js';
 export {
   createDecodeWorkerSource,

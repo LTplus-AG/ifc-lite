@@ -23,6 +23,8 @@ import {
 } from './protocol.js';
 import { LasStreamingSource } from './las-source.js';
 import { LazStreamingSource } from './laz-source.js';
+import { PlyStreamingSource } from './ply-source.js';
+import { PcdStreamingSource } from './pcd-source.js';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -136,12 +138,14 @@ function handleAbort(sourceId: number): void {
 }
 
 function createSource(
-  format: 'las' | 'laz',
+  format: 'las' | 'laz' | 'ply' | 'pcd',
   blob: Blob,
   opts: { label?: string; downsample: { stride: number } },
 ): StreamingPointSource {
   if (format === 'las') return new LasStreamingSource(blob, opts);
   if (format === 'laz') return new LazStreamingSource(blob, opts);
+  if (format === 'ply') return new PlyStreamingSource(blob, opts);
+  if (format === 'pcd') return new PcdStreamingSource(blob, opts);
   throw new Error(`decode-worker: unknown format "${format}"`);
 }
 

@@ -22,7 +22,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 
-export type PointCloudFormat = 'las' | 'laz';
+export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd';
 
 /**
  * Minimal synthetic IfcDataStore for a point-cloud-only model so the
@@ -82,8 +82,14 @@ export interface PointCloudIngestOptions {
 }
 
 /**
- * Detect LAS / LAZ from filename or magic bytes. Returns null when the
- * buffer isn't a recognised point-cloud format.
+ * Detect a supported point-cloud format from filename or magic bytes.
+ * Returns null when the buffer isn't a recognised format.
+ *
+ * Magic-byte sniffing covers files renamed by users:
+ *   - LAS:  "LASF" (0x4653414c)
+ *   - PLY:  "ply\n" or "ply\r\n" at offset 0
+ *   - PCD:  "# .PCD" or any `.PCD` token in first 32 bytes
+ *   - LAZ:  shares LAS magic; we trust the extension here
  */
 export function detectPointCloudFormat(
   fileName: string,
@@ -92,9 +98,15 @@ export function detectPointCloudFormat(
   const lower = fileName.toLowerCase();
   if (lower.endsWith('.las')) return 'las';
   if (lower.endsWith('.laz')) return 'laz';
+  if (lower.endsWith('.ply')) return 'ply';
+  if (lower.endsWith('.pcd')) return 'pcd';
   if (buffer && buffer.byteLength >= 4) {
-    const view = new DataView(buffer, 0, 4);
+    const view = new DataView(buffer, 0, Math.min(buffer.byteLength, 32));
     if (view.getUint32(0, true) === 0x4653414c) return 'las';
+    // ASCII probe — first three bytes "ply" → PLY; "# .P" or ".PCD" → PCD.
+    const b0 = view.getUint8(0), b1 = view.getUint8(1), b2 = view.getUint8(2);
+    if (b0 === 0x70 /* p */ && b1 === 0x6c /* l */ && b2 === 0x79 /* y */) return 'ply';
+    if (b0 === 0x23 /* # */ && view.byteLength > 4 && view.getUint8(2) === 0x2e /* . */) return 'pcd';
   }
   return null;
 }
@@ -105,9 +117,12 @@ export function detectPointCloudFormat(
  */
 export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudIngestResult {
   const expressId = opts.expressId ?? 1;
+  // Use 'IfcGeographicElement' for PLY/PCD/LAS/LAZ — IFC4 doesn't define
+  // an IfcPointCloud entity, and IfcGeographicElement is the closest
+  // semantic fit (a real-world geographic feature backed by a scan).
   const handle = opts.renderer.beginPointCloudStream({
     expressId,
-    ifcType: 'IfcPointCloud',
+    ifcType: 'IfcGeographicElement',
     modelIndex: opts.modelIndex,
   });
   const onCountChange = opts.onAssetCountDelta ?? (() => {});

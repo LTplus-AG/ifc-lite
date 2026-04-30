@@ -47,18 +47,30 @@ let modulePromise: Promise<LazPerfModule> | null = null;
 async function loadLazPerf(): Promise<LazPerfModule> {
   if (!modulePromise) {
     modulePromise = (async () => {
-      // The dynamic import keeps `laz-perf` out of bundles that don't
-      // touch LAZ. The package's `main` (Node) and `browser` (web)
-      // fields differ — both export a `createLazPerf` factory.
-      const lazPerf = await import('laz-perf');
-      const factory = (lazPerf as unknown as {
-        createLazPerf?: () => Promise<LazPerfModule>;
-        default?: () => Promise<LazPerfModule>;
-      }).createLazPerf ?? (lazPerf as unknown as {
-        default?: () => Promise<LazPerfModule>;
-      }).default;
+      // Dynamic import keeps `laz-perf` out of bundles that don't touch
+      // LAZ. The package is shipped as CommonJS (`lib/{node,web}/index.js`),
+      // and Vite/webpack wrap CJS imports under `.default` — but the way
+      // they do that varies, so probe every shape we might see:
+      //   • { createLazPerf }                     — pure-ESM build
+      //   • { default: { createLazPerf } }        — Vite default-wrapper
+      //   • { default: createLazPerf }            — esModuleInterop on a fn
+      //   • module-as-function (legacy UMD)        — `lazPerf` IS the factory
+      const ns = (await import('laz-perf')) as unknown as Record<string, unknown>;
+      type Factory = () => Promise<LazPerfModule>;
+      const dflt = ns.default as Record<string, unknown> | (() => unknown) | undefined;
+      const candidates: Array<unknown> = [
+        ns.createLazPerf,
+        typeof dflt === 'object' && dflt !== null ? (dflt as Record<string, unknown>).createLazPerf : undefined,
+        dflt,
+        // Some bundlers expose the CJS module as the namespace object itself.
+        ns,
+      ];
+      const factory = candidates.find((c) => typeof c === 'function') as Factory | undefined;
       if (!factory) {
-        throw new Error('laz-perf: could not find createLazPerf factory');
+        const keys = Object.keys(ns as Record<string, unknown>).join(', ');
+        throw new Error(
+          `laz-perf: could not find createLazPerf factory (saw keys: ${keys || '<empty>'})`,
+        );
       }
       return factory();
     })();

@@ -308,7 +308,7 @@ export function ViewportContainer() {
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(e.dataTransfer.files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd')
     );
 
     if (supportedFiles.length === 0) return;
@@ -343,7 +343,7 @@ export function ViewportContainer() {
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd')
     );
 
     if (supportedFiles.length === 0) return;
@@ -555,7 +555,7 @@ export function ViewportContainer() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ifc,.ifcx,.glb,.las,.laz"
+          accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd"
           multiple
           onChange={handleFileSelect}
           className="hidden"

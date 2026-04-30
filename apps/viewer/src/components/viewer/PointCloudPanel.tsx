@@ -22,9 +22,9 @@ const COLOR_MODES: Array<{ value: PointColorModeUi; label: string; hint: string 
 ];
 
 const SIZE_MODES: Array<{ value: PointSizeModeUi; label: string; hint: string }> = [
-  { value: 'attenuated',     label: 'Auto',     hint: 'Adaptive size, clamped to the slider value as max' },
   { value: 'fixed-px',       label: 'Fixed',    hint: 'Always render at the slider value (in pixels)' },
-  { value: 'adaptive-world', label: 'World',    hint: 'Splat covers world radius — closer = bigger' },
+  { value: 'attenuated',     label: 'Auto',     hint: 'Adaptive (closer = bigger), clamped to the slider as max' },
+  { value: 'adaptive-world', label: 'World',    hint: 'Pure world-space radius — splat covers N mm in source space' },
 ];
 
 export interface PointCloudPanelProps {

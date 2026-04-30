@@ -52,7 +52,11 @@ export interface PointCloudSlice {
 export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointCloudSlice> = (set) => ({
   pointCloudColorMode: 'rgb',
   pointCloudFixedColor: [1, 1, 1, 1],
-  pointCloudSizeMode: 'attenuated',
+  // Fixed-px is the default so the size slider feels responsive on first
+  // contact. `attenuated` is technically nicer at extreme zooms but its
+  // "slider = upper cap" semantic confuses users at typical wide views
+  // because the projected world radius sits well below the cap.
+  pointCloudSizeMode: 'fixed-px',
   pointCloudPointSize: 4,
   pointCloudWorldRadius: 0.02,
   pointCloudRoundShape: true,

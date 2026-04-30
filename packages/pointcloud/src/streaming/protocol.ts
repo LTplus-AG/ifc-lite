@@ -12,7 +12,7 @@
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 import type { PointSourceInfo } from './types.js';
 
-export type WorkerSourceFormat = 'las' | 'laz';
+export type WorkerSourceFormat = 'las' | 'laz' | 'ply' | 'pcd';
 
 /** main → worker */
 export type WorkerRequest =

@@ -25,7 +25,7 @@ import type {
   StreamingPointSource,
 } from './types.js';
 
-export type DecodeWorkerFormat = 'las' | 'laz';
+export type DecodeWorkerFormat = 'las' | 'laz' | 'ply' | 'pcd';
 
 export interface DecodeWorkerOptions {
   /** Override the worker constructor — useful for tests or custom bundlers. */
@@ -38,7 +38,11 @@ export interface DecodeWorkerOptions {
 let sharedWorker: Worker | null = null;
 
 function defaultSpawn(): Worker {
-  return new Worker(new URL('./decode-worker.js', import.meta.url), {
+  // The bare-`.js` form works against the built dist but Vite's
+  // worker-import-meta-url plugin can't resolve it through the source
+  // alias used in the viewer dev build. Geometry uses `.worker.ts` for
+  // the same reason — Vite happily rewrites the suffix on dist builds.
+  return new Worker(new URL('./decode-worker.ts', import.meta.url), {
     type: 'module',
     name: 'ifclite-pointcloud-decode',
   });

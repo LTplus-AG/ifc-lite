@@ -16,7 +16,7 @@
  */
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
-import { PointRenderPipeline, POINT_UNIFORM_SIZE } from './point-pipeline.js';
+import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
   appendChunkToNode,
   createNode,
@@ -41,6 +41,18 @@ export type PointColorMode =
   | 'height'
   | 'fixed';
 
+/**
+ * How to size a splat on screen.
+ *   - `fixed-px`        every splat is `pointSize` pixels wide
+ *   - `adaptive-world`  splat covers `worldRadius` metres in source space,
+ *                       projected each frame (closer → bigger)
+ *   - `attenuated`      adaptive but clamped between 1 px and `pointSize`
+ *                       so splats stay visible at the far plane and don't
+ *                       blow up to half the screen when you nose into the
+ *                       cloud — usually the best default for nav.
+ */
+export type PointSizeMode = 'fixed-px' | 'adaptive-world' | 'attenuated';
+
 const COLOR_MODE_INDEX: Record<PointColorMode, number> = {
   rgb: 0,
   classification: 1,
@@ -49,11 +61,20 @@ const COLOR_MODE_INDEX: Record<PointColorMode, number> = {
   fixed: 4,
 };
 
+const SIZE_MODE_INDEX: Record<PointSizeMode, number> = {
+  'fixed-px': 0,
+  'adaptive-world': 1,
+  'attenuated': 2,
+};
+
 export interface PointCloudDrawState {
   /** column-major view-projection matrix (16 floats) */
   viewProj: Float32Array;
   /** Section plane already resolved by the main render path. */
   sectionPlane?: ResolvedSectionPlane | null;
+  /** Viewport size in pixels — needed by the splat shader to convert
+   *  pixel sizes into clip-space offsets. */
+  viewport?: { width: number; height: number };
 }
 
 export interface PointCloudRenderOptions {
@@ -61,8 +82,15 @@ export interface PointCloudRenderOptions {
   colorMode?: PointColorMode;
   /** RGBA in 0..1, used when colorMode === 'fixed'. */
   fixedColor?: [number, number, number, number];
-  /** Pixel size hint (currently unused — point-list always renders 1px). */
+  /** Splat size in pixels (mode='fixed-px'/'attenuated') or maximum size cap. */
   pointSize?: number;
+  /** Splat sizing strategy. Defaults to `attenuated`. */
+  sizeMode?: PointSizeMode;
+  /** World-space splat radius in metres for adaptive / attenuated modes.
+   *  Defaults to 0.02 m which works well for typical 5–20 mm scan spacing. */
+  worldRadius?: number;
+  /** Render splats as discs instead of squares. Defaults to true. */
+  roundShape?: boolean;
 }
 
 export interface PointCloudAssetHandle {
@@ -91,7 +119,10 @@ export class PointCloudRenderer {
   private options: Required<PointCloudRenderOptions> = {
     colorMode: 'rgb',
     fixedColor: [1, 1, 1, 1],
-    pointSize: 1,
+    pointSize: 4,
+    sizeMode: 'attenuated',
+    worldRadius: 0.02,
+    roundShape: true,
   };
 
   constructor(
@@ -108,6 +139,13 @@ export class PointCloudRenderer {
     if (opts.colorMode !== undefined) this.options.colorMode = opts.colorMode;
     if (opts.fixedColor !== undefined) this.options.fixedColor = opts.fixedColor;
     if (opts.pointSize !== undefined) this.options.pointSize = opts.pointSize;
+    if (opts.sizeMode !== undefined) this.options.sizeMode = opts.sizeMode;
+    if (opts.worldRadius !== undefined) this.options.worldRadius = opts.worldRadius;
+    if (opts.roundShape !== undefined) this.options.roundShape = opts.roundShape;
+  }
+
+  getOptions(): Readonly<Required<PointCloudRenderOptions>> {
+    return this.options;
   }
 
   // ─── one-shot API (IFCx) ──────────────────────────────────────────────────
@@ -251,13 +289,29 @@ export class PointCloudRenderer {
     const bounds = this.getBounds();
     const heightMin = bounds ? bounds.min[1] : 0;
     const heightMax = bounds ? bounds.max[1] : 1;
+    // Default to 1×1 if the caller didn't supply a viewport — keeps the
+    // shader from dividing by zero in adaptive-world mode and degrades
+    // gracefully to "all points the same fixed-px size".
+    const viewportW = Math.max(1, state.viewport?.width ?? 1);
+    const viewportH = Math.max(1, state.viewport?.height ?? 1);
 
     for (const node of this.nodes.values()) {
-      this.writeUniforms(node, state.viewProj, normal, distance, enabled, heightMin, heightMax);
+      this.writeUniforms(
+        node,
+        state.viewProj,
+        normal,
+        distance,
+        enabled,
+        heightMin,
+        heightMax,
+        viewportW,
+        viewportH,
+      );
       pass.setBindGroup(0, node.bindGroup);
       for (const chunk of node.chunks) {
         pass.setVertexBuffer(0, chunk.vertexBuffer);
-        pass.draw(chunk.pointCount, 1, 0, 0);
+        // Six verts per splat, one instance per source point.
+        pass.draw(POINT_QUAD_VERTS, chunk.pointCount, 0, 0);
       }
     }
   }
@@ -270,35 +324,42 @@ export class PointCloudRenderer {
     sectionEnabled: boolean,
     heightMin: number,
     heightMax: number,
+    viewportW: number,
+    viewportH: number,
   ): void {
     const u = this.uniformScratch;
     const uU32 = this.uniformScratchU32;
 
-    // viewProj — bytes 0..63
+    // viewProj — floats 0..15
     u.set(viewProj.subarray(0, 16), 0);
-    // model — bytes 64..127 (identity for now; per-asset transforms can be added later)
+    // model — floats 16..31 (identity for now; per-asset transforms can be added later)
     u.fill(0, 16, 32);
     u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
-    // colorOverride — bytes 128..143
+    // colorOverride — floats 32..35
     u[32] = this.options.fixedColor[0];
     u[33] = this.options.fixedColor[1];
     u[34] = this.options.fixedColor[2];
     u[35] = this.options.fixedColor[3];
-    // colorModeAndExtras — bytes 144..159 (mode, pointSize, heightMin, heightMax)
+    // colorModeAndExtras — floats 36..39 (mode, pointSize, heightMin, heightMax)
     u[36] = COLOR_MODE_INDEX[this.options.colorMode];
     u[37] = this.options.pointSize;
     u[38] = heightMin;
     u[39] = heightMax;
-    // sectionPlane — bytes 160..175
-    u[40] = sectionNormal[0];
-    u[41] = sectionNormal[1];
-    u[42] = sectionNormal[2];
-    u[43] = sectionDist;
-    // flags — bytes 176..191
-    uU32[44] = 0;
-    uU32[45] = sectionEnabled ? 1 : 0;
-    uU32[46] = 0;
-    uU32[47] = 0;
+    // sizing — floats 40..43 (sizeMode, worldRadius, viewportW, viewportH)
+    u[40] = SIZE_MODE_INDEX[this.options.sizeMode];
+    u[41] = this.options.worldRadius;
+    u[42] = viewportW;
+    u[43] = viewportH;
+    // sectionPlane — floats 44..47
+    u[44] = sectionNormal[0];
+    u[45] = sectionNormal[1];
+    u[46] = sectionNormal[2];
+    u[47] = sectionDist;
+    // flags (u32 view) — bytes 192..207 = u32 indices 48..51
+    uU32[48] = 0;
+    uU32[49] = sectionEnabled ? 1 : 0;
+    uU32[50] = this.options.roundShape ? 1 : 0;
+    uU32[51] = 0;
 
     this.device.queue.writeBuffer(node.uniformBuffer, 0, u.buffer, u.byteOffset, POINT_UNIFORM_SIZE);
   }

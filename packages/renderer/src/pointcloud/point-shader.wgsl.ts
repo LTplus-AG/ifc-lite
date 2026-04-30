@@ -3,28 +3,36 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * WGSL for the point cloud pipeline.
+ * WGSL for the point cloud splat pipeline.
  *
- * Topology: point-list — every vertex is drawn as a single fragment.
- * Targets: same two attachments as the mesh pipeline (color + objectId)
- * so we can interleave point and triangle passes inside one render pass.
+ * Draws each point as an instanced quad (6 verts per point, triangle-list
+ * topology) so we can give it a real on-screen size — `point-list` has
+ * no `gl_PointSize` equivalent in WebGPU, which is why a 1-px point cloud
+ * looks like a halftone screen as you zoom in.
  *
- * Color modes (uniforms.colorModeAndPad.x):
- *   0 = per-vertex RGB (default)
- *   1 = classification → palette
- *   2 = intensity (gray ramp)
- *   3 = height ramp (Y in world space → palette)
- *   4 = fixed override (uniforms.colorOverride)
+ * Three size modes (uniforms.sizing.x):
+ *   0 = fixed-px         — every point renders at `pointSizePx` pixels
+ *   1 = adaptive-world   — splat covers `worldRadius` metres, projected
+ *   2 = attenuated       — adaptive but clamped to [1, pointSizePx] px
+ *
+ * Color modes (uniforms.colorModeAndExtras.x):
+ *   0 = per-vertex RGB,  1 = classification,  2 = intensity ramp,
+ *   3 = height ramp,     4 = fixed override.
+ *
+ * Round shape: fragment discards corners outside the unit disc, so
+ * splats render as circles (not squares) at any size > ~3 px.
  */
 export const pointShaderSource = `
     struct PointUniforms {
       viewProj: mat4x4<f32>,
       model: mat4x4<f32>,
       colorOverride: vec4<f32>,
-      // x = colorMode, y = pointSize, z = heightMin (Y-up world), w = heightMax
+      // x = colorMode, y = pointSizePx, z = heightMin, w = heightMax
       colorModeAndExtras: vec4<f32>,
+      // x = sizeMode, y = worldRadius (m), z = viewportWidth, w = viewportHeight
+      sizing: vec4<f32>,
       sectionPlane: vec4<f32>,
-      // x = unused, y = sectionEnabled, z = unused, w = unused
+      // x = unused, y = sectionEnabled, z = roundShape, w = unused
       flags: vec4<u32>,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
@@ -32,7 +40,7 @@ export const pointShaderSource = `
     struct VertexInput {
       @location(0) position: vec3<f32>,
       @location(1) rgbAndClass: vec4<f32>,   // unorm8x4 → 0..1 each
-      @location(2) intensityPacked: u32,     // low 16 bits = intensity, high 16 = pad
+      @location(2) intensityPacked: u32,     // low 16 bits = intensity
       @location(3) entityId: u32,
     }
 
@@ -41,31 +49,10 @@ export const pointShaderSource = `
       @location(0) color: vec4<f32>,
       @location(1) worldPos: vec3<f32>,
       @location(2) @interpolate(flat) entityId: u32,
+      @location(3) quadUv: vec2<f32>,
     }
 
-    // Standard ASPRS classification palette (LAS spec). Indices we don't
-    // care about render gray — caller can override per-deployment via the
-    // fixed colorOverride mode if a custom mapping is needed.
     fn classification_color(class_id: u32) -> vec3<f32> {
-      // 0 created/never classified → light gray
-      // 1 unclassified            → gray
-      // 2 ground                  → brown
-      // 3 low vegetation          → light green
-      // 4 medium vegetation       → green
-      // 5 high vegetation         → dark green
-      // 6 building                → orange
-      // 7 noise                   → red
-      // 8 model key               → cyan
-      // 9 water                   → blue
-      // 10 rail                   → purple
-      // 11 road surface           → dark gray
-      // 12 reserved               → magenta
-      // 13 wire-guard             → yellow
-      // 14 wire-conductor         → light yellow
-      // 15 transmission tower     → dark blue
-      // 16 wire connector         → teal
-      // 17 bridge deck            → tan
-      // 18 high noise             → red
       switch (class_id) {
         case 0u, 1u: { return vec3<f32>(0.65, 0.65, 0.65); }
         case 2u:     { return vec3<f32>(0.55, 0.40, 0.25); }
@@ -89,7 +76,6 @@ export const pointShaderSource = `
     }
 
     fn height_ramp(t: f32) -> vec3<f32> {
-      // Cool → warm: blue → cyan → green → yellow → red.
       let s = clamp(t, 0.0, 1.0);
       if (s < 0.25) {
         let k = s / 0.25;
@@ -107,12 +93,52 @@ export const pointShaderSource = `
     }
 
     @vertex
-    fn vs_main(input: VertexInput) -> VertexOutput {
-      var output: VertexOutput;
-      let worldPos4 = uniforms.model * vec4<f32>(input.position, 1.0);
-      output.position = uniforms.viewProj * worldPos4;
-      output.worldPos = worldPos4.xyz;
+    fn vs_main(input: VertexInput, @builtin(vertex_index) vId: u32) -> VertexOutput {
+      // Quad corners (two triangles, CCW) in unit disc coords:
+      //   tri 1: (-1,-1)(1,-1)(1,1)
+      //   tri 2: (-1,-1)(1, 1)(-1,1)
+      var corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 1.0, -1.0),
+        vec2<f32>( 1.0,  1.0),
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 1.0,  1.0),
+        vec2<f32>(-1.0,  1.0),
+      );
+      let corner = corners[vId];
 
+      let worldPos4 = uniforms.model * vec4<f32>(input.position, 1.0);
+      var clipPos = uniforms.viewProj * worldPos4;
+
+      // Compute splat half-extent in pixels for the active size mode.
+      let sizeMode = u32(uniforms.sizing.x);
+      let worldRadius = uniforms.sizing.y;
+      let viewport = uniforms.sizing.zw;
+      let pointSizePx = uniforms.colorModeAndExtras.y;
+
+      var halfPx: f32;
+      if (sizeMode == 0u) {
+        halfPx = max(0.5, pointSizePx);
+      } else {
+        // Project world-radius offset to clip space, take pixel delta.
+        let edgePos = uniforms.viewProj * (worldPos4 + vec4<f32>(worldRadius, 0.0, 0.0, 0.0));
+        let centerNdcX = clipPos.x / max(abs(clipPos.w), 1e-6);
+        let edgeNdcX = edgePos.x / max(abs(edgePos.w), 1e-6);
+        let projectedPx = abs(edgeNdcX - centerNdcX) * 0.5 * viewport.x;
+        if (sizeMode == 2u) {
+          halfPx = clamp(projectedPx, 1.0, max(1.0, pointSizePx));
+        } else {
+          halfPx = max(0.5, projectedPx);
+        }
+      }
+
+      // Convert pixel offset to clip-space offset. Multiply by clipPos.w
+      // because the GPU divides by w during the perspective divide.
+      let halfClip = vec2<f32>(halfPx) / max(viewport, vec2<f32>(1.0)) * 2.0 * abs(clipPos.w);
+      clipPos.x = clipPos.x + corner.x * halfClip.x;
+      clipPos.y = clipPos.y + corner.y * halfClip.y;
+
+      // Color selection
       let mode = u32(uniforms.colorModeAndExtras.x);
       let intensity01 = f32(input.intensityPacked & 0xffffu) / 65535.0;
       let classId = u32(round(input.rgbAndClass.a * 255.0));
@@ -129,8 +155,13 @@ export const pointShaderSource = `
         case 4u: { rgb = uniforms.colorOverride.rgb; }
         default: { rgb = input.rgbAndClass.rgb; }
       }
+
+      var output: VertexOutput;
+      output.position = clipPos;
       output.color = vec4<f32>(rgb, 1.0);
+      output.worldPos = worldPos4.xyz;
       output.entityId = input.entityId;
+      output.quadUv = corner;
       return output;
     }
 
@@ -141,6 +172,13 @@ export const pointShaderSource = `
 
     @fragment
     fn fs_main(input: VertexOutput) -> FragmentOutput {
+      // Round shape — discard corners outside the unit disc.
+      if (uniforms.flags.z == 1u) {
+        if (dot(input.quadUv, input.quadUv) > 1.0) {
+          discard;
+        }
+      }
+
       // Section-plane clipping
       if (uniforms.flags.y == 1u) {
         let d = dot(uniforms.sectionPlane.xyz, input.worldPos) - uniforms.sectionPlane.w;

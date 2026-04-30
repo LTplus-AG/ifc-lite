@@ -52,6 +52,7 @@ export type {
     PointCloudAssetHandle,
     PointCloudRenderOptions,
     PointColorMode,
+    PointSizeMode,
     ResolvedSectionPlane as PointResolvedSectionPlane,
 } from './pointcloud/point-cloud-renderer.js';
 export { PointRenderPipeline } from './pointcloud/point-pipeline.js';
@@ -89,6 +90,7 @@ import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, ty
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
+import { EdlPass } from './edl-pass.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 
@@ -128,6 +130,13 @@ export class Renderer {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     private postProcessor: PostProcessor | null = null;
+    private edlPass: EdlPass | null = null;
+    private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
+        enabled: false,
+        strength: 1,
+        radiusPx: 1,
+        highQuality: true,
+    };
     private pointCloudRenderer: PointCloudRenderer | null = null;
     private visualEnhancementState: ResolvedVisualEnhancement = {
         enabled: true,
@@ -213,6 +222,7 @@ export class Renderer {
             'depth24plus-stencil8',
             this.pipeline.getSampleCount(),
         );
+        this.edlPass = new EdlPass(this.device, this.pipeline.getSampleCount());
         this.camera.setAspect(width / height);
 
         // Update picking manager with initialized picker
@@ -295,6 +305,21 @@ export class Renderer {
     /** Apply rendering options (color mode, fixed override, point size). */
     setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
         this.pointCloudRenderer?.setOptions(opts);
+    }
+
+    /**
+     * Toggle Eye-Dome Lighting and tune its strength.
+     *
+     * EDL adds depth perception to point clouds (and meshes) via screen-
+     * space depth gradient — silhouette pixels get a soft black halo.
+     * Cheap: ~9 texture taps per pixel. Only runs when point clouds are
+     * loaded.
+     */
+    setEdlOptions(opts: { enabled?: boolean; strength?: number; radiusPx?: number; highQuality?: boolean }): void {
+        if (opts.enabled !== undefined) this.edlOptions.enabled = opts.enabled;
+        if (opts.strength !== undefined) this.edlOptions.strength = Math.max(0, Math.min(3, opts.strength));
+        if (opts.radiusPx !== undefined) this.edlOptions.radiusPx = Math.max(1, Math.min(4, opts.radiusPx));
+        if (opts.highQuality !== undefined) this.edlOptions.highQuality = opts.highQuality;
     }
 
     private expandModelBoundsForPointClouds(): void {
@@ -1623,15 +1648,17 @@ export class Renderer {
                 }
             }
 
-            // Draw point clouds (Phase 0: IFCx pcd::base64 / points::array / points::base64).
+            // Draw point clouds (IFCx inline + streamed LAS/LAZ).
             // Shares the depth buffer + section plane state with the mesh pipeline so
-            // points occlude triangles and vice versa. No-op when no assets are loaded.
+            // points occlude triangles and vice versa. The splat shader needs the
+            // viewport size to convert pixel sizes into clip-space offsets.
             if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
                 this.pointCloudRenderer.draw(pass, {
                     viewProj,
                     sectionPlane: sectionPlaneData
                         ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
                         : null,
+                    viewport: { width: this.canvas.width, height: this.canvas.height },
                 });
             }
 
@@ -1715,6 +1742,28 @@ export class Renderer {
                     separationIntensity: separationEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.separationLines.intensity)) : 0.0,
                     enableSeparationLines: separationEnabled,
                 });
+            }
+
+            // Eye-Dome Lighting — runs AFTER contact/separation so it darkens
+            // every layer uniformly. Cheap (~9 depth taps), only active when
+            // there are point clouds in the scene and the user has enabled it.
+            if (
+                this.edlPass
+                && this.edlOptions.enabled
+                && this.pointCloudRenderer?.hasAssets()
+            ) {
+                this.edlPass.apply(
+                    encoder,
+                    {
+                        targetView: textureView,
+                        depthView: this.pipeline.getDepthOnlyTextureView(),
+                    },
+                    {
+                        strength: this.edlOptions.strength,
+                        radiusPx: this.edlOptions.radiusPx,
+                        highQuality: this.edlOptions.highQuality,
+                    },
+                );
             }
 
             device.queue.submit([encoder.finish()]);
@@ -1979,6 +2028,8 @@ export class Renderer {
         // Post-processor uniform buffer
         this.postProcessor?.destroy();
         this.postProcessor = null;
+        this.edlPass?.destroy();
+        this.edlPass = null;
 
         // Section-plane renderers
         this.sectionPlaneRenderer?.destroy();

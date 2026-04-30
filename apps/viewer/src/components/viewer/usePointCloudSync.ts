@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useRef, type MutableRefObject } from 'react';
-import type { PointColorMode, Renderer } from '@ifc-lite/renderer';
+import type { PointColorMode, PointSizeMode, Renderer } from '@ifc-lite/renderer';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 
@@ -31,6 +31,12 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
   const { rendererRef, isInitialized, pointClouds, hasMeshes } = params;
   const colorMode = useViewerStore((s) => s.pointCloudColorMode) as PointColorMode;
   const fixedColor = useViewerStore((s) => s.pointCloudFixedColor);
+  const sizeMode = useViewerStore((s) => s.pointCloudSizeMode) as PointSizeMode;
+  const pointSize = useViewerStore((s) => s.pointCloudPointSize);
+  const worldRadius = useViewerStore((s) => s.pointCloudWorldRadius);
+  const roundShape = useViewerStore((s) => s.pointCloudRoundShape);
+  const edlEnabled = useViewerStore((s) => s.pointCloudEdlEnabled);
+  const edlStrength = useViewerStore((s) => s.pointCloudEdlStrength);
   const setAssetCount = useViewerStore((s) => s.setPointCloudAssetCount);
   const fittedRef = useRef(false);
 
@@ -63,13 +69,30 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
     renderer.requestRender();
   }, [pointClouds, isInitialized, rendererRef, setAssetCount, hasMeshes]);
 
-  // Push color-mode preferences to the renderer whenever the user changes them
+  // Push color + sizing + shape preferences to the renderer whenever the
+  // user changes them. The slice already clamps numeric ranges so the
+  // shader only ever sees sane values.
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.setPointCloudOptions({ colorMode, fixedColor });
+    renderer.setPointCloudOptions({
+      colorMode,
+      fixedColor,
+      sizeMode,
+      pointSize,
+      worldRadius,
+      roundShape,
+    });
     renderer.requestRender();
-  }, [colorMode, fixedColor, isInitialized, rendererRef]);
+  }, [colorMode, fixedColor, sizeMode, pointSize, worldRadius, roundShape, isInitialized, rendererRef]);
+
+  // Push EDL toggle + strength to the renderer.
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    renderer.setEdlOptions({ enabled: edlEnabled, strength: edlStrength });
+    renderer.requestRender();
+  }, [edlEnabled, edlStrength, isInitialized, rendererRef]);
 }
 
 export default usePointCloudSync;

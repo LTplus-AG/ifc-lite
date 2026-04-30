@@ -46,9 +46,20 @@ export {
 export { PickingManager } from './picking-manager.js';
 export { RaycastEngine } from './raycast-engine.js';
 
-// Point cloud rendering (Phase 0: IFCx pcd::base64 / points::array / points::base64)
+// Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
 export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+export type {
+    PointCloudAssetHandle,
+    PointCloudRenderOptions,
+    PointColorMode,
+    ResolvedSectionPlane as PointResolvedSectionPlane,
+} from './pointcloud/point-cloud-renderer.js';
 export { PointRenderPipeline } from './pointcloud/point-pipeline.js';
+export type {
+    PointCloudChunkInput,
+    PointCloudNode,
+    PointCloudNodeMeta,
+} from './pointcloud/point-cloud-node.js';
 
 import { WebGPUDevice } from './device.js';
 import { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
@@ -241,9 +252,49 @@ export class Renderer {
         return this.pointCloudRenderer?.getNodeCount() ?? 0;
     }
 
+    /** Total number of points across all point cloud assets. */
+    getPointCloudPointCount(): number {
+        return this.pointCloudRenderer?.getPointCount() ?? 0;
+    }
+
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
         this.pointCloudRenderer?.clear();
+    }
+
+    /**
+     * Streaming entry: open an empty asset that will receive chunks via
+     * `appendPointCloudChunk`. Call `endPointCloudStream` when no more
+     * chunks will arrive (currently a no-op but kept for symmetry).
+     */
+    beginPointCloudStream(meta: { expressId: number; ifcType?: string; modelIndex?: number }): import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        return this.pointCloudRenderer.beginAsset(meta);
+    }
+
+    appendPointCloudChunk(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput,
+    ): void {
+        if (!this.pointCloudRenderer) return;
+        this.pointCloudRenderer.appendChunk(handle, chunk);
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+    }
+
+    endPointCloudStream(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+        this.pointCloudRenderer?.endAsset(handle);
+    }
+
+    removePointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+        this.pointCloudRenderer?.removeAsset(handle);
+    }
+
+    /** Apply rendering options (color mode, fixed override, point size). */
+    setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
+        this.pointCloudRenderer?.setOptions(opts);
     }
 
     private expandModelBoundsForPointClouds(): void {

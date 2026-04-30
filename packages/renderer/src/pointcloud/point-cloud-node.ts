@@ -5,9 +5,9 @@
 /**
  * GPU resources for one point cloud asset.
  *
- * Phase 0 keeps a single vertex buffer per asset (one chunk). When we add
- * streaming, this becomes a list of chunk-buffers and the renderer issues
- * one draw call per chunk.
+ * Phase 1+ supports multi-chunk assets: streaming sources push chunks
+ * into a node one at a time, each becoming its own GPU vertex buffer.
+ * Each chunk is drawn with one draw call sharing the asset's bind group.
  */
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -17,36 +17,75 @@ import { POINT_VERTEX_BYTES } from './point-pipeline.js';
 export interface PointCloudGpuChunk {
   vertexBuffer: GPUBuffer;
   pointCount: number;
+  bbox: { min: [number, number, number]; max: [number, number, number] };
+}
+
+/** Inputs to a single chunk upload. */
+export interface PointCloudChunkInput {
+  positions: Float32Array;
+  /** RGB in 0..1; undefined → defaults to gray. */
+  colors?: Float32Array;
+  /** Per-point u8 LAS classification; undefined → 0. */
+  classifications?: Uint8Array;
+  /** Per-point u16 intensity; undefined → 0. */
+  intensities?: Uint16Array;
+  pointCount: number;
+  bbox: { min: [number, number, number]; max: [number, number, number] };
+}
+
+export interface PointCloudNodeMeta {
+  expressId: number;
+  ifcType?: string;
+  modelIndex?: number;
 }
 
 export interface PointCloudNode {
-  asset: PointCloudAsset;
+  meta: PointCloudNodeMeta;
   uniformBuffer: GPUBuffer;
   bindGroup: GPUBindGroup;
   chunks: PointCloudGpuChunk[];
-  /** World-space bounds (Y-up; positions have already been transformed). */
   bounds: { min: [number, number, number]; max: [number, number, number] };
+  pointCount: number;
 }
 
-/**
- * Pack a `PointCloudAsset.chunk` into a GPU vertex buffer matching the
- * point pipeline's vertex layout.
- */
-export function uploadAssetToGpu(
+/** Build an empty node — chunks are appended via `appendChunkToNode`. */
+export function createNode(
   device: GPUDevice,
   pipeline: PointRenderPipeline,
-  asset: PointCloudAsset,
+  meta: PointCloudNodeMeta,
 ): PointCloudNode {
-  const chunk = asset.chunk;
-  const count = chunk.pointCount;
-  const interleaved = new ArrayBuffer(count * POINT_VERTEX_BYTES);
-  const f32 = new Float32Array(interleaved);
-  const u8 = new Uint8Array(interleaved);
-  const u32 = new Uint32Array(interleaved);
+  void device;
+  const uniformBuffer = pipeline.createUniformBuffer();
+  const bindGroup = pipeline.createBindGroup(uniformBuffer);
+  return {
+    meta,
+    uniformBuffer,
+    bindGroup,
+    chunks: [],
+    bounds: {
+      min: [Infinity, Infinity, Infinity],
+      max: [-Infinity, -Infinity, -Infinity],
+    },
+    pointCount: 0,
+  };
+}
 
+/** Convert a renderer-agnostic chunk into a GPU vertex buffer + metadata. */
+export function appendChunkToNode(
+  device: GPUDevice,
+  node: PointCloudNode,
+  chunk: PointCloudChunkInput,
+): PointCloudGpuChunk {
+  const count = chunk.pointCount;
+  const bytes = new ArrayBuffer(count * POINT_VERTEX_BYTES);
+  const f32 = new Float32Array(bytes);
+  const u8 = new Uint8Array(bytes);
+  const u32 = new Uint32Array(bytes);
   const positions = chunk.positions;
   const colors = chunk.colors;
-  const expressId = asset.expressId >>> 0;
+  const classes = chunk.classifications;
+  const intensities = chunk.intensities;
+  const expressId = node.meta.expressId >>> 0;
 
   for (let i = 0; i < count; i++) {
     const fOff = i * 6;
@@ -60,43 +99,52 @@ export function uploadAssetToGpu(
       u8[byteOff + 1] = clamp01(colors[i * 3 + 1]) * 255;
       u8[byteOff + 2] = clamp01(colors[i * 3 + 2]) * 255;
     } else {
-      // Default: light gray so points are visible against the dark clear color
       u8[byteOff] = 200;
       u8[byteOff + 1] = 200;
       u8[byteOff + 2] = 200;
     }
-    u8[byteOff + 3] = 255;
+    u8[byteOff + 3] = classes ? classes[i] : 0;
 
-    u32[i * 6 + 4] = expressId;
-    u32[i * 6 + 5] = 0; // pad
+    // intensity at offset +16, low 16 bits of a u32
+    u32[i * 6 + 4] = intensities ? intensities[i] & 0xffff : 0;
+    u32[i * 6 + 5] = expressId;
   }
 
   const vertexBuffer = device.createBuffer({
-    size: interleaved.byteLength,
+    size: bytes.byteLength,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(vertexBuffer, 0, interleaved);
+  device.queue.writeBuffer(vertexBuffer, 0, bytes);
 
-  const uniformBuffer = pipeline.createUniformBuffer();
-  const bindGroup = pipeline.createBindGroup(uniformBuffer);
-
-  // Compute world bounds (positions are already in renderer space)
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (let i = 0; i < count; i++) {
-    const x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2];
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (y < minY) minY = y; if (y > maxY) maxY = y;
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
-  }
-
-  return {
-    asset,
-    uniformBuffer,
-    bindGroup,
-    chunks: [{ vertexBuffer, pointCount: count }],
-    bounds: { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
+  const gpuChunk: PointCloudGpuChunk = {
+    vertexBuffer,
+    pointCount: count,
+    bbox: chunk.bbox,
   };
+  node.chunks.push(gpuChunk);
+  node.pointCount += count;
+  growBounds(node.bounds, chunk.bbox);
+  return gpuChunk;
+}
+
+/** One-shot upload — produces a node with a single GPU chunk. */
+export function uploadAssetToGpu(
+  device: GPUDevice,
+  pipeline: PointRenderPipeline,
+  asset: PointCloudAsset,
+): PointCloudNode {
+  const node = createNode(device, pipeline, {
+    expressId: asset.expressId,
+    ifcType: asset.ifcType,
+    modelIndex: asset.modelIndex,
+  });
+  appendChunkToNode(device, node, {
+    positions: asset.chunk.positions,
+    colors: asset.chunk.colors,
+    pointCount: asset.chunk.pointCount,
+    bbox: asset.chunk.bbox,
+  });
+  return node;
 }
 
 export function destroyNode(node: PointCloudNode): void {
@@ -104,6 +152,20 @@ export function destroyNode(node: PointCloudNode): void {
     chunk.vertexBuffer.destroy();
   }
   node.uniformBuffer.destroy();
+  node.chunks = [];
+  node.pointCount = 0;
+}
+
+function growBounds(
+  bounds: { min: [number, number, number]; max: [number, number, number] },
+  bbox: { min: [number, number, number]; max: [number, number, number] },
+): void {
+  if (bbox.min[0] < bounds.min[0]) bounds.min[0] = bbox.min[0];
+  if (bbox.min[1] < bounds.min[1]) bounds.min[1] = bbox.min[1];
+  if (bbox.min[2] < bounds.min[2]) bounds.min[2] = bbox.min[2];
+  if (bbox.max[0] > bounds.max[0]) bounds.max[0] = bbox.max[0];
+  if (bbox.max[1] > bounds.max[1]) bounds.max[1] = bbox.max[1];
+  if (bbox.max[2] > bounds.max[2]) bounds.max[2] = bbox.max[2];
 }
 
 function clamp01(v: number): number {

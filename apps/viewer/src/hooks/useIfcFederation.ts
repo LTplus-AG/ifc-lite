@@ -33,6 +33,12 @@ import {
   parseIfcxViewerModel,
   parseStepBufferViewerModel,
 } from './ingest/viewerModelIngest.js';
+import {
+  detectPointCloudFormat,
+  ingestPointCloud,
+  type PointCloudFormat,
+} from './ingest/pointCloudIngest.js';
+import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
 import { getEffectiveGeoreference, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
 
@@ -439,14 +445,51 @@ export function useIfcFederation() {
         : await file.arrayBuffer();
       const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
+      // Detect point cloud formats first — we never run them through
+      // detectFormat() (which is IFC-shaped) because they have their own
+      // streaming pipeline that bypasses geometryResult.meshes.
+      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
+
       // Detect file format
-      const format = detectFormat(buffer);
+      const format: ReturnType<typeof detectFormat> | PointCloudFormat =
+        pointCloudFormat ?? detectFormat(buffer);
 
       let parsedDataStore: IfcDataStore | null = null;
       let parsedGeometry: FederatedModel['geometryResult'] = null;
       let schemaVersion: SchemaVersion = 'IFC4';
 
-      if (format === 'ifcx') {
+      if (format === 'las' || format === 'laz') {
+        const renderer = getGlobalRenderer();
+        if (!renderer) {
+          setError('Renderer not initialised — try again after the viewer mounts.');
+          setLoading(false);
+          return null;
+        }
+        setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
+        const blob = isNativeFileHandle(file)
+          ? new Blob([buffer])
+          : (file as File);
+        const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
+        const ingest = ingestPointCloud({
+          format,
+          blob,
+          fileName: file.name,
+          buffer,
+          renderer,
+          onProgress: setProgress,
+          onAssetCountDelta: incCount,
+        });
+        try {
+          await ingest.done;
+        } catch (e) {
+          renderer.removePointCloudAsset(ingest.rendererHandle);
+          incCount(-1);
+          throw e;
+        }
+        parsedDataStore = ingest.dataStore;
+        parsedGeometry = ingest.geometryResult;
+        schemaVersion = ingest.schemaVersion;
+      } else if (format === 'ifcx') {
         setProgress({ phase: 'Parsing IFCX (client-side)', percent: 10 });
         try {
           const result = await parseIfcxViewerModel(buffer, setProgress);

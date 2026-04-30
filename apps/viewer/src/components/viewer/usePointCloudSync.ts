@@ -12,8 +12,9 @@
  */
 
 import { useEffect, type MutableRefObject } from 'react';
-import type { Renderer } from '@ifc-lite/renderer';
+import type { PointColorMode, Renderer } from '@ifc-lite/renderer';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
+import { useViewerStore } from '@/store';
 
 export interface UsePointCloudSyncParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -23,15 +24,29 @@ export interface UsePointCloudSyncParams {
 
 export function usePointCloudSync(params: UsePointCloudSyncParams): void {
   const { rendererRef, isInitialized, pointClouds } = params;
+  const colorMode = useViewerStore((s) => s.pointCloudColorMode) as PointColorMode;
+  const fixedColor = useViewerStore((s) => s.pointCloudFixedColor);
 
+  const setAssetCount = useViewerStore((s) => s.setPointCloudAssetCount);
+
+  // Replace IFCx-owned assets when the merged list changes
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
 
     const assets = pointClouds ?? [];
     renderer.setPointClouds(assets);
+    setAssetCount(renderer.getPointCloudAssetCount());
     renderer.requestRender();
-  }, [pointClouds, isInitialized, rendererRef]);
+  }, [pointClouds, isInitialized, rendererRef, setAssetCount]);
+
+  // Push color-mode preferences to the renderer whenever the user changes them
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    renderer.setPointCloudOptions({ colorMode, fixedColor });
+    renderer.requestRender();
+  }, [colorMode, fixedColor, isInitialized, rendererRef]);
 }
 
 export default usePointCloudSync;

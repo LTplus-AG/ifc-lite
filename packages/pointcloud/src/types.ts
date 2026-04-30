@@ -32,6 +32,8 @@ export interface DecodedPointChunk {
   colors?: Float32Array;
   /** Per-point u8 classification — undefined when source has none */
   classifications?: Uint8Array;
+  /** Per-point u16 intensity — undefined when source has none */
+  intensities?: Uint16Array;
   /** Number of points in this chunk (positions.length / 3) */
   pointCount: number;
   /** Local bbox of this chunk's positions (pre-transform) */

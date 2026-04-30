@@ -61,14 +61,16 @@ export function addWallToStore(
   const dx = params.End[0] - params.Start[0];
   const dy = params.End[1] - params.Start[1];
   const dz = params.End[2] - params.Start[2];
-  // Walls are extruded along the placement +Z axis (storey up). Sloped
-  // endpoints would silently emit invalid geometry, so reject them.
-  if (Math.abs(dz) > 1e-9) {
-    throw new Error('addWallToStore: Start and End must lie on the same storey plane (Z must match)');
-  }
   const wallLen = Math.hypot(dx, dy);
   if (wallLen <= 0) {
     throw new Error('addWallToStore: Start and End must be distinct points');
+  }
+  // Walls are extruded along the placement +Z axis (storey up). Sloped
+  // endpoints would silently emit invalid geometry, so reject them.
+  // Use a length-relative epsilon so float-derived noise on nominally
+  // flat coordinates doesn't trip the guard for long walls.
+  if (Math.abs(dz) > Math.max(1e-6 * wallLen, 1e-9)) {
+    throw new Error('addWallToStore: Start and End must lie on the same storey plane (Z must match)');
   }
   const dir: Point3D = vecNorm([dx, dy, 0]);
 

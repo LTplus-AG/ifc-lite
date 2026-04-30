@@ -704,29 +704,64 @@ export class Renderer {
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
 
+        // Build the selected-id set once per frame so the X-Ray override paths
+        // can keep highlighted entities at full alpha without per-site checks.
+        const selectedId = options.selectedId;
+        const selectedIds = options.selectedIds;
+        const selectedModelIndex = options.selectedModelIndex;
+        const selectedExpressIds = new Set<number>();
+        if (selectedId !== undefined && selectedId !== null) {
+            selectedExpressIds.add(selectedId);
+        }
+        if (selectedIds) {
+            for (const id of selectedIds) {
+                selectedExpressIds.add(id);
+            }
+        }
+        const hasSelected = selectedExpressIds.size > 0;
+
         // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
-        // Callers supply a fresh Map when contents change (same convention as hiddenIds/isolatedIds).
-        const txOverrides = options.transparencyOverrides;
-        const hasTxOverrides = txOverrides != null && txOverrides.size > 0;
+        // Snapshot the caller's map so mid-frame mutation can't desync classification
+        // and uniform-write decisions for the same batch/mesh.
+        const txOverridesSrc = options.transparencyOverrides;
+        const hasTxOverrides = txOverridesSrc != null && txOverridesSrc.size > 0;
+        const txOverrides = hasTxOverrides ? new Map(txOverridesSrc) : null;
         const alphaForMesh = (expressId: number, fallback: number): number => {
             if (!hasTxOverrides) return fallback;
+            // Selected meshes are exempt — the highlight pass renders them last,
+            // but exempting here also keeps mesh classification + uniform writes
+            // consistent so a selected mesh never enters the transparent pipeline
+            // because of its own override entry.
+            if (hasSelected && selectedExpressIds.has(expressId)) return fallback;
             const a = txOverrides!.get(expressId);
             return a !== undefined ? a : fallback;
         };
-        // alphaForBatch walks batch.expressIds per frame. For typical batch sizes
-        // the cost is well below noise vs. the GPU work, and avoiding a cache
-        // removes the stale-on-mutation bug class entirely.
+        // Cache resolved batch alpha for the frame: classification needs it
+        // (opaque vs transparent routing) and renderBatch needs it for the
+        // uniform write. Without the cache we'd walk batch.expressIds twice
+        // per batch per frame, which becomes the dominant JS cost in X-Ray.
+        const batchAlphaCache = hasTxOverrides
+            ? new WeakMap<{ expressIds: number[]; color: [number, number, number, number] }, number>()
+            : null;
         const alphaForBatch = (
             batch: { expressIds: number[]; color: [number, number, number, number] },
             fallback: number,
         ): number => {
             if (!hasTxOverrides) return fallback;
+            const cached = batchAlphaCache!.get(batch);
+            if (cached !== undefined) return cached;
             let minAlpha = Infinity;
             for (const eid of batch.expressIds) {
+                // Selected ids never drag down a batch's alpha — the highlight
+                // pass redraws them on top, but excluding here also means a
+                // batch made entirely of selected entities stays opaque.
+                if (hasSelected && selectedExpressIds.has(eid)) continue;
                 const a = txOverrides!.get(eid);
                 if (a !== undefined && a < minAlpha) minAlpha = a;
             }
-            return minAlpha === Infinity ? fallback : minAlpha;
+            const resolved = minAlpha === Infinity ? fallback : minAlpha;
+            batchAlphaCache!.set(batch, resolved);
+            return resolved;
         };
 
         // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
@@ -808,9 +843,6 @@ export class Renderer {
             // Write uniform data to each mesh's buffer BEFORE recording commands
             // This ensures each mesh has its own color data
             const allMeshes = [...opaqueMeshes, ...transparentMeshes];
-            const selectedId = options.selectedId;
-            const selectedIds = options.selectedIds;
-            const selectedModelIndex = options.selectedModelIndex;
 
             // Calculate section plane parameters and model bounds
             // Always calculate bounds when sectionPlane is provided (for preview and active mode)
@@ -1155,16 +1187,6 @@ export class Renderer {
                         transparentBatches.push(batch);
                     } else {
                         opaqueBatches.push(batch);
-                    }
-                }
-
-                const selectedExpressIds = new Set<number>();
-                if (selectedId !== undefined && selectedId !== null) {
-                    selectedExpressIds.add(selectedId);
-                }
-                if (selectedIds) {
-                    for (const id of selectedIds) {
-                        selectedExpressIds.add(id);
                     }
                 }
 

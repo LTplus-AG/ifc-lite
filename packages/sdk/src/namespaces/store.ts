@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { normalizeIfcTypeName } from '@ifc-lite/parser';
+import { isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type {
   AddBeamInStoreParams,
   AddColumnInStoreParams,
@@ -61,6 +61,18 @@ export class StoreNamespace {
    *   });
    */
   addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
+    if (!def || typeof def.type !== 'string' || def.type.length === 0) {
+      throw new TypeError('addEntity: def.type must be a non-empty IFC type string');
+    }
+    // Normalisation only canonicalises casing for known names — it leaves
+    // unknown strings untouched. The backend's StoreEditor has its own
+    // regex guard, but rejecting typos at the SDK boundary gives a much
+    // more useful error than a generic STEP-emit failure.
+    if (!isKnownType(def.type)) {
+      throw new TypeError(
+        `addEntity: unknown IFC type '${def.type}'. Pass a canonical PascalCase name (e.g. 'IfcWall').`,
+      );
+    }
     return this.backend.store.addEntity(modelId, {
       type: normalizeIfcTypeName(def.type),
       attributes: def.attributes,

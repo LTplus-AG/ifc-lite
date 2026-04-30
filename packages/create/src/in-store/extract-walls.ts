@@ -155,7 +155,7 @@ export function extractWallSegmentsForStorey(
   }
 
   const extractor = new EntityExtractor(store.source);
-  const dividerIds = collectDividerIdsOnStorey(store, storeyExpressId, dividerTypes, log);
+  const dividerIds = collectDividerIdsOnStorey(store, extractor, storeyExpressId, dividerTypes, log);
   log(`storey #${storeyExpressId}: ${dividerIds.length} contained divider element(s)`);
 
   for (const id of dividerIds) {
@@ -223,6 +223,7 @@ type Logger = (...args: unknown[]) => void;
 
 function collectDividerIdsOnStorey(
   store: IfcDataStore,
+  extractor: EntityExtractor,
   storeyId: number,
   dividerTypes: Set<string>,
   log: Logger,
@@ -230,7 +231,18 @@ function collectDividerIdsOnStorey(
   const ids: number[] = [];
   const seen = new Set<number>();
   if (!store.source) return ids;
-  const extractor = new EntityExtractor(store.source);
+
+  // Build relating → related-children indices ONCE, then walk in O(1) per
+  // parent. Previously each `descendAggregate` / `walkContainmentInto`
+  // call walked every IfcRelAggregates / IfcRelContainedInSpatialStructure
+  // entity in the file looking for one with the right relating id —
+  // O(R·N) total in the number of rels and parents visited.
+  const aggregateChildren = buildRelatingChildrenIndex(
+    store, extractor, 'IFCRELAGGREGATES', 4, 5,
+  );
+  const containmentChildren = buildRelatingChildrenIndex(
+    store, extractor, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4,
+  );
 
   const visitMember = (memberId: number) => {
     if (seen.has(memberId)) return;
@@ -252,69 +264,63 @@ function collectDividerIdsOnStorey(
     seen.add(parentId);
     // Anything `IfcRelContainedInSpatialStructure`-anchored to this
     // sub-structure should still be reachable.
-    walkContainmentInto(parentId);
+    const contained = containmentChildren.get(parentId);
+    if (contained) for (const m of contained) visitMember(m);
     // And recurse through aggregation.
-    const aggRels = store.entityIndex.byType.get('IFCRELAGGREGATES') ?? [];
-    for (const relId of aggRels) {
-      const ref = store.entityIndex.byId.get(relId);
-      if (!ref) continue;
-      const rel = extractor.extractEntity(ref);
-      if (!rel) continue;
-      const relating = rel.attributes[4];
-      if (typeof relating !== 'number' || relating !== parentId) continue;
-      const related = rel.attributes[5];
-      if (!Array.isArray(related)) continue;
-      for (const child of related) {
-        if (typeof child !== 'number') continue;
-        visitMember(child);
-      }
-    }
-  };
-
-  const walkContainmentInto = (parentId: number) => {
-    const containedRels = store.entityIndex.byType.get('IFCRELCONTAINEDINSPATIALSTRUCTURE') ?? [];
-    for (const relId of containedRels) {
-      const ref = store.entityIndex.byId.get(relId);
-      if (!ref) continue;
-      const rel = extractor.extractEntity(ref);
-      if (!rel) continue;
-      const relating = rel.attributes[5];
-      if (typeof relating !== 'number' || relating !== parentId) continue;
-      const related = rel.attributes[4];
-      if (!Array.isArray(related)) continue;
-      for (const member of related) {
-        if (typeof member !== 'number') continue;
-        visitMember(member);
-      }
-    }
+    const agg = aggregateChildren.get(parentId);
+    if (agg) for (const c of agg) visitMember(c);
   };
 
   // Mark the storey itself as seen but DON'T push it (we want its
   // children, not the storey id).
   seen.add(storeyId);
-  walkContainmentInto(storeyId);
+  const storeyContained = containmentChildren.get(storeyId);
+  if (storeyContained) for (const m of storeyContained) visitMember(m);
 
   // Some authoring tools attach elements via IfcRelAggregates to the
   // storey instead of containment (or in addition). Walk both
   // unconditionally to keep coverage broad.
-  const aggRels = store.entityIndex.byType.get('IFCRELAGGREGATES') ?? [];
-  for (const relId of aggRels) {
+  const storeyAgg = aggregateChildren.get(storeyId);
+  if (storeyAgg) for (const c of storeyAgg) visitMember(c);
+
+  log(`collected ${ids.length} divider candidate(s) — types: ${[...dividerTypes].join(', ')}`);
+  return ids;
+}
+
+/**
+ * Index every relationship of `relType` by its "relating" attribute, so a
+ * lookup of "what's anchored to id X" becomes O(1) instead of an O(R)
+ * scan of every relationship.
+ */
+function buildRelatingChildrenIndex(
+  store: IfcDataStore,
+  extractor: EntityExtractor,
+  relType: string,
+  relatingIdx: number,
+  relatedIdx: number,
+): Map<number, number[]> {
+  const out = new Map<number, number[]>();
+  const relIds = store.entityIndex.byType.get(relType);
+  if (!relIds) return out;
+  for (const relId of relIds) {
     const ref = store.entityIndex.byId.get(relId);
     if (!ref) continue;
     const rel = extractor.extractEntity(ref);
     if (!rel) continue;
-    const relating = rel.attributes[4];
-    if (typeof relating !== 'number' || relating !== storeyId) continue;
-    const related = rel.attributes[5];
+    const relating = rel.attributes[relatingIdx];
+    if (typeof relating !== 'number') continue;
+    const related = rel.attributes[relatedIdx];
     if (!Array.isArray(related)) continue;
+    let bucket = out.get(relating);
+    if (!bucket) {
+      bucket = [];
+      out.set(relating, bucket);
+    }
     for (const child of related) {
-      if (typeof child !== 'number') continue;
-      visitMember(child);
+      if (typeof child === 'number') bucket.push(child);
     }
   }
-
-  log(`collected ${ids.length} divider candidate(s) — types: ${[...dividerTypes].join(', ')}`);
-  return ids;
+  return out;
 }
 
 interface ExtractAttempt {

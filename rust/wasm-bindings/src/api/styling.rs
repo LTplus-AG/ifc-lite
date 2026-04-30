@@ -488,7 +488,7 @@ pub(crate) fn combined_pre_pass(
             _ => {
                 if ifc_lite_core::has_geometry_by_name(type_name) {
                     let ifc_type = ifc_lite_core::IfcType::from_str(type_name);
-                    if is_simple_geometry_type(type_name) {
+                    if ifc_lite_core::is_simple_geometry_type(type_name) {
                         simple_jobs.push((id, start, end, ifc_type));
                     } else {
                         complex_jobs.push((id, start, end, ifc_type));
@@ -943,57 +943,6 @@ pub(crate) fn pick_material_style_for_submesh(
 
     // Fallback: first available color
     Some(material_colors[0])
-}
-
-/// Check if an IFC entity class is "simple" geometry (processed first for
-/// fast first frame). Driven off the EXPRESS inheritance graph rather than a
-/// leaf-level blacklist, so new IFC4X3 subtypes (e.g. `IfcSolarDevice` under
-/// `IfcEnergyConversionDevice`) are categorised correctly without code
-/// changes — see PR #585.
-pub(crate) fn is_simple_geometry_type(type_name: &str) -> bool {
-    use ifc_lite_core::{get_legacy_entity_info, IfcType};
-
-    let upper_owned;
-    let upper: &str = if type_name.bytes().any(|b| b.is_ascii_lowercase()) {
-        upper_owned = type_name.to_ascii_uppercase();
-        upper_owned.as_str()
-    } else {
-        type_name
-    };
-
-    // Resolve legacy IFC2x3 / removed-in-IFC4x3 names to their modern enum.
-    let t = match get_legacy_entity_info(upper) {
-        Some(info) => info.base_type,
-        None => IfcType::from_str(upper),
-    };
-
-    // Anything not in the modern schema defaults to "simple" priority,
-    // matching the original blacklist's "anything else is simple" behaviour.
-    if matches!(t, IfcType::Unknown(_)) {
-        return true;
-    }
-
-    // Categories that are "secondary/complex" — processed after simple
-    // elements so the first frame paints faster.
-    let is_secondary = t.is_subtype_of(IfcType::IfcOpeningElement)
-        || t.is_subtype_of(IfcType::IfcWindow)
-        || t.is_subtype_of(IfcType::IfcDoor)
-        || t.is_subtype_of(IfcType::IfcFurnishingElement)
-        // Covers IfcEnergyConversionDevice + IfcSolarDevice + every Flow*
-        // and every MEP terminal, all of which inherit from IfcDistributionElement.
-        || t.is_subtype_of(IfcType::IfcDistributionElement)
-        || matches!(
-            t,
-            // Spatial elements that have geometry but aren't structural.
-            IfcType::IfcSpace
-                | IfcType::IfcSite
-                // Annotations / virtual / proxy.
-                | IfcType::IfcAnnotation
-                | IfcType::IfcVirtualElement
-                | IfcType::IfcBuildingElementProxy
-        );
-
-    !is_secondary
 }
 
 /// Resolve element color inline during processing by following its

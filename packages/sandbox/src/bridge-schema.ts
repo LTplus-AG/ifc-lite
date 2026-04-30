@@ -292,32 +292,51 @@ function marshalReturn(vm: QuickJSContext, value: unknown, type: ReturnType): Qu
   }
 }
 
+/**
+ * Cycle/depth limits for `marshalValue` — protect the host renderer from a
+ * sandboxed script that hands back a cyclic or pathologically deep object
+ * graph. Values past the depth limit serialise to `null`.
+ */
+const MARSHAL_MAX_DEPTH = 64;
+
 /** Recursively convert a native JS value to a QuickJS handle */
 export function marshalValue(vm: QuickJSContext, value: unknown): QuickJSHandle {
+  return marshalValueWithGuard(vm, value, 0, new WeakSet());
+}
+
+function marshalValueWithGuard(
+  vm: QuickJSContext,
+  value: unknown,
+  depth: number,
+  seen: WeakSet<object>,
+): QuickJSHandle {
   if (value === null || value === undefined) return vm.null;
   if (typeof value === 'string') return vm.newString(value);
   if (typeof value === 'number') return vm.newNumber(value);
   if (typeof value === 'boolean') return value ? vm.true : vm.false;
 
+  if (depth >= MARSHAL_MAX_DEPTH) return vm.null;
+  if (typeof value !== 'object') return vm.null;
+
+  // Cycle guard: a self-referencing object would otherwise blow the stack.
+  if (seen.has(value as object)) return vm.null;
+  seen.add(value as object);
+
   if (Array.isArray(value)) {
     const arr = vm.newArray();
     for (let i = 0; i < value.length; i++) {
-      const item = marshalValue(vm, value[i]);
+      const item = marshalValueWithGuard(vm, value[i], depth + 1, seen);
       vm.setProp(arr, i, item);
       item.dispose();
     }
     return arr;
   }
 
-  if (typeof value === 'object') {
-    const obj = vm.newObject();
-    for (const [k, v] of Object.entries(value)) {
-      const handle = marshalValue(vm, v);
-      vm.setProp(obj, k, handle);
-      handle.dispose();
-    }
-    return obj;
+  const obj = vm.newObject();
+  for (const [k, v] of Object.entries(value as object)) {
+    const handle = marshalValueWithGuard(vm, v, depth + 1, seen);
+    vm.setProp(obj, k, handle);
+    handle.dispose();
   }
-
-  return vm.null;
+  return obj;
 }

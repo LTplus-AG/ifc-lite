@@ -51,14 +51,54 @@ export function AddElementOverlay() {
   // hover points each frame. The tick state is just a number that
   // forces a re-render; the projection itself is read fresh from the
   // store callback.
+  //
+  // Two perf gates:
+  //  1. Skip the loop entirely when there's nothing to project.
+  //     pendingPoints / hoverPoint / autoSpacePreview already trigger
+  //     React re-renders via the store, so the only reason we'd need
+  //     a per-frame tick is to track the camera while content exists.
+  //  2. Only re-render when the camera actually moved since last tick.
+  //     A held tool with a static camera does ~0 work.
+  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
+  const hasOverlayContent =
+    pendingPoints.length > 0 ||
+    hoverPoint !== null ||
+    (autoSpacePreview != null && autoSpacePreview.outlines.length > 0);
   const [frameTick, setFrameTick] = useState(0);
   const rafRef = useRef<number | null>(null);
+  const lastViewpointRef = useRef<{
+    px: number; py: number; pz: number;
+    tx: number; ty: number; tz: number;
+    fov: number;
+  } | null>(null);
   useEffect(() => {
     if (activeTool !== 'addElement') return;
+    if (!hasOverlayContent) return;
     let mounted = true;
     const loop = () => {
       if (!mounted) return;
-      setFrameTick((t) => (t + 1) & 0xffff);
+      const vp = getViewpoint?.();
+      if (vp) {
+        const last = lastViewpointRef.current;
+        const moved =
+          !last ||
+          last.px !== vp.position.x || last.py !== vp.position.y || last.pz !== vp.position.z ||
+          last.tx !== vp.target.x  || last.ty !== vp.target.y  || last.tz !== vp.target.z  ||
+          last.fov !== vp.fov;
+        if (moved) {
+          lastViewpointRef.current = {
+            px: vp.position.x, py: vp.position.y, pz: vp.position.z,
+            tx: vp.target.x,   ty: vp.target.y,   tz: vp.target.z,
+            fov: vp.fov,
+          };
+          setFrameTick((t) => (t + 1) & 0xffff);
+        }
+      } else {
+        // Fallback for environments without getViewpoint — preserves the
+        // pre-fix behaviour of an unconditional tick so the projection
+        // can't get stuck stale.
+        setFrameTick((t) => (t + 1) & 0xffff);
+      }
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
@@ -66,8 +106,9 @@ export function AddElementOverlay() {
       mounted = false;
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
+      lastViewpointRef.current = null;
     };
-  }, [activeTool]);
+  }, [activeTool, hasOverlayContent, getViewpoint]);
 
   const projection = useMemo(
     () => makeProjection(projectToScreen),

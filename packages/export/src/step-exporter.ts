@@ -218,6 +218,13 @@ export class StepExporter {
         targetMap.get(mutation.entityId)!.add(mutation.psetName);
       }
 
+      // Build a reverse index of IfcRelDefinesByProperties → (relId, psetId)
+      // pairs keyed on each related entity. The two property/quantity loops
+      // below previously walked every entity in `entityIndex.byId` per
+      // modified entity (O(E·N)); the index keeps the per-entity step
+      // O(K) where K is the number of rels referencing that entity.
+      const relDefinesByEntity = this.buildRelDefinesByPropertiesIndex();
+
       // Collect modified property sets and find original psets to skip
       for (const [entityId, psetNames] of entityPropMutations) {
         modifiedEntities.add(entityId);
@@ -233,29 +240,23 @@ export class StepExporter {
           newPropertySets.push({ entityId, psets: relevantPsets });
         }
 
-        // Find original property set IDs and relationship IDs to skip
-        // Look for IfcRelDefinesByProperties that reference this entity
-        for (const [relId, relRef] of this.dataStore.entityIndex.byId) {
-          const relType = relRef.type.toUpperCase();
-          if (relType === 'IFCRELDEFINESBYPROPERTIES') {
-            // Parse the relationship to check if it references our entity
-            const relatedEntities = this.getRelatedEntities(relId);
-            const relatedPsetId = this.getRelatedPropertySet(relId);
-
-            if (relatedEntities.includes(entityId) && relatedPsetId) {
-              // Check if this pset is one we're modifying
-              const psetName = this.getPropertySetName(relatedPsetId);
-              if (psetName) {
-                relDefinedPsetNames.add(psetName);
-              }
-              if (psetName && psetNames.has(psetName)) {
-                skipRelationshipIds.add(relId);
-                skipPropertySetIds.add(relatedPsetId);
-                // Also skip the individual properties in this pset
-                const propIds = this.getPropertyIdsInSet(relatedPsetId);
-                for (const propId of propIds) {
-                  skipPropertySetIds.add(propId);
-                }
+        // Find original property set IDs and relationship IDs to skip — look
+        // up only the IfcRelDefinesByProperties rels that reference this entity.
+        const rels = relDefinesByEntity.get(entityId);
+        if (rels) {
+          for (const { relId, psetId: relatedPsetId } of rels) {
+            // Check if this pset is one we're modifying
+            const psetName = this.getPropertySetName(relatedPsetId);
+            if (psetName) {
+              relDefinedPsetNames.add(psetName);
+            }
+            if (psetName && psetNames.has(psetName)) {
+              skipRelationshipIds.add(relId);
+              skipPropertySetIds.add(relatedPsetId);
+              // Also skip the individual properties in this pset
+              const propIds = this.getPropertyIdsInSet(relatedPsetId);
+              for (const propId of propIds) {
+                skipPropertySetIds.add(propId);
               }
             }
           }
@@ -303,22 +304,18 @@ export class StepExporter {
           newQuantitySets.push({ entityId, qsets: relevantQsets });
         }
 
-        // Skip original quantity set entities (IfcElementQuantity)
-        for (const [relId, relRef] of this.dataStore.entityIndex.byId) {
-          const relType = relRef.type.toUpperCase();
-          if (relType === 'IFCRELDEFINESBYPROPERTIES') {
-            const relatedEntities = this.getRelatedEntities(relId);
-            const relatedPsetId = this.getRelatedPropertySet(relId);
-
-            if (relatedEntities.includes(entityId) && relatedPsetId) {
-              const qsetName = this.getElementQuantityName(relatedPsetId);
-              if (qsetName && qsetNames.has(qsetName)) {
-                skipRelationshipIds.add(relId);
-                skipPropertySetIds.add(relatedPsetId);
-                const quantIds = this.getPropertyIdsInSet(relatedPsetId);
-                for (const quantId of quantIds) {
-                  skipPropertySetIds.add(quantId);
-                }
+        // Skip original quantity set entities (IfcElementQuantity).
+        // Same per-entity index lookup as the property branch above.
+        const rels = relDefinesByEntity.get(entityId);
+        if (rels) {
+          for (const { relId, psetId: relatedPsetId } of rels) {
+            const qsetName = this.getElementQuantityName(relatedPsetId);
+            if (qsetName && qsetNames.has(qsetName)) {
+              skipRelationshipIds.add(relId);
+              skipPropertySetIds.add(relatedPsetId);
+              const quantIds = this.getPropertyIdsInSet(relatedPsetId);
+              for (const quantId of quantIds) {
+                skipPropertySetIds.add(quantId);
               }
             }
           }
@@ -1047,6 +1044,30 @@ export class StepExporter {
       'IFCCOLOURRGB',
     ]);
     return geometryTypes.has(type);
+  }
+
+  /**
+   * Build a one-shot reverse index of every IfcRelDefinesByProperties in
+   * the source: for each related entity, list the rels and property/quantity
+   * sets that reference it. Used by the export pre-pass so the per-entity
+   * "find owning rels" step is O(K) rather than O(N) per modified entity.
+   */
+  private buildRelDefinesByPropertiesIndex(): Map<number, Array<{ relId: number; psetId: number }>> {
+    const out = new Map<number, Array<{ relId: number; psetId: number }>>();
+    for (const [relId, relRef] of this.dataStore.entityIndex.byId) {
+      if (relRef.type.toUpperCase() !== 'IFCRELDEFINESBYPROPERTIES') continue;
+      const psetId = this.getRelatedPropertySet(relId);
+      if (!psetId) continue;
+      for (const entityId of this.getRelatedEntities(relId)) {
+        let bucket = out.get(entityId);
+        if (!bucket) {
+          bucket = [];
+          out.set(entityId, bucket);
+        }
+        bucket.push({ relId, psetId });
+      }
+    }
+    return out;
   }
 
   /**

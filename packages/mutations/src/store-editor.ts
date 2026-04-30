@@ -65,6 +65,21 @@ export class StoreEditor {
   }
 
   /**
+   * Re-scan the store and bump the express-id watermark if the store has
+   * grown since construction (e.g. after lazy index hydration or
+   * federating in another model). Cheap to call — `MutablePropertyView`
+   * keeps the high watermark, so re-seeding with a stale value is a
+   * no-op.
+   */
+  refreshWatermark(): void {
+    const fresh = this.computeMaxExistingId();
+    if (fresh > this.maxExistingId) {
+      this.maxExistingId = fresh;
+    }
+    this.view.setExpressIdWatermark(this.maxExistingId);
+  }
+
+  /**
    * Add a new entity to the store overlay. Returns a synthetic `EntityRef`
    * with a freshly-allocated expressId; pass it back to other APIs (other
    * `addEntity` calls, `setPositionalAttribute`, exporters) to reference
@@ -96,9 +111,11 @@ export class StoreEditor {
       throw new Error('StoreEditor.addEntity: type cannot be empty');
     }
     // STEP entity tokens always start with "IFC" / "Ifc". Accept either
-    // PascalCase (`IfcWall`) or the all-caps STEP form (`IFCWALL`); the
-    // exporter handles the case conversion at the file-format boundary.
-    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9]*$/.test(trimmed)) {
+    // PascalCase (`IfcWall`) or the all-caps STEP form (`IFCWALL`).
+    // Underscore is allowed in body chars to accommodate vendor-extension
+    // names (e.g. `IfcVendor_Foo`). The exporter handles the case
+    // conversion at the file-format boundary.
+    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(trimmed)) {
       throw new Error(
         `StoreEditor.addEntity: type "${type}" is not a recognizable IFC entity name (expected e.g. "IfcWall")`,
       );
@@ -120,11 +137,22 @@ export class StoreEditor {
       canonical = resolved;
     }
 
-    // Re-seed every call: cheap (one comparison + at most one write inside the
-    // view), and recovers from `view.clear()`, which resets the allocator to 0
-    // and would otherwise hand out colliding ids on the next addEntity().
+    // Re-seed every call: cheap (one comparison + at most one write inside
+    // the view), and recovers from `view.clear()`, which resets the
+    // allocator to 0 and would otherwise hand out colliding ids on the
+    // next addEntity().
     this.view.setExpressIdWatermark(this.maxExistingId);
-    const created = this.view.createEntity(canonical, attributes);
+    let created = this.view.createEntity(canonical, attributes);
+    // Defence against a stale watermark — the store may have grown after
+    // construction (lazy index hydration, federated merge) without
+    // notifying us. If we just minted an id that's already present in
+    // the source index, drop the entity, refresh the watermark from the
+    // current store, and re-allocate.
+    if (this.store.entityIndex.byId.has(created.expressId)) {
+      this.view.deleteEntity(created.expressId);
+      this.refreshWatermark();
+      created = this.view.createEntity(canonical, attributes);
+    }
     return {
       expressId: created.expressId,
       type: created.type,

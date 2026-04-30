@@ -174,11 +174,22 @@ export interface RenderOptions {
   selectedIds?: Set<number>;      // Multi-selection support
   /**
    * Per-frame alpha overrides — primary use case is X-Ray mode.
+   *
    * Map<expressId, alpha 0..1>. Non-selected meshes/batches whose expressId
-   * appears in this map render at the override alpha through the existing
-   * transparent pipeline. Selected meshes are exempt so highlights stay opaque.
-   * Mixed batches (some entries overridden, some not) take the minimum override
-   * alpha — selected meshes are then re-rendered on top by the highlight pass.
+   * appears in this map render at the override alpha through the transparent
+   * pipeline. Selected meshes (`selectedId` / `selectedIds`) are exempt at
+   * every site, so highlights always paint with their own alpha.
+   *
+   * Mixed batches (some entries overridden, some not) take the minimum
+   * override alpha across non-selected ids; selected meshes in the batch
+   * are then redrawn on top by the highlight pass.
+   *
+   * The renderer snapshots this map at frame start, so callers may freely
+   * mutate or recycle their copy after `render()` returns.
+   *
+   * Note: alphas `>= 0.99` are treated as opaque (the cutoff for switching to
+   * the transparent pipeline). Entries at or above that threshold are no-ops
+   * — keep them out of the map to avoid unnecessary work.
    */
   transparencyOverrides?: Map<number, number> | null;
   // Building rotation in radians (from IfcSite placement) - used to orient section planes

@@ -457,6 +457,9 @@ export function useIfcFederation() {
       let parsedDataStore: IfcDataStore | null = null;
       let parsedGeometry: FederatedModel['geometryResult'] = null;
       let schemaVersion: SchemaVersion = 'IFC4';
+      // Renderer handle for streamed point clouds; surviving model lifecycle
+      // depends on persisting it onto the FederatedModel record.
+      let pointCloudHandleId: number | undefined;
 
       if (format === 'las' || format === 'laz') {
         const renderer = getGlobalRenderer();
@@ -479,16 +482,15 @@ export function useIfcFederation() {
           onProgress: setProgress,
           onAssetCountDelta: incCount,
         });
-        try {
-          await ingest.done;
-        } catch (e) {
-          renderer.removePointCloudAsset(ingest.rendererHandle);
-          incCount(-1);
-          throw e;
-        }
+        // ingest.done rejects on stream errors; ingestPointCloud's onError
+        // callback already calls removePointCloudAsset + incCount(-1), so
+        // the outer catch must NOT repeat that cleanup or the count goes
+        // negative when other point clouds are still loaded.
+        await ingest.done;
         parsedDataStore = ingest.dataStore;
         parsedGeometry = ingest.geometryResult;
         schemaVersion = ingest.schemaVersion;
+        pointCloudHandleId = ingest.rendererHandle.id;
       } else if (format === 'ifcx') {
         setProgress({ phase: 'Parsing IFCX (client-side)', percent: 10 });
         try {
@@ -610,6 +612,7 @@ export function useIfcFederation() {
         sourceFile: file,
         idOffset,
         maxExpressId,
+        pointCloudHandleId,
       };
 
       // Add to store

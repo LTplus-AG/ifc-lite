@@ -37,6 +37,7 @@ import { useKeyboardControls } from './useKeyboardControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
+import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
 
 interface ViewportProps {
@@ -865,6 +866,11 @@ export function Viewport({
     isInitialized,
     pointClouds,
     hasMeshes: (geometry?.length ?? 0) > 0,
+  });
+
+  usePointCloudLifecycle({
+    rendererRef,
+    isInitialized,
   });
 
   useRenderUpdates({

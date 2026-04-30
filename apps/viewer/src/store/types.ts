@@ -340,6 +340,13 @@ export interface FederatedModel {
   cacheState?: 'none' | 'hit' | 'miss' | 'writing';
   /** Optional load error for this model. */
   loadError?: string | null;
+  /**
+   * Renderer handle for a streamed point cloud (LAS/LAZ) attached to
+   * this model. Stored as a plain number so the field stays JSON-safe.
+   * The viewport's removal effect calls `renderer.removePointCloudAsset`
+   * when the model is dropped from the store.
+   */
+  pointCloudHandleId?: number;
 }
 
 /** Convert EntityRef to string for use as Map/Set key */

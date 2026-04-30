@@ -64,13 +64,15 @@ export function decodePcd(buffer: Uint8Array): DecodedPointChunk {
 
 function parseHeader(buffer: Uint8Array): PcdHeader {
   // Header is ASCII, terminated by the line beginning with "DATA ".
-  // Decode a generous slice (PCD headers are tiny — < 1 KB even with comments).
-  const probeLen = Math.min(2048, buffer.length);
+  // 64 KB covers files with long comments / metadata while still bounding
+  // the worst-case scan; larger headers are unrealistic in practice and
+  // rejecting them is preferable to scanning a multi-GB body.
+  const probeLen = Math.min(65536, buffer.length);
   const probe = TEXT_DECODER.decode(buffer.subarray(0, probeLen));
 
   const dataIdx = probe.search(/^DATA\s+(\S+)/m);
   if (dataIdx < 0) {
-    throw new Error('PCD: missing DATA line in header');
+    throw new Error('PCD: missing DATA line in header (scanned first ' + probeLen + ' bytes)');
   }
   const headerText = probe.slice(0, dataIdx);
   const dataLineMatch = probe.slice(dataIdx).match(/^DATA\s+(\S+)\s*\n/);

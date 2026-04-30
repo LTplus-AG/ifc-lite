@@ -255,7 +255,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: { meshes: MeshData[]; totalVertices: number; totalTriangles: number; coordinateInfo: CoordinateInfo } | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null },
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number },
       ) => {
         let idOffset = 0;
         let maxExpressId = 0;
@@ -273,6 +273,7 @@ export function useIfcLoader() {
           loadState: patch?.loadState ?? 'complete',
           cacheState: patch?.cacheState ?? 'none',
           loadError: patch?.loadError ?? null,
+          pointCloudHandleId: patch?.pointCloudHandleId,
         });
       };
       const getSchemaVersion = (dataStore: IfcDataStore | null): 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5' => {
@@ -1589,11 +1590,12 @@ export function useIfcLoader() {
           onProgress: setProgress,
           onAssetCountDelta: incCount,
         });
+        // ingestPointCloud's onError callback already runs renderer cleanup
+        // + incCount(-1); the outer catch must NOT repeat them or the
+        // pointCloudAssetCount will go negative.
         try {
           await ingest.done;
         } catch (err) {
-          renderer.removePointCloudAsset(ingest.rendererHandle);
-          incCount(-1);
           const message = err instanceof Error ? err.message : String(err);
           updateModel(primaryModelId, { loadState: 'error', loadError: message });
           setError(`${format.toUpperCase()} parsing failed: ${message}`);
@@ -1602,7 +1604,9 @@ export function useIfcLoader() {
         }
         setGeometryResult(ingest.geometryResult);
         setIfcDataStore(ingest.dataStore);
-        finalizePrimaryModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion);
+        finalizePrimaryModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
+          pointCloudHandleId: ingest.rendererHandle.id,
+        });
         setProgress({ phase: 'Complete', percent: 100 });
         setLoading(false);
         return;

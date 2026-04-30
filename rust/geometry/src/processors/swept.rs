@@ -48,15 +48,46 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         // Get inner radius if hollow
         let _inner_radius = entity.get_float(2);
 
+        // StartParam / EndParam (optional IfcParameterValue). Per IFC spec, when the
+        // directrix is an IfcCompositeCurve the curve is parameterised so that segment
+        // index `i` covers parameter range [i, i+1]. Without honoring these, files that
+        // intend e.g. only the first segment to be swept render every segment — the
+        // common rebar case where a 2 m bar reads as 12 m with hooks unfolded.
+        let start_param = entity.get_float(3);
+        let end_param = entity.get_float(4);
+
         // Resolve the directrix curve
         let directrix = decoder
             .resolve_ref(directrix_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve Directrix".to_string()))?;
 
-        // Get points along the curve
-        let curve_points = self
-            .profile_processor
-            .get_curve_points(&directrix, decoder)?;
+        // Get points along the curve, honoring trim parameters where the directrix's
+        // parameterisation is well-defined and obvious from the entity:
+        //   - IfcCompositeCurve (and IfcCompositeCurveOnSurface): segment-index based,
+        //     each segment contributes 1.0 to the parameter.
+        //   - IfcPolyline: point-index based, each segment between consecutive points
+        //     contributes 1.0 to the parameter.
+        // Other directrix types (IfcLine, IfcCircle, IfcTrimmedCurve, IfcBSplineCurve)
+        // have length-, angle-, or knot-based parameterisations and fall back to the
+        // full sampler. Files using those with explicit StartParam/EndParam will still
+        // render the full curve — flagged as a known limitation.
+        let has_trim = start_param.is_some() || end_param.is_some();
+        let curve_points = if has_trim
+            && directrix.ifc_type.is_subtype_of(IfcType::IfcCompositeCurve)
+        {
+            self.profile_processor
+                .get_composite_curve_points_trimmed(
+                    &directrix,
+                    decoder,
+                    start_param,
+                    end_param,
+                )?
+        } else if has_trim && directrix.ifc_type == IfcType::IfcPolyline {
+            self.profile_processor
+                .get_polyline_points_trimmed(&directrix, decoder, start_param, end_param)?
+        } else {
+            self.profile_processor.get_curve_points(&directrix, decoder)?
+        };
 
         if curve_points.len() < 2 {
             return Ok(Mesh::new()); // Not enough points

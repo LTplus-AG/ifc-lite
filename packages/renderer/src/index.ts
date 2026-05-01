@@ -1935,6 +1935,25 @@ export class Renderer {
     }
 
     /**
+     * GPU-based rectangle pick. Drag-select returns the set of
+     * `expressId`s touched by any pixel inside `[x0,y0]..[x1,y1]`
+     * (CSS pixels, canvas-relative). Both meshes and point clouds
+     * participate.
+     *
+     * See `PickingManager.pickRect` for the visibility-filter +
+     * limitation notes.
+     */
+    async pickRect(
+        x0: number,
+        y0: number,
+        x1: number,
+        y1: number,
+        options?: PickOptions,
+    ): Promise<Set<number>> {
+        return this.pickingManager.pickRect(x0, y0, x1, y1, options);
+    }
+
+    /**
      * Raycast into the scene to get precise 3D intersection point
      * This is more accurate than pick() as it returns the exact surface point
      *

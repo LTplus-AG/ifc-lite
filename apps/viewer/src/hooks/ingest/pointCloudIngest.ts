@@ -182,27 +182,39 @@ export function detectPointCloudFormat(
   fileName: string,
   buffer: ArrayBuffer | null,
 ): PointCloudFormat | null {
-  const lower = fileName.toLowerCase();
-  if (lower.endsWith('.las')) return 'las';
-  if (lower.endsWith('.laz')) return 'laz';
-  if (lower.endsWith('.ply')) return 'ply';
-  if (lower.endsWith('.pcd')) return 'pcd';
-  if (lower.endsWith('.e57')) return 'e57';
+  // Magic bytes win over extension when both are available — a LAS
+  // file dropped as `*.ply` should still load as LAS, not be forced
+  // through the wrong decoder.
   if (buffer && buffer.byteLength >= 8) {
     const view = new DataView(buffer, 0, Math.min(buffer.byteLength, 32));
-    if (view.getUint32(0, true) === 0x4653414c) return 'las';
-    // ASCII probe — first three bytes "ply" → PLY; "# .P" or ".PCD" → PCD.
-    const b0 = view.getUint8(0), b1 = view.getUint8(1), b2 = view.getUint8(2);
-    if (b0 === 0x70 /* p */ && b1 === 0x6c /* l */ && b2 === 0x79 /* y */) return 'ply';
-    if (b0 === 0x23 /* # */ && view.byteLength > 4 && view.getUint8(2) === 0x2e /* . */) return 'pcd';
-    // E57 magic = "ASTM-E57" (8 bytes)
+    // E57 magic = "ASTM-E57" (8 bytes) — check before LAS so files
+    // can't accidentally match on the LAS magic in their first 4 bytes.
     if (
       view.getUint8(0) === 0x41 && view.getUint8(1) === 0x53
       && view.getUint8(2) === 0x54 && view.getUint8(3) === 0x4d
       && view.getUint8(4) === 0x2d && view.getUint8(5) === 0x45
       && view.getUint8(6) === 0x35 && view.getUint8(7) === 0x37
     ) return 'e57';
+    if (view.getUint32(0, true) === 0x4653414c /* "LASF" little-endian */) {
+      // LAS and LAZ share the LASF magic; differentiate by extension
+      // when available, otherwise default to LAS (laz-perf will throw
+      // a clear error on a non-LAZ payload).
+      const lower = fileName.toLowerCase();
+      if (lower.endsWith('.laz')) return 'laz';
+      return 'las';
+    }
+    // ASCII probes: "ply" header / "#" or ".PCD" comment line.
+    const b0 = view.getUint8(0), b1 = view.getUint8(1), b2 = view.getUint8(2);
+    if (b0 === 0x70 /* p */ && b1 === 0x6c /* l */ && b2 === 0x79 /* y */) return 'ply';
+    if (b0 === 0x23 /* # */ && view.byteLength > 4 && view.getUint8(2) === 0x2e /* . */) return 'pcd';
   }
+  // Fall back to extension when the buffer is missing / too short.
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.las')) return 'las';
+  if (lower.endsWith('.laz')) return 'laz';
+  if (lower.endsWith('.ply')) return 'ply';
+  if (lower.endsWith('.pcd')) return 'pcd';
+  if (lower.endsWith('.e57')) return 'e57';
   return null;
 }
 

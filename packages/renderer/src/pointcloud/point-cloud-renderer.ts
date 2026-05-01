@@ -26,6 +26,11 @@ import {
   type PointCloudNode,
   type PointCloudNodeMeta,
 } from './point-cloud-node.js';
+import {
+  writePointCloudUniforms,
+  type PointColorMode,
+  type PointSizeMode,
+} from './point-cloud-uniforms.js';
 
 export interface ResolvedSectionPlane {
   normal: [number, number, number];
@@ -34,12 +39,7 @@ export interface ResolvedSectionPlane {
   flipped?: boolean;
 }
 
-export type PointColorMode =
-  | 'rgb'
-  | 'classification'
-  | 'intensity'
-  | 'height'
-  | 'fixed';
+export type { PointColorMode, PointSizeMode };
 
 /**
  * How to size a splat on screen.
@@ -51,21 +51,6 @@ export type PointColorMode =
  *                       blow up to half the screen when you nose into the
  *                       cloud — usually the best default for nav.
  */
-export type PointSizeMode = 'fixed-px' | 'adaptive-world' | 'attenuated';
-
-const COLOR_MODE_INDEX: Record<PointColorMode, number> = {
-  rgb: 0,
-  classification: 1,
-  intensity: 2,
-  height: 3,
-  fixed: 4,
-};
-
-const SIZE_MODE_INDEX: Record<PointSizeMode, number> = {
-  'fixed-px': 0,
-  'adaptive-world': 1,
-  'attenuated': 2,
-};
 
 export interface PointCloudDrawState {
   /** column-major view-projection matrix (16 floats) */
@@ -310,16 +295,27 @@ export class PointCloudRenderer {
     const viewportH = Math.max(1, state.viewport?.height ?? 1);
 
     for (const node of this.nodes.values()) {
-      this.writeUniforms(
+      writePointCloudUniforms(
+        this.device,
+        this.uniformScratch,
+        this.uniformScratchU32,
         node,
-        state.viewProj,
-        normal,
-        distance,
-        enabled,
-        heightMin,
-        heightMax,
-        viewportW,
-        viewportH,
+        {
+          viewProj: state.viewProj,
+          fixedColor: this.options.fixedColor,
+          colorMode: this.options.colorMode,
+          sizeMode: this.options.sizeMode,
+          pointSize: this.options.pointSize,
+          worldRadius: this.options.worldRadius,
+          roundShape: this.options.roundShape,
+          sectionNormal: normal,
+          sectionDist: distance,
+          sectionEnabled: enabled,
+          heightMin,
+          heightMax,
+          viewportW,
+          viewportH,
+        },
       );
       pass.setBindGroup(0, node.bindGroup);
       for (const chunk of node.chunks) {
@@ -328,58 +324,6 @@ export class PointCloudRenderer {
         pass.draw(POINT_QUAD_VERTS, chunk.pointCount, 0, 0);
       }
     }
-  }
-
-  private writeUniforms(
-    node: PointCloudNode,
-    viewProj: Float32Array,
-    sectionNormal: [number, number, number],
-    sectionDist: number,
-    sectionEnabled: boolean,
-    heightMin: number,
-    heightMax: number,
-    viewportW: number,
-    viewportH: number,
-  ): void {
-    const u = this.uniformScratch;
-    const uU32 = this.uniformScratchU32;
-
-    // viewProj — floats 0..15
-    u.set(viewProj.subarray(0, 16), 0);
-    // model — floats 16..31 (identity for now; per-asset transforms can be added later)
-    u.fill(0, 16, 32);
-    u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
-    // colorOverride — floats 32..35
-    u[32] = this.options.fixedColor[0];
-    u[33] = this.options.fixedColor[1];
-    u[34] = this.options.fixedColor[2];
-    u[35] = this.options.fixedColor[3];
-    // colorModeAndExtras — floats 36..39 (mode, pointSize, heightMin, heightMax)
-    u[36] = COLOR_MODE_INDEX[this.options.colorMode];
-    u[37] = this.options.pointSize;
-    u[38] = heightMin;
-    u[39] = heightMax;
-    // sizing — floats 40..43 (sizeMode, worldRadius, viewportW, viewportH)
-    u[40] = SIZE_MODE_INDEX[this.options.sizeMode];
-    u[41] = this.options.worldRadius;
-    u[42] = viewportW;
-    u[43] = viewportH;
-    // sectionPlane — floats 44..47
-    u[44] = sectionNormal[0];
-    u[45] = sectionNormal[1];
-    u[46] = sectionNormal[2];
-    u[47] = sectionDist;
-    // flags (u32 view) — bytes 192..207 = u32 indices 48..51
-    // flags.x = the asset's CURRENT expressId. The shader uses this
-    // when non-zero so the federation registry can relabel a streamed
-    // asset post-upload (its per-vertex entityId attribute is baked
-    // at upload and would otherwise stay at the synthetic local ID).
-    uU32[48] = node.meta.expressId >>> 0;
-    uU32[49] = sectionEnabled ? 1 : 0;
-    uU32[50] = this.options.roundShape ? 1 : 0;
-    uU32[51] = 0;
-
-    this.device.queue.writeBuffer(node.uniformBuffer, 0, u.buffer, u.byteOffset, POINT_UNIFORM_SIZE);
   }
 
   /**

@@ -165,18 +165,122 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.bbox).toEqual({ min: [1.5, 2.5, -3.5], max: [7.0, 8.0, 9.0] });
   });
 
-  it('throws clearly when prototype uses ScaledInteger for cartesian fields', () => {
+  it('decodes ScaledInteger cartesian streams (bit-packed integer codec)', () => {
+    // Synthetic 2-point packet, bitsPerRecord=8 per axis (span = 255):
+    //   minimum=-100, maximum=155, scale=0.01, offset=0
+    //   bitsPerRecord = ceil(log2(255 - (-100) + 1)) = ceil(log2(256)) = 8
+    // For each point we pack `raw_int = original - minimum` into the
+    // bytestream; decoded float = (raw_int + minimum) * scale + offset.
+    const buf = new ArrayBuffer(22);
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+
+    view.setUint8(0, 1);              // packetType = data
+    view.setUint8(1, 0);              // flags
+    view.setUint16(2, 21, true);      // packetLogicalLength - 1 (total = 22)
+    view.setUint16(4, 3, true);       // bytestreamCount
+    view.setUint16(6, 2, true);       // X bytestream length
+    view.setUint16(8, 2, true);       // Y bytestream length
+    view.setUint16(10, 2, true);      // Z bytestream length
+
+    // X: point0 raw=50 (→ −0.5), point1 raw=100 (→ 0.0)
+    bytes[12] = 50;
+    bytes[13] = 100;
+    // Y: point0 raw=110 (→ 0.10), point1 raw=120 (→ 0.20)
+    bytes[14] = 110;
+    bytes[15] = 120;
+    // Z: point0 raw=200 (→ 1.00), point1 raw=255 (→ 1.55)
+    bytes[16] = 200;
+    bytes[17] = 255;
+    // bytes[18..21] = trailing 4-byte CRC (ignored)
+
     const entry: Data3DEntry = {
       guid: 'test',
-      recordCount: 0,
+      recordCount: 2,
       binaryFileOffset: 0,
       prototype: [
-        { name: 'cartesianX', kind: 'ScaledInteger', scale: 0.001, offset: 0, minimum: 0, maximum: 1 },
-        { name: 'cartesianY', kind: 'Float', precision: 'double' },
-        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+        { name: 'cartesianX', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+        { name: 'cartesianY', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+        { name: 'cartesianZ', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
       ],
     };
-    expect(() => decodeE57Scan(new Uint8Array(0), entry)).toThrow(/ScaledInteger/);
+    const chunk = decodeE57Scan(bytes, entry);
+    expect(chunk.pointCount).toBe(2);
+    expect(chunk.positions[0]).toBeCloseTo(-0.5, 5);
+    expect(chunk.positions[1]).toBeCloseTo(0.10, 5);
+    expect(chunk.positions[2]).toBeCloseTo(1.00, 5);
+    expect(chunk.positions[3]).toBeCloseTo(0.0, 5);
+    expect(chunk.positions[4]).toBeCloseTo(0.20, 5);
+    expect(chunk.positions[5]).toBeCloseTo(1.55, 5);
+  });
+
+  it('decodes ScaledInteger streams with bitsPerRecord that crosses byte boundaries', () => {
+    // bitsPerRecord = 12 (min=0, max=4095, span=4095). Two values
+    // pack into 3 bytes LSB-first:
+    //   value0 = 0xABC, value1 = 0xDEF
+    //   byte 0 = value0 & 0xFF                   = 0xBC
+    //   byte 1 = (value0 >> 8) | ((value1 & 0xF) << 4) = 0xA | 0xF0 = 0xFA
+    //   byte 2 = value1 >> 4                     = 0xDE
+    // With scale=1, offset=0, minimum=0 the decoded floats round-trip
+    // to the original raw_int, so we just check the cartesian values.
+    const packetLogicalLength = 4 + 2 + 2 + 3 + 4; // header + count + length + payload + CRC
+    const totalBytes = packetLogicalLength;
+    const buf = new ArrayBuffer(totalBytes);
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetLogicalLength - 1, true);
+    view.setUint16(4, 1, true);          // 1 bytestream (we'll use only X to keep it minimal)
+    view.setUint16(6, 3, true);          // bytestream length = 3
+    bytes[8] = 0xBC;
+    bytes[9] = 0xFA;
+    bytes[10] = 0xDE;
+
+    // recordCount=2; Y/Z would be required by decodeE57Scan, so use a
+    // 3-axis prototype and stuff Y/Z into the same bytestream by
+    // declaring 3 streams of 1 byte each. Easier: drop down to a
+    // 1-stream test that only has X — but decodeE57Scan demands all
+    // three. Build a complete 3-stream packet with the bit-packed X.
+    const fullLen = 4 + 2 + 2*3 + 3 + 1 + 1 + 4;
+    const fullBuf = new ArrayBuffer(fullLen);
+    const fv = new DataView(fullBuf);
+    const fb = new Uint8Array(fullBuf);
+    fv.setUint8(0, 1);
+    fv.setUint8(1, 0);
+    fv.setUint16(2, fullLen - 1, true);
+    fv.setUint16(4, 3, true);
+    fv.setUint16(6, 3, true);  // X length (3 bytes for 2×12-bit values)
+    fv.setUint16(8, 1, true);  // Y length (1 byte, bitsPerRecord=4 covers 2 values)
+    fv.setUint16(10, 1, true); // Z length
+    fb[12] = 0xBC;
+    fb[13] = 0xFA;
+    fb[14] = 0xDE;
+    fb[15] = 0x32; // Y: low nibble = 2, high nibble = 3 (LSB first)
+    fb[16] = 0x54; // Z: low nibble = 4, high nibble = 5
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 2,
+      binaryFileOffset: 0,
+      prototype: [
+        // X: 12-bit, raw bytes pack [0xBC, 0xFA, 0xDE] → [0xABC, 0xDEF]
+        { name: 'cartesianX', kind: 'ScaledInteger', scale: 1, offset: 0, minimum: 0, maximum: 4095 },
+        // Y: 4-bit, raw [0x2, 0x3]
+        { name: 'cartesianY', kind: 'ScaledInteger', scale: 1, offset: 0, minimum: 0, maximum: 15 },
+        // Z: 4-bit, raw [0x4, 0x5]
+        { name: 'cartesianZ', kind: 'ScaledInteger', scale: 1, offset: 0, minimum: 0, maximum: 15 },
+      ],
+    };
+    const chunk = decodeE57Scan(fb, entry);
+    expect(chunk.pointCount).toBe(2);
+    // (raw + minimum) * scale + offset, with min=0 scale=1 offset=0 → raw
+    expect(chunk.positions[0]).toBe(0xABC);
+    expect(chunk.positions[1]).toBe(0x2);
+    expect(chunk.positions[2]).toBe(0x4);
+    expect(chunk.positions[3]).toBe(0xDEF);
+    expect(chunk.positions[4]).toBe(0x3);
+    expect(chunk.positions[5]).toBe(0x5);
   });
 });
 

@@ -158,6 +158,17 @@ interface PrototypeField {
   maximum?: number;
 }
 
+/**
+ * Per-scan pose: rotation (unit quaternion w + xi + yj + zk) +
+ * translation (in source-frame metres). Optional because most
+ * single-scan exports don't need one — when absent we treat the
+ * scan as already in the file's global frame (identity pose).
+ */
+export interface E57Pose {
+  rotation: { w: number; x: number; y: number; z: number };
+  translation: { x: number; y: number; z: number };
+}
+
 export interface Data3DEntry {
   guid: string;
   name?: string;
@@ -167,13 +178,12 @@ export interface Data3DEntry {
   /** Field declarations in record order. */
   prototype: PrototypeField[];
   /**
-   * Whether this Data3D defines a `pose` element (translation +
-   * rotation that places the scan in the file's global frame). We
-   * don't apply the transform yet — single-scan files don't need it,
-   * and multi-scan files with poses are rejected upfront so we never
-   * silently merge in scan-local space.
+   * Per-Data3D pose that places the scan into the file's global
+   * frame. Applied by `decodeE57` before merging multi-scan files;
+   * single-scan files where the pose is identity / absent need no
+   * extra work either way.
    */
-  hasPose?: boolean;
+  pose?: E57Pose;
 }
 
 const TEXT_DECODER = new TextDecoder();
@@ -241,10 +251,44 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
       recordCount: Number(recordCountAttr),
       binaryFileOffset: Number(fileOffsetAttr),
       prototype: fields,
-      hasPose: childByName(scan, 'pose') !== null,
+      pose: parsePoseElement(childByName(scan, 'pose')) ?? undefined,
     });
   }
   return entries;
+}
+
+/**
+ * Parse a `<pose>` element to a quaternion + translation pair.
+ * Returns null when the element is missing or malformed (any field
+ * unparseable → fall back to identity rather than reject the file).
+ *
+ * Spec layout (E57 §6.6.3):
+ *   <pose>
+ *     <rotation> <w/> <x/> <y/> <z/> </rotation>
+ *     <translation> <x/> <y/> <z/> </translation>
+ *   </pose>
+ *
+ * The quaternion uses Hamilton convention (w + xi + yj + zk) and is
+ * expected to be unit-length. Translation is in the same units as
+ * the cartesian fields (metres for typical exporters).
+ */
+function parsePoseElement(poseEl: ReturnType<typeof childByName>): E57Pose | null {
+  if (!poseEl) return null;
+  const rotation = childByName(poseEl, 'rotation');
+  const translation = childByName(poseEl, 'translation');
+  if (!rotation || !translation) return null;
+  const qw = Number(textChild(rotation, 'w') ?? '1');
+  const qx = Number(textChild(rotation, 'x') ?? '0');
+  const qy = Number(textChild(rotation, 'y') ?? '0');
+  const qz = Number(textChild(rotation, 'z') ?? '0');
+  const tx = Number(textChild(translation, 'x') ?? '0');
+  const ty = Number(textChild(translation, 'y') ?? '0');
+  const tz = Number(textChild(translation, 'z') ?? '0');
+  if (![qw, qx, qy, qz, tx, ty, tz].every(Number.isFinite)) return null;
+  return {
+    rotation: { w: qw, x: qx, y: qy, z: qz },
+    translation: { x: tx, y: ty, z: tz },
+  };
 }
 
 // ─── binary decode ──────────────────────────────────────────────────────────
@@ -530,6 +574,48 @@ function computeBBox(positions: Float32Array): PointCloudBBox {
   return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
 }
 
+/**
+ * Apply a per-scan pose (rotation quaternion + translation) to a
+ * positions buffer in place: `out = R * in + T`.
+ *
+ * The quaternion is in Hamilton convention (w + xi + yj + zk); we
+ * derive the 3×3 rotation matrix once and reuse it across every
+ * point in the chunk. Translation is added after rotation.
+ *
+ * Quaternion → rotation matrix (assumes unit length; spec calls
+ * for normalised input):
+ *   r00 = 1 − 2(y² + z²)   r01 = 2(xy − wz)       r02 = 2(xz + wy)
+ *   r10 = 2(xy + wz)       r11 = 1 − 2(x² + z²)   r12 = 2(yz − wx)
+ *   r20 = 2(xz − wy)       r21 = 2(yz + wx)       r22 = 1 − 2(x² + y²)
+ */
+export function applyPoseInPlace(
+  positions: Float32Array,
+  pointCount: number,
+  pose: E57Pose,
+): void {
+  const { w, x, y, z } = pose.rotation;
+  const tx = pose.translation.x;
+  const ty = pose.translation.y;
+  const tz = pose.translation.z;
+  const r00 = 1 - 2 * (y * y + z * z);
+  const r01 = 2 * (x * y - w * z);
+  const r02 = 2 * (x * z + w * y);
+  const r10 = 2 * (x * y + w * z);
+  const r11 = 1 - 2 * (x * x + z * z);
+  const r12 = 2 * (y * z - w * x);
+  const r20 = 2 * (x * z - w * y);
+  const r21 = 2 * (y * z + w * x);
+  const r22 = 1 - 2 * (x * x + y * y);
+  for (let i = 0; i < pointCount; i++) {
+    const px = positions[i * 3];
+    const py = positions[i * 3 + 1];
+    const pz = positions[i * 3 + 2];
+    positions[i * 3]     = r00 * px + r01 * py + r02 * pz + tx;
+    positions[i * 3 + 1] = r10 * px + r11 * py + r12 * pz + ty;
+    positions[i * 3 + 2] = r20 * px + r21 * py + r22 * pz + tz;
+  }
+}
+
 // ─── high-level entry ───────────────────────────────────────────────────────
 
 /**
@@ -545,30 +631,26 @@ export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
   const entries = parseE57Xml(xmlText);
   if (entries.length === 0) return null;
 
-  // Multi-scan registered E57 files store each scan in its own local
-  // frame and rely on the per-Data3D `pose` (rotation + translation) to
-  // place them in the file's global frame. We don't apply that
-  // transform yet, so silently concatenating registered multi-scan
-  // files would produce a misaligned mess. Reject upfront with a
-  // clear error so the user can use the export-merged option in their
-  // scan-processing tool.
-  if (entries.length > 1 && entries.some((e) => e.hasPose)) {
-    throw new Error(
-      `E57: file contains ${entries.length} scans with per-scan poses (registered multi-scan). `
-      + 'Multi-scan pose merging is not yet supported — please re-export as a single merged scan.',
-    );
-  }
-
   // Resolve every entry's binary file offset through the
   // CompressedVector section header. The XML's fileOffset is the
   // section header (physical), not the first DataPacket.
+  // Per-Data3D pose (when present) places each scan in the file's
+  // global frame: `global = R * local + T`. We apply it here, after
+  // decoding but before merging, so multi-scan registered E57s line
+  // up correctly. Identity / absent poses are no-ops.
   const chunks = entries.map((entry) => {
     const dataLogicalOffset = resolveCompressedVectorDataOffset(
       logical,
       entry.binaryFileOffset,
       header.pageSize,
     );
-    return decodeE57Scan(logical, { ...entry, binaryFileOffset: dataLogicalOffset });
+    const chunk = decodeE57Scan(logical, { ...entry, binaryFileOffset: dataLogicalOffset });
+    if (entry.pose) {
+      applyPoseInPlace(chunk.positions, chunk.pointCount, entry.pose);
+      // bbox needs to be recomputed since positions moved.
+      chunk.bbox = computeBBox(chunk.positions);
+    }
+    return chunk;
   });
   if (chunks.length === 1) return chunks[0];
 

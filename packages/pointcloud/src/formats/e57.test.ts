@@ -239,7 +239,7 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
     expect(() => parseE57Xml('<other/>')).toThrow(/e57Root/);
   });
 
-  it('flags scans that carry a <pose> child so multi-scan rejection can fire', () => {
+  it('extracts <pose> rotation + translation when present', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <e57Root type="Structure">
   <data3D type="Vector">
@@ -250,8 +250,8 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
         </prototype>
       </points>
       <pose type="Structure">
-        <rotation type="Structure"><w type="Float">1</w><x type="Float">0</x><y type="Float">0</y><z type="Float">0</z></rotation>
-        <translation type="Structure"><x type="Float">10</x><y type="Float">0</y><z type="Float">0</z></translation>
+        <rotation type="Structure"><w type="Float">0.7071067811865476</w><x type="Float">0</x><y type="Float">0</y><z type="Float">0.7071067811865476</z></rotation>
+        <translation type="Structure"><x type="Float">10</x><y type="Float">3.5</y><z type="Float">-2</z></translation>
       </pose>
     </vectorChild>
     <vectorChild type="Structure">
@@ -265,8 +265,42 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
 </e57Root>`;
     const entries = parseE57Xml(xml);
     expect(entries).toHaveLength(2);
-    expect(entries[0].hasPose).toBe(true);
-    expect(entries[1].hasPose).toBe(false);
+    expect(entries[0].pose).toBeDefined();
+    expect(entries[0].pose!.rotation.w).toBeCloseTo(0.7071, 3);
+    expect(entries[0].pose!.rotation.z).toBeCloseTo(0.7071, 3);
+    expect(entries[0].pose!.translation.x).toBe(10);
+    expect(entries[0].pose!.translation.y).toBe(3.5);
+    expect(entries[0].pose!.translation.z).toBe(-2);
+    expect(entries[1].pose).toBeUndefined();
+  });
+});
+
+describe('applyPoseInPlace', () => {
+  it('rotates 90° around Z + translates per the unit-quaternion convention', async () => {
+    const { applyPoseInPlace } = await import('./e57.js');
+    // 90° rotation around +Z: q = (cos(45°), 0, 0, sin(45°))
+    // (1, 0, 0) → (0, 1, 0); then translate (10, 0, 0) → (10, 1, 0)
+    const positions = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    applyPoseInPlace(positions, 3, {
+      rotation: { w: Math.SQRT1_2, x: 0, y: 0, z: Math.SQRT1_2 },
+      translation: { x: 10, y: 0, z: 0 },
+    });
+    // Float32 lossy → use closeTo
+    expect(positions[0]).toBeCloseTo(10, 5);  expect(positions[1]).toBeCloseTo(1, 5);  expect(positions[2]).toBeCloseTo(0, 5);
+    expect(positions[3]).toBeCloseTo(9, 5);   expect(positions[4]).toBeCloseTo(0, 5);  expect(positions[5]).toBeCloseTo(0, 5);
+    expect(positions[6]).toBeCloseTo(10, 5);  expect(positions[7]).toBeCloseTo(0, 5);  expect(positions[8]).toBeCloseTo(1, 5);
+  });
+
+  it('identity quaternion + zero translation is a no-op', async () => {
+    const { applyPoseInPlace } = await import('./e57.js');
+    const positions = new Float32Array([1.5, 2.5, 3.5]);
+    applyPoseInPlace(positions, 1, {
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      translation: { x: 0, y: 0, z: 0 },
+    });
+    expect(positions[0]).toBeCloseTo(1.5, 5);
+    expect(positions[1]).toBeCloseTo(2.5, 5);
+    expect(positions[2]).toBeCloseTo(3.5, 5);
   });
 });
 

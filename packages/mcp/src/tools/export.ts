@@ -154,7 +154,7 @@ const exportIfcx: Tool = {
 
 const exportPdfReport: Tool = {
   name: 'export_pdf_report',
-  description: 'Audit/IDS/LCA report as PDF. Planned for v0.5.',
+  description: 'Audit/IDS report as PDF. Planned for v0.5.',
   scope: 'export',
   inputSchema: { type: 'object', properties: { model_id: { type: 'string' }, file_path: { type: 'string' } }, additionalProperties: false },
   handler() {

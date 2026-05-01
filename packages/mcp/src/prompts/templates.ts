@@ -92,25 +92,6 @@ export const generateBcfFromIds: Prompt = {
   },
 };
 
-export const lcaQuickLook: Prompt = {
-  name: 'lca_quick_look',
-  description: 'Run lca_compute, summarize total embodied carbon, and suggest the highest-leverage swap.',
-  render() {
-    return {
-      description: 'KBOB-based carbon summary',
-      messages: [
-        userMessage([
-          'Run `lca_compute` on the active model. Report:',
-          '  • total GWP in kgCO₂eq and tCO₂eq,',
-          '  • the top 5 elements by GWP with their material,',
-          '  • how many elements were skipped due to missing volume or material (warn me if > 10%),',
-          '  • one practical material swap suggestion using `lca_what_if` with the expected delta.',
-        ].join('\n')),
-      ],
-    };
-  },
-};
-
 export const compareVersions: Prompt = {
   name: 'compare_versions',
   description: 'Diff two loaded models and summarize material/quantity changes by storey.',
@@ -273,7 +254,6 @@ export const allPrompts: Prompt[] = [
   auditModel,
   findFireRatedDoors,
   generateBcfFromIds,
-  lcaQuickLook,
   compareVersions,
   spaceProgramCheck,
   clashReview,

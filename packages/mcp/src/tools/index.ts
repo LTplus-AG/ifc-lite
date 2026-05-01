@@ -12,7 +12,6 @@ import { bcfTools } from './bcf.js';
 import { bsddTools } from './bsdd.js';
 import { diffTools } from './diff.js';
 import { exportTools } from './export.js';
-import { lcaTools } from './lca.js';
 import { viewerTools } from './viewer.js';
 
 export { ToolRegistry } from './types.js';
@@ -28,7 +27,6 @@ export {
   bsddTools,
   diffTools,
   exportTools,
-  lcaTools,
   viewerTools,
 };
 
@@ -48,7 +46,6 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(bsddTools);
   registry.registerAll(diffTools);
   registry.registerAll(exportTools);
-  registry.registerAll(lcaTools);
   registry.registerAll(viewerTools);
   return registry;
 }

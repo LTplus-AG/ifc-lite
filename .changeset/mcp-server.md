@@ -8,7 +8,7 @@ the BIM runtime to any MCP-aware LLM agent (Claude Desktop, Cursor,
 ChatGPT, Goose, Windsurf, Zed, custom). v0.1 ships with stdio + Streamable
 HTTP transports, scope-gated tool surface across discovery / query /
 geometry / validation (IDS + audit) / mutation / BCF / bSDD / diff /
-export / LCA / viewer, an `ifc-lite://` resource scheme, twelve pre-baked
+export / viewer, an `ifc-lite://` resource scheme, eleven pre-baked
 prompt templates, and an `ifc-lite mcp` CLI subcommand.
 
 The 3D viewer is a first-class workflow:

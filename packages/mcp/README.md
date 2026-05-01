@@ -98,7 +98,6 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb` (v0.2), `export_ifcx` (v0.2), `export_pdf_report` (v0.5) |
-| LCA | `lca_compute`, `lca_per_element`, `lca_what_if` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection` |
 
 Resources expose live model state under the `ifc-lite://` URI scheme:
@@ -117,9 +116,9 @@ ifc-lite://viewer/selection      (live; supports `resources/subscribe` for push 
 Pre-baked prompts ship the BIM expertise:
 
 `audit_model`, `find_fire_rated_doors`, `generate_bcf_from_ids`,
-`lca_quick_look`, `compare_versions`, `space_program_check`,
-`clash_review`, `prop_quality_pass`, `migrate_to_ifcx`,
-`visual_audit`, `interactive_property_inspect`, `visualize_query`.
+`compare_versions`, `space_program_check`, `clash_review`,
+`prop_quality_pass`, `migrate_to_ifcx`, `visual_audit`,
+`interactive_property_inspect`, `visualize_query`.
 
 ## Programmatic embedding
 
@@ -178,10 +177,10 @@ error.
 
 | Version | Adds |
 | --- | --- |
-| 0.1 | stdio + Streamable HTTP, query / IDS / mutate / BCF / bSDD / LCA / diff |
+| 0.1 | stdio + Streamable HTTP, query / IDS / mutate / BCF / bSDD / diff / viewer |
 | 0.2 | WASM geometry (mesh, raycast, clash), gherkin validation, IFCX export |
 | 0.3 | OAuth 2.1 with PKCE, hosted multi-tenant deployment |
-| 0.5 | Full KBOB catalog, sampling for natural-language descriptions |
+| 0.5 | Sampling for natural-language descriptions, two-way viewer editing |
 | 1.0 | Public registry listing, full spec coverage |
 
 Licensed under MPL-2.0.

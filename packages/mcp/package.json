@@ -1,44 +1,45 @@
 {
-  "name": "@ifc-lite/cli",
-  "version": "0.7.0",
-  "description": "CLI toolkit for IFC files — query, validate, export, create, and script BIM data",
+  "name": "@ifc-lite/mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
   "type": "module",
-  "bin": {
-    "ifc-lite": "./dist/index.js"
-  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "ifc-lite-mcp": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    },
+    "./protocol": {
+      "import": "./dist/protocol/index.js",
+      "types": "./dist/protocol/index.d.ts"
     }
   },
   "scripts": {
     "build": "pnpm exec tsc",
     "dev": "pnpm exec tsc --watch",
-    "start": "node dist/index.js",
+    "start": "node dist/cli.js",
     "test": "vitest run"
   },
-  "files": [
-    "dist",
-    "README.md"
-  ],
   "dependencies": {
-    "@ifc-lite/parser": "workspace:^",
-    "@ifc-lite/query": "workspace:^",
-    "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/sdk": "workspace:^",
-    "@ifc-lite/export": "workspace:^",
-    "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/create": "workspace:^",
+    "@ifc-lite/data": "workspace:^",
     "@ifc-lite/encoding": "workspace:^",
-    "@ifc-lite/sandbox": "workspace:^",
+    "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
-    "@ifc-lite/mcp": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^",
-    "@ifc-lite/viewer-core": "workspace:^"
+    "@ifc-lite/parser": "workspace:^",
+    "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/sdk": "workspace:^",
+    "@types/node": "^20.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -53,20 +54,28 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/louistrue/ifc-lite.git",
-    "directory": "packages/cli"
+    "directory": "packages/mcp"
   },
   "homepage": "https://louistrue.github.io/ifc-lite/",
   "bugs": "https://github.com/louistrue/ifc-lite/issues",
   "keywords": [
+    "mcp",
+    "model-context-protocol",
     "ifc",
     "bim",
-    "cli",
-    "aec",
-    "building",
-    "construction",
-    "ifc-lite"
+    "ai-agent",
+    "llm",
+    "claude",
+    "cursor",
+    "json-rpc",
+    "ifc-lite",
+    "aec"
   ],
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }

@@ -595,6 +595,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/mcp':
+        specifier: workspace:^
+        version: link:../mcp
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations
@@ -816,6 +819,49 @@ importers:
       vitest:
         specifier: ^1.6.0
         version: 1.6.1(@edge-runtime/vm@3.2.0)(@types/node@22.19.13)(happy-dom@20.8.9)(lightningcss@1.30.2)
+
+  packages/mcp:
+    dependencies:
+      '@ifc-lite/bcf':
+        specifier: workspace:^
+        version: link:../bcf
+      '@ifc-lite/create':
+        specifier: workspace:^
+        version: link:../create
+      '@ifc-lite/data':
+        specifier: workspace:^
+        version: link:../data
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../encoding
+      '@ifc-lite/export':
+        specifier: workspace:^
+        version: link:../export
+      '@ifc-lite/ids':
+        specifier: workspace:^
+        version: link:../ids
+      '@ifc-lite/mutations':
+        specifier: workspace:^
+        version: link:../mutations
+      '@ifc-lite/parser':
+        specifier: workspace:^
+        version: link:../parser
+      '@ifc-lite/query':
+        specifier: workspace:^
+        version: link:../query
+      '@ifc-lite/sdk':
+        specifier: workspace:^
+        version: link:../sdk
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.28
+    devDependencies:
+      typescript:
+        specifier: ^5.3.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.1
+        version: 3.2.4(@edge-runtime/vm@3.2.0)(@types/node@20.19.28)(happy-dom@20.8.9)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)
 
   packages/mutations:
     dependencies:

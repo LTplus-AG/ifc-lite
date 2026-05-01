@@ -9,6 +9,35 @@
 import { WebGPUDevice } from './device.js';
 import type { Mesh, PickResult } from './types.js';
 import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
+import { MathUtils } from './math.js';
+
+/**
+ * Reproject a pick coordinate (px, depth in [0, 1]) into world space
+ * using the inverse view-projection matrix.
+ *
+ * Reverse-Z: depth=1 is the near plane, depth=0 is far. A depth of
+ * exactly 0 means the click missed every drawn primitive (depth was
+ * never written, so the clear value sticks), and we return null.
+ *
+ * Pixel coords use the WebGPU/screen convention (origin top-left, y
+ * increases downward); NDC y is inverted to match the camera's
+ * projection matrix.
+ */
+function unprojectPickSample(
+  viewProj: Float32Array,
+  pickX: number,
+  pickY: number,
+  width: number,
+  height: number,
+  depth: number,
+): { x: number; y: number; z: number } | null {
+  if (!Number.isFinite(depth) || depth <= 0) return null;
+  const ndcX = ((pickX + 0.5) / width) * 2 - 1;
+  const ndcY = 1 - ((pickY + 0.5) / height) * 2;
+  const inv = MathUtils.invert({ m: viewProj });
+  if (!inv) return null;
+  return MathUtils.transformPoint(inv, { x: ndcX, y: ndcY, z: depth });
+}
 
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
 export interface PointPickSizing {
@@ -46,7 +75,10 @@ export class Picker {
     this.depthTexture = this.device.createTexture({
       size: { width, height },
       format: 'depth32float',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      // COPY_SRC so we can read the depth texel at the click position
+      // back to the CPU and unproject to recover the world-space hit
+      // point for hover tooltips / measurements.
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     });
 
     // Create uniform buffer for viewProj matrix only (16 floats = 64 bytes)
@@ -182,7 +214,7 @@ export class Picker {
       this.depthTexture = this.device.createTexture({
         size: { width, height },
         format: 'depth32float',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
       });
     }
     
@@ -268,37 +300,57 @@ export class Picker {
 
     pass.end();
 
-    // Read pixel at click position
-    // WebGPU requires bytesPerRow to be a multiple of 256
+    // Read pixel at click position. WebGPU requires bytesPerRow to be a
+    // multiple of 256 for copyTextureToBuffer, even for a 1×1 read.
     const BYTES_PER_ROW = 256;
     const readBuffer = this.device.createBuffer({
       size: BYTES_PER_ROW,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-
     encoder.copyTextureToBuffer(
       {
         texture: this.colorTexture,
         origin: { x: Math.floor(x), y: Math.floor(y), z: 0 },
       },
+      { buffer: readBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
+      { width: 1, height: 1 },
+    );
+
+    // Parallel depth-texel readback so the host can unproject the click
+    // to a world-space hit point. depth32float = 4 bytes per texel; we
+    // pad the row to 256 like the color readback.
+    const depthBuffer = this.device.createBuffer({
+      size: BYTES_PER_ROW,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    encoder.copyTextureToBuffer(
       {
-        buffer: readBuffer,
-        bytesPerRow: BYTES_PER_ROW,
-        rowsPerImage: 1,
+        texture: this.depthTexture,
+        origin: { x: Math.floor(x), y: Math.floor(y), z: 0 },
+        aspect: 'depth-only',
       },
-      { width: 1, height: 1 }
+      { buffer: depthBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
+      { width: 1, height: 1 },
     );
 
     this.device.queue.submit([encoder.finish()]);
     // GPUMapMode.READ = 1 (WebGPU spec)
-    await readBuffer.mapAsync(1); // GPUMapMode.READ
-    const data = new Uint32Array(readBuffer.getMappedRange());
-    const sample = data[0];
+    await Promise.all([readBuffer.mapAsync(1), depthBuffer.mapAsync(1)]);
+    const sample = new Uint32Array(readBuffer.getMappedRange())[0];
+    const depth = new Float32Array(depthBuffer.getMappedRange())[0];
     readBuffer.unmap();
+    depthBuffer.unmap();
     readBuffer.destroy();
+    depthBuffer.destroy();
 
     const decoded = decodePickSample(sample);
     if (decoded.kind === 'none') return null;
+
+    // Unproject (x, y, depth) → world space. Reverse-Z keeps depth in
+    // [0, 1] (1 = near, 0 = far) — same NDC convention as the camera
+    // raycaster, so MathUtils.transformPoint with the inverse viewProj
+    // gives the world hit position directly.
+    const worldXYZ = unprojectPickSample(viewProj, x, y, width, height, depth);
 
     if (decoded.kind === 'point') {
       // Look up the asset for modelIndex. expressId is already the
@@ -308,6 +360,7 @@ export class Picker {
       return {
         expressId: decoded.pointExpressId,
         modelIndex: node?.modelIndex,
+        worldXYZ: worldXYZ ?? undefined,
       };
     }
 
@@ -317,6 +370,7 @@ export class Picker {
     return {
       expressId: mesh.expressId,
       modelIndex: mesh.modelIndex,
+      worldXYZ: worldXYZ ?? undefined,
     };
   }
 

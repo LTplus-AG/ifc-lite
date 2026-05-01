@@ -102,7 +102,12 @@ export interface UseMouseControlsParams {
 
   // Callbacks
   handlePickForSelection: (pickResult: PickResult | null) => void;
-  setHoverState: (state: { entityId: number; screenX: number; screenY: number }) => void;
+  setHoverState: (state: {
+    entityId: number;
+    screenX: number;
+    screenY: number;
+    worldXYZ?: { x: number; y: number; z: number };
+  }) => void;
   clearHover: () => void;
   openContextMenu: (entityId: number | null, screenX: number, screenY: number) => void;
   startMeasurement: (point: MeasurePoint) => void;
@@ -421,7 +426,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           // Uses visibility filtering so hidden elements don't show hover tooltips
           const pickResult = await renderer.pick(x, y, getPickOptions());
           if (pickResult) {
-            setHoverState({ entityId: pickResult.expressId, screenX: e.clientX, screenY: e.clientY });
+            setHoverState({
+              entityId: pickResult.expressId,
+              screenX: e.clientX,
+              screenY: e.clientY,
+              worldXYZ: pickResult.worldXYZ,
+            });
           } else {
             clearHover();
           }

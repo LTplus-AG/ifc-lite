@@ -12,6 +12,7 @@
 import { useViewerStore } from '@/store';
 import type { PointColorModeUi, PointSizeModeUi } from '@/store/slices/pointCloudSlice';
 import { cn } from '@/lib/utils';
+import { PointCloudLegend } from './PointCloudLegend';
 
 const COLOR_MODES: Array<{ value: PointColorModeUi; label: string; hint: string }> = [
   { value: 'rgb',            label: 'RGB',            hint: 'Per-point colour from the source' },
@@ -45,6 +46,8 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
   const setEdlEnabled = useViewerStore((s) => s.setPointCloudEdlEnabled);
   const edlStrength = useViewerStore((s) => s.pointCloudEdlStrength);
   const setEdlStrength = useViewerStore((s) => s.setPointCloudEdlStrength);
+  const fixedColor = useViewerStore((s) => s.pointCloudFixedColor);
+  const setFixedColor = useViewerStore((s) => s.setPointCloudFixedColor);
 
   if (assetCount <= 0) return null;
 
@@ -81,6 +84,24 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
             </button>
           );
         })}
+        <PointCloudLegend colorMode={colorMode} />
+        {colorMode === 'fixed' && (
+          // Native colour input — keeps the panel dependency-free.
+          // Hex round-trips through float[0..1]: parse `#rrggbb` to a
+          // [r,g,b,1] tuple on input, format the active rgb back to hex
+          // on display. Alpha stays 1 since fixed-mode opacity is
+          // controlled by the splat shape, not the colour swatch.
+          <label className="flex items-center justify-between gap-2 mt-1 px-2 py-1 rounded bg-muted/40">
+            <span className="text-[10px] text-muted-foreground">Solid colour</span>
+            <input
+              type="color"
+              value={rgbToHex(fixedColor)}
+              onChange={(e) => setFixedColor(hexToRgba(e.target.value, fixedColor[3]))}
+              aria-label="Pick the solid colour applied in fixed mode"
+              className="h-6 w-10 rounded border-0 cursor-pointer bg-transparent"
+            />
+          </label>
+        )}
       </div>
 
       {/* Size mode */}
@@ -171,4 +192,18 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
       </div>
     </div>
   );
+}
+
+function rgbToHex([r, g, b]: [number, number, number, number]): string {
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+function hexToRgba(hex: string, alpha: number): [number, number, number, number] {
+  // Browsers always emit "#rrggbb" from <input type="color">, so we
+  // can skip the 3-char shorthand path. Parse byte-by-byte and divide.
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return [r, g, b, alpha];
 }

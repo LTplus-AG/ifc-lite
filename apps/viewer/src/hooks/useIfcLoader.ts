@@ -1590,6 +1590,11 @@ export function useIfcLoader() {
           onProgress: setProgress,
           onAssetCountDelta: incCount,
         });
+        // Expose cancellation to the UI (StatusBar shows a Cancel
+        // button while this is non-null). Cleared in finally below
+        // so a stale canceller never lingers across loads.
+        const setCanceller = useViewerStore.getState().setActiveStreamCanceller;
+        setCanceller(() => ingest.streamHandle.cancel());
         // ingestPointCloud's onError callback already runs renderer cleanup
         // + incCount(-1); the outer catch must NOT repeat them or the
         // pointCloudAssetCount will go negative.
@@ -1602,14 +1607,26 @@ export function useIfcLoader() {
           // so we don't leak the half-streamed asset.
           if (loadSessionRef.current !== currentSession) {
             renderer.removePointCloudAsset(ingest.rendererHandle);
+            setCanceller(null);
             return;
           }
           const message = err instanceof Error ? err.message : String(err);
-          updateModel(primaryModelId, { loadState: 'error', loadError: message });
-          setError(`${format.toUpperCase()} parsing failed: ${message}`);
+          // Distinguish a user-initiated abort from a real failure so
+          // the status bar shows "Cancelled" instead of a scary error.
+          const isAbort = err instanceof DOMException && err.name === 'AbortError';
+          if (isAbort) {
+            updateModel(primaryModelId, { loadState: 'error', loadError: 'cancelled' });
+            setError(null);
+            setProgress({ phase: 'Cancelled', percent: 0 });
+          } else {
+            updateModel(primaryModelId, { loadState: 'error', loadError: message });
+            setError(`${format.toUpperCase()} parsing failed: ${message}`);
+          }
+          setCanceller(null);
           setLoading(false);
           return;
         }
+        setCanceller(null);
         if (loadSessionRef.current !== currentSession) {
           // A newer load already began. Drop our streamed asset and
           // skip every store/UI mutation so we don't overwrite the

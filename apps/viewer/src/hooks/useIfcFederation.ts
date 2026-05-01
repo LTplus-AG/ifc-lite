@@ -482,11 +482,19 @@ export function useIfcFederation() {
           onProgress: setProgress,
           onAssetCountDelta: incCount,
         });
+        // Expose cancellation while the stream is in-flight; clear in
+        // both success + error paths so a stale canceller can't linger.
+        const setCanceller = useViewerStore.getState().setActiveStreamCanceller;
+        setCanceller(() => ingest.streamHandle.cancel());
         // ingest.done rejects on stream errors; ingestPointCloud's onError
         // callback already calls removePointCloudAsset + incCount(-1), so
         // the outer catch must NOT repeat that cleanup or the count goes
         // negative when other point clouds are still loaded.
-        await ingest.done;
+        try {
+          await ingest.done;
+        } finally {
+          setCanceller(null);
+        }
         parsedDataStore = ingest.dataStore;
         parsedGeometry = ingest.geometryResult;
         schemaVersion = ingest.schemaVersion;

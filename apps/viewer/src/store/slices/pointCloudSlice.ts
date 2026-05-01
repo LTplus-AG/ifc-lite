@@ -12,7 +12,7 @@
 
 import type { StateCreator } from 'zustand';
 
-export type PointColorModeUi = 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed';
+export type PointColorModeUi = 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed' | 'deviation';
 export type PointSizeModeUi = 'fixed-px' | 'adaptive-world' | 'attenuated';
 
 export interface PointCloudSlice {
@@ -32,6 +32,21 @@ export interface PointCloudSlice {
   /** EDL strength multiplier. 0..3, default 1. */
   pointCloudEdlStrength: number;
   /**
+   * BIM↔scan deviation heatmap range. `centerOffset` shifts the
+   * "white" point off zero (handy when a scan has a global offset
+   * from the model); `halfRange` is the metres mapped to ±1 on the
+   * blue-white-red ramp. Defaults to (0, 0.05) — ±5cm.
+   */
+  pointCloudDeviationCenterOffset: number;
+  pointCloudDeviationHalfRange: number;
+  /**
+   * True once `Renderer.computeDeviations` has populated the deviation
+   * buffers for the current point cloud + mesh set. UI gates the
+   * "Deviation" colour-mode option on this flag so users don't get a
+   * confusing all-blue rendering when nothing has been computed.
+   */
+  pointCloudDeviationComputed: boolean;
+  /**
    * Best-effort count of point cloud assets currently uploaded to the
    * renderer. Updated by ingest paths; UI uses it to show/hide the
    * controls panel and the EDL post-pass.
@@ -45,6 +60,9 @@ export interface PointCloudSlice {
   setPointCloudRoundShape: (enabled: boolean) => void;
   setPointCloudEdlEnabled: (enabled: boolean) => void;
   setPointCloudEdlStrength: (strength: number) => void;
+  setPointCloudDeviationCenterOffset: (m: number) => void;
+  setPointCloudDeviationHalfRange: (m: number) => void;
+  setPointCloudDeviationComputed: (computed: boolean) => void;
   setPointCloudAssetCount: (count: number) => void;
   incrementPointCloudAssetCount: (n?: number) => void;
 }
@@ -67,6 +85,9 @@ export const POINT_CLOUD_DEFAULTS = {
   pointCloudRoundShape: true,
   pointCloudEdlEnabled: true,
   pointCloudEdlStrength: 1,
+  pointCloudDeviationCenterOffset: 0,
+  pointCloudDeviationHalfRange: 0.05,
+  pointCloudDeviationComputed: false,
   pointCloudAssetCount: 0,
 } as const;
 
@@ -91,6 +112,15 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
   setPointCloudEdlStrength: (strength) => set({
     pointCloudEdlStrength: Number.isFinite(strength) ? Math.max(0, Math.min(3, strength)) : 1,
   }),
+  setPointCloudDeviationCenterOffset: (m) => set({
+    pointCloudDeviationCenterOffset: Number.isFinite(m) ? m : 0,
+  }),
+  setPointCloudDeviationHalfRange: (m) => set({
+    // halfRange must stay strictly positive — a zero or negative value
+    // would NaN the GPU ramp's division. Clamp to 0.1 mm minimum.
+    pointCloudDeviationHalfRange: Number.isFinite(m) ? Math.max(1e-4, m) : 0.05,
+  }),
+  setPointCloudDeviationComputed: (computed) => set({ pointCloudDeviationComputed: computed }),
   setPointCloudAssetCount: (count) => set({
     pointCloudAssetCount: Number.isFinite(count) ? Math.max(0, count) : 0,
   }),

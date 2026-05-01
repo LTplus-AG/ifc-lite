@@ -334,6 +334,18 @@ export class Scene {
    * Get all MeshData pieces for an expressId (without merging).
    * Optionally filter by modelIndex for multi-model safety.
    */
+  /**
+   * Iterate every CPU-side `MeshData` the scene holds — every piece
+   * for every expressId across every model. Used by the BIM ↔ scan
+   * deviation BVH builder which needs world-space triangle positions
+   * regardless of which IFC ingest path they came from.
+   */
+  forEachMeshData(visit: (md: MeshData) => void): void {
+    for (const pieces of this.meshDataMap.values()) {
+      for (const piece of pieces) visit(piece);
+    }
+  }
+
   getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined {
     let pieces = this.meshDataMap.get(expressId);
     if (!pieces || pieces.length === 0) return undefined;

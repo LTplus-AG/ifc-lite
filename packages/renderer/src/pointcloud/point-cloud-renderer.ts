@@ -39,7 +39,8 @@ export type PointColorMode =
   | 'classification'
   | 'intensity'
   | 'height'
-  | 'fixed';
+  | 'fixed'
+  | 'deviation';
 
 /**
  * How to size a splat on screen.
@@ -59,6 +60,7 @@ const COLOR_MODE_INDEX: Record<PointColorMode, number> = {
   intensity: 2,
   height: 3,
   fixed: 4,
+  deviation: 5,
 };
 
 const SIZE_MODE_INDEX: Record<PointSizeMode, number> = {
@@ -91,6 +93,14 @@ export interface PointCloudRenderOptions {
   worldRadius?: number;
   /** Render splats as discs instead of squares. Defaults to true. */
   roundShape?: boolean;
+  /**
+   * BIM↔scan deviation heatmap range. `centerOffset` shifts the
+   * "white" point off zero (handy when a scan has a global offset
+   * from the model); `halfRange` is the metres mapped to ±1 on the
+   * blue→white→red ramp. Defaults to (0, 0.05) → ±5cm.
+   * Only consulted when `colorMode === 'deviation'`.
+   */
+  deviationRange?: { centerOffset: number; halfRange: number };
 }
 
 export interface PointCloudAssetHandle {
@@ -123,6 +133,7 @@ export class PointCloudRenderer {
     sizeMode: 'attenuated',
     worldRadius: 0.02,
     roundShape: true,
+    deviationRange: { centerOffset: 0, halfRange: 0.05 },
   };
 
   constructor(
@@ -142,6 +153,16 @@ export class PointCloudRenderer {
     if (opts.sizeMode !== undefined) this.options.sizeMode = opts.sizeMode;
     if (opts.worldRadius !== undefined) this.options.worldRadius = opts.worldRadius;
     if (opts.roundShape !== undefined) this.options.roundShape = opts.roundShape;
+    if (opts.deviationRange !== undefined) {
+      const r = opts.deviationRange;
+      this.options.deviationRange = {
+        centerOffset: Number.isFinite(r.centerOffset) ? r.centerOffset : 0,
+        // halfRange = 0 would divide by zero in the shader; clamp to
+        // a tiny positive value so dragging the slider to the floor
+        // doesn't NaN the colour.
+        halfRange: Number.isFinite(r.halfRange) && r.halfRange > 0 ? r.halfRange : 1e-6,
+      };
+    }
   }
 
   getOptions(): Readonly<Required<PointCloudRenderOptions>> {
@@ -244,6 +265,15 @@ export class PointCloudRenderer {
     return this.nodes.size;
   }
 
+  /**
+   * Iterate every uploaded node. Exposed so the deviation compute
+   * pass can reach each node's vertex + deviation buffers without
+   * the renderer having to mirror its internal map.
+   */
+  getInternalNodes(): Iterable<PointCloudNode> {
+    return this.nodes.values();
+  }
+
   /** Total number of points currently uploaded across all assets. */
   getPointCount(): number {
     let total = 0;
@@ -324,6 +354,8 @@ export class PointCloudRenderer {
       pass.setBindGroup(0, node.bindGroup);
       for (const chunk of node.chunks) {
         pass.setVertexBuffer(0, chunk.vertexBuffer);
+        // 2nd buffer: per-point deviation float (location 4 in shader).
+        pass.setVertexBuffer(1, chunk.deviationBuffer);
         // Six verts per splat, one instance per source point.
         pass.draw(POINT_QUAD_VERTS, chunk.pointCount, 0, 0);
       }
@@ -378,6 +410,11 @@ export class PointCloudRenderer {
     uU32[49] = sectionEnabled ? 1 : 0;
     uU32[50] = this.options.roundShape ? 1 : 0;
     uU32[51] = 0;
+    // deviationRange — floats 52..55 (centerOffset, halfRange, _, _).
+    u[52] = this.options.deviationRange.centerOffset;
+    u[53] = this.options.deviationRange.halfRange;
+    u[54] = 0;
+    u[55] = 0;
 
     this.device.queue.writeBuffer(node.uniformBuffer, 0, u.buffer, u.byteOffset, POINT_UNIFORM_SIZE);
   }

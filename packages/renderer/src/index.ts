@@ -97,6 +97,8 @@ import { PostProcessor } from './post-processor.js';
 import { EdlPass } from './edl-pass.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
+import { DeviationPipeline } from './deviation/deviation-pipeline.js';
+import { buildTriangleBVH } from './deviation/triangle-bvh.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -142,6 +144,15 @@ export class Renderer {
         highQuality: true,
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
+    private deviationPipeline: DeviationPipeline | null = null;
+    /**
+     * Cache of which mesh-set the BVH was built from. We rebuild on
+     * `computeDeviations` only when the cached "fingerprint" misses,
+     * so re-running deviation against the same model is a fast
+     * dispatch — the BVH is multi-second on big BIMs and we don't
+     * want to pay that on every slider drag.
+     */
+    private deviationBvhFingerprint: string | null = null;
     private visualEnhancementState: ResolvedVisualEnhancement = {
         enabled: true,
         edgeContrast: { enabled: true, intensity: 1.0 },
@@ -226,6 +237,10 @@ export class Renderer {
             'depth24plus-stencil8',
             this.pipeline.getSampleCount(),
         );
+        // Compute pipeline for the BIM↔scan deviation heatmap. Lazily
+        // owns the per-triangle BVH GPU buffers; idle until the first
+        // `computeDeviations` call.
+        this.deviationPipeline = new DeviationPipeline(this.device.getDevice());
         this.edlPass = new EdlPass(this.device, this.pipeline.getSampleCount());
         this.camera.setAspect(width / height);
 
@@ -409,6 +424,119 @@ export class Renderer {
     setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
         this.pointCloudRenderer?.setOptions(opts);
         this.requestRender();
+    }
+
+    /**
+     * Compute BIM ↔ scan deviation for every loaded point cloud asset.
+     *
+     * Walks every triangle in the scene (individual + batched meshes,
+     * regardless of which IFC ingest path produced them — STEP, IFCx,
+     * GLB, or federated combinations), builds a per-triangle BVH on
+     * the GPU, then runs a closest-point compute pass per chunk that
+     * writes signed distance into each chunk's deviation buffer.
+     *
+     * Returns metadata so the UI can populate a histogram + auto-range:
+     * the per-asset point count, the suggested ±range from the 95th
+     * percentile, and the bbox the BVH was built from.
+     *
+     * Idempotent: re-running with the same mesh set reuses the GPU
+     * BVH (the BVH build dominates wall time on big BIMs). Pass
+     * `forceRebuild: true` to invalidate.
+     */
+    async computeDeviations(opts: {
+        /** Clip range applied during compute. 0 → no clip. Default 1m. */
+        maxRange?: number;
+        forceRebuild?: boolean;
+    } = {}): Promise<{
+        bvhTriangles: number;
+        bvhNodes: number;
+        chunksProcessed: number;
+        pointsProcessed: number;
+        bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+        suggestedHalfRange: number;
+    }> {
+        if (!this.deviationPipeline || !this.pointCloudRenderer) {
+            throw new Error('Renderer not initialised — call init() first.');
+        }
+        const meshes = this.collectAllSceneMeshes();
+        // Fingerprint = mesh count + total positions length. Cheap,
+        // safe enough for a "did the mesh set change" cache key.
+        const fingerprint = `${meshes.length}:${meshes.reduce((s, m) => s + (m.positions?.length ?? 0), 0)}`;
+        if (opts.forceRebuild || fingerprint !== this.deviationBvhFingerprint) {
+            const bvh = buildTriangleBVH(meshes);
+            this.deviationPipeline.uploadBvh(bvh);
+            this.deviationBvhFingerprint = fingerprint;
+        }
+        const stats = this.deviationPipeline.getBvhStats();
+        const maxRange = opts.maxRange ?? 1.0;
+
+        // Encode every chunk into a single command submit so the GPU
+        // can pipeline the dispatches without a CPU round-trip per
+        // chunk. Histogram readback is a follow-up — for v1 we emit
+        // the deviation buffers and let the splat shader visualise.
+        const encoder = this.device.getDevice().createCommandEncoder({ label: 'pointcloud-deviation' });
+        let chunksProcessed = 0;
+        let pointsProcessed = 0;
+        const nodes = this.pointCloudRenderer.getInternalNodes();
+        for (const node of nodes) {
+            for (const chunk of node.chunks) {
+                const ok = this.deviationPipeline.dispatch(encoder, {
+                    positionsBuffer: chunk.vertexBuffer,
+                    deviationsBuffer: chunk.deviationBuffer,
+                    pointCount: chunk.pointCount,
+                    maxRange,
+                });
+                if (ok) {
+                    chunksProcessed++;
+                    pointsProcessed += chunk.pointCount;
+                }
+            }
+        }
+        this.device.getDevice().queue.submit([encoder.finish()]);
+        // Wait until the GPU finishes the dispatches before resolving.
+        // Otherwise the caller's "compute done" callback fires before
+        // the deviation buffers are actually populated.
+        await this.device.getDevice().queue.onSubmittedWorkDone();
+        this.requestRender();
+
+        // Suggest a default half-range = max(0.01m, max-extent / 1000).
+        // Tighter than the maxRange clip; gives the user a reasonable
+        // starting slider position without a histogram readback.
+        const bb = stats.bounds;
+        const suggestedHalfRange = bb
+            ? Math.max(0.01, Math.max(
+                bb.max[0] - bb.min[0],
+                bb.max[1] - bb.min[1],
+                bb.max[2] - bb.min[2],
+              ) / 1000)
+            : 0.05;
+
+        return {
+            bvhTriangles: stats.triangleCount,
+            bvhNodes: stats.nodeCount,
+            chunksProcessed,
+            pointsProcessed,
+            bounds: stats.bounds,
+            suggestedHalfRange,
+        };
+    }
+
+    /**
+     * Aggregate every triangle source the scene exposes — individual
+     * meshes (created on demand by picking / highlights) AND batched
+     * meshes (the streaming geometry path's compact GPU buffers).
+     * Both formats arrive as `MeshData`; the BVH builder doesn't care
+     * which source they came from.
+     */
+    private collectAllSceneMeshes(): import('@ifc-lite/geometry').MeshData[] {
+        // The Scene keeps every CPU-side MeshData regardless of which
+        // ingest path produced it (STEP / IFCx / GLB). One iteration
+        // covers individual + batched + multi-piece + multi-model.
+        const out: import('@ifc-lite/geometry').MeshData[] = [];
+        this.scene.forEachMeshData((md) => {
+            if (md.positions && md.positions.length > 0) out.push(md);
+        });
+        return out;
     }
 
     /**

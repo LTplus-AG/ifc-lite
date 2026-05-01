@@ -131,7 +131,12 @@ export function createConflictDetector(
       const path = pathFromTop(type);
       if (!path) continue;
       for (const key of keys) {
-        const info = classify(top, path, key);
+        // For top-level Y.Map changes the parent map's `has(key)` tells
+        // us whether this was a delete (key absent → yes) or an add.
+        // Only deletes count as conflict-inducing at the top level.
+        const isDelete =
+          path.length === 0 && key != null && !(type as unknown as Y.Map<unknown>).has(key);
+        const info = classify(top, path, key, isDelete);
         if (info) record(info, client);
       }
     }
@@ -199,20 +204,27 @@ function topLevelKey(type: Y.AbstractType<any>): string | undefined {
  * Map a (top, path[], key) triple to a ConflictKind + path + field.
  * `path` is the list of map keys descending from the top-level shared
  * type to the changed AbstractType. `key` is the changed leaf key (or
- * null for array-shaped changes).
+ * null for array-shaped changes). `isDelete` only matters at
+ * `path.length === 0` (top-level entity churn).
  */
-function classify(top: string, path: string[], key: string | null): PathInfo | null {
+function classify(
+  top: string,
+  path: string[],
+  key: string | null,
+  isDelete: boolean,
+): PathInfo | null {
   if (top === TOP.ENTITIES) {
-    // /<entityPath>/<subMap>/<...> — path[0] = entity path
     if (path.length === 0) {
-      // entity create/delete on the top-level entities map
-      if (key) return { kind: 'concurrent-delete', path: key };
+      // Entity create OR delete on the top-level entities map. We only
+      // surface deletes — concurrent creates are CRDT-friendly (both
+      // entities coexist if they have different paths).
+      if (isDelete && key) return { kind: 'concurrent-delete', path: key };
       return null;
     }
     const entityPath = path[0];
     if (path.length === 1) {
-      // change on the entity Y.Map itself; sub-key is `key`
-      // (e.g. attributes Y.Map being added/replaced)
+      // Change on the entity Y.Map itself; sub-key is `key` (e.g. the
+      // attributes Y.Map being added/replaced). Not a leaf conflict.
       return null;
     }
     const subMap = path[1];
@@ -222,6 +234,11 @@ function classify(top: string, path: string[], key: string | null): PathInfo | n
           return key ? { kind: 'attribute', path: entityPath, field: key } : null;
         case ENTITY_KEY.CHILDREN:
           return key ? { kind: 'hierarchy', path: entityPath, field: key } : null;
+        case ENTITY_KEY.PSETS:
+          // A new (or replaced) Pset Y.Map at the entity level. Treat
+          // the pset name as the field — useful when two peers seed the
+          // same Pset concurrently.
+          return key ? { kind: 'pset-property', path: entityPath, field: key } : null;
         default:
           return null;
       }

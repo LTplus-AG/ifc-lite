@@ -12,11 +12,13 @@
 
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as Y from 'yjs';
+import { colorForUser } from './color.js';
 
 export interface UserIdentity {
   id: string;
   name: string;
-  color: string;
+  /** Optional. If omitted, a deterministic color is derived from `id`. */
+  color?: string;
   avatar?: string;
 }
 
@@ -163,7 +165,10 @@ export function createPresence(doc: Y.Doc, opts: PresenceOptions = {}): Presence
   return {
     awareness,
     clientId: doc.clientID,
-    setUser(user) { enqueue({ user }); },
+    setUser(user) {
+      const resolved: UserIdentity = { ...user, color: user.color ?? colorForUser(user.id) };
+      enqueue({ user: resolved });
+    },
     setSelection(paths) { enqueue({ selection: paths }); },
     setCursor3d(pos) { enqueue({ cursor3d: pos ?? undefined }); },
     setCursor2d(viewport, pos) {

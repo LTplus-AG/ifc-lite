@@ -23,6 +23,13 @@ import type { WebSocket } from 'ws';
 import type { Persistence } from './persistence.js';
 import type { Principal } from './auth.js';
 import { canWrite } from './auth.js';
+import {
+  noopAuditSink,
+  shortHash,
+  type AuditOpType,
+  type AuditSink,
+} from './audit-log.js';
+import { createRateLimiter, type RateLimitOptions, type RateLimiter } from './rate-limit.js';
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -33,6 +40,13 @@ export interface RoomOptions {
   compactEvery?: number;
   /** Idle timeout before a room is unloaded (default 60s). */
   idleUnloadMs?: number;
+  /** Audit sink for connect/update/awareness events (default = no-op). */
+  auditSink?: AuditSink;
+  /**
+   * Per-peer rate-limit knobs. Applied per connection. Service accounts
+   * (e.g. MCP agents) typically get a tighter budget than humans.
+   */
+  rateLimit?: RateLimitOptions | ((principal: Principal) => RateLimitOptions);
 }
 
 export interface PeerConnection {
@@ -40,6 +54,8 @@ export interface PeerConnection {
   principal: Principal;
   /** Subscribed clientIDs that this peer's awareness has reported (for cleanup). */
   awarenessClients: Set<number>;
+  /** Per-connection rate limiter. */
+  limiter?: RateLimiter;
 }
 
 export class Room {
@@ -50,6 +66,8 @@ export class Room {
   private readonly persistence: Persistence;
   private updatesSinceCompact = 0;
   private readonly compactEvery: number;
+  private readonly auditSink: AuditSink;
+  private readonly rateLimitFor: (principal: Principal) => RateLimitOptions;
   private destroyed = false;
 
   constructor(id: string, opts: RoomOptions) {
@@ -58,9 +76,38 @@ export class Room {
     this.awareness = new Awareness(this.doc);
     this.persistence = opts.persistence;
     this.compactEvery = opts.compactEvery ?? 1000;
+    this.auditSink = opts.auditSink ?? noopAuditSink;
+    const rl = opts.rateLimit;
+    this.rateLimitFor = typeof rl === 'function' ? rl : () => rl ?? {};
 
     this.doc.on('update', this.onDocUpdate);
     this.awareness.on('update', this.onAwarenessUpdate);
+  }
+
+  /**
+   * Append an audit-log entry for this room.
+   * Public so the http upgrade handler can log connect/disconnect.
+   */
+  audit(
+    principal: Principal,
+    opType: AuditOpType,
+    opHash: string,
+    detail?: Record<string, unknown>,
+  ): void {
+    void Promise.resolve(
+      this.auditSink.append({
+        timestamp: new Date().toISOString(),
+        userId: principal.userId,
+        role: principal.role,
+        roomId: this.id,
+        opType,
+        opHash,
+        detail,
+      }),
+    ).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error(`[collab-server] audit append error:`, err);
+    });
   }
 
   async loadFromDisk(): Promise<void> {
@@ -76,7 +123,11 @@ export class Room {
   }
 
   addConnection(conn: PeerConnection): void {
+    if (!conn.limiter) {
+      conn.limiter = createRateLimiter(this.rateLimitFor(conn.principal));
+    }
     this.conns.add(conn);
+    this.audit(conn.principal, 'connect', '');
     // Step 1 of the y-protocols sync handshake: send our state vector.
     const enc = encoding.createEncoder();
     encoding.writeVarUint(enc, MESSAGE_SYNC);
@@ -100,6 +151,7 @@ export class Room {
     if (conn.awarenessClients.size > 0) {
       removeAwarenessStates(this.awareness, Array.from(conn.awarenessClients), 'connection-closed');
     }
+    this.audit(conn.principal, 'disconnect', '');
   }
 
   /** Receive a binary message from a peer and dispatch it. */
@@ -112,10 +164,21 @@ export class Room {
         const enc = encoding.createEncoder();
         encoding.writeVarUint(enc, MESSAGE_SYNC);
         const replyType = syncProtocol.readSyncMessage(decoder, enc, this.doc, conn);
-        // Server only forwards updates from peers with write capability.
-        if (replyType === syncProtocol.messageYjsUpdate && !canWrite(conn.principal)) {
-          // Reject: silently drop.
-          return;
+        // Updates require write capability + a fresh rate-limit token.
+        if (replyType === syncProtocol.messageYjsUpdate) {
+          if (!canWrite(conn.principal)) {
+            this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'role' });
+            return;
+          }
+          if (conn.limiter && !conn.limiter.tryConsume(1)) {
+            this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'rate-limit' });
+            return;
+          }
+          this.audit(conn.principal, 'update', shortHash(msg), { bytes: msg.byteLength });
+        } else if (replyType === syncProtocol.messageYjsSyncStep1) {
+          this.audit(conn.principal, 'sync-step1', '');
+        } else if (replyType === syncProtocol.messageYjsSyncStep2) {
+          this.audit(conn.principal, 'sync-step2', '');
         }
         if (encoding.length(enc) > 1) {
           safeSend(conn.ws, encoding.toUint8Array(enc));
@@ -125,6 +188,7 @@ export class Room {
       case MESSAGE_AWARENESS: {
         const update = decoding.readVarUint8Array(decoder);
         applyAwarenessUpdate(this.awareness, update, conn);
+        this.audit(conn.principal, 'awareness', shortHash(update));
         break;
       }
       default:

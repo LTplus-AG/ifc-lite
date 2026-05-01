@@ -26,9 +26,11 @@ describe('end-to-end sync', () => {
     const docB = new Y.Doc();
     const provA = new WebsocketProvider(url, 'room-1', docA, {
       WebSocketPolyfill: WebSocket as never,
+      disableBc: true,
     });
     const provB = new WebsocketProvider(url, 'room-1', docB, {
       WebSocketPolyfill: WebSocket as never,
+      disableBc: true,
     });
 
     const synced = (p: WebsocketProvider) =>

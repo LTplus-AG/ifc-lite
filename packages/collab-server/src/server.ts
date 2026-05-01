@@ -11,6 +11,8 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager, type PeerConnection } from './room-manager.js';
 import { FilePersistence, MemoryPersistence, type Persistence } from './persistence.js';
 import { allowAnonymousEditor, type AuthenticateFn, type Principal } from './auth.js';
+import { type AuditSink } from './audit-log.js';
+import { type RateLimitOptions } from './rate-limit.js';
 
 export interface StartCollabServerOptions {
   port?: number;
@@ -21,6 +23,10 @@ export interface StartCollabServerOptions {
   compactEvery?: number;
   /** Pre-built http server to attach to instead of creating one. */
   server?: http.Server;
+  /** Append-only audit sink. Default: drop all events. */
+  auditSink?: AuditSink;
+  /** Per-peer rate limit. Function form lets you tune by role/user. */
+  rateLimit?: RateLimitOptions | ((principal: Principal) => RateLimitOptions);
 }
 
 export interface CollabServerHandle {
@@ -42,6 +48,8 @@ export async function startCollabServer(
     persistence,
     maxRooms: opts.maxRooms,
     compactEvery: opts.compactEvery,
+    auditSink: opts.auditSink,
+    rateLimit: opts.rateLimit,
   });
 
   const httpServer =

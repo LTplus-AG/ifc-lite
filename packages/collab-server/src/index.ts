@@ -28,3 +28,16 @@ export {
   type RoomManagerOptions,
   type PeerConnection,
 } from './room-manager.js';
+export {
+  MemoryAuditSink,
+  noopAuditSink,
+  shortHash,
+  type AuditEntry,
+  type AuditOpType,
+  type AuditSink,
+} from './audit-log.js';
+export {
+  createRateLimiter,
+  type RateLimitOptions,
+  type RateLimiter,
+} from './rate-limit.js';

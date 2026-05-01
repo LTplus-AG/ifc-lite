@@ -23,7 +23,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 
-export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57';
+export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
 /**
  * IfcTypeEnum.IfcGeographicElement — the closest IFC4 entity for a scan
@@ -184,7 +184,8 @@ export function detectPointCloudFormat(
 ): PointCloudFormat | null {
   // Magic bytes win over extension when both are available — a LAS
   // file dropped as `*.ply` should still load as LAS, not be forced
-  // through the wrong decoder.
+  // through the wrong decoder. PTS / XYZ are ASCII so they have no
+  // distinctive magic and stay extension-only at the bottom.
   if (buffer && buffer.byteLength >= 8) {
     const view = new DataView(buffer, 0, Math.min(buffer.byteLength, 32));
     // E57 magic = "ASTM-E57" (8 bytes) — check before LAS so files
@@ -208,13 +209,16 @@ export function detectPointCloudFormat(
     if (b0 === 0x70 /* p */ && b1 === 0x6c /* l */ && b2 === 0x79 /* y */) return 'ply';
     if (b0 === 0x23 /* # */ && view.byteLength > 4 && view.getUint8(2) === 0x2e /* . */) return 'pcd';
   }
-  // Fall back to extension when the buffer is missing / too short.
+  // Fall back to extension when the buffer is missing / too short
+  // OR for ASCII formats (PTS / XYZ) that don't carry a magic header.
   const lower = fileName.toLowerCase();
   if (lower.endsWith('.las')) return 'las';
   if (lower.endsWith('.laz')) return 'laz';
   if (lower.endsWith('.ply')) return 'ply';
   if (lower.endsWith('.pcd')) return 'pcd';
   if (lower.endsWith('.e57')) return 'e57';
+  if (lower.endsWith('.pts')) return 'pts';
+  if (lower.endsWith('.xyz')) return 'xyz';
   return null;
 }
 
@@ -239,9 +243,6 @@ export function describeUnsupportedFormat(fileName: string): string | null {
   if (lower.endsWith('.skp')) return 'SketchUp model — not a point cloud.';
   if (lower.endsWith('.fls') || lower.endsWith('.lsproj')) {
     return 'Faro Scene project — export to E57 from Scene to load it here.';
-  }
-  if (lower.endsWith('.pts') || lower.endsWith('.xyz')) {
-    return 'PTS / XYZ ASCII points — not yet supported (export to PLY or LAS).';
   }
   return null;
 }

@@ -461,7 +461,7 @@ export function useIfcFederation() {
       // depends on persisting it onto the FederatedModel record.
       let pointCloudHandleId: number | undefined;
 
-      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
         const renderer = getGlobalRenderer();
         if (!renderer) {
           setError('Renderer not initialised — try again after the viewer mounts.');

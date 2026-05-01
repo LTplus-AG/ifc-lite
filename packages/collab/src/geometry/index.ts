@@ -5,3 +5,5 @@
 export * from './blob-store.js';
 export * from './csg.js';
 export * from './gc.js';
+export * from './parametric.js';
+export * from './determinism.js';

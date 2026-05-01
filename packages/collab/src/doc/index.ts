@@ -4,6 +4,7 @@
 
 export * from './schema.js';
 export * from './schema-version.js';
+export * from './migration-ifc4-to-ifc4x3.js';
 export * from './entity.js';
 export * from './relationship.js';
 export * from './geometry.js';

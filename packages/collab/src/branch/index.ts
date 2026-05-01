@@ -4,3 +4,5 @@
 
 export * from './branch.js';
 export * from './history.js';
+export * from './history-automerge.js';
+export * from './branch-tree.js';

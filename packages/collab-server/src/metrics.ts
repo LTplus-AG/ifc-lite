@@ -20,9 +20,11 @@
 export type LabelValues = Record<string, string>;
 
 interface MetricEntry {
-  type: 'counter' | 'gauge' | 'histogram-sum' | 'histogram-count';
+  type: 'counter' | 'gauge' | 'histogram-sum' | 'histogram-count' | 'histogram-bucket';
   help: string;
   values: Map<string, number>;
+  /** Bucket upper bounds for histograms (sorted ascending). */
+  buckets?: readonly number[];
 }
 
 function labelKey(labels: LabelValues): string {
@@ -80,8 +82,8 @@ export class MetricsRegistry {
 
   /**
    * Tiny histogram: tracks `sum` and `count`. Apps can compute average
-   * client-side. Real bucketed histograms will land alongside the
-   * Prometheus integration in v0.5+.
+   * client-side. Real bucketed histograms are also available via
+   * `bucketedHistogram(name, buckets, help)`.
    */
   histogram(name: string, help: string) {
     const sumName = `${name}_sum`;
@@ -103,12 +105,57 @@ export class MetricsRegistry {
     };
   }
 
+  /**
+   * Prometheus-style bucketed histogram. `buckets` are upper bounds
+   * (e.g. `[5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000]`). Each
+   * observation increments every bucket whose upper bound it doesn't
+   * exceed, plus `sum` and `count`. Render output uses the
+   * conventional `<name>_bucket{le="<bound>"}` labels.
+   */
+  bucketedHistogram(name: string, buckets: readonly number[], help: string) {
+    if (buckets.length === 0) {
+      throw new Error(`@ifc-lite/collab-server: bucketedHistogram requires at least one bucket`);
+    }
+    const sortedBuckets = [...buckets].sort((a, b) => a - b);
+    const sumName = `${name}_sum`;
+    const countName = `${name}_count`;
+    const bucketName = `${name}_bucket`;
+    const sum = this.ensure(sumName, 'histogram-sum', help);
+    const count = this.ensure(countName, 'histogram-count', help);
+    const bucketEntry = this.ensure(bucketName, 'histogram-bucket', help);
+    bucketEntry.buckets = sortedBuckets;
+
+    return {
+      observe: (value: number, labels: LabelValues = {}) => {
+        const key = labelKey(labels);
+        sum.values.set(key, (sum.values.get(key) ?? 0) + value);
+        count.values.set(key, (count.values.get(key) ?? 0) + 1);
+        for (const b of sortedBuckets) {
+          if (value <= b) {
+            const bucketKey = labelKey({ ...labels, le: String(b) });
+            bucketEntry.values.set(bucketKey, (bucketEntry.values.get(bucketKey) ?? 0) + 1);
+          }
+        }
+        // +Inf bucket — every observation counts.
+        const infKey = labelKey({ ...labels, le: '+Inf' });
+        bucketEntry.values.set(infKey, (bucketEntry.values.get(infKey) ?? 0) + 1);
+      },
+      buckets: sortedBuckets,
+    };
+  }
+
   /** Render the full registry as Prometheus text format. */
   render(): string {
     const lines: string[] = [];
     for (const [name, m] of this.metrics) {
       lines.push(`# HELP ${name} ${m.help}`);
-      lines.push(`# TYPE ${name} ${m.type === 'counter' ? 'counter' : m.type === 'gauge' ? 'gauge' : 'gauge'}`);
+      const renderedType =
+        m.type === 'counter'
+          ? 'counter'
+          : m.type === 'histogram-bucket'
+            ? 'histogram'
+            : 'gauge';
+      lines.push(`# TYPE ${name} ${renderedType}`);
       if (m.values.size === 0) {
         lines.push(`${name} 0`);
         continue;

@@ -20,6 +20,11 @@ export {
   type S3Commands,
 } from './persistence-s3.js';
 export {
+  RedisPersistence,
+  type RedisPersistenceOptions,
+  type RedisLikeClient,
+} from './persistence-redis.js';
+export {
   type AuthenticateFn,
   type Principal,
   type Role,

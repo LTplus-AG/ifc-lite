@@ -6,3 +6,4 @@ export * from './presence.js';
 export * from './color.js';
 export * from './agent.js';
 export * from './render.js';
+export * from './overlay.js';

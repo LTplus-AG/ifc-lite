@@ -30,6 +30,12 @@ export {
   type WebSocketProviderOptions,
   type WebSocketStatus,
 } from './providers/websocket.js';
+export {
+  createWebRtcProvider,
+  type WebRtcProvider,
+  type WebRtcProviderOptions,
+  type WebRtcStatus,
+} from './providers/webrtc.js';
 
 // Sync helpers
 export * from './sync/room.js';

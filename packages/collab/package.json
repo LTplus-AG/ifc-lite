@@ -37,6 +37,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@automerge/automerge": "^3.2.6",
     "@ifc-lite/ifcx": "workspace:^",
     "lib0": "^0.2.99",
     "y-indexeddb": "^9.0.12",

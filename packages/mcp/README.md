@@ -20,7 +20,44 @@ npx @ifc-lite/mcp ./model.ifc --read-only
 
 # HTTP / Streamable HTTP for remote agents
 npx @ifc-lite/mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+
+# Auto-open the WebGL viewer at startup. Add --open to also pop the URL in
+# the system browser.
+npx @ifc-lite/mcp ./model.ifc --viewer
+npx @ifc-lite/mcp ./model.ifc --open
 ```
+
+## 3D viewer integration
+
+The server bundles the same WebGL viewer used by `ifc-lite view`. Once it is
+open, every viewer-touching tool (`viewer_colorize`, `viewer_isolate`,
+`viewer_fly_to`, …) drives the live scene, and any element the user clicks
+in the browser flows back to MCP.
+
+### From a chat (the typical flow)
+
+The agent should follow this etiquette by default:
+
+1. Call `viewer_ask` with a `reason`. The tool returns suggested wording so
+   the agent can ask the user for permission.
+2. After the user agrees, call `viewer_open`. The result includes the URL
+   to share with the user.
+3. Drive the visualization (`viewer_colorize`, `viewer_color_by_property`,
+   `viewer_isolate`, `viewer_fly_to`, `viewer_set_section`).
+4. Subscribe to `ifc-lite://viewer/selection` (via `resources/subscribe`)
+   to be notified whenever the user picks an element. `viewer_get_selection`
+   reads the latest pick directly; `viewer_wait_for_selection` blocks until
+   the next click.
+5. `viewer_close` when done.
+
+### Pre-baked prompts
+
+- `visual_audit` — opens the viewer, runs `model_audit`, paints issues by
+  severity, frames the worst offender.
+- `interactive_property_inspect` — opens the viewer, waits for a click,
+  then explains everything we know about the picked entity.
+- `visualize_query` — runs a query, color-codes matches by property value,
+  flies the camera to the result.
 
 You can also reach it via the unified CLI:
 
@@ -62,6 +99,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb` (v0.2), `export_ifcx` (v0.2), `export_pdf_report` (v0.5) |
 | LCA | `lca_compute`, `lca_per_element`, `lca_what_if` |
+| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection` |
 
 Resources expose live model state under the `ifc-lite://` URI scheme:
 
@@ -72,13 +110,16 @@ ifc-lite://model/{model_id}/entity/{global_id}
 ifc-lite://model/{model_id}/spatial-tree
 ifc-lite://model/{model_id}/materials
 ifc-lite://model/{model_id}/property-sets
+ifc-lite://viewer/status         (open/closed, port, client count)
+ifc-lite://viewer/selection      (live; supports `resources/subscribe` for push updates)
 ```
 
 Pre-baked prompts ship the BIM expertise:
 
 `audit_model`, `find_fire_rated_doors`, `generate_bcf_from_ids`,
 `lca_quick_look`, `compare_versions`, `space_program_check`,
-`clash_review`, `prop_quality_pass`, `migrate_to_ifcx`.
+`clash_review`, `prop_quality_pass`, `migrate_to_ifcx`,
+`visual_audit`, `interactive_property_inspect`, `visualize_query`.
 
 ## Programmatic embedding
 

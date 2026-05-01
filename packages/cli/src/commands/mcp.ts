@@ -41,10 +41,15 @@ export async function mcpCommand(args: string[]): Promise<void> {
         '  --token <bearer>       HTTP token for full scope',
         '  --bsdd <url>           Override bSDD endpoint',
         '  --allow <path>         Restrict file-system access',
+        '  --viewer               Auto-open the 3D viewer.',
+        '  --viewer-port <n>      Preferred viewer port (0 = auto).',
+        '  --open                 Auto-open viewer AND open the URL in your browser.',
         '',
         'Examples:',
         '  ifc-lite mcp ./model.ifc',
         '  ifc-lite mcp --read-only ./model.ifc',
+        '  ifc-lite mcp --viewer ./model.ifc',
+        '  ifc-lite mcp --open ./model.ifc',
         '  ifc-lite mcp --transport http --port 8765 --token abc ./model.ifc',
       ].join('\n') + '\n',
     );
@@ -57,6 +62,9 @@ export async function mcpCommand(args: string[]): Promise<void> {
   const token = getFlag(args, '--token');
   const bsdd = getFlag(args, '--bsdd');
   const readOnly = hasFlag(args, '--read-only');
+  const autoViewer = hasFlag(args, '--viewer') || hasFlag(args, '--open');
+  const openBrowser = hasFlag(args, '--open');
+  const viewerPort = Number(getFlag(args, '--viewer-port') ?? 0);
   const allowedPaths = getAllFlags(args, '--allow').map((p) => resolve(p));
   const files = args.filter((a) => !a.startsWith('-')).map((a) => resolve(a));
   const scope: AuthScope = readOnly ? readOnlyScope() : fullScope();
@@ -78,6 +86,8 @@ export async function mcpCommand(args: string[]): Promise<void> {
         bsddEndpoint: bsdd,
         allowedPaths: allowedPaths.length > 0 ? allowedPaths : undefined,
         samplingEnabled: false,
+        autoOpenViewer: autoViewer,
+        viewerPort,
       },
       logger: {
         log(level, message, data) {
@@ -89,6 +99,29 @@ export async function mcpCommand(args: string[]): Promise<void> {
     const t = new StdioTransport();
     await t.connect(server);
     process.stderr.write(`[ifc-lite mcp] ready on stdio (${registry.count()} model${registry.count() === 1 ? '' : 's'}, read-only=${readOnly})\n`);
+
+    if (autoViewer && registry.count() > 0) {
+      const first = registry.list()[0];
+      try {
+        const state = await server.viewer.open(first, viewerPort);
+        const adapters = server.viewer.adapters();
+        if (adapters) first.backend.attachStreamingAdapters(adapters.viewer, adapters.visibility);
+        process.stderr.write(`[ifc-lite mcp] viewer ready at ${state.url}\n`);
+        if (openBrowser) {
+          const cmd = process.platform === 'darwin' ? 'open'
+            : process.platform === 'win32' ? 'start'
+            : 'xdg-open';
+          try {
+            const { spawn } = await import('node:child_process');
+            spawn(cmd, [state.url], { detached: true, stdio: 'ignore' }).unref();
+          } catch (err) {
+            process.stderr.write(`[ifc-lite mcp] could not auto-open browser: ${(err as Error).message}\n`);
+          }
+        }
+      } catch (err) {
+        process.stderr.write(`[ifc-lite mcp] viewer auto-open failed: ${(err as Error).message}\n`);
+      }
+    }
   } else if (transport === 'http') {
     const sessionFactory: SessionFactory = {
       build(scopeForSession) {

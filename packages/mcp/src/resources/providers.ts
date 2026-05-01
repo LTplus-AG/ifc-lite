@@ -217,8 +217,56 @@ class ServerManifestProvider implements ResourceProvider {
       readOnly: ctx.config.readOnly,
       samplingEnabled: ctx.config.samplingEnabled,
       bsddEndpoint: ctx.config.bsddEndpoint ?? 'https://api.bsdd.buildingsmart.org',
+      viewerOpen: ctx.viewer?.isOpen() ?? false,
       modelsLoaded: ctx.registry.list().map((m) => ({ id: m.id, name: m.name, schema: m.store.schemaVersion })),
     })];
+  }
+}
+
+class ViewerSelectionProvider implements ResourceProvider {
+  name = 'viewer-selection';
+  list(): ResourceDefinition[] {
+    return [{
+      uri: `${URI_PREFIX}viewer/selection`,
+      name: 'Viewer selection (live)',
+      description: 'Entity the user has clicked in the 3D viewer. Subscribe to receive `notifications/resources/updated` on every pick.',
+      mimeType: 'application/json',
+    }];
+  }
+  match(uri: string): boolean {
+    return uri === `${URI_PREFIX}viewer/selection` || /^ifc-lite:\/\/model\/[^/]+\/viewer\/selection$/.test(uri);
+  }
+  read(uri: string, ctx: ToolContext): ResourceContents[] {
+    const state = ctx.viewer?.state();
+    if (!state) {
+      return [jsonContents(uri, { open: false, selection: [] })];
+    }
+    return [jsonContents(uri, {
+      open: true,
+      modelId: state.modelId,
+      url: state.url,
+      port: state.port,
+      selection: state.selection,
+    })];
+  }
+}
+
+class ViewerStatusProvider implements ResourceProvider {
+  name = 'viewer-status';
+  list(): ResourceDefinition[] {
+    return [{
+      uri: `${URI_PREFIX}viewer/status`,
+      name: 'Viewer status',
+      description: 'Whether the viewer is open, on what port, and how many browser clients are connected.',
+      mimeType: 'application/json',
+    }];
+  }
+  match(uri: string): boolean {
+    return uri === `${URI_PREFIX}viewer/status`;
+  }
+  read(uri: string, ctx: ToolContext): ResourceContents[] {
+    const state = ctx.viewer?.state();
+    return [jsonContents(uri, state ?? { open: false })];
   }
 }
 
@@ -230,5 +278,7 @@ export function defaultResourceProviders(): ResourceProvider[] {
     new SpatialTreeProvider(),
     new MaterialsProvider(),
     new PropertySetsProvider(),
+    new ViewerSelectionProvider(),
+    new ViewerStatusProvider(),
   ];
 }

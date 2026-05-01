@@ -70,6 +70,7 @@ import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
 import { ToolRegistry } from './tools/types.js';
 import { validateInput } from './validate.js';
+import { ViewerManager } from './viewer-manager.js';
 
 export const SERVER_NAME = 'ifc-lite-mcp';
 
@@ -89,6 +90,8 @@ export interface MCPServerOptions {
   logger?: Logger;
   /** Override which capabilities are advertised. */
   capabilities?: ServerCapabilities;
+  /** Optional pre-built viewer manager. Default: a fresh one bound to the registry. */
+  viewer?: ViewerManager;
 }
 
 export class MCPServer {
@@ -99,6 +102,7 @@ export class MCPServer {
   readonly resources: ResourceRegistry;
   readonly prompts: PromptRegistry;
   readonly config: ServerConfig;
+  readonly viewer: ViewerManager;
 
   private scope: AuthScope;
   private logger: Logger;
@@ -126,6 +130,16 @@ export class MCPServer {
       prompts: { listChanged: false },
       logging: {},
     };
+    this.viewer = opts.viewer ?? new ViewerManager((id) => (id ? this.registry.get(id) : null));
+    // Selection changes ripple out as resource updates so subscribed agents
+    // see live picks without polling.
+    this.viewer.onSelection((_sel, model) => {
+      const uri = model
+        ? `ifc-lite://model/${model.id}/viewer/selection`
+        : 'ifc-lite://viewer/selection';
+      this.notifyResourceUpdated(uri);
+      this.notifyResourceUpdated('ifc-lite://viewer/selection');
+    });
   }
 
   /** Attach an outgoing-message sink. Required before handling messages. */
@@ -137,6 +151,9 @@ export class MCPServer {
     this.sink = null;
     this.active.forEach((c) => c.abort());
     this.active.clear();
+    // The viewer holds an HTTP server + SSE listener; closing it stops
+    // dangling sockets when the transport disconnects.
+    if (this.viewer.isOpen()) this.viewer.close();
   }
 
   /** Update the auth scope mid-session (e.g. token refresh). */
@@ -322,6 +339,7 @@ export class MCPServer {
       log: this.logger,
       signal: ctl.signal,
       config: this.config,
+      viewer: this.viewer,
     };
 
     const startedAt = Date.now();
@@ -401,6 +419,7 @@ export class MCPServer {
       log: this.logger,
       signal: new AbortController().signal,
       config: this.config,
+      viewer: this.viewer,
     };
   }
 

@@ -21,6 +21,7 @@ import type { BimContext } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { AuthScope } from './auth/scope.js';
 import type { HeadlessLikeBackend } from './headless-backend.js';
+import type { ViewerManager } from './viewer-manager.js';
 
 export interface LoadedModel {
   id: string;
@@ -108,6 +109,8 @@ export interface ToolContext {
   signal: AbortSignal;
   /** Server-wide config (read-only flag, bSDD endpoint, allowed paths, …). */
   config: ServerConfig;
+  /** Optional: present when the server has a managed in-process viewer. */
+  viewer?: ViewerManager;
 }
 
 export interface ServerConfig {
@@ -117,6 +120,10 @@ export interface ServerConfig {
   allowedPaths?: string[];
   /** Sampling capability is opt-in per spec §10. */
   samplingEnabled: boolean;
+  /** When true, the MCP CLI auto-opens the viewer at startup. */
+  autoOpenViewer?: boolean;
+  /** Preferred viewer port (0 = auto). */
+  viewerPort?: number;
 }
 
 export const DEFAULT_CONFIG: ServerConfig = {

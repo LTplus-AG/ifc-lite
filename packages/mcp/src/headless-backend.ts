@@ -112,8 +112,14 @@ export class HeadlessLikeBackend implements BimBackend {
   readonly model: ModelBackendMethods;
   readonly query: QueryBackendMethods;
   readonly selection: SelectionBackendMethods;
-  readonly visibility: VisibilityBackendMethods;
-  readonly viewer: ViewerBackendMethods;
+  /**
+   * Mutable so the MCP server can swap in streaming adapters when the
+   * viewer subprocess starts, then revert when it closes. Marked
+   * `readonly` on the BimBackend interface but the underlying instance
+   * is ours to manage.
+   */
+  visibility: VisibilityBackendMethods;
+  viewer: ViewerBackendMethods;
   readonly mutate: MutateBackendMethods;
   readonly store: StoreBackendMethods;
   readonly spatial: SpatialBackendMethods;
@@ -345,6 +351,22 @@ export class HeadlessLikeBackend implements BimBackend {
   /** Force creation of the editor (used by mutation tools that always need it). */
   ensureEditor(): StoreEditor {
     return this.getOrCreateStoreEditor();
+  }
+
+  /** Replace the viewer/visibility adapters at runtime (for ViewerManager). */
+  attachStreamingAdapters(viewer: ViewerBackendMethods, visibility: VisibilityBackendMethods): void {
+    this.viewer = viewer;
+    this.visibility = visibility;
+  }
+
+  /** Restore no-op viewer/visibility adapters (for ViewerManager close). */
+  detachStreamingAdapters(): void {
+    this.viewer = {
+      colorize() {}, colorizeAll() {}, resetColors() {},
+      flyTo() {}, setSection() {}, getSection() { return null; },
+      setCamera() {}, getCamera() { return { mode: 'perspective' as const }; },
+    };
+    this.visibility = { hide() {}, show() {}, isolate() {}, reset() {} };
   }
 
   private createStoreAdapter(): StoreBackendMethods {

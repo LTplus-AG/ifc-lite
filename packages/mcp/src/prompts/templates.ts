@@ -201,6 +201,74 @@ export const migrateToIfcx: Prompt = {
   },
 };
 
+export const visualAudit: Prompt = {
+  name: 'visual_audit',
+  description: 'Open the 3D viewer, run model_audit, and paint problem entities so the user can see them at a glance.',
+  arguments: [{ name: 'model_id', required: false }],
+  render(args) {
+    return {
+      description: 'Visual model audit',
+      messages: [
+        userMessage(
+          [
+            'Workflow:',
+            `1. \`viewer_ask\` (reason: "to highlight audit issues"). Wait for the user to confirm before opening.`,
+            `2. \`viewer_open\`${args.model_id ? ` with model_id="${args.model_id}"` : ''}. Tell the user the URL.`,
+            `3. \`model_audit\`. For each ERROR, find the entities with \`query_entities\` and \`viewer_colorize\` them red. For warnings, orange.`,
+            `4. \`viewer_fly_to\` the worst issue so it's framed when the user opens the browser.`,
+            `5. End with: "Pick any element in the viewer and I'll explain it." Then \`viewer_wait_for_selection\` and explain via \`get_entity\`.`,
+          ].join('\n'),
+        ),
+      ],
+    };
+  },
+};
+
+export const interactivePropertyInspect: Prompt = {
+  name: 'interactive_property_inspect',
+  description: 'Open the viewer, wait for the user to click an entity, then explain everything we know about it.',
+  arguments: [{ name: 'model_id', required: false }],
+  render(args) {
+    return {
+      description: 'Inspect what the user picks',
+      messages: [
+        userMessage([
+          `1. Confirm with \`viewer_ask\` (reason: "so you can pick the element you want me to inspect").`,
+          `2. \`viewer_open\`${args.model_id ? ` with model_id="${args.model_id}"` : ''}.`,
+          `3. \`viewer_wait_for_selection\` (timeout 120 s).`,
+          `4. Once a pick lands, run \`get_entity\` with include=["attributes","properties","quantities","classifications","materials","relationships"].`,
+          `5. Summarize for the user: type, GlobalId, name, key properties, materials, parent storey. Offer follow-ups (similar elements, BCF topic, bSDD lookup).`,
+        ].join('\n')),
+      ],
+    };
+  },
+};
+
+export const visualizeQuery: Prompt = {
+  name: 'visualize_query',
+  description: 'Run a query, then color-code matching entities so the user can see them.',
+  arguments: [
+    { name: 'type', required: true },
+    { name: 'pset', required: false },
+    { name: 'property', required: false },
+  ],
+  render(args) {
+    return {
+      description: `Visualize ${args.type}`,
+      messages: [
+        userMessage([
+          `1. \`viewer_ask\` if not already open.`,
+          `2. \`viewer_open\` if confirmed.`,
+          args.pset && args.property
+            ? `3. \`viewer_color_by_property\` with type="${args.type}", pset="${args.pset}", property="${args.property}". Share the legend.`
+            : `3. \`viewer_isolate\` with type="${args.type}". Tell the user how many were highlighted.`,
+          `4. \`viewer_fly_to\` the result set.`,
+        ].join('\n')),
+      ],
+    };
+  },
+};
+
 export const allPrompts: Prompt[] = [
   auditModel,
   findFireRatedDoors,
@@ -211,4 +279,7 @@ export const allPrompts: Prompt[] = [
   clashReview,
   propQualityPass,
   migrateToIfcx,
+  visualAudit,
+  interactivePropertyInspect,
+  visualizeQuery,
 ];

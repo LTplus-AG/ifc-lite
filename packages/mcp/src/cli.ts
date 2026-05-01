@@ -32,6 +32,9 @@ interface CliOptions {
   token?: string;
   bsdd?: string;
   allowedPaths?: string[];
+  autoViewer: boolean;
+  viewerPort: number;
+  openBrowser: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -42,6 +45,9 @@ function parseArgs(argv: string[]): CliOptions {
     transport: 'stdio',
     port: 8765,
     host: '0.0.0.0',
+    autoViewer: false,
+    viewerPort: 0,
+    openBrowser: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -52,6 +58,9 @@ function parseArgs(argv: string[]): CliOptions {
     else if (arg === '--host') opts.host = argv[++i] ?? '0.0.0.0';
     else if (arg === '--token') opts.token = argv[++i];
     else if (arg === '--bsdd') opts.bsdd = argv[++i];
+    else if (arg === '--viewer') opts.autoViewer = true;
+    else if (arg === '--viewer-port') opts.viewerPort = Number(argv[++i] ?? 0);
+    else if (arg === '--open') { opts.autoViewer = true; opts.openBrowser = true; }
     else if (arg === '--allow') {
       const path = argv[++i];
       if (path) (opts.allowedPaths ??= []).push(resolve(path));
@@ -84,6 +93,10 @@ function printHelp(): void {
                             Can be repeated to register multiple read-only tokens.
     --bsdd <url>            Override bSDD endpoint.
     --allow <glob>          Restrict file-system access for stdio mode.
+    --viewer                Auto-open the in-process WebGL viewer at startup.
+    --viewer-port <n>       Preferred viewer port (0 = auto).
+    --open                  Implies --viewer; also tries to open the URL in
+                            the default browser via the OS opener.
     --version, -v           Print version.
     --help, -h              This message.
 
@@ -127,6 +140,8 @@ async function main(): Promise<void> {
         bsddEndpoint: opts.bsdd,
         allowedPaths: opts.allowedPaths,
         samplingEnabled: false,
+        autoOpenViewer: opts.autoViewer,
+        viewerPort: opts.viewerPort,
       },
       logger: {
         log(level, message, data) {
@@ -138,6 +153,31 @@ async function main(): Promise<void> {
     const transport = new StdioTransport();
     await transport.connect(server);
     process.stderr.write(`[ifc-lite-mcp] ready on stdio (read-only=${opts.readOnly})\n`);
+
+    if (opts.autoViewer && registry.count() > 0) {
+      const first = registry.list()[0];
+      try {
+        const state = await server.viewer.open(first, opts.viewerPort);
+        const adapters = server.viewer.adapters();
+        if (adapters) first.backend.attachStreamingAdapters(adapters.viewer, adapters.visibility);
+        process.stderr.write(`[ifc-lite-mcp] viewer ready at ${state.url}\n`);
+        if (opts.openBrowser) {
+          const cmd = process.platform === 'darwin' ? 'open'
+            : process.platform === 'win32' ? 'start'
+            : 'xdg-open';
+          try {
+            const { spawn } = await import('node:child_process');
+            spawn(cmd, [state.url], { detached: true, stdio: 'ignore' }).unref();
+          } catch (err) {
+            process.stderr.write(`[ifc-lite-mcp] could not auto-open browser: ${(err as Error).message}\n`);
+          }
+        }
+      } catch (err) {
+        process.stderr.write(`[ifc-lite-mcp] viewer auto-open failed: ${(err as Error).message}\n`);
+      }
+    } else if (registry.count() > 0) {
+      process.stderr.write(`[ifc-lite-mcp] viewer is opt-in. Tell the agent to call \`viewer_ask\` and then \`viewer_open\`, or restart with --viewer to auto-open.\n`);
+    }
   } else if (opts.transport === 'http') {
     const sessionFactory: SessionFactory = {
       build(scopeForSession) {

@@ -852,6 +852,9 @@ importers:
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk
+      '@ifc-lite/viewer-core':
+        specifier: workspace:^
+        version: link:../viewer
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.28

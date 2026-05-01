@@ -40,6 +40,8 @@ export type { HttpTransportOptions, HttpAuthenticator, SessionFactory } from './
 export { loadIfcModel } from './loader.js';
 export type { LoadIfcOptions } from './loader.js';
 export { HeadlessLikeBackend } from './headless-backend.js';
+export { ViewerManager } from './viewer-manager.js';
+export type { ViewerState, SelectionEvent, SelectionListener } from './viewer-manager.js';
 
 import { MCPServer, type MCPServerOptions } from './server.js';
 import { buildDefaultToolRegistry } from './tools/index.js';

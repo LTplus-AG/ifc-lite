@@ -7,3 +7,4 @@ export * from './schema-version.js';
 export * from './entity.js';
 export * from './relationship.js';
 export * from './geometry.js';
+export * from './units.js';

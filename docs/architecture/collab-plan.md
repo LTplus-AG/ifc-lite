@@ -152,9 +152,10 @@ tab, see edits restored, export `.ifcx`, diff against expected fixture.
 > **Status: ◐ Mostly landed.** The websocket provider, awareness/presence
 > types, sync server (`y-protocols/sync` over `ws`), in-memory + file
 > persistence, JWT auth hook, healthcheck, and end-to-end two-client
-> convergence test are all in. The remaining v0.2 items are viewer-side
-> rendering of cursors / selection outlines (consumed by `packages/viewer`)
-> and the latency-simulation perf harness.
+> convergence test are all in. The latency-simulation perf harness now
+> ships as `createLatencyChannel(a, b, { baseMs, jitterMs, dropRate })`.
+> The remaining v0.2 item is viewer-side rendering of cursors /
+> selection outlines (consumed by `packages/viewer`).
 
 **Goal:** Two browsers in the same room see each other's edits and cursors in
 real time over a websocket.
@@ -305,13 +306,18 @@ the websocket.
 
 ## 4. Phase v0.4 — Federation (4 weeks)
 
-> **Status: ◐ Core landed.** `FederationSession` (`createFederationSession`)
-> hosts N model-room `CollabSession`s plus a shared `_federation` Y.Doc
-> for cross-model `FederationRecord`s (clash, RFI, view, BCF refs).
-> Presence is project-scoped via the `_federation` doc per §10.2. Still
-> pending: integration with the existing in-tree `FederationRegistry`
-> for globalId resolution, and the viewer's federation-aware avatar
-> rendering.
+> **Status: ◐ Core + resolver interface landed.** `FederationSession`
+> (`createFederationSession`) hosts N model-room `CollabSession`s plus
+> a shared `_federation` Y.Doc for cross-model `FederationRecord`s
+> (clash, RFI, view, BCF refs). Presence is project-scoped via the
+> `_federation` doc per §10.2. **`FederationResolver`** is now a typed
+> interface with `passThroughResolver` (default for IFCX UUID paths)
+> and `createMapBackedResolver(table)` (for explicit
+> `globalId → (modelId, localId)` lookups). The renderer's existing
+> numeric-offset `FederationRegistry` can be wrapped to satisfy this
+> interface without `@ifc-lite/collab` taking a hard dependency on the
+> renderer (adapter snippet documented in `federation/resolver.ts`).
+> Still pending: viewer-side federation-aware avatar rendering.
 
 **Goal:** Multi-model rooms work; cross-model relationships and project-wide
 presence behave per §10.
@@ -457,14 +463,16 @@ viewer sees the agent's cursor, the mutation, and the audit-log entry.
 
 ## 7. Phase v0.7 — Branching (6 weeks)
 
-> **Status: ◐ Starter landed.** `forkSession(parent, { name })` snapshots
-> the parent, seeds a sibling room, and stamps `meta.parentRoomId` /
-> `branchName` / `forkedAt`. `mergeBranch(parent, branch, strategy)`
-> implements both `'ops'` (Y-update apply) and `'layer'` (IFCX
-> snapshot-and-reseed) strategies, with a small `MergeReport`.
-> `readBranchMeta` reads the round-trip metadata. Still pending: the
-> proper differential layer composer, the Automerge history sidecar,
-> and the branch-tree visualization in apps/.
+> **Status: ◐ Branching + differential composer landed.** `forkSession`
+> snapshots the parent, seeds a sibling room, and stamps
+> `meta.parentRoomId` / `branchName` / `forkedAt`. `mergeBranch`
+> implements both `'ops'` and `'layer'` strategies with a `MergeReport`.
+> **`extractMinimalLayer(doc, baseline, opts)`** now produces minimal
+> IFCX layers expressing the diff between a baseline state vector and
+> the current Y.Doc — entities created since baseline plus only the
+> attribute / children / inherits keys that changed. Still pending:
+> the Automerge history sidecar and the branch-tree visualization in
+> apps/.
 
 **Goal:** Users can fork a live document, edit privately, and merge back —
 either as an IFCX layer or as a Y operation diff. Automerge sidecar holds
@@ -496,16 +504,18 @@ merge, accept it, and the audit log records the merge as a single event.
 
 ## 8. Phase v1.0 — GA (4 weeks)
 
-> **Status: ◐ Schema-migration scaffolding + GDPR helpers landed.**
+> **Status: ◐ Schema migration + units + GDPR helpers landed.**
 > `getSchemaVersion`, `setSchemaVersion`, `registerSchemaMigration`,
-> `migrateSchema`, and `MIGRATION_ORIGIN` give v1.0 a stable plumb for
-> the IFC4 → IFC4X3 → IFC5 migration story (open problem #2).
-> **`exportAndLeave(session, opts)`** runs the GDPR
-> "give-me-a-copy-and-forget-me" flow: snapshot to IFCX, mark presence
-> offline, optional `serverDelete` hook, then dispose. **`redactAuthorMeta`**
-> blanks per-entity `createdBy` / `lastEditedBy` for anonymised exports.
-> The actual IFC schema migrations and E2E encryption are still up to
-> consumers / future work.
+> `migrateSchema`, and `MIGRATION_ORIGIN` plumb the IFC4 → IFC4X3 →
+> IFC5 migration story (open #2). **`convertEntityUnits(doc, from, to)`**
+> walks every Pset and converts numeric `PropertyValue`s with a
+> matching `unit` (length / area / volume / angle, open #3).
+> **`convertValue(value, from, to)`** is exposed for one-shot
+> conversions. **`exportAndLeave(session, opts)`** runs the GDPR
+> "give-me-a-copy-and-forget-me" flow; **`redactAuthorMeta`** blanks
+> per-entity `createdBy` / `lastEditedBy`. The actual IFC schema
+> migrations, E2E encryption, and the long-tail unit families are
+> still future work.
 
 **Goal:** Production-ready with optional E2E encryption.
 

@@ -52,6 +52,12 @@ export interface ConflictUIBridgeOptions {
   closeAfterMs?: number;
 }
 
+export interface ResolutionContext {
+  bucket: ConflictBucket;
+}
+
+export type ResolutionAction = (ctx: ResolutionContext) => void | Promise<void>;
+
 export interface ConflictUIBridge {
   /** All currently-open buckets. */
   active(): ConflictBucket[];
@@ -62,6 +68,19 @@ export interface ConflictUIBridge {
    * dispatches a "keep mine" edit and wants the badge to disappear.
    */
   resolve(key: ConflictBucketKey): boolean;
+  /**
+   * Run the registered "keep mine" callback (if any) and close the
+   * bucket. Apps register the callback per kind via `onKeepMine`. The
+   * callback is responsible for emitting the follow-up CRDT edit that
+   * re-asserts the local user's value.
+   */
+  keepMine(key: ConflictBucketKey): Promise<boolean>;
+  /** Same shape as `keepMine`, but for "accept theirs". */
+  acceptTheirs(key: ConflictBucketKey): Promise<boolean>;
+  /** Register a "keep mine" handler for a given conflict kind. */
+  onKeepMine(kind: ConflictBucket['kind'], action: ResolutionAction): () => void;
+  /** Register an "accept theirs" handler for a given conflict kind. */
+  onAcceptTheirs(kind: ConflictBucket['kind'], action: ResolutionAction): () => void;
   destroy(): void;
 }
 
@@ -79,6 +98,8 @@ export function createConflictUIBridge(
   const closeAfterMs = opts.closeAfterMs ?? 4_000;
   const buckets = new Map<ConflictBucketKey, ConflictBucket>();
   const listeners = new Set<BridgeListener>();
+  const keepMineHandlers = new Map<ConflictBucket['kind'], Set<ResolutionAction>>();
+  const acceptTheirsHandlers = new Map<ConflictBucket['kind'], Set<ResolutionAction>>();
   let timer: ReturnType<typeof setInterval> | null = setInterval(sweep, 1_000);
 
   function bucketKey(e: ConflictEvent): ConflictBucketKey {
@@ -129,6 +150,15 @@ export function createConflictUIBridge(
     if (added) emit('update', bucket);
   });
 
+  async function runActions(
+    table: Map<ConflictBucket['kind'], Set<ResolutionAction>>,
+    bucket: ConflictBucket,
+  ): Promise<void> {
+    const set = table.get(bucket.kind);
+    if (!set || set.size === 0) return;
+    for (const action of set) await action({ bucket });
+  }
+
   return {
     active: () => Array.from(buckets.values()),
     on(listener) {
@@ -142,12 +172,42 @@ export function createConflictUIBridge(
       emit('close', bucket);
       return true;
     },
+    async keepMine(key) {
+      const bucket = buckets.get(key);
+      if (!bucket) return false;
+      await runActions(keepMineHandlers, bucket);
+      buckets.delete(key);
+      emit('close', bucket);
+      return true;
+    },
+    async acceptTheirs(key) {
+      const bucket = buckets.get(key);
+      if (!bucket) return false;
+      await runActions(acceptTheirsHandlers, bucket);
+      buckets.delete(key);
+      emit('close', bucket);
+      return true;
+    },
+    onKeepMine(kind, action) {
+      const set = keepMineHandlers.get(kind) ?? new Set<ResolutionAction>();
+      set.add(action);
+      keepMineHandlers.set(kind, set);
+      return () => set.delete(action);
+    },
+    onAcceptTheirs(kind, action) {
+      const set = acceptTheirsHandlers.get(kind) ?? new Set<ResolutionAction>();
+      set.add(action);
+      acceptTheirsHandlers.set(kind, set);
+      return () => set.delete(action);
+    },
     destroy() {
       unsubscribe();
       if (timer) clearInterval(timer);
       timer = null;
       buckets.clear();
       listeners.clear();
+      keepMineHandlers.clear();
+      acceptTheirsHandlers.clear();
     },
   };
 }

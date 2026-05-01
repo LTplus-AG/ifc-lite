@@ -15,6 +15,10 @@ export {
   filterUpdateByClient,
 } from './layers.js';
 export {
+  extractMinimalLayer,
+  type ExtractMinimalLayerOptions,
+} from './minimal-layer.js';
+export {
   runSnapshotWorker,
   type WorkerRequest,
   type WorkerResponse,

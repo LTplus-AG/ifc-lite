@@ -55,6 +55,9 @@ export * from './branch/index.js';
 // Privacy / GDPR helpers (v1.0)
 export * from './privacy.js';
 
+// Perf / benchmark helpers (v0.2)
+export * from './perf/index.js';
+
 // Top-level session façade
 export {
   createCollabSession,

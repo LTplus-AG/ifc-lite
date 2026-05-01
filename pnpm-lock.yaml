@@ -648,9 +648,15 @@ importers:
       '@automerge/automerge':
         specifier: ^3.2.6
         version: 3.2.6
+      '@ifc-lite/data':
+        specifier: workspace:^
+        version: link:../data
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
+      '@ifc-lite/mutations':
+        specifier: workspace:^
+        version: link:../mutations
       lib0:
         specifier: ^0.2.99
         version: 0.2.117

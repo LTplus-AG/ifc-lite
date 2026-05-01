@@ -58,6 +58,12 @@ export * from './federation/index.js';
 // Branching (v0.7 starter)
 export * from './branch/index.js';
 
+// Mutations bridge (spec §16.3)
+export * from './mutations/index.js';
+
+// Viewer bridge (spec §7 viewer mounting)
+export * from './viewer-bridge.js';
+
 // Privacy / GDPR helpers (v1.0)
 export * from './privacy.js';
 

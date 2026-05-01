@@ -88,6 +88,17 @@ export {
   type SecureHttpServerOptions,
 } from './secure-server.js';
 export {
+  startSecureCollabServer,
+  type StartSecureCollabServerOptions,
+} from './secure-bundle.js';
+export {
+  createPathLockRegistry,
+  harvestUpdatePaths,
+  verifyAgainstPathLocks,
+  type PathLock,
+  type PathLockRegistry,
+} from './path-locks.js';
+export {
   createRateLimiter,
   type RateLimitOptions,
   type RateLimiter,

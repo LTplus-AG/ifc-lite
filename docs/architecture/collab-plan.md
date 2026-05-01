@@ -339,6 +339,16 @@ two of them, see a teammate hover the issue in the third model's viewport.
 
 ## 5. Phase v0.5 — Production (4 weeks)
 
+> **Status: ◐ Operational pieces landed.** `JsonlFileAuditSink` (with
+> size-based rotation), idle room unloading (`idleUnloadMs` plumbed end
+> to end with a `sweepIdle()` method on `RoomManager` and tests), and a
+> retention policy module (`planRetention` + `applyRetention` honoring
+> `fullLogDays`, `snapshotsDays`, and `maxBytesPerRoom`). Auth /
+> per-peer rate limiting / role-based write filtering / blob HTTP route
+> are already in. Still pending: TLS termination wiring, S3 / Redis
+> persistence backends, Prometheus metrics, anti-replay HMAC, and the
+> server-driven IFCX snapshot worker.
+
 **Goal:** The server can be operated. Auth, persistence, observability, and
 periodic IFCX snapshots are all real.
 
@@ -439,6 +449,15 @@ viewer sees the agent's cursor, the mutation, and the audit-log entry.
 
 ## 7. Phase v0.7 — Branching (6 weeks)
 
+> **Status: ◐ Starter landed.** `forkSession(parent, { name })` snapshots
+> the parent, seeds a sibling room, and stamps `meta.parentRoomId` /
+> `branchName` / `forkedAt`. `mergeBranch(parent, branch, strategy)`
+> implements both `'ops'` (Y-update apply) and `'layer'` (IFCX
+> snapshot-and-reseed) strategies, with a small `MergeReport`.
+> `readBranchMeta` reads the round-trip metadata. Still pending: the
+> proper differential layer composer, the Automerge history sidecar,
+> and the branch-tree visualization in apps/.
+
 **Goal:** Users can fork a live document, edit privately, and merge back —
 either as an IFCX layer or as a Y operation diff. Automerge sidecar holds
 long-term history with branching/time-travel.
@@ -468,6 +487,14 @@ merge, accept it, and the audit log records the merge as a single event.
 ---
 
 ## 8. Phase v1.0 — GA (4 weeks)
+
+> **Status: ◐ Schema-migration scaffolding landed.** `getSchemaVersion`,
+> `setSchemaVersion`, `registerSchemaMigration`, `migrateSchema`, and
+> `MIGRATION_ORIGIN` give v1.0 a stable plumb for the IFC4 → IFC4X3 →
+> IFC5 migration story (open problem #2). Migrations register `(from,
+> to, apply)` triples; `migrateSchema` runs them inside a tagged
+> transaction that observers can filter. The actual IFC schema
+> migrations are still up to consumers.
 
 **Goal:** Production-ready with optional E2E encryption.
 

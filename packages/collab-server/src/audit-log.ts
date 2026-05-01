@@ -16,6 +16,8 @@
  */
 
 import type { Principal } from './auth.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 export type AuditOpType =
   | 'connect'
@@ -59,6 +61,91 @@ export const noopAuditSink: AuditSink = {
     /* drop */
   },
 };
+
+export interface JsonlFileAuditSinkOptions {
+  /** Destination file path. Created if missing. */
+  filePath: string;
+  /**
+   * Soft size cap in bytes after which the active file is renamed with a
+   * timestamp suffix and a fresh one is opened (default: never rotate).
+   */
+  rotateAtBytes?: number;
+  /**
+   * If true, fsync after every append. Slower but durable. Default false.
+   */
+  fsync?: boolean;
+}
+
+/**
+ * Append-only JSONL file sink.
+ *
+ * One JSON entry per line. Safe under concurrent appends from the same
+ * Node process (Node's fs.appendFile uses an internal queue). Rotates
+ * when the active file exceeds `rotateAtBytes`.
+ */
+export class JsonlFileAuditSink implements AuditSink {
+  private bytesWritten = 0;
+  private readonly filePath: string;
+  private readonly rotateAtBytes: number;
+  private readonly fsync: boolean;
+  private inflight: Promise<void> = Promise.resolve();
+
+  constructor(opts: JsonlFileAuditSinkOptions) {
+    this.filePath = opts.filePath;
+    this.rotateAtBytes = opts.rotateAtBytes ?? Number.POSITIVE_INFINITY;
+    this.fsync = opts.fsync ?? false;
+    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+    if (fs.existsSync(this.filePath)) {
+      this.bytesWritten = fs.statSync(this.filePath).size;
+    }
+  }
+
+  append(entry: AuditEntry): Promise<void> {
+    // Serialize all writes through one chain so size accounting and
+    // rotation observe a consistent state.
+    this.inflight = this.inflight.then(() => this.appendInner(entry));
+    return this.inflight;
+  }
+
+  private async appendInner(entry: AuditEntry): Promise<void> {
+    const line = JSON.stringify(entry) + '\n';
+    const bytes = Buffer.byteLength(line, 'utf8');
+    if (this.bytesWritten + bytes > this.rotateAtBytes && this.bytesWritten > 0) {
+      await this.rotate();
+    }
+    if (this.fsync) {
+      const fd = await fs.promises.open(this.filePath, 'a');
+      try {
+        await fd.appendFile(line);
+        await fd.sync();
+      } finally {
+        await fd.close();
+      }
+    } else {
+      await fs.promises.appendFile(this.filePath, line);
+    }
+    this.bytesWritten += bytes;
+  }
+
+  private async rotate(): Promise<void> {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const rotated = `${this.filePath}.${stamp}`;
+    try {
+      await fs.promises.rename(this.filePath, rotated);
+      this.bytesWritten = 0;
+    } catch (err) {
+      // If the source has already been moved by an external process,
+      // continue against the empty path.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      this.bytesWritten = 0;
+    }
+  }
+
+  /** Force any pending writes to finish. Useful in tests. */
+  async flush(): Promise<void> {
+    await this.inflight;
+  }
+}
 
 /**
  * 32-bit FNV-1a hash of a binary payload, returned as 8 hex chars. Tiny,

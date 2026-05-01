@@ -30,12 +30,21 @@ export {
 } from './room-manager.js';
 export {
   MemoryAuditSink,
+  JsonlFileAuditSink,
   noopAuditSink,
   shortHash,
   type AuditEntry,
   type AuditOpType,
   type AuditSink,
+  type JsonlFileAuditSinkOptions,
 } from './audit-log.js';
+export {
+  DEFAULT_RETENTION,
+  applyRetention,
+  planRetention,
+  type RetentionDecision,
+  type RetentionPolicy,
+} from './retention.js';
 export {
   createRateLimiter,
   type RateLimitOptions,

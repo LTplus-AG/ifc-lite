@@ -40,6 +40,12 @@ export interface StartCollabServerOptions {
   blobStorage?: ServerBlobStorage;
   /** Reject blob PUTs above this size (default 100 MB). */
   blobMaxBytes?: number;
+  /**
+   * Unload rooms that have had zero peers for this many ms (default
+   * disabled). Persistence keeps the durable copy; rehydrate on next
+   * connect.
+   */
+  idleUnloadMs?: number;
 }
 
 export interface CollabServerHandle {
@@ -63,6 +69,7 @@ export async function startCollabServer(
     compactEvery: opts.compactEvery,
     auditSink: opts.auditSink,
     rateLimit: opts.rateLimit,
+    idleUnloadMs: opts.idleUnloadMs,
   });
 
   const blobStorage = opts.blobStorage ?? new InMemoryBlobStorage();

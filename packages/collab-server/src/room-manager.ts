@@ -281,15 +281,30 @@ export interface RoomManagerOptions extends RoomOptions {
 
 export class RoomManager {
   private readonly rooms = new Map<string, Promise<Room>>();
+  /** Wall-clock ms when a room last had >0 peers, or 0 if never observed. */
+  private readonly lastActiveAt = new Map<string, number>();
   private readonly options: RoomManagerOptions;
+  private idleTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: RoomManagerOptions) {
     this.options = options;
+    if (options.idleUnloadMs && options.idleUnloadMs > 0) {
+      // Sweep at half the idle window so eviction granularity is reasonable.
+      const sweepMs = Math.max(1_000, Math.floor(options.idleUnloadMs / 2));
+      this.idleTimer = setInterval(() => {
+        void this.sweepIdle();
+      }, sweepMs);
+      // Don't keep the Node event loop alive solely for this timer.
+      this.idleTimer.unref?.();
+    }
   }
 
   async getOrCreate(roomId: string): Promise<Room> {
     let pending = this.rooms.get(roomId);
-    if (pending) return pending;
+    if (pending) {
+      this.lastActiveAt.set(roomId, Date.now());
+      return pending;
+    }
     const max = this.options.maxRooms ?? 1024;
     if (this.rooms.size >= max) {
       throw new Error(`@ifc-lite/collab-server: room limit (${max}) reached`);
@@ -300,6 +315,7 @@ export class RoomManager {
       return room;
     })();
     this.rooms.set(roomId, pending);
+    this.lastActiveAt.set(roomId, Date.now());
     return pending;
   }
 
@@ -307,16 +323,59 @@ export class RoomManager {
     return Array.from(this.rooms.keys());
   }
 
+  /** Snapshot of `(roomId, peerCount)` for diagnostics / tests. */
+  async stats(): Promise<Array<{ roomId: string; peerCount: number; idleMs: number }>> {
+    const out: Array<{ roomId: string; peerCount: number; idleMs: number }> = [];
+    const now = Date.now();
+    for (const [roomId, pending] of this.rooms) {
+      const room = await pending;
+      out.push({
+        roomId,
+        peerCount: room.peerCount,
+        idleMs: now - (this.lastActiveAt.get(roomId) ?? now),
+      });
+    }
+    return out;
+  }
+
   async unload(roomId: string): Promise<void> {
     const pending = this.rooms.get(roomId);
     if (!pending) return;
     this.rooms.delete(roomId);
+    this.lastActiveAt.delete(roomId);
     const room = await pending;
     await room.destroy();
   }
 
   async unloadAll(): Promise<void> {
+    if (this.idleTimer) clearInterval(this.idleTimer);
+    this.idleTimer = null;
     await Promise.all(Array.from(this.rooms.keys()).map((id) => this.unload(id)));
+  }
+
+  /**
+   * Unload any room with zero peers that has been idle longer than
+   * `idleUnloadMs`. The persistence layer holds the durable copy, so
+   * unloading is non-destructive — the room is rehydrated on next
+   * connect.
+   */
+  async sweepIdle(): Promise<string[]> {
+    const idleMs = this.options.idleUnloadMs;
+    if (!idleMs || idleMs <= 0) return [];
+    const now = Date.now();
+    const candidates: string[] = [];
+    for (const [roomId, pending] of this.rooms) {
+      const room = await pending;
+      if (room.peerCount > 0) {
+        // Active rooms reset the idle clock.
+        this.lastActiveAt.set(roomId, now);
+        continue;
+      }
+      const lastActive = this.lastActiveAt.get(roomId) ?? now;
+      if (now - lastActive >= idleMs) candidates.push(roomId);
+    }
+    for (const roomId of candidates) await this.unload(roomId);
+    return candidates;
   }
 }
 

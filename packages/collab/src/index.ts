@@ -49,6 +49,9 @@ export * from './geometry/index.js';
 // Federation
 export * from './federation/index.js';
 
+// Branching (v0.7 starter)
+export * from './branch/index.js';
+
 // Top-level session façade
 export {
   createCollabSession,

@@ -91,6 +91,13 @@ export interface PointCloudRenderOptions {
   worldRadius?: number;
   /** Render splats as discs instead of squares. Defaults to true. */
   roundShape?: boolean;
+  /**
+   * Per-ASPRS-class visibility bitmask. Bit `i` set → class `i` is
+   * visible. Defaults to `0xFFFFFFFF` (all 32 classes shown). Only
+   * affects points carrying classifications; meshes ignore it.
+   * Stored as an unsigned 32-bit integer in the uniform block.
+   */
+  classMask?: number;
 }
 
 export interface PointCloudAssetHandle {
@@ -123,6 +130,7 @@ export class PointCloudRenderer {
     sizeMode: 'attenuated',
     worldRadius: 0.02,
     roundShape: true,
+    classMask: 0xFFFFFFFF,
   };
 
   constructor(
@@ -142,6 +150,7 @@ export class PointCloudRenderer {
     if (opts.sizeMode !== undefined) this.options.sizeMode = opts.sizeMode;
     if (opts.worldRadius !== undefined) this.options.worldRadius = opts.worldRadius;
     if (opts.roundShape !== undefined) this.options.roundShape = opts.roundShape;
+    if (opts.classMask !== undefined) this.options.classMask = opts.classMask >>> 0;
   }
 
   getOptions(): Readonly<Required<PointCloudRenderOptions>> {
@@ -374,10 +383,11 @@ export class PointCloudRenderer {
     // when non-zero so the federation registry can relabel a streamed
     // asset post-upload (its per-vertex entityId attribute is baked
     // at upload and would otherwise stay at the synthetic local ID).
+    // flags.w = ASPRS class-visibility mask (bit i set → class i shown).
     uU32[48] = node.meta.expressId >>> 0;
     uU32[49] = sectionEnabled ? 1 : 0;
     uU32[50] = this.options.roundShape ? 1 : 0;
-    uU32[51] = 0;
+    uU32[51] = this.options.classMask >>> 0;
 
     this.device.queue.writeBuffer(node.uniformBuffer, 0, u.buffer, u.byteOffset, POINT_UNIFORM_SIZE);
   }

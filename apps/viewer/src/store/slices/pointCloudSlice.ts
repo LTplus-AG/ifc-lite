@@ -39,6 +39,13 @@ export interface PointCloudSlice {
    */
   pointCloudClassMask: number;
   /**
+   * Stride-cull factor for the splat shader. 1 = render every point,
+   * N>1 = render every Nth point. Used by the section-plane slider's
+   * drag-preview path so dragging over a 100M-point scan stays
+   * responsive. Defaults to 1 (full density).
+   */
+  pointCloudPreviewStride: number;
+  /**
    * Best-effort count of point cloud assets currently uploaded to the
    * renderer. Updated by ingest paths; UI uses it to show/hide the
    * controls panel and the EDL post-pass.
@@ -55,6 +62,8 @@ export interface PointCloudSlice {
   setPointCloudClassMask: (mask: number) => void;
   /** Toggle a single ASPRS class. `classId` is clamped to 0..31. */
   togglePointCloudClass: (classId: number) => void;
+  /** Set the stride-cull factor (1 = full density). */
+  setPointCloudPreviewStride: (stride: number) => void;
   setPointCloudAssetCount: (count: number) => void;
   incrementPointCloudAssetCount: (n?: number) => void;
 }
@@ -81,6 +90,7 @@ export const POINT_CLOUD_DEFAULTS = {
   // keep the value as an unsigned 32-bit integer; JS doesn't have
   // a u32 literal type so we round-trip through `>>> 0`.
   pointCloudClassMask: 0xFFFFFFFF,
+  pointCloudPreviewStride: 1,
   pointCloudAssetCount: 0,
 } as const;
 
@@ -116,6 +126,11 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
     // XOR flips the bit; coerce through `>>> 0` so the stored value
     // stays in the unsigned 32-bit range.
     return { pointCloudClassMask: (s.pointCloudClassMask ^ bit) >>> 0 };
+  }),
+  setPointCloudPreviewStride: (stride) => set({
+    pointCloudPreviewStride: Number.isFinite(stride)
+      ? Math.max(1, Math.min(256, Math.floor(stride) || 1))
+      : 1,
   }),
   setPointCloudAssetCount: (count) => set({
     pointCloudAssetCount: Number.isFinite(count) ? Math.max(0, count) : 0,

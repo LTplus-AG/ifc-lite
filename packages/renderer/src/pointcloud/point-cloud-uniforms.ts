@@ -53,6 +53,8 @@ export interface PointUniformInputs {
   viewportH: number;
   /** Per-ASPRS-class visibility bitmask (32 bits = LAS 1.4 classes). */
   classMask: number;
+  /** Preview stride — 1 = full density, N = render every Nth point. */
+  previewStride: number;
 }
 
 /**
@@ -106,6 +108,11 @@ export function writePointCloudUniforms(
   uU32[49] = inputs.sectionEnabled ? 1 : 0;
   uU32[50] = inputs.roundShape ? 1 : 0;
   uU32[51] = inputs.classMask >>> 0;
+  // extras (u32 slots 52..55) — extras.x = previewStride, yzw reserved.
+  uU32[52] = inputs.previewStride >>> 0;
+  uU32[53] = 0;
+  uU32[54] = 0;
+  uU32[55] = 0;
 
   // Pass the typed array directly — TypeScript widens `.buffer` to
   // `ArrayBufferLike` here (vs. `ArrayBuffer` on a class field), which

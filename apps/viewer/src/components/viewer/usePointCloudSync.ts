@@ -38,6 +38,7 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
   const edlEnabled = useViewerStore((s) => s.pointCloudEdlEnabled);
   const edlStrength = useViewerStore((s) => s.pointCloudEdlStrength);
   const classMask = useViewerStore((s) => s.pointCloudClassMask);
+  const previewStride = useViewerStore((s) => s.pointCloudPreviewStride);
   const setAssetCount = useViewerStore((s) => s.setPointCloudAssetCount);
   const fittedRef = useRef(false);
 
@@ -84,9 +85,10 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
       worldRadius,
       roundShape,
       classMask,
+      previewStride,
     });
     renderer.requestRender();
-  }, [colorMode, fixedColor, sizeMode, pointSize, worldRadius, roundShape, classMask, isInitialized, rendererRef]);
+  }, [colorMode, fixedColor, sizeMode, pointSize, worldRadius, roundShape, classMask, previewStride, isInitialized, rendererRef]);
 
   // Push EDL toggle + strength to the renderer.
   useEffect(() => {

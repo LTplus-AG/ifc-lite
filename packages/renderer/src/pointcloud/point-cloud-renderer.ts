@@ -83,6 +83,14 @@ export interface PointCloudRenderOptions {
    * Stored as an unsigned 32-bit integer in the uniform block.
    */
   classMask?: number;
+  /**
+   * Stride-cull factor for the splat shader: 1 = render every point,
+   * 2 = every other, 4 = every fourth, etc. Used by the section-plane
+   * preview path so dragging a slider over a 100M-point scan stays
+   * responsive — UI flips this to e.g. 4 on drag start and back to 1
+   * on drag end. Default 1.
+   */
+  previewStride?: number;
 }
 
 export interface PointCloudAssetHandle {
@@ -116,6 +124,7 @@ export class PointCloudRenderer {
     worldRadius: 0.02,
     roundShape: true,
     classMask: 0xFFFFFFFF,
+    previewStride: 1,
   };
 
   constructor(
@@ -136,6 +145,12 @@ export class PointCloudRenderer {
     if (opts.worldRadius !== undefined) this.options.worldRadius = opts.worldRadius;
     if (opts.roundShape !== undefined) this.options.roundShape = opts.roundShape;
     if (opts.classMask !== undefined) this.options.classMask = opts.classMask >>> 0;
+    if (opts.previewStride !== undefined) {
+      // Clamp to a sane positive integer — stride 0 would divide by
+      // zero in the shader's modulo. >256 is silly but harmless.
+      const s = Math.max(1, Math.min(256, Math.floor(opts.previewStride) || 1));
+      this.options.previewStride = s;
+    }
   }
 
   getOptions(): Readonly<Required<PointCloudRenderOptions>> {
@@ -325,6 +340,7 @@ export class PointCloudRenderer {
           viewportW,
           viewportH,
           classMask: this.options.classMask,
+          previewStride: this.options.previewStride,
         },
       );
       pass.setBindGroup(0, node.bindGroup);

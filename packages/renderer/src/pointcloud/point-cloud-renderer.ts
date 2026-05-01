@@ -76,6 +76,13 @@ export interface PointCloudRenderOptions {
   worldRadius?: number;
   /** Render splats as discs instead of squares. Defaults to true. */
   roundShape?: boolean;
+  /**
+   * Per-ASPRS-class visibility bitmask. Bit `i` set → class `i` is
+   * visible. Defaults to `0xFFFFFFFF` (all 32 classes shown). Only
+   * affects points carrying classifications; meshes ignore it.
+   * Stored as an unsigned 32-bit integer in the uniform block.
+   */
+  classMask?: number;
 }
 
 export interface PointCloudAssetHandle {
@@ -108,6 +115,7 @@ export class PointCloudRenderer {
     sizeMode: 'attenuated',
     worldRadius: 0.02,
     roundShape: true,
+    classMask: 0xFFFFFFFF,
   };
 
   constructor(
@@ -127,6 +135,7 @@ export class PointCloudRenderer {
     if (opts.sizeMode !== undefined) this.options.sizeMode = opts.sizeMode;
     if (opts.worldRadius !== undefined) this.options.worldRadius = opts.worldRadius;
     if (opts.roundShape !== undefined) this.options.roundShape = opts.roundShape;
+    if (opts.classMask !== undefined) this.options.classMask = opts.classMask >>> 0;
   }
 
   getOptions(): Readonly<Required<PointCloudRenderOptions>> {
@@ -315,6 +324,7 @@ export class PointCloudRenderer {
           heightMax,
           viewportW,
           viewportH,
+          classMask: this.options.classMask,
         },
       );
       pass.setBindGroup(0, node.bindGroup);

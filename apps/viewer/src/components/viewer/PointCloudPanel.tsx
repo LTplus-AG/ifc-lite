@@ -13,6 +13,7 @@ import { useViewerStore } from '@/store';
 import type { PointColorModeUi, PointSizeModeUi } from '@/store/slices/pointCloudSlice';
 import { cn } from '@/lib/utils';
 import { PointCloudLegend } from './PointCloudLegend';
+import { PointCloudClasses } from './PointCloudClasses';
 
 const COLOR_MODES: Array<{ value: PointColorModeUi; label: string; hint: string }> = [
   { value: 'rgb',            label: 'RGB',            hint: 'Per-point colour from the source' },
@@ -103,6 +104,11 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
           </label>
         )}
       </div>
+
+      {/* Per-ASPRS-class visibility — toggles the splat shader's
+          class-mask uniform; works in any colour mode but most
+          discoverable when colorMode === 'classification'. */}
+      <PointCloudClasses />
 
       {/* Size mode */}
       <div className="flex flex-col gap-0.5">

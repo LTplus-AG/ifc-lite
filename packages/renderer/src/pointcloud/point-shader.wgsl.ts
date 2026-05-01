@@ -33,7 +33,7 @@ export const pointShaderSource = `
       sizing: vec4<f32>,
       sectionPlane: vec4<f32>,
       // x = assetExpressId (federation-aware globalId), y = sectionEnabled,
-      // z = roundShape, w = unused
+      // z = roundShape, w = ASPRS class-visibility bitmask (bit i → class i)
       flags: vec4<u32>,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
@@ -148,6 +148,24 @@ export const pointShaderSource = `
       let mode = u32(uniforms.colorModeAndExtras.x);
       let intensity01 = f32(input.intensityPacked & 0xffffu) / 65535.0;
       let classId = u32(round(input.rgbAndClass.a * 255.0));
+
+      // Per-class visibility — flags.w is a 32-bit mask. Class ids
+      // outside 0..31 always show (the mask only covers ASPRS LAS 1.4
+      // standard classes). Hidden classes get pushed behind the near
+      // plane via a degenerate clipPos so they're culled before
+      // rasterisation; cheaper than fragment-stage discard.
+      if (classId < 32u) {
+        let bit = (uniforms.flags.w >> classId) & 1u;
+        if (bit == 0u) {
+          var output: VertexOutput;
+          output.position = vec4<f32>(0.0, 0.0, -2.0, 1.0);  // outside [0,1] reverse-Z → culled
+          output.color = vec4<f32>(0.0);
+          output.worldPos = vec3<f32>(0.0);
+          output.entityId = 0u;
+          output.quadUv = vec2<f32>(0.0);
+          return output;
+        }
+      }
       let heightT =
         (worldPos4.y - uniforms.colorModeAndExtras.z) /
         max(1e-6, uniforms.colorModeAndExtras.w - uniforms.colorModeAndExtras.z);

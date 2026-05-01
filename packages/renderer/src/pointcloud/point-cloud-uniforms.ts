@@ -51,6 +51,8 @@ export interface PointUniformInputs {
   heightMax: number;
   viewportW: number;
   viewportH: number;
+  /** Per-ASPRS-class visibility bitmask (32 bits = LAS 1.4 classes). */
+  classMask: number;
 }
 
 /**
@@ -99,10 +101,11 @@ export function writePointCloudUniforms(
   // when non-zero so the federation registry can relabel a streamed
   // asset post-upload (its per-vertex entityId attribute is baked
   // at upload and would otherwise stay at the synthetic local ID).
+  // flags.w (u32 slot 51) = ASPRS class-visibility mask. Bit i set → class i shown.
   uU32[48] = node.meta.expressId >>> 0;
   uU32[49] = inputs.sectionEnabled ? 1 : 0;
   uU32[50] = inputs.roundShape ? 1 : 0;
-  uU32[51] = 0;
+  uU32[51] = inputs.classMask >>> 0;
 
   // Pass the typed array directly — TypeScript widens `.buffer` to
   // `ArrayBufferLike` here (vs. `ArrayBuffer` on a class field), which

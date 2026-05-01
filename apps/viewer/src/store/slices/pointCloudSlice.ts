@@ -32,6 +32,13 @@ export interface PointCloudSlice {
   /** EDL strength multiplier. 0..3, default 1. */
   pointCloudEdlStrength: number;
   /**
+   * Per-ASPRS-class visibility bitmask (32 bits = covers classes
+   * 0..31, the LAS 1.4 standard range). Bit `i` set → class `i`
+   * visible. Default `0xFFFFFFFF` (all visible). Only point clouds
+   * carry classifications; meshes ignore this.
+   */
+  pointCloudClassMask: number;
+  /**
    * Best-effort count of point cloud assets currently uploaded to the
    * renderer. Updated by ingest paths; UI uses it to show/hide the
    * controls panel and the EDL post-pass.
@@ -45,6 +52,9 @@ export interface PointCloudSlice {
   setPointCloudRoundShape: (enabled: boolean) => void;
   setPointCloudEdlEnabled: (enabled: boolean) => void;
   setPointCloudEdlStrength: (strength: number) => void;
+  setPointCloudClassMask: (mask: number) => void;
+  /** Toggle a single ASPRS class. `classId` is clamped to 0..31. */
+  togglePointCloudClass: (classId: number) => void;
   setPointCloudAssetCount: (count: number) => void;
   incrementPointCloudAssetCount: (n?: number) => void;
 }
@@ -67,6 +77,10 @@ export const POINT_CLOUD_DEFAULTS = {
   pointCloudRoundShape: true,
   pointCloudEdlEnabled: true,
   pointCloudEdlStrength: 1,
+  // 0xFFFFFFFF — all 32 classes visible. Stored as `-1 >>> 0` to
+  // keep the value as an unsigned 32-bit integer; JS doesn't have
+  // a u32 literal type so we round-trip through `>>> 0`.
+  pointCloudClassMask: 0xFFFFFFFF,
   pointCloudAssetCount: 0,
 } as const;
 
@@ -90,6 +104,18 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
   setPointCloudEdlEnabled: (enabled) => set({ pointCloudEdlEnabled: enabled }),
   setPointCloudEdlStrength: (strength) => set({
     pointCloudEdlStrength: Number.isFinite(strength) ? Math.max(0, Math.min(3, strength)) : 1,
+  }),
+  setPointCloudClassMask: (mask) => set({
+    // Coerce through `>>> 0` to keep the stored value as an unsigned
+    // 32-bit integer; non-finite / negative inputs reset to "all on".
+    pointCloudClassMask: Number.isFinite(mask) ? (mask >>> 0) : 0xFFFFFFFF,
+  }),
+  togglePointCloudClass: (classId) => set((s) => {
+    const c = Math.max(0, Math.min(31, classId | 0));
+    const bit = 1 << c;
+    // XOR flips the bit; coerce through `>>> 0` so the stored value
+    // stays in the unsigned 32-bit range.
+    return { pointCloudClassMask: (s.pointCloudClassMask ^ bit) >>> 0 };
   }),
   setPointCloudAssetCount: (count) => set({
     pointCloudAssetCount: Number.isFinite(count) ? Math.max(0, count) : 0,

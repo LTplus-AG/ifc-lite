@@ -28,6 +28,17 @@ export interface PrototypeField {
   maximum?: number;
 }
 
+/**
+ * Per-scan pose: rotation (unit quaternion w + xi + yj + zk) +
+ * translation (in source-frame metres). Optional because most
+ * single-scan exports don't need one — when absent we treat the
+ * scan as already in the file's global frame (identity pose).
+ */
+export interface E57Pose {
+  rotation: { w: number; x: number; y: number; z: number };
+  translation: { x: number; y: number; z: number };
+}
+
 export interface Data3DEntry {
   guid: string;
   name?: string;
@@ -37,13 +48,11 @@ export interface Data3DEntry {
   /** Field declarations in record order. */
   prototype: PrototypeField[];
   /**
-   * Whether this Data3D defines a `pose` element (translation +
-   * rotation that places the scan in the file's global frame). We
-   * don't apply the transform yet — single-scan files don't need it,
-   * and multi-scan files with poses are rejected upfront so we never
-   * silently merge in scan-local space.
+   * Per-Data3D pose that places the scan into the file's global
+   * frame. Applied by `decodeE57` before merging multi-scan files;
+   * single-scan files where the pose is identity / absent are no-ops.
    */
-  hasPose?: boolean;
+  pose?: E57Pose;
 }
 
 /**
@@ -109,10 +118,34 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
       recordCount: Number(recordCountAttr),
       binaryFileOffset: Number(fileOffsetAttr),
       prototype: fields,
-      hasPose: childByName(scan, 'pose') !== null,
+      pose: parsePoseElement(childByName(scan, 'pose')) ?? undefined,
     });
   }
   return entries;
+}
+
+/**
+ * Parse a `<pose>` element to a quaternion + translation pair.
+ * Returns null when the element is missing or malformed (any field
+ * unparseable → fall back to identity rather than reject the file).
+ */
+function parsePoseElement(poseEl: ReturnType<typeof childByName>): E57Pose | null {
+  if (!poseEl) return null;
+  const rotation = childByName(poseEl, 'rotation');
+  const translation = childByName(poseEl, 'translation');
+  if (!rotation || !translation) return null;
+  const qw = Number(textChild(rotation, 'w') ?? '1');
+  const qx = Number(textChild(rotation, 'x') ?? '0');
+  const qy = Number(textChild(rotation, 'y') ?? '0');
+  const qz = Number(textChild(rotation, 'z') ?? '0');
+  const tx = Number(textChild(translation, 'x') ?? '0');
+  const ty = Number(textChild(translation, 'y') ?? '0');
+  const tz = Number(textChild(translation, 'z') ?? '0');
+  if (![qw, qx, qy, qz, tx, ty, tz].every(Number.isFinite)) return null;
+  return {
+    rotation: { w: qw, x: qx, y: qy, z: qz },
+    translation: { x: tx, y: ty, z: tz },
+  };
 }
 
 export function findField(proto: PrototypeField[], name: string): PrototypeField | undefined {

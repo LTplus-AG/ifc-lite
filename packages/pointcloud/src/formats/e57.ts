@@ -12,15 +12,14 @@
  * working.
  *
  * Scope:
- *   - Single-scan files OR multi-scan files where no Data3D defines a
- *     `<pose>` element. Multi-scan with poses is rejected up front
- *     because we don't yet apply the per-scan transforms.
+ *   - Single-scan + multi-scan files. Per-Data3D pose (quaternion +
+ *     translation) is applied before merging so registered scans
+ *     line up in the file's global frame.
  *   - Float (single/double) AND ScaledInteger (bit-packed integer
  *     with scale/offset per E57 §6.3.4) for cartesian fields.
  *   - Integer / Float / ScaledInteger colour + intensity channels.
  *
  * Out of scope (deferred — see issue #611):
- *   - Multi-scan pose merging.
  *   - Spherical coordinate prototypes.
  */
 
@@ -30,7 +29,7 @@ import {
   resolveCompressedVectorDataOffset,
   stripPageCrc,
 } from './e57-page.js';
-import { parseE57Xml } from './e57-xml.js';
+import { parseE57Xml, type E57Pose } from './e57-xml.js';
 import { computeBBox, decodeE57Scan } from './e57-decode.js';
 
 const TEXT_DECODER = new TextDecoder();
@@ -48,30 +47,25 @@ export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
   const entries = parseE57Xml(xmlText);
   if (entries.length === 0) return null;
 
-  // Multi-scan registered E57 files store each scan in its own local
-  // frame and rely on the per-Data3D `pose` (rotation + translation) to
-  // place them in the file's global frame. We don't apply that
-  // transform yet, so silently concatenating registered multi-scan
-  // files would produce a misaligned mess. Reject upfront with a
-  // clear error so the user can use the export-merged option in their
-  // scan-processing tool.
-  if (entries.length > 1 && entries.some((e) => e.hasPose)) {
-    throw new Error(
-      `E57: file contains ${entries.length} scans with per-scan poses (registered multi-scan). `
-      + 'Multi-scan pose merging is not yet supported — please re-export as a single merged scan.',
-    );
-  }
-
   // Resolve every entry's binary file offset through the
   // CompressedVector section header. The XML's fileOffset is the
   // section header (physical), not the first DataPacket.
+  // Per-Data3D pose (when present) places each scan in the file's
+  // global frame: `global = R * local + T`. We apply it after
+  // decoding but before merging, so multi-scan registered E57s line
+  // up correctly. Identity / absent poses are no-ops.
   const chunks = entries.map((entry) => {
     const dataLogicalOffset = resolveCompressedVectorDataOffset(
       logical,
       entry.binaryFileOffset,
       header.pageSize,
     );
-    return decodeE57Scan(logical, { ...entry, binaryFileOffset: dataLogicalOffset });
+    const chunk = decodeE57Scan(logical, { ...entry, binaryFileOffset: dataLogicalOffset });
+    if (entry.pose) {
+      applyPoseInPlace(chunk.positions, chunk.pointCount, entry.pose);
+      chunk.bbox = computeBBox(chunk.positions);
+    }
+    return chunk;
   });
   if (chunks.length === 1) return chunks[0];
 
@@ -101,6 +95,42 @@ export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
   };
 }
 
+/**
+ * Apply a per-scan pose (rotation quaternion + translation) to a
+ * positions buffer in place: `out = R · in + T`.
+ *
+ * Quaternion is in Hamilton convention (w + xi + yj + zk); we derive
+ * the 3×3 rotation matrix once and reuse across every point in the
+ * chunk. Translation is added after rotation.
+ */
+export function applyPoseInPlace(
+  positions: Float32Array,
+  pointCount: number,
+  pose: E57Pose,
+): void {
+  const { w, x, y, z } = pose.rotation;
+  const tx = pose.translation.x;
+  const ty = pose.translation.y;
+  const tz = pose.translation.z;
+  const r00 = 1 - 2 * (y * y + z * z);
+  const r01 = 2 * (x * y - w * z);
+  const r02 = 2 * (x * z + w * y);
+  const r10 = 2 * (x * y + w * z);
+  const r11 = 1 - 2 * (x * x + z * z);
+  const r12 = 2 * (y * z - w * x);
+  const r20 = 2 * (x * z - w * y);
+  const r21 = 2 * (y * z + w * x);
+  const r22 = 1 - 2 * (x * x + y * y);
+  for (let i = 0; i < pointCount; i++) {
+    const px = positions[i * 3];
+    const py = positions[i * 3 + 1];
+    const pz = positions[i * 3 + 2];
+    positions[i * 3]     = r00 * px + r01 * py + r02 * pz + tx;
+    positions[i * 3 + 1] = r10 * px + r11 * py + r12 * pz + ty;
+    positions[i * 3 + 2] = r20 * px + r21 * py + r22 * pz + tz;
+  }
+}
+
 // Re-export the public API so existing imports keep working.
 export {
   parseE57FileHeader,
@@ -111,5 +141,6 @@ export {
 export {
   parseE57Xml,
   type Data3DEntry,
+  type E57Pose,
 } from './e57-xml.js';
 export { decodeE57Scan } from './e57-decode.js';

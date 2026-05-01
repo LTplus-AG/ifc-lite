@@ -35,6 +35,10 @@ export const pointShaderSource = `
       // x = assetExpressId (federation-aware globalId), y = sectionEnabled,
       // z = roundShape, w = unused
       flags: vec4<u32>,
+      // x = previewStride (1 = render every point, N = render every
+      // Nth instance — used by the section-plane drag preview path).
+      // yzw reserved for future per-frame state.
+      extras: vec4<u32>,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
 
@@ -94,7 +98,27 @@ export const pointShaderSource = `
     }
 
     @vertex
-    fn vs_main(input: VertexInput, @builtin(vertex_index) vId: u32) -> VertexOutput {
+    fn vs_main(
+      input: VertexInput,
+      @builtin(vertex_index) vId: u32,
+      @builtin(instance_index) iId: u32,
+    ) -> VertexOutput {
+      // Preview-density stride cull. UI sets extras.x to e.g. 4
+      // while the user drags a section-plane slider so we render
+      // every 4th point and the drag stays responsive on huge scans.
+      // stride <= 1 is the no-op default.
+      let stride = max(1u, uniforms.extras.x);
+      if (stride > 1u && (iId % stride) != 0u) {
+        var skipped: VertexOutput;
+        // Push behind the near plane so the rasteriser drops it.
+        skipped.position = vec4<f32>(0.0, 0.0, -2.0, 1.0);
+        skipped.color = vec4<f32>(0.0);
+        skipped.worldPos = vec3<f32>(0.0);
+        skipped.entityId = 0u;
+        skipped.quadUv = vec2<f32>(0.0);
+        return skipped;
+      }
+
       // Quad corners (two triangles, CCW) in unit disc coords:
       //   tri 1: (-1,-1)(1,-1)(1,1)
       //   tri 2: (-1,-1)(1, 1)(-1,1)

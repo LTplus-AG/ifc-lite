@@ -32,6 +32,13 @@ export interface PointCloudSlice {
   /** EDL strength multiplier. 0..3, default 1. */
   pointCloudEdlStrength: number;
   /**
+   * Stride-cull factor for the splat shader. 1 = render every point,
+   * N>1 = render every Nth point. Used by the section-plane slider's
+   * drag-preview path so dragging over a 100M-point scan stays
+   * responsive. Defaults to 1 (full density).
+   */
+  pointCloudPreviewStride: number;
+  /**
    * Best-effort count of point cloud assets currently uploaded to the
    * renderer. Updated by ingest paths; UI uses it to show/hide the
    * controls panel and the EDL post-pass.
@@ -45,6 +52,8 @@ export interface PointCloudSlice {
   setPointCloudRoundShape: (enabled: boolean) => void;
   setPointCloudEdlEnabled: (enabled: boolean) => void;
   setPointCloudEdlStrength: (strength: number) => void;
+  /** Set the stride-cull factor (1 = full density). */
+  setPointCloudPreviewStride: (stride: number) => void;
   setPointCloudAssetCount: (count: number) => void;
   incrementPointCloudAssetCount: (n?: number) => void;
 }
@@ -67,6 +76,7 @@ export const POINT_CLOUD_DEFAULTS = {
   pointCloudRoundShape: true,
   pointCloudEdlEnabled: true,
   pointCloudEdlStrength: 1,
+  pointCloudPreviewStride: 1,
   pointCloudAssetCount: 0,
 } as const;
 
@@ -90,6 +100,11 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
   setPointCloudEdlEnabled: (enabled) => set({ pointCloudEdlEnabled: enabled }),
   setPointCloudEdlStrength: (strength) => set({
     pointCloudEdlStrength: Number.isFinite(strength) ? Math.max(0, Math.min(3, strength)) : 1,
+  }),
+  setPointCloudPreviewStride: (stride) => set({
+    pointCloudPreviewStride: Number.isFinite(stride)
+      ? Math.max(1, Math.min(256, Math.floor(stride) || 1))
+      : 1,
   }),
   setPointCloudAssetCount: (count) => set({
     pointCloudAssetCount: Number.isFinite(count) ? Math.max(0, count) : 0,

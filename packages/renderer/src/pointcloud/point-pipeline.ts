@@ -33,8 +33,13 @@ import { pointShaderSource } from './point-shader.wgsl.js';
  *   [40..43] sizing (sizeMode, worldRadius, viewportW, viewportH)
  *   [44..47] sectionPlane (nx, ny, nz, distance)
  *   [48..51] flags (u32 view: x=unused, y=sectionEnabled, z=roundShape, w=unused)
+ *   [52..55] extras (u32 view: x=previewStride, yzw=unused)
  */
-export const POINT_UNIFORM_SIZE = 208;
+// 14 vec4 slots × 16 bytes = 224 (was 208 before the `extras` slot).
+// Bumped to make room for the preview-density path's stride-cull
+// during section-plane drag without overloading the existing flags
+// slot (which is already crowded across other PRs).
+export const POINT_UNIFORM_SIZE = 224;
 export const POINT_VERTEX_BYTES = 24;
 /** Number of vertices emitted per splat (two triangles forming a quad). */
 export const POINT_QUAD_VERTS = 6;

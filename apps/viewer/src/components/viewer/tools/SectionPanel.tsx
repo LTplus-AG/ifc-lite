@@ -20,6 +20,8 @@ export function SectionOverlay() {
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const toggleSectionPlane = useViewerStore((s) => s.toggleSectionPlane);
   const flipSectionPlane = useViewerStore((s) => s.flipSectionPlane);
+  const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
+  const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const setDrawingPanelVisible = useViewerStore((s) => s.setDrawing2DPanelVisible);
   const drawingPanelVisible = useViewerStore((s) => s.drawing2DPanelVisible);
@@ -40,6 +42,16 @@ export function SectionOverlay() {
       setSectionPlanePosition(value);
     }
   }, [setSectionPlanePosition]);
+
+  // Section-plane drag preview: while the user is actively dragging
+  // the position slider, render the splat shader at 1/4 density so
+  // huge scans (>10M points) keep up. Restored on release.
+  const handleSliderDragStart = useCallback(() => {
+    if (pointCloudAssetCount > 0) setPreviewStride(4);
+  }, [setPreviewStride, pointCloudAssetCount]);
+  const handleSliderDragEnd = useCallback(() => {
+    setPreviewStride(1);
+  }, [setPreviewStride]);
 
   const togglePanel = useCallback(() => {
     setIsPanelCollapsed(prev => !prev);
@@ -138,6 +150,10 @@ export function SectionOverlay() {
                 step="0.1"
                 value={sectionPlane.position}
                 onChange={handlePositionChange}
+                onPointerDown={handleSliderDragStart}
+                onPointerUp={handleSliderDragEnd}
+                onKeyDown={handleSliderDragStart}
+                onKeyUp={handleSliderDragEnd}
                 aria-label="Section plane position slider"
                 className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
               />

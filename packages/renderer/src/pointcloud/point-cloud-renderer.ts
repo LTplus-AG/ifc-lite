@@ -91,6 +91,14 @@ export interface PointCloudRenderOptions {
   worldRadius?: number;
   /** Render splats as discs instead of squares. Defaults to true. */
   roundShape?: boolean;
+  /**
+   * Stride-cull factor for the splat shader: 1 = render every point,
+   * 2 = every other, 4 = every fourth, etc. Used by the section-plane
+   * preview path so dragging a slider over a 100M-point scan stays
+   * responsive — UI flips this to e.g. 4 on drag start and back to 1
+   * on drag end. Default 1.
+   */
+  previewStride?: number;
 }
 
 export interface PointCloudAssetHandle {
@@ -123,6 +131,7 @@ export class PointCloudRenderer {
     sizeMode: 'attenuated',
     worldRadius: 0.02,
     roundShape: true,
+    previewStride: 1,
   };
 
   constructor(
@@ -142,6 +151,12 @@ export class PointCloudRenderer {
     if (opts.sizeMode !== undefined) this.options.sizeMode = opts.sizeMode;
     if (opts.worldRadius !== undefined) this.options.worldRadius = opts.worldRadius;
     if (opts.roundShape !== undefined) this.options.roundShape = opts.roundShape;
+    if (opts.previewStride !== undefined) {
+      // Clamp to a sane positive integer — stride 0 would divide by
+      // zero in the shader's modulo. >256 is silly but harmless.
+      const s = Math.max(1, Math.min(256, Math.floor(opts.previewStride) || 1));
+      this.options.previewStride = s;
+    }
   }
 
   getOptions(): Readonly<Required<PointCloudRenderOptions>> {
@@ -378,6 +393,12 @@ export class PointCloudRenderer {
     uU32[49] = sectionEnabled ? 1 : 0;
     uU32[50] = this.options.roundShape ? 1 : 0;
     uU32[51] = 0;
+    // extras (u32 view) — bytes 208..223 = u32 indices 52..55.
+    // extras.x = previewStride (1 = full density, N = render every Nth).
+    uU32[52] = this.options.previewStride >>> 0;
+    uU32[53] = 0;
+    uU32[54] = 0;
+    uU32[55] = 0;
 
     this.device.queue.writeBuffer(node.uniformBuffer, 0, u.buffer, u.byteOffset, POINT_UNIFORM_SIZE);
   }

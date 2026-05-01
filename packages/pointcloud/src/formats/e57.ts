@@ -15,11 +15,11 @@
  *   - Single-scan files OR multi-scan files where no Data3D defines a
  *     `<pose>` element. Multi-scan with poses is rejected up front
  *     because we don't yet apply the per-scan transforms.
- *   - Float (single/double) cartesian fields. ScaledInteger throws.
- *   - Integer / Float color + intensity channels, both u8 and u16.
+ *   - Float (single/double) AND ScaledInteger (bit-packed integer
+ *     with scale/offset per E57 §6.3.4) for cartesian fields.
+ *   - Integer / Float / ScaledInteger colour + intensity channels.
  *
  * Out of scope (deferred — see issue #611):
- *   - ScaledInteger bit-packed cartesian / intensity decode.
  *   - Multi-scan pose merging.
  *   - Spherical coordinate prototypes.
  */

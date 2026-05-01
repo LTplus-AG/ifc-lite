@@ -18,7 +18,7 @@ import {
   type DecodedPointChunk,
   type StreamHandle,
 } from '@ifc-lite/pointcloud';
-import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
@@ -260,47 +260,60 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   const onCountChange = opts.onAssetCountDelta ?? (() => {});
   onCountChange(+1);
 
-  const stream = streamPointCloud({
-    format: opts.format,
-    blob: opts.blob,
-    label: opts.fileName,
-    maxPointsInMemory: opts.maxPointsInMemory,
-    maxFileSize: opts.maxFileSize,
-    signal: opts.signal,
-    onOpen: (info) => {
-      opts.onProgress?.({
-        phase: info.stride > 1
-          ? `Streaming (${info.stride}× downsampled, ${info.totalPointCount.toLocaleString()} pts)`
-          : `Streaming (${info.totalPointCount.toLocaleString()} pts)`,
-        percent: 10,
-      });
-    },
-    onChunk: (chunk) => {
-      // LAS / LAZ / E57 / typical scan-style PLY + PCD all store data
-      // Z-up by convention (LIDAR / surveying tradition). The renderer
-      // is Y-up internally — the IFCx ingest path applies the same
-      // swap inside `pointcloud-extractor.ts`. Without this, the scan
-      // shows up rotated 90° onto its side.
-      const yUp = swapZupChunkToYup(chunk);
-      opts.renderer.appendPointCloudChunk(handle, yUp);
-      opts.renderer.requestRender();
-    },
-    onProgress: (loaded, total) => {
-      const pct = total > 0 ? Math.min(99, 10 + Math.floor((loaded / total) * 89)) : 50;
-      opts.onProgress?.({
-        phase: `Streaming (${loaded.toLocaleString()} / ${total.toLocaleString()})`,
-        percent: pct,
-      });
-    },
-    onComplete: () => {
-      opts.renderer.endPointCloudStream(handle);
-      opts.onProgress?.({ phase: 'Streaming complete', percent: 100 });
-    },
-    onError: () => {
-      opts.renderer.removePointCloudAsset(handle);
-      onCountChange(-1);
-    },
-  });
+  // `streamPointCloud()` can throw synchronously during validation /
+  // worker setup (e.g. invalid `chunkSize`, oversized blob). The
+  // renderer asset + counter increment have already happened above, so
+  // a sync throw must clean those up before propagating — otherwise
+  // we leak an empty GPU asset and the `pointCloudAssetCount` stays
+  // permanently inflated.
+  let stream: StreamHandle;
+  try {
+    stream = streamPointCloud({
+      format: opts.format,
+      blob: opts.blob,
+      label: opts.fileName,
+      maxPointsInMemory: opts.maxPointsInMemory,
+      maxFileSize: opts.maxFileSize,
+      signal: opts.signal,
+      onOpen: (info) => {
+        opts.onProgress?.({
+          phase: info.stride > 1
+            ? `Streaming (${info.stride}× downsampled, ${info.totalPointCount.toLocaleString()} pts)`
+            : `Streaming (${info.totalPointCount.toLocaleString()} pts)`,
+          percent: 10,
+        });
+      },
+      onChunk: (chunk) => {
+        // LAS / LAZ / E57 / typical scan-style PLY + PCD all store data
+        // Z-up by convention (LIDAR / surveying tradition). The renderer
+        // is Y-up internally — the IFCx ingest path applies the same
+        // swap inside `pointcloud-extractor.ts`. Without this, the scan
+        // shows up rotated 90° onto its side.
+        const yUp = swapZupChunkToYup(chunk);
+        opts.renderer.appendPointCloudChunk(handle, yUp);
+        opts.renderer.requestRender();
+      },
+      onProgress: (loaded, total) => {
+        const pct = total > 0 ? Math.min(99, 10 + Math.floor((loaded / total) * 89)) : 50;
+        opts.onProgress?.({
+          phase: `Streaming (${loaded.toLocaleString()} / ${total.toLocaleString()})`,
+          percent: pct,
+        });
+      },
+      onComplete: () => {
+        opts.renderer.endPointCloudStream(handle);
+        opts.onProgress?.({ phase: 'Streaming complete', percent: 100 });
+      },
+      onError: () => {
+        opts.renderer.removePointCloudAsset(handle);
+        onCountChange(-1);
+      },
+    });
+  } catch (err) {
+    opts.renderer.removePointCloudAsset(handle);
+    onCountChange(-1);
+    throw err;
+  }
 
   // Build a minimal GeometryResult that satisfies the model registry.
   // The actual point data is on the GPU, not in memory.
@@ -308,9 +321,26 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
     min: { x: 0, y: 0, z: 0 },
     max: { x: 0, y: 0, z: 0 },
   });
+  // Synthetic pointcloud descriptor. Federation (`useIfcFederation`)
+  // folds `idOffset` into every entry's `expressId` and then calls
+  // `relabelPointCloudAsset` on the renderer; without an entry here
+  // streamed assets keep their local synthetic id and pick collisions
+  // appear once a second model is added.
+  const pointClouds: PointCloudAsset[] = [{
+    expressId,
+    ifcType: 'IfcGeographicElement',
+    modelIndex: opts.modelIndex,
+    chunk: {
+      // Empty placeholder — actual point data is GPU-resident, never
+      // re-uploaded from JS.
+      positions: new Float32Array(0),
+      pointCount: 0,
+      bbox: { min: [0, 0, 0], max: [0, 0, 0] },
+    },
+  }];
   const geometryResult: GeometryResult = {
     meshes: [],
-    pointClouds: [],
+    pointClouds,
     totalVertices: 0,
     totalTriangles: 0,
     coordinateInfo,

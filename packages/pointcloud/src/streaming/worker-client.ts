@@ -175,6 +175,13 @@ export function createDecodeWorkerSource(
             maxPoints,
           }),
         );
+        // Race: if the signal fired *while* the worker was finishing a
+        // chunk, the response can still arrive after the host has
+        // moved on. Treat a late completion as cancelled so the host's
+        // `onChunk` doesn't run after `cancel()` returned to the caller.
+        if (signal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError');
+        }
         if (!resp.chunk) return null;
         return chunkFromWire(resp.chunk);
       } finally {

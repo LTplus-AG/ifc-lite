@@ -238,6 +238,36 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
   it('throws when root is not <e57Root>', () => {
     expect(() => parseE57Xml('<other/>')).toThrow(/e57Root/);
   });
+
+  it('flags scans that carry a <pose> child so multi-scan rejection can fire', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<e57Root type="Structure">
+  <data3D type="Vector">
+    <vectorChild type="Structure">
+      <points type="CompressedVector" fileOffset="1024" recordCount="1">
+        <prototype type="Structure">
+          <cartesianX type="Float" precision="double"/>
+        </prototype>
+      </points>
+      <pose type="Structure">
+        <rotation type="Structure"><w type="Float">1</w><x type="Float">0</x><y type="Float">0</y><z type="Float">0</z></rotation>
+        <translation type="Structure"><x type="Float">10</x><y type="Float">0</y><z type="Float">0</z></translation>
+      </pose>
+    </vectorChild>
+    <vectorChild type="Structure">
+      <points type="CompressedVector" fileOffset="2048" recordCount="1">
+        <prototype type="Structure">
+          <cartesianX type="Float" precision="double"/>
+        </prototype>
+      </points>
+    </vectorChild>
+  </data3D>
+</e57Root>`;
+    const entries = parseE57Xml(xml);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].hasPose).toBe(true);
+    expect(entries[1].hasPose).toBe(false);
+  });
 });
 
 describe('resolveCompressedVectorDataOffset (E57 §6.4.2)', () => {

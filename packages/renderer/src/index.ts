@@ -263,8 +263,13 @@ export class Renderer {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         this.pointCloudRenderer.setAssets(assets);
-        this.expandModelBoundsForPointClouds();
+        // Replace, not append — bounds may have shrunk (e.g. an IFCx
+        // reload with a smaller scan). `expandModelBoundsForPointClouds`
+        // alone only grows; recompute from scratch to keep
+        // fit-to-view + section-plane sliders accurate.
+        this.recomputeModelBounds();
         this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
     }
 
     /** Append additional point clouds without clearing existing ones. */
@@ -277,6 +282,7 @@ export class Renderer {
         }
         this.expandModelBoundsForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
     }
 
     /** Total number of point cloud assets currently uploaded. */
@@ -294,6 +300,7 @@ export class Renderer {
         this.pointCloudRenderer?.clear();
         this.recomputeModelBounds();
         this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
     }
 
     /**
@@ -316,10 +323,12 @@ export class Renderer {
         this.pointCloudRenderer.appendChunk(handle, chunk);
         this.expandModelBoundsForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
     }
 
     endPointCloudStream(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
         this.pointCloudRenderer?.endAsset(handle);
+        this.requestRender();
     }
 
     removePointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
@@ -328,6 +337,7 @@ export class Renderer {
         // and section-plane sliders see fresh extents.
         this.recomputeModelBounds();
         this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
     }
 
     /**
@@ -398,6 +408,7 @@ export class Renderer {
     /** Apply rendering options (color mode, fixed override, point size). */
     setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
         this.pointCloudRenderer?.setOptions(opts);
+        this.requestRender();
     }
 
     /**
@@ -413,6 +424,7 @@ export class Renderer {
         if (opts.strength !== undefined) this.edlOptions.strength = Math.max(0, Math.min(3, opts.strength));
         if (opts.radiusPx !== undefined) this.edlOptions.radiusPx = Math.max(1, Math.min(4, opts.radiusPx));
         if (opts.highQuality !== undefined) this.edlOptions.highQuality = opts.highQuality;
+        this.requestRender();
     }
 
     private expandModelBoundsForPointClouds(): void {

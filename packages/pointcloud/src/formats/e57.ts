@@ -166,6 +166,14 @@ export interface Data3DEntry {
   binaryFileOffset: number;
   /** Field declarations in record order. */
   prototype: PrototypeField[];
+  /**
+   * Whether this Data3D defines a `pose` element (translation +
+   * rotation that places the scan in the file's global frame). We
+   * don't apply the transform yet — single-scan files don't need it,
+   * and multi-scan files with poses are rejected upfront so we never
+   * silently merge in scan-local space.
+   */
+  hasPose?: boolean;
 }
 
 const TEXT_DECODER = new TextDecoder();
@@ -233,6 +241,7 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
       recordCount: Number(recordCountAttr),
       binaryFileOffset: Number(fileOffsetAttr),
       prototype: fields,
+      hasPose: childByName(scan, 'pose') !== null,
     });
   }
   return entries;
@@ -535,6 +544,20 @@ export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
   const xmlText = TEXT_DECODER.decode(xmlBytes);
   const entries = parseE57Xml(xmlText);
   if (entries.length === 0) return null;
+
+  // Multi-scan registered E57 files store each scan in its own local
+  // frame and rely on the per-Data3D `pose` (rotation + translation) to
+  // place them in the file's global frame. We don't apply that
+  // transform yet, so silently concatenating registered multi-scan
+  // files would produce a misaligned mess. Reject upfront with a
+  // clear error so the user can use the export-merged option in their
+  // scan-processing tool.
+  if (entries.length > 1 && entries.some((e) => e.hasPose)) {
+    throw new Error(
+      `E57: file contains ${entries.length} scans with per-scan poses (registered multi-scan). `
+      + 'Multi-scan pose merging is not yet supported — please re-export as a single merged scan.',
+    );
+  }
 
   // Resolve every entry's binary file offset through the
   // CompressedVector section header. The XML's fileOffset is the

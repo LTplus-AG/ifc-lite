@@ -23,7 +23,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 
-export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57';
+export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
 /**
  * IfcTypeEnum.IfcGeographicElement — the closest IFC4 entity for a scan
@@ -188,6 +188,8 @@ export function detectPointCloudFormat(
   if (lower.endsWith('.ply')) return 'ply';
   if (lower.endsWith('.pcd')) return 'pcd';
   if (lower.endsWith('.e57')) return 'e57';
+  if (lower.endsWith('.pts')) return 'pts';
+  if (lower.endsWith('.xyz')) return 'xyz';
   if (buffer && buffer.byteLength >= 8) {
     const view = new DataView(buffer, 0, Math.min(buffer.byteLength, 32));
     if (view.getUint32(0, true) === 0x4653414c) return 'las';
@@ -227,9 +229,6 @@ export function describeUnsupportedFormat(fileName: string): string | null {
   if (lower.endsWith('.skp')) return 'SketchUp model — not a point cloud.';
   if (lower.endsWith('.fls') || lower.endsWith('.lsproj')) {
     return 'Faro Scene project — export to E57 from Scene to load it here.';
-  }
-  if (lower.endsWith('.pts') || lower.endsWith('.xyz')) {
-    return 'PTS / XYZ ASCII points — not yet supported (export to PLY or LAS).';
   }
   return null;
 }

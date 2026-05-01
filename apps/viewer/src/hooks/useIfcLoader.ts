@@ -1569,7 +1569,7 @@ export function useIfcLoader() {
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
-      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
         const renderer = getGlobalRenderer();
         if (!renderer) {
           setError('Renderer not initialised — try again after the viewer mounts.');

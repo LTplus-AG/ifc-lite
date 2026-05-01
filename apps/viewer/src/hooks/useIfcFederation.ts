@@ -660,6 +660,16 @@ export function useIfcFederation() {
       return modelId;
 
     } catch (err) {
+      // User-initiated cancel surfaces as an AbortError. Map it to a
+      // benign "Cancelled" state so the federated path matches the
+      // single-model loader rather than reporting a parse failure.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        console.log('[useIfc] addModel cancelled by user');
+        setError(null);
+        setProgress({ phase: 'Cancelled', percent: 0 });
+        setLoading(false);
+        return null;
+      }
       console.error('[useIfc] addModel failed:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       setLoading(false);

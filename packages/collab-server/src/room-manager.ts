@@ -34,6 +34,14 @@ import { createRateLimiter, type RateLimitOptions, type RateLimiter } from './ra
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 
+export interface VerifyDecision {
+  ok: boolean;
+  /** Audit-friendly reason string when ok=false. */
+  reason?: string;
+}
+
+export type VerifyMessageFn = (msg: Uint8Array, conn: PeerConnection) => VerifyDecision;
+
 export interface RoomOptions {
   persistence: Persistence;
   /** Compact the persisted log every N updates (default 1000). */
@@ -47,6 +55,13 @@ export interface RoomOptions {
    * (e.g. MCP agents) typically get a tighter budget than humans.
    */
   rateLimit?: RateLimitOptions | ((principal: Principal) => RateLimitOptions);
+  /**
+   * Optional per-message verifier. Runs BEFORE rate limit / role check.
+   * Consumers using the anti-replay protector pass a wrapper here that
+   * decodes their envelope and calls `replayProtector.verify(...)`.
+   * Returning `{ ok: false }` audits as `reject` with `reason`.
+   */
+  verifyMessage?: VerifyMessageFn;
   /** Internal: metric counters injected by the manager. */
   counters?: { update?: () => void; reject?: (reason: string) => void };
 }
@@ -70,6 +85,7 @@ export class Room {
   private readonly compactEvery: number;
   private readonly auditSink: AuditSink;
   private readonly rateLimitFor: (principal: Principal) => RateLimitOptions;
+  private readonly verifyMessage?: VerifyMessageFn;
   private counters: { update?: () => void; reject?: (reason: string) => void };
   private destroyed = false;
 
@@ -82,6 +98,7 @@ export class Room {
     this.auditSink = opts.auditSink ?? noopAuditSink;
     const rl = opts.rateLimit;
     this.rateLimitFor = typeof rl === 'function' ? rl : () => rl ?? {};
+    this.verifyMessage = opts.verifyMessage;
     this.counters = opts.counters ?? {};
 
     this.doc.on('update', this.onDocUpdate);
@@ -165,6 +182,15 @@ export class Room {
   /** Receive a binary message from a peer and dispatch it. */
   handleMessage(conn: PeerConnection, msg: Uint8Array): void {
     if (this.destroyed) return;
+    if (this.verifyMessage) {
+      const decision = this.verifyMessage(msg, conn);
+      if (!decision.ok) {
+        const reason = decision.reason ?? 'verify-failed';
+        this.audit(conn.principal, 'reject', shortHash(msg), { reason });
+        this.counters.reject?.(reason);
+        return;
+      }
+    }
     const decoder = decoding.createDecoder(msg);
     const messageType = decoding.readVarUint(decoder);
     switch (messageType) {
@@ -327,8 +353,9 @@ export class RoomManager {
       throw new Error(`@ifc-lite/collab-server: room limit (${max}) reached`);
     }
     const counters = this.counters;
+    const verifyMessage = this.options.verifyMessage;
     pending = (async () => {
-      const room = new Room(roomId, { ...this.options, counters });
+      const room = new Room(roomId, { ...this.options, counters, verifyMessage });
       await room.loadFromDisk();
       return room;
     })();

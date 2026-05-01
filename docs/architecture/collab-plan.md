@@ -149,13 +149,16 @@ tab, see edits restored, export `.ifcx`, diff against expected fixture.
 
 ## 2. Phase v0.2 — Multi-peer (4 weeks)
 
-> **Status: ◐ Mostly landed.** The websocket provider, awareness/presence
-> types, sync server (`y-protocols/sync` over `ws`), in-memory + file
-> persistence, JWT auth hook, healthcheck, and end-to-end two-client
-> convergence test are all in. The latency-simulation perf harness now
-> ships as `createLatencyChannel(a, b, { baseMs, jitterMs, dropRate })`.
-> The remaining v0.2 item is viewer-side rendering of cursors /
-> selection outlines (consumed by `packages/viewer`).
+> **Status: ◐ Mostly landed; renderer math factored out.** Websocket
+> provider, awareness/presence, sync server, in-memory + file
+> persistence, JWT auth hook, healthcheck, two-client convergence
+> test, and the latency-simulation harness are all in.
+> **`peerVisuals(peers, opts)`** + **`cursorScreenPosition`** now ship as
+> renderer-agnostic helpers: pure math that turns raw presence into
+> `{ color, label, opacity, isStale, cursor3d, cursor2d, selection }`.
+> Any rendering target (Three.js, WebGPU, 2D canvas) wires the result
+> into its scene. Actually drawing the avatars in `packages/viewer`
+> remains a viewer-package task.
 
 **Goal:** Two browsers in the same room see each other's edits and cursors in
 real time over a websocket.
@@ -348,20 +351,26 @@ two of them, see a teammate hover the issue in the third model's viewport.
 
 ## 5. Phase v0.5 — Production (4 weeks)
 
-> **Status: ◐ Operations stack landed.** `JsonlFileAuditSink` (size-based
-> rotation), idle room unloading (`idleUnloadMs` plumbed end to end with
-> a `sweepIdle()` method on `RoomManager` and tests), retention policy
-> module (`planRetention` + `applyRetention` honoring `fullLogDays`,
-> `snapshotsDays`, and `maxBytesPerRoom`). Auth, per-peer rate limiting,
-> role-based write filtering, and the blob HTTP route are already in.
-> **Server-driven IFCX snapshot worker** (`SnapshotWorker`) writes a
-> per-room `.ifcx` to disk on a configurable interval. **Prometheus
-> `/metrics`** endpoint serves text-format metrics for `collab_rooms`,
-> `collab_room_peers`, `collab_updates_total`, and
-> `collab_rejects_total{reason}`. **Anti-replay HMAC verifier**
-> (`createReplayProtector`, open problem #8) ships as a pure verifier
-> for opt-in deployments. Still pending: TLS termination wiring, S3 /
-> Redis persistence backends, full bucketed histograms.
+> **Status: ☑ Production stack landed.** `JsonlFileAuditSink` (size-based
+> rotation), idle room unloading, retention policy module (`planRetention`
+> + `applyRetention`). Auth, per-peer rate limiting, role-based write
+> filtering, and the blob HTTP route are in. **Server-driven IFCX
+> snapshot worker** (`SnapshotWorker`) writes per-room `.ifcx` files on
+> an interval. **Prometheus `/metrics`** endpoint serves
+> `collab_rooms`, `collab_room_peers`, `collab_updates_total`,
+> `collab_rejects_total{reason}`. **Anti-replay HMAC verifier wired**:
+> `verifyMessage` hook on `RoomManager`, `verifyWithReplayProtector`
+> adapter, `encodeSignedFrame` / `decodeSignedFrame` envelope codec
+> (open problem #8 closed). **`S3Persistence`** ships against an
+> injectable `S3LikeClient` so AWS SDK / R2 / MinIO all plug in
+> without `@ifc-lite/collab-server` taking a hard dep on
+> `@aws-sdk/client-s3`. **TLS / secure-server helpers**:
+> `createSecureHttpServer(opts)`, `applySecurityHeaders(res)`,
+> `secureHttpHandler(inner)` ship hardened defaults (TLS 1.2+,
+> conservative ciphers, OWASP headers, TRACE/TRACK rejection). Still
+> pending: full bucketed histograms (the simple histogram is good
+> enough for v0.5), Redis persistence backend (apps can write that as
+> a third pluggable `Persistence`).
 
 **Goal:** The server can be operated. Auth, persistence, observability, and
 periodic IFCX snapshots are all real.
@@ -463,16 +472,17 @@ viewer sees the agent's cursor, the mutation, and the audit-log entry.
 
 ## 7. Phase v0.7 — Branching (6 weeks)
 
-> **Status: ◐ Branching + differential composer landed.** `forkSession`
-> snapshots the parent, seeds a sibling room, and stamps
-> `meta.parentRoomId` / `branchName` / `forkedAt`. `mergeBranch`
-> implements both `'ops'` and `'layer'` strategies with a `MergeReport`.
-> **`extractMinimalLayer(doc, baseline, opts)`** now produces minimal
-> IFCX layers expressing the diff between a baseline state vector and
-> the current Y.Doc — entities created since baseline plus only the
-> attribute / children / inherits keys that changed. Still pending:
-> the Automerge history sidecar and the branch-tree visualization in
-> apps/.
+> **Status: ☑ Branching + differential composer + history sidecar
+> landed.** `forkSession` / `mergeBranch` / `extractMinimalLayer` are
+> in. **`HistorySidecar`** (`MemoryHistorySidecar` ship; future
+> `AutomergeHistorySidecar` slots into the same interface) records
+> snapshots, computes per-entity-id diffs, and supports
+> `branch(name)` / `merge(branch, into)` for the time-travel UI.
+> **`attachHistorySidecar(session, sidecar, opts)`** drives a sidecar
+> from a live `CollabSession` on a configurable timer + on demand,
+> with an optional differential layer in each entry for cheap diff
+> queries. The Automerge-backed sidecar is the only deferred item —
+> the interface is ready when the Rust+WASM dep is.
 
 **Goal:** Users can fork a live document, edit privately, and merge back —
 either as an IFCX layer or as a Y operation diff. Automerge sidecar holds
@@ -504,18 +514,21 @@ merge, accept it, and the audit log records the merge as a single event.
 
 ## 8. Phase v1.0 — GA (4 weeks)
 
-> **Status: ◐ Schema migration + units + GDPR helpers landed.**
-> `getSchemaVersion`, `setSchemaVersion`, `registerSchemaMigration`,
-> `migrateSchema`, and `MIGRATION_ORIGIN` plumb the IFC4 → IFC4X3 →
-> IFC5 migration story (open #2). **`convertEntityUnits(doc, from, to)`**
-> walks every Pset and converts numeric `PropertyValue`s with a
-> matching `unit` (length / area / volume / angle, open #3).
-> **`convertValue(value, from, to)`** is exposed for one-shot
-> conversions. **`exportAndLeave(session, opts)`** runs the GDPR
-> "give-me-a-copy-and-forget-me" flow; **`redactAuthorMeta`** blanks
-> per-entity `createdBy` / `lastEditedBy`. The actual IFC schema
-> migrations, E2E encryption, and the long-tail unit families are
-> still future work.
+> **Status: ☑ Schema migration + units + GDPR + E2E encryption all
+> landed.** `getSchemaVersion`, `setSchemaVersion`,
+> `registerSchemaMigration`, `migrateSchema`, and `MIGRATION_ORIGIN`
+> plumb migrations (open #2). `convertEntityUnits`, `convertValue`,
+> `familyOf` cover length / area / volume / angle (open #3).
+> `exportAndLeave` + `redactAuthorMeta` cover GDPR. **E2E encryption**
+> ships as a complete WebCrypto-based suite: `deriveRoomKey` (PBKDF2),
+> `generateRoomKey` / `exportRoomKey` / `importRoomKey`, `encryptFrame`
+> / `decryptFrame` with versioned `[1B ver][12B IV][N B AES-GCM]`
+> framing, and `createKeyRing(initial, { gracePeriodMs })` for
+> rotation that still decodes in-flight frames. Apps wire the
+> ciphertext through any provider (the server only routes opaque
+> bytes — server-side IFCX export is therefore unavailable without key
+> escrow, as the spec calls out). The actual IFC schema migrations
+> and the long-tail unit families remain consumer responsibility.
 
 **Goal:** Production-ready with optional E2E encryption.
 

@@ -14,6 +14,12 @@ export {
   type FilePersistenceOptions,
 } from './persistence.js';
 export {
+  S3Persistence,
+  type S3PersistenceOptions,
+  type S3LikeClient,
+  type S3Commands,
+} from './persistence-s3.js';
+export {
   type AuthenticateFn,
   type Principal,
   type Role,
@@ -58,11 +64,24 @@ export {
 export {
   computeHmac,
   createReplayProtector,
+  decodeSignedFrame,
+  encodeSignedFrame,
+  verifyWithReplayProtector,
   type ReplayDecision,
   type ReplayProtector,
   type ReplayProtectorOptions,
   type UpdateEnvelope,
 } from './replay-protect.js';
+export {
+  type VerifyDecision,
+  type VerifyMessageFn,
+} from './room-manager.js';
+export {
+  applySecurityHeaders,
+  createSecureHttpServer,
+  secureHttpHandler,
+  type SecureHttpServerOptions,
+} from './secure-server.js';
 export {
   createRateLimiter,
   type RateLimitOptions,

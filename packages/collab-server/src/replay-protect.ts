@@ -113,3 +113,64 @@ function constantTimeEqual(a: string, b: string): boolean {
     return false;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Wire integration                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Default envelope decoder for messages of the form
+ * `[1B SIGNED_TAG = 0xff][4B clientId][4B clock][32B HMAC hex'd ascii][N B payload]`.
+ *
+ * Total framing overhead is 1 + 4 + 4 + 64 + N = 73 + N bytes — small
+ * relative to typical Y updates. Apps with their own envelope can
+ * write a custom verifier instead.
+ */
+const SIGNED_TAG = 0xff;
+
+export function decodeSignedFrame(frame: Uint8Array): UpdateEnvelope | null {
+  if (frame.byteLength < 1 + 4 + 4 + 64) return null;
+  if (frame[0] !== SIGNED_TAG) return null;
+  const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
+  const clientId = view.getUint32(1, false);
+  const clock = view.getUint32(5, false);
+  const hmac = new TextDecoder('ascii').decode(frame.subarray(9, 9 + 64));
+  const payload = frame.subarray(9 + 64);
+  return { clientId, clock, payload, hmac };
+}
+
+export function encodeSignedFrame(envelope: UpdateEnvelope): Uint8Array {
+  const payload = envelope.payload;
+  const out = new Uint8Array(1 + 4 + 4 + 64 + payload.byteLength);
+  out[0] = SIGNED_TAG;
+  const view = new DataView(out.buffer);
+  view.setUint32(1, envelope.clientId >>> 0, false);
+  view.setUint32(5, envelope.clock >>> 0, false);
+  out.set(new TextEncoder().encode(envelope.hmac), 9);
+  out.set(payload, 9 + 64);
+  return out;
+}
+
+/**
+ * Adapter from a `ReplayProtector` to the server's `VerifyMessageFn`
+ * shape. Frames whose first byte is the `SIGNED_TAG` are parsed and
+ * verified; messages that aren't tagged are passed through (for clients
+ * that don't sign). To force-reject unsigned messages, set
+ * `requireSigned: true`.
+ */
+export function verifyWithReplayProtector(
+  protector: ReplayProtector,
+  options: { requireSigned?: boolean } = {},
+): (msg: Uint8Array) => { ok: boolean; reason?: string; payload?: Uint8Array } {
+  return (msg) => {
+    if (msg.byteLength === 0 || msg[0] !== SIGNED_TAG) {
+      if (options.requireSigned) return { ok: false, reason: 'unsigned' };
+      return { ok: true };
+    }
+    const envelope = decodeSignedFrame(msg);
+    if (!envelope) return { ok: false, reason: 'malformed' };
+    const result = protector.verify(envelope);
+    if (!result.ok) return { ok: false, reason: result.reason };
+    return { ok: true, payload: envelope.payload };
+  };
+}

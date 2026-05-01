@@ -13,6 +13,7 @@ import { FilePersistence, MemoryPersistence, type Persistence } from './persiste
 import { allowAnonymousEditor, type AuthenticateFn, type Principal } from './auth.js';
 import { type AuditSink } from './audit-log.js';
 import { type RateLimitOptions } from './rate-limit.js';
+import { type VerifyMessageFn } from './room-manager.js';
 import {
   handleBlobRequest,
   InMemoryBlobStorage,
@@ -49,6 +50,12 @@ export interface StartCollabServerOptions {
   idleUnloadMs?: number;
   /** Metrics registry to publish at `/metrics`. Defaults to the package singleton. */
   metrics?: MetricsRegistry;
+  /**
+   * Optional per-message verifier (anti-replay HMAC etc.). Runs before
+   * rate limit / role check. Returning `{ ok: false }` audits as
+   * `reject` with the reason and drops the message.
+   */
+  verifyMessage?: VerifyMessageFn;
 }
 
 export interface CollabServerHandle {
@@ -73,6 +80,7 @@ export async function startCollabServer(
     auditSink: opts.auditSink,
     rateLimit: opts.rateLimit,
     idleUnloadMs: opts.idleUnloadMs,
+    verifyMessage: opts.verifyMessage,
   });
 
   const blobStorage = opts.blobStorage ?? new InMemoryBlobStorage();

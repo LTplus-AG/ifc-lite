@@ -55,6 +55,9 @@ export * from './branch/index.js';
 // Privacy / GDPR helpers (v1.0)
 export * from './privacy.js';
 
+// Security: E2E encryption helpers (v1.0)
+export * from './security/index.js';
+
 // Perf / benchmark helpers (v0.2)
 export * from './perf/index.js';
 

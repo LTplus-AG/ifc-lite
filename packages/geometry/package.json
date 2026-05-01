@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "1.16.6",
+  "version": "1.17.0",
   "description": "Geometry processing bridge for IFC-Lite - 1.9x faster than web-ifc",
   "type": "module",
   "main": "./dist/index.js",

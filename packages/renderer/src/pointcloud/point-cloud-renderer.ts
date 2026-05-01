@@ -91,6 +91,14 @@ export interface PointCloudRenderOptions {
    * on drag end. Default 1.
    */
   previewStride?: number;
+  /**
+   * BIM↔scan deviation heatmap range. `centerOffset` shifts the
+   * "white" point off zero (handy when a scan has a global offset
+   * from the model); `halfRange` is the metres mapped to ±1 on the
+   * blue→white→red ramp. Defaults to (0, 0.05) → ±5cm.
+   * Only consulted when `colorMode === 'deviation'`.
+   */
+  deviationRange?: { centerOffset: number; halfRange: number };
 }
 
 export interface PointCloudAssetHandle {
@@ -125,6 +133,7 @@ export class PointCloudRenderer {
     roundShape: true,
     classMask: 0xFFFFFFFF,
     previewStride: 1,
+    deviationRange: { centerOffset: 0, halfRange: 0.05 },
   };
 
   constructor(
@@ -150,6 +159,16 @@ export class PointCloudRenderer {
       // zero in the shader's modulo. >256 is silly but harmless.
       const s = Math.max(1, Math.min(256, Math.floor(opts.previewStride) || 1));
       this.options.previewStride = s;
+    }
+    if (opts.deviationRange !== undefined) {
+      const r = opts.deviationRange;
+      this.options.deviationRange = {
+        centerOffset: Number.isFinite(r.centerOffset) ? r.centerOffset : 0,
+        // halfRange = 0 would divide by zero in the shader; clamp to
+        // a tiny positive value so dragging the slider to the floor
+        // doesn't NaN the colour.
+        halfRange: Number.isFinite(r.halfRange) && r.halfRange > 0 ? r.halfRange : 1e-6,
+      };
     }
   }
 
@@ -253,6 +272,15 @@ export class PointCloudRenderer {
     return this.nodes.size;
   }
 
+  /**
+   * Iterate every uploaded node. Exposed so the deviation compute
+   * pass can reach each node's vertex + deviation buffers without
+   * the renderer having to mirror its internal map.
+   */
+  getInternalNodes(): Iterable<PointCloudNode> {
+    return this.nodes.values();
+  }
+
   /** Total number of points currently uploaded across all assets. */
   getPointCount(): number {
     let total = 0;
@@ -341,11 +369,15 @@ export class PointCloudRenderer {
           viewportH,
           classMask: this.options.classMask,
           previewStride: this.options.previewStride,
+          deviationCenterOffset: this.options.deviationRange.centerOffset,
+          deviationHalfRange: this.options.deviationRange.halfRange,
         },
       );
       pass.setBindGroup(0, node.bindGroup);
       for (const chunk of node.chunks) {
         pass.setVertexBuffer(0, chunk.vertexBuffer);
+        // 2nd buffer: per-point deviation float (location 4 in shader).
+        pass.setVertexBuffer(1, chunk.deviationBuffer);
         // Six verts per splat, one instance per source point.
         pass.draw(POINT_QUAD_VERTS, chunk.pointCount, 0, 0);
       }

@@ -14,6 +14,7 @@ import type { PointColorModeUi, PointSizeModeUi } from '@/store/slices/pointClou
 import { cn } from '@/lib/utils';
 import { PointCloudLegend } from './PointCloudLegend';
 import { PointCloudClasses } from './PointCloudClasses';
+import { DeviationPanel } from './DeviationPanel';
 
 const COLOR_MODES: Array<{ value: PointColorModeUi; label: string; hint: string }> = [
   { value: 'rgb',            label: 'RGB',            hint: 'Per-point colour from the source' },
@@ -21,6 +22,7 @@ const COLOR_MODES: Array<{ value: PointColorModeUi; label: string; hint: string 
   { value: 'intensity',      label: 'Intensity',      hint: 'Greyscale ramp from per-point intensity' },
   { value: 'height',         label: 'Height',         hint: 'Cool-warm ramp by Y-up world height' },
   { value: 'fixed',          label: 'Solid',          hint: 'Single colour override' },
+  { value: 'deviation',      label: 'Deviation',      hint: 'Signed distance to nearest BIM surface (compute below)' },
 ];
 
 const SIZE_MODES: Array<{ value: PointSizeModeUi; label: string; hint: string }> = [
@@ -32,9 +34,12 @@ const SIZE_MODES: Array<{ value: PointSizeModeUi; label: string; hint: string }>
 export interface PointCloudPanelProps {
   /** Number of currently-loaded point cloud assets — panel hides when 0. */
   assetCount: number;
+  /** Total triangle count across the scene (gates the BIM↔scan deviation
+   *  compute button — useless without a BIM model loaded). */
+  triangleCount: number;
 }
 
-export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
+export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelProps) {
   const colorMode = useViewerStore((s) => s.pointCloudColorMode);
   const setColorMode = useViewerStore((s) => s.setPointCloudColorMode);
   const sizeMode = useViewerStore((s) => s.pointCloudSizeMode);
@@ -196,6 +201,11 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
           </label>
         )}
       </div>
+
+      {/* BIM↔scan deviation heatmap — only useful when both meshes
+          and points are loaded. The panel renders nothing when there
+          are no triangles in the scene. */}
+      <DeviationPanel triangleCount={triangleCount} />
     </div>
   );
 }

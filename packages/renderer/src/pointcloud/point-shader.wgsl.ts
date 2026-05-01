@@ -39,6 +39,9 @@ export const pointShaderSource = `
       // Nth instance — used by the section-plane drag preview path).
       // yzw reserved for future per-frame state.
       extras: vec4<u32>,
+      // x = deviation centerOffset (m), y = deviation halfRange (m).
+      // Used by colorMode 5 (BIM↔scan deviation heatmap).
+      deviationRange: vec4<f32>,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
 
@@ -47,6 +50,11 @@ export const pointShaderSource = `
       @location(1) rgbAndClass: vec4<f32>,   // unorm8x4 → 0..1 each
       @location(2) intensityPacked: u32,     // low 16 bits = intensity
       @location(3) entityId: u32,
+      // BIM↔scan signed distance, populated by the deviation compute
+      // pass. Zero when the user hasn't computed yet (or when no
+      // mesh is loaded). Bound from a separate vertex buffer so the
+      // existing 24-byte-per-point layout stays unchanged.
+      @location(4) deviation: f32,
     }
 
     struct VertexOutput {
@@ -78,6 +86,23 @@ export const pointShaderSource = `
         case 18u:    { return vec3<f32>(0.95, 0.20, 0.20); }
         default:     { return vec3<f32>(0.65, 0.65, 0.65); }
       }
+    }
+
+    // Diverging blue → white → red ramp for the BIM↔scan deviation
+    // heatmap. t is in [-1, 1] where −1 = scan-far on the negative
+    // side of the surface, 0 = exactly on surface, +1 = scan-far on
+    // the positive (outward-normal) side. Negative side (typically
+    // "inside" / "before" the wall) is blue; positive ("outside" /
+    // "past" the wall) is red.
+    fn deviation_ramp(t: f32) -> vec3<f32> {
+      let s = clamp(t, -1.0, 1.0);
+      if (s < 0.0) {
+        // Cool side: deep blue → white as |t| → 0.
+        let k = s + 1.0;       // [-1..0] → [0..1]
+        return mix(vec3<f32>(0.10, 0.30, 0.85), vec3<f32>(0.95, 0.95, 0.95), k);
+      }
+      // Warm side: white → red as t → 1.
+      return mix(vec3<f32>(0.95, 0.95, 0.95), vec3<f32>(0.85, 0.20, 0.10), s);
     }
 
     fn height_ramp(t: f32) -> vec3<f32> {
@@ -201,6 +226,15 @@ export const pointShaderSource = `
         case 2u: { rgb = vec3<f32>(intensity01, intensity01, intensity01); }
         case 3u: { rgb = height_ramp(heightT); }
         case 4u: { rgb = uniforms.colorOverride.rgb; }
+        case 5u: {
+          // Deviation: shift by centerOffset so a non-zero baseline
+          // can be re-zeroed (handy when a scan has a global offset
+          // from the model). halfRange = 0 falls through to white.
+          let center = uniforms.deviationRange.x;
+          let half = max(uniforms.deviationRange.y, 1e-6);
+          let dt = (input.deviation - center) / half;
+          rgb = deviation_ramp(dt);
+        }
         default: { rgb = input.rgbAndClass.rgb; }
       }
 

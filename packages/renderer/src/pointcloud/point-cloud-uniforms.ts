@@ -18,7 +18,8 @@ export type PointColorMode =
   | 'classification'
   | 'intensity'
   | 'height'
-  | 'fixed';
+  | 'fixed'
+  | 'deviation';
 
 export type PointSizeMode = 'fixed-px' | 'adaptive-world' | 'attenuated';
 
@@ -28,6 +29,7 @@ export const COLOR_MODE_INDEX: Record<PointColorMode, number> = {
   intensity: 2,
   height: 3,
   fixed: 4,
+  deviation: 5,
 };
 
 export const SIZE_MODE_INDEX: Record<PointSizeMode, number> = {
@@ -55,6 +57,9 @@ export interface PointUniformInputs {
   classMask: number;
   /** Preview stride — 1 = full density, N = render every Nth point. */
   previewStride: number;
+  /** BIM ↔ scan deviation heatmap range (metres). */
+  deviationCenterOffset: number;
+  deviationHalfRange: number;
 }
 
 /**
@@ -113,6 +118,11 @@ export function writePointCloudUniforms(
   uU32[53] = 0;
   uU32[54] = 0;
   uU32[55] = 0;
+  // deviationRange (f32 slots 56..59) — center, halfRange, _, _.
+  u[56] = inputs.deviationCenterOffset;
+  u[57] = inputs.deviationHalfRange;
+  u[58] = 0;
+  u[59] = 0;
 
   // Pass the typed array directly — TypeScript widens `.buffer` to
   // `ArrayBufferLike` here (vs. `ArrayBuffer` on a class field), which

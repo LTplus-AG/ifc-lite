@@ -34,12 +34,13 @@ import { pointShaderSource } from './point-shader.wgsl.js';
  *   [44..47] sectionPlane (nx, ny, nz, distance)
  *   [48..51] flags (u32 view: x=expressId, y=sectionEnabled, z=roundShape, w=classMask)
  *   [52..55] extras (u32 view: x=previewStride, yzw=unused)
+ *   [56..59] deviationRange (centerOffset, halfRange, _, _)
  */
-// 14 vec4 slots × 16 bytes = 224 (was 208 before the `extras` slot).
-// Bumped to make room for the preview-density path's stride-cull
-// during section-plane drag without overloading the existing flags
-// slot (which is already crowded across other PRs).
-export const POINT_UNIFORM_SIZE = 224;
+// 15 vec4 slots × 16 bytes = 240. Was 208 before extras (PR-G's
+// stride cull) and deviationRange (PR-H's BIM↔scan heatmap) both
+// claimed their own slots — keeping them separate avoids overloading
+// the flags / colourOverride slots and stays std140-friendly.
+export const POINT_UNIFORM_SIZE = 240;
 export const POINT_VERTEX_BYTES = 24;
 /** Number of vertices emitted per splat (two triangles forming a quad). */
 export const POINT_QUAD_VERTS = 6;
@@ -88,6 +89,15 @@ export class PointRenderPipeline {
               { shaderLocation: 1, offset: 12, format: 'unorm8x4' },
               { shaderLocation: 2, offset: 16, format: 'uint32' },
               { shaderLocation: 3, offset: 20, format: 'uint32' },
+            ],
+          },
+          {
+            // Per-point deviation float (BIM↔scan signed distance).
+            // Always present, zero when the user hasn't computed yet.
+            arrayStride: 4,
+            stepMode: 'instance',
+            attributes: [
+              { shaderLocation: 4, offset: 0, format: 'float32' },
             ],
           },
         ],

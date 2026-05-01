@@ -220,6 +220,16 @@ milestone called out in §19.
 
 ## 3. Phase v0.3 — Geometry (6 weeks)
 
+> **Status: ◐ Foundations landed.** Content-addressed blob store
+> (`MemoryBlobStore`, `IndexedDbBlobStore`, `HttpBlobStore`,
+> `LayeredBlobStore`) and the matching server route
+> (`PUT/GET/HEAD/DELETE /blobs/<hash>` + `GET /blobs`) are in.
+> CSG-tree CRDT (`Y.Array<CSGOp>` with append/insert/remove/move) is in.
+> Conflict UI bridge (`createConflictUIBridge`) emits open/update/close
+> bucket lifecycle events for any UI to consume. Still pending:
+> parametric → mesh kernel hookup, viewer-side conflict badge, and the
+> determinism CI matrix.
+
 **Goal:** Geometric edits (parametric and mesh) sync correctly without
 inflating Y.Doc memory or requiring central authority.
 
@@ -291,6 +301,14 @@ the websocket.
 ---
 
 ## 4. Phase v0.4 — Federation (4 weeks)
+
+> **Status: ◐ Core landed.** `FederationSession` (`createFederationSession`)
+> hosts N model-room `CollabSession`s plus a shared `_federation` Y.Doc
+> for cross-model `FederationRecord`s (clash, RFI, view, BCF refs).
+> Presence is project-scoped via the `_federation` doc per §10.2. Still
+> pending: integration with the existing in-tree `FederationRegistry`
+> for globalId resolution, and the viewer's federation-aware avatar
+> rendering.
 
 **Goal:** Multi-model rooms work; cross-model relationships and project-wide
 presence behave per §10.
@@ -385,6 +403,15 @@ JWT auth, S3 persistence, periodic IFCX snapshots, and dashboards. Pass a
 ---
 
 ## 6. Phase v0.6 — MCP integration (2 weeks)
+
+> **Status: ◐ Presence side landed.** `markAsAgent`, `agentIdentityFromMcp`,
+> and the `AGENT_PALETTE` give MCP tool handlers a one-line way to
+> publish agent presence with `(agent)` suffix and the `tool: 'edit'`
+> marker. The server-side audit log already records every update with
+> `(timestamp, user, room, op-type, op-hash)`, and `startCollabServer`
+> already accepts a per-principal rate-limit function so service
+> accounts can run with a tighter budget than humans. Still pending:
+> the actual MCP tool-handler wiring inside `apps/api`.
 
 **Goal:** AI agents become first-class peers. Their tool calls are CRDT
 operations and they show up in awareness.

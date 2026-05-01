@@ -13,6 +13,11 @@ import { FilePersistence, MemoryPersistence, type Persistence } from './persiste
 import { allowAnonymousEditor, type AuthenticateFn, type Principal } from './auth.js';
 import { type AuditSink } from './audit-log.js';
 import { type RateLimitOptions } from './rate-limit.js';
+import {
+  handleBlobRequest,
+  InMemoryBlobStorage,
+  type ServerBlobStorage,
+} from './blob-route.js';
 
 export interface StartCollabServerOptions {
   port?: number;
@@ -27,6 +32,14 @@ export interface StartCollabServerOptions {
   auditSink?: AuditSink;
   /** Per-peer rate limit. Function form lets you tune by role/user. */
   rateLimit?: RateLimitOptions | ((principal: Principal) => RateLimitOptions);
+  /**
+   * Pluggable blob storage for the `/blobs/...` route. Default:
+   * in-memory. Pass a custom `ServerBlobStorage` to back with S3 or
+   * filesystem in production.
+   */
+  blobStorage?: ServerBlobStorage;
+  /** Reject blob PUTs above this size (default 100 MB). */
+  blobMaxBytes?: number;
 }
 
 export interface CollabServerHandle {
@@ -52,16 +65,35 @@ export async function startCollabServer(
     rateLimit: opts.rateLimit,
   });
 
+  const blobStorage = opts.blobStorage ?? new InMemoryBlobStorage();
+
   const httpServer =
     opts.server ??
-    http.createServer((req, res) => {
-      if (req.url === '/healthz') {
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, rooms: roomManager.list().length }));
-        return;
+    http.createServer(async (req, res) => {
+      try {
+        if (req.url === '/healthz') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, rooms: roomManager.list().length }));
+          return;
+        }
+        // Blob route: PUT / GET / HEAD / DELETE on /blobs/<hash>, GET /blobs.
+        if (req.url && req.url.startsWith('/blobs')) {
+          const handled = await handleBlobRequest(req, res, {
+            storage: blobStorage,
+            maxBytes: opts.blobMaxBytes,
+          });
+          if (handled) return;
+        }
+        res.writeHead(404);
+        res.end();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[collab-server] http handler error:', err);
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end();
+        }
       }
-      res.writeHead(404);
-      res.end();
     });
 
   const wss = new WebSocketServer({ noServer: true });

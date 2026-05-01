@@ -43,6 +43,12 @@ export { createUndoManager, UNDO_ORIGIN, type UndoOptions, type UndoController }
 // Conflict detection
 export * from './conflicts/index.js';
 
+// Geometry: blob store + CSG-tree CRDT
+export * from './geometry/index.js';
+
+// Federation
+export * from './federation/index.js';
+
 // Top-level session façade
 export {
   createCollabSession,

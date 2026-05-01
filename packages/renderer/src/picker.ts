@@ -168,105 +168,7 @@ export class Picker {
     pointNodes?: ReadonlyArray<PointPickNode>,
     pointSizing?: PointPickSizing,
   ): Promise<PickResult | null> {
-    // Resize textures if needed
-    if (this.colorTexture.width !== width || this.colorTexture.height !== height) {
-      this.colorTexture.destroy();
-      this.depthTexture.destroy();
-
-      this.colorTexture = this.device.createTexture({
-        size: { width, height },
-        format: 'r32uint',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
-      });
-
-      this.depthTexture = this.device.createTexture({
-        size: { width, height },
-        format: 'depth32float',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
-      });
-    }
-    
-    // Recreate texture views each time to avoid reuse issues
-    // WebGPU texture views cannot be reused after being submitted
-    const colorView = this.colorTexture.createView();
-    const depthView = this.depthTexture.createView();
-
-    // Render picker pass
-    const encoder = this.device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: colorView,
-          loadOp: 'clear',
-          clearValue: { r: 0, g: 0, b: 0, a: 0 },
-          storeOp: 'store',
-        },
-      ],
-      depthStencilAttachment: {
-        view: depthView,
-        depthClearValue: 0.0,  // Reverse-Z: clear to 0.0 (far plane)
-        depthLoadOp: 'clear',
-        depthStoreOp: 'store',
-      },
-    });
-
-    // Resize buffer if needed (safety net for very large models)
-    if (meshes.length > this.maxMeshes) {
-      this.resizeExpressIdBuffer(meshes.length);
-    }
-
-    // Upload viewProj matrix to uniform buffer (once for all meshes)
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, viewProj);
-
-    // Build mesh index array (index + 1, so 0 = no hit)
-    // Using mesh index instead of expressId to properly support multi-model with overlapping expressIds
-    const meshIndexArray = new Uint32Array(meshes.length);
-    for (let i = 0; i < meshes.length; i++) {
-      if (meshes[i]) {
-        meshIndexArray[i] = i + 1;  // +1 so 0 means no hit
-      }
-    }
-    this.device.queue.writeBuffer(this.expressIdBuffer, 0, meshIndexArray);
-
-    pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
-
-    // Draw each mesh with its index as the first instance
-    // The shader will use this instance_index to look up the expressId
-    for (let i = 0; i < meshes.length; i++) {
-      const mesh = meshes[i];
-      if (!mesh) continue;
-
-      pass.setVertexBuffer(0, mesh.vertexBuffer);
-      pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
-      // Draw 1 instance, starting at instance i (so instance_index = i in shader)
-      pass.drawIndexed(mesh.indexCount, 1, 0, 0, i);
-    }
-
-    // Point splats share the depth buffer with the mesh pass so occlusion
-    // is correct: a triangle in front of a point hides the point and
-    // vice versa. Lazily instantiate the point pipeline — it costs a
-    // shader compile, no point spending it on IFC-only sessions.
-    if (pointNodes && pointNodes.length > 0) {
-      if (!this.pointPicker) {
-        this.pointPicker = new PointPicker(this.webgpuDevice);
-      }
-      const sz = pointSizing ?? { sizeMode: 0, worldRadius: 0.02, pointSizePx: 4 };
-      this.pointPicker.drawIntoPass(
-        pass,
-        pointNodes,
-        viewProj,
-        { width, height },
-        {
-          sizeMode: sz.sizeMode,
-          worldRadius: sz.worldRadius,
-          pointSizePx: sz.pointSizePx,
-          clickTolerancePx: sz.clickTolerancePx ?? 2,
-        },
-      );
-    }
-
-    pass.end();
+    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing);
 
     // Read pixel at click position
     // WebGPU requires bytesPerRow to be a multiple of 256
@@ -323,6 +225,164 @@ export class Picker {
   updateUniforms(viewProj: Float32Array): void {
     // Update viewProj matrix only
     this.device.queue.writeBuffer(this.uniformBuffer, 0, viewProj);
+  }
+
+  /**
+   * Rectangle pick: render the pick pass once, then read back every
+   * texel inside `[x0, y0]..[x1, y1]` and dedupe the hit set. Returns
+   * a `Set<expressId>` for both meshes and point clouds.
+   *
+   * Used by the Shift+drag rectangle-selection UI; not meant for
+   * sustained use because the readback grows with rect area. A 800×600
+   * rect = 480k pixels = ~2 MB transfer, fine for one-shot but we'd
+   * want a GPU-side dedupe for sustained marquee selection.
+   */
+  async pickRect(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    width: number,
+    height: number,
+    meshes: Mesh[],
+    viewProj: Float32Array,
+    pointNodes?: ReadonlyArray<PointPickNode>,
+    pointSizing?: PointPickSizing,
+  ): Promise<Set<number>> {
+    // Normalise + clip rect to texture bounds.
+    const lx = Math.max(0, Math.floor(Math.min(x0, x1)));
+    const ly = Math.max(0, Math.floor(Math.min(y0, y1)));
+    const hx = Math.min(width - 1, Math.floor(Math.max(x0, x1)));
+    const hy = Math.min(height - 1, Math.floor(Math.max(y0, y1)));
+    const rectW = hx - lx + 1;
+    const rectH = hy - ly + 1;
+    if (rectW <= 0 || rectH <= 0) return new Set();
+
+    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing);
+
+    // copyTextureToBuffer requires bytesPerRow to be a multiple of 256.
+    // r32uint = 4 bytes per texel. Round up to nearest 256.
+    const rawRowBytes = rectW * 4;
+    const rowStride = Math.ceil(rawRowBytes / 256) * 256;
+    const readBuffer = this.device.createBuffer({
+      size: rowStride * rectH,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    encoder.copyTextureToBuffer(
+      {
+        texture: this.colorTexture,
+        origin: { x: lx, y: ly, z: 0 },
+      },
+      { buffer: readBuffer, bytesPerRow: rowStride, rowsPerImage: rectH },
+      { width: rectW, height: rectH },
+    );
+    this.device.queue.submit([encoder.finish()]);
+    await readBuffer.mapAsync(1);
+    const view = new Uint32Array(readBuffer.getMappedRange());
+    const ids = new Set<number>();
+    const stridePx = rowStride / 4;
+    for (let y = 0; y < rectH; y++) {
+      const row = y * stridePx;
+      for (let x = 0; x < rectW; x++) {
+        const sample = view[row + x];
+        if (sample === 0) continue;
+        const decoded = decodePickSample(sample);
+        if (decoded.kind === 'none') continue;
+        if (decoded.kind === 'point') {
+          ids.add(decoded.pointExpressId);
+        } else {
+          const mesh = meshes[decoded.meshIndexPlusOne - 1];
+          if (mesh) ids.add(mesh.expressId);
+        }
+      }
+    }
+    readBuffer.unmap();
+    readBuffer.destroy();
+    return ids;
+  }
+
+  /**
+   * Render the picker pass into `colorTexture` + `depthTexture` and
+   * return the still-open command encoder so the caller can append a
+   * `copyTextureToBuffer` for either a single texel (`pick`) or a
+   * whole rect (`pickRect`) before submitting.
+   */
+  private renderPickPass(
+    width: number,
+    height: number,
+    meshes: Mesh[],
+    viewProj: Float32Array,
+    pointNodes?: ReadonlyArray<PointPickNode>,
+    pointSizing?: PointPickSizing,
+  ): GPUCommandEncoder {
+    if (this.colorTexture.width !== width || this.colorTexture.height !== height) {
+      this.colorTexture.destroy();
+      this.depthTexture.destroy();
+      this.colorTexture = this.device.createTexture({
+        size: { width, height },
+        format: 'r32uint',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+      });
+      this.depthTexture = this.device.createTexture({
+        size: { width, height },
+        format: 'depth32float',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+    }
+    // WebGPU texture views can't be reused after submit, so build fresh ones.
+    const colorView = this.colorTexture.createView();
+    const depthView = this.depthTexture.createView();
+
+    const encoder = this.device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: colorView,
+        loadOp: 'clear',
+        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        storeOp: 'store',
+      }],
+      depthStencilAttachment: {
+        view: depthView,
+        depthClearValue: 0.0,  // Reverse-Z: clear to 0.0 (far plane)
+        depthLoadOp: 'clear',
+        depthStoreOp: 'store',
+      },
+    });
+
+    if (meshes.length > this.maxMeshes) {
+      this.resizeExpressIdBuffer(meshes.length);
+    }
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, viewProj);
+    const meshIndexArray = new Uint32Array(meshes.length);
+    for (let i = 0; i < meshes.length; i++) {
+      if (meshes[i]) meshIndexArray[i] = i + 1;  // +1 so 0 means no hit
+    }
+    this.device.queue.writeBuffer(this.expressIdBuffer, 0, meshIndexArray);
+
+    pass.setPipeline(this.pipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    for (let i = 0; i < meshes.length; i++) {
+      const mesh = meshes[i];
+      if (!mesh) continue;
+      pass.setVertexBuffer(0, mesh.vertexBuffer);
+      pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
+      pass.drawIndexed(mesh.indexCount, 1, 0, 0, i);
+    }
+
+    if (pointNodes && pointNodes.length > 0) {
+      if (!this.pointPicker) {
+        this.pointPicker = new PointPicker(this.webgpuDevice);
+      }
+      const sz = pointSizing ?? { sizeMode: 0, worldRadius: 0.02, pointSizePx: 4 };
+      this.pointPicker.drawIntoPass(pass, pointNodes, viewProj, { width, height }, {
+        sizeMode: sz.sizeMode,
+        worldRadius: sz.worldRadius,
+        pointSizePx: sz.pointSizePx,
+        clickTolerancePx: sz.clickTolerancePx ?? 2,
+      });
+    }
+    pass.end();
+    return encoder;
   }
 
   /**

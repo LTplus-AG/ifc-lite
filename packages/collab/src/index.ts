@@ -52,6 +52,9 @@ export * from './federation/index.js';
 // Branching (v0.7 starter)
 export * from './branch/index.js';
 
+// Privacy / GDPR helpers (v1.0)
+export * from './privacy.js';
+
 // Top-level session façade
 export {
   createCollabSession,

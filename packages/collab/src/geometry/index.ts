@@ -4,3 +4,4 @@
 
 export * from './blob-store.js';
 export * from './csg.js';
+export * from './gc.js';

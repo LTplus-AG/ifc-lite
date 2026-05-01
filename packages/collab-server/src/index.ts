@@ -46,6 +46,24 @@ export {
   type RetentionPolicy,
 } from './retention.js';
 export {
+  SnapshotWorker,
+  type SnapshotWorkerOptions,
+  type SnapshotResult,
+} from './snapshot-worker.js';
+export {
+  MetricsRegistry,
+  defaultMetrics,
+  type LabelValues,
+} from './metrics.js';
+export {
+  computeHmac,
+  createReplayProtector,
+  type ReplayDecision,
+  type ReplayProtector,
+  type ReplayProtectorOptions,
+  type UpdateEnvelope,
+} from './replay-protect.js';
+export {
   createRateLimiter,
   type RateLimitOptions,
   type RateLimiter,

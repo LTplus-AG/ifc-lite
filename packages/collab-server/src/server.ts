@@ -18,6 +18,7 @@ import {
   InMemoryBlobStorage,
   type ServerBlobStorage,
 } from './blob-route.js';
+import { defaultMetrics, MetricsRegistry } from './metrics.js';
 
 export interface StartCollabServerOptions {
   port?: number;
@@ -46,6 +47,8 @@ export interface StartCollabServerOptions {
    * connect.
    */
   idleUnloadMs?: number;
+  /** Metrics registry to publish at `/metrics`. Defaults to the package singleton. */
+  metrics?: MetricsRegistry;
 }
 
 export interface CollabServerHandle {
@@ -73,6 +76,20 @@ export async function startCollabServer(
   });
 
   const blobStorage = opts.blobStorage ?? new InMemoryBlobStorage();
+  const metrics = opts.metrics ?? defaultMetrics;
+  const peersGauge = metrics.gauge(
+    'collab_room_peers',
+    'Currently connected peers per room',
+  );
+  const roomsGauge = metrics.gauge('collab_rooms', 'Currently loaded rooms');
+  const updatesCounter = metrics.counter(
+    'collab_updates_total',
+    'Y updates accepted by the server',
+  );
+  const rejectsCounter = metrics.counter(
+    'collab_rejects_total',
+    'Update messages rejected (rate-limit / role / replay)',
+  );
 
   const httpServer =
     opts.server ??
@@ -81,6 +98,16 @@ export async function startCollabServer(
         if (req.url === '/healthz') {
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ ok: true, rooms: roomManager.list().length }));
+          return;
+        }
+        if (req.url === '/metrics') {
+          // Refresh derived gauges before rendering so the snapshot
+          // reflects live state, not state-at-last-event.
+          const stats = await roomManager.stats();
+          roomsGauge.set(stats.length);
+          for (const s of stats) peersGauge.set(s.peerCount, { room: s.roomId });
+          res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' });
+          res.end(metrics.render());
           return;
         }
         // Blob route: PUT / GET / HEAD / DELETE on /blobs/<hash>, GET /blobs.
@@ -102,6 +129,14 @@ export async function startCollabServer(
         }
       }
     });
+
+  // Surface the counters on the manager so the room can bump them in
+  // its update / reject paths. Done as opaque setters to keep
+  // RoomManager from importing the metrics module directly.
+  roomManager.setCounters({
+    update: () => updatesCounter.inc(),
+    reject: (reason: string) => rejectsCounter.inc(1, { reason }),
+  });
 
   const wss = new WebSocketServer({ noServer: true });
 

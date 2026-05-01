@@ -220,15 +220,18 @@ milestone called out in §19.
 
 ## 3. Phase v0.3 — Geometry (6 weeks)
 
-> **Status: ◐ Foundations landed.** Content-addressed blob store
+> **Status: ◐ Foundations + GC landed.** Content-addressed blob store
 > (`MemoryBlobStore`, `IndexedDbBlobStore`, `HttpBlobStore`,
 > `LayeredBlobStore`) and the matching server route
-> (`PUT/GET/HEAD/DELETE /blobs/<hash>` + `GET /blobs`) are in.
-> CSG-tree CRDT (`Y.Array<CSGOp>` with append/insert/remove/move) is in.
+> (`PUT/GET/HEAD/DELETE /blobs/<hash>` + `GET /blobs`) are in. CSG-tree
+> CRDT (`Y.Array<CSGOp>` with append/insert/remove/move) is in.
 > Conflict UI bridge (`createConflictUIBridge`) emits open/update/close
-> bucket lifecycle events for any UI to consume. Still pending:
-> parametric → mesh kernel hookup, viewer-side conflict badge, and the
-> determinism CI matrix.
+> bucket lifecycle events. **Blob GC** (open problem #6) now ships:
+> `collectReferencedBlobHashes(doc)`, `planBlobSweep(store, ref, opts)`,
+> `sweepBlobs(store, decision)` — epoch + reference-count sweep over
+> any `BlobStore` implementing the optional `stat()` method. Still
+> pending: parametric → mesh kernel hookup, viewer-side conflict badge,
+> and the determinism CI matrix.
 
 **Goal:** Geometric edits (parametric and mesh) sync correctly without
 inflating Y.Doc memory or requiring central authority.
@@ -339,15 +342,20 @@ two of them, see a teammate hover the issue in the third model's viewport.
 
 ## 5. Phase v0.5 — Production (4 weeks)
 
-> **Status: ◐ Operational pieces landed.** `JsonlFileAuditSink` (with
-> size-based rotation), idle room unloading (`idleUnloadMs` plumbed end
-> to end with a `sweepIdle()` method on `RoomManager` and tests), and a
-> retention policy module (`planRetention` + `applyRetention` honoring
-> `fullLogDays`, `snapshotsDays`, and `maxBytesPerRoom`). Auth /
-> per-peer rate limiting / role-based write filtering / blob HTTP route
-> are already in. Still pending: TLS termination wiring, S3 / Redis
-> persistence backends, Prometheus metrics, anti-replay HMAC, and the
-> server-driven IFCX snapshot worker.
+> **Status: ◐ Operations stack landed.** `JsonlFileAuditSink` (size-based
+> rotation), idle room unloading (`idleUnloadMs` plumbed end to end with
+> a `sweepIdle()` method on `RoomManager` and tests), retention policy
+> module (`planRetention` + `applyRetention` honoring `fullLogDays`,
+> `snapshotsDays`, and `maxBytesPerRoom`). Auth, per-peer rate limiting,
+> role-based write filtering, and the blob HTTP route are already in.
+> **Server-driven IFCX snapshot worker** (`SnapshotWorker`) writes a
+> per-room `.ifcx` to disk on a configurable interval. **Prometheus
+> `/metrics`** endpoint serves text-format metrics for `collab_rooms`,
+> `collab_room_peers`, `collab_updates_total`, and
+> `collab_rejects_total{reason}`. **Anti-replay HMAC verifier**
+> (`createReplayProtector`, open problem #8) ships as a pure verifier
+> for opt-in deployments. Still pending: TLS termination wiring, S3 /
+> Redis persistence backends, full bucketed histograms.
 
 **Goal:** The server can be operated. Auth, persistence, observability, and
 periodic IFCX snapshots are all real.
@@ -488,13 +496,16 @@ merge, accept it, and the audit log records the merge as a single event.
 
 ## 8. Phase v1.0 — GA (4 weeks)
 
-> **Status: ◐ Schema-migration scaffolding landed.** `getSchemaVersion`,
-> `setSchemaVersion`, `registerSchemaMigration`, `migrateSchema`, and
-> `MIGRATION_ORIGIN` give v1.0 a stable plumb for the IFC4 → IFC4X3 →
-> IFC5 migration story (open problem #2). Migrations register `(from,
-> to, apply)` triples; `migrateSchema` runs them inside a tagged
-> transaction that observers can filter. The actual IFC schema
-> migrations are still up to consumers.
+> **Status: ◐ Schema-migration scaffolding + GDPR helpers landed.**
+> `getSchemaVersion`, `setSchemaVersion`, `registerSchemaMigration`,
+> `migrateSchema`, and `MIGRATION_ORIGIN` give v1.0 a stable plumb for
+> the IFC4 → IFC4X3 → IFC5 migration story (open problem #2).
+> **`exportAndLeave(session, opts)`** runs the GDPR
+> "give-me-a-copy-and-forget-me" flow: snapshot to IFCX, mark presence
+> offline, optional `serverDelete` hook, then dispose. **`redactAuthorMeta`**
+> blanks per-entity `createdBy` / `lastEditedBy` for anonymised exports.
+> The actual IFC schema migrations and E2E encryption are still up to
+> consumers / future work.
 
 **Goal:** Production-ready with optional E2E encryption.
 

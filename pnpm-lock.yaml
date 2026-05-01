@@ -679,6 +679,9 @@ importers:
 
   packages/collab-server:
     dependencies:
+      '@ifc-lite/collab':
+        specifier: workspace:^
+        version: link:../collab
       lib0:
         specifier: ^0.2.99
         version: 0.2.117

@@ -35,6 +35,12 @@ export interface BlobStore {
   delete(hash: BlobHash): Promise<boolean>;
   /** List currently-known blob hashes; ordering is implementation-defined. */
   list(): Promise<BlobHash[]>;
+  /**
+   * Return the blob's metadata (size, contentType, uploadedAt) without
+   * downloading the bytes. Backends that can't cheaply compute this
+   * may return `null` and force callers to fall back to `get`.
+   */
+  stat?(hash: BlobHash): Promise<BlobMeta | null>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -95,6 +101,10 @@ export class MemoryBlobStore implements BlobStore {
   }
   async list(): Promise<BlobHash[]> {
     return Array.from(this.blobs.keys());
+  }
+  async stat(hash: BlobHash): Promise<BlobMeta | null> {
+    const entry = this.blobs.get(hash);
+    return entry ? { ...entry.meta } : null;
   }
 }
 
@@ -171,6 +181,11 @@ export async function createIndexedDbBlobStore(
     async list() {
       const keys = await promisify(tx('readonly').getAllKeys());
       return keys as BlobHash[];
+    },
+    async stat(hash: BlobHash) {
+      const entry = await promisify(tx('readonly').get(hash));
+      if (!entry) return null;
+      return ((entry as { meta: BlobMeta }).meta) ?? null;
     },
   } satisfies BlobStore;
 }
@@ -253,6 +268,18 @@ export class HttpBlobStore implements BlobStore {
     const json = (await res.json()) as { hashes?: BlobHash[] } | BlobHash[];
     if (Array.isArray(json)) return json;
     return json.hashes ?? [];
+  }
+  async stat(hash: BlobHash): Promise<BlobMeta | null> {
+    const res = await this.fetchImpl(this.url(hash), { method: 'HEAD', headers: this.headers() });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`@ifc-lite/collab: blob HEAD failed: ${res.status}`);
+    const len = res.headers.get('content-length');
+    return {
+      hash,
+      byteLength: len ? Number(len) : 0,
+      contentType: res.headers.get('content-type') ?? undefined,
+      uploadedAt: res.headers.get('last-modified') ?? undefined,
+    };
   }
 }
 

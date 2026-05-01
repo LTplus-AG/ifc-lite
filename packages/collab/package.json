@@ -25,6 +25,10 @@
     "./awareness": {
       "import": "./dist/awareness/index.js",
       "types": "./dist/awareness/index.d.ts"
+    },
+    "./snapshot/worker": {
+      "import": "./dist/snapshot/worker.js",
+      "types": "./dist/snapshot/worker.d.ts"
     }
   },
   "scripts": {

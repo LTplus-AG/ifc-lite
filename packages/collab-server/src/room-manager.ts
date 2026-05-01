@@ -47,6 +47,8 @@ export interface RoomOptions {
    * (e.g. MCP agents) typically get a tighter budget than humans.
    */
   rateLimit?: RateLimitOptions | ((principal: Principal) => RateLimitOptions);
+  /** Internal: metric counters injected by the manager. */
+  counters?: { update?: () => void; reject?: (reason: string) => void };
 }
 
 export interface PeerConnection {
@@ -68,6 +70,7 @@ export class Room {
   private readonly compactEvery: number;
   private readonly auditSink: AuditSink;
   private readonly rateLimitFor: (principal: Principal) => RateLimitOptions;
+  private counters: { update?: () => void; reject?: (reason: string) => void };
   private destroyed = false;
 
   constructor(id: string, opts: RoomOptions) {
@@ -79,9 +82,14 @@ export class Room {
     this.auditSink = opts.auditSink ?? noopAuditSink;
     const rl = opts.rateLimit;
     this.rateLimitFor = typeof rl === 'function' ? rl : () => rl ?? {};
+    this.counters = opts.counters ?? {};
 
     this.doc.on('update', this.onDocUpdate);
     this.awareness.on('update', this.onAwarenessUpdate);
+  }
+
+  setCounters(counters: { update?: () => void; reject?: (reason: string) => void }): void {
+    this.counters = counters;
   }
 
   /**
@@ -168,13 +176,16 @@ export class Room {
         if (replyType === syncProtocol.messageYjsUpdate) {
           if (!canWrite(conn.principal)) {
             this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'role' });
+            this.counters.reject?.('role');
             return;
           }
           if (conn.limiter && !conn.limiter.tryConsume(1)) {
             this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'rate-limit' });
+            this.counters.reject?.('rate-limit');
             return;
           }
           this.audit(conn.principal, 'update', shortHash(msg), { bytes: msg.byteLength });
+          this.counters.update?.();
         } else if (replyType === syncProtocol.messageYjsSyncStep1) {
           this.audit(conn.principal, 'sync-step1', '');
         } else if (replyType === syncProtocol.messageYjsSyncStep2) {
@@ -279,12 +290,18 @@ export interface RoomManagerOptions extends RoomOptions {
   maxRooms?: number;
 }
 
+export interface RoomCounters {
+  update?: () => void;
+  reject?: (reason: string) => void;
+}
+
 export class RoomManager {
   private readonly rooms = new Map<string, Promise<Room>>();
   /** Wall-clock ms when a room last had >0 peers, or 0 if never observed. */
   private readonly lastActiveAt = new Map<string, number>();
   private readonly options: RoomManagerOptions;
   private idleTimer: ReturnType<typeof setInterval> | null = null;
+  private counters: RoomCounters = {};
 
   constructor(options: RoomManagerOptions) {
     this.options = options;
@@ -309,14 +326,27 @@ export class RoomManager {
     if (this.rooms.size >= max) {
       throw new Error(`@ifc-lite/collab-server: room limit (${max}) reached`);
     }
+    const counters = this.counters;
     pending = (async () => {
-      const room = new Room(roomId, this.options);
+      const room = new Room(roomId, { ...this.options, counters });
       await room.loadFromDisk();
       return room;
     })();
     this.rooms.set(roomId, pending);
     this.lastActiveAt.set(roomId, Date.now());
     return pending;
+  }
+
+  /**
+   * Inject counters used by `Room.handleMessage` to bump metric values.
+   * The manager forwards them to every newly-loaded room.
+   */
+  setCounters(counters: RoomCounters): void {
+    this.counters = counters;
+    // Apply to already-loaded rooms via their internal hook.
+    for (const pending of this.rooms.values()) {
+      void pending.then((room) => room.setCounters(counters));
+    }
   }
 
   list(): string[] {

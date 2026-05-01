@@ -14,3 +14,9 @@ export {
   extractUserLayer,
   filterUpdateByClient,
 } from './layers.js';
+export {
+  runSnapshotWorker,
+  type WorkerRequest,
+  type WorkerResponse,
+  type WorkerScopeLike,
+} from './worker.js';

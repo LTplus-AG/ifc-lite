@@ -1591,10 +1591,19 @@ export function useIfcLoader() {
           onAssetCountDelta: incCount,
         });
         // Expose cancellation to the UI (StatusBar shows a Cancel
-        // button while this is non-null). Cleared in finally below
-        // so a stale canceller never lingers across loads.
-        const setCanceller = useViewerStore.getState().setActiveStreamCanceller;
-        setCanceller(() => ingest.streamHandle.cancel());
+        // button while this is non-null). Cleared via the
+        // `clearOwnedCanceller` helper below so a later load that
+        // installed its own canceller never gets clobbered by our
+        // cleanup paths — the helper only nulls the store when the
+        // stored function is still ours.
+        const { setActiveStreamCanceller } = useViewerStore.getState();
+        const cancelStream = () => ingest.streamHandle.cancel();
+        setActiveStreamCanceller(cancelStream);
+        const clearOwnedCanceller = () => {
+          if (useViewerStore.getState().activeStreamCanceller === cancelStream) {
+            setActiveStreamCanceller(null);
+          }
+        };
         // ingestPointCloud's onError callback already runs renderer cleanup
         // + incCount(-1); the outer catch must NOT repeat them or the
         // pointCloudAssetCount will go negative.
@@ -1607,7 +1616,7 @@ export function useIfcLoader() {
           // so we don't leak the half-streamed asset.
           if (loadSessionRef.current !== currentSession) {
             renderer.removePointCloudAsset(ingest.rendererHandle);
-            setCanceller(null);
+            clearOwnedCanceller();
             return;
           }
           const message = err instanceof Error ? err.message : String(err);
@@ -1622,11 +1631,11 @@ export function useIfcLoader() {
             updateModel(primaryModelId, { loadState: 'error', loadError: message });
             setError(`${format.toUpperCase()} parsing failed: ${message}`);
           }
-          setCanceller(null);
+          clearOwnedCanceller();
           setLoading(false);
           return;
         }
-        setCanceller(null);
+        clearOwnedCanceller();
         if (loadSessionRef.current !== currentSession) {
           // A newer load already began. Drop our streamed asset and
           // skip every store/UI mutation so we don't overwrite the

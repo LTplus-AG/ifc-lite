@@ -504,9 +504,18 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         // accidentally clear selection on a missed Ctrl-click.
         const rectSize = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
         if (rectSize >= 4) {
-          void renderer.pickRect(x0, y0, x1, y1, getPickOptions()).then((ids) => {
-            useViewerStore.getState().setSelectedEntityIds(Array.from(ids));
-          });
+          // pickRect can reject on WebGPU validation / device-loss
+          // paths — swallow the error so the pointer event doesn't
+          // surface an unhandled rejection. Selection stays
+          // untouched on failure (better UX than clearing it).
+          void renderer
+            .pickRect(x0, y0, x1, y1, getPickOptions())
+            .then((ids) => {
+              useViewerStore.getState().setSelectedEntityIds(Array.from(ids));
+            })
+            .catch((error) => {
+              console.warn('[useMouseControls] Rectangle selection failed:', error);
+            });
         }
         setRectSelection?.(null);
         mouseState.isRectSelecting = false;

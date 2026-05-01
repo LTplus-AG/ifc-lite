@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/pointcloud": patch
+"@ifc-lite/renderer": patch
 "@ifc-lite/viewer": patch
 ---
 

@@ -6,7 +6,7 @@
  * Section plane controls panel
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { X, Slice, ChevronDown, FileImage, FlipHorizontal2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
@@ -51,6 +51,12 @@ export function SectionOverlay() {
   }, [setPreviewStride, pointCloudAssetCount]);
   const handleSliderDragEnd = useCallback(() => {
     setPreviewStride(1);
+  }, [setPreviewStride]);
+  // Reset stride if the panel disappears mid-drag (e.g. user closes
+  // the section tool without releasing the slider). Without this the
+  // store can stay stuck at 4 and keep scans thinned indefinitely.
+  useEffect(() => {
+    return () => setPreviewStride(1);
   }, [setPreviewStride]);
 
   const togglePanel = useCallback(() => {
@@ -152,6 +158,12 @@ export function SectionOverlay() {
                 onChange={handlePositionChange}
                 onPointerDown={handleSliderDragStart}
                 onPointerUp={handleSliderDragEnd}
+                // pointercancel + blur cover the cases where the
+                // browser steals capture (touch scroll, OS gesture)
+                // or the user tabs away without releasing — the
+                // store would otherwise stay at stride 4.
+                onPointerCancel={handleSliderDragEnd}
+                onBlur={handleSliderDragEnd}
                 onKeyDown={handleSliderDragStart}
                 onKeyUp={handleSliderDragEnd}
                 aria-label="Section plane position slider"

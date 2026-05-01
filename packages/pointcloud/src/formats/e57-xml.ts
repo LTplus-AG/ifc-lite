@@ -82,6 +82,15 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
     const fileOffsetAttr = points.attrs.get('fileOffset');
     const recordCountAttr = points.attrs.get('recordCount');
     if (!fileOffsetAttr || !recordCountAttr) continue;
+    // Reject NaN / negative parses up front. Without this guard a
+    // malformed XML attribute (e.g. fileOffset="-1" or
+    // recordCount="bogus") would flow into decodeE57Scan and either
+    // overrun the bytestream walk or allocate a zero-byte position
+    // buffer — neither produces a useful diagnostic.
+    const binaryFileOffset = Number(fileOffsetAttr);
+    const recordCount = Number(recordCountAttr);
+    if (!Number.isFinite(binaryFileOffset) || binaryFileOffset < 0) continue;
+    if (!Number.isFinite(recordCount) || recordCount < 0) continue;
     const proto = childByName(points, 'prototype');
     if (!proto) continue;
     const fields: PrototypeField[] = [];
@@ -115,8 +124,8 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
     entries.push({
       guid: textChild(scan, 'guid') ?? '',
       name: textChild(scan, 'name') ?? undefined,
-      recordCount: Number(recordCountAttr),
-      binaryFileOffset: Number(fileOffsetAttr),
+      recordCount,
+      binaryFileOffset,
       prototype: fields,
       pose: parsePoseElement(childByName(scan, 'pose')) ?? undefined,
     });

@@ -482,10 +482,14 @@ export function useIfcFederation() {
           onProgress: setProgress,
           onAssetCountDelta: incCount,
         });
-        // Expose cancellation while the stream is in-flight; clear in
-        // both success + error paths so a stale canceller can't linger.
-        const setCanceller = useViewerStore.getState().setActiveStreamCanceller;
-        setCanceller(() => ingest.streamHandle.cancel());
+        // Expose cancellation while the stream is in-flight. Capture
+        // the canceller as a named ref so the cleanup can verify the
+        // store still points at us before clearing — a second
+        // addModel() that began before this one settles must not lose
+        // its Cancel button to our finally block.
+        const { setActiveStreamCanceller } = useViewerStore.getState();
+        const cancelStream = () => ingest.streamHandle.cancel();
+        setActiveStreamCanceller(cancelStream);
         // ingest.done rejects on stream errors; ingestPointCloud's onError
         // callback already calls removePointCloudAsset + incCount(-1), so
         // the outer catch must NOT repeat that cleanup or the count goes
@@ -493,7 +497,9 @@ export function useIfcFederation() {
         try {
           await ingest.done;
         } finally {
-          setCanceller(null);
+          if (useViewerStore.getState().activeStreamCanceller === cancelStream) {
+            setActiveStreamCanceller(null);
+          }
         }
         parsedDataStore = ingest.dataStore;
         parsedGeometry = ingest.geometryResult;

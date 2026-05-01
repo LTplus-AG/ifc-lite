@@ -339,10 +339,19 @@ export class Scene {
    * for every expressId across every model. Used by the BIM ↔ scan
    * deviation BVH builder which needs world-space triangle positions
    * regardless of which IFC ingest path they came from.
+   *
+   * Deduplicates by `MeshData` identity: a colour-merged batch is
+   * stored under every contributor's expressId, and visiting it
+   * multiple times would double-count its triangles in the BVH.
    */
   forEachMeshData(visit: (md: MeshData) => void): void {
+    const seen = new Set<MeshData>();
     for (const pieces of this.meshDataMap.values()) {
-      for (const piece of pieces) visit(piece);
+      for (const piece of pieces) {
+        if (seen.has(piece)) continue;
+        seen.add(piece);
+        visit(piece);
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/pointcloud": minor
+"@ifc-lite/renderer": patch
 ---
 
 E57 ScaledInteger codec — bit-packed cartesian / intensity / colour.

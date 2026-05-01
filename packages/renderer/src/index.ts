@@ -123,6 +123,26 @@ type ResolvedVisualEnhancement = {
 };
 
 /**
+ * Build a deterministic fingerprint of the BVH input mesh set so
+ * `Renderer.computeDeviations` can skip the rebuild when the source
+ * geometry hasn't changed. Folds in expressId / modelIndex / position
+ * + index lengths per mesh so two distinct mesh sets that happen to
+ * share the same aggregate position-length total can't collide on the
+ * same fingerprint and reuse a stale BVH.
+ */
+function computeBvhFingerprint(meshes: ReadonlyArray<import('@ifc-lite/geometry').MeshData>): string {
+    const parts: string[] = [String(meshes.length)];
+    for (const m of meshes) {
+        const id = m.expressId ?? -1;
+        const mi = m.modelIndex ?? -1;
+        const posLen = m.positions?.length ?? 0;
+        const idxLen = m.indices?.length ?? 0;
+        parts.push(`${id}:${mi}:${posLen}:${idxLen}`);
+    }
+    return parts.join('|');
+}
+
+/**
  * Main renderer class
  */
 export class Renderer {
@@ -459,9 +479,13 @@ export class Renderer {
             throw new Error('Renderer not initialised — call init() first.');
         }
         const meshes = this.collectAllSceneMeshes();
-        // Fingerprint = mesh count + total positions length. Cheap,
-        // safe enough for a "did the mesh set change" cache key.
-        const fingerprint = `${meshes.length}:${meshes.reduce((s, m) => s + (m.positions?.length ?? 0), 0)}`;
+        // Fingerprint folds in per-mesh expressId / modelIndex /
+        // positions length / triangle count, so two distinct meshes
+        // that happen to share an aggregate position-length total
+        // can't alias each other. A federation reload that swaps one
+        // model for another with the same total triangle count would
+        // otherwise reuse the previous BVH and report wrong distances.
+        const fingerprint = computeBvhFingerprint(meshes);
         if (opts.forceRebuild || fingerprint !== this.deviationBvhFingerprint) {
             const bvh = buildTriangleBVH(meshes);
             this.deviationPipeline.uploadBvh(bvh);
@@ -532,6 +556,9 @@ export class Renderer {
         // The Scene keeps every CPU-side MeshData regardless of which
         // ingest path produced it (STEP / IFCx / GLB). One iteration
         // covers individual + batched + multi-piece + multi-model.
+        // `forEachMeshData` deduplicates by identity so a colour-merged
+        // batch is only added once even if it's indexed under multiple
+        // contributor expressIds.
         const out: import('@ifc-lite/geometry').MeshData[] = [];
         this.scene.forEachMeshData((md) => {
             if (md.positions && md.positions.length > 0) out.push(md);
@@ -2329,6 +2356,13 @@ export class Renderer {
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();
         this.pointCloudRenderer = null;
+
+        // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.
+        // Done before queue.destroy() so the GPU calls inside
+        // `destroy()` still have a valid device.
+        this.deviationPipeline?.destroy();
+        this.deviationPipeline = null;
+        this.deviationBvhFingerprint = null;
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();

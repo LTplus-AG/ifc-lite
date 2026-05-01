@@ -202,6 +202,14 @@ export class Picker {
   ): Promise<PickResult | null> {
     const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing);
 
+    // Clamp the texel origin to the texture bounds. Math.floor(x/y) can
+    // be -1 or equal to width/height on border clicks (and on
+    // pointer-captured drags that leave the canvas), and either makes
+    // copyTextureToBuffer reject the submit. pickRect already guards
+    // this path; pick() needs the same.
+    const sampleX = Math.max(0, Math.min(width - 1, Math.floor(x)));
+    const sampleY = Math.max(0, Math.min(height - 1, Math.floor(y)));
+
     // Read pixel at click position. WebGPU requires bytesPerRow to be a
     // multiple of 256 for copyTextureToBuffer, even for a 1×1 read.
     const BYTES_PER_ROW = 256;
@@ -212,7 +220,7 @@ export class Picker {
     encoder.copyTextureToBuffer(
       {
         texture: this.colorTexture,
-        origin: { x: Math.floor(x), y: Math.floor(y), z: 0 },
+        origin: { x: sampleX, y: sampleY, z: 0 },
       },
       { buffer: readBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
       { width: 1, height: 1 },
@@ -228,7 +236,7 @@ export class Picker {
     encoder.copyTextureToBuffer(
       {
         texture: this.depthTexture,
-        origin: { x: Math.floor(x), y: Math.floor(y), z: 0 },
+        origin: { x: sampleX, y: sampleY, z: 0 },
         aspect: 'depth-only',
       },
       { buffer: depthBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
@@ -252,7 +260,7 @@ export class Picker {
     // [0, 1] (1 = near, 0 = far) — same NDC convention as the camera
     // raycaster, so MathUtils.transformPoint with the inverse viewProj
     // gives the world hit position directly.
-    const worldXYZ = unprojectPickSample(viewProj, x, y, width, height, depth);
+    const worldXYZ = unprojectPickSample(viewProj, sampleX, sampleY, width, height, depth);
 
     if (decoded.kind === 'point') {
       // Look up the asset for modelIndex. expressId is already the

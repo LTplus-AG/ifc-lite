@@ -42,6 +42,16 @@ open problems) are listed once at the end and referenced from each phase.
 
 ## 1. Phase v0.1 — Foundation (4 weeks)
 
+> **Status: ☑ Landed.** Both `packages/collab` and `packages/collab-server`
+> ship in this PR. `pnpm --filter @ifc-lite/collab test` and
+> `pnpm --filter @ifc-lite/collab-server test` pass 19 tests including a
+> round-trip against the buildingSMART hello-wall fixture, two-peer
+> convergence with the conflict detector firing on both peers, end-to-end
+> sync through the websocket server, undo isolation, and per-user layer
+> extraction. The `Web Worker snapshot` and `Bim.fromFile binding` items
+> are deferred to follow-on PRs (the worker is an apps-layer concern; the
+> SDK binding is a v0.2 task once the existing mutation layer migrates).
+
 **Goal:** A single peer can open an `.ifcx` file, mutate it through a Y.Doc
 that mirrors the spec's data model, persist edits to IndexedDB, and snapshot
 the Y.Doc back out to a valid `.ifcx`. No network, no presence, no conflict
@@ -53,7 +63,7 @@ undo, §12.1 local persistence, §12.3 IFCX snapshots (single-peer slice),
 
 ### 1.1 Package scaffolding
 
-- ☐ Create `packages/collab/` with `package.json`, `tsconfig.json` extending
+- ☑ Create `packages/collab/` with `package.json`, `tsconfig.json` extending
   `tsconfig.packages.json`, MPL license header, README, CHANGELOG.
 - ☐ Add `packages/collab` and `packages/collab-server` to
   `pnpm-workspace.yaml` (already covered by `packages/*` glob — verify).
@@ -138,6 +148,13 @@ tab, see edits restored, export `.ifcx`, diff against expected fixture.
 ---
 
 ## 2. Phase v0.2 — Multi-peer (4 weeks)
+
+> **Status: ◐ Mostly landed.** The websocket provider, awareness/presence
+> types, sync server (`y-protocols/sync` over `ws`), in-memory + file
+> persistence, JWT auth hook, healthcheck, and end-to-end two-client
+> convergence test are all in. The remaining v0.2 items are viewer-side
+> rendering of cursors / selection outlines (consumed by `packages/viewer`)
+> and the latency-simulation perf harness.
 
 **Goal:** Two browsers in the same room see each other's edits and cursors in
 real time over a websocket.

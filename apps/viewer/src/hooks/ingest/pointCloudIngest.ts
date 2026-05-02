@@ -287,10 +287,17 @@ function logChunkClassHistogram(
 ): void {
   const classes = chunk.classifications;
   if (!classes) {
+    // E57 has no standard classification field per ASTM E2807, so
+    // most scans (Faro Focus, Leica BLK, Trimble) won't carry one.
+    // A non-standard `classification` prototype field IS now read
+    // when present; absence here means the file genuinely doesn't
+    // include per-point class IDs.
+    const hint = format === 'e57'
+      ? ' (E57 spec doesn\'t define classification — file must be from CloudCompare or a custom LIDAR pipeline to have it)'
+      : ' (decoder didn\'t emit any per-point class IDs)';
     console.log(
       `[pointcloud-debug] ${format} ${fileName} chunk #${debugClassChunkLogs}: `
-      + `pointCount=${chunk.pointCount} classifications=undefined `
-      + `(decoder didn't emit any per-point class IDs)`,
+      + `pointCount=${chunk.pointCount} classifications=undefined${hint}`,
     );
     return;
   }

@@ -36,7 +36,7 @@ export class E57StreamingSource implements StreamingPointSource {
       totalPointCount: this.chunk.pointCount,
       bbox: this.chunk.bbox,
       hasColor: !!this.chunk.colors,
-      hasClassification: false,
+      hasClassification: !!this.chunk.classifications,
       hasIntensity: !!this.chunk.intensities,
       label: this.label,
     };

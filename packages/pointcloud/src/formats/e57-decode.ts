@@ -52,6 +52,14 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
   const bField = findField(entry.prototype, 'colorBlue');
   const hasRgb = !!(rField && gField && bField);
   const iField = findField(entry.prototype, 'intensity');
+  // Classification: not in the standard ASTM E2807 prototype, but
+  // some exporters (CloudCompare, custom LIDAR pipelines) add a
+  // `classification` Integer / ScaledInteger field. We honour it
+  // when present so the splat shader's classification colour mode
+  // works on those files. Stock Faro / Leica scans don't carry it
+  // — that's why classification mode shows everything as class 0
+  // (the spec maps that to "Created, never classified").
+  const cField = findField(entry.prototype, 'classification');
 
   const positions = new Float32Array(entry.recordCount * 3);
   const colors = hasRgb ? new Float32Array(entry.recordCount * 3) : undefined;
@@ -59,6 +67,9 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
   // and Integer (u8 / u16) are both common in real exports.
   const intensities = iField && (iField.kind === 'Float' || iField.kind === 'Integer' || iField.kind === 'ScaledInteger')
     ? new Uint16Array(entry.recordCount)
+    : undefined;
+  const classifications = cField && (cField.kind === 'Integer' || cField.kind === 'ScaledInteger')
+    ? new Uint8Array(entry.recordCount)
     : undefined;
 
   // Walk DataPackets starting at binaryFileOffset.
@@ -158,6 +169,13 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
     if (intensities && iField) {
       readIntensityStream(logical, view, iField, fieldOffsets.get('intensity')!.start, intensities, written, take);
     }
+    if (classifications && cField) {
+      readClassificationStream(
+        logical, view, cField,
+        fieldOffsets.get('classification')!.start,
+        classifications, written, take,
+      );
+    }
 
     written += take;
     offset = packetEnd;
@@ -167,9 +185,15 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
     // Real-world files sometimes report counts a few records higher
     // than what's actually stored; trim positions to the actual count
     // so downstream code doesn't see uninitialised tail values.
-    return finalize(positions.subarray(0, written * 3), colors?.subarray(0, written * 3), intensities?.subarray(0, written), written);
+    return finalize(
+      positions.subarray(0, written * 3),
+      colors?.subarray(0, written * 3),
+      intensities?.subarray(0, written),
+      classifications?.subarray(0, written),
+      written,
+    );
   }
-  return finalize(positions, colors, intensities, entry.recordCount);
+  return finalize(positions, colors, intensities, classifications, entry.recordCount);
 }
 
 function writeColorChannel(
@@ -385,15 +409,60 @@ function finalize(
   positions: Float32Array,
   colors: Float32Array | undefined,
   intensities: Uint16Array | undefined,
+  classifications: Uint8Array | undefined,
   pointCount: number,
 ): DecodedPointChunk {
   return {
     positions: new Float32Array(positions),
     colors: colors ? new Float32Array(colors) : undefined,
     intensities: intensities ? new Uint16Array(intensities) : undefined,
+    classifications: classifications ? new Uint8Array(classifications) : undefined,
     pointCount,
     bbox: computeBBox(positions),
   };
+}
+
+/**
+ * Read N classification samples from a bytestream into a Uint8Array.
+ * Handles the two encodings real exporters use: plain Integer (u8 /
+ * u16 picked from declared range) and ScaledInteger (bit-packed).
+ * Values are clamped into the u8 range — ASPRS LAS 1.4 only defines
+ * up to class 18, so >255 is meaningless but we don't error on it.
+ */
+function readClassificationStream(
+  bytes: Uint8Array,
+  view: DataView,
+  field: PrototypeField,
+  start: number,
+  classifications: Uint8Array,
+  written: number,
+  take: number,
+): void {
+  if (field.kind === 'Integer') {
+    const min = field.minimum ?? 0;
+    const max = field.maximum ?? 255;
+    const widest = Math.max(Math.abs(min), Math.abs(max));
+    const stride = widest > 255 ? 2 : 1;
+    const signed = min < 0;
+    for (let i = 0; i < take; i++) {
+      const off = start + i * stride;
+      const raw = stride === 2
+        ? (signed ? view.getInt16(off, true) : view.getUint16(off, true))
+        : (signed ? view.getInt8(off) : view.getUint8(off));
+      classifications[written + i] = Math.max(0, Math.min(255, raw - min));
+    }
+    return;
+  }
+  // ScaledInteger: classification is conceptually an integer but
+  // some exporters declare a scale anyway. Reader the raw bits and
+  // ignore scale/offset (no real meaning for class IDs).
+  const bitsPerRecord = scaledIntegerBitsPerRecord(field);
+  const minimum = field.minimum ?? 0;
+  const startBit = start * 8;
+  for (let i = 0; i < take; i++) {
+    const raw = readBitsLE(bytes, startBit + i * bitsPerRecord, bitsPerRecord);
+    classifications[written + i] = Math.max(0, Math.min(255, raw + minimum));
+  }
 }
 
 function clamp01(v: number): number {

@@ -77,6 +77,16 @@ export function createNode(
   };
 }
 
+/**
+ * Per-page-session counter for the vertex-buffer class-byte
+ * diagnostic. Mirrors the host-side log in `pointCloudIngest.ts`
+ * so the two can be cross-checked: if the host log shows non-zero
+ * classes but the vertex log shows all 0, the packing path is
+ * dropping them.
+ */
+const DEBUG_VERTEX_CLASS_LOG_LIMIT = 3;
+let debugVertexClassLogs = 0;
+
 /** Convert a renderer-agnostic chunk into a GPU vertex buffer + metadata. */
 export function appendChunkToNode(
   device: GPUDevice,
@@ -115,6 +125,23 @@ export function appendChunkToNode(
     // intensity at offset +16, low 16 bits of a u32
     u32[i * 6 + 4] = intensities ? intensities[i] & 0xffff : 0;
     u32[i * 6 + 5] = expressId;
+  }
+
+  // Sanity-check the packed buffer: read back the class byte for
+  // the first few vertices so the console shows exactly what the
+  // splat shader will see at `rgbAndClass.a * 255`. Catches the
+  // case where the chunk had non-trivial classes but they got
+  // zeroed during packing (e.g. a buffer-view mismatch).
+  if (debugVertexClassLogs < DEBUG_VERTEX_CLASS_LOG_LIMIT && classes) {
+    debugVertexClassLogs++;
+    const sample: number[] = [];
+    for (let i = 0; i < Math.min(8, count); i++) {
+      sample.push(u8[i * POINT_VERTEX_BYTES + 15]);
+    }
+    console.log(
+      `[pointcloud-debug] vertex-buffer chunk #${debugVertexClassLogs}: `
+      + `packed class bytes (offset +15) first8=[${sample.join(',')}]`,
+    );
   }
 
   const vertexBuffer = device.createBuffer({

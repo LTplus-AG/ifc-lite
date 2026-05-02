@@ -257,6 +257,69 @@ export function describeUnsupportedFormat(fileName: string): string | null {
 let nextSyntheticExpressId = 1;
 
 /**
+ * Counter shared across all in-flight ingests. We log up to
+ * `DEBUG_CLASS_LOG_LIMIT` chunks total per page session — enough to
+ * see whether the first scan's classifications are reaching the
+ * renderer without spamming the console for users with many files.
+ *
+ * Reset to zero on a hot module reload (HMR re-evaluates the module),
+ * so the dev workflow is "load file → see ≤ 3 chunk diagnostics".
+ */
+const DEBUG_CLASS_LOG_LIMIT = 3;
+let debugClassChunkLogs = 0;
+
+/**
+ * Log presence + 16-bin histogram of the chunk's classification IDs.
+ * Used to debug "classification colour mode shows everything as
+ * unclassified". Common causes the histogram surfaces immediately:
+ *   - chunk.classifications is undefined → format / decoder didn't
+ *     emit it (look at the format's streaming source).
+ *   - All values 0 or 1 → file is genuinely unclassified (LAS spec
+ *     classes 0 = "Created, never classified", 1 = "Unclassified");
+ *     not a viewer bug.
+ *   - Non-trivial spread but rendering is grey → packing or shader
+ *     read is wrong.
+ */
+function logChunkClassHistogram(
+  fileName: string,
+  format: PointCloudFormat,
+  chunk: DecodedPointChunk,
+): void {
+  const classes = chunk.classifications;
+  if (!classes) {
+    console.log(
+      `[pointcloud-debug] ${format} ${fileName} chunk #${debugClassChunkLogs}: `
+      + `pointCount=${chunk.pointCount} classifications=undefined `
+      + `(decoder didn't emit any per-point class IDs)`,
+    );
+    return;
+  }
+  // 32-wide histogram (covers the ASPRS LAS 1.4 standard range).
+  // Anything past 31 lands in `overflow` so misclassified high
+  // values still surface.
+  const hist = new Uint32Array(32);
+  let overflow = 0;
+  let sample: number[] = [];
+  const n = Math.min(classes.length, chunk.pointCount);
+  for (let i = 0; i < n; i++) {
+    const c = classes[i];
+    if (c < 32) hist[c]++;
+    else overflow++;
+    if (sample.length < 8) sample.push(c);
+  }
+  const nonZero: string[] = [];
+  for (let c = 0; c < 32; c++) {
+    if (hist[c] > 0) nonZero.push(`${c}=${hist[c]}`);
+  }
+  if (overflow > 0) nonZero.push(`>31:${overflow}`);
+  console.log(
+    `[pointcloud-debug] ${format} ${fileName} chunk #${debugClassChunkLogs}: `
+    + `pointCount=${chunk.pointCount} classes.length=${classes.length} `
+    + `first8=[${sample.join(',')}] hist={${nonZero.join(', ')}}`,
+  );
+}
+
+/**
  * Stream a point cloud into the renderer. Returns immediately; await
  * `result.done` for completion.
  */
@@ -297,6 +360,17 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
         });
       },
       onChunk: (chunk) => {
+        // Per-chunk classification diagnostic. Logs whether the
+        // chunk carries a classifications buffer and a 16-bin class
+        // histogram for the first few chunks of each stream so it's
+        // easy to see whether the source actually carries class IDs
+        // (LAS files often have everything as 0/1 for "unclassified").
+        // Capped at 3 logs per stream to keep the console readable;
+        // further debug-on-demand can be done from devtools.
+        if (debugClassChunkLogs < DEBUG_CLASS_LOG_LIMIT) {
+          debugClassChunkLogs++;
+          logChunkClassHistogram(opts.fileName, opts.format, chunk);
+        }
         // LAS / LAZ / E57 / typical scan-style PLY + PCD all store data
         // Z-up by convention (LIDAR / surveying tradition). The renderer
         // is Y-up internally — the IFCx ingest path applies the same

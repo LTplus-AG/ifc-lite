@@ -27,6 +27,7 @@
     "test:esm": "node scripts/verify-esm-entrypoints.mjs",
     "collab:server": "node packages/collab-server/dist/bin.js",
     "collab:demo": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo.mjs",
+    "collab:demo:3d": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo-3d.mjs",
     "typecheck": "turbo typecheck",
     "lint": "pnpm -r lint",
     "docs:serve": "python3 -m mkdocs serve",

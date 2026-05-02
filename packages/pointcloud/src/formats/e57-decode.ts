@@ -89,8 +89,16 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
     //   byte 4..5: bytestreamCount (u16 LE)
     //   then `bytestreamCount` × u16 LE = bytestreamByteCount[]
     //   then payload (concatenated bytestreams, in prototype order)
-    //   then 4 bytes of trailing CRC (ignored).
-    const payloadEnd = packetEnd - 4;
+    //
+    // CRCs in E57 live at the PAGE level (4 bytes per 1024-byte
+    // physical page, stripped by `stripPageCrc` before we get here).
+    // There is no per-packet trailing CRC — the bytestreams fill the
+    // packet exactly up to `packetEnd`. An earlier version of this
+    // code subtracted 4 bytes assuming a packet-level CRC, which
+    // false-positived the bounds checks below on real-world Faro /
+    // Trimble exports whose last bytestream ends within the final
+    // 4 bytes of the packet.
+    const payloadEnd = packetEnd;
     if (offset + 6 > payloadEnd) {
       throw new Error('E57: truncated DataPacket header');
     }

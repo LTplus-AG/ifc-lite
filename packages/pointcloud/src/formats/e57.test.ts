@@ -165,6 +165,49 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.bbox).toEqual({ min: [1.5, 2.5, -3.5], max: [7.0, 8.0, 9.0] });
   });
 
+  it('accepts a fully-packed packet (bytestreams fill the packet exactly)', () => {
+    // Regression for the false-positive packet-bounds guard that
+    // assumed a 4-byte trailing CRC inside each DataPacket. CRCs are
+    // page-level, not packet-level, so real exporters (Faro Focus,
+    // Leica BLK) emit packets where the last bytestream ends at
+    // `offset + packetLogicalLength` exactly. With the old guard
+    // those packets failed with "bytestream X runs past packet payload".
+    const numPoints = 3;
+    const lenF64 = numPoints * 8;
+    const lengths = [lenF64, lenF64, lenF64];
+    const totalPayload = lengths.reduce((a, b) => a + b, 0);
+    const headerBytes = 4 + 2 + 3 * 2;
+    // No trailing slack: packet = header + payload, bytestreams fill it.
+    const packetSize = headerBytes + totalPayload;
+    const buf = new ArrayBuffer(packetSize);
+    const view = new DataView(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetSize - 1, true);
+    view.setUint16(4, 3, true);
+    for (let i = 0; i < 3; i++) view.setUint16(6 + i * 2, lengths[i], true);
+    let cursor = headerBytes;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, i + 1, true);
+    cursor += lenF64;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, i + 10, true);
+    cursor += lenF64;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, i + 100, true);
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: numPoints,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+      ],
+    };
+    const chunk = decodeE57Scan(new Uint8Array(buf), entry);
+    expect(chunk.pointCount).toBe(3);
+    expect(Array.from(chunk.positions)).toEqual([1, 10, 100, 2, 11, 101, 3, 12, 102]);
+  });
+
   it('decodes ScaledInteger cartesian streams (bit-packed integer codec)', () => {
     // Synthetic 2-point packet, bitsPerRecord=8 per axis (span = 255):
     //   minimum=-100, maximum=155, scale=0.01, offset=0

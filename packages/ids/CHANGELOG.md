@@ -1,5 +1,17 @@
 # @ifc-lite/ids
 
+## 1.14.11
+
+### Patch Changes
+
+- [#615](https://github.com/louistrue/ifc-lite/pull/615) [`7a7cf79`](https://github.com/louistrue/ifc-lite/commit/7a7cf79c181004f9974bd303181aeeaa97d6869d) Thanks [@louistrue](https://github.com/louistrue)! - Add `@xmldom/xmldom` as a runtime fallback for environments where the
+  global `DOMParser` is undefined (Node.js, Web Workers without DOM,
+  embedded contexts). Browser builds keep using the native `DOMParser` —
+  the xmldom fallback is loaded dynamically only when needed, so the
+  browser bundle is unaffected. Also surface fatal xmldom v0.9 ParseError
+  exceptions as a clear `Failed to parse IDS XML` error instead of letting
+  them bubble unannotated.
+
 ## 1.14.10
 
 ### Patch Changes

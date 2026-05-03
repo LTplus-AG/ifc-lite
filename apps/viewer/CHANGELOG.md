@@ -1,5 +1,13 @@
 # @ifc-lite/viewer
 
+## 1.19.1
+
+### Patch Changes
+
+- Updated dependencies [[`7a7cf79`](https://github.com/louistrue/ifc-lite/commit/7a7cf79c181004f9974bd303181aeeaa97d6869d), [`7a7cf79`](https://github.com/louistrue/ifc-lite/commit/7a7cf79c181004f9974bd303181aeeaa97d6869d)]:
+  - @ifc-lite/ids@1.14.11
+  - @ifc-lite/mcp@0.2.0
+
 ## 1.19.0
 
 ### Minor Changes

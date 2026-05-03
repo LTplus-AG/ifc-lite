@@ -75,6 +75,26 @@ describe('MCP server: handshake', () => {
     expect(res.result.serverInfo.name).toBe('ifc-lite-mcp');
   });
 
+  it('echoes back a supported protocol version when the client requests one we know', async () => {
+    const { transport } = build();
+    const res = await transport.send({
+      jsonrpc: '2.0', id: 11, method: 'initialize',
+      params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+    }) as { result: { protocolVersion: string } };
+    // Newer Claude Desktop hard-closes the transport on a version mismatch,
+    // so this echo behavior is what unblocks the integration.
+    expect(res.result.protocolVersion).toBe('2025-11-25');
+  });
+
+  it('falls back to PROTOCOL_VERSION for unknown client versions', async () => {
+    const { transport } = build();
+    const res = await transport.send({
+      jsonrpc: '2.0', id: 12, method: 'initialize',
+      params: { protocolVersion: '1999-01-01', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+    }) as { result: { protocolVersion: string } };
+    expect(res.result.protocolVersion).toBe(PROTOCOL_VERSION);
+  });
+
   it('rejects requests before initialize', async () => {
     const { transport } = build();
     const res = await transport.send({ jsonrpc: '2.0', id: 99, method: 'tools/list' }) as { error: { code: number } };

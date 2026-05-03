@@ -35,6 +35,7 @@ import {
   ListResourcesResult,
   ListToolsResult,
   PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
   ProgressNotification,
   ReadResourceParams,
   ReadResourceResult,
@@ -264,12 +265,24 @@ export class MCPServer {
 
   private handleInitialize(params: InitializeParams): InitializeResult {
     this.initialized = true;
+    // Per MCP spec: when the client requests a protocol version we support,
+    // echo it back; otherwise reply with our preferred version. Newer
+    // clients (e.g. Claude Desktop ≥ 0.x asking for 2025-11-25) hard-close
+    // the transport on a version mismatch, so silently downgrading them
+    // would brick the integration. Our wire surface is the stable subset
+    // (initialize, tools/{list,call}, resources/*, prompts/*, notifications/*,
+    // logging) that's been compatible across these revisions, so accepting
+    // them is safe.
+    const negotiated = SUPPORTED_PROTOCOL_VERSIONS.has(params.protocolVersion)
+      ? params.protocolVersion
+      : PROTOCOL_VERSION;
     this.logger.log('info', 'initialize', {
       client: params.clientInfo,
       protocol: params.protocolVersion,
+      negotiated,
     });
     return {
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: negotiated,
       capabilities: this.capabilities,
       serverInfo: { name: this.name, version: this.version },
       instructions: SERVER_INSTRUCTIONS,

@@ -204,10 +204,27 @@ export function detectPointCloudFormat(
       if (lower.endsWith('.laz')) return 'laz';
       return 'las';
     }
-    // ASCII probes: "ply" header / "#" or ".PCD" comment line.
+    // ASCII probes: "ply" header / PCD header line.
     const b0 = view.getUint8(0), b1 = view.getUint8(1), b2 = view.getUint8(2);
     if (b0 === 0x70 /* p */ && b1 === 0x6c /* l */ && b2 === 0x79 /* y */) return 'ply';
+    // PCDs in the wild use three header shapes:
+    //   1. `# .PCD v0.7\n…`              — original commented header
+    //   2. `VERSION 0.7\n…`              — version-first (PCL pcl_io)
+    //   3. `FIELDS x y z\n…`             — fields-first (some converters)
+    // Match all three so a renamed PCD doesn't fall through to the
+    // extension-based detector.
     if (b0 === 0x23 /* # */ && view.byteLength > 4 && view.getUint8(2) === 0x2e /* . */) return 'pcd';
+    if (
+      b0 === 0x56 /* V */ && b1 === 0x45 /* E */ && b2 === 0x52 /* R */
+      && view.byteLength > 7 && view.getUint8(3) === 0x53 /* S */
+      && view.getUint8(4) === 0x49 /* I */ && view.getUint8(5) === 0x4f /* O */
+      && view.getUint8(6) === 0x4e /* N */
+    ) return 'pcd';
+    if (
+      b0 === 0x46 /* F */ && b1 === 0x49 /* I */ && b2 === 0x45 /* E */
+      && view.byteLength > 6 && view.getUint8(3) === 0x4c /* L */
+      && view.getUint8(4) === 0x44 /* D */ && view.getUint8(5) === 0x53 /* S */
+    ) return 'pcd';
   }
   // Fall back to extension when the buffer is missing / too short
   // OR for ASCII formats (PTS / XYZ) that don't carry a magic header.

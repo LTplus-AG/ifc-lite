@@ -1615,6 +1615,10 @@ export function useIfcLoader() {
           // the spinner / model record now. Free the renderer handle
           // so we don't leak the half-streamed asset.
           if (loadSessionRef.current !== currentSession) {
+            console.warn(
+              `[useIfc] pointcloud ingest rejected on stale session (handle=${ingest.rendererHandle.id}):`,
+              err,
+            );
             renderer.removePointCloudAsset(ingest.rendererHandle);
             clearOwnedCanceller();
             return;
@@ -1624,10 +1628,17 @@ export function useIfcLoader() {
           // the status bar shows "Cancelled" instead of a scary error.
           const isAbort = err instanceof DOMException && err.name === 'AbortError';
           if (isAbort) {
+            console.log(
+              `[useIfc] pointcloud ingest cancelled (model=${primaryModelId}, handle=${ingest.rendererHandle.id})`,
+            );
             updateModel(primaryModelId, { loadState: 'error', loadError: 'cancelled' });
             setError(null);
             setProgress({ phase: 'Cancelled', percent: 0 });
           } else {
+            console.error(
+              `[useIfc] pointcloud ingest failed (format=${format}, model=${primaryModelId}):`,
+              err,
+            );
             updateModel(primaryModelId, { loadState: 'error', loadError: message });
             setError(`${format.toUpperCase()} parsing failed: ${message}`);
           }

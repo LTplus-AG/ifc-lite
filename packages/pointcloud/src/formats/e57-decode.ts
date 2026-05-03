@@ -449,7 +449,11 @@ function readClassificationStream(
       const raw = stride === 2
         ? (signed ? view.getInt16(off, true) : view.getUint16(off, true))
         : (signed ? view.getInt8(off) : view.getUint8(off));
-      classifications[written + i] = Math.max(0, Math.min(255, raw - min));
+      // Class IDs are absolute labels (ASPRS LAS 1.4 0..31), not
+      // range-normalised offsets. The raw byte IS the class — don't
+      // subtract `minimum`. Mirrors the ScaledInteger branch below
+      // which uses `raw + minimum` to recover the original value.
+      classifications[written + i] = Math.max(0, Math.min(255, raw));
     }
     return;
   }

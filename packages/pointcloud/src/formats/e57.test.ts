@@ -258,33 +258,14 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
   });
 
   it('decodes ScaledInteger streams with bitsPerRecord that crosses byte boundaries', () => {
-    // bitsPerRecord = 12 (min=0, max=4095, span=4095). Two values
-    // pack into 3 bytes LSB-first:
-    //   value0 = 0xABC, value1 = 0xDEF
-    //   byte 0 = value0 & 0xFF                   = 0xBC
-    //   byte 1 = (value0 >> 8) | ((value1 & 0xF) << 4) = 0xA | 0xF0 = 0xFA
-    //   byte 2 = value1 >> 4                     = 0xDE
-    // With scale=1, offset=0, minimum=0 the decoded floats round-trip
-    // to the original raw_int, so we just check the cartesian values.
-    const packetLogicalLength = 4 + 2 + 2 + 3 + 4; // header + count + length + payload + CRC
-    const totalBytes = packetLogicalLength;
-    const buf = new ArrayBuffer(totalBytes);
-    const view = new DataView(buf);
-    const bytes = new Uint8Array(buf);
-    view.setUint8(0, 1);
-    view.setUint8(1, 0);
-    view.setUint16(2, packetLogicalLength - 1, true);
-    view.setUint16(4, 1, true);          // 1 bytestream (we'll use only X to keep it minimal)
-    view.setUint16(6, 3, true);          // bytestream length = 3
-    bytes[8] = 0xBC;
-    bytes[9] = 0xFA;
-    bytes[10] = 0xDE;
-
-    // recordCount=2; Y/Z would be required by decodeE57Scan, so use a
-    // 3-axis prototype and stuff Y/Z into the same bytestream by
-    // declaring 3 streams of 1 byte each. Easier: drop down to a
-    // 1-stream test that only has X — but decodeE57Scan demands all
-    // three. Build a complete 3-stream packet with the bit-packed X.
+    // bitsPerRecord = 12 for X (min=0, max=4095). Two 12-bit values
+    // pack into 3 bytes LSB-first: [0xABC, 0xDEF] → [0xBC, 0xFA, 0xDE]
+    //   byte 0 = value0 & 0xFF                          = 0xBC
+    //   byte 1 = (value0 >> 8) | ((value1 & 0xF) << 4)  = 0xA | 0xF0 = 0xFA
+    //   byte 2 = value1 >> 4                            = 0xDE
+    // Y and Z use 4-bit packing (two values per byte) to keep the
+    // packet compact. Three bytestreams are required because
+    // decodeE57Scan demands all three cartesian axes.
     const fullLen = 4 + 2 + 2*3 + 3 + 1 + 1 + 4;
     const fullBuf = new ArrayBuffer(fullLen);
     const fv = new DataView(fullBuf);

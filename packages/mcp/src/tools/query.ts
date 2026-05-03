@@ -83,31 +83,50 @@ const queryEntities: Tool = {
         return storey && storey.globalId === storeyGid;
       });
       const page = paginate(matching, limit, offset);
+      const shaped = shapeEntities(page.items, input.fields as string[] | undefined);
       return okResult(
-        `Found ${page.total.toLocaleString()} matching entities${page.truncated ? ` (showing ${page.items.length})` : ''}.`,
-        {
-          count: page.total,
-          truncated: page.truncated,
-          entities: shapeEntities(page.items, input.fields as string[] | undefined),
-        },
+        formatQueryResult(page.total, page.truncated, shaped, page.items),
+        { count: page.total, truncated: page.truncated, entities: shaped },
       );
     }
 
     const all = results.toArray();
     const page = paginate(all, limit, offset);
+    const shaped = shapeEntities(page.items, input.fields as string[] | undefined);
     return okResult(
-      `Found ${page.total.toLocaleString()} matching entities${page.truncated ? ` (showing ${page.items.length})` : ''}.`,
-      {
-        count: page.total,
-        truncated: page.truncated,
-        entities: shapeEntities(page.items, input.fields as string[] | undefined),
-      },
+      formatQueryResult(page.total, page.truncated, shaped, page.items),
+      { count: page.total, truncated: page.truncated, entities: shaped },
     );
   },
 };
 
+function formatQueryResult(total: number, truncated: boolean, _shaped: unknown[], items: EntityData[]): string {
+  const head = `Found ${total.toLocaleString()} matching entit${total === 1 ? 'y' : 'ies'}${truncated ? ` (showing ${items.length})` : ''}.`;
+  if (items.length === 0) return head;
+  const lines = items.slice(0, 25).map((e) => {
+    const name = e.name ? ` '${e.name}'` : '';
+    const gid = e.globalId ? ` GlobalId=${e.globalId}` : '';
+    return `  • ${e.type ?? '?'} #${e.ref.expressId}${name}${gid}`;
+  });
+  if (items.length > 25) lines.push(`  • … +${items.length - 25} more in this page`);
+  return [head, ...lines].join('\n');
+}
+
 function shapeEntities(entities: EntityData[], fields?: string[]): unknown[] {
-  if (!fields || fields.length === 0) return entities;
+  if (!fields || fields.length === 0) {
+    // Default response: surface expressId at the top level so downstream tools
+    // (viewer_*, mutate_*, BCF, etc.) get a stable handle without the caller
+    // having to navigate `entity.ref.expressId`.
+    return entities.map((e) => ({
+      expressId: e.ref.expressId,
+      modelId: e.ref.modelId,
+      globalId: e.globalId,
+      name: e.name,
+      type: e.type,
+      description: e.description,
+      objectType: e.objectType,
+    }));
+  }
   const fieldSet = new Set(fields);
   return entities.map((e) => {
     const out: Record<string, unknown> = {};
@@ -439,7 +458,12 @@ const propertiesUnique: Tool = {
     const values = Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([value, count]) => ({ value, count }));
-    return okResult(`Found ${values.length} unique values across ${total} entities.`, { values, total });
+    // Rich text content so MCP clients that only forward content[].text to the
+    // model still get the actual histogram, not just the count.
+    const head = `${values.length} unique value(s) for ${type}.${psetName}.${propName} across ${total} entit${total === 1 ? 'y' : 'ies'}:`;
+    const lines = values.slice(0, 50).map((v) => `  • ${v.value} — ${v.count}`);
+    if (values.length > 50) lines.push(`  • … +${values.length - 50} more`);
+    return okResult([head, ...lines].join('\n'), { values, total });
   },
 };
 
@@ -462,7 +486,10 @@ const materialsList: Tool = {
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     const list = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
-    return okResult(`${list.length} distinct materials in use.`, { materials: list });
+    const head = `${list.length} distinct material(s) in use:`;
+    const lines = list.slice(0, 50).map((m) => `  • ${m.name} — ${m.count}`);
+    if (list.length > 50) lines.push(`  • … +${list.length - 50} more`);
+    return okResult([head, ...lines].join('\n'), { materials: list });
   },
 };
 
@@ -485,7 +512,10 @@ const classificationsList: Tool = {
       }
     }
     const list = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count }));
-    return okResult(`${list.length} distinct classification references.`, { classifications: list });
+    const head = `${list.length} distinct classification reference(s):`;
+    const lines = list.slice(0, 50).map((c) => `  • ${c.key} — ${c.count}`);
+    if (list.length > 50) lines.push(`  • … +${list.length - 50} more`);
+    return okResult([head, ...lines].join('\n'), { classifications: list });
   },
 };
 

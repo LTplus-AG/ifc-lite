@@ -412,54 +412,175 @@ const viewerColorByProperty: Tool = {
 
 // ── selection ─────────────────────────────────────────────────────────────
 
+type IncludeKey = 'attributes' | 'properties' | 'quantities' | 'classifications' | 'materials';
+const ALL_INCLUDES: readonly IncludeKey[] = ['attributes', 'properties', 'quantities', 'classifications', 'materials'];
+const DEFAULT_INCLUDES: readonly IncludeKey[] = ['attributes', 'classifications', 'materials'];
+
+interface EnrichedPick {
+  expressId: number;
+  ifcType?: string;
+  globalId?: string;
+  entity: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['entity']>;
+  attributes?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['attributes']>;
+  properties?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['properties']>;
+  quantities?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['quantities']>;
+  classifications?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['classifications']>;
+  materials?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['materials']>;
+}
+
+/**
+ * Build the rich payload an agent needs to actually answer "what did the
+ * user just click?". The structured payload always carries the full entity
+ * (ref, type, name, GlobalId, description, objectType) and any sections the
+ * caller asked to include. The text content mirrors that as a human-readable
+ * summary so MCP clients that only forward `content[].text` to the model
+ * (Claude Desktop is one) still get the substance — that's the bug-fix here:
+ * before, text was just "1 selected." and the data "collapsed" out of view.
+ */
+function buildSelectionPayload(
+  ctx: ToolContext,
+  include: ReadonlyArray<IncludeKey>,
+): { selection: EnrichedPick[]; modelId: string | null; text: string } {
+  const viewer = requireViewer(ctx);
+  const state = viewer.state();
+  const raw = state?.selection ?? [];
+  if (raw.length === 0) {
+    return { selection: [], modelId: state?.modelId ?? null, text: 'No selection in viewer.' };
+  }
+
+  const modelId = state?.modelId ?? null;
+  const m = modelId ? ctx.registry.get(modelId) : null;
+  if (!m) {
+    // We still know the basics from the SSE pick — return them so the
+    // agent can at least name the entity even if the model unloaded.
+    const lines = raw.map((s) => `• ${s.ifcType ?? '?'} #${s.expressId}` + (s.globalId ? ` (${s.globalId})` : ''));
+    return {
+      selection: raw.map((s) => ({ expressId: s.expressId, ifcType: s.ifcType, globalId: s.globalId, entity: null })),
+      modelId,
+      text: `${raw.length} selected (model '${modelId}' not resolvable):\n${lines.join('\n')}`,
+    };
+  }
+
+  const includeSet = new Set(include);
+  const enriched: EnrichedPick[] = raw.map((s) => {
+    const ref = { modelId: m.id, expressId: s.expressId };
+    const data = m.bim.entity(ref);
+    const out: EnrichedPick = {
+      expressId: s.expressId,
+      ifcType: s.ifcType ?? data?.type,
+      globalId: s.globalId ?? data?.globalId,
+      entity: data,
+    };
+    if (includeSet.has('attributes')) out.attributes = m.bim.attributes(ref);
+    if (includeSet.has('properties')) out.properties = m.bim.properties(ref);
+    if (includeSet.has('quantities')) out.quantities = m.bim.quantities(ref);
+    if (includeSet.has('classifications')) out.classifications = m.bim.classifications(ref);
+    if (includeSet.has('materials')) out.materials = m.bim.materials(ref);
+    return out;
+  });
+
+  // Build a rich, multi-line text summary so agents whose clients only
+  // surface text content still see the substance of the pick.
+  const blocks: string[] = [`${enriched.length} entity selected in viewer:`];
+  for (const e of enriched) {
+    const parts: string[] = [];
+    parts.push(`• ${e.entity?.type ?? e.ifcType ?? '?'} #${e.expressId}`);
+    const name = e.entity?.name;
+    if (name) parts.push(`'${name}'`);
+    if (e.globalId) parts.push(`GlobalId=${e.globalId}`);
+    blocks.push(parts.join(' '));
+    if (e.entity?.description) blocks.push(`  Description: ${e.entity.description}`);
+    if (e.entity?.objectType) blocks.push(`  ObjectType: ${e.entity.objectType}`);
+    if (e.attributes && e.attributes.length > 0) {
+      const summary = e.attributes
+        .filter((a) => a.value != null && a.value !== '')
+        .map((a) => `${a.name}=${JSON.stringify(a.value)}`)
+        .join(', ');
+      if (summary) blocks.push(`  Attributes: ${summary}`);
+    }
+    if (e.properties && e.properties.length > 0) {
+      const psetSummaries = e.properties.map((p) => `${p.name} (${p.properties.length})`);
+      blocks.push(`  Property sets: ${psetSummaries.join(', ')}`);
+    }
+    if (e.quantities && e.quantities.length > 0) {
+      const qtoSummaries = e.quantities.map((q) => `${q.name} (${q.quantities.length})`);
+      blocks.push(`  Quantity sets: ${qtoSummaries.join(', ')}`);
+    }
+    if (e.classifications && e.classifications.length > 0) {
+      const c = e.classifications
+        .map((cls) => `${cls.system ?? '?'}:${cls.identification ?? cls.name ?? '?'}`)
+        .join(', ');
+      blocks.push(`  Classifications: ${c}`);
+    }
+    if (e.materials) {
+      const mat = e.materials as {
+        layers?: Array<{ materialName?: string; name?: string }>;
+        materials?: Array<{ name?: string }>;
+        name?: string;
+        materialName?: string;
+      };
+      if (Array.isArray(mat.layers) && mat.layers.length > 0) {
+        blocks.push(`  Materials: ${mat.layers.map((l) => l.materialName ?? l.name ?? '?').join(', ')}`);
+      } else if (Array.isArray(mat.materials) && mat.materials.length > 0) {
+        blocks.push(`  Materials: ${mat.materials.map((l) => l.name ?? '?').join(', ')}`);
+      } else if (mat.name ?? mat.materialName) {
+        blocks.push(`  Material: ${mat.name ?? mat.materialName}`);
+      }
+    }
+  }
+  return { selection: enriched, modelId, text: blocks.join('\n') };
+}
+
 const viewerGetSelection: Tool = {
   name: 'viewer_get_selection',
-  description: 'Return what the user has clicked in the viewer right now. Optionally include full entity data for each picked element.',
+  description: 'Return what the user has clicked in the viewer. Both the human-readable text content and the structured payload include type, expressId, globalId, name, description, and any of the optional sections in `include` (default: attributes + classifications + materials).',
   scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
       include: {
         type: 'array',
-        items: { type: 'string', enum: ['attributes', 'properties', 'quantities', 'classifications', 'materials'] },
+        items: { type: 'string', enum: [...ALL_INCLUDES] },
+        description: 'Sections to enrich the response with. Defaults to ["attributes","classifications","materials"]. Pass [] to skip enrichment.',
       },
     },
     additionalProperties: false,
   },
   handler(input, ctx) {
-    const viewer = requireViewer(ctx);
-    const state = viewer.state();
-    const selection = state?.selection ?? [];
-    const include = new Set((input.include as string[] | undefined) ?? []);
-    if (selection.length === 0) return okResult('No selection in viewer.', { selection: [] });
-    if (include.size === 0) return okResult(`${selection.length} selected.`, { selection });
+    requireViewer(ctx);
+    const include: ReadonlyArray<IncludeKey> = Array.isArray(input.include)
+      ? (input.include as IncludeKey[]).filter((k) => (ALL_INCLUDES as readonly string[]).includes(k))
+      : DEFAULT_INCLUDES;
+    const { selection, modelId, text } = buildSelectionPayload(ctx, include);
+    return okResult(text, { selection, modelId, includes: include });
+  },
+};
 
-    const m = state?.modelId ? ctx.registry.get(state.modelId) : null;
-    if (!m) return okResult(`${selection.length} selected (model not resolvable).`, { selection });
-
-    const enriched = selection.map((s) => {
-      const ref = { modelId: m.id, expressId: s.expressId };
-      const data = m.bim.entity(ref);
-      const out: Record<string, unknown> = { ...s, entity: data };
-      if (include.has('attributes') && data) out.attributes = m.bim.attributes(ref);
-      if (include.has('properties') && data) out.properties = m.bim.properties(ref);
-      if (include.has('quantities') && data) out.quantities = m.bim.quantities(ref);
-      if (include.has('classifications') && data) out.classifications = m.bim.classifications(ref);
-      if (include.has('materials') && data) out.materials = m.bim.materials(ref);
-      return out;
-    });
-    return okResult(`${selection.length} selected.`, { selection: enriched });
+const viewerDescribeSelection: Tool = {
+  name: 'viewer_describe_selection',
+  description: 'Like viewer_get_selection but always pulls the full kitchen sink — attributes, properties, quantities, classifications, materials. Use this when the user asks "tell me everything about what I just clicked".',
+  scope: 'read',
+  inputSchema: { type: 'object', additionalProperties: false },
+  handler(_input, ctx) {
+    requireViewer(ctx);
+    const { selection, modelId, text } = buildSelectionPayload(ctx, ALL_INCLUDES);
+    return okResult(text, { selection, modelId, includes: ALL_INCLUDES });
   },
 };
 
 const viewerWaitForSelection: Tool = {
   name: 'viewer_wait_for_selection',
-  description: 'Block until the user picks an entity in the viewer (or `timeout_ms` elapses). Useful for "click on the wall you want me to inspect" workflows.',
+  description: 'Block until the user picks an entity in the viewer (or `timeout_ms` elapses). Useful for "click on the wall you want me to inspect" workflows. Returns the same rich payload as viewer_get_selection.',
   scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
       timeout_ms: { type: 'integer', default: 60000, minimum: 100, maximum: 600000 },
+      include: {
+        type: 'array',
+        items: { type: 'string', enum: [...ALL_INCLUDES] },
+        description: 'Sections to enrich the response with. Defaults to ["attributes","classifications","materials"].',
+      },
     },
     additionalProperties: false,
   },
@@ -467,6 +588,9 @@ const viewerWaitForSelection: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const timeout = (input.timeout_ms as number | undefined) ?? 60000;
+    const include: ReadonlyArray<IncludeKey> = Array.isArray(input.include)
+      ? (input.include as IncludeKey[]).filter((k) => (ALL_INCLUDES as readonly string[]).includes(k))
+      : DEFAULT_INCLUDES;
 
     return new Promise<ReturnType<typeof okResult>>((resolve) => {
       let resolved = false;
@@ -479,7 +603,10 @@ const viewerWaitForSelection: Tool = {
         resolve(result);
       };
       const unsub = viewer.onSelection((sel) => {
-        if (sel.length > 0) finish(okResult(`User picked entity #${sel[0].expressId}.`, { selection: sel }));
+        if (sel.length > 0) {
+          const { selection, modelId, text } = buildSelectionPayload(ctx, include);
+          finish(okResult(text, { selection, modelId, includes: include }));
+        }
       });
       const onAbort = () => finish(okResult('Wait cancelled.', { selection: [], cancelled: true }));
       ctx.signal.addEventListener('abort', onAbort);
@@ -533,6 +660,7 @@ export const viewerTools: Tool[] = [
   viewerColorByStorey,
   viewerColorByProperty,
   viewerGetSelection,
+  viewerDescribeSelection,
   viewerWaitForSelection,
   viewerAsk,
 ];

@@ -158,13 +158,26 @@ describe('viewer tools — full integration', () => {
     });
     expect(updates.some((u) => u.params?.uri === 'ifc-lite://viewer/selection')).toBe(true);
 
-    // 9. viewer_get_selection now returns the picked entity.
-    const sel = await call<{ structuredContent: { selection: Array<{ expressId: number; ifcType?: string }> } }>(
+    // 9. viewer_get_selection now returns the picked entity. Both the
+    //    structured payload AND the human-visible text content carry the
+    //    expressId / GlobalId — that's the bug-fix: previously the text
+    //    was just "1 selected." and most MCP clients only forward
+    //    content[].text to the model.
+    const sel = await call<{
+      content: Array<{ type: string; text: string }>;
+      structuredContent: { selection: Array<{ expressId: number; ifcType?: string; entity?: { type: string; name?: string }; attributes?: unknown[] }> };
+    }>(
       transport, 9, 'tools/call',
       { name: 'viewer_get_selection', arguments: {} },
     );
     expect(sel.structuredContent.selection.length).toBe(1);
     expect(sel.structuredContent.selection[0].expressId).toBe(realExpressId);
+    // Default include now adds attributes/classifications/materials.
+    expect(Array.isArray(sel.structuredContent.selection[0].attributes)).toBe(true);
+    // Text content surfaces the substance, not just the count.
+    expect(sel.content[0].text).toContain(`#${realExpressId}`);
+    expect(sel.content[0].text).toMatch(/Wall/i);
+    expect(sel.content[0].text).not.toBe('1 selected.');
 
     // 10. With include=["properties"], we get more data per pick.
     const richSel = await call<{ structuredContent: { selection: Array<{ entity?: { type: string }; properties?: unknown }> } }>(
@@ -172,6 +185,19 @@ describe('viewer tools — full integration', () => {
       { name: 'viewer_get_selection', arguments: { include: ['properties'] } },
     );
     expect(richSel.structuredContent.selection[0].entity?.type).toMatch(/Wall/i);
+
+    // 10b. viewer_describe_selection always returns the kitchen sink.
+    const kitchen = await call<{
+      content: Array<{ type: string; text: string }>;
+      structuredContent: { includes: string[]; selection: Array<{ attributes?: unknown[]; properties?: unknown[]; quantities?: unknown[]; classifications?: unknown[]; materials?: unknown }> };
+    }>(
+      transport, 105, 'tools/call',
+      { name: 'viewer_describe_selection', arguments: {} },
+    );
+    expect(kitchen.structuredContent.includes).toEqual(
+      expect.arrayContaining(['attributes', 'properties', 'quantities', 'classifications', 'materials']),
+    );
+    expect(kitchen.content[0].text).toContain(`#${realExpressId}`);
 
     // 11. Resource read also reports the selection state.
     const resourceRead = await call<{ contents: Array<{ text: string }> }>(

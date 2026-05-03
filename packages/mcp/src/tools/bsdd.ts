@@ -11,6 +11,34 @@
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { BsddHttpError } from '@ifc-lite/sdk';
+
+/**
+ * Translate a thrown bSDD client error into a typed ToolExecutionError so the
+ * agent gets a stable code (RATE_LIMITED vs EXTERNAL_SERVICE_FAILED) plus a
+ * `Retry-After` hint when the upstream API supplied one.
+ */
+function rethrowBsddError(err: unknown, label: string): never {
+  if (err instanceof BsddHttpError) {
+    if (err.status === 429) {
+      const retry = err.retryAfterSeconds;
+      throw new ToolExecutionError({
+        code: ToolErrorCode.RATE_LIMITED,
+        message: `bSDD rate-limited the ${label} request (HTTP 429).`,
+        details: { url: err.url, status: err.status, retryAfterSeconds: retry },
+        hint: retry != null
+          ? `Retry after ${retry}s. Avoid running large search queries back-to-back with class lookups.`
+          : 'Avoid running large search queries back-to-back with class lookups.',
+      });
+    }
+    throw new ToolExecutionError({
+      code: ToolErrorCode.EXTERNAL_SERVICE_FAILED,
+      message: `bSDD ${label} failed: HTTP ${err.status} ${err.statusText}.`,
+      details: { url: err.url, status: err.status },
+    });
+  }
+  throw err;
+}
 
 const bsddSearch: Tool = {
   name: 'bsdd_search',
@@ -35,8 +63,12 @@ const bsddSearch: Tool = {
         hint: 'Run model_load with a small IFC, or add a placeholder file via the CLI.',
       });
     }
-    const results = await loaded.bim.bsdd.search(input.query as string);
-    return okResult(`Found ${results.length} bSDD class(es).`, { results });
+    try {
+      const results = await loaded.bim.bsdd.search(input.query as string);
+      return okResult(`Found ${results.length} bSDD class(es).`, { results });
+    } catch (err) {
+      rethrowBsddError(err, 'search');
+    }
   },
 };
 
@@ -53,7 +85,12 @@ const bsddClass: Tool = {
   async handler(input, ctx) {
     const loaded = ctx.registry.list()[0];
     if (!loaded) throw new ToolExecutionError({ code: ToolErrorCode.MODEL_NOT_FOUND, message: 'Load a model first.' });
-    const info = await loaded.bim.bsdd.fetchClassInfo(input.ifc_type as string);
+    let info;
+    try {
+      info = await loaded.bim.bsdd.fetchClassInfo(input.ifc_type as string);
+    } catch (err) {
+      rethrowBsddError(err, 'class lookup');
+    }
     if (!info) {
       throw new ToolExecutionError({
         code: ToolErrorCode.ENTITY_NOT_FOUND,
@@ -77,9 +114,13 @@ const bsddPropertySets: Tool = {
   async handler(input, ctx) {
     const loaded = ctx.registry.list()[0];
     if (!loaded) throw new ToolExecutionError({ code: ToolErrorCode.MODEL_NOT_FOUND, message: 'Load a model first.' });
-    const psets = await loaded.bim.bsdd.getPropertySets(input.ifc_type as string);
-    const out = Array.from(psets.entries()).map(([name, props]) => ({ name, properties: props }));
-    return okResult(`${out.length} property set(s) for ${input.ifc_type}.`, { propertySets: out });
+    try {
+      const psets = await loaded.bim.bsdd.getPropertySets(input.ifc_type as string);
+      const out = Array.from(psets.entries()).map(([name, props]) => ({ name, properties: props }));
+      return okResult(`${out.length} property set(s) for ${input.ifc_type}.`, { propertySets: out });
+    } catch (err) {
+      rethrowBsddError(err, 'property-set lookup');
+    }
   },
 };
 
@@ -117,8 +158,12 @@ const bsddMatch: Tool = {
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide express_id or global_id.' });
     }
     const ifcType = m.store.entities.getTypeName(expressId) ?? 'Unknown';
-    const candidates = await m.bim.bsdd.searchRelatedClasses(ifcType);
-    return okResult(`${candidates.length} bSDD candidate(s) for ${ifcType}.`, { ifcType, candidates });
+    try {
+      const candidates = await m.bim.bsdd.searchRelatedClasses(ifcType);
+      return okResult(`${candidates.length} bSDD candidate(s) for ${ifcType}.`, { ifcType, candidates });
+    } catch (err) {
+      rethrowBsddError(err, 'related-class search');
+    }
   },
 };
 

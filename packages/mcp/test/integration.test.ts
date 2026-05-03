@@ -121,6 +121,33 @@ describe('end-to-end MCP server with real IFC', () => {
     const saved = await readFile(savedPath, 'utf-8');
     expect(saved.startsWith('ISO-10303-21')).toBe(true);
 
+    // ids_validate round-trip — locks in the @xmldom/xmldom fallback that
+    // makes the IDS parser work in plain Node (no global DOMParser). Before
+    // the fix this throws INTERNAL_ERROR("DOMParser is not defined").
+    const idsPath = join(tmp, 'mini.ids');
+    await writeFile(idsPath, `<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>Walls must exist</title></info>
+  <specifications>
+    <specification name="Walls" ifcVersion="IFC2X3 IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute><name><simpleValue>Name</simpleValue></name></attribute>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>
+`, 'utf-8');
+    const ids = await send<{ isError?: boolean; structuredContent?: Record<string, unknown> }>(
+      transport, 9, 'tools/call',
+      { name: 'ids_validate', arguments: { ids_path: idsPath } },
+    );
+    expect(ids.isError).toBeFalsy();
+    expect(ids.structuredContent).toBeTruthy();
+
     transport.close();
   });
 });

@@ -768,6 +768,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:*
         version: link:../data
+      '@xmldom/xmldom':
+        specifier: ^0.9.10
+        version: 0.9.10
     devDependencies:
       happy-dom:
         specifier: ^20.8.9
@@ -2866,6 +2869,10 @@ packages:
 
   '@webgpu/types@0.1.69':
     resolution: {integrity: sha512-RPmm6kgRbI8e98zSD3RVACvnuktIja5+yLgDAkTmxLr90BEwdTXRQWNLF3ETTTyH/8mKhznZuN5AveXYFEsMGQ==}
+
+  '@xmldom/xmldom@0.9.10':
+    resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
+    engines: {node: '>=14.6'}
 
   '@zip.js/zip.js@2.8.26':
     resolution: {integrity: sha512-RQ4h9F6DOiHxpdocUDrOl6xBM+yOtz+LkUol47AVWcfebGBDpZ7w7Xvz9PS24JgXvLGiXXzSAfdCdVy1tPlaFA==}
@@ -6209,6 +6216,8 @@ snapshots:
       tinyrainbow: 2.0.0
 
   '@webgpu/types@0.1.69': {}
+
+  '@xmldom/xmldom@0.9.10': {}
 
   '@zip.js/zip.js@2.8.26': {}
 

@@ -44,6 +44,21 @@ export class IDSParseError extends Error {
   }
 }
 
+// `DOMParser` exists in browsers and in test envs (happy-dom/jsdom). In plain
+// Node it's undefined, so fall back to @xmldom/xmldom. The dynamic import is
+// hidden behind a runtime-computed specifier so browser bundlers don't pull
+// xmldom into the client bundle.
+type DOMParserCtor = new () => { parseFromString(input: string, mime: string): Document };
+let DOMParserImpl: DOMParserCtor | null =
+  typeof globalThis !== 'undefined' && typeof (globalThis as { DOMParser?: DOMParserCtor }).DOMParser === 'function'
+    ? ((globalThis as { DOMParser?: DOMParserCtor }).DOMParser as DOMParserCtor)
+    : null;
+if (!DOMParserImpl) {
+  const moduleName = '@xmldom/xmldom';
+  const xmldom = (await import(/* @vite-ignore */ moduleName)) as { DOMParser: DOMParserCtor };
+  DOMParserImpl = xmldom.DOMParser;
+}
+
 /**
  * Parse IDS XML content into an IDSDocument
  */
@@ -53,11 +68,23 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
       ? xmlContent
       : new TextDecoder().decode(xmlContent);
 
-  const parser = new DOMParser();
+  if (!DOMParserImpl) {
+    throw new IDSParseError(
+      'No DOMParser implementation available',
+      'Neither globalThis.DOMParser nor @xmldom/xmldom could be loaded.',
+    );
+  }
+  const parser = new DOMParserImpl();
   const doc = parser.parseFromString(xmlString, 'text/xml');
 
-  // Check for parse errors
-  const parseError = doc.querySelector('parsererror');
+  // Browser DOMParser surfaces parse errors as a <parsererror> element. xmldom
+  // does not emit one (it uses errorHandler), but it returns a usable Document
+  // even for malformed input — we rely on root-element validation below to
+  // catch obviously bad payloads.
+  const parseError =
+    typeof (doc as { querySelector?: (s: string) => Element | null }).querySelector === 'function'
+      ? (doc as { querySelector: (s: string) => Element | null }).querySelector('parsererror')
+      : null;
   if (parseError) {
     throw new IDSParseError(
       'Invalid XML format',

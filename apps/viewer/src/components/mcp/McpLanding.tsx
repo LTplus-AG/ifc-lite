@@ -740,8 +740,11 @@ function RecipesSection(): ReactNode {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollState, setScrollState] = useState({ atStart: true, atEnd: false, page: 0, pages: 1 });
 
-  // Recompute scroll state on scroll + resize. Drives the fade gradients and
-  // the pagination dots underneath. Cards advance one-page at a time.
+  // Recompute scroll state on scroll + resize. Drives the fade gradients
+  // and the pagination dots underneath. Pages are computed from how many
+  // cards actually fit in the viewport so dots and page indices stay in
+  // sync — when the last few cards are all visible, the last dot becomes
+  // (and stays) active instead of being unreachable.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -750,8 +753,10 @@ function RecipesSection(): ReactNode {
       const atStart = el.scrollLeft <= 4;
       const atEnd = max - el.scrollLeft <= 4;
       const cardWidth = 360 + 24;
-      const pages = Math.max(1, Math.ceil(el.scrollWidth / el.clientWidth));
-      const page = Math.round(el.scrollLeft / cardWidth);
+      const cardsPerPage = Math.max(1, Math.floor(el.clientWidth / cardWidth));
+      const pages = Math.max(1, Math.ceil(RECIPES.length / cardsPerPage));
+      const rawPage = Math.round(el.scrollLeft / (cardsPerPage * cardWidth));
+      const page = Math.max(0, Math.min(pages - 1, rawPage));
       setScrollState({ atStart, atEnd, page, pages });
     };
     computeState();
@@ -902,7 +907,9 @@ function RecipesSection(): ReactNode {
           {RECIPES.length} recipes · scroll →
         </span>
         <div className="flex items-center gap-1.5">
-          {RECIPES.map((_, i) => (
+          {/* One dot per page (not per recipe), so as cards-per-page changes
+              with viewport width the active highlight remains reachable. */}
+          {Array.from({ length: scrollState.pages }, (_, i) => (
             <span
               key={i}
               className="block h-1 rounded-full transition-all"

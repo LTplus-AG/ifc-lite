@@ -75,12 +75,21 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
     );
   }
   const parser = new DOMParserImpl();
-  const doc = parser.parseFromString(xmlString, 'text/xml');
 
-  // Browser DOMParser surfaces parse errors as a <parsererror> element. xmldom
-  // does not emit one (it uses errorHandler), but it returns a usable Document
-  // even for malformed input — we rely on root-element validation below to
-  // catch obviously bad payloads.
+  // Browser DOMParser → returns a Document with a <parsererror> element on
+  // malformed input. xmldom v0.9 → throws on fatalError (and may also leave
+  // a partial Document with no documentElement). Normalise both paths to a
+  // single IDSParseError so callers see consistent failures.
+  let doc: Document;
+  try {
+    doc = parser.parseFromString(xmlString, 'text/xml');
+  } catch (err) {
+    throw new IDSParseError(
+      'Failed to parse IDS XML',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
   const parseError =
     typeof (doc as { querySelector?: (s: string) => Element | null }).querySelector === 'function'
       ? (doc as { querySelector: (s: string) => Element | null }).querySelector('parsererror')
@@ -93,6 +102,15 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
   }
 
   const root = doc.documentElement;
+  // xmldom can return a Document with no root on certain error modes —
+  // surface that as a parse error rather than a confusing TypeError on
+  // root.localName below.
+  if (!root) {
+    throw new IDSParseError(
+      'Failed to parse IDS XML',
+      'Parser returned a document with no root element.',
+    );
+  }
 
   // Validate root element
   if (root.localName !== 'ids') {

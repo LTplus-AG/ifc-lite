@@ -165,7 +165,7 @@ describe('viewer tools — full integration', () => {
     //    content[].text to the model.
     const sel = await call<{
       content: Array<{ type: string; text: string }>;
-      structuredContent: { selection: Array<{ expressId: number; ifcType?: string; entity?: { type: string; name?: string }; attributes?: unknown[] }> };
+      structuredContent: { selection: Array<{ expressId: number; IfcType?: string; entity?: { IfcType?: string; Name?: string }; attributes?: unknown[] }> };
     }>(
       transport, 9, 'tools/call',
       { name: 'viewer_get_selection', arguments: {} },
@@ -180,11 +180,11 @@ describe('viewer tools — full integration', () => {
     expect(sel.content[0].text).not.toBe('1 selected.');
 
     // 10. With include=["properties"], we get more data per pick.
-    const richSel = await call<{ structuredContent: { selection: Array<{ entity?: { type: string }; properties?: unknown }> } }>(
+    const richSel = await call<{ structuredContent: { selection: Array<{ entity?: { IfcType?: string }; properties?: unknown }> } }>(
       transport, 10, 'tools/call',
       { name: 'viewer_get_selection', arguments: { include: ['properties'] } },
     );
-    expect(richSel.structuredContent.selection[0].entity?.type).toMatch(/Wall/i);
+    expect(richSel.structuredContent.selection[0].entity?.IfcType).toMatch(/Wall/i);
 
     // 10b. viewer_describe_selection always returns the kitchen sink.
     const kitchen = await call<{

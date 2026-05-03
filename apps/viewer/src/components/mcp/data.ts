@@ -524,24 +524,48 @@ const PARAM_FALLBACKS: Record<string, Array<Omit<ParamRow, 'required'>> & { requ
 })();
 
 /**
- * Build a parameter table for a tool. Prefers fields declared on the live
- * inputSchema.properties; falls back to the curated PARAM_FALLBACKS map for
- * tools whose schemas haven’t been enriched yet.
+ * Build a parameter table for a tool. Merges fields declared on the live
+ * `inputSchema.properties` with the curated `PARAM_FALLBACKS` map, so a
+ * partially-enriched schema (a few typed fields, no descriptions) still
+ * picks up the curated descriptions instead of rendering blank cells.
+ *
+ * Schema is the source of truth for `type`, `enum`, and `required`; the
+ * fallback only fills gaps in `description` and supplies any rows the
+ * schema didn't declare at all.
  */
 export function paramsFor(tool: CatalogTool): ParamRow[] {
   const schema = tool.inputSchema as { properties?: Record<string, { type?: string; description?: string; enum?: string[] }>; required?: string[] };
   const required = new Set(schema?.required ?? []);
-  if (schema?.properties && Object.keys(schema.properties).length > 0) {
-    return Object.entries(schema.properties).map(([name, def]) => ({
-      name,
-      type: def?.enum ? def.enum.map((v) => JSON.stringify(v)).join(' | ') : (def?.type ?? 'unknown'),
-      required: required.has(name),
-      description: def?.description,
-    }));
+  const fallback = PARAM_FALLBACKS[tool.name] ?? [];
+  const fallbackByName = new Map(fallback.map((row) => [row.name, row]));
+
+  const seen = new Set<string>();
+  const rows: ParamRow[] = [];
+
+  if (schema?.properties) {
+    for (const [name, def] of Object.entries(schema.properties)) {
+      const fb = fallbackByName.get(name);
+      const type = def?.enum
+        ? def.enum.map((v) => JSON.stringify(v)).join(' | ')
+        : (def?.type ?? fb?.type ?? 'unknown');
+      rows.push({
+        name,
+        type,
+        required: required.has(name),
+        description: def?.description ?? fb?.description,
+      });
+      seen.add(name);
+    }
   }
-  const fallback = PARAM_FALLBACKS[tool.name];
-  if (!fallback) return [];
-  return fallback.map((row) => ({ ...row, required: required.has(row.name) }));
+
+  // Append fallback-only rows (schemas that haven't enumerated every
+  // parameter yet — mostly the v0.5 stubs).
+  for (const row of fallback) {
+    if (seen.has(row.name)) continue;
+    rows.push({ ...row, required: required.has(row.name) });
+  }
+
+  return rows;
 }
 
 // ── example invocations ─────────────────────────────────────────────────────

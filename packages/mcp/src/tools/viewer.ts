@@ -416,16 +416,49 @@ type IncludeKey = 'attributes' | 'properties' | 'quantities' | 'classifications'
 const ALL_INCLUDES: readonly IncludeKey[] = ['attributes', 'properties', 'quantities', 'classifications', 'materials'];
 const DEFAULT_INCLUDES: readonly IncludeKey[] = ['attributes', 'classifications', 'materials'];
 
+/**
+ * IFC EXPRESS-cased projection of an entity's identity for the viewer
+ * selection payload. Keeps `expressId` as a non-IFC numeric handle (it's a
+ * STEP-id concept, not an IFC EXPRESS attribute), but mirrors every IFC
+ * attribute by its PascalCase EXPRESS name (`IfcType`, `GlobalId`, `Name`,
+ * `Description`, `ObjectType`) so MCP clients consume the viewer payload
+ * with the same casing the rest of the IFC EXPRESS surface uses. SDK-side
+ * structures (attributes / properties / quantities / classifications /
+ * materials) are left alone — they're cross-package types and would need
+ * a wider migration; documented as the boundary here.
+ */
+interface ProjectedEntity {
+  IfcType?: string;
+  GlobalId?: string;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+}
+
 interface EnrichedPick {
   expressId: number;
-  ifcType?: string;
-  globalId?: string;
-  entity: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['entity']>;
+  IfcType?: string;
+  GlobalId?: string;
+  entity: ProjectedEntity | null;
   attributes?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['attributes']>;
   properties?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['properties']>;
   quantities?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['quantities']>;
   classifications?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['classifications']>;
   materials?: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['materials']>;
+}
+
+/** Map the SDK's camelCase entity shape to IFC EXPRESS PascalCase. */
+function projectEntity(
+  data: ReturnType<NonNullable<ReturnType<typeof resolveModel>>['bim']['entity']> | null | undefined,
+): ProjectedEntity | null {
+  if (!data) return null;
+  const out: ProjectedEntity = {};
+  if (data.type) out.IfcType = data.type;
+  if (data.globalId) out.GlobalId = data.globalId;
+  if (data.name) out.Name = data.name;
+  if (data.description) out.Description = data.description;
+  if (data.objectType) out.ObjectType = data.objectType;
+  return out;
 }
 
 /**
@@ -455,7 +488,7 @@ function buildSelectionPayload(
     // agent can at least name the entity even if the model unloaded.
     const lines = raw.map((s) => `• ${s.ifcType ?? '?'} #${s.expressId}` + (s.globalId ? ` (${s.globalId})` : ''));
     return {
-      selection: raw.map((s) => ({ expressId: s.expressId, ifcType: s.ifcType, globalId: s.globalId, entity: null })),
+      selection: raw.map((s) => ({ expressId: s.expressId, IfcType: s.ifcType, GlobalId: s.globalId, entity: null })),
       modelId,
       text: `${raw.length} selected (model '${modelId}' not resolvable):\n${lines.join('\n')}`,
     };
@@ -467,9 +500,9 @@ function buildSelectionPayload(
     const data = m.bim.entity(ref);
     const out: EnrichedPick = {
       expressId: s.expressId,
-      ifcType: s.ifcType ?? data?.type,
-      globalId: s.globalId ?? data?.globalId,
-      entity: data,
+      IfcType: s.ifcType ?? data?.type,
+      GlobalId: s.globalId ?? data?.globalId,
+      entity: projectEntity(data),
     };
     if (includeSet.has('attributes')) out.attributes = m.bim.attributes(ref);
     if (includeSet.has('properties')) out.properties = m.bim.properties(ref);
@@ -484,13 +517,13 @@ function buildSelectionPayload(
   const blocks: string[] = [`${enriched.length} entity selected in viewer:`];
   for (const e of enriched) {
     const parts: string[] = [];
-    parts.push(`• ${e.entity?.type ?? e.ifcType ?? '?'} #${e.expressId}`);
-    const name = e.entity?.name;
+    parts.push(`• ${e.entity?.IfcType ?? e.IfcType ?? '?'} #${e.expressId}`);
+    const name = e.entity?.Name;
     if (name) parts.push(`'${name}'`);
-    if (e.globalId) parts.push(`GlobalId=${e.globalId}`);
+    if (e.GlobalId) parts.push(`GlobalId=${e.GlobalId}`);
     blocks.push(parts.join(' '));
-    if (e.entity?.description) blocks.push(`  Description: ${e.entity.description}`);
-    if (e.entity?.objectType) blocks.push(`  ObjectType: ${e.entity.objectType}`);
+    if (e.entity?.Description) blocks.push(`  Description: ${e.entity.Description}`);
+    if (e.entity?.ObjectType) blocks.push(`  ObjectType: ${e.entity.ObjectType}`);
     if (e.attributes && e.attributes.length > 0) {
       const summary = e.attributes
         .filter((a) => a.value != null && a.value !== '')

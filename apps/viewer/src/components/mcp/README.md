@@ -6,7 +6,7 @@ variant is a single self-contained `.tsx` that reads the same catalog +
 recipes + install configs from `./data.ts` so the **content** is identical
 across all three; only the **design language** changes.
 
-```
+```text
 data.ts                 — shared content (catalog, clients, recipes, snippets)
 types.ts                — typed shapes for the shared content
 use-mcp-page.ts         — useFonts / useCopy / useDocumentMeta helpers
@@ -26,7 +26,7 @@ release time without changing the page code.
 
 ## Compare them
 
-```
+```text
 /mcp              → Variant A (default)
 /mcp?variant=a    → Variant A
 /mcp?variant=b    → Variant B
@@ -159,9 +159,11 @@ strongest single-shot.
    with output from `node packages/mcp/dist/cli.js --dump-tools` (CLI flag
    to be added). The current file is hand-seeded with the real v0.1
    surface so the page renders as production would.
-2. **Playground link**: all three CTA the `/mcp/playground` route, which is
-   a separate task. Until that ships, the link 404s — fine for design
-   review.
+2. **Playground link**: all three CTA the `/mcp/playground` route, which
+   is now wired (see `McpPlayground.tsx`, the dispatcher, the inline
+   Three.js viewer, and the BYOK Anthropic chat). The whole read+write
+   tool surface — including BCF authoring, IDS validation, exports, and
+   mutations — runs against an in-browser parsed IFC. No backend.
 3. **Fonts**: Google Fonts is fine for design comparison; production may
    want to self-host (woff2) for COOP/COEP compliance and stable
    first-paint.

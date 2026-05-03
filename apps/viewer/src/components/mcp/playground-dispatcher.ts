@@ -251,8 +251,15 @@ const PROXIED_BSDD = new BsddNamespace({ apiBase: '/api/bsdd' });
 const IMPLS: Record<string, ToolImpl> = {
   // ── Discovery ───────────────────────────────────────────────────────────
   async model_info(m) {
+    // entityIndex.byType keys are raw STEP storage names (IFCWALL, …) —
+    // user-facing surfaces use IFC EXPRESS PascalCase (IfcWall). Resolve
+    // through store.entities.getTypeName so the playground agrees with
+    // the rest of the MCP surface.
     const counts: Record<string, number> = {};
-    for (const [type, ids] of m.store.entityIndex.byType) counts[type] = ids.length;
+    for (const [storageType, ids] of m.store.entityIndex.byType) {
+      const pretty = (ids.length > 0 ? m.store.entities.getTypeName(ids[0]) : null) ?? storageType;
+      counts[pretty] = ids.length;
+    }
     const top = Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20)
@@ -326,7 +333,12 @@ const IMPLS: Record<string, ToolImpl> = {
     const groupBy = (args.group_by as string | undefined) ?? 'type';
     const counts = new Map<string, number>();
     if (groupBy === 'type') {
-      for (const [type, ids] of m.store.entityIndex.byType) counts.set(type, ids.length);
+      // Same PascalCase normalization as model_info — keep user-facing
+      // type counts aligned with the rest of the surface.
+      for (const [storageType, ids] of m.store.entityIndex.byType) {
+        const pretty = (ids.length > 0 ? m.store.entities.getTypeName(ids[0]) : null) ?? storageType;
+        counts.set(pretty, ids.length);
+      }
     } else if (groupBy === 'storey') {
       for (const e of m.bim.query().toArray()) {
         const node = new EntityNode(m.store, e.ref.expressId);
@@ -1225,15 +1237,19 @@ const IMPLS: Record<string, ToolImpl> = {
         structured: { selection: initial, waitedMs: 0, timedOut: false },
       };
     }
+    // Use the multi-subscriber API so we don't replace whichever handler
+    // the panel registered (which would silently kill live selection
+    // updates everywhere else after the first wait_for_selection call).
     const hits: import('./PlaygroundViewer').SelectionHit[] = await new Promise((resolve) => {
+      let unsubscribe: (() => void) | null = null;
       const timer = window.setTimeout(() => {
-        v.setOnSelectionChange(null);
+        unsubscribe?.();
         resolve([]);
       }, timeoutMs);
-      v.setOnSelectionChange((sel) => {
+      unsubscribe = v.subscribeSelection((sel) => {
         if (sel.length === 0) return; // ignore deselects
         window.clearTimeout(timer);
-        v.setOnSelectionChange(null);
+        unsubscribe?.();
         resolve(sel);
       });
     });
@@ -1371,6 +1387,15 @@ function resolveDiffModels(
   return { left, right };
 }
 
+/** Surface IDS-accessor lookup failures at debug level instead of dropping
+ *  them silently. A regression in EntityNode would otherwise turn into
+ *  changed IDS results without any signal in devtools — debug-level logging
+ *  gives an opt-in trail without polluting normal browser sessions. */
+function logIdsAccessorMiss(fn: string, id: number, err: unknown): void {
+  // eslint-disable-next-line no-console
+  console.debug(`[playground-dispatcher] IDS accessor ${fn} miss`, { expressId: id, err });
+}
+
 /** Build the IDS validator's data accessor from a loaded model. Implements
  *  the full IFCDataAccessor surface @ifc-lite/ids expects (see
  *  packages/ids/src/types.ts:384). Each method bridges to the SDK's bim
@@ -1379,19 +1404,19 @@ function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCD
   const ref = (id: number): EntityRef => ({ modelId: m.id, expressId: id });
   return {
     getEntityType(id) {
-      try { return new EntityNode(m.store, id).type; } catch { return undefined; }
+      try { return new EntityNode(m.store, id).type; } catch (err) { logIdsAccessorMiss('getEntityType', id, err); return undefined; }
     },
     getEntityName(id) {
-      try { return new EntityNode(m.store, id).name || undefined; } catch { return undefined; }
+      try { return new EntityNode(m.store, id).name || undefined; } catch (err) { logIdsAccessorMiss('getEntityName', id, err); return undefined; }
     },
     getGlobalId(id) {
-      try { return new EntityNode(m.store, id).globalId || undefined; } catch { return undefined; }
+      try { return new EntityNode(m.store, id).globalId || undefined; } catch (err) { logIdsAccessorMiss('getGlobalId', id, err); return undefined; }
     },
     getDescription(id) {
-      try { return new EntityNode(m.store, id).description || undefined; } catch { return undefined; }
+      try { return new EntityNode(m.store, id).description || undefined; } catch (err) { logIdsAccessorMiss('getDescription', id, err); return undefined; }
     },
     getObjectType(id) {
-      try { return new EntityNode(m.store, id).objectType || undefined; } catch { return undefined; }
+      try { return new EntityNode(m.store, id).objectType || undefined; } catch (err) { logIdsAccessorMiss('getObjectType', id, err); return undefined; }
     },
     getEntitiesByType(typeName) {
       const wantedUpper = typeName.toUpperCase();
@@ -1443,7 +1468,7 @@ function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCD
         const parent = new EntityNode(m.store, id).containedIn() ?? new EntityNode(m.store, id).decomposedBy();
         if (!parent) return undefined;
         return { expressId: parent.expressId, entityType: parent.type ?? '' };
-      } catch { return undefined; }
+      } catch (err) { logIdsAccessorMiss('getParent', id, err); return undefined; }
     },
     getAttribute(id, attributeName) {
       const attrs = m.bim.attributes(ref(id));

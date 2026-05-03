@@ -120,7 +120,10 @@ export class BsddHttpError extends Error {
 function parseRetryAfter(headerValue: string | null): number | undefined {
   if (!headerValue) return undefined;
   const seconds = Number(headerValue);
-  if (Number.isFinite(seconds)) return seconds;
+  // Clamp to a non-negative whole-second value. Malformed headers can
+  // serve fractional or negative numbers; passing those upstream poisons
+  // any retry-scheduling logic that expects a sane delay.
+  if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds));
   const dateMs = Date.parse(headerValue);
   if (Number.isFinite(dateMs)) return Math.max(0, Math.round((dateMs - Date.now()) / 1000));
   return undefined;

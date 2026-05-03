@@ -36,18 +36,24 @@ class UploadStore {
   private uploads: UploadedFile[] = [];
   private listeners = new Set<() => void>();
 
-  /** Read the file as text and stash it. Returns the entry. */
+  /** Read the file as text and stash it. Returns the entry.
+   *
+   *  We only decode known-text formats — `.bcfzip` and other binaries
+   *  are zip archives whose .text() decode would chew through tens of
+   *  megabytes on the main thread for no user benefit (the playground
+   *  has no read path for binary attachments yet). */
   async add(file: File): Promise<UploadedFile> {
-    const text = await file.text();
-    // De-dup by basename — re-attaching with the same name overwrites.
     const name = file.name.split(/[\\/]/).pop() ?? file.name;
+    const mimeType = file.type || guessMimeType(name);
+    const text = isTextLike(name, mimeType) ? await file.text() : '';
     const entry: UploadedFile = {
       name,
-      mimeType: file.type || guessMimeType(name),
+      mimeType,
       size: file.size,
       text,
       uploadedAt: Date.now(),
     };
+    // De-dup by basename — re-attaching with the same name overwrites.
     this.uploads = [entry, ...this.uploads.filter((u) => u.name !== name)];
     this.notify();
     return entry;
@@ -91,6 +97,16 @@ export function usePlaygroundUploads(): UploadedFile[] {
   const [uploads, setUploads] = useState<UploadedFile[]>(() => playgroundUploads.list());
   useEffect(() => playgroundUploads.subscribe(() => setUploads(playgroundUploads.list())), []);
   return uploads;
+}
+
+/** Whether we should decode this attachment as text. STEP files (.ifc) and
+ *  IDS specs are text under the hood; .bcfzip / arbitrary octet-stream
+ *  attachments are zip archives we only ever surface as references. */
+function isTextLike(name: string, mimeType: string): boolean {
+  if (mimeType.startsWith('text/')) return true;
+  if (mimeType === 'application/json' || mimeType === 'application/xml' || mimeType === 'application/xhtml+xml') return true;
+  const ext = name.toLowerCase().split('.').pop();
+  return ext === 'ifc' || ext === 'ids' || ext === 'csv' || ext === 'tsv' || ext === 'xml' || ext === 'json' || ext === 'txt' || ext === 'md';
 }
 
 function guessMimeType(name: string): string {

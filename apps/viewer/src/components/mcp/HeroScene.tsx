@@ -813,6 +813,12 @@ function createScene(container: HTMLElement): SceneHandle {
         if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
         else if (mat) mat.dispose();
       });
+      // The pin sprite uses a CanvasTexture allocated outside the
+      // material-walk above (the sprite material's `map` is set, but
+      // scene.traverse only disposes materials & geometries). Drop it
+      // explicitly so the canvas-backed GPU texture doesn't leak across
+      // mount/unmount cycles.
+      pinTex.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);

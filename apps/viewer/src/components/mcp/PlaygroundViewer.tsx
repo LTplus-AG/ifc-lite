@@ -76,6 +76,9 @@ export interface ViewerController {
   }): { legend: Array<{ value: string; count: number; color: ColorTuple }> };
   getSelection(): SelectionHit[];
   setOnSelectionChange(handler: ((hits: SelectionHit[]) => void) | null): void;
+  /** Multi-subscriber. Returns an unsubscribe — safe to call from tools
+   *  that need a temporary listener without clobbering the panel's. */
+  subscribeSelection(handler: (hits: SelectionHit[]) => void): () => void;
 }
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -126,6 +129,7 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
       colorByProperty: (args) => sceneHandleRef.current?.colorByProperty(args) ?? { legend: [] },
       getSelection: () => sceneHandleRef.current?.getSelection() ?? [],
       setOnSelectionChange: (h) => sceneHandleRef.current?.setOnSelectionChange(h),
+      subscribeSelection: (h) => sceneHandleRef.current?.subscribeSelection(h) ?? (() => undefined),
     }),
     [meshCount],
   );
@@ -274,6 +278,7 @@ interface SceneHandle {
   }): { legend: Array<{ value: string; count: number; color: ColorTuple }> };
   getSelection(): SelectionHit[];
   setOnSelectionChange(handler: ((hits: SelectionHit[]) => void) | null): void;
+  subscribeSelection(handler: (hits: SelectionHit[]) => void): () => void;
   dispose(): void;
 }
 
@@ -345,7 +350,16 @@ function createScene(container: HTMLElement): SceneHandle {
   const byStorey = new Map<string, EntityRecord[]>();
   let modelRef: LoadedPlaygroundModel | null = null;
   let selection: SelectionHit[] = [];
-  let selectionListener: ((hits: SelectionHit[]) => void) | null = null;
+  // Multi-subscriber so a temporary listener (e.g. viewer_wait_for_selection)
+  // doesn't displace the panel's permanent one. Anything calling
+  // `setOnSelectionChange` keeps that single-handler convenience but
+  // routes through this set.
+  const selectionListeners = new Set<(hits: SelectionHit[]) => void>();
+  let convenienceListener: ((hits: SelectionHit[]) => void) | null = null;
+  function notifySelection(hits: SelectionHit[]) {
+    convenienceListener?.(hits);
+    for (const l of selectionListeners) l(hits);
+  }
 
   // ── Picking ─────────────────────────────────────────────────────────────
   const raycaster = new THREE.Raycaster();
@@ -363,7 +377,7 @@ function createScene(container: HTMLElement): SceneHandle {
       // Empty pick — clear selection.
       clearSelectionHighlight();
       selection = [];
-      selectionListener?.(selection);
+      notifySelection(selection);
       return;
     }
     const hit = hits[0].object as THREE.Mesh;
@@ -372,7 +386,7 @@ function createScene(container: HTMLElement): SceneHandle {
     clearSelectionHighlight();
     (rec.mesh.material as THREE.MeshStandardMaterial).color.copy(SELECTION_COLOR);
     selection = [{ expressId: rec.expressId, globalId: rec.globalId, ifcType: rec.ifcType }];
-    selectionListener?.(selection);
+    notifySelection(selection);
   }
 
   function clearSelectionHighlight() {
@@ -578,7 +592,13 @@ function createScene(container: HTMLElement): SceneHandle {
             if (!ifcType || ifcType === 'IfcProduct') ifcType = node.type;
             const storey = node.storey();
             if (storey) storeyName = storey.name;
-          } catch { /* keep the geometry-derived fallbacks */ }
+          } catch (err) {
+            // Optional metadata enrichment — if EntityNode regresses, fall
+            // back to the geometry-derived fields (already populated).
+            // Surface at debug level so a real parser issue isn't silent.
+            // eslint-disable-next-line no-console
+            console.debug('[playground-viewer] EntityNode metadata lookup failed', { expressId: md.expressId, err });
+          }
         }
 
         const rec: EntityRecord = {
@@ -630,16 +650,19 @@ function createScene(container: HTMLElement): SceneHandle {
     colorize(args) {
       const targets = selectTargets(args);
       const c = new THREE.Color(args.color[0], args.color[1], args.color[2]);
+      // Always set transparency state, even when the new alpha is opaque —
+      // otherwise a previous translucent colorize leaves the entity
+      // permanently see-through until reset(). Treat alpha as part of the
+      // base colour so subsequent reset() / clear-selection paths put it
+      // back, not pick a stale opacity from before this call.
+      const alpha = args.color[3] ?? 1;
       for (const r of targets) {
         const mat = r.mesh.material as THREE.MeshStandardMaterial;
         mat.color.copy(c);
-        // Treat the new colour as the "base" so picking-clear restores it.
         r.baseColor.copy(c);
-        if (args.color[3] != null && args.color[3] < 0.999) {
-          mat.transparent = true;
-          mat.opacity = args.color[3];
-          r.baseOpacity = args.color[3];
-        }
+        mat.transparent = alpha < 0.999;
+        mat.opacity = alpha;
+        r.baseOpacity = alpha;
       }
       return { count: targets.length };
     },
@@ -766,7 +789,12 @@ function createScene(container: HTMLElement): SceneHandle {
     },
 
     setOnSelectionChange(h) {
-      selectionListener = h;
+      convenienceListener = h;
+    },
+
+    subscribeSelection(h) {
+      selectionListeners.add(h);
+      return () => selectionListeners.delete(h);
     },
 
     dispose() {

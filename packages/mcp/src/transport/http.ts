@@ -148,6 +148,18 @@ export class HttpTransport {
     let session: Session;
     if (sessionId && this.sessions.has(sessionId)) {
       session = this.sessions.get(sessionId) as Session;
+      // The session was bound to a specific scope/principal at initialize.
+      // A leaked Mcp-Session-Id must NOT be reusable by a caller whose
+      // current token has different (narrower OR wider) access — accepting
+      // a wider token would silently downgrade and accepting a narrower
+      // one would leak the original privileges. Require an exact scope
+      // identity match and reject otherwise.
+      if (!sameScope(session.scope, scope)) {
+        res.statusCode = 403;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'session scope mismatch' }));
+        return;
+      }
     } else {
       // Per spec, `initialize` is the only request allowed without a session;
       // the response carries the new Mcp-Session-Id.
@@ -220,6 +232,25 @@ export class HttpTransport {
       },
     };
   }
+}
+
+/**
+ * Strict scope identity check used when reusing an HTTP session — both the
+ * permission set and any narrowing (model_ids, user, session) must match
+ * what the session was created with. We sort the scopes set so callers
+ * that pass them in different orders still compare equal.
+ */
+function sameScope(a: AuthScope, b: AuthScope): boolean {
+  if (a === b) return true;
+  if (a.user !== b.user || a.session !== b.session) return false;
+  const as = [...a.scopes].sort();
+  const bs = [...b.scopes].sort();
+  if (as.length !== bs.length || as.some((s, i) => s !== bs[i])) return false;
+  const am = a.modelIds ? [...a.modelIds].sort() : undefined;
+  const bm = b.modelIds ? [...b.modelIds].sort() : undefined;
+  if ((am?.length ?? 0) !== (bm?.length ?? 0)) return false;
+  if (am && bm && am.some((m, i) => m !== bm[i])) return false;
+  return true;
 }
 
 function setCors(res: ServerResponse): void {

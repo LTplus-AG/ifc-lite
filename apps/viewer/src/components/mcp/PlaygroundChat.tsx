@@ -807,42 +807,30 @@ async function runConversation(opts: RunOpts): Promise<void> {
   const client = new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
   const apiMessages = buildApiMessages(opts.history);
 
-  // ── verbose diagnostic logging ──
-  // 1) The compact one-line summary, easy to skim.
+  // Compact, opt-in diagnostic logging. The previous version dumped the
+  // full apiMessages payload (including raw user prompts, attachment text,
+  // tool args, and tool results) on every request — fine for development,
+  // but a privacy footgun for a BYOK feature where users own the API key
+  // and don't expect their conversation to land in browser devtools.
+  // Anything heavier than the one-line summary is now gated behind a
+  // localStorage flag the user has to set explicitly.
+  const wantsVerbose = (() => {
+    try {
+      return typeof window !== 'undefined' && window.localStorage?.getItem('ifclite-playground-debug') === '1';
+    } catch {
+      return false;
+    }
+  })();
   // eslint-disable-next-line no-console
-  console.groupCollapsed('[playground-chat] outgoing messages →', apiMessages.length);
-  for (let i = 0; i < apiMessages.length; i++) {
-    const m = apiMessages[i];
-    const summary = typeof m.content === 'string'
-      ? `text(${m.content.length})`
-      : m.content
-          .map((b) => {
-            const blk = b as { type: string; id?: string; tool_use_id?: string };
-            const id = blk.id ? `(${blk.id})` : '';
-            const tuid = blk.tool_use_id ? `→${blk.tool_use_id}` : '';
-            return `${blk.type}${id}${tuid}`;
-          })
-          .join(' · ');
+  console.debug(`[playground-chat] → ${apiMessages.length} messages`);
+  if (wantsVerbose) {
     // eslint-disable-next-line no-console
-    console.log(`[${i}] ${m.role}: ${summary}`);
+    console.groupCollapsed('[playground-chat] full payload (debug)');
+    // eslint-disable-next-line no-console
+    console.log(JSON.parse(JSON.stringify(apiMessages)));
+    // eslint-disable-next-line no-console
+    console.groupEnd();
   }
-  // 2) Full JSON dump so we can grep tool_use_id ↔ tool_result_id pairing.
-  // eslint-disable-next-line no-console
-  console.log('full payload', JSON.parse(JSON.stringify(apiMessages)));
-  // 3) Same for the React-state history that we built from.
-  // eslint-disable-next-line no-console
-  console.log('source history', opts.history.map((h) => ({
-    role: h.role,
-    text: h.text ? `[${h.text.length} chars]` : '',
-    toolCalls: h.toolCalls?.map((tc) => ({
-      id: tc.id,
-      name: tc.name,
-      hasResult: !!tc.result,
-      isError: tc.result?.isError,
-    })),
-  })));
-  // eslint-disable-next-line no-console
-  console.groupEnd();
 
   try {
     assertToolUseShape(apiMessages);
@@ -1043,28 +1031,42 @@ const MARKDOWN_COMPONENTS = {
   a: (props: any) => (
     <a className="text-[#d6ff3f] underline-offset-2 hover:underline" target="_blank" rel="noreferrer" {...props} />
   ),
+  // react-markdown v9 dropped the legacy `inline` prop, so we infer block
+  // vs inline from className (fenced blocks get `language-…`) and content
+  // (block code carries trailing newlines). When it's a block we render
+  // a raw <code> here and let the `pre` override below own the wrapper —
+  // doing the wrapping ourselves used to nest <pre> inside the <p>
+  // react-markdown emits for surrounding text, tripping React's DOM
+  // nesting validator.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  code: ({ inline, className, children, ...props }: any) => {
-    if (inline) {
+  code: ({ className, children, ...props }: any) => {
+    const cls = typeof className === 'string' ? className : '';
+    const text = Array.isArray(children) ? children.join('') : String(children ?? '');
+    const isBlock = cls.startsWith('language-') || /\n/.test(text);
+    if (isBlock) {
       return (
-        <code
-          className={cn(
-            'rounded bg-white/10 px-1 py-0.5 text-[12px] text-[#d6ff3f]',
-            className,
-          )}
-          style={{ fontFamily: '"JetBrains Mono", monospace' }}
-          {...props}
-        >
+        <code className={cn(cls, 'block')} style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props}>
           {children}
         </code>
       );
     }
     return (
-      <pre className="my-2 overflow-x-auto rounded bg-black/40 p-3 text-[12px] leading-snug" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-        <code className={className} {...props}>{children}</code>
-      </pre>
+      <code
+        className={cn(
+          'rounded bg-white/10 px-1 py-0.5 text-[12px] text-[#d6ff3f]',
+          cls,
+        )}
+        style={{ fontFamily: '"JetBrains Mono", monospace' }}
+        {...props}
+      >
+        {children}
+      </code>
     );
   },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pre: (props: any) => (
+    <pre className="my-2 overflow-x-auto rounded bg-black/40 p-3 text-[12px] leading-snug" style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />
+  ),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   table: (props: any) => (
     <div className="my-2 overflow-x-auto rounded border border-white/10">

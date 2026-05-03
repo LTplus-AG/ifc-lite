@@ -28,13 +28,15 @@ interface CliOptions {
   federate: boolean;
   transport: 'stdio' | 'http';
   port: number;
-  host: string;
+  /** undefined → caller didn't pass --host; CLI picks loopback by default */
+  host?: string;
   token?: string;
   bsdd?: string;
   allowedPaths?: string[];
   autoViewer: boolean;
   viewerPort: number;
   openBrowser: boolean;
+  insecure: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -44,18 +46,19 @@ function parseArgs(argv: string[]): CliOptions {
     federate: false,
     transport: 'stdio',
     port: 8765,
-    host: '0.0.0.0',
     autoViewer: false,
     viewerPort: 0,
     openBrowser: false,
+    insecure: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--read-only') opts.readOnly = true;
     else if (arg === '--federate') opts.federate = true;
+    else if (arg === '--insecure') opts.insecure = true;
     else if (arg === '--transport') opts.transport = (argv[++i] as 'stdio' | 'http') ?? 'stdio';
     else if (arg === '--port') opts.port = Number(argv[++i] ?? 8765);
-    else if (arg === '--host') opts.host = argv[++i] ?? '0.0.0.0';
+    else if (arg === '--host') opts.host = argv[++i];
     else if (arg === '--token') opts.token = argv[++i];
     else if (arg === '--bsdd') opts.bsdd = argv[++i];
     else if (arg === '--viewer') opts.autoViewer = true;
@@ -88,9 +91,14 @@ function printHelp(): void {
     --federate              Mark explicitly that multiple files form one session.
     --transport <stdio|http>  Default: stdio.
     --port <n>              HTTP port (default 8765).
-    --host <h>              HTTP host (default 0.0.0.0).
+    --host <h>              HTTP host. Default 127.0.0.1 (loopback). Use
+                            --insecure to allow non-loopback hosts when no
+                            token is configured.
     --token <t>             Single bearer token for HTTP auth (full scope).
                             Can be repeated to register multiple read-only tokens.
+    --insecure              Allow non-loopback bind without authentication.
+                            Required when combining a public --host with no
+                            --token. NEVER use in production.
     --bsdd <url>            Override bSDD endpoint.
     --allow <glob>          Restrict file-system access for stdio mode.
     --viewer                Auto-open the in-process WebGL viewer at startup.
@@ -179,6 +187,18 @@ async function main(): Promise<void> {
       process.stderr.write(`[ifc-lite-mcp] viewer is opt-in. Tell the agent to call \`viewer_ask\` and then \`viewer_open\`, or restart with --viewer to auto-open.\n`);
     }
   } else if (opts.transport === 'http') {
+    // Pick a safe default. Loopback unless the operator explicitly opts in
+    // to a public bind. Combining a public bind with no token requires
+    // --insecure so the security tradeoff is a deliberate keystroke, not
+    // an accidental copy-paste from a tutorial.
+    const host = opts.host ?? '127.0.0.1';
+    const isLoopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+    if (!isLoopback && !opts.token && !opts.insecure) {
+      process.stderr.write(
+        `[ifc-lite-mcp] refusing to bind ${host} without --token. Pass --token <bearer> or --insecure to override.\n`,
+      );
+      process.exit(1);
+    }
     const sessionFactory: SessionFactory = {
       build(scopeForSession) {
         return createMCPServer({
@@ -197,9 +217,13 @@ async function main(): Promise<void> {
     const auth: HttpAuthenticator = opts.token
       ? new BearerTokenAuth(new Map([[opts.token, scope]]))
       : new AllowAllAuth(scope);
-    const transport = new HttpTransport({ port: opts.port, host: opts.host, authenticator: auth, sessionFactory });
+    const transport = new HttpTransport({ port: opts.port, host, authenticator: auth, sessionFactory });
     await transport.listen();
-    process.stderr.write(`[ifc-lite-mcp] listening on http://${opts.host}:${opts.port}\n`);
+    process.stderr.write(
+      `[ifc-lite-mcp] listening on http://${host}:${opts.port}` +
+      (!opts.token ? ' (no auth — loopback only unless --insecure)' : '') +
+      '\n',
+    );
   } else {
     process.stderr.write(`Unknown transport: ${opts.transport}\n`);
     process.exit(1);

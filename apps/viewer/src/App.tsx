@@ -35,7 +35,14 @@ export function App() {
   // so cold-loading the landing page is cheap. /mcp/playground does parse
   // IFCs in-browser, but uses its own minimal pipeline (parser → headless
   // backend → BimContext) rather than the full viewer stack.
-  if (pathname === '/mcp/playground') {
+  //
+  // Normalise the trailing slash before matching so `/mcp/playground/`
+  // (e.g. shared from a browser address bar that auto-appends `/`) hits
+  // the playground branch instead of falling through to the landing.
+  const normalizedPath = pathname.length > 1 && pathname.endsWith('/')
+    ? pathname.slice(0, -1)
+    : pathname;
+  if (normalizedPath === '/mcp/playground') {
     return (
       <>
         <McpPlayground />
@@ -43,7 +50,7 @@ export function App() {
       </>
     );
   }
-  if (pathname === '/mcp' || pathname.startsWith('/mcp/')) {
+  if (normalizedPath === '/mcp' || normalizedPath.startsWith('/mcp/')) {
     return (
       <>
         <McpLanding />

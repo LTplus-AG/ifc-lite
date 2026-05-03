@@ -38,7 +38,9 @@ export async function mcpCommand(args: string[]): Promise<void> {
         '  --read-only            Hide mutation tools.',
         '  --transport stdio|http (default stdio)',
         '  --port <n>             HTTP port (default 8765)',
+        '  --host <h>             HTTP host (default 127.0.0.1; non-loopback requires --token or --insecure)',
         '  --token <bearer>       HTTP token for full scope',
+        '  --insecure             Allow non-loopback bind without --token (DEV ONLY)',
         '  --bsdd <url>           Override bSDD endpoint',
         '  --allow <path>         Restrict file-system access',
         '  --viewer               Auto-open the 3D viewer.',
@@ -58,15 +60,32 @@ export async function mcpCommand(args: string[]): Promise<void> {
 
   const transport = (getFlag(args, '--transport') ?? 'stdio') as 'stdio' | 'http';
   const port = Number(getFlag(args, '--port') ?? 8765);
-  const host = getFlag(args, '--host') ?? '0.0.0.0';
+  const host = getFlag(args, '--host');
   const token = getFlag(args, '--token');
   const bsdd = getFlag(args, '--bsdd');
   const readOnly = hasFlag(args, '--read-only');
+  const insecure = hasFlag(args, '--insecure');
   const autoViewer = hasFlag(args, '--viewer') || hasFlag(args, '--open');
   const openBrowser = hasFlag(args, '--open');
   const viewerPort = Number(getFlag(args, '--viewer-port') ?? 0);
   const allowedPaths = getAllFlags(args, '--allow').map((p) => resolve(p));
-  const files = args.filter((a) => !a.startsWith('-')).map((a) => resolve(a));
+  // Parse positional .ifc paths. The naive `args.filter(a => !a.startsWith('-'))`
+  // also catches option values (e.g. `8765` after `--port`, `/models` after
+  // `--allow`), turning them into bogus IFC paths. Walk explicitly and skip
+  // each value-bearing flag's next token.
+  const VALUE_FLAGS = new Set([
+    '--transport', '--port', '--host', '--token', '--bsdd',
+    '--allow', '--viewer-port',
+  ]);
+  const files: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith('-')) {
+      if (VALUE_FLAGS.has(arg)) i++; // consume the value as well
+      continue;
+    }
+    files.push(resolve(arg));
+  }
   const scope: AuthScope = readOnly ? readOnlyScope() : fullScope();
 
   if (transport === 'stdio') {
@@ -123,6 +142,11 @@ export async function mcpCommand(args: string[]): Promise<void> {
       }
     }
   } else if (transport === 'http') {
+    const resolvedHost = host ?? '127.0.0.1';
+    const isLoopback = resolvedHost === '127.0.0.1' || resolvedHost === 'localhost' || resolvedHost === '::1';
+    if (!isLoopback && !token && !insecure) {
+      fatal(`Refusing to bind ${resolvedHost} without --token. Pass --token <bearer> or --insecure to override.`);
+    }
     const sessionFactory: SessionFactory = {
       build(scopeForSession) {
         return createMCPServer({
@@ -136,9 +160,13 @@ export async function mcpCommand(args: string[]): Promise<void> {
     const auth: HttpAuthenticator = token
       ? new BearerTokenAuth(new Map([[token, scope]]))
       : new AllowAllAuth(scope);
-    const t = new HttpTransport({ port, host, authenticator: auth, sessionFactory });
+    const t = new HttpTransport({ port, host: resolvedHost, authenticator: auth, sessionFactory });
     await t.listen();
-    process.stderr.write(`[ifc-lite mcp] listening on http://${host}:${port}\n`);
+    process.stderr.write(
+      `[ifc-lite mcp] listening on http://${resolvedHost}:${port}` +
+      (!token ? ' (no auth — loopback only unless --insecure)' : '') +
+      '\n',
+    );
   } else {
     fatal(`Unknown transport: ${transport}`);
   }

@@ -8,6 +8,7 @@
  * making raw HTTP calls.
  */
 
+import { EntityNode } from '@ifc-lite/query';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -233,16 +234,25 @@ const bsddMatch: Tool = {
     let expressId: number | null = null;
     if (typeof input.express_id === 'number') expressId = input.express_id;
     else if (typeof input.global_id === 'string') {
-      for (const [, list] of m.store.entityIndex.byType) {
+      // Linear scan over IfcRoot subtypes — every model has only a small
+      // fraction tagged with GlobalId, so this stays cheap. The previous
+      // implementation iterated entityIndex.byType and assigned the first
+      // entity it found, completely ignoring the requested GlobalId.
+      const target = input.global_id;
+      outer: for (const [, list] of m.store.entityIndex.byType) {
         for (const id of list) {
-          const name = m.store.entities.getTypeName(id);
-          if (!name) continue;
-          // We need to resolve via EntityNode, but for performance we can
-          // compare GlobalId from the parsed attribute path lazily.
-          expressId = id;
-          break;
+          const node = new EntityNode(m.store, id);
+          if (node.globalId === target) {
+            expressId = id;
+            break outer;
+          }
         }
-        if (expressId) break;
+      }
+      if (expressId == null) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.ENTITY_NOT_FOUND,
+          message: `No entity with GlobalId '${target}' in this model.`,
+        });
       }
     }
     if (expressId == null) {

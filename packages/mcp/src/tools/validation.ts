@@ -37,27 +37,7 @@ const idsValidate: Tool = {
   },
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    let xml: string;
-    if (typeof input.ids_xml === 'string') {
-      xml = input.ids_xml;
-    } else if (typeof input.ids_path === 'string') {
-      const abs = resolve(input.ids_path);
-      if (ctx.config.allowedPaths && ctx.config.allowedPaths.length > 0) {
-        const ok = ctx.config.allowedPaths.some((p) => abs === p || abs.startsWith(p + '/'));
-        if (!ok) {
-          throw new ToolExecutionError({
-            code: ToolErrorCode.PERMISSION_DENIED,
-            message: `Path '${abs}' outside allowed roots`,
-          });
-        }
-      }
-      xml = await readFile(abs, 'utf-8');
-    } else {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.INVALID_INPUT,
-        message: 'Provide ids_xml or ids_path.',
-      });
-    }
+    const xml = await loadIdsXml(input, ctx.config.allowedPaths);
 
     const idsDoc = parseIDS(xml);
     const accessor = buildIdsAccessor(m.store) as IFCDataAccessor;
@@ -80,6 +60,37 @@ const idsValidate: Tool = {
     );
   },
 };
+
+/**
+ * Resolve IDS source from `ids_xml` (inline) or `ids_path` (disk),
+ * enforcing the optional `allowedPaths` allowlist on disk reads. Shared by
+ * `ids_validate` and `ids_explain` so both tools apply identical guards;
+ * the previous arrangement let `ids_explain` read arbitrary paths in
+ * restricted stdio deployments.
+ */
+async function loadIdsXml(
+  input: Record<string, unknown>,
+  allowedPaths?: string[],
+): Promise<string> {
+  if (typeof input.ids_xml === 'string') return input.ids_xml;
+  if (typeof input.ids_path === 'string') {
+    const abs = resolve(input.ids_path);
+    if (allowedPaths && allowedPaths.length > 0) {
+      const ok = allowedPaths.some((p) => abs === p || abs.startsWith(p + '/'));
+      if (!ok) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.PERMISSION_DENIED,
+          message: `Path '${abs}' outside allowed roots`,
+        });
+      }
+    }
+    return readFile(abs, 'utf-8');
+  }
+  throw new ToolExecutionError({
+    code: ToolErrorCode.INVALID_INPUT,
+    message: 'Provide ids_xml or ids_path.',
+  });
+}
 
 function summarizeIdsReport(report: unknown): {
   totalSpecifications: number;
@@ -128,10 +139,7 @@ const idsExplain: Tool = {
     additionalProperties: false,
   },
   async handler(input, ctx) {
-    let xml: string;
-    if (typeof input.ids_xml === 'string') xml = input.ids_xml;
-    else if (typeof input.ids_path === 'string') xml = await readFile(resolve(input.ids_path), 'utf-8');
-    else throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide ids_xml or ids_path.' });
+    const xml = await loadIdsXml(input, ctx.config.allowedPaths);
 
     const doc = parseIDS(xml) as { specifications?: Array<{ name?: string; applicability?: unknown; requirements?: unknown[] }> };
     const target = input.spec_name as string | undefined;

@@ -78,17 +78,24 @@ export function useDocumentMeta(title: string, themeColor?: string): void {
     const prevTitle = document.title;
     document.title = title;
     let prevTheme: string | null = null;
+    let prevThemeExisted = false;
     let themeMeta: HTMLMetaElement | null = null;
     if (themeColor) {
       themeMeta = document.querySelector('meta[name="theme-color"]');
       if (themeMeta) {
+        // Track existence separately so a meta tag without `content`
+        // doesn't permanently keep our temporary color after unmount.
+        prevThemeExisted = themeMeta.hasAttribute('content');
         prevTheme = themeMeta.getAttribute('content');
         themeMeta.setAttribute('content', themeColor);
       }
     }
     return () => {
       document.title = prevTitle;
-      if (themeMeta && prevTheme !== null) themeMeta.setAttribute('content', prevTheme);
+      if (themeMeta) {
+        if (prevThemeExisted && prevTheme !== null) themeMeta.setAttribute('content', prevTheme);
+        else themeMeta.removeAttribute('content');
+      }
     };
   }, [title, themeColor]);
 }

@@ -22,7 +22,7 @@ import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRe
 import { isTauri } from '@/lib/platform';
 import { toast } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3 } from 'lucide-react';
+import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight } from 'lucide-react';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
@@ -735,10 +735,18 @@ export function ViewportContainer() {
               IFClite
             </h2>
             <p className="text-zinc-500 dark:text-[#565f89] font-mono text-sm text-center mb-8 border-b border-zinc-200 dark:border-[#3b4261] pb-4 w-full">
-              High-performance web viewer demo
+              IFC toolkit for the open web
             </p>
 
-            {/* Action */}
+            {/*
+              Two-track action area: a primary "open file" track and a
+              secondary "drive with LLM" track sit in mirrored slots — same
+              width, same vertical rhythm, each followed by its own caption
+              line. Reads as one balanced composition instead of a primary
+              CTA + a tacked-on link, while keeping the file-open path
+              visually dominant via the filled-on-hover treatment.
+            */}
+            {/* Track 1 — open / drag */}
             <button
               onClick={async () => {
                 if (!webgpu.supported) {
@@ -774,8 +782,31 @@ export function ViewportContainer() {
               <span>{webgpu.checking ? 'Checking WebGPU...' : webgpu.supported ? 'Open .ifc file' : 'WebGPU Required'}</span>
             </button>
 
-            <p className="mt-3 text-xs font-mono text-zinc-400 dark:text-[#565f89]">
+            <p className="mt-2.5 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
               {webgpu.supported ? 'or drag & drop anywhere' : 'file upload disabled'}
+            </p>
+
+            {/* Subtle "or" rule — anchors the symmetry between the two tracks */}
+            <div className="mt-5 mb-5 w-full flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-zinc-400 dark:text-[#565f89]">
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
+              <span>or</span>
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
+            </div>
+
+            {/* Track 2 — agent / MCP. Compact inline pill, self-centred so
+                it reads as a meta-link sibling to the primary file-open
+                CTA, not a competing full-width button. */}
+            <a
+              href="/mcp"
+              className="group inline-flex self-center items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary transition-all cursor-pointer"
+            >
+              <Sparkles className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
+              <span>Drive with any LLM</span>
+              <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </a>
+
+            <p className="mt-1.5 text-[10px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
+              via MCP · install or try the playground
             </p>
 
             {recentFiles.length > 0 && (

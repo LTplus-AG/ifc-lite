@@ -33,6 +33,7 @@ import {
 } from 'react';
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUpRight,
   Check,
   ChevronRight,
@@ -135,6 +136,9 @@ function TopBar(): ReactNode {
     <div className="relative z-10 border-b" style={{ borderColor: RULE }}>
       <div className="mx-auto flex max-w-[1280px] items-center justify-between px-6 py-5">
         <div className="flex items-baseline gap-3">
+          {/* Brand also acts as the back-to-viewer affordance, but the
+              Viewer link in the nav makes that explicit so it doesn't
+              rely on users guessing. */}
           <a href="/" className="text-[16px] tracking-tight" style={{ color: PAPER, fontWeight: 600 }}>
             ifc-lite
           </a>
@@ -143,6 +147,14 @@ function TopBar(): ReactNode {
           </span>
         </div>
         <nav className="hidden items-center gap-7 text-[13.5px] sm:flex" style={{ color: PAPER_DIM, fontWeight: 500 }}>
+          <a
+            href="/"
+            className="group inline-flex items-center gap-1 transition-colors hover:text-[var(--paper)]"
+            style={{ ['--paper' as never]: PAPER }}
+          >
+            <ArrowLeft size={12} className="transition-transform group-hover:-translate-x-0.5" />
+            Viewer
+          </a>
           <a href="#install" className="transition-colors hover:text-[var(--paper)]" style={{ ['--paper' as never]: PAPER }}>Install</a>
           <a href="#recipes" className="transition-colors hover:text-[var(--paper)]" style={{ ['--paper' as never]: PAPER }}>Recipes</a>
           <a href="#tools" className="transition-colors hover:text-[var(--paper)]" style={{ ['--paper' as never]: PAPER }}>Tools</a>

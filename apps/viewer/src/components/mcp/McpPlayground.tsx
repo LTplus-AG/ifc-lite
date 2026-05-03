@@ -196,6 +196,13 @@ function TopBar({ onClose, hasModel }: { onClose: () => void; hasModel: boolean 
         <span>back to /mcp</span>
       </a>
       <div className="flex items-center gap-3">
+        <a
+          href="/"
+          className="hidden items-center gap-1 text-[10.5px] uppercase tracking-[0.22em] text-white/40 hover:text-white sm:inline-flex"
+          style={mono}
+        >
+          viewer
+        </a>
         <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.22em]">
           /mcp/playground
         </span>

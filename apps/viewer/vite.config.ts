@@ -313,6 +313,12 @@ export default defineConfig({
           if (id.includes('/node_modules/apache-arrow/')) return 'arrow';
           if (id.includes('/node_modules/parquet-wasm/')) return 'parquet';
           if (id.includes('/node_modules/cesium/')) return 'cesium';
+          // three.js + addons — only the /mcp landing imports them, keep
+          // the main viewer / pages off the hook.
+          if (
+            id.includes('/node_modules/three/') ||
+            id.includes('/node_modules/.pnpm/three@')
+          ) return 'three';
           return undefined;
         },
       },

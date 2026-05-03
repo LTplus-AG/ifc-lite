@@ -5,13 +5,18 @@
 /**
  * Main application component.
  *
- * The /settings route is used by the desktop shell (Tauri) for account
- * and API key management. On the web viewer it is unreachable (no links
- * navigate there and vercel.json does not rewrite it).
+ * Routing is intentionally lo-fi (no router lib): we read window.location.pathname
+ * at boot, react to popstate, and switch by prefix. The handful of routes:
+ *
+ *   /                  → main WebGL viewer (default)
+ *   /settings          → desktop-shell account / API-key management (Tauri)
+ *   /mcp[/...]         → @ifc-lite/mcp marketing surface
  */
 
 import { ViewerLayout } from './components/viewer/ViewerLayout';
 import { SettingsPage } from './components/viewer/SettingsPage';
+import { McpLanding } from './components/mcp/McpLanding';
+import { McpPlayground } from './components/mcp/McpPlayground';
 import { BimProvider } from './sdk/BimProvider';
 import { Toaster } from './components/ui/toast';
 import { useEffect, useState } from 'react';
@@ -24,6 +29,28 @@ export function App() {
     window.addEventListener('popstate', onRouteChange);
     return () => window.removeEventListener('popstate', onRouteChange);
   }, []);
+
+  // /mcp lives outside BimProvider — it’s a pure marketing surface that
+  // doesn’t need the WASM viewer context. Skips a chunky dependency boot
+  // so cold-loading the landing page is cheap. /mcp/playground does parse
+  // IFCs in-browser, but uses its own minimal pipeline (parser → headless
+  // backend → BimContext) rather than the full viewer stack.
+  if (pathname === '/mcp/playground') {
+    return (
+      <>
+        <McpPlayground />
+        <Toaster />
+      </>
+    );
+  }
+  if (pathname === '/mcp' || pathname.startsWith('/mcp/')) {
+    return (
+      <>
+        <McpLanding />
+        <Toaster />
+      </>
+    );
+  }
 
   return (
     <BimProvider>

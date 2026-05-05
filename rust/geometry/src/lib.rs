@@ -78,6 +78,7 @@ pub mod processors;
 pub mod profile;
 pub mod profile_extractor;
 pub mod profiles;
+pub mod quantize;
 pub mod router;
 pub mod transform;
 pub mod triangulation;
@@ -96,6 +97,7 @@ pub use error::{Error, Result};
 pub use extrusion::{extrude_profile, extrude_profile_with_voids};
 pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayerIndex};
 pub use mesh::{CoordinateShift, Mesh, SubMesh, SubMeshCollection};
+pub use quantize::{oct_decode_snorm8, oct_encode_snorm8, QuantizedMesh};
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, MappedItemProcessor,

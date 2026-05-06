@@ -18,8 +18,19 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import {
+  copyFileSync,
+  createReadStream,
+  existsSync,
+  linkSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -138,31 +149,61 @@ try {
   console.error(`warning: couldn't list assets (${err.message}); will attempt all uploads`);
 }
 
+// `gh release upload PATH#TEXT` sets the asset's display *label* — it does
+// NOT rename the asset. The asset name is always the file's basename. So to
+// upload each fixture as `<sha256>` (which is how fetch-fixtures.mjs reads
+// them from the GitHub Release CDN), we stage each file into a tempdir with
+// the SHA-256 as its filename and upload from there. Hard link first to
+// avoid copying ~1 GiB; fall back to copy if the tempdir is on a different
+// filesystem.
+const staging = mkdtempSync(join(tmpdir(), 'ifc-lite-fixtures-staging-'));
+let cleanedUp = false;
+function cleanupStaging() {
+  if (cleanedUp) return;
+  cleanedUp = true;
+  try { rmSync(staging, { recursive: true, force: true }); } catch {}
+}
+process.on('exit', cleanupStaging);
+process.on('SIGINT', () => { cleanupStaging(); process.exit(130); });
+process.on('SIGTERM', () => { cleanupStaging(); process.exit(143); });
+
 let uploaded = 0;
 let skipped = 0;
 const failed = [];
-for (const entry of manifest.files) {
-  const assetName = entry.sha256;
-  if (existing.has(assetName)) {
-    skipped++;
-    continue;
+try {
+  for (const entry of manifest.files) {
+    const assetName = entry.sha256;
+    if (existing.has(assetName)) {
+      skipped++;
+      continue;
+    }
+    // Already validated in the verify pass above; resolve again for the
+    // upload command so we don't trust unchecked entry.path.
+    const abs = resolveFixturePath(entry.path);
+    const stagedPath = join(staging, assetName);
+    try {
+      linkSync(abs, stagedPath);
+    } catch {
+      copyFileSync(abs, stagedPath);
+    }
+    console.error(`  uploading ${entry.path} as ${assetName} (${(entry.size / 1024 / 1024).toFixed(1)} MiB)...`);
+    try {
+      gh(
+        'release', 'upload', TAG,
+        stagedPath,
+        '--repo', REPO,
+        '--clobber',
+      );
+      uploaded++;
+    } catch (err) {
+      failed.push({ entry, err });
+      console.error(`    FAILED: ${err.message}`);
+    } finally {
+      try { unlinkSync(stagedPath); } catch {}
+    }
   }
-  // Already validated in the verify pass above; resolve again for the
-  // upload command so we don't trust unchecked entry.path.
-  const abs = resolveFixturePath(entry.path);
-  console.error(`  uploading ${entry.path} as ${assetName} (${(entry.size / 1024 / 1024).toFixed(1)} MiB)...`);
-  try {
-    gh(
-      'release', 'upload', TAG,
-      `${abs}#${assetName}`,
-      '--repo', REPO,
-      '--clobber',
-    );
-    uploaded++;
-  } catch (err) {
-    failed.push({ entry, err });
-    console.error(`    FAILED: ${err.message}`);
-  }
+} finally {
+  cleanupStaging();
 }
 
 console.error(`done: uploaded=${uploaded} skipped=${skipped} failed=${failed.length}`);

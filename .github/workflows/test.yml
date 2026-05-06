@@ -1,0 +1,83 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Rust + Node tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Fixtures live in a GitHub Release (see tests/models/manifest.json
+          # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
+          # disable the smudge filter so a stray .gitattributes can't
+          # reintroduce it on a contributor branch.
+          lfs: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
+      # Cache hit = no network. Cache miss (manifest changed) = one cold pull
+      # from the GitHub Release CDN. Pattern documented in AGENTS.md §9.
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: tests/models
+          key: fixtures-${{ hashFiles('tests/models/manifest.json') }}
+
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+
+      - name: Verify fixtures
+        run: pnpm fixtures:check
+
+      # Workspace exclusions:
+      #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
+      #   - ifc-lite-desktop: Tauri crate needs gtk/webkit2gtk system libs;
+      #     desktop-compat.yml validates the desktop frontend separately.
+      - name: Rust tests
+        run: cargo test --workspace --exclude ifc-lite-wasm --exclude ifc-lite-desktop
+
+      - name: Node tests
+        run: pnpm test

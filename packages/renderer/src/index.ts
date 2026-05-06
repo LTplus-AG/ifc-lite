@@ -22,6 +22,7 @@ export {
 } from './quantized-scene-buffers.js';
 export type { QuantizedSceneSource, MeshDrawInfo } from './quantized-scene-buffers.js';
 export { quantizedShaderSource } from './shaders/quantized.wgsl.js';
+export { QuantizedRaycaster } from './quantized-raycaster.js';
 export { Camera } from './camera.js';
 export type { ProjectionMode } from './camera-controls.js';
 export { Scene } from './scene.js';
@@ -588,7 +589,8 @@ export class Renderer {
 
     /**
      * Compute world-space model AABB by transforming each mesh's local AABB
-     * by every instance's transform. For each instance we transform the 8 box
+     * by every instance's transform, then rotating Z-up → Y-up to match the
+     * shader's final world space. For each instance we transform the 8 box
      * corners (handles rotated placements correctly) and accumulate.
      *
      * Cost is `O(instances × 8 transforms)` — a few microseconds for 100 k
@@ -606,7 +608,6 @@ export class Renderer {
             const di = draws[m]!;
             const [lx, ly, lz] = di.aabbMin;
             const [ux, uy, uz] = di.aabbMax;
-            // 8 box corners
             corners[ 0] = lx; corners[ 1] = ly; corners[ 2] = lz;
             corners[ 3] = ux; corners[ 4] = ly; corners[ 5] = lz;
             corners[ 6] = lx; corners[ 7] = uy; corners[ 8] = lz;
@@ -624,9 +625,15 @@ export class Renderer {
                     const cx = corners[c * 3]!;
                     const cy = corners[c * 3 + 1]!;
                     const cz = corners[c * 3 + 2]!;
-                    const wx = t[0]! * cx + t[4]! * cy + t[ 8]! * cz + t[12]!;
-                    const wy = t[1]! * cx + t[5]! * cy + t[ 9]! * cz + t[13]!;
-                    const wz = t[2]! * cx + t[6]! * cy + t[10]! * cz + t[14]!;
+                    // Apply instance transform (Z-up world).
+                    const tx = t[0]! * cx + t[4]! * cy + t[ 8]! * cz + t[12]!;
+                    const ty = t[1]! * cx + t[5]! * cy + t[ 9]! * cz + t[13]!;
+                    const tz = t[2]! * cx + t[6]! * cy + t[10]! * cz + t[14]!;
+                    // Rotate Z-up → Y-up to match the shader's final world space.
+                    // (x, y, z)_zUp → (x, z, -y)_yUp.
+                    const wx = tx;
+                    const wy = tz;
+                    const wz = -ty;
                     if (wx < minX) minX = wx;
                     if (wy < minY) minY = wy;
                     if (wz < minZ) minZ = wz;
@@ -757,13 +764,23 @@ export class Renderer {
 
         const colorView = ctx.getCurrentTexture().createView();
         const objectIdView = this.quantizedPipeline.getObjectIdTextureView();
+
+        // Match the legacy pipeline's clear-colour resolution so the viewer's
+        // theme switcher (which writes `options.clearColor`) keeps controlling
+        // background colour on the quantised path too.
+        const clearColor = options.clearColor
+            ? (Array.isArray(options.clearColor)
+                ? { r: options.clearColor[0], g: options.clearColor[1], b: options.clearColor[2], a: options.clearColor[3] }
+                : options.clearColor)
+            : { r: 0.1, g: 0.1, b: 0.1, a: 1 };
+
         const encoder = device.createCommandEncoder({ label: 'quantized-frame' });
         const pass = encoder.beginRenderPass({
             colorAttachments: [
                 {
                     view: colorView,
                     loadOp: 'clear',
-                    clearValue: { r: 0.05, g: 0.06, b: 0.08, a: 1.0 },
+                    clearValue: clearColor,
                     storeOp: 'store',
                 },
                 {

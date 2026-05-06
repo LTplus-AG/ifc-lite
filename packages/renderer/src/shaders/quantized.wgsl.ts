@@ -81,6 +81,17 @@ fn unpackRgba8(p: u32) -> vec4<f32> {
   ) * (1.0 / 255.0);
 }
 
+// IFC stores geometry Z-up; the viewer's camera works in Y-up. The legacy
+// instanced pipeline applied this rotation in the shader and the quantised
+// path matches that convention so transforms produced by the existing WASM
+// processors keep working unchanged.
+const zToYUp = mat4x4<f32>(
+  vec4<f32>(1.0, 0.0,  0.0, 0.0),
+  vec4<f32>(0.0, 0.0, -1.0, 0.0),
+  vec4<f32>(0.0, 1.0,  0.0, 0.0),
+  vec4<f32>(0.0, 0.0,  0.0, 1.0)
+);
+
 @vertex
 fn vs_main(in: VertexInput, @builtin(instance_index) iid: u32) -> VertexOutput {
   let inst = instances[mesh.instanceInfo.x + iid];
@@ -99,13 +110,16 @@ fn vs_main(in: VertexInput, @builtin(instance_index) iid: u32) -> VertexOutput {
     return out;
   }
 
-  // Dequantise position via per-mesh AABB.
+  // Dequantise position via per-mesh AABB, then place in world (still Z-up),
+  // then rotate to viewer Y-up.
   let posLocal = mix(mesh.aabbMin.xyz, mesh.aabbMax.xyz, in.position_q.xyz);
-  let world = inst.transform * vec4<f32>(posLocal, 1.0);
+  let worldZUp = inst.transform * vec4<f32>(posLocal, 1.0);
+  let world = zToYUp * worldZUp;
 
-  // Dequantise normal.
+  // Dequantise normal, transform by instance, rotate to Y-up.
   let nLocal = octDecode(in.normal_oct.xy);
-  let nWorld = (inst.transform * vec4<f32>(nLocal, 0.0)).xyz;
+  let nWorldZUp = (inst.transform * vec4<f32>(nLocal, 0.0)).xyz;
+  let nWorld = (zToYUp * vec4<f32>(nWorldZUp, 0.0)).xyz;
 
   // Pick colour: override beats base.
   let base = unpackRgba8(inst.packed.y);

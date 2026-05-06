@@ -145,8 +145,23 @@ export class QuantizedRenderPipeline {
 
   /** Resize the depth + objectId scratch textures (call on canvas resize). */
   resize(width: number, height: number): void {
+    this.ensureSize(width, height);
+  }
+
+  /**
+   * Idempotent re-allocation: only destroys + re-creates textures when the
+   * requested size differs from the current size. Called from `resize()` and
+   * defensively from the renderer right before each pass so the depth /
+   * objectId attachments always match the swapchain texture (which can lag
+   * the canvas resize by one frame on some browsers).
+   */
+  ensureSize(width: number, height: number): void {
     const w = Math.max(1, width);
     const h = Math.max(1, height);
+    if (this.depthTexture.width === w && this.depthTexture.height === h
+      && this.objectIdTexture.width === w && this.objectIdTexture.height === h) {
+      return;
+    }
     this.depthTexture.destroy();
     this.depthTexture = this.device.createTexture({
       size: { width: w, height: h },

@@ -762,7 +762,14 @@ export class Renderer {
         }
         this.quantizedPipeline.updateUniforms(viewProj, sectionPlane);
 
-        const colorView = ctx.getCurrentTexture().createView();
+        // Pull the current swapchain texture and align all attachments to its
+        // exact pixel size. The swapchain can lag a configureContext() by one
+        // frame on some browsers, so even after dimensionsChanged + resize the
+        // colour texture may still be the previous size. Resizing the depth /
+        // objectId textures here guarantees attachment-size parity.
+        const currentTexture = ctx.getCurrentTexture();
+        this.quantizedPipeline.ensureSize(currentTexture.width, currentTexture.height);
+        const colorView = currentTexture.createView();
         const objectIdView = this.quantizedPipeline.getObjectIdTextureView();
 
         // Match the legacy pipeline's clear-colour resolution so the viewer's

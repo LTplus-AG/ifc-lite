@@ -647,13 +647,38 @@ export class Renderer {
         this.updateModelBoundsFromQuantized();
         this.camera.setSceneBounds(this.modelBounds);
 
+        // Sample diagnostics — pull a few instance translations and the first
+        // mesh's local AABB so the preview console can show us the actual
+        // numbers being rendered (post-RTC, pre-Y-up rotation, since RTC and
+        // bounds calc happen in JS but the Z-up→Y-up swap happens in the
+        // shader).
+        if (this.quantizedBuffers.instanceCount > 0) {
+            const samples: Array<{ inst: number; tx: number; ty: number; tz: number }> = [];
+            const sampleIndices = [
+                0,
+                Math.floor(this.quantizedBuffers.instanceCount / 2),
+                this.quantizedBuffers.instanceCount - 1,
+            ];
+            for (const idx of sampleIndices) {
+                const t = this.quantizedBuffers.getInstanceTransform(idx);
+                samples.push({ inst: idx, tx: t[12]!, ty: t[13]!, tz: t[14]! });
+            }
+            const firstDraw = this.quantizedBuffers.getDrawInfo(0);
+            console.log('[quantized] post-RTC sample instance translations (Z-up):', samples);
+            console.log(
+                `[quantized] mesh[0] local AABB: min=[${firstDraw.aabbMin.join(', ')}] ` +
+                `max=[${firstDraw.aabbMax.join(', ')}] vertexCount=${firstDraw.vertexCount} ` +
+                `indexCount=${firstDraw.indexCount} instanceCount=${firstDraw.instanceCount}`,
+            );
+        }
+
         const t1 = performance.now();
         console.log(
             `[quantized] loaded scene: ${this.quantizedBuffers.meshCount} unique meshes, ` +
             `${this.quantizedBuffers.instanceCount} instances, ` +
             `${(snapshot.totalVertexCount * 12 / 1024 / 1024).toFixed(1)} MiB vertex data, ` +
             `${(snapshot.totalIndexCount * 4 / 1024 / 1024).toFixed(1)} MiB indices, ` +
-            `bounds = ${JSON.stringify(this.modelBounds)} (${(t1 - t0).toFixed(0)}ms)`,
+            `Y-up bounds = ${JSON.stringify(this.modelBounds)} (${(t1 - t0).toFixed(0)}ms)`,
         );
     }
 
@@ -909,6 +934,55 @@ export class Renderer {
 
         if (!this._loggedQuantizedFirstDraw) {
             console.log(`[quantized] first draw: ${drawCalls} draws across ${this.quantizedBuffers.meshCount} meshes`);
+
+            // Camera + projection diagnostics. Project the bounds centre and
+            // bounds-corner through viewProj manually so we can see whether
+            // sample points end up inside [-w, w] (visible) or outside
+            // (clipped). Y-up world space — same space the shader receives
+            // after its zToYUp rotation.
+            const cam = this.camera;
+            const camPos = cam.getPosition();
+            const camTarget = cam.getTarget();
+            const swap = currentTexture;
+            console.log(
+                `[quantized] camera: pos=(${camPos.x.toFixed(1)}, ${camPos.y.toFixed(1)}, ${camPos.z.toFixed(1)}) ` +
+                `target=(${camTarget.x.toFixed(1)}, ${camTarget.y.toFixed(1)}, ${camTarget.z.toFixed(1)}) ` +
+                `swapchain=${swap.width}×${swap.height}`,
+            );
+            const m = viewProj;
+            console.log(
+                '[quantized] viewProj rows:',
+                `[${m[0]!.toFixed(3)}, ${m[1]!.toFixed(3)}, ${m[2]!.toFixed(3)}, ${m[3]!.toFixed(3)}]`,
+                `[${m[4]!.toFixed(3)}, ${m[5]!.toFixed(3)}, ${m[6]!.toFixed(3)}, ${m[7]!.toFixed(3)}]`,
+                `[${m[8]!.toFixed(3)}, ${m[9]!.toFixed(3)}, ${m[10]!.toFixed(3)}, ${m[11]!.toFixed(3)}]`,
+                `[${m[12]!.toFixed(3)}, ${m[13]!.toFixed(3)}, ${m[14]!.toFixed(3)}, ${m[15]!.toFixed(3)}]`,
+            );
+
+            if (this.modelBounds) {
+                const b = this.modelBounds;
+                const samples: Array<[string, number, number, number]> = [
+                    ['centre', (b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2],
+                    ['min', b.min.x, b.min.y, b.min.z],
+                    ['max', b.max.x, b.max.y, b.max.z],
+                ];
+                for (const [label, x, y, z] of samples) {
+                    // Column-major mat4 × vec4(x, y, z, 1).
+                    const cx = m[0]! * x + m[4]! * y + m[ 8]! * z + m[12]!;
+                    const cy = m[1]! * x + m[5]! * y + m[ 9]! * z + m[13]!;
+                    const cz = m[2]! * x + m[6]! * y + m[10]! * z + m[14]!;
+                    const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+                    const ndcX = cx / cw;
+                    const ndcY = cy / cw;
+                    const ndcZ = cz / cw;
+                    const inside = Math.abs(cx) <= Math.abs(cw) && Math.abs(cy) <= Math.abs(cw) && cz >= 0 && cz <= cw;
+                    console.log(
+                        `[quantized] project '${label}' world=(${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) ` +
+                        `→ clip=(${cx.toFixed(2)}, ${cy.toFixed(2)}, ${cz.toFixed(2)}, w=${cw.toFixed(2)}) ` +
+                        `NDC=(${ndcX.toFixed(3)}, ${ndcY.toFixed(3)}, ${ndcZ.toFixed(3)}) ` +
+                        `${inside ? 'INSIDE frustum' : 'CLIPPED — outside frustum'}`,
+                    );
+                }
+            }
             this._loggedQuantizedFirstDraw = true;
         }
         return true;

@@ -931,6 +931,23 @@ export class GeometryProcessor {
     return this.bridge.getApi();
   }
 
+  /**
+   * Parse IFC content into a GPU-ready quantised + instanced scene snapshot.
+   * Returns plain TypedArray buffers ready to upload to WebGPU. This is the
+   * primary path the WebGPU viewer uses for IFC geometry; the legacy
+   * `processStreaming` / `processAdaptive` flows remain for code that still
+   * needs the per-element `MeshData[]` shape (BVH, raycast, parquet export).
+   */
+  parseQuantizedInstancedScene(content: string): import('./ifc-lite-bridge.js').QuantizedSceneSnapshot {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      throw new Error('GeometryProcessor not initialized. Call init() first.');
+    }
+    if (this.bridge instanceof IfcLiteBridge) {
+      return this.bridge.parseQuantizedInstancedScene(content);
+    }
+    throw new Error('parseQuantizedInstancedScene requires the WASM IfcLiteBridge backend.');
+  }
+
   getLastNativeStats(): PlatformGeometryStats | null {
     return this.lastNativeStats;
   }

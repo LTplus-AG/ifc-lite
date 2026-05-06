@@ -1567,6 +1567,133 @@ export function useIfcLoader() {
       const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
       const format = pointCloudFormat ?? detectFormat(buffer);
 
+      // ── Quantised + instanced fast path (web IFC) ─────────────────────
+      // The WebGPU viewer's primary IFC path. Bypasses streaming/cache/MeshData
+      // and parses straight to GPU-ready quantised buffers, handing them to the
+      // renderer in a single upload. Data-model parsing (entities, properties,
+      // spatial tree) still runs for the metadata panel + IDS + search.
+      //
+      // Notes for preview verification:
+      // - Federation (multi-file): NOT yet routed here — falls through.
+      // - Native (Tauri): NOT yet routed here — falls through.
+      // - BVH-based raycast / snap / measurement may regress until the
+      //   raycast layer learns to dequantise on demand. GPU picking via the
+      //   objectId target works.
+      if (format === 'ifc' && !isNativeFileHandle(file)) {
+        const renderer = getGlobalRenderer();
+        if (renderer) {
+          try {
+            const tDecode = performance.now();
+            const content = new TextDecoder('utf-8').decode(new Uint8Array(buffer));
+            const decodeMs = performance.now() - tDecode;
+            console.log(`[quantized] decoded ${fileSizeMB.toFixed(1)} MB → ${(content.length / 1_000_000).toFixed(1)} MChars in ${decodeMs.toFixed(0)}ms`);
+
+            setProgress({ phase: 'Parsing geometry', percent: 30 });
+
+            const quantizedProcessor = new GeometryProcessor({
+              quality: GeometryQuality.Balanced,
+              preferNative: false,
+            });
+            await quantizedProcessor.init();
+
+            const tParse = performance.now();
+            const snapshot = quantizedProcessor.parseQuantizedInstancedScene(content);
+            const parseMs = performance.now() - tParse;
+            console.log(
+              `[quantized] parse complete: ${snapshot.meshCount} unique meshes, ` +
+              `${snapshot.instanceCount} instances, dedup ${snapshot.dedupRatio.toFixed(1)}×, ` +
+              `${parseMs.toFixed(0)}ms`,
+            );
+
+            setProgress({ phase: 'Uploading to GPU', percent: 70 });
+            const tUpload = performance.now();
+            renderer.loadQuantizedScene(snapshot);
+            const uploadMs = performance.now() - tUpload;
+            console.log(`[quantized] GPU upload + draw setup: ${uploadMs.toFixed(0)}ms`);
+            renderer.fitToView();
+            renderer.requestRender();
+
+            // Compute max expressId by scanning instance records (offset 64 in 80-byte records).
+            let maxId = 0;
+            const instData = snapshot.instanceData;
+            for (let i = 0; i < snapshot.instanceCount; i++) {
+              const off = i * 80 + 64;
+              const id = instData[off]! | (instData[off + 1]! << 8) | (instData[off + 2]! << 16) | (instData[off + 3]! << 24);
+              if (id > maxId) maxId = id >>> 0;
+            }
+
+            setProgress({ phase: 'Parsing metadata', percent: 85 });
+
+            // Data-model parsing in parallel for the metadata panel.
+            const parser = new IfcParser();
+            const dataStorePromise = parser.parseColumnar(buffer, {
+              wasmApi: quantizedProcessor.getApi(),
+              onSpatialReady: (partial) => {
+                if (loadSessionRef.current !== currentSession) return;
+                setIfcDataStore(partial);
+              },
+            });
+
+            // Build the model record — geometry lives on the GPU; the legacy
+            // `geometryResult.meshes` array is intentionally empty so any
+            // BVH/raycast consumer that scans it gets a clean signal that
+            // there is nothing to scan (rather than half-populated state).
+            const stubGeometryResult = {
+              meshes: [] as MeshData[],
+              totalVertices: snapshot.totalVertexCount,
+              totalTriangles: Math.floor(snapshot.totalIndexCount / 3),
+              coordinateInfo: undefined as CoordinateInfo | undefined,
+            };
+
+            const idOffset = registerModelOffset(primaryModelId, maxId);
+            updateModel(primaryModelId, {
+              ifcDataStore: null,
+              geometryResult: stubGeometryResult as unknown as { meshes: MeshData[]; totalVertices: number; totalTriangles: number; coordinateInfo: CoordinateInfo },
+              schemaVersion: 'IFC4',
+              idOffset,
+              maxExpressId: maxId,
+              loadState: 'hydrating-metadata',
+              cacheState: 'none',
+              loadError: null,
+            });
+
+            setProgress({ phase: 'Loading metadata', percent: 95 });
+            try {
+              const dataStore = await dataStorePromise;
+              if (loadSessionRef.current === currentSession) {
+                if (dataStore.spatialHierarchy && dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
+                  const heights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
+                  for (const [storeyId, height] of heights) {
+                    dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
+                  }
+                }
+                setIfcDataStore(dataStore);
+                updateModel(primaryModelId, {
+                  ifcDataStore: dataStore,
+                  schemaVersion: getSchemaVersion(dataStore),
+                  loadState: 'complete',
+                });
+              }
+            } catch (metaErr) {
+              console.warn('[quantized] data-model parse failed (geometry already rendered)', metaErr);
+              updateModel(primaryModelId, { loadState: 'complete', loadError: null });
+            }
+
+            const totalMs = performance.now() - totalStartTime;
+            console.log(`[quantized] full load complete in ${totalMs.toFixed(0)}ms`);
+            setProgress({ phase: 'Done', percent: 100 });
+            setLoading(false);
+            setGeometryStreamingActive(false);
+            return;
+          } catch (err) {
+            console.error('[quantized] fast path failed; falling through to legacy streaming', err);
+            // fall through
+          }
+        } else {
+          console.warn('[quantized] renderer not available — falling through to legacy path');
+        }
+      }
+
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
       if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {

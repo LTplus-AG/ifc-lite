@@ -19,9 +19,9 @@ permissions:
 
 jobs:
   test:
-    name: Rust + Node tests
+    name: Build + WASM + Rust + Node
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -44,16 +44,37 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+      # rust-toolchain.toml pins nightly-2025-11-15 with wasm32-unknown-unknown
+      # + rust-src. `rustup show` triggers install of exactly that toolchain,
+      # so cargo and wasm-pack both see the same channel as local devs.
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Rebuild the wasm bindings from rust/wasm-bindings/ on every run.
+      # packages/wasm/pkg/ is committed but goes stale whenever Rust changes
+      # ship without a maintainer running scripts/build-wasm.sh first; this
+      # step catches Rust → wasm breakage before downstream consumers see it.
+      - name: Build WASM
+        run: bash scripts/build-wasm.sh
+
+      # `pnpm test` is `pnpm -r test` (not turbo), so the test command for one
+      # package can't auto-build its workspace dependencies. Without this step,
+      # cross-package imports like `@ifc-lite/data` fail to resolve from
+      # `dist/` and tests like packages/lists abort with
+      # "Failed to resolve entry for package".
+      - name: Build packages
+        run: pnpm build
 
       # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
       # Cache hit = no network. Cache miss (manifest changed) = one cold pull
@@ -71,6 +92,12 @@ jobs:
 
       - name: Verify fixtures
         run: pnpm fixtures:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
 
       # Workspace exclusions:
       #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.

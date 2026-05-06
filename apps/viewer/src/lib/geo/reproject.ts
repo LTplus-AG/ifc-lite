@@ -451,14 +451,19 @@ export async function computeFootprintGeoJSON(
  * Returns height in metres above sea level, or null on failure.
  */
 export async function queryTerrainElevation(latLon: LatLon): Promise<number | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
     const url = `https://api.open-meteo.com/v1/elevation?latitude=${latLon.lat}&longitude=${latLon.lon}`;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: controller.signal });
     if (!resp.ok) return null;
     const data = await resp.json();
     const elev = data?.elevation?.[0];
     return typeof elev === 'number' && Number.isFinite(elev) ? elev : null;
-  } catch {
+  } catch (err) {
+    console.warn(`[reproject] queryTerrainElevation failed for ${latLon.lat},${latLon.lon}:`, err);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

@@ -710,7 +710,11 @@ export function CesiumOverlay({
     const newMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, terrainClamp, terrainHeight, lengthUnitScale);
     model.modelMatrix = newMatrix;
     viewer.scene.requestRender();
-  }, [terrainClamp, terrainHeight, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale]);
+    // Depend on bridgeVersion so the matrix is rebuilt with the *new* bridge
+    // after an async createCesiumBridge replaces it. Without this, a georef
+    // edit synchronously fires this effect with the OLD bridge (giving a
+    // mixed matrix) and never re-runs once the new bridge resolves.
+  }, [terrainClamp, terrainHeight, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, bridgeVersion]);
 
   // ─── Effect 3: Camera sync loop ─────────────────────────────────────────
   useEffect(() => {

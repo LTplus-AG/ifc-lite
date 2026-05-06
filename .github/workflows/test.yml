@@ -28,10 +28,7 @@ env:
 jobs:
   test:
     name: Build + WASM + Rust + Node
-    # Blacksmith bare-metal runner — faster cache + bigger CPU than
-    # GitHub-hosted ubuntu-latest. Falls under the project's OSS program.
-    # See PR-599 handoff §7 for the rationale.
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:

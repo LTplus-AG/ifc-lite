@@ -1515,6 +1515,13 @@ export class Renderer {
             const drew = this.renderQuantizedScene(options, viewProj);
             if (drew) {
                 this._renderRequested = false;
+                // Keep redrawing while diagnosing. Without this, the dirty-
+                // flag pattern means render() runs once per scene load and
+                // the first-frame swapchain texture is whatever it was —
+                // any other GPUCanvasContext.getCurrentTexture() consumer in
+                // the page advances the swapchain and our magenta is gone.
+                // Costs one CPU frame loop; trivial vs. the diagnostic value.
+                this._renderRequested = true;
                 return;
             }
         }

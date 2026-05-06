@@ -8,7 +8,7 @@
  */
 
 // IFC-Lite components (recommended - faster)
-export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
+export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs, type QuantizedSceneSnapshot } from './ifc-lite-bridge.js';
 export { IfcLiteMeshCollector, type StreamingColorUpdateEvent, type StreamingRtcOffsetEvent } from './ifc-lite-mesh-collector.js';
 import type { StreamingColorUpdateEvent, StreamingRtcOffsetEvent } from './ifc-lite-mesh-collector.js';
 

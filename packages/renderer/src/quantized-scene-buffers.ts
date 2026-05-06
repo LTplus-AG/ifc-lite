@@ -59,6 +59,10 @@ export interface MeshDrawInfo {
   instanceCount: number;
   /** Aligned offset into the per-mesh uniform buffer. */
   meshUniformOffset: number;
+  /** Mesh-local AABB minimum corner (used as quantisation basis on the GPU). */
+  aabbMin: [number, number, number];
+  /** Mesh-local AABB maximum corner. */
+  aabbMax: [number, number, number];
 }
 
 /**
@@ -148,7 +152,15 @@ export class QuantizedSceneBuffers {
           slotOffset,
         );
         this.meshUniformOffsets[i] = slotOffset;
+        // aabb_min: vec4<f32> at bytes 0..16 (xyz used)
+        // aabb_max: vec4<f32> at bytes 16..32
         // vertexInfo lives at byte 32; instanceInfo at byte 48.
+        const aabbMinX = dv.getFloat32(recordOffset + 0, true);
+        const aabbMinY = dv.getFloat32(recordOffset + 4, true);
+        const aabbMinZ = dv.getFloat32(recordOffset + 8, true);
+        const aabbMaxX = dv.getFloat32(recordOffset + 16, true);
+        const aabbMaxY = dv.getFloat32(recordOffset + 20, true);
+        const aabbMaxZ = dv.getFloat32(recordOffset + 24, true);
         const vertexOffset = dv.getUint32(recordOffset + 32, true);
         const vertexCount = dv.getUint32(recordOffset + 36, true);
         const indexOffset = dv.getUint32(recordOffset + 40, true);
@@ -163,6 +175,8 @@ export class QuantizedSceneBuffers {
           firstInstance,
           instanceCount: instanceCountForMesh,
           meshUniformOffset: slotOffset,
+          aabbMin: [aabbMinX, aabbMinY, aabbMinZ],
+          aabbMax: [aabbMaxX, aabbMaxY, aabbMaxZ],
         };
       }
       device.queue.writeBuffer(this.meshUniformBuffer, 0, meshUploadStaging);
@@ -253,6 +267,22 @@ export class QuantizedSceneBuffers {
     this.assertInstanceIndex(instanceIndex);
     const off = instanceIndex * QUANTIZED_INSTANCE_RECORD_SIZE + INSTANCE_FIELD_OFFSETS.expressId;
     return readU32LE(this.instanceMirror, off);
+  }
+
+  /**
+   * Read the column-major 4×4 transform of an instance into a fresh
+   * `Float32Array(16)`. Used by CPU-side fit-to-view bound computation and
+   * future raycast support.
+   */
+  getInstanceTransform(instanceIndex: number): Float32Array {
+    this.assertInstanceIndex(instanceIndex);
+    const out = new Float32Array(16);
+    const dv = new DataView(this.instanceMirror.buffer, this.instanceMirror.byteOffset, this.instanceMirror.byteLength);
+    const base = instanceIndex * QUANTIZED_INSTANCE_RECORD_SIZE;
+    for (let i = 0; i < 16; i++) {
+      out[i] = dv.getFloat32(base + i * 4, true);
+    }
+    return out;
   }
 
   /** Toggle the `visible` bit (bit 0). */

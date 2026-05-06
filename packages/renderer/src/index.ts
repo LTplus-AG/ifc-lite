@@ -82,13 +82,19 @@ export type {
 
 import { WebGPUDevice } from './device.js';
 import { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
+import {
+    QuantizedRenderPipeline,
+    INSTANCE_FLAGS,
+    type QuantizedSectionPlane,
+} from './quantized-pipeline.js';
+import { QuantizedSceneBuffers } from './quantized-scene-buffers.js';
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
 import { Picker } from './picker.js';
 import { MathUtils } from './math.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
 import { deduplicateMeshes } from '@ifc-lite/geometry';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { MeshData, QuantizedSceneSnapshot } from '@ifc-lite/geometry';
 import type {
     RenderOptions,
     PickOptions,
@@ -114,6 +120,35 @@ import type { PointCloudAsset } from '@ifc-lite/geometry';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
+
+/** Collect a single id and a set of ids into one Set, returning null if both are empty. */
+function collectExpressIds(
+    single: number | null | undefined,
+    multi: ReadonlySet<number> | null | undefined,
+): Set<number> | null {
+    const out = new Set<number>();
+    if (single !== undefined && single !== null) out.add(single);
+    if (multi) {
+        for (const id of multi) out.add(id);
+    }
+    return out.size > 0 ? out : null;
+}
+
+/** Two-way equality on possibly-null sets. */
+function setsEqual(a: ReadonlySet<number> | null, b: ReadonlySet<number> | null): boolean {
+    if (a === b) return true;
+    if (!a || !b) return (a?.size ?? 0) === 0 && (b?.size ?? 0) === 0;
+    if (a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+}
+
+/** Set difference `a - b`. */
+function differenceSet(a: ReadonlySet<number>, b: ReadonlySet<number>): Set<number> {
+    const out = new Set<number>();
+    for (const v of a) if (!b.has(v)) out.add(v);
+    return out;
+}
 
 type ResolvedVisualEnhancement = {
     enabled: boolean;
@@ -141,6 +176,23 @@ export class Renderer {
     private device: WebGPUDevice;
     private pipeline: RenderPipeline | null = null;
     private instancedPipeline: InstancedRenderPipeline | null = null;
+    /**
+     * Quantised + instanced rendering path. When `quantizedBuffers` is set,
+     * the IFC mesh draw in `render()` short-circuits to this pipeline and the
+     * legacy `scene.getMeshes()` / `scene.getBatchedMeshes()` loop is skipped
+     * for IFC geometry. This is the default path for the WebGPU viewer; the
+     * legacy path remains for scenes built from `MeshData[]` (point clouds,
+     * tests, headless tooling).
+     */
+    private quantizedPipeline: QuantizedRenderPipeline | null = null;
+    private quantizedBuffers: QuantizedSceneBuffers | null = null;
+    private quantizedBindGroup: GPUBindGroup | null = null;
+    /** Last applied selected expressId set, so per-frame diffing can skip patches. */
+    private quantizedSelectionApplied: Set<number> | null = null;
+    /** Last applied hidden expressId set. */
+    private quantizedHiddenApplied: Set<number> | null = null;
+    /** Last applied isolation set (null = no isolation). */
+    private quantizedIsolatedApplied: Set<number> | null = null;
     private camera: Camera;
     private scene: Scene;
     private picker: Picker | null = null;
@@ -218,7 +270,9 @@ export class Renderer {
 
         this.pipeline = new RenderPipeline(this.device, width, height);
         this.instancedPipeline = new InstancedRenderPipeline(this.device, width, height);
+        this.quantizedPipeline = new QuantizedRenderPipeline(this.device, width, height);
         this.picker = new Picker(this.device, width, height);
+        console.log('[quantized] renderer initialised quantised pipeline', { width, height });
         this.sectionPlaneRenderer = new SectionPlaneRenderer(
             this.device.getDevice(),
             this.device.getFormat(),
@@ -459,6 +513,306 @@ export class Renderer {
         m.max.y = Math.max(m.max.y, pcBounds.max[1]);
         m.max.z = Math.max(m.max.z, pcBounds.max[2]);
     }
+
+    /**
+     * Load a quantised + instanced IFC scene snapshot produced by
+     * `IfcLiteBridge.parseQuantizedInstancedScene`.
+     *
+     * Replaces any previously loaded quantised scene. Computes model bounds
+     * from per-mesh AABBs (no vertex scan required) and creates the bind
+     * group that pairs the per-mesh dynamic uniform with the per-instance
+     * SSBO. Subsequent `render()` calls will draw through the quantised
+     * pipeline and skip the legacy `scene.getMeshes()` loop.
+     */
+    loadQuantizedScene(snapshot: QuantizedSceneSnapshot): void {
+        if (!this.device.isInitialized() || !this.quantizedPipeline) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        const t0 = performance.now();
+        const device = this.device.getDevice();
+
+        // Replace any prior scene first.
+        if (this.quantizedBuffers) {
+            console.log('[quantized] replacing prior scene', {
+                priorMeshCount: this.quantizedBuffers.meshCount,
+                priorInstanceCount: this.quantizedBuffers.instanceCount,
+            });
+            this.quantizedBuffers.destroy();
+            this.quantizedBuffers = null;
+            this.quantizedBindGroup = null;
+            this.quantizedSelectionApplied = null;
+            this.quantizedHiddenApplied = null;
+            this.quantizedIsolatedApplied = null;
+        }
+
+        if (snapshot.meshCount === 0 || snapshot.instanceCount === 0) {
+            console.warn('[quantized] loadQuantizedScene received empty snapshot — nothing to draw');
+            return;
+        }
+
+        try {
+            this.quantizedBuffers = new QuantizedSceneBuffers(device, snapshot);
+        } catch (err) {
+            console.error('[quantized] QuantizedSceneBuffers construction failed', err);
+            throw err;
+        }
+
+        this.quantizedBindGroup = this.quantizedPipeline.createBindGroup(
+            this.quantizedBuffers.getMeshUniformBuffer(),
+            // Each mesh occupies one aligned slot. Bind size = the slot size,
+            // not the full buffer; dynamic offset selects the slot per draw.
+            Math.max(64, this.quantizedBuffers.meshUniformAlignment),
+            this.quantizedBuffers.getInstanceBuffer(),
+        );
+
+        this.updateModelBoundsFromQuantized();
+        this.camera.setSceneBounds(this.modelBounds);
+
+        const t1 = performance.now();
+        console.log(
+            `[quantized] loaded scene: ${this.quantizedBuffers.meshCount} unique meshes, ` +
+            `${this.quantizedBuffers.instanceCount} instances, ` +
+            `${(snapshot.totalVertexCount * 12 / 1024 / 1024).toFixed(1)} MiB vertex data, ` +
+            `${(snapshot.totalIndexCount * 4 / 1024 / 1024).toFixed(1)} MiB indices, ` +
+            `bounds = ${JSON.stringify(this.modelBounds)} (${(t1 - t0).toFixed(0)}ms)`,
+        );
+    }
+
+    /**
+     * True when the quantised path has a loaded scene and `render()` should
+     * draw through it instead of the legacy `scene.getMeshes()` loop.
+     */
+    hasQuantizedScene(): boolean {
+        return this.quantizedBuffers !== null && this.quantizedBuffers.instanceCount > 0;
+    }
+
+    /**
+     * Compute world-space model AABB by transforming each mesh's local AABB
+     * by every instance's transform. For each instance we transform the 8 box
+     * corners (handles rotated placements correctly) and accumulate.
+     *
+     * Cost is `O(instances × 8 transforms)` — a few microseconds for 100 k
+     * instances; runs once per scene load.
+     */
+    private updateModelBoundsFromQuantized(): void {
+        if (!this.quantizedBuffers) return;
+        const buffers = this.quantizedBuffers;
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+        const draws = buffers.iterDrawInfos();
+        const corners = new Float32Array(24); // 8 corners × 3
+        for (let m = 0; m < draws.length; m++) {
+            const di = draws[m]!;
+            const [lx, ly, lz] = di.aabbMin;
+            const [ux, uy, uz] = di.aabbMax;
+            // 8 box corners
+            corners[ 0] = lx; corners[ 1] = ly; corners[ 2] = lz;
+            corners[ 3] = ux; corners[ 4] = ly; corners[ 5] = lz;
+            corners[ 6] = lx; corners[ 7] = uy; corners[ 8] = lz;
+            corners[ 9] = ux; corners[10] = uy; corners[11] = lz;
+            corners[12] = lx; corners[13] = ly; corners[14] = uz;
+            corners[15] = ux; corners[16] = ly; corners[17] = uz;
+            corners[18] = lx; corners[19] = uy; corners[20] = uz;
+            corners[21] = ux; corners[22] = uy; corners[23] = uz;
+
+            const firstInst = di.firstInstance;
+            const instCount = di.instanceCount;
+            for (let i = 0; i < instCount; i++) {
+                const t = buffers.getInstanceTransform(firstInst + i);
+                for (let c = 0; c < 8; c++) {
+                    const cx = corners[c * 3]!;
+                    const cy = corners[c * 3 + 1]!;
+                    const cz = corners[c * 3 + 2]!;
+                    const wx = t[0]! * cx + t[4]! * cy + t[ 8]! * cz + t[12]!;
+                    const wy = t[1]! * cx + t[5]! * cy + t[ 9]! * cz + t[13]!;
+                    const wz = t[2]! * cx + t[6]! * cy + t[10]! * cz + t[14]!;
+                    if (wx < minX) minX = wx;
+                    if (wy < minY) minY = wy;
+                    if (wz < minZ) minZ = wz;
+                    if (wx > maxX) maxX = wx;
+                    if (wy > maxY) maxY = wy;
+                    if (wz > maxZ) maxZ = wz;
+                }
+            }
+        }
+        if (!isFinite(minX)) {
+            console.warn('[quantized] no finite bounds; defaulting to 100m box');
+            minX = -50; minY = -50; minZ = -50;
+            maxX = 50; maxY = 50; maxZ = 50;
+        }
+        this.modelBounds = {
+            min: { x: minX, y: minY, z: minZ },
+            max: { x: maxX, y: maxY, z: maxZ },
+        };
+    }
+
+    /**
+     * Patch per-instance flags from the per-frame selection / visibility
+     * options. Diffs against the previously applied set so unchanged frames
+     * issue zero `writeBuffer` calls.
+     */
+    private syncQuantizedInstanceFlags(opts: RenderOptions): void {
+        const buffers = this.quantizedBuffers;
+        if (!buffers) return;
+
+        const desiredSelected = collectExpressIds(opts.selectedId, opts.selectedIds);
+        const desiredHidden = opts.hiddenIds ?? null;
+        const desiredIsolated = opts.isolatedIds ?? null;
+
+        const prevSelected = this.quantizedSelectionApplied;
+        const prevHidden = this.quantizedHiddenApplied;
+        const prevIsolated = this.quantizedIsolatedApplied;
+
+        // Selection diff: flip the selected bit on changed instances.
+        if (!setsEqual(prevSelected, desiredSelected)) {
+            const toClear = prevSelected ? differenceSet(prevSelected, desiredSelected ?? new Set()) : null;
+            const toSet = desiredSelected ? differenceSet(desiredSelected, prevSelected ?? new Set()) : null;
+            if (toClear) {
+                for (const id of toClear) {
+                    const idx = buffers.findInstanceIndexByExpressId(id);
+                    if (idx >= 0) buffers.setInstanceSelected(idx, false);
+                }
+            }
+            if (toSet) {
+                for (const id of toSet) {
+                    const idx = buffers.findInstanceIndexByExpressId(id);
+                    if (idx >= 0) buffers.setInstanceSelected(idx, true);
+                }
+            }
+            this.quantizedSelectionApplied = desiredSelected ? new Set(desiredSelected) : null;
+            if ((toSet?.size ?? 0) + (toClear?.size ?? 0) > 0) {
+                console.log(`[quantized] selection diff: +${toSet?.size ?? 0} / -${toClear?.size ?? 0}`);
+            }
+        }
+
+        // Visibility — combination of `hiddenIds` and `isolatedIds`.
+        // Strategy: an instance is visible iff (not in hidden) AND
+        // (isolated == null OR in isolated). When either set changes we
+        // recompute the visibility for impacted instances.
+        const hiddenChanged = !setsEqual(prevHidden, desiredHidden ?? null);
+        const isolatedChanged = !setsEqual(prevIsolated, desiredIsolated ?? null);
+        if (hiddenChanged || isolatedChanged) {
+            // Worst-case: walk every instance once. Cheap (1 call per instance,
+            // each is a 4-byte writeBuffer).
+            for (let i = 0; i < buffers.instanceCount; i++) {
+                const id = buffers.getInstanceExpressId(i);
+                const hidden = desiredHidden?.has(id) === true;
+                const isolated = desiredIsolated == null || desiredIsolated.has(id);
+                buffers.setInstanceVisible(i, !hidden && isolated);
+            }
+            this.quantizedHiddenApplied = desiredHidden ? new Set(desiredHidden) : null;
+            this.quantizedIsolatedApplied = desiredIsolated ? new Set(desiredIsolated) : null;
+            console.log(`[quantized] visibility recomputed (hidden=${desiredHidden?.size ?? 0}, isolated=${desiredIsolated?.size ?? 'none'})`);
+        }
+    }
+
+    /**
+     * Draw the loaded quantised scene. Returns `true` if a draw was issued, so
+     * the legacy mesh loop can short-circuit on the same frame.
+     */
+    private renderQuantizedScene(options: RenderOptions, viewProj: Float32Array): boolean {
+        if (!this.quantizedBuffers || !this.quantizedPipeline || !this.quantizedBindGroup) {
+            return false;
+        }
+        const device = this.device.getDevice();
+        const ctx = this.device.getContext();
+        if (!ctx) return false;
+
+        // Apply per-frame instance state diffs before recording the draw.
+        this.syncQuantizedInstanceFlags(options);
+
+        // Update frame uniforms (viewProj + section plane). The viewer's
+        // SectionPlane uses semantic axes (`down`/`front`/`side`) and a 0–100
+        // percentage; we translate to a world-space plane using model bounds.
+        let sectionPlane: QuantizedSectionPlane | undefined;
+        if (options.sectionPlane?.enabled && this.modelBounds) {
+            const axis = options.sectionPlane.axis;
+            let normal: [number, number, number] = [0, 0, 0];
+            let lo = 0;
+            let hi = 0;
+            if (axis === 'side') {
+                normal = [1, 0, 0];
+                lo = options.sectionPlane.min ?? this.modelBounds.min.x;
+                hi = options.sectionPlane.max ?? this.modelBounds.max.x;
+            } else if (axis === 'down') {
+                normal = [0, 1, 0];
+                lo = options.sectionPlane.min ?? this.modelBounds.min.y;
+                hi = options.sectionPlane.max ?? this.modelBounds.max.y;
+            } else {
+                normal = [0, 0, 1];
+                lo = options.sectionPlane.min ?? this.modelBounds.min.z;
+                hi = options.sectionPlane.max ?? this.modelBounds.max.z;
+            }
+            const t = Math.max(0, Math.min(100, options.sectionPlane.position)) / 100;
+            const distance = lo + t * (hi - lo);
+            sectionPlane = {
+                normal,
+                distance,
+                enabled: true,
+                flipped: options.sectionPlane.flipped === true,
+            };
+        }
+        this.quantizedPipeline.updateUniforms(viewProj, sectionPlane);
+
+        const colorView = ctx.getCurrentTexture().createView();
+        const objectIdView = this.quantizedPipeline.getObjectIdTextureView();
+        const encoder = device.createCommandEncoder({ label: 'quantized-frame' });
+        const pass = encoder.beginRenderPass({
+            colorAttachments: [
+                {
+                    view: colorView,
+                    loadOp: 'clear',
+                    clearValue: { r: 0.05, g: 0.06, b: 0.08, a: 1.0 },
+                    storeOp: 'store',
+                },
+                {
+                    view: objectIdView,
+                    loadOp: 'clear',
+                    clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                    storeOp: 'store',
+                },
+            ],
+            depthStencilAttachment: {
+                view: this.quantizedPipeline.getDepthTextureView(),
+                depthLoadOp: 'clear',
+                depthClearValue: 0.0, // reverse-Z
+                depthStoreOp: 'store',
+                stencilLoadOp: 'clear',
+                stencilClearValue: 0,
+                stencilStoreOp: 'store',
+            },
+            label: 'quantized-pass',
+        });
+        pass.setPipeline(this.quantizedPipeline.getPipeline());
+        pass.setVertexBuffer(0, this.quantizedBuffers.getVertexBuffer());
+        pass.setIndexBuffer(this.quantizedBuffers.getIndexBuffer(), 'uint32');
+
+        const draws = this.quantizedBuffers.iterDrawInfos();
+        let drawCalls = 0;
+        for (const di of draws) {
+            if (di.indexCount === 0 || di.instanceCount === 0) continue;
+            pass.setBindGroup(0, this.quantizedBindGroup, [di.meshUniformOffset]);
+            pass.drawIndexed(
+                di.indexCount,
+                di.instanceCount,
+                di.indexOffset,
+                di.vertexOffset,
+                0, // instances are addressed via mesh.instanceInfo.x in the shader
+            );
+            drawCalls++;
+        }
+        pass.end();
+        device.queue.submit([encoder.finish()]);
+
+        if (!this._loggedQuantizedFirstDraw) {
+            console.log(`[quantized] first draw: ${drawCalls} draws across ${this.quantizedBuffers.meshCount} meshes`);
+            this._loggedQuantizedFirstDraw = true;
+        }
+        return true;
+    }
+
+    private _loggedQuantizedFirstDraw = false;
 
     /**
      * Load geometry from GeometryResult or MeshData array
@@ -936,10 +1290,30 @@ export class Renderer {
             if (this.instancedPipeline) {
                 this.instancedPipeline.resize(width, height);
             }
+            if (this.quantizedPipeline) {
+                this.quantizedPipeline.resize(width, height);
+            }
+            // Picker resizes its internal textures lazily inside `pick()`.
         }
 
         // Skip rendering if canvas is invalid
         if (this.canvas.width === 0 || this.canvas.height === 0) return;
+
+        // ── Quantised path ────────────────────────────────────────────────
+        // When a quantised IFC scene is loaded it is the **only** source of
+        // mesh draws — the legacy `scene.getMeshes()` loop below is skipped.
+        // Point clouds, section caps, and overlay passes still run after
+        // this returns false (i.e. when no quantised scene is present).
+        if (this.hasQuantizedScene()) {
+            // Ensure context is valid before drawing.
+            if (!this.device.ensureContext()) return;
+            const viewProj = this.camera.getViewProjMatrix().m;
+            const drew = this.renderQuantizedScene(options, viewProj);
+            if (drew) {
+                this._renderRequested = false;
+                return;
+            }
+        }
 
         // Ensure context is valid before rendering (handles HMR, focus changes, etc.)
         if (!this.device.ensureContext()) {

@@ -15,6 +15,7 @@ import init, {
   InstancedMeshCollection,
   InstancedGeometry,
   InstanceData,
+  QuantizedScene,
   SymbolicRepresentationCollection,
   SymbolicPolyline,
   SymbolicCircle,
@@ -27,12 +28,36 @@ export type {
   InstancedMeshCollection,
   InstancedGeometry,
   InstanceData,
+  QuantizedScene,
   SymbolicRepresentationCollection,
   SymbolicPolyline,
   SymbolicCircle,
   ProfileCollection,
   ProfileEntryJs,
 };
+
+/**
+ * Plain-data snapshot of a quantised scene with TypedArray views detached
+ * from the underlying WASM memory. Once snapshotted, the source `QuantizedScene`
+ * is freed — this side keeps independent buffer copies the renderer can
+ * upload without worrying about WASM memory invalidation.
+ */
+export interface QuantizedSceneSnapshot {
+  /** Interleaved 12 B/vertex (`unorm16x4` pos + `snorm8x4` oct-normal). */
+  vertexData: Uint8Array;
+  /** Mesh-local `u32` indices. */
+  indexData: Uint32Array;
+  /** Per-mesh records, 64 B each. AABB + offsets + instance range. */
+  meshTable: Uint8Array;
+  /** Per-instance records, 80 B each. mat4 + expressId + colours + flags. */
+  instanceData: Uint8Array;
+  meshCount: number;
+  instanceCount: number;
+  totalVertexCount: number;
+  totalIndexCount: number;
+  /** total placements / unique meshes — informational. */
+  dedupRatio: number;
+}
 
 const log = createLogger('Geometry');
 const FATAL_WASM_RELOAD_REQUIRED_MESSAGE = 'IFC-Lite WASM cannot recover from a fatal runtime error within the same document lifetime. Reload the page or recreate the worker process before calling init() again.';
@@ -176,6 +201,67 @@ export class IfcLiteBridge {
         this.markFatalWasmRuntimeError();
       }
       throw error;
+    }
+  }
+
+  /**
+   * Parse IFC content into a quantised + instanced scene snapshot ready for
+   * direct WebGPU upload. This is the path the WebGPU viewer uses by default
+   * — the legacy `parseMeshes*` methods stay only for headless/CLI consumers.
+   *
+   * Returns plain-data buffers (TypedArrays) detached from WASM memory so the
+   * caller can hold them across re-entry into other WASM calls. The returned
+   * snapshot collapses identical representations: instance count is total
+   * placements, mesh count is unique meshes after content-hash dedup.
+   */
+  parseQuantizedInstancedScene(content: string): QuantizedSceneSnapshot {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    let scene: QuantizedScene | null = null;
+    try {
+      scene = this.ifcApi.parseQuantizedInstanced(content);
+      const memory = this.ifcApi.getMemory() as { buffer: ArrayBufferLike };
+      // Slice each view out of WASM memory. `.slice()` copies, which is what we
+      // want — ownership transfers to plain ArrayBuffers we own and the WASM
+      // bundle can be freed without invalidating the snapshot.
+      const vertexData = new Uint8Array(memory.buffer, scene.vertexDataPtr, scene.vertexDataByteLength).slice();
+      const indexData = new Uint32Array(memory.buffer, scene.indexDataPtr, scene.indexDataLen).slice();
+      const meshTable = new Uint8Array(memory.buffer, scene.meshTablePtr, scene.meshTableByteLength).slice();
+      const instanceData = new Uint8Array(memory.buffer, scene.instanceDataPtr, scene.instanceDataByteLength).slice();
+      const snapshot: QuantizedSceneSnapshot = {
+        vertexData,
+        indexData,
+        meshTable,
+        instanceData,
+        meshCount: scene.meshCount,
+        instanceCount: scene.instanceCount,
+        totalVertexCount: scene.totalVertexCount,
+        totalIndexCount: scene.totalIndexCount,
+        dedupRatio: scene.dedupRatio,
+      };
+      const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      log.info(
+        `[quantized] parsed ${snapshot.meshCount} unique meshes / ${snapshot.instanceCount} instances ` +
+        `(dedup ${snapshot.dedupRatio.toFixed(1)}×, ` +
+        `${snapshot.totalVertexCount} verts, ${snapshot.totalIndexCount / 3 | 0} tris, ` +
+        `${(t1 - t0).toFixed(0)}ms)`,
+        { operation: 'parseQuantizedInstancedScene' },
+      );
+      return snapshot;
+    } catch (error) {
+      log.error('[quantized] failed to parse IFC scene', error, {
+        operation: 'parseQuantizedInstancedScene',
+        data: { contentLength: content.length },
+      });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    } finally {
+      // Free the WASM-side scene; the JS snapshot is independent.
+      scene?.free();
     }
   }
 

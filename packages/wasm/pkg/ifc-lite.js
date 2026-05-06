@@ -212,12 +212,12 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1151(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1151(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1187(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1187(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1190(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1190(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1227(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1227(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -279,6 +279,10 @@ const ProfileCollectionFinalization = (typeof FinalizationRegistry === 'undefine
 const ProfileEntryJsFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_profileentryjs_free(ptr >>> 0, 1));
+
+const QuantizedSceneFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_quantizedscene_free(ptr >>> 0, 1));
 
 const RtcOffsetJsFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -1494,6 +1498,40 @@ export class IfcAPI {
         return ProfileCollection.__wrap(ret);
     }
     /**
+     * Parse an IFC file into a quantised + instanced GPU bundle.
+     *
+     * The returned [`QuantizedScene`] holds:
+     * * one interleaved 12 B/vertex buffer covering every unique mesh,
+     * * one `u32` index buffer (mesh-local; renderer applies `baseVertex`),
+     * * a per-mesh table with AABB and instance ranges,
+     * * a per-instance buffer (`mat4` + `expressId` + colours + flags) sorted
+     *   by mesh so each mesh is one contiguous draw.
+     *
+     * Memory and draw-call counts scale with the number of **unique** meshes
+     * (typically 5–50× fewer than total elements) rather than total
+     * placements.
+     *
+     * # Example
+     *
+     * ```javascript
+     * const api = new IfcAPI();
+     * const scene = api.parseQuantizedInstanced(ifcText);
+     * const memory = api.getMemory();
+     * const verts = new Uint8Array(memory.buffer, scene.vertexDataPtr, scene.vertexDataByteLength);
+     * device.queue.writeBuffer(vbo, 0, verts);
+     * // ... and so on for indices, mesh table, instance buffer.
+     * scene.free();
+     * ```
+     * @param {string} content
+     * @returns {QuantizedScene}
+     */
+    parseQuantizedInstanced(content) {
+        const ptr0 = passStringToWasm0(content, wasm.__wbindgen_export3, wasm.__wbindgen_export4);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.ifcapi_parseQuantizedInstanced(this.__wbg_ptr, ptr0, len0);
+        return QuantizedScene.__wrap(ret);
+    }
+    /**
      * Debug: Test processing entity #953 (FacetedBrep wall)
      * @param {string} content
      * @returns {string}
@@ -2375,6 +2413,154 @@ export class ProfileEntryJs {
 if (Symbol.dispose) ProfileEntryJs.prototype[Symbol.dispose] = ProfileEntryJs.prototype.free;
 
 /**
+ * Packed scene ready for direct WebGPU upload.
+ *
+ * All buffers live in WASM linear memory; JavaScript creates `Uint8Array` /
+ * `Uint32Array` views over the pointers and calls `device.queue.writeBuffer`
+ * directly — no intermediate copy.
+ */
+export class QuantizedScene {
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(QuantizedScene.prototype);
+        obj.__wbg_ptr = ptr;
+        QuantizedSceneFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        QuantizedSceneFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_quantizedscene_free(ptr, 0);
+    }
+    /**
+     * @returns {number}
+     */
+    get meshCount() {
+        const ret = wasm.meshdatajs_expressId(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get dedupRatio() {
+        const ret = wasm.quantizedscene_dedupRatio(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Layout constants exposed so the JS side can match offsets without hard-coding.
+     * @returns {number}
+     */
+    static get vertexStride() {
+        const ret = wasm.quantizedscene_vertexStride();
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get indexDataLen() {
+        const ret = wasm.quantizedscene_indexDataLen(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get indexDataPtr() {
+        const ret = wasm.gpuinstancedgeometry_vertexDataPtr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get instanceCount() {
+        const ret = wasm.quantizedscene_instanceCount(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get meshTablePtr() {
+        const ret = wasm.gpuinstancedgeometry_indicesPtr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get vertexDataPtr() {
+        const ret = wasm.quantizedscene_vertexDataPtr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    static get meshRecordSize() {
+        const ret = wasm.quantizedscene_meshRecordSize();
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get instanceDataPtr() {
+        const ret = wasm.gpuinstancedgeometry_instanceDataPtr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get totalIndexCount() {
+        const ret = wasm.quantizedscene_totalIndexCount(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get totalVertexCount() {
+        const ret = wasm.quantizedscene_totalVertexCount(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    static get instanceRecordSize() {
+        const ret = wasm.quantizedscene_instanceRecordSize();
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get indexDataByteLength() {
+        const ret = wasm.quantizedscene_indexDataByteLength(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get meshTableByteLength() {
+        const ret = wasm.quantizedscene_meshTableByteLength(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get vertexDataByteLength() {
+        const ret = wasm.quantizedscene_vertexDataByteLength(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get instanceDataByteLength() {
+        const ret = wasm.quantizedscene_instanceDataByteLength(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+}
+if (Symbol.dispose) QuantizedScene.prototype[Symbol.dispose] = QuantizedScene.prototype.free;
+
+/**
  * RTC offset information exposed to JavaScript
  */
 export class RtcOffsetJs {
@@ -2847,7 +3033,7 @@ export class ZeroCopyMesh {
      * @returns {number}
      */
     get normals_len() {
-        const ret = wasm.zerocopymesh_normals_len(this.__wbg_ptr);
+        const ret = wasm.quantizedscene_indexDataLen(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
@@ -2880,7 +3066,7 @@ export class ZeroCopyMesh {
      * @returns {number}
      */
     get positions_ptr() {
-        const ret = wasm.zerocopymesh_positions_ptr(this.__wbg_ptr);
+        const ret = wasm.quantizedscene_vertexDataPtr(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
@@ -3093,7 +3279,7 @@ function __wbg_get_imports() {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1190(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1227(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3205,14 +3391,14 @@ function __wbg_get_imports() {
         const ret = BigInt.asUintN(64, arg0);
         return addHeapObject(ret);
     };
-    imports.wbg.__wbindgen_cast_782a03ac5d769879 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 151, function: Function { arguments: [Externref], shim_idx: 152, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1150, __wasm_bindgen_func_elem_1151);
-        return addHeapObject(ret);
-    };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
         // Cast intrinsic for `F64 -> Externref`.
         const ret = arg0;
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbindgen_cast_eb1693fa7a824add = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 153, function: Function { arguments: [Externref], shim_idx: 154, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1186, __wasm_bindgen_func_elem_1187);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_object_clone_ref = function(arg0) {

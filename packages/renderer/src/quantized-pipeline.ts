@@ -60,6 +60,8 @@ export class QuantizedRenderPipeline {
   private readonly bindGroupLayout: GPUBindGroupLayout;
   private depthTexture: GPUTexture;
   private depthTextureView: GPUTextureView;
+  private objectIdTexture: GPUTexture;
+  private objectIdTextureView: GPUTextureView;
   private readonly colorFormat: GPUTextureFormat;
   private readonly objectIdFormat: GPUTextureFormat = 'rgba8unorm';
   private readonly depthFormat: GPUTextureFormat = 'depth24plus-stencil8';
@@ -74,6 +76,12 @@ export class QuantizedRenderPipeline {
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     this.depthTextureView = this.depthTexture.createView();
+    this.objectIdTexture = this.device.createTexture({
+      size: { width, height },
+      format: this.objectIdFormat,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.objectIdTextureView = this.objectIdTexture.createView();
 
     // Uniform buffer: viewProj (64) + sectionPlane (16) + flags (16) = 96 bytes.
     this.uniformBuffer = this.device.createBuffer({
@@ -135,15 +143,24 @@ export class QuantizedRenderPipeline {
     });
   }
 
-  /** Resize the depth texture (call on canvas resize). */
+  /** Resize the depth + objectId scratch textures (call on canvas resize). */
   resize(width: number, height: number): void {
+    const w = Math.max(1, width);
+    const h = Math.max(1, height);
     this.depthTexture.destroy();
     this.depthTexture = this.device.createTexture({
-      size: { width: Math.max(1, width), height: Math.max(1, height) },
+      size: { width: w, height: h },
       format: this.depthFormat,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     this.depthTextureView = this.depthTexture.createView();
+    this.objectIdTexture.destroy();
+    this.objectIdTexture = this.device.createTexture({
+      size: { width: w, height: h },
+      format: this.objectIdFormat,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.objectIdTextureView = this.objectIdTexture.createView();
   }
 
   /** Update the frame uniforms (viewProj + section plane). */
@@ -182,6 +199,15 @@ export class QuantizedRenderPipeline {
     return this.depthTextureView;
   }
 
+  /** Scratch objectId render target written during the main draw. */
+  getObjectIdTextureView(): GPUTextureView {
+    return this.objectIdTextureView;
+  }
+
+  getObjectIdTexture(): GPUTexture {
+    return this.objectIdTexture;
+  }
+
   getColorFormat(): GPUTextureFormat {
     return this.colorFormat;
   }
@@ -217,6 +243,7 @@ export class QuantizedRenderPipeline {
   /** Release GPU resources. */
   destroy(): void {
     this.depthTexture.destroy();
+    this.objectIdTexture.destroy();
     this.uniformBuffer.destroy();
   }
 }

@@ -23,6 +23,43 @@ export interface EffectiveGeoreference extends GeoreferenceInfo {
   lengthUnitScale: number;
 }
 
+/**
+ * Compute the effective horizontal scale to apply to viewer-space coordinates
+ * (which are already in metres) when transforming through IfcMapConversion.
+ *
+ * Per the IFC schema, IfcMapConversion.Scale converts LOCAL ENGINEERING
+ * coordinates (in the project's length unit) to MAP coordinates (in the map
+ * CRS unit). For a typical file with mm project units and m map units, the
+ * Scale attribute is 0.001.
+ *
+ * The IFC formula is:
+ *   E_map_units = Eastings + (X_local * absc - Y_local * ordi) * Scale
+ *
+ * To produce metres for proj4, we multiply by mapUnitScale; and X_local can be
+ * recovered from the metre-converted geometry as X_metres / lengthUnitScale.
+ * Substituting:
+ *   E_metres = mapUnitScale * Eastings
+ *            + (mapUnitScale * Scale / lengthUnitScale)
+ *              * (X_metres * absc - Y_metres * ordi)
+ *
+ * So when geometry has already been converted to metres (as ifc-lite does),
+ * the effective horizontal scale is (Scale * mapUnitScale) / lengthUnitScale.
+ * For files where Scale is set per IFC spec to bridge the unit difference
+ * (Scale = lengthUnitScale / mapUnitScale), this evaluates to 1.0 and the
+ * geometry passes through unchanged. Applying the raw Scale would otherwise
+ * double-scale and shrink/expand the model — see issue #595.
+ */
+export function getEffectiveHorizontalScale(
+  ifcMapConversionScale: number | undefined,
+  mapUnitScale: number,
+  lengthUnitScale: number,
+): number {
+  const scale = ifcMapConversionScale ?? 1.0;
+  const lus = lengthUnitScale > 0 ? lengthUnitScale : 1;
+  const mus = mapUnitScale > 0 ? mapUnitScale : 1;
+  return (scale * mus) / lus;
+}
+
 export function inferMapUnitScale(mapUnit: string | undefined, fallback?: number): number | undefined {
   if (!mapUnit) return fallback;
   const normalized = mapUnit.toUpperCase();

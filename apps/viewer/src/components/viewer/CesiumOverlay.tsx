@@ -26,6 +26,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { createCesiumBridge, type CesiumBridge } from '@/lib/geo/cesium-bridge';
+import { getEffectiveHorizontalScale } from '@/lib/geo/effective-georef';
 
 // Lazy-loaded Cesium module and CSS
 let cesiumPromise: Promise<typeof import('cesium')> | null = null;
@@ -167,11 +168,18 @@ function buildModelMatrix(
   Cesium: typeof import('cesium'),
   bridge: CesiumBridge,
   mapConversion: MapConversion | undefined,
+  projectedCRS: ProjectedCRS | undefined,
   coordinateInfo: CoordinateInfo | undefined,
   clamp: boolean,
   terrainH: number | null,
+  lengthUnitScale: number,
 ) {
-  const hScale = mapConversion?.scale ?? 1.0;
+  // GLB vertices are in viewer-space metres (geometry engine converts during
+  // extraction). IfcMapConversion.Scale is defined per IFC spec relative to
+  // the project length unit, so applying it raw to metre-converted geometry
+  // double-scales the model — see issue #595. Use the effective scale.
+  const mapUnitScale = projectedCRS?.mapUnitScale ?? lengthUnitScale;
+  const hScale = getEffectiveHorizontalScale(mapConversion?.scale, mapUnitScale, lengthUnitScale);
   const absc = mapConversion?.xAxisAbscissa ?? 1.0;
   const ordi = mapConversion?.xAxisOrdinate ?? 0.0;
   const bounds = coordinateInfo?.originalBounds;
@@ -545,7 +553,7 @@ export function CesiumOverlay({
         if (cancelled) return;
 
         // Build initial model matrix
-        const modelMatrix = buildModelMatrix(Cesium, bridge, mapConversion, coordinateInfo, terrainClampRef.current, terrainHeightRef.current);
+        const modelMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, terrainClampRef.current, terrainHeightRef.current, lengthUnitScale);
 
         const blob = new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' });
         const glbUrl = URL.createObjectURL(blob);
@@ -601,10 +609,10 @@ export function CesiumOverlay({
     const Cesium = cesiumModule;
     if (!model || !bridge || !viewer || !Cesium) return;
 
-    const newMatrix = buildModelMatrix(Cesium, bridge, mapConversion, coordinateInfo, terrainClamp, terrainHeight);
+    const newMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, terrainClamp, terrainHeight, lengthUnitScale);
     model.modelMatrix = newMatrix;
     viewer.scene.requestRender();
-  }, [terrainClamp, terrainHeight, mapConversion, coordinateInfo, lengthUnitScale]);
+  }, [terrainClamp, terrainHeight, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale]);
 
   // ─── Effect 3: Camera sync loop ─────────────────────────────────────────
   useEffect(() => {

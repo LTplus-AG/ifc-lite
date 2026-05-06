@@ -29,6 +29,7 @@ import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { resolveProjection } from './reproject';
+import { getEffectiveHorizontalScale } from './effective-georef';
 
 export interface GeodesicPosition {
   longitude: number;
@@ -75,7 +76,6 @@ export async function createCesiumBridge(
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
 
-  const hScale = mapConversion.scale ?? 1.0;
   const absc = mapConversion.xAxisAbscissa ?? 1.0;
   const ordi = mapConversion.xAxisOrdinate ?? 0.0;
   const rotAngle = Math.atan2(ordi, absc);
@@ -103,6 +103,10 @@ export async function createCesiumBridge(
   // converts from the IFC file's native unit during extraction). MapConversion
   // values use the unit from IfcProjectedCRS.MapUnit; fall back to project unit.
   const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
+  // IfcMapConversion.Scale bridges project length unit → map unit (e.g. 0.001
+  // for mm→m). Geometry is already in metres, so the effective horizontal
+  // scale is (Scale * mapUnitScale) / lengthUnitScale — see issue #595.
+  const hScale = getEffectiveHorizontalScale(mapConversion.scale, mapScale, lengthUnitScale);
   const oEasting = mapConversion.eastings * mapScale + hScale * (absc * oIfcX - ordi * oIfcY);
   const oNorthing = mapConversion.northings * mapScale + hScale * (ordi * oIfcX + absc * oIfcY);
   const oHeight = mapConversion.orthogonalHeight * mapScale + oIfcZ;

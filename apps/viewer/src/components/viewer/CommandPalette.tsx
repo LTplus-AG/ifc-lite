@@ -57,6 +57,7 @@ import {
   CalendarPlus,
   Sparkles,
   Eraser,
+  MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -331,6 +332,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('measure'); } },
       { id: 'tool:section', label: 'Section', keywords: 'clip cut plane', category: 'Tools', icon: Scissors, shortcut: 'X',
         action: () => { useViewerStore.getState().setActiveTool('section'); } },
+      { id: 'tool:annotate', label: 'Annotate', keywords: 'pin note comment marker', category: 'Tools', icon: MapPin, shortcut: 'P',
+        action: () => { useViewerStore.getState().setActiveTool('annotate'); } },
+      { id: 'tool:add-element', label: 'Add Element', keywords: 'wall slab beam column place drop new add element generic', category: 'Tools', icon: Box,
+        action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
     );
 
     // ── Visibility ──

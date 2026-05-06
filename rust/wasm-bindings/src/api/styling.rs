@@ -488,7 +488,7 @@ pub(crate) fn combined_pre_pass(
             _ => {
                 if ifc_lite_core::has_geometry_by_name(type_name) {
                     let ifc_type = ifc_lite_core::IfcType::from_str(type_name);
-                    if is_simple_geometry_type(type_name) {
+                    if ifc_lite_core::is_simple_geometry_type(type_name) {
                         simple_jobs.push((id, start, end, ifc_type));
                     } else {
                         complex_jobs.push((id, start, end, ifc_type));
@@ -943,33 +943,6 @@ pub(crate) fn pick_material_style_for_submesh(
 
     // Fallback: first available color
     Some(material_colors[0])
-}
-
-/// Check if an IFC entity class is "simple" geometry (processed first for fast
-/// first frame).  Instead of whitelisting known simple classes — which breaks
-/// whenever new IFC entity classes appear (e.g. IFC4X3 infrastructure) — we
-/// blacklist the classes that are known to be secondary/complex.  Everything
-/// else with geometry defaults to "simple" priority.
-pub(crate) fn is_simple_geometry_type(type_name: &str) -> bool {
-    !matches!(
-        type_name,
-        // Openings / voids — subtracted, not rendered directly
-        "IFCOPENINGELEMENT" | "IFCOPENINGSTANDARDCASE"
-        // Windows & doors — detailed geometry, lower priority
-        | "IFCWINDOW" | "IFCWINDOWSTANDARDCASE"
-        | "IFCDOOR" | "IFCDOORSTANDARDCASE"
-        // Furnishing — typically high-poly, secondary
-        | "IFCFURNISHINGELEMENT" | "IFCFURNITURE" | "IFCSYSTEMFURNITUREELEMENT"
-        // MEP / distribution — dense small elements
-        | "IFCDISTRIBUTIONELEMENT" | "IFCDISTRIBUTIONFLOWELEMENT" | "IFCDISTRIBUTIONCONTROLELEMENT"
-        | "IFCFLOWSEGMENT" | "IFCFLOWFITTING" | "IFCFLOWTERMINAL"
-        | "IFCFLOWCONTROLLER" | "IFCFLOWMOVINGDEVICE" | "IFCFLOWSTORAGEDEVICE"
-        | "IFCFLOWTREATMENTDEVICE" | "IFCENERGYCONVERSIONDEVICE"
-        // Spatial elements — not structural
-        | "IFCSPACE" | "IFCSITE"
-        // Annotations & virtual
-        | "IFCANNOTATION" | "IFCVIRTUALELEMENT" | "IFCPROXY"
-    )
 }
 
 /// Resolve element color inline during processing by following its

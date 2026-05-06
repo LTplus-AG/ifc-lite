@@ -100,6 +100,69 @@ function buildIntentMethodSection(intent: LlmTaskIntent): string {
   return lines.join('\n');
 }
 
+function buildStoreCheatSheet(): string {
+  const storeNamespace = NAMESPACE_SCHEMAS.find((schema) => schema.name === 'store');
+  if (!storeNamespace) return '';
+
+  return [
+    '## BIM.STORE CHEAT SHEET',
+    '`bim.store.*` edits a parsed model in place — use it when the user already has',
+    'a model loaded and wants raw STEP-level edits, NOT when building a new model from',
+    'scratch (that\'s `bim.create`).',
+    '',
+    '- `addEntity(modelId, { type, attributes })` — inject a STEP entity. `attributes`',
+    '  follows EntityExtractor output: numbers → REAL/integer, `"#42"` → ref, `".AREA."` → enum,',
+    '  `null` → `$`, arrays → STEP list. Returns `{ modelId, expressId }`.',
+    '- `removeEntity(entity)` — tombstones existing source entities or forgets overlay-only ones.',
+    '- `setPositionalAttribute(entity, index, value)` — edit a non-IfcRoot attribute by',
+    '  zero-based STEP argument index. Use this for `IfcRectangleProfileDef.XDim` (index 3),',
+    '  `YDim` (index 4), `IfcCartesianPoint.Coordinates` (index 0), etc. Use `bim.mutate.setAttribute`',
+    '  for IfcRoot attributes (Name, Description, ObjectType, Tag).',
+    '- High-level builders anchor a new element to an existing IfcBuildingStorey:',
+    '    `addColumn(modelId, storeyId, { Position, Width, Depth, Height })`',
+    '    `addWall(modelId, storeyId, { Start, End, Thickness, Height })`',
+    '    `addBeam(modelId, storeyId, { Start, End, Width, Height })`',
+    '    `addSlab(modelId, storeyId, { Position, Width, Depth, Thickness })`             // rectangle',
+    '    `addSlab(modelId, storeyId, { Profile: "polygon", OuterCurve: [[x,y],…], Thickness })`',
+    '    `addRoof(modelId, storeyId, { … same shape as addSlab — emits .FLAT_ROOF. })`',
+    '    `addPlate(modelId, storeyId, { … same shape as addSlab — IfcPlate, PredefinedType? })`',
+    '    `addSpace(modelId, storeyId, { Position, Width, Depth, Height, LongName? })`     // room rectangle',
+    '    `addSpace(modelId, storeyId, { Profile: "polygon", OuterCurve, Height })`        // room polygon',
+    '    `addDoor(modelId, storeyId, { Position, Width, Height, FrameThickness?, OperationType? })`',
+    '    `addWindow(modelId, storeyId, { Position, Width, Height, FrameThickness?, PartitioningType? })`',
+    '    `addMember(modelId, storeyId, { Start, End, Width, Height, PredefinedType? })`   // brace/post/strut',
+    '  Each emits ~12 STEP entities (placement chain → profile → solid → representation +',
+    '  IfcRelContainedInSpatialStructure, except `addSpace` which uses IfcRelAggregates).',
+    '  Coords are storey-local metres. Polygon outlines need ≥3 points; the polyline is auto-closed.',
+    '- Edits accumulate in an overlay; they show up after `bim.export.ifc(bim.query.all())`',
+    '  or when the viewer next renders. Use `bim.mutate.undo(modelId)` to roll back.',
+    '',
+    'Canonical examples:',
+    '```js',
+    '// Resize a rectangular profile from 0.3×0.4 to 0.6×0.4',
+    'const profile = bim.query.byId("arch", 35);',
+    'bim.store.setPositionalAttribute(profile, 3, 0.6);   // XDim',
+    '',
+    '// Drop a wall on the first storey',
+    'const storeyId = bim.query.byType("IfcBuildingStorey")[0].ref.expressId;',
+    'bim.store.addWall("arch", storeyId, {',
+    '  Start: [0, 0, 0], End: [5, 0, 0],',
+    '  Thickness: 0.2, Height: 3, Name: "North Wall",',
+    '});',
+    '',
+    '// Add a custom IfcCartesianPoint, then reference it from another entity',
+    'const pt = bim.store.addEntity("arch", {',
+    '  type: "IfcCartesianPoint",',
+    '  attributes: [[1.0, 2.0, 0.0]],',
+    '});',
+    'console.log("Allocated", pt.expressId);',
+    '',
+    '// Drop an entity entirely',
+    'bim.store.removeEntity(unwantedRef);',
+    '```',
+  ].join('\n');
+}
+
 function buildCreateContractCheatSheet(): string {
   const createNamespace = NAMESPACE_SCHEMAS.find((schema) => schema.name === 'create');
   if (!createNamespace) return '## BIM.CREATE CONTRACT CHEAT SHEET';
@@ -280,6 +343,7 @@ export function buildSystemPrompt(
   const intent = inferPromptIntent(task);
   const intentSection = buildIntentMethodSection(intent);
   const createContractCheatSheet = buildCreateContractCheatSheet();
+  const storeCheatSheet = buildStoreCheatSheet();
   const placementSemantics = buildPlacementSemanticsSection();
   const inspectionGuidance = buildInspectionGuidance();
 
@@ -326,9 +390,11 @@ ${intentSection}
 4. Keep scripts concise — avoid unnecessary abstractions
 5. Coordinates are in meters. Z is up. Do NOT assume every create method is storey-relative — use the method-specific placement rules below.
 6. For create or explicit rewrite turns, wrap runnable code in a \`\`\`js\`\`\` fence. For repair turns, return exactly one \`\`\`ifc-script-edits\`\`\` fence containing SEARCH/REPLACE blocks and no \`\`\`js\`\`\` fence.
-7. If the user asks to modify existing data, use \`bim.mutate\` or \`bim.query\` — NOT \`bim.create\`
+7. If the user asks to modify existing data, use \`bim.mutate\`, \`bim.store\`, or \`bim.query\` — NOT \`bim.create\`
    - Use \`bim.mutate.setAttribute(entity, "Description", "...")\` for root IFC attributes like \`Name\`, \`Description\`, \`ObjectType\`, or \`Tag\`
    - Use \`bim.mutate.setProperty(entity, "Pset_Name", "PropName", value)\` only for IfcPropertySet or quantity data
+   - Use \`bim.store.setPositionalAttribute(entity, index, value)\` for positional STEP-argument edits (profile dimensions, \`IfcCartesianPoint.Coordinates\`, and other index-addressed attributes — even when they have a symbolic name) — see BIM.STORE CHEAT SHEET
+   - Use \`bim.store.addEntity\` / \`bim.store.removeEntity\` to inject or drop raw STEP entities in an already-loaded model. Do NOT use \`bim.create\` for these — \`bim.create\` builds a fresh project
    - Distinguish occurrence vs type edits: occurrence/entity-specific changes belong on the occurrence; shared defaults and inherited type properties belong on the related \`Ifc...Type\` entity
    - If CURRENT MODEL STATE marks a selection as \`kind=type\`, treat it as a type object and avoid describing it as one physical placed occurrence
    - When an occurrence is selected, inspect \`bim.query.typeProperties(entity)\` before editing inherited values; mutate the type entity when the intent is to change all occurrences that share that type
@@ -352,6 +418,8 @@ ${intentSection}
 19. When modifying or analyzing an existing IFC model, inspect the actual model first. Use ${inspectionGuidance} instead of guessing hierarchy or metadata.
 
 ${createContractCheatSheet}
+
+${storeCheatSheet}
 
 ${placementSemantics}
 - \`addIfcDoor\` and \`addIfcWindow\` do not infer host-wall orientation. If you place them next to angled walls, they will stay world-aligned unless you build the wall void another way.

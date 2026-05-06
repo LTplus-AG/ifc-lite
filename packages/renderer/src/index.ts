@@ -44,7 +44,27 @@ export {
 
 // Extracted manager classes
 export { PickingManager } from './picking-manager.js';
+export type { PointPickProvider } from './picking-manager.js';
 export { RaycastEngine } from './raycast-engine.js';
+export { PointPicker, decodePickSample } from './point-picker.js';
+export type { PointPickNode, DecodedPickSample } from './point-picker.js';
+export type { PointPickSizing } from './picker.js';
+
+// Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
+export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+export type {
+    PointCloudAssetHandle,
+    PointCloudRenderOptions,
+    PointColorMode,
+    PointSizeMode,
+    ResolvedSectionPlane as PointResolvedSectionPlane,
+} from './pointcloud/point-cloud-renderer.js';
+export { PointRenderPipeline } from './pointcloud/point-pipeline.js';
+export type {
+    PointCloudChunkInput,
+    PointCloudNode,
+    PointCloudNodeMeta,
+} from './pointcloud/point-cloud-node.js';
 
 import { WebGPUDevice } from './device.js';
 import { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
@@ -74,6 +94,9 @@ import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, ty
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
+import { EdlPass } from './edl-pass.js';
+import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+import type { PointCloudAsset } from '@ifc-lite/geometry';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -111,6 +134,14 @@ export class Renderer {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     private postProcessor: PostProcessor | null = null;
+    private edlPass: EdlPass | null = null;
+    private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
+        enabled: false,
+        strength: 1,
+        radiusPx: 1,
+        highQuality: true,
+    };
+    private pointCloudRenderer: PointCloudRenderer | null = null;
     private visualEnhancementState: ResolvedVisualEnhancement = {
         enabled: true,
         edgeContrast: { enabled: true, intensity: 1.0 },
@@ -189,10 +220,230 @@ export class Renderer {
             contactRadius: 1.0,
             contactIntensity: 0.3,
         }, this.pipeline.getSampleCount());
+        this.pointCloudRenderer = new PointCloudRenderer(
+            this.device.getDevice(),
+            this.device.getFormat(),
+            'depth24plus-stencil8',
+            this.pipeline.getSampleCount(),
+        );
+        this.edlPass = new EdlPass(this.device, this.pipeline.getSampleCount());
         this.camera.setAspect(width / height);
 
         // Update picking manager with initialized picker
         this.pickingManager.setPicker(this.picker);
+        // Provide a snapshot of pickable point nodes per pick. The
+        // sizing must mirror the live splat shader so click hit-testing
+        // matches what the user actually sees on screen.
+        this.pickingManager.setPointPickProvider(() => {
+            const pcr = this.pointCloudRenderer;
+            if (!pcr || !pcr.hasAssets()) return null;
+            const opts = pcr.getOptions();
+            const sizeMode = opts.sizeMode === 'fixed-px' ? 0 : opts.sizeMode === 'adaptive-world' ? 1 : 2;
+            return {
+                nodes: pcr.getPickNodes(),
+                sizing: {
+                    sizeMode: sizeMode as 0 | 1 | 2,
+                    worldRadius: opts.worldRadius,
+                    pointSizePx: opts.pointSize,
+                    clickTolerancePx: 2,
+                },
+            };
+        });
+    }
+
+    /**
+     * Replace all loaded point clouds with `assets`.
+     *
+     * Phase 0 entry point — single-chunk inline assets from IFCx
+     * (`pcd::base64`, `points::array`, `points::base64`). Future phases
+     * accept streaming sources via a different overload.
+     */
+    setPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        this.pointCloudRenderer.setAssets(assets);
+        // Replace, not append — bounds may have shrunk (e.g. an IFCx
+        // reload with a smaller scan). `expandModelBoundsForPointClouds`
+        // alone only grows; recompute from scratch to keep
+        // fit-to-view + section-plane sliders accurate.
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /** Append additional point clouds without clearing existing ones. */
+    addPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        for (const asset of assets) {
+            this.pointCloudRenderer.addAsset(asset);
+        }
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /** Total number of point cloud assets currently uploaded. */
+    getPointCloudAssetCount(): number {
+        return this.pointCloudRenderer?.getNodeCount() ?? 0;
+    }
+
+    /** Total number of points across all point cloud assets. */
+    getPointCloudPointCount(): number {
+        return this.pointCloudRenderer?.getPointCount() ?? 0;
+    }
+
+    /** Drop all point cloud GPU resources. */
+    clearPointClouds(): void {
+        this.pointCloudRenderer?.clear();
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /**
+     * Streaming entry: open an empty asset that will receive chunks via
+     * `appendPointCloudChunk`. Call `endPointCloudStream` when no more
+     * chunks will arrive (currently a no-op but kept for symmetry).
+     */
+    beginPointCloudStream(meta: { expressId: number; ifcType?: string; modelIndex?: number }): import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        return this.pointCloudRenderer.beginAsset(meta);
+    }
+
+    appendPointCloudChunk(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput,
+    ): void {
+        if (!this.pointCloudRenderer) return;
+        this.pointCloudRenderer.appendChunk(handle, chunk);
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    endPointCloudStream(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+        this.pointCloudRenderer?.endAsset(handle);
+        this.requestRender();
+    }
+
+    removePointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+        this.pointCloudRenderer?.removeAsset(handle);
+        // Bounds may have shrunk — recompute from scratch so fit-to-view
+        // and section-plane sliders see fresh extents.
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /**
+     * Reassign a streamed point-cloud's expressId after upload. Use
+     * this when the federation registry assigns a new model offset and
+     * the renderer needs to emit the post-offset globalId in picking
+     * outputs. The change takes effect on the next render — no GPU
+     * buffer rewrite needed.
+     */
+    relabelPointCloudAsset(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        newExpressId: number,
+    ): void {
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
+        this.requestRender();
+    }
+
+    /**
+     * Compute model bounds from triangle meshes + remaining point clouds.
+     * Called from removeAsset / clear paths so bounds shrink correctly.
+     * Triangle meshes still drive the bounds when present (existing
+     * Scene-driven path), so this only re-folds in the point cloud
+     * extents over whatever the mesh path left.
+     */
+    private recomputeModelBounds(): void {
+        // Always recompute from scratch: take mesh bounds as the
+        // baseline, then fold in the CURRENT point-cloud bounds on
+        // top. Folding only-up via expandModelBoundsForPointClouds()
+        // is correct when pc bounds grow but never shrinks them when
+        // an asset is removed, leaving stale oversized extents until
+        // every point cloud is gone.
+        const meshBounds = this.computeMeshBounds();
+        const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
+
+        if (!meshBounds && !pcBounds) {
+            this.modelBounds = null;
+            return;
+        }
+        this.modelBounds = meshBounds ?? {
+            min: { x: pcBounds!.min[0], y: pcBounds!.min[1], z: pcBounds!.min[2] },
+            max: { x: pcBounds!.max[0], y: pcBounds!.max[1], z: pcBounds!.max[2] },
+        };
+        if (meshBounds && pcBounds) {
+            this.expandModelBoundsForPointClouds();
+        }
+    }
+
+    /** Aggregate bounds across all batched + individual meshes. Returns
+     *  null if the scene has no mesh geometry. */
+    private computeMeshBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        let any = false;
+        for (const batch of this.scene.getBatchedMeshes()) {
+            if (!batch.bounds) continue;
+            any = true;
+            if (batch.bounds.min[0] < minX) minX = batch.bounds.min[0];
+            if (batch.bounds.min[1] < minY) minY = batch.bounds.min[1];
+            if (batch.bounds.min[2] < minZ) minZ = batch.bounds.min[2];
+            if (batch.bounds.max[0] > maxX) maxX = batch.bounds.max[0];
+            if (batch.bounds.max[1] > maxY) maxY = batch.bounds.max[1];
+            if (batch.bounds.max[2] > maxZ) maxZ = batch.bounds.max[2];
+        }
+        if (!any) return null;
+        return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+    }
+
+    /** Apply rendering options (color mode, fixed override, point size). */
+    setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
+        this.pointCloudRenderer?.setOptions(opts);
+        this.requestRender();
+    }
+
+    /**
+     * Toggle Eye-Dome Lighting and tune its strength.
+     *
+     * EDL adds depth perception to point clouds (and meshes) via screen-
+     * space depth gradient — silhouette pixels get a soft black halo.
+     * Cheap: ~9 texture taps per pixel. Only runs when point clouds are
+     * loaded.
+     */
+    setEdlOptions(opts: { enabled?: boolean; strength?: number; radiusPx?: number; highQuality?: boolean }): void {
+        if (opts.enabled !== undefined) this.edlOptions.enabled = opts.enabled;
+        if (opts.strength !== undefined) this.edlOptions.strength = Math.max(0, Math.min(3, opts.strength));
+        if (opts.radiusPx !== undefined) this.edlOptions.radiusPx = Math.max(1, Math.min(4, opts.radiusPx));
+        if (opts.highQuality !== undefined) this.edlOptions.highQuality = opts.highQuality;
+        this.requestRender();
+    }
+
+    private expandModelBoundsForPointClouds(): void {
+        const pcBounds = this.pointCloudRenderer?.getBounds();
+        if (!pcBounds) return;
+        if (!this.modelBounds) {
+            this.modelBounds = {
+                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
+                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
+            };
+            return;
+        }
+        const m = this.modelBounds;
+        m.min.x = Math.min(m.min.x, pcBounds.min[0]);
+        m.min.y = Math.min(m.min.y, pcBounds.min[1]);
+        m.min.z = Math.min(m.min.z, pcBounds.min[2]);
+        m.max.x = Math.max(m.max.x, pcBounds.max[0]);
+        m.max.y = Math.max(m.max.y, pcBounds.max[1]);
+        m.max.z = Math.max(m.max.z, pcBounds.max[2]);
     }
 
     /**
@@ -704,6 +955,66 @@ export class Renderer {
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
 
+        // Build the selected-id set once per frame so the X-Ray override paths
+        // can keep highlighted entities at full alpha without per-site checks.
+        const selectedId = options.selectedId;
+        const selectedIds = options.selectedIds;
+        const selectedModelIndex = options.selectedModelIndex;
+        const selectedExpressIds = new Set<number>();
+        if (selectedId !== undefined && selectedId !== null) {
+            selectedExpressIds.add(selectedId);
+        }
+        if (selectedIds) {
+            for (const id of selectedIds) {
+                selectedExpressIds.add(id);
+            }
+        }
+        const hasSelected = selectedExpressIds.size > 0;
+
+        // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
+        // Snapshot the caller's map so mid-frame mutation can't desync classification
+        // and uniform-write decisions for the same batch/mesh.
+        const txOverridesSrc = options.transparencyOverrides;
+        const hasTxOverrides = txOverridesSrc != null && txOverridesSrc.size > 0;
+        const txOverrides = hasTxOverrides ? new Map(txOverridesSrc) : null;
+        const alphaForMesh = (expressId: number, fallback: number): number => {
+            if (!hasTxOverrides) return fallback;
+            // Selected meshes are exempt — the highlight pass renders them last,
+            // but exempting here also keeps mesh classification + uniform writes
+            // consistent so a selected mesh never enters the transparent pipeline
+            // because of its own override entry.
+            if (hasSelected && selectedExpressIds.has(expressId)) return fallback;
+            const a = txOverrides!.get(expressId);
+            return a !== undefined ? a : fallback;
+        };
+        // Cache resolved batch alpha for the frame: classification needs it
+        // (opaque vs transparent routing) and renderBatch needs it for the
+        // uniform write. Without the cache we'd walk batch.expressIds twice
+        // per batch per frame, which becomes the dominant JS cost in X-Ray.
+        const batchAlphaCache = hasTxOverrides
+            ? new WeakMap<{ expressIds: number[]; color: [number, number, number, number] }, number>()
+            : null;
+        const alphaForBatch = (
+            batch: { expressIds: number[]; color: [number, number, number, number] },
+            fallback: number,
+        ): number => {
+            if (!hasTxOverrides) return fallback;
+            const cached = batchAlphaCache!.get(batch);
+            if (cached !== undefined) return cached;
+            let minAlpha = Infinity;
+            for (const eid of batch.expressIds) {
+                // Selected ids never drag down a batch's alpha — the highlight
+                // pass redraws them on top, but excluding here also means a
+                // batch made entirely of selected entities stays opaque.
+                if (hasSelected && selectedExpressIds.has(eid)) continue;
+                const a = txOverrides!.get(eid);
+                if (a !== undefined && a < minAlpha) minAlpha = a;
+            }
+            const resolved = minAlpha === Infinity ? fallback : minAlpha;
+            batchAlphaCache!.set(batch, resolved);
+            return resolved;
+        };
+
         // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
         // Only create individual meshes for selected elements (for highlighting)
         // Batches are filtered at render time - fully visible batches render normally,
@@ -762,7 +1073,7 @@ export class Renderer {
             const transparentMeshes: typeof meshes = [];
 
             for (const mesh of meshes) {
-                const alpha = mesh.color[3];
+                const alpha = alphaForMesh(mesh.expressId, mesh.color[3]);
                 const transparency = mesh.material?.transparency ?? 0.0;
                 const isTransparent = alpha < 0.99 || transparency > 0.01;
 
@@ -783,9 +1094,6 @@ export class Renderer {
             // Write uniform data to each mesh's buffer BEFORE recording commands
             // This ensures each mesh has its own color data
             const allMeshes = [...opaqueMeshes, ...transparentMeshes];
-            const selectedId = options.selectedId;
-            const selectedIds = options.selectedIds;
-            const selectedModelIndex = options.selectedModelIndex;
 
             // Calculate section plane parameters and model bounds
             // Always calculate bounds when sectionPlane is provided (for preview and active mode)
@@ -823,6 +1131,21 @@ export class Renderer {
                         boundsMax.y = Math.max(boundsMax.y, batch.bounds.max[1]);
                         boundsMax.z = Math.max(boundsMax.z, batch.bounds.max[2]);
                     }
+                }
+                // Fold in point-cloud bounds too — without this, a
+                // pure point-cloud scene falls through to the default
+                // [-100,100], and a mixed scene clips against a
+                // smaller mesh-only range while the point pipeline
+                // (which honours the same sectionPlaneData) keeps
+                // drawing points outside the slider's reach.
+                const pcBoundsForSection = this.pointCloudRenderer?.getBounds();
+                if (pcBoundsForSection) {
+                    boundsMin.x = Math.min(boundsMin.x, pcBoundsForSection.min[0]);
+                    boundsMin.y = Math.min(boundsMin.y, pcBoundsForSection.min[1]);
+                    boundsMin.z = Math.min(boundsMin.z, pcBoundsForSection.min[2]);
+                    boundsMax.x = Math.max(boundsMax.x, pcBoundsForSection.max[0]);
+                    boundsMax.y = Math.max(boundsMax.y, pcBoundsForSection.max[1]);
+                    boundsMax.z = Math.max(boundsMax.z, pcBoundsForSection.max[2]);
                 }
 
                 // If no batched meshes have bounds yet (streaming, degenerate
@@ -968,7 +1291,8 @@ export class Renderer {
                     meshBuf[32] = mesh.color[0];
                     meshBuf[33] = mesh.color[1];
                     meshBuf[34] = mesh.color[2];
-                    meshBuf[35] = mesh.color[3];
+                    // Selected meshes always keep their own alpha so highlights stay opaque
+                    meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
                     meshBuf[36] = mesh.material?.metallic ?? 0.0;
                     meshBuf[37] = mesh.material?.roughness ?? 0.6;
                     meshBuf[38] = 0; meshBuf[39] = 0;
@@ -1124,21 +1448,11 @@ export class Renderer {
                         }
                     }
 
-                    const alpha = batch.color[3];
+                    const alpha = alphaForBatch(batch, batch.color[3]);
                     if (alpha < 0.99) {
                         transparentBatches.push(batch);
                     } else {
                         opaqueBatches.push(batch);
-                    }
-                }
-
-                const selectedExpressIds = new Set<number>();
-                if (selectedId !== undefined && selectedId !== null) {
-                    selectedExpressIds.add(selectedId);
-                }
-                if (selectedIds) {
-                    for (const id of selectedIds) {
-                        selectedExpressIds.add(id);
                     }
                 }
 
@@ -1187,7 +1501,7 @@ export class Renderer {
                     tpl[32] = batch.color[0];
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
-                    tpl[35] = batch.color[3];
+                    tpl[35] = alphaForBatch(batch, batch.color[3]);
 
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
 
@@ -1223,8 +1537,9 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            // Use opaque or transparent pipeline based on alpha
-                            const isTransparent = color[3] < 0.99;
+                            // Use opaque or transparent pipeline based on resolved alpha
+                            // (not the parent batch's color[3] — that ignores transparencyOverrides)
+                            const isTransparent = alphaForBatch(subBatch, color[3]) < 0.99;
                             if (isTransparent) {
                                 pass.setPipeline(this.pipeline.getTransparentPipeline());
                             } else {
@@ -1333,7 +1648,7 @@ export class Renderer {
                         tpl.set(viewProj, 0);
                         tpl.set(mesh.transform.m, 16);
                         tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
-                        tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
+                        tpl[34] = mesh.color[2]; tpl[35] = alphaForMesh(mesh.expressId, mesh.color[3]);
                         tpl[36] = mesh.material?.metallic ?? 0.0;
                         tpl[37] = mesh.material?.roughness ?? 0.6;
                         tpl[38] = 0; tpl[39] = 0;
@@ -1475,6 +1790,20 @@ export class Renderer {
                 }
             }
 
+            // Draw point clouds (IFCx inline + streamed LAS/LAZ).
+            // Shares the depth buffer + section plane state with the mesh pipeline so
+            // points occlude triangles and vice versa. The splat shader needs the
+            // viewport size to convert pixel sizes into clip-space offsets.
+            if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
+                this.pointCloudRenderer.draw(pass, {
+                    viewProj,
+                    sectionPlane: sectionPlaneData
+                        ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
+                        : null,
+                    viewport: { width: this.canvas.width, height: this.canvas.height },
+                });
+            }
+
             // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
             // Always show plane when sectionPlane options are provided (as preview or active)
             const modelBounds = this.getModelBounds();
@@ -1555,6 +1884,28 @@ export class Renderer {
                     separationIntensity: separationEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.separationLines.intensity)) : 0.0,
                     enableSeparationLines: separationEnabled,
                 });
+            }
+
+            // Eye-Dome Lighting — runs AFTER contact/separation so it darkens
+            // every layer uniformly. Cheap (~9 depth taps), only active when
+            // there are point clouds in the scene and the user has enabled it.
+            if (
+                this.edlPass
+                && this.edlOptions.enabled
+                && this.pointCloudRenderer?.hasAssets()
+            ) {
+                this.edlPass.apply(
+                    encoder,
+                    {
+                        targetView: textureView,
+                        depthView: this.pipeline.getDepthOnlyTextureView(),
+                    },
+                    {
+                        strength: this.edlOptions.strength,
+                        radiusPx: this.edlOptions.radiusPx,
+                        highQuality: this.edlOptions.highQuality,
+                    },
+                );
             }
 
             device.queue.submit([encoder.finish()]);
@@ -1819,12 +2170,18 @@ export class Renderer {
         // Post-processor uniform buffer
         this.postProcessor?.destroy();
         this.postProcessor = null;
+        this.edlPass?.destroy();
+        this.edlPass = null;
 
         // Section-plane renderers
         this.sectionPlaneRenderer?.destroy();
         this.sectionPlaneRenderer = null;
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
+
+        // Point cloud GPU resources
+        this.pointCloudRenderer?.clear();
+        this.pointCloudRenderer = null;
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();

@@ -21,11 +21,17 @@ import type { ViewerState } from '../../store/index.js';
 /** Sentinel model ID used for the legacy single-model path */
 export const LEGACY_MODEL_ID = 'default';
 
-/** Minimal model shape needed by the SDK adapters */
+/** Minimal model shape needed by the SDK adapters.
+ *
+ * `ifcDataStore` is nullable because the federated model store also
+ * carries native-metadata-only entries (loaded through Tauri without a
+ * full STEP parse). Adapters that need the data store check for null
+ * before using it.
+ */
 export interface ModelLike {
   id: string;
   name: string;
-  ifcDataStore: IfcDataStore;
+  ifcDataStore: IfcDataStore | null;
   schemaVersion: SchemaVersion;
   fileSize: number;
   loadedAt: number;

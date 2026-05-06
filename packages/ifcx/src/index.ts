@@ -14,6 +14,7 @@ import { composeIfcx, findRoots } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, isQuantityProperty } from './property-extractor.js';
 import { extractGeometry, type MeshData } from './geometry-extractor.js';
+import { extractPointClouds, type PointCloudExtraction } from './pointcloud-extractor.js';
 import { buildHierarchy } from './hierarchy-builder.js';
 import {
   StringTable,
@@ -39,6 +40,10 @@ export { composeIfcx, findRoots, getDescendants } from './composition.js';
 export { extractEntities } from './entity-extractor.js';
 export { extractProperties, isQuantityProperty } from './property-extractor.js';
 export { extractGeometry, type MeshData } from './geometry-extractor.js';
+export {
+  extractPointClouds,
+  type PointCloudExtraction,
+} from './pointcloud-extractor.js';
 export { buildHierarchy } from './hierarchy-builder.js';
 export {
   findTraversalRoots,
@@ -100,6 +105,8 @@ export interface IfcxParseResult {
   strings: StringTable;
   /** Pre-tessellated geometry meshes */
   meshes: MeshData[];
+  /** Decoded point clouds (pcd::base64, points::array, points::base64) */
+  pointClouds: PointCloudExtraction[];
   /** Mapping from IFCX path to express ID */
   pathToId: Map<string, number>;
   /** Mapping from express ID to IFCX path */
@@ -165,6 +172,7 @@ export async function parseIfcx(
   // Phase 5: Extract geometry
   options.onProgress?.({ phase: 'geometry', percent: 0 });
   const meshes = extractGeometry(composed, pathToId);
+  const pointClouds = extractPointClouds(composed, pathToId);
   options.onProgress?.({ phase: 'geometry', percent: 100 });
 
   // Phase 6: Build hierarchy
@@ -190,6 +198,7 @@ export async function parseIfcx(
     spatialHierarchy,
     strings,
     meshes,
+    pointClouds,
     pathToId,
     idToPath,
     schemaVersion: 'IFC5',
@@ -479,6 +488,7 @@ export async function parseFederatedIfcx(
   // Phase 5: Extract geometry
   options.onProgress?.({ phase: 'geometry', percent: 0 });
   const meshes = extractGeometry(composed, pathToId);
+  const pointClouds = extractPointClouds(composed, pathToId);
   options.onProgress?.({ phase: 'geometry', percent: 100 });
 
   // Phase 6: Build hierarchy
@@ -510,6 +520,7 @@ export async function parseFederatedIfcx(
     spatialHierarchy,
     strings,
     meshes,
+    pointClouds,
     pathToId,
     idToPath,
     schemaVersion: 'IFC5',

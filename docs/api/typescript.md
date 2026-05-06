@@ -986,10 +986,116 @@ class MutablePropertyView {
   exportMutations(): string;
   importMutations(json: string): void;
 
+  // ── Store-level mutations (raw STEP edits) ──────────────────────────
+
+  // Override a positional STEP argument by zero-based index. Used for
+  // entities without symbolic attribute names (IfcRectangleProfileDef.XDim,
+  // cartesian point coordinates, etc.).
+  setPositionalAttribute(
+    entityId: number,
+    index: number,
+    value: IfcAttributeValue,
+    skipHistory?: boolean,
+  ): Mutation;
+
+  // Read-back of all positional overrides on an entity, keyed by index.
+  getPositionalMutationsForEntity(entityId: number): Map<number, IfcAttributeValue> | null;
+
+  // Drop a single positional override (used by undo).
+  removePositionalMutation(entityId: number, index: number): void;
+
+  // Create / delete entities in the overlay. Tombstoned entities are
+  // skipped during STEP export; overlay-created entities are appended.
+  createEntity(type: string, attributes: IfcAttributeValue[]): NewEntity;
+  deleteEntity(expressId: number): boolean;
+  getNewEntities(): NewEntity[];
+  getNewEntity(expressId: number): NewEntity | null;
+  isDeleted(expressId: number): boolean;
+  getTombstones(): Set<number>;
+
+  // Restore helpers used by viewer undo/redo.
+  restoreFromTombstone(expressId: number): boolean;
+  restoreNewEntity(entity: NewEntity): void;
+
+  // Seed the express-id allocator from the parsed store's max id (called
+  // automatically by StoreEditor's constructor). Subsequent createEntity
+  // calls allocate ids strictly above the watermark.
+  setExpressIdWatermark(maxExistingId: number): void;
+  peekNextExpressId(): number;
+
   // Reset all mutations
   clear(): void;
 }
 ```
+
+### StoreEditor
+
+High-level facade for editing a parsed `IfcDataStore` via the `MutablePropertyView` overlay. Adds entities, deletes them, edits positional STEP arguments. The underlying store buffer is never mutated — changes accumulate in the overlay and materialise during `StepExporter.export({ applyMutations: true })`.
+
+```typescript
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+
+const view = new MutablePropertyView(propertyTable, modelId);
+const editor = new StoreEditor(dataStore, view);
+
+const profile = editor.addEntity('IFCRECTANGLEPROFILEDEF', [
+  '.AREA.', null, '#34', 0.6, 0.4,
+]);
+editor.setPositionalAttribute(profile.expressId, 3, 0.7);
+editor.removeEntity(unwantedExpressId);
+```
+
+```typescript
+class StoreEditor {
+  constructor(store: IfcDataStore, view: MutablePropertyView);
+
+  // Add a new entity to the overlay. Returns a synthetic EntityRef with a
+  // freshly-allocated expressId (above the store's watermark).
+  addEntity(type: string, attributes: IfcAttributeValue[]): EntityRef;
+
+  // Tombstone an existing entity OR forget an overlay-only one. Returns
+  // false if the id is not known.
+  removeEntity(expressId: number): boolean;
+
+  // Override a single positional STEP arg by zero-based index.
+  setPositionalAttribute(expressId: number, index: number, value: IfcAttributeValue): void;
+
+  // Edit a named root attribute (Name, Description, ObjectType, …).
+  setAttribute(expressId: number, attrName: string, value: string): void;
+
+  // Read overlay-created entities.
+  getNewEntity(expressId: number): NewEntity | null;
+  getNewEntities(): NewEntity[];
+}
+```
+
+```typescript
+// Sentinel byteOffset that flags an EntityRef as overlay-only.
+const OVERLAY_BYTE_OFFSET = -1;
+
+interface NewEntity {
+  expressId: number;
+  type: string;
+  attributes: IfcAttributeValue[];
+}
+
+// IFC STEP attribute value, as produced by EntityExtractor.extractEntity().
+type IfcAttributeValue = string | number | boolean | null | IfcAttributeValue[];
+```
+
+#### Value conventions
+
+`addEntity` and `setPositionalAttribute` accept the same shape that `EntityExtractor.extractEntity().attributes` produces:
+
+| JS value | STEP literal |
+|---|---|
+| `null` / `undefined` | `$` |
+| `42` / `0.6` | integer / REAL |
+| `true` / `false` | `.T.` / `.F.` |
+| `"#42"` (string) | entity reference |
+| `".AREA."` (string) | enum |
+| `"My Column"` (string) | quoted STEP string |
+| `[1, 2, 3]` | STEP list `(1,2,3)` — recursive |
 
 ### ChangeSetManager
 
@@ -1065,12 +1171,33 @@ class CsvConnector {
 ```typescript
 interface Mutation {
   id: string;
-  type: 'CREATE_PROPERTY' | 'UPDATE_PROPERTY' | 'DELETE_PROPERTY' | 'CREATE_PROPERTY_SET' | 'DELETE_PROPERTY_SET';
+  type:
+    // Properties
+    | 'CREATE_PROPERTY'
+    | 'UPDATE_PROPERTY'
+    | 'DELETE_PROPERTY'
+    | 'CREATE_PROPERTY_SET'
+    | 'DELETE_PROPERTY_SET'
+    // Quantities
+    | 'CREATE_QUANTITY'
+    | 'UPDATE_QUANTITY'
+    | 'DELETE_QUANTITY'
+    // Named attributes (Name, Description, ObjectType, Tag, …)
+    | 'UPDATE_ATTRIBUTE'
+    // Positional STEP args (XDim on a profile, coords on a point, …)
+    | 'UPDATE_POSITIONAL_ATTRIBUTE'
+    // Store-level entity churn (StoreEditor / bim.store.*)
+    | 'CREATE_ENTITY'
+    | 'DELETE_ENTITY';
   timestamp: number;
   modelId: string;
   entityId: number;
   psetName?: string;
   propName?: string;
+  // For UPDATE_ATTRIBUTE: the IfcRoot attribute name (e.g. 'Name').
+  // For UPDATE_POSITIONAL_ATTRIBUTE: encoded as `@N` where N is the index.
+  // For CREATE_ENTITY: the IFC type (e.g. 'IFCCOLUMN').
+  attributeName?: string;
   oldValue?: PropertyValue;
   newValue?: PropertyValue;
 }
@@ -1538,6 +1665,80 @@ interface CreateResult {
   content: string;
   entities: Array<{ expressId: number; type: string; Name?: string }>;
   stats: { entityCount: number; fileSize: number };
+}
+```
+
+### In-Store Builders
+
+For editing an **already-parsed** `IfcDataStore` instead of building a new file from scratch, the package exposes anchored builders that emit a complete sub-graph into a `StoreEditor` overlay.
+
+#### addColumnToStore
+
+Add an `IfcColumn` (with placement, profile, extruded solid, representation, product shape, and rel-contained-in-spatial-structure) to an existing parsed model.
+
+```typescript
+import { StoreEditor } from '@ifc-lite/mutations';
+import { addColumnToStore, resolveSpatialAnchor } from '@ifc-lite/create';
+
+const editor = new StoreEditor(dataStore, mutationView);
+const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+
+const result = addColumnToStore(editor, anchor, {
+  Position: [1, 1, 0],
+  Width: 0.3, Depth: 0.4, Height: 3,
+  Name: 'Column 1',
+});
+```
+
+```typescript
+function addColumnToStore(
+  editor: StoreEditor,
+  anchor: SpatialAnchor,
+  params: ColumnInStoreParams,
+): ColumnBuildResult;
+
+interface ColumnInStoreParams {
+  Position: [number, number, number];  // Storey-local metres
+  Width: number;
+  Depth: number;
+  Height: number;
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+}
+
+interface ColumnBuildResult {
+  columnId: number;
+  placementId: number;
+  profileId: number;
+  solidId: number;
+  shapeRepId: number;
+  productShapeId: number;
+  /** The IfcRelContainedInSpatialStructure linking the column to its storey. */
+  relContainedId: number;
+}
+```
+
+#### resolveSpatialAnchor
+
+Walks a parsed `IfcDataStore` for the references every in-store builder needs. Throws if any of `IfcOwnerHistory`, the 'Body' representation context, or the storey's `IfcLocalPlacement` can't be resolved.
+
+```typescript
+function resolveSpatialAnchor(
+  store: IfcDataStore,
+  storeyExpressId: number,
+): SpatialAnchor;
+
+interface SpatialAnchor {
+  /** IfcOwnerHistory expressId — referenced by every IfcRoot. */
+  ownerHistoryId: number;
+  /** IfcGeometricRepresentationSubContext for 'Body' (or its parent context as fallback). */
+  bodyContextId: number;
+  /** The target IfcBuildingStorey expressId. */
+  storeyId: number;
+  /** The IfcLocalPlacement that the storey itself sits on. */
+  storeyPlacementId: number;
 }
 ```
 

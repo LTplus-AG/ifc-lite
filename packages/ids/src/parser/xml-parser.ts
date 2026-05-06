@@ -44,6 +44,21 @@ export class IDSParseError extends Error {
   }
 }
 
+// `DOMParser` exists in browsers and in test envs (happy-dom/jsdom). In plain
+// Node it's undefined, so fall back to @xmldom/xmldom. The dynamic import is
+// hidden behind a runtime-computed specifier so browser bundlers don't pull
+// xmldom into the client bundle.
+type DOMParserCtor = new () => { parseFromString(input: string, mime: string): Document };
+let DOMParserImpl: DOMParserCtor | null =
+  typeof globalThis !== 'undefined' && typeof (globalThis as { DOMParser?: DOMParserCtor }).DOMParser === 'function'
+    ? ((globalThis as { DOMParser?: DOMParserCtor }).DOMParser as DOMParserCtor)
+    : null;
+if (!DOMParserImpl) {
+  const moduleName = '@xmldom/xmldom';
+  const xmldom = (await import(/* @vite-ignore */ moduleName)) as { DOMParser: DOMParserCtor };
+  DOMParserImpl = xmldom.DOMParser;
+}
+
 /**
  * Parse IDS XML content into an IDSDocument
  */
@@ -53,11 +68,32 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
       ? xmlContent
       : new TextDecoder().decode(xmlContent);
 
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlString, 'text/xml');
+  if (!DOMParserImpl) {
+    throw new IDSParseError(
+      'No DOMParser implementation available',
+      'Neither globalThis.DOMParser nor @xmldom/xmldom could be loaded.',
+    );
+  }
+  const parser = new DOMParserImpl();
 
-  // Check for parse errors
-  const parseError = doc.querySelector('parsererror');
+  // Browser DOMParser → returns a Document with a <parsererror> element on
+  // malformed input. xmldom v0.9 → throws on fatalError (and may also leave
+  // a partial Document with no documentElement). Normalise both paths to a
+  // single IDSParseError so callers see consistent failures.
+  let doc: Document;
+  try {
+    doc = parser.parseFromString(xmlString, 'text/xml');
+  } catch (err) {
+    throw new IDSParseError(
+      'Failed to parse IDS XML',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  const parseError =
+    typeof (doc as { querySelector?: (s: string) => Element | null }).querySelector === 'function'
+      ? (doc as { querySelector: (s: string) => Element | null }).querySelector('parsererror')
+      : null;
   if (parseError) {
     throw new IDSParseError(
       'Invalid XML format',
@@ -66,6 +102,15 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
   }
 
   const root = doc.documentElement;
+  // xmldom can return a Document with no root on certain error modes —
+  // surface that as a parse error rather than a confusing TypeError on
+  // root.localName below.
+  if (!root) {
+    throw new IDSParseError(
+      'Failed to parse IDS XML',
+      'Parser returned a document with no root element.',
+    );
+  }
 
   // Validate root element
   if (root.localName !== 'ids') {

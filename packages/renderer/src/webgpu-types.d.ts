@@ -284,6 +284,12 @@ interface GPUBufferDescriptor {
   size: number;
   usage: number;
   label?: string;
+  /**
+   * If true, the buffer is created in a mapped state — the caller can
+   * write to it via `getMappedRange()` without a `writeBuffer` IPC
+   * round-trip. Used in the streaming geometry uploader.
+   */
+  mappedAtCreation?: boolean;
 }
 
 interface GPUBindGroupDescriptor {

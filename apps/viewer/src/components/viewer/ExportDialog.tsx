@@ -388,6 +388,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
       }
 
       if (!selectedModel) return;
+      // IFC5 export needs a parsed data store + geometry. Native-metadata
+      // models don't carry these, so bail with a descriptive error rather
+      // than passing nulls through.
+      if (!selectedModel.ifcDataStore) {
+        throw new Error('Selected model has no parsed IFC data store available for export');
+      }
       const mutationView = getMutationView(selectedModelId);
       const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
 

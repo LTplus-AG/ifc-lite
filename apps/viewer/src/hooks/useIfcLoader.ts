@@ -46,6 +46,8 @@ import { useIfcCache, getCached } from './useIfcCache.js';
 import { useIfcServer } from './useIfcServer.js';
 
 import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
+import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
+import { getGlobalRenderer } from './useBCF.js';
 
 /**
  * Compute a fast content fingerprint from the first and last 4KB of a buffer.
@@ -253,7 +255,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: { meshes: MeshData[]; totalVertices: number; totalTriangles: number; coordinateInfo: CoordinateInfo } | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null },
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number },
       ) => {
         let idOffset = 0;
         let maxExpressId = 0;
@@ -271,6 +273,7 @@ export function useIfcLoader() {
           loadState: patch?.loadState ?? 'complete',
           cacheState: patch?.cacheState ?? 'none',
           loadError: patch?.loadError ?? null,
+          pointCloudHandleId: patch?.pointCloudHandleId,
         });
       };
       const getSchemaVersion = (dataStore: IfcDataStore | null): 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5' => {
@@ -281,15 +284,23 @@ export function useIfcLoader() {
         return 'IFC2X3';
       };
 
+      // Native renderer streaming path is currently disabled — the
+      // `huge native file` block further down handles real desktop
+      // streaming. This branch is retained as a scaffold for the future
+      // always-on native renderer integration.
+      const NATIVE_RENDERER_PATH_ENABLED = false as boolean;
       if (
+        NATIVE_RENDERER_PATH_ENABLED &&
         isNativeFileHandle(file) &&
-        fileName.toLowerCase().endsWith('.ifc') &&
-        false
+        fileName.toLowerCase().endsWith('.ifc')
       ) {
+        // Re-narrow `file` for the body — TS occasionally drops the
+        // type-predicate result inside a dead branch.
+        const nativeFile: NativeFileHandle = file;
         const harnessRequest = getActiveHarnessRequest();
-        const nativeCacheKey = computeNativeCacheKey(file);
-        const shouldUseNativeCache = file.size >= CACHE_SIZE_THRESHOLD;
-        const hugeNativeMode = file.size >= HUGE_NATIVE_FILE_THRESHOLD;
+        const nativeCacheKey = computeNativeCacheKey(nativeFile);
+        const shouldUseNativeCache = nativeFile.size >= CACHE_SIZE_THRESHOLD;
+        const hugeNativeMode = nativeFile.size >= HUGE_NATIVE_FILE_THRESHOLD;
         let firstBatchWaitMs: number | null = null;
         let firstVisibleGeometryMs: number | null = null;
         let modelOpenMs: number | null = null;
@@ -312,7 +323,7 @@ export function useIfcLoader() {
         let nativeGeometryCacheHit = false;
         let nativeMetadataSnapshotHit = false;
         let nativeMetadataSource: 'snapshot' | 'ifc-parse' = 'ifc-parse';
-        let nativeMetadataStartGate: 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete' = 'immediate';
+        let nativeMetadataStartGate = 'immediate' as 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete';
         let finalCoordinateInfo: CoordinateInfo | null = null;
 
         console.log(`[useIfc] Native renderer load: ${fileName}, size: ${fileSizeMB.toFixed(2)}MB`);
@@ -727,7 +738,7 @@ export function useIfcLoader() {
         let fullNativeDataStore: IfcDataStore | null = null;
         let nativeLoadStage: 'open' | 'streamGeometry' | 'finalizeGeometry' | 'hydrateMetadata' | 'complete' = 'open';
         let nativeMetadataSource: 'snapshot' | 'ifc-parse' = 'ifc-parse';
-        let nativeMetadataStartGate: 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete' = 'immediate';
+        let nativeMetadataStartGate = 'immediate' as 'immediate' | 'afterInteractiveGeometry' | 'afterGeometryComplete';
 
         setGeometryResult(null);
 
@@ -1552,8 +1563,69 @@ export function useIfcLoader() {
       const fileReadMs = performance.now() - fileReadStart;
       console.log(`[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB, read in ${fileReadMs.toFixed(0)}ms`);
 
-      // Detect file format (IFCX/IFC5 vs IFC4 STEP vs GLB)
-      const format = detectFormat(buffer);
+      // Detect file format (IFCX/IFC5 vs IFC4 STEP vs GLB vs LAS/LAZ)
+      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
+      const format = pointCloudFormat ?? detectFormat(buffer);
+
+      // LAS / LAZ point clouds: stream chunks straight to the renderer.
+      // No on-disk cache, no server upload — the data goes worker → GPU.
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
+        const renderer = getGlobalRenderer();
+        if (!renderer) {
+          setError('Renderer not initialised — try again after the viewer mounts.');
+          updateModel(primaryModelId, { loadState: 'error', loadError: 'renderer-missing' });
+          setLoading(false);
+          return;
+        }
+        setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
+        setGeometryStreamingActive(false);
+        const blob = isNativeFileHandle(file) ? new Blob([buffer]) : (file as File);
+        const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
+        const ingest = ingestPointCloud({
+          format,
+          blob,
+          fileName: file.name,
+          buffer,
+          renderer,
+          onProgress: setProgress,
+          onAssetCountDelta: incCount,
+        });
+        // ingestPointCloud's onError callback already runs renderer cleanup
+        // + incCount(-1); the outer catch must NOT repeat them or the
+        // pointCloudAssetCount will go negative.
+        try {
+          await ingest.done;
+        } catch (err) {
+          // Bail without touching store/UI state if a newer load
+          // session has already started — the more recent flow owns
+          // the spinner / model record now. Free the renderer handle
+          // so we don't leak the half-streamed asset.
+          if (loadSessionRef.current !== currentSession) {
+            renderer.removePointCloudAsset(ingest.rendererHandle);
+            return;
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          updateModel(primaryModelId, { loadState: 'error', loadError: message });
+          setError(`${format.toUpperCase()} parsing failed: ${message}`);
+          setLoading(false);
+          return;
+        }
+        if (loadSessionRef.current !== currentSession) {
+          // A newer load already began. Drop our streamed asset and
+          // skip every store/UI mutation so we don't overwrite the
+          // newer model's state.
+          renderer.removePointCloudAsset(ingest.rendererHandle);
+          return;
+        }
+        setGeometryResult(ingest.geometryResult);
+        setIfcDataStore(ingest.dataStore);
+        finalizePrimaryModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
+          pointCloudHandleId: ingest.rendererHandle.id,
+        });
+        setProgress({ phase: 'Complete', percent: 100 });
+        setLoading(false);
+        return;
+      }
 
       // IFCX files must be parsed client-side (server only supports IFC4 STEP)
       if (format === 'ifcx') {
@@ -1638,8 +1710,10 @@ export function useIfcLoader() {
       }
 
       // Try server parsing first (enabled by default for multi-core performance)
-      // Only for IFC4 STEP files (server doesn't support IFCX)
-      if (format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      // Only for IFC4 STEP files (server doesn't support IFCX). Native
+      // file handles (Tauri) don't have an HTTP-uploadable body, so skip
+      // the server path and fall through to the WASM loader.
+      if (format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '' && !isNativeFileHandle(file)) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
@@ -1792,7 +1866,9 @@ export function useIfcLoader() {
           if (geometryIteratorClosed || typeof geometryIterator.return !== 'function') return;
           geometryIteratorClosed = true;
           try {
-            await geometryIterator.return();
+            // `AsyncIterator.return()` is signed as taking a value in
+            // current TS libs; callers conventionally pass `undefined`.
+            await geometryIterator.return(undefined);
           } catch {
             // Ignore iterator shutdown failures during recovery.
           }

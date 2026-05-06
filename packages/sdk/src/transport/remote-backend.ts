@@ -20,6 +20,7 @@ import type {
   VisibilityBackendMethods,
   ViewerBackendMethods,
   MutateBackendMethods,
+  StoreBackendMethods,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
@@ -47,6 +48,7 @@ export class RemoteBackend implements BimBackend {
   readonly visibility: VisibilityBackendMethods = makeRemoteProxy('visibility');
   readonly viewer: ViewerBackendMethods = makeRemoteProxy('viewer');
   readonly mutate: MutateBackendMethods = makeRemoteProxy('mutate');
+  readonly store: StoreBackendMethods = makeRemoteProxy('store');
   readonly spatial: SpatialBackendMethods = makeRemoteProxy('spatial');
   readonly export: ExportBackendMethods = makeRemoteProxy('export');
   readonly lens: LensBackendMethods = makeRemoteProxy('lens');

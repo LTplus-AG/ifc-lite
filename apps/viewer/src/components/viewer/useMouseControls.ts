@@ -22,6 +22,7 @@ import type {
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { useViewerStore } from '@/store';
 import {
   handleMeasureDown,
   handleMeasureDrag,
@@ -29,7 +30,7 @@ import {
   handleMeasureUp,
   updateMeasureScreenCoords,
 } from './measureHandlers.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover } from './selectionHandlers.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -366,6 +367,13 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // Show snap indicators to help user see where they can snap
       if (tool === 'measure' && !mouseState.isDragging && snapEnabledRef.current) {
         if (handleMeasureHover(ctx, x, y)) return;
+      }
+
+      // Add-element tool hover preview. Always runs (regardless of
+      // snap toggle) so the live edge/rectangle/polygon overlay can
+      // track the cursor; magnetic snap is layered on when enabled.
+      if (tool === 'addElement' && !mouseState.isDragging) {
+        if (handleAddElementHover(ctx, x, y)) return;
       }
 
       // Handle orbit/pan for other tools (or measure tool with shift+drag or no active measurement)

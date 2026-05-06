@@ -2535,8 +2535,8 @@ impl IfcAPI {
     /// A parallel style worker can run buildPrePassOnce for correct colors later.
     #[wasm_bindgen(js_name = buildPrePassFast)]
     pub fn build_pre_pass_fast(&self, data: &[u8]) -> JsValue {
-        use super::styling::{extract_building_rotation_from_site, is_simple_geometry_type};
-        use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
+        use super::styling::extract_building_rotation_from_site;
+        use ifc_lite_core::{is_simple_geometry_type, EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
 
         let content = decode_ifc_bytes(data);

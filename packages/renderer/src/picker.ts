@@ -8,9 +8,20 @@
 
 import { WebGPUDevice } from './device.js';
 import type { Mesh, PickResult } from './types.js';
+import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
+
+/** Point-pick sizing parameters forwarded to the GPU pipeline. */
+export interface PointPickSizing {
+  sizeMode: 0 | 1 | 2; // matches PointCloudRenderer's SIZE_MODE_INDEX
+  worldRadius: number;
+  pointSizePx: number;
+  /** Extra pixels added to the splat radius for click tolerance. Default 2. */
+  clickTolerancePx?: number;
+}
 
 export class Picker {
   private device: GPUDevice;
+  private webgpuDevice: WebGPUDevice;
   private pipeline: GPURenderPipeline;
   private depthTexture: GPUTexture;
   private colorTexture: GPUTexture;
@@ -19,8 +30,10 @@ export class Picker {
   private bindGroup: GPUBindGroup;
   private maxMeshes: number = 100000; // Support up to 100K meshes (was 10K)
   private destroyed = false;
+  private pointPicker: PointPicker | null = null;
 
   constructor(device: WebGPUDevice, width: number = 1, height: number = 1) {
+    this.webgpuDevice = device;
     this.device = device.getDevice();
 
     // Create textures for picking
@@ -134,8 +147,16 @@ export class Picker {
   }
 
   /**
-   * Pick object at screen coordinates
-   * Returns PickResult with expressId and modelIndex for multi-model support
+   * Pick object at screen coordinates.
+   *
+   * When `pointNodes` is non-empty the picker draws point splats into
+   * the same r32uint target as the meshes (sharing the depth buffer so
+   * occlusion is correct). Point hits set bit 31 of the readback value;
+   * the decoder distinguishes mesh vs point from that flag.
+   *
+   * Returns `PickResult` with `{expressId, modelIndex}` for both kinds.
+   * For point hits, expressId is the federated globalId of the asset
+   * (already correct for hover/selection plumbing — no remapping needed).
    */
   async pick(
     x: number,
@@ -143,7 +164,9 @@ export class Picker {
     width: number,
     height: number,
     meshes: Mesh[],
-    viewProj: Float32Array
+    viewProj: Float32Array,
+    pointNodes?: ReadonlyArray<PointPickNode>,
+    pointSizing?: PointPickSizing,
   ): Promise<PickResult | null> {
     // Resize textures if needed
     if (this.colorTexture.width !== width || this.colorTexture.height !== height) {
@@ -220,6 +243,29 @@ export class Picker {
       pass.drawIndexed(mesh.indexCount, 1, 0, 0, i);
     }
 
+    // Point splats share the depth buffer with the mesh pass so occlusion
+    // is correct: a triangle in front of a point hides the point and
+    // vice versa. Lazily instantiate the point pipeline — it costs a
+    // shader compile, no point spending it on IFC-only sessions.
+    if (pointNodes && pointNodes.length > 0) {
+      if (!this.pointPicker) {
+        this.pointPicker = new PointPicker(this.webgpuDevice);
+      }
+      const sz = pointSizing ?? { sizeMode: 0, worldRadius: 0.02, pointSizePx: 4 };
+      this.pointPicker.drawIntoPass(
+        pass,
+        pointNodes,
+        viewProj,
+        { width, height },
+        {
+          sizeMode: sz.sizeMode,
+          worldRadius: sz.worldRadius,
+          pointSizePx: sz.pointSizePx,
+          clickTolerancePx: sz.clickTolerancePx ?? 2,
+        },
+      );
+    }
+
     pass.end();
 
     // Read pixel at click position
@@ -247,17 +293,27 @@ export class Picker {
     // GPUMapMode.READ = 1 (WebGPU spec)
     await readBuffer.mapAsync(1); // GPUMapMode.READ
     const data = new Uint32Array(readBuffer.getMappedRange());
-    const meshIndex = data[0];
+    const sample = data[0];
     readBuffer.unmap();
     readBuffer.destroy();
 
-    // meshIndex is (actual index + 1), so 0 = no hit
-    if (meshIndex === 0) return null;
+    const decoded = decodePickSample(sample);
+    if (decoded.kind === 'none') return null;
 
-    // Look up the mesh to get both expressId and modelIndex
-    const mesh = meshes[meshIndex - 1];
+    if (decoded.kind === 'point') {
+      // Look up the asset for modelIndex. expressId is already the
+      // federated globalId (vertex shader writes it from the per-point
+      // attribute, no lookup table needed).
+      const node = pointNodes?.find((n) => (n.expressId >>> 0) === decoded.pointExpressId);
+      return {
+        expressId: decoded.pointExpressId,
+        modelIndex: node?.modelIndex,
+      };
+    }
+
+    // Mesh hit — meshIndex is (actual index + 1), already validated > 0.
+    const mesh = meshes[decoded.meshIndexPlusOne - 1];
     if (!mesh) return null;
-
     return {
       expressId: mesh.expressId,
       modelIndex: mesh.modelIndex,
@@ -313,5 +369,7 @@ export class Picker {
     this.depthTexture.destroy();
     this.uniformBuffer.destroy();
     this.expressIdBuffer.destroy();
+    this.pointPicker?.destroy();
+    this.pointPicker = null;
   }
 }

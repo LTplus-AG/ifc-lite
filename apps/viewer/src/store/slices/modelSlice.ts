@@ -13,7 +13,19 @@
 
 import type { StateCreator } from 'zustand';
 import type { FederatedModel } from '../types.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
+
+/**
+ * Cross-slice fields the model actions write to. `ifcDataStore` and
+ * `geometryResult` are owned by `dataSlice` but `modelSlice`'s set()
+ * calls need to keep them in sync with the active model.
+ */
+export interface ModelCrossSliceState {
+  ifcDataStore: IfcDataStore | null;
+  geometryResult: GeometryResult | null;
+}
 
 export interface ModelSlice {
   // State
@@ -72,7 +84,7 @@ export interface ModelSlice {
   resolveGlobalIdFromModels: (globalId: number) => GlobalIdLookup | null;
 }
 
-export const createModelSlice: StateCreator<ModelSlice, [], [], ModelSlice> = (set, get) => ({
+export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [], [], ModelSlice> = (set, get) => ({
   // Initial state
   models: new Map(),
   activeModelId: null,
@@ -245,19 +257,39 @@ export const createModelSlice: StateCreator<ModelSlice, [], [], ModelSlice> = (s
    */
   resolveGlobalIdFromModels: (globalId: number) => {
     const models = get().models;
+    const mutationViews = (get() as unknown as { mutationViews?: Map<string, { getNewEntity: (id: number) => unknown }> }).mutationViews;
 
     // Sort models by offset for correct range checking
     const sortedModels = Array.from(models.values()).sort((a, b) => a.idOffset - b.idOffset);
 
-    // Find the model that contains this globalId
-    // A model contains a globalId if: offset <= globalId <= offset + maxExpressId
+    // Find the model that contains this globalId.
+    //
+    // First pass — parse-time range. A model owns ids in
+    // `[offset, offset + maxExpressId]` from the original parse. This
+    // is the fast path covering 99% of selections.
+    //
+    // Second pass — overlay-allocated ids. Duplicates / scripted adds
+    // through StoreEditor land ABOVE the model's parse-time
+    // maxExpressId, so they fall outside the first-pass range. The
+    // federation resolver knows nothing about overlay state, so we
+    // consult each model's mutation view for the freshly-added
+    // entity. Falls back gracefully when no view is registered.
     for (const model of sortedModels) {
       const localId = globalId - model.idOffset;
       if (localId >= 0 && localId <= model.maxExpressId) {
-        return {
-          modelId: model.id,
-          expressId: localId,
-        };
+        return { modelId: model.id, expressId: localId };
+      }
+    }
+
+    if (mutationViews) {
+      for (const model of sortedModels) {
+        const localId = globalId - model.idOffset;
+        if (localId <= model.maxExpressId) continue; // already covered above
+        const view = mutationViews.get(model.id);
+        if (!view) continue;
+        if (view.getNewEntity(localId) !== null) {
+          return { modelId: model.id, expressId: localId };
+        }
       }
     }
 

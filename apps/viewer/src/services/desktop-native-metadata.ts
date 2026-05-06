@@ -6,9 +6,40 @@ import type {
   NativeMetadataEntityDetails,
   NativeMetadataEntitySummary,
   NativeMetadataSnapshot,
+  NativeMetadataSpatialNode,
 } from '@/store/types';
-import type { MetadataBootstrapPayload } from '@ifc-lite/geometry';
+import type {
+  MetadataBootstrapPayload,
+  MetadataBootstrapEntitySummary,
+  MetadataBootstrapSpatialNode,
+} from '@ifc-lite/geometry';
 import { getNativeModelSnapshot, setNativeModelSnapshot } from './desktop-cache';
+
+function bootstrapKindToNative(kind: string): 'spatial' | 'element' {
+  return kind === 'spatial' ? 'spatial' : 'element';
+}
+
+function summaryFromBootstrap(node: MetadataBootstrapEntitySummary): NativeMetadataEntitySummary {
+  return {
+    expressId: node.expressId,
+    type: node.typeName,
+    name: node.name,
+    globalId: node.globalId ?? null,
+    kind: bootstrapKindToNative(node.kind),
+    hasChildren: node.hasChildren,
+    elementCount: node.elementCount,
+    elevation: node.elevation ?? null,
+  };
+}
+
+function spatialNodeFromBootstrap(node: MetadataBootstrapSpatialNode | null): NativeMetadataSpatialNode | null {
+  if (!node) return null;
+  return {
+    ...summaryFromBootstrap(node),
+    children: node.children.map((c) => spatialNodeFromBootstrap(c)).filter((n): n is NativeMetadataSpatialNode => n !== null),
+    elements: node.elements.map(summaryFromBootstrap),
+  };
+}
 
 type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -19,13 +50,6 @@ async function getInvoke(): Promise<InvokeFn> {
   }
   const core = await import('@tauri-apps/api/core');
   return core.invoke as InvokeFn;
-}
-
-interface NativeMetadataBootstrapPayload {
-  cacheKey: string;
-  schemaVersion: string;
-  entityCount: number;
-  spatialTree: NativeMetadataSnapshot['spatialTree'];
 }
 
 function toSchemaVersion(schemaVersion: string): NativeMetadataSnapshot['schemaVersion'] {
@@ -45,24 +69,23 @@ export function nativeMetadataSnapshotFromBootstrap(
     filePath: path,
     schemaVersion: toSchemaVersion(payload.schemaVersion),
     entityCount: payload.entityCount,
-    spatialTree: payload.spatialTree ?? null,
+    spatialTree: spatialNodeFromBootstrap(payload.spatialTree ?? null),
   };
 }
 
 export async function bootstrapNativeMetadata(path: string, cacheKey: string): Promise<NativeMetadataSnapshot> {
   const invoke = await getInvoke();
-  const result = await invoke<NativeMetadataBootstrapPayload>('bootstrap_native_metadata', {
+  // The Tauri command returns a bootstrap-shaped payload (typeName /
+  // kind unfolded). Route through the shared `nativeMetadataSnapshotFromBootstrap`
+  // helper so both constructors apply the same `spatialNodeFromBootstrap`
+  // normalization — without this the `from cached snapshot` and
+  // `bootstrap fresh` paths produce subtly different shapes and the
+  // property panel reads break for the freshly-bootstrapped case.
+  const result = await invoke<MetadataBootstrapPayload>('bootstrap_native_metadata', {
     path,
     cacheKey,
   });
-  return {
-    mode: 'desktop-lazy',
-    cacheKey: result.cacheKey,
-    filePath: path,
-    schemaVersion: toSchemaVersion(result.schemaVersion),
-    entityCount: result.entityCount,
-    spatialTree: result.spatialTree ?? null,
-  };
+  return nativeMetadataSnapshotFromBootstrap(path, result);
 }
 
 export async function restoreNativeMetadataSnapshot(cacheKey: string): Promise<NativeMetadataSnapshot | null> {

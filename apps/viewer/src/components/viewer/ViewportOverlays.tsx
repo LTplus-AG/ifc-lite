@@ -22,10 +22,11 @@ import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/platform';
-
-const isDesktop = isTauri();
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
+import { PointCloudPanel } from './PointCloudPanel';
+
+const isDesktop = isTauri();
 
 export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: boolean } = {}) {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
@@ -149,6 +150,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
   return (
     <>
+      <PointCloudPanelMount />
       {/* Bottom-right: Cesium settings overlay OR Navigation controls (Cesium is web-only) */}
       {cesiumEnabled && !isDesktop ? (
         <CesiumSettingsOverlay
@@ -313,4 +315,13 @@ function CesiumSettingsOverlay({
       </label>
     </div>
   );
+}
+
+/**
+ * Tiny indirection so the panel can subscribe to its own slice without
+ * pulling extra state into the parent overlay component.
+ */
+function PointCloudPanelMount() {
+  const count = useViewerStore((s) => s.pointCloudAssetCount);
+  return <PointCloudPanel assetCount={count} />;
 }

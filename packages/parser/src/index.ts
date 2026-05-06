@@ -45,6 +45,7 @@ export {
   type LayerStack,
   type PathIndex,
   type MeshData as IfcxMeshData,
+  type PointCloudExtraction,
 } from '@ifc-lite/ifcx';
 
 // New extractors with 100% schema coverage
@@ -104,7 +105,7 @@ export {
 
 export * from './types.js';
 export * from './style-extractor.js';
-export { getAttributeNames, getAttributeNameAt, isKnownType } from './ifc-schema.js';
+export { getAttributeNames, getAttributeNameAt, isKnownType, normalizeIfcTypeName } from './ifc-schema.js';
 
 import type { ParseResult, EntityRef } from './types.js';
 import { decodeIfcString } from '@ifc-lite/encoding';

@@ -4,16 +4,34 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createModelSlice, type ModelSlice } from './modelSlice.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from './modelSlice.js';
 import type { FederatedModel } from '../types.js';
 
-// Helper to create a mock model
+type ModelTestState = ModelSlice & ModelCrossSliceState;
+
+// Typed setter / getter shim that mirrors zustand's StateCreator
+// signature without the broader middleware machinery the test doesn't
+// need. Using StateCreator's exact types here would pull in the whole
+// store; the local aliases below are tight enough for this test.
+type TestSetState = (
+  partial:
+    | Partial<ModelTestState>
+    | ((state: ModelTestState) => Partial<ModelTestState>),
+) => void;
+type TestGetState = () => ModelTestState;
+
+// Helper to create a mock model. `IfcDataStore` and `GeometryResult` are
+// large interfaces that the slice never inspects on these paths — the
+// double-cast through `unknown` is the minimum that satisfies the
+// compiler without an `any`.
 function createMockModel(id: string, name: string): FederatedModel {
   return {
     id,
     name,
-    ifcDataStore: {} as any,
-    geometryResult: {} as any,
+    ifcDataStore: {} as unknown as IfcDataStore,
+    geometryResult: {} as unknown as GeometryResult,
     visible: true,
     collapsed: false,
     schemaVersion: 'IFC4',
@@ -25,11 +43,10 @@ function createMockModel(id: string, name: string): FederatedModel {
 }
 
 describe('ModelSlice', () => {
-  let state: ModelSlice;
-  let setState: (partial: Partial<ModelSlice> | ((state: ModelSlice) => Partial<ModelSlice>)) => void;
+  let state: ModelTestState;
+  let setState: TestSetState;
 
   beforeEach(() => {
-    // Create a mock set function that updates state
     setState = (partial) => {
       if (typeof partial === 'function') {
         const updates = partial(state);
@@ -39,8 +56,17 @@ describe('ModelSlice', () => {
       }
     };
 
-    // Create slice with mock set function
-    state = createModelSlice(setState, () => state, {} as any);
+    const getState: TestGetState = () => state;
+
+    // The slice's StateCreator signature includes a third middleware
+    // argument (store API) that the slice's body never reads. We pass
+    // `undefined` cast to the empty middleware shape rather than `any`.
+    const slice = createModelSlice(
+      setState as Parameters<typeof createModelSlice>[0],
+      getState as Parameters<typeof createModelSlice>[1],
+      undefined as unknown as Parameters<typeof createModelSlice>[2],
+    );
+    state = { ...slice, ifcDataStore: null, geometryResult: null };
   });
 
   describe('initial state', () => {
@@ -268,6 +294,38 @@ describe('ModelSlice', () => {
 
       const visible = state.getAllVisibleModels();
       assert.strictEqual(visible.length, 0);
+    });
+  });
+
+  describe('resolveGlobalIdFromModels — overlay-allocated ids', () => {
+    it('falls through to mutation views when the id is past maxExpressId', () => {
+      const model = createMockModel('model-1', 'First');
+      model.idOffset = 0;
+      model.maxExpressId = 10_000;
+      state.addModel(model);
+
+      // Seed a fake mutation view with a fresh overlay entity. The
+      // resolver only reads `getNewEntity` from each view, so we type
+      // the map narrowly and let it satisfy the slice's wider type via
+      // a single-property cast on the wrapping state object.
+      type StubView = { getNewEntity: (id: number) => { expressId: number } | null };
+      const stubViews: Map<string, StubView> = new Map([
+        ['model-1', { getNewEntity: (id: number) => (id === 11_001 ? { expressId: id } : null) }],
+      ]);
+      state = { ...state, mutationViews: stubViews } as typeof state & { mutationViews: Map<string, StubView> };
+
+      // Inside the parsed range — first pass resolves it.
+      const within = state.resolveGlobalIdFromModels(42);
+      assert.deepStrictEqual(within, { modelId: 'model-1', expressId: 42 });
+
+      // Above the parsed range but in the overlay — second pass resolves it.
+      const overlay = state.resolveGlobalIdFromModels(11_001);
+      assert.deepStrictEqual(overlay, { modelId: 'model-1', expressId: 11_001 });
+
+      // Above the parsed range and NOT in the overlay — returns null
+      // so callers can fall back to the legacy single-model path.
+      const phantom = state.resolveGlobalIdFromModels(99_999);
+      assert.strictEqual(phantom, null);
     });
   });
 });

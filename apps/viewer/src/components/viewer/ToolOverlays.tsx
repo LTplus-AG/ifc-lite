@@ -9,6 +9,7 @@
 import { useViewerStore } from '@/store';
 import { MeasureOverlay } from './tools/MeasurePanel';
 import { SectionOverlay } from './tools/SectionPanel';
+import { AddElementOverlay } from './tools/AddElementOverlay';
 
 export function ToolOverlays() {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -19,6 +20,10 @@ export function ToolOverlays() {
 
   if (activeTool === 'section') {
     return <SectionOverlay />;
+  }
+
+  if (activeTool === 'addElement') {
+    return <AddElementOverlay />;
   }
 
   return null;

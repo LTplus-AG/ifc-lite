@@ -90,7 +90,10 @@ export interface DataModel {
 export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   // Initialize WASM module (only runs once)
   const parquet = await ensureParquetInit();
-  const arrow = await import('apache-arrow');
+  // apache-arrow's browser export map hides the `.d.ts` from TS5's
+  // strict resolver — fall back to `any` for the dynamic import.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const arrow: any = await import('apache-arrow');
 
   const view = new DataView(data);
   let offset = 0;

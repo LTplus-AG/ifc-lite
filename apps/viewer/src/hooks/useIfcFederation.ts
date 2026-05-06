@@ -33,6 +33,12 @@ import {
   parseIfcxViewerModel,
   parseStepBufferViewerModel,
 } from './ingest/viewerModelIngest.js';
+import {
+  detectPointCloudFormat,
+  ingestPointCloud,
+  type PointCloudFormat,
+} from './ingest/pointCloudIngest.js';
+import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
 import { getEffectiveGeoreference, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
 
@@ -439,14 +445,53 @@ export function useIfcFederation() {
         : await file.arrayBuffer();
       const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
+      // Detect point cloud formats first — we never run them through
+      // detectFormat() (which is IFC-shaped) because they have their own
+      // streaming pipeline that bypasses geometryResult.meshes.
+      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
+
       // Detect file format
-      const format = detectFormat(buffer);
+      const format: ReturnType<typeof detectFormat> | PointCloudFormat =
+        pointCloudFormat ?? detectFormat(buffer);
 
       let parsedDataStore: IfcDataStore | null = null;
       let parsedGeometry: FederatedModel['geometryResult'] = null;
       let schemaVersion: SchemaVersion = 'IFC4';
+      // Renderer handle for streamed point clouds; surviving model lifecycle
+      // depends on persisting it onto the FederatedModel record.
+      let pointCloudHandleId: number | undefined;
 
-      if (format === 'ifcx') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
+        const renderer = getGlobalRenderer();
+        if (!renderer) {
+          setError('Renderer not initialised — try again after the viewer mounts.');
+          setLoading(false);
+          return null;
+        }
+        setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
+        const blob = isNativeFileHandle(file)
+          ? new Blob([buffer])
+          : (file as File);
+        const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
+        const ingest = ingestPointCloud({
+          format,
+          blob,
+          fileName: file.name,
+          buffer,
+          renderer,
+          onProgress: setProgress,
+          onAssetCountDelta: incCount,
+        });
+        // ingest.done rejects on stream errors; ingestPointCloud's onError
+        // callback already calls removePointCloudAsset + incCount(-1), so
+        // the outer catch must NOT repeat that cleanup or the count goes
+        // negative when other point clouds are still loaded.
+        await ingest.done;
+        parsedDataStore = ingest.dataStore;
+        parsedGeometry = ingest.geometryResult;
+        schemaVersion = ingest.schemaVersion;
+        pointCloudHandleId = ingest.rendererHandle.id;
+      } else if (format === 'ifcx') {
         setProgress({ phase: 'Parsing IFCX (client-side)', percent: 10 });
         try {
           const result = await parseIfcxViewerModel(buffer, setProgress);
@@ -541,6 +586,29 @@ export function useIfcFederation() {
         for (const mesh of parsedGeometry.meshes) {
           mesh.expressId = mesh.expressId + idOffset;
         }
+        // Point clouds need the same offset so picking / isolation /
+        // property lookup resolve through the FederationRegistry's
+        // global ID space — otherwise two pointcloud models with the
+        // same local expressId collide.
+        for (const asset of parsedGeometry.pointClouds ?? []) {
+          asset.expressId = asset.expressId + idOffset;
+        }
+      }
+      // Streamed point cloud: the GPU asset was opened with a synthetic
+      // local expressId. After registerModelOffset() hands us an
+      // idOffset, the renderer needs to emit the post-offset globalId
+      // in picking + selection outputs — otherwise picks resolve to
+      // the local id and collide across federated models. The shader
+      // reads expressId from a per-asset uniform (`flags.x`) so this
+      // is just a metadata update; no GPU buffer rewrite.
+      if (idOffset > 0 && pointCloudHandleId !== undefined) {
+        const renderer = getGlobalRenderer();
+        if (renderer && parsedGeometry.pointClouds && parsedGeometry.pointClouds.length > 0) {
+          // Use the asset that's already had idOffset folded in above
+          // as the source of truth for the global id.
+          const asset = parsedGeometry.pointClouds[0];
+          renderer.relabelPointCloudAsset({ id: pointCloudHandleId }, asset.expressId);
+        }
       }
 
       // =========================================================================
@@ -567,6 +635,7 @@ export function useIfcFederation() {
         sourceFile: file,
         idOffset,
         maxExpressId,
+        pointCloudHandleId,
       };
 
       // Add to store

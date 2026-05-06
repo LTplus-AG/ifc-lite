@@ -33,7 +33,8 @@ import { getNativeEntityDetails } from '@/services/desktop-native-metadata';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
+import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 
@@ -50,6 +51,7 @@ import { RelationshipsCard } from './properties/RelationshipsCard';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
+import { RawStepCard } from './properties/RawStepCard';
 
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean };
 type DisplayPropertySet = {
@@ -58,6 +60,41 @@ type DisplayPropertySet = {
   isNewPset: boolean;
   source?: PropertySet['source'];
 };
+
+/**
+ * Synthesize an attribute list from a NewEntity record so the panel's
+ * attributes section renders for overlay-only duplicates / scripted
+ * adds. Positional indices are mapped to schema names; everything past
+ * the schema's defined slots is dropped (no "Arg 9" rows in the bSDD
+ * panel).
+ */
+function attributesFromOverlayEntity(entity: NewEntity): Array<{ name: string; value: string }> {
+  const names = getAttributeNames(entity.type) ?? [];
+  if (names.length === 0) return [];
+  const out: Array<{ name: string; value: string }> = [];
+  // Stop at the smaller of the schema and the actual attributes — IFC
+  // entities can be partially populated (trailing optionals omitted).
+  const len = Math.min(names.length, entity.attributes.length);
+  for (let i = 0; i < len; i++) {
+    const value = entity.attributes[i];
+    let display: string;
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'string') {
+      if (value === '$' || value.length === 0) continue;
+      display = value;
+    } else if (typeof value === 'number') {
+      display = String(value);
+    } else if (typeof value === 'boolean') {
+      display = value ? 'true' : 'false';
+    } else {
+      // Lists / typed values — skip the bSDD attributes panel; users
+      // can still see them on the Raw STEP tab.
+      continue;
+    }
+    out.push({ name: names[i], value: display });
+  }
+  return out;
+}
 
 function mergePropertySetLists(base: DisplayPropertySet[], incoming: DisplayPropertySet[]): DisplayPropertySet[] {
   const merged = base.map(pset => ({
@@ -366,6 +403,32 @@ export function PropertiesPanel() {
     return modelQuery.entity(originalExpressId);
   }, [selectedEntity, modelQuery]);
 
+  // Overlay-only entity record (duplicates, scripted adds). Carries
+  // the type + positional attributes the StoreEditor recorded — used
+  // as a fallback when the parsed entityNode comes up empty so the
+  // panel doesn't render `UNKNOWN / Unknown` for fresh entities.
+  const overlayEntity = useMemo(() => {
+    let modelId = selectedEntity?.modelId;
+    if (modelId === 'legacy') modelId = '__legacy__';
+    const expressId = selectedEntity?.expressId;
+    if (!modelId || !expressId) return null;
+    const view = mutationViews.get(modelId);
+    return view?.getNewEntity(expressId) ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEntity, mutationViews, mutationVersion]);
+
+  /**
+   * Read a positional attribute from the overlay entity record as a
+   * display string. Returns null when the entity isn't overlay-only
+   * or the slot is empty / not stringy.
+   */
+  const overlayAttr = useCallback((index: number): string | null => {
+    if (!overlayEntity) return null;
+    const value = overlayEntity.attributes[index];
+    if (typeof value === 'string' && value.length > 0 && value !== '$') return value;
+    return null;
+  }, [overlayEntity]);
+
   // Check if the selected entity is a type entity (IfcWallType, etc.)
   // Uses the entity type name to detect — type entity names end with "Type"
   const isTypeEntity = useMemo(() => {
@@ -485,7 +548,14 @@ export function PropertiesPanel() {
   // Merges mutated attributes (from bSDD) into the base attribute list.
   // Note: GlobalId is intentionally excluded since it's shown in the dedicated GUID field above
   const attributes = useMemo(() => {
-    const base = entityNode ? entityNode.allAttributes() : [];
+    const base = entityNode
+      ? entityNode.allAttributes()
+      // Overlay-only entity (duplicate / scripted add) — synthesize the
+      // attribute list from the NewEntity record using the schema's
+      // positional names so the panel still shows Name/Description/etc.
+      : overlayEntity
+        ? attributesFromOverlayEntity(overlayEntity)
+        : [];
 
     // Merge mutated attributes from bSDD
     let modelId = selectedEntity?.modelId;
@@ -512,41 +582,57 @@ export function PropertiesPanel() {
     }
 
     return base;
-  }, [entityNode, selectedEntity, mutationViews, mutationVersion]);
+  }, [entityNode, overlayEntity, selectedEntity, mutationViews, mutationVersion]);
+
+  // Resolve the entity id used for parsed-store lookups. For overlay
+  // duplicates this is the source entity (via the view's alias) — so
+  // materials / classifications / documents / structural rels appear
+  // on the duplicate exactly as they do on the source. Without the
+  // alias resolution the parsed maps would return empty for the
+  // overlay-only id.
+  const lookupExpressId = useMemo(() => {
+    const expressId = selectedEntity?.expressId;
+    if (!expressId) return null;
+    let modelId = selectedEntity?.modelId;
+    if (modelId === 'legacy') modelId = '__legacy__';
+    const view = modelId ? mutationViews.get(modelId) : null;
+    return view?.resolveBaseEntityId(expressId) ?? expressId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEntity, mutationViews, mutationVersion]);
 
   // Extract classifications for the selected entity from the IFC data store
   const classifications = useMemo(() => {
-    if (!selectedEntity) return [];
+    if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractClassificationsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract materials for the selected entity from the IFC data store
   const materialInfo = useMemo(() => {
-    if (!selectedEntity) return null;
+    if (!selectedEntity || lookupExpressId === null) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    return extractMaterialsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract documents for the selected entity from the IFC data store
   const documents = useMemo(() => {
-    if (!selectedEntity) return [];
+    if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractDocumentsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractDocumentsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract structural relationships (openings, fills, groups, connections)
   const entityRelationships = useMemo(() => {
-    if (!selectedEntity) return null;
+    if (!selectedEntity || lookupExpressId === null) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    const rels = extractRelationshipsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
+    const rels = extractRelationshipsOnDemand(dataStore as IfcDataStore, lookupExpressId);
     const totalCount = rels.voids.length + rels.fills.length + rels.groups.length + rels.connections.length;
     return totalCount > 0 ? rels : null;
-  }, [selectedEntity, model, ifcDataStore]);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // 4D schedule — both parsed-from-IFC and locally-generated schedules live in
   // the schedule slice. ScheduleCard renders nothing when no task in the
@@ -874,15 +960,19 @@ export function PropertiesPanel() {
 
   const renderedEntityType = isNativeLazySelection
     ? (nativeDetails?.summary.type ?? 'Loading...')
-    : (entityNode?.type ?? 'Unknown');
+    : (entityNode?.type ?? overlayEntity?.type ?? 'Unknown');
   const renderedEntityName = isNativeLazySelection
     ? (nativeDetails?.summary.name ?? `#${selectedEntity?.expressId ?? ''}`)
-    : entityNode?.name;
+    : (entityNode?.name ?? overlayAttr(2) ?? undefined);
   const renderedEntityGlobalId = isNativeLazySelection
     ? (nativeDetails?.summary.globalId ?? null)
-    : entityNode?.globalId;
-  const renderedEntityDescription = isNativeLazySelection ? undefined : entityNode?.description;
-  const renderedEntityObjectType = isNativeLazySelection ? undefined : entityNode?.objectType;
+    : (entityNode?.globalId ?? overlayAttr(0));
+  const renderedEntityDescription = isNativeLazySelection
+    ? undefined
+    : (entityNode?.description ?? overlayAttr(3) ?? undefined);
+  const renderedEntityObjectType = isNativeLazySelection
+    ? undefined
+    : (entityNode?.objectType ?? overlayAttr(4) ?? undefined);
   const renderedSpatialInfo = isNativeLazySelection ? nativeSpatialInfo : spatialInfo;
   const renderedOccurrenceProperties = isNativeLazySelection ? nativeOccurrenceProperties : occurrenceProperties;
   const renderedInheritedTypeProperties = isNativeLazySelection ? [] : inheritedTypeProperties;
@@ -955,7 +1045,12 @@ export function PropertiesPanel() {
     );
   }
 
-  if (!selectedEntityId || (!isNativeLazySelection && (!modelQuery || !entityNode))) {
+  // Newly-created/duplicated entities live only in the mutation overlay,
+  // so the synthesized attributes + Raw STEP tab fall back to
+  // `overlayEntity` when `entityNode` is empty. Without including
+  // `overlayEntity` here the panel collapses to the model-metadata
+  // view the moment a fresh add lands.
+  if (!selectedEntityId || (!isNativeLazySelection && (!modelQuery || (!entityNode && !overlayEntity)))) {
     // Show model metadata when a single model is loaded and nothing selected.
     // Handles both federated models (models.size >= 1) and legacy single-model path (models.size === 0).
     if (models.size === 1) {
@@ -1311,6 +1406,18 @@ export function PropertiesPanel() {
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">bSDD</span>
           </TabsTrigger>
+          <TabsTrigger
+            value="raw-step"
+            title="Raw STEP — developer view of positional arguments"
+            className="properties-tab-trigger raw-step-tab-trigger shrink-0 grow-0 px-2 font-mono"
+          >
+            {/* Bracket glyphs read as "code" without an icon dependency,
+                stay readable at 9px, and free up width for the three
+                primary tabs to keep their text visible at the default
+                panel size. */}
+            <span aria-hidden className="text-[10px] leading-none tracking-tight">&lt;/&gt;</span>
+            <span className="sr-only">Raw STEP</span>
+          </TabsTrigger>
         </TabsList>
 
         <ScrollArea className="flex-1 bg-white dark:bg-black">
@@ -1480,6 +1587,24 @@ export function PropertiesPanel() {
                 existingQuants={renderedExistingQuants}
                 existingAttributes={renderedExistingAttributeNames}
               />
+            )}
+          </TabsContent>
+
+          <TabsContent value="raw-step" className="m-0 p-3 overflow-hidden">
+            {selectedEntity && !isNativeLazySelection ? (
+              <RawStepCard
+                modelId={selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId}
+                entityId={selectedEntity.expressId}
+                entityType={entityType}
+                dataStore={activeDataStore ?? null}
+                enableEditing={editMode}
+              />
+            ) : (
+              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">
+                {isNativeLazySelection
+                  ? 'Raw STEP is not available for native-metadata selections'
+                  : 'Select an entity to inspect raw STEP arguments'}
+              </p>
             )}
           </TabsContent>
         </ScrollArea>

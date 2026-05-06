@@ -67,34 +67,27 @@ export function ListPanel({ onClose }: ListPanelProps) {
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Collect all available data providers for multi-model support
-  const allProviders = useMemo(() => {
-    const providers: ListDataProvider[] = [];
-    if (models.size > 0) {
-      for (const [, model] of models) {
-        providers.push(createListDataProvider(model.ifcDataStore));
-      }
-    } else if (ifcDataStore) {
-      providers.push(createListDataProvider(ifcDataStore));
-    }
-    return providers;
-  }, [models, ifcDataStore]);
-
-  const hasData = allProviders.length > 0;
-
-  // Build a stable map of modelId → provider index for execution
+  // Build the {modelId, provider} pairs in a single pass so the two
+  // arrays can never drift out of alignment (skipping a model without
+  // an ifcDataStore must not shift every later model's provider index).
   const modelProviderPairs = useMemo(() => {
     const pairs: Array<{ modelId: string; provider: ListDataProvider }> = [];
     if (models.size > 0) {
-      let i = 0;
-      for (const [modelId] of models) {
-        pairs.push({ modelId, provider: allProviders[i++] });
+      for (const [modelId, model] of models) {
+        // Skip native-metadata models — they don't have a parsed
+        // IfcDataStore, so the list provider can't query them.
+        if (!model.ifcDataStore) continue;
+        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore) });
       }
-    } else if (allProviders.length > 0) {
-      pairs.push({ modelId: 'default', provider: allProviders[0] });
+    } else if (ifcDataStore) {
+      pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore) });
     }
     return pairs;
-  }, [models, allProviders]);
+  }, [models, ifcDataStore]);
+
+  const allProviders = useMemo(() => modelProviderPairs.map((p) => p.provider), [modelProviderPairs]);
+
+  const hasData = allProviders.length > 0;
 
   const handleExecuteList = useCallback((definition: ListDefinition) => {
     if (!hasData) return;

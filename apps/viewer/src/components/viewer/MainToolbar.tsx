@@ -10,6 +10,7 @@ import {
   PersonStanding,
   Ruler,
   Scissors,
+  MapPin,
   Eye,
   EyeOff,
   Equal,
@@ -23,6 +24,7 @@ import {
   ArrowRight,
   Box,
   HelpCircle,
+  Sparkles,
   Loader2,
   Camera,
   Info,
@@ -86,7 +88,7 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-type Tool = 'select' | 'walk' | 'measure' | 'section';
+type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | string;
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
@@ -102,21 +104,39 @@ interface ToolButtonProps {
   shortcut?: string;
   activeTool: string;
   onToolChange: (tool: Tool) => void;
+  /**
+   * Tailwind classes applied when this tool is active. Defaults to the
+   * shared `bg-primary text-primary-foreground` shape; pass a per-tool
+   * accent (e.g. amber for Annotate) to set tools apart visually
+   * without breaking the toolbar's tool-button rhythm.
+   */
+  activeAccentClass?: string;
 }
 
-function ToolButton({ tool, icon: Icon, label, shortcut, activeTool, onToolChange }: ToolButtonProps) {
+function ToolButton({
+  tool,
+  icon: Icon,
+  label,
+  shortcut,
+  activeTool,
+  onToolChange,
+  activeAccentClass,
+}: ToolButtonProps) {
+  const isActive = activeTool === tool;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant={activeTool === tool ? 'default' : 'ghost'}
+          variant={isActive ? 'default' : 'ghost'}
           size="icon-sm"
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
             onToolChange(tool);
           }}
-          className={cn(activeTool === tool && 'bg-primary text-primary-foreground')}
+          className={cn(
+            isActive && (activeAccentClass ?? 'bg-primary text-primary-foreground'),
+          )}
         >
           <Icon className="h-4 w-4" />
         </Button>
@@ -406,6 +426,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57')
     );
 
     if (supportedFiles.length === 0) return;
@@ -446,6 +467,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57')
     );
 
     if (supportedFiles.length === 0) return;
@@ -760,7 +782,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         id="file-input-open"
         ref={fileInputRef}
         type="file"
-        accept=".ifc,.ifcx,.glb"
+        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57"
         multiple
         onChange={handleFileSelect}
         className="hidden"
@@ -768,7 +790,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <input
         ref={addModelInputRef}
         type="file"
-        accept=".ifc,.ifcx,.glb"
+        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57"
         multiple
         onChange={handleAddModelSelect}
         className="hidden"
@@ -1051,6 +1073,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       {/* ── Measurement & Section ── */}
       <ToolButton tool="measure" icon={Ruler} label="Measure" shortcut="M" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton tool="section" icon={Scissors} label="Section" shortcut="X" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton
+        tool="annotate"
+        icon={MapPin}
+        label="Annotate"
+        shortcut="P"
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
+        activeAccentClass="bg-amber-500 text-white hover:bg-amber-500/90"
+      />
 
       {/* Floorplan dropdown */}
       {availableStoreys.length > 0 && (
@@ -1303,6 +1334,24 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       {/* Right Side Actions */}
       <div className="flex items-center gap-2 ml-2 pl-2 border-l border-zinc-200 dark:border-zinc-700/60">
+        {/* /mcp cross-link — lives in the meta cluster (Settings / Theme /
+            Help) so it shares space with shell-level navigation rather
+            than competing with the modeling tools to its left. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full"
+              onClick={() => navigateToPath('/mcp')}
+              aria-label="Open ifc-lite MCP"
+            >
+              <Sparkles className="!h-[20px] !w-[20px]" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Drive ifc-lite from any LLM (MCP)</TooltipContent>
+        </Tooltip>
+
         {desktopShell ? (
           <Tooltip>
             <TooltipTrigger asChild>

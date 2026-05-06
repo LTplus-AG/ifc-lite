@@ -25,6 +25,24 @@
  */
 
 // ============================================================================
+// Schema-aware normalizer wiring
+// ============================================================================
+// The mutations package can't import the parser registry (cycle), so it
+// only enforces a regex shape on `addEntity()` types. By registering
+// the parser's registry helpers at SDK load time we promote that to
+// a full schema-registry check — typos like `IfcWal` get rejected,
+// and callers see canonical PascalCase on `EntityRef.type`.
+import { normalizeIfcTypeName, isKnownType } from '@ifc-lite/parser';
+import { setEntityTypeNormalizer } from '@ifc-lite/mutations';
+setEntityTypeNormalizer((type) => {
+  // Reject anything the schema registry doesn't know about. Vendor
+  // extensions are intentionally not allowed via this path — scripts
+  // should consume the raw-attribute API for those.
+  if (!isKnownType(type)) return '';
+  return normalizeIfcTypeName(type);
+});
+
+// ============================================================================
 // Core
 // ============================================================================
 
@@ -98,6 +116,25 @@ export type {
   VisibilityBackendMethods,
   ViewerBackendMethods,
   MutateBackendMethods,
+  StoreBackendMethods,
+  AddColumnInStoreParams,
+  AddWallInStoreParams,
+  AddSlabInStoreParams,
+  AddSlabRectangleParams,
+  AddSlabPolygonParams,
+  AddBeamInStoreParams,
+  AddDoorInStoreParams,
+  AddWindowInStoreParams,
+  AddSpaceInStoreParams,
+  AddSpaceRectangleParams,
+  AddSpacePolygonParams,
+  AddRoofInStoreParams,
+  AddRoofRectangleParams,
+  AddRoofPolygonParams,
+  AddPlateInStoreParams,
+  AddPlateRectangleParams,
+  AddPlatePolygonParams,
+  AddMemberInStoreParams,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
@@ -124,6 +161,7 @@ export { QueryBuilder, QueryNamespace } from './namespaces/query.js';
 export { ModelNamespace } from './namespaces/model.js';
 export { ViewerNamespace } from './namespaces/viewer.js';
 export { MutateNamespace } from './namespaces/mutate.js';
+export { StoreNamespace } from './namespaces/store.js';
 export { LensNamespace } from './namespaces/lens.js';
 export { ExportNamespace } from './namespaces/export.js';
 export type { ExportCsvOptions, ExportGltfOptions, ExportStepOptions } from './namespaces/export.js';
@@ -151,7 +189,7 @@ export { FilesNamespace } from './namespaces/files.js';
 export { ScheduleNamespace } from './namespaces/schedule.js';
 
 // bSDD — buildingSMART Data Dictionary property/classification lookup
-export { BsddNamespace } from './namespaces/bsdd.js';
+export { BsddNamespace, BsddHttpError } from './namespaces/bsdd.js';
 export type { BsddClassInfo, BsddClassProperty, BsddSearchResult, BsddOptions } from './namespaces/bsdd.js';
 
 // Sandbox — secure script execution in QuickJS-WASM

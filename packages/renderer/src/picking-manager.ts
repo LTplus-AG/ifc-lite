@@ -9,9 +9,19 @@
 
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
-import { Picker } from './picker.js';
+import { Picker, type PointPickSizing } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions, PickResult } from './types.js';
+import type { PointPickNode } from './point-picker.js';
+
+/**
+ * Supplied by the renderer when point clouds are loaded — returns the
+ * snapshot of pickable nodes and the sizing to use for the splat picker.
+ * Returning empty / null disables point-pick for this frame.
+ */
+export type PointPickProvider = () =>
+  | { nodes: ReadonlyArray<PointPickNode>; sizing: PointPickSizing }
+  | null;
 
 export class PickingManager {
     private camera: Camera;
@@ -19,6 +29,7 @@ export class PickingManager {
     private picker: Picker | null;
     private canvas: HTMLCanvasElement;
     private createMeshFromDataFn: (meshData: MeshData) => void;
+    private pointPickProvider: PointPickProvider | null = null;
 
     constructor(
         camera: Camera,
@@ -32,6 +43,11 @@ export class PickingManager {
         this.picker = picker;
         this.canvas = canvas;
         this.createMeshFromDataFn = createMeshFromDataFn;
+    }
+
+    /** Renderer wires this on init so the manager can fetch point nodes lazily. */
+    setPointPickProvider(provider: PointPickProvider | null): void {
+        this.pointPickProvider = provider;
     }
 
     /**
@@ -182,7 +198,23 @@ export class PickingManager {
         }
 
         const viewProj = this.camera.getViewProjMatrix().m;
-        const result = await this.picker.pick(scaledX, scaledY, this.canvas.width, this.canvas.height, meshes, viewProj);
+        const pointSnap = this.pointPickProvider?.() ?? null;
+        // Skip point picking when isolation excludes everything to keep
+        // existing visibility semantics (caller already filtered meshes
+        // accordingly; we don't filter point nodes here because per-asset
+        // visibility is binary and assets are tiny in count).
+        const pointNodes = pointSnap?.nodes ?? undefined;
+        const pointSizing = pointSnap?.sizing ?? undefined;
+        const result = await this.picker.pick(
+            scaledX,
+            scaledY,
+            this.canvas.width,
+            this.canvas.height,
+            meshes,
+            viewProj,
+            pointNodes,
+            pointSizing,
+        );
         return result;
     }
 }

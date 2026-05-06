@@ -428,9 +428,39 @@ export class Camera {
         this.state.camera.far
       );
     } else {
-      // Perspective: adapt near/far based on camera-to-target distance
-      this.state.camera.near = Math.max(0.01, distance * 0.001);
-      this.state.camera.far = Math.max(distance * 10, 1000);
+      // Perspective: derive near/far from the actual scene-bounds distance
+      // when known. The legacy `distance * (0.001..10)` heuristic produces a
+      // far/near ratio ≈ 10000 which collapses depth precision to zero for
+      // large or far-from-origin scenes (georeferenced IFCs at survey
+      // coordinates), making every fragment fail the reverse-Z test.
+      // Bounds-based near/far stays tight regardless of camera distance.
+      let near = Math.max(0.01, distance * 0.001);
+      let far = Math.max(distance * 10, 1000);
+      const b = this.state.sceneBounds;
+      if (b) {
+        const cx = this.state.camera.position.x;
+        const cy = this.state.camera.position.y;
+        const cz = this.state.camera.position.z;
+        let minD = Infinity;
+        let maxD = 0;
+        for (let i = 0; i < 8; i++) {
+          const x = (i & 1) ? b.max.x : b.min.x;
+          const y = (i & 2) ? b.max.y : b.min.y;
+          const z = (i & 4) ? b.max.z : b.min.z;
+          const dx = x - cx;
+          const dy = y - cy;
+          const dz = z - cz;
+          const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (d < minD) minD = d;
+          if (d > maxD) maxD = d;
+        }
+        // 10% padding on each side, clamp near above 1 µm so reverse-Z math
+        // stays stable even if the camera ends up inside bounds.
+        near = Math.max(0.01, minD * 0.9);
+        far = Math.max(near * 2, maxD * 1.1);
+      }
+      this.state.camera.near = near;
+      this.state.camera.far = far;
       this.state.projMatrix = MathUtils.perspectiveReverseZ(
         this.state.camera.fov,
         this.state.camera.aspect,

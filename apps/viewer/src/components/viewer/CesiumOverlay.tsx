@@ -252,11 +252,26 @@ export function CesiumOverlay({
   // Use refs so the camera sync loop always reads the latest values
   const terrainClampRef = useRef(terrainClamp);
   const terrainHeightRef = useRef(terrainHeight);
+  const coordinateInfoRef = useRef(coordinateInfo);
   terrainClampRef.current = terrainClamp;
   terrainHeightRef.current = terrainHeight;
+  coordinateInfoRef.current = coordinateInfo;
 
   // Track whether we've auto-clamped to terrain (only once, so user can still uncheck)
   const autoClampedRef = useRef(false);
+
+  // The world altitude where the model frame currently sits (in metres). When
+  // this changes — user edits OrthogonalHeight, terrain clamp toggles, terrain
+  // tile loads with a new height — we shift the IFC viewer's camera Y by the
+  // inverse so the user's world camera position stays put. Without this, every
+  // model-placement edit also translates the camera (because viewerToEcef and
+  // modelMatrix share the same origin altitude), which is what makes editing
+  // OrthogonalHeight feel like it's "moving the camera, not the model."
+  const prevPlacementRef = useRef<number | null>(null);
+  // Track that we've performed the initial above-ground lift so we don't fight
+  // the user's camera once they're navigating.
+  const initialLiftDoneRef = useRef(false);
+  const terrainLiftDoneRef = useRef(false);
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; destroy?: () => void } | null>(null);
@@ -400,6 +415,9 @@ export function CesiumOverlay({
   useEffect(() => {
     if (status !== 'ready' || !mapConversion || !projectedCRS) {
       bridgeRef.current = null;
+      prevPlacementRef.current = null;
+      initialLiftDoneRef.current = false;
+      terrainLiftDoneRef.current = false;
       return;
     }
 
@@ -510,6 +528,86 @@ export function CesiumOverlay({
 
     return () => { cancelled = true; clearTimeout(retryTimer); };
   }, [status, terrainEnabled, terrainClamp, bridgeVersion]);
+
+  // ─── Effect 2bb: Anchor the IFC camera to the world ───────────────────
+  // Two responsibilities, both rooted in the fact that viewerToEcef and
+  // modelMatrix share the same enuToEcef origin altitude:
+  //
+  // 1. STABILITY — when the model placement altitude changes (user edits
+  //    OrthogonalHeight, terrain clamp toggles, etc.) we shift the IFC
+  //    camera Y by the inverse delta. Without this, editing the model feels
+  //    like it's moving the camera because the entire frame translates.
+  //
+  // 2. ABOVE-GROUND — on first activation (and once when terrain becomes
+  //    known) lift the camera if its world altitude lands at or below the
+  //    surface. Models authored at low elevations or sites in alpine regions
+  //    otherwise leave the user buried, fighting Cesium's near-surface
+  //    controls to climb back out.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const bridge = bridgeRef.current;
+    const renderer = getGlobalRenderer();
+    if (!bridge || !renderer) return;
+
+    const bounds = coordinateInfo?.originalBounds;
+    const mvy = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
+    const minY = bounds?.min.y ?? 0;
+    const placement = (terrainClamp && terrainHeight !== null)
+      ? terrainHeight + (mvy - minY)
+      : bridge.modelOrigin.height;
+
+    const prev = prevPlacementRef.current;
+    prevPlacementRef.current = placement;
+    const cam = renderer.getCamera();
+    const pos = cam.getPosition();
+    const tgt = cam.getTarget();
+    let newY = pos.y;
+    let newTgtY = tgt.y;
+
+    // 1. Stability — compensate placement delta on every change after the
+    //    first observation so the user's world camera position stays fixed.
+    if (prev !== null) {
+      const dh = placement - prev;
+      if (Math.abs(dh) > 1e-6) {
+        newY -= dh;
+        newTgtY -= dh;
+      }
+    }
+
+    // 2. Above-ground lift — at most twice: once on first bridge
+    //    (no terrain yet → guarantee above the model frame), once when
+    //    terrain first becomes known (lift above terrain if still below).
+    //    Only triggers when the user is actually at or below the surface;
+    //    a normal "above ground" view is left alone so we don't fight a
+    //    user who deliberately zoomed close.
+    const isFirstBridge = !initialLiftDoneRef.current;
+    const terrainJustKnown = terrainHeight !== null && !terrainLiftDoneRef.current;
+    if (isFirstBridge || terrainJustKnown) {
+      if (isFirstBridge) initialLiftDoneRef.current = true;
+      if (terrainHeight !== null) terrainLiftDoneRef.current = true;
+
+      const groundFloor = (terrainHeight !== null)
+        ? Math.max(terrainHeight, placement)
+        : placement;
+      const currentWorldAlt = placement + (newY - mvy);
+      if (currentWorldAlt <= groundFloor) {
+        // Lift to a sensible viewing altitude above ground — at least 100 m
+        // or twice the model height, whichever is larger, so the user can
+        // see the model without immediately fighting Cesium's slow
+        // near-surface controls.
+        const modelH = bounds ? bounds.max.y - bounds.min.y : 0;
+        const buffer = Math.max(100, modelH * 2);
+        const lift = (groundFloor + buffer) - currentWorldAlt;
+        newY += lift;
+        newTgtY += lift;
+      }
+    }
+
+    if (newY !== pos.y || newTgtY !== tgt.y) {
+      cam.setPosition(pos.x, newY, pos.z);
+      cam.setTarget(tgt.x, newTgtY, tgt.z);
+    }
+  }, [status, bridgeVersion, terrainClamp, terrainHeight, coordinateInfo]);
 
   // ─── Effect 2c: Load GLB into Cesium (only when geometry changes) ───────
   // This is the heavy operation — only re-runs when geometry actually changes.
@@ -640,8 +738,19 @@ export function CesiumOverlay({
       const camUp = camera.getUp();
       const fov = camera.getFOV();
 
-      // Sync Cesium camera (no terrain offset — model matrix handles clamping)
-      bridge.syncCamera(Cesium, viewer, camPos, camTarget, camUp, fov);
+      // Camera frame must share the model's enuToEcef origin altitude or the
+      // GLB and the camera diverge (model rendered above/below where the IFC
+      // viewer thinks the camera is looking). When terrain clamping moves the
+      // model up to the terrain surface, lift the camera frame the same way.
+      const bounds = coordinateInfoRef.current?.originalBounds;
+      const mvyForClamp = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
+      const minYForClamp = bounds?.min.y ?? 0;
+      let clampOffset = 0;
+      if (terrainClampRef.current && terrainHeightRef.current !== null) {
+        const placement = terrainHeightRef.current + (mvyForClamp - minYForClamp);
+        clampOffset = placement - bridge.modelOrigin.height;
+      }
+      bridge.syncCamera(Cesium, viewer, camPos, camTarget, camUp, fov, clampOffset);
 
       rafRef.current = requestAnimationFrame(syncCamera);
     }

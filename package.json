@@ -25,7 +25,7 @@
     "fixtures:list-missing": "node scripts/fixtures/fetch-fixtures.mjs --list",
     "fixtures:manifest": "node scripts/fixtures/build-manifest.mjs",
     "fixtures:upload": "node scripts/fixtures/upload-fixtures.mjs",
-    "test": "pnpm -r test",
+    "test": "turbo test",
     "test:api": "tsx --test \"tests/api/**/*.test.ts\"",
     "test:regression": "node scripts/test-geometry-regression.mjs",
     "test:esm": "node scripts/verify-esm-entrypoints.mjs",

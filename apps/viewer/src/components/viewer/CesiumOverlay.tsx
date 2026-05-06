@@ -432,34 +432,14 @@ export function CesiumOverlay({
         );
 
         if (isFirstPosition) {
-          // First time: place the camera ABOVE ground/terrain regardless of
-          // where the model itself sits. Without this, models authored at
-          // low elevations (or sites in alpine regions where the terrain is
-          // higher than the model origin) leave the camera buried under the
-          // globe — Cesium's near-surface controls become awkward and the
-          // user has to fight their way out. Try a synchronous terrain
-          // height first (fast path: any loaded tile answers); fall back to
-          // the async retry-aware query, then to 0 (WGS84 ellipsoid).
-          let groundH: number | null = null;
-          try {
-            const cart = Cesium.Cartographic.fromDegrees(
-              modelOrigin.longitude, modelOrigin.latitude,
-            );
-            const sync = viewer.scene.globe.getHeight(cart);
-            if (sync !== undefined && Number.isFinite(sync)) groundH = sync;
-          } catch { /* not available yet */ }
-          if (groundH === null) {
-            try { groundH = await bridge.queryTerrainHeight(Cesium, viewer); }
-            catch { /* keep null */ }
-            if (cancelled) return;
-          }
-
-          const ALTITUDE_ABOVE_GROUND = 500;
-          const placementBase = Math.max(modelOrigin.height, groundH ?? 0);
+          // First time: fly to the model location.
+          // On first load terrain tiles may not be ready, so globe.getHeight
+          // can return undefined. Use flyTo which handles terrain automatically,
+          // targeting a safe altitude above the model origin.
+          const safeHeight = Math.max(modelOrigin.height, 100);
           viewer.camera.flyTo({
             destination: Cesium.Cartesian3.fromDegrees(
-              modelOrigin.longitude, modelOrigin.latitude,
-              placementBase + ALTITUDE_ABOVE_GROUND,
+              modelOrigin.longitude, modelOrigin.latitude, safeHeight + 500,
             ),
             orientation: {
               heading: 0,

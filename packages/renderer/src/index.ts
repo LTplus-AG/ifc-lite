@@ -8,6 +8,20 @@
 
 export { WebGPUDevice } from './device.js';
 export { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
+export {
+    QuantizedRenderPipeline,
+    QUANTIZED_VERTEX_STRIDE,
+    QUANTIZED_MESH_RECORD_SIZE,
+    QUANTIZED_INSTANCE_RECORD_SIZE,
+    INSTANCE_FIELD_OFFSETS,
+    INSTANCE_FLAGS,
+} from './quantized-pipeline.js';
+export type { QuantizedSectionPlane } from './quantized-pipeline.js';
+export {
+    QuantizedSceneBuffers,
+} from './quantized-scene-buffers.js';
+export type { QuantizedSceneSource, MeshDrawInfo } from './quantized-scene-buffers.js';
+export { quantizedShaderSource } from './shaders/quantized.wgsl.js';
 export { Camera } from './camera.js';
 export type { ProjectionMode } from './camera-controls.js';
 export { Scene } from './scene.js';

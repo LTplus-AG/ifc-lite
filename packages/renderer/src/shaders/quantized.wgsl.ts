@@ -154,6 +154,15 @@ struct FragmentOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
+  // ── DEBUG: solid magenta on every passing fragment. If preview shows
+  //    magenta where the model should be, the pipeline reaches the
+  //    swapchain and the issue is shading/lighting/alpha. If preview
+  //    stays grey, draws aren't actually painting pixels at all. ──
+  var debug_out: FragmentOutput;
+  debug_out.color = vec4<f32>(1.0, 0.0, 0.6, 1.0);
+  debug_out.objectIdEncoded = encodeId24(in.expressId);
+  return debug_out;
+
   // Section plane clipping mirrors the main pipeline's bit-packed flags.
   let sectionEnabled = (uniforms.flags.x & 1u) == 1u;
   if (sectionEnabled) {

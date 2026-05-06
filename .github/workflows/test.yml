@@ -61,6 +61,28 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
+      # Cache hit = no network. Cache miss (manifest changed) = one cold pull
+      # from the GitHub Release CDN. Pattern documented in AGENTS.md §9.
+      #
+      # Fetch BEFORE build: @ifc-lite/ifcx's build runs
+      # scripts/verify-dist-hello-wall.mjs which loads
+      # tests/models/ifc5/Hello_Wall_hello-wall.ifcx, so the fixtures must
+      # be on disk by the time `pnpm build` reaches that package.
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: tests/models
+          key: fixtures-${{ hashFiles('tests/models/manifest.json') }}
+
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+
+      - name: Verify fixtures
+        run: pnpm fixtures:check
+
       # Rebuild the wasm bindings from rust/wasm-bindings/ on every run.
       # packages/wasm/pkg/ is committed but goes stale whenever Rust changes
       # ship without a maintainer running scripts/build-wasm.sh first; this
@@ -75,23 +97,6 @@ jobs:
       # "Failed to resolve entry for package".
       - name: Build packages
         run: pnpm build
-
-      # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
-      # Cache hit = no network. Cache miss (manifest changed) = one cold pull
-      # from the GitHub Release CDN. Pattern documented in AGENTS.md §9.
-      - name: Cache test fixtures
-        id: fixtures-cache
-        uses: actions/cache@v4
-        with:
-          path: tests/models
-          key: fixtures-${{ hashFiles('tests/models/manifest.json') }}
-
-      - name: Fetch fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: pnpm fixtures
-
-      - name: Verify fixtures
-        run: pnpm fixtures:check
 
       - name: Typecheck
         run: pnpm typecheck

@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain } from 'lucide-react';
+import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain, AlertTriangle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
@@ -16,7 +16,7 @@ import { useViewerStore } from '@/store';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { LocationMap, type PickedPosition } from './LocationMap';
-import { mergeMapConversion, mergeProjectedCRS } from '@/lib/geo/effective-georef';
+import { detectScaleUnitMismatch, mergeMapConversion, mergeProjectedCRS } from '@/lib/geo/effective-georef';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 
@@ -361,6 +361,15 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return computeAngleToGridNorth(mergedConversion?.xAxisAbscissa, mergedConversion?.xAxisOrdinate);
   }, [mergedConversion]);
 
+  const scaleMismatch = useMemo(() => {
+    if (!mergedConversion) return null;
+    return detectScaleUnitMismatch(
+      mergedConversion.scale,
+      mergedCRS?.mapUnitScale,
+      lengthUnitScale,
+    );
+  }, [mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale]);
+
   const mapUnitSuffix = useMemo(() => {
     const mapUnit = mergedCRS?.mapUnit?.toUpperCase();
     if (!mapUnit) return 'm';
@@ -664,6 +673,20 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               <GeorefRow label="XAxisOrdinate" value={mergedConversion.xAxisOrdinate} isNumber editable={editable} isMutated={isMutated('mapConversion', 'xAxisOrdinate')} fieldEntity="mapConversion" fieldName="xAxisOrdinate" onSave={v => handleSave('mapConversion', 'xAxisOrdinate', v)} />
               <AngleRow angle={angleToGridNorth} editable={editable} onAngleChange={handleAngleChange} />
               <GeorefRow label="Scale" value={mergedConversion.scale} isNumber editable={editable} isMutated={isMutated('mapConversion', 'scale')} fieldEntity="mapConversion" fieldName="scale" onSave={v => handleSave('mapConversion', 'scale', v)} />
+              {scaleMismatch && (
+                <div className="px-3 py-2 flex items-start gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20">
+                  <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span className="leading-snug">
+                    <strong>Scale inconsistent with project/map units.</strong>{' '}
+                    Per IFC schema, IfcMapConversion.Scale should bridge the unit
+                    difference between the project length unit and map CRS unit.
+                    Current Scale = {scaleMismatch.rawScale}; expected ≈{' '}
+                    {scaleMismatch.expectedScale.toPrecision(4)}. Geometry is
+                    being placed at {scaleMismatch.effectiveScale.toPrecision(4)}×
+                    its physical size — adjust Scale (or MapUnit) to fix.
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

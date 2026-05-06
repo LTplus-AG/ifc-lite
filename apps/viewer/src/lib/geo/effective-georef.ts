@@ -60,6 +60,52 @@ export function getEffectiveHorizontalScale(
   return (scale * mus) / lus;
 }
 
+export interface ScaleUnitMismatch {
+  /** Effective horizontal scale applied to viewer-space (metre) geometry. */
+  effectiveScale: number;
+  /** Raw IfcMapConversion.Scale (or 1 if absent). */
+  rawScale: number;
+  /** Map unit → metres factor (e.g. 1 for METRE, 0.001 for MILLIMETRE). */
+  mapUnitScale: number;
+  /** Project length unit → metres factor. */
+  lengthUnitScale: number;
+  /**
+   * Scale value the file would need for the IFC formula to map local→map
+   * coordinates without any extra scaling (i.e. lengthUnitScale / mapUnitScale).
+   */
+  expectedScale: number;
+}
+
+/**
+ * Detect when IfcMapConversion.Scale is inconsistent with the project and map
+ * units. Per the IFC schema, Scale × mapUnitScale should equal lengthUnitScale
+ * (i.e. effectiveScale = 1.0). A deviation usually means the authoring tool
+ * forgot to set Scale to bridge a unit difference (e.g. mm project + m map
+ * with Scale=1.0). Files like this render at the wrong size in any tool that
+ * follows the schema strictly — see issue #595.
+ *
+ * Returns null when the values are consistent (within 0.5% of 1.0); otherwise
+ * returns the diagnostic data so callers can surface a warning.
+ */
+export function detectScaleUnitMismatch(
+  ifcMapConversionScale: number | undefined,
+  mapUnitScale: number | undefined,
+  lengthUnitScale: number | undefined,
+): ScaleUnitMismatch | null {
+  const lus = lengthUnitScale && lengthUnitScale > 0 ? lengthUnitScale : 1;
+  const mus = mapUnitScale && mapUnitScale > 0 ? mapUnitScale : 1;
+  const rawScale = ifcMapConversionScale ?? 1.0;
+  const effectiveScale = (rawScale * mus) / lus;
+  if (Math.abs(effectiveScale - 1) <= 0.005) return null;
+  return {
+    effectiveScale,
+    rawScale,
+    mapUnitScale: mus,
+    lengthUnitScale: lus,
+    expectedScale: lus / mus,
+  };
+}
+
 export function inferMapUnitScale(mapUnit: string | undefined, fallback?: number): number | undefined {
   if (!mapUnit) return fallback;
   const normalized = mapUnit.toUpperCase();

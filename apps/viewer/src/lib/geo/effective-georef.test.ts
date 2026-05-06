@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { getEffectiveHorizontalScale, inferMapUnitScale, mergeMapConversion, mergeProjectedCRS } from './effective-georef.js';
+import { detectScaleUnitMismatch, getEffectiveHorizontalScale, inferMapUnitScale, mergeMapConversion, mergeProjectedCRS } from './effective-georef.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 describe('effective georeferencing', () => {
@@ -106,6 +106,46 @@ describe('effective georeferencing', () => {
       assert.strictEqual(getEffectiveHorizontalScale(1, 0, 1), 1);
       assert.strictEqual(getEffectiveHorizontalScale(1, 1, 0), 1);
       assert.strictEqual(getEffectiveHorizontalScale(1, -1, 1), 1);
+    });
+  });
+
+  describe('detectScaleUnitMismatch', () => {
+    it('returns null for spec-compliant Scale (mm/m with Scale=0.001)', () => {
+      assert.strictEqual(detectScaleUnitMismatch(0.001, 1, 0.001), null);
+    });
+
+    it('returns null when project=map=metres and Scale=1', () => {
+      assert.strictEqual(detectScaleUnitMismatch(1, 1, 1), null);
+    });
+
+    it('returns null when project=map=metres and Scale is undefined', () => {
+      assert.strictEqual(detectScaleUnitMismatch(undefined, 1, 1), null);
+    });
+
+    it('flags the common Scale=1 + mm-project + m-map error', () => {
+      const m = detectScaleUnitMismatch(1, 1, 0.001);
+      assert.ok(m, 'expected a mismatch report');
+      assert.strictEqual(m!.rawScale, 1);
+      assert.strictEqual(m!.effectiveScale, 1000);
+      assert.strictEqual(m!.expectedScale, 0.001);
+    });
+
+    it('flags Scale omitted when units differ', () => {
+      const m = detectScaleUnitMismatch(undefined, 1, 0.001);
+      assert.ok(m);
+      assert.strictEqual(m!.effectiveScale, 1000);
+    });
+
+    it('tolerates tiny floating-point noise around 1.0', () => {
+      // Scale = 1.0 ± 0.4% should still be considered consistent.
+      assert.strictEqual(detectScaleUnitMismatch(1.004, 1, 1), null);
+      assert.strictEqual(detectScaleUnitMismatch(0.996, 1, 1), null);
+    });
+
+    it('flags a deliberate non-unit scaling (Scale=2 with metres)', () => {
+      const m = detectScaleUnitMismatch(2, 1, 1);
+      assert.ok(m);
+      assert.strictEqual(m!.effectiveScale, 2);
     });
   });
 });

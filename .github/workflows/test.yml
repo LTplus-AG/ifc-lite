@@ -42,9 +42,10 @@ jobs:
           lfs: false
 
       - name: Setup pnpm
+        # v4 reads the version from the `packageManager` field in
+        # package.json (`pnpm@10.8.1`); specifying `with.version` here
+        # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v5

@@ -582,7 +582,15 @@ mod tests {
     fn test_circular_profile_detection() {
         use crate::profile::create_circle;
 
-        let circle = create_circle(5.0, None);
+        // Radius is chosen so `calculate_circle_segments` produces ≥20 points
+        // (the threshold raised in #424 to stop 12-point I-beam profiles from
+        // being smooth-shaded as circles). At r=10, segments = ceil(√10 * 8) = 26.
+        let circle = create_circle(10.0, None);
+        assert!(
+            circle.outer.len() >= 20,
+            "test setup expects ≥20 segments to pass the heuristic threshold; got {}",
+            circle.outer.len()
+        );
         let mut cx = 0.0;
         let mut cy = 0.0;
         for p in &circle.outer {

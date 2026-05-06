@@ -437,12 +437,15 @@ export class Camera {
       let near = Math.max(0.01, distance * 0.001);
       let far = Math.max(distance * 10, 1000);
       const b = this.state.sceneBounds;
+      let usedBoundsPath = false;
+      let minD = -1;
+      let maxD = -1;
       if (b) {
         const cx = this.state.camera.position.x;
         const cy = this.state.camera.position.y;
         const cz = this.state.camera.position.z;
-        let minD = Infinity;
-        let maxD = 0;
+        minD = Infinity;
+        maxD = 0;
         for (let i = 0; i < 8; i++) {
           const x = (i & 1) ? b.max.x : b.min.x;
           const y = (i & 2) ? b.max.y : b.min.y;
@@ -458,9 +461,18 @@ export class Camera {
         // stays stable even if the camera ends up inside bounds.
         near = Math.max(0.01, minD * 0.9);
         far = Math.max(near * 2, maxD * 1.1);
+        usedBoundsPath = true;
       }
       this.state.camera.near = near;
       this.state.camera.far = far;
+      // Log every 60 calls so we don't spam, but enough to see what's happening.
+      if (((this as unknown as { _matCallCount?: number })._matCallCount = ((this as unknown as { _matCallCount?: number })._matCallCount ?? 0) + 1) % 30 === 1) {
+        console.log(
+          `[camera] perspective near=${near.toFixed(3)} far=${far.toFixed(0)} ` +
+          `(distance=${distance.toFixed(0)}, sceneBounds=${b ? 'set' : 'null'}, usedBoundsPath=${usedBoundsPath}, ` +
+          `minD=${minD.toFixed(0)}, maxD=${maxD.toFixed(0)})`,
+        );
+      }
       this.state.projMatrix = MathUtils.perspectiveReverseZ(
         this.state.camera.fov,
         this.state.camera.aspect,

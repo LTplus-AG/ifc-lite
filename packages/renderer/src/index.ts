@@ -950,38 +950,53 @@ export class Renderer {
                 `swapchain=${swap.width}×${swap.height}`,
             );
             const m = viewProj;
+            // Note: log columns of the column-major flat array. m[10] is at
+            // column 2 row 2 (depth scaling); m[14] at column 3 row 2 (depth bias).
             console.log(
-                '[quantized] viewProj rows:',
+                '[quantized] viewProj cols (col0 col1 col2 col3):',
                 `[${m[0]!.toFixed(3)}, ${m[1]!.toFixed(3)}, ${m[2]!.toFixed(3)}, ${m[3]!.toFixed(3)}]`,
                 `[${m[4]!.toFixed(3)}, ${m[5]!.toFixed(3)}, ${m[6]!.toFixed(3)}, ${m[7]!.toFixed(3)}]`,
                 `[${m[8]!.toFixed(3)}, ${m[9]!.toFixed(3)}, ${m[10]!.toFixed(3)}, ${m[11]!.toFixed(3)}]`,
                 `[${m[12]!.toFixed(3)}, ${m[13]!.toFixed(3)}, ${m[14]!.toFixed(3)}, ${m[15]!.toFixed(3)}]`,
             );
+            console.log(
+                `[quantized] depth params: near (proj.m[14]) = ${m[14]!.toFixed(3)} ` +
+                `(if very small or negative, depth slice collapses)`,
+            );
 
-            if (this.modelBounds) {
-                const b = this.modelBounds;
-                const samples: Array<[string, number, number, number]> = [
-                    ['centre', (b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2],
-                    ['min', b.min.x, b.min.y, b.min.z],
-                    ['max', b.max.x, b.max.y, b.max.z],
-                ];
-                for (const [label, x, y, z] of samples) {
-                    // Column-major mat4 × vec4(x, y, z, 1).
-                    const cx = m[0]! * x + m[4]! * y + m[ 8]! * z + m[12]!;
-                    const cy = m[1]! * x + m[5]! * y + m[ 9]! * z + m[13]!;
-                    const cz = m[2]! * x + m[6]! * y + m[10]! * z + m[14]!;
-                    const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
-                    const ndcX = cx / cw;
-                    const ndcY = cy / cw;
-                    const ndcZ = cz / cw;
-                    const inside = Math.abs(cx) <= Math.abs(cw) && Math.abs(cy) <= Math.abs(cw) && cz >= 0 && cz <= cw;
-                    console.log(
-                        `[quantized] project '${label}' world=(${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) ` +
-                        `→ clip=(${cx.toFixed(2)}, ${cy.toFixed(2)}, ${cz.toFixed(2)}, w=${cw.toFixed(2)}) ` +
-                        `NDC=(${ndcX.toFixed(3)}, ${ndcY.toFixed(3)}, ${ndcZ.toFixed(3)}) ` +
-                        `${inside ? 'INSIDE frustum' : 'CLIPPED — outside frustum'}`,
-                    );
+            try {
+                if (this.modelBounds) {
+                    const b = this.modelBounds;
+                    const samplesArr = [
+                        ['centre', (b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2],
+                        ['min', b.min.x, b.min.y, b.min.z],
+                        ['max', b.max.x, b.max.y, b.max.z],
+                    ] as const;
+                    for (let s = 0; s < samplesArr.length; s++) {
+                        const label = samplesArr[s]![0] as string;
+                        const x = samplesArr[s]![1] as number;
+                        const y = samplesArr[s]![2] as number;
+                        const z = samplesArr[s]![3] as number;
+                        const cx = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
+                        const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
+                        const cz = m[2]! * x + m[6]! * y + m[10]! * z + m[14]!;
+                        const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+                        const ndcX = cw !== 0 ? cx / cw : 0;
+                        const ndcY = cw !== 0 ? cy / cw : 0;
+                        const ndcZ = cw !== 0 ? cz / cw : 0;
+                        const inside = cw > 0 && Math.abs(cx) <= cw && Math.abs(cy) <= cw && cz >= 0 && cz <= cw;
+                        console.log(
+                            `[quantized] project ${label} world=(${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) ` +
+                            `clip=(${cx.toFixed(2)}, ${cy.toFixed(2)}, ${cz.toFixed(2)}, w=${cw.toFixed(2)}) ` +
+                            `NDC=(${ndcX.toFixed(4)}, ${ndcY.toFixed(4)}, ${ndcZ.toFixed(4)}) ` +
+                            `${inside ? 'INSIDE' : 'CLIPPED'}`,
+                        );
+                    }
+                } else {
+                    console.warn('[quantized] no modelBounds — skipping projection diag');
                 }
+            } catch (err) {
+                console.warn('[quantized] projection diag failed', err);
             }
             this._loggedQuantizedFirstDraw = true;
         }

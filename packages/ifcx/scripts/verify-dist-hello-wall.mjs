@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFederatedIfcx, parseIfcx } from '../dist/index.js';
@@ -11,6 +11,24 @@ import { parseFederatedIfcx, parseIfcx } from '../dist/index.js';
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(dirname, '../../..');
 const fixturesDir = path.join(repoRoot, 'tests/models/ifc5');
+
+// Fixtures are fetched on demand via `pnpm fixtures` (AGENTS.md §9). Skip
+// cleanly when they're absent so a fresh checkout — or a contributor who
+// hasn't fetched fixtures yet — can still run `pnpm build` end-to-end.
+const REQUIRED_FIXTURES = [
+  'Hello_Wall_hello-wall.ifcx',
+  'Hello_Wall_advanced_3rd-window.ifcx',
+  'Point_Cloud_point-cloud.ifcx',
+  'Point_Cloud_S1-pointcloud.ifcx',
+];
+const missing = REQUIRED_FIXTURES.filter((name) => !existsSync(path.join(fixturesDir, name)));
+if (missing.length > 0) {
+  console.warn(
+    `verify-dist-hello-wall: skipping — missing ${missing.length} fixture(s): ${missing.join(', ')}.\n` +
+    `Run \`pnpm fixtures\` from the repo root to fetch them, then rebuild.`,
+  );
+  process.exit(0);
+}
 
 function loadFixture(name) {
   const buffer = readFileSync(path.join(fixturesDir, name));

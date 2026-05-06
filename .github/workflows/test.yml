@@ -90,11 +90,10 @@ jobs:
       - name: Build WASM
         run: bash scripts/build-wasm.sh
 
-      # `pnpm test` is `pnpm -r test` (not turbo), so the test command for one
-      # package can't auto-build its workspace dependencies. Without this step,
-      # cross-package imports like `@ifc-lite/data` fail to resolve from
-      # `dist/` and tests like packages/lists abort with
-      # "Failed to resolve entry for package".
+      # Build all workspace packages so their dist/ artifacts exist for
+      # downstream consumers — turbo handles the dep graph. Required for
+      # `pnpm -r lint` and any test that crosses package boundaries via
+      # the published entry point.
       - name: Build packages
         run: pnpm build
 

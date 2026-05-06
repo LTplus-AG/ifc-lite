@@ -17,6 +17,14 @@ concurrency:
 permissions:
   contents: read
 
+# Force JavaScript actions onto Node 24. GitHub deprecated Node 20 for
+# actions in late 2025 and will flip the default in June 2026. Setting
+# this opts us in early so the deprecation warning doesn't show up on
+# every run, and it covers actions like jetli/wasm-pack-action that
+# haven't shipped a Node-24-native release yet.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     name: Build + WASM + Rust + Node
@@ -25,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Fixtures live in a GitHub Release (see tests/models/manifest.json
           # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
@@ -34,12 +42,12 @@ jobs:
           lfs: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
           version: 10
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -71,7 +79,7 @@ jobs:
       # be on disk by the time `pnpm build` reaches that package.
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: tests/models
           key: fixtures-${{ hashFiles('tests/models/manifest.json') }}

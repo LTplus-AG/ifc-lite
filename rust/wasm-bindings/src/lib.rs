@@ -67,6 +67,7 @@ pub use console_error_panic_hook::set_once as set_panic_hook;
 
 mod api;
 mod gpu_geometry;
+mod quantized_scene;
 mod utils;
 mod zero_copy;
 
@@ -75,6 +76,7 @@ pub use gpu_geometry::{
     GpuGeometry, GpuInstancedGeometry, GpuInstancedGeometryCollection, GpuInstancedGeometryRef,
     GpuMeshMetadata,
 };
+pub use quantized_scene::QuantizedScene;
 pub use utils::set_panic_hook as init_panic_hook;
 pub use zero_copy::{
     get_memory, InstanceData, InstancedGeometry, InstancedMeshCollection, MeshCollection,

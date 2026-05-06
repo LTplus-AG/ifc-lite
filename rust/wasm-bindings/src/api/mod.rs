@@ -11,6 +11,7 @@ mod extract_profiles;
 mod georef;
 mod gpu_meshes;
 mod parsing;
+mod quantized_meshes;
 pub(crate) mod styling;
 mod symbolic;
 mod zero_copy_api;

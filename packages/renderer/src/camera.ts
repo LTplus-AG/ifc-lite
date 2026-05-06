@@ -398,6 +398,9 @@ export class Camera {
    * Call this when geometry is loaded or changed.
    */
   setSceneBounds(bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null): void {
+    if (bounds === null && this.state.sceneBounds !== null) {
+      console.warn('[camera] setSceneBounds(null) — bounds being cleared. Stack:', new Error().stack);
+    }
     this.state.sceneBounds = bounds;
     this.updateMatrices();
   }

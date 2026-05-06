@@ -501,6 +501,19 @@ export class Renderer {
         const meshBounds = this.computeMeshBounds();
         const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
 
+        // Quantised scene path: legacy `Scene.getBatchedMeshes()` is empty,
+        // so `computeMeshBounds()` returns null. Recompute from the quantised
+        // buffers + their per-instance transforms so a stray `setPointClouds`
+        // (or any other recompute trigger) doesn't blow away bounds the
+        // quantised path just established.
+        if (!meshBounds && this.hasQuantizedScene()) {
+            this.updateModelBoundsFromQuantized();
+            if (pcBounds && this.modelBounds) {
+                this.expandModelBoundsForPointClouds();
+            }
+            return;
+        }
+
         if (!meshBounds && !pcBounds) {
             this.modelBounds = null;
             return;

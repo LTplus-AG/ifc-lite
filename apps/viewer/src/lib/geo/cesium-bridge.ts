@@ -28,19 +28,9 @@
 import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { queryTerrainElevation, resolveProjection } from './reproject';
+import { resolveProjection } from './reproject';
+import { resolveTerrainElevation } from './terrain-elevation';
 import { getEffectiveHorizontalScale } from './effective-georef';
-
-/**
- * Module-level cache for terrain elevation lookups so that bridge rebuilds
- * (georef edits, clamp toggles) re-use the value within the session instead
- * of re-hitting the Open-Meteo API or re-loading 3D-tile depth buffers.
- */
-const terrainElevationCache = new Map<string, number>();
-function terrainCacheKey(lat: number, lon: number): string {
-  // 5 decimal places ≈ 1.1m precision — plenty for site-level elevation.
-  return `${lat.toFixed(5)},${lon.toFixed(5)}`;
-}
 
 export interface GeodesicPosition {
   longitude: number;
@@ -280,127 +270,12 @@ export async function createCesiumBridge(
     viewer.scene.requestRender();
   }
 
-  /**
-   * Query terrain elevation at the model's location, trying fast Cesium
-   * sources first then falling back to Open-Meteo for environments that
-   * have 3D Tiles or Photorealistic tiles instead of a Cesium terrain
-   * provider (where globe.getHeight returns 0 and sampleTerrainMostDetailed
-   * has nothing to query).
-   *
-   * Cesium's sync probes occasionally return absurd values (we observed
-   * globe.getHeight returning -69184 m on Google Photorealistic 3D Tiles
-   * with no Cesium ion terrain — depth-buffer noise from an unrendered
-   * area). Every candidate is range-checked against terrestrial bounds
-   * before being accepted.
-   *
-   * Order:
-   *   1. Cache (instant — re-bridge after georef edit).
-   *   2. globe.getHeight (sync, only useful with a non-ellipsoid terrain
-   *      provider AND tiles already loaded for the location).
-   *   3. scene.sampleHeight (sync, queries all primitives including 3D
-   *      Tiles, only works if tiles for the location are already rendered).
-   *   4. Open-Meteo elevation API (~200-500ms, always works online).
-   *   5. scene.sampleHeightMostDetailed (async, loads tiles — slow last
-   *      resort if Open-Meteo fails).
-   */
-  async function queryTerrainHeight(
+  /** Resolve terrain elevation at the model origin via the shared pipeline. */
+  function queryTerrainHeight(
     Cesium: typeof import('cesium'),
     viewer: InstanceType<typeof import('cesium').Viewer>,
   ): Promise<number | null> {
-    // Earth's plausible terrestrial elevation range. Mariana Trench is ~−11 km
-    // (no buildings there) and Everest summit is ~8.85 km. Anything outside
-    // this band is depth-buffer / uninitialised garbage from Cesium and must
-    // be discarded so we don't bury the model 70 km underground.
-    const ELEV_MIN = -1000;
-    const ELEV_MAX = 9000;
-    const isPlausibleElevation = (h: number): boolean =>
-      Number.isFinite(h) && h > ELEV_MIN && h < ELEV_MAX && Math.abs(h) > 1e-3;
-
-    const cacheKey = terrainCacheKey(originLat, originLon);
-    const cached = terrainElevationCache.get(cacheKey);
-    if (cached !== undefined) {
-      console.debug(`[CesiumBridge] terrain (cached) at ${cacheKey}: ${cached.toFixed(2)}m`);
-      return cached;
-    }
-
-    const position = Cesium.Cartographic.fromDegrees(originLon, originLat);
-    const finish = (h: number, source: string, ms?: number) => {
-      terrainElevationCache.set(cacheKey, h);
-      const t = ms !== undefined ? ` (${ms.toFixed(0)}ms)` : '';
-      console.debug(`[CesiumBridge] terrain via ${source}: ${h.toFixed(2)}m at ${cacheKey}${t}`);
-      return h;
-    };
-    const reject = (h: unknown, source: string) => {
-      console.debug(`[CesiumBridge] ${source} returned implausible value ${h}; skipping`);
-    };
-
-    // 1. Sync globe.getHeight — useful when a Cesium terrain provider is set
-    //    AND its tile for this location is loaded. Often noisy garbage with
-    //    Google Photorealistic 3D Tiles + no ion terrain; the range filter
-    //    below catches that.
-    try {
-      const h = viewer.scene.globe.getHeight(position);
-      if (h !== undefined && isPlausibleElevation(h)) {
-        return finish(h, 'globe.getHeight');
-      }
-      if (h !== undefined) reject(h, 'globe.getHeight');
-    } catch (err) {
-      console.warn('[CesiumBridge] globe.getHeight threw:', err);
-    }
-
-    // 2. Sync scene.sampleHeight — works with 3D Tiles (Google
-    //    Photorealistic, Cesium OSM Buildings) when their tiles are already
-    //    rendered. Returns undefined if the area isn't in the depth buffer.
-    const sampleHeightSupported = (viewer.scene as { sampleHeightSupported?: boolean }).sampleHeightSupported;
-    if (sampleHeightSupported) {
-      try {
-        const h = (viewer.scene as { sampleHeight: (p: unknown) => number | undefined }).sampleHeight(position);
-        if (h !== undefined && isPlausibleElevation(h)) {
-          return finish(h, 'scene.sampleHeight');
-        }
-        if (h !== undefined) reject(h, 'scene.sampleHeight');
-      } catch (err) {
-        console.warn('[CesiumBridge] scene.sampleHeight threw:', err);
-      }
-    }
-
-    // 3. Open-Meteo elevation API — reliable network fallback (~300ms with
-    //    the 5s timeout we added). Doesn't need any tiles loaded; works for
-    //    Google 3D Tiles environments where Cesium has no tile depth yet.
-    try {
-      const t0 = performance.now();
-      const elev = await queryTerrainElevation({ lat: originLat, lon: originLon });
-      const ms = performance.now() - t0;
-      if (elev !== null && isPlausibleElevation(elev)) {
-        return finish(elev, 'Open-Meteo', ms);
-      }
-      if (elev !== null) reject(elev, 'Open-Meteo');
-    } catch (err) {
-      console.warn('[CesiumBridge] Open-Meteo elevation threw:', err);
-    }
-
-    // 4. Last-resort: force Cesium to load tiles for this location and
-    //    sample. Slow (seconds) but the most accurate when 3D Tiles are
-    //    the only elevation source and Open-Meteo is unavailable.
-    if (sampleHeightSupported) {
-      try {
-        const t0 = performance.now();
-        type SampleHeightDetailed = (positions: unknown[]) => Promise<unknown[]>;
-        const fn = (viewer.scene as { sampleHeightMostDetailed: SampleHeightDetailed }).sampleHeightMostDetailed;
-        const results = await fn([position]);
-        const ms = performance.now() - t0;
-        const r0 = (results?.[0] as { height?: number } | undefined);
-        if (r0 && r0.height !== undefined && isPlausibleElevation(r0.height)) {
-          return finish(r0.height, 'scene.sampleHeightMostDetailed', ms);
-        }
-        if (r0?.height !== undefined) reject(r0.height, 'scene.sampleHeightMostDetailed');
-      } catch (err) {
-        console.warn('[CesiumBridge] sampleHeightMostDetailed threw:', err);
-      }
-    }
-
-    console.warn(`[CesiumBridge] terrain query: no source returned a plausible value at ${cacheKey}`);
-    return null;
+    return resolveTerrainElevation(Cesium, viewer, originLat, originLon);
   }
 
   function viewerToGeodetic(vx: number, vy: number, vz: number): GeodesicPosition | null {

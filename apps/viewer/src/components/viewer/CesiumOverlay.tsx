@@ -480,6 +480,11 @@ export function CesiumOverlay({
         // matches the terrain surface.
         const terrainClipY = minY + (terrainH - ifcOHeight);
         setCesiumTerrainClipY(terrainClipY);
+      } else {
+        // Failed re-query (offline, API down) — clear stale store fields so
+        // the clip plane doesn't drift relative to the new bridge.
+        setCesiumTerrainHeight(null);
+        setCesiumTerrainClipY(null);
       }
 
       // World-camera stability: when this rebuild changes the placement
@@ -492,7 +497,10 @@ export function CesiumOverlay({
       prevPlacementRef.current = placementHeight;
       if (prevPlacement !== null) {
         const dh = placementHeight - prevPlacement;
-        if (Math.abs(dh) > 1e-6) {
+        // 5 cm threshold — rejects float jitter from cached terrain reads
+        // re-flowing through the same effect, while a real placement edit
+        // (clamp toggle, OrthogonalHeight change) is always far larger.
+        if (Math.abs(dh) > 0.05) {
           const renderer = getGlobalRenderer();
           if (renderer) {
             const cam = renderer.getCamera();
@@ -510,10 +518,11 @@ export function CesiumOverlay({
     })();
 
     return () => { cancelled = true; };
-  }, [
-    status, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
-    terrainClamp, terrainEnabled, ionToken,
-  ]);
+    // terrainEnabled and ionToken intentionally omitted — Effect 1 already
+    // owns those (it destroys/recreates the viewer when they change), and
+    // listing them here would cause a redundant bridge rebuild while the
+    // viewer is being torn down.
+  }, [status, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, terrainClamp]);
 
   // ─── Effect 2c: Load GLB into Cesium (only when geometry changes) ───────
   // This is the heavy operation — only re-runs when geometry actually changes.

@@ -302,10 +302,14 @@ export function CesiumOverlay({
 
         if (cancelled) { viewer.destroy(); return; }
 
-        // Disable Cesium's user input — the IFC viewer controls the camera.
-        // Keep collision detection off since we set the camera programmatically.
+        // Disable Cesium's user input — the IFC viewer drives the camera,
+        // and any input Cesium intercepts (even a stray wheel/touch event
+        // past pointer-events:none) interferes with our orbit/zoom and
+        // produces "stuck to terrain" symptoms. enableInputs is the
+        // master kill-switch; the per-mode flags below are belt-and-braces.
         const scene = viewer.scene;
         const sscc = scene.screenSpaceCameraController;
+        sscc.enableInputs = false;
         sscc.enableRotate = false;
         sscc.enableTranslate = false;
         sscc.enableZoom = false;

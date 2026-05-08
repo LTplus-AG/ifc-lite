@@ -1,0 +1,32 @@
+<ids:ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns:ids="http://standards.buildingsmart.org/IDS">
+  <!--edited with usBIM.IDSeditor (http://www.accasoftware.com)-->
+  <ids:info>
+    <ids:title>Crowdsources information requirements</ids:title>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification ifcVersion="IFC2X3" name="Nuova Specifica" minOccurs="1" maxOccurs="unbounded">
+      <ids:applicability>
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCWALL</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+        <ids:attribute>
+          <ids:name>
+            <ids:simpleValue>Name</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+        <ids:attribute>
+          <ids:name>
+            <xs:restriction base="xs:string" />
+          </ids:name>
+        </ids:attribute>
+      </ids:applicability>
+      <ids:requirements />
+    </ids:specification>
+    <ids:specification ifcVersion="" name="Nuova Specifica" minOccurs="1" maxOccurs="unbounded">
+      <ids:applicability />
+      <ids:requirements />
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>

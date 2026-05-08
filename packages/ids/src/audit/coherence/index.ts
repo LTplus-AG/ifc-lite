@@ -15,6 +15,7 @@ import type {
   IDSConstraint,
   IDSDocument,
   IDSFacet,
+  IDSRequirement,
   IDSSpecification,
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
@@ -70,6 +71,17 @@ function auditSpec(
     });
   }
 
+  // Upstream IDS-Audit-tool flags `cardinality` on `<applicability>` —
+  // it's meaningless there. (Report 202)
+  if (spec.applicability.cardinality) {
+    issues.push({
+      severity: 'warning',
+      code: 'W_CARDINALITY_PROHIBITED_APPLICABILITY',
+      message: `cardinality="${spec.applicability.cardinality}" has no effect on <applicability>`,
+      path: `${path}.applicability.cardinality`,
+    });
+  }
+
   spec.applicability.facets.forEach((facet, fi) => {
     auditFacetConstraints(
       facet,
@@ -80,28 +92,119 @@ function auditSpec(
 
   spec.requirements.forEach((req, ri) => {
     auditFacetConstraints(req.facet, `${path}.requirements[${ri}]`, issues);
-    // Upstream `IdsRepositoryIssueTests` (Cardinality/) flags `prohibited`
-    // requirements that are *also* listed as applicability — meaningless
-    // because nothing matches. We approximate with: warn if the spec has
-    // both a `required` and a `prohibited` requirement on the same facet
-    // type referring to the same key.
+    auditRequirementCardinality(
+      req,
+      `${path}.requirements[${ri}]`,
+      issues
+    );
   });
+}
 
-  // Cardinality on applicability — IDS allows `prohibited` on
-  // requirements but the same word is meaningless for applicability;
-  // upstream emits a warning when authors set it there. Our parser models
-  // applicability without optionality, so we instead check the
-  // <requirements> block for a structural anti-pattern: an empty facet
-  // marked prohibited at the spec level. (See xsd index for the empty-
-  // requirements warning; here we just flag prohibited-with-empty-spec
-  // at min=0/max=0 level.)
-  if (typeof min === 'number' && typeof max === 'number' && min === 0 && max === 0) {
-    issues.push({
-      severity: 'warning',
-      code: 'W_CARDINALITY_PROHIBITED_APPLICABILITY',
-      message: 'specification min=max=0 is equivalent to "prohibited"; consider removing the spec',
-      path,
-    });
+/**
+ * Cardinality coherence on a requirement facet (Report 202 upstream).
+ *
+ * Per upstream IDS-Audit-tool:
+ *  - `cardinality="optional"` on a `<property>` requires `@dataType`.
+ *  - `cardinality="prohibited"` on a `<property>` is incompatible with
+ *    `@dataType` (the property must not exist at all).
+ *  - `cardinality="optional"` on `<material>`, `<classification>` and
+ *    `<partOf>` requires a value/system/entity to be specified — an
+ *    `optional` facet without a constraint is meaningless.
+ */
+function auditRequirementCardinality(
+  req: IDSRequirement,
+  path: string,
+  issues: IDSAuditIssue[]
+): void {
+  switch (req.facet.type) {
+    case 'property': {
+      const hasDataType = req.facet.dataType !== undefined;
+      if (req.optionality === 'optional' && !hasDataType) {
+        issues.push({
+          severity: 'error',
+          code: 'E_CARDINALITY_INVALID',
+          message:
+            'optional <property> requirement requires @dataType to be specified',
+          path: `${path}.cardinality`,
+          facetType: 'property',
+        });
+      }
+      if (req.optionality === 'prohibited' && hasDataType) {
+        issues.push({
+          severity: 'error',
+          code: 'E_CARDINALITY_INVALID',
+          message:
+            'prohibited <property> requirement is incompatible with @dataType',
+          path: `${path}.cardinality`,
+          facetType: 'property',
+        });
+      }
+      break;
+    }
+    case 'material': {
+      if (req.optionality === 'optional') {
+        const hasValue =
+          req.facet.value !== undefined && !isEmptyConstraint(req.facet.value);
+        if (!hasValue) {
+          issues.push({
+            severity: 'error',
+            code: 'E_CARDINALITY_INVALID',
+            message:
+              'optional <material> requirement must specify a non-empty <value> constraint',
+            path: `${path}.cardinality`,
+            facetType: 'material',
+          });
+        }
+      }
+      break;
+    }
+    case 'classification': {
+      if (req.optionality === 'optional') {
+        const hasSystem =
+          req.facet.system !== undefined &&
+          !isEmptyConstraint(req.facet.system);
+        const hasValue =
+          req.facet.value !== undefined && !isEmptyConstraint(req.facet.value);
+        if (!hasSystem && !hasValue) {
+          issues.push({
+            severity: 'error',
+            code: 'E_CARDINALITY_INVALID',
+            message:
+              'optional <classification> requirement must specify <system> or <value>',
+            path: `${path}.cardinality`,
+            facetType: 'classification',
+          });
+        }
+      }
+      break;
+    }
+    case 'attribute':
+    case 'entity':
+    case 'partOf':
+      // Attribute/entity/partOf carry their own intrinsic content;
+      // cardinality on them is just required/optional/prohibited.
+      break;
+  }
+}
+
+function isEmptyConstraint(c: import('../../types.js').IDSConstraint): boolean {
+  switch (c.type) {
+    case 'simpleValue':
+      return c.value === '' || c.value == null;
+    case 'enumeration':
+      return c.values.length === 0;
+    case 'pattern':
+      return c.pattern === '';
+    case 'bounds':
+      return (
+        c.minInclusive === undefined &&
+        c.maxInclusive === undefined &&
+        c.minExclusive === undefined &&
+        c.maxExclusive === undefined &&
+        c.length === undefined &&
+        c.minLength === undefined &&
+        c.maxLength === undefined
+      );
   }
 }
 
@@ -204,15 +307,44 @@ function checkBounds(
     });
   }
   if (
-    c.minInclusive === undefined &&
-    c.minExclusive === undefined &&
-    c.maxInclusive === undefined &&
-    c.maxExclusive === undefined
+    typeof c.minLength === 'number' &&
+    typeof c.maxLength === 'number' &&
+    c.minLength > c.maxLength
   ) {
     issues.push({
       severity: 'error',
+      code: 'E_RESTRICTION_RANGE',
+      message: `xs:restriction lengths inverted: minLength (${c.minLength}) > maxLength (${c.maxLength})`,
+      path,
+      facetType,
+      detail: { min: c.minLength, max: c.maxLength },
+    });
+  }
+  if (
+    typeof c.length === 'number' &&
+    (typeof c.minLength === 'number' || typeof c.maxLength === 'number')
+  ) {
+    issues.push({
+      severity: 'warning',
+      code: 'E_RESTRICTION_RANGE',
+      message: 'xs:length is mutually exclusive with xs:minLength/xs:maxLength',
+      path,
+      facetType,
+    });
+  }
+  const empty =
+    c.minInclusive === undefined &&
+    c.minExclusive === undefined &&
+    c.maxInclusive === undefined &&
+    c.maxExclusive === undefined &&
+    c.length === undefined &&
+    c.minLength === undefined &&
+    c.maxLength === undefined;
+  if (empty) {
+    issues.push({
+      severity: 'error',
       code: 'E_RESTRICTION_EMPTY',
-      message: 'xs:restriction has no min/max bounds',
+      message: 'xs:restriction has no min/max bounds or length facets',
       path,
       facetType,
     });
@@ -220,11 +352,22 @@ function checkBounds(
 }
 
 /**
- * Try to compile `pattern` under JS regex semantics. XSD regex differs
- * from JS regex (escape codes like `\i`, `\c`, char-class subtraction);
- * a v2 of the auditor will translate the dialects. For now, surface a
- * warning when the pattern doesn't compile so authors know the auditor
- * couldn't fully verify it.
+ * Validate `pattern` under JS regex semantics.
+ *
+ * XSD regex (`\i`, `\c`, char-class subtraction `[a-z-[aeiou]]`) is a
+ * superset of JS regex; some valid XSD patterns won't compile here. We
+ * distinguish the two cases:
+ *
+ *  - Patterns that fail with a syntactic error JS *and* XSD agree on
+ *    (e.g. unclosed `[Name`, `(unclosed`) → `E_RESTRICTION_EMPTY` /
+ *    invalid pattern (upstream Report 109).
+ *  - Patterns that look valid under XSD but use JS-incompatible syntax
+ *    → `W_REGEX_UNVERIFIED` (we honestly can't tell).
+ *
+ * The heuristic: if the pattern uses any XSD-specific construct
+ * (`\i`, `\c`, `\I`, `\C`, char-class subtraction `[a-zA-Z-[bB]]`),
+ * downgrade to warning. Otherwise, a JS compile failure is a real
+ * authoring error.
  */
 function checkPattern(
   pattern: string,
@@ -242,18 +385,31 @@ function checkPattern(
     });
     return;
   }
+  const usesXsdOnlySyntax =
+    /\\[icIC](?![a-zA-Z])/.test(pattern) ||
+    /\[[^\]]*-\[[^\]]*\][^\]]*\]/.test(pattern);
   try {
     new RegExp(pattern);
   } catch (err) {
-    issues.push({
-      severity: 'warning',
-      code: 'W_REGEX_UNVERIFIED',
-      message: `xs:pattern could not be verified under JS regex semantics: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-      path,
-      facetType,
-      detail: { pattern },
-    });
+    const message = err instanceof Error ? err.message : String(err);
+    if (usesXsdOnlySyntax) {
+      issues.push({
+        severity: 'warning',
+        code: 'W_REGEX_UNVERIFIED',
+        message: `xs:pattern uses XSD-specific syntax not verifiable under JS regex: ${message}`,
+        path,
+        facetType,
+        detail: { pattern },
+      });
+    } else {
+      issues.push({
+        severity: 'error',
+        code: 'E_RESTRICTION_EMPTY',
+        message: `xs:pattern is not a valid regular expression: ${message}`,
+        path,
+        facetType,
+        detail: { pattern },
+      });
+    }
   }
 }

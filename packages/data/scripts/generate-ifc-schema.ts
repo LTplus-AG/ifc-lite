@@ -582,6 +582,223 @@ function parsePartOfRelations(): Record<IfcVersion, PartOfRelation[]> {
 // SchemaInfo.ObjectTypes.g.cs parser (object → type relations)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// SchemaInfo.MeasureNames.g.cs parser (IFC dataType → backing XSD type)
+// ---------------------------------------------------------------------------
+
+interface DataTypeRow {
+  /** Uppercase IFC dataType name, e.g. `IFCLABEL`. */
+  name: string;
+  /** Versions in which this data type exists. */
+  versions: IfcVersion[];
+  /** Backing XSD type token, e.g. `xs:string`, `xs:double`, `xs:boolean`. */
+  backingType: string;
+}
+
+function parseDataTypes(): DataTypeRow[] {
+  const src = fs.readFileSync(
+    path.join(upstreamDir, 'SchemaInfo.MeasureNames.g.cs'),
+    'utf8'
+  );
+  const out: DataTypeRow[] = [];
+  const marker = 'new IfcDataTypeInformation(';
+  let cursor = src.indexOf(marker);
+  while (cursor !== -1) {
+    const argStart = cursor + marker.length;
+    let depth = 1;
+    let i = argStart;
+    while (i < src.length && depth > 0) {
+      const ch = src.charAt(i);
+      if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+      else if (ch === '"') {
+        i++;
+        while (i < src.length && src.charAt(i) !== '"') {
+          if (src.charAt(i) === '\\') i++;
+          i++;
+        }
+      }
+      i++;
+    }
+    if (depth !== 0) break;
+    const inner = src.slice(argStart, i - 1);
+    const tokens = tokenise(inner);
+    const strings = tokens.filter(
+      (t): t is { kind: 'string'; value: string } => t.kind === 'string'
+    );
+    const arrays = tokens.filter(
+      (t): t is { kind: 'array'; items: string[] } => t.kind === 'array'
+    );
+    if (strings.length >= 2 && arrays.length >= 1) {
+      const name = strings[0].value.toUpperCase();
+      const versions = arrays[0].items.filter((v) =>
+        ['Ifc2x3', 'Ifc4', 'Ifc4x3'].includes(v)
+      ) as IfcVersion[];
+      // The last quoted string in the call is the backing type; entries
+      // either have 2 strings (name + backing) or many more (when a
+      // nested IfcMeasureInformation sits between them).
+      const backingType = strings[strings.length - 1].value;
+      if (backingType.startsWith('xs:')) {
+        out.push({ name, versions, backingType });
+      }
+    }
+    cursor = src.indexOf(marker, i);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// SchemaInfo.Attributes.g.cs parser
+//
+// AddAttribute(name, definedOn[], allEntities[], valueTypes[] = []) tells us
+// (a) which attributes exist per IFC version and (b) which of them accept
+// simple values (the optional 4th argument). We collect the per-version
+// attribute → value-type map so the audit can flag `<value>` constraints
+// on complex-typed attributes (upstream `IdsAttribute.cs` Report 102).
+// ---------------------------------------------------------------------------
+
+interface AttrRow {
+  name: string;
+  /**
+   * Entities the attribute is defined on (uppercase names). Used by the
+   * audit to scope the `<value>` check to the applicability entity.
+   */
+  entities: string[];
+  /** Whether the attribute can carry a simple value (4th arg present). */
+  hasSimpleValue: boolean;
+}
+
+function parseAttributes(): Record<IfcVersion, AttrRow[]> {
+  const src = fs.readFileSync(
+    path.join(upstreamDir, 'SchemaInfo.Attributes.g.cs'),
+    'utf8'
+  );
+  const out: Record<IfcVersion, AttrRow[]> = {
+    Ifc2x3: [],
+    Ifc4: [],
+    Ifc4x3: [],
+  };
+  const sections: { version: IfcVersion; marker: string }[] = [
+    { version: 'Ifc2x3', marker: 'GetAttributesIFC2x3' },
+    { version: 'Ifc4', marker: 'GetAttributesIFC4(' },
+    { version: 'Ifc4x3', marker: 'GetAttributesIFC4x3' },
+  ];
+  for (let s = 0; s < sections.length; s++) {
+    const start = src.indexOf(sections[s].marker);
+    if (start === -1) continue;
+    let end = src.length;
+    for (let t = s + 1; t < sections.length; t++) {
+      const e = src.indexOf(sections[t].marker, start + 5);
+      if (e !== -1) {
+        end = e;
+        break;
+      }
+    }
+    const slice = src.slice(start, end);
+    const calls = slice.split('AddAttribute(').slice(1);
+    for (const call of calls) {
+      // Find the matching close paren.
+      let depth = 1;
+      let i = 0;
+      while (i < call.length && depth > 0) {
+        const ch = call.charAt(i);
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        else if (ch === '"') {
+          i++;
+          while (i < call.length && call.charAt(i) !== '"') {
+            if (call.charAt(i) === '\\') i++;
+            i++;
+          }
+        }
+        i++;
+      }
+      if (depth !== 0) continue;
+      const args = call.slice(0, i - 1);
+      const tokens = tokenise(args);
+      const strings = tokens.filter(
+        (t): t is { kind: 'string'; value: string } => t.kind === 'string'
+      );
+      const arrays = tokens.filter(
+        (t): t is { kind: 'array'; items: string[] } => t.kind === 'array'
+      );
+      if (strings.length < 1 || arrays.length < 2) continue;
+      const name = strings[0].value;
+      const allEntities = arrays[1].items.map((e) => e.toUpperCase());
+      const hasSimpleValue = arrays.length >= 3;
+      out[sections[s].version].push({
+        name,
+        entities: allEntities,
+        hasSimpleValue,
+      });
+    }
+  }
+  return out;
+}
+
+function emitAttributes(rows: Record<IfcVersion, AttrRow[]>): void {
+  const lines: string[] = [HEADER];
+  lines.push("import type { IfcAttributeInfo } from '../types.js';\n");
+  for (const [v, list] of Object.entries(rows) as [IfcVersion, AttrRow[]][]) {
+    // Aggregate per-attribute (name → {entities, hasSimpleValue, hasComplex}).
+    // The same name can appear with both kinds across different entities.
+    const merged = new Map<
+      string,
+      {
+        entitiesWithValue: Set<string>;
+        entitiesWithoutValue: Set<string>;
+      }
+    >();
+    for (const r of list) {
+      let m = merged.get(r.name);
+      if (!m) {
+        m = {
+          entitiesWithValue: new Set(),
+          entitiesWithoutValue: new Set(),
+        };
+        merged.set(r.name, m);
+      }
+      const set = r.hasSimpleValue
+        ? m.entitiesWithValue
+        : m.entitiesWithoutValue;
+      for (const e of r.entities) set.add(e);
+    }
+    lines.push(
+      `export const ATTRIBUTES_${VERSION_KEY[v]}: readonly IfcAttributeInfo[] = [`
+    );
+    for (const [name, info] of merged) {
+      lines.push(
+        `  { name: ${ts(name)}, simpleValueEntities: ${ts(
+          [...info.entitiesWithValue].sort()
+        )}, complexEntities: ${ts([...info.entitiesWithoutValue].sort())} },`
+      );
+    }
+    lines.push('];\n');
+  }
+  fs.writeFileSync(path.join(outDir, 'attributes.ts'), lines.join('\n'));
+  console.log('  attributes.ts — emitted');
+}
+
+function emitDataTypes(rows: DataTypeRow[]): void {
+  const lines: string[] = [HEADER];
+  lines.push("import type { IfcDataTypeInfo } from '../types.js';\n");
+  lines.push(
+    `export const IFC_DATA_TYPES: readonly IfcDataTypeInfo[] = [`
+  );
+  for (const r of rows) {
+    lines.push(
+      `  { name: ${ts(r.name)}, versions: ${ts(r.versions.map(versionKey))}, backingType: ${ts(r.backingType)} },`
+    );
+  }
+  lines.push('];\n');
+  fs.writeFileSync(path.join(outDir, 'data-types.ts'), lines.join('\n'));
+  console.log(`  data-types.ts — ${rows.length} dataTypes`);
+}
+
+function versionKey(v: IfcVersion): string {
+  return VERSION_KEY[v];
+}
+
 function parseObjectTypes(): Record<IfcVersion, [string, string][]> {
   const src = fs.readFileSync(
     path.join(upstreamDir, 'SchemaInfo.ObjectTypes.g.cs'),
@@ -734,6 +951,8 @@ function main(): void {
   const psets = parseProperties();
   const relations = parsePartOfRelations();
   const objectTypes = parseObjectTypes();
+  const dataTypes = parseDataTypes();
+  const attrs = parseAttributes();
 
   for (const [v, list] of Object.entries(classes) as [IfcVersion, ClassInfo[]][]) {
     console.log(`  ${VERSION_KEY[v]}: ${list.length} entities, ${psets[v].length} psets, ${relations[v].length} partOf relations, ${objectTypes[v].length} obj→type pairs`);
@@ -742,6 +961,8 @@ function main(): void {
   emitEntities(classes, objectTypes);
   emitPropertySets(psets);
   emitPartOfRelations(relations);
+  emitDataTypes(dataTypes);
+  emitAttributes(attrs);
   console.log('Done.');
 }
 

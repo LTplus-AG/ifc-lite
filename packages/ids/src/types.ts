@@ -17,6 +17,12 @@ export interface IDSDocument {
   info: IDSInfo;
   /** List of specifications */
   specifications: IDSSpecification[];
+  /**
+   * Raw `xsi:schemaLocation` attribute on the root element, if present.
+   * The audit module checks that this points at an IDS XSD URL —
+   * upstream IDS-Audit-tool flags references to other XSDs (Report 107).
+   */
+  schemaLocation?: string;
 }
 
 /** IDS Document metadata */
@@ -75,6 +81,13 @@ export type IFCVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3_ADD2' | 'IFC4X3';
 export interface IDSApplicability {
   /** All facets must match for entity to be applicable */
   facets: IDSFacet[];
+  /**
+   * Raw `@cardinality` attribute string from the XML. The IDS 1.0 spec
+   * does not allow `cardinality` on `<applicability>` (it is meaningless
+   * there); upstream IDS-Audit-tool flags it as an authoring mistake.
+   * Preserved here so the auditor can do the same check.
+   */
+  cardinality?: string;
 }
 
 /** Requirement definition */
@@ -210,7 +223,7 @@ export interface IDSEnumerationConstraint {
   values: string[];
 }
 
-/** Bounds constraint - numeric range */
+/** Bounds constraint - numeric range or string length */
 export interface IDSBoundsConstraint {
   type: 'bounds';
   /** Minimum inclusive value */
@@ -221,6 +234,12 @@ export interface IDSBoundsConstraint {
   minExclusive?: number;
   /** Maximum exclusive value */
   maxExclusive?: number;
+  /** xs:length — exact string length */
+  length?: number;
+  /** xs:minLength — minimum string length */
+  minLength?: number;
+  /** xs:maxLength — maximum string length */
+  maxLength?: number;
 }
 
 // ============================================================================

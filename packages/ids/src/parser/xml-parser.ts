@@ -63,10 +63,16 @@ if (!DOMParserImpl) {
  * Parse IDS XML content into an IDSDocument
  */
 export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
-  const xmlString =
+  let xmlString =
     typeof xmlContent === 'string'
       ? xmlContent
       : new TextDecoder().decode(xmlContent);
+  // Strip a leading UTF-8 BOM if present — xmldom rejects it as
+  // "unexpected content outside root element". Real-world IDS files
+  // saved by Windows tooling commonly include the BOM.
+  if (xmlString.charCodeAt(0) === 0xfeff) {
+    xmlString = xmlString.slice(1);
+  }
 
   if (!DOMParserImpl) {
     throw new IDSParseError(
@@ -122,6 +128,10 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
   return {
     info: parseInfo(root),
     specifications: parseSpecifications(root),
+    schemaLocation:
+      root.getAttribute('xsi:schemaLocation') ||
+      root.getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'schemaLocation') ||
+      undefined,
   };
 }
 
@@ -176,6 +186,7 @@ function parseSpecification(el: Element, index: number): IDSSpecification {
   const applicabilityEl = getChildElement(el, 'applicability');
   const applicability: IDSApplicability = {
     facets: applicabilityEl ? parseFacets(applicabilityEl) : [],
+    cardinality: applicabilityEl?.getAttribute('cardinality') ?? undefined,
   };
 
   // Parse minOccurs/maxOccurs with NaN validation
@@ -335,6 +346,10 @@ function parseAttributeFacet(el: Element): IDSAttributeFacet {
 function parsePropertyFacet(el: Element): IDSPropertyFacet {
   const propertySetEl = getChildElement(el, 'propertySet');
   const baseNameEl = getChildElement(el, 'baseName');
+  // IDS 1.0 puts dataType on the @dataType *attribute* (see upstream
+  // IdsProperty.cs). Older 0.9.7 documents used a <dataType> *child*
+  // element. Support both — attribute wins when present.
+  const dataTypeAttr = el.getAttribute('dataType');
   const dataTypeEl = getChildElement(el, 'dataType');
   const valueEl = getChildElement(el, 'value');
 
@@ -345,11 +360,18 @@ function parsePropertyFacet(el: Element): IDSPropertyFacet {
     throw new IDSParseError('Property facet must have a baseName element');
   }
 
+  let dataType: IDSConstraint | undefined;
+  if (dataTypeAttr) {
+    dataType = { type: 'simpleValue', value: dataTypeAttr };
+  } else if (dataTypeEl) {
+    dataType = parseConstraintElement(dataTypeEl);
+  }
+
   return {
     type: 'property',
     propertySet: parseConstraintElement(propertySetEl),
     baseName: parseConstraintElement(baseNameEl),
-    dataType: dataTypeEl ? parseConstraintElement(dataTypeEl) : undefined,
+    dataType,
     value: valueEl ? parseConstraintElement(valueEl) : undefined,
   };
 }
@@ -443,12 +465,20 @@ function parseRequirements(parent: Element): IDSRequirement[] {
   for (const child of Array.from(parent.children)) {
     const facet = parseFacet(child);
     if (facet) {
-      // Get optionality from the element
+      // IDS 1.0 uses `cardinality="required|optional|prohibited"` on the
+      // requirement facet. 0.9.7 used minOccurs/maxOccurs. Honour both;
+      // the cardinality attribute wins when present.
+      const cardinalityAttr = child.getAttribute('cardinality');
       const minOccurs = child.getAttribute('minOccurs');
       const maxOccurs = child.getAttribute('maxOccurs');
 
       let optionality: RequirementOptionality = 'required';
-      if (minOccurs === '0' && maxOccurs === '0') {
+      if (cardinalityAttr) {
+        const c = cardinalityAttr.toLowerCase();
+        if (c === 'required' || c === 'optional' || c === 'prohibited') {
+          optionality = c;
+        }
+      } else if (minOccurs === '0' && maxOccurs === '0') {
         optionality = 'prohibited';
       } else if (minOccurs === '0') {
         optionality = 'optional';
@@ -541,66 +571,42 @@ function parseRestriction(el: Element): IDSConstraint {
     } satisfies IDSEnumerationConstraint;
   }
 
-  // Check for bounds (minInclusive, maxInclusive, minExclusive, maxExclusive)
-  const minInclusiveEl =
-    getChildElementNS(el, 'minInclusive', XS_NAMESPACE) ||
-    getChildElement(el, 'minInclusive');
-  const maxInclusiveEl =
-    getChildElementNS(el, 'maxInclusive', XS_NAMESPACE) ||
-    getChildElement(el, 'maxInclusive');
-  const minExclusiveEl =
-    getChildElementNS(el, 'minExclusive', XS_NAMESPACE) ||
-    getChildElement(el, 'minExclusive');
-  const maxExclusiveEl =
-    getChildElementNS(el, 'maxExclusive', XS_NAMESPACE) ||
-    getChildElement(el, 'maxExclusive');
+  // Check for bounds (minInclusive, maxInclusive, minExclusive,
+  // maxExclusive, length, minLength, maxLength).
+  const facetEls: Record<string, Element | null> = {};
+  for (const facet of [
+    'minInclusive',
+    'maxInclusive',
+    'minExclusive',
+    'maxExclusive',
+    'length',
+    'minLength',
+    'maxLength',
+  ]) {
+    facetEls[facet] =
+      getChildElementNS(el, facet, XS_NAMESPACE) ||
+      getChildElement(el, facet);
+  }
 
-  if (minInclusiveEl || maxInclusiveEl || minExclusiveEl || maxExclusiveEl) {
-    const bounds: IDSBoundsConstraint = {
-      type: 'bounds',
+  if (Object.values(facetEls).some((e) => e !== null)) {
+    const bounds: IDSBoundsConstraint = { type: 'bounds' };
+    const readNumber = (e: Element | null): number | undefined => {
+      if (!e) return undefined;
+      const v = parseFloat(e.getAttribute('value') || e.textContent || '');
+      return Number.isFinite(v) ? v : undefined;
     };
-
-    if (minInclusiveEl) {
-      const val = parseFloat(
-        minInclusiveEl.getAttribute('value') ||
-          minInclusiveEl.textContent ||
-          ''
-      );
-      if (!isNaN(val)) {
-        bounds.minInclusive = val;
-      }
-    }
-    if (maxInclusiveEl) {
-      const val = parseFloat(
-        maxInclusiveEl.getAttribute('value') ||
-          maxInclusiveEl.textContent ||
-          ''
-      );
-      if (!isNaN(val)) {
-        bounds.maxInclusive = val;
-      }
-    }
-    if (minExclusiveEl) {
-      const val = parseFloat(
-        minExclusiveEl.getAttribute('value') ||
-          minExclusiveEl.textContent ||
-          ''
-      );
-      if (!isNaN(val)) {
-        bounds.minExclusive = val;
-      }
-    }
-    if (maxExclusiveEl) {
-      const val = parseFloat(
-        maxExclusiveEl.getAttribute('value') ||
-          maxExclusiveEl.textContent ||
-          ''
-      );
-      if (!isNaN(val)) {
-        bounds.maxExclusive = val;
-      }
-    }
-
+    const readInt = (e: Element | null): number | undefined => {
+      if (!e) return undefined;
+      const v = parseInt(e.getAttribute('value') || e.textContent || '', 10);
+      return Number.isFinite(v) && v >= 0 ? v : undefined;
+    };
+    bounds.minInclusive = readNumber(facetEls.minInclusive);
+    bounds.maxInclusive = readNumber(facetEls.maxInclusive);
+    bounds.minExclusive = readNumber(facetEls.minExclusive);
+    bounds.maxExclusive = readNumber(facetEls.maxExclusive);
+    bounds.length = readInt(facetEls.length);
+    bounds.minLength = readInt(facetEls.minLength);
+    bounds.maxLength = readInt(facetEls.maxLength);
     return bounds;
   }
 

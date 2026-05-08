@@ -83,3 +83,33 @@ export interface PartOfRelationInfo {
   readonly owner: string;
   readonly member: string;
 }
+
+/**
+ * IFC dataType (e.g. `IFCLABEL`, `IFCREAL`) and its backing XSD type
+ * token. Used by the audit module to verify that a property's
+ * `dataType` attribute matches what the standard pset declares, and
+ * that an `xs:restriction base="..."` is compatible with that backing
+ * type.
+ */
+export interface IfcDataTypeInfo {
+  /** Uppercase IFC dataType name, e.g. `IFCLABEL`. */
+  readonly name: string;
+  /** IFC versions in which this data type exists. */
+  readonly versions: readonly IfcSchemaVersion[];
+  /** Backing XSD type, e.g. `xs:string`, `xs:double`, `xs:boolean`. */
+  readonly backingType: string;
+}
+
+/**
+ * IFC attribute metadata. Tracks which entities hold the attribute and
+ * whether the attribute admits a simple `<value>` constraint or is a
+ * complex (entity-typed) reference.
+ */
+export interface IfcAttributeInfo {
+  /** Attribute name as defined on EXPRESS entities (PascalCase). */
+  readonly name: string;
+  /** Uppercase entity names where the attribute admits a simple value. */
+  readonly simpleValueEntities: readonly string[];
+  /** Uppercase entity names where the attribute holds a complex/entity reference. */
+  readonly complexEntities: readonly string[];
+}

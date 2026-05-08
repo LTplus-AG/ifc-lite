@@ -39,6 +39,7 @@ export type IDSAuditCode =
   | 'E_XSD_ENUM'
   | 'E_XSD_PATTERN'
   | 'E_XSD_STRUCTURE'
+  | 'E_XSD_SCHEMA_LOCATION'
   | 'W_XSD_DEPRECATED'
   // IFC schema cross-checks
   | 'E_IFC_ENTITY_UNKNOWN'
@@ -53,9 +54,12 @@ export type IDSAuditCode =
   // Restriction & cardinality coherence
   | 'E_RESTRICTION_EMPTY'
   | 'E_RESTRICTION_RANGE'
+  | 'E_RESTRICTION_BASE_MISMATCH'
   | 'W_REGEX_UNVERIFIED'
   | 'E_CARDINALITY_INVALID'
-  | 'W_CARDINALITY_PROHIBITED_APPLICABILITY';
+  | 'W_CARDINALITY_PROHIBITED_APPLICABILITY'
+  // IFC dataType
+  | 'E_IFC_DATATYPE_UNKNOWN';
 
 /** A single audit finding. */
 export interface IDSAuditIssue {

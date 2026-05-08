@@ -14,6 +14,12 @@
  * Browser-runnable: no `fs`, no `path`, no Node-only APIs.
  */
 
+import {
+  ATTRIBUTES_IFC2X3,
+  ATTRIBUTES_IFC4,
+  ATTRIBUTES_IFC4X3,
+} from './generated/attributes.js';
+import { IFC_DATA_TYPES } from './generated/data-types.js';
 import { ENTITIES_IFC2X3 } from './generated/entities-ifc2x3.js';
 import { ENTITIES_IFC4 } from './generated/entities-ifc4.js';
 import { ENTITIES_IFC4X3 } from './generated/entities-ifc4x3.js';
@@ -26,6 +32,8 @@ import { PROPERTY_SETS_IFC2X3 } from './generated/psets-ifc2x3.js';
 import { PROPERTY_SETS_IFC4 } from './generated/psets-ifc4.js';
 import { PROPERTY_SETS_IFC4X3 } from './generated/psets-ifc4x3.js';
 import type {
+  IfcAttributeInfo,
+  IfcDataTypeInfo,
   IfcEntityInfo,
   IfcPropertySetInfo,
   IfcSchemaVersion,
@@ -33,12 +41,24 @@ import type {
 } from './types.js';
 
 export type {
+  IfcAttributeInfo,
+  IfcDataTypeInfo,
   IfcEntityInfo,
   IfcPropertyInfo,
   IfcPropertySetInfo,
   IfcSchemaVersion,
   PartOfRelationInfo,
 } from './types.js';
+
+const ATTRIBUTES_BY_VERSION: Record<
+  IfcSchemaVersion,
+  readonly IfcAttributeInfo[]
+> = {
+  IFC2X3: ATTRIBUTES_IFC2X3,
+  IFC4: ATTRIBUTES_IFC4,
+  IFC4X3: ATTRIBUTES_IFC4X3,
+  IFC4X3_ADD2: ATTRIBUTES_IFC4X3,
+};
 
 /**
  * `Pset_*` and `Qto_*` are reserved for buildingSMART-published property
@@ -165,4 +185,59 @@ export async function isEntitySubtypeOf(
   const chain = await getInheritanceChain(v, entity);
   const upper = target.toUpperCase();
   return chain.some((e) => e.name.toUpperCase() === upper);
+}
+
+/**
+ * Look up an IFC dataType (e.g. `IFCLABEL`) for a given IFC version.
+ * Returns the row when the dataType exists in that version, or
+ * `undefined` if absent.
+ */
+export async function findDataType(
+  v: IfcSchemaVersion,
+  name: string
+): Promise<IfcDataTypeInfo | undefined> {
+  const upper = name.toUpperCase();
+  const versionKey = v === 'IFC4X3_ADD2' ? 'IFC4X3' : v;
+  for (const t of IFC_DATA_TYPES) {
+    if (
+      t.name === upper &&
+      t.versions.some(
+        (vv) => vv === versionKey || (vv === 'IFC4X3' && v === 'IFC4X3_ADD2')
+      )
+    ) {
+      return t;
+    }
+  }
+  return undefined;
+}
+
+export async function getDataTypes(
+  v: IfcSchemaVersion
+): Promise<readonly IfcDataTypeInfo[]> {
+  const versionKey = v === 'IFC4X3_ADD2' ? 'IFC4X3' : v;
+  return IFC_DATA_TYPES.filter((t) =>
+    t.versions.some(
+      (vv) => vv === versionKey || (vv === 'IFC4X3' && v === 'IFC4X3_ADD2')
+    )
+  );
+}
+
+export async function getAttributes(
+  v: IfcSchemaVersion
+): Promise<readonly IfcAttributeInfo[]> {
+  ensureVersion(v);
+  return ATTRIBUTES_BY_VERSION[v];
+}
+
+/**
+ * Look up the IFC attribute named `name` for a specific IFC version.
+ * Returns undefined when the attribute is unknown.
+ */
+export async function findAttribute(
+  v: IfcSchemaVersion,
+  name: string
+): Promise<IfcAttributeInfo | undefined> {
+  const list = await getAttributes(v);
+  const lower = name.toLowerCase();
+  return list.find((a) => a.name.toLowerCase() === lower);
 }

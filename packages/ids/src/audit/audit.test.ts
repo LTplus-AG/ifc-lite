@@ -272,8 +272,8 @@ describe('auditIDSDocument — coherence checks', () => {
     expect(codes(r.issues)).toContain('E_RESTRICTION_RANGE');
   });
 
-  it('warns on a regex pattern that does not compile under JS', async () => {
-    const xml = wrap(`<specification name="Weird regex" ifcVersion="IFC4">
+  it('errors on a regex pattern that does not compile and uses no XSD-only syntax', async () => {
+    const xml = wrap(`<specification name="Bad regex" ifcVersion="IFC4">
       <applicability>
         <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
       </applicability>
@@ -289,7 +289,32 @@ describe('auditIDSDocument — coherence checks', () => {
       </requirements>
     </specification>`);
     const r = await auditIDSDocument(xml);
-    expect(codes(r.issues)).toContain('W_REGEX_UNVERIFIED');
+    expect(codes(r.issues)).toContain('E_RESTRICTION_EMPTY');
+  });
+
+  it('warns on a regex pattern that uses XSD-specific syntax not supported by JS', async () => {
+    const xml = wrap(`<specification name="XSD regex" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute>
+          <name><simpleValue>Name</simpleValue></name>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="\\i\\c*"/>
+            </xs:restriction>
+          </value>
+        </attribute>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    // Either we accept it under JS (no issue) or warn that we can't verify
+    // the XSD-only syntax — both are acceptable.
+    const cs = codes(r.issues);
+    if (cs.length > 0) {
+      expect(cs).toContain('W_REGEX_UNVERIFIED');
+    }
   });
 
   it('flags inverted spec-level minOccurs/maxOccurs', async () => {

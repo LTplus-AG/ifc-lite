@@ -52,14 +52,47 @@ const APPLICABILITY_FACETS = new Set<FacetType>([
   'property',
 ]);
 
+/**
+ * Recognised IDS XSD schema URLs. Upstream IDS-Audit-tool keeps the
+ * authoritative list in `SchemaProviders/`; we mirror it here. The
+ * audit raises Report 107 when `xsi:schemaLocation` points elsewhere.
+ */
+const RECOGNISED_IDS_SCHEMA_URLS: ReadonlyArray<string> = [
+  'http://standards.buildingsmart.org/IDS/1.0/ids.xsd',
+  'http://standards.buildingsmart.org/IDS/0.9.7/ids.xsd',
+  'http://standards.buildingsmart.org/IDS/0.9.6/ids.xsd',
+  'http://standards.buildingsmart.org/IDS/ids.xsd',
+];
+
 export function runXsdAudit(doc: IDSDocument): IDSAuditIssue[] {
   const issues: IDSAuditIssue[] = [];
+  if (doc.schemaLocation) {
+    // schemaLocation is a whitespace-separated list of `namespace url`
+    // pairs; pull the URL paired with the IDS namespace.
+    const tokens = doc.schemaLocation.split(/\s+/).filter((t) => t.length > 0);
+    for (let i = 0; i + 1 < tokens.length; i += 2) {
+      const ns = tokens[i];
+      const url = tokens[i + 1];
+      if (ns === 'http://standards.buildingsmart.org/IDS') {
+        if (!RECOGNISED_IDS_SCHEMA_URLS.includes(url)) {
+          issues.push({
+            severity: 'error',
+            code: 'E_XSD_SCHEMA_LOCATION',
+            message: `xsi:schemaLocation references "${url}", not a recognised IDS XSD`,
+            path: 'schemaLocation',
+            detail: { url },
+          });
+        }
+      }
+    }
+  }
   if (!doc.info.title || doc.info.title.trim() === '' || doc.info.title === 'Untitled IDS') {
-    // The XSD makes <title> mandatory and non-empty. The parser falls back
-    // to "Untitled IDS" when missing — we treat that synthetic value as
-    // "title was missing in source".
+    // The XSD makes <title> mandatory and non-empty. Treat a missing or
+    // empty title as a warning rather than error — most authoring tools
+    // accept it, and consumers care more about specification content
+    // than the document-level title.
     issues.push({
-      severity: 'error',
+      severity: 'warning',
       code: 'E_XSD_REQUIRED_ATTR',
       message: 'IDS document is missing a non-empty <info><title> element',
       path: 'info.title',

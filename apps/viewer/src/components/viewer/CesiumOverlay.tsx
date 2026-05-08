@@ -562,15 +562,10 @@ export function CesiumOverlay({
     const pos = cam.getPosition();
     const tgt = cam.getTarget();
     let newY = pos.y;
-    let newTgtX = tgt.x;
     let newTgtY = tgt.y;
-    let newTgtZ = tgt.z;
 
     // 1. Stability — compensate placement delta on every change after the
     //    first observation so the user's world camera position stays fixed.
-    //    Both position AND target shift by the same amount so the world
-    //    look-at point is preserved (otherwise editing OrthogonalHeight
-    //    rotates the camera as well as translating it).
     if (prev !== null) {
       const dh = placement - prev;
       if (Math.abs(dh) > 1e-6) {
@@ -604,27 +599,13 @@ export function CesiumOverlay({
         const buffer = Math.max(100, modelH * 2);
         const lift = (groundFloor + buffer) - currentWorldAlt;
         newY += lift;
-
-        // Aim the camera at the model BASE so the lifted view actually
-        // shows the model centred on screen — without this the camera
-        // looks past the model and the building ends up at the bottom of
-        // the viewport (or off-screen for shorter buildings).
-        if (bounds) {
-          newTgtX = (bounds.min.x + bounds.max.x) / 2;
-          newTgtY = bounds.min.y;
-          newTgtZ = (bounds.min.z + bounds.max.z) / 2;
-        }
+        newTgtY += lift;
       }
     }
 
-    if (
-      newY !== pos.y ||
-      newTgtX !== tgt.x ||
-      newTgtY !== tgt.y ||
-      newTgtZ !== tgt.z
-    ) {
+    if (newY !== pos.y || newTgtY !== tgt.y) {
       cam.setPosition(pos.x, newY, pos.z);
-      cam.setTarget(newTgtX, newTgtY, newTgtZ);
+      cam.setTarget(tgt.x, newTgtY, tgt.z);
     }
   }, [status, bridgeVersion, terrainClamp, terrainHeight, coordinateInfo]);
 

@@ -51,6 +51,12 @@ export interface IDSSpecification {
   instructions?: string;
   /** IFC schema versions this applies to */
   ifcVersions: IFCVersion[];
+  /**
+   * The raw `@ifcVersion` attribute string, before tokenisation and
+   * normalisation. The audit module uses this to flag tokens that were
+   * silently dropped because they didn't map to a recognised version.
+   */
+  ifcVersionRaw?: string;
   /** Identifier (optional external reference) */
   identifier?: string;
   /** Applicability - which entities this specification applies to */
@@ -152,8 +158,15 @@ export interface IDSMaterialFacet {
 /** PartOf facet - match by spatial/compositional relationship */
 export interface IDSPartOfFacet {
   type: 'partOf';
-  /** Relationship type */
+  /** Relationship type (normalised; defaults to `IfcRelContainedInSpatialStructure` when unrecognised). */
   relation: PartOfRelation;
+  /**
+   * The relation string as it appeared in the XML, before normalisation.
+   * Set when the original value didn't map to a recognised
+   * {@link PartOfRelation}. The auditor uses this to flag invalid
+   * relation names.
+   */
+  rawRelation?: string;
   /** Optional entity constraint for the related parent */
   entity?: IDSEntityFacet;
 }

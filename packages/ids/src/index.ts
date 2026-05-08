@@ -113,6 +113,19 @@ export {
 } from './constraints/index.js';
 
 // ============================================================================
+// Audit (IDS document correctness)
+// ============================================================================
+
+export { auditIDSDocument, auditIDSStructure } from './audit/index.js';
+export type {
+  IDSAuditCode,
+  IDSAuditIssue,
+  IDSAuditOptions,
+  IDSAuditReport,
+  IDSAuditSeverity,
+} from './audit/types.js';
+
+// ============================================================================
 // Translation
 // ============================================================================
 

@@ -221,6 +221,7 @@ function parseSpecification(el: Element, index: number): IDSSpecification {
     instructions: el.getAttribute('instructions') || undefined,
     identifier: el.getAttribute('identifier') || undefined,
     ifcVersions: ifcVersions.length > 0 ? ifcVersions : ['IFC4'],
+    ifcVersionRaw: el.getAttribute('ifcVersion') || undefined,
     applicability,
     requirements,
     minOccurs,
@@ -383,16 +384,39 @@ function parseMaterialFacet(el: Element): IDSMaterialFacet {
  * Parse partOf facet
  */
 function parsePartOfFacet(el: Element): IDSPartOfFacet {
-  const relationAttr = el.getAttribute('relation') || 'IfcRelContainedInSpatialStructure';
+  const relationAttrRaw = el.getAttribute('relation');
+  const relationAttr = relationAttrRaw || 'IfcRelContainedInSpatialStructure';
   const entityEl = getChildElement(el, 'entity');
 
   const relation = normalizePartOfRelation(relationAttr);
-
-  return {
+  // When the source attribute didn't map cleanly onto one of the known
+  // relations (or was missing), preserve the original string so the
+  // auditor can flag the discrepancy without us breaking the existing
+  // narrow `PartOfRelation` enum.
+  const recognised = isRecognisedPartOfRelation(relationAttr);
+  const facet: IDSPartOfFacet = {
     type: 'partOf',
     relation,
     entity: entityEl ? parseEntityFacet(entityEl) : undefined,
   };
+  if (!recognised && relationAttrRaw) {
+    facet.rawRelation = relationAttrRaw;
+  }
+  return facet;
+}
+
+function isRecognisedPartOfRelation(relation: string): boolean {
+  switch (relation) {
+    case 'IfcRelAggregates':
+    case 'IfcRelContainedInSpatialStructure':
+    case 'IfcRelNests':
+    case 'IfcRelVoidsElement':
+    case 'IfcRelFillsElement':
+    case 'IfcRelAssignsToGroup':
+      return true;
+    default:
+      return false;
+  }
 }
 
 /**
@@ -580,19 +604,20 @@ function parseRestriction(el: Element): IDSConstraint {
     return bounds;
   }
 
-  // Default: treat base attribute or text content as simple value
+  // No recognised pattern/enumeration/bounds child. If the element only
+  // carries a `base` attribute (the common "empty restriction" authoring
+  // mistake — e.g. `<xs:restriction base="xs:string"/>`), surface an
+  // empty enumeration so the coherence auditor can flag it. Otherwise
+  // fall through to text content.
   const base = el.getAttribute('base');
-  if (base) {
-    return {
-      type: 'simpleValue',
-      value: base,
-    };
+  const text = el.textContent?.trim() || '';
+  if (base && text === '') {
+    return { type: 'enumeration', values: [] } satisfies IDSEnumerationConstraint;
   }
-
-  return {
-    type: 'simpleValue',
-    value: el.textContent?.trim() || '',
-  };
+  if (text) {
+    return { type: 'simpleValue', value: text };
+  }
+  return { type: 'enumeration', values: [] } satisfies IDSEnumerationConstraint;
 }
 
 // ============================================================================

@@ -33,5 +33,24 @@ export {
 // Entity name mapping (UPPERCASE → PascalCase)
 export { IFC_ENTITY_NAMES } from './ifc-entity-names.js';
 
+// Per-version IFC schema lookup (used by `@ifc-lite/ids` audit)
+export {
+  getEntities,
+  getPropertySets,
+  getPartOfRelations,
+  findEntity,
+  findPropertySet,
+  getInheritanceChain,
+  isEntitySubtypeOf,
+  RESERVED_PSET_PREFIXES,
+} from './ifc-schema/index.js';
+export type {
+  IfcEntityInfo,
+  IfcPropertyInfo,
+  IfcPropertySetInfo,
+  IfcSchemaVersion,
+  PartOfRelationInfo,
+} from './ifc-schema/index.js';
+
 // Logging utilities
 export { createLogger, logger, type LogLevel, type LogContext } from './logger.js';

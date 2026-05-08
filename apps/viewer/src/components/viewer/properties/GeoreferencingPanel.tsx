@@ -385,6 +385,25 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return meters; // already meters
   }, [mapUnitSuffix]);
 
+  /**
+   * Given a target world altitude (metres) for the model BASE, return the
+   * IfcMapConversion.OrthogonalHeight value (in map units, rounded to 0.01)
+   * that would put the base there — accounting for the bounds offset and
+   * any RTC / origin shifts the geometry pipeline applied. This mirrors
+   * the auto-clamp formula `placement = terrain + bottomOffset` so the
+   * "Set OrthogonalHeight to Cesium terrain elevation" button produces
+   * the same world position as toggling the clamp.
+   */
+  const oHeightForBaseAltitude = useCallback((targetBaseAltitude: number): number => {
+    const bounds = coordinateInfo?.originalBounds;
+    const minY = bounds?.min.y ?? 0;
+    const shiftY = coordinateInfo?.originShift?.y ?? 0;
+    // RTC offset is in IFC Z-up; viewer Y-up takes its Z component.
+    const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
+    const targetOHeightMeters = targetBaseAltitude - shiftY - rtcYupY - minY;
+    return Math.round(metersToMapUnit(targetOHeightMeters) * 100) / 100;
+  }, [coordinateInfo, metersToMapUnit]);
+
   const isMutated = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string): boolean => {
     if (!mutations) return false;
     const entityMuts = mutations[entity];
@@ -470,16 +489,19 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       { field: 'northings', value: position.northing, oldValue: mergedConversion?.northings },
     ];
     if (position.terrainHeight !== null) {
+      // position.terrainHeight is the world altitude where the user wants the
+      // base of the model — translate to OrthogonalHeight using the same
+      // bounds/shift accounting as the auto-clamp path.
       fields.push({
         field: 'orthogonalHeight',
-        value: Math.round(position.terrainHeight * 10) / 10,
+        value: oHeightForBaseAltitude(position.terrainHeight),
         oldValue: mergedConversion?.orthogonalHeight,
       });
     }
     setGeorefFields(modelId, 'mapConversion', fields);
     setConversionOpen(true);
     requestAlignmentReload();
-  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
+  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload, oHeightForBaseAltitude]);
 
   const initializeMapConversionDefaults = useCallback(() => {
     if (!modelId || !setGeorefFields) return;
@@ -673,7 +695,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               <GeorefRow label="Eastings" value={mergedConversion.eastings} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'eastings')} fieldEntity="mapConversion" fieldName="eastings" onSave={v => handleSave('mapConversion', 'eastings', v)} />
               <GeorefRow label="Northings" value={mergedConversion.northings} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'northings')} fieldEntity="mapConversion" fieldName="northings" onSave={v => handleSave('mapConversion', 'northings', v)} />
               <GeorefRow label="OrthogonalHeight" value={mergedConversion.orthogonalHeight} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'orthogonalHeight')} fieldEntity="mapConversion" fieldName="orthogonalHeight" onSave={v => handleSave('mapConversion', 'orthogonalHeight', v)}>
-                <TerrainHeightButton modelId={modelId} editable={editable} onApply={(h) => handleSave('mapConversion', 'orthogonalHeight', Math.round(metersToMapUnit(h) * 100) / 100)} />
+                <TerrainHeightButton modelId={modelId} editable={editable} onApply={(h) => handleSave('mapConversion', 'orthogonalHeight', oHeightForBaseAltitude(h))} />
               </GeorefRow>
               <GeorefRow label="XAxisAbscissa" value={mergedConversion.xAxisAbscissa} isNumber editable={editable} isMutated={isMutated('mapConversion', 'xAxisAbscissa')} fieldEntity="mapConversion" fieldName="xAxisAbscissa" onSave={v => handleSave('mapConversion', 'xAxisAbscissa', v)} />
               <GeorefRow label="XAxisOrdinate" value={mergedConversion.xAxisOrdinate} isNumber editable={editable} isMutated={isMutated('mapConversion', 'xAxisOrdinate')} fieldEntity="mapConversion" fieldName="xAxisOrdinate" onSave={v => handleSave('mapConversion', 'xAxisOrdinate', v)} />
@@ -736,7 +758,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           {cesiumTerrainHeight !== null && editable && modelId && (
             <div className="flex items-center gap-1 ml-5">
               <button
-                onClick={() => handleSave('mapConversion', 'orthogonalHeight', Math.round(metersToMapUnit(cesiumTerrainHeight) * 100) / 100)}
+                onClick={() => handleSave('mapConversion', 'orthogonalHeight', oHeightForBaseAltitude(cesiumTerrainHeight))}
                 className="text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors flex items-center gap-0.5"
               >
                 <Mountain className="h-2.5 w-2.5" />

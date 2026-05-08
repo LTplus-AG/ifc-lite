@@ -37,7 +37,7 @@ the same world position as toggling the clamp.
 **UX behaviours**
 
 - `cesiumTerrainClamp` defaults to `true` (slice + reset path).
-- Clamp toggle now actually un-uncheckable — dropped the auto-toggle
+- Clamp toggle is now actually uncheckable — dropped the auto-toggle
   branch that fought the user's setting.
 - Editing OrthogonalHeight directly auto-releases the clamp so the
   edit takes effect (with clamp on, placement is intentionally

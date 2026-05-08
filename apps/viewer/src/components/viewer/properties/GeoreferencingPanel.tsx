@@ -16,6 +16,7 @@ import { useViewerStore } from '@/store';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { LocationMap, type PickedPosition } from './LocationMap';
+import { findClampAnchorY } from '@/lib/geo/clamp-anchor';
 import { detectScaleUnitMismatch, mergeMapConversion, mergeProjectedCRS } from '@/lib/geo/effective-georef';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
@@ -324,9 +325,12 @@ export interface GeoreferencingPanelProps {
   geometryResult?: GeometryResult | null;
   /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1. */
   lengthUnitScale?: number;
+  /** IfcBuildingStorey elevations (express id → metres, viewer-Y aligned).
+   *  Used to anchor the model's ground floor to terrain. */
+  storeyElevations?: Map<number, number>;
 }
 
-export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVersion, coordinateInfo, geometryResult, lengthUnitScale }: GeoreferencingPanelProps) {
+export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVersion, coordinateInfo, geometryResult, lengthUnitScale, storeyElevations }: GeoreferencingPanelProps) {
   const georefMutations = useViewerStore(s => s.georefMutations);
   const setGeorefField = useViewerStore(s => s.setGeorefField);
   const setGeorefFields = useViewerStore(s => s.setGeorefFields);
@@ -386,23 +390,24 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   }, [mapUnitSuffix]);
 
   /**
-   * Given a target world altitude (metres) for the model BASE, return the
-   * IfcMapConversion.OrthogonalHeight value (in map units, rounded to 0.01)
-   * that would put the base there — accounting for the bounds offset and
-   * any RTC / origin shifts the geometry pipeline applied. This mirrors
-   * the auto-clamp formula `placement = terrain + bottomOffset` so the
-   * "Set OrthogonalHeight to Cesium terrain elevation" button produces
-   * the same world position as toggling the clamp.
+   * Given a target world altitude (metres) for the model's ground floor
+   * (the storey nearest elevation 0, falling back to bounds.min.y when
+   * no storeys are present), return the IfcMapConversion.OrthogonalHeight
+   * value (in map units, rounded to 0.01) that would put the ground floor
+   * there — accounting for any RTC / origin shifts the geometry pipeline
+   * applied. This mirrors the auto-clamp formula so the "Set
+   * OrthogonalHeight to Cesium terrain elevation" button produces the same
+   * world position as toggling the clamp.
    */
   const oHeightForBaseAltitude = useCallback((targetBaseAltitude: number): number => {
     const bounds = coordinateInfo?.originalBounds;
-    const minY = bounds?.min.y ?? 0;
+    const anchorY = findClampAnchorY(bounds, storeyElevations);
     const shiftY = coordinateInfo?.originShift?.y ?? 0;
     // RTC offset is in IFC Z-up; viewer Y-up takes its Z component.
     const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
-    const targetOHeightMeters = targetBaseAltitude - shiftY - rtcYupY - minY;
+    const targetOHeightMeters = targetBaseAltitude - shiftY - rtcYupY - anchorY;
     return Math.round(metersToMapUnit(targetOHeightMeters) * 100) / 100;
-  }, [coordinateInfo, metersToMapUnit]);
+  }, [coordinateInfo, storeyElevations, metersToMapUnit]);
 
   const isMutated = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string): boolean => {
     if (!mutations) return false;

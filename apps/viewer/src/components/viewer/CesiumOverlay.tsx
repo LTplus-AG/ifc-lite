@@ -26,6 +26,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { createCesiumBridge, type CesiumBridge } from '@/lib/geo/cesium-bridge';
+import { findClampAnchorY } from '@/lib/geo/clamp-anchor';
 import { getEffectiveHorizontalScale } from '@/lib/geo/effective-georef';
 
 // Lazy-loaded Cesium module and CSS
@@ -214,6 +215,10 @@ export interface CesiumOverlayProps {
   geometryResult?: GeometryResult | null;
   /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1. */
   lengthUnitScale?: number;
+  /** IfcBuildingStorey elevations (express id → metres, viewer-Y aligned).
+   *  Used to clamp the model's ground-floor storey to terrain instead of
+   *  the lowest geometry vertex (which can be a basement or foundation). */
+  storeyElevations?: Map<number, number>;
 }
 
 export function CesiumOverlay({
@@ -222,6 +227,7 @@ export function CesiumOverlay({
   coordinateInfo,
   geometryResult,
   lengthUnitScale = 1,
+  storeyElevations,
 }: CesiumOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<InstanceType<typeof import('cesium').Viewer> | null>(null);
@@ -438,7 +444,11 @@ export function CesiumOverlay({
       const bounds = coordinateInfo?.originalBounds;
       const mvy = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
       const minY = bounds?.min.y ?? 0;
-      const bottomOffset = mvy - minY;
+      // Clamp anchor: viewer-Y of the storey nearest elevation 0 (typical
+      // ground floor), falling back to bounds.min.y. Without this, basements
+      // and foundations drag the model deep below terrain.
+      const clampAnchorY = findClampAnchorY(bounds, storeyElevations);
+      const anchorOffset = mvy - clampAnchorY;
       const ifcOHeight = tentative.modelOrigin.height;
       // Clamp is purely the user's choice. We do NOT auto-clamp on top of
       // the user's setting — that would reactivate the toggle the moment
@@ -447,12 +457,13 @@ export function CesiumOverlay({
       // checkbox becomes un-uncheckable).
       const placementHeight =
         terrainClamp && terrainH !== null
-          ? terrainH + bottomOffset
+          ? terrainH + anchorOffset
           : ifcOHeight;
 
       console.debug(
         `[CesiumOverlay] placement decision: terrain=${terrainH?.toFixed(2) ?? 'null'}m`
-        + ` ifcOHeight=${ifcOHeight.toFixed(2)}m bottomOffset=${bottomOffset.toFixed(2)}m`
+        + ` ifcOHeight=${ifcOHeight.toFixed(2)}m anchorY=${clampAnchorY.toFixed(2)}m`
+        + ` (minY=${minY.toFixed(2)}m, ${storeyElevations?.size ?? 0} storeys)`
         + ` clamp=${terrainClamp} placement=${placementHeight.toFixed(2)}m`
         + ` (terrain query: ${terrainMs.toFixed(0)}ms)`
       );
@@ -477,8 +488,10 @@ export function CesiumOverlay({
         setCesiumTerrainHeight(terrainH);
         // terrainClipY stays in viewer-space; it represents the world terrain
         // altitude expressed in the bridge's frame so a clip plane at that Y
-        // matches the terrain surface.
-        const terrainClipY = minY + (terrainH - ifcOHeight);
+        // matches the terrain surface. Use the clamp anchor (ground floor)
+        // rather than minY so the clip plane matches the user's ground level
+        // rather than the basement floor.
+        const terrainClipY = clampAnchorY + (terrainH - ifcOHeight);
         setCesiumTerrainClipY(terrainClipY);
       } else {
         // Failed re-query (offline, API down) — clear stale store fields so
@@ -522,7 +535,7 @@ export function CesiumOverlay({
     // owns those (it destroys/recreates the viewer when they change), and
     // listing them here would cause a redundant bridge rebuild while the
     // viewer is being torn down.
-  }, [status, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, terrainClamp]);
+  }, [status, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, terrainClamp, storeyElevations]);
 
   // ─── Effect 2c: Load GLB into Cesium (only when geometry changes) ───────
   // This is the heavy operation — only re-runs when geometry actually changes.

@@ -1309,6 +1309,7 @@ export function PropertiesPanel() {
                 coordinateInfo={(model?.geometryResult ?? geometryResult)?.coordinateInfo}
                 geometryResult={model?.geometryResult ?? geometryResult}
                 lengthUnitScale={lengthUnitScale}
+                storeyElevations={activeDataStore?.spatialHierarchy?.storeyElevations}
               />
             </CollapsibleContent>
           </Collapsible>

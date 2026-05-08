@@ -215,7 +215,11 @@ export function ViewportContainer() {
         georefMutations.get(modelId),
       );
       if (effective?.projectedCRS?.name && effective.mapConversion) {
-        return { ...effective, sourceModelId: modelId };
+        return {
+          ...effective,
+          sourceModelId: modelId,
+          storeyElevations: ds.spatialHierarchy?.storeyElevations,
+        };
       }
     }
 
@@ -227,7 +231,11 @@ export function ViewportContainer() {
         georefMutations.get('__legacy__'),
       );
       if (effective?.projectedCRS?.name && effective.mapConversion) {
-        return { ...effective, sourceModelId: '__legacy__' };
+        return {
+          ...effective,
+          sourceModelId: '__legacy__',
+          storeyElevations: ifcDataStore.spatialHierarchy?.storeyElevations,
+        };
       }
     }
 
@@ -908,6 +916,7 @@ export function ViewportContainer() {
           coordinateInfo={georef.coordinateInfo}
           geometryResult={mergedGeometryResult}
           lengthUnitScale={georef.lengthUnitScale}
+          storeyElevations={georef.storeyElevations}
         />
       )}
       <Viewport

@@ -363,6 +363,99 @@ describe('auditIDSDocument — options', () => {
   });
 });
 
+describe('auditIDSDocument — review feedback fixes', () => {
+  it('rejects an invalid @cardinality value (e.g. "Optional")', async () => {
+    const xml = wrap(`<specification name="X" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute cardinality="Optional">
+          <name><simpleValue>Name</simpleValue></name>
+        </attribute>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(r.status).toBe('error');
+    expect(codes(r.issues)).toContain('E_CARDINALITY_INVALID');
+  });
+
+  it('rejects a bogus @cardinality value', async () => {
+    const xml = wrap(`<specification name="X" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute cardinality="Invalid">
+          <name><simpleValue>Name</simpleValue></name>
+        </attribute>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).toContain('E_CARDINALITY_INVALID');
+  });
+
+  it('audits every declared @ifcVersion, not just the first', async () => {
+    // IfcRoad is IFC4X3-only. A spec declaring both IFC4X3 and IFC4
+    // must fail because the reference is invalid in IFC4 — the older
+    // pickVersion logic only checked IFC4X3 first and missed it.
+    const xml = wrap(`<specification name="X" ifcVersion="IFC4X3_ADD2 IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCROAD</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute><name><simpleValue>Name</simpleValue></name></attribute>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).toContain('E_IFC_ENTITY_UNKNOWN');
+  });
+
+  it('does not false-positive on a numeric xs:restriction over an integer dataType', async () => {
+    const xml = wrap(`<specification name="X" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCINTEGER">
+          <propertySet><simpleValue>CustomPset</simpleValue></propertySet>
+          <baseName><simpleValue>SomeIntProp</simpleValue></baseName>
+          <value>
+            <xs:restriction base="xs:integer">
+              <xs:enumeration value="1"/>
+              <xs:enumeration value="2"/>
+            </xs:restriction>
+          </value>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('E_RESTRICTION_BASE_MISMATCH');
+  });
+
+  it('flags an enumeration value that is invalid for its restriction base', async () => {
+    const xml = wrap(`<specification name="X" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>CustomPset</simpleValue></propertySet>
+          <baseName><simpleValue>SomeReal</simpleValue></baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:enumeration value="12.0"/>
+              <xs:enumeration value="not-a-number"/>
+            </xs:restriction>
+          </value>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).toContain('E_RESTRICTION_VALUE_MISMATCH');
+  });
+});
+
 describe('auditIDSStructure', () => {
   it('audits an already-parsed document without re-parsing', async () => {
     const r = await auditIDSStructure({

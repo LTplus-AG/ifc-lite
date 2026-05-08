@@ -47,23 +47,46 @@ export async function runIfcSchemaAudit(
   const issues: IDSAuditIssue[] = [];
   for (let i = 0; i < doc.specifications.length; i++) {
     const spec = doc.specifications[i];
-    const version = pickVersion(spec, options.ifcVersion);
-    if (!version) continue; // XSD audit will already have flagged this
-    await auditSpec(spec, version, `specifications[${i}]`, issues);
+    const versions = pickVersions(spec, options.ifcVersion);
+    if (versions.length === 0) continue; // XSD audit will already have flagged this
+    // IDS specs apply to *every* listed `@ifcVersion`. A constraint
+    // valid in IFC2X3 but not in IFC4 must surface even when IFC2X3
+    // appears first. Walk each version and dedupe issues that fire
+    // identically across them (same code + path) — only carry the
+    // first version's `detail` so reports stay readable.
+    const seen = new Set<string>();
+    for (const version of versions) {
+      const perVersion: IDSAuditIssue[] = [];
+      await auditSpec(spec, version, `specifications[${i}]`, perVersion);
+      for (const iss of perVersion) {
+        const key = `${iss.code}|${iss.path}|${iss.message}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        issues.push(iss);
+      }
+    }
   }
   return issues;
 }
 
-function pickVersion(
+function pickVersions(
   spec: IDSSpecification,
   override?: IFCVersion
-): IfcSchemaVersion | undefined {
-  if (override) return normaliseSchemaVersion(override);
+): IfcSchemaVersion[] {
+  if (override) {
+    const n = normaliseSchemaVersion(override);
+    return n ? [n] : [];
+  }
+  const out: IfcSchemaVersion[] = [];
+  const seen = new Set<IfcSchemaVersion>();
   for (const v of spec.ifcVersions) {
     const n = normaliseSchemaVersion(v);
-    if (n) return n;
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
   }
-  return undefined;
+  return out;
 }
 
 function normaliseSchemaVersion(v: IFCVersion): IfcSchemaVersion | undefined {
@@ -479,12 +502,14 @@ function checkDataTypeMatch(
 /**
  * Upstream IDS-Audit-tool's Report 303 — when a `<value>` carries an
  * `xs:restriction`, its `@base` must be compatible with the dataType's
- * backing XSD type. We approximate by re-walking the restriction shape
- * (bounds → `xs:double` / `xs:integer`-like, length → `xs:string`,
- * pattern/enumeration → string when no other clue). Since the parser
- * normalises restrictions away from the raw `@base` attribute, we
- * inspect the constraint *shape* — the same signal the standard XSD
- * uses to decide compatibility.
+ * backing XSD type. The parser preserves the raw `@base` attribute on
+ * pattern/enumeration/bounds constraints, so we use that directly when
+ * present and only fall back to inferring from the restriction shape
+ * when the source XML didn't carry a base.
+ *
+ * Inferring from shape alone is ambiguous: `<xs:enumeration value="1"/>`
+ * looks like a string enumeration unless we know the parent
+ * `<xs:restriction base="xs:integer">`.
  */
 function checkRestrictionBase(
   c: import('../../types.js').IDSConstraint,
@@ -496,30 +521,38 @@ function checkRestrictionBase(
   // Only restrictions can mismatch — simpleValue is always treated as
   // string-compatible by the IDS XSD.
   if (c.type === 'simpleValue') return;
+  const declaredBase =
+    c.type === 'pattern' || c.type === 'enumeration' || c.type === 'bounds'
+      ? c.base
+      : undefined;
   let inferred: string | undefined;
-  switch (c.type) {
-    case 'pattern':
-    case 'enumeration':
-      inferred = 'xs:string';
-      break;
-    case 'bounds':
-      if (
-        typeof c.length === 'number' ||
-        typeof c.minLength === 'number' ||
-        typeof c.maxLength === 'number'
-      ) {
+  if (declaredBase) {
+    inferred = declaredBase;
+  } else {
+    switch (c.type) {
+      case 'pattern':
+      case 'enumeration':
         inferred = 'xs:string';
-      } else {
-        inferred = 'xs:double';
-      }
-      break;
+        break;
+      case 'bounds':
+        if (
+          typeof c.length === 'number' ||
+          typeof c.minLength === 'number' ||
+          typeof c.maxLength === 'number'
+        ) {
+          inferred = 'xs:string';
+        } else {
+          inferred = 'xs:double';
+        }
+        break;
+    }
   }
   if (!inferred) return;
   if (!isXsTypeCompatible(inferred, backingType)) {
     issues.push({
       severity: 'error',
       code: 'E_RESTRICTION_BASE_MISMATCH',
-      message: `xs:restriction shape (${inferred}) is not compatible with dataType "${dataType}" (backing ${backingType})`,
+      message: `xs:restriction base (${inferred}) is not compatible with dataType "${dataType}" (backing ${backingType})`,
       path,
       facetType: 'property',
       detail: { inferred, expected: backingType, dataType },
@@ -528,19 +561,20 @@ function checkRestrictionBase(
 }
 
 /**
- * XSD type compatibility per upstream `XsTypes.IsCompatible`. Numeric
- * subtypes promote to each other; strings stand alone.
+ * XSD type compatibility per upstream `IdsProperty.cs`: the restriction
+ * `@base` must equal the IFC dataType's backing XSD type exactly. The
+ * one wrinkle is the `xs:double` / `xs:decimal` / `xs:float` family —
+ * upstream's `XsTypes.IsValid` accepts any of them as
+ * floating-point — so those three are treated as equivalent.
+ *
+ * `xs:integer` is *not* promoted to floats: upstream rejects an
+ * `xs:integer` restriction on an `IFCREAL`-backing property since
+ * decimal values would be invalid against the integer pattern.
  */
 function isXsTypeCompatible(inferred: string, expected: string): boolean {
   if (inferred === expected) return true;
-  const numeric = new Set([
-    'xs:double',
-    'xs:decimal',
-    'xs:float',
-    'xs:integer',
-  ]);
-  if (numeric.has(inferred) && numeric.has(expected)) return true;
-  // `xs:boolean` and `xs:string` only match exactly.
+  const floats = new Set(['xs:double', 'xs:decimal', 'xs:float']);
+  if (floats.has(inferred) && floats.has(expected)) return true;
   return false;
 }
 

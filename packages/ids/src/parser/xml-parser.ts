@@ -473,10 +473,30 @@ function parseRequirements(parent: Element): IDSRequirement[] {
       const maxOccurs = child.getAttribute('maxOccurs');
 
       let optionality: RequirementOptionality = 'required';
-      if (cardinalityAttr) {
-        const c = cardinalityAttr.toLowerCase();
-        if (c === 'required' || c === 'optional' || c === 'prohibited') {
-          optionality = c;
+      // The XSD enum values are case-sensitive lowercase; preserve any
+      // non-canonical raw input so the auditor can flag it instead of
+      // letting the parser silently default to `required`.
+      let cardinalityRaw: string | undefined;
+      if (cardinalityAttr !== null) {
+        if (
+          cardinalityAttr === 'required' ||
+          cardinalityAttr === 'optional' ||
+          cardinalityAttr === 'prohibited'
+        ) {
+          optionality = cardinalityAttr as RequirementOptionality;
+        } else {
+          // Tolerate case differences for the runtime mapping (so
+          // `"Required"` still parses) but record the raw value so the
+          // audit can flag it.
+          const lower = cardinalityAttr.toLowerCase();
+          if (
+            lower === 'required' ||
+            lower === 'optional' ||
+            lower === 'prohibited'
+          ) {
+            optionality = lower as RequirementOptionality;
+          }
+          cardinalityRaw = cardinalityAttr;
         }
       } else if (minOccurs === '0' && maxOccurs === '0') {
         optionality = 'prohibited';
@@ -488,6 +508,7 @@ function parseRequirements(parent: Element): IDSRequirement[] {
         id: `req-${reqIndex++}`,
         facet,
         optionality,
+        cardinalityRaw,
         description: child.getAttribute('description') || undefined,
         instructions: child.getAttribute('instructions') || undefined,
       });
@@ -538,6 +559,11 @@ function parseConstraintElement(el: Element): IDSConstraint {
  * Parse XSD restriction element
  */
 function parseRestriction(el: Element): IDSConstraint {
+  // Capture the `@base` attribute so the auditor can compare against
+  // an IFC dataType's backing XSD type without inferring from the
+  // restriction shape (which is ambiguous for numeric enumerations).
+  const base = el.getAttribute('base') || undefined;
+
   // Check for pattern
   const patternEl =
     getChildElementNS(el, 'pattern', XS_NAMESPACE) ||
@@ -546,6 +572,7 @@ function parseRestriction(el: Element): IDSConstraint {
     return {
       type: 'pattern',
       pattern: patternEl.getAttribute('value') || patternEl.textContent || '',
+      base,
     } satisfies IDSPatternConstraint;
   }
 
@@ -560,6 +587,7 @@ function parseRestriction(el: Element): IDSConstraint {
         values: enumElsNoNS.map(
           (e) => e.getAttribute('value') || e.textContent || ''
         ),
+        base,
       } satisfies IDSEnumerationConstraint;
     }
   } else {
@@ -568,6 +596,7 @@ function parseRestriction(el: Element): IDSConstraint {
       values: enumEls.map(
         (e) => e.getAttribute('value') || e.textContent || ''
       ),
+      base,
     } satisfies IDSEnumerationConstraint;
   }
 
@@ -589,7 +618,7 @@ function parseRestriction(el: Element): IDSConstraint {
   }
 
   if (Object.values(facetEls).some((e) => e !== null)) {
-    const bounds: IDSBoundsConstraint = { type: 'bounds' };
+    const bounds: IDSBoundsConstraint = { type: 'bounds', base };
     const readNumber = (e: Element | null): number | undefined => {
       if (!e) return undefined;
       const v = parseFloat(e.getAttribute('value') || e.textContent || '');
@@ -615,15 +644,18 @@ function parseRestriction(el: Element): IDSConstraint {
   // mistake — e.g. `<xs:restriction base="xs:string"/>`), surface an
   // empty enumeration so the coherence auditor can flag it. Otherwise
   // fall through to text content.
-  const base = el.getAttribute('base');
   const text = el.textContent?.trim() || '';
   if (base && text === '') {
-    return { type: 'enumeration', values: [] } satisfies IDSEnumerationConstraint;
+    return {
+      type: 'enumeration',
+      values: [],
+      base,
+    } satisfies IDSEnumerationConstraint;
   }
   if (text) {
     return { type: 'simpleValue', value: text };
   }
-  return { type: 'enumeration', values: [] } satisfies IDSEnumerationConstraint;
+  return { type: 'enumeration', values: [], base } satisfies IDSEnumerationConstraint;
 }
 
 // ============================================================================

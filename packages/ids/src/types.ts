@@ -98,6 +98,15 @@ export interface IDSRequirement {
   facet: IDSFacet;
   /** Optionality of this requirement */
   optionality: RequirementOptionality;
+  /**
+   * The raw `@cardinality` attribute string from the XML, when present
+   * but not equal to one of the canonical XSD enum values
+   * (`required` / `optional` / `prohibited`). Preserved so the auditor
+   * can flag values like `"Required"` or `"Invalid"` that the parser
+   * silently mapped to the default. `undefined` when the attribute was
+   * absent or already canonical.
+   */
+  cardinalityRaw?: string;
   /** Human-readable description */
   description?: string;
   /** Instructions for achieving compliance */
@@ -214,6 +223,13 @@ export interface IDSPatternConstraint {
   type: 'pattern';
   /** XSD regex pattern */
   pattern: string;
+  /**
+   * The originating `xs:restriction @base` (e.g. `xs:string`, `xs:integer`).
+   * Set when the constraint came from an `<xs:restriction>` element; the
+   * auditor uses it to determine compatibility with an IFC dataType
+   * without inferring the base from the constraint shape.
+   */
+  base?: string;
 }
 
 /** Enumeration constraint - one of a list of values */
@@ -221,6 +237,13 @@ export interface IDSEnumerationConstraint {
   type: 'enumeration';
   /** List of allowed values */
   values: string[];
+  /**
+   * The originating `xs:restriction @base` (e.g. `xs:string`,
+   * `xs:integer`). Set when the constraint came from an
+   * `<xs:restriction>`; numeric/boolean enumerations carry their base
+   * here so the auditor doesn't false-positive a string-base mismatch.
+   */
+  base?: string;
 }
 
 /** Bounds constraint - numeric range or string length */
@@ -240,6 +263,13 @@ export interface IDSBoundsConstraint {
   minLength?: number;
   /** xs:maxLength — maximum string length */
   maxLength?: number;
+  /**
+   * The originating `xs:restriction @base` (e.g. `xs:double`,
+   * `xs:integer`). Set when the constraint came from an
+   * `<xs:restriction>` so the auditor can compare against the IFC
+   * dataType's backing type directly.
+   */
+  base?: string;
 }
 
 // ============================================================================

@@ -117,6 +117,21 @@ function auditRequirementCardinality(
   path: string,
   issues: IDSAuditIssue[]
 ): void {
+  // The XSD `conditionalCardinality` / `simpleCardinality` enums are
+  // case-sensitive lowercase: `required`, `optional`, `prohibited`. The
+  // parser preserves the raw value when it didn't match exactly so we
+  // can flag mistakes here (`Required`, `Invalid`, empty string, …)
+  // rather than silently defaulting to `required`.
+  if (req.cardinalityRaw !== undefined) {
+    issues.push({
+      severity: 'error',
+      code: 'E_CARDINALITY_INVALID',
+      message: `@cardinality="${req.cardinalityRaw}" is not a valid value; expected one of {required, optional, prohibited}`,
+      path: `${path}.cardinality`,
+      facetType: req.facet.type,
+      detail: { value: req.cardinalityRaw },
+    });
+  }
   switch (req.facet.type) {
     case 'property': {
       const hasDataType = req.facet.dataType !== undefined;
@@ -271,6 +286,27 @@ function check(
           facetType,
         });
       }
+      // When the restriction base is a typed primitive
+      // (`xs:double`/`xs:integer`/`xs:boolean`/…), every enumeration
+      // value must match the base's lexical space — upstream's
+      // `Report 305 BadConstraintValue`. Otherwise an `xs:double`
+      // restriction can carry strings like `"12,0"` or `"a"` that
+      // would never compare equal to a real numeric value.
+      if (c.base) {
+        for (const v of c.values) {
+          if (v == null || v === '') continue;
+          if (!isValidLexicalForXsType(v, c.base)) {
+            issues.push({
+              severity: 'error',
+              code: 'E_RESTRICTION_VALUE_MISMATCH',
+              message: `xs:enumeration value "${v}" is not valid for xs:restriction @base="${c.base}"`,
+              path,
+              facetType,
+              detail: { value: v, base: c.base },
+            });
+          }
+        }
+      }
       break;
     case 'bounds':
       checkBounds(c, path, issues, facetType);
@@ -393,4 +429,41 @@ function checkPattern(
     facetType,
     detail: { pattern },
   });
+}
+
+/**
+ * Validate that `value` matches the lexical space of the supplied XSD
+ * primitive base. Mirrors upstream `XsTypes.IsValid` — same regexes,
+ * just expressed in JS. Used by the enumeration coherence check to
+ * flag entries like `<xs:enumeration value="12,0"/>` under a
+ * `<xs:restriction base="xs:double">`.
+ */
+const XS_VALUE_REGEX: Record<string, RegExp> = {
+  // Lifted from upstream `XmlRegex.cs` static fields.
+  'xs:integer': /^[+-]?(\d+)$/,
+  'xs:double': /^([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
+  'xs:float': /^([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
+  'xs:decimal': /^([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
+  'xs:boolean': /^(true|false|0|1)$/,
+  'xs:date': /^\d{4}-\d{2}-\d{2}(Z|([+-]\d{2}:\d{2}))?$/,
+  'xs:dateTime':
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))?$/,
+  'xs:time': /^\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))?$/,
+  'xs:duration': /^[-+]?P(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$/,
+};
+
+function isValidLexicalForXsType(value: string, base: string): boolean {
+  const rx = XS_VALUE_REGEX[base];
+  if (!rx) return true; // base we don't recognise → don't fabricate errors
+  // For doubles/floats/decimals, an empty lexeme is technically allowed
+  // by the regex but isn't a meaningful number — reject.
+  if (
+    (base === 'xs:double' ||
+      base === 'xs:float' ||
+      base === 'xs:decimal') &&
+    !/[0-9]/.test(value)
+  ) {
+    return false;
+  }
+  return rx.test(value);
 }

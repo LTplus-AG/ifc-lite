@@ -237,7 +237,6 @@ export function CesiumOverlay({
   const ionToken = useViewerStore((s) => s.cesiumIonToken);
   const terrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
   const terrainClamp = useViewerStore((s) => s.cesiumTerrainClamp);
-  const setCesiumTerrainClamp = useViewerStore((s) => s.setCesiumTerrainClamp);
   const terrainHeight = useViewerStore((s) => s.cesiumTerrainHeight);
   const setCesiumTerrainHeight = useViewerStore((s) => s.setCesiumTerrainHeight);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
@@ -246,6 +245,14 @@ export function CesiumOverlay({
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; destroy?: () => void } | null>(null);
   const glbCacheRef = useRef<{ meshCount: number; glb: Uint8Array } | null>(null);
+
+  // Last-known placement altitude (in metres) used to keep the user's WORLD
+  // camera position stable across bridge rebuilds. When the user toggles the
+  // clamp or edits OrthogonalHeight, the model placement changes and the
+  // entire viewer→ECEF frame translates with it; we offset the IFC viewer's
+  // camera Y by the inverse so the user perceives the model moving instead
+  // of the camera being dragged along.
+  const prevPlacementRef = useRef<number | null>(null);
 
   // ─── Effect 1: Create/destroy the Cesium viewer (heavy, rare) ───────────
   // Only depends on cesiumEnabled, ionToken, terrainEnabled, dataSource.
@@ -396,6 +403,7 @@ export function CesiumOverlay({
   useEffect(() => {
     if (status !== 'ready' || !mapConversion || !projectedCRS) {
       bridgeRef.current = null;
+      prevPlacementRef.current = null;
       return;
     }
 
@@ -432,20 +440,20 @@ export function CesiumOverlay({
       const minY = bounds?.min.y ?? 0;
       const bottomOffset = mvy - minY;
       const ifcOHeight = tentative.modelOrigin.height;
-      // Auto-clamp when the user has it on (default true), OR when the model
-      // is authored meaningfully below terrain (the previous auto-toggle).
-      const wantClamp =
-        terrainClamp ||
-        (terrainH !== null && terrainH > ifcOHeight + 5);
+      // Clamp is purely the user's choice. We do NOT auto-clamp on top of
+      // the user's setting — that would reactivate the toggle the moment
+      // the user disables it (since terrain is almost always above sea-level
+      // OrthogonalHeights, the auto condition would re-fire forever and the
+      // checkbox becomes un-uncheckable).
       const placementHeight =
-        wantClamp && terrainH !== null
+        terrainClamp && terrainH !== null
           ? terrainH + bottomOffset
           : ifcOHeight;
 
       console.debug(
         `[CesiumOverlay] placement decision: terrain=${terrainH?.toFixed(2) ?? 'null'}m`
         + ` ifcOHeight=${ifcOHeight.toFixed(2)}m bottomOffset=${bottomOffset.toFixed(2)}m`
-        + ` wantClamp=${wantClamp} placement=${placementHeight.toFixed(2)}m`
+        + ` clamp=${terrainClamp} placement=${placementHeight.toFixed(2)}m`
         + ` (terrain query: ${terrainMs.toFixed(0)}ms)`
       );
 
@@ -472,7 +480,29 @@ export function CesiumOverlay({
         // matches the terrain surface.
         const terrainClipY = minY + (terrainH - ifcOHeight);
         setCesiumTerrainClipY(terrainClipY);
-        if (!terrainClamp && wantClamp) setCesiumTerrainClamp(true);
+      }
+
+      // World-camera stability: when this rebuild changes the placement
+      // altitude (clamp toggled, OrthogonalHeight edited), shift the IFC
+      // viewer-space camera Y by the inverse delta so the user's WORLD
+      // camera ECEF position stays put. Without this, the entire frame
+      // translates with the model and edits feel like the camera is
+      // moving instead of the model — exactly what the user reported.
+      const prevPlacement = prevPlacementRef.current;
+      prevPlacementRef.current = placementHeight;
+      if (prevPlacement !== null) {
+        const dh = placementHeight - prevPlacement;
+        if (Math.abs(dh) > 1e-6) {
+          const renderer = getGlobalRenderer();
+          if (renderer) {
+            const cam = renderer.getCamera();
+            const pos = cam.getPosition();
+            cam.setPosition(pos.x, pos.y - dh, pos.z);
+            console.debug(
+              `[CesiumOverlay] placement Δh=${dh.toFixed(2)}m → shifted IFC camera Y by ${(-dh).toFixed(2)}m to hold world camera`,
+            );
+          }
+        }
       }
 
       bridgeRef.current = bridge;

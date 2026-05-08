@@ -28,8 +28,19 @@
 import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { resolveProjection } from './reproject';
+import { queryTerrainElevation, resolveProjection } from './reproject';
 import { getEffectiveHorizontalScale } from './effective-georef';
+
+/**
+ * Module-level cache for terrain elevation lookups so that bridge rebuilds
+ * (georef edits, clamp toggles) re-use the value within the session instead
+ * of re-hitting the Open-Meteo API or re-loading 3D-tile depth buffers.
+ */
+const terrainElevationCache = new Map<string, number>();
+function terrainCacheKey(lat: number, lon: number): string {
+  // 5 decimal places ≈ 1.1m precision — plenty for site-level elevation.
+  return `${lat.toFixed(5)},${lon.toFixed(5)}`;
+}
 
 export interface GeodesicPosition {
   longitude: number;
@@ -64,8 +75,6 @@ export interface CesiumBridge {
 
   viewerToGeodetic(vx: number, vy: number, vz: number): GeodesicPosition | null;
 }
-
-const TERRAIN_QUERY_RETRY_DELAY_MS = 3000;
 
 export async function createCesiumBridge(
   mapConversion: MapConversion,
@@ -271,37 +280,104 @@ export async function createCesiumBridge(
     viewer.scene.requestRender();
   }
 
+  /**
+   * Query terrain elevation at the model's location, trying fast Cesium
+   * sources first then falling back to Open-Meteo for environments that
+   * have 3D Tiles or Photorealistic tiles instead of a Cesium terrain
+   * provider (where globe.getHeight returns 0 and sampleTerrainMostDetailed
+   * has nothing to query).
+   *
+   * Order:
+   *   1. Cache (instant — re-bridge after georef edit).
+   *   2. globe.getHeight (sync, only useful with a non-ellipsoid terrain
+   *      provider AND tiles already loaded for the location).
+   *   3. scene.sampleHeight (sync, queries all primitives including 3D
+   *      Tiles, only works if tiles for the location are already rendered).
+   *   4. Open-Meteo elevation API (~200-500ms, always works online).
+   *   5. scene.sampleHeightMostDetailed (async, loads tiles — slow last
+   *      resort if Open-Meteo fails).
+   */
   async function queryTerrainHeight(
     Cesium: typeof import('cesium'),
     viewer: InstanceType<typeof import('cesium').Viewer>,
   ): Promise<number | null> {
+    const cacheKey = terrainCacheKey(originLat, originLon);
+    const cached = terrainElevationCache.get(cacheKey);
+    if (cached !== undefined) {
+      console.debug(`[CesiumBridge] terrain (cached) at ${cacheKey}: ${cached.toFixed(2)}m`);
+      return cached;
+    }
+
     const position = Cesium.Cartographic.fromDegrees(originLon, originLat);
+    const finish = (h: number, source: string, ms?: number) => {
+      terrainElevationCache.set(cacheKey, h);
+      const t = ms !== undefined ? ` (${ms.toFixed(0)}ms)` : '';
+      console.debug(`[CesiumBridge] terrain via ${source}: ${h.toFixed(2)}m at ${cacheKey}${t}`);
+      return h;
+    };
 
+    // 1. Sync globe.getHeight — useful when a Cesium terrain provider is set
+    //    AND its tile for this location is loaded. The default ellipsoid
+    //    provider returns 0 everywhere, so we ignore exact-zero results to
+    //    avoid mistaking "no data" for "sea level".
     try {
-      const globeHeight = viewer.scene.globe.getHeight(position);
-      if (globeHeight !== undefined && Number.isFinite(globeHeight)) {
-        return globeHeight;
+      const h = viewer.scene.globe.getHeight(position);
+      if (h !== undefined && Number.isFinite(h) && Math.abs(h) > 1e-3) {
+        return finish(h, 'globe.getHeight');
       }
-    } catch { /* not available yet */ }
+    } catch (err) {
+      console.warn('[CesiumBridge] globe.getHeight threw:', err);
+    }
 
-    try {
-      const terrainProvider = viewer.terrainProvider;
-      if (terrainProvider) {
-        const results = await Cesium.sampleTerrainMostDetailed(terrainProvider, [position]);
-        if (results && results.length > 0 && Number.isFinite(results[0].height)) {
-          return results[0].height;
+    // 2. Sync scene.sampleHeight — works with 3D Tiles (Google
+    //    Photorealistic, Cesium OSM Buildings) when their tiles are already
+    //    rendered. Returns undefined if the area isn't in the depth buffer.
+    const sampleHeightSupported = (viewer.scene as { sampleHeightSupported?: boolean }).sampleHeightSupported;
+    if (sampleHeightSupported) {
+      try {
+        const h = (viewer.scene as { sampleHeight: (p: unknown) => number | undefined }).sampleHeight(position);
+        if (h !== undefined && Number.isFinite(h) && Math.abs(h) > 1e-3) {
+          return finish(h, 'scene.sampleHeight');
         }
+      } catch (err) {
+        console.warn('[CesiumBridge] scene.sampleHeight threw:', err);
       }
-    } catch { /* terrain sampling failed */ }
+    }
 
-    await new Promise(r => setTimeout(r, TERRAIN_QUERY_RETRY_DELAY_MS));
+    // 3. Open-Meteo elevation API — reliable network fallback (~300ms with
+    //    the 5s timeout we added). Doesn't need any tiles loaded; works for
+    //    Google 3D Tiles environments where Cesium has no tile depth yet.
     try {
-      const globeHeight = viewer.scene.globe.getHeight(position);
-      if (globeHeight !== undefined && Number.isFinite(globeHeight)) {
-        return globeHeight;
+      const t0 = performance.now();
+      const elev = await queryTerrainElevation({ lat: originLat, lon: originLon });
+      const ms = performance.now() - t0;
+      if (elev !== null && Number.isFinite(elev)) {
+        return finish(elev, 'Open-Meteo', ms);
       }
-    } catch { /* still not available */ }
+    } catch (err) {
+      console.warn('[CesiumBridge] Open-Meteo elevation threw:', err);
+    }
 
+    // 4. Last-resort: force Cesium to load tiles for this location and
+    //    sample. Slow (seconds) but the most accurate when 3D Tiles are
+    //    the only elevation source and Open-Meteo is unavailable.
+    if (sampleHeightSupported) {
+      try {
+        const t0 = performance.now();
+        type SampleHeightDetailed = (positions: unknown[]) => Promise<unknown[]>;
+        const fn = (viewer.scene as { sampleHeightMostDetailed: SampleHeightDetailed }).sampleHeightMostDetailed;
+        const results = await fn([position]);
+        const ms = performance.now() - t0;
+        const r0 = (results?.[0] as { height?: number } | undefined);
+        if (r0 && Number.isFinite(r0.height)) {
+          return finish(r0.height!, 'scene.sampleHeightMostDetailed', ms);
+        }
+      } catch (err) {
+        console.warn('[CesiumBridge] sampleHeightMostDetailed threw:', err);
+      }
+    }
+
+    console.warn(`[CesiumBridge] terrain query: no source returned a value at ${cacheKey}`);
     return null;
   }
 

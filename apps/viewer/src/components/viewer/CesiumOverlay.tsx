@@ -416,22 +416,24 @@ export function CesiumOverlay({
       }
 
       // Query terrain at the model's location. queryTerrainHeight tries
-      // sync globe.getHeight first, then async sampleTerrainMostDetailed,
-      // then a 3 s retry — bounded delay, no jump on success.
+      // Cesium's sync sources first (globe.getHeight, scene.sampleHeight),
+      // then Open-Meteo as a fast network fallback that works even with
+      // Google Photorealistic 3D Tiles (where there's no Cesium terrain
+      // provider for getHeight to read). Cached per-session.
+      const t0 = performance.now();
       let terrainH: number | null = null;
-      if (terrainEnabled && ionToken) {
-        try { terrainH = await tentative.queryTerrainHeight(Cesium, viewer); }
-        catch (err) { console.warn('[CesiumOverlay] terrain query failed:', err); }
-        if (cancelled) return;
-      }
+      try { terrainH = await tentative.queryTerrainHeight(Cesium, viewer); }
+      catch (err) { console.warn('[CesiumOverlay] terrain query failed:', err); }
+      if (cancelled) return;
+      const terrainMs = performance.now() - t0;
 
       const bounds = coordinateInfo?.originalBounds;
       const mvy = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
       const minY = bounds?.min.y ?? 0;
       const bottomOffset = mvy - minY;
       const ifcOHeight = tentative.modelOrigin.height;
-      // Auto-clamp when the user has it on, OR when the model is authored
-      // meaningfully below terrain (matching the previous auto-toggle).
+      // Auto-clamp when the user has it on (default true), OR when the model
+      // is authored meaningfully below terrain (the previous auto-toggle).
       const wantClamp =
         terrainClamp ||
         (terrainH !== null && terrainH > ifcOHeight + 5);
@@ -439,6 +441,13 @@ export function CesiumOverlay({
         wantClamp && terrainH !== null
           ? terrainH + bottomOffset
           : ifcOHeight;
+
+      console.debug(
+        `[CesiumOverlay] placement decision: terrain=${terrainH?.toFixed(2) ?? 'null'}m`
+        + ` ifcOHeight=${ifcOHeight.toFixed(2)}m bottomOffset=${bottomOffset.toFixed(2)}m`
+        + ` wantClamp=${wantClamp} placement=${placementHeight.toFixed(2)}m`
+        + ` (terrain query: ${terrainMs.toFixed(0)}ms)`
+      );
 
       // Build the final bridge with the placement baked in (or reuse the
       // tentative one when the placement matches its IFC-derived origin).

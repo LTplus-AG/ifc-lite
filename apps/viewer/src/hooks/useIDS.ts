@@ -16,6 +16,7 @@
 import { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import type {
+  IDSAuditReport,
   IDSDocument,
   IDSValidationReport,
   IDSModelInfo,
@@ -23,6 +24,7 @@ import type {
   ValidationProgress,
 } from '@ifc-lite/ids';
 import {
+  auditIDSDocument,
   parseIDS,
   validateIDS,
   createTranslationService,
@@ -61,6 +63,15 @@ export interface UseIDSResult {
   // State
   /** Loaded IDS document */
   document: IDSDocument | null;
+  /**
+   * Audit report for the loaded IDS document — flags authoring issues
+   * surfaced by the document auditor (invalid IFC entities, malformed
+   * restrictions, missing required attributes, …). `null` when no
+   * document is loaded or the audit is still in flight.
+   */
+  auditReport: IDSAuditReport | null;
+  /** True while the document auditor is running. */
+  auditing: boolean;
   /** Validation report */
   report: IDSValidationReport | null;
   /** Loading state */
@@ -176,6 +187,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
   // IDS store state
   const document = useViewerStore((s) => s.idsDocument);
+  const auditReport = useViewerStore((s) => s.idsAuditReport);
+  const auditing = useViewerStore((s) => s.idsAuditing);
   const report = useViewerStore((s) => s.idsValidationReport);
   const loading = useViewerStore((s) => s.idsLoading);
   const progress = useViewerStore((s) => s.idsProgress);
@@ -190,6 +203,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // IDS store actions
   const setIdsDocument = useViewerStore((s) => s.setIdsDocument);
   const clearIdsDocument = useViewerStore((s) => s.clearIdsDocument);
+  const setIdsAuditReport = useViewerStore((s) => s.setIdsAuditReport);
+  const setIdsAuditing = useViewerStore((s) => s.setIdsAuditing);
   const setIdsValidationReport = useViewerStore((s) => s.setIdsValidationReport);
   const clearIdsValidationReport = useViewerStore((s) => s.clearIdsValidationReport);
   const setIdsProgress = useViewerStore((s) => s.setIdsProgress);
@@ -257,6 +272,33 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       setIdsDocument(doc);
 
       console.info(`[IDS] Loaded: "${doc.info.title}" (${doc.specifications.length} specifications)`);
+
+      // Run the document audit in the background. The auditor is async
+      // (lazy-loads schema tables) and surfaces structured issues; we
+      // never want it to block document load, so we kick it off here
+      // without awaiting and let the panel react to the result via the
+      // store.
+      setIdsAuditing(true);
+      void auditIDSDocument(xmlContent)
+        .then((report) => {
+          setIdsAuditReport(report);
+          if (report.status === 'error') {
+            console.warn(
+              `[IDS] Audit found ${
+                report.issues.filter((i) => i.severity === 'error').length
+              } error(s) in the IDS document`
+            );
+          }
+        })
+        .catch((auditErr) => {
+          // Audit failure is non-fatal — log and clear so the panel
+          // doesn't keep showing a stale audit.
+          console.error('[IDS] Audit failed:', auditErr);
+          setIdsAuditReport(null);
+        })
+        .finally(() => {
+          setIdsAuditing(false);
+        });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to parse IDS file';
       setIdsError(message);
@@ -264,7 +306,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     } finally {
       setIdsLoading(false);
     }
-  }, [setIdsDocument, setIdsLoading, setIdsError]);
+  }, [setIdsDocument, setIdsLoading, setIdsError, setIdsAuditReport, setIdsAuditing]);
 
   const loadIDSFile = useCallback(async (file: File) => {
     try {
@@ -830,6 +872,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   return {
     // State
     document,
+    auditReport,
+    auditing,
     report,
     loading,
     progress,

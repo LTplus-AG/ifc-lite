@@ -72,6 +72,7 @@ import type {
   IDSRequirementResult,
 } from '@ifc-lite/ids';
 import { cn } from '@/lib/utils';
+import { IDSAuditSummary } from './IDSAuditSummary';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
 import { claimNextDesktopPanelAction, subscribeDesktopPanelActions } from '@/services/desktop-panel-actions';
@@ -452,6 +453,8 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   const {
     // State
     document,
+    auditReport,
+    auditing,
     report,
     loading,
     progress,
@@ -588,9 +591,15 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   const renderDocumentLoaded = () => {
     if (!document || report) return null;
 
+    // Only the document-level auditor's `error` verdict gates model
+    // validation — warnings still let the user proceed (they're style
+    // hints, not blockers). The button keeps its primary affordance
+    // unless we genuinely can't validate.
+    const auditHasErrors = auditReport?.status === 'error';
+
     return (
-      <div className="p-4">
-        <div className="rounded-lg border p-4 mb-4">
+      <div className="p-4 space-y-3">
+        <div className="rounded-lg border p-4">
           <h3 className="font-medium text-sm mb-1">{document.info.title}</h3>
           {document.info.description && (
             <p className="text-xs text-muted-foreground mb-2">{document.info.description}</p>
@@ -601,14 +610,32 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
           </div>
         </div>
 
-        <Button className="w-full" onClick={runValidation} disabled={loading}>
-          {loading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Play className="h-4 w-4 mr-2" />
+        <IDSAuditSummary report={auditReport} auditing={auditing} />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="block">
+              <Button
+                className="w-full"
+                onClick={runValidation}
+                disabled={loading || auditHasErrors}
+                variant={auditHasErrors ? 'secondary' : 'default'}
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 mr-2" />
+                )}
+                Run Validation
+              </Button>
+            </span>
+          </TooltipTrigger>
+          {auditHasErrors && (
+            <TooltipContent>
+              Resolve audit errors before validating against a model.
+            </TooltipContent>
           )}
-          Run Validation
-        </Button>
+        </Tooltip>
       </div>
     );
   };
@@ -619,6 +646,14 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
 
     return (
       <>
+        {/* Audit summary stays visible above the validation report so
+            users can still see authoring issues alongside model results. */}
+        {auditReport && auditReport.status !== 'valid' && (
+          <div className="p-3 border-b">
+            <IDSAuditSummary report={auditReport} auditing={false} />
+          </div>
+        )}
+
         {/* Summary Header */}
         <div className="p-3 border-b bg-muted/30">
           <div className="flex items-center gap-2 mb-2">

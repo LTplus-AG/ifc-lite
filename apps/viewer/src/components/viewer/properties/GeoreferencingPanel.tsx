@@ -443,8 +443,14 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       ? mergedCRS?.[field as keyof ProjectedCRS]
       : mergedConversion?.[field as keyof MapConversion];
     setGeorefField(modelId, entity, field, value, oldValue as string | number | undefined);
+    // Editing OrthogonalHeight implies "I want this exact altitude" — auto
+    // -release the terrain clamp so the new value actually takes effect
+    // (with clamp on, placement is locked to terrain regardless of oHeight).
+    if (entity === 'mapConversion' && field === 'orthogonalHeight' && terrainClamp) {
+      setCesiumTerrainClamp(false);
+    }
     requestAlignmentReload();
-  }, [modelId, setGeorefField, mergedCRS, mergedConversion, requestAlignmentReload]);
+  }, [modelId, setGeorefField, mergedCRS, mergedConversion, requestAlignmentReload, terrainClamp, setCesiumTerrainClamp]);
 
   // Handle angle edit: compute and set both XAxisAbscissa and XAxisOrdinate
   const handleAngleChange = useCallback((abscissa: number, ordinate: number) => {

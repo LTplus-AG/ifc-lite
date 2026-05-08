@@ -120,16 +120,14 @@ export async function resolveTerrainElevation(
   //    DEM. Bounded by a timeout so a slow tile fetch doesn't keep the
   //    bridge waiting forever; Open-Meteo runs after as a backstop.
   if (viewer.scene.sampleHeightSupported) {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       const t0 = performance.now();
       const detailed = viewer.scene.sampleHeightMostDetailed([position]);
-      const timeout = new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), SAMPLE_DETAILED_TIMEOUT_MS),
-      );
-      const winner = await Promise.race([
-        detailed.then((results) => results),
-        timeout,
-      ]);
+      const timeout = new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), SAMPLE_DETAILED_TIMEOUT_MS);
+      });
+      const winner = await Promise.race([detailed, timeout]);
       const ms = performance.now() - t0;
       if (winner !== null) {
         const r0 = winner[0] as { height?: number } | undefined;
@@ -142,6 +140,10 @@ export async function resolveTerrainElevation(
       }
     } catch (err) {
       console.warn('[TerrainElevation] sampleHeightMostDetailed threw:', err);
+    } finally {
+      // Cancel the timeout if the detailed sample resolved first, so the
+      // timer doesn't dangle and resolve to null after we've moved on.
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
   }
 

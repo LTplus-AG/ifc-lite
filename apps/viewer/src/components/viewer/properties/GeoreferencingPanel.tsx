@@ -688,6 +688,19 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             <ChevronRight className={`h-3 w-3 text-teal-500 shrink-0 transition-transform ${conversionOpen ? 'rotate-90' : ''}`} />
             <MapPin className="h-3 w-3 text-teal-500 shrink-0" />
             <span className="font-bold text-[11px] text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1 text-left">Coordinate Operation</span>
+            {scaleMismatch && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertTriangle
+                    className="h-3 w-3 text-amber-500 shrink-0"
+                    aria-label="Scale inconsistent with project/map units"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Scale inconsistent with project/map units — expand to view details
+                </TooltipContent>
+              </Tooltip>
+            )}
             {!conversionOpen && (
               <span className="text-[10px] font-mono text-teal-600/70 dark:text-teal-500/60">
                 E {mergedConversion.eastings.toFixed(0)} N {mergedConversion.northings.toFixed(0)}

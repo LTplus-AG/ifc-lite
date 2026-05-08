@@ -287,6 +287,12 @@ export async function createCesiumBridge(
    * provider (where globe.getHeight returns 0 and sampleTerrainMostDetailed
    * has nothing to query).
    *
+   * Cesium's sync probes occasionally return absurd values (we observed
+   * globe.getHeight returning -69184 m on Google Photorealistic 3D Tiles
+   * with no Cesium ion terrain — depth-buffer noise from an unrendered
+   * area). Every candidate is range-checked against terrestrial bounds
+   * before being accepted.
+   *
    * Order:
    *   1. Cache (instant — re-bridge after georef edit).
    *   2. globe.getHeight (sync, only useful with a non-ellipsoid terrain
@@ -301,6 +307,15 @@ export async function createCesiumBridge(
     Cesium: typeof import('cesium'),
     viewer: InstanceType<typeof import('cesium').Viewer>,
   ): Promise<number | null> {
+    // Earth's plausible terrestrial elevation range. Mariana Trench is ~−11 km
+    // (no buildings there) and Everest summit is ~8.85 km. Anything outside
+    // this band is depth-buffer / uninitialised garbage from Cesium and must
+    // be discarded so we don't bury the model 70 km underground.
+    const ELEV_MIN = -1000;
+    const ELEV_MAX = 9000;
+    const isPlausibleElevation = (h: number): boolean =>
+      Number.isFinite(h) && h > ELEV_MIN && h < ELEV_MAX && Math.abs(h) > 1e-3;
+
     const cacheKey = terrainCacheKey(originLat, originLon);
     const cached = terrainElevationCache.get(cacheKey);
     if (cached !== undefined) {
@@ -315,16 +330,20 @@ export async function createCesiumBridge(
       console.debug(`[CesiumBridge] terrain via ${source}: ${h.toFixed(2)}m at ${cacheKey}${t}`);
       return h;
     };
+    const reject = (h: unknown, source: string) => {
+      console.debug(`[CesiumBridge] ${source} returned implausible value ${h}; skipping`);
+    };
 
     // 1. Sync globe.getHeight — useful when a Cesium terrain provider is set
-    //    AND its tile for this location is loaded. The default ellipsoid
-    //    provider returns 0 everywhere, so we ignore exact-zero results to
-    //    avoid mistaking "no data" for "sea level".
+    //    AND its tile for this location is loaded. Often noisy garbage with
+    //    Google Photorealistic 3D Tiles + no ion terrain; the range filter
+    //    below catches that.
     try {
       const h = viewer.scene.globe.getHeight(position);
-      if (h !== undefined && Number.isFinite(h) && Math.abs(h) > 1e-3) {
+      if (h !== undefined && isPlausibleElevation(h)) {
         return finish(h, 'globe.getHeight');
       }
+      if (h !== undefined) reject(h, 'globe.getHeight');
     } catch (err) {
       console.warn('[CesiumBridge] globe.getHeight threw:', err);
     }
@@ -336,9 +355,10 @@ export async function createCesiumBridge(
     if (sampleHeightSupported) {
       try {
         const h = (viewer.scene as { sampleHeight: (p: unknown) => number | undefined }).sampleHeight(position);
-        if (h !== undefined && Number.isFinite(h) && Math.abs(h) > 1e-3) {
+        if (h !== undefined && isPlausibleElevation(h)) {
           return finish(h, 'scene.sampleHeight');
         }
+        if (h !== undefined) reject(h, 'scene.sampleHeight');
       } catch (err) {
         console.warn('[CesiumBridge] scene.sampleHeight threw:', err);
       }
@@ -351,9 +371,10 @@ export async function createCesiumBridge(
       const t0 = performance.now();
       const elev = await queryTerrainElevation({ lat: originLat, lon: originLon });
       const ms = performance.now() - t0;
-      if (elev !== null && Number.isFinite(elev)) {
+      if (elev !== null && isPlausibleElevation(elev)) {
         return finish(elev, 'Open-Meteo', ms);
       }
+      if (elev !== null) reject(elev, 'Open-Meteo');
     } catch (err) {
       console.warn('[CesiumBridge] Open-Meteo elevation threw:', err);
     }
@@ -369,15 +390,16 @@ export async function createCesiumBridge(
         const results = await fn([position]);
         const ms = performance.now() - t0;
         const r0 = (results?.[0] as { height?: number } | undefined);
-        if (r0 && Number.isFinite(r0.height)) {
-          return finish(r0.height!, 'scene.sampleHeightMostDetailed', ms);
+        if (r0 && r0.height !== undefined && isPlausibleElevation(r0.height)) {
+          return finish(r0.height, 'scene.sampleHeightMostDetailed', ms);
         }
+        if (r0?.height !== undefined) reject(r0.height, 'scene.sampleHeightMostDetailed');
       } catch (err) {
         console.warn('[CesiumBridge] sampleHeightMostDetailed threw:', err);
       }
     }
 
-    console.warn(`[CesiumBridge] terrain query: no source returned a value at ${cacheKey}`);
+    console.warn(`[CesiumBridge] terrain query: no source returned a plausible value at ${cacheKey}`);
     return null;
   }
 

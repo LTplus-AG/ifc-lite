@@ -72,6 +72,14 @@ export async function createCesiumBridge(
   projectedCRS: ProjectedCRS,
   coordinateInfo?: CoordinateInfo,
   lengthUnitScale = 1,
+  /**
+   * If provided, replaces the IFC-derived origin altitude (mapConversion's
+   * OrthogonalHeight + viewer-space Z) for the enuToEcef origin used by both
+   * the camera frame and the model matrix. Pass the terrain-clamped placement
+   * here to bake "model on terrain" into the bridge from creation, so the
+   * model never has to be moved after loading into Cesium.
+   */
+  placementHeightOverride?: number,
 ): Promise<CesiumBridge | null> {
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
@@ -109,7 +117,12 @@ export async function createCesiumBridge(
   const hScale = getEffectiveHorizontalScale(mapConversion.scale, mapScale, lengthUnitScale);
   const oEasting = mapConversion.eastings * mapScale + hScale * (absc * oIfcX - ordi * oIfcY);
   const oNorthing = mapConversion.northings * mapScale + hScale * (ordi * oIfcX + absc * oIfcY);
-  const oHeight = mapConversion.orthogonalHeight * mapScale + oIfcZ;
+  const ifcOHeight = mapConversion.orthogonalHeight * mapScale + oIfcZ;
+  // The actual altitude used for the enuToEcef origin. When the caller
+  // pre-computes a terrain-clamped placement, we honour it so the bridge,
+  // model matrix, and camera frame are all built around the SAME altitude
+  // from the start — no post-load shifting required.
+  const oHeight = placementHeightOverride ?? ifcOHeight;
 
   let originLon: number, originLat: number;
   try {

@@ -28,6 +28,7 @@ import type { IDSDocument } from '../types.js';
 import { runCoherenceAudit } from './coherence/index.js';
 import { runIfcSchemaAudit } from './ifc-schema/index.js';
 import { permissiveParse } from './parser-shim.js';
+import { runStructuralAudit } from './structural/index.js';
 import type {
   IDSAuditIssue,
   IDSAuditOptions,
@@ -56,8 +57,18 @@ export async function auditIDSDocument(
   if (!document) {
     return finalise(issues);
   }
+  // The structural shape walk needs the raw XML DOM, so it sits in the
+  // top-level entry point (alongside parse), not in
+  // `auditIDSStructure(parsed)`.
+  const structuralIssues =
+    options.xsdValidation === false
+      ? []
+      : await runStructuralAudit(xml);
   const downstream = await auditIDSStructure(document, options);
-  return finalise([...issues, ...downstream.issues], document);
+  return finalise(
+    [...issues, ...structuralIssues, ...downstream.issues],
+    document
+  );
 }
 
 /**

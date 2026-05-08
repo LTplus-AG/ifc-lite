@@ -19,6 +19,7 @@ import type {
   IDSSpecification,
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
+import { compileXsdRegex } from './regex.js';
 
 export function runCoherenceAudit(doc: IDSDocument): IDSAuditIssue[] {
   const issues: IDSAuditIssue[] = [];
@@ -352,22 +353,15 @@ function checkBounds(
 }
 
 /**
- * Validate `pattern` under JS regex semantics.
+ * Validate `pattern` against XSD regex semantics by translating XSD-only
+ * escape codes to JS regex equivalents (cf. upstream `XmlRegex.cs`).
  *
- * XSD regex (`\i`, `\c`, char-class subtraction `[a-z-[aeiou]]`) is a
- * superset of JS regex; some valid XSD patterns won't compile here. We
- * distinguish the two cases:
- *
- *  - Patterns that fail with a syntactic error JS *and* XSD agree on
- *    (e.g. unclosed `[Name`, `(unclosed`) → `E_RESTRICTION_EMPTY` /
- *    invalid pattern (upstream Report 109).
- *  - Patterns that look valid under XSD but use JS-incompatible syntax
- *    → `W_REGEX_UNVERIFIED` (we honestly can't tell).
- *
- * The heuristic: if the pattern uses any XSD-specific construct
- * (`\i`, `\c`, `\I`, `\C`, char-class subtraction `[a-zA-Z-[bB]]`),
- * downgrade to warning. Otherwise, a JS compile failure is a real
- * authoring error.
+ * Translation handles `\i`/`\c`/`\d`/`\w` and their negations via
+ * Unicode property escapes (compiled with the `u` flag). Char-class
+ * subtraction (`[a-z-[aeiou]]`) is XSD-only and surfaces as
+ * `W_REGEX_UNVERIFIED`. Any remaining syntactic errors are real
+ * authoring mistakes and surface as `E_RESTRICTION_EMPTY` (upstream
+ * Report 109).
  */
 function checkPattern(
   pattern: string,
@@ -375,41 +369,28 @@ function checkPattern(
   issues: IDSAuditIssue[],
   facetType: IDSFacet['type']
 ): void {
-  if (pattern === '') {
+  const result = compileXsdRegex(pattern);
+  if (result.ok) return;
+  if (result.severity === 'error') {
     issues.push({
       severity: 'error',
-      code: 'E_RESTRICTION_EMPTY',
-      message: 'xs:pattern @value is empty',
+      code: pattern === '' ? 'E_RESTRICTION_EMPTY' : 'E_RESTRICTION_EMPTY',
+      message:
+        pattern === ''
+          ? 'xs:pattern @value is empty'
+          : `xs:pattern is not a valid regular expression: ${result.reason}`,
       path,
       facetType,
+      detail: pattern === '' ? undefined : { pattern },
     });
     return;
   }
-  const usesXsdOnlySyntax =
-    /\\[icIC](?![a-zA-Z])/.test(pattern) ||
-    /\[[^\]]*-\[[^\]]*\][^\]]*\]/.test(pattern);
-  try {
-    new RegExp(pattern);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (usesXsdOnlySyntax) {
-      issues.push({
-        severity: 'warning',
-        code: 'W_REGEX_UNVERIFIED',
-        message: `xs:pattern uses XSD-specific syntax not verifiable under JS regex: ${message}`,
-        path,
-        facetType,
-        detail: { pattern },
-      });
-    } else {
-      issues.push({
-        severity: 'error',
-        code: 'E_RESTRICTION_EMPTY',
-        message: `xs:pattern is not a valid regular expression: ${message}`,
-        path,
-        facetType,
-        detail: { pattern },
-      });
-    }
-  }
+  issues.push({
+    severity: 'warning',
+    code: 'W_REGEX_UNVERIFIED',
+    message: `xs:pattern uses XSD-specific syntax not verifiable in JS: ${result.reason}`,
+    path,
+    facetType,
+    detail: { pattern },
+  });
 }

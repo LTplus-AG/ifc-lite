@@ -131,10 +131,13 @@ const INVALID: FixtureExpectation[] = [
   { file: 'notAnXml.ids', status: 'error', expectAny: ['E_PARSE_XML'] },
   { file: 'smallcross_gif.ids', status: 'error', expectAny: ['E_PARSE_XML'] },
   { file: 'structureAndContentFailure.ids', status: 'error' },
-  // xsdFailure.ids has spurious attributes/elements only catchable by a
-  // real XSD validator; we currently surface the empty-requirements
-  // warning. Document the gap.
-  { file: 'xsdFailure.ids', status: 'warning' },
+  // xsdFailure.ids carries spurious `invalidAttribute="..."` and
+  // `<unexpected/>` constructs — caught by the structural shape audit.
+  {
+    file: 'xsdFailure.ids',
+    status: 'error',
+    expectAny: ['E_XSD_STRUCTURE'],
+  },
 ];
 
 const ISSUES: FixtureExpectation[] = [

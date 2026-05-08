@@ -3,18 +3,23 @@
 ---
 
 Add `auditIDSDocument` and `auditIDSStructure` for in-process IDS document
-correctness checking — full parity with buildingSMART/IDS-Audit-tool. The
-auditor passes 53/54 of the upstream `testing.shared/` regression corpus
-out of the box; the remaining fixture (`xsdFailure.ids`) requires a real
-XSD validator (we surface a downgraded warning instead of the structural
-XSD violation).
+correctness checking — full parity with buildingSMART/IDS-Audit-tool.
+**The auditor passes all 54 fixtures of the upstream `testing.shared/`
+regression corpus** (100% parity).
 
-The auditor runs four configurable phases against any IDS document:
+The auditor runs five configurable phases against any IDS document:
 
 - **Parse** — wraps `parseIDS` in a permissive shim that returns
   `IDSAuditIssue`s instead of throwing, strips UTF-8 BOM that xmldom
   rejects, and surfaces a parsed document even when later phases fail.
-- **XSD** — required attributes, enum membership, structural shape, and
+- **XSD shape** — walks the raw XML DOM against the IDS 1.0 XSD's
+  element shapes (mirrors upstream's `IdsXmlNode.cs` approach: per-
+  element allowed-attribute and allowed-child tables encoded from
+  `Resources/XsdSchemas/ids.xsd`). Catches unknown attributes and
+  child elements anywhere in the document — the only way to flag the
+  upstream `xsdFailure.ids` fixture without pulling in a generic XSD
+  validator.
+- **XSD field** — required attributes, enum membership, and
   `xsi:schemaLocation` URL validation against the recognised IDS schemas
   (Report 107). Each whitespace-separated `@ifcVersion` token is checked
   individually, so silently-dropped invalid tokens (e.g.
@@ -29,11 +34,14 @@ The auditor runs four configurable phases against any IDS document:
   schema tables in `@ifc-lite/data` (2711 entities, 1485 psets, 7624
   properties, 390 dataTypes, 2765 attribute rows).
 - **Coherence** — empty xs:enumerations, inverted bounds, `xs:length` /
-  `xs:minLength` / `xs:maxLength` restrictions, regex syntactic errors
-  (real errors vs warning-only XSD-specific syntax), inverted spec-level
-  cardinality, and Report 202 cardinality coherence — `optional`
-  property requires `@dataType`, `prohibited` property forbids it,
-  `optional` material/classification require a non-empty value, etc.
+  `xs:minLength` / `xs:maxLength` restrictions, full XSD regex semantics
+  (`\i`, `\c`, `\d`, `\w` and negations translated to JS Unicode
+  property escapes — see `audit/coherence/regex.ts`, ported from
+  upstream `XmlRegex.cs`; char-class subtraction warns), inverted
+  spec-level cardinality, and Report 202 cardinality coherence —
+  `optional` property requires `@dataType`, `prohibited` property
+  forbids it, `optional` material/classification require non-empty
+  value, etc.
 
 Issues use stable string-literal codes (`E_IFC_ENTITY_UNKNOWN`,
 `W_IFC_PSET_RESERVED_PREFIX`, `E_RESTRICTION_RANGE`,

@@ -40,7 +40,7 @@ import {
 } from './ingest/pointCloudIngest.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
-import { getEffectiveGeoreference, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
+import { getEffectiveGeoreference, getEffectiveHorizontalScale, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
   return typeof (file as NativeFileHandle).path === 'string';
@@ -81,10 +81,14 @@ function getMapUnitScale(georef: ModelGeoref): number {
   return georef.projectedCRS.mapUnitScale ?? georef.lengthUnitScale ?? 1;
 }
 
-function getAxis(conversion: MapConversion): { a: number; o: number; scale: number; denom: number } {
+function getAxis(georef: ModelGeoref): { a: number; o: number; scale: number; denom: number } {
+  const conversion = georef.mapConversion;
   const a = conversion.xAxisAbscissa ?? 1;
   const o = conversion.xAxisOrdinate ?? 0;
-  const scale = conversion.scale ?? 1;
+  // Use the effective horizontal scale: viewer geometry is already in metres,
+  // so applying IfcMapConversion.Scale raw would double-scale — see issue #595.
+  const mapUnitScale = georef.projectedCRS.mapUnitScale ?? georef.lengthUnitScale ?? 1;
+  const scale = getEffectiveHorizontalScale(conversion.scale, mapUnitScale, georef.lengthUnitScale ?? 1);
   const denom = Math.max(a * a + o * o, 1e-12);
   return { a, o, scale, denom };
 }
@@ -151,8 +155,8 @@ function updateBounds(bounds: ReturnType<typeof emptyBounds>, x: number, y: numb
 function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeoref): AffineTransform3D | null {
   const sourceConv = source.mapConversion;
   const refConv = reference.mapConversion;
-  const sourceAxis = getAxis(sourceConv);
-  const refAxis = getAxis(refConv);
+  const sourceAxis = getAxis(source);
+  const refAxis = getAxis(reference);
   const refDenom = refAxis.scale * refAxis.denom;
   if (Math.abs(refDenom) < 1e-12) return null;
 

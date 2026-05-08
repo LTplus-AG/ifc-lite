@@ -19,6 +19,7 @@ import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { lookupProj4 } from '@ifc-lite/data';
+import { getEffectiveHorizontalScale } from './effective-georef';
 
 export interface LatLon {
   lat: number;
@@ -230,20 +231,24 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
  */
 function computeProjectedCenter(
   conversion: MapConversion,
-  coordinateInfo?: CoordinateInfo,
-  lengthUnitScale = 1,
+  coordinateInfo: CoordinateInfo | undefined,
+  mapUnitScale: number,
+  lengthUnitScale: number,
 ): { easting: number; northing: number } {
   const { ifcX, ifcY } = computeLocalIfcCenter(coordinateInfo);
 
   // Geometry coordinates (ifcX, ifcY) are already in metres — the geometry engine
   // converts from the IFC file's native unit during extraction. Only MapConversion
   // values (eastings, northings) are in the file's native unit and need scaling.
-  const scale = conversion.scale ?? 1.0;
+  // IfcMapConversion.Scale converts project length unit → map unit (e.g. 0.001
+  // for mm→m); since geometry is already in metres, use the effective scale —
+  // see issue #595.
+  const scale = getEffectiveHorizontalScale(conversion.scale, mapUnitScale, lengthUnitScale);
   const abscissa = conversion.xAxisAbscissa ?? 1.0;
   const ordinate = conversion.xAxisOrdinate ?? 0.0;
 
-  const easting = conversion.eastings * lengthUnitScale + scale * (abscissa * ifcX - ordinate * ifcY);
-  const northing = conversion.northings * lengthUnitScale + scale * (ordinate * ifcX + abscissa * ifcY);
+  const easting = conversion.eastings * mapUnitScale + scale * (abscissa * ifcX - ordinate * ifcY);
+  const northing = conversion.northings * mapUnitScale + scale * (ordinate * ifcX + abscissa * ifcY);
 
   return { easting, northing };
 }
@@ -281,7 +286,7 @@ export async function reprojectToLatLon(
   // MapConversion values use the unit from IfcProjectedCRS.MapUnit. If MapUnit
   // is not specified, the IFC spec defaults to the project's length unit.
   const mapScale = crs.mapUnitScale ?? lengthUnitScale;
-  const { easting, northing } = computeProjectedCenter(conversion, coordinateInfo, mapScale);
+  const { easting, northing } = computeProjectedCenter(conversion, coordinateInfo, mapScale, lengthUnitScale);
 
   try {
     const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
@@ -349,11 +354,12 @@ export async function reprojectFromLatLon(
     const mapScale = crs.mapUnitScale ?? lengthUnitScale;
     const invScale = mapScale !== 0 ? 1 / mapScale : 1;
     const { ifcX, ifcY } = computeLocalIfcCenter(coordinateInfo);
-    const scale = conversion?.scale ?? 1.0;
+    // Effective horizontal scale for metre-converted geometry — see issue #595.
+    const scale = getEffectiveHorizontalScale(conversion?.scale, mapScale, lengthUnitScale);
     const abscissa = conversion?.xAxisAbscissa ?? 1.0;
     const ordinate = conversion?.xAxisOrdinate ?? 0.0;
 
-    // Result is in IFC native units (the reverse of: E_native * LUS + geom_offset = E_metres)
+    // Result is in IFC native units (the reverse of: E_native * mapScale + geom_offset = E_metres)
     const easting = (projE - scale * (abscissa * ifcX - ordinate * ifcY)) * invScale;
     const northing = (projN - scale * (ordinate * ifcX + abscissa * ifcY)) * invScale;
 
@@ -387,7 +393,9 @@ export async function computeFootprintGeoJSON(
     return null;
   }
 
-  const scale = conversion.scale ?? 1.0;
+  // Effective horizontal scale for metre-converted geometry — see issue #595.
+  const mapScale = crs.mapUnitScale ?? lengthUnitScale;
+  const scale = getEffectiveHorizontalScale(conversion.scale, mapScale, lengthUnitScale);
   const abscissa = conversion.xAxisAbscissa ?? 1.0;
   const ordinate = conversion.xAxisOrdinate ?? 0.0;
 
@@ -418,8 +426,8 @@ export async function computeFootprintGeoJSON(
     const ifcX = worldX;
     const ifcY = -worldZ;
 
-    // Geometry coords (ifcX/Y) are already in metres; only MapConversion needs scaling
-    const mapScale = crs.mapUnitScale ?? lengthUnitScale;
+    // Geometry coords (ifcX/Y) are already in metres; MapConversion values
+    // are converted to metres via mapScale.
     const easting = conversion.eastings * mapScale + scale * (abscissa * ifcX - ordinate * ifcY);
     const northing = conversion.northings * mapScale + scale * (ordinate * ifcX + abscissa * ifcY);
 
@@ -443,14 +451,19 @@ export async function computeFootprintGeoJSON(
  * Returns height in metres above sea level, or null on failure.
  */
 export async function queryTerrainElevation(latLon: LatLon): Promise<number | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
     const url = `https://api.open-meteo.com/v1/elevation?latitude=${latLon.lat}&longitude=${latLon.lon}`;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: controller.signal });
     if (!resp.ok) return null;
     const data = await resp.json();
     const elev = data?.elevation?.[0];
     return typeof elev === 'number' && Number.isFinite(elev) ? elev : null;
-  } catch {
+  } catch (err) {
+    console.warn(`[reproject] queryTerrainElevation failed for ${latLon.lat},${latLon.lon}:`, err);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

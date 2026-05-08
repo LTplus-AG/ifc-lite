@@ -560,17 +560,17 @@ export function CesiumOverlay({
     prevPlacementRef.current = placement;
     const cam = renderer.getCamera();
     const pos = cam.getPosition();
-    const tgt = cam.getTarget();
     let newY = pos.y;
-    let newTgtY = tgt.y;
 
-    // 1. Stability — compensate placement delta on every change after the
-    //    first observation so the user's world camera position stays fixed.
+    // 1. Stability — compensate placement delta so the world camera position
+    //    stays fixed across edits. Only the camera POSITION is shifted; the
+    //    target stays put in viewer-space so its world altitude (placement +
+    //    target.y − mvy) tracks the model. That way the camera keeps looking
+    //    AT the model, not at the empty space the model used to occupy.
     if (prev !== null) {
       const dh = placement - prev;
       if (Math.abs(dh) > 1e-6) {
         newY -= dh;
-        newTgtY -= dh;
       }
     }
 
@@ -592,20 +592,20 @@ export function CesiumOverlay({
       const currentWorldAlt = placement + (newY - mvy);
       if (currentWorldAlt <= groundFloor) {
         // Lift to a sensible viewing altitude above ground — at least 100 m
-        // or twice the model height, whichever is larger, so the user can
-        // see the model without immediately fighting Cesium's slow
-        // near-surface controls.
+        // or the model height, whichever is larger, so the user can see the
+        // model without immediately fighting Cesium's slow near-surface
+        // controls. Only POSITION lifts; target stays anchored to the model
+        // so the building sits roughly centred (rather than pinned to the
+        // bottom of the viewport).
         const modelH = bounds ? bounds.max.y - bounds.min.y : 0;
-        const buffer = Math.max(100, modelH * 2);
+        const buffer = Math.max(100, modelH);
         const lift = (groundFloor + buffer) - currentWorldAlt;
         newY += lift;
-        newTgtY += lift;
       }
     }
 
-    if (newY !== pos.y || newTgtY !== tgt.y) {
+    if (newY !== pos.y) {
       cam.setPosition(pos.x, newY, pos.z);
-      cam.setTarget(tgt.x, newTgtY, tgt.z);
     }
   }, [status, bridgeVersion, terrainClamp, terrainHeight, coordinateInfo]);
 

@@ -565,24 +565,43 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   const renderEmptyState = () => {
     if (document) return null;
 
+    // When parse failed but the auditor still produced issues, surface
+    // them here. This is the most common path for malformed input —
+    // bare "Invalid XML format" tells the user nothing actionable, but
+    // the audit lists the specific structural problems.
+    const hasAuditIssues =
+      auditReport !== null && auditReport.issues.length > 0;
+
     return (
-      <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-        <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-        <h3 className="font-medium text-sm mb-2">No IDS Loaded</h3>
-        <p className="text-xs text-muted-foreground mb-4">
-          Load an IDS (Information Delivery Specification) file to validate your model
-        </p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".ids,.xml"
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-        <Button onClick={() => { void handleLoadIdsClick(); }}>
-          <Upload className="h-4 w-4 mr-2" />
-          Load IDS File
-        </Button>
+      <div className="flex flex-col h-full p-6">
+        {hasAuditIssues && (
+          <div className="mb-4">
+            <IDSAuditSummary report={auditReport} auditing={auditing} />
+          </div>
+        )}
+
+        <div className="flex flex-col items-center justify-center flex-1 text-center">
+          <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="font-medium text-sm mb-2">
+            {hasAuditIssues ? 'IDS Document Has Errors' : 'No IDS Loaded'}
+          </h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            {hasAuditIssues
+              ? 'Fix the issues above and try loading again.'
+              : 'Load an IDS (Information Delivery Specification) file to validate your model'}
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".ids,.xml"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <Button onClick={() => { void handleLoadIdsClick(); }}>
+            <Upload className="h-4 w-4 mr-2" />
+            {hasAuditIssues ? 'Load Different File' : 'Load IDS File'}
+          </Button>
+        </div>
       </div>
     );
   };

@@ -345,10 +345,6 @@ mod wall_profile_research {
     /// For rectangular openings, we can clip the chamfered wall mesh with
     /// 4 planes (top, bottom, left, right) instead of full CSG subtraction.
     #[test]
-    #[cfg_attr(
-        feature = "manifold-csg",
-        ignore = "T1.1: assertion `final_vertex_count > initial_vertex_count` is BSP-specific (the BSP path creates new clip-boundary vertices). Manifold deduplicates and may produce fewer vertices for the same volume. Re-baseline against Manifold output (e.g. assert volume-difference instead) and re-enable."
-    )]
     fn test_hybrid_plane_clipping_approach() {
         use crate::csg::ClippingProcessor;
 
@@ -390,8 +386,18 @@ mod wall_profile_research {
         let final_vertex_count = result.vertex_count();
         let final_triangle_count = result.triangle_count();
 
-        // Verify opening was cut
-        assert!(final_vertex_count > initial_vertex_count);
+        // Verify the cut actually changed the geometry. Both kernels add
+        // new geometry at the cut boundary, but Manifold deduplicates
+        // shared vertices so its final vertex count can be ≤ the legacy
+        // BSP path's raw count. The triangle count is the safer signal
+        // because each cut box introduces extra side / cap triangles
+        // either way.
+        assert!(
+            final_triangle_count > initial_triangle_count,
+            "subtract_box must add boundary triangles ({} → {})",
+            initial_triangle_count,
+            final_triangle_count,
+        );
 
         // Verify chamfers are preserved (mesh should still span full length)
         let (_min, max) = result.bounds();

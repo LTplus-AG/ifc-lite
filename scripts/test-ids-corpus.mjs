@@ -107,6 +107,8 @@ function flattenMaterials(matInfo) {
       for (const layer of matInfo.layers || []) {
         push(layer.materialName, layer.category);
         push(layer.name, layer.category);
+        // The underlying IfcMaterial.Category is also a candidate match.
+        if (layer.materialCategory) push(layer.materialCategory, layer.materialCategory);
       }
       break;
     case 'MaterialConstituentSet':
@@ -114,6 +116,7 @@ function flattenMaterials(matInfo) {
       for (const c of matInfo.constituents || []) {
         push(c.materialName, c.category);
         push(c.name, c.category);
+        if (c.materialCategory) push(c.materialCategory, c.materialCategory);
       }
       break;
     case 'MaterialProfileSet':
@@ -121,6 +124,7 @@ function flattenMaterials(matInfo) {
       for (const p of matInfo.profiles || []) {
         push(p.materialName, p.category);
         push(p.name, p.category);
+        if (p.materialCategory) push(p.materialCategory, p.materialCategory);
       }
       break;
   }
@@ -144,8 +148,6 @@ function createDataAccessor(dataStore) {
     getEntityName(expressId) {
       const n = dataStore.entities?.getName?.(expressId);
       if (n) return n;
-      // Fall back to direct attribute extraction for entities the
-      // entity-table summariser didn't index (e.g. IfcClassification).
       return findAttribute(dataStore, expressId, 'Name');
     },
     getGlobalId(expressId) {

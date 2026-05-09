@@ -321,7 +321,43 @@ function checkRequirement(
       break;
 
     case 'optional':
-      status = 'pass'; // Optional always passes
+      // Per IDS spec: `optional` means "if present, must satisfy".
+      // - Pass when the facet matches.
+      // - Pass when the facet is wholly absent (the missing-attribute /
+      //   missing-property failure types).
+      // - **Fail** when the facet is present but its value/datatype is
+      //   wrong — `optional` does not give a free pass to bad data.
+      if (facetResult.passed) {
+        status = 'pass';
+      } else {
+        const missingFailures = new Set([
+          'ATTRIBUTE_MISSING',
+          'PROPERTY_MISSING',
+          'PSET_MISSING',
+          'CLASSIFICATION_MISSING',
+          'MATERIAL_MISSING',
+          'PARTOF_RELATION_MISSING',
+        ]);
+        if (
+          facetResult.failure?.type &&
+          missingFailures.has(facetResult.failure.type)
+        ) {
+          status = 'pass';
+        } else {
+          status = 'fail';
+          failureReason = translator
+            ? translator.describeFailure({
+                requirement,
+                status: 'fail',
+                facetType: requirement.facet.type,
+                checkedDescription: '',
+                actualValue: facetResult.actualValue,
+                expectedValue: facetResult.expectedValue,
+                failure: facetResult.failure,
+              })
+            : formatFailureReason(facetResult);
+        }
+      }
       break;
 
     case 'prohibited':

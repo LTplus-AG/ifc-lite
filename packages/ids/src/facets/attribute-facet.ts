@@ -92,8 +92,11 @@ function checkSingleAttribute(
 ): FacetCheckResult {
   const attrValue = getAttributeValue(attrName, expressId, accessor);
 
-  // Check if attribute exists
-  if (attrValue === undefined || attrValue === null || attrValue === '') {
+  // Distinguish "slot truly absent" (undefined/null — IFC `$`) from
+  // "slot explicitly empty" (`''`). Per IDS spec the latter is a
+  // value mismatch, not a missing attribute, so optional facets won't
+  // give it a free pass.
+  if (attrValue === undefined || attrValue === null) {
     return {
       passed: false,
       actualValue: undefined,
@@ -104,6 +107,21 @@ function checkSingleAttribute(
         type: 'ATTRIBUTE_MISSING',
         field: attrName,
         expected: facet.value ? formatConstraint(facet.value) : 'any value',
+      },
+    };
+  }
+  if (attrValue === '') {
+    return {
+      passed: false,
+      actualValue: '(empty)',
+      expectedValue: facet.value
+        ? formatConstraint(facet.value)
+        : `attribute "${attrName}" must have a non-empty value`,
+      failure: {
+        type: 'ATTRIBUTE_VALUE_MISMATCH',
+        field: attrName,
+        actual: '(empty)',
+        expected: facet.value ? formatConstraint(facet.value) : 'a non-empty value',
       },
     };
   }

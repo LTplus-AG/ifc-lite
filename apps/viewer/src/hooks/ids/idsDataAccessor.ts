@@ -64,6 +64,7 @@ function flattenMaterials(matInfo: ReturnType<typeof extractMaterialsOnDemand>):
       for (const layer of matInfo.layers || []) {
         push(layer.materialName, layer.category);
         push(layer.name, layer.category);
+        if (layer.materialCategory) push(layer.materialCategory, layer.materialCategory);
       }
       break;
     case 'MaterialConstituentSet':
@@ -71,6 +72,7 @@ function flattenMaterials(matInfo: ReturnType<typeof extractMaterialsOnDemand>):
       for (const c of matInfo.constituents || []) {
         push(c.materialName, c.category);
         push(c.name, c.category);
+        if (c.materialCategory) push(c.materialCategory, c.materialCategory);
       }
       break;
     case 'MaterialProfileSet':
@@ -78,6 +80,7 @@ function flattenMaterials(matInfo: ReturnType<typeof extractMaterialsOnDemand>):
       for (const p of matInfo.profiles || []) {
         push(p.materialName, p.category);
         push(p.name, p.category);
+        if (p.materialCategory) push(p.materialCategory, p.materialCategory);
       }
       break;
   }

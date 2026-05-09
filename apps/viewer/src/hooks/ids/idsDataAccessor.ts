@@ -31,7 +31,28 @@ import {
   extractTypeEntityOwnProperties,
   extractTypePropertiesOnDemand,
 } from '@ifc-lite/parser';
-import { RelationshipType, getAttributeXsdTypes } from '@ifc-lite/data';
+import { RelationshipType, getAttributeXsdTypes, type IfcSchemaVersion } from '@ifc-lite/data';
+
+/**
+ * Narrow the parser's schema-version string to the subset
+ * `@ifc-lite/data` carries lookup tables for. IFC5 has no published
+ * schema yet so we treat it as IFC4X3 for type lookups; anything
+ * unknown defaults to IFC4 (the most common authoring target).
+ */
+function narrowSchemaVersion(raw: string | undefined): IfcSchemaVersion {
+  switch ((raw || '').toUpperCase()) {
+    case 'IFC2X3':
+      return 'IFC2X3';
+    case 'IFC4':
+      return 'IFC4';
+    case 'IFC4X3':
+    case 'IFC4X3_ADD2':
+    case 'IFC5':
+      return 'IFC4X3';
+    default:
+      return 'IFC4';
+  }
+}
 
 // Map IDS PartOf relations to the numeric RelationshipType enum the
 // graph keys on. Passing strings here was a long-standing silent bug:
@@ -412,8 +433,11 @@ export function createDataAccessor(
       // `IfcPixelTexture` but `xs:double` on `IfcCShapeProfileDef`).
       const entityType = this.getEntityType(expressId);
       if (!entityType) return undefined;
-      const version = (dataStore.schemaVersion || 'IFC4').toUpperCase();
-      return getAttributeXsdTypes(version, entityType, attrName);
+      return getAttributeXsdTypes(
+        narrowSchemaVersion(dataStore.schemaVersion),
+        entityType,
+        attrName
+      );
     },
 
     getPredefinedTypeRaw(expressId: number): string | undefined {

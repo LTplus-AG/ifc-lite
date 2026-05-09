@@ -446,6 +446,8 @@ function isRecognisedPartOfRelation(relation: string): boolean {
  */
 function normalizePartOfRelation(relation: string): PartOfRelation {
   const upper = relation.toUpperCase();
+  if (upper.includes('ASSIGNSTOGROUP') || upper.includes('GROUP'))
+    return 'IfcRelAssignsToGroup';
   if (upper.includes('AGGREGATE')) return 'IfcRelAggregates';
   if (upper.includes('CONTAINED') || upper.includes('SPATIAL'))
     return 'IfcRelContainedInSpatialStructure';

@@ -66,6 +66,10 @@ export const RELATIONSHIP_TYPES = new Set([
 export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELCONTAINEDINSPATIALSTRUCTURE': RelationshipType.ContainsElements,
     'IFCRELAGGREGATES': RelationshipType.Aggregates,
+    // IfcRelNests is semantically a decomposition relationship; map it
+    // onto the same edge bucket so partOf checks for either traverse
+    // the same graph.
+    'IFCRELNESTS': RelationshipType.Aggregates,
     'IFCRELDEFINESBYPROPERTIES': RelationshipType.DefinesByProperties,
     'IFCRELDEFINESBYTYPE': RelationshipType.DefinesByType,
     'IFCRELASSOCIATESMATERIAL': RelationshipType.AssociatesMaterial,

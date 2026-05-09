@@ -36,6 +36,7 @@ import { RelationshipType } from '@ifc-lite/data';
 // "no parent" → fail-when-required, pass-when-prohibited.
 const PARTOF_REL_MAP: Record<PartOfRelation, RelationshipType | undefined> = {
   IfcRelAggregates: RelationshipType.Aggregates,
+  IfcRelAssignsToGroup: RelationshipType.AssignsToGroup,
   IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
   IfcRelNests: RelationshipType.Aggregates,
   IfcRelVoidsElement: RelationshipType.VoidsElement,
@@ -205,11 +206,15 @@ export function createDataAccessor(
 ): IFCDataAccessor {
   return {
     getEntityType(expressId: number): string | undefined {
-      // Try entities table first
+      // The columnar entity table only summarises "interesting"
+      // entities (spatial, building elements, etc.); resource-level
+      // types like `IfcTask`, `IfcMaterial`, `IfcClassification`
+      // resolve to `'Unknown'` there. Fall back to the raw type name
+      // from `entityIndex.byId` so applicability checks for those
+      // types still match.
       const entityType = dataStore.entities?.getTypeName?.(expressId);
-      if (entityType) return entityType;
+      if (entityType && entityType !== 'Unknown') return entityType;
 
-      // Fallback to entityIndex
       const byId = dataStore.entityIndex?.byId;
       if (byId) {
         const entry = byId.get(expressId);
@@ -325,18 +330,38 @@ export function createDataAccessor(
       expressId: number,
       relationType: PartOfRelation
     ): ParentInfo | undefined {
+      const all = this.getAncestors!(expressId, relationType);
+      return all.length > 0 ? all[0] : undefined;
+    },
+
+    getAncestors(
+      expressId: number,
+      relationType: PartOfRelation
+    ): ParentInfo[] {
       const relationships = dataStore.relationships;
-      if (!relationships?.getRelated) return undefined;
+      if (!relationships?.getRelated) return [];
       const relType = PARTOF_REL_MAP[relationType];
-      if (relType === undefined) return undefined;
-      const parents = relationships.getRelated(expressId, relType, 'inverse');
-      if (!parents || parents.length === 0) return undefined;
-      const parentId = parents[0];
-      return {
-        expressId: parentId,
-        entityType: this.getEntityType(parentId) || 'Unknown',
-        predefinedType: this.getObjectType(parentId),
-      };
+      if (relType === undefined) return [];
+      // BFS up the graph — IDS partOf is transitive, so any reachable
+      // ancestor counts.
+      const out: ParentInfo[] = [];
+      const seen = new Set<number>([expressId]);
+      const queue = [expressId];
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        const parents = relationships.getRelated(id, relType, 'inverse');
+        for (const parentId of parents || []) {
+          if (seen.has(parentId)) continue;
+          seen.add(parentId);
+          out.push({
+            expressId: parentId,
+            entityType: this.getEntityType(parentId) || 'Unknown',
+            predefinedType: this.getObjectType(parentId),
+          });
+          queue.push(parentId);
+        }
+      }
+      return out;
     },
 
     getAttribute(expressId: number, attributeName: string): string | undefined {

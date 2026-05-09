@@ -45,7 +45,13 @@ export function extractRelFast(
         return { relatingObject: relating, relatedObjects: related };
     } else if (typeUpper === 'IFCRELASSIGNSTOGROUP' || typeUpper === 'IFCRELASSIGNSTOPRODUCT') {
         const [related, rp] = readRefList(buffer, pos, end);
-        pos = skipCommas(buffer, rp, end, 2);
+        // `readRefList` returns `rp` pointing AT the closing `)` of
+        // the list. `skipCommas` tracks paren depth, so leaving `rp`
+        // there makes that `)` cancel the implicit depth-0 baseline
+        // and subsequent commas don't count. Advance past it first.
+        let after = rp;
+        if (after < end && buffer[after] === 0x29) after++;
+        pos = skipCommas(buffer, after, end, 2);
         const [relating, _] = readRefId(buffer, pos, end);
         if (relating < 0 || related.length === 0) return null;
         return { relatingObject: relating, relatedObjects: related };

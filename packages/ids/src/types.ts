@@ -195,6 +195,7 @@ export interface IDSPartOfFacet {
 
 export type PartOfRelation =
   | 'IfcRelAggregates'
+  | 'IfcRelAssignsToGroup'
   | 'IfcRelContainedInSpatialStructure'
   | 'IfcRelNests'
   | 'IfcRelVoidsElement'
@@ -475,6 +476,16 @@ export interface IFCDataAccessor {
     expressId: number,
     relationType: PartOfRelation
   ): ParentInfo | undefined;
+  /**
+   * Walk every ancestor reachable via `relationType` (the IDS spec
+   * treats partOf as transitive — a wall in a storey in a building
+   * IS partOf the building). Optional: when not provided, the
+   * partOf facet falls back to single-step `getParent` traversal.
+   */
+  getAncestors?(
+    expressId: number,
+    relationType: PartOfRelation
+  ): ParentInfo[];
   /** Get attribute value by name */
   getAttribute(expressId: number, attributeName: string): string | undefined;
 }

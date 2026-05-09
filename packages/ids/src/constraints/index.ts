@@ -15,18 +15,38 @@ import type {
 } from '../types.js';
 
 /**
- * Numeric tolerance for floating point comparisons.
+ * Numeric tolerance for floating-point comparisons.
  *
- * Mirrors IfcOpenShell `ifctester` reference behaviour: the per-
- * comparison epsilon is `2 * 1e-6 * max(|a|, |b|, 1)`. The factor of 2
- * absorbs symmetric round-off in both operands; the `max(…, 1)` keeps
- * sub-unit comparisons stable. Verified against the
- * `Documentation/ImplementersDocumentation/TestCases/tolerance/` fixtures.
+ * Mirrors upstream IfcOpenShell `ifctester`'s `is_x` (see
+ * `src/ifctester/ifctester/facet.py`): `actual` is considered equal to
+ * the expected `cast_value` when it lies within
+ * `[cast_value * (1 - 1e-6), cast_value * (1 + 1e-6)]` (asymmetric —
+ * the tolerance is relative to the *expected* value, not the larger of
+ * the pair). The check is anchored on `cast_value` so callers must
+ * pass the IDS-side value as the second argument.
  */
 const RELATIVE_TOLERANCE = 1e-6;
 
+function isCloseToCastValue(actual: number, castValue: number): boolean {
+  if (castValue >= 0) {
+    if (
+      actual < castValue * (1 - RELATIVE_TOLERANCE) ||
+      actual > castValue * (1 + RELATIVE_TOLERANCE)
+    ) {
+      return false;
+    }
+  } else if (
+    actual > castValue * (1 - RELATIVE_TOLERANCE) ||
+    actual < castValue * (1 + RELATIVE_TOLERANCE)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Symmetric version used by the bounds matcher. */
 function numericEpsilon(a: number, b: number): number {
-  return 2 * RELATIVE_TOLERANCE * Math.max(Math.abs(a), Math.abs(b), 1);
+  return RELATIVE_TOLERANCE * (1 + Math.max(Math.abs(a), Math.abs(b)));
 }
 
 /** Back-compat alias for callers that still expect a single constant. */

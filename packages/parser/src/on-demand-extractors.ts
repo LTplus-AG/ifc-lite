@@ -167,7 +167,20 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                         value = innerValue === '.T.' || innerValue === true;
                     }
                 } else if (typeof innerValue === 'number') {
-                    if (Number.isInteger(innerValue)) {
+                    // Preserve the IFC-declared numeric measure (IFCREAL,
+                    // IFCINTEGER, IFCLENGTHMEASURE, IFCAREAMEASURE, …) —
+                    // the source explicitly tagged the value, so don't
+                    // re-infer from JS number-ness (which would
+                    // misclassify e.g. `IFCREAL(0.0)` as integer).
+                    if (typeName === 'IFCINTEGER' || typeName === 'IFCCOUNTMEASURE') {
+                        type = PropertyValueType.Integer;
+                    } else if (
+                        typeName === 'IFCREAL' ||
+                        typeName.endsWith('MEASURE') ||
+                        typeName.endsWith('RATIO')
+                    ) {
+                        type = PropertyValueType.Real;
+                    } else if (Number.isInteger(innerValue)) {
                         type = PropertyValueType.Integer;
                     } else {
                         type = PropertyValueType.Real;

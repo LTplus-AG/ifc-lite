@@ -843,9 +843,14 @@ export function extractAllEntityAttributes(
     const attrs = entity.attributes || [];
     // Use properly-cased type name from entity table (IfcTypeEnumToString)
     // instead of ref.type which is UPPERCASE from STEP (e.g., IFCWALLSTANDARDCASE)
-    // and breaks multi-word type normalization in getAttributeNames
-    const typeName = store.entities.getTypeName(entityId);
-    const attrNames = getAttributeNames(typeName || ref.type);
+    // and breaks multi-word type normalization in getAttributeNames.
+    // For resource-level entities (IfcTask, IfcTaskTime, IfcMaterial,
+    // IfcClassification, ...) the entity table returns 'Unknown';
+    // fall back to ref.type so the schema-driven attribute-name
+    // resolution still works for those types.
+    const tableName = store.entities.getTypeName(entityId);
+    const typeName = tableName && tableName !== 'Unknown' ? tableName : ref.type;
+    const attrNames = getAttributeNames(typeName);
 
     const result: Array<{ name: string; value: string }> = [];
     const len = Math.min(attrs.length, attrNames.length);

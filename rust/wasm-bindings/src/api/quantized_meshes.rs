@@ -72,10 +72,35 @@ impl IfcAPI {
             }
         }
 
-        let router = GeometryRouter::with_units(&content, &mut decoder);
+        let mut router = GeometryRouter::with_units(&content, &mut decoder);
+
+        // ── RTC detection and shift ──
+        // Match the legacy `parseToGpuGeometry` path in `gpu_meshes.rs` exactly:
+        // sample the first 50 element placements, take their median, and if the
+        // model lives more than 10 km from origin set the offset on the router
+        // so raw-world-coord representations get RTC-shifted in f64 precision
+        // before unit scaling. Without this, georeferenced files (UTM/RT90/
+        // local survey CRS) end up with vertex coordinates so far from origin
+        // that f32 precision collapses depth at the GPU.
+        let rtc_offset = router.detect_rtc_offset_from_first_element(&content, &mut decoder);
+        let needs_rtc = rtc_offset.0.abs() > 10_000.0
+            || rtc_offset.1.abs() > 10_000.0
+            || rtc_offset.2.abs() > 10_000.0;
+        if needs_rtc {
+            router.set_rtc_offset(rtc_offset);
+        }
+
         if !faceted_brep_ids.is_empty() {
             router.preprocess_faceted_breps(&faceted_brep_ids, &mut decoder);
         }
+
+        // The unit scale extracted from `IFCUNITASSIGNMENT`: 1.0 for files
+        // declared in metres, 0.001 for millimetres, etc. Mesh positions are
+        // already scaled to metres inside `process_element_with_transform`,
+        // but the placement transform it returns is *not* — its translation
+        // column lives in raw file units. We scale and RTC-subtract here.
+        let unit_scale = router.unit_scale();
+        let active_rtc = if needs_rtc { rtc_offset } else { (0.0, 0.0, 0.0) };
 
         // Group by float-mesh hash so each unique representation is quantised
         // exactly once. The dedup builder downstream collapses on the
@@ -111,12 +136,34 @@ impl IfcAPI {
                 .unwrap_or_else(|| get_default_color_for_type(&entity.ifc_type));
             let base_color_rgba8 = pack_rgba8(color_f32);
 
+            // Build the column-major transform sent to the GPU. Two corrections
+            // over a naive copy:
+            //   1. Scale the translation column from raw file units (mm, etc.)
+            //      to metres, matching the unit conversion already applied to
+            //      mesh positions inside the processor. (`process_element_with_transform`
+            //      returns the placement transform untouched — see
+            //      `router/processing.rs:867`.)
+            //   2. Subtract the RTC offset from the (now-scaled) translation
+            //      so the world-space position the shader produces sits near
+            //      the origin even for survey-coord georeferenced files.
+            //      Mesh positions for raw-large-coord representations are
+            //      already RTC-shifted by the router (see
+            //      `router/processing.rs:931–949`); for ordinary local meshes
+            //      the shift lives entirely on the placement, here.
             let mut transform_f32 = [0.0_f32; 16];
             for col in 0..4 {
                 for row in 0..4 {
                     transform_f32[col * 4 + row] = transform[(row, col)] as f32;
                 }
             }
+            // Translation column (col 3): rows 0/1/2 → indices 12/13/14.
+            let tx_m = transform[(0, 3)] * unit_scale - active_rtc.0;
+            let ty_m = transform[(1, 3)] * unit_scale - active_rtc.1;
+            let tz_m = transform[(2, 3)] * unit_scale - active_rtc.2;
+            transform_f32[12] = tx_m as f32;
+            transform_f32[13] = ty_m as f32;
+            transform_f32[14] = tz_m as f32;
+
             let instance = MeshInstance::new(id, transform_f32, base_color_rgba8);
 
             match groups.entry(float_hash) {
@@ -135,20 +182,17 @@ impl IfcAPI {
         // from a single source of truth.
         let mut builder = DedupBuilder::with_capacity(groups.len());
         for (_, (mesh, instances)) in groups {
-            // The first instance establishes the mesh slot; subsequent ones go
-            // into the same bucket because their content hash matches.
             let (first, rest) = instances.split_first().expect("non-empty group");
             builder.push(mesh.clone(), *first);
             for inst in rest {
-                // Pushing the same mesh again is cheap — DedupBuilder collapses
-                // by content hash. We rely on `hash_quantized_mesh` returning
-                // the same value for `mesh` each time.
                 let _hash = hash_quantized_mesh(&mesh);
                 builder.push(mesh.clone(), *inst);
             }
         }
 
-        QuantizedScene::from_deduped(&builder.finish())
+        let mut scene = QuantizedScene::from_deduped(&builder.finish());
+        scene.set_rtc_offset(active_rtc.0, active_rtc.1, active_rtc.2);
+        scene
     }
 }
 

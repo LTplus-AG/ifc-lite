@@ -151,57 +151,6 @@ function differenceSet(a: ReadonlySet<number>, b: ReadonlySet<number>): Set<numb
     return out;
 }
 
-/**
- * If the snapshot's instance placements are far from the world origin
- * (georeferenced models), subtract the placement-center from every instance
- * translation column in-place. Mutates `snapshot.instanceData`. Returns the
- * offset that was subtracted ({0,0,0} if no shift was needed).
- *
- * Threshold: if any axis exceeds ~1 km, shift. That's well below the F32
- * precision cliff (~16 km for sub-millimetre vertex spacing) but high
- * enough to leave normal building-scale models untouched.
- */
-function applyRtcShiftIfFarFromOrigin(
-    snapshot: import('@ifc-lite/geometry').QuantizedSceneSnapshot,
-): { x: number; y: number; z: number } {
-    const inst = snapshot.instanceData;
-    if (snapshot.instanceCount === 0) return { x: 0, y: 0, z: 0 };
-    const dv = new DataView(inst.buffer, inst.byteOffset, inst.byteLength);
-    // Translation column lives at bytes 48 / 52 / 56 (column-major mat4 column 3).
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < snapshot.instanceCount; i++) {
-        const off = i * 80;
-        const tx = dv.getFloat32(off + 48, true);
-        const ty = dv.getFloat32(off + 52, true);
-        const tz = dv.getFloat32(off + 56, true);
-        if (tx < minX) minX = tx;
-        if (ty < minY) minY = ty;
-        if (tz < minZ) minZ = tz;
-        if (tx > maxX) maxX = tx;
-        if (ty > maxY) maxY = ty;
-        if (tz > maxZ) maxZ = tz;
-    }
-    const cx = (minX + maxX) * 0.5;
-    const cy = (minY + maxY) * 0.5;
-    const cz = (minZ + maxZ) * 0.5;
-    const RTC_THRESHOLD = 1000;
-    if (
-        Math.abs(cx) < RTC_THRESHOLD &&
-        Math.abs(cy) < RTC_THRESHOLD &&
-        Math.abs(cz) < RTC_THRESHOLD
-    ) {
-        return { x: 0, y: 0, z: 0 };
-    }
-    for (let i = 0; i < snapshot.instanceCount; i++) {
-        const off = i * 80;
-        dv.setFloat32(off + 48, dv.getFloat32(off + 48, true) - cx, true);
-        dv.setFloat32(off + 52, dv.getFloat32(off + 52, true) - cy, true);
-        dv.setFloat32(off + 56, dv.getFloat32(off + 56, true) - cz, true);
-    }
-    return { x: cx, y: cy, z: cz };
-}
-
 type ResolvedVisualEnhancement = {
     enabled: boolean;
     edgeContrast: {
@@ -624,21 +573,16 @@ export class Renderer {
             return;
         }
 
-        // ── RTC shift ──────────────────────────────────────────────
-        // Georeferenced IFCs (UTM, RT90, etc.) place geometry tens of
-        // kilometres from origin. F32 rendering at those coordinates collapses
-        // depth and warps view-projection math; the model never appears even
-        // though draws are issued. Find the placement-center across all
-        // instance translations and subtract it from each instance's
-        // translation column before uploading. The shader doesn't change —
-        // it just receives small numbers. The offset is stored so picking /
-        // measurement can recover absolute world coordinates later.
-        this.quantizedRtcOffset = applyRtcShiftIfFarFromOrigin(snapshot);
+        // RTC is applied in the WASM parser (`parseQuantizedInstanced`): the
+        // returned snapshot already has unit-scaled, RTC-subtracted instance
+        // translations. We just record the offset so picking / measurement /
+        // export can recover absolute world coordinates later.
+        this.quantizedRtcOffset = { ...snapshot.rtcOffset };
         if (this.quantizedRtcOffset.x !== 0 || this.quantizedRtcOffset.y !== 0 || this.quantizedRtcOffset.z !== 0) {
             console.log(
-                `[quantized] RTC offset applied: (${this.quantizedRtcOffset.x.toFixed(1)}, ` +
+                `[quantized] RTC offset (from WASM): (${this.quantizedRtcOffset.x.toFixed(1)}, ` +
                 `${this.quantizedRtcOffset.y.toFixed(1)}, ${this.quantizedRtcOffset.z.toFixed(1)}) — ` +
-                `instance translations now near origin for F32-safe rendering`,
+                `instance translations already centred for F32-safe rendering`,
             );
         }
 

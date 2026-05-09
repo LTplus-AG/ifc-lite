@@ -47,6 +47,13 @@ pub struct QuantizedScene {
     total_index_count: u32,
     /// Tracks the dedup ratio that produced this scene (informational).
     dedup_ratio: f32,
+    /// World-space offset that was subtracted from every instance translation
+    /// during parsing. JS callers add this back when they need absolute world
+    /// coordinates (picking, measurement, georef export). `(0,0,0)` for files
+    /// near the world origin.
+    rtc_offset_x: f64,
+    rtc_offset_y: f64,
+    rtc_offset_z: f64,
 }
 
 #[wasm_bindgen]
@@ -124,6 +131,26 @@ impl QuantizedScene {
     #[wasm_bindgen(getter, js_name = dedupRatio)]
     pub fn dedup_ratio(&self) -> f32 {
         self.dedup_ratio
+    }
+
+    #[wasm_bindgen(getter, js_name = rtcOffsetX)]
+    pub fn rtc_offset_x(&self) -> f64 {
+        self.rtc_offset_x
+    }
+
+    #[wasm_bindgen(getter, js_name = rtcOffsetY)]
+    pub fn rtc_offset_y(&self) -> f64 {
+        self.rtc_offset_y
+    }
+
+    #[wasm_bindgen(getter, js_name = rtcOffsetZ)]
+    pub fn rtc_offset_z(&self) -> f64 {
+        self.rtc_offset_z
+    }
+
+    #[wasm_bindgen(getter, js_name = hasRtcOffset)]
+    pub fn has_rtc_offset(&self) -> bool {
+        self.rtc_offset_x != 0.0 || self.rtc_offset_y != 0.0 || self.rtc_offset_z != 0.0
     }
 
     /// Layout constants exposed so the JS side can match offsets without hard-coding.
@@ -206,7 +233,19 @@ impl QuantizedScene {
             total_vertex_count: total_vertex_count as u32,
             total_index_count: total_index_count as u32,
             dedup_ratio,
+            rtc_offset_x: 0.0,
+            rtc_offset_y: 0.0,
+            rtc_offset_z: 0.0,
         }
+    }
+
+    /// Record the RTC offset that the parser subtracted from instance
+    /// translations. Stored on the scene so JS callers can add it back when
+    /// they need absolute world coordinates (picking, measurement, export).
+    pub fn set_rtc_offset(&mut self, x: f64, y: f64, z: f64) {
+        self.rtc_offset_x = x;
+        self.rtc_offset_y = y;
+        self.rtc_offset_z = z;
     }
 
     // Test-only accessors so unit tests can verify packed layout without going

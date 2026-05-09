@@ -57,6 +57,13 @@ export interface QuantizedSceneSnapshot {
   totalIndexCount: number;
   /** total placements / unique meshes — informational. */
   dedupRatio: number;
+  /**
+   * World-space offset that was subtracted from every instance translation in
+   * the WASM parser. `(0,0,0)` for files near the world origin. Callers that
+   * need absolute world coordinates (picking, measurement, georef export) add
+   * this back to the centred coordinates the renderer works with.
+   */
+  rtcOffset: { x: number; y: number; z: number };
 }
 
 const log = createLogger('Geometry');
@@ -240,12 +247,16 @@ export class IfcLiteBridge {
         totalVertexCount: scene.totalVertexCount,
         totalIndexCount: scene.totalIndexCount,
         dedupRatio: scene.dedupRatio,
+        rtcOffset: { x: scene.rtcOffsetX, y: scene.rtcOffsetY, z: scene.rtcOffsetZ },
       };
       const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      const rtcLabel = scene.hasRtcOffset
+        ? ` rtc=(${snapshot.rtcOffset.x.toFixed(1)}, ${snapshot.rtcOffset.y.toFixed(1)}, ${snapshot.rtcOffset.z.toFixed(1)})`
+        : '';
       log.info(
         `[quantized] parsed ${snapshot.meshCount} unique meshes / ${snapshot.instanceCount} instances ` +
         `(dedup ${snapshot.dedupRatio.toFixed(1)}×, ` +
-        `${snapshot.totalVertexCount} verts, ${snapshot.totalIndexCount / 3 | 0} tris, ` +
+        `${snapshot.totalVertexCount} verts, ${snapshot.totalIndexCount / 3 | 0} tris,${rtcLabel} ` +
         `${(t1 - t0).toFixed(0)}ms)`,
         { operation: 'parseQuantizedInstancedScene' },
       );

@@ -819,10 +819,14 @@ export class QuantizedScene {
   [Symbol.dispose](): void;
   readonly meshCount: number;
   readonly dedupRatio: number;
+  readonly rtcOffsetX: number;
+  readonly rtcOffsetY: number;
+  readonly rtcOffsetZ: number;
   /**
    * Layout constants exposed so the JS side can match offsets without hard-coding.
    */
   static readonly vertexStride: number;
+  readonly hasRtcOffset: boolean;
   readonly indexDataLen: number;
   readonly indexDataPtr: number;
   readonly instanceCount: number;
@@ -1187,15 +1191,17 @@ export interface InitOutput {
   readonly quantizedscene_dedupRatio: (a: number) => number;
   readonly quantizedscene_indexDataByteLength: (a: number) => number;
   readonly quantizedscene_indexDataLen: (a: number) => number;
-  readonly quantizedscene_instanceCount: (a: number) => number;
+  readonly quantizedscene_indexDataPtr: (a: number) => number;
   readonly quantizedscene_instanceDataByteLength: (a: number) => number;
+  readonly quantizedscene_instanceDataPtr: (a: number) => number;
   readonly quantizedscene_instanceRecordSize: () => number;
+  readonly quantizedscene_meshCount: (a: number) => number;
   readonly quantizedscene_meshRecordSize: () => number;
   readonly quantizedscene_meshTableByteLength: (a: number) => number;
+  readonly quantizedscene_meshTablePtr: (a: number) => number;
   readonly quantizedscene_totalIndexCount: (a: number) => number;
   readonly quantizedscene_totalVertexCount: (a: number) => number;
   readonly quantizedscene_vertexDataByteLength: (a: number) => number;
-  readonly quantizedscene_vertexDataPtr: (a: number) => number;
   readonly quantizedscene_vertexStride: () => number;
   readonly rtcoffsetjs_isSignificant: (a: number) => number;
   readonly rtcoffsetjs_toWorld: (a: number, b: number, c: number, d: number, e: number) => void;
@@ -1225,7 +1231,9 @@ export interface InitOutput {
   readonly zerocopymesh_bounds_min: (a: number, b: number) => void;
   readonly zerocopymesh_is_empty: (a: number) => number;
   readonly zerocopymesh_new: () => number;
+  readonly zerocopymesh_normals_len: (a: number) => number;
   readonly zerocopymesh_positions_len: (a: number) => number;
+  readonly zerocopymesh_positions_ptr: (a: number) => number;
   readonly zerocopymesh_vertex_count: (a: number) => number;
   readonly init: () => void;
   readonly gpuinstancedgeometryref_indicesLen: (a: number) => number;
@@ -1236,7 +1244,7 @@ export interface InitOutput {
   readonly instancedmeshcollection_totalGeometries: (a: number) => number;
   readonly meshcollectionwithrtc_length: (a: number) => number;
   readonly zerocopymesh_indices_len: (a: number) => number;
-  readonly zerocopymesh_normals_len: (a: number) => number;
+  readonly quantizedscene_hasRtcOffset: (a: number) => number;
   readonly __wbg_set_rtcoffsetjs_x: (a: number, b: number) => void;
   readonly __wbg_set_rtcoffsetjs_y: (a: number, b: number) => void;
   readonly __wbg_set_rtcoffsetjs_z: (a: number, b: number) => void;
@@ -1246,12 +1254,9 @@ export interface InitOutput {
   readonly gpuinstancedgeometryref_instanceDataPtr: (a: number) => number;
   readonly gpuinstancedgeometryref_instanceExpressIdsPtr: (a: number) => number;
   readonly gpuinstancedgeometryref_vertexDataPtr: (a: number) => number;
-  readonly quantizedscene_indexDataPtr: (a: number) => number;
-  readonly quantizedscene_instanceDataPtr: (a: number) => number;
-  readonly quantizedscene_meshTablePtr: (a: number) => number;
+  readonly quantizedscene_vertexDataPtr: (a: number) => number;
   readonly zerocopymesh_indices_ptr: (a: number) => number;
   readonly zerocopymesh_normals_ptr: (a: number) => number;
-  readonly zerocopymesh_positions_ptr: (a: number) => number;
   readonly gpuinstancedgeometrycollection_getRef: (a: number, b: number) => number;
   readonly __wbg_get_rtcoffsetjs_x: (a: number) => number;
   readonly __wbg_get_rtcoffsetjs_y: (a: number) => number;
@@ -1263,12 +1268,15 @@ export interface InitOutput {
   readonly instancedgeometry_geometryId: (a: number) => bigint;
   readonly meshcollection_rtcOffsetX: (a: number) => number;
   readonly profileentryjs_expressId: (a: number) => number;
-  readonly quantizedscene_meshCount: (a: number) => number;
+  readonly quantizedscene_instanceCount: (a: number) => number;
+  readonly quantizedscene_rtcOffsetX: (a: number) => number;
+  readonly quantizedscene_rtcOffsetY: (a: number) => number;
+  readonly quantizedscene_rtcOffsetZ: (a: number) => number;
   readonly symboliccircle_expressId: (a: number) => number;
   readonly __wbg_gpuinstancedgeometryref_free: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1187: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1186: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1227: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1191: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1190: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1231: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export3: (a: number, b: number) => number;

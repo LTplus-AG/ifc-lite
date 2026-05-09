@@ -660,6 +660,29 @@ export class Renderer {
         this.updateModelBoundsFromQuantized();
         this.camera.setSceneBounds(this.modelBounds);
 
+        // City-scale guard. When the model spans tens of kilometres the camera
+        // sits hundreds of km away after fit-to-view; individual mesh
+        // triangles (typical IFC element ~ 1–10 m) project to sub-pixel size
+        // and produce zero fragments — the canvas stays blank even though all
+        // draws are issued. Detect this case and warn loudly so the user knows
+        // to zoom in or load a sub-region. (A proper fix needs LOD / imposters
+        // or a focus-region picker; outside this PR's scope.)
+        if (this.modelBounds) {
+            const sx = this.modelBounds.max.x - this.modelBounds.min.x;
+            const sy = this.modelBounds.max.y - this.modelBounds.min.y;
+            const sz = this.modelBounds.max.z - this.modelBounds.min.z;
+            const maxSpan = Math.max(sx, sy, sz);
+            if (maxSpan > 10_000) {
+                console.warn(
+                    `[quantized] city-scale model: bounds span ${(maxSpan / 1000).toFixed(1)} km. ` +
+                    `Individual building triangles will be sub-pixel from the fit-to-view distance ` +
+                    `and produce no fragments. Zoom in (mouse wheel) to make geometry visible. ` +
+                    `If this looks wrong, the file's unit scaling may not have been applied to ` +
+                    `every transform — check the WASM router output.`,
+                );
+            }
+        }
+
         // Sample diagnostics — pull a few instance translations and the first
         // mesh's local AABB so the preview console can show us the actual
         // numbers being rendered (post-RTC, pre-Y-up rotation, since RTC and
@@ -1515,13 +1538,6 @@ export class Renderer {
             const drew = this.renderQuantizedScene(options, viewProj);
             if (drew) {
                 this._renderRequested = false;
-                // Keep redrawing while diagnosing. Without this, the dirty-
-                // flag pattern means render() runs once per scene load and
-                // the first-frame swapchain texture is whatever it was —
-                // any other GPUCanvasContext.getCurrentTexture() consumer in
-                // the page advances the swapchain and our magenta is gone.
-                // Costs one CPU frame loop; trivial vs. the diagnostic value.
-                this._renderRequested = true;
                 return;
             }
         }

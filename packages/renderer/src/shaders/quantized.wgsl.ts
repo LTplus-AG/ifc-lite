@@ -154,13 +154,43 @@ struct FragmentOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
-  // DEBUG: solid magenta on every passing fragment. The dead PBR/section
-  // body that lived below an early return triggered a Naga-to-Metal
-  // redefinition-of-_tmp shader compile error on Mac, invalidating the
-  // whole pipeline. Until we confirm pixels reach the screen the body
-  // is intentionally absent.
+  // Section plane clipping mirrors the main pipeline's bit-packed flags.
+  let sectionEnabled = (uniforms.flags.x & 1u) == 1u;
+  if (sectionEnabled) {
+    let flipped = (uniforms.flags.x & 2u) == 2u;
+    let side = select(1.0, -1.0, flipped);
+    let dist = (dot(in.worldPos, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * side;
+    if (dist > 0.0) {
+      discard;
+    }
+  }
+
+  let N = normalize(in.normal);
+  let sun = normalize(vec3<f32>(0.5, 1.0, 0.3));
+  let fill = normalize(vec3<f32>(-0.5, 0.3, -0.3));
+  let NdotL = abs(dot(N, sun));
+  let NdotF = abs(dot(N, fill));
+  let ambient = vec3<f32>(0.18);
+  var color = in.color.rgb * (ambient + NdotL * 0.55 + NdotF * 0.15);
+
+  let isSelected = (in.instanceFlags & 2u) == 2u;
+  let isGhost = (in.instanceFlags & 4u) == 4u;
+  if (isSelected) {
+    color = mix(color, vec3<f32>(0.3, 0.6, 1.0), 0.4);
+  }
+  var alpha = in.color.a;
+  if (isGhost) {
+    alpha = alpha * 0.25;
+  }
+
+  // ACES filmic tone mapping (matches main pipeline).
+  let aT = 2.51; let bT = 0.03; let cT = 2.43; let dT = 0.59; let eT = 0.14;
+  color = clamp((color * (aT * color + bT)) / (color * (cT * color + dT) + eT),
+                vec3<f32>(0.0), vec3<f32>(1.0));
+  color = pow(color, vec3<f32>(1.0 / 2.2));
+
   var out: FragmentOutput;
-  out.color = vec4<f32>(1.0, 0.0, 0.6, 1.0);
+  out.color = vec4<f32>(color, alpha);
   out.objectIdEncoded = encodeId24(in.expressId);
   return out;
 }

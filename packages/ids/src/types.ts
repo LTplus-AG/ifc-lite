@@ -453,8 +453,23 @@ export interface IFCDataAccessor {
   getGlobalId(expressId: number): string | undefined;
   /** Get entity description by express ID */
   getDescription(expressId: number): string | undefined;
-  /** Get entity object type (predefined type) by express ID */
+  /**
+   * Get entity object type (predefined type) by express ID.
+   *
+   * Per IDS spec, when the IFC `PredefinedType` is `USERDEFINED` the
+   * predefined-type comparison shifts to the user-defined name in the
+   * adjacent `ObjectType` / `ElementType` slot. Implementations MAY
+   * substitute that name here, but MUST also surface the raw enum value
+   * via `getPredefinedTypeRaw` so the validator can disambiguate
+   * literal `USERDEFINED` matches from user-name matches.
+   */
   getObjectType(expressId: number): string | undefined;
+  /**
+   * Get the raw `PredefinedType` enum token (e.g. `USERDEFINED`,
+   * `NOTDEFINED`, `BEAM`) without substitution to the user-defined
+   * name. Returns `undefined` when the entity has no predefined type.
+   */
+  getPredefinedTypeRaw?(expressId: number): string | undefined;
   /** Get all entity IDs of a specific type */
   getEntitiesByType(typeName: string): number[];
   /** Get all entity IDs */
@@ -487,7 +502,7 @@ export interface IFCDataAccessor {
     relationType: PartOfRelation
   ): ParentInfo[];
   /** Get attribute value by name */
-  getAttribute(expressId: number, attributeName: string): string | undefined;
+  getAttribute(expressId: number, attributeName: string): string | number | boolean | undefined;
 }
 
 /** Property value result */
@@ -511,6 +526,13 @@ export interface PropertySetInfo {
     name: string;
     value: string | number | boolean | null;
     dataType: string;
+    /**
+     * Optional list of individual values for multi-valued IFC properties
+     * (`IfcPropertyEnumeratedValue`, `IfcPropertyListValue`). When set,
+     * the IDS validator iterates each candidate and passes the constraint
+     * check if any one matches — mirroring upstream ifctester semantics.
+     */
+    values?: Array<string | number | boolean>;
   }>;
 }
 

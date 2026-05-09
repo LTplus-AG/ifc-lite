@@ -637,7 +637,7 @@ export class ColumnarParser {
     extractPropertiesOnDemand(
         store: IfcDataStore,
         entityId: number
-    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
+    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
         // Use on-demand extraction if map is available (preferred for single-entity access)
         if (!store.onDemandPropertyMap || !store.source?.length) {
             // Fallback to pre-computed property table (e.g., server-parsed data)
@@ -650,7 +650,7 @@ export class ColumnarParser {
         }
 
         const extractor = new EntityExtractor(store.source);
-        const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+        const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
 
         for (const psetId of psetIds) {
             const psetRef = getEntityRefFromStore(store, psetId);
@@ -664,7 +664,7 @@ export class ColumnarParser {
             const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
             const hasProperties = psetAttrs[4];
 
-            const properties: Array<{ name: string; type: number; value: PropertyValue }> = [];
+            const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> = [];
 
             if (Array.isArray(hasProperties)) {
                 for (const propRef of hasProperties) {
@@ -681,7 +681,13 @@ export class ColumnarParser {
                     if (!propName) continue;
 
                     const parsed = parsePropertyValue(propEntity);
-                    properties.push({ name: propName, type: parsed.type, value: parsed.value });
+                    const entry: { name: string; type: number; value: PropertyValue; values?: string[] } = {
+                        name: propName,
+                        type: parsed.type,
+                        value: parsed.value,
+                    };
+                    if (parsed.values) entry.values = parsed.values;
+                    properties.push(entry);
                 }
             }
 
@@ -769,7 +775,7 @@ export class ColumnarParser {
 export function extractPropertiesOnDemand(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
     const parser = new ColumnarParser();
     return parser.extractPropertiesOnDemand(store, entityId);
 }
@@ -832,7 +838,7 @@ export function extractEntityAttributesOnDemand(
 export function extractAllEntityAttributes(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; value: string }> {
+): Array<{ name: string; value: string | number | boolean }> {
     const ref = store.entityIndex.byId.get(entityId);
     if (!ref) return [];
 
@@ -852,19 +858,48 @@ export function extractAllEntityAttributes(
     const typeName = tableName && tableName !== 'Unknown' ? tableName : ref.type;
     const attrNames = getAttributeNames(typeName);
 
-    const result: Array<{ name: string; value: string }> = [];
+    const result: Array<{ name: string; value: string | number | boolean }> = [];
     const len = Math.min(attrs.length, attrNames.length);
     for (let i = 0; i < len; i++) {
         const attrName = attrNames[i];
         if (SKIP_DISPLAY_ATTRS.has(attrName)) continue;
 
         const raw = attrs[i];
-        if (typeof raw === 'string' && raw) {
-            // Clean enum values: .NOTDEFINED. -> NOTDEFINED
+        // STEP `$` (unset) and `*` (derived) deserialize as null /
+        // undefined and must be skipped. Strings are emitted with
+        // `.ENUM.` markers stripped. Numbers and booleans pass
+        // through unchanged so IDS attribute checks can see e.g.
+        // `CountValue = 0` as a present value.
+        if (typeof raw === 'string') {
+            if (!raw) continue;
             const display = raw.startsWith('.') && raw.endsWith('.')
                 ? raw.slice(1, -1)
                 : raw;
             result.push({ name: attrName, value: display });
+        } else if (typeof raw === 'number' || typeof raw === 'boolean') {
+            result.push({ name: attrName, value: raw });
+        } else if (Array.isArray(raw) && raw.length === 2) {
+            // Typed STEP values like IFCREAL(0.0), IFCBOOLEAN(.T.) —
+            // return the underlying primitive so attribute existence
+            // and value checks can compare it directly.
+            const inner = raw[1];
+            const tag = String(raw[0]).toUpperCase();
+            if (tag.includes('BOOLEAN')) {
+                result.push({ name: attrName, value: inner === '.T.' || inner === true });
+            } else if (tag.includes('LOGICAL')) {
+                if (inner === '.U.' || inner === '.X.') {
+                    // UNKNOWN logical → don't surface (treated as absent)
+                    continue;
+                }
+                result.push({ name: attrName, value: inner === '.T.' || inner === true });
+            } else if (typeof inner === 'number' || typeof inner === 'boolean') {
+                result.push({ name: attrName, value: inner });
+            } else if (typeof inner === 'string' && inner) {
+                const display = inner.startsWith('.') && inner.endsWith('.')
+                    ? inner.slice(1, -1)
+                    : inner;
+                result.push({ name: attrName, value: display });
+            }
         }
     }
 

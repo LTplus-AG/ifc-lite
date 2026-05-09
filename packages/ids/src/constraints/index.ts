@@ -44,9 +44,28 @@ function isCloseToCastValue(actual: number, castValue: number): boolean {
   return true;
 }
 
-/** Symmetric version used by the bounds matcher. */
-function numericEpsilon(a: number, b: number): number {
-  return RELATIVE_TOLERANCE * (1 + Math.max(Math.abs(a), Math.abs(b)));
+/**
+ * Tolerance anchored on the IDS-side cast value (the *expected* value),
+ * matching upstream ifctester semantics:
+ * `|actual - cast| <= 1e-6 * (1 + |cast|)`.
+ * The first argument MUST be the cast value (i.e. the constraint side),
+ * not the actual property value — magnitude of the actual is irrelevant
+ * to the tolerance window's *width*.
+ *
+ * A small ULP-scaled fudge (`16 * EPSILON * max(|actual|,|cast|)`) is
+ * added to absorb the floating-point noise introduced when each side is
+ * decoded from text (`parseFloat`/`IFCREAL`) — without it, boundary
+ * fixtures that store decimals like `1000001.000001` would fail equality
+ * by ~1e-12 due to IEEE-754 representation, even though both sides
+ * agree to the printed precision.
+ */
+function numericEpsilon(castValue: number, actual?: number): number {
+  const relative = RELATIVE_TOLERANCE * (1 + Math.abs(castValue));
+  const ulp = 16 * Number.EPSILON * Math.max(
+    Math.abs(castValue),
+    typeof actual === 'number' ? Math.abs(actual) : 0,
+  );
+  return relative + ulp;
 }
 
 /** Back-compat alias for callers that still expect a single constant. */
@@ -81,7 +100,7 @@ export function matchConstraint(
     case 'simpleValue':
       return matchSimpleValue(constraint, actualValue, ci);
     case 'pattern':
-      return matchPattern(constraint, actualValue);
+      return matchPattern(constraint, actualValue, ci);
     case 'enumeration':
       return matchEnumeration(constraint, actualValue, ci);
     case 'bounds':
@@ -147,16 +166,26 @@ function matchSimpleValue(
  */
 function matchPattern(
   constraint: IDSPatternConstraint,
-  actualValue: string | number | boolean
+  actualValue: string | number | boolean,
+  caseInsensitive = false
 ): boolean {
+  // Per IDS 1.0 spec patterns ONLY apply to string values. A pattern
+  // tested against a number / boolean fails outright — even if the
+  // textual representation would happen to match — so the validator
+  // can distinguish "wrong shape" from "wrong value".
+  if (typeof actualValue === 'number' || typeof actualValue === 'boolean') {
+    return false;
+  }
   const actualStr = String(actualValue);
 
   try {
     // Convert XSD regex to JavaScript regex
     const jsPattern = xsdToJsRegex(constraint.pattern);
-    // IDS patterns must match the entire string
-    // Per XSD/IDS spec, patterns are case-sensitive (no 'i' flag)
-    const regex = new RegExp(`^${jsPattern}$`);
+    // IDS patterns must match the entire string. Case-insensitive
+    // matching is opt-in per the call site (entity / predefined-type
+    // names use it; property and attribute values do not).
+    const flags = caseInsensitive ? 'i' : '';
+    const regex = new RegExp(`^${jsPattern}$`, flags);
     return regex.test(actualStr);
   } catch {
     // If pattern is invalid, don't match

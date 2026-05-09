@@ -167,7 +167,7 @@ function getAttributeValue(
   attrName: string,
   expressId: number,
   accessor: IFCDataAccessor
-): string | undefined {
+): string | number | boolean | undefined {
   const normalizedName = attrName.toLowerCase();
 
   switch (normalizedName) {

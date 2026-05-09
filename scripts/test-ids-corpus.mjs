@@ -170,6 +170,24 @@ function createDataAccessor(dataStore) {
       if (d) return d;
       return findAttribute(dataStore, expressId, 'Description');
     },
+    getPredefinedTypeRaw(expressId) {
+      const allAttrs = extractAllEntityAttributes(dataStore, expressId);
+      const pdt = allAttrs.find((a) => a.name === 'PredefinedType');
+      const pdtValue = typeof pdt?.value === 'string' && pdt.value ? pdt.value : undefined;
+      if (pdtValue && pdtValue !== 'NOTDEFINED') return pdtValue;
+      // Inherit from the defining type (IfcRelDefinesByType) when the
+      // instance has no concrete predefined type — upstream ifctester
+      // walks this same edge so an IfcWall with `$` PredefinedType
+      // inherits the IfcWallType.PredefinedType (and ElementType).
+      const typeIds = dataStore.relationships?.getRelated?.(expressId, RelationshipType.DefinesByType, 'inverse') || [];
+      for (const typeId of typeIds) {
+        const typeAttrs = extractAllEntityAttributes(dataStore, typeId);
+        const typePdt = typeAttrs.find((a) => a.name === 'PredefinedType');
+        const typeVal = typeof typePdt?.value === 'string' && typePdt.value ? typePdt.value : undefined;
+        if (typeVal && typeVal !== 'NOTDEFINED') return typeVal;
+      }
+      return pdtValue;
+    },
     getObjectType(expressId) {
       // IDS predefined-type semantics (matches upstream IfcOpenShell):
       //  - If PredefinedType is `USERDEFINED`, the real type lives in
@@ -196,6 +214,24 @@ function createDataAccessor(dataStore) {
         allAttrs.find((a) => a.name === 'ProcessType') ||
         allAttrs.find((a) => a.name === 'ResourceType');
       if (userSlot?.value) return userSlot.value;
+      // Inherit from the defining type (IfcRelDefinesByType) — an
+      // IfcWall with `$` predefined type inherits the IfcWallType's
+      // PredefinedType + ElementType per upstream ifctester semantics.
+      const typeIds = dataStore.relationships?.getRelated?.(expressId, RelationshipType.DefinesByType, 'inverse') || [];
+      for (const typeId of typeIds) {
+        const typeAttrs = extractAllEntityAttributes(dataStore, typeId);
+        const typePdt = typeAttrs.find((a) => a.name === 'PredefinedType');
+        const typePdtValue = typePdt?.value;
+        if (typePdtValue && typePdtValue !== 'NOTDEFINED' && typePdtValue !== 'USERDEFINED') {
+          return typePdtValue;
+        }
+        const typeUserSlot =
+          typeAttrs.find((a) => a.name === 'ElementType') ||
+          typeAttrs.find((a) => a.name === 'ObjectType') ||
+          typeAttrs.find((a) => a.name === 'ProcessType') ||
+          typeAttrs.find((a) => a.name === 'ResourceType');
+        if (typeUserSlot?.value) return typeUserSlot.value;
+      }
       // No user-defined override → return the raw PredefinedType (may
       // be NOTDEFINED) so empty-predefined-type checks work.
       const ot = dataStore.entities?.getObjectType?.(expressId);
@@ -343,6 +379,9 @@ function collectAllPropertySets(dataStore, expressId) {
           name: p.name,
           value: Array.isArray(p.value) ? JSON.stringify(p.value) : p.value,
           dataType: idsDataTypeForProperty(p.type),
+          ...(Array.isArray(p.values) && p.values.length > 0
+            ? { values: p.values }
+            : {}),
         })),
       });
     }
@@ -376,6 +415,9 @@ function collectAllPropertySets(dataStore, expressId) {
             name: p.name,
             value: Array.isArray(p.value) ? JSON.stringify(p.value) : p.value,
             dataType: idsDataTypeForProperty(p.type),
+            ...(Array.isArray(p.values) && p.values.length > 0
+              ? { values: p.values }
+              : {}),
           })),
         });
       }

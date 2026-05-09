@@ -37,7 +37,7 @@ export type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialCons
 export interface TypePropertyInfo {
     typeName: string;
     typeId: number;
-    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }>;
+    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }>;
 }
 
 /**
@@ -80,7 +80,7 @@ export type { GeoreferenceInfo as GeorefInfo };
  * - IfcPropertyTableValue: defining/defined value pairs → "Table(N rows)"
  * - IfcPropertyReferenceValue: entity reference → "Reference #ID"
  */
-export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue } {
+export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue; values?: string[] } {
     const attrs = propEntity.attributes || [];
     const typeUpper = propEntity.type.toUpperCase();
 
@@ -93,7 +93,11 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                     if (Array.isArray(v) && v.length === 2) return String(v[1]); // Typed value
                     return String(v);
                 }).filter(v => v !== 'null' && v !== 'undefined');
-                return { type: 0, value: values.join(', ') };
+                // Surface the raw value list separately so IDS facet
+                // checks can iterate "any matching value passes". The
+                // joined display string remains the primary `value`
+                // for visualisation/property-table consumers.
+                return { type: 0, value: values.join(', ') || null, values };
             }
             return { type: 0, value: null };
         }
@@ -119,7 +123,7 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                     if (Array.isArray(v) && v.length === 2) return String(v[1]);
                     return String(v);
                 }).filter(v => v !== 'null' && v !== 'undefined');
-                return { type: 0, value: values.join(', ') };
+                return { type: 0, value: values.join(', ') || null, values };
             }
             return { type: 0, value: null };
         }
@@ -236,8 +240,8 @@ export function extractPsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     psetIds: number[]
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
-    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
+    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
 
     for (const psetId of psetIds) {
         const psetRef = store.entityIndex.byId.get(psetId);
@@ -254,7 +258,7 @@ export function extractPsetsFromIds(
         const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
         const hasProperties = psetAttrs[4];
 
-        const properties: Array<{ name: string; type: number; value: PropertyValue }> = [];
+        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> = [];
 
         if (Array.isArray(hasProperties)) {
             for (const propRef of hasProperties) {
@@ -271,7 +275,13 @@ export function extractPsetsFromIds(
                 if (!propName) continue;
 
                 const parsed = parsePropertyValue(propEntity);
-                properties.push({ name: propName, type: parsed.type, value: parsed.value });
+                const entry: { name: string; type: number; value: PropertyValue; values?: string[] } = {
+                    name: propName,
+                    type: parsed.type,
+                    value: parsed.value,
+                };
+                if (parsed.values) entry.values = parsed.values;
+                properties.push(entry);
             }
         }
 
@@ -318,7 +328,7 @@ export function extractTypePropertiesOnDemand(
         ? typeEntity.attributes[2]
         : typeRef.type;
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
     const seenPsetNames = new Set<string>();
 
     // Source 1: HasPropertySets attribute on the type entity (index 5 for IfcTypeObject subtypes)
@@ -365,7 +375,7 @@ export function extractTypePropertiesOnDemand(
 export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -373,7 +383,7 @@ export function extractTypeEntityOwnProperties(
     const typeEntity = extractor.extractEntity(ref);
     if (!typeEntity) return [];
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
     const seenPsetNames = new Set<string>();
 
     // Source 1: HasPropertySets attribute (index 5 for IfcTypeObject subtypes)

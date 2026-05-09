@@ -58,9 +58,19 @@ export function checkEntityFacet(
 
   // Check predefined type if specified
   if (facet.predefinedType) {
-    const objectType = accessor.getObjectType(expressId);
+    // Per IDS spec, predefined-type matching has two distinct paths:
+    //   1. Compare against the raw IFC `PredefinedType` enum token
+    //      (BEAM, USERDEFINED, NOTDEFINED, …) — case-insensitive.
+    //   2. When the raw token is `USERDEFINED`, fall back to the
+    //      user-defined name (`ObjectType`/`ElementType`/`ProcessType`)
+    //      — case-sensitive.
+    // The order matters: a fixture asking for `USERDEFINED` literally
+    // must match an entity whose enum is `USERDEFINED` regardless of
+    // its accompanying user-defined name.
+    const rawType = accessor.getPredefinedTypeRaw?.(expressId);
+    const userDefinedType = accessor.getObjectType(expressId);
 
-    if (!objectType) {
+    if (!rawType && !userDefinedType) {
       return {
         passed: false,
         actualValue: entityType,
@@ -73,15 +83,37 @@ export function checkEntityFacet(
       };
     }
 
-    if (!matchConstraint(facet.predefinedType, objectType, IFC_CASE_INSENSITIVE)) {
+    let matched = false;
+    if (rawType && matchConstraint(facet.predefinedType, rawType, IFC_CASE_INSENSITIVE)) {
+      matched = true;
+    } else if (
+      rawType === 'USERDEFINED' &&
+      userDefinedType &&
+      userDefinedType !== rawType &&
+      matchConstraint(facet.predefinedType, userDefinedType)
+    ) {
+      // Case-sensitive comparison for user-defined names.
+      matched = true;
+    } else if (
+      !rawType &&
+      userDefinedType &&
+      matchConstraint(facet.predefinedType, userDefinedType, IFC_CASE_INSENSITIVE)
+    ) {
+      // No raw enum reported (legacy accessor) — fall back to the
+      // substituted form with case-insensitive comparison.
+      matched = true;
+    }
+
+    if (!matched) {
+      const display = userDefinedType || rawType || '(none)';
       return {
         passed: false,
-        actualValue: `${entityType}[${objectType}]`,
+        actualValue: `${entityType}[${display}]`,
         expectedValue: `${formatConstraint(facet.name)} with predefinedType ${formatConstraint(facet.predefinedType)}`,
         failure: {
           type: 'PREDEFINED_TYPE_MISMATCH',
           field: 'predefinedType',
-          actual: objectType,
+          actual: display,
           expected: formatConstraint(facet.predefinedType),
         },
       };

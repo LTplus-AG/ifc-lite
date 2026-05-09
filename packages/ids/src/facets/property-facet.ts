@@ -236,20 +236,35 @@ function checkSingleProperty(
       };
     }
 
-    if (!matchConstraint(facet.value, propValue)) {
+    // Multi-valued IFC properties (IfcPropertyEnumeratedValue,
+    // IfcPropertyListValue) pass if ANY individual value satisfies the
+    // constraint, per upstream ifctester semantics.
+    const candidateValues =
+      prop.values && prop.values.length > 0 ? prop.values : [propValue];
+
+    const anyMatch = candidateValues.some((v) =>
+      matchConstraint(facet.value!, v)
+    );
+
+    if (!anyMatch) {
       const failureType =
         facet.value.type === 'bounds'
           ? 'PROPERTY_OUT_OF_BOUNDS'
           : 'PROPERTY_VALUE_MISMATCH';
 
+      const actualDisplay =
+        prop.values && prop.values.length > 0
+          ? prop.values.join(', ')
+          : String(propValue);
+
       return {
         passed: false,
-        actualValue: String(propValue),
+        actualValue: actualDisplay,
         expectedValue: formatConstraint(facet.value),
         failure: {
           type: failureType,
           field: `${pset.name}.${prop.name}`,
-          actual: String(propValue),
+          actual: actualDisplay,
           expected: formatConstraint(facet.value),
         },
       };

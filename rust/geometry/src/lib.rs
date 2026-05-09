@@ -70,6 +70,7 @@
 pub mod bool2d;
 mod bsp_csg;
 pub mod csg;
+pub mod diagnostics;
 pub mod error;
 pub mod extrusion;
 pub mod material_layer_index;
@@ -92,6 +93,7 @@ pub use bool2d::{
     subtract_multiple_2d, union_contours,
 };
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
+pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
 pub use extrusion::{extrude_profile, extrude_profile_with_voids};
 pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayerIndex};

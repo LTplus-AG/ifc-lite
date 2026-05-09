@@ -6,12 +6,14 @@
 //!
 //! Fast triangle clipping and boolean operations.
 
+use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::error::Result;
 use crate::mesh::Mesh;
 use crate::triangulation::{calculate_polygon_normal, project_to_2d, triangulate_polygon};
 use nalgebra::{Point3, Vector3};
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
+use std::cell::RefCell;
 
 /// Type alias for small triangle collections (typically 1-2 triangles from clipping)
 pub type TriangleVec = SmallVec<[Triangle; 4]>;
@@ -122,6 +124,9 @@ const MAX_CSG_POLYGONS: usize = MAX_CSG_POLYGONS_PER_MESH * 2;
 pub struct ClippingProcessor {
     /// Epsilon for floating point comparisons
     pub epsilon: f64,
+    /// Boolean / CSG failures recorded since the last `take_failures()`.
+    /// Interior-mutable so the existing `&self` API stays unchanged.
+    failures: RefCell<Vec<BoolFailure>>,
 }
 
 /// Create a box mesh from AABB min/max bounds
@@ -183,7 +188,29 @@ impl ClippingProcessor {
 
     /// Create a new clipping processor
     pub fn new() -> Self {
-        Self { epsilon: 1e-6 }
+        Self {
+            epsilon: 1e-6,
+            failures: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Drain and return the failures recorded by this processor since its
+    /// creation (or the last `take_failures` call). The processor's internal
+    /// log is cleared.
+    pub fn take_failures(&self) -> Vec<BoolFailure> {
+        std::mem::take(&mut *self.failures.borrow_mut())
+    }
+
+    /// Number of failures currently buffered (without draining).
+    pub fn failure_count(&self) -> usize {
+        self.failures.borrow().len()
+    }
+
+    /// Internal: append a failure record. Public-crate so the boolean
+    /// processor in `processors/boolean.rs` can record fallbacks that
+    /// happen above the kernel layer.
+    pub(crate) fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
+        self.failures.borrow_mut().push(BoolFailure::new(op, reason));
     }
 
     /// Clip a triangle against a plane
@@ -678,15 +705,22 @@ impl ClippingProcessor {
         overlap_x && overlap_y && overlap_z
     }
 
-    /// Subtract opening mesh from host mesh using BSP CSG boolean operations
+    /// Subtract opening mesh from host mesh using BSP CSG boolean operations.
+    ///
+    /// On any failure path the host is returned un-cut and a [`BoolFailure`]
+    /// record is appended to the processor's failure log (drainable via
+    /// [`Self::take_failures`]). An empty host returns an empty mesh without
+    /// recording a failure (it's a fast path, not a fallback).
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> Result<Mesh> {
         if host_mesh.is_empty() {
             return Ok(Mesh::new());
         }
         if opening_mesh.is_empty() {
+            self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
             return Ok(host_mesh.clone());
         }
         if !Self::bounds_overlap(host_mesh, opening_mesh) {
+            self.record_failure(BoolOp::Difference, BoolFailureReason::NoBoundsOverlap);
             return Ok(host_mesh.clone());
         }
 
@@ -694,10 +728,18 @@ impl ClippingProcessor {
         let opening_polys = Self::mesh_to_polygons(opening_mesh);
 
         if host_polys.is_empty() || opening_polys.is_empty() {
+            self.record_failure(BoolOp::Difference, BoolFailureReason::DegenerateOperand);
             return Ok(host_mesh.clone());
         }
 
         if !Self::can_run_csg_operation(host_polys.len(), opening_polys.len()) {
+            self.record_failure(
+                BoolOp::Difference,
+                BoolFailureReason::OperandTooLarge {
+                    polys_a: host_polys.len(),
+                    polys_b: opening_polys.len(),
+                },
+            );
             return Ok(host_mesh.clone());
         }
 
@@ -708,7 +750,13 @@ impl ClippingProcessor {
                 let cleaned = Self::remove_degenerate_triangles(&result, host_mesh);
                 Ok(cleaned)
             }
-            Err(_) => Ok(host_mesh.clone()),
+            Err(e) => {
+                self.record_failure(
+                    BoolOp::Difference,
+                    BoolFailureReason::KernelError(e.to_string()),
+                );
+                Ok(host_mesh.clone())
+            }
         }
     }
 
@@ -953,7 +1001,11 @@ impl ClippingProcessor {
         cleaned
     }
 
-    /// Union two meshes together using BSP CSG boolean operations
+    /// Union two meshes together using BSP CSG boolean operations.
+    ///
+    /// On any failure path the meshes are concatenated without overlap removal
+    /// (a strict superset of the true union) and a [`BoolFailure`] is recorded.
+    /// Empty operands are handled silently — they have a unique correct answer.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
         if mesh_a.is_empty() {
             return Ok(mesh_b.clone());
@@ -966,12 +1018,20 @@ impl ClippingProcessor {
         let polys_b = Self::mesh_to_polygons(mesh_b);
 
         if polys_a.is_empty() || polys_b.is_empty() {
+            self.record_failure(BoolOp::Union, BoolFailureReason::DegenerateOperand);
             let mut merged = mesh_a.clone();
             merged.merge(mesh_b);
             return Ok(merged);
         }
 
         if !Self::can_run_csg_operation(polys_a.len(), polys_b.len()) {
+            self.record_failure(
+                BoolOp::Union,
+                BoolFailureReason::OperandTooLarge {
+                    polys_a: polys_a.len(),
+                    polys_b: polys_b.len(),
+                },
+            );
             let mut merged = mesh_a.clone();
             merged.merge(mesh_b);
             return Ok(merged);
@@ -993,10 +1053,18 @@ impl ClippingProcessor {
         let polys_b = Self::mesh_to_polygons(mesh_b);
 
         if polys_a.is_empty() || polys_b.is_empty() {
+            self.record_failure(BoolOp::Intersection, BoolFailureReason::DegenerateOperand);
             return Ok(Mesh::new());
         }
 
         if !Self::can_run_csg_operation(polys_a.len(), polys_b.len()) {
+            self.record_failure(
+                BoolOp::Intersection,
+                BoolFailureReason::OperandTooLarge {
+                    polys_a: polys_a.len(),
+                    polys_b: polys_b.len(),
+                },
+            );
             return Ok(Mesh::new());
         }
 
@@ -1092,14 +1160,26 @@ impl ClippingProcessor {
     pub fn subtract_meshes_with_fallback(&self, host: &Mesh, voids: &[Mesh]) -> Mesh {
         match self.subtract_meshes_batched(host, voids) {
             Ok(result) => {
-                // Validate result
+                // Validate result. An empty or non-finite output indicates the
+                // kernel produced garbage; fall back to the un-cut host and
+                // record so callers can flag the product.
                 if result.is_empty() || !self.validate_mesh(&result) {
+                    self.record_failure(
+                        BoolOp::Difference,
+                        BoolFailureReason::KernelOutputInvalid,
+                    );
                     host.clone()
                 } else {
                     result
                 }
             }
-            Err(_) => host.clone(),
+            Err(e) => {
+                self.record_failure(
+                    BoolOp::Difference,
+                    BoolFailureReason::KernelError(e.to_string()),
+                );
+                host.clone()
+            }
         }
     }
 

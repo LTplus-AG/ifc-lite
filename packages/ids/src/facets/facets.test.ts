@@ -410,8 +410,11 @@ describe('checkPropertyFacet', () => {
     expect(result.failure?.type).toBe('PROPERTY_OUT_OF_BOUNDS');
   });
 
-  it('tries all matching properties in pset (not just first)', () => {
-    // Two properties match the name pattern, first fails value, second passes
+  it('requires ALL matching properties to satisfy value (not just first)', () => {
+    // Per IDS spec — when baseName is a pattern that matches multiple
+    // properties, every match must satisfy the value constraint.
+    // Mirrors buildingSMART fixture
+    // `property/fail-all_matching_properties_must_satisfy_requirements_3_3`.
     const multiPropAccessor = createMockAccessor([
       {
         expressId: 20,
@@ -428,8 +431,23 @@ describe('checkPropertyFacet', () => {
       baseName: { type: 'pattern', pattern: 'Rating_.*' },
       value: sv('HIGH'),
     };
+    // Rating_A=LOW fails the value constraint → spec-level fail.
     const result = checkPropertyFacet(facet, 20, multiPropAccessor);
-    expect(result.passed).toBe(true);
+    expect(result.passed).toBe(false);
+
+    // Sanity check: when every matching property satisfies the value,
+    // we get a pass.
+    const allMatchAccessor = createMockAccessor([
+      {
+        expressId: 20,
+        type: 'IfcWall',
+        properties: [
+          { psetName: 'Custom', propName: 'Rating_A', value: 'HIGH', dataType: 'IFCLABEL' },
+          { psetName: 'Custom', propName: 'Rating_B', value: 'HIGH', dataType: 'IFCLABEL' },
+        ],
+      },
+    ]);
+    expect(checkPropertyFacet(facet, 20, allMatchAccessor).passed).toBe(true);
   });
 
   it('returns value mismatch (not property missing) when property found but value wrong', () => {

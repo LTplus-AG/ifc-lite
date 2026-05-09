@@ -437,7 +437,12 @@ const limitArg = Number(args.find((a) => a.startsWith('--limit='))?.split('=')[1
 function expectedFromPrefix(filename) {
   if (filename.startsWith('pass-')) return 'pass';
   if (filename.startsWith('fail-')) return 'fail';
-  if (filename.startsWith('invalid-')) return 'not_applicable';
+  // `invalid-` per buildingSMART means the IDS+IFC pair, when run
+  // through ifctester, results in spec.status=fail — the IDS makes
+  // sense but the IFC cannot satisfy it (e.g. uppercase requirement
+  // matched against a PascalCase value, subclass that isn't the
+  // requested class, etc.).
+  if (filename.startsWith('invalid-')) return 'fail';
   return null;
 }
 

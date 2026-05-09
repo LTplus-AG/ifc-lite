@@ -14,8 +14,23 @@ import type {
   IDSBoundsConstraint,
 } from '../types.js';
 
-/** Numeric tolerance for floating point comparisons (per IDS spec) */
-const NUMERIC_TOLERANCE = 1e-6;
+/**
+ * Numeric tolerance for floating point comparisons.
+ *
+ * Mirrors IfcOpenShell `ifctester` reference behaviour: the per-
+ * comparison epsilon is `2 * 1e-6 * max(|a|, |b|, 1)`. The factor of 2
+ * absorbs symmetric round-off in both operands; the `max(…, 1)` keeps
+ * sub-unit comparisons stable. Verified against the
+ * `Documentation/ImplementersDocumentation/TestCases/tolerance/` fixtures.
+ */
+const RELATIVE_TOLERANCE = 1e-6;
+
+function numericEpsilon(a: number, b: number): number {
+  return 2 * RELATIVE_TOLERANCE * Math.max(Math.abs(a), Math.abs(b), 1);
+}
+
+/** Back-compat alias for callers that still expect a single constant. */
+const NUMERIC_TOLERANCE = RELATIVE_TOLERANCE;
 
 /** Options for constraint matching */
 export interface MatchOptions {
@@ -79,7 +94,7 @@ function matchSimpleValue(
     typeof actualValue === 'number' ? actualValue : parseFloat(actualStr);
 
   if (!isNaN(expectedNum) && !isNaN(actualNum)) {
-    return Math.abs(expectedNum - actualNum) <= NUMERIC_TOLERANCE;
+    return Math.abs(expectedNum - actualNum) <= numericEpsilon(expectedNum, actualNum);
   }
 
   // Boolean comparison
@@ -189,14 +204,14 @@ function matchBounds(
 
   if (
     constraint.minInclusive !== undefined &&
-    num < constraint.minInclusive - NUMERIC_TOLERANCE
+    num < constraint.minInclusive
   ) {
     return false;
   }
 
   if (
     constraint.maxInclusive !== undefined &&
-    num > constraint.maxInclusive + NUMERIC_TOLERANCE
+    num > constraint.maxInclusive
   ) {
     return false;
   }

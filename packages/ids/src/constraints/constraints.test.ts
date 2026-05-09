@@ -232,11 +232,13 @@ describe('matchConstraint — bounds', () => {
     expect(matchConstraint(bounds({ minInclusive: 0, maxInclusive: 100 }), '50')).toBe(true);
   });
 
-  it('respects numeric tolerance at boundaries', () => {
-    // Value just barely below minInclusive but within tolerance
-    expect(matchConstraint(bounds({ minInclusive: 10 }), 10 - 0.5e-6)).toBe(true);
-    // Value beyond tolerance below minInclusive
-    expect(matchConstraint(bounds({ minInclusive: 10 }), 10 - 2e-6)).toBe(false);
+  it('uses strict comparison at boundaries (no implicit tolerance)', () => {
+    // Per upstream IfcOpenShell, bound checks compare strictly so a
+    // value just below `minInclusive` fails (mirrors fixture
+    // `tolerance/fail-comparison_tolerance_for_floating_point_range_greater_than_zero_inclusive`).
+    expect(matchConstraint(bounds({ minInclusive: 10 }), 10 - 0.5e-6)).toBe(false);
+    expect(matchConstraint(bounds({ minInclusive: 10 }), 10 - 2e-5)).toBe(false);
+    expect(matchConstraint(bounds({ minInclusive: 10 }), 10)).toBe(true);
   });
 
   it('no bounds specified accepts any number', () => {

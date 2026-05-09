@@ -135,25 +135,32 @@ function checkPropertyInPset(
     };
   }
 
-  // Check each matching property — try all, return first pass, track best failure
-  let bestFailure: FacetCheckResult | undefined;
+  // Per IDS spec: when the baseName constraint matches multiple
+  // properties (pattern / enumeration cases), ALL of them must satisfy
+  // the value constraint — not just one. Iterate every matching
+  // property and only report `pass` if every check passes.
+  let lastPass: FacetCheckResult | undefined;
+  let firstFailure: FacetCheckResult | undefined;
 
   for (const prop of matchingProps) {
     const result = checkSingleProperty(facet, pset, prop);
     if (result.passed) {
-      return result;
+      lastPass = result;
+      continue;
     }
-
-    // Prefer value/bounds/datatype failures over generic missing
-    if (
-      !bestFailure ||
-      (result.failure?.type !== 'PROPERTY_MISSING' && bestFailure.failure?.type === 'PROPERTY_MISSING')
+    if (!firstFailure) {
+      firstFailure = result;
+    } else if (
+      firstFailure.failure?.type === 'PROPERTY_MISSING' &&
+      result.failure?.type !== 'PROPERTY_MISSING'
     ) {
-      bestFailure = result;
+      // Prefer the more specific failure when reporting back.
+      firstFailure = result;
     }
   }
 
-  return bestFailure!;
+  if (firstFailure) return firstFailure;
+  return lastPass!;
 }
 
 /**
@@ -164,6 +171,29 @@ function checkSingleProperty(
   pset: PropertySetInfo,
   prop: PropertySetInfo['properties'][number]
 ): FacetCheckResult {
+  // Per IDS spec, a property whose stored value is "no value" (null,
+  // undefined, empty string, or IfcLogical UNKNOWN) fails ANY check —
+  // including a name-only existence check. Detect those up front so
+  // the rest of the function can assume `prop.value` is meaningful.
+  if (
+    prop.value === null ||
+    prop.value === undefined ||
+    prop.value === ''
+  ) {
+    return {
+      passed: false,
+      actualValue: '(empty)',
+      expectedValue: facet.value
+        ? formatConstraint(facet.value)
+        : `property "${pset.name}.${prop.name}" must have a value`,
+      failure: {
+        type: 'PROPERTY_VALUE_MISMATCH',
+        field: `${pset.name}.${prop.name}`,
+        actual: '(empty)',
+        expected: facet.value ? formatConstraint(facet.value) : 'a non-empty value',
+      },
+    };
+  }
   // Check data type if specified (IFC type names are case-insensitive)
   if (facet.dataType) {
     if (!matchConstraint(facet.dataType, prop.dataType, DATATYPE_OPTS)) {
@@ -185,7 +215,14 @@ function checkSingleProperty(
   if (facet.value) {
     const propValue = prop.value;
 
-    if (propValue === null || propValue === undefined) {
+    if (
+      propValue === null ||
+      propValue === undefined ||
+      // Per IDS spec: empty strings and IfcLogical UNKNOWN values are
+      // treated as "no value" — they fail any value check, including
+      // a name-only check that the property exists with a value.
+      propValue === ''
+    ) {
       return {
         passed: false,
         actualValue: '(empty)',

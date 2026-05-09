@@ -119,5 +119,27 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --exclude ifc-lite-wasm --exclude ifc-lite-desktop
 
+      # Validates the Manifold CSG kernel path (T1.1 +). The first run on
+      # this job compiles `manifold-csg-sys` (Manifold + Clipper2 via
+      # cmake) which adds ~60 s to the wall clock; subsequent runs hit
+      # the rust-cache. Sprint 2 acceptance gates
+      # (`issue_582_fzk_haus_no_csg_failures_after_manifold` and
+      # `issue_583_institute_var2_no_csg_failures_after_manifold`) only
+      # exist under this feature and assert `total_failures == 0` on the
+      # ara3d AC20-FZK-Haus.ifc and C20-Institute-Var-2.ifc fixtures.
+      #
+      # `wasm32-unknown-unknown` builds intentionally don't enable
+      # `manifold-csg`: the upstream `manifold-csg-sys` wasm-cxx-shim is
+      # currently incompatible with libc++-{18,20} (see
+      # docs/architecture/geometry-pipeline.md "WASM status"). Until that
+      # is resolved upstream, the WASM bundle continues to use the
+      # legacy BSP CSG path.
+      #
+      # ubuntu-latest ships cmake ≥ 3.28 and g++ ≥ 13 by default, which
+      # cover Manifold's build requirements. If a future runner image
+      # drops either, prepend `apt-get install -y cmake g++` here.
+      - name: Rust tests (Manifold CSG kernel)
+        run: cargo test -p ifc-lite-geometry --features manifold-csg
+
       - name: Node tests
         run: pnpm test

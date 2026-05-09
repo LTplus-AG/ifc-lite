@@ -566,14 +566,26 @@ function parseRestriction(el: Element): IDSConstraint {
   // restriction shape (which is ambiguous for numeric enumerations).
   const base = el.getAttribute('base') || undefined;
 
-  // Check for pattern
-  const patternEl =
-    getChildElementNS(el, 'pattern', XS_NAMESPACE) ||
-    getChildElement(el, 'pattern');
-  if (patternEl) {
+  // Check for pattern(s). Multiple `<xs:pattern>` siblings inside a
+  // single restriction are OR'd per the XSD spec, so collect every
+  // candidate and join them with `|` (each wrapped in a non-capturing
+  // group so anchors apply uniformly).
+  const patternEls = (() => {
+    const ns = getChildElementsNS(el, 'pattern', XS_NAMESPACE);
+    if (ns.length > 0) return ns;
+    return getChildElements(el, 'pattern');
+  })();
+  if (patternEls.length > 0) {
+    const parts = patternEls
+      .map((p) => p.getAttribute('value') || p.textContent || '')
+      .filter((s) => s.length > 0);
+    const pattern =
+      parts.length === 1
+        ? parts[0]
+        : parts.map((p) => `(?:${p})`).join('|');
     return {
       type: 'pattern',
-      pattern: patternEl.getAttribute('value') || patternEl.textContent || '',
+      pattern,
       base,
     } satisfies IDSPatternConstraint;
   }

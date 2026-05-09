@@ -127,34 +127,41 @@ function matchSimpleValue(
   // Case-insensitive match only when explicitly requested (IFC entity/predefined type names)
   if (caseInsensitive && actualStr.toUpperCase() === expected.toUpperCase()) return true;
 
-  // Numeric comparison with tolerance
-  const expectedNum = parseFloat(expected);
-  const actualNum =
-    typeof actualValue === 'number' ? actualValue : parseFloat(actualStr);
-
-  if (!isNaN(expectedNum) && !isNaN(actualNum)) {
-    return Math.abs(expectedNum - actualNum) <= numericEpsilon(expectedNum, actualNum);
+  // Numeric comparison with tolerance — only when *both* sides parse
+  // cleanly as a single numeric token. `parseFloat` accepts trailing
+  // garbage (`'2022-01-01' → 2022`), which would silently equate dates
+  // and other date-like strings. Use a strict matcher so e.g.
+  // `'2022-01-01+00:00'` and `'2022-01-01'` keep their string identity.
+  const NUMERIC_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+  const expectedIsNumeric = NUMERIC_RE.test(expected);
+  const actualIsNumeric =
+    typeof actualValue === 'number' || NUMERIC_RE.test(actualStr);
+  if (expectedIsNumeric && actualIsNumeric) {
+    const expectedNum = parseFloat(expected);
+    const actualNum =
+      typeof actualValue === 'number' ? actualValue : parseFloat(actualStr);
+    if (!isNaN(expectedNum) && !isNaN(actualNum)) {
+      return Math.abs(expectedNum - actualNum) <= numericEpsilon(expectedNum, actualNum);
+    }
   }
 
-  // Boolean comparison
+  // Boolean comparison — per IDS 1.0 spec the literal MUST be
+  // lowercase (`true` / `false`). Uppercase or mixed-case literals
+  // are malformed and never match a stored boolean value.
   if (typeof actualValue === 'boolean') {
-    const expectedLower = expected.toLowerCase();
-    if (expectedLower === 'true' || expectedLower === '1') {
-      return actualValue === true;
-    }
-    if (expectedLower === 'false' || expectedLower === '0') {
-      return actualValue === false;
-    }
+    if (expected === 'true') return actualValue === true;
+    if (expected === 'false') return actualValue === false;
+    // Reject any other casing or numeric form for boolean actuals.
+    return false;
   }
 
-  // Boolean string comparison
-  const actualLower = actualStr.toLowerCase();
-  const expectedLower = expected.toLowerCase();
+  // Boolean string comparison (both sides are textual booleans). Same
+  // strict-lowercase rule applies.
   if (
-    (actualLower === 'true' || actualLower === 'false') &&
-    (expectedLower === 'true' || expectedLower === 'false')
+    (actualStr === 'true' || actualStr === 'false') &&
+    (expected === 'true' || expected === 'false')
   ) {
-    return actualLower === expectedLower;
+    return actualStr === expected;
   }
 
   return false;
@@ -244,6 +251,37 @@ function matchBounds(
   constraint: IDSBoundsConstraint,
   actualValue: string | number | boolean
 ): boolean {
+  // String-length facets (xs:length / xs:minLength / xs:maxLength)
+  // operate on the textual length, not on numeric magnitude. When any
+  // of them are present, evaluate the length constraints first.
+  if (
+    constraint.length !== undefined ||
+    constraint.minLength !== undefined ||
+    constraint.maxLength !== undefined
+  ) {
+    const str = String(actualValue);
+    if (constraint.length !== undefined && str.length !== constraint.length) {
+      return false;
+    }
+    if (constraint.minLength !== undefined && str.length < constraint.minLength) {
+      return false;
+    }
+    if (constraint.maxLength !== undefined && str.length > constraint.maxLength) {
+      return false;
+    }
+    // Length-only restrictions don't impose numeric bounds; if the
+    // constraint also carries min/max we fall through to the numeric
+    // check below (rare in practice).
+    if (
+      constraint.minInclusive === undefined &&
+      constraint.maxInclusive === undefined &&
+      constraint.minExclusive === undefined &&
+      constraint.maxExclusive === undefined
+    ) {
+      return true;
+    }
+  }
+
   const num =
     typeof actualValue === 'number'
       ? actualValue

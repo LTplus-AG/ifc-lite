@@ -879,6 +879,18 @@ export function extractAllEntityAttributes(
             // check, including a bare existence check, so don't
             // surface them as if the slot were populated.
             if (raw === '.U.' || raw === '.X.') continue;
+            // Bare boolean tokens (`.T.` / `.F.`) on a schema-typed
+            // IfcBoolean attribute slot — resolve to JS boolean so
+            // IDS checks comparing against `true` / `false` literals
+            // pass without case-sensitive string contortions.
+            if (raw === '.T.') {
+                result.push({ name: attrName, value: true });
+                continue;
+            }
+            if (raw === '.F.') {
+                result.push({ name: attrName, value: false });
+                continue;
+            }
             const display = raw.startsWith('.') && raw.endsWith('.')
                 ? raw.slice(1, -1)
                 : raw;

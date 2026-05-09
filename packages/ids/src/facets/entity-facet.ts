@@ -41,6 +41,27 @@ export function checkEntityFacet(
     };
   }
 
+  // Per IDS 1.0 spec, entity-name simpleValue literals MUST be
+  // uppercase (`IFCWALL`, not `IfcWall`). Reject malformed authoring
+  // outright before attempting the case-insensitive comparison —
+  // otherwise mixed-case literals would silently match.
+  if (
+    facet.name.type === 'simpleValue' &&
+    facet.name.value !== facet.name.value.toUpperCase()
+  ) {
+    return {
+      passed: false,
+      actualValue: entityType,
+      expectedValue: formatConstraint(facet.name),
+      failure: {
+        type: 'ENTITY_TYPE_MISMATCH',
+        field: 'entityType',
+        actual: entityType,
+        expected: formatConstraint(facet.name),
+      },
+    };
+  }
+
   // Check entity type (case-insensitive per IDS spec — IFC entity names are case-agnostic)
   if (!matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE)) {
     return {
@@ -84,7 +105,10 @@ export function checkEntityFacet(
     }
 
     let matched = false;
-    if (rawType && matchConstraint(facet.predefinedType, rawType, IFC_CASE_INSENSITIVE)) {
+    // Predefined-type enum tokens (BEAM, USERDEFINED, …) MUST be
+    // uppercase per the IFC schema, and the IDS literal MUST match
+    // exactly. Case-sensitive comparison is the spec.
+    if (rawType && matchConstraint(facet.predefinedType, rawType)) {
       matched = true;
     } else if (
       rawType === 'USERDEFINED' &&
@@ -97,10 +121,10 @@ export function checkEntityFacet(
     } else if (
       !rawType &&
       userDefinedType &&
-      matchConstraint(facet.predefinedType, userDefinedType, IFC_CASE_INSENSITIVE)
+      matchConstraint(facet.predefinedType, userDefinedType)
     ) {
-      // No raw enum reported (legacy accessor) — fall back to the
-      // substituted form with case-insensitive comparison.
+      // No raw enum reported (legacy accessor) — case-sensitive match
+      // against the substituted form.
       matched = true;
     }
 

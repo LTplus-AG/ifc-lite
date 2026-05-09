@@ -21,7 +21,12 @@ export interface MaterialInfo {
     layers?: MaterialLayerInfo[];
     profiles?: MaterialProfileInfo[];
     constituents?: MaterialConstituentInfo[];
-    materials?: string[];
+    /**
+     * Members of an IfcMaterialList. Each entry surfaces the material's
+     * Name plus optional Category — IDS material checks match against
+     * either, so callers must propagate both.
+     */
+    materials?: Array<{ name: string; category?: string }>;
 }
 
 export interface MaterialLayerInfo {
@@ -269,7 +274,7 @@ function resolveMaterial(
         case 'IFCMATERIALLIST': {
             // IfcMaterialList: [Materials]
             const matIds = Array.isArray(attrs[0]) ? attrs[0].filter((id): id is number => typeof id === 'number') : [];
-            const materials: string[] = [];
+            const materials: Array<{ name: string; category?: string }> = [];
 
             for (const matId of matIds) {
                 const matRef = store.entityIndex.byId.get(matId);
@@ -277,7 +282,8 @@ function resolveMaterial(
                 const matEntity = extractor.extractEntity(matRef);
                 if (matEntity) {
                     const name = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : `Material #${matId}`;
-                    materials.push(name);
+                    const category = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
+                    materials.push({ name, ...(category ? { category } : {}) });
                 }
             }
 

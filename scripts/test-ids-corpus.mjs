@@ -105,7 +105,16 @@ function flattenMaterials(matInfo) {
       if (matInfo.category) push(matInfo.category, matInfo.category);
       break;
     case 'MaterialList':
-      for (const m of matInfo.materials || []) push(m);
+      for (const m of matInfo.materials || []) {
+        // Each list member is now an object {name, category}; legacy
+        // dist may still hand back bare strings, so handle both.
+        if (typeof m === 'string') {
+          push(m);
+        } else if (m && typeof m === 'object') {
+          push(m.name, m.category);
+          if (m.category) push(m.category, m.category);
+        }
+      }
       break;
     case 'MaterialLayerSet':
       push(matInfo.name);
@@ -283,13 +292,28 @@ function createDataAccessor(dataStore) {
     },
     getClassifications(expressId) {
       const list = extractClassificationsOnDemand(dataStore, expressId) || [];
-      return list.map((c) => ({
-        system: c.system || '',
-        // The validator's `value` field carries the classification *code*
-        // (e.g. "EF_25_10"). Upstream parser puts that into `identification`.
-        value: c.identification || c.name || '',
-        name: c.name,
-      }));
+      const out = [];
+      for (const c of list) {
+        const system = c.system || '';
+        const baseValue = c.identification || c.name || '';
+        // Always push at least one entry per associated classification
+        // — even when the value is empty — so optional-cardinality
+        // value mismatches register as a value mismatch rather than
+        // as a missing-classification (which optional pardons).
+        out.push({ system, value: baseValue, name: c.name });
+        // Each parent reference in the chain (`EF_25_10`, `EF_25`, …)
+        // is also a valid match candidate per upstream IDS spec —
+        // a requirement of `EF_25` should pass when the actual
+        // classification is `EF_25_10` or any deeper sub-reference.
+        if (Array.isArray(c.path)) {
+          for (const code of c.path) {
+            if (code && code !== baseValue) {
+              out.push({ system, value: code, name: c.name });
+            }
+          }
+        }
+      }
+      return out;
     },
     getMaterials(expressId) {
       return flattenMaterials(extractMaterialsOnDemand(dataStore, expressId));

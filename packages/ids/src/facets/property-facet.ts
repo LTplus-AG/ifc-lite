@@ -255,6 +255,31 @@ function checkSingleProperty(
       };
     }
 
+    // Strict typecast for integer measures: per upstream ifctester /
+    // IDS spec, an `IFCINTEGER` / `IFCCOUNTMEASURE` value cannot be
+    // specified with a decimal point on the IDS side — `42.0` against
+    // a stored `42` is rejected as a malformed constraint, even though
+    // the numbers compare equal. Bool measures get the same treatment
+    // for case-sensitive `TRUE`/`FALSE` literals (handled below).
+    const propDataType = prop.dataType ? prop.dataType.toUpperCase() : '';
+    if (
+      facet.value.type === 'simpleValue' &&
+      (propDataType === 'IFCINTEGER' || propDataType === 'IFCCOUNTMEASURE') &&
+      /[.eE]/.test(facet.value.value)
+    ) {
+      return {
+        passed: false,
+        actualValue: String(propValue),
+        expectedValue: formatConstraint(facet.value),
+        failure: {
+          type: 'PROPERTY_VALUE_MISMATCH',
+          field: `${pset.name}.${prop.name}`,
+          actual: String(propValue),
+          expected: formatConstraint(facet.value),
+        },
+      };
+    }
+
     // Multi-valued IFC properties (IfcPropertyEnumeratedValue,
     // IfcPropertyListValue) pass if ANY individual value satisfies the
     // constraint, per upstream ifctester semantics.

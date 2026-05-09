@@ -39,6 +39,7 @@ import {
   extractQuantitiesOnDemand,
   extractTypeEntityOwnProperties,
   extractTypePropertiesOnDemand,
+  EntityExtractor,
   extractMaterialsOnDemand,
   extractClassificationsOnDemand,
 } from '../packages/parser/dist/index.js';
@@ -291,7 +292,67 @@ function createDataAccessor(dataStore) {
       return collectAllPropertySets(dataStore, expressId);
     },
     getClassifications(expressId) {
-      const list = extractClassificationsOnDemand(dataStore, expressId) || [];
+      const list = [...(extractClassificationsOnDemand(dataStore, expressId) || [])];
+      // Non-rooted resources (IfcMaterial, IfcProfileDef, …) carry
+      // classifications via `IfcExternalReferenceRelationship` rather
+      // than `IfcRelAssociatesClassification`. Scan the global
+      // EXTERNAL-REFERENCE-RELATIONSHIP table for any pointing at the
+      // current entity and resolve their RelatingReference (an
+      // IfcClassificationReference) the same way the resolver does.
+      const erRefs = dataStore.entityIndex?.byType?.get?.('IFCEXTERNALREFERENCERELATIONSHIP') || [];
+      if (erRefs.length > 0 && dataStore.source?.length) {
+        const ex = new EntityExtractor(dataStore.source);
+        for (const erId of erRefs) {
+          const erRef = dataStore.entityIndex.byId.get(erId);
+          if (!erRef) continue;
+          const erEntity = ex.extractEntity(erRef);
+          if (!erEntity) continue;
+          // [Name, Description, RelatingReference, RelatedResourceObjects]
+          const relating = erEntity.attributes?.[2];
+          const related = erEntity.attributes?.[3];
+          if (typeof relating !== 'number') continue;
+          if (!Array.isArray(related)) continue;
+          if (!related.includes(expressId)) continue;
+          // Walk the IfcClassificationReference chain just like the
+          // standard resolver does so we get system + path codes.
+          const refRef = dataStore.entityIndex.byId.get(relating);
+          if (!refRef) continue;
+          const refEntity = ex.extractEntity(refRef);
+          if (!refEntity) continue;
+          const tu = refEntity.type.toUpperCase();
+          if (tu !== 'IFCCLASSIFICATIONREFERENCE') continue;
+          const a = refEntity.attributes || [];
+          const info = {
+            identification: typeof a[1] === 'string' ? a[1] : undefined,
+            name: typeof a[2] === 'string' ? a[2] : undefined,
+            path: [],
+          };
+          let cursor = typeof a[3] === 'number' ? a[3] : undefined;
+          const seen = new Set();
+          while (cursor !== undefined && !seen.has(cursor)) {
+            seen.add(cursor);
+            const cur = dataStore.entityIndex.byId.get(cursor);
+            if (!cur) break;
+            const e = ex.extractEntity(cur);
+            if (!e) break;
+            const cu = e.type.toUpperCase();
+            const ca = e.attributes || [];
+            if (cu === 'IFCCLASSIFICATION') {
+              info.system = typeof ca[3] === 'string' ? ca[3] : undefined;
+              break;
+            }
+            if (cu === 'IFCCLASSIFICATIONREFERENCE') {
+              const code = typeof ca[1] === 'string' ? ca[1] : (typeof ca[2] === 'string' ? ca[2] : undefined);
+              if (code) info.path.unshift(code);
+              cursor = typeof ca[3] === 'number' ? ca[3] : undefined;
+              continue;
+            }
+            break;
+          }
+          list.push(info);
+        }
+      }
+
       const out = [];
       for (const c of list) {
         const system = c.system || '';

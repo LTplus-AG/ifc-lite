@@ -46,9 +46,12 @@ export function buildIdsAccessor(store: IfcDataStore): unknown {
       if (node.objectType) return node.objectType;
       const allAttrs = extractAllEntityAttributes(store, expressId);
       const predefined = allAttrs.find((a) => a.name === 'PredefinedType');
-      if (predefined?.value && predefined.value !== 'NOTDEFINED') return predefined.value;
+      if (predefined?.value && predefined.value !== 'NOTDEFINED') {
+        return typeof predefined.value === 'string' ? predefined.value : String(predefined.value);
+      }
       const objType = allAttrs.find((a) => a.name === 'ObjectType');
-      return objType?.value;
+      if (objType?.value === undefined || objType.value === null) return undefined;
+      return typeof objType.value === 'string' ? objType.value : String(objType.value);
     },
     getEntitiesByType(typeName: string): number[] {
       return [...(store.entityIndex.byType.get(typeName.toUpperCase()) ?? [])];
@@ -115,7 +118,7 @@ export function buildIdsAccessor(store: IfcDataStore): unknown {
         predefinedType: predefined?.value && predefined.value !== 'NOTDEFINED' ? predefined.value : undefined,
       };
     },
-    getAttribute(expressId: number, name: string): string | undefined {
+    getAttribute(expressId: number, name: string): string | number | boolean | undefined {
       const node = new EntityNode(store, expressId);
       switch (name) {
         case 'Name': return node.name || undefined;
@@ -126,7 +129,7 @@ export function buildIdsAccessor(store: IfcDataStore): unknown {
         default: {
           const attrs = extractAllEntityAttributes(store, expressId);
           const attr = attrs.find((a) => a.name === name);
-          return attr?.value != null ? String(attr.value) : undefined;
+          return attr?.value;
         }
       }
     },

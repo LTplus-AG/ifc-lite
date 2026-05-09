@@ -1342,12 +1342,12 @@ export function PropertiesPanel() {
                       modelId={selectedEntity.modelId}
                       entityId={selectedEntity.expressId}
                       attrName={attr.name}
-                      currentValue={attr.value}
+                      currentValue={String(attr.value)}
                     />
                   ) : (
                     <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
-                      <span className="font-medium whitespace-nowrap" title={attr.value}>
-                        {attr.value}
+                      <span className="font-medium whitespace-nowrap" title={String(attr.value)}>
+                        {String(attr.value)}
                       </span>
                     </div>
                   )}

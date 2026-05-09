@@ -1119,8 +1119,23 @@ export class Renderer {
             max.z - min.z
         );
 
-        // Position camera to see entire model
-        const distance = size * 1.5;
+        // City-scale guard. Files whose unit declarations don't match their
+        // raw coordinate magnitudes (or genuine site/city models) produce
+        // 100+ km bounds. `size * 1.5` then puts the camera 100s of km from
+        // origin and individual building elements rasterise sub-pixel — the
+        // canvas ends up blank even though every mesh is drawn. Cap the
+        // camera at a sane distance so triangles stay multi-pixel; user
+        // orbits/pans to see the rest of the scene.
+        const CITY_SCALE_THRESHOLD = 10_000;   // metres on the longest axis
+        const CITY_SCALE_DISTANCE = 200;       // metres from target
+        const distance = size > CITY_SCALE_THRESHOLD ? CITY_SCALE_DISTANCE : size * 1.5;
+        if (size > CITY_SCALE_THRESHOLD) {
+            console.warn(
+                `[Renderer] fitToView: bounds span ${(size / 1000).toFixed(1)} km — ` +
+                `clamping camera distance to ${CITY_SCALE_DISTANCE} m so triangles stay ` +
+                `multi-pixel. Pan / zoom to explore the full scene.`,
+            );
+        }
         this.camera.setPosition(
             center.x + distance * 0.5,
             center.y + distance * 0.5,

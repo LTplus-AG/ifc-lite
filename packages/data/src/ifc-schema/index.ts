@@ -251,24 +251,61 @@ export async function findAttribute(
  * one of these types. Returns `undefined` when the attribute isn't
  * known on that entity in the requested IFC version.
  *
- * Synchronous, allocation-free, single hash lookup — safe to call
- * inside the validator's tight per-entity loop.
+ * Backed by a per-version lazy index so the validator's tight loop
+ * stays O(1) regardless of attribute-table size.
  */
 export function getAttributeXsdTypes(
   v: IfcSchemaVersion,
   entityType: string,
   attrName: string
 ): readonly string[] | undefined {
+  const index = getAttributeXsdIndex(v);
+  if (!index) return undefined;
+  const slot = index.get(entityType.toUpperCase());
+  if (!slot) return undefined;
+  return slot.get(attrName.toLowerCase());
+}
+
+/**
+ * Cache of `version → entityUpper → attrLower → xsdTypes`. The
+ * lookup-time list scan above used to be ~5k entries on every call;
+ * over a 100k-entity validation that's hundreds of millions of
+ * comparisons. Building the index once per version drops that to a
+ * pair of `Map.get` calls.
+ */
+type AttributeXsdIndex = Map<string, Map<string, readonly string[]>>;
+
+const attributeXsdIndexCache = new Map<IfcSchemaVersion, AttributeXsdIndex>();
+
+function getAttributeXsdIndex(v: IfcSchemaVersion): AttributeXsdIndex | undefined {
   const list = ATTRIBUTES_BY_VERSION[v];
   if (!list) return undefined;
-  const entityUpper = entityType.toUpperCase();
-  const attrLower = attrName.toLowerCase();
-  // The list isn't large (a few thousand entries) and lookups happen at
-  // validation time, not parse time — linear scan is fine.
-  for (const a of list) {
-    if (a.name.toLowerCase() !== attrLower) continue;
-    const types = a.xsdTypesByEntity[entityUpper];
-    if (types && types.length > 0) return types;
+  const cached = attributeXsdIndexCache.get(v);
+  if (cached) return cached;
+
+  const index: AttributeXsdIndex = new Map();
+  for (const attr of list) {
+    const attrLower = attr.name.toLowerCase();
+    for (const [entityUpper, types] of Object.entries(attr.xsdTypesByEntity)) {
+      if (!types || types.length === 0) continue;
+      let slot = index.get(entityUpper);
+      if (!slot) {
+        slot = new Map();
+        index.set(entityUpper, slot);
+      }
+      // Same (entity, attr) can appear in multiple list rows when the
+      // upstream schema repeats the declaration. Merge the unions
+      // rather than letting the last write win.
+      const existing = slot.get(attrLower);
+      if (existing) {
+        const merged = new Set<string>(existing);
+        for (const t of types) merged.add(t);
+        slot.set(attrLower, [...merged].sort());
+      } else {
+        slot.set(attrLower, types);
+      }
+    }
   }
-  return undefined;
+  attributeXsdIndexCache.set(v, index);
+  return index;
 }

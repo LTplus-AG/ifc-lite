@@ -14,62 +14,15 @@ import type {
   IDSBoundsConstraint,
 } from '../types.js';
 
-/**
- * Numeric tolerance for floating-point comparisons.
- *
- * Mirrors upstream IfcOpenShell `ifctester`'s `is_x` (see
- * `src/ifctester/ifctester/facet.py`): `actual` is considered equal to
- * the expected `cast_value` when it lies within
- * `[cast_value * (1 - 1e-6), cast_value * (1 + 1e-6)]` (asymmetric —
- * the tolerance is relative to the *expected* value, not the larger of
- * the pair). The check is anchored on `cast_value` so callers must
- * pass the IDS-side value as the second argument.
- */
-const RELATIVE_TOLERANCE = 1e-6;
+import {
+  compareBoolean,
+  compareNumeric,
+  compareString,
+  numericEpsilon,
+} from './comparators.js';
 
-function isCloseToCastValue(actual: number, castValue: number): boolean {
-  if (castValue >= 0) {
-    if (
-      actual < castValue * (1 - RELATIVE_TOLERANCE) ||
-      actual > castValue * (1 + RELATIVE_TOLERANCE)
-    ) {
-      return false;
-    }
-  } else if (
-    actual > castValue * (1 - RELATIVE_TOLERANCE) ||
-    actual < castValue * (1 + RELATIVE_TOLERANCE)
-  ) {
-    return false;
-  }
-  return true;
-}
-
-/**
- * Tolerance anchored on the IDS-side cast value (the *expected* value),
- * matching upstream ifctester semantics:
- * `|actual - cast| <= 1e-6 * (1 + |cast|)`.
- * The first argument MUST be the cast value (i.e. the constraint side),
- * not the actual property value — magnitude of the actual is irrelevant
- * to the tolerance window's *width*.
- *
- * A small ULP-scaled fudge (`16 * EPSILON * max(|actual|,|cast|)`) is
- * added to absorb the floating-point noise introduced when each side is
- * decoded from text (`parseFloat`/`IFCREAL`) — without it, boundary
- * fixtures that store decimals like `1000001.000001` would fail equality
- * by ~1e-12 due to IEEE-754 representation, even though both sides
- * agree to the printed precision.
- */
-function numericEpsilon(castValue: number, actual?: number): number {
-  const relative = RELATIVE_TOLERANCE * (1 + Math.abs(castValue));
-  const ulp = 16 * Number.EPSILON * Math.max(
-    Math.abs(castValue),
-    typeof actual === 'number' ? Math.abs(actual) : 0,
-  );
-  return relative + ulp;
-}
-
-/** Back-compat alias for callers that still expect a single constant. */
-const NUMERIC_TOLERANCE = RELATIVE_TOLERANCE;
+/** Tolerance for the bounds matcher's exclusive comparators. */
+const NUMERIC_TOLERANCE = 1e-6;
 
 /** Options for constraint matching */
 export interface MatchOptions {
@@ -111,7 +64,9 @@ export function matchConstraint(
 }
 
 /**
- * Match against a simple value (exact match)
+ * Match against a simple value. Tries each comparator in order:
+ * string → numeric → boolean. The first decisive result wins;
+ * `undefined` lets the next strategy run.
  */
 function matchSimpleValue(
   constraint: IDSSimpleValue,
@@ -119,51 +74,12 @@ function matchSimpleValue(
   caseInsensitive: boolean
 ): boolean {
   const expected = constraint.value;
-  const actualStr = String(actualValue);
-
-  // Exact string match
-  if (actualStr === expected) return true;
-
-  // Case-insensitive match only when explicitly requested (IFC entity/predefined type names)
-  if (caseInsensitive && actualStr.toUpperCase() === expected.toUpperCase()) return true;
-
-  // Numeric comparison with tolerance — only when *both* sides parse
-  // cleanly as a single numeric token. `parseFloat` accepts trailing
-  // garbage (`'2022-01-01' → 2022`), which would silently equate dates
-  // and other date-like strings. Use a strict matcher so e.g.
-  // `'2022-01-01+00:00'` and `'2022-01-01'` keep their string identity.
-  const NUMERIC_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
-  const expectedIsNumeric = NUMERIC_RE.test(expected);
-  const actualIsNumeric =
-    typeof actualValue === 'number' || NUMERIC_RE.test(actualStr);
-  if (expectedIsNumeric && actualIsNumeric) {
-    const expectedNum = parseFloat(expected);
-    const actualNum =
-      typeof actualValue === 'number' ? actualValue : parseFloat(actualStr);
-    if (!isNaN(expectedNum) && !isNaN(actualNum)) {
-      return Math.abs(expectedNum - actualNum) <= numericEpsilon(expectedNum, actualNum);
-    }
-  }
-
-  // Boolean comparison — per IDS 1.0 spec the literal MUST be
-  // lowercase (`true` / `false`). Uppercase or mixed-case literals
-  // are malformed and never match a stored boolean value.
-  if (typeof actualValue === 'boolean') {
-    if (expected === 'true') return actualValue === true;
-    if (expected === 'false') return actualValue === false;
-    // Reject any other casing or numeric form for boolean actuals.
-    return false;
-  }
-
-  // Boolean string comparison (both sides are textual booleans). Same
-  // strict-lowercase rule applies.
-  if (
-    (actualStr === 'true' || actualStr === 'false') &&
-    (expected === 'true' || expected === 'false')
-  ) {
-    return actualStr === expected;
-  }
-
+  const stringResult = compareString(expected, actualValue, caseInsensitive);
+  if (stringResult !== undefined) return stringResult;
+  const numericResult = compareNumeric(expected, actualValue);
+  if (numericResult !== undefined) return numericResult;
+  const booleanResult = compareBoolean(expected, actualValue);
+  if (booleanResult !== undefined) return booleanResult;
   return false;
 }
 
@@ -218,28 +134,22 @@ function xsdToJsRegex(xsdPattern: string): string {
 }
 
 /**
- * Match against an enumeration (one of a list)
+ * Match against an enumeration. The actual value matches if ANY of the
+ * declared options matches under string / numeric / boolean comparison
+ * — same strategy table as `matchSimpleValue`, just iterated.
  */
 function matchEnumeration(
   constraint: IDSEnumerationConstraint,
   actualValue: string | number | boolean,
   caseInsensitive: boolean
 ): boolean {
-  const actualStr = String(actualValue);
-  const actualUpper = actualStr.toUpperCase();
-
   return constraint.values.some((v) => {
-    // Try exact match first
-    if (v === actualStr) return true;
-    // Case-insensitive match only when explicitly requested
-    if (caseInsensitive && v.toUpperCase() === actualUpper) return true;
-    // Numeric comparison
-    const vNum = parseFloat(v);
-    const actualNum =
-      typeof actualValue === 'number' ? actualValue : parseFloat(actualStr);
-    if (!isNaN(vNum) && !isNaN(actualNum)) {
-      return Math.abs(vNum - actualNum) <= NUMERIC_TOLERANCE;
-    }
+    const stringResult = compareString(v, actualValue, caseInsensitive);
+    if (stringResult !== undefined) return stringResult;
+    const numericResult = compareNumeric(v, actualValue);
+    if (numericResult !== undefined) return numericResult;
+    const booleanResult = compareBoolean(v, actualValue);
+    if (booleanResult !== undefined) return booleanResult;
     return false;
   });
 }

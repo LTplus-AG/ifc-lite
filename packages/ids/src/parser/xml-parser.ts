@@ -219,6 +219,18 @@ function parseSpecification(el: Element, index: number): IDSSpecification {
     }
   }
 
+  // Apply IDS 1.0 default: an `<applicability>` without an explicit
+  // `minOccurs` is REQUIRED — at least one applicable entity must
+  // match. Authors opt out by setting `minOccurs="0"` (optional) or
+  // using a `prohibited` requirement. We canonicalise here so every
+  // downstream consumer (validator, audit, UI) sees the same shape
+  // and doesn't need to remember the default lives elsewhere. Only
+  // applies when an `<applicability>` element actually exists; specs
+  // without applicability metadata leave the field undefined.
+  if (minOccurs === undefined && (applicabilityEl || maxOccurs !== undefined)) {
+    minOccurs = 1;
+  }
+
   // Parse requirements
   const requirementsEl = getChildElement(el, 'requirements');
   const requirements: IDSRequirement[] = requirementsEl

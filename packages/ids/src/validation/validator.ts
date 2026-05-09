@@ -404,12 +404,12 @@ function checkCardinality(
     return undefined;
   }
 
-  // Per IDS 1.0 spec, an applicability without an explicit `minOccurs`
-  // is REQUIRED — at least one applicable entity must match. Authors
-  // opt out by setting `minOccurs="0"` (optional) or `prohibited`.
-  // Without this default `<applicability maxOccurs="unbounded">` would
-  // silently allow zero matches, hiding broken / mistargeted specs.
-  const minExpected = spec.minOccurs ?? 1;
+  // The XML parser canonicalises the IDS 1.0 default — an
+  // `<applicability>` without explicit `minOccurs` becomes `1`
+  // (REQUIRED) — so we don't have to fall back here. The `?? 0`
+  // covers exotic specs that omit applicability entirely but still
+  // declare `maxOccurs`.
+  const minExpected = spec.minOccurs ?? 0;
   const maxExpected = spec.maxOccurs;
 
   let passed = true;

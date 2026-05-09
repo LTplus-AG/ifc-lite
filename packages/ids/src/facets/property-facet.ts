@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
+import { ifcMeasureToXsdTypes, literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
 
 /** IFC data type names (IFCLABEL, IFCREAL, etc.) are case-insensitive */
 const DATATYPE_OPTS: MatchOptions = { caseInsensitive: true };
@@ -259,29 +260,30 @@ function checkSingleProperty(
       };
     }
 
-    // Strict typecast for integer measures: per upstream ifctester /
-    // IDS spec, an `IFCINTEGER` / `IFCCOUNTMEASURE` value cannot be
-    // specified with a decimal point on the IDS side — `42.0` against
-    // a stored `42` is rejected as a malformed constraint, even though
-    // the numbers compare equal. Bool measures get the same treatment
-    // for case-sensitive `TRUE`/`FALSE` literals (handled below).
-    const propDataType = prop.dataType ? prop.dataType.toUpperCase() : '';
-    if (
-      facet.value.type === 'simpleValue' &&
-      (propDataType === 'IFCINTEGER' || propDataType === 'IFCCOUNTMEASURE') &&
-      /[.eE]/.test(facet.value.value)
-    ) {
-      return {
-        passed: false,
-        actualValue: String(propValue),
-        expectedValue: formatConstraint(facet.value),
-        failure: {
-          type: 'PROPERTY_VALUE_MISMATCH',
-          field: `${pset.name}.${prop.name}`,
-          actual: String(propValue),
-          expected: formatConstraint(facet.value),
-        },
-      };
+    // Strict XSD-cast gate: the IDS literal MUST cast successfully
+    // under at least one of the IFC measure's XSD types. Mirrors the
+    // attribute facet's check — an `IFCINTEGER` slot rejects `42.0`,
+    // an `IFCBOOLEAN` slot rejects numeric literals, etc. The shared
+    // `ifcMeasureToXsdTypes` mapping turns the parser-side measure
+    // name into the XSD types the cast helper understands.
+    if (facet.value.type === 'simpleValue') {
+      const xsdTypes = ifcMeasureToXsdTypes(prop.dataType);
+      if (
+        xsdTypes.length > 0 &&
+        !literalCastsUnderAnyType(facet.value.value, xsdTypes)
+      ) {
+        return {
+          passed: false,
+          actualValue: String(propValue),
+          expectedValue: formatConstraint(facet.value),
+          failure: {
+            type: 'PROPERTY_VALUE_MISMATCH',
+            field: `${pset.name}.${prop.name}`,
+            actual: String(propValue),
+            expected: formatConstraint(facet.value),
+          },
+        };
+      }
     }
 
     // Multi-valued IFC properties (IfcPropertyEnumeratedValue,

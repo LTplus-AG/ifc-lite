@@ -9,6 +9,7 @@
 import type { IDSAttributeFacet, IFCDataAccessor } from '../types.js';
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
+import { literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
 
 /** Attribute name matching is case-insensitive (IFC schema-defined names) */
 const ATTR_NAME_OPTS: MatchOptions = { caseInsensitive: true };
@@ -214,48 +215,3 @@ function getAttributeValue(
   }
 }
 
-/**
- * XSD strict-cast gate: returns true iff the IDS literal `value` casts
- * successfully under at least one of `xsdTypes`. Mirrors the
- * `int.TryParse` / `double.TryParse` rules upstream IDS-Audit-tool
- * applies before doing the value comparison.
- *
- * - `xs:integer` accepts `[+-]?\d+` only — `42.0` fails.
- * - `xs:double` accepts `[+-]?\d+(\.\d+)?([eE][+-]?\d+)?` — `42`, `42.0`, `1e3` all pass.
- * - `xs:boolean` accepts `true` / `false` (case-sensitive per IDS spec).
- * - `xs:date` accepts `YYYY-MM-DD` (optionally with timezone).
- * - `xs:dateTime` accepts ISO-8601 timestamps.
- * - `xs:duration` accepts ISO-8601 durations (`P1Y2M3DT4H5M6S`).
- * - `xs:string` accepts any text.
- *
- * Unknown types are accepted permissively so a future XSD type doesn't
- * silently break validation.
- */
-function literalCastsUnderAnyType(
-  value: string,
-  xsdTypes: readonly string[]
-): boolean {
-  return xsdTypes.some((t) => literalCastsUnder(value, t));
-}
-
-function literalCastsUnder(value: string, xsdType: string): boolean {
-  switch (xsdType) {
-    case 'xs:integer':
-      return /^[+-]?\d+$/.test(value);
-    case 'xs:double':
-      return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(value);
-    case 'xs:boolean':
-      return value === 'true' || value === 'false';
-    case 'xs:date':
-      return /^\d{4}-\d{2}-\d{2}(Z|[+-]\d{2}:\d{2})?$/.test(value);
-    case 'xs:dateTime':
-      return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/.test(value);
-    case 'xs:duration':
-      return /^-?P(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?$/.test(value);
-    case 'xs:string':
-      return true;
-    default:
-      // Unknown XSD type — be permissive rather than reject.
-      return true;
-  }
-}

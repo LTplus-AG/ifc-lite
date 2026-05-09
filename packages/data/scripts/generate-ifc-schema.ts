@@ -666,6 +666,11 @@ interface AttrRow {
   entities: string[];
   /** Whether the attribute can carry a simple value (4th arg present). */
   hasSimpleValue: boolean;
+  /**
+   * XSD types the attribute slot accepts on those entities (4th arg).
+   * Empty when the call has no type information (complex-only refs).
+   */
+  xsdTypes: string[];
 }
 
 function parseAttributes(): Record<IfcVersion, AttrRow[]> {
@@ -726,10 +731,17 @@ function parseAttributes(): Record<IfcVersion, AttrRow[]> {
       const name = strings[0].value;
       const allEntities = arrays[1].items.map((e) => e.toUpperCase());
       const hasSimpleValue = arrays.length >= 3;
+      // The 4th array (`new[] { "xs:integer", "xs:double", … }`) is
+      // the union of XSD types the attribute's slot accepts across
+      // the entity group in this call. Stored verbatim so consumers
+      // can reason about strict-cast semantics (xs:integer rejects
+      // decimal literals, etc.).
+      const xsdTypes = arrays.length >= 3 ? [...arrays[2].items] : [];
       out[sections[s].version].push({
         name,
         entities: allEntities,
         hasSimpleValue,
+        xsdTypes,
       });
     }
   }
@@ -740,13 +752,17 @@ function emitAttributes(rows: Record<IfcVersion, AttrRow[]>): void {
   const lines: string[] = [HEADER];
   lines.push("import type { IfcAttributeInfo } from '../types.js';\n");
   for (const [v, list] of Object.entries(rows) as [IfcVersion, AttrRow[]][]) {
-    // Aggregate per-attribute (name → {entities, hasSimpleValue, hasComplex}).
-    // The same name can appear with both kinds across different entities.
+    // Aggregate per-attribute (name → {entities, hasSimpleValue, hasComplex,
+    // xsdTypesByEntity}). The same name can appear with both kinds and
+    // with different XSD type unions across different entities; we
+    // collect the union per (name, entity) by accumulating every call
+    // that mentions the entity.
     const merged = new Map<
       string,
       {
         entitiesWithValue: Set<string>;
         entitiesWithoutValue: Set<string>;
+        xsdTypesByEntity: Map<string, Set<string>>;
       }
     >();
     for (const r of list) {
@@ -755,6 +771,7 @@ function emitAttributes(rows: Record<IfcVersion, AttrRow[]>): void {
         m = {
           entitiesWithValue: new Set(),
           entitiesWithoutValue: new Set(),
+          xsdTypesByEntity: new Map(),
         };
         merged.set(r.name, m);
       }
@@ -762,15 +779,36 @@ function emitAttributes(rows: Record<IfcVersion, AttrRow[]>): void {
         ? m.entitiesWithValue
         : m.entitiesWithoutValue;
       for (const e of r.entities) set.add(e);
+      // Attach the row's XSD type union to every entity it lists.
+      // Same (attr, entity) pair may appear in multiple calls; we
+      // accumulate the union across them so the generated map captures
+      // every type the slot legitimately accepts in this version.
+      if (r.xsdTypes.length > 0) {
+        for (const e of r.entities) {
+          let s = m.xsdTypesByEntity.get(e);
+          if (!s) {
+            s = new Set();
+            m.xsdTypesByEntity.set(e, s);
+          }
+          for (const t of r.xsdTypes) s.add(t);
+        }
+      }
     }
     lines.push(
       `export const ATTRIBUTES_${VERSION_KEY[v]}: readonly IfcAttributeInfo[] = [`
     );
     for (const [name, info] of merged) {
+      const xsdEntries = [...info.xsdTypesByEntity.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([entity, types]) => `${ts(entity)}: ${ts([...types].sort())}`);
+      const xsdLiteral =
+        xsdEntries.length === 0 ? '{}' : `{ ${xsdEntries.join(', ')} }`;
       lines.push(
         `  { name: ${ts(name)}, simpleValueEntities: ${ts(
           [...info.entitiesWithValue].sort()
-        )}, complexEntities: ${ts([...info.entitiesWithoutValue].sort())} },`
+        )}, complexEntities: ${ts(
+          [...info.entitiesWithoutValue].sort()
+        )}, xsdTypesByEntity: ${xsdLiteral} },`
       );
     }
     lines.push('];\n');

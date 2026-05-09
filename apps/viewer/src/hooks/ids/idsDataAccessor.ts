@@ -31,7 +31,7 @@ import {
   extractTypeEntityOwnProperties,
   extractTypePropertiesOnDemand,
 } from '@ifc-lite/parser';
-import { RelationshipType } from '@ifc-lite/data';
+import { RelationshipType, getAttributeXsdTypes } from '@ifc-lite/data';
 
 // Map IDS PartOf relations to the numeric RelationshipType enum the
 // graph keys on. Passing strings here was a long-standing silent bug:
@@ -403,6 +403,17 @@ export function createDataAccessor(
 
     getAttributeNames(expressId: number): string[] {
       return extractAllEntityAttributes(dataStore, expressId).map((a) => a.name);
+    },
+
+    getAttributeXsdTypes(expressId: number, attrName: string): readonly string[] | undefined {
+      // Resolve the entity's IFC type so the schema lookup scopes to
+      // the correct slot — the same attribute can carry different XSD
+      // types on different entities (`Width` is `xs:integer` on
+      // `IfcPixelTexture` but `xs:double` on `IfcCShapeProfileDef`).
+      const entityType = this.getEntityType(expressId);
+      if (!entityType) return undefined;
+      const version = (dataStore.schemaVersion || 'IFC4').toUpperCase();
+      return getAttributeXsdTypes(version, entityType, attrName);
     },
 
     getPredefinedTypeRaw(expressId: number): string | undefined {

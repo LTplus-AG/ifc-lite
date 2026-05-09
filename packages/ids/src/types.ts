@@ -478,6 +478,16 @@ export interface IFCDataAccessor {
    * candidate, not just the small list of standard attribute names.
    */
   getAttributeNames?(expressId: number): string[];
+  /**
+   * Get the XSD primitive types (`xs:integer`, `xs:double`, `xs:string`,
+   * `xs:boolean`, `xs:date`, `xs:dateTime`, `xs:duration`) that the IFC
+   * schema declares for the named attribute on the entity. The IDS
+   * validator uses this to enforce strict-cast semantics — an
+   * `xs:integer`-only slot rejects literals like `42.0`, `xs:double`
+   * accepts both `42` and `42.0`, etc. Returns `undefined` when the
+   * type is unknown so callers fall back to permissive comparison.
+   */
+  getAttributeXsdTypes?(expressId: number, attrName: string): readonly string[] | undefined;
   /** Get all entity IDs of a specific type */
   getEntitiesByType(typeName: string): number[];
   /** Get all entity IDs */

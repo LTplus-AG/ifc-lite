@@ -43,7 +43,7 @@ import {
   extractMaterialsOnDemand,
   extractClassificationsOnDemand,
 } from '../packages/parser/dist/index.js';
-import { RelationshipType } from '../packages/data/dist/index.js';
+import { RelationshipType, getAttributeXsdTypes } from '../packages/data/dist/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CORPUS_ROOT = path.resolve(
@@ -259,6 +259,17 @@ function createDataAccessor(dataStore) {
       const ot = dataStore.entities?.getObjectType?.(expressId);
       if (ot) return ot;
       return pdtValue || undefined;
+    },
+    getAttributeXsdTypes(expressId, attrName) {
+      // Resolve the entity's IFC type so the schema lookup can scope to
+      // the correct slot (an attribute can carry different XSD types
+      // on different entities).
+      const entityType = this.getEntityType(expressId);
+      if (!entityType) return undefined;
+      // The harness loads IFC2X3 + IFC4 fixtures; pick the version
+      // off the parsed store so multi-version corpora stay correct.
+      const version = (dataStore.schemaVersion || 'IFC4').toUpperCase();
+      return getAttributeXsdTypes(version, entityType, attrName);
     },
     getEntitiesByType(typeName) {
       const byType = dataStore.entityIndex?.byType;

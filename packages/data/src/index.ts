@@ -44,6 +44,7 @@ export {
   findPropertySet,
   findDataType,
   findAttribute,
+  getAttributeXsdTypes,
   getInheritanceChain,
   isEntitySubtypeOf,
   RESERVED_PSET_PREFIXES,

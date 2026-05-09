@@ -241,3 +241,34 @@ export async function findAttribute(
   const lower = name.toLowerCase();
   return list.find((a) => a.name.toLowerCase() === lower);
 }
+
+/**
+ * Look up the XSD primitive types accepted by an attribute slot on a
+ * specific entity. Returns the union of `xs:integer`, `xs:double`,
+ * `xs:string`, `xs:boolean`, `xs:date`, `xs:dateTime`, `xs:duration`
+ * across every schema declaration of the (entity, attribute) pair —
+ * the IDS validator treats a literal as valid if it casts under any
+ * one of these types. Returns `undefined` when the attribute isn't
+ * known on that entity in the requested IFC version.
+ *
+ * Synchronous, allocation-free, single hash lookup — safe to call
+ * inside the validator's tight per-entity loop.
+ */
+export function getAttributeXsdTypes(
+  v: IfcSchemaVersion,
+  entityType: string,
+  attrName: string
+): readonly string[] | undefined {
+  const list = ATTRIBUTES_BY_VERSION[v];
+  if (!list) return undefined;
+  const entityUpper = entityType.toUpperCase();
+  const attrLower = attrName.toLowerCase();
+  // The list isn't large (a few thousand entries) and lookups happen at
+  // validation time, not parse time — linear scan is fine.
+  for (const a of list) {
+    if (a.name.toLowerCase() !== attrLower) continue;
+    const types = a.xsdTypesByEntity[entityUpper];
+    if (types && types.length > 0) return types;
+  }
+  return undefined;
+}

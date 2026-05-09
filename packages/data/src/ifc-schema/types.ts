@@ -112,4 +112,17 @@ export interface IfcAttributeInfo {
   readonly simpleValueEntities: readonly string[];
   /** Uppercase entity names where the attribute holds a complex/entity reference. */
   readonly complexEntities: readonly string[];
+  /**
+   * Map of uppercase entity name → the XSD primitive types that the
+   * attribute's slot accepts for that entity. Per IDS 1.0 spec, an
+   * `<attribute><value>` literal MUST cast successfully under at least
+   * one of these XSD types: `xs:integer` rejects `42.0`, `xs:double`
+   * accepts either, `xs:string` accepts anything textual, etc.
+   *
+   * Sourced from the upstream `SchemaInfo.Attributes.g.cs` 4th argument
+   * (a union across the entity group declared in the same call). When
+   * an entity isn't a key here the type information is unknown and the
+   * validator falls back to permissive comparison.
+   */
+  readonly xsdTypesByEntity: Readonly<Record<string, readonly string[]>>;
 }

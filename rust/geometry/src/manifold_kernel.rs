@@ -25,17 +25,93 @@ use crate::csg::calculate_normals;
 use crate::diagnostics::BoolFailureReason;
 use crate::mesh::Mesh;
 use manifold_csg::Manifold;
+use rustc_hash::FxHashMap;
+
+/// Spatial-quantization scale for vertex welding. Positions are bucketed
+/// at micron resolution before hashing, so two f32 vertices closer than
+/// ~5e-7 in absolute coordinates collapse to the same canonical index.
+///
+/// IFC dimensions are nominally in metres; 1 µm precision is well below
+/// any meaningful BIM tolerance and below f32's 7-digit mantissa for
+/// positions in the [-1000, 1000] m range we expect.
+const WELD_QUANTIZATION: f32 = 1.0e6;
+
+/// Quantize a position component for hashing.
+#[inline]
+fn quantize(v: f32) -> i64 {
+    (v * WELD_QUANTIZATION).round() as i64
+}
+
+/// Vertex-weld pass: collapse positions that quantize to the same bucket
+/// to a single canonical vertex, then re-index the triangle list. Drops
+/// degenerate triangles (any two corners welded to the same vertex) on
+/// the way out.
+///
+/// Necessary because ifc-lite's extruded-solid builder emits a fresh
+/// vertex per face corner — every cube has 24 vertices instead of 8, and
+/// the cap-vs-side-wall meshes don't share corners. Manifold's
+/// `from_mesh_f64` checks adjacency via vertex-index identity and
+/// rejects the input as `NotManifold` if shared edges have different
+/// vertices on each side.
+///
+/// Returns `(welded_positions_packed, welded_tri_indices, dedup_count)`.
+fn weld_vertices(mesh: &Mesh) -> (Vec<f64>, Vec<u64>, usize) {
+    let n_verts = mesh.positions.len() / 3;
+    if n_verts == 0 {
+        return (Vec::new(), Vec::new(), 0);
+    }
+
+    let mut bucket_to_canonical: FxHashMap<(i64, i64, i64), u32> =
+        FxHashMap::default();
+    let mut old_to_new: Vec<u32> = Vec::with_capacity(n_verts);
+    let mut welded_pos: Vec<f64> = Vec::with_capacity(n_verts * 3);
+
+    for i in 0..n_verts {
+        let x = mesh.positions[i * 3];
+        let y = mesh.positions[i * 3 + 1];
+        let z = mesh.positions[i * 3 + 2];
+        let key = (quantize(x), quantize(y), quantize(z));
+        let canonical = *bucket_to_canonical.entry(key).or_insert_with(|| {
+            let idx = (welded_pos.len() / 3) as u32;
+            welded_pos.push(x as f64);
+            welded_pos.push(y as f64);
+            welded_pos.push(z as f64);
+            idx
+        });
+        old_to_new.push(canonical);
+    }
+
+    let dedup_count = n_verts.saturating_sub(welded_pos.len() / 3);
+
+    let mut welded_tris: Vec<u64> = Vec::with_capacity(mesh.indices.len());
+    for chunk in mesh.indices.chunks_exact(3) {
+        let i0 = old_to_new[chunk[0] as usize];
+        let i1 = old_to_new[chunk[1] as usize];
+        let i2 = old_to_new[chunk[2] as usize];
+        // Drop triangles that collapsed to a degenerate edge or point.
+        if i0 == i1 || i1 == i2 || i0 == i2 {
+            continue;
+        }
+        welded_tris.push(u64::from(i0));
+        welded_tris.push(u64::from(i1));
+        welded_tris.push(u64::from(i2));
+    }
+
+    (welded_pos, welded_tris, dedup_count)
+}
 
 /// Convert an ifc-lite `Mesh` (f32 positions, u32 indices) to a Manifold
-/// (f64 vertex properties, u64 triangle indices).
+/// (f64 vertex properties, u64 triangle indices). Runs a vertex-weld
+/// pre-pass — see [`weld_vertices`] for why.
 fn mesh_to_manifold(mesh: &Mesh) -> Result<Manifold, BoolFailureReason> {
     if mesh.is_empty() {
         return Err(BoolFailureReason::EmptyOperand);
     }
 
-    // Pack positions: Manifold expects xyz xyz xyz... in f64.
-    let vert_props: Vec<f64> = mesh.positions.iter().map(|&v| v as f64).collect();
-    let tri_indices: Vec<u64> = mesh.indices.iter().map(|&i| u64::from(i)).collect();
+    let (vert_props, tri_indices, _dedup) = weld_vertices(mesh);
+    if tri_indices.is_empty() {
+        return Err(BoolFailureReason::DegenerateOperand);
+    }
 
     Manifold::from_mesh_f64(&vert_props, 3, &tri_indices)
         .map_err(|e| BoolFailureReason::KernelError(format!("mesh_to_manifold: {e}")))
@@ -134,6 +210,73 @@ mod tests {
             m.add_triangle(face[3], face[4], face[5]);
         }
         m
+    }
+
+    /// Build a "polygon soup" cube: 6 quads each emitting 4 fresh vertices,
+    /// like the extruded-solid builder produces. 24 vertices, 12 triangles.
+    fn polygon_soup_cube() -> Mesh {
+        let mut m = Mesh::new();
+        let n = Vector3::new(0.0, 0.0, 0.0);
+        let face = |verts: &[(f64, f64, f64); 4], mesh: &mut Mesh| {
+            let base = mesh.vertex_count() as u32;
+            for &(x, y, z) in verts {
+                mesh.add_vertex(Point3::new(x, y, z), n);
+            }
+            mesh.add_triangle(base, base + 1, base + 2);
+            mesh.add_triangle(base, base + 2, base + 3);
+        };
+        // -Z face
+        face(&[(0.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0), (1.0, 0.0, 0.0)], &mut m);
+        // +Z face
+        face(&[(0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0)], &mut m);
+        // -X face
+        face(&[(0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 1.0), (0.0, 1.0, 0.0)], &mut m);
+        // +X face
+        face(&[(1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (1.0, 1.0, 1.0), (1.0, 0.0, 1.0)], &mut m);
+        // -Y face
+        face(&[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 1.0), (0.0, 0.0, 1.0)], &mut m);
+        // +Y face
+        face(&[(0.0, 1.0, 0.0), (0.0, 1.0, 1.0), (1.0, 1.0, 1.0), (1.0, 1.0, 0.0)], &mut m);
+        m
+    }
+
+    #[test]
+    fn weld_collapses_polygon_soup_corners() {
+        let soup = polygon_soup_cube();
+        assert_eq!(soup.vertex_count(), 24);
+        assert_eq!(soup.triangle_count(), 12);
+
+        let (verts, tris, dedup) = weld_vertices(&soup);
+        assert_eq!(verts.len() / 3, 8, "cube has 8 unique corners");
+        assert_eq!(tris.len() / 3, 12, "no degenerate triangles after weld");
+        assert_eq!(dedup, 16, "24 raw verts - 8 canonical = 16 deduped");
+    }
+
+    #[test]
+    fn weld_drops_degenerate_triangles() {
+        // Three vertices all at the same point - quantizes to one bucket,
+        // triangle collapses to a point.
+        let mut m = Mesh::new();
+        let n = Vector3::new(0.0, 0.0, 0.0);
+        m.add_vertex(Point3::new(1.0, 2.0, 3.0), n);
+        m.add_vertex(Point3::new(1.0, 2.0, 3.0), n);
+        m.add_vertex(Point3::new(1.0, 2.0, 3.0), n);
+        m.add_triangle(0, 1, 2);
+
+        let (verts, tris, _) = weld_vertices(&m);
+        assert_eq!(verts.len() / 3, 1);
+        assert!(tris.is_empty(), "collapsed triangle must be dropped");
+    }
+
+    #[test]
+    fn weld_makes_polygon_soup_manifold() {
+        // Pre-T1.1.1 the polygon-soup cube is rejected by Manifold with
+        // NotManifold (vertex identity per face). Post-weld it must round-trip.
+        let soup = polygon_soup_cube();
+        let m = mesh_to_manifold(&soup).expect("polygon-soup cube must be welded into a manifold");
+        let back = manifold_to_mesh(&m);
+        assert!(!back.is_empty());
+        assert!(back.triangle_count() >= 12);
     }
 
     #[test]

@@ -110,15 +110,15 @@ fn issue_583_institute_var2_pipeline_runs_and_records_failures() {
 }
 
 // -----------------------------------------------------------------------
-// Sprint-2 acceptance gates. These are tagged `#[ignore]` until Manifold
-// (T1.1) replaces the legacy BSP. When the migration lands, the cap-exceeded
-// and silent-fallback paths should disappear and these flip to green.
-// Re-enable by removing the `#[ignore]` attribute. Refer to the Tier 1-4
-// plan in the parity-gap report.
+// Sprint-2 acceptance gates. Active only with `--features manifold-csg`:
+// the legacy BSP path is known to fall back to host-clone on these fixtures
+// (which is the bug the migration fixes), so asserting `total_failures == 0`
+// would always fail there. With Manifold + the vertex-weld pre-pass these
+// flip to green.
 // -----------------------------------------------------------------------
 
 #[test]
-#[ignore = "Sprint 2 acceptance gate — re-enable after T1.1 (Manifold migration). Tracks #582."]
+#[cfg(feature = "manifold-csg")]
 fn issue_582_fzk_haus_no_csg_failures_after_manifold() {
     let Some(content) = read_fixture("ara3d/AC20-FZK-Haus.ifc") else {
         return;
@@ -128,7 +128,7 @@ fn issue_582_fzk_haus_no_csg_failures_after_manifold() {
 }
 
 #[test]
-#[ignore = "Sprint 2 acceptance gate — re-enable after T1.1 (Manifold migration). Tracks #583."]
+#[cfg(feature = "manifold-csg")]
 fn issue_583_institute_var2_no_csg_failures_after_manifold() {
     let Some(content) = read_fixture("ara3d/C20-Institute-Var-2.ifc") else {
         return;

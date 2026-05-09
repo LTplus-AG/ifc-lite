@@ -266,10 +266,6 @@ END-ISO-10303-21;
 }
 
 #[test]
-#[cfg_attr(
-    feature = "manifold-csg",
-    ignore = "T1.1 follow-up: this test's opening (rectangle profile + vertical extrusion) is mis-classified as 'floor opening' by `classify_openings` and routed through the non-rectangular CSG path. The wall mesh is not manifold (open boundaries from how ifc-lite builds extruded solids), which Manifold rejects with NotManifold. The legacy BSP cuts anyway (with possibly-leaky output). Two separate follow-ups: (a) fix the opening classifier so vertically-extruded wall openings stay on the rectangular AABB path, (b) make ifc-lite produce manifold meshes (vertex weld / topology cleanup) so the CSG path works for files that legitimately need it."
-)]
 fn layers_compose_with_voids_every_layer_loses_triangles() {
     let content = three_layer_wall_with_opening_ifc();
     let mut decoder = EntityDecoder::new(&content);

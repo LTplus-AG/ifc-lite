@@ -58,7 +58,7 @@ export async function validateIDS(
     const result = await validateSpecification(
       spec,
       accessor,
-      modelInfo.modelId,
+      modelInfo,
       options,
       (progress) => {
         if (onProgress) {
@@ -108,11 +108,12 @@ export async function validateIDS(
 async function validateSpecification(
   spec: IDSSpecification,
   accessor: IFCDataAccessor,
-  modelId: string,
+  modelInfo: IDSModelInfo,
   options: ValidatorOptions,
   onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
 ): Promise<IDSSpecificationResult> {
   const { translator, maxEntities, includePassingEntities = true } = options;
+  const modelId = modelInfo.modelId;
 
   // Phase 1: Find applicable entities
   const applicableIds = findApplicableEntities(spec, accessor);
@@ -403,7 +404,12 @@ function checkCardinality(
     return undefined;
   }
 
-  const minExpected = spec.minOccurs ?? 0;
+  // Per IDS 1.0 spec, an applicability without an explicit `minOccurs`
+  // is REQUIRED — at least one applicable entity must match. Authors
+  // opt out by setting `minOccurs="0"` (optional) or `prohibited`.
+  // Without this default `<applicability maxOccurs="unbounded">` would
+  // silently allow zero matches, hiding broken / mistargeted specs.
+  const minExpected = spec.minOccurs ?? 1;
   const maxExpected = spec.maxOccurs;
 
   let passed = true;

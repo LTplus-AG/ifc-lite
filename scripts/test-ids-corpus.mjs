@@ -510,6 +510,38 @@ function collectAllPropertySets(dataStore, expressId) {
       });
     }
   }
+  // Predefined property-set entities (`IfcDoorPanelProperties`,
+  // `IfcWindowPanelProperties`, …) are connected to elements via
+  // `IfcRelDefinesByProperties` like a normal pset, but their
+  // properties live as schema-defined ATTRIBUTES on the entity itself
+  // rather than as `IfcPropertySingleValue` children. IDS spec
+  // surfaces them as a property set whose `name` is the entity's
+  // `Name` and whose `properties` are the schema-defined attribute
+  // slots beyond the inherited Name/Description.
+  const psetIds = dataStore.relationships?.getRelated?.(expressId, RelationshipType.DefinesByProperties, 'inverse') || [];
+  for (const psetId of psetIds) {
+    const ref = dataStore.entityIndex?.byId?.get?.(psetId);
+    if (!ref) continue;
+    const tu = String(ref.type).toUpperCase();
+    if (tu === 'IFCPROPERTYSET' || tu === 'IFCELEMENTQUANTITY') continue;
+    if (!tu.endsWith('PROPERTIES')) continue;
+    // Surface attrs[2]=Name as the pset name, [4..] as properties.
+    const allAttrs = extractAllEntityAttributes(dataStore, psetId);
+    const psetName = allAttrs.find((a) => a.name === 'Name')?.value;
+    if (!psetName) continue;
+    if (out.some((p) => p.name === psetName)) continue;
+    const properties = allAttrs
+      .filter((a) => a.name !== 'GlobalId' && a.name !== 'Name' && a.name !== 'Description' && a.value !== undefined && a.value !== '')
+      .map((a) => ({
+        name: a.name,
+        value: a.value,
+        // Without a per-attribute schema lookup we leave dataType
+        // undefined; the IDS dataType gate then no-ops (matching
+        // how we treat multi-typed table values).
+      }));
+    if (properties.length > 0) out.push({ name: psetName, properties });
+  }
+
   // Inherit property sets from the IfcRelDefinesByType target — per
   // IDS spec the instance and its type share property sets, so a
   // property assigned only on the IfcWallType should still satisfy a
@@ -700,7 +732,9 @@ async function runFixture(pair) {
       accessor,
       {
         modelId: pair.name,
-        schemaVersion: 'IFC4',
+        // The parser detects FILE_SCHEMA from the IFC header; falling
+        // back to IFC4 keeps things working when the header is absent.
+        schemaVersion: dataStore.schemaVersion || 'IFC4',
         entityCount: dataStore.entityIndex?.byId?.size ?? 0,
       },
       {}

@@ -29,7 +29,7 @@ Open, view, and work with IFC files. Right in the browser.
 
 Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option.
 
-Works with **IFC4 / IFC4X3** (876 entities, full schema) and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/).
+Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/).
 
 ## Get Started
 

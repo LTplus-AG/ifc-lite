@@ -760,7 +760,7 @@ impl GeometryRouter {
                 Vec::new()
             };
 
-        let openings = self.classify_openings(opening_ids, decoder);
+        let openings = self.classify_openings(element, opening_ids, decoder);
         let merged_openings = Self::merge_rectangular_openings(&openings);
 
         VoidContext {
@@ -1007,9 +1007,22 @@ impl GeometryRouter {
 
     fn classify_openings(
         &self,
+        host: &DecodedEntity,
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
     ) -> Vec<OpeningType> {
+        // Only treat vertical-extrusion openings as "floor openings" when
+        // the host is an actual horizontal-surface element. For walls, a
+        // vertical (Z) opening extrusion is just how Revit/Archicad encode
+        // door / window openings — it should still take the rectangular
+        // AABB clip path. Pre-this-change the heuristic mis-tagged every
+        // vertical-extrusion opening as a floor opening, routing wall
+        // openings through the (cap-limited, error-prone) CSG path.
+        let host_is_horizontal_surface = matches!(
+            host.ifc_type,
+            IfcType::IfcSlab | IfcType::IfcRoof | IfcType::IfcCovering
+        );
+
         let mut openings: Vec<OpeningType> = Vec::new();
         for &opening_id in opening_ids.iter() {
             let opening_entity = match decoder.decode_by_id(opening_id) {
@@ -1032,9 +1045,10 @@ impl GeometryRouter {
                     .unwrap_or_default();
 
                 if !item_bounds_with_dir.is_empty() {
-                    let is_floor_opening = item_bounds_with_dir
-                        .iter()
-                        .any(|(_, _, dir)| dir.map(|d| d.z.abs() > 0.95).unwrap_or(false));
+                    let is_floor_opening = host_is_horizontal_surface
+                        && item_bounds_with_dir
+                            .iter()
+                            .any(|(_, _, dir)| dir.map(|d| d.z.abs() > 0.95).unwrap_or(false));
 
                     if is_floor_opening && vertex_count > 0 {
                         openings.push(OpeningType::NonRectangular(opening_mesh.clone()));

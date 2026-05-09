@@ -108,6 +108,9 @@ export const SPATIAL_TYPES = new Set([
 export const HIERARCHY_REL_TYPES = new Set([
     'IFCRELAGGREGATES', 'IFCRELCONTAINEDINSPATIALSTRUCTURE',
     'IFCRELDEFINESBYTYPE',
+    // IfcRelNests is a decomposition edge — IDS partOf checks for it
+    // expect to traverse the same graph as IfcRelAggregates.
+    'IFCRELNESTS',
     // Structural relationships (voids, fills, connections, groups)
     'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
     'IFCRELCONNECTSPATHELEMENTS', 'IFCRELCONNECTSELEMENTS',

@@ -39,8 +39,13 @@ export function checkAttributeFacet(
   if (attrNameConstraint.type === 'simpleValue') {
     attrNamesToCheck = [attrNameConstraint.value];
   } else {
-    // For patterns/enumerations, check ALL matching standard attributes (not just the first)
-    attrNamesToCheck = STANDARD_ATTRIBUTES.filter((a) =>
+    // For patterns/enumerations, prefer the entity's own schema-defined
+    // attribute list (so e.g. `IfcMaterialLayerSet.LayerSetName` shows
+    // up for a `.*Name.*` pattern). Fall back to the small standard
+    // list when the accessor doesn't surface one.
+    const allNames = accessor.getAttributeNames?.(expressId);
+    const candidates = allNames && allNames.length > 0 ? allNames : STANDARD_ATTRIBUTES;
+    attrNamesToCheck = candidates.filter((a) =>
       matchConstraint(attrNameConstraint, a, ATTR_NAME_OPTS)
     );
 

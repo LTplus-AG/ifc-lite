@@ -37,7 +37,7 @@ export type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialCons
 export interface TypePropertyInfo {
     typeName: string;
     typeId: number;
-    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }>;
+    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }>;
 }
 
 /**
@@ -80,7 +80,7 @@ export type { GeoreferenceInfo as GeorefInfo };
  * - IfcPropertyTableValue: defining/defined value pairs → "Table(N rows)"
  * - IfcPropertyReferenceValue: entity reference → "Reference #ID"
  */
-export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue; values?: string[] } {
+export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue; values?: string[]; dataType?: string } {
     const attrs = propEntity.attributes || [];
     const typeUpper = propEntity.type.toUpperCase();
 
@@ -153,11 +153,13 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             const nominalValue = attrs[2];
             let type: number = PropertyValueType.String;
             let value: PropertyValue = nominalValue as PropertyValue;
+            let dataType: string | undefined;
 
             // Handle typed values like IFCBOOLEAN(.T.), IFCREAL(1.5)
             if (Array.isArray(nominalValue) && nominalValue.length === 2) {
                 const innerValue = nominalValue[1];
                 const typeName = String(nominalValue[0]).toUpperCase();
+                dataType = typeName;
 
                 if (typeName.includes('BOOLEAN')) {
                     type = PropertyValueType.Boolean;
@@ -216,7 +218,7 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                 }
             }
 
-            return { type, value };
+            return { type, value, ...(dataType ? { dataType } : {}) };
         }
     }
 }
@@ -240,8 +242,8 @@ export function extractPsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     psetIds: number[]
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
-    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
+    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
 
     for (const psetId of psetIds) {
         const psetRef = store.entityIndex.byId.get(psetId);
@@ -258,7 +260,7 @@ export function extractPsetsFromIds(
         const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
         const hasProperties = psetAttrs[4];
 
-        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> = [];
+        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
 
         if (Array.isArray(hasProperties)) {
             for (const propRef of hasProperties) {
@@ -275,12 +277,13 @@ export function extractPsetsFromIds(
                 if (!propName) continue;
 
                 const parsed = parsePropertyValue(propEntity);
-                const entry: { name: string; type: number; value: PropertyValue; values?: string[] } = {
+                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
                     name: propName,
                     type: parsed.type,
                     value: parsed.value,
                 };
                 if (parsed.values) entry.values = parsed.values;
+                if (parsed.dataType) entry.dataType = parsed.dataType;
                 properties.push(entry);
             }
         }

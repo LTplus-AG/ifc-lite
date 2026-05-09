@@ -470,6 +470,14 @@ export interface IFCDataAccessor {
    * name. Returns `undefined` when the entity has no predefined type.
    */
   getPredefinedTypeRaw?(expressId: number): string | undefined;
+  /**
+   * Get the names of every attribute defined on the entity (its IFC
+   * schema-defined attribute names, including inherited ones). Used by
+   * the attribute-facet checker when the IDS uses a pattern or
+   * enumeration on `<name>` so the check can iterate every matching
+   * candidate, not just the small list of standard attribute names.
+   */
+  getAttributeNames?(expressId: number): string[];
   /** Get all entity IDs of a specific type */
   getEntitiesByType(typeName: string): number[];
   /** Get all entity IDs */

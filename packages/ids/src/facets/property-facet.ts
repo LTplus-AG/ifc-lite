@@ -61,27 +61,46 @@ export function checkPropertyFacet(
     };
   }
 
-  // Check each matching property set for the property
-  // Track the most specific failure so we can return it instead of a generic PROPERTY_MISSING
-  let lastFailure: FacetCheckResult | undefined;
+  // Per IDS spec, when the property-set baseName matches multiple sets
+  // (pattern / enumeration cases), ALL of them must satisfy the
+  // requirement. A single-set match collapses to the same iteration
+  // with one element, so the semantics are uniform.
+  let lastPass: FacetCheckResult | undefined;
+  let firstFailure: FacetCheckResult | undefined;
 
   for (const pset of matchingPsets) {
     const result = checkPropertyInPset(facet, pset);
     if (result.passed) {
-      return result;
+      lastPass = result;
+      continue;
     }
-    // Keep the most specific failure (value/datatype mismatch over property-missing)
-    if (
-      !lastFailure ||
-      (result.failure?.type !== 'PROPERTY_MISSING' && lastFailure.failure?.type === 'PROPERTY_MISSING')
+    if (!firstFailure) {
+      firstFailure = result;
+    } else if (
+      firstFailure.failure?.type === 'PROPERTY_MISSING' &&
+      result.failure?.type !== 'PROPERTY_MISSING'
     ) {
-      lastFailure = result;
+      // Prefer the more specific failure for reporting.
+      firstFailure = result;
     }
   }
 
-  // Return the most specific failure if we have one (e.g., value or datatype mismatch)
-  if (lastFailure && lastFailure.failure?.type !== 'PROPERTY_MISSING') {
-    return lastFailure;
+  if (firstFailure) {
+    if (firstFailure.failure?.type !== 'PROPERTY_MISSING') {
+      return firstFailure;
+    }
+    // Only PROPERTY_MISSING failures with no passing pset → fall
+    // through to the generic missing-property error below so the
+    // available-property list reflects every pset we checked.
+    if (!lastPass) {
+      // proceed to PROPERTY_MISSING fallthrough below
+    } else {
+      // Some psets passed and some are missing the property —
+      // iteration must report the missing-pset failure.
+      return firstFailure;
+    }
+  } else if (lastPass) {
+    return lastPass;
   }
 
   // Property not found in any matching pset

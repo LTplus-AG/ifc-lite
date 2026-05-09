@@ -38,6 +38,7 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractTypeEntityOwnProperties,
+  extractTypePropertiesOnDemand,
   extractMaterialsOnDemand,
   extractClassificationsOnDemand,
 } from '../packages/parser/dist/index.js';
@@ -156,19 +157,30 @@ function createDataAccessor(dataStore) {
       return undefined;
     },
     getEntityName(expressId) {
+      // Distinguish "slot truly absent" (`undefined`) from "slot
+      // explicitly empty" (`''`) — the IDS optional-attribute fixtures
+      // hinge on it. The columnar `entities.getName` shim returns `''`
+      // when either is the case, so we round-trip through the
+      // attribute extractor to recover the explicit empty string.
+      const fromAttr = findAttribute(dataStore, expressId, 'Name');
+      if (fromAttr !== undefined) return fromAttr;
       const n = dataStore.entities?.getName?.(expressId);
-      if (n) return n;
-      return findAttribute(dataStore, expressId, 'Name');
+      return n || undefined;
     },
     getGlobalId(expressId) {
+      const fromAttr = findAttribute(dataStore, expressId, 'GlobalId');
+      if (fromAttr !== undefined) return fromAttr;
       const g = dataStore.entities?.getGlobalId?.(expressId);
-      if (g) return g;
-      return findAttribute(dataStore, expressId, 'GlobalId');
+      return g || undefined;
     },
     getDescription(expressId) {
+      const fromAttr = findAttribute(dataStore, expressId, 'Description');
+      if (fromAttr !== undefined) return fromAttr;
       const d = dataStore.entities?.getDescription?.(expressId);
-      if (d) return d;
-      return findAttribute(dataStore, expressId, 'Description');
+      return d || undefined;
+    },
+    getAttributeNames(expressId) {
+      return extractAllEntityAttributes(dataStore, expressId).map((a) => a.name);
     },
     getPredefinedTypeRaw(expressId) {
       const allAttrs = extractAllEntityAttributes(dataStore, expressId);
@@ -378,7 +390,10 @@ function collectAllPropertySets(dataStore, expressId) {
         properties: (pset.properties || []).map((p) => ({
           name: p.name,
           value: Array.isArray(p.value) ? JSON.stringify(p.value) : p.value,
-          dataType: idsDataTypeForProperty(p.type),
+          // Prefer the IFC-declared measure name (IFCDATE, IFCBOOLEAN, …)
+          // when the parser surfaces it, otherwise infer from the
+          // shape-only `PropertyValueType` enum.
+          dataType: p.dataType || idsDataTypeForProperty(p.type),
           ...(Array.isArray(p.values) && p.values.length > 0
             ? { values: p.values }
             : {}),
@@ -400,6 +415,32 @@ function collectAllPropertySets(dataStore, expressId) {
           name: q.name,
           value: q.value,
           dataType: idsDataTypeForQuantity(q.type),
+        })),
+      });
+    }
+  }
+  // Inherit property sets from the IfcRelDefinesByType target — per
+  // IDS spec the instance and its type share property sets, so a
+  // property assigned only on the IfcWallType should still satisfy a
+  // requirement against the IfcWall instance. Apply unconditionally
+  // (instances may carry their own psets _and_ inherit from the type).
+  const inherited = extractTypePropertiesOnDemand(dataStore, expressId);
+  if (inherited && inherited.properties && inherited.properties.length > 0) {
+    const seen = new Set(out.map((p) => p.name));
+    for (const pset of inherited.properties) {
+      if (seen.has(pset.name)) continue;
+      out.push({
+        name: pset.name,
+        properties: (pset.properties || []).map((p) => ({
+          name: p.name,
+          value: Array.isArray(p.value) ? JSON.stringify(p.value) : p.value,
+          // Prefer the IFC-declared measure name (IFCDATE, IFCBOOLEAN, …)
+          // when the parser surfaces it, otherwise infer from the
+          // shape-only `PropertyValueType` enum.
+          dataType: p.dataType || idsDataTypeForProperty(p.type),
+          ...(Array.isArray(p.values) && p.values.length > 0
+            ? { values: p.values }
+            : {}),
         })),
       });
     }

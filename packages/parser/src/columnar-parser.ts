@@ -637,7 +637,7 @@ export class ColumnarParser {
     extractPropertiesOnDemand(
         store: IfcDataStore,
         entityId: number
-    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
+    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
         // Use on-demand extraction if map is available (preferred for single-entity access)
         if (!store.onDemandPropertyMap || !store.source?.length) {
             // Fallback to pre-computed property table (e.g., server-parsed data)
@@ -650,7 +650,7 @@ export class ColumnarParser {
         }
 
         const extractor = new EntityExtractor(store.source);
-        const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
+        const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
 
         for (const psetId of psetIds) {
             const psetRef = getEntityRefFromStore(store, psetId);
@@ -664,7 +664,7 @@ export class ColumnarParser {
             const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
             const hasProperties = psetAttrs[4];
 
-            const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> = [];
+            const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
 
             if (Array.isArray(hasProperties)) {
                 for (const propRef of hasProperties) {
@@ -681,12 +681,13 @@ export class ColumnarParser {
                     if (!propName) continue;
 
                     const parsed = parsePropertyValue(propEntity);
-                    const entry: { name: string; type: number; value: PropertyValue; values?: string[] } = {
+                    const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
                         name: propName,
                         type: parsed.type,
                         value: parsed.value,
                     };
                     if (parsed.values) entry.values = parsed.values;
+                    if (parsed.dataType) entry.dataType = parsed.dataType;
                     properties.push(entry);
                 }
             }
@@ -867,11 +868,17 @@ export function extractAllEntityAttributes(
         const raw = attrs[i];
         // STEP `$` (unset) and `*` (derived) deserialize as null /
         // undefined and must be skipped. Strings are emitted with
-        // `.ENUM.` markers stripped. Numbers and booleans pass
-        // through unchanged so IDS attribute checks can see e.g.
-        // `CountValue = 0` as a present value.
+        // `.ENUM.` markers stripped. Empty strings are preserved so
+        // IDS optional-attribute checks can distinguish "slot truly
+        // absent" from "slot explicitly empty". Numbers and booleans
+        // pass through unchanged so e.g. `CountValue = 0` reads as
+        // present.
         if (typeof raw === 'string') {
-            if (!raw) continue;
+            // STEP logical-unknown markers (`.U.`, `.X.`) read as
+            // "no value" per IDS spec — they fail any attribute
+            // check, including a bare existence check, so don't
+            // surface them as if the slot were populated.
+            if (raw === '.U.' || raw === '.X.') continue;
             const display = raw.startsWith('.') && raw.endsWith('.')
                 ? raw.slice(1, -1)
                 : raw;

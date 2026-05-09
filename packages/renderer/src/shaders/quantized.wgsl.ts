@@ -165,32 +165,96 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     }
   }
 
-  let N = normalize(in.normal);
-  let sun = normalize(vec3<f32>(0.5, 1.0, 0.3));
-  let fill = normalize(vec3<f32>(-0.5, 0.3, -0.3));
-  let NdotL = abs(dot(N, sun));
-  let NdotF = abs(dot(N, fill));
-  let ambient = vec3<f32>(0.18);
-  var color = in.color.rgb * (ambient + NdotL * 0.55 + NdotF * 0.15);
+  // Normal — fall back to flat normal when the vertex normal is degenerate.
+  // dpdx/dpdy must be called outside non-uniform control flow (WGSL spec),
+  // so compute the flat normal unconditionally and select below.
+  let faceN = cross(dpdx(in.worldPos), dpdy(in.worldPos));
+  var N = in.normal;
+  let nLen2 = dot(N, N);
+  if (nLen2 < 0.0001) {
+    let fLen2 = dot(faceN, faceN);
+    N = select(vec3<f32>(0.0, 1.0, 0.0), faceN * inverseSqrt(fLen2), fLen2 > 1e-10);
+  } else {
+    N = N * inverseSqrt(nLen2);
+  }
+
+  // Lighting — three-source rig matching main.wgsl.ts: directional sun,
+  // softer fill, narrow rim. Two-sided diffuse so I-beam channels stay lit.
+  let sunLight = normalize(vec3<f32>(0.5, 1.0, 0.3));
+  let fillLight = normalize(vec3<f32>(-0.5, 0.3, -0.3));
+  let rimLight = normalize(vec3<f32>(0.0, 0.2, -1.0));
+
+  let skyColor = vec3<f32>(0.3, 0.35, 0.4);
+  let groundColor = vec3<f32>(0.15, 0.1, 0.08);
+  let hemisphereFactor = N.y * 0.5 + 0.5;
+  let ambient = mix(groundColor, skyColor, hemisphereFactor) * 0.25;
+
+  let NdotL = abs(dot(N, sunLight));
+  let wrap = 0.3;
+  let diffuseSun = max((NdotL + wrap) / (1.0 + wrap), 0.0) * 0.55;
+  let NdotFill = abs(dot(N, fillLight));
+  let diffuseFill = NdotFill * 0.15;
+  let NdotRim = max(dot(N, rimLight), 0.0);
+  let rim = pow(NdotRim, 4.0) * 0.15;
+
+  var baseColor = in.color.rgb;
+  let baseGray = dot(baseColor, vec3<f32>(0.299, 0.587, 0.114));
+  let baseSaturation = length(baseColor - vec3<f32>(baseGray)) / max(baseGray, 0.001);
+  let isWhiteish = 1.0 - smoothstep(0.0, 0.3, baseSaturation);
+  baseColor = mix(baseColor, baseColor * 0.7, isWhiteish * 0.4);
+
+  var color = baseColor * (ambient + diffuseSun + diffuseFill + rim);
 
   let isSelected = (in.instanceFlags & 2u) == 2u;
   let isGhost = (in.instanceFlags & 4u) == 4u;
+
+  // Selection highlight: blue glow + fresnel ring.
   if (isSelected) {
-    color = mix(color, vec3<f32>(0.3, 0.6, 1.0), 0.4);
-  }
-  var alpha = in.color.a;
-  if (isGhost) {
-    alpha = alpha * 0.25;
+    let V_sel = normalize(-in.worldPos);
+    let NdotV_sel = max(dot(N, V_sel), 0.0);
+    let fresnel_sel = pow(1.0 - NdotV_sel, 2.0);
+    let highlightColor = vec3<f32>(0.3, 0.6, 1.0);
+    color = mix(color, highlightColor, fresnel_sel * 0.5 + 0.2);
   }
 
-  // ACES filmic tone mapping (matches main pipeline).
+  // Glass fresnel: only for transparent (alpha < 0.99) materials, never for
+  // selected (the highlight already owns the rim) or ghosted instances.
+  var finalAlpha = select(in.color.a, 1.0, isSelected);
+  let isGlass = finalAlpha < 0.99 && !isSelected && !isGhost;
+  if (isGlass) {
+    let V_g = normalize(-in.worldPos);
+    let NdotV_g = max(dot(N, V_g), 0.0);
+    let fresnel_g = pow(1.0 - NdotV_g, 1.5);
+    let reflectionTint = vec3<f32>(0.92, 0.96, 1.0);
+    color = mix(color, color * reflectionTint, fresnel_g * 0.6);
+    color = color + vec3<f32>(fresnel_g * 0.12);
+    let edgeGray = dot(color, vec3<f32>(0.299, 0.587, 0.114));
+    color = mix(color, vec3<f32>(edgeGray), fresnel_g * 0.25);
+    finalAlpha = finalAlpha * 0.7;
+  }
+
+  if (isGhost) {
+    finalAlpha = finalAlpha * 0.25;
+  }
+
+  // Exposure + contrast + saturation, exactly mirroring main.wgsl.ts.
+  color = color * 0.85;
+  color = (color - 0.5) * 1.15 + 0.5;
+  color = max(color, vec3<f32>(0.0));
+  let postGray = dot(color, vec3<f32>(0.299, 0.587, 0.114));
+  let satBoost = mix(1.4, 1.1, isWhiteish);
+  color = mix(vec3<f32>(postGray), color, satBoost);
+
+  // ACES filmic tone mapping.
   let aT = 2.51; let bT = 0.03; let cT = 2.43; let dT = 0.59; let eT = 0.14;
   color = clamp((color * (aT * color + bT)) / (color * (cT * color + dT) + eT),
                 vec3<f32>(0.0), vec3<f32>(1.0));
+
+  // Gamma correction.
   color = pow(color, vec3<f32>(1.0 / 2.2));
 
   var out: FragmentOutput;
-  out.color = vec4<f32>(color, alpha);
+  out.color = vec4<f32>(color, finalAlpha);
   out.objectIdEncoded = encodeId24(in.expressId);
   return out;
 }

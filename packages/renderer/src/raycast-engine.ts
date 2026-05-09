@@ -14,6 +14,7 @@ import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, ty
 import { BVH } from './bvh.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions } from './types.js';
+import type { QuantizedRaycaster } from './quantized-raycaster.js';
 
 export class RaycastEngine {
     private camera: Camera;
@@ -22,6 +23,13 @@ export class RaycastEngine {
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
     private bvh: BVH;
+    /**
+     * Quantised-scene raycaster, set by `Renderer.loadQuantizedScene`. When
+     * non-null, `raycastScene()` consults it first; the legacy
+     * `MeshData[]`-based path remains as a fallback for non-quantised content
+     * (point clouds, headless tooling).
+     */
+    private quantizedRaycaster: QuantizedRaycaster | null = null;
 
     // BVH cache
     private bvhCache: {
@@ -40,6 +48,16 @@ export class RaycastEngine {
         this.raycaster = new Raycaster();
         this.snapDetector = new SnapDetector();
         this.bvh = new BVH();
+    }
+
+    /**
+     * Attach (or detach) a quantised-scene raycaster. Called by the renderer
+     * when `loadQuantizedScene` runs / unloads. The quantised raycaster reads
+     * vertex data on demand (lazy dequantisation) and operates on the same
+     * `Intersection` shape, so callers don't need to branch.
+     */
+    setQuantizedRaycaster(raycaster: QuantizedRaycaster | null): void {
+        this.quantizedRaycaster = raycaster;
     }
 
     /**
@@ -155,6 +173,20 @@ export class RaycastEngine {
             // Create ray from screen coordinates
             const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
 
+            // Quantised path takes priority when a scene is loaded — the
+            // legacy `Scene.getMeshes()` is empty in that mode (the loader
+            // stores `geometryResult.meshes = []` deliberately), so the
+            // fallback below would return `null` for every click.
+            if (this.quantizedRaycaster) {
+                const intersection = this.quantizedRaycaster.raycast(ray);
+                if (!intersection) return null;
+                // Snap detection across quantised geometry needs lazy
+                // dequantisation of nearby instances; not implemented yet.
+                // Return the hit without snap so measurement / placement
+                // tools at least get a precise 3-D point.
+                return { intersection };
+            }
+
             // Get all mesh data from scene
             const allMeshData = this.collectVisibleMeshData(options);
 
@@ -234,6 +266,27 @@ export class RaycastEngine {
 
             // Create ray from screen coordinates
             const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
+
+            // Quantised path: skip BVH/MeshData[] entirely; lazy dequantise
+            // only the triangles the ray actually hits. Snap edge-lock can't
+            // run without `MeshData[]` yet, so we report no edge — magnetic
+            // dragging degrades to plain raycast for now.
+            if (this.quantizedRaycaster) {
+                const intersection = this.quantizedRaycaster.raycast(ray);
+                return {
+                    intersection,
+                    snapTarget: null,
+                    edgeLock: {
+                        edge: null,
+                        meshExpressId: null,
+                        edgeT: 0,
+                        shouldLock: false,
+                        shouldRelease: true,
+                        isCorner: false,
+                        cornerValence: 0,
+                    },
+                };
+            }
 
             // Get all mesh data from scene
             const allMeshData = this.collectVisibleMeshData(options);

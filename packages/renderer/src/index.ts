@@ -89,6 +89,7 @@ import {
     type QuantizedSectionPlane,
 } from './quantized-pipeline.js';
 import { QuantizedSceneBuffers } from './quantized-scene-buffers.js';
+import { QuantizedRaycaster } from './quantized-raycaster.js';
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
 import { Picker } from './picker.js';
@@ -151,6 +152,15 @@ function differenceSet(a: ReadonlySet<number>, b: ReadonlySet<number>): Set<numb
     return out;
 }
 
+/** Pack a `[r, g, b, a]` floats-in-[0,1] tuple to a little-endian rgba8 u32. */
+function packRgba8Floats(c: readonly [number, number, number, number]): number {
+    const r = Math.round(Math.max(0, Math.min(1, c[0])) * 255) & 0xff;
+    const g = Math.round(Math.max(0, Math.min(1, c[1])) * 255) & 0xff;
+    const b = Math.round(Math.max(0, Math.min(1, c[2])) * 255) & 0xff;
+    const a = Math.round(Math.max(0, Math.min(1, c[3])) * 255) & 0xff;
+    return (a << 24) | (b << 16) | (g << 8) | r;
+}
+
 type ResolvedVisualEnhancement = {
     enabled: boolean;
     edgeContrast: {
@@ -188,6 +198,14 @@ export class Renderer {
     private quantizedPipeline: QuantizedRenderPipeline | null = null;
     private quantizedBuffers: QuantizedSceneBuffers | null = null;
     private quantizedBindGroup: GPUBindGroup | null = null;
+    /**
+     * Separate post-processor instance for the quantised path. The legacy
+     * `postProcessor` is configured for the MSAA pipeline; the quantised
+     * pipeline is single-sampled, so binding its textures to the MSAA-aware
+     * post-processor would fail WebGPU validation. This sibling is single-
+     * sampled and shares the same shader logic — contact + separation lines.
+     */
+    private quantizedPostProcessor: PostProcessor | null = null;
     /** Last applied selected expressId set, so per-frame diffing can skip patches. */
     private quantizedSelectionApplied: Set<number> | null = null;
     /** Last applied hidden expressId set. */
@@ -281,6 +299,14 @@ export class Renderer {
         this.pipeline = new RenderPipeline(this.device, width, height);
         this.instancedPipeline = new InstancedRenderPipeline(this.device, width, height);
         this.quantizedPipeline = new QuantizedRenderPipeline(this.device, width, height);
+        // Sibling post-processor configured for sampleCount=1 to match the
+        // quantised pipeline (legacy postProcessor is MSAA=4 and would reject
+        // single-sampled bindings).
+        this.quantizedPostProcessor = new PostProcessor(this.device, {
+            enableContactShading: true,
+            contactRadius: 1.0,
+            contactIntensity: 0.3,
+        }, 1);
         this.picker = new Picker(this.device, width, height);
         console.log('[quantized] renderer initialised quantised pipeline', { width, height });
         this.sectionPlaneRenderer = new SectionPlaneRenderer(
@@ -566,6 +592,7 @@ export class Renderer {
             this.quantizedSelectionApplied = null;
             this.quantizedHiddenApplied = null;
             this.quantizedIsolatedApplied = null;
+            this.raycastEngine.setQuantizedRaycaster(null);
         }
 
         if (snapshot.meshCount === 0 || snapshot.instanceCount === 0) {
@@ -592,6 +619,15 @@ export class Renderer {
             console.error('[quantized] QuantizedSceneBuffers construction failed', err);
             throw err;
         }
+
+        // Wire CPU-side raycaster so RaycastEngine.raycastScene() works on
+        // quantised scenes (legacy `Scene.getMeshes()` is empty by design).
+        // The raycaster lazy-dequantises triangles only for instances whose
+        // world AABB the ray intersects; first-call cost is one corner-
+        // transform per instance to seed the broad-phase, all subsequent
+        // casts are O(candidates × triangles).
+        const raycaster = new QuantizedRaycaster(this.quantizedBuffers, snapshot);
+        this.raycastEngine.setQuantizedRaycaster(raycaster);
 
         this.quantizedBindGroup = this.quantizedPipeline.createBindGroup(
             this.quantizedBuffers.getMeshUniformBuffer(),
@@ -669,6 +705,72 @@ export class Renderer {
     hasQuantizedScene(): boolean {
         return this.quantizedBuffers !== null && this.quantizedBuffers.instanceCount > 0;
     }
+
+    /**
+     * Apply per-element colour overrides (lens colouring, IDS validation
+     * overlays, scheduling animations). On the quantised path each override
+     * becomes a 4-byte SSBO write to the matching instance's `override_rgba8`
+     * field — no batch rebuild required. On the legacy path the call routes
+     * to `Scene.setColorOverrides` which builds overlay batches.
+     */
+    setColorOverrides(overrides: Map<number, [number, number, number, number]>): void {
+        if (this.quantizedBuffers) {
+            void this.scene; // intentionally bypass legacy path when quantised is active
+
+            const buffers = this.quantizedBuffers;
+            // First, clear any previous overrides that are no longer present
+            // by walking the previously applied set; track applied separately
+            // so we don't have to scan all instances every call.
+            const prev = this.quantizedColorOverridesApplied;
+            const desired = overrides;
+
+            // Clear previous overrides whose ids are no longer in `desired`.
+            if (prev) {
+                for (const id of prev) {
+                    if (!desired.has(id)) {
+                        const idx = buffers.findInstanceIndexByExpressId(id);
+                        if (idx >= 0) buffers.setInstanceOverride(idx, 0);
+                    }
+                }
+            }
+
+            // Apply / refresh every desired override.
+            const applied = new Set<number>();
+            for (const [id, rgba] of desired) {
+                const idx = buffers.findInstanceIndexByExpressId(id);
+                if (idx < 0) continue;
+                const packed = packRgba8Floats(rgba);
+                buffers.setInstanceOverride(idx, packed);
+                applied.add(id);
+            }
+            this.quantizedColorOverridesApplied = applied;
+            this.requestRender();
+            return;
+        }
+        // Legacy path: delegate to Scene. Pipeline + device must be available
+        // since callers are expected to invoke this only after init().
+        if (this.pipeline) {
+            this.scene.setColorOverrides(overrides, this.device.getDevice(), this.pipeline);
+            this.requestRender();
+        }
+    }
+
+    /** Clear all per-instance colour overrides applied via `setColorOverrides`. */
+    clearColorOverrides(): void {
+        if (this.quantizedBuffers && this.quantizedColorOverridesApplied) {
+            for (const id of this.quantizedColorOverridesApplied) {
+                const idx = this.quantizedBuffers.findInstanceIndexByExpressId(id);
+                if (idx >= 0) this.quantizedBuffers.setInstanceOverride(idx, 0);
+            }
+            this.quantizedColorOverridesApplied = null;
+            this.requestRender();
+            return;
+        }
+        this.scene.clearColorOverrides();
+        this.requestRender();
+    }
+
+    private quantizedColorOverridesApplied: Set<number> | null = null;
 
     /**
      * Compute world-space model AABB by transforming each mesh's local AABB
@@ -910,6 +1012,44 @@ export class Renderer {
             drawCalls++;
         }
         pass.end();
+
+        // ── Post-processing pass: contact shading + separation lines ──
+        // Same pass the legacy pipeline runs at index.ts:2441. Reads the
+        // quantised pipeline's depth-only view and objectId target, overlays
+        // contact occlusion + element-boundary outlines on the swapchain.
+        // Skipped during interaction (mouse drag) for frame-rate.
+        const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
+        const interacting = options.isInteracting === true;
+        const contactEnabled = !interacting && visualEnhancement.enabled
+            && visualEnhancement.contactShading.quality !== 'off';
+        const separationEnabled = !interacting && visualEnhancement.enabled
+            && visualEnhancement.separationLines.enabled
+            && visualEnhancement.separationLines.quality !== 'off';
+        if (this.quantizedPostProcessor && (contactEnabled || separationEnabled)) {
+            this.quantizedPostProcessor.updateOptions({
+                enableContactShading: contactEnabled,
+                contactRadius: visualEnhancement.contactShading.radius,
+                contactIntensity: visualEnhancement.contactShading.intensity,
+            });
+            this.quantizedPostProcessor.apply(encoder, {
+                targetView: colorView,
+                depthView: this.quantizedPipeline.getDepthOnlyTextureView(),
+                objectIdView: this.quantizedPipeline.getObjectIdTextureView(),
+                contactQuality: contactEnabled && visualEnhancement.contactShading.quality === 'high'
+                    ? 'high' : 'low',
+                radius: Math.min(3.0, Math.max(1.0, visualEnhancement.contactShading.radius)),
+                intensity: contactEnabled
+                    ? Math.min(1.0, Math.max(0.0, visualEnhancement.contactShading.intensity))
+                    : 0.0,
+                separationQuality: visualEnhancement.separationLines.quality === 'high' ? 'high' : 'low',
+                separationRadius: Math.min(2.0, Math.max(1.0, visualEnhancement.separationLines.radius)),
+                separationIntensity: separationEnabled
+                    ? Math.min(1.0, Math.max(0.0, visualEnhancement.separationLines.intensity))
+                    : 0.0,
+                enableSeparationLines: separationEnabled,
+            });
+        }
+
         device.queue.submit([encoder.finish()]);
 
         if (!this._loggedQuantizedFirstDraw) {

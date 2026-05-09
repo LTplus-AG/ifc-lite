@@ -60,6 +60,13 @@ export class QuantizedRenderPipeline {
   private readonly bindGroupLayout: GPUBindGroupLayout;
   private depthTexture: GPUTexture;
   private depthTextureView: GPUTextureView;
+  /**
+   * Depth-only sub-view of the same texture (`aspect: 'depth-only'`).
+   * Required by the post-processor's contact / separation pass — depth+stencil
+   * textures cannot be sampled as `texture_depth_*` with the default 'all'
+   * aspect.
+   */
+  private depthOnlyTextureView: GPUTextureView;
   private objectIdTexture: GPUTexture;
   private objectIdTextureView: GPUTextureView;
   private readonly colorFormat: GPUTextureFormat;
@@ -73,9 +80,12 @@ export class QuantizedRenderPipeline {
     this.depthTexture = this.device.createTexture({
       size: { width, height },
       format: this.depthFormat,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      // TEXTURE_BINDING so the post-processor can sample the depth as
+      // `texture_depth_2d` for contact-shading / separation-line passes.
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
     this.depthTextureView = this.depthTexture.createView();
+    this.depthOnlyTextureView = this.depthTexture.createView({ aspect: 'depth-only' });
     this.objectIdTexture = this.device.createTexture({
       size: { width, height },
       format: this.objectIdFormat,
@@ -166,9 +176,10 @@ export class QuantizedRenderPipeline {
     this.depthTexture = this.device.createTexture({
       size: { width: w, height: h },
       format: this.depthFormat,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
     this.depthTextureView = this.depthTexture.createView();
+    this.depthOnlyTextureView = this.depthTexture.createView({ aspect: 'depth-only' });
     this.objectIdTexture.destroy();
     this.objectIdTexture = this.device.createTexture({
       size: { width: w, height: h },
@@ -212,6 +223,11 @@ export class QuantizedRenderPipeline {
 
   getDepthTextureView(): GPUTextureView {
     return this.depthTextureView;
+  }
+
+  /** Depth-only view (aspect: 'depth-only') for post-processor sampling. */
+  getDepthOnlyTextureView(): GPUTextureView {
+    return this.depthOnlyTextureView;
   }
 
   /** Scratch objectId render target written during the main draw. */

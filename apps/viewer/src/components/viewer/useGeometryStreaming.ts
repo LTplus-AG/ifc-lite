@@ -402,14 +402,15 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     const device = renderer.getGPUDevice();
     const pipeline = renderer.getPipeline();
-    const scene = renderer.getScene();
     if (device && pipeline) {
+      // `Renderer.setColorOverrides` dispatches: SSBO patches on the
+      // quantised path, Scene-batch builds on the legacy path. The viewer
+      // doesn't need to know which is active.
       if (pendingColorUpdates.size === 0) {
-        scene.clearColorOverrides();
+        renderer.clearColorOverrides();
       } else {
-        scene.setColorOverrides(pendingColorUpdates, device, pipeline);
+        renderer.setColorOverrides(pendingColorUpdates);
       }
-      renderer.requestRender();
       clearPendingColorUpdates();
     }
   }, [pendingColorUpdates, isInitialized, clearPendingColorUpdates]);

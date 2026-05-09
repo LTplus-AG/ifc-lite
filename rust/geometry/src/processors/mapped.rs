@@ -84,6 +84,12 @@ impl GeometryProcessor for MappedItemProcessor {
                     processor.process(&item, decoder, schema)?
                 }
                 IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
+                    // TODO(sprint-2): the transient BooleanClippingProcessor
+                    // here drops its `BoolFailure` log when it goes out of
+                    // scope, so failures inside `IfcMappedItem` -> boolean
+                    // chains don't reach `GeometryRouter::take_csg_failures`.
+                    // Plumb when the BooleanClippingProcessor moves into the
+                    // router's processor registry (post-Manifold migration).
                     let processor = BooleanClippingProcessor::new();
                     processor.process(&item, decoder, schema)?
                 }

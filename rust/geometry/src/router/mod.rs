@@ -24,7 +24,7 @@ use crate::processors::{
     PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor, ShellBasedSurfaceModelProcessor,
     SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
-use crate::{Mesh, Result};
+use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::FxHashMap;
@@ -73,6 +73,11 @@ pub struct GeometryRouter {
     /// and `process_element_with_submeshes_and_voids` first attempt to slice
     /// single-solid elements by their `IfcMaterialLayerSetUsage` buildup.
     material_layer_index: Option<Arc<MaterialLayerIndex>>,
+    /// Boolean / CSG failures attributed by IFC product express ID. Populated
+    /// by the void-subtraction path (`apply_void_context`) when the BSP
+    /// kernel falls back to the un-cut host. Drainable via
+    /// [`Self::take_csg_failures`].
+    csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
 }
 
 impl GeometryRouter {
@@ -89,6 +94,7 @@ impl GeometryRouter {
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
             material_layer_index: None,
+            csg_failures: RefCell::new(FxHashMap::default()),
         };
 
         // Register default P0 processors
@@ -306,6 +312,50 @@ impl GeometryRouter {
     /// Get schema reference
     pub fn schema(&self) -> &IfcSchema {
         &self.schema
+    }
+
+    /// Drain the boolean / CSG failures accumulated by the void-subtraction
+    /// path since the router was created (or the last `take_csg_failures`
+    /// call). Failures are keyed by IFC product express ID — the element
+    /// whose opening / clip operation tripped a fallback.
+    ///
+    /// Only the router-driven CSG path (multi-layer wall sub-meshes,
+    /// single-mesh `apply_voids_to_mesh`) is currently attributed. Standalone
+    /// `IfcBooleanResult` chains processed via the mapped-item path don't
+    /// yet flow their failures here.
+    pub fn take_csg_failures(&self) -> FxHashMap<u32, Vec<BoolFailure>> {
+        std::mem::take(&mut *self.csg_failures.borrow_mut())
+    }
+
+    /// Number of products with at least one recorded CSG failure.
+    pub fn csg_failure_product_count(&self) -> usize {
+        self.csg_failures.borrow().len()
+    }
+
+    /// Total number of CSG failures across all products.
+    pub fn csg_failure_total(&self) -> usize {
+        self.csg_failures
+            .borrow()
+            .values()
+            .map(|v| v.len())
+            .sum()
+    }
+
+    /// Internal: record a batch of failures against a product. Existing
+    /// entries for the same product are appended to.
+    pub(crate) fn record_csg_failures(&self, product_id: u32, failures: Vec<BoolFailure>) {
+        if failures.is_empty() {
+            return;
+        }
+        let attributed: Vec<BoolFailure> = failures
+            .into_iter()
+            .map(|f| f.with_product_id(product_id))
+            .collect();
+        self.csg_failures
+            .borrow_mut()
+            .entry(product_id)
+            .or_default()
+            .extend(attributed);
     }
 }
 

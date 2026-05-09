@@ -717,7 +717,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Mesh {
         let ctx = self.build_void_context(element, opening_ids, decoder);
-        self.apply_void_context(mesh, &ctx)
+        self.apply_void_context(mesh, &ctx, element.id)
     }
 
     /// Classify openings and extract clipping planes for an element.
@@ -778,7 +778,19 @@ impl GeometryRouter {
     /// batched rectangular clip, then applies the CSG and clipping-plane
     /// passes. All the classification work has already been done in
     /// [`GeometryRouter::build_void_context`].
-    pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext) -> Mesh {
+    ///
+    /// `element_id` is the IFC product express ID of the host element. Any
+    /// `BoolFailure` recorded by the inner CSG kernel is attributed to that
+    /// product and stored on the router (drainable via
+    /// [`GeometryRouter::take_csg_failures`]). The router's failure log is
+    /// the only path failures reach the caller; `apply_void_context` itself
+    /// always returns the (possibly un-cut) mesh.
+    pub(super) fn apply_void_context(
+        &self,
+        mesh: Mesh,
+        ctx: &VoidContext,
+        element_id: u32,
+    ) -> Mesh {
         if ctx.is_noop() {
             return mesh;
         }
@@ -925,6 +937,15 @@ impl GeometryRouter {
             }
         }
 
+        // Drain whatever fallbacks the kernel logged during this element's
+        // void / clip pass, attribute them to the host product, and stash on
+        // the router so the caller can surface them (e.g. flagged in a
+        // viewer overlay or asserted in regression tests).
+        let kernel_failures = clipper.take_failures();
+        if !kernel_failures.is_empty() {
+            self.record_csg_failures(element_id, kernel_failures);
+        }
+
         result
     }
 
@@ -975,7 +996,7 @@ impl GeometryRouter {
         let mut voided = SubMeshCollection::new();
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
-            let voided_mesh = self.apply_void_context(sub.mesh, &ctx);
+            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
             if !voided_mesh.is_empty() {
                 voided.sub_meshes.push(SubMesh::new(geometry_id, voided_mesh));
             }

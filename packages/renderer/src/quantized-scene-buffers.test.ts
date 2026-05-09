@@ -319,8 +319,8 @@ describe('QuantizedSceneBuffers', () => {
     buffers.destroy();
     const liveAfter = device.buffers.filter((b) => !b.destroyed).length;
     expect(liveAfter).toBeLessThan(allBefore);
-    // Specifically: vertex + index + meshUniform + instance = 4 buffers we own.
-    expect(allBefore - liveAfter).toBe(4);
+    // Specifically: vertex + index + meshUniform + instance + indirect = 5 buffers we own.
+    expect(allBefore - liveAfter).toBe(5);
   });
 });
 

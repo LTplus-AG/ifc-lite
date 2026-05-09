@@ -180,11 +180,29 @@ export class RaycastEngine {
             if (this.quantizedRaycaster) {
                 const intersection = this.quantizedRaycaster.raycast(ray);
                 if (!intersection) return null;
-                // Snap detection across quantised geometry needs lazy
-                // dequantisation of nearby instances; not implemented yet.
-                // Return the hit without snap so measurement / placement
-                // tools at least get a precise 3-D point.
-                return { intersection };
+                // Snap detection: materialise the few instances whose AABB
+                // the ray passed through (broad-phase result is already
+                // computed inside the raycaster) and feed them to the snap
+                // detector as legacy MeshData. This restores edge / vertex
+                // / face snap on the quantised path with a cost proportional
+                // to candidates × triangles per instance, not whole-scene.
+                let snapTarget: SnapTarget | undefined;
+                if (options?.snapOptions) {
+                    const cameraPos = this.camera.getPosition();
+                    const cameraFov = this.camera.getFOV();
+                    const candidateMeshes = this.quantizedRaycaster.materializeCandidatesNearRay(ray, 24);
+                    if (candidateMeshes.length > 0) {
+                        snapTarget = this.snapDetector.detectSnapTarget(
+                            ray,
+                            candidateMeshes,
+                            intersection,
+                            { position: cameraPos, fov: cameraFov },
+                            this.canvas.height,
+                            options.snapOptions,
+                        ) || undefined;
+                    }
+                }
+                return { intersection, snap: snapTarget };
             }
 
             // Get all mesh data from scene
@@ -267,25 +285,23 @@ export class RaycastEngine {
             // Create ray from screen coordinates
             const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
 
-            // Quantised path: skip BVH/MeshData[] entirely; lazy dequantise
-            // only the triangles the ray actually hits. Snap edge-lock can't
-            // run without `MeshData[]` yet, so we report no edge — magnetic
-            // dragging degrades to plain raycast for now.
+            // Quantised path: lazy-dequantise candidates near the ray for
+            // the snap detector's edge-lock + magnetic snap behaviour.
             if (this.quantizedRaycaster) {
                 const intersection = this.quantizedRaycaster.raycast(ray);
-                return {
+                const cameraPos = this.camera.getPosition();
+                const cameraFov = this.camera.getFOV();
+                const candidateMeshes = this.quantizedRaycaster.materializeCandidatesNearRay(ray, 24);
+                const result = this.snapDetector.detectMagneticSnap(
+                    ray,
+                    candidateMeshes,
                     intersection,
-                    snapTarget: null,
-                    edgeLock: {
-                        edge: null,
-                        meshExpressId: null,
-                        edgeT: 0,
-                        shouldLock: false,
-                        shouldRelease: true,
-                        isCorner: false,
-                        cornerValence: 0,
-                    },
-                };
+                    { position: cameraPos, fov: cameraFov },
+                    this.canvas.height,
+                    currentEdgeLock,
+                    options?.snapOptions,
+                );
+                return { ...result, intersection };
             }
 
             // Get all mesh data from scene

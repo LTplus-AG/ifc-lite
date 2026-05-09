@@ -18,6 +18,7 @@
 import type { QuantizedSceneSource, QuantizedSceneBuffers, MeshDrawInfo } from './quantized-scene-buffers.js';
 import { QUANTIZED_VERTEX_STRIDE } from './quantized-pipeline.js';
 import type { Intersection, Ray } from './raycaster.js';
+import type { MeshData } from '@ifc-lite/geometry';
 
 const EPSILON = 1e-7;
 const U16_RECIP = 1 / 65535;
@@ -248,6 +249,29 @@ export class QuantizedRaycaster {
       expressId,
       barycentricCoord: { u: bestU, v: bestV, w: bestW },
     };
+  }
+
+  /**
+   * Materialise the closest `maxCandidates` instances along the ray as
+   * world-space `MeshData[]` for the snap detector. Combines broad-phase
+   * AABB triage with `QuantizedSceneBuffers.materializeInstancesAsMeshData`
+   * so callers don't have to plumb the snapshot themselves.
+   */
+  materializeCandidatesNearRay(ray: Ray, maxCandidates = 32): MeshData[] {
+    const candidates = this.candidatesAlongRay(ray);
+    if (candidates.length === 0) return [];
+    const limit = Math.min(maxCandidates, candidates.length);
+    const indices: number[] = new Array(limit);
+    for (let i = 0; i < limit; i++) {
+      indices[i] = candidates[i]!.instance;
+    }
+    const materialized = this.buffers.materializeInstancesAsMeshData(
+      indices,
+      this.vertexData,
+      this.indexData,
+    );
+    // MaterializedMeshData → MeshData (same shape minus optional fields).
+    return materialized as unknown as MeshData[];
   }
 
   /**

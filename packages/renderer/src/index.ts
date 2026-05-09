@@ -206,6 +206,10 @@ export class Renderer {
      * sampled and shares the same shader logic — contact + separation lines.
      */
     private quantizedPostProcessor: PostProcessor | null = null;
+    /** Single-sampled section-plane preview for the quantised pass. */
+    private quantizedSectionPlaneRenderer: SectionPlaneRenderer | null = null;
+    /** Single-sampled 2D-overlay (cap fills + cut lines) for the quantised pass. */
+    private quantizedSection2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     /** Last applied selected expressId set, so per-frame diffing can skip patches. */
     private quantizedSelectionApplied: Set<number> | null = null;
     /** Last applied hidden expressId set. */
@@ -307,6 +311,18 @@ export class Renderer {
             contactRadius: 1.0,
             contactIntensity: 0.3,
         }, 1);
+        // Single-sampled section overlays for the same reason — drawing into
+        // a non-MSAA render pass with an MSAA pipeline is a validation error.
+        this.quantizedSectionPlaneRenderer = new SectionPlaneRenderer(
+            this.device.getDevice(),
+            this.device.getFormat(),
+            1,
+        );
+        this.quantizedSection2DOverlayRenderer = new Section2DOverlayRenderer(
+            this.device.getDevice(),
+            this.device.getFormat(),
+            1,
+        );
         this.picker = new Picker(this.device, width, height);
         console.log('[quantized] renderer initialised quantised pipeline', { width, height });
         this.sectionPlaneRenderer = new SectionPlaneRenderer(
@@ -997,20 +1013,67 @@ export class Renderer {
         pass.setVertexBuffer(0, this.quantizedBuffers.getVertexBuffer());
         pass.setIndexBuffer(this.quantizedBuffers.getIndexBuffer(), 'uint32');
 
+        // Indirect-draw command buffer was pre-baked at scene load — one
+        // 20-byte record per mesh holding (indexCount, instanceCount,
+        // firstIndex, baseVertex, firstInstance). Iterating offsets instead
+        // of repacking JS args each frame is a small CPU win today; the
+        // bigger payoff is that a future compute-shader frustum culler can
+        // patch `instanceCount` to zero for off-screen meshes without any
+        // CPU involvement.
+        const indirectBuffer = this.quantizedBuffers.getIndirectBuffer();
         const draws = this.quantizedBuffers.iterDrawInfos();
         let drawCalls = 0;
-        for (const di of draws) {
+        for (let i = 0; i < draws.length; i++) {
+            const di = draws[i]!;
             if (di.indexCount === 0 || di.instanceCount === 0) continue;
             pass.setBindGroup(0, this.quantizedBindGroup, [di.meshUniformOffset]);
-            pass.drawIndexed(
-                di.indexCount,
-                di.instanceCount,
-                di.indexOffset,
-                di.vertexOffset,
-                0, // instances are addressed via mesh.instanceInfo.x in the shader
-            );
+            pass.drawIndexedIndirect(indirectBuffer, i * 20);
             drawCalls++;
         }
+
+        // Section plane preview + 2D cap overlay — drawn into the same render
+        // pass before pass.end() so the translucent plane and the cap fills
+        // composite correctly with the geometry's depth (writes are unaffected
+        // by the post-processor that runs after pass.end()). Mirrors the
+        // legacy render path at index.ts:2521-2570.
+        if (options.sectionPlane && this.quantizedSectionPlaneRenderer && this.modelBounds) {
+            this.quantizedSectionPlaneRenderer.draw(pass, {
+                axis: options.sectionPlane.axis,
+                position: options.sectionPlane.position,
+                bounds: this.modelBounds,
+                viewProj,
+                isPreview: !options.sectionPlane.enabled,
+                min: options.sectionPlane.min,
+                max: options.sectionPlane.max,
+            });
+
+            if (options.sectionPlane.enabled && this.quantizedSection2DOverlayRenderer?.hasGeometry()) {
+                const o = options.sectionPlane;
+                const showFills = o.showCap !== false;
+                const showOutlines = o.showOutlines !== false;
+                const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
+                this.quantizedSection2DOverlayRenderer.draw(pass, {
+                    axis: o.axis,
+                    position: o.position,
+                    bounds: this.modelBounds,
+                    viewProj,
+                    min: o.min,
+                    max: o.max,
+                    showFills,
+                    showOutlines,
+                    capStyle: showFills ? {
+                        fillColor: style.fillColor,
+                        strokeColor: style.strokeColor,
+                        patternId: HATCH_PATTERN_IDS[style.pattern],
+                        spacingPx: style.spacingPx,
+                        angleRad: style.angleRad,
+                        widthPx: style.widthPx,
+                        secondaryAngleRad: style.secondaryAngleRad,
+                    } : undefined,
+                });
+            }
+        }
+
         pass.end();
 
         // ── Post-processing pass: contact shading + separation lines ──
@@ -2789,6 +2852,10 @@ export class Renderer {
         const planePosition = minVal + (position / 100) * (maxVal - minVal);
 
         this.section2DOverlayRenderer.uploadDrawing(polygons, lines, axis, planePosition, flipped);
+        // Mirror the upload to the single-sampled overlay used by the
+        // quantised render pass; without this the cap fills only appear when
+        // the legacy pipeline is active.
+        this.quantizedSection2DOverlayRenderer?.uploadDrawing(polygons, lines, axis, planePosition, flipped);
     }
 
     /**
@@ -2797,6 +2864,9 @@ export class Renderer {
     clearSection2DOverlay(): void {
         if (this.section2DOverlayRenderer) {
             this.section2DOverlayRenderer.clearGeometry();
+        }
+        if (this.quantizedSection2DOverlayRenderer) {
+            this.quantizedSection2DOverlayRenderer.clearGeometry();
         }
     }
 

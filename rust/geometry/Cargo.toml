@@ -12,7 +12,21 @@ readme = "../../README.md"
 
 [features]
 default = []
-# csg = ["dep:manifold3d"]
+# Use the Manifold (https://github.com/elalish/manifold) C++ kernel for
+# `subtract_mesh` / `union_mesh` / `intersection_mesh` instead of the
+# legacy in-tree BSP port (`bsp_csg.rs`). Removes the 24-polygon operand
+# cap and gives manifold-by-construction output. Off by default while the
+# T1.1 migration (Sprint 2) is in flight; flip to default-on once
+# regression fixtures and bundle-size budget land.
+#
+# Native (Linux/macOS/Windows) only at this gate; WASM support is gated
+# separately by `manifold-csg-wasm-uu` so the bare-WASM provisional path
+# stays opt-in.
+manifold-csg = ["dep:manifold-csg"]
+# Enable Manifold on `wasm32-unknown-unknown` (provisional support per
+# upstream — no exception runtime, no threading, requires LLVM 20+).
+# Implies `manifold-csg`.
+manifold-csg-wasm-uu = ["manifold-csg", "manifold-csg/unstable-wasm-uu"]
 debug_geometry = []
 
 [dependencies]
@@ -40,6 +54,12 @@ smallvec = "1.13"
 
 # Error handling
 thiserror = "1.0"
+
+# Optional Manifold CSG kernel (T1.1). Off by default; see the
+# `manifold-csg` feature above for the activation contract.
+# `default-features = false` drops TBB-backed parallelism, which doesn't
+# work on WASM anyway and isn't required for correctness on native.
+manifold-csg = { version = "0.1", default-features = false, optional = true }
 
 [dev-dependencies]
 approx = "0.5"

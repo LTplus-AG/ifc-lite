@@ -68,10 +68,17 @@
 //! - **Boolean operations**: ~20 entities/sec
 
 pub mod bool2d;
+// Legacy BSP CSG kernel. Unused when `manifold-csg` is enabled; the
+// `#[allow(dead_code)]` keeps the build warning-clean while the migration
+// is in flight. Once the legacy path is removed, drop both the module and
+// the attribute.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
 mod bsp_csg;
 pub mod csg;
 pub mod diagnostics;
 pub mod error;
+#[cfg(feature = "manifold-csg")]
+mod manifold_kernel;
 pub mod extrusion;
 pub mod material_layer_index;
 pub mod mesh;

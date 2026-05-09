@@ -97,8 +97,9 @@ fn subtract_records_empty_operand() {
 }
 
 #[test]
+#[cfg(not(feature = "manifold-csg"))]
 fn subtract_records_operand_too_large() {
-    // Host with 30 triangles overlapping a unit box should trip the
+    // Host with 36 triangles overlapping a unit box trips the legacy
     // MAX_CSG_POLYGONS_PER_MESH = 24 cap.
     let host = three_overlapping_boxes();
     let void = unit_box_at(Point3::new(0.0, 0.0, 0.0));
@@ -121,6 +122,22 @@ fn subtract_records_operand_too_large() {
 }
 
 #[test]
+#[cfg(feature = "manifold-csg")]
+fn subtract_past_legacy_cap_succeeds_under_manifold() {
+    // Same operands as the legacy cap test: 36-triangle host vs unit-box
+    // cutter. With Manifold there is no cap, so the operation must
+    // succeed and record no failure.
+    let host = three_overlapping_boxes();
+    let void = unit_box_at(Point3::new(0.0, 0.0, 0.0));
+    let p = ClippingProcessor::new();
+
+    let result = p.subtract_mesh(&host, &void).expect("subtract_mesh ok");
+    assert!(!result.is_empty(), "Manifold must produce non-empty result past legacy cap");
+    assert_eq!(p.failure_count(), 0, "Manifold path must not record OperandTooLarge");
+}
+
+#[test]
+#[cfg(not(feature = "manifold-csg"))]
 fn union_records_operand_too_large() {
     let a = three_overlapping_boxes();
     let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
@@ -137,6 +154,19 @@ fn union_records_operand_too_large() {
 }
 
 #[test]
+#[cfg(feature = "manifold-csg")]
+fn union_past_legacy_cap_succeeds_under_manifold() {
+    let a = three_overlapping_boxes();
+    let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
+    let p = ClippingProcessor::new();
+
+    let result = p.union_mesh(&a, &b).expect("union_mesh ok");
+    assert!(!result.is_empty());
+    assert_eq!(p.failure_count(), 0, "Manifold union must not record cap failure");
+}
+
+#[test]
+#[cfg(not(feature = "manifold-csg"))]
 fn intersection_records_operand_too_large() {
     let a = three_overlapping_boxes();
     let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
@@ -150,6 +180,23 @@ fn intersection_records_operand_too_large() {
         failures[0].reason,
         BoolFailureReason::OperandTooLarge { .. }
     ));
+}
+
+#[test]
+#[cfg(feature = "manifold-csg")]
+fn intersection_past_legacy_cap_succeeds_under_manifold() {
+    let a = three_overlapping_boxes();
+    let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
+    let p = ClippingProcessor::new();
+
+    let result = p
+        .intersection_mesh(&a, &b)
+        .expect("intersection_mesh ok");
+    assert!(
+        !result.is_empty(),
+        "intersection of overlapping boxes must be non-empty"
+    );
+    assert_eq!(p.failure_count(), 0, "Manifold intersection must not record cap failure");
 }
 
 #[test]

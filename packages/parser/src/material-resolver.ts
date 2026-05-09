@@ -16,6 +16,8 @@ export interface MaterialInfo {
     type: 'Material' | 'MaterialLayerSet' | 'MaterialProfileSet' | 'MaterialConstituentSet' | 'MaterialList';
     name?: string;
     description?: string;
+    /** IfcMaterial.Category (IFC4+). */
+    category?: string;
     layers?: MaterialLayerInfo[];
     profiles?: MaterialProfileInfo[];
     constituents?: MaterialConstituentInfo[];
@@ -114,6 +116,7 @@ function resolveMaterial(
                 type: 'Material',
                 name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
                 description: typeof attrs[1] === 'string' ? attrs[1] : undefined,
+                category: typeof attrs[2] === 'string' ? attrs[2] : undefined,
             };
         }
 

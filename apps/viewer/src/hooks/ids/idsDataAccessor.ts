@@ -22,8 +22,175 @@ import type {
 import {
   type IfcDataStore,
   extractAllEntityAttributes,
+  extractClassificationsOnDemand,
+  extractMaterialsOnDemand,
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
   extractTypeEntityOwnProperties,
 } from '@ifc-lite/parser';
+import { RelationshipType } from '@ifc-lite/data';
+
+// Map IDS PartOf relations to the numeric RelationshipType enum the
+// graph keys on. Passing strings here was a long-standing silent bug:
+// `getRelated` matched nothing → every partOf check looked like
+// "no parent" → fail-when-required, pass-when-prohibited.
+const PARTOF_REL_MAP: Record<PartOfRelation, RelationshipType | undefined> = {
+  IfcRelAggregates: RelationshipType.Aggregates,
+  IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
+  IfcRelNests: RelationshipType.Aggregates,
+  IfcRelVoidsElement: RelationshipType.VoidsElement,
+  IfcRelFillsElement: RelationshipType.FillsElement,
+};
+
+function flattenMaterials(matInfo: ReturnType<typeof extractMaterialsOnDemand>): MaterialInfo[] {
+  if (!matInfo) return [];
+  const out: MaterialInfo[] = [];
+  const push = (name?: string, category?: string) => {
+    if (!name) return;
+    out.push({ name, category });
+  };
+  switch (matInfo.type) {
+    case 'Material':
+      push(matInfo.name, matInfo.category);
+      // IDS material `<value>` may match either the Name OR the
+      // Category — push category as an alias so value checks match.
+      if (matInfo.category) push(matInfo.category, matInfo.category);
+      break;
+    case 'MaterialList':
+      for (const m of matInfo.materials || []) push(m);
+      break;
+    case 'MaterialLayerSet':
+      push(matInfo.name);
+      for (const layer of matInfo.layers || []) {
+        push(layer.materialName, layer.category);
+        push(layer.name, layer.category);
+      }
+      break;
+    case 'MaterialConstituentSet':
+      push(matInfo.name);
+      for (const c of matInfo.constituents || []) {
+        push(c.materialName, c.category);
+        push(c.name, c.category);
+      }
+      break;
+    case 'MaterialProfileSet':
+      push(matInfo.name);
+      for (const p of matInfo.profiles || []) {
+        push(p.materialName, p.category);
+        push(p.name, p.category);
+      }
+      break;
+  }
+  return out;
+}
+
+function findAttributeValue(
+  dataStore: IfcDataStore,
+  expressId: number,
+  attributeName: string
+): string | undefined {
+  const lower = attributeName.toLowerCase();
+  const all = extractAllEntityAttributes(dataStore, expressId);
+  for (const a of all) {
+    if (a.name.toLowerCase() === lower) return a.value;
+  }
+  return undefined;
+}
+
+function idsDataTypeForProperty(type: number | string | undefined): string {
+  if (typeof type === 'string') {
+    if (type.startsWith('IFC') || type.startsWith('Ifc')) return type.toUpperCase();
+    return 'IFCLABEL';
+  }
+  // PropertyValueType enum from @ifc-lite/data.
+  switch (type) {
+    case 0: return 'IFCLABEL';
+    case 1: return 'IFCREAL';
+    case 2: return 'IFCINTEGER';
+    case 3: return 'IFCBOOLEAN';
+    case 4: return 'IFCLOGICAL';
+    case 5: return 'IFCLABEL';
+    case 6: return 'IFCIDENTIFIER';
+    case 7: return 'IFCTEXT';
+    case 8: return 'IFCLABEL';
+    case 9: return 'IFCIDENTIFIER';
+    case 10: return 'IFCLABEL';
+    default: return 'IFCLABEL';
+  }
+}
+
+function idsDataTypeForQuantity(type: number): string {
+  switch (type) {
+    case 0: return 'IFCLENGTHMEASURE';
+    case 1: return 'IFCAREAMEASURE';
+    case 2: return 'IFCVOLUMEMEASURE';
+    case 3: return 'IFCCOUNTMEASURE';
+    case 4: return 'IFCMASSMEASURE';
+    case 5: return 'IFCTIMEMEASURE';
+    default: return 'IFCLABEL';
+  }
+}
+
+function collectAllPropertySets(
+  dataStore: IfcDataStore,
+  expressId: number
+): PropertySetInfo[] {
+  const out: PropertySetInfo[] = [];
+  let props: Array<{ name: string; properties: Array<{ name: string; value: unknown; type: unknown }> }> | undefined =
+    dataStore.properties?.getForEntity?.(expressId) as
+      | Array<{ name: string; properties: Array<{ name: string; value: unknown; type: unknown }> }>
+      | undefined;
+  if (!props || props.length === 0) {
+    props = extractPropertiesOnDemand(dataStore, expressId) as Array<{
+      name: string;
+      properties: Array<{ name: string; value: unknown; type: unknown }>;
+    }>;
+  }
+  if (props && props.length > 0) {
+    for (const pset of props) {
+      out.push({
+        name: pset.name,
+        properties: (pset.properties || []).map((p) => ({
+          name: p.name,
+          value: Array.isArray(p.value) ? JSON.stringify(p.value) : (p.value as string | number | boolean | null),
+          dataType: idsDataTypeForProperty(p.type as number | string | undefined),
+        })),
+      });
+    }
+  }
+  let quantities = dataStore.quantities?.getForEntity?.(expressId);
+  if (!quantities || quantities.length === 0) {
+    quantities = extractQuantitiesOnDemand(dataStore, expressId);
+  }
+  if (quantities && quantities.length > 0) {
+    for (const qset of quantities) {
+      out.push({
+        name: qset.name,
+        properties: (qset.quantities || []).map((q) => ({
+          name: q.name,
+          value: q.value,
+          dataType: idsDataTypeForQuantity(q.type),
+        })),
+      });
+    }
+  }
+  if (out.length === 0) {
+    const typePsets = extractTypeEntityOwnProperties(dataStore, expressId);
+    if (typePsets.length > 0) {
+      for (const pset of typePsets) {
+        out.push({
+          name: pset.name,
+          properties: (pset.properties || []).map((p) => ({
+            name: p.name,
+            value: Array.isArray(p.value) ? JSON.stringify(p.value) : (p.value as string | number | boolean | null),
+            dataType: idsDataTypeForProperty(p.type as number | string | undefined),
+          })),
+        });
+      }
+    }
+  }
+  return out;
+}
 
 /**
  * Create an IFCDataAccessor from an IfcDataStore
@@ -51,38 +218,47 @@ export function createDataAccessor(
     },
 
     getEntityName(expressId: number): string | undefined {
-      return dataStore.entities?.getName?.(expressId);
+      const n = dataStore.entities?.getName?.(expressId);
+      if (n) return n;
+      // Fall back to direct attribute extraction for entities the
+      // entity-table summariser didn't index (e.g. IfcClassification).
+      return findAttributeValue(dataStore, expressId, 'Name');
     },
 
     getGlobalId(expressId: number): string | undefined {
-      return dataStore.entities?.getGlobalId?.(expressId);
+      const g = dataStore.entities?.getGlobalId?.(expressId);
+      if (g) return g;
+      return findAttributeValue(dataStore, expressId, 'GlobalId');
     },
 
     getDescription(expressId: number): string | undefined {
-      return dataStore.entities?.getDescription?.(expressId);
+      const d = dataStore.entities?.getDescription?.(expressId);
+      if (d) return d;
+      return findAttributeValue(dataStore, expressId, 'Description');
     },
 
     getObjectType(expressId: number): string | undefined {
-      // Try the pre-computed ObjectType first (works for IfcObject subtypes)
-      const objectType = dataStore.entities?.getObjectType?.(expressId);
-      if (objectType) return objectType;
-
-      // For IfcTypeObject subtypes (IfcWallType, etc.), ObjectType doesn't exist —
-      // we need to extract PredefinedType from entity attributes instead.
-      // Also handles IfcObject subtypes that have PredefinedType at different positions.
+      // IDS predefined-type semantics (matches upstream IfcOpenShell):
+      //  - If PredefinedType is `USERDEFINED`, the real type lives in
+      //    ElementType (for IfcTypeObject subtypes like IfcWallType) or
+      //    ObjectType (for IfcObject subtypes).
+      //  - If PredefinedType is `NOTDEFINED` or absent, fall back to
+      //    ObjectType.
+      //  - Otherwise the PredefinedType enum value IS the answer.
       const allAttrs = extractAllEntityAttributes(dataStore, expressId);
-      const predefinedType = allAttrs.find(a => a.name === 'PredefinedType');
-      if (predefinedType?.value && predefinedType.value !== 'NOTDEFINED') {
-        return predefinedType.value;
+      const pdt = allAttrs.find((a) => a.name === 'PredefinedType');
+      const pdtValue = pdt?.value;
+      if (pdtValue && pdtValue !== 'NOTDEFINED' && pdtValue !== 'USERDEFINED') {
+        return pdtValue;
       }
-
-      // If PredefinedType is USERDEFINED or absent, check ObjectType from attributes
-      const objTypeAttr = allAttrs.find(a => a.name === 'ObjectType');
-      if (objTypeAttr?.value) {
-        return objTypeAttr.value;
-      }
-
-      return undefined;
+      const userSlot =
+        allAttrs.find((a) => a.name === 'ElementType') ||
+        allAttrs.find((a) => a.name === 'ObjectType') ||
+        allAttrs.find((a) => a.name === 'ProcessType') ||
+        allAttrs.find((a) => a.name === 'ResourceType');
+      if (userSlot?.value) return userSlot.value;
+      const ot = dataStore.entities?.getObjectType?.(expressId);
+      return ot ?? pdtValue ?? undefined;
     },
 
     getEntitiesByType(typeName: string): number[] {
@@ -107,104 +283,39 @@ export function createDataAccessor(
       propertySetName: string,
       propertyName: string
     ): PropertyValueResult | undefined {
-      const propertiesStore = dataStore.properties;
-      if (!propertiesStore) return undefined;
-
-      // Get property sets for this entity using getForEntity (returns PropertySet[])
-      const psets = propertiesStore.getForEntity?.(expressId);
-      if (!psets) return undefined;
-
-      for (const pset of psets) {
-        if (pset.name.toLowerCase() === propertySetName.toLowerCase()) {
-          const props = pset.properties || [];
-          for (const prop of props) {
-            if (prop.name.toLowerCase() === propertyName.toLowerCase()) {
-              // Convert value: ensure it's a primitive type (not array)
-              let value: string | number | boolean | null = null;
-              if (Array.isArray(prop.value)) {
-                // For arrays, convert to string representation
-                value = JSON.stringify(prop.value);
-              } else {
-                value = prop.value as string | number | boolean | null;
-              }
-              return {
-                value,
-                dataType: String(prop.type || 'IFCLABEL'),
-                propertySetName: pset.name,
-                propertyName: prop.name,
-              };
-            }
-          }
+      const all = collectAllPropertySets(dataStore, expressId);
+      for (const pset of all) {
+        if (pset.name.toLowerCase() !== propertySetName.toLowerCase()) continue;
+        for (const prop of pset.properties || []) {
+          if (prop.name.toLowerCase() !== propertyName.toLowerCase()) continue;
+          return {
+            value: prop.value,
+            dataType: prop.dataType,
+            propertySetName: pset.name,
+            propertyName: prop.name,
+          };
         }
       }
       return undefined;
     },
 
     getPropertySets(expressId: number): PropertySetInfo[] {
-      const propertiesStore = dataStore.properties;
-
-      // Try relationship-based properties first (works for IfcObject instances)
-      const psets = propertiesStore?.getForEntity?.(expressId);
-
-      // Convert property sets to the IDS format
-      const mapPsets = (rawPsets: Array<{ name: string; properties: Array<{ name: string; value: unknown; type: unknown }> }>): PropertySetInfo[] =>
-        rawPsets.map((pset) => ({
-          name: pset.name,
-          properties: (pset.properties || []).map((prop) => {
-            let value: string | number | boolean | null = null;
-            if (Array.isArray(prop.value)) {
-              value = JSON.stringify(prop.value);
-            } else {
-              value = prop.value as string | number | boolean | null;
-            }
-            return {
-              name: prop.name,
-              value,
-              dataType: String(prop.type || 'IFCLABEL'),
-            };
-          }),
-        }));
-
-      if (psets && psets.length > 0) {
-        return mapPsets(psets);
-      }
-
-      // For IfcTypeObject subtypes (IfcWallType, IfcSlabType, etc.),
-      // properties come from the HasPropertySets attribute (index 5),
-      // not from IfcRelDefinesByProperties relationships.
-      const typePsets = extractTypeEntityOwnProperties(dataStore, expressId);
-      if (typePsets.length > 0) {
-        return mapPsets(typePsets);
-      }
-
-      return [];
+      return collectAllPropertySets(dataStore, expressId);
     },
 
     getClassifications(expressId: number): ClassificationInfo[] {
-      // Classifications might be stored separately or in properties
-      // This is a placeholder - implement based on actual data structure
-      const classifications: ClassificationInfo[] = [];
-
-      // Check if there's a classifications accessor
-      const classStore = (dataStore as { classifications?: { getForEntity?: (id: number) => ClassificationInfo[] } }).classifications;
-      if (classStore?.getForEntity) {
-        return classStore.getForEntity(expressId);
-      }
-
-      return classifications;
+      const list = extractClassificationsOnDemand(dataStore, expressId) || [];
+      return list.map((c) => ({
+        system: c.system || '',
+        // The validator's `value` field carries the classification *code*
+        // (e.g. "EF_25_10"). The parser exposes that as `identification`.
+        value: c.identification || c.name || '',
+        name: c.name,
+      }));
     },
 
     getMaterials(expressId: number): MaterialInfo[] {
-      // Materials might be stored separately or in relationships
-      const materials: MaterialInfo[] = [];
-
-      // Check if there's a materials accessor
-      const matStore = (dataStore as { materials?: { getForEntity?: (id: number) => MaterialInfo[] } }).materials;
-      if (matStore?.getForEntity) {
-        return matStore.getForEntity(expressId);
-      }
-
-      return materials;
+      return flattenMaterials(extractMaterialsOnDemand(dataStore, expressId));
     },
 
     getParent(
@@ -212,41 +323,21 @@ export function createDataAccessor(
       relationType: PartOfRelation
     ): ParentInfo | undefined {
       const relationships = dataStore.relationships;
-      if (!relationships) return undefined;
-
-      // Map IDS relation type to internal relation type
-      const relationMap: Record<PartOfRelation, string> = {
-        'IfcRelAggregates': 'Aggregates',
-        'IfcRelContainedInSpatialStructure': 'ContainedInSpatialStructure',
-        'IfcRelNests': 'Nests',
-        'IfcRelVoidsElement': 'VoidsElement',
-        'IfcRelFillsElement': 'FillsElement',
+      if (!relationships?.getRelated) return undefined;
+      const relType = PARTOF_REL_MAP[relationType];
+      if (relType === undefined) return undefined;
+      const parents = relationships.getRelated(expressId, relType, 'inverse');
+      if (!parents || parents.length === 0) return undefined;
+      const parentId = parents[0];
+      return {
+        expressId: parentId,
+        entityType: this.getEntityType(parentId) || 'Unknown',
+        predefinedType: this.getObjectType(parentId),
       };
-
-      const relType = relationMap[relationType];
-      if (!relType) return undefined;
-
-      // Get related entities (parent direction)
-      const getRelated = relationships.getRelated;
-      if (getRelated) {
-        const parents = getRelated(expressId, relType as never, 'inverse');
-        if (parents && parents.length > 0) {
-          const parentId = parents[0];
-          return {
-            expressId: parentId,
-            entityType: this.getEntityType(parentId) || 'Unknown',
-            predefinedType: this.getObjectType(parentId),
-          };
-        }
-      }
-
-      return undefined;
     },
 
     getAttribute(expressId: number, attributeName: string): string | undefined {
       const lowerName = attributeName.toLowerCase();
-
-      // Map common attribute names to accessor methods
       switch (lowerName) {
         case 'name':
           return this.getEntityName(expressId);
@@ -258,14 +349,16 @@ export function createDataAccessor(
         case 'predefinedtype':
           return this.getObjectType(expressId);
         default: {
-          // Try to get from entities table if available
+          // For arbitrary attributes (EditionDate, Tag, etc.), fall back
+          // to the parser's full-attribute extractor.
+          const fromExtract = findAttributeValue(dataStore, expressId, attributeName);
+          if (fromExtract !== undefined) return fromExtract;
           const entities = dataStore.entities as {
             getAttribute?: (id: number, attr: string) => string | undefined;
           };
-          if (entities?.getAttribute) {
-            return entities.getAttribute(expressId, attributeName);
-          }
-          return undefined;
+          return entities?.getAttribute
+            ? entities.getAttribute(expressId, attributeName)
+            : undefined;
         }
       }
     },

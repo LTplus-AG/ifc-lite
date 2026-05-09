@@ -35,8 +35,13 @@ import { parseIDS, validateIDS } from '../packages/ids/dist/index.js';
 import {
   IfcParser,
   extractAllEntityAttributes,
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
   extractTypeEntityOwnProperties,
+  extractMaterialsOnDemand,
+  extractClassificationsOnDemand,
 } from '../packages/parser/dist/index.js';
+import { RelationshipType } from '../packages/data/dist/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CORPUS_ROOT = path.resolve(
@@ -55,6 +60,73 @@ const CORPUS_ROOT = path.resolve(
 // in sync with that file when the validator interface evolves.
 // ---------------------------------------------------------------------------
 
+/**
+ * Map RelationshipType (numeric enum) for partOf lookups. The earlier
+ * accessor passed string keys like 'Aggregates' which the relationship
+ * graph silently doesn't match — every partOf check was a false
+ * positive against an empty-result set.
+ */
+const PARTOF_REL_MAP = {
+  IfcRelAggregates: RelationshipType.Aggregates,
+  IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
+  IfcRelNests: RelationshipType.Aggregates, // upstream maps Nests → Aggregates table
+  IfcRelVoidsElement: RelationshipType.VoidsElement,
+  IfcRelFillsElement: RelationshipType.FillsElement,
+};
+
+/**
+ * Flatten the parser's hierarchical MaterialInfo into the flat
+ * `{name, category}[]` array the IDS validator expects. Surfaces:
+ *  - a single Material's name
+ *  - a MaterialList's individual material strings
+ *  - a MaterialLayerSet's set name AND each layer's materialName
+ *  - a MaterialConstituentSet's set name AND each constituent's materialName/name/category
+ *  - a MaterialProfileSet's set name AND each profile's materialName/name/category
+ */
+function flattenMaterials(matInfo) {
+  if (!matInfo) return [];
+  const out = [];
+  const push = (name, category) => {
+    if (!name) return;
+    out.push({ name, category });
+  };
+  switch (matInfo.type) {
+    case 'Material':
+      push(matInfo.name, matInfo.category);
+      // The IDS material facet treats `<value>` as matching against
+      // either the material's Name OR its Category (upstream
+      // IfcOpenShell behaviour). Push category as an alias entry so
+      // value checks match either field.
+      if (matInfo.category) push(matInfo.category, matInfo.category);
+      break;
+    case 'MaterialList':
+      for (const m of matInfo.materials || []) push(m);
+      break;
+    case 'MaterialLayerSet':
+      push(matInfo.name);
+      for (const layer of matInfo.layers || []) {
+        push(layer.materialName, layer.category);
+        push(layer.name, layer.category);
+      }
+      break;
+    case 'MaterialConstituentSet':
+      push(matInfo.name);
+      for (const c of matInfo.constituents || []) {
+        push(c.materialName, c.category);
+        push(c.name, c.category);
+      }
+      break;
+    case 'MaterialProfileSet':
+      push(matInfo.name);
+      for (const p of matInfo.profiles || []) {
+        push(p.materialName, p.category);
+        push(p.name, p.category);
+      }
+      break;
+  }
+  return out;
+}
+
 function createDataAccessor(dataStore) {
   return {
     getEntityType(expressId) {
@@ -70,23 +142,53 @@ function createDataAccessor(dataStore) {
       return undefined;
     },
     getEntityName(expressId) {
-      return dataStore.entities?.getName?.(expressId);
+      const n = dataStore.entities?.getName?.(expressId);
+      if (n) return n;
+      // Fall back to direct attribute extraction for entities the
+      // entity-table summariser didn't index (e.g. IfcClassification).
+      return findAttribute(dataStore, expressId, 'Name');
     },
     getGlobalId(expressId) {
-      return dataStore.entities?.getGlobalId?.(expressId);
+      const g = dataStore.entities?.getGlobalId?.(expressId);
+      if (g) return g;
+      return findAttribute(dataStore, expressId, 'GlobalId');
     },
     getDescription(expressId) {
-      return dataStore.entities?.getDescription?.(expressId);
+      const d = dataStore.entities?.getDescription?.(expressId);
+      if (d) return d;
+      return findAttribute(dataStore, expressId, 'Description');
     },
     getObjectType(expressId) {
-      const ot = dataStore.entities?.getObjectType?.(expressId);
-      if (ot) return ot;
+      // IDS predefined-type semantics (matches upstream IfcOpenShell):
+      //  - If PredefinedType is `USERDEFINED`, the real type lives in
+      //    ElementType (for IfcTypeObject subtypes like IfcWallType) or
+      //    ObjectType / ProcessType / etc. (for IfcObject subtypes).
+      //  - If PredefinedType is `NOTDEFINED` or absent, fall back to
+      //    ObjectType.
+      //  - Otherwise the PredefinedType enum value IS the answer.
       const allAttrs = extractAllEntityAttributes(dataStore, expressId);
       const pdt = allAttrs.find((a) => a.name === 'PredefinedType');
-      if (pdt?.value && pdt.value !== 'NOTDEFINED') return pdt.value;
-      const objType = allAttrs.find((a) => a.name === 'ObjectType');
-      if (objType?.value) return objType.value;
-      return undefined;
+      const pdtValue = pdt?.value;
+      if (pdtValue && pdtValue !== 'NOTDEFINED' && pdtValue !== 'USERDEFINED') {
+        return pdtValue;
+      }
+      // USERDEFINED / NOTDEFINED — look for the user-defined slot.
+      // Different parent classes use different attribute names:
+      //   IfcTypeObject → ElementType
+      //   IfcObject     → ObjectType
+      //   IfcTypeProcess→ ProcessType
+      //   IfcTypeResource → ResourceType
+      const userSlot =
+        allAttrs.find((a) => a.name === 'ElementType') ||
+        allAttrs.find((a) => a.name === 'ObjectType') ||
+        allAttrs.find((a) => a.name === 'ProcessType') ||
+        allAttrs.find((a) => a.name === 'ResourceType');
+      if (userSlot?.value) return userSlot.value;
+      // No user-defined override → return the raw PredefinedType (may
+      // be NOTDEFINED) so empty-predefined-type checks work.
+      const ot = dataStore.entities?.getObjectType?.(expressId);
+      if (ot) return ot;
+      return pdtValue || undefined;
     },
     getEntitiesByType(typeName) {
       const byType = dataStore.entityIndex?.byType;
@@ -101,18 +203,14 @@ function createDataAccessor(dataStore) {
       return byId ? Array.from(byId.keys()) : [];
     },
     getPropertyValue(expressId, propertySetName, propertyName) {
-      const psets = dataStore.properties?.getForEntity?.(expressId);
-      if (!psets) return undefined;
-      for (const pset of psets) {
+      const all = collectAllPropertySets(dataStore, expressId);
+      for (const pset of all) {
         if (pset.name.toLowerCase() !== propertySetName.toLowerCase()) continue;
         for (const prop of pset.properties || []) {
           if (prop.name.toLowerCase() !== propertyName.toLowerCase()) continue;
-          const value = Array.isArray(prop.value)
-            ? JSON.stringify(prop.value)
-            : prop.value;
           return {
-            value,
-            dataType: String(prop.type || 'IFCLABEL'),
+            value: prop.value,
+            dataType: prop.dataType,
             propertySetName: pset.name,
             propertyName: prop.name,
           };
@@ -121,43 +219,26 @@ function createDataAccessor(dataStore) {
       return undefined;
     },
     getPropertySets(expressId) {
-      const psets = dataStore.properties?.getForEntity?.(expressId);
-      const map = (raw) =>
-        raw.map((pset) => ({
-          name: pset.name,
-          properties: (pset.properties || []).map((prop) => ({
-            name: prop.name,
-            value: Array.isArray(prop.value)
-              ? JSON.stringify(prop.value)
-              : prop.value,
-            dataType: String(prop.type || 'IFCLABEL'),
-          })),
-        }));
-      if (psets && psets.length > 0) return map(psets);
-      const typePsets = extractTypeEntityOwnProperties(dataStore, expressId);
-      if (typePsets.length > 0) return map(typePsets);
-      return [];
+      return collectAllPropertySets(dataStore, expressId);
     },
     getClassifications(expressId) {
-      const c = dataStore.classifications;
-      return c?.getForEntity ? c.getForEntity(expressId) : [];
+      const list = extractClassificationsOnDemand(dataStore, expressId) || [];
+      return list.map((c) => ({
+        system: c.system || '',
+        // The validator's `value` field carries the classification *code*
+        // (e.g. "EF_25_10"). Upstream parser puts that into `identification`.
+        value: c.identification || c.name || '',
+        name: c.name,
+      }));
     },
     getMaterials(expressId) {
-      const m = dataStore.materials;
-      return m?.getForEntity ? m.getForEntity(expressId) : [];
+      return flattenMaterials(extractMaterialsOnDemand(dataStore, expressId));
     },
     getParent(expressId, relationType) {
       const relationships = dataStore.relationships;
       if (!relationships?.getRelated) return undefined;
-      const map = {
-        IfcRelAggregates: 'Aggregates',
-        IfcRelContainedInSpatialStructure: 'ContainedInSpatialStructure',
-        IfcRelNests: 'Nests',
-        IfcRelVoidsElement: 'VoidsElement',
-        IfcRelFillsElement: 'FillsElement',
-      };
-      const relType = map[relationType];
-      if (!relType) return undefined;
+      const relType = PARTOF_REL_MAP[relationType];
+      if (relType === undefined) return undefined;
       const parents = relationships.getRelated(expressId, relType, 'inverse');
       if (!parents || parents.length === 0) return undefined;
       const parentId = parents[0];
@@ -180,12 +261,164 @@ function createDataAccessor(dataStore) {
         case 'predefinedtype':
           return this.getObjectType(expressId);
         default: {
+          // For arbitrary attributes (EditionDate, Tag, etc.), fall back
+          // to the parser's full-attribute extractor.
+          const fromExtract = findAttribute(dataStore, expressId, attributeName);
+          if (fromExtract !== undefined) return fromExtract;
           const e = dataStore.entities;
           return e?.getAttribute ? e.getAttribute(expressId, attributeName) : undefined;
         }
       }
     },
   };
+}
+
+/**
+ * Look up an arbitrary attribute by name via `extractAllEntityAttributes`.
+ * Case-insensitive name match. Returns undefined when the attribute
+ * isn't on the entity (or has no string value).
+ */
+function findAttribute(dataStore, expressId, attributeName) {
+  const lower = attributeName.toLowerCase();
+  const all = extractAllEntityAttributes(dataStore, expressId);
+  for (const a of all) {
+    if (a.name.toLowerCase() === lower) return a.value;
+  }
+  return undefined;
+}
+
+/**
+ * IDS treats `IfcElementQuantity` (Qto_*) and `IfcPropertySet` (Pset_*)
+ * uniformly — both surface as "property sets" with named values. The
+ * parser stores them in separate columnar tables (`properties` vs
+ * `quantities`), so we merge them here.
+ *
+ * For IfcTypeObject occurrences, also fall back to type-level
+ * `HasPropertySets` when the relationship-based lookup is empty.
+ */
+function collectAllPropertySets(dataStore, expressId) {
+  const out = [];
+  // Properties — prefer the columnar table when populated, else fall
+  // back to on-demand extraction (the ColumnarParser only fills the
+  // table when explicitly asked, but the on-demand extractor walks
+  // IfcRelDefinesByProperties → IfcPropertySet directly).
+  let props = dataStore.properties?.getForEntity?.(expressId);
+  if (!props || props.length === 0) {
+    props = extractPropertiesOnDemand(dataStore, expressId);
+  }
+  if (props && props.length > 0) {
+    for (const pset of props) {
+      out.push({
+        name: pset.name,
+        properties: (pset.properties || []).map((p) => ({
+          name: p.name,
+          value: Array.isArray(p.value) ? JSON.stringify(p.value) : p.value,
+          dataType: idsDataTypeForProperty(p.type),
+        })),
+      });
+    }
+  }
+  // IfcElementQuantity (Qto_*) sets — IDS treats these as property
+  // sets too. Same dual-source pattern.
+  let quantities = dataStore.quantities?.getForEntity?.(expressId);
+  if (!quantities || quantities.length === 0) {
+    quantities = extractQuantitiesOnDemand(dataStore, expressId);
+  }
+  if (quantities && quantities.length > 0) {
+    for (const qset of quantities) {
+      out.push({
+        name: qset.name,
+        properties: (qset.quantities || []).map((q) => ({
+          name: q.name,
+          value: q.value,
+          dataType: idsDataTypeForQuantity(q.type),
+        })),
+      });
+    }
+  }
+  if (out.length === 0) {
+    // Type-object fallback (IfcWallType.HasPropertySets etc.)
+    const typePsets = extractTypeEntityOwnProperties(dataStore, expressId);
+    if (typePsets.length > 0) {
+      for (const pset of typePsets) {
+        out.push({
+          name: pset.name,
+          properties: (pset.properties || []).map((p) => ({
+            name: p.name,
+            value: Array.isArray(p.value) ? JSON.stringify(p.value) : p.value,
+            dataType: idsDataTypeForProperty(p.type),
+          })),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Map the parser's `PropertyValueType` enum (or string-tagged variant)
+ * to the IDS-side `IFC*` data-type token consumers compare against.
+ * IDS expects names like `IFCLABEL` / `IFCREAL` / `IFCBOOLEAN`; the
+ * parser surfaces shape-only enum values plus the underlying IFC
+ * measure name on the property record.
+ */
+function idsDataTypeForProperty(type) {
+  if (typeof type === 'string') {
+    if (type.startsWith('IFC') || type.startsWith('Ifc')) return type.toUpperCase();
+    return 'IFCLABEL';
+  }
+  // PropertyValueType enum (from @ifc-lite/data):
+  //   0 String, 1 Real, 2 Integer, 3 Boolean, 4 Logical,
+  //   5 Label, 6 Identifier, 7 Text, 8 Enum, 9 Reference, 10 List.
+  switch (type) {
+    case 0:
+      return 'IFCLABEL';
+    case 1:
+      return 'IFCREAL';
+    case 2:
+      return 'IFCINTEGER';
+    case 3:
+      return 'IFCBOOLEAN';
+    case 4:
+      return 'IFCLOGICAL';
+    case 5:
+      return 'IFCLABEL';
+    case 6:
+      return 'IFCIDENTIFIER';
+    case 7:
+      return 'IFCTEXT';
+    case 8:
+      return 'IFCLABEL';
+    case 9:
+      return 'IFCIDENTIFIER';
+    case 10:
+      return 'IFCLABEL';
+    default:
+      return 'IFCLABEL';
+  }
+}
+
+/**
+ * Map the parser's `QuantityType` enum to its corresponding IDS
+ * dataType. Length → IFCLENGTHMEASURE, etc.
+ */
+function idsDataTypeForQuantity(type) {
+  switch (type) {
+    case 0: // Length
+      return 'IFCLENGTHMEASURE';
+    case 1: // Area
+      return 'IFCAREAMEASURE';
+    case 2: // Volume
+      return 'IFCVOLUMEMEASURE';
+    case 3: // Count
+      return 'IFCCOUNTMEASURE';
+    case 4: // Weight
+      return 'IFCMASSMEASURE';
+    case 5: // Time
+      return 'IFCTIMEMEASURE';
+    default:
+      return 'IFCLABEL';
+  }
 }
 
 // ---------------------------------------------------------------------------

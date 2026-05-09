@@ -517,27 +517,51 @@ impl BooleanClippingProcessor {
                 return self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement);
             }
 
-            // Solid-solid difference: return base geometry (first operand).
-            //
-            // The legacy BSP tree (`bsp_csg.rs`) can stack-overflow on
-            // arbitrary solid combinations, so we don't attempt the cut.
-            // Recorded so callers (regression tests, debug overlays) can
-            // see exactly which products went unclipped. The fix lives
-            // behind the Manifold migration (Sprint 2).
-            self.record_failure(
-                BoolOp::Difference,
-                BoolFailureReason::SolidSolidDifferenceSkipped,
-            );
-            return Ok(mesh);
+            // Solid-solid difference. Under `manifold-csg` we route through
+            // the Manifold kernel; without the feature the legacy BSP path
+            // can stack-overflow on arbitrary solid combinations so we
+            // continue to skip and record `SolidSolidDifferenceSkipped`.
+            #[cfg(feature = "manifold-csg")]
+            {
+                let second_mesh =
+                    self.process_operand_with_depth(&second_operand, decoder, depth)?;
+                if second_mesh.is_empty() {
+                    self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
+                    return Ok(mesh);
+                }
+                let clipper = ClippingProcessor::new();
+                let result = clipper.subtract_mesh(&mesh, &second_mesh);
+                self.drain_clipper_failures(&clipper);
+                return result;
+            }
+            #[cfg(not(feature = "manifold-csg"))]
+            {
+                self.record_failure(
+                    BoolOp::Difference,
+                    BoolFailureReason::SolidSolidDifferenceSkipped,
+                );
+                return Ok(mesh);
+            }
         }
 
-        // Handle UNION operation
+        // Handle UNION operation. Under `manifold-csg` this is a real CSG
+        // union (overlap removed). Without the feature the legacy path
+        // mesh-merges (overlap retained) and records the failure so callers
+        // can flag the loss.
         if operator == ".UNION." || operator == "UNION" {
-            // Merge both meshes — this is NOT a true CSG union: overlapping
-            // volumes leave double-faced geometry. Pending T1.4 (real
-            // union via clipper.union_mesh once Manifold lands).
             let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth)?;
-            if !second_mesh.is_empty() {
+            if second_mesh.is_empty() {
+                return Ok(mesh);
+            }
+            #[cfg(feature = "manifold-csg")]
+            {
+                let clipper = ClippingProcessor::new();
+                let result = clipper.union_mesh(&mesh, &second_mesh);
+                self.drain_clipper_failures(&clipper);
+                return result;
+            }
+            #[cfg(not(feature = "manifold-csg"))]
+            {
                 self.record_failure(
                     BoolOp::Union,
                     BoolFailureReason::KernelError(
@@ -548,20 +572,34 @@ impl BooleanClippingProcessor {
                 merged.merge(&second_mesh);
                 return Ok(merged);
             }
-            return Ok(mesh);
         }
 
-        // Handle INTERSECTION operation
+        // Handle INTERSECTION operation. Under `manifold-csg` this returns
+        // a real intersection volume; the legacy path can't compute it
+        // safely (BSP stack risk) so it returns empty and records.
         if operator == ".INTERSECTION." || operator == "INTERSECTION" {
-            // Returning empty drops the volume entirely; pending T1.4 for
-            // a real intersection. Flag so the loss is observable.
-            self.record_failure(
-                BoolOp::Intersection,
-                BoolFailureReason::KernelError(
-                    "IfcBooleanResult.INTERSECTION not implemented (returns empty)".into(),
-                ),
-            );
-            return Ok(Mesh::new());
+            #[cfg(feature = "manifold-csg")]
+            {
+                let second_mesh =
+                    self.process_operand_with_depth(&second_operand, decoder, depth)?;
+                if second_mesh.is_empty() {
+                    return Ok(Mesh::new());
+                }
+                let clipper = ClippingProcessor::new();
+                let result = clipper.intersection_mesh(&mesh, &second_mesh);
+                self.drain_clipper_failures(&clipper);
+                return result;
+            }
+            #[cfg(not(feature = "manifold-csg"))]
+            {
+                self.record_failure(
+                    BoolOp::Intersection,
+                    BoolFailureReason::KernelError(
+                        "IfcBooleanResult.INTERSECTION not implemented (returns empty)".into(),
+                    ),
+                );
+                return Ok(Mesh::new());
+            }
         }
 
         self.record_failure(

@@ -98,6 +98,15 @@ export interface IfcDataStore {
      * Built from IfcRelAssociatesDocument relationships during parsing.
      */
     onDemandDocumentMap?: Map<number, number[]>;
+
+    /**
+     * Project-level length unit scale to convert raw IFC numeric measure
+     * values into base SI metres. `1.0` for metres, `0.001` for milli,
+     * `0.0254` for inches, etc. Surfaced on the store so consumers
+     * (notably the IDS validator, where IDS literals are always in
+     * base SI units) can convert without re-parsing the unit graph.
+     */
+    lengthUnitScale?: number;
 }
 
 
@@ -506,6 +515,7 @@ export class ColumnarParser {
             quantities: quantityTable,
             relationships: hierarchyRelGraph,
             spatialHierarchy,
+            lengthUnitScale,
         };
         options.onSpatialReady?.(earlyStore);
 
@@ -627,6 +637,7 @@ export class ColumnarParser {
             onDemandClassificationMap,
             onDemandMaterialMap,
             onDemandDocumentMap,
+            lengthUnitScale,
         };
     }
 

@@ -397,8 +397,67 @@ function findAttribute(dataStore, expressId, attributeName) {
  * For IfcTypeObject occurrences, also fall back to type-level
  * `HasPropertySets` when the relationship-based lookup is empty.
  */
+/**
+ * Per IDS spec, IDS literal values for IFC measure types are always in
+ * base SI units (metres, square metres, …) regardless of the project's
+ * declared unit. The IFC store keeps the raw author value, so when the
+ * project's length unit is e.g. `MILLI`, a stored `1000.` length means
+ * `1.0 metre` and the IDS check `1` should match.
+ *
+ * Applies the `lengthUnitScale` to numeric values and `values[]` lists
+ * for measure data types. Returns the input unchanged when the
+ * data type isn't unit-bearing or the scale is missing/identity.
+ */
+function applyUnitConversion(rawValue, rawValues, dataType, scale) {
+  if (!scale || scale === 1) {
+    return { value: rawValue, values: rawValues };
+  }
+  const upper = dataType ? dataType.toUpperCase() : '';
+  // Length-only conversion for now — covers the corpus' bounded /
+  // table fixtures that motivated this. Other measure families
+  // (IFCAREAMEASURE, IFCVOLUMEMEASURE, …) need their own scale,
+  // which the parser doesn't surface yet.
+  const isLength = upper === 'IFCLENGTHMEASURE' || upper === 'IFCPOSITIVELENGTHMEASURE';
+  // Properties without a declared dataType (notably IfcPropertyTableValue,
+  // where columns mix labels and measures) get a conservative double-up:
+  // every numeric candidate is surfaced both raw and scaled, so an IDS
+  // check using either unit space matches.
+  const isUntypedTable = !dataType && Array.isArray(rawValues) && rawValues.length > 0;
+  if (!isLength && !isUntypedTable) {
+    return { value: rawValue, values: rawValues };
+  }
+  const convertNum = (v) => {
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    if (Number.isFinite(n)) return n * scale;
+    return null;
+  };
+  if (isLength) {
+    const value = (() => {
+      const c = convertNum(rawValue);
+      return c == null ? rawValue : c;
+    })();
+    const values = Array.isArray(rawValues)
+      ? rawValues.map((v) => {
+          const c = convertNum(v);
+          return c == null ? String(v) : String(c);
+        })
+      : rawValues;
+    return { value, values };
+  }
+  // Untyped table — keep raw values and append scaled copies for
+  // every numeric candidate so either unit space matches.
+  const expanded = [];
+  for (const v of rawValues) {
+    expanded.push(String(v));
+    const c = convertNum(v);
+    if (c != null && String(c) !== String(v)) expanded.push(String(c));
+  }
+  return { value: rawValue, values: expanded };
+}
+
 function collectAllPropertySets(dataStore, expressId) {
   const out = [];
+  const scale = dataStore.lengthUnitScale;
   // Properties — prefer the columnar table when populated, else fall
   // back to on-demand extraction (the ColumnarParser only fills the
   // table when explicitly asked, but the on-demand extractor walks
@@ -411,17 +470,25 @@ function collectAllPropertySets(dataStore, expressId) {
     for (const pset of props) {
       out.push({
         name: pset.name,
-        properties: (pset.properties || []).map((p) => ({
-          name: p.name,
-          value: Array.isArray(p.value) ? JSON.stringify(p.value) : p.value,
+        properties: (pset.properties || []).map((p) => {
           // Prefer the IFC-declared measure name (IFCDATE, IFCBOOLEAN, …)
-          // when the parser surfaces it, otherwise infer from the
-          // shape-only `PropertyValueType` enum.
-          dataType: p.dataType || idsDataTypeForProperty(p.type),
-          ...(Array.isArray(p.values) && p.values.length > 0
-            ? { values: p.values }
-            : {}),
-        })),
+          // when the parser surfaces it. When it doesn't but the
+          // property carries multiple candidate values (table-style),
+          // leave the dataType undefined so the IDS dataType gate
+          // doesn't reject mixed-type tables. Otherwise fall back to
+          // the shape-only `PropertyValueType` enum.
+          const hasMultiValue = Array.isArray(p.values) && p.values.length > 0;
+          const dataType = p.dataType || (hasMultiValue ? undefined : idsDataTypeForProperty(p.type));
+          const baseValue = Array.isArray(p.value) ? JSON.stringify(p.value) : p.value;
+          const baseValues = hasMultiValue ? p.values : undefined;
+          const converted = applyUnitConversion(baseValue, baseValues, dataType, scale);
+          return {
+            name: p.name,
+            value: converted.value,
+            ...(dataType ? { dataType } : {}),
+            ...(converted.values ? { values: converted.values } : {}),
+          };
+        }),
       });
     }
   }

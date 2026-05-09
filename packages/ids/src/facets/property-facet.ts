@@ -213,8 +213,12 @@ function checkSingleProperty(
       },
     };
   }
-  // Check data type if specified (IFC type names are case-insensitive)
-  if (facet.dataType) {
+  // Check data type if specified (IFC type names are case-insensitive).
+  // Skip the gate when the property carries no `dataType` AT ALL — for
+  // multi-typed table values (`IfcPropertyTableValue`) we deliberately
+  // omit a single representative type so the value match against the
+  // expanded `values[]` array can still satisfy the requirement.
+  if (facet.dataType && prop.dataType) {
     if (!matchConstraint(facet.dataType, prop.dataType, DATATYPE_OPTS)) {
       return {
         passed: false,

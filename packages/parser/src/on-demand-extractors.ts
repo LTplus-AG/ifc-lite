@@ -112,7 +112,33 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             if (lower != null && upper != null) {
                 display += ` [${lower} – ${upper}]`;
             }
-            return { type: displayValue != null ? 1 : 0, value: display || null };
+            // Surface every defined bound as a candidate value — IDS
+            // bounded-property checks pass when ANY of the bounds /
+            // setpoint matches the constraint, per upstream ifctester.
+            const candidates: string[] = [];
+            if (lower != null) candidates.push(String(lower));
+            if (upper != null && upper !== lower) candidates.push(String(upper));
+            if (setPoint != null && setPoint !== lower && setPoint !== upper) {
+                candidates.push(String(setPoint));
+            }
+            // Carry the IFC-declared measure tag so the IDS-side data
+            // type comparison and unit conversion both work.
+            const inferDataType = (attr: unknown): string | undefined => {
+                if (Array.isArray(attr) && attr.length === 2) {
+                    return String(attr[0]).toUpperCase();
+                }
+                return undefined;
+            };
+            const dataType =
+                inferDataType(attrs[5]) ||
+                inferDataType(attrs[2]) ||
+                inferDataType(attrs[3]);
+            return {
+                type: displayValue != null ? 1 : 0,
+                value: display || null,
+                ...(candidates.length > 0 ? { values: candidates } : {}),
+                ...(dataType ? { dataType } : {}),
+            };
         }
 
         case 'IFCPROPERTYLISTVALUE': {
@@ -133,8 +159,29 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             const definingValues = attrs[2];
             const definedValues = attrs[3];
             const rowCount = Array.isArray(definingValues) ? definingValues.length : 0;
-            if (rowCount > 0 && Array.isArray(definedValues)) {
-                return { type: 0, value: `Table (${rowCount} rows)` };
+            if (rowCount > 0 && Array.isArray(definedValues) && Array.isArray(definingValues)) {
+                // Surface both defining and defined values as candidate
+                // matches — IDS table-value checks pass when ANY entry
+                // matches the constraint (per upstream ifctester).
+                const stringify = (v: unknown): string => {
+                    if (Array.isArray(v) && v.length === 2) return String(v[1]);
+                    return String(v);
+                };
+                const values = [
+                    ...definingValues.map(stringify),
+                    ...definedValues.map(stringify),
+                ].filter(v => v !== 'null' && v !== 'undefined');
+                // Tables mix types per column (label / length / …),
+                // so we can't surface a single representative
+                // dataType. Leaving it unset lets the IDS check fall
+                // through to a pure value match against any of the
+                // candidates — which is what upstream ifctester does
+                // for table values.
+                return {
+                    type: 0,
+                    value: `Table (${rowCount} rows)`,
+                    values,
+                };
             }
             return { type: 0, value: null };
         }

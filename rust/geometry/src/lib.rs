@@ -114,7 +114,7 @@ pub use processors::{
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
-pub use router::{GeometryProcessor, GeometryRouter};
+pub use router::{ClassificationStats, GeometryProcessor, GeometryRouter};
 pub use transform::{
     apply_rtc_offset, parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
     parse_cartesian_point, parse_cartesian_point_from_id, parse_direction, parse_direction_from_id,

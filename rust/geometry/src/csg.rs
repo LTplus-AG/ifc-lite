@@ -738,7 +738,10 @@ impl ClippingProcessor {
         {
             match crate::manifold_kernel::difference(host_mesh, opening_mesh) {
                 Ok(result) => {
-                    if result.is_empty() {
+                    // An empty result is a legitimate outcome — the cutter
+                    // can fully contain the host. Only treat non-finite /
+                    // invalid kernel output as a failure.
+                    if !self.validate_mesh(&result) {
                         self.record_failure(
                             BoolOp::Difference,
                             BoolFailureReason::KernelOutputInvalid,
@@ -1237,12 +1240,18 @@ impl ClippingProcessor {
     /// unchanged rather than propagating the error. This provides graceful
     /// degradation for problematic void geometries.
     pub fn subtract_meshes_with_fallback(&self, host: &Mesh, voids: &[Mesh]) -> Mesh {
+        // Empty host has nothing to cut — short-circuit before invoking the
+        // kernel. Recording a failure here would be a false positive.
+        if host.is_empty() {
+            return host.clone();
+        }
         match self.subtract_meshes_batched(host, voids) {
             Ok(result) => {
-                // Validate result. An empty or non-finite output indicates the
-                // kernel produced garbage; fall back to the un-cut host and
-                // record so callers can flag the product.
-                if result.is_empty() || !self.validate_mesh(&result) {
+                // An empty result is a legitimate outcome (cutters may fully
+                // contain the host). Only non-finite / invalid kernel output
+                // counts as a failure that warrants reverting to the un-cut
+                // host.
+                if !self.validate_mesh(&result) {
                     self.record_failure(
                         BoolOp::Difference,
                         BoolFailureReason::KernelOutputInvalid,

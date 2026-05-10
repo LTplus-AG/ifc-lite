@@ -551,6 +551,7 @@ impl BooleanClippingProcessor {
         if operator == ".UNION." || operator == "UNION" {
             let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth)?;
             if second_mesh.is_empty() {
+                self.record_failure(BoolOp::Union, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
             }
             #[cfg(feature = "manifold-csg")]
@@ -583,6 +584,7 @@ impl BooleanClippingProcessor {
                 let second_mesh =
                     self.process_operand_with_depth(&second_operand, decoder, depth)?;
                 if second_mesh.is_empty() {
+                    self.record_failure(BoolOp::Intersection, BoolFailureReason::EmptyOperand);
                     return Ok(Mesh::new());
                 }
                 let clipper = ClippingProcessor::new();
@@ -603,7 +605,7 @@ impl BooleanClippingProcessor {
         }
 
         self.record_failure(
-            BoolOp::Difference,
+            BoolOp::Unknown,
             BoolFailureReason::UnknownBooleanOperator(operator.to_string()),
         );
         Ok(mesh)

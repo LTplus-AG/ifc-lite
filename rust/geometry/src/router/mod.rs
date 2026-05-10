@@ -78,6 +78,31 @@ pub struct GeometryRouter {
     /// kernel falls back to the un-cut host. Drainable via
     /// [`Self::take_csg_failures`].
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
+    /// Cumulative counters for opening classification (T1.1 / classifier fix
+    /// diagnostic). Tracks how many openings went through each branch of
+    /// `classify_openings` so a maintainer can verify the fix is firing on
+    /// real models. Drainable via [`Self::take_classification_stats`].
+    classification_stats: RefCell<ClassificationStats>,
+}
+
+/// Counts of opening classification outcomes during the most recent
+/// geometry pass. Useful for confirming whether the host-aware
+/// floor-opening classifier guard (commit `1e033f8`) is taking effect on
+/// a given model.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ClassificationStats {
+    /// Openings classified as `Rectangular` — fast AABB clip path.
+    pub rectangular: usize,
+    /// Openings classified as `DiagonalRectangular` — rotated AABB.
+    pub diagonal: usize,
+    /// Openings classified as `NonRectangular` — full CSG path
+    /// (cap-limited under the legacy BSP, unlimited under Manifold).
+    pub non_rectangular: usize,
+    /// Openings the OLD heuristic would have flagged as floor-opening
+    /// (vertical extrusion, dir.z.abs() > 0.95) but the host is a
+    /// wall-class element — so the classifier fix kept them on the
+    /// rectangular path. Non-zero here = the fix activated.
+    pub floor_opening_guard_saved: usize,
 }
 
 impl GeometryRouter {
@@ -95,6 +120,7 @@ impl GeometryRouter {
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
+            classification_stats: RefCell::new(ClassificationStats::default()),
         };
 
         // Register default P0 processors
@@ -357,6 +383,36 @@ impl GeometryRouter {
             .or_default()
             .extend(attributed);
     }
+
+    /// Drain and return the cumulative opening-classification counters
+    /// since the router was created (or the last `take_classification_stats`
+    /// call). The internal counters are reset to zero.
+    pub fn take_classification_stats(&self) -> ClassificationStats {
+        std::mem::take(&mut *self.classification_stats.borrow_mut())
+    }
+
+    /// Internal: bump the classification stats. Called from
+    /// `classify_openings` for each opening it processes.
+    pub(crate) fn bump_classification(&self, kind: ClassificationKind) {
+        let mut s = self.classification_stats.borrow_mut();
+        match kind {
+            ClassificationKind::Rectangular => s.rectangular += 1,
+            ClassificationKind::Diagonal => s.diagonal += 1,
+            ClassificationKind::NonRectangular => s.non_rectangular += 1,
+            ClassificationKind::FloorOpeningGuardSaved => s.floor_opening_guard_saved += 1,
+        }
+    }
+}
+
+/// Internal classification-branch tag for `bump_classification`. Mirrors
+/// the variants of `OpeningType` plus the "the host-aware guard saved
+/// this opening from the floor-opening path" sentinel.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ClassificationKind {
+    Rectangular,
+    Diagonal,
+    NonRectangular,
+    FloorOpeningGuardSaved,
 }
 
 impl Default for GeometryRouter {

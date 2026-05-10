@@ -27,6 +27,10 @@ pub enum BoolOp {
     Difference,
     Union,
     Intersection,
+    /// `IfcBooleanResult.Operator` was an unrecognised value — used by the
+    /// boolean processor when classifying a failure for an unknown operator
+    /// so the diagnostic doesn't mis-label the op as `Difference`.
+    Unknown,
 }
 
 impl fmt::Display for BoolOp {
@@ -35,6 +39,7 @@ impl fmt::Display for BoolOp {
             BoolOp::Difference => f.write_str("DIFFERENCE"),
             BoolOp::Union => f.write_str("UNION"),
             BoolOp::Intersection => f.write_str("INTERSECTION"),
+            BoolOp::Unknown => f.write_str("UNKNOWN"),
         }
     }
 }

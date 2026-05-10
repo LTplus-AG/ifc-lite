@@ -1011,6 +1011,8 @@ impl GeometryRouter {
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
     ) -> Vec<OpeningType> {
+        use super::ClassificationKind;
+
         // Only treat vertical-extrusion openings as "floor openings" when
         // the host is an actual horizontal-surface element. For walls, a
         // vertical (Z) opening extrusion is just how Revit/Archicad encode
@@ -1038,6 +1040,7 @@ impl GeometryRouter {
             let vertex_count = opening_mesh.positions.len() / 3;
 
             if vertex_count > 100 {
+                self.bump_classification(ClassificationKind::NonRectangular);
                 openings.push(OpeningType::NonRectangular(opening_mesh));
             } else {
                 let item_bounds_with_dir = self
@@ -1045,12 +1048,22 @@ impl GeometryRouter {
                     .unwrap_or_default();
 
                 if !item_bounds_with_dir.is_empty() {
-                    let is_floor_opening = host_is_horizontal_surface
-                        && item_bounds_with_dir
-                            .iter()
-                            .any(|(_, _, dir)| dir.map(|d| d.z.abs() > 0.95).unwrap_or(false));
+                    // Pre-classifier-fix this would have tripped any vertical
+                    // extrusion onto the floor-opening (CSG) path; track when
+                    // the host-aware guard saved a vertical-extrusion opening
+                    // from that fate so the diagnostic clearly shows the fix
+                    // is firing on real models.
+                    let dir_is_vertical = item_bounds_with_dir
+                        .iter()
+                        .any(|(_, _, dir)| dir.map(|d| d.z.abs() > 0.95).unwrap_or(false));
+                    if dir_is_vertical && !host_is_horizontal_surface {
+                        self.bump_classification(ClassificationKind::FloorOpeningGuardSaved);
+                    }
+
+                    let is_floor_opening = host_is_horizontal_surface && dir_is_vertical;
 
                     if is_floor_opening && vertex_count > 0 {
+                        self.bump_classification(ClassificationKind::NonRectangular);
                         openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
                     } else {
                         let any_diagonal = item_bounds_with_dir.iter().any(|(_, _, dir)| {
@@ -1075,22 +1088,26 @@ impl GeometryRouter {
                                     .get_opening_item_meshes_world(&opening_entity, decoder)
                                     .unwrap_or_default();
                                 if item_meshes.is_empty() {
+                                    self.bump_classification(ClassificationKind::Diagonal);
                                     openings.push(OpeningType::DiagonalRectangular(
                                         opening_mesh.clone(),
                                         dir,
                                     ));
                                 } else {
                                     for item_mesh in item_meshes {
+                                        self.bump_classification(ClassificationKind::Diagonal);
                                         openings
                                             .push(OpeningType::DiagonalRectangular(item_mesh, dir));
                                     }
                                 }
                             } else {
                                 // No direction available — fall back to CSG
+                                self.bump_classification(ClassificationKind::NonRectangular);
                                 openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
                             }
                         } else {
                             for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
+                                self.bump_classification(ClassificationKind::Rectangular);
                                 openings.push(OpeningType::Rectangular(
                                     min_pt,
                                     max_pt,
@@ -1106,6 +1123,7 @@ impl GeometryRouter {
                     let max_f64 =
                         Point3::new(open_max.x as f64, open_max.y as f64, open_max.z as f64);
 
+                    self.bump_classification(ClassificationKind::Rectangular);
                     openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
                 }
             }

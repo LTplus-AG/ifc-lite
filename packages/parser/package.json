@@ -23,7 +23,8 @@
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/encoding": "workspace:^",
-    "@ifc-lite/ifcx": "workspace:^"
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^5.3.0",

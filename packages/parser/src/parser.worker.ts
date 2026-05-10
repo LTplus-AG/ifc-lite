@@ -15,6 +15,7 @@
  * because nesting workers serves no purpose and adds postMessage latency.
  */
 
+import init, { IfcAPI } from '@ifc-lite/wasm';
 import { IfcParser } from './index.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import {
@@ -111,6 +112,32 @@ function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable
   }
 }
 
+/**
+ * One-shot WASM init. The first parse pays ~50–100 ms to compile the
+ * 1 MB module; subsequent parses on the same worker reuse the instance.
+ *
+ * The WASM `IfcAPI` exposes `scanRelevantEntitiesFastBytes` (filters to
+ * ~1 % of entities — too narrow for the lite parser, which needs to find
+ * IFCSIUNIT, IFCMATERIAL, IFCCLASSIFICATIONREFERENCE, etc.) and
+ * `scanEntitiesFastBytes` (full Rust scan, 5–10× faster than the JS
+ * tokenizer). We expose only the latter so `parseColumnar`'s preference
+ * logic picks the full scan unconditionally.
+ */
+let cachedFullScanApi: { scanEntitiesFastBytes(data: Uint8Array): unknown } | null = null;
+let initPromise: Promise<void> | null = null;
+
+async function ensureWasmScanApi(): Promise<{ scanEntitiesFastBytes(data: Uint8Array): unknown }> {
+  if (cachedFullScanApi) return cachedFullScanApi;
+  if (!initPromise) initPromise = init().then(() => {});
+  await initPromise;
+  const api = new IfcAPI();
+  cachedFullScanApi = {
+    // Bind so `parseColumnar` can call without needing the IfcAPI receiver.
+    scanEntitiesFastBytes: api.scanEntitiesFastBytes.bind(api),
+  };
+  return cachedFullScanApi;
+}
+
 self.onmessage = async (event: MessageEvent<ParserWorkerInputMessage>) => {
   const { type, id } = event.data;
   if (type !== 'parse') return;
@@ -124,10 +151,17 @@ self.onmessage = async (event: MessageEvent<ParserWorkerInputMessage>) => {
     // We never transfer or clone it. Runtimes that reject TextDecoder over
     // SAB views (e.g. Firefox's timing-attack mitigation) are filtered out
     // by the wrapper before this worker is even spawned.
+    //
+    // Initialise the WASM scanner up front. `parseColumnar` prefers the
+    // WASM scan when `wasmApi` is supplied (5–10× faster on huge files —
+    // a 14 M-entity, 986 MB file goes from ~28 s of JS tokenising to ~5 s
+    // of Rust+SIMD).
+    const wasmApi = await ensureWasmScanApi();
     const parser = new IfcParser();
     const dataStore: IfcDataStore = await parser.parseColumnar(source as unknown as ArrayBuffer, {
       // Inside a worker, spawning another worker for scan is wasteful.
       disableWorkerScan: true,
+      wasmApi,
       yieldIntervalMs,
       deferPropertyAtomIndex,
       onProgress: (progress) => {

@@ -908,6 +908,9 @@ importers:
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
     devDependencies:
       typescript:
         specifier: ^5.3.0

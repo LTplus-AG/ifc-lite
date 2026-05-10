@@ -147,11 +147,33 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
       let localBytes: Uint8Array = viewSharedBytes(sharedBuffer);
       let sabFallbackTaken = false;
 
-      const allMeshes: GeometryWorkerBatchMessage['meshes'] = [];
-      const allTransferBuffers: ArrayBuffer[] = [];
+      // Streaming batches: meshes are flushed to the host every
+      // STREAM_BATCH_SIZE jobs instead of accumulating across the entire
+      // worker slice. The first frame appears as soon as the first chunk
+      // returns from WASM (~0.5 s) rather than after the full slice
+      // finishes (~5–15 s on a 1 GB file). The host's `appendGeometryBatch`
+      // already throttles main-thread renders via `RENDER_INTERVAL_MS`, so
+      // smaller worker batches don't translate to more React reconciles.
+      const STREAM_BATCH_SIZE = 500; // jobs (= meshes) per flush
+      let pendingMeshes: GeometryWorkerBatchMessage['meshes'] = [];
+      let pendingTransfers: ArrayBuffer[] = [];
+      let totalMeshesEmitted = 0;
       let cumulativeMeshBytes = 0;
 
-      /** Extract meshes from a MeshCollection into our arrays */
+      const flushPending = () => {
+        if (pendingMeshes.length === 0) return;
+        const meshes = pendingMeshes;
+        const transfers = pendingTransfers;
+        pendingMeshes = [];
+        pendingTransfers = [];
+        totalMeshesEmitted += meshes.length;
+        (self as unknown as Worker).postMessage(
+          { type: 'batch', meshes } as GeometryWorkerBatchMessage,
+          transfers,
+        );
+      };
+
+      /** Extract meshes from a MeshCollection into the pending buffer. */
       const collectMeshes = (collection: ReturnType<IfcAPI['processGeometryBatch']>) => {
         for (let i = 0; i < collection.length; i++) {
           const mesh = collection.get(i);
@@ -159,13 +181,13 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
           const positions = new Float32Array(mesh.positions);
           const normals = new Float32Array(mesh.normals);
           const indices = new Uint32Array(mesh.indices);
-          allMeshes.push({
+          pendingMeshes.push({
             expressId: mesh.expressId,
             ifcType: mesh.ifcType,
             positions, normals, indices,
             color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
           });
-          allTransferBuffers.push(positions.buffer, normals.buffer, indices.buffer);
+          pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
           cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
           mesh.free();
         }
@@ -234,12 +256,19 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
         }
       };
 
-      await processBatch(jobsFlat);
-
-      (self as unknown as Worker).postMessage(
-        { type: 'batch', meshes: allMeshes } as GeometryWorkerBatchMessage,
-        allTransferBuffers,
-      );
+      // Slice jobsFlat into STREAM_BATCH_SIZE-job chunks and flush after
+      // each chunk so the host gets visible geometry as soon as the first
+      // ~500 meshes are ready. `processBatch` still binary-splits on
+      // failure within each chunk, preserving the existing recovery path.
+      const totalJobs = Math.floor(jobsFlat.length / 3);
+      const chunkStrideJobs = STREAM_BATCH_SIZE;
+      for (let jobOffset = 0; jobOffset < totalJobs; jobOffset += chunkStrideJobs) {
+        const start = jobOffset * 3;
+        const end = Math.min(start + chunkStrideJobs * 3, jobsFlat.length);
+        await processBatch(jobsFlat.subarray(start, end));
+        flushPending();
+      }
+      flushPending(); // safety net for any tail meshes
       // Memory snapshot is best-effort: read the WASM heap size if the
       // instance survived. After a binary-split crash-and-reset `api` is
       // null, in which case we report 0 and let the aggregator note the
@@ -256,7 +285,7 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
         { type: 'memory', meshBytes: cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
       );
       (self as unknown as Worker).postMessage(
-        { type: 'complete', totalMeshes: allMeshes.length } as GeometryWorkerCompleteMessage,
+        { type: 'complete', totalMeshes: totalMeshesEmitted } as GeometryWorkerCompleteMessage,
       );
     }
   } catch (err) {

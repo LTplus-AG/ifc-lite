@@ -611,6 +611,11 @@ export class IfcAPI {
    * Clear the cached entity index (call between loads when reusing
    * the same `IfcAPI` instance — e.g. the parser worker keeps one
    * `IfcAPI` alive across multiple `parse` requests).
+   *
+   * Panics if the cache Mutex is poisoned. Poisoning means an
+   * earlier panic occurred while the lock was held — silently
+   * continuing would mean operating on an inconsistent cache, so
+   * fail fast.
    */
   clearPrePassCache(): void;
   /**
@@ -1352,9 +1357,9 @@ export interface InitOutput {
   readonly wbg_rayon_poolbuilder_numThreads: (a: number) => number;
   readonly wbg_rayon_poolbuilder_receiver: (a: number) => number;
   readonly wbg_rayon_start_worker: (a: number) => void;
-  readonly __wasm_bindgen_func_elem_1080: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1079: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1351: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1082: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1081: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1353: (a: number, b: number, c: number, d: number) => void;
   readonly memory: WebAssembly.Memory;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;

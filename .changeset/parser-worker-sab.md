@@ -30,13 +30,32 @@ New public APIs:
     unknown-type display fallback round-trips through column transports.
 
 - `@ifc-lite/geometry`
-  - `processParallel(buffer, coordinator, sharedRtcOffset?, existingSab?)`:
-    new optional `existingSab` parameter so the geometry workers can reuse
-    a SAB the caller already populated (e.g. for the parser worker).
+  - `processParallel(buffer, coordinator, sharedRtcOffset?, existingSab?, options?)`:
+    `existingSab` lets the geometry workers reuse a SAB the caller already
+    populated. The new fifth argument is `ProcessParallelOptions` with:
+    - `onEntityIndex(ids, starts, lengths)`: invoked once the streaming
+      pre-pass has built the entity index. Hosts forward the SAB-shared
+      columns to `WorkerParser.setEntityIndex(...)` so the parser skips
+      its own ~10 s WASM scan.
+    - `useSingleController`: opt-in (off by default) to the experimental
+      single-controller + wasm-bindgen-rayon path. See
+      `docs/architecture/single-controller-rayon-design.md` §12 for the
+      post-mortem on when this helps and when it regresses.
   - `GeometryProcessor.processParallel` and `processAdaptive` accept the
-    same `existingSab` to plumb the SAB through.
+    same options to plumb them through.
   - `StreamingGeometryEvent` gains a `workerMemory` variant carrying
     per-worker WASM heap + mesh-byte counts for memory accounting.
+
+- `@ifc-lite/parser` (additions on top of the worker entry above)
+  - `WorkerParser.setEntityIndex(ids, starts, lengths)`: hand a pre-built
+    entity index to the worker's `IfcAPI`. Pairs with the geometry
+    pre-pass's `onEntityIndex` callback above.
+  - `WorkerParserOptions.waitForEntityIndex`: when true, the worker blocks
+    its WASM scan until `setEntityIndex` arrives (60 s watchdog falls
+    back to the regular scan if it never does).
+  - `IfcParser.parseColumnar`: signature widened to accept
+    `ArrayBuffer | SharedArrayBuffer` (was `ArrayBuffer`); the SAB-backed
+    parser worker no longer needs an `as unknown as ArrayBuffer` cast.
 
 The viewer auto-falls back to the in-process `IfcParser` when
 `crossOriginIsolated` is `false` or the worker spawn throws, so behavior is

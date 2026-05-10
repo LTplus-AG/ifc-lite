@@ -45,9 +45,20 @@ export function buildEntityRefsFromIndex(
   lengths: Uint32Array,
 ): EntityRef[] {
   const n = ids.length;
+  // Fail fast on malformed input from the transport layer rather than
+  // silently emitting refs with `type: ''` and truncated byte ranges.
+  // The pre-pass-emitted SAB triple should always have matching
+  // lengths; mismatch here means corruption upstream that the parser
+  // cannot recover from. Spans that point past `source.length` are
+  // also rejected — clamping them would yield a malformed index.
+  if (starts.length !== n || lengths.length !== n) {
+    throw new Error(
+      `buildEntityRefsFromIndex: column-length mismatch (ids=${n}, starts=${starts.length}, lengths=${lengths.length}); pre-pass entity-index is corrupted`,
+    );
+  }
+  const sourceLen = source.length;
   const refs: EntityRef[] = new Array(n);
   const intern = new Map<string, string>();
-  const sourceLen = source.length;
 
   // The columns arrive in HashMap-iteration order from the Rust pre-pass
   // (random). Downstream `buildCompactEntityIndexAsync` checks whether
@@ -64,7 +75,16 @@ export function buildEntityRefsFromIndex(
     const i = order[oi];
     const start = starts[i];
     const len = lengths[i];
-    const limit = start + len <= sourceLen ? start + len : sourceLen;
+    // Reject spans that walk off the end of the source. Clamping
+    // (the original behavior) would silently emit refs with
+    // truncated byte ranges and empty type names — better to fail
+    // loudly so the corrupted source/index is surfaced.
+    if (start > sourceLen || start + len > sourceLen) {
+      throw new Error(
+        `buildEntityRefsFromIndex: out-of-bounds span at index ${i} (id=${ids[i]}, start=${start}, len=${len}, source=${sourceLen})`,
+      );
+    }
+    const limit = start + len;
 
     // Skip past `#<digits>=` to find the type token.
     let p = start;

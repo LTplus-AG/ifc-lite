@@ -231,8 +231,15 @@ export class IfcParser {
    *
    * Uses fast scan + on-demand property extraction for all files.
    * Properties are extracted lazily when accessed, not upfront.
+   *
+   * Accepts both `ArrayBuffer` and `SharedArrayBuffer`. The
+   * cross-worker SAB path (parser worker) passes the latter; the
+   * in-process path passes a regular ArrayBuffer.
    */
-  async parseColumnar(buffer: ArrayBuffer, options: ParseOptions = {}): Promise<IfcDataStore> {
+  async parseColumnar(
+    buffer: ArrayBuffer | SharedArrayBuffer,
+    options: ParseOptions = {},
+  ): Promise<IfcDataStore> {
     const uint8Buffer = new Uint8Array(buffer);
     const fileSizeMB = buffer.byteLength / (1024 * 1024);
 

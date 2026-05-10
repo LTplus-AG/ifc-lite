@@ -114,6 +114,10 @@ async function readUaMemoryBytes(): Promise<number | undefined> {
     const sample = await perf.measureUserAgentSpecificMemory();
     return sample.bytes;
   } catch {
+    /* cleanup — safe to ignore: best-effort telemetry probe.
+     * Throws on browsers that don't support measureUserAgentSpecificMemory
+     * yet (Firefox until recently, Safari) or when the page lacks
+     * crossOriginIsolated. None are recoverable from here. */
     return undefined;
   }
 }
@@ -254,7 +258,9 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
 
     const wasmApi = await wasmApiPromise;
     const parser = new IfcParser();
-    const dataStore: IfcDataStore = await parser.parseColumnar(source as unknown as ArrayBuffer, {
+    // `source` is the SAB-backed payload — `parseColumnar` accepts
+    // `ArrayBuffer | SharedArrayBuffer` so no cast is needed.
+    const dataStore: IfcDataStore = await parser.parseColumnar(source, {
       // Inside a worker, spawning another worker for scan is wasteful.
       disableWorkerScan: true,
       wasmApi,

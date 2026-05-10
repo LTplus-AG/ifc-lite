@@ -2407,10 +2407,15 @@ impl IfcAPI {
         let entity_index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
         // Cache for reuse by processGeometryBatch.
         // Mutex held only briefly to install the Arc; rayon helpers
-        // pick up clones below without re-locking.
-        if let Ok(mut slot) = self.cached_entity_index.lock() {
-            *slot = Some(entity_index.clone());
-        }
+        // pick up clones below without re-locking. Panic on poison —
+        // an earlier panic with the lock held would mean the cached
+        // index is in an inconsistent state.
+        let mut slot = self
+            .cached_entity_index
+            .lock()
+            .expect("ifc-lite cached_entity_index Mutex poisoned");
+        *slot = Some(entity_index.clone());
+        drop(slot);
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
 
         // Run combined pre-pass
@@ -2586,10 +2591,15 @@ impl IfcAPI {
         // Wrap in Arc so subsequent processGeometryBatch calls share by ref.
         let entity_index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
         // Mutex held only briefly to install the Arc; rayon helpers
-        // pick up clones below without re-locking.
-        if let Ok(mut slot) = self.cached_entity_index.lock() {
-            *slot = Some(entity_index.clone());
-        }
+        // pick up clones below without re-locking. Panic on poison —
+        // an earlier panic with the lock held would mean the cached
+        // index is in an inconsistent state.
+        let mut slot = self
+            .cached_entity_index
+            .lock()
+            .expect("ifc-lite cached_entity_index Mutex poisoned");
+        *slot = Some(entity_index.clone());
+        drop(slot);
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
 
         let unit_scale = project_id
@@ -2931,7 +2941,11 @@ impl IfcAPI {
         // cloning the 14 M-entry HashMap on every batch call.
         let entity_index_arc = std::sync::Arc::new(entity_index);
         // Mutex held only briefly to install the Arc.
-        if let Ok(mut slot) = self.cached_entity_index.lock() {
+        {
+            let mut slot = self
+                .cached_entity_index
+                .lock()
+                .expect("ifc-lite cached_entity_index Mutex poisoned");
             *slot = Some(entity_index_arc.clone());
         }
         // Hold a second clone for the post-scan entity-index export below;
@@ -3266,8 +3280,12 @@ impl IfcAPI {
         let entity_index_arc: std::sync::Arc<ifc_lite_core::EntityIndex> = {
             // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
             // The clone is what gets handed to rayon — no lock contention
-            // on the per-job hot path that follows.
-            let mut slot = self.cached_entity_index.lock().unwrap();
+            // on the per-job hot path that follows. Poison panics here
+            // (an earlier panic-with-lock-held has corrupted the cache).
+            let mut slot = self
+                .cached_entity_index
+                .lock()
+                .expect("ifc-lite cached_entity_index Mutex poisoned");
             if let Some(existing) = slot.as_ref() {
                 std::sync::Arc::clone(existing)
             } else {
@@ -3645,7 +3663,10 @@ impl IfcAPI {
 
         // Same Mutex-cached entity index pattern as the serial variant.
         let entity_index_arc: Arc<ifc_lite_core::EntityIndex> = {
-            let mut slot = self.cached_entity_index.lock().unwrap();
+            let mut slot = self
+                .cached_entity_index
+                .lock()
+                .expect("ifc-lite cached_entity_index Mutex poisoned");
             if let Some(existing) = slot.as_ref() {
                 Arc::clone(existing)
             } else {
@@ -3906,8 +3927,12 @@ impl IfcAPI {
         let entity_index_arc: std::sync::Arc<ifc_lite_core::EntityIndex> = {
             // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
             // The clone is what gets handed to rayon — no lock contention
-            // on the per-job hot path that follows.
-            let mut slot = self.cached_entity_index.lock().unwrap();
+            // on the per-job hot path that follows. Poison panics here
+            // (an earlier panic-with-lock-held has corrupted the cache).
+            let mut slot = self
+                .cached_entity_index
+                .lock()
+                .expect("ifc-lite cached_entity_index Mutex poisoned");
             if let Some(existing) = slot.as_ref() {
                 std::sync::Arc::clone(existing)
             } else {

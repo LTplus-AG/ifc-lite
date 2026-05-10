@@ -166,7 +166,7 @@ Scan time: 3.0 s → ~0.8 s with 4 shards (assumes near-linear scaling, which is
 Replace the current "build everything, then export" model with an incremental SAB structure that grows during scan.
 
 **Layout:**
-```
+```text
 SAB: [header (8 bytes)] [ids: Uint32Array] [starts: Uint32Array] [lengths: Uint32Array] [type_ids: Uint32Array]
 header: [Atomics-managed cursor (Int32), capacity (Int32)]
 ```

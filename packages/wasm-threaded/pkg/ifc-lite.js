@@ -223,12 +223,12 @@ if (cachedTextEncoder) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1080(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1080(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1082(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1082(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1351(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1351(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1353(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1353(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1797,6 +1797,11 @@ export class IfcAPI {
      * Clear the cached entity index (call between loads when reusing
      * the same `IfcAPI` instance — e.g. the parser worker keeps one
      * `IfcAPI` alive across multiple `parse` requests).
+     *
+     * Panics if the cache Mutex is poisoned. Poisoning means an
+     * earlier panic occurred while the lock was held — silently
+     * continuing would mean operating on an inconsistent cache, so
+     * fail fast.
      */
     clearPrePassCache() {
         wasm.ifcapi_clearPrePassCache(this.__wbg_ptr);
@@ -3435,7 +3440,7 @@ function __wbg_get_imports(memory) {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1351(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1353(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3579,7 +3584,7 @@ function __wbg_get_imports(memory) {
     };
     imports.wbg.__wbindgen_cast_a746c981d2e27385 = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 164, function: Function { arguments: [Externref], shim_idx: 165, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1079, __wasm_bindgen_func_elem_1080);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1081, __wasm_bindgen_func_elem_1082);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
@@ -3589,7 +3594,7 @@ function __wbg_get_imports(memory) {
     };
     imports.wbg.__wbindgen_cast_d8a6ce55dd0ad8ed = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 164, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 165, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1079, __wasm_bindgen_func_elem_1080);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1081, __wasm_bindgen_func_elem_1082);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_link_203404ece0e9bab9 = function(arg0) {

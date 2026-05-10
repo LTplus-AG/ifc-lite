@@ -259,11 +259,18 @@ impl IfcAPI {
     /// Clear the cached entity index (call between loads when reusing
     /// the same `IfcAPI` instance — e.g. the parser worker keeps one
     /// `IfcAPI` alive across multiple `parse` requests).
+    ///
+    /// Panics if the cache Mutex is poisoned. Poisoning means an
+    /// earlier panic occurred while the lock was held — silently
+    /// continuing would mean operating on an inconsistent cache, so
+    /// fail fast.
     #[wasm_bindgen(js_name = clearPrePassCache)]
     pub fn clear_pre_pass_cache(&self) {
-        if let Ok(mut slot) = self.cached_entity_index.lock() {
-            slot.take();
-        }
+        let mut slot = self
+            .cached_entity_index
+            .lock()
+            .expect("ifc-lite cached_entity_index Mutex poisoned");
+        slot.take();
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -299,9 +306,11 @@ impl IfcAPI {
             let length = lengths[i] as usize;
             index.insert(ids[i], (start, start + length));
         }
-        if let Ok(mut slot) = self.cached_entity_index.lock() {
-            *slot = Some(std::sync::Arc::new(index));
-        }
+        let mut slot = self
+            .cached_entity_index
+            .lock()
+            .expect("ifc-lite cached_entity_index Mutex poisoned");
+        *slot = Some(std::sync::Arc::new(index));
     }
 
     /// Get WASM memory for zero-copy access

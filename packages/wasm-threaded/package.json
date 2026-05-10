@@ -2,6 +2,7 @@
   "name": "@ifc-lite/wasm-threaded",
   "type": "module",
   "private": true,
+  "_intent": "INTENTIONALLY workspace-only / non-publishable. The threaded WASM bundle ships only inside the viewer app and is loaded behind the localStorage['ifc-lite:single-controller'] feature flag. Per the post-mortem in docs/architecture/single-controller-rayon-design.md §12, in-WASM threading regressed wall-clock for IFC parsing workloads, so this stays as opt-in latent infrastructure rather than a published artifact. Marking private removes it from the npm publish surface; bundlers consuming it must do so via workspace path resolution.",
   "collaborators": [
     "IFC-Lite Contributors"
   ],

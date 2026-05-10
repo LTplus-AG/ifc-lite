@@ -291,21 +291,36 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
           ? (navigator.hardwareConcurrency ?? 4)
           : 4);
         const targetThreads = Math.max(1, cores - 1);
+        let lastInitErr: unknown = null;
         for (let attempt = 1; attempt <= 5; attempt++) {
           try {
             const t0 = performance.now();
             await initThreadPool(targetThreads);
             console.log(`[controller] rayon pool ready (${targetThreads} threads, attempt ${attempt}) @ ${Math.round(performance.now() - t0)}ms`);
             threadPoolReady = true;
+            lastInitErr = null;
             break;
           } catch (err) {
+            lastInitErr = err;
             console.warn(`[controller] initThreadPool attempt ${attempt} failed:`, err);
-            if (attempt === 5) {
-              console.error('[controller] all initThreadPool attempts exhausted — par_iter will run serial');
-            } else {
+            if (attempt < 5) {
               await new Promise((r) => setTimeout(r, 25));
             }
           }
+        }
+        if (!threadPoolReady) {
+          // Surface the failure as an error message back to the host
+          // instead of silently posting `ready` and then hanging on
+          // the first par_iter call. The host's processParallel will
+          // see this and reject the load with a clear cause.
+          const errMsg = lastInitErr instanceof Error
+            ? lastInitErr.message
+            : String(lastInitErr ?? 'unknown initThreadPool failure');
+          (self as unknown as Worker).postMessage({
+            type: 'error',
+            message: `controller: initThreadPool failed after 5 attempts: ${errMsg}`,
+          } as GeometryWorkerErrorMessage);
+          return;
         }
         // Phase 2 microbenchmark — run a CPU-pure parallel task to
         // measure rayon's actual speedup on this hardware. Helps
@@ -326,9 +341,15 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
       }
 
       if (e.data.type === 'stream-start') {
-        if (!api) {
-          await init();
-          api = new IfcAPI();
+        // The thread pool MUST be ready before we accept stream
+        // messages — `processGeometryBatchParallel` calls par_iter
+        // which would silently run on the calling thread (slow
+        // serial fallback) if the pool isn't initialized. Refuse
+        // and surface a clear error so the host can fall back.
+        if (!api || !threadPoolReady) {
+          throw new Error(
+            'controller: stream-start before init/threadPool ready — host must wait for {type:"ready"} before dispatching',
+          );
         }
         activeSession = startSession({
           sharedBuffer: e.data.sharedBuffer,
@@ -345,8 +366,8 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
       }
 
       if (e.data.type === 'stream-chunk') {
-        if (!activeSession) {
-          throw new Error('stream-chunk before stream-start');
+        if (!activeSession || !api || !threadPoolReady) {
+          throw new Error('controller: stream-chunk before init/stream-start');
         }
         await processSliceStreaming(activeSession, e.data.jobsFlat);
         return;
@@ -371,8 +392,14 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
 
       if (e.data.type === 'set-entity-index') {
         if (!api) {
-          await init();
-          api = new IfcAPI();
+          // Should never happen — host always sends `init` first and
+          // waits for `ready`. If we hit this, it indicates a host
+          // sequencing bug; surface clearly rather than silently
+          // initializing a fresh API (which would skip thread-pool
+          // setup and break later par_iter calls).
+          throw new Error(
+            'controller: set-entity-index before init — host must wait for {type:"ready"} before dispatching',
+          );
         }
         // Eager FxHashMap build — happens during the styles wait so
         // by the time stream-chunk arrives the cache is hot.

@@ -137,7 +137,7 @@ export class ColumnarParser {
      * This provides instant UI responsiveness even for very large files.
      */
     async parseLite(
-        buffer: ArrayBuffer,
+        buffer: ArrayBuffer | SharedArrayBuffer,
         entityRefs: EntityRef[],
         options: {
             onProgress?: (progress: { phase: string; percent: number }) => void;

@@ -203,6 +203,11 @@ export async function* processParallel(
           color: m.color,
         }));
         if (meshes.length > 0) {
+          // Update totalMeshes per batch so consumers see a live
+          // running count via `totalSoFar`. The `complete` event
+          // below used to be the only updater, leaving streamed
+          // batches reporting a stale total until the worker exited.
+          totalMeshes += meshes.length;
           coordinator.processMeshesIncremental(meshes);
           const coordinateInfo = coordinator.getCurrentCoordinateInfo();
           eventQueue.push({
@@ -216,7 +221,13 @@ export async function* processParallel(
         return;
       }
       if (msg.type === 'complete') {
-        totalMeshes += msg.totalMeshes;
+        // Don't add msg.totalMeshes here — batches above already
+        // updated `totalMeshes += meshes.length` per batch, so the
+        // running sum is already correct. msg.totalMeshes is the
+        // worker's per-session count; if it disagrees with the sum
+        // of batch lengths we observed, a batch was lost — log but
+        // trust our observed count to keep totalSoFar consistent
+        // with what consumers actually rendered.
         workersCompleted++;
         worker.terminate();
         wake();
@@ -525,6 +536,15 @@ export async function* processParallel(
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;
         console.log(`[stream] prepass complete @ ${elapsed()}ms totalJobs=${prepassJobsTotal} chunks=${chunkArrivals}`);
+        // Unconditionally drive the prepass-complete handler here.
+        // The outer loop's `prepassJobsTotal > 0` gate would skip
+        // zero-geometry files (no IFC geometry entities), causing
+        // the generator to wait forever. Calling here ensures
+        // prepassDone flips even when totalJobs === 0.
+        if (!prepassCompleteSeen) {
+          prepassCompleteSeen = true;
+          onPrepassComplete();
+        }
       }
       return;
     }
@@ -553,7 +573,14 @@ export async function* processParallel(
   // After we see the Rust `complete` event we can sendStreamEnd.
   const onPrepassComplete = () => {
     prepassDone = true;
-    sendStreamEnd();
+    // Only signal stream-end to workers if they actually got
+    // stream-start (which gates on `meta`). Zero-geometry files
+    // never trigger meta → workers never start → no stream-end
+    // needed. The dedicated zero-jobs branch in the outer loop
+    // handles their teardown.
+    if (streamStartSentToWorkers) {
+      sendStreamEnd();
+    }
     prepassWorker.terminate();
     wake();
   };

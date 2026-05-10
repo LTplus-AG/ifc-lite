@@ -91,13 +91,23 @@ SIZE_PATH="$(echo "$OUT_DIR" | sed 's|^../../||')/ifc-lite_bg.wasm"
 ls -lh "$SIZE_PATH" | awk '{print "   WASM: " $5}'
 
 WASM_SIZE=$(wc -c < "$SIZE_PATH")
-# Threaded bundle is ~10% larger due to atomics + thread-pool init code
-TARGET_SIZE=$((1300 * 1024))
+# Per-bundle budgets:
+#  - single-thread (default): 1100 KB. The slim bundle is what most
+#    users load; keep it tight.
+#  - threaded: 1300 KB. ~15% larger because of atomics + the
+#    wasm-bindgen-rayon thread-pool init code.
+if [ "$THREADED" = "1" ]; then
+  TARGET_SIZE=$((1300 * 1024))
+  TARGET_LABEL="1300 KB (threaded)"
+else
+  TARGET_SIZE=$((1100 * 1024))
+  TARGET_LABEL="1100 KB (single-thread)"
+fi
 
 if [ $WASM_SIZE -lt $TARGET_SIZE ]; then
-  echo "   ✅ Under target!"
+  echo "   ✅ Under $TARGET_LABEL target!"
 else
-  echo "   ⚠️  Over target ($(($WASM_SIZE / 1024))KB)"
+  echo "   ⚠️  Over $TARGET_LABEL target ($(($WASM_SIZE / 1024))KB)"
 fi
 
 echo ""

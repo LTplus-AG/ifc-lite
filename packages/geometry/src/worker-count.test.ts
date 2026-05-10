@@ -6,11 +6,16 @@ import { describe, it, expect } from 'vitest';
 import { computeWorkerCount } from './worker-count.js';
 
 describe('computeWorkerCount', () => {
-  it('returns minWorkers when totalJobs is 0', () => {
+  it('returns 0 workers when totalJobs is 0', () => {
+    // Updated contract: no jobs → no workers. Avoids paying ~250ms
+    // WASM compile for nothing. Callers in production always pass
+    // totalJobs >= 1 (estimated from fileSize in geometry-parallel),
+    // so this branch is reached only when callers explicitly report
+    // an empty job set.
     const r = computeWorkerCount({
       fileSizeMB: 100, cores: 8, deviceMemoryGB: 8, totalJobs: 0,
     });
-    expect(r.count).toBe(1);
+    expect(r.count).toBe(0);
     expect(r.reason).toBe('jobs');
   });
 

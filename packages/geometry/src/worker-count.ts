@@ -68,7 +68,10 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   const maxWorkers = Math.max(minWorkers, Math.floor(inputs.maxWorkers ?? 8));
 
   if (totalJobs === 0) {
-    return { count: minWorkers, reason: 'jobs' };
+    // No jobs → no workers. Spawning even one worker pays for a
+    // ~250ms WASM compile that has nothing to do; the docstring's
+    // non-zero guarantee is scoped to "when there are jobs to do."
+    return { count: 0, reason: 'jobs' };
   }
 
   // Cores-based ceiling (preserves the previous tier behaviour, but expressed

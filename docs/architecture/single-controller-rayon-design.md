@@ -113,16 +113,25 @@ pub struct IfcAPI {
     // OnceLock is Sync-safe and matches our actual usage (set once via
     // setEntityIndex, then only ever read via Arc::clone). No Mutex
     // overhead; cleaner than RefCell.
-    cached_entity_index: std::sync::OnceLock<std::sync::Arc<EntityIndex>>,
+    cached_entity_index: std::sync::Mutex<Option<std::sync::Arc<EntityIndex>>>,
 }
 ```
 
-**Why `OnceLock` over `RefCell` or `Mutex`:**
+**Why `Mutex` over `RefCell` or `OnceLock` (revised after implementation):**
 - `RefCell` is `!Sync` → blocks rayon's `&self` access pattern.
-- `Mutex` adds locking overhead on every access (millions of reads under rayon).
-- `OnceLock` matches our actual usage (set once, read many) and is `Sync`-safe with zero overhead after init.
-
-`setEntityIndex` becomes idempotent: first call wins, subsequent are no-ops. The `clearPrePassCache` method (line 251) is removed — there's no use case for it once the lock is set.
+- `OnceLock` was the original choice but rejected: the parser worker
+  reuses ONE `IfcAPI` across multiple `parse()` calls
+  (`parser.worker.ts:141 cachedFullScanApi`). `OnceLock` can only be
+  set once per instance lifetime; the parser pattern needs to
+  REPLACE the cache between loads. `Mutex` supports this via
+  `setEntityIndex` setting `*slot = Some(new_index)`. The lock is
+  held only briefly at batch entry (lock → clone Arc → unlock), so
+  there is no per-iteration contention on the rayon hot path.
+- `clearPrePassCache` is therefore retained — the parser worker
+  needs explicit between-load cleanup.
+- All `.lock()` sites use `.expect("ifc-lite cached_entity_index Mutex poisoned")`
+  to fail fast on Mutex poisoning rather than silently keeping
+  stale data (per CodeRabbit feedback on PR #629).
 
 ### 5.3 Decoder cache → `thread_local!`
 

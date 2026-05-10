@@ -366,12 +366,16 @@ export async function* processParallel(
   };
 
   // Dispatch the streaming pre-pass.
-  // Smaller chunks (5 K) give the host many opportunities to keep all
-  // workers busy throughout the pre-pass scan; combined with the
-  // per-chunk worker fan-out above this keeps the pool saturated even
-  // when total geometry job count is modest (e.g. 92 K on the 986 MB
-  // test file).
-  prepassWorker.postMessage({ type: 'prepass-streaming', sharedBuffer, chunkSize: 5_000 });
+  // chunk_size = 50K is a deliberate compromise:
+  //   • small enough that the FIRST chunk (always a tiny one — bounded by
+  //     RTC_SAMPLE_THRESHOLD ≈ 50 jobs from the Rust side) reaches workers
+  //     within ~1.5 s for fast TTFG;
+  //   • large enough that subsequent chunks make few Rust→JS callbacks
+  //     and few worker postMessages — each call into processGeometryBatch
+  //     has fixed setup cost that compounds badly when invoked 30+ times.
+  // Per-chunk fan-out (see `dispatchJobsChunkInternal`) splits each chunk
+  // evenly across all workers so parallelism is preserved at every chunk.
+  prepassWorker.postMessage({ type: 'prepass-streaming', sharedBuffer, chunkSize: 50_000 });
 
   // Drain the event queue until the pre-pass and all process workers complete.
   // The pre-pass `complete` event is captured inside the message handler

@@ -394,6 +394,179 @@ fn create_side_walls(boundary: &[nalgebra::Point2<f64>], depth: f64, mesh: &mut 
     }
 }
 
+/// Extrude with a different cross section at the top (lofted/tapered extrusion).
+///
+/// Used for `IfcExtrudedAreaSolidTapered`. The two profiles must share topology
+/// per the IFC WR2 constraint, but in practice authoring tools sometimes emit
+/// loops with different vertex counts. We resample the shorter outer loop to
+/// the longer one's length so a side wall can always be built; holes with
+/// mismatched counts are dropped with no error so the element still renders.
+#[inline]
+pub fn extrude_profile_lofted(
+    start: &Profile2D,
+    end: &Profile2D,
+    depth: f64,
+    transform: Option<Matrix4<f64>>,
+) -> Result<Mesh> {
+    if depth <= 0.0 {
+        return Err(Error::InvalidExtrusion(
+            "Depth must be positive".to_string(),
+        ));
+    }
+    if start.outer.len() < 3 || end.outer.len() < 3 {
+        return Err(Error::InvalidProfile(
+            "Lofted extrusion requires both profiles to have ≥3 vertices".to_string(),
+        ));
+    }
+
+    // Match outer-loop vertex counts so we can pair sides 1:1.
+    let (outer_start, outer_end) = match_loop_lengths(&start.outer, &end.outer);
+    let n = outer_start.len();
+    debug_assert_eq!(n, outer_end.len());
+
+    // Triangulate each cap independently (silhouettes differ).
+    let start_tri = start.triangulate()?;
+    let end_tri = end.triangulate()?;
+    let cap_vertex_count = start_tri.points.len() + end_tri.points.len();
+    let cap_index_count = start_tri.indices.len() + end_tri.indices.len();
+    let side_vertex_count = n * 4
+        + start
+            .holes
+            .iter()
+            .zip(end.holes.iter())
+            .filter(|(s, e)| s.len() == e.len() && s.len() >= 3)
+            .map(|(s, _)| s.len() * 4)
+            .sum::<usize>();
+    let mut mesh = Mesh::with_capacity(
+        cap_vertex_count + side_vertex_count,
+        cap_index_count + n * 6,
+    );
+    create_cap_mesh(&start_tri, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
+    create_cap_mesh(&end_tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
+    create_lofted_side_walls(&outer_start, &outer_end, depth, false, &mut mesh);
+    for (s_hole, e_hole) in start.holes.iter().zip(end.holes.iter()) {
+        if s_hole.len() < 3 || e_hole.len() < 3 {
+            continue;
+        }
+        let (sh, eh) = match_loop_lengths(s_hole, e_hole);
+        create_lofted_side_walls(&sh, &eh, depth, true, &mut mesh);
+    }
+    if let Some(mat) = transform {
+        apply_transform(&mut mesh, &mat);
+    }
+    Ok(mesh)
+}
+
+/// Resample the shorter loop to the longer one's vertex count via arc-length
+/// interpolation, returning owned copies of both loops at equal length.
+fn match_loop_lengths(
+    a: &[Point2<f64>],
+    b: &[Point2<f64>],
+) -> (Vec<Point2<f64>>, Vec<Point2<f64>>) {
+    if a.len() == b.len() {
+        return (a.to_vec(), b.to_vec());
+    }
+    if a.len() > b.len() {
+        (a.to_vec(), resample_loop(b, a.len()))
+    } else {
+        (resample_loop(a, b.len()), b.to_vec())
+    }
+}
+
+/// Resample a closed polyline to `target` evenly-spaced points (by arc length).
+fn resample_loop(loop_pts: &[Point2<f64>], target: usize) -> Vec<Point2<f64>> {
+    let n = loop_pts.len();
+    if n == 0 || target == 0 {
+        return Vec::new();
+    }
+    // Cumulative arc length around the closed loop
+    let mut cum = Vec::with_capacity(n + 1);
+    cum.push(0.0);
+    for i in 0..n {
+        let p0 = &loop_pts[i];
+        let p1 = &loop_pts[(i + 1) % n];
+        let d = ((p1.x - p0.x).powi(2) + (p1.y - p0.y).powi(2)).sqrt();
+        cum.push(cum[i] + d);
+    }
+    let total = *cum.last().unwrap();
+    if total <= 0.0 {
+        return loop_pts.to_vec();
+    }
+    let mut out = Vec::with_capacity(target);
+    for k in 0..target {
+        let s = (k as f64 / target as f64) * total;
+        // Find segment such that cum[i] <= s < cum[i+1]
+        let mut i = 0;
+        while i + 1 < cum.len() && cum[i + 1] <= s {
+            i += 1;
+        }
+        if i >= n {
+            i = n - 1;
+        }
+        let seg_len = cum[i + 1] - cum[i];
+        let t = if seg_len > 0.0 { (s - cum[i]) / seg_len } else { 0.0 };
+        let p0 = &loop_pts[i];
+        let p1 = &loop_pts[(i + 1) % n];
+        out.push(Point2::new(
+            p0.x + (p1.x - p0.x) * t,
+            p0.y + (p1.y - p0.y) * t,
+        ));
+    }
+    out
+}
+
+/// Side walls between two paired loops at z=0 and z=depth.
+/// `is_hole` flips winding so hole walls face inward.
+fn create_lofted_side_walls(
+    bottom: &[Point2<f64>],
+    top: &[Point2<f64>],
+    depth: f64,
+    is_hole: bool,
+    mesh: &mut Mesh,
+) {
+    let n = bottom.len();
+    if n < 2 || top.len() != n {
+        return;
+    }
+    let base_index = mesh.vertex_count() as u32;
+    let mut quad_count = 0u32;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let p0 = &bottom[i];
+        let p1 = &bottom[j];
+        let q0 = &top[i];
+        let q1 = &top[j];
+        let v0 = Point3::new(p0.x, p0.y, 0.0);
+        let v1 = Point3::new(p1.x, p1.y, 0.0);
+        let v2 = Point3::new(q1.x, q1.y, depth);
+        let v3 = Point3::new(q0.x, q0.y, depth);
+        // Flat normal from the actual 3D quad — the side is no longer vertical
+        // when the two profiles differ.
+        let edge_a = v1 - v0;
+        let edge_b = v3 - v0;
+        let mut normal = match edge_a.cross(&edge_b).try_normalize(1e-10) {
+            Some(n) => n,
+            None => continue,
+        };
+        if is_hole {
+            normal = -normal;
+        }
+        let idx = base_index + (quad_count * 4);
+        mesh.add_vertex(v0, normal);
+        mesh.add_vertex(v1, normal);
+        mesh.add_vertex(v2, normal);
+        mesh.add_vertex(v3, normal);
+        if is_hole {
+            mesh.add_triangle(idx, idx + 2, idx + 1);
+            mesh.add_triangle(idx, idx + 3, idx + 2);
+        } else {
+            mesh.add_triangle(idx, idx + 1, idx + 2);
+            mesh.add_triangle(idx, idx + 2, idx + 3);
+        }
+        quad_count += 1;
+    }
+}
+
 /// Heuristic for detecting circular-ish profiles from boundary points.
 ///
 /// Circular profiles generated from IFC circles typically have many segments with
@@ -616,5 +789,74 @@ mod tests {
         cy /= rect.outer.len() as f64;
 
         assert!(!is_approximately_circular_profile(&rect.outer, cx, cy));
+    }
+
+    #[test]
+    fn test_lofted_extrusion_rectangle_to_rectangle() {
+        // Start: 200x200 (centered at origin), End: 200x600 — matches the IFC
+        // sample in issue #628. With Depth=2000 the bounds should be
+        // (±100, -100..-100→±300, 0..2000). Caps differ in size so the side
+        // walls slope outward in Y.
+        let start = create_rectangle(200.0, 200.0);
+        let end = create_rectangle(200.0, 600.0);
+        let mesh = extrude_profile_lofted(&start, &end, 2000.0, None).unwrap();
+
+        assert!(!mesh.is_empty());
+        let (min, max) = mesh.bounds();
+        assert!((min.x - -100.0).abs() < 0.01, "min.x = {}", min.x);
+        assert!((max.x - 100.0).abs() < 0.01, "max.x = {}", max.x);
+        // At the top the rectangle is 600 tall so reaches ±300
+        assert!((min.y - -300.0).abs() < 0.01, "min.y = {}", min.y);
+        assert!((max.y - 300.0).abs() < 0.01, "max.y = {}", max.y);
+        assert!((min.z - 0.0).abs() < 0.01);
+        assert!((max.z - 2000.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_lofted_side_walls_not_vertical_when_profiles_differ() {
+        // For a tapering quad, side normals must have a non-zero Z component
+        // (otherwise the cap and side normals collide and shading goes wrong).
+        let start = create_rectangle(200.0, 200.0);
+        let end = create_rectangle(200.0, 600.0);
+        let mesh = extrude_profile_lofted(&start, &end, 2000.0, None).unwrap();
+
+        // Skip the cap normals (first start_tri + end_tri vertices). At least
+        // one side-wall vertex must have |nz| > 0 because the wall is sloped.
+        let mut has_sloped_normal = false;
+        for chunk in mesh.normals.chunks_exact(3) {
+            if chunk[2].abs() > 1e-3 && chunk[2].abs() < 0.9999 {
+                has_sloped_normal = true;
+                break;
+            }
+        }
+        assert!(
+            has_sloped_normal,
+            "expected at least one side-wall normal with sloped Z component"
+        );
+    }
+
+    #[test]
+    fn test_lofted_extrusion_invalid_depth() {
+        let start = create_rectangle(10.0, 10.0);
+        let end = create_rectangle(10.0, 20.0);
+        assert!(extrude_profile_lofted(&start, &end, 0.0, None).is_err());
+        assert!(extrude_profile_lofted(&start, &end, -1.0, None).is_err());
+    }
+
+    #[test]
+    fn test_resample_loop_preserves_total_length() {
+        let rect = create_rectangle(10.0, 4.0);
+        let resampled = resample_loop(&rect.outer, 16);
+        assert_eq!(resampled.len(), 16);
+        let total: f64 = (0..resampled.len())
+            .map(|i| {
+                let p0 = &resampled[i];
+                let p1 = &resampled[(i + 1) % resampled.len()];
+                ((p1.x - p0.x).powi(2) + (p1.y - p0.y).powi(2)).sqrt()
+            })
+            .sum();
+        // Original perimeter is 28; resampled chord-perimeter is ≤ original
+        // (chords cut corners). Allow up to 5% loss.
+        assert!(total > 26.5 && total <= 28.0 + 1e-6, "resampled perimeter = {}", total);
     }
 }

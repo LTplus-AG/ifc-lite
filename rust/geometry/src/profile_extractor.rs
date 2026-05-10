@@ -25,6 +25,16 @@ use ifc_lite_core::{
 };
 use nalgebra::Matrix4;
 
+/// Whether `t` is `IfcExtrudedAreaSolid` or its `IfcExtrudedAreaSolidTapered`
+/// subtype. Both share attributes 0..3 so the same extraction path works.
+#[inline]
+fn is_extruded_area_solid(t: IfcType) -> bool {
+    matches!(
+        t,
+        IfcType::IfcExtrudedAreaSolid | IfcType::IfcExtrudedAreaSolidTapered
+    )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC TYPES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -139,7 +149,7 @@ pub fn extract_profiles(content: &str, model_index: u32) -> Vec<ExtractedProfile
             };
 
             for item in &items {
-                if item.ifc_type == IfcType::IfcExtrudedAreaSolid {
+                if is_extruded_area_solid(item.ifc_type) {
                     match extract_extruded_solid(
                         id,
                         &ifc_type_name,
@@ -253,7 +263,7 @@ fn extract_mapped_item_profiles(
     };
 
     for sub_item in &items {
-        if sub_item.ifc_type == IfcType::IfcExtrudedAreaSolid {
+        if is_extruded_area_solid(sub_item.ifc_type) {
             match extract_extruded_solid(
                 element_id,
                 ifc_type,

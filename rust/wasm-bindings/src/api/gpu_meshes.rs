@@ -2406,7 +2406,11 @@ impl IfcAPI {
         // share it across many calls without cloning the HashMap.
         let entity_index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
         // Cache for reuse by processGeometryBatch.
-        *self.cached_entity_index.borrow_mut() = Some(entity_index.clone());
+        // Mutex held only briefly to install the Arc; rayon helpers
+        // pick up clones below without re-locking.
+        if let Ok(mut slot) = self.cached_entity_index.lock() {
+            *slot = Some(entity_index.clone());
+        }
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
 
         // Run combined pre-pass
@@ -2581,7 +2585,11 @@ impl IfcAPI {
         // Resolve unit scale + RTC offset (needs entity index for decoder).
         // Wrap in Arc so subsequent processGeometryBatch calls share by ref.
         let entity_index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
-        *self.cached_entity_index.borrow_mut() = Some(entity_index.clone());
+        // Mutex held only briefly to install the Arc; rayon helpers
+        // pick up clones below without re-locking.
+        if let Ok(mut slot) = self.cached_entity_index.lock() {
+            *slot = Some(entity_index.clone());
+        }
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
 
         let unit_scale = project_id
@@ -2922,7 +2930,10 @@ impl IfcAPI {
         // so process workers reuse the same index by reference instead of
         // cloning the 14 M-entry HashMap on every batch call.
         let entity_index_arc = std::sync::Arc::new(entity_index);
-        *self.cached_entity_index.borrow_mut() = Some(entity_index_arc.clone());
+        // Mutex held only briefly to install the Arc.
+        if let Ok(mut slot) = self.cached_entity_index.lock() {
+            *slot = Some(entity_index_arc.clone());
+        }
         // Hold a second clone for the post-scan entity-index export below;
         // `with_arc_index` consumes the Arc so we'd lose the reference
         // after the decoder is created.
@@ -3253,7 +3264,10 @@ impl IfcAPI {
         // build once here and store under Arc so subsequent calls hit
         // the fast path.
         let entity_index_arc: std::sync::Arc<ifc_lite_core::EntityIndex> = {
-            let mut slot = self.cached_entity_index.borrow_mut();
+            // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
+            // The clone is what gets handed to rayon — no lock contention
+            // on the per-job hot path that follows.
+            let mut slot = self.cached_entity_index.lock().unwrap();
             if let Some(existing) = slot.as_ref() {
                 std::sync::Arc::clone(existing)
             } else {
@@ -3502,7 +3516,10 @@ impl IfcAPI {
 
         // Same Arc-cached entity index pattern as processGeometryBatch.
         let entity_index_arc: std::sync::Arc<ifc_lite_core::EntityIndex> = {
-            let mut slot = self.cached_entity_index.borrow_mut();
+            // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
+            // The clone is what gets handed to rayon — no lock contention
+            // on the per-job hot path that follows.
+            let mut slot = self.cached_entity_index.lock().unwrap();
             if let Some(existing) = slot.as_ref() {
                 std::sync::Arc::clone(existing)
             } else {

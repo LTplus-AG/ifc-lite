@@ -15,8 +15,6 @@ pub(crate) mod styling;
 mod symbolic;
 mod zero_copy_api;
 
-use std::cell::RefCell;
-
 use crate::zero_copy::{MeshCollection, MeshDataJs};
 use ifc_lite_core::{EntityIndex, GeoReference, RtcOffset};
 use wasm_bindgen::prelude::*;
@@ -227,7 +225,18 @@ pub struct IfcAPI {
     /// The streaming pre-pass calls `processGeometryBatch` dozens of times
     /// per worker — the previous `RefCell<Option<EntityIndex>>::clone()`
     /// path made each call effectively a full HashMap copy.
-    cached_entity_index: RefCell<Option<std::sync::Arc<EntityIndex>>>,
+    ///
+    /// Phase 1.1 of the single-controller refactor: switched from
+    /// `RefCell` to `Mutex` so the API is `Sync`. Rayon helpers (added
+    /// in Phase 2) need to be able to call processGeometryBatch via
+    /// `&self` from multiple threads without UB. The lock is held only
+    /// at batch entry (lock → clone Arc → unlock → use cloned Arc) so
+    /// hot-path contention is negligible — each call locks once and
+    /// rayon helpers operate on the cloned Arc lock-free thereafter.
+    /// `RefCell` was unsafe here even on single-threaded WASM workers
+    /// because wasm-bindgen's `WasmRefCell` borrow counter underflows
+    /// under concurrent `&self` access.
+    cached_entity_index: std::sync::Mutex<Option<std::sync::Arc<EntityIndex>>>,
 }
 
 #[wasm_bindgen]
@@ -238,7 +247,7 @@ impl IfcAPI {
         #[cfg(feature = "console_error_panic_hook")]
         console_error_panic_hook::set_once();
 
-        Self { initialized: true, cached_entity_index: RefCell::new(None) }
+        Self { initialized: true, cached_entity_index: std::sync::Mutex::new(None) }
     }
 
     /// Check if API is initialized
@@ -247,10 +256,14 @@ impl IfcAPI {
         self.initialized
     }
 
-    /// Clear the cached entity index (call after streaming is complete)
+    /// Clear the cached entity index (call between loads when reusing
+    /// the same `IfcAPI` instance — e.g. the parser worker keeps one
+    /// `IfcAPI` alive across multiple `parse` requests).
     #[wasm_bindgen(js_name = clearPrePassCache)]
     pub fn clear_pre_pass_cache(&self) {
-        self.cached_entity_index.borrow_mut().take();
+        if let Ok(mut slot) = self.cached_entity_index.lock() {
+            slot.take();
+        }
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -269,6 +282,10 @@ impl IfcAPI {
     ///
     /// `lengths[i]` is the byte length of entity `ids[i]`, so the cache
     /// stores `(start, start + length)` to match the existing tuple layout.
+    ///
+    /// Idempotent in the sense that repeated calls REPLACE the cache —
+    /// supports the parser-worker pattern of reusing one IfcAPI across
+    /// multiple loads with different files.
     #[wasm_bindgen(js_name = setEntityIndex)]
     pub fn set_entity_index(&self, ids: &[u32], starts: &[u32], lengths: &[u32]) {
         let n = ids.len();
@@ -282,7 +299,9 @@ impl IfcAPI {
             let length = lengths[i] as usize;
             index.insert(ids[i], (start, start + length));
         }
-        *self.cached_entity_index.borrow_mut() = Some(std::sync::Arc::new(index));
+        if let Ok(mut slot) = self.cached_entity_index.lock() {
+            *slot = Some(std::sync::Arc::new(index));
+        }
     }
 
     /// Get WASM memory for zero-copy access

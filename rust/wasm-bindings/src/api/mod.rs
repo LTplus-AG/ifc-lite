@@ -281,6 +281,180 @@ fn set_js_prop_jv(obj: &JsValue, key: &JsValue, value: &JsValue) -> bool {
     js_sys::Reflect::set(obj, key, value).unwrap_or(false)
 }
 
+/// Drain CSG / opening-classification / per-host diagnostics from the
+/// router and emit them to the browser console. Returns a JS object
+/// summarising what was logged so callers can stash it on a completion
+/// callback's stats payload.
+///
+/// Always emits the classifier summary at `console.debug`; emits the
+/// failure summary at `console.warn` only when there's at least one
+/// failure to report. Per-host detail is included for the worst-failing
+/// products (capped to keep the log readable on large files).
+pub(super) fn drain_and_log_csg_diagnostics(
+    router: &ifc_lite_geometry::GeometryRouter,
+) -> JsValue {
+    let cls = router.take_classification_stats();
+    let csg_failures = router.take_csg_failures();
+    let host_diags = router.take_host_opening_diagnostics();
+
+    let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
+    let cls_obj = js_sys::Object::new();
+    set_js_prop(&cls_obj, "rectangular", &(cls.rectangular as f64).into());
+    set_js_prop(&cls_obj, "diagonal", &(cls.diagonal as f64).into());
+    set_js_prop(&cls_obj, "nonRectangular", &(cls.non_rectangular as f64).into());
+    set_js_prop(
+        &cls_obj,
+        "floorOpeningGuardSaved",
+        &(cls.floor_opening_guard_saved as f64).into(),
+    );
+    set_js_prop(&cls_obj, "total", &(cls_total as f64).into());
+
+    if cls_total > 0 {
+        web_sys::console::debug_1(
+            &format!(
+                "[IFC-LITE] Opening classifier: rect={} diag={} non_rect={} \
+                 floor_opening_guard_saved={} (total={cls_total})",
+                cls.rectangular, cls.diagonal, cls.non_rectangular, cls.floor_opening_guard_saved
+            )
+            .into(),
+        );
+    }
+
+    let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
+    let products_with_failures = csg_failures.len();
+
+    let summary = js_sys::Object::new();
+    set_js_prop(&summary, "classification", &cls_obj);
+    set_js_prop(&summary, "totalFailures", &(total_failures as f64).into());
+    set_js_prop(
+        &summary,
+        "productsWithFailures",
+        &(products_with_failures as f64).into(),
+    );
+    set_js_prop(
+        &summary,
+        "hostsWithOpenings",
+        &(host_diags.len() as f64).into(),
+    );
+
+    if total_failures > 0 || !host_diags.is_empty() {
+        // Per-reason breakdown for the warn line.
+        let mut by_reason: std::collections::HashMap<&'static str, usize> =
+            std::collections::HashMap::new();
+        for fails in csg_failures.values() {
+            for f in fails {
+                let key: &'static str = match &f.reason {
+                    ifc_lite_geometry::BoolFailureReason::OperandTooLarge { .. } => {
+                        "OperandTooLarge"
+                    }
+                    ifc_lite_geometry::BoolFailureReason::EmptyOperand => "EmptyOperand",
+                    ifc_lite_geometry::BoolFailureReason::DegenerateOperand => "DegenerateOperand",
+                    ifc_lite_geometry::BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
+                    ifc_lite_geometry::BoolFailureReason::KernelOutputInvalid => {
+                        "KernelOutputInvalid"
+                    }
+                    ifc_lite_geometry::BoolFailureReason::SolidSolidDifferenceSkipped => {
+                        "SolidSolidDifferenceSkipped"
+                    }
+                    ifc_lite_geometry::BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
+                        "PolygonalBoundedHalfSpaceFallback"
+                    }
+                    ifc_lite_geometry::BoolFailureReason::UnknownBooleanOperator(_) => {
+                        "UnknownBooleanOperator"
+                    }
+                    ifc_lite_geometry::BoolFailureReason::KernelError(_) => "KernelError",
+                };
+                *by_reason.entry(key).or_insert(0) += 1;
+            }
+        }
+        let mut breakdown: Vec<(&'static str, usize)> = by_reason.into_iter().collect();
+        breakdown.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Per-host-type aggregate: how many of each host type had openings,
+        // how many had failures, and which kinds dominated.
+        let mut by_host_type: std::collections::HashMap<String, (usize, usize, usize, usize, usize)> =
+            std::collections::HashMap::new();
+        for hd in host_diags.values() {
+            let entry = by_host_type
+                .entry(hd.host_type.clone())
+                .or_insert((0, 0, 0, 0, 0));
+            entry.0 += 1; // hosts
+            entry.1 += hd.openings.len(); // openings
+            for op in &hd.openings {
+                match op.kind {
+                    ifc_lite_geometry::OpeningKindDiag::Rectangular => entry.2 += 1,
+                    ifc_lite_geometry::OpeningKindDiag::Diagonal => entry.3 += 1,
+                    ifc_lite_geometry::OpeningKindDiag::NonRectangular => entry.4 += 1,
+                }
+            }
+        }
+        let mut host_type_lines: Vec<String> = by_host_type
+            .iter()
+            .map(|(t, c)| {
+                format!(
+                    "{t}: hosts={} openings={} (rect={} diag={} non_rect={})",
+                    c.0, c.1, c.2, c.3, c.4
+                )
+            })
+            .collect();
+        host_type_lines.sort();
+
+        // Worst-failing hosts: top 10 by csg_failure_count.
+        let mut worst: Vec<(u32, &ifc_lite_geometry::HostOpeningDiagnostic)> =
+            host_diags.iter().map(|(k, v)| (*k, v)).collect();
+        worst.sort_by(|a, b| b.1.csg_failure_count.cmp(&a.1.csg_failure_count));
+        let worst_lines: Vec<String> = worst
+            .iter()
+            .take(10)
+            .filter(|(_, hd)| hd.csg_failure_count > 0)
+            .map(|(pid, hd)| {
+                let kinds: Vec<&str> = hd.openings.iter().map(|o| o.kind.as_str()).collect();
+                format!(
+                    "  #{pid} {} — {} openings [{}], {} CSG failure(s) ({})",
+                    hd.host_type,
+                    hd.openings.len(),
+                    kinds.join(","),
+                    hd.csg_failure_count,
+                    hd.first_failure_label.as_deref().unwrap_or("?"),
+                )
+            })
+            .collect();
+
+        if total_failures > 0 {
+            web_sys::console::warn_1(
+                &format!(
+                    "[IFC-LITE] CSG fallbacks: {total_failures} failures across \
+                     {products_with_failures} products. \
+                     Breakdown: {breakdown:?}.\n\
+                     By host type:\n  {}\n\
+                     Worst-failing hosts (top 10):\n{}",
+                    host_type_lines.join("\n  "),
+                    if worst_lines.is_empty() {
+                        "  (none)".into()
+                    } else {
+                        worst_lines.join("\n")
+                    },
+                )
+                .into(),
+            );
+        } else {
+            // No failures but we still have host data — emit at debug level
+            // so devs can confirm which path the model is taking.
+            web_sys::console::debug_1(
+                &format!(
+                    "[IFC-LITE] Opening pipeline: 0 CSG failures. \
+                     {} hosts with openings.\n  {}",
+                    host_diags.len(),
+                    host_type_lines.join("\n  "),
+                )
+                .into(),
+            );
+        }
+    }
+
+    summary.into()
+}
+
 /// Convert entity counts map to JavaScript object
 fn counts_to_js(counts: &rustc_hash::FxHashMap<String, usize>) -> JsValue {
     let obj = js_sys::Object::new();

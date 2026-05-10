@@ -943,6 +943,7 @@ impl GeometryRouter {
         // viewer overlay or asserted in regression tests).
         let kernel_failures = clipper.take_failures();
         if !kernel_failures.is_empty() {
+            self.record_host_failure_summary(element_id, &kernel_failures);
             self.record_csg_failures(element_id, kernel_failures);
         }
 
@@ -1011,7 +1012,7 @@ impl GeometryRouter {
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
     ) -> Vec<OpeningType> {
-        use super::ClassificationKind;
+        use super::{ClassificationKind, OpeningDiagnostic, OpeningKindDiag};
 
         // Only treat vertical-extrusion openings as "floor openings" when
         // the host is an actual horizontal-surface element. For walls, a
@@ -1024,6 +1025,10 @@ impl GeometryRouter {
             host.ifc_type,
             IfcType::IfcSlab | IfcType::IfcRoof | IfcType::IfcCovering
         );
+
+        // Per-opening diagnostic accumulator for this host. Pushed to the
+        // router's `host_opening_diagnostics` map before we return.
+        let mut host_diag: Vec<OpeningDiagnostic> = Vec::with_capacity(opening_ids.len());
 
         let mut openings: Vec<OpeningType> = Vec::new();
         for &opening_id in opening_ids.iter() {
@@ -1039,8 +1044,30 @@ impl GeometryRouter {
 
             let vertex_count = opening_mesh.positions.len() / 3;
 
+            // Local helper: record both the aggregate counter bump and a
+            // per-host diagnostic line in one place. `guard_saved` is the
+            // per-opening flag (whether the host-aware floor-opening guard
+            // kept this opening on the rectangular path).
+            let mut bump = |router: &Self,
+                            ck: ClassificationKind,
+                            kind: OpeningKindDiag,
+                            guard_saved: bool| {
+                router.bump_classification(ck);
+                host_diag.push(OpeningDiagnostic {
+                    opening_id,
+                    kind,
+                    vertex_count,
+                    guard_saved,
+                });
+            };
+
             if vertex_count > 100 {
-                self.bump_classification(ClassificationKind::NonRectangular);
+                bump(
+                    self,
+                    ClassificationKind::NonRectangular,
+                    OpeningKindDiag::NonRectangular,
+                    false,
+                );
                 openings.push(OpeningType::NonRectangular(opening_mesh));
             } else {
                 let item_bounds_with_dir = self
@@ -1056,14 +1083,20 @@ impl GeometryRouter {
                     let dir_is_vertical = item_bounds_with_dir
                         .iter()
                         .any(|(_, _, dir)| dir.map(|d| d.z.abs() > 0.95).unwrap_or(false));
-                    if dir_is_vertical && !host_is_horizontal_surface {
+                    let guard_saved = dir_is_vertical && !host_is_horizontal_surface;
+                    if guard_saved {
                         self.bump_classification(ClassificationKind::FloorOpeningGuardSaved);
                     }
 
                     let is_floor_opening = host_is_horizontal_surface && dir_is_vertical;
 
                     if is_floor_opening && vertex_count > 0 {
-                        self.bump_classification(ClassificationKind::NonRectangular);
+                        bump(
+                            self,
+                            ClassificationKind::NonRectangular,
+                            OpeningKindDiag::NonRectangular,
+                            false,
+                        );
                         openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
                     } else {
                         let any_diagonal = item_bounds_with_dir.iter().any(|(_, _, dir)| {
@@ -1088,26 +1121,46 @@ impl GeometryRouter {
                                     .get_opening_item_meshes_world(&opening_entity, decoder)
                                     .unwrap_or_default();
                                 if item_meshes.is_empty() {
-                                    self.bump_classification(ClassificationKind::Diagonal);
+                                    bump(
+                                        self,
+                                        ClassificationKind::Diagonal,
+                                        OpeningKindDiag::Diagonal,
+                                        guard_saved,
+                                    );
                                     openings.push(OpeningType::DiagonalRectangular(
                                         opening_mesh.clone(),
                                         dir,
                                     ));
                                 } else {
                                     for item_mesh in item_meshes {
-                                        self.bump_classification(ClassificationKind::Diagonal);
+                                        bump(
+                                            self,
+                                            ClassificationKind::Diagonal,
+                                            OpeningKindDiag::Diagonal,
+                                            guard_saved,
+                                        );
                                         openings
                                             .push(OpeningType::DiagonalRectangular(item_mesh, dir));
                                     }
                                 }
                             } else {
                                 // No direction available — fall back to CSG
-                                self.bump_classification(ClassificationKind::NonRectangular);
+                                bump(
+                                    self,
+                                    ClassificationKind::NonRectangular,
+                                    OpeningKindDiag::NonRectangular,
+                                    false,
+                                );
                                 openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
                             }
                         } else {
                             for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
-                                self.bump_classification(ClassificationKind::Rectangular);
+                                bump(
+                                    self,
+                                    ClassificationKind::Rectangular,
+                                    OpeningKindDiag::Rectangular,
+                                    guard_saved,
+                                );
                                 openings.push(OpeningType::Rectangular(
                                     min_pt,
                                     max_pt,
@@ -1123,11 +1176,27 @@ impl GeometryRouter {
                     let max_f64 =
                         Point3::new(open_max.x as f64, open_max.y as f64, open_max.z as f64);
 
-                    self.bump_classification(ClassificationKind::Rectangular);
+                    bump(
+                        self,
+                        ClassificationKind::Rectangular,
+                        OpeningKindDiag::Rectangular,
+                        false,
+                    );
                     openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
                 }
             }
         }
+
+        // Stash the per-host diagnostic before returning. `host.ifc_type`
+        // implements `Display` to its STEP name (e.g. "IFCWALLSTANDARDCASE").
+        if !host_diag.is_empty() {
+            self.record_host_opening_diagnostic(
+                host.id,
+                &format!("{}", host.ifc_type),
+                host_diag,
+            );
+        }
+
         openings
     }
 

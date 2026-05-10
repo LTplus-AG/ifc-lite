@@ -83,6 +83,12 @@ pub struct GeometryRouter {
     /// `classify_openings` so a maintainer can verify the fix is firing on
     /// real models. Drainable via [`Self::take_classification_stats`].
     classification_stats: RefCell<ClassificationStats>,
+    /// Per-host opening diagnostic, keyed by host product express ID.
+    /// Captures everything the geometry pipeline knows about each host's
+    /// openings so a maintainer can answer "why didn't this wall's window
+    /// get cut?" from a console log alone. Drainable via
+    /// [`Self::take_host_opening_diagnostics`].
+    host_opening_diagnostics: RefCell<FxHashMap<u32, HostOpeningDiagnostic>>,
 }
 
 /// Counts of opening classification outcomes during the most recent
@@ -105,6 +111,62 @@ pub struct ClassificationStats {
     pub floor_opening_guard_saved: usize,
 }
 
+/// Per-host opening diagnostic captured during void processing.
+///
+/// Populated incrementally: `classify_openings` fills in `host_type` and
+/// the per-opening classification list; `apply_void_context` adds the
+/// CSG failure tally drained from the kernel. Surfaced through
+/// [`GeometryRouter::take_host_opening_diagnostics`] for the WASM
+/// bindings to forward to JS.
+#[derive(Debug, Clone, Default)]
+pub struct HostOpeningDiagnostic {
+    /// Stringified IFC type of the host (e.g. `"IfcWallStandardCase"`).
+    pub host_type: String,
+    /// Per-opening classification record.
+    pub openings: Vec<OpeningDiagnostic>,
+    /// Number of `BoolFailure` records the kernel emitted while
+    /// processing this host's voids.
+    pub csg_failure_count: usize,
+    /// First `BoolFailure` reason recorded for this host, as a short
+    /// string label. Useful for grouping at a glance.
+    pub first_failure_label: Option<String>,
+}
+
+/// One opening's worth of diagnostic data — what `classify_openings`
+/// observed about it.
+#[derive(Debug, Clone)]
+pub struct OpeningDiagnostic {
+    /// Express ID of the `IfcOpeningElement` itself.
+    pub opening_id: u32,
+    /// Branch the classifier took for this opening.
+    pub kind: OpeningKindDiag,
+    /// Vertex count of the opening's mesh — high counts (>100) force the
+    /// non-rectangular path regardless of extrusion direction.
+    pub vertex_count: usize,
+    /// Whether the host-aware floor-opening guard saved this opening
+    /// from being mis-routed onto the CSG path.
+    pub guard_saved: bool,
+}
+
+/// Discriminator for [`OpeningDiagnostic::kind`]. Mirrors `OpeningType`
+/// without dragging the geometry data along.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpeningKindDiag {
+    Rectangular,
+    Diagonal,
+    NonRectangular,
+}
+
+impl OpeningKindDiag {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OpeningKindDiag::Rectangular => "Rectangular",
+            OpeningKindDiag::Diagonal => "Diagonal",
+            OpeningKindDiag::NonRectangular => "NonRectangular",
+        }
+    }
+}
+
 impl GeometryRouter {
     /// Create new router with default processors
     pub fn new() -> Self {
@@ -121,6 +183,7 @@ impl GeometryRouter {
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
             classification_stats: RefCell::new(ClassificationStats::default()),
+            host_opening_diagnostics: RefCell::new(FxHashMap::default()),
         };
 
         // Register default P0 processors
@@ -391,6 +454,16 @@ impl GeometryRouter {
         std::mem::take(&mut *self.classification_stats.borrow_mut())
     }
 
+    /// Drain and return the per-host opening diagnostic map.
+    pub fn take_host_opening_diagnostics(&self) -> FxHashMap<u32, HostOpeningDiagnostic> {
+        std::mem::take(&mut *self.host_opening_diagnostics.borrow_mut())
+    }
+
+    /// Total number of hosts with diagnostic records (mostly for tests).
+    pub fn host_opening_diagnostic_count(&self) -> usize {
+        self.host_opening_diagnostics.borrow().len()
+    }
+
     /// Internal: bump the classification stats. Called from
     /// `classify_openings` for each opening it processes.
     pub(crate) fn bump_classification(&self, kind: ClassificationKind) {
@@ -400,6 +473,66 @@ impl GeometryRouter {
             ClassificationKind::Diagonal => s.diagonal += 1,
             ClassificationKind::NonRectangular => s.non_rectangular += 1,
             ClassificationKind::FloorOpeningGuardSaved => s.floor_opening_guard_saved += 1,
+        }
+    }
+
+    /// Internal: record / merge per-host opening diagnostic. Called from
+    /// `classify_openings` once per host with the host type + the list of
+    /// openings it observed. `apply_void_context` later adds the CSG
+    /// failure tally for the same host.
+    pub(crate) fn record_host_opening_diagnostic(
+        &self,
+        host_id: u32,
+        host_type: &str,
+        openings: Vec<OpeningDiagnostic>,
+    ) {
+        let mut log = self.host_opening_diagnostics.borrow_mut();
+        let entry = log.entry(host_id).or_default();
+        if entry.host_type.is_empty() {
+            entry.host_type = host_type.to_string();
+        }
+        entry.openings.extend(openings);
+    }
+
+    /// Internal: tag the per-host diagnostic with the failure summary for
+    /// this host. Drained from `ClippingProcessor::take_failures` after
+    /// `apply_void_context` finishes.
+    pub(crate) fn record_host_failure_summary(
+        &self,
+        host_id: u32,
+        failures: &[BoolFailure],
+    ) {
+        if failures.is_empty() {
+            return;
+        }
+        let mut log = self.host_opening_diagnostics.borrow_mut();
+        let entry = log.entry(host_id).or_default();
+        entry.csg_failure_count += failures.len();
+        if entry.first_failure_label.is_none() {
+            // Short label for at-a-glance grouping. Full BoolFailure list
+            // remains in `csg_failures` for callers that want detail.
+            let label = match &failures[0].reason {
+                crate::diagnostics::BoolFailureReason::OperandTooLarge { .. } => {
+                    "OperandTooLarge"
+                }
+                crate::diagnostics::BoolFailureReason::EmptyOperand => "EmptyOperand",
+                crate::diagnostics::BoolFailureReason::DegenerateOperand => "DegenerateOperand",
+                crate::diagnostics::BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
+                crate::diagnostics::BoolFailureReason::KernelOutputInvalid => {
+                    "KernelOutputInvalid"
+                }
+                crate::diagnostics::BoolFailureReason::SolidSolidDifferenceSkipped => {
+                    "SolidSolidDifferenceSkipped"
+                }
+                crate::diagnostics::BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
+                    "PolygonalBoundedHalfSpaceFallback"
+                }
+                crate::diagnostics::BoolFailureReason::UnknownBooleanOperator(_) => {
+                    "UnknownBooleanOperator"
+                }
+                crate::diagnostics::BoolFailureReason::KernelError(_) => "KernelError",
+            };
+            entry.first_failure_label = Some(label.to_string());
         }
     }
 }

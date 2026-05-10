@@ -398,77 +398,9 @@ impl IfcAPI {
             }
         }
 
-        // T1.1 / classifier-fix diagnostic: surface the opening-classification
-        // stats so a maintainer can verify the host-aware floor-opening guard
-        // is firing on real models. `floor_opening_guard_saved > 0` means the
-        // classifier fix kept vertical-extrusion wall openings on the
-        // rectangular AABB path that would previously have gone through the
-        // (cap-limited) CSG path.
-        let cls = router.take_classification_stats();
-        let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
-        if cls_total > 0 {
-            web_sys::console::debug_1(&format!(
-                "[IFC-LITE] Opening classifier: rect={} diag={} non_rect={} \
-                 floor_opening_guard_saved={} (total={cls_total})",
-                cls.rectangular,
-                cls.diagonal,
-                cls.non_rectangular,
-                cls.floor_opening_guard_saved,
-            ).into());
-        }
-
-        // Drain CSG failure diagnostics (T1.3 plumbing). Surface a per-reason
-        // breakdown so issue triage can see exactly which fallback paths
-        // fired during this geometry pass — answers questions like "did the
-        // floor-opening classifier actually take the rectangular path?" and
-        // "is the 24-poly cap still tripping?". Empty log = no fallbacks
-        // recorded (the desired Sprint 2 state).
-        let csg_failures = router.take_csg_failures();
-        if !csg_failures.is_empty() {
-            let total: usize = csg_failures.values().map(|v| v.len()).sum();
-            let products = csg_failures.len();
-            let mut by_reason: std::collections::HashMap<&'static str, usize> =
-                std::collections::HashMap::new();
-            let mut sample_product_ids: Vec<u32> = Vec::new();
-            for (pid, fails) in &csg_failures {
-                if sample_product_ids.len() < 5 {
-                    sample_product_ids.push(*pid);
-                }
-                for f in fails {
-                    let key: &'static str = match &f.reason {
-                        ifc_lite_geometry::BoolFailureReason::OperandTooLarge { .. } => {
-                            "OperandTooLarge (24-poly cap)"
-                        }
-                        ifc_lite_geometry::BoolFailureReason::EmptyOperand => "EmptyOperand",
-                        ifc_lite_geometry::BoolFailureReason::DegenerateOperand => {
-                            "DegenerateOperand"
-                        }
-                        ifc_lite_geometry::BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
-                        ifc_lite_geometry::BoolFailureReason::KernelOutputInvalid => {
-                            "KernelOutputInvalid"
-                        }
-                        ifc_lite_geometry::BoolFailureReason::SolidSolidDifferenceSkipped => {
-                            "SolidSolidDifferenceSkipped (BSP unsafe)"
-                        }
-                        ifc_lite_geometry::BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
-                            "PolygonalBoundedHalfSpaceFallback"
-                        }
-                        ifc_lite_geometry::BoolFailureReason::UnknownBooleanOperator(_) => {
-                            "UnknownBooleanOperator"
-                        }
-                        ifc_lite_geometry::BoolFailureReason::KernelError(_) => "KernelError",
-                    };
-                    *by_reason.entry(key).or_insert(0) += 1;
-                }
-            }
-            let mut breakdown: Vec<(&'static str, usize)> = by_reason.into_iter().collect();
-            breakdown.sort_by(|a, b| b.1.cmp(&a.1));
-            web_sys::console::warn_1(&format!(
-                "[IFC-LITE] CSG fallbacks: {total} failures across {products} products. \
-                 Breakdown: {breakdown:?}. Sample product IDs: {sample_product_ids:?}. \
-                 (T1.3 diagnostics; see docs/architecture/geometry-pipeline.md)"
-            ).into());
-        }
+        // Drain & surface the opening / CSG diagnostics — see
+        // `super::drain_and_log_csg_diagnostics` for the full output format.
+        let _ = super::drain_and_log_csg_diagnostics(&router);
 
         mesh_collection
     }
@@ -1836,6 +1768,12 @@ impl IfcAPI {
                     }
                 }
 
+                // Drain & surface the opening / CSG diagnostics BEFORE
+                // dropping the router. The helper logs to the browser
+                // console at debug/warn levels and returns a JS object the
+                // completion callback exposes via `stats.csgDiagnostics`.
+                let csg_diagnostics = super::drain_and_log_csg_diagnostics(&router);
+
                 // Free large data structures before the completion callback.
                 // The decoder cache + point cache + content string can hold
                 // 200-600 MB at this point — releasing them immediately
@@ -1863,6 +1801,7 @@ impl IfcAPI {
                     if let Some(rotation) = building_rotation {
                         super::set_js_prop(&stats, "buildingRotation", &rotation.into());
                     }
+                    super::set_js_prop(&stats, "csgDiagnostics", &csg_diagnostics);
                     let _ = callback.call1(&JsValue::NULL, &stats);
                 }
 

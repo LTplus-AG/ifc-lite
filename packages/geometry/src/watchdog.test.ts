@@ -30,10 +30,12 @@ describe('getGeometryStreamWatchdogMs', () => {
     })).toBe(30_000 + 2048 * 60);
   });
 
-  it('browser, after first batch → 15 s regardless of file size', () => {
+  it('browser, after first batch → 15 s floor + per-MB ramp', () => {
+    // Subsequent-batch deadline now scales with file size too — workers
+    // running big-chunk WASM calls (~25K jobs) take >15s on multi-GB files.
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: false, batchCount: 1, fileSizeMB: 4096,
-    })).toBe(15_000);
+    })).toBe(15_000 + 4096 * 30);
   });
 
   it('desktop stable WASM, first batch, small file → 15 s floor', () => {
@@ -48,10 +50,10 @@ describe('getGeometryStreamWatchdogMs', () => {
     })).toBe(15_000 + 1024 * 30);
   });
 
-  it('desktop stable WASM, after first batch → 5 s', () => {
+  it('desktop stable WASM, after first batch → 5 s floor + per-MB ramp', () => {
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: true, batchCount: 3, fileSizeMB: 1024,
-    })).toBe(5_000);
+    })).toBe(5_000 + 1024 * 15);
   });
 
   it('never returns below the previous fixed floors (regression guard)', () => {

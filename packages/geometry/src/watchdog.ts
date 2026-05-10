@@ -27,11 +27,21 @@ export interface WatchdogInputs {
 
 const FIRST_BATCH_FLOOR_MS_BROWSER = 30_000;
 const FIRST_BATCH_FLOOR_MS_DESKTOP = 15_000;
-const SUBSEQUENT_BATCH_MS_BROWSER = 15_000;
-const SUBSEQUENT_BATCH_MS_DESKTOP = 5_000;
+const SUBSEQUENT_BATCH_FLOOR_MS_BROWSER = 15_000;
+const SUBSEQUENT_BATCH_FLOOR_MS_DESKTOP = 5_000;
 
 const FIRST_BATCH_PER_MB_BROWSER = 60;   // 1 GB → +60 s, total 90 s
 const FIRST_BATCH_PER_MB_DESKTOP = 30;   // 1 GB → +30 s, total 45 s
+
+// Subsequent-batch ramp. Workers in the streaming pipeline now process
+// big chunks (~25 K jobs) per WASM call to avoid decoder-cache thrash
+// (see geometry.worker.ts STREAM_BATCH_SIZE comment). On a 1 GB file
+// each WASM call can take ~20-40 s when CPU is contended with the
+// parser worker, so the subsequent-batch deadline must scale with file
+// size too — otherwise the watchdog fires while workers are actively
+// producing meshes.
+const SUBSEQUENT_BATCH_PER_MB_BROWSER = 30;  // 1 GB → +30 s, total 45 s
+const SUBSEQUENT_BATCH_PER_MB_DESKTOP = 15;  // 1 GB → +15 s, total 20 s
 
 /**
  * Returns the watchdog timeout in milliseconds for the current iterator
@@ -42,19 +52,13 @@ export function getGeometryStreamWatchdogMs(inputs: WatchdogInputs): number {
   const batchCount = Math.max(0, Math.floor(inputs.batchCount));
   const fileSizeMB = Math.max(0, inputs.fileSizeMB);
 
-  if (batchCount > 0) {
-    return desktopStableWasm
-      ? SUBSEQUENT_BATCH_MS_DESKTOP
-      : SUBSEQUENT_BATCH_MS_BROWSER;
-  }
+  const floor = batchCount > 0
+    ? (desktopStableWasm ? SUBSEQUENT_BATCH_FLOOR_MS_DESKTOP : SUBSEQUENT_BATCH_FLOOR_MS_BROWSER)
+    : (desktopStableWasm ? FIRST_BATCH_FLOOR_MS_DESKTOP : FIRST_BATCH_FLOOR_MS_BROWSER);
 
-  // First-batch deadline: floor + per-MB ramp.
-  const floor = desktopStableWasm
-    ? FIRST_BATCH_FLOOR_MS_DESKTOP
-    : FIRST_BATCH_FLOOR_MS_BROWSER;
-  const perMb = desktopStableWasm
-    ? FIRST_BATCH_PER_MB_DESKTOP
-    : FIRST_BATCH_PER_MB_BROWSER;
+  const perMb = batchCount > 0
+    ? (desktopStableWasm ? SUBSEQUENT_BATCH_PER_MB_DESKTOP : SUBSEQUENT_BATCH_PER_MB_BROWSER)
+    : (desktopStableWasm ? FIRST_BATCH_PER_MB_DESKTOP : FIRST_BATCH_PER_MB_BROWSER);
 
   return Math.max(floor, Math.round(floor + fileSizeMB * perMb));
 }

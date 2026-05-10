@@ -85,9 +85,19 @@ fn weld_vertices(mesh: &Mesh) -> (Vec<f64>, Vec<u64>, usize) {
 
     let mut welded_tris: Vec<u64> = Vec::with_capacity(mesh.indices.len());
     for chunk in mesh.indices.chunks_exact(3) {
-        let i0 = old_to_new[chunk[0] as usize];
-        let i1 = old_to_new[chunk[1] as usize];
-        let i2 = old_to_new[chunk[2] as usize];
+        let i0_raw = chunk[0] as usize;
+        let i1_raw = chunk[1] as usize;
+        let i2_raw = chunk[2] as usize;
+        // Skip triangles whose indices point past the position array —
+        // matches the legacy `mesh_to_polygons` bounds check, so a
+        // malformed input mesh degrades to "fewer triangles" rather
+        // than a panic that aborts the whole geometry processing pass.
+        if i0_raw >= n_verts || i1_raw >= n_verts || i2_raw >= n_verts {
+            continue;
+        }
+        let i0 = old_to_new[i0_raw];
+        let i1 = old_to_new[i1_raw];
+        let i2 = old_to_new[i2_raw];
         // Drop triangles that collapsed to a degenerate edge or point.
         if i0 == i1 || i1 == i2 || i0 == i2 {
             continue;
@@ -266,6 +276,33 @@ mod tests {
         let (verts, tris, _) = weld_vertices(&m);
         assert_eq!(verts.len() / 3, 1);
         assert!(tris.is_empty(), "collapsed triangle must be dropped");
+    }
+
+    #[test]
+    fn weld_skips_out_of_range_triangle_index() {
+        // A malformed mesh with a triangle index past the end of `positions`
+        // must not panic. Pre-fix, `weld_vertices` indexed `old_to_new`
+        // unchecked and aborted the whole geometry pass with an out-of-bounds
+        // panic; the legacy `mesh_to_polygons` path bounds-checked and just
+        // skipped the bad triangle. Match that behaviour so a single bad
+        // triangle degrades to "fewer triangles" instead of a hard fault.
+        let mut m = Mesh::new();
+        let n = Vector3::new(0.0, 0.0, 0.0);
+        // Three good vertices.
+        m.add_vertex(Point3::new(0.0, 0.0, 0.0), n);
+        m.add_vertex(Point3::new(1.0, 0.0, 0.0), n);
+        m.add_vertex(Point3::new(0.0, 1.0, 0.0), n);
+        m.add_triangle(0, 1, 2);
+        // A triangle that references a non-existent fourth vertex.
+        m.indices.extend_from_slice(&[0, 1, 99]);
+
+        let (verts, tris, _) = weld_vertices(&m);
+        assert_eq!(verts.len() / 3, 3);
+        assert_eq!(tris.len() / 3, 1, "only the in-range triangle survives");
+
+        // And the public path should not panic — it should either succeed
+        // or return a structured failure.
+        let _ = mesh_to_manifold(&m);
     }
 
     #[test]

@@ -29,7 +29,7 @@ import initIfcLiteWasm, { IfcAPI } from '@ifc-lite/wasm';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
-import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, HUGE_NATIVE_FILE_THRESHOLD, HUGE_BROWSER_FILE_THRESHOLD, getDynamicBatchConfig } from '../utils/ifcConfig.js';
+import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, HUGE_NATIVE_FILE_THRESHOLD, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
   createCoordinateInfo,
@@ -1874,15 +1874,16 @@ export function useIfcLoader() {
           if (!useParserWorker || !sharedSource) {
             return Promise.reject(new Error('parser worker disabled (no SAB / native file)'));
           }
-          // Defer property-atom indexing for huge browser files. Mirrors
-          // the desktop `hugeNativeMode` switch — the deferred atoms hydrate
-          // on first property-panel open instead of being indexed up-front,
-          // saving ~4 s on a 14 M-entity file.
-          const hugeBrowserMode = buffer.byteLength >= HUGE_BROWSER_FILE_THRESHOLD;
+          // NOTE: `deferPropertyAtomIndex` is not enabled here. The current
+          // implementation in `columnar-parser.ts` calls
+          // `entityRefs.filter(...)` to split property atoms out of the
+          // primary index, which costs more on a 14 M-entity file (~3 s
+          // for the filter pass) than the index-build time it saves.
+          // Re-enable once the categorization loop builds the two
+          // ref arrays inline so there is no second O(N) walk.
           const worker = new WorkerParser();
           return worker.parseColumnar(sharedSource, {
             onSpatialReady: onPartialDataStore,
-            deferPropertyAtomIndex: hugeBrowserMode,
             onMemorySnapshot: (snapshot) => {
               if (snapshot.jsHeapBytes !== undefined) {
                 memoryAccounting.recordWorkerMemory('parser', snapshot.jsHeapBytes);

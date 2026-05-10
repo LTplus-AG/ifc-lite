@@ -9,6 +9,12 @@ function addHeapObject(obj) {
     return idx;
 }
 
+function addBorrowedObject(obj) {
+    if (stack_pointer == 1) throw new Error('out of js stack');
+    heap[--stack_pointer] = obj;
+    return stack_pointer;
+}
+
 const CLOSURE_DTORS = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(state => state.dtor(state.a, state.b));
@@ -177,6 +183,8 @@ function passStringToWasm0(arg, malloc, realloc) {
     return ptr;
 }
 
+let stack_pointer = 128;
+
 function takeObject(idx) {
     const ret = getObject(idx);
     dropObject(idx);
@@ -212,12 +220,12 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1151(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1151(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1162(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1162(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1190(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1190(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1201(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1201(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1320,6 +1328,54 @@ export class IfcAPI {
         const len6 = WASM_VECTOR_LEN;
         const ret = wasm.ifcapi_processGeometryBatch(this.__wbg_ptr, ptr0, len0, ptr1, len1, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6);
         return MeshCollection.__wrap(ret);
+    }
+    /**
+     * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
+     * instead of waiting for the full file scan to complete.
+     *
+     * Single linear walk over the file:
+     *   1. Builds the entity index incrementally from the same scan that
+     *      collects geometry jobs (the old `build_pre_pass_fast` did two
+     *      full-file scans — one for entities, one for the index — which
+     *      doubled wall-clock).
+     *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
+     *      first ~50 geometry jobs have been collected, resolves
+     *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
+     *      JS host can spin up geometry process workers.
+     *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
+     *      the meta phase already buffered some).
+     *   4. Emits `complete` with the total job count at end of scan.
+     *
+     * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
+     * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
+     * (first 100 K bytes scanned + meta + first chunk).
+     *
+     * The callback receives a single `JsValue` argument shaped as one of:
+     *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
+     *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
+     *   `{ type: "complete", totalJobs }`
+     * @param {Uint8Array} data
+     * @param {Function} on_event
+     * @param {number} chunk_size
+     * @returns {any}
+     */
+    buildPrePassStreaming(data, on_event, chunk_size) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_export3);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.ifcapi_buildPrePassStreaming(retptr, this.__wbg_ptr, ptr0, len0, addBorrowedObject(on_event), chunk_size);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
+        }
     }
     /**
      * Parse IFC file with streaming GPU-ready geometry batches
@@ -3093,7 +3149,7 @@ function __wbg_get_imports() {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1190(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1201(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3200,14 +3256,14 @@ function __wbg_get_imports() {
         const ret = getStringFromWasm0(arg0, arg1);
         return addHeapObject(ret);
     };
+    imports.wbg.__wbindgen_cast_45cc0390cbb4189c = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 152, function: Function { arguments: [Externref], shim_idx: 153, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1161, __wasm_bindgen_func_elem_1162);
+        return addHeapObject(ret);
+    };
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
         // Cast intrinsic for `U64 -> Externref`.
         const ret = BigInt.asUintN(64, arg0);
-        return addHeapObject(ret);
-    };
-    imports.wbg.__wbindgen_cast_782a03ac5d769879 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 151, function: Function { arguments: [Externref], shim_idx: 152, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1150, __wasm_bindgen_func_elem_1151);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {

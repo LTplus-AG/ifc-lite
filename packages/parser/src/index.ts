@@ -228,12 +228,14 @@ export class IfcParser {
 
     let entityRefs: EntityRef[] = [];
     let processed = 0;
+    let scanPath: 'worker' | 'wasm' | 'tokenizer' = 'tokenizer';
 
     // Try Web Worker scanner first (keeps main thread free for UI + geometry)
     if (!options.disableWorkerScan && typeof Worker !== 'undefined') {
       try {
         entityRefs = await scanEntitiesInWorker(buffer);
         processed = entityRefs.length;
+        scanPath = 'worker';
       } catch (error) {
         console.warn('[IfcParser] Worker scan failed, falling back to main thread:', error);
         entityRefs.length = 0;
@@ -241,22 +243,34 @@ export class IfcParser {
       }
     }
 
-    // Fallback: WASM scanner (synchronous, blocks main thread)
-    if (entityRefs.length === 0 && options.wasmApi && typeof options.wasmApi.scanEntitiesFast === 'function') {
-      try {
-        const scanFn = typeof options.wasmApi.scanRelevantEntitiesFastBytes === 'function'
-          ? () => options.wasmApi!.scanRelevantEntitiesFastBytes(uint8Buffer)
-          : typeof options.wasmApi.scanEntitiesFastBytes === 'function'
+    // WASM scanner (blocks the parser thread but ~5-10× faster than the
+    // JS tokeniser per the @ifc-lite/wasm docs). The guard accepts any of
+    // the three scan methods — earlier versions required `scanEntitiesFast`
+    // (the legacy string-based API), which silently disabled this branch
+    // for callers that only exposed the modern bytes APIs (e.g. the parser
+    // worker, which deliberately hides `scanRelevantEntitiesFastBytes`
+    // because that scanner filters out IFCSIUNIT/IFCMATERIAL refs the
+    // lite parser still needs).
+    const wasmScanFn: (() => unknown) | null = options.wasmApi
+      ? (typeof options.wasmApi.scanEntitiesFastBytes === 'function'
           ? () => options.wasmApi!.scanEntitiesFastBytes(uint8Buffer)
-          : () => {
+          : typeof options.wasmApi.scanRelevantEntitiesFastBytes === 'function'
+          ? () => options.wasmApi!.scanRelevantEntitiesFastBytes(uint8Buffer)
+          : typeof options.wasmApi.scanEntitiesFast === 'function'
+          ? () => {
               // Last-resort scan path: decode the whole source. SAB-safe
               // via the helper (one scratch copy on Firefox/Chrome with
               // SAB-decode disabled, zero copy elsewhere). This branch is
-              // only hit when neither byte-level WASM scan API is wired,
-              // so the cost is acceptable.
+              // only hit when neither byte-level WASM scan API is wired.
               const content = safeUtf8Decode(uint8Buffer);
               return options.wasmApi!.scanEntitiesFast(content);
-            };
+            }
+          : null)
+      : null;
+
+    if (entityRefs.length === 0 && wasmScanFn) {
+      try {
+        const scanFn = wasmScanFn;
         const wasmRefs = scanFn() as Array<{
           expressId?: number;
           type?: string;
@@ -283,6 +297,7 @@ export class IfcParser {
         }
 
         processed = entityRefs.length;
+        scanPath = 'wasm';
       } catch (error) {
         console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
         entityRefs.length = 0;
@@ -315,7 +330,7 @@ export class IfcParser {
     }
 
     const scanElapsedMs = performance.now() - scanStartTime;
-    console.log(`[IfcParser] Fast scan: ${processed} entities in ${scanElapsedMs.toFixed(0)}ms`);
+    console.log(`[IfcParser] Fast scan: ${processed} entities in ${scanElapsedMs.toFixed(0)}ms (path=${scanPath})`);
     options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${scanElapsedMs.toFixed(0)}ms`);
     options.onProgress?.({ phase: 'scanning', percent: 100 });
 

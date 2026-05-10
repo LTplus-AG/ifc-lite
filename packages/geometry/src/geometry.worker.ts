@@ -23,12 +23,52 @@ export interface GeometryWorkerProcessMessage {
   styleColors: Uint8Array;
 }
 
-export interface GeometryWorkerPrePassMessage {
-  type: 'prepass' | 'prepass-fast';
+/**
+ * Streaming-mode counterpart to `process`. The host sends `stream-start`
+ * once with the same metadata (minus jobs), then any number of
+ * `stream-chunk` messages with new job slices, and finally `stream-end`
+ * to trigger the worker's `complete` + `memory` emit.
+ *
+ * Used by the streaming pre-pass path so workers can begin processing
+ * jobs the moment the first chunk arrives from Rust, rather than waiting
+ * for the entire pre-pass to finish.
+ */
+export interface GeometryWorkerStreamStartMessage {
+  type: 'stream-start';
   sharedBuffer: SharedArrayBuffer;
+  unitScale: number;
+  rtcX: number; rtcY: number; rtcZ: number;
+  needsShift: boolean;
+  voidKeys: Uint32Array;
+  voidCounts: Uint32Array;
+  voidValues: Uint32Array;
+  styleIds: Uint32Array;
+  styleColors: Uint8Array;
 }
 
-export type GeometryWorkerRequest = GeometryWorkerInitMessage | GeometryWorkerProcessMessage | GeometryWorkerPrePassMessage;
+export interface GeometryWorkerStreamChunkMessage {
+  type: 'stream-chunk';
+  jobsFlat: Uint32Array;
+}
+
+export interface GeometryWorkerStreamEndMessage {
+  type: 'stream-end';
+}
+
+export interface GeometryWorkerPrePassMessage {
+  type: 'prepass' | 'prepass-fast' | 'prepass-streaming';
+  sharedBuffer: SharedArrayBuffer;
+  /** Jobs per chunk for `prepass-streaming` (defaults to 50_000). */
+  chunkSize?: number;
+}
+
+export type GeometryWorkerRequest =
+  | GeometryWorkerInitMessage
+  | GeometryWorkerProcessMessage
+  | GeometryWorkerStreamStartMessage
+  | GeometryWorkerStreamChunkMessage
+  | GeometryWorkerStreamEndMessage
+  | GeometryWorkerPrePassMessage;
 
 export interface GeometryWorkerBatchMessage {
   type: 'batch';
@@ -92,8 +132,207 @@ function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
   return local;
 }
 
+/**
+ * Per-load processing session shared by the legacy `process` path and the
+ * streaming `stream-*` path. Holds the metadata (RTC, voids, styles) and
+ * the per-mesh accumulators between successive `stream-chunk` calls.
+ */
+interface ProcessingSession {
+  sharedBuffer: SharedArrayBuffer;
+  localBytes: Uint8Array;
+  sabFallbackTaken: boolean;
+  unitScale: number;
+  rtcX: number; rtcY: number; rtcZ: number;
+  needsShift: boolean;
+  voidKeys: Uint32Array;
+  voidCounts: Uint32Array;
+  voidValues: Uint32Array;
+  styleIds: Uint32Array;
+  styleColors: Uint8Array;
+  pendingMeshes: GeometryWorkerBatchMessage['meshes'];
+  pendingTransfers: ArrayBuffer[];
+  totalMeshesEmitted: number;
+  cumulativeMeshBytes: number;
+}
+
+let activeSession: ProcessingSession | null = null;
+
+/** Per-flush mesh batch size — fine-grained for fast TTFG, see `process` docs. */
+const STREAM_BATCH_SIZE = 500;
+
+function startSession(input: {
+  sharedBuffer: SharedArrayBuffer;
+  unitScale: number;
+  rtcX: number; rtcY: number; rtcZ: number;
+  needsShift: boolean;
+  voidKeys: Uint32Array;
+  voidCounts: Uint32Array;
+  voidValues: Uint32Array;
+  styleIds: Uint32Array;
+  styleColors: Uint8Array;
+}): ProcessingSession {
+  return {
+    sharedBuffer: input.sharedBuffer,
+    localBytes: viewSharedBytes(input.sharedBuffer),
+    sabFallbackTaken: false,
+    unitScale: input.unitScale,
+    rtcX: input.rtcX, rtcY: input.rtcY, rtcZ: input.rtcZ,
+    needsShift: input.needsShift,
+    voidKeys: input.voidKeys,
+    voidCounts: input.voidCounts,
+    voidValues: input.voidValues,
+    styleIds: input.styleIds,
+    styleColors: input.styleColors,
+    pendingMeshes: [],
+    pendingTransfers: [],
+    totalMeshesEmitted: 0,
+    cumulativeMeshBytes: 0,
+  };
+}
+
+function flushPending(session: ProcessingSession): void {
+  if (session.pendingMeshes.length === 0) return;
+  const meshes = session.pendingMeshes;
+  const transfers = session.pendingTransfers;
+  session.pendingMeshes = [];
+  session.pendingTransfers = [];
+  session.totalMeshesEmitted += meshes.length;
+  (self as unknown as Worker).postMessage(
+    { type: 'batch', meshes } as GeometryWorkerBatchMessage,
+    transfers,
+  );
+}
+
+function collectMeshes(
+  session: ProcessingSession,
+  collection: ReturnType<IfcAPI['processGeometryBatch']>,
+): void {
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    if (!mesh) continue;
+    const positions = new Float32Array(mesh.positions);
+    const normals = new Float32Array(mesh.normals);
+    const indices = new Uint32Array(mesh.indices);
+    session.pendingMeshes.push({
+      expressId: mesh.expressId,
+      ifcType: mesh.ifcType,
+      positions, normals, indices,
+      color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
+    });
+    session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
+    session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
+    mesh.free();
+  }
+  collection.free();
+}
+
+/**
+ * Process a slice of jobsFlat with binary-split recovery. Mirrors the
+ * pre-streaming behaviour: if WASM throws on the whole slice, split in
+ * half and retry. Single-entity failures are skipped after one re-init
+ * attempt because a stack overflow can corrupt the WASM heap.
+ */
+async function processBatch(session: ProcessingSession, jobs: Uint32Array): Promise<void> {
+  const numJobs = Math.floor(jobs.length / 3);
+  if (numJobs === 0) return;
+
+  try {
+    if (!api) {
+      await init();
+      api = new IfcAPI();
+    }
+    const collection = api.processGeometryBatch(
+      session.localBytes, jobs, session.unitScale,
+      session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+      session.voidKeys, session.voidCounts, session.voidValues,
+      session.styleIds, session.styleColors,
+    );
+    collectMeshes(session, collection);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (!session.sabFallbackTaken && session.localBytes.buffer instanceof SharedArrayBuffer) {
+      session.sabFallbackTaken = true;
+      console.warn(`[Worker] processGeometryBatch rejected SAB view (${msg}), falling back to copy`);
+      session.localBytes = materialiseSharedBytes(session.sharedBuffer);
+      await processBatch(session, jobs);
+      return;
+    }
+    if (numJobs === 1) {
+      console.warn(`[Worker] Skipping entity #${jobs[0]}: ${msg}`);
+      api = null;
+      return;
+    }
+    console.warn(`[Worker] Batch of ${numJobs} entities failed (${msg}), splitting…`);
+    api = null;
+    const mid = Math.floor(numJobs / 2) * 3;
+    await processBatch(session, jobs.slice(0, mid));
+    await processBatch(session, jobs.slice(mid));
+  }
+}
+
+/** Run a slice in STREAM_BATCH_SIZE chunks, flushing after each chunk. */
+async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint32Array): Promise<void> {
+  const totalJobs = Math.floor(jobsFlat.length / 3);
+  for (let jobOffset = 0; jobOffset < totalJobs; jobOffset += STREAM_BATCH_SIZE) {
+    const start = jobOffset * 3;
+    const end = Math.min(start + STREAM_BATCH_SIZE * 3, jobsFlat.length);
+    await processBatch(session, jobsFlat.subarray(start, end));
+    flushPending(session);
+  }
+}
+
+function emitSessionEnd(session: ProcessingSession): void {
+  flushPending(session); // safety net for tail meshes
+  let wasmHeapBytes = 0;
+  try {
+    const wasmMemory = api?.getMemory() as { buffer?: ArrayBuffer } | undefined;
+    wasmHeapBytes = wasmMemory?.buffer?.byteLength ?? 0;
+  } catch {
+    /* memory accounting only — safe to ignore */
+  }
+  (self as unknown as Worker).postMessage(
+    { type: 'memory', meshBytes: session.cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
+  );
+  (self as unknown as Worker).postMessage(
+    { type: 'complete', totalMeshes: session.totalMeshesEmitted } as GeometryWorkerCompleteMessage,
+  );
+}
+
 self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
   try {
+    if (e.data.type === 'prepass-streaming') {
+      if (!api) { await init(); api = new IfcAPI(); }
+      // Heartbeat: lets the host watchdog know the worker is alive even
+      // before the first chunk lands.
+      (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
+      const sharedBuffer = e.data.sharedBuffer;
+      const chunkSize = e.data.chunkSize ?? 50_000;
+
+      // Forward Rust events 1:1 — the host (`geometry-parallel.ts`) treats
+      // them as the streaming-prepass protocol. SAB-decode fallback mirrors
+      // the existing `buildPrePassFast` path: try zero-copy view first, fall
+      // back to a materialised copy only if wasm-bindgen rejects the view.
+      let view = viewSharedBytes(sharedBuffer);
+      let triedFallback = false;
+      const onEvent = (event: unknown) => {
+        (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
+      };
+      try {
+        api.buildPrePassStreaming(view, onEvent, chunkSize);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!triedFallback) {
+          triedFallback = true;
+          console.warn(`[Worker] Streaming prepass with SAB view failed (${msg}), retrying with copy`);
+          view = materialiseSharedBytes(sharedBuffer);
+          api.buildPrePassStreaming(view, onEvent, chunkSize);
+        } else {
+          throw err;
+        }
+      }
+      return;
+    }
+
     if (e.data.type === 'prepass' || e.data.type === 'prepass-fast') {
       if (!api) { await init(); api = new IfcAPI(); }
       // Heartbeat: signals "worker alive, parser running" so the host watchdog
@@ -137,156 +376,53 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
         await init();
         api = new IfcAPI();
       }
-
       const { sharedBuffer, jobsFlat, unitScale, rtcX, rtcY, rtcZ, needsShift,
               voidKeys, voidCounts, voidValues, styleIds, styleColors } = e.data;
+      const session = startSession({
+        sharedBuffer, unitScale, rtcX, rtcY, rtcZ, needsShift,
+        voidKeys, voidCounts, voidValues, styleIds, styleColors,
+      });
+      activeSession = session;
+      await processSliceStreaming(session, jobsFlat);
+      emitSessionEnd(session);
+      activeSession = null;
+      return;
+    }
 
-      // Zero-copy view over the shared bytes. Modern wasm-bindgen reads
-      // SAB-backed Uint8Arrays directly; if the WASM call rejects the view on
-      // some runtime, the catch block in `processBatch` retries with a copy.
-      let localBytes: Uint8Array = viewSharedBytes(sharedBuffer);
-      let sabFallbackTaken = false;
-
-      // Streaming batches: meshes are flushed to the host every
-      // STREAM_BATCH_SIZE jobs instead of accumulating across the entire
-      // worker slice. The first frame appears as soon as the first chunk
-      // returns from WASM (~0.5 s) rather than after the full slice
-      // finishes (~5–15 s on a 1 GB file). The host's `appendGeometryBatch`
-      // already throttles main-thread renders via `RENDER_INTERVAL_MS`, so
-      // smaller worker batches don't translate to more React reconciles.
-      const STREAM_BATCH_SIZE = 500; // jobs (= meshes) per flush
-      let pendingMeshes: GeometryWorkerBatchMessage['meshes'] = [];
-      let pendingTransfers: ArrayBuffer[] = [];
-      let totalMeshesEmitted = 0;
-      let cumulativeMeshBytes = 0;
-
-      const flushPending = () => {
-        if (pendingMeshes.length === 0) return;
-        const meshes = pendingMeshes;
-        const transfers = pendingTransfers;
-        pendingMeshes = [];
-        pendingTransfers = [];
-        totalMeshesEmitted += meshes.length;
-        (self as unknown as Worker).postMessage(
-          { type: 'batch', meshes } as GeometryWorkerBatchMessage,
-          transfers,
-        );
-      };
-
-      /** Extract meshes from a MeshCollection into the pending buffer. */
-      const collectMeshes = (collection: ReturnType<IfcAPI['processGeometryBatch']>) => {
-        for (let i = 0; i < collection.length; i++) {
-          const mesh = collection.get(i);
-          if (!mesh) continue;
-          const positions = new Float32Array(mesh.positions);
-          const normals = new Float32Array(mesh.normals);
-          const indices = new Uint32Array(mesh.indices);
-          pendingMeshes.push({
-            expressId: mesh.expressId,
-            ifcType: mesh.ifcType,
-            positions, normals, indices,
-            color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
-          });
-          pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
-          cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
-          mesh.free();
-        }
-        collection.free();
-      };
-
-      /**
-       * Process a slice of jobsFlat with automatic sub-batch splitting on failure.
-       * Uses binary-split strategy: try the whole slice, if it fails split in half
-       * and recurse. Only falls back to single-entity processing for the smallest
-       * failing chunk. This avoids rebuilding the entity index per-entity (expensive
-       * for large files — each rebuild scans the entire file).
-       */
-      const processBatch = async (jobs: Uint32Array): Promise<void> => {
-        const numJobs = Math.floor(jobs.length / 3);
-        if (numJobs === 0) return;
-
-        try {
-          if (!api) {
-            await init();
-            api = new IfcAPI();
-          }
-          const collection = api.processGeometryBatch(
-            localBytes, jobs, unitScale,
-            rtcX, rtcY, rtcZ, needsShift,
-            voidKeys, voidCounts, voidValues,
-            styleIds, styleColors,
-          );
-          collectMeshes(collection);
-        } catch (err) {
-          const msg = (err as Error).message;
-
-          // First-line defence: if wasm-bindgen rejected the SAB-backed view,
-          // materialise once and retry the SAME batch. Don't split, don't drop
-          // the WASM instance — the failure is the marshaling layer, not the
-          // geometry. Subsequent batches reuse `localBytes`, so the cost is
-          // paid once per worker, matching the previous behaviour.
-          if (!sabFallbackTaken && (localBytes.buffer instanceof SharedArrayBuffer)) {
-            sabFallbackTaken = true;
-            console.warn(
-              `[Worker] processGeometryBatch rejected SAB view (${msg}), falling back to materialised copy`,
-            );
-            localBytes = materialiseSharedBytes(sharedBuffer);
-            await processBatch(jobs);
-            return;
-          }
-
-          if (numJobs === 1) {
-            // Single entity failed — skip it
-            console.warn(`[Worker] Skipping entity #${jobs[0]}: ${msg}`);
-            // WASM instance may be corrupted after stack overflow — force re-init
-            api = null;
-            return;
-          }
-
-          // Split in half and retry each half
-          console.warn(
-            `[Worker] Batch of ${numJobs} entities failed (${msg}), splitting…`,
-          );
-          // WASM may be corrupted — force re-init before retrying
-          api = null;
-
-          const mid = Math.floor(numJobs / 2) * 3;
-          await processBatch(jobs.slice(0, mid));
-          await processBatch(jobs.slice(mid));
-        }
-      };
-
-      // Slice jobsFlat into STREAM_BATCH_SIZE-job chunks and flush after
-      // each chunk so the host gets visible geometry as soon as the first
-      // ~500 meshes are ready. `processBatch` still binary-splits on
-      // failure within each chunk, preserving the existing recovery path.
-      const totalJobs = Math.floor(jobsFlat.length / 3);
-      const chunkStrideJobs = STREAM_BATCH_SIZE;
-      for (let jobOffset = 0; jobOffset < totalJobs; jobOffset += chunkStrideJobs) {
-        const start = jobOffset * 3;
-        const end = Math.min(start + chunkStrideJobs * 3, jobsFlat.length);
-        await processBatch(jobsFlat.subarray(start, end));
-        flushPending();
+    if (e.data.type === 'stream-start') {
+      if (!api) {
+        await init();
+        api = new IfcAPI();
       }
-      flushPending(); // safety net for any tail meshes
-      // Memory snapshot is best-effort: read the WASM heap size if the
-      // instance survived. After a binary-split crash-and-reset `api` is
-      // null, in which case we report 0 and let the aggregator note the
-      // gap. We post `memory` BEFORE `complete` so the receiver doesn't
-      // race the worker.terminate() that follows `complete`.
-      let wasmHeapBytes = 0;
-      try {
-        const wasmMemory = api?.getMemory() as { buffer?: ArrayBuffer } | undefined;
-        wasmHeapBytes = wasmMemory?.buffer?.byteLength ?? 0;
-      } catch {
-        /* memory accounting only — safe to ignore */
+      activeSession = startSession({
+        sharedBuffer: e.data.sharedBuffer,
+        unitScale: e.data.unitScale,
+        rtcX: e.data.rtcX, rtcY: e.data.rtcY, rtcZ: e.data.rtcZ,
+        needsShift: e.data.needsShift,
+        voidKeys: e.data.voidKeys,
+        voidCounts: e.data.voidCounts,
+        voidValues: e.data.voidValues,
+        styleIds: e.data.styleIds,
+        styleColors: e.data.styleColors,
+      });
+      return;
+    }
+
+    if (e.data.type === 'stream-chunk') {
+      if (!activeSession) {
+        throw new Error('stream-chunk received before stream-start');
       }
-      (self as unknown as Worker).postMessage(
-        { type: 'memory', meshBytes: cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
-      );
-      (self as unknown as Worker).postMessage(
-        { type: 'complete', totalMeshes: totalMeshesEmitted } as GeometryWorkerCompleteMessage,
-      );
+      await processSliceStreaming(activeSession, e.data.jobsFlat);
+      return;
+    }
+
+    if (e.data.type === 'stream-end') {
+      if (!activeSession) {
+        throw new Error('stream-end received before stream-start');
+      }
+      emitSessionEnd(activeSession);
+      activeSession = null;
+      return;
     }
   } catch (err) {
     (self as unknown as Worker).postMessage(

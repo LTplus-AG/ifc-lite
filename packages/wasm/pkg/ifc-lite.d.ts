@@ -350,6 +350,33 @@ export class IfcAPI {
    */
   processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array): MeshCollection;
   /**
+   * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
+   * instead of waiting for the full file scan to complete.
+   *
+   * Single linear walk over the file:
+   *   1. Builds the entity index incrementally from the same scan that
+   *      collects geometry jobs (the old `build_pre_pass_fast` did two
+   *      full-file scans — one for entities, one for the index — which
+   *      doubled wall-clock).
+   *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
+   *      first ~50 geometry jobs have been collected, resolves
+   *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
+   *      JS host can spin up geometry process workers.
+   *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
+   *      the meta phase already buffered some).
+   *   4. Emits `complete` with the total job count at end of scan.
+   *
+   * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
+   * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
+   * (first 100 K bytes scanned + meta + first chunk).
+   *
+   * The callback receives a single `JsValue` argument shaped as one of:
+   *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
+   *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
+   *   `{ type: "complete", totalJobs }`
+   */
+  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number): any;
+  /**
    * Parse IFC file with streaming GPU-ready geometry batches
    *
    * Yields batches of GPU-ready geometry for progressive rendering with zero-copy upload.
@@ -1061,6 +1088,7 @@ export interface InitOutput {
   readonly gpumeshmetadata_vertexOffset: (a: number) => number;
   readonly ifcapi_buildPrePassFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
+  readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
   readonly ifcapi_debugProcessEntity953: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_debugProcessFirstWall: (a: number, b: number, c: number, d: number) => void;
@@ -1194,9 +1222,9 @@ export interface InitOutput {
   readonly profileentryjs_expressId: (a: number) => number;
   readonly symboliccircle_expressId: (a: number) => number;
   readonly __wbg_gpuinstancedgeometryref_free: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1151: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1150: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1190: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1162: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1161: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1201: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export3: (a: number, b: number) => number;

@@ -19,6 +19,12 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["console_error_panic_hook"]
 debug_geometry = ["ifc-lite-geometry/debug_geometry"]
+# Enables wasm-bindgen-rayon thread-pool init for the multi-threaded
+# build target. Only set by `THREADED=1 scripts/build-wasm.sh`. Build
+# also requires the threading RUSTFLAGS (atomics, shared-memory,
+# import-memory, TLS exports) the script applies. See
+# docs/architecture/single-controller-rayon-design.md §5.6.
+threading = ["dep:wasm-bindgen-rayon"]
 
 [dependencies]
 console_error_panic_hook = { version = "0.1", optional = true }
@@ -34,6 +40,10 @@ serde-wasm-bindgen = "=0.6.5"
 thiserror = "1.0"
 wasm-bindgen = "=0.2.106"
 wasm-bindgen-futures = "=0.4.56"
+# Optional. Enabled only by `--features threading` (set by
+# `THREADED=1 scripts/build-wasm.sh`). The single-threaded build
+# omits this entirely so the default WASM bundle stays slim.
+wasm-bindgen-rayon = { version = "1.3", optional = true }
 web-sys = { version = "=0.3.83", features = ["console", "Performance", "Window"] }
 
 [dev-dependencies]

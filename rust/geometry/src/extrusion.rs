@@ -398,9 +398,10 @@ fn create_side_walls(boundary: &[nalgebra::Point2<f64>], depth: f64, mesh: &mut 
 ///
 /// Used for `IfcExtrudedAreaSolidTapered`. The two profiles must share topology
 /// per the IFC WR2 constraint, but in practice authoring tools sometimes emit
-/// loops with different vertex counts. We resample the shorter outer loop to
-/// the longer one's length so a side wall can always be built; holes with
-/// mismatched counts are dropped with no error so the element still renders.
+/// loops with different vertex counts. We resample the shorter loop to the
+/// longer one's length (by arc length) so a side wall can always be built.
+/// Holes are paired by index; any pair where either side has fewer than 3
+/// vertices is dropped from both caps so the mesh stays manifold.
 #[inline]
 pub fn extrude_profile_lofted(
     start: &Profile2D,

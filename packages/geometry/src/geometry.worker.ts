@@ -298,7 +298,27 @@ function emitSessionEnd(session: ProcessingSession): void {
   );
 }
 
-self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
+/**
+ * Serialise message handlers via a tail promise. Web Worker `onmessage` is
+ * async and the runtime dispatches the next message as soon as the
+ * handler hits its first `await`. Without this serialisation a
+ * `stream-start` that awaits `init()` can be overtaken by a
+ * `stream-chunk` arriving on the next tick — and the chunk handler runs
+ * before `activeSession` is set, throwing `stream-chunk received before
+ * stream-start`. The tail-promise pattern queues every handler behind
+ * its predecessor, restoring the FIFO contract callers expect.
+ */
+let messageTail: Promise<void> = Promise.resolve();
+
+self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
+  messageTail = messageTail.then(() => handleMessage(rawEvent)).catch((err) => {
+    (self as unknown as Worker).postMessage(
+      { type: 'error', message: err instanceof Error ? err.message : String(err) } as GeometryWorkerErrorMessage,
+    );
+  });
+};
+
+async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<void> {
   try {
     if (e.data.type === 'prepass-streaming') {
       if (!api) { await init(); api = new IfcAPI(); }
@@ -429,4 +449,4 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
       { type: 'error', message: err instanceof Error ? err.message : String(err) } as GeometryWorkerErrorMessage,
     );
   }
-};
+}

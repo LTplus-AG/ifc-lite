@@ -98,8 +98,17 @@ export async function* processParallel(
   let totalMeshes = 0;
   let endSentToWorkers = false;
   let streamStartSentToWorkers = false;
-  /** Chunks that arrived before `meta` resolved — drained once stream-start fires. */
+  /**
+   * Chunks held until BOTH `meta` (workers spawned + initialised) AND
+   * `styles` (resolved colours from the pre-pass) have arrived. Workers
+   * process every chunk with non-empty styles, giving uniform colours
+   * across the entire stream — early chunks that were previously
+   * processed with empty styles + retroactive colorUpdate didn't recolour
+   * geometry-style meshes (geometry-IDs don't match the host's
+   * mesh.expressId; only element-material colours did).
+   */
   const queuedChunks: Uint32Array[] = [];
+  let stylesReceived = false;
 
   // Per-worker first-batch timestamps (filled lazily so we don't need
   // workerCount at this point). The closure indexes by workerIndex.
@@ -242,12 +251,9 @@ export async function* processParallel(
       });
     }
 
-    // Drain any chunks that arrived before meta. (The Rust streaming
-    // pre-pass always emits `meta` before the first `jobs` event, so this
-    // is defensive — but if it ever flips we won't lose jobs.)
-    while (queuedChunks.length > 0) {
-      dispatchJobsChunkInternal(queuedChunks.shift()!);
-    }
+    // Don't drain queued chunks here — wait for the `styles` event so
+    // every chunk gets processed with resolved colours. The styles
+    // handler does the drain after posting set-styles.
   };
 
   function dispatchJobsChunkInternal(jobs: Uint32Array): void {
@@ -280,8 +286,10 @@ export async function* processParallel(
   }
 
   const dispatchJobsChunk = (jobs: Uint32Array) => {
-    if (!streamStartSentToWorkers) {
-      // Buffer until meta resolves and stream-start has been posted.
+    if (!streamStartSentToWorkers || !stylesReceived) {
+      // Hold until both stream-start AND styles have been posted to
+      // workers — otherwise this chunk would be processed with empty
+      // styles and the meshes come out with default per-type colours.
       queuedChunks.push(jobs);
       return;
     }
@@ -331,21 +339,20 @@ export async function* processParallel(
         dispatchJobsChunk(jobsArr);
       } else if (evt.type === 'styles') {
         // Streaming pre-pass resolved styles + voids after its main scan.
-        // Push them into every worker so subsequent stream-chunks render
-        // with correct colors, and emit a colorUpdate StreamingGeometryEvent
-        // so the renderer can retroactively recolor meshes that came back
-        // with default per-type colors before styles were ready.
+        // Push them into every worker, then drain any chunks that were
+        // held waiting for styles. Workers will process every chunk with
+        // resolved colors — uniform shading across the whole stream.
         const styleIds = evt.styleIds as Uint32Array;
         const styleColors = evt.styleColors as Uint8Array;
         const voidKeys = evt.voidKeys as Uint32Array;
         const voidCounts = evt.voidCounts as Uint32Array;
         const voidValues = evt.voidValues as Uint32Array;
-        console.log(`[stream] styles @ ${elapsed()}ms (${styleIds.length} styled, ${voidKeys.length} void hosts)`);
+        console.log(`[stream] styles @ ${elapsed()}ms (${styleIds.length} styled, ${voidKeys.length} void hosts), draining ${queuedChunks.length} queued chunks`);
 
         for (const w of workers) {
           // Slice each typed array per-worker so each can be in its own
-          // transfer list without conflict. For huge files (>1M styles)
-          // this allocation is bounded by `styleIds.length * 4` bytes.
+          // transfer list without conflict. The slice cost is bounded by
+          // `styleIds.length * 4` bytes — under 1 MB for ~250K styles.
           try {
             const sIds = styleIds.slice();
             const sColors = styleColors.slice();
@@ -368,20 +375,12 @@ export async function* processParallel(
           }
         }
 
-        // Retroactive colorUpdate for already-rendered meshes.
-        if (styleIds.length > 0) {
-          const updates = new Map<number, [number, number, number, number]>();
-          for (let i = 0; i < styleIds.length; i++) {
-            const ci = i * 4;
-            updates.set(styleIds[i], [
-              styleColors[ci] / 255,
-              styleColors[ci + 1] / 255,
-              styleColors[ci + 2] / 255,
-              styleColors[ci + 3] / 255,
-            ]);
-          }
-          eventQueue.push({ type: 'colorUpdate', updates });
-          wake();
+        stylesReceived = true;
+        // Drain queued chunks now that workers have full styles. The
+        // worker's tail-promise serialiser ensures `set-styles` runs
+        // before any subsequent `stream-chunk`.
+        while (queuedChunks.length > 0) {
+          dispatchJobsChunkInternal(queuedChunks.shift()!);
         }
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;

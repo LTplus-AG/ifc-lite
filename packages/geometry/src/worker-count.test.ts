@@ -38,6 +38,39 @@ describe('computeWorkerCount', () => {
     expect(r.reason === 'memory' || r.reason === 'cores').toBe(true);
   });
 
+  it('M-series Pro/Max (10 cores, 16 GB), 1 GB file → 3 workers', () => {
+    // 10+ cores indicates active cooling (Pro/Max tier), so 3 workers
+    // on huge files is safe. Memory budget allows it: 16 GB - 4 GB
+    // headroom - 2.5 GB main = 9.5 GB / 1.5 GB per worker ≈ 6, capped
+    // by the 3-worker cores ceiling for files > 512 MB.
+    const r = computeWorkerCount({
+      fileSizeMB: 1024, cores: 10, deviceMemoryGB: 16, totalJobs: 100_000,
+    });
+    expect(r.count).toBe(3);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('M-series Pro/Max but browser-capped deviceMemory=8, 986 MB file → 3 workers', () => {
+    // Real-world case: navigator.deviceMemory is capped at 8 GB by
+    // browsers as anti-fingerprinting, but a 10-core M-series Pro
+    // ships with 16+ GB. The cores >= 10 branch lifts the memory
+    // floor so we're not pinned to 2 workers on huge files.
+    const r = computeWorkerCount({
+      fileSizeMB: 986, cores: 10, deviceMemoryGB: 8, totalJobs: 141_178,
+    });
+    expect(r.count).toBe(3);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('M-series Pro/Max (12 cores, 16 GB), 400 MB file → 4 workers', () => {
+    // Smaller files get 4 workers on 10+ core hosts.
+    const r = computeWorkerCount({
+      fileSizeMB: 400, cores: 12, deviceMemoryGB: 16, totalJobs: 5000,
+    });
+    expect(r.count).toBe(4);
+    expect(r.reason).toBe('cores');
+  });
+
   it('Desktop tower (16 cores, 32 GB), 400 MB file → 8 workers', () => {
     const r = computeWorkerCount({
       fileSizeMB: 400, cores: 16, deviceMemoryGB: 32, totalJobs: 5000,

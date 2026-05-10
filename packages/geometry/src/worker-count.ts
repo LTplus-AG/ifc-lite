@@ -54,7 +54,15 @@ export interface WorkerCountResult {
 export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult {
   const fileSizeMB = Math.max(0, inputs.fileSizeMB);
   const cores = Math.max(1, Math.floor(inputs.cores));
-  const deviceMemoryGB = Math.max(1, inputs.deviceMemoryGB);
+  // `navigator.deviceMemory` is capped at 8 GB by browsers as a
+  // fingerprinting-mitigation measure. When cores indicates a Pro/Max-tier
+  // machine (10+) we know in practice it ships with ≥16 GB, so we lift
+  // the floor accordingly. Without this, the memory budget computed
+  // below pins us to 2 workers on huge files even on 32 GB desktops.
+  const reportedMemoryGB = Math.max(1, inputs.deviceMemoryGB);
+  const deviceMemoryGB = cores >= 10
+    ? Math.max(reportedMemoryGB, 16)
+    : reportedMemoryGB;
   const totalJobs = Math.max(0, Math.floor(inputs.totalJobs));
   const minWorkers = Math.max(1, Math.floor(inputs.minWorkers ?? 1));
   const maxWorkers = Math.max(minWorkers, Math.floor(inputs.maxWorkers ?? 8));
@@ -68,8 +76,13 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   let coresCap: number;
   if (cores >= 16 && deviceMemoryGB >= 16) {
     coresCap = Math.min(maxWorkers, Math.floor(cores / 2));
+  } else if (cores >= 10 && deviceMemoryGB >= 8) {
+    // 10+ cores indicates M-series Pro/Max or similar with active cooling
+    // — they can sustain 3 workers on huge files without throttling. The
+    // memoryCap below still gates if RAM isn't there.
+    coresCap = fileSizeMB > 512 ? 3 : 4;
   } else if (cores >= 8 && deviceMemoryGB >= 8) {
-    // Fanless laptops (MBA M-series) throttle hard at 4+ workers.
+    // Fanless laptops (MBA M-series, 8 cores) throttle hard at 4+ workers.
     coresCap = fileSizeMB > 512 ? 2 : 3;
   } else {
     coresCap = Math.max(1, Math.min(2, Math.floor(cores / 2)));

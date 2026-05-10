@@ -76,10 +76,15 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   let coresCap: number;
   if (cores >= 16 && deviceMemoryGB >= 16) {
     coresCap = Math.min(maxWorkers, Math.floor(cores / 2));
+  } else if (cores >= 12 && deviceMemoryGB >= 8) {
+    // 12+ cores indicates M-series Pro 12-core or M-series Max with active
+    // cooling — sustained 4 workers on huge files. The memoryCap below
+    // still gates if RAM isn't there. Memory floor lifted to 16 (see top)
+    // to bypass the browser's deviceMemory cap.
+    coresCap = fileSizeMB > 512 ? 4 : 5;
   } else if (cores >= 10 && deviceMemoryGB >= 8) {
     // 10+ cores indicates M-series Pro/Max or similar with active cooling
-    // — they can sustain 3 workers on huge files without throttling. The
-    // memoryCap below still gates if RAM isn't there.
+    // — they can sustain 3 workers on huge files without throttling.
     coresCap = fileSizeMB > 512 ? 3 : 4;
   } else if (cores >= 8 && deviceMemoryGB >= 8) {
     // Fanless laptops (MBA M-series, 8 cores) throttle hard at 4+ workers.

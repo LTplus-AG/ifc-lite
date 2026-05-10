@@ -50,6 +50,16 @@ describe('computeWorkerCount', () => {
     expect(r.reason).toBe('cores');
   });
 
+  it('M-series Max (12 cores), 986 MB file → 4 workers', () => {
+    // 12+ cores indicates M3/M4 Pro 12-core or Max — sustained 4 workers
+    // safe with active cooling.
+    const r = computeWorkerCount({
+      fileSizeMB: 986, cores: 12, deviceMemoryGB: 8, totalJobs: 141_178,
+    });
+    expect(r.count).toBe(4);
+    expect(r.reason).toBe('cores');
+  });
+
   it('M-series Pro/Max but browser-capped deviceMemory=8, 986 MB file → 3 workers', () => {
     // Real-world case: navigator.deviceMemory is capped at 8 GB by
     // browsers as anti-fingerprinting, but a 10-core M-series Pro
@@ -62,12 +72,12 @@ describe('computeWorkerCount', () => {
     expect(r.reason).toBe('cores');
   });
 
-  it('M-series Pro/Max (12 cores, 16 GB), 400 MB file → 4 workers', () => {
-    // Smaller files get 4 workers on 10+ core hosts.
+  it('M-series Pro/Max (12 cores, 16 GB), 400 MB file → 5 workers', () => {
+    // 12+ cores tier: small files get 5 workers; huge files cap at 4.
     const r = computeWorkerCount({
       fileSizeMB: 400, cores: 12, deviceMemoryGB: 16, totalJobs: 5000,
     });
-    expect(r.count).toBe(4);
+    expect(r.count).toBe(5);
     expect(r.reason).toBe('cores');
   });
 

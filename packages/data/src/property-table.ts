@@ -63,7 +63,7 @@ export class PropertyTableBuilder {
   
   build(): PropertyTable {
     const count = this.rows.length;
-    
+
     // Allocate columnar arrays
     const entityId = new Uint32Array(count);
     const psetName = new Uint32Array(count);
@@ -75,26 +75,21 @@ export class PropertyTableBuilder {
     const valueInt = new Int32Array(count);
     const valueBool = new Uint8Array(count).fill(255); // 255 = null
     const unitId = new Int32Array(count).fill(-1);
-    
-    // Build indices
-    const entityIndex = new Map<number, number[]>();
-    const psetIndex = new Map<number, number[]>();
-    const propIndex = new Map<number, number[]>();
-    
+
     // Fill arrays
     for (let i = 0; i < count; i++) {
       const row = this.rows[i];
-      
+
       entityId[i] = row.entityId;
       const psetNameIdx = this.strings.intern(row.psetName);
       const psetGlobalIdIdx = this.strings.intern(row.psetGlobalId);
       const propNameIdx = this.strings.intern(row.propName);
-      
+
       psetName[i] = psetNameIdx;
       psetGlobalId[i] = psetGlobalIdIdx;
       propName[i] = propNameIdx;
       propType[i] = row.propType;
-      
+
       // Store value based on type
       switch (row.propType) {
         case PropertyValueType.String:
@@ -118,98 +113,155 @@ export class PropertyTableBuilder {
           valueString[i] = this.strings.intern(JSON.stringify(row.value));
           break;
       }
-      
+
       if (row.unitId !== undefined) {
         unitId[i] = row.unitId;
       }
-      
-      // Build indices
-      addToIndex(entityIndex, row.entityId, i);
-      addToIndex(psetIndex, psetNameIdx, i);
-      addToIndex(propIndex, propNameIdx, i);
     }
-    
-    const strings = this.strings;
-    const table: PropertyTable = {
-      count,
-      entityId,
-      psetName,
-      psetGlobalId,
-      propName,
-      propType,
-      valueString,
-      valueReal,
-      valueInt,
-      valueBool,
-      unitId,
-      entityIndex,
-      psetIndex,
-      propIndex,
-      
-      getForEntity: (id) => {
-        const rowIndices = entityIndex.get(id) || [];
-        const psets = new Map<string, PropertySet>();
-        
-        for (const idx of rowIndices) {
-          const psetNameStr = strings.get(psetName[idx]);
-          const psetGlobalIdStr = strings.get(psetGlobalId[idx]);
-          
-          if (!psets.has(psetNameStr)) {
-            psets.set(psetNameStr, {
-              name: psetNameStr,
-              globalId: psetGlobalIdStr,
-              properties: [],
-            });
-          }
-          
-          const pset = psets.get(psetNameStr)!;
-          const propNameStr = strings.get(propName[idx]);
-          const propValue = getPropertyValue(table, idx, strings);
-          
-          pset.properties.push({
-            name: propNameStr,
-            type: propType[idx],
-            value: propValue,
-          });
-        }
-        
-        return Array.from(psets.values());
+
+    return propertyTableFromColumns(
+      {
+        count,
+        entityId,
+        psetName,
+        psetGlobalId,
+        propName,
+        propType,
+        valueString,
+        valueReal,
+        valueInt,
+        valueBool,
+        unitId,
       },
-      
-      getPropertyValue: (id, pset, prop) => {
-        const rowIndices = entityIndex.get(id) || [];
-        const psetIdx = strings.indexOf(pset);
-        const propIdx = strings.indexOf(prop);
-        
-        for (const idx of rowIndices) {
-          if (psetName[idx] === psetIdx && propName[idx] === propIdx) {
-            return getPropertyValue(table, idx, strings);
-          }
-        }
-        
-        return null;
-      },
-      
-      findByProperty: (prop, operator, value) => {
-        const propIdx = strings.indexOf(prop);
-        if (propIdx < 0) return [];
-        
-        const rowIndices = propIndex.get(propIdx) || [];
-        const results: number[] = [];
-        
-        for (const idx of rowIndices) {
-          const propValue = getPropertyValue(table, idx, strings);
-          if (compareValues(propValue, operator, value)) {
-            results.push(entityId[idx]);
-          }
-        }
-        
-        return results;
-      },
-    };
-    
-    return table;
+      this.strings,
+    );
   }
+}
+
+/**
+ * Plain-data column representation of a `PropertyTable`. The three lookup
+ * indices (entity/pset/prop → row indices) are intentionally absent — they
+ * are derived from the parallel arrays in `propertyTableFromColumns`.
+ */
+export interface PropertyTableColumns {
+  count: number;
+  entityId: Uint32Array;
+  psetName: Uint32Array;
+  psetGlobalId: Uint32Array;
+  propName: Uint32Array;
+  propType: Uint8Array;
+  valueString: Uint32Array;
+  valueReal: Float64Array;
+  valueInt: Int32Array;
+  valueBool: Uint8Array;
+  unitId: Int32Array;
+}
+
+/** Rebuild a live `PropertyTable` (closures + indices) from column data. */
+export function propertyTableFromColumns(columns: PropertyTableColumns, strings: StringTable): PropertyTable {
+  const {
+    count,
+    entityId,
+    psetName,
+    psetGlobalId,
+    propName,
+    propType,
+    valueString,
+    valueReal,
+    valueInt,
+    valueBool,
+    unitId,
+  } = columns;
+
+  const entityIndex = new Map<number, number[]>();
+  const psetIndex = new Map<number, number[]>();
+  const propIndex = new Map<number, number[]>();
+  for (let i = 0; i < count; i++) {
+    addToIndex(entityIndex, entityId[i], i);
+    addToIndex(psetIndex, psetName[i], i);
+    addToIndex(propIndex, propName[i], i);
+  }
+
+  const table: PropertyTable = {
+    count,
+    entityId,
+    psetName,
+    psetGlobalId,
+    propName,
+    propType,
+    valueString,
+    valueReal,
+    valueInt,
+    valueBool,
+    unitId,
+    entityIndex,
+    psetIndex,
+    propIndex,
+
+    getForEntity: (id) => {
+      const rowIndices = entityIndex.get(id) || [];
+      const psets = new Map<string, PropertySet>();
+      for (const idx of rowIndices) {
+        const psetNameStr = strings.get(psetName[idx]);
+        const psetGlobalIdStr = strings.get(psetGlobalId[idx]);
+        if (!psets.has(psetNameStr)) {
+          psets.set(psetNameStr, { name: psetNameStr, globalId: psetGlobalIdStr, properties: [] });
+        }
+        const pset = psets.get(psetNameStr)!;
+        const propNameStr = strings.get(propName[idx]);
+        pset.properties.push({
+          name: propNameStr,
+          type: propType[idx],
+          value: getPropertyValue(table, idx, strings),
+        });
+      }
+      return Array.from(psets.values());
+    },
+
+    getPropertyValue: (id, pset, prop) => {
+      const rowIndices = entityIndex.get(id) || [];
+      const psetIdx = strings.indexOf(pset);
+      const propIdx = strings.indexOf(prop);
+      for (const idx of rowIndices) {
+        if (psetName[idx] === psetIdx && propName[idx] === propIdx) {
+          return getPropertyValue(table, idx, strings);
+        }
+      }
+      return null;
+    },
+
+    findByProperty: (prop, operator, value) => {
+      const propIdx = strings.indexOf(prop);
+      if (propIdx < 0) return [];
+      const rowIndices = propIndex.get(propIdx) || [];
+      const results: number[] = [];
+      for (const idx of rowIndices) {
+        const propValue = getPropertyValue(table, idx, strings);
+        if (compareValues(propValue, operator, value)) {
+          results.push(entityId[idx]);
+        }
+      }
+      return results;
+    },
+  };
+  return table;
+}
+
+/** Extract column data from a `PropertyTable` for transport. */
+export function propertyTableToColumns(table: PropertyTable): PropertyTableColumns {
+  return {
+    count: table.count,
+    entityId: table.entityId,
+    psetName: table.psetName,
+    psetGlobalId: table.psetGlobalId,
+    propName: table.propName,
+    propType: table.propType,
+    valueString: table.valueString,
+    valueReal: table.valueReal,
+    valueInt: table.valueInt,
+    valueBool: table.valueBool,
+    unitId: table.unitId,
+  };
 }
 
 interface PropertyRow {

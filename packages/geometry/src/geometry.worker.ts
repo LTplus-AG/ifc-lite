@@ -52,10 +52,25 @@ export interface GeometryWorkerErrorMessage {
   message: string;
 }
 
+/**
+ * Optional memory snapshot emitted right after `complete`. Lets the main
+ * thread aggregate per-worker WASM heap usage (which it cannot read
+ * directly across the worker realm boundary) and total mesh bytes
+ * pushed back via the transfer list.
+ */
+export interface GeometryWorkerMemoryMessage {
+  type: 'memory';
+  /** Total bytes of all positions+normals+indices typed arrays this worker emitted. */
+  meshBytes: number;
+  /** WebAssembly.Memory.buffer.byteLength inside this worker's WASM instance. */
+  wasmHeapBytes: number;
+}
+
 export type GeometryWorkerResponse =
   | GeometryWorkerBatchMessage
   | GeometryWorkerCompleteMessage
-  | GeometryWorkerErrorMessage;
+  | GeometryWorkerErrorMessage
+  | GeometryWorkerMemoryMessage;
 
 let api: IfcAPI | null = null;
 
@@ -100,6 +115,7 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
 
       const allMeshes: GeometryWorkerBatchMessage['meshes'] = [];
       const allTransferBuffers: ArrayBuffer[] = [];
+      let cumulativeMeshBytes = 0;
 
       /** Extract meshes from a MeshCollection into our arrays */
       const collectMeshes = (collection: ReturnType<IfcAPI['processGeometryBatch']>) => {
@@ -116,6 +132,7 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
             color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
           });
           allTransferBuffers.push(positions.buffer, normals.buffer, indices.buffer);
+          cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
           mesh.free();
         }
         collection.free();
@@ -173,6 +190,21 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
       (self as unknown as Worker).postMessage(
         { type: 'batch', meshes: allMeshes } as GeometryWorkerBatchMessage,
         allTransferBuffers,
+      );
+      // Memory snapshot is best-effort: read the WASM heap size if the
+      // instance survived. After a binary-split crash-and-reset `api` is
+      // null, in which case we report 0 and let the aggregator note the
+      // gap. We post `memory` BEFORE `complete` so the receiver doesn't
+      // race the worker.terminate() that follows `complete`.
+      let wasmHeapBytes = 0;
+      try {
+        const wasmMemory = api?.getMemory() as { buffer?: ArrayBuffer } | undefined;
+        wasmHeapBytes = wasmMemory?.buffer?.byteLength ?? 0;
+      } catch {
+        /* memory accounting only — safe to ignore */
+      }
+      (self as unknown as Worker).postMessage(
+        { type: 'memory', meshBytes: cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
       );
       (self as unknown as Worker).postMessage(
         { type: 'complete', totalMeshes: allMeshes.length } as GeometryWorkerCompleteMessage,

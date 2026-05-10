@@ -3,46 +3,173 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Web Worker for parsing IFC data model in parallel
- * Runs parseColumnar in a separate thread to avoid blocking geometry processing
+ * Parser Web Worker.
+ *
+ * Receives a SharedArrayBuffer view of the IFC file bytes, runs
+ * `IfcParser.parseColumnar` off the main thread, and posts back two
+ * messages — `partial-store` (after spatial hierarchy is ready, for the
+ * fast hierarchy panel paint) and `complete` (full store with on-demand
+ * maps) — each carrying the column data plus a transferable list.
+ *
+ * The worker disables the inner scan-worker spawn (`disableWorkerScan: true`)
+ * because nesting workers serves no purpose and adds postMessage latency.
  */
 
 import { IfcParser } from './index.js';
 import type { IfcDataStore } from './columnar-parser.js';
+import {
+  collectTransferables,
+  toTransport,
+  transportByteSize,
+  type DataStoreTransport,
+  type ParserMemorySnapshot,
+} from './data-store-transport.js';
 
-// Worker message handler
-self.onmessage = async (e: MessageEvent<{ buffer: ArrayBuffer; id: string }>) => {
-  const { buffer, id } = e.data;
+/** Input message: pass the SAB-backed source bytes and an opaque request id. */
+export interface ParserWorkerInputMessage {
+  type: 'parse';
+  id: string;
+  source: SharedArrayBuffer;
+  /** Optional yieldIntervalMs override (forwarded to parseColumnar). */
+  yieldIntervalMs?: number;
+  /** Defer indexing of property atoms (huge-file mode). */
+  deferPropertyAtomIndex?: boolean;
+}
+
+/** Progress update from the worker. */
+export interface ParserWorkerProgressMessage {
+  type: 'progress';
+  id: string;
+  progress: { phase: string; percent: number };
+}
+
+/** Optional structured diagnostic line (mirrors parseColumnar `onDiagnostic`). */
+export interface ParserWorkerDiagnosticMessage {
+  type: 'diagnostic';
+  id: string;
+  message: string;
+}
+
+/** Hierarchy is ready — UI can render the spatial panel before full parse completes. */
+export interface ParserWorkerPartialStoreMessage {
+  type: 'partial-store';
+  id: string;
+  payload: DataStoreTransport;
+}
+
+/** Full data store is ready. */
+export interface ParserWorkerCompleteMessage {
+  type: 'complete';
+  id: string;
+  payload: DataStoreTransport;
+  memory: ParserMemorySnapshot;
+}
+
+export interface ParserWorkerErrorMessage {
+  type: 'error';
+  id: string;
+  message: string;
+}
+
+export type ParserWorkerOutputMessage =
+  | ParserWorkerProgressMessage
+  | ParserWorkerDiagnosticMessage
+  | ParserWorkerPartialStoreMessage
+  | ParserWorkerCompleteMessage
+  | ParserWorkerErrorMessage;
+
+interface JsHeapPerf {
+  memory?: { usedJSHeapSize: number };
+}
+
+function readJsHeapBytes(): number | undefined {
+  const perf = performance as unknown as JsHeapPerf;
+  return perf.memory?.usedJSHeapSize;
+}
+
+interface MeasureUaMemoryPerf {
+  measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>;
+}
+
+async function readUaMemoryBytes(): Promise<number | undefined> {
+  const perf = performance as unknown as MeasureUaMemoryPerf;
+  if (typeof perf.measureUserAgentSpecificMemory !== 'function') return undefined;
+  try {
+    const sample = await perf.measureUserAgentSpecificMemory();
+    return sample.bytes;
+  } catch {
+    return undefined;
+  }
+}
+
+function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable[]): void {
+  const w = self as unknown as Worker;
+  if (transfers && transfers.length > 0) {
+    w.postMessage(message, transfers);
+  } else {
+    w.postMessage(message);
+  }
+}
+
+self.onmessage = async (event: MessageEvent<ParserWorkerInputMessage>) => {
+  const { type, id } = event.data;
+  if (type !== 'parse') return;
+
+  const { source, yieldIntervalMs, deferPropertyAtomIndex } = event.data;
+  const startedAt = performance.now();
 
   try {
+    // The SAB itself is shared by reference — both this worker and the
+    // main thread (and the geometry workers) hold views of the same bytes.
+    // We never transfer or clone it.
     const parser = new IfcParser();
-    
-    // Parse with progress updates
-    const dataStore = await parser.parseColumnar(buffer, {
+    const dataStore: IfcDataStore = await parser.parseColumnar(source as unknown as ArrayBuffer, {
+      // Inside a worker, spawning another worker for scan is wasteful.
+      disableWorkerScan: true,
+      yieldIntervalMs,
+      deferPropertyAtomIndex,
       onProgress: (progress) => {
-        // Send progress updates back to main thread
-        self.postMessage({
-          type: 'progress',
-          id,
-          progress,
-        });
+        postOutput({ type: 'progress', id, progress });
+      },
+      onDiagnostic: (message) => {
+        postOutput({ type: 'diagnostic', id, message });
+      },
+      onSpatialReady: (partialStore) => {
+        try {
+          const { payload } = toTransport(partialStore);
+          // We intentionally do NOT transfer the partial typed-array
+          // buffers. The worker keeps using them for the rest of the parse
+          // (entityIndex.byId.get(...) etc. all read from these arrays).
+          // Structured-clone copy is acceptable for the partial because
+          // the hierarchy panel is small relative to the full store.
+          postOutput({ type: 'partial-store', id, payload });
+        } catch (err) {
+          postOutput({
+            type: 'error',
+            id,
+            message: `partial-store serialization failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
       },
     });
 
-    // Send result back to main thread
-    // Note: We can't transfer complex objects, so we'll serialize
-    // The main thread will reconstruct the data store
-    self.postMessage({
-      type: 'complete',
-      id,
-      dataStore,
-    });
-  } catch (error) {
-    // Send error back to main thread
-    self.postMessage({
+    const { payload, transfers } = toTransport(dataStore);
+    const jsHeapBytes = readJsHeapBytes();
+    const uaMemoryBytes = await readUaMemoryBytes();
+    const memory: ParserMemorySnapshot = {
+      jsHeapBytes,
+      uaMemoryBytes,
+      transportBytes: transportByteSize(payload),
+      sourceBytes: source.byteLength,
+      parseTimeMs: performance.now() - startedAt,
+    };
+
+    postOutput({ type: 'complete', id, payload, memory }, transfers);
+  } catch (err) {
+    postOutput({
       type: 'error',
       id,
-      error: error instanceof Error ? error.message : String(error),
+      message: err instanceof Error ? err.message : String(err),
     });
   }
 };

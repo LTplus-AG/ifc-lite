@@ -26,15 +26,27 @@ export async function* processParallel(
   buffer: Uint8Array,
   coordinator: CoordinateHandler,
   sharedRtcOffset?: { x: number; y: number; z: number },
+  /**
+   * Optional pre-allocated SharedArrayBuffer that the caller already shares
+   * with other workers (e.g. the parser worker). When provided, we view it
+   * directly and skip the copy. Must hold the same bytes as `buffer`.
+   */
+  existingSab?: SharedArrayBuffer,
 ): AsyncGenerator<StreamingGeometryEvent> {
   coordinator.reset();
 
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
 
-  // Copy file bytes into SharedArrayBuffer for zero-copy sharing with workers
-  const sharedBuffer = new SharedArrayBuffer(buffer.byteLength);
-  new Uint8Array(sharedBuffer).set(buffer);
+  // Reuse the caller's SAB when supplied (avoids the second copy of a
+  // potentially huge file). Otherwise allocate one and copy bytes in.
+  let sharedBuffer: SharedArrayBuffer;
+  if (existingSab && existingSab.byteLength === buffer.byteLength) {
+    sharedBuffer = existingSab;
+  } else {
+    sharedBuffer = new SharedArrayBuffer(buffer.byteLength);
+    new Uint8Array(sharedBuffer).set(buffer);
+  }
 
   // ── PHASE 1: Full pre-pass in worker ──
   const makeWorker = () => new Worker(
@@ -109,6 +121,9 @@ export async function* processParallel(
 
   // Queue-based async generator: workers push batches, generator yields them
   const batchQueue: MeshData[][] = [];
+  /** Per-worker memory messages, drained alongside batches so the receiver
+   * can aggregate WASM heap bytes across the pool. */
+  const memoryQueue: { workerIndex: number; wasmHeapBytes: number; meshBytes: number }[] = [];
   let resolveWaiting: (() => void) | null = null;
   let workersCompleted = 0;
   let totalMeshes = 0;
@@ -130,9 +145,18 @@ export async function* processParallel(
     );
 
     workers.push(worker);
+    const workerIndex = i;
 
     worker.onmessage = (e: MessageEvent) => {
       const msg = e.data;
+      if (msg.type === 'memory') {
+        memoryQueue.push({ workerIndex, wasmHeapBytes: msg.wasmHeapBytes, meshBytes: msg.meshBytes });
+        if (resolveWaiting) {
+          resolveWaiting();
+          resolveWaiting = null;
+        }
+        return;
+      }
       if (msg.type === 'batch') {
         // Convert transferable data back to MeshData[]
         const meshes: MeshData[] = msg.meshes.map((m: {
@@ -202,6 +226,15 @@ export async function* processParallel(
 
   // Yield batches as they arrive from any worker
   while (true) {
+    while (memoryQueue.length > 0) {
+      const memMsg = memoryQueue.shift()!;
+      yield {
+        type: 'workerMemory',
+        workerIndex: memMsg.workerIndex,
+        wasmHeapBytes: memMsg.wasmHeapBytes,
+        meshBytes: memMsg.meshBytes,
+      };
+    }
     while (batchQueue.length > 0) {
       const batch = batchQueue.shift()!;
       coordinator.processMeshesIncremental(batch);

@@ -15,6 +15,8 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
+import { WorkerParser } from '@ifc-lite/parser/browser';
+import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { GeometryProcessor, GeometryQuality, type MeshData, type CoordinateInfo } from '@ifc-lite/geometry';
 import initIfcLiteWasm, { IfcAPI } from '@ifc-lite/wasm';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
@@ -210,6 +212,10 @@ export function useIfcLoader() {
       // Also clear models Map to ensure clean single-file state
       resetViewerState();
       clearAllModels();
+
+      // Reset memory accounting so per-load summaries don't accumulate across files.
+      memoryAccounting.reset();
+      memoryAccounting.recordPhase({ phase: 'load-start' });
 
       setLoading(true);
       setGeometryStreamingActive(false);
@@ -1743,10 +1749,28 @@ export function useIfcLoader() {
       });
       await geometryProcessor.init();
 
+      // Allocate a SharedArrayBuffer for the source bytes when cross-origin
+      // isolation is available, so both the parser worker and the geometry
+      // workers can read the same memory zero-copy. When unavailable (very
+      // old browsers or stripped headers), we fall back to the in-process
+      // parser path which keeps using the original ArrayBuffer.
+      const coiAvailable = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated === true
+        && typeof SharedArrayBuffer !== 'undefined';
+      const useParserWorker = coiAvailable && !isNativeFileHandle(file);
+      let sharedSource: SharedArrayBuffer | null = null;
+      if (useParserWorker) {
+        sharedSource = new SharedArrayBuffer(buffer.byteLength);
+        new Uint8Array(sharedSource).set(new Uint8Array(buffer));
+        memoryAccounting.setSourceBytes(buffer.byteLength);
+      }
+
       // Data model parsing runs IN PARALLEL with geometry streaming.
-      // Entity scanning uses a Web Worker (non-blocking, ~1.2s).
-      // Columnar parse uses time-sliced yielding (~2.3s, 60fps maintained).
-      // Neither depends on geometry output — both just need the raw buffer.
+      // Default path: parser runs in a Web Worker via WorkerParser, both
+      // workers + main share the same SharedArrayBuffer source, and the
+      // main thread never blocks on parse.
+      // Fallback: in-process IfcParser.parseColumnar (the previous default)
+      // — used when cross-origin isolation is missing or the worker spawn
+      // fails (auto-fallback inside the catch).
       let resolveDataStore: (dataStore: IfcDataStore) => void;
       let rejectDataStore: (err: unknown) => void;
       const dataStorePromise = new Promise<IfcDataStore>((resolve, reject) => {
@@ -1754,59 +1778,90 @@ export function useIfcLoader() {
         rejectDataStore = reject;
       });
 
-      const startDataModelParsing = () => {
-        const parser = new IfcParser();
-        metadataStartMs = performance.now() - totalStartTime;
-        console.log(`[useIfc] Data model parsing start for ${file.name}: ${metadataStartMs.toFixed(0)}ms`);
-        // Do not share the geometry processor's WASM API with the parser on
-        // desktop fallback loads. Concurrent access can corrupt the WASM state
-        // and freeze or crash the viewer. Let the parser use worker/TS scanning
-        // instead.
-        const parserWasmApi = isNativeFileHandle(file) ? undefined : geometryProcessor.getApi();
-        parser.parseColumnar(buffer, {
-          wasmApi: parserWasmApi,
-          // Emit spatial hierarchy EARLY — lets the panel render while
-          // property/association parsing continues (~0.5-1s earlier).
-          onSpatialReady: (partialStore) => {
-            if (loadSessionRef.current !== currentSession) return;
-            if (spatialReadyMs === null) {
-              spatialReadyMs = performance.now() - totalStartTime;
-              console.log(`[useIfc] Spatial tree ready for ${file.name} at ${spatialReadyMs.toFixed(0)}ms`);
-            }
-            if (partialStore.spatialHierarchy && partialStore.spatialHierarchy.storeyHeights.size === 0 && partialStore.spatialHierarchy.storeyElevations.size > 1) {
-              const calculatedHeights = calculateStoreyHeights(partialStore.spatialHierarchy.storeyElevations);
-              for (const [storeyId, height] of calculatedHeights) {
-                partialStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-              }
-            }
-            setIfcDataStore(partialStore);
-          },
-        }).then(dataStore => {
-          if (loadSessionRef.current !== currentSession) return;
-          metadataCompleteMs = performance.now() - totalStartTime;
-          // Calculate storey heights from elevation differences if not already populated
-          if (dataStore.spatialHierarchy && dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
-            const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
-            for (const [storeyId, height] of calculatedHeights) {
-              dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-            }
+      const onPartialDataStore = (partialStore: IfcDataStore) => {
+        if (loadSessionRef.current !== currentSession) return;
+        if (spatialReadyMs === null) {
+          spatialReadyMs = performance.now() - totalStartTime;
+          console.log(`[useIfc] Spatial tree ready for ${file.name} at ${spatialReadyMs.toFixed(0)}ms`);
+        }
+        if (partialStore.spatialHierarchy && partialStore.spatialHierarchy.storeyHeights.size === 0 && partialStore.spatialHierarchy.storeyElevations.size > 1) {
+          const calculatedHeights = calculateStoreyHeights(partialStore.spatialHierarchy.storeyElevations);
+          for (const [storeyId, height] of calculatedHeights) {
+            partialStore.spatialHierarchy.storeyHeights.set(storeyId, height);
           }
+        }
+        setIfcDataStore(partialStore);
+      };
 
-          // Update with full data (includes property/association maps)
-          setIfcDataStore(dataStore);
-          console.log(`[useIfc] Data model parsing complete for ${file.name}: ${metadataCompleteMs.toFixed(0)}ms`);
-          resolveDataStore(dataStore);
-        }).catch(err => {
-          metadataFailedMs = performance.now() - totalStartTime;
-          console.error('[useIfc] Data model parsing failed:', err);
-          console.log(`[useIfc] Data model parsing failed for ${file.name}: ${metadataFailedMs.toFixed(0)}ms`);
-          rejectDataStore(err);
+      const onFullDataStore = (dataStore: IfcDataStore) => {
+        if (loadSessionRef.current !== currentSession) return;
+        metadataCompleteMs = performance.now() - totalStartTime;
+        if (dataStore.spatialHierarchy && dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
+          const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
+          for (const [storeyId, height] of calculatedHeights) {
+            dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
+          }
+        }
+        setIfcDataStore(dataStore);
+        console.log(`[useIfc] Data model parsing complete for ${file.name}: ${metadataCompleteMs.toFixed(0)}ms`);
+        memoryAccounting.endPhase('parser-worker');
+        memoryAccounting.recordPhase({ phase: 'parser-complete' });
+        resolveDataStore(dataStore);
+      };
+
+      const runMainThreadParser = async (): Promise<IfcDataStore> => {
+        // Same `wasmApi` heuristic as before — desktop loads cannot share
+        // the geometry processor's WASM instance with the parser without
+        // risking corruption.
+        const parserWasmApi = isNativeFileHandle(file) ? undefined : geometryProcessor.getApi();
+        return new IfcParser().parseColumnar(buffer, {
+          wasmApi: parserWasmApi,
+          onSpatialReady: onPartialDataStore,
         });
       };
 
+      const startDataModelParsing = () => {
+        metadataStartMs = performance.now() - totalStartTime;
+        console.log(`[useIfc] Data model parsing start for ${file.name}: ${metadataStartMs.toFixed(0)}ms (${useParserWorker ? 'worker' : 'main-thread'})`);
+        memoryAccounting.beginPhase('parser-worker');
+        memoryAccounting.recordPhase({ phase: 'parser-start' });
+
+        const workerAttempt = (): Promise<IfcDataStore> => {
+          if (!useParserWorker || !sharedSource) {
+            return Promise.reject(new Error('parser worker disabled (no SAB / native file)'));
+          }
+          const worker = new WorkerParser();
+          return worker.parseColumnar(sharedSource, {
+            onSpatialReady: onPartialDataStore,
+            onMemorySnapshot: (snapshot) => {
+              if (snapshot.jsHeapBytes !== undefined) {
+                memoryAccounting.recordWorkerMemory('parser', snapshot.jsHeapBytes);
+              }
+              memoryAccounting.recordPhase({
+                phase: 'parser-transport',
+                transportBytes: snapshot.transportBytes,
+              });
+            },
+          });
+        };
+
+        workerAttempt()
+          .catch((err) => {
+            console.warn('[useIfc] Parser worker failed, falling back to main-thread parse:', err);
+            memoryAccounting.recordPhase({ phase: 'parser-worker-fallback' });
+            return runMainThreadParser();
+          })
+          .then(onFullDataStore)
+          .catch((err) => {
+            metadataFailedMs = performance.now() - totalStartTime;
+            console.error('[useIfc] Data model parsing failed:', err);
+            console.log(`[useIfc] Data model parsing failed for ${file.name}: ${metadataFailedMs.toFixed(0)}ms`);
+            memoryAccounting.recordPhase({ phase: 'parser-failed' });
+            rejectDataStore(err);
+          });
+      };
+
       // Start data model parsing IMMEDIATELY — runs in parallel with geometry.
-      // Entity scan uses Web Worker (off main thread), columnar parse yields
-      // every ~4ms to maintain 60fps navigation during geometry streaming.
       setTimeout(startDataModelParsing, 0);
 
       // Use adaptive processing: sync for small files, streaming for large files
@@ -1854,11 +1909,16 @@ export function useIfcLoader() {
       try {
         // Use dynamic batch sizing for optimal throughput
         const dynamicBatchConfig = getDynamicBatchConfig(fileSizeMB);
+        memoryAccounting.beginPhase('geometry');
+        // When the parser worker is in use, hand the geometry workers the
+        // same SAB so we don't pay the file-bytes copy twice.
+        const geometryView = sharedSource ? new Uint8Array(sharedSource) : new Uint8Array(buffer);
         const geometryEvents = shouldUseDesktopStableWasmGeometry
-          ? geometryProcessor.processStreaming(new Uint8Array(buffer), undefined, dynamicBatchConfig)
-          : geometryProcessor.processAdaptive(new Uint8Array(buffer), {
+          ? geometryProcessor.processStreaming(geometryView, undefined, dynamicBatchConfig)
+          : geometryProcessor.processAdaptive(geometryView, {
               sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
               batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
+              existingSab: sharedSource ?? undefined,
             });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;
@@ -1928,6 +1988,12 @@ export function useIfcLoader() {
               if (event.hasRtc) {
                 capturedRtcOffset = event.rtcOffset;
               }
+              break;
+            }
+            case 'workerMemory': {
+              // Aggregated by memoryAccounting for per-load summaries.
+              memoryAccounting.recordWorkerMemory(`geom-${event.workerIndex}`, event.wasmHeapBytes);
+              memoryAccounting.addGeometryBytes(event.meshBytes);
               break;
             }
             case 'batch': {
@@ -2004,6 +2070,9 @@ export function useIfcLoader() {
               updateCoordinateInfo(finalCoordinateInfo);
 
               setProgress({ phase: 'Complete', percent: 100 });
+              memoryAccounting.endPhase('geometry');
+              memoryAccounting.recordPhase({ phase: 'geometry-complete' });
+              console.log(memoryAccounting.formatSummary());
               await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
               if (loadSessionRef.current === currentSession) {
                 setGeometryStreamingActive(false);

@@ -132,6 +132,18 @@ export type StreamingGeometryEvent =
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
+  | {
+      /**
+       * Per-worker memory snapshot, emitted once per geometry worker once
+       * it has finished processing. Aggregated by the viewer's
+       * `memoryAccounting` module to surface total WASM heap and mesh
+       * byte counts across all parallel workers.
+       */
+      type: 'workerMemory';
+      workerIndex: number;
+      wasmHeapBytes: number;
+      meshBytes: number;
+    }
   | { type: 'complete'; totalMeshes: number; coordinateInfo: import('./types.js').CoordinateInfo };
 
 export type StreamingInstancedGeometryEvent =
@@ -822,13 +834,15 @@ export class GeometryProcessor {
   async *processParallel(
     buffer: Uint8Array,
     sharedRtcOffset?: { x: number; y: number; z: number },
+    /** Reuse a SAB the caller has already shared with another worker. */
+    existingSab?: SharedArrayBuffer,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
       await this.init();
     }
 
-    yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset);
+    yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab);
   }
 
   /**
@@ -850,6 +864,8 @@ export class GeometryProcessor {
       /** Shared RTC offset from first federated model (IFC Z-up coords).
        *  Overrides per-model RTC detection for federation alignment. */
       sharedRtcOffset?: { x: number; y: number; z: number };
+      /** Reuse a SAB already populated by the caller (parser worker, etc.). */
+      existingSab?: SharedArrayBuffer;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -914,7 +930,7 @@ export class GeometryProcessor {
         && (navigator.hardwareConcurrency ?? 1) > 1;
 
       if (useParallel) {
-        yield* this.processParallel(buffer, options.sharedRtcOffset);
+        yield* this.processParallel(buffer, options.sharedRtcOffset, options.existingSab);
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
       }

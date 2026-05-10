@@ -93,7 +93,6 @@ export async function* processParallel(
   const workers: Worker[] = [];
   let workerError: Error | null = null;
   let workersCompleted = 0;
-  let nextWorkerForChunk = 0;
   let totalMeshes = 0;
   let endSentToWorkers = false;
 
@@ -228,11 +227,26 @@ export async function* processParallel(
 
   const dispatchJobsChunk = (jobs: Uint32Array) => {
     if (workers.length === 0 || jobs.length === 0) return;
-    const target = workers[nextWorkerForChunk % workers.length];
-    nextWorkerForChunk++;
+    // Round-robin sending whole chunks to single workers leaves N-1 workers
+    // idle whenever the chunk count is small. Instead split each Rust chunk
+    // evenly across all workers so every worker processes a slice of every
+    // chunk in parallel — full pool utilisation from the very first chunk.
+    const totalSubJobs = Math.floor(jobs.length / 3);
+    if (totalSubJobs === 0) return;
+    const subPerWorker = Math.ceil(totalSubJobs / workers.length);
     try {
-      // Transfer the jobs buffer — pre-pass worker no longer needs it.
-      target.postMessage({ type: 'stream-chunk' as const, jobsFlat: jobs }, [jobs.buffer]);
+      for (let i = 0; i < workers.length; i++) {
+        const start = i * subPerWorker * 3;
+        const end = Math.min(start + subPerWorker * 3, jobs.length);
+        if (start >= end) continue;
+        // `slice` allocates a new ArrayBuffer per piece so each can be in
+        // its own transfer list. Cheap relative to the WASM work that follows.
+        const sub = jobs.slice(start, end);
+        workers[i].postMessage(
+          { type: 'stream-chunk' as const, jobsFlat: sub },
+          [sub.buffer],
+        );
+      }
     } catch (err) {
       workerError = new Error(`Failed to dispatch jobs chunk: ${err instanceof Error ? err.message : String(err)}`);
       wake();
@@ -296,15 +310,19 @@ export async function* processParallel(
   };
 
   // Dispatch the streaming pre-pass.
-  prepassWorker.postMessage({ type: 'prepass-streaming', sharedBuffer, chunkSize: 50_000 });
+  // Smaller chunks (5 K) give the host many opportunities to keep all
+  // workers busy throughout the pre-pass scan; combined with the
+  // per-chunk worker fan-out above this keeps the pool saturated even
+  // when total geometry job count is modest (e.g. 92 K on the 986 MB
+  // test file).
+  prepassWorker.postMessage({ type: 'prepass-streaming', sharedBuffer, chunkSize: 5_000 });
 
   // Drain the event queue until the pre-pass and all process workers complete.
   // The pre-pass `complete` event is captured inside the message handler
   // (we set prepassJobsTotal there) but the worker stays alive briefly
   // while the JS callback returns. Detect end-of-stream by:
   //   a) `prepassJobsTotal > 0` (or zero-jobs file): pre-pass emitted complete
-  //   b) all jobs dispatched: nextWorkerForChunk no longer growing
-  //   c) all workers reported `complete`
+  //   b) all workers reported `complete`
   let prepassCompleteSeen = false;
 
   while (true) {

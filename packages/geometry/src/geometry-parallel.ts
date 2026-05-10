@@ -89,12 +89,107 @@ export async function* processParallel(
   let prepassDone = false;
   let prepassError: Error | null = null;
 
-  // Process-worker pool, populated lazily after `meta` arrives.
-  const workers: Worker[] = [];
+  // Process-worker pool — spawned UP FRONT so their WASM modules compile
+  // in parallel with the pre-pass scan. By the time `meta` arrives the
+  // workers are usually hot and the first chunk's processing time is
+  // dominated by actual geometry work, not WASM startup.
   let workerError: Error | null = null;
   let workersCompleted = 0;
   let totalMeshes = 0;
   let endSentToWorkers = false;
+  let streamStartSentToWorkers = false;
+  /** Chunks that arrived before `meta` resolved — drained once stream-start fires. */
+  const queuedChunks: Uint32Array[] = [];
+
+  const installWorkerHandlers = (worker: Worker, workerIndex: number) => {
+    worker.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (msg.type === 'memory') {
+        eventQueue.push({
+          type: 'workerMemory',
+          workerIndex,
+          wasmHeapBytes: msg.wasmHeapBytes,
+          meshBytes: msg.meshBytes,
+        });
+        wake();
+        return;
+      }
+      if (msg.type === 'ready') {
+        // WASM init handshake — purely informational, no action needed.
+        return;
+      }
+      if (msg.type === 'batch') {
+        const meshes: MeshData[] = msg.meshes.map((m: {
+          expressId: number;
+          ifcType?: string;
+          positions: Float32Array;
+          normals: Float32Array;
+          indices: Uint32Array;
+          color: [number, number, number, number];
+        }) => ({
+          expressId: m.expressId,
+          ifcType: m.ifcType,
+          positions: m.positions instanceof Float32Array ? m.positions : new Float32Array(m.positions),
+          normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals),
+          indices: m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices),
+          color: m.color,
+        }));
+        if (meshes.length > 0) {
+          coordinator.processMeshesIncremental(meshes);
+          const coordinateInfo = coordinator.getCurrentCoordinateInfo();
+          eventQueue.push({
+            type: 'batch',
+            meshes,
+            totalSoFar: totalMeshes,
+            coordinateInfo: coordinateInfo || undefined,
+          });
+          wake();
+        }
+        return;
+      }
+      if (msg.type === 'complete') {
+        totalMeshes += msg.totalMeshes;
+        workersCompleted++;
+        worker.terminate();
+        wake();
+        return;
+      }
+      if (msg.type === 'error') {
+        workerError = new Error(`Geometry worker error: ${msg.message}`);
+        workersCompleted++;
+        worker.terminate();
+        wake();
+        return;
+      }
+    };
+    worker.onerror = (err) => {
+      workerError = new Error(`Geometry worker failed: ${err.message}`);
+      workersCompleted++;
+      worker.terminate();
+      wake();
+    };
+  };
+
+  // Pick worker count and pre-spawn them now. `pickWorkerCount` needs a
+  // totalJobs estimate; use file-size proxy. The memory-budget cap in
+  // `pickWorkerCount` keeps an over-estimate harmless.
+  const cores = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 2) : 2;
+  const deviceMemoryGB = typeof navigator !== 'undefined'
+    ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) : 8;
+  const fileSizeMB = buffer.byteLength / (1024 * 1024);
+  const estimatedJobs = Math.max(1, Math.ceil(fileSizeMB * 100));
+  const workerCount = pickWorkerCount({ fileSizeMB, cores, deviceMemoryGB, totalJobs: estimatedJobs });
+
+  const workers: Worker[] = [];
+  for (let i = 0; i < workerCount; i++) {
+    const worker = makeWorker();
+    workers.push(worker);
+    installWorkerHandlers(worker, i);
+    // Kick off WASM compile concurrently with the pre-pass scan. The
+    // worker's tail-promise serialiser guarantees this `init` completes
+    // before any subsequent `stream-start`/`stream-chunk` runs.
+    worker.postMessage({ type: 'init' });
+  }
 
   const sendStreamEnd = () => {
     if (endSentToWorkers) return;
@@ -106,114 +201,30 @@ export async function* processParallel(
     }
   };
 
-  const spawnProcessWorkers = (meta: PrepassMeta) => {
-    const cores = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 2) : 2;
-    const deviceMemoryGB = typeof navigator !== 'undefined'
-      ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) : 8;
-    const fileSizeMB = buffer.byteLength / (1024 * 1024);
-    // We don't know totalJobs yet — estimate by file size. Worker count is
-    // also clamped by memory budget so an over-estimate is harmless.
-    const estimatedJobs = Math.max(1, Math.ceil(fileSizeMB * 100));
-    const workerCount = pickWorkerCount({
-      fileSizeMB,
-      cores,
-      deviceMemoryGB,
-      totalJobs: estimatedJobs,
-    });
+  const sendStreamStartIfReady = () => {
+    if (streamStartSentToWorkers || !prepassMeta) return;
+    streamStartSentToWorkers = true;
 
-    // Resolve effective RTC: federation-supplied offset wins over the
-    // per-model detection so all federated models share an origin.
     const useSharedRtc = sharedRtcOffset != null;
-    const rtcX = useSharedRtc ? sharedRtcOffset.x : meta.rtcOffset[0];
-    const rtcY = useSharedRtc ? sharedRtcOffset.y : meta.rtcOffset[1];
-    const rtcZ = useSharedRtc ? sharedRtcOffset.z : meta.rtcOffset[2];
-    const effectiveNeedsShift = useSharedRtc ? true : meta.needsShift;
+    const rtcX = useSharedRtc ? sharedRtcOffset.x : prepassMeta.rtcOffset[0];
+    const rtcY = useSharedRtc ? sharedRtcOffset.y : prepassMeta.rtcOffset[1];
+    const rtcZ = useSharedRtc ? sharedRtcOffset.z : prepassMeta.rtcOffset[2];
+    const effectiveNeedsShift = useSharedRtc ? true : prepassMeta.needsShift;
 
     eventQueue.push({
       type: 'rtcOffset',
       rtcOffset: { x: rtcX, y: rtcY, z: rtcZ },
       hasRtc: effectiveNeedsShift,
     });
+    wake();
 
-    // Streaming pre-pass is the "fast" variant — empty void/style arrays.
-    // Workers use default per-type colors and skip void subtraction.
     const emptyU32 = new Uint32Array(0);
     const emptyU8 = new Uint8Array(0);
-
-    for (let i = 0; i < workerCount; i++) {
-      const worker = makeWorker();
-      const workerIndex = i;
-      workers.push(worker);
-
-      worker.onmessage = (e: MessageEvent) => {
-        const msg = e.data;
-        if (msg.type === 'memory') {
-          eventQueue.push({
-            type: 'workerMemory',
-            workerIndex,
-            wasmHeapBytes: msg.wasmHeapBytes,
-            meshBytes: msg.meshBytes,
-          });
-          wake();
-          return;
-        }
-        if (msg.type === 'batch') {
-          const meshes: MeshData[] = msg.meshes.map((m: {
-            expressId: number;
-            ifcType?: string;
-            positions: Float32Array;
-            normals: Float32Array;
-            indices: Uint32Array;
-            color: [number, number, number, number];
-          }) => ({
-            expressId: m.expressId,
-            ifcType: m.ifcType,
-            positions: m.positions instanceof Float32Array ? m.positions : new Float32Array(m.positions),
-            normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals),
-            indices: m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices),
-            color: m.color,
-          }));
-          if (meshes.length > 0) {
-            coordinator.processMeshesIncremental(meshes);
-            const coordinateInfo = coordinator.getCurrentCoordinateInfo();
-            eventQueue.push({
-              type: 'batch',
-              meshes,
-              totalSoFar: totalMeshes,
-              coordinateInfo: coordinateInfo || undefined,
-            });
-            wake();
-          }
-          return;
-        }
-        if (msg.type === 'complete') {
-          totalMeshes += msg.totalMeshes;
-          workersCompleted++;
-          worker.terminate();
-          wake();
-          return;
-        }
-        if (msg.type === 'error') {
-          workerError = new Error(`Geometry worker error: ${msg.message}`);
-          workersCompleted++;
-          worker.terminate();
-          wake();
-          return;
-        }
-      };
-      worker.onerror = (err) => {
-        workerError = new Error(`Geometry worker failed: ${err.message}`);
-        workersCompleted++;
-        worker.terminate();
-        wake();
-      };
-
-      // Initialise the worker with the metadata. No jobs yet — those
-      // arrive via `stream-chunk` as the pre-pass scan emits them.
+    for (const worker of workers) {
       worker.postMessage({
         type: 'stream-start' as const,
         sharedBuffer,
-        unitScale: meta.unitScale,
+        unitScale: prepassMeta.unitScale,
         rtcX, rtcY, rtcZ,
         needsShift: effectiveNeedsShift,
         voidKeys: emptyU32,
@@ -223,14 +234,22 @@ export async function* processParallel(
         styleColors: emptyU8,
       });
     }
+
+    // Drain any chunks that arrived before meta. (The Rust streaming
+    // pre-pass always emits `meta` before the first `jobs` event, so this
+    // is defensive — but if it ever flips we won't lose jobs.)
+    while (queuedChunks.length > 0) {
+      dispatchJobsChunkInternal(queuedChunks.shift()!);
+    }
   };
 
-  const dispatchJobsChunk = (jobs: Uint32Array) => {
+  function dispatchJobsChunkInternal(jobs: Uint32Array): void {
     if (workers.length === 0 || jobs.length === 0) return;
-    // Round-robin sending whole chunks to single workers leaves N-1 workers
-    // idle whenever the chunk count is small. Instead split each Rust chunk
-    // evenly across all workers so every worker processes a slice of every
-    // chunk in parallel — full pool utilisation from the very first chunk.
+    // Round-robin sending whole chunks to single workers leaves N-1
+    // workers idle whenever the chunk count is small. Instead split each
+    // Rust chunk evenly across all workers so every worker processes a
+    // slice of every chunk in parallel — full pool utilisation from the
+    // very first chunk.
     const totalSubJobs = Math.floor(jobs.length / 3);
     if (totalSubJobs === 0) return;
     const subPerWorker = Math.ceil(totalSubJobs / workers.length);
@@ -251,6 +270,15 @@ export async function* processParallel(
       workerError = new Error(`Failed to dispatch jobs chunk: ${err instanceof Error ? err.message : String(err)}`);
       wake();
     }
+  }
+
+  const dispatchJobsChunk = (jobs: Uint32Array) => {
+    if (!streamStartSentToWorkers) {
+      // Buffer until meta resolves and stream-start has been posted.
+      queuedChunks.push(jobs);
+      return;
+    }
+    dispatchJobsChunkInternal(jobs);
   };
 
   const prepassWorker = makeWorker();
@@ -270,7 +298,7 @@ export async function* processParallel(
           needsShift: evt.needsShift as boolean,
           buildingRotation: (evt.buildingRotation as number | null | undefined) ?? null,
         };
-        spawnProcessWorkers(prepassMeta);
+        sendStreamStartIfReady();
         wake();
       } else if (evt.type === 'jobs') {
         dispatchJobsChunk(evt.jobs as Uint32Array);
@@ -350,9 +378,14 @@ export async function* processParallel(
       onPrepassComplete();
     }
     // Edge case: pre-pass for a file with zero geometry. The Rust side
-    // emits `complete { totalJobs: 0 }`; we spawned no workers (meta
-    // never fired). Yield `complete` and exit.
-    if (prepassDone && workers.length === 0 && prepassJobsTotal === 0) {
+    // emits `complete { totalJobs: 0 }`; meta never fired so workers
+    // never received stream-start. Tear them down explicitly and yield
+    // `complete`. Workers were pre-spawned with `init` so they need an
+    // explicit terminate to exit.
+    if (prepassDone && !streamStartSentToWorkers && prepassJobsTotal === 0) {
+      for (const w of workers) {
+        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+      }
       const coordinateInfo = coordinator.getFinalCoordinateInfo();
       yield { type: 'complete', totalMeshes: 0, coordinateInfo };
       return;
@@ -360,7 +393,7 @@ export async function* processParallel(
 
     if (
       prepassDone
-      && workers.length > 0
+      && streamStartSentToWorkers
       && workersCompleted >= workers.length
       && eventQueue.length === 0
     ) {

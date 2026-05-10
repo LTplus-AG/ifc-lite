@@ -14,7 +14,9 @@ const NPM_TIMEOUT_MS = 30000;
 const MAX_VERSION_CANDIDATES = 10;
 
 function readJsonFromNpm(args: string[]): unknown {
-  const result = execFileSync('npm', args, {
+  const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : 'npm';
+  const commandArgs = process.platform === 'win32' ? ['/d', '/s', '/c', 'npm', ...args] : args;
+  const result = execFileSync(command, commandArgs, {
     stdio: 'pipe',
     timeout: NPM_TIMEOUT_MS,
   }).toString().trim();

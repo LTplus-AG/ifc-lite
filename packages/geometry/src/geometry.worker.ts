@@ -158,18 +158,22 @@ interface ProcessingSession {
 let activeSession: ProcessingSession | null = null;
 
 /**
- * Mesh count per `flushPending` post.
+ * Jobs per inner WASM call inside `processSliceStreaming`.
  *
- * Each `batch` post crosses two postMessage hops (worker→host, host→main),
- * triggers a Zustand state update, and re-renders the React tree. With
- * STREAM_BATCH_SIZE=500 a million-mesh load fires 2000 batches and the
- * cumulative postMessage + render overhead exceeds the actual WASM work.
+ * IMPORTANT: this is NOT just about batch size for the host post — every
+ * `processGeometryBatch` call allocates a fresh `EntityDecoder.cache`
+ * (FxHashMap) in Rust. Splitting one streaming chunk into many small
+ * WASM calls forces the decoder to re-decode the same shared sub-entities
+ * (`IfcCartesianPoint`, placements, etc.) per call. Main does one big
+ * call per worker and reaps the cache locality.
  *
- * 5000 keeps post overhead bounded (~50 batches per worker on huge files)
- * while still flushing often enough that the model "fills in" smoothly
- * rather than waiting for a worker's whole slice to finish.
+ * Setting this to a very large value means each fanned-out streaming
+ * chunk maps to exactly one WASM call per worker — main-equivalent
+ * cache behaviour while preserving streaming's early-job dispatch.
+ * Per-flush mesh count is then bounded by the chunk size (≤ 25K-ish on
+ * the 986 MB test file with 50K Rust chunk + 2-way fan-out).
  */
-const STREAM_BATCH_SIZE = 5000;
+const STREAM_BATCH_SIZE = 1_000_000;
 
 function startSession(input: {
   sharedBuffer: SharedArrayBuffer;

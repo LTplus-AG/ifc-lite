@@ -220,12 +220,12 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1167(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1167(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1170(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1170(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1206(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1206(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1209(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1209(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1328,6 +1328,57 @@ export class IfcAPI {
         const len6 = WASM_VECTOR_LEN;
         const ret = wasm.ifcapi_processGeometryBatch(this.__wbg_ptr, ptr0, len0, ptr1, len1, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6);
         return MeshCollection.__wrap(ret);
+    }
+    /**
+     * Phase 1 of Path C — sharded entity-index scan.
+     *
+     * Walks the bytes in `[range_start, range_end)` once and emits
+     * `(express_id, byte_offset, byte_length)` triples for every entity
+     * whose `#N=` opener falls in that range. Byte offsets are GLOBAL
+     * (relative to file start), so multiple shards' outputs concatenate
+     * without rewriting.
+     *
+     * Cross-boundary handling: the scanner rewinds `range_start` to the
+     * byte after the previous `\n` so we don't mis-parse a half entity.
+     * The previous shard owns any entity whose opener is BEFORE its own
+     * range_end (its terminator may extend past it; that's fine — the
+     * scanner walks STEP entities to their terminating `;`, even if that
+     * terminator is past the shard's nominal range_end).
+     *
+     * Returns nothing through the JS callback for performance signals;
+     * emits exactly one `index-shard` event with three Uint32Arrays:
+     *   `{ type: "index-shard", ids: Uint32Array, starts: Uint32Array,
+     *      lengths: Uint32Array, shardStart: u32, shardEnd: u32 }`
+     *
+     * Used by the JS-side shard coordinator to merge N shards' indices
+     * into a single entity-index without paying the 3 s single-threaded
+     * scan cost. Style and job emission are NOT done here — they remain
+     * the job of the existing `build_pre_pass_streaming` (which can be
+     * called on shard 0 in parallel with the other shards' index-only
+     * scans).
+     * @param {Uint8Array} data
+     * @param {Function} on_event
+     * @param {number} range_start
+     * @param {number} range_end
+     * @returns {any}
+     */
+    scanEntityIndexShard(data, on_event, range_start, range_end) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_export3);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.ifcapi_scanEntityIndexShard(retptr, this.__wbg_ptr, ptr0, len0, addBorrowedObject(on_event), range_start, range_end);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
+        }
     }
     /**
      * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
@@ -3179,7 +3230,7 @@ function __wbg_get_imports() {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1206(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1209(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3288,7 +3339,7 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_cast_45cc0390cbb4189c = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 152, function: Function { arguments: [Externref], shim_idx: 153, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1166, __wasm_bindgen_func_elem_1167);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1169, __wasm_bindgen_func_elem_1170);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {

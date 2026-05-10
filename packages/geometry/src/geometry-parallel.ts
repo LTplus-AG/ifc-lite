@@ -329,6 +329,60 @@ export async function* processParallel(
           console.log(`[stream] chunk #${chunkArrivals} @ ${elapsed()}ms (+${jobCount} jobs, total ${totalDispatchedJobs})`);
         }
         dispatchJobsChunk(jobsArr);
+      } else if (evt.type === 'styles') {
+        // Streaming pre-pass resolved styles + voids after its main scan.
+        // Push them into every worker so subsequent stream-chunks render
+        // with correct colors, and emit a colorUpdate StreamingGeometryEvent
+        // so the renderer can retroactively recolor meshes that came back
+        // with default per-type colors before styles were ready.
+        const styleIds = evt.styleIds as Uint32Array;
+        const styleColors = evt.styleColors as Uint8Array;
+        const voidKeys = evt.voidKeys as Uint32Array;
+        const voidCounts = evt.voidCounts as Uint32Array;
+        const voidValues = evt.voidValues as Uint32Array;
+        console.log(`[stream] styles @ ${elapsed()}ms (${styleIds.length} styled, ${voidKeys.length} void hosts)`);
+
+        for (const w of workers) {
+          // Slice each typed array per-worker so each can be in its own
+          // transfer list without conflict. For huge files (>1M styles)
+          // this allocation is bounded by `styleIds.length * 4` bytes.
+          try {
+            const sIds = styleIds.slice();
+            const sColors = styleColors.slice();
+            const vKeys = voidKeys.slice();
+            const vCounts = voidCounts.slice();
+            const vValues = voidValues.slice();
+            w.postMessage(
+              {
+                type: 'set-styles' as const,
+                styleIds: sIds,
+                styleColors: sColors,
+                voidKeys: vKeys,
+                voidCounts: vCounts,
+                voidValues: vValues,
+              },
+              [sIds.buffer, sColors.buffer, vKeys.buffer, vCounts.buffer, vValues.buffer],
+            );
+          } catch (err) {
+            console.warn('[stream] set-styles dispatch failed:', err);
+          }
+        }
+
+        // Retroactive colorUpdate for already-rendered meshes.
+        if (styleIds.length > 0) {
+          const updates = new Map<number, [number, number, number, number]>();
+          for (let i = 0; i < styleIds.length; i++) {
+            const ci = i * 4;
+            updates.set(styleIds[i], [
+              styleColors[ci] / 255,
+              styleColors[ci + 1] / 255,
+              styleColors[ci + 2] / 255,
+              styleColors[ci + 3] / 255,
+            ]);
+          }
+          eventQueue.push({ type: 'colorUpdate', updates });
+          wake();
+        }
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;
         console.log(`[stream] prepass complete @ ${elapsed()}ms totalJobs=${prepassJobsTotal} chunks=${chunkArrivals}`);

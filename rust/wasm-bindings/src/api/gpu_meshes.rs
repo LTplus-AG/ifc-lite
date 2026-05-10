@@ -2714,6 +2714,22 @@ impl IfcAPI {
         let mut project_id: Option<u32> = None;
         let mut site_position: Option<(u32, usize, usize)> = None;
         let mut meta_emitted = false;
+
+        // Style/void/material data collected during the scan — same shape as
+        // `combined_pre_pass` collects for `buildPrePassOnce`. Emitted as a
+        // `styles` event after the scan completes so workers can switch from
+        // default colors to resolved colors mid-stream and the host can fire a
+        // `colorUpdate` to retroactively fix already-emitted meshes.
+        let mut geometry_styles: rustc_hash::FxHashMap<u32, [f32; 4]> =
+            rustc_hash::FxHashMap::default();
+        let mut void_index: rustc_hash::FxHashMap<u32, Vec<u32>> = rustc_hash::FxHashMap::default();
+        let mut faceted_brep_ids: Vec<u32> = Vec::new();
+        let mut orphan_styled_items: rustc_hash::FxHashMap<u32, [f32; 4]> =
+            rustc_hash::FxHashMap::default();
+        let mut material_def_reprs: rustc_hash::FxHashMap<u32, Vec<u32>> =
+            rustc_hash::FxHashMap::default();
+        let mut element_to_material: rustc_hash::FxHashMap<u32, u32> =
+            rustc_hash::FxHashMap::default();
         // Hold a chunk buffer that we drain to JS — these are the last
         // `chunk_size` jobs awaiting flush. After `meta` the buffer is
         // drained as the first jobs event; subsequent flushes happen at
@@ -2744,6 +2760,14 @@ impl IfcAPI {
             Ok(())
         }
 
+        // Spans of entities that need decoding for style collection — we
+        // can't decode mid-scan because the decoder borrows `content` and
+        // would need `entity_index` populated for any references it follows.
+        // Stash the spans here and process them after the scan in one pass.
+        let mut styled_item_spans: Vec<(u32, usize, usize)> = Vec::new();
+        let mut material_entity_spans: Vec<(u32, &'static str, usize, usize)> = Vec::new();
+        let mut void_rel_spans: Vec<(u32, usize, usize)> = Vec::new();
+
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             // Build entity index inline (same data we'd otherwise re-scan for).
             entity_index.insert(id, (start, end));
@@ -2761,6 +2785,21 @@ impl IfcAPI {
                     let ifc_type = IfcType::from_str(type_name);
                     buffered_jobs.push((id, start, end, ifc_type));
                     total_jobs += 1;
+                }
+                "IFCSTYLEDITEM" => {
+                    styled_item_spans.push((id, start, end));
+                }
+                "IFCMATERIALDEFINITIONREPRESENTATION" => {
+                    material_entity_spans.push((id, "IFCMATERIALDEFINITIONREPRESENTATION", start, end));
+                }
+                "IFCRELASSOCIATESMATERIAL" => {
+                    material_entity_spans.push((id, "IFCRELASSOCIATESMATERIAL", start, end));
+                }
+                "IFCRELVOIDSELEMENT" => {
+                    void_rel_spans.push((id, start, end));
+                }
+                "IFCFACETEDBREP" => {
+                    faceted_brep_ids.push(id);
                 }
                 _ => {
                     if has_geometry_by_name(type_name) {
@@ -2882,7 +2921,152 @@ impl IfcAPI {
         // contract as buildPrePassFast / buildPrePassOnce. Wrapped in Arc
         // so process workers reuse the same index by reference instead of
         // cloning the 14 M-entry HashMap on every batch call.
-        *self.cached_entity_index.borrow_mut() = Some(std::sync::Arc::new(entity_index));
+        let entity_index_arc = std::sync::Arc::new(entity_index);
+        *self.cached_entity_index.borrow_mut() = Some(entity_index_arc.clone());
+
+        // ── Style + void resolution (post-scan) ──
+        // The streaming scan stashed entity spans for IfcStyledItem,
+        // material entities, and void rels. Now that the entity index is
+        // complete we decode them in one pass — the same logic
+        // `combined_pre_pass` runs inline, but split into a post-phase so
+        // we don't block streaming jobs on style decoding.
+        //
+        // We deliberately SKIP `MaterialLayerIndex::from_content` and
+        // `propagate_voids_to_parts` here — both do their own full file
+        // scans and would add ~7 s to the streaming pre-pass for visual
+        // refinements (multilayer wall cuts, layered material rendering).
+        // Primary surface colors come through correctly without them, and
+        // the missing detail can be added later without changing the
+        // protocol shape.
+        let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc);
+
+        for &(id, start, end) in &styled_item_spans {
+            if let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) {
+                if let Some(geometry_id) = styled_item.get_ref(0) {
+                    if !geometry_styles.contains_key(&geometry_id) {
+                        if let Some(styles_attr) = styled_item.get(1) {
+                            if let Some(color) =
+                                super::styling::extract_color_from_styles(styles_attr, &mut decoder)
+                            {
+                                geometry_styles.insert(geometry_id, color);
+                            }
+                        }
+                    }
+                } else {
+                    // Orphan IfcStyledItem (null Item) — material-based color.
+                    if let Some(styles_attr) = styled_item.get(1) {
+                        if let Some(color) =
+                            super::styling::extract_color_from_styles(styles_attr, &mut decoder)
+                        {
+                            orphan_styled_items.insert(id, color);
+                        }
+                    }
+                }
+            }
+        }
+
+        for &(id, type_name, start, end) in &material_entity_spans {
+            super::styling::collect_material_entity(
+                id,
+                type_name,
+                start,
+                end,
+                &mut decoder,
+                &mut orphan_styled_items,
+                &mut material_def_reprs,
+                &mut element_to_material,
+            );
+        }
+
+        for &(id, start, end) in &void_rel_spans {
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                if let (Some(host_id), Some(opening_id)) =
+                    (entity.get_ref(4), entity.get_ref(5))
+                {
+                    void_index.entry(host_id).or_default().push(opening_id);
+                }
+            }
+        }
+
+        // Resolve material chains → element colors.
+        let material_styles = super::styling::build_material_style_index(
+            &material_def_reprs,
+            &orphan_styled_items,
+            &mut decoder,
+        );
+        let element_material_styles = super::styling::build_element_material_styles(
+            &element_to_material,
+            &material_styles,
+            &mut decoder,
+        );
+        // Flat material_id → color, merge into geometry_styles for layered
+        // resolution per `combined_pre_pass`.
+        for (&mat_id, &color) in
+            super::styling::flatten_material_color_index(&material_styles).iter()
+        {
+            geometry_styles.entry(mat_id).or_insert(color);
+        }
+        // For elements that have a single resolved material color, register
+        // it so processGeometryBatch's per-type fallback picks it up.
+        for (&element_id, colors) in &element_material_styles {
+            if let Some(&color) = colors.first() {
+                geometry_styles.entry(element_id).or_insert(color);
+            }
+        }
+
+        // Serialise styles + voids + faceted_brep_ids and post a `styles`
+        // event before `complete` so the host can dispatch them to all
+        // process workers and emit a colorUpdate for already-rendered meshes.
+        let styles_len = geometry_styles.len();
+        let style_ids = js_sys::Uint32Array::new_with_length(styles_len as u32);
+        let style_colors = js_sys::Uint8Array::new_with_length((styles_len * 4) as u32);
+        let mut si = 0u32;
+        for (&id, &color) in &geometry_styles {
+            style_ids.set_index(si, id);
+            let ci = si * 4;
+            style_colors.set_index(ci, (color[0] * 255.0).clamp(0.0, 255.0) as u8);
+            style_colors.set_index(ci + 1, (color[1] * 255.0).clamp(0.0, 255.0) as u8);
+            style_colors.set_index(ci + 2, (color[2] * 255.0).clamp(0.0, 255.0) as u8);
+            style_colors.set_index(ci + 3, (color[3] * 255.0).clamp(0.0, 255.0) as u8);
+            si += 1;
+        }
+
+        // void_index → flat (keys, counts, values) arrays in the same shape
+        // processGeometryBatch already accepts.
+        let mut void_keys_vec: Vec<u32> = Vec::with_capacity(void_index.len());
+        let mut void_counts_vec: Vec<u32> = Vec::with_capacity(void_index.len());
+        let mut void_values_vec: Vec<u32> = Vec::new();
+        for (&host_id, openings) in &void_index {
+            void_keys_vec.push(host_id);
+            void_counts_vec.push(openings.len() as u32);
+            void_values_vec.extend(openings.iter().copied());
+        }
+        let void_keys = js_sys::Uint32Array::new_with_length(void_keys_vec.len() as u32);
+        for (i, &k) in void_keys_vec.iter().enumerate() {
+            void_keys.set_index(i as u32, k);
+        }
+        let void_counts = js_sys::Uint32Array::new_with_length(void_counts_vec.len() as u32);
+        for (i, &c) in void_counts_vec.iter().enumerate() {
+            void_counts.set_index(i as u32, c);
+        }
+        let void_values = js_sys::Uint32Array::new_with_length(void_values_vec.len() as u32);
+        for (i, &v) in void_values_vec.iter().enumerate() {
+            void_values.set_index(i as u32, v);
+        }
+        let faceted_brep_arr = js_sys::Uint32Array::new_with_length(faceted_brep_ids.len() as u32);
+        for (i, &id) in faceted_brep_ids.iter().enumerate() {
+            faceted_brep_arr.set_index(i as u32, id);
+        }
+
+        let styles_event = js_sys::Object::new();
+        super::set_js_prop(&styles_event, "type", &"styles".into());
+        super::set_js_prop(&styles_event, "styleIds", &style_ids);
+        super::set_js_prop(&styles_event, "styleColors", &style_colors);
+        super::set_js_prop(&styles_event, "voidKeys", &void_keys);
+        super::set_js_prop(&styles_event, "voidCounts", &void_counts);
+        super::set_js_prop(&styles_event, "voidValues", &void_values);
+        super::set_js_prop(&styles_event, "facetedBrepIds", &faceted_brep_arr);
+        on_event.call1(&JsValue::NULL, &styles_event.into())?;
 
         // Complete event.
         let done = js_sys::Object::new();

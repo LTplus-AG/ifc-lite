@@ -55,6 +55,21 @@ export interface GeometryWorkerStreamEndMessage {
   type: 'stream-end';
 }
 
+/**
+ * Update the active session's style/void arrays mid-stream. Used when the
+ * streaming pre-pass emits its `styles` event AFTER processing has already
+ * begun: workers initially process with empty styles (default per-type
+ * colours) and switch to resolved styles for any subsequent batches.
+ */
+export interface GeometryWorkerSetStylesMessage {
+  type: 'set-styles';
+  voidKeys: Uint32Array;
+  voidCounts: Uint32Array;
+  voidValues: Uint32Array;
+  styleIds: Uint32Array;
+  styleColors: Uint8Array;
+}
+
 export interface GeometryWorkerPrePassMessage {
   type: 'prepass' | 'prepass-fast' | 'prepass-streaming';
   sharedBuffer: SharedArrayBuffer;
@@ -68,6 +83,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerStreamStartMessage
   | GeometryWorkerStreamChunkMessage
   | GeometryWorkerStreamEndMessage
+  | GeometryWorkerSetStylesMessage
   | GeometryWorkerPrePassMessage;
 
 export interface GeometryWorkerBatchMessage {
@@ -448,6 +464,21 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         throw new Error('stream-chunk received before stream-start');
       }
       await processSliceStreaming(activeSession, e.data.jobsFlat);
+      return;
+    }
+
+    if (e.data.type === 'set-styles') {
+      // Update the active session in place. The streaming pre-pass posts
+      // this AFTER its main scan completes, so workers may have already
+      // processed several chunks with empty styles (default per-type
+      // colors). The host emits a `colorUpdate` event on the receive side
+      // to retroactively fix already-emitted meshes.
+      if (!activeSession) return;
+      activeSession.styleIds = e.data.styleIds;
+      activeSession.styleColors = e.data.styleColors;
+      activeSession.voidKeys = e.data.voidKeys;
+      activeSession.voidCounts = e.data.voidCounts;
+      activeSession.voidValues = e.data.voidValues;
       return;
     }
 

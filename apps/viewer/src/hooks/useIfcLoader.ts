@@ -15,7 +15,8 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
-import { GeometryProcessor, GeometryQuality, type MeshData, type CoordinateInfo } from '@ifc-lite/geometry';
+import { GeometryProcessor, GeometryQuality, getGeometryStreamWatchdogMs as getGeometryStreamWatchdogMsImpl, type MeshData, type CoordinateInfo } from '@ifc-lite/geometry';
+import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import initIfcLiteWasm, { IfcAPI } from '@ifc-lite/wasm';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import { type GeometryData } from '@ifc-lite/cache';
@@ -95,14 +96,23 @@ function yieldToUiThread(): Promise<void> {
   });
 }
 
+/**
+ * Size-aware first-batch watchdog. Delegates to the package-level helper so
+ * the formula stays unit-tested in `@ifc-lite/geometry`. Subsequent-batch
+ * deadlines are unchanged from the previous fixed values; only the
+ * first-batch deadline grows with file size to give the WASM pre-pass time
+ * to finish on multi-GB files (issue #600).
+ */
 function getGeometryStreamWatchdogMs(
   desktopStableWasm: boolean,
   batchCount: number,
+  fileSizeMB: number = 0,
 ): number {
-  if (desktopStableWasm) {
-    return batchCount > 0 ? 5_000 : 15_000;
-  }
-  return batchCount > 0 ? 15_000 : 30_000;
+  return getGeometryStreamWatchdogMsImpl({
+    desktopStableWasm,
+    batchCount,
+    fileSizeMB,
+  });
 }
 
 function countNativeSpatialNodes(
@@ -1555,13 +1565,33 @@ export function useIfcLoader() {
         return;
       }
 
-      // Read file from disk
+      // Read file from disk. The browser path streams files ≥
+      // STREAM_SAB_THRESHOLD directly into a SharedArrayBuffer, which avoids
+      // a doubled-peak ArrayBuffer + SAB allocation when the geometry
+      // pipeline copies into its own SAB. The native path still reads via
+      // Tauri's Rust IPC because it bounds memory differently. (#600)
       const fileReadStart = performance.now();
-      const buffer = isNativeFileHandle(file)
-        ? toExactArrayBuffer(await readNativeFile(file.path))
-        : await file.arrayBuffer();
+      let acquired: AcquiredBuffer;
+      if (isNativeFileHandle(file)) {
+        const nativeBytes = await readNativeFile(file.path);
+        const nativeBuffer = toExactArrayBuffer(nativeBytes);
+        acquired = {
+          buffer: nativeBuffer,
+          view: new Uint8Array(nativeBuffer),
+          isShared: false,
+        };
+      } else {
+        acquired = await acquireFileBuffer(file as File);
+      }
+      // `buffer` retains its previous semantics (ArrayBuffer-shaped) for
+      // every downstream consumer. When `acquired.isShared` is true the
+      // backing store is a SharedArrayBuffer; downstream code only ever
+      // reads bytes via `new Uint8Array(buffer)` / `new DataView(buffer)`,
+      // both of which work on either backing store. The TS cast is purely
+      // type-system: the runtime is identical.
+      const buffer = acquired.buffer as ArrayBuffer;
       const fileReadMs = performance.now() - fileReadStart;
-      console.log(`[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB, read in ${fileReadMs.toFixed(0)}ms`);
+      console.log(`[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`);
 
       // Detect file format (IFCX/IFC5 vs IFC4 STEP vs GLB vs LAS/LAZ)
       const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
@@ -1878,6 +1908,7 @@ export function useIfcLoader() {
           const watchdogMs = getGeometryStreamWatchdogMs(
             shouldUseDesktopStableWasmGeometry,
             batchCount,
+            fileSizeMB,
           );
           let watchdogId: ReturnType<typeof globalThis.setTimeout> | null = null;
           const nextResult = await Promise.race([
@@ -1909,6 +1940,11 @@ export function useIfcLoader() {
               break;
             case 'model-open':
               setProgress({ phase: 'Processing geometry', percent: 50 });
+              break;
+            case 'progress':
+              // Liveness heartbeat from the parallel pipeline. Receiving
+              // any event resets the watchdog implicitly because the next
+              // loop iteration re-creates the timer; nothing to do here.
               break;
             case 'colorUpdate': {
               // Accumulate color updates locally during streaming.

@@ -31,6 +31,8 @@ export {
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
 export { GeometryQuality } from './progressive-loader.js';
+export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
+export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 
 export { LODGenerator, type LODConfig, type LODMesh } from './lod.js';
 export {
@@ -132,6 +134,14 @@ export type StreamingGeometryEvent =
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
+  /**
+   * Liveness heartbeat from a long-running pre-pass / parallel pipeline.
+   * Carries no payload other than a phase tag. Consumers should treat any
+   * `progress` event as "pipeline still alive" and reset their watchdog.
+   * Existing consumers safely ignore unknown discriminants — this variant
+   * is additive.
+   */
+  | { type: 'progress'; phase: 'prepass' | 'workers' }
   | { type: 'complete'; totalMeshes: number; coordinateInfo: import('./types.js').CoordinateInfo };
 
 export type StreamingInstancedGeometryEvent =

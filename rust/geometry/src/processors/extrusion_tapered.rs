@@ -89,7 +89,13 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
             .get(2)
             .and_then(|v: &AttributeValue| v.as_float())
             .unwrap_or(1.0);
-        let local_direction = Vector3::new(dir_x, dir_y, dir_z).normalize();
+        let direction = Vector3::new(dir_x, dir_y, dir_z);
+        if direction.norm_squared() <= f64::EPSILON {
+            return Err(Error::geometry(
+                "ExtrudedAreaSolidTapered has zero-length ExtrudedDirection".to_string(),
+            ));
+        }
+        let local_direction = direction.normalize();
 
         let depth = entity.get_float(3).ok_or_else(|| {
             Error::geometry("ExtrudedAreaSolidTapered missing Depth".to_string())
@@ -131,16 +137,16 @@ impl GeometryProcessor for ExtrudedAreaSolidTaperedProcessor {
             Some(shear_mat)
         };
 
-        // Resolve EndSweptArea (attr 4). If missing or unresolvable, fall back
-        // to a uniform extrusion so the element still renders.
+        // Resolve EndSweptArea (attr 4). If missing, unresolvable, or its
+        // profile fails to process, fall back to a uniform extrusion so the
+        // element still renders rather than dropping geometry entirely.
         let end_profile_opt = match entity.get(4) {
             Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
                 Some(end_entity) => {
-                    let p = self.profile_processor.process(&end_entity, decoder)?;
-                    if p.outer.is_empty() {
-                        None
-                    } else {
-                        Some(p)
+                    match self.profile_processor.process(&end_entity, decoder) {
+                        Ok(p) if !p.outer.is_empty() => Some(p),
+                        Ok(_) => None,
+                        Err(_) => None,
                     }
                 }
                 None => None,

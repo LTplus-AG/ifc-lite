@@ -25,14 +25,20 @@ use ifc_lite_core::{
 };
 use nalgebra::Matrix4;
 
-/// Whether `t` is `IfcExtrudedAreaSolid` or its `IfcExtrudedAreaSolidTapered`
-/// subtype. Both share attributes 0..3 so the same extraction path works.
+/// Whether `t` should be picked up by the constant-profile 2D drawing
+/// extractor.
+///
+/// `IfcExtrudedAreaSolidTapered` is intentionally **not** included here even
+/// though it is a subtype of `IfcExtrudedAreaSolid`: this extractor stores a
+/// single outer polygon, and a tapered solid has two distinct cross sections
+/// (`SweptArea` and `EndSweptArea`). Treating it as constant would draw the
+/// start profile only and silently under-report the element footprint. Until
+/// `ExtractedProfile` can carry both profiles (or their union/hull), tapered
+/// solids skip this path; their 3D mesh is still rendered by
+/// `ExtrudedAreaSolidTaperedProcessor`. Tracked as a follow-up to #628.
 #[inline]
 fn is_extruded_area_solid(t: IfcType) -> bool {
-    matches!(
-        t,
-        IfcType::IfcExtrudedAreaSolid | IfcType::IfcExtrudedAreaSolidTapered
-    )
+    matches!(t, IfcType::IfcExtrudedAreaSolid)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

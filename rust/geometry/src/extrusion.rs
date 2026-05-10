@@ -424,19 +424,33 @@ pub fn extrude_profile_lofted(
     let n = outer_start.len();
     debug_assert_eq!(n, outer_end.len());
 
+    // Pair holes by index, dropping any pair where either side has <3 verts
+    // (e.g. one profile has an extra hole). The caps must reflect only the
+    // holes we'll actually loft, otherwise the cap shows an opening with no
+    // matching side wall and the mesh becomes non-manifold.
+    let lofted_hole_pairs: Vec<(Vec<Point2<f64>>, Vec<Point2<f64>>)> = start
+        .holes
+        .iter()
+        .zip(end.holes.iter())
+        .filter(|(s, e)| s.len() >= 3 && e.len() >= 3)
+        .map(|(s, e)| match_loop_lengths(s, e))
+        .collect();
+
+    // Build filtered profiles so cap triangulation only sees the holes we loft.
+    let mut start_profile = Profile2D::new(outer_start.clone());
+    let mut end_profile = Profile2D::new(outer_end.clone());
+    for (sh, eh) in &lofted_hole_pairs {
+        start_profile.add_hole(sh.clone());
+        end_profile.add_hole(eh.clone());
+    }
+
     // Triangulate each cap independently (silhouettes differ).
-    let start_tri = start.triangulate()?;
-    let end_tri = end.triangulate()?;
+    let start_tri = start_profile.triangulate()?;
+    let end_tri = end_profile.triangulate()?;
     let cap_vertex_count = start_tri.points.len() + end_tri.points.len();
     let cap_index_count = start_tri.indices.len() + end_tri.indices.len();
-    let side_vertex_count = n * 4
-        + start
-            .holes
-            .iter()
-            .zip(end.holes.iter())
-            .filter(|(s, e)| s.len() == e.len() && s.len() >= 3)
-            .map(|(s, _)| s.len() * 4)
-            .sum::<usize>();
+    let side_vertex_count =
+        n * 4 + lofted_hole_pairs.iter().map(|(s, _)| s.len() * 4).sum::<usize>();
     let mut mesh = Mesh::with_capacity(
         cap_vertex_count + side_vertex_count,
         cap_index_count + n * 6,
@@ -444,12 +458,8 @@ pub fn extrude_profile_lofted(
     create_cap_mesh(&start_tri, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
     create_cap_mesh(&end_tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
     create_lofted_side_walls(&outer_start, &outer_end, depth, false, &mut mesh);
-    for (s_hole, e_hole) in start.holes.iter().zip(end.holes.iter()) {
-        if s_hole.len() < 3 || e_hole.len() < 3 {
-            continue;
-        }
-        let (sh, eh) = match_loop_lengths(s_hole, e_hole);
-        create_lofted_side_walls(&sh, &eh, depth, true, &mut mesh);
+    for (sh, eh) in &lofted_hole_pairs {
+        create_lofted_side_walls(sh, eh, depth, true, &mut mesh);
     }
     if let Some(mat) = transform {
         apply_transform(&mut mesh, &mat);

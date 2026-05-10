@@ -220,12 +220,12 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1164(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1164(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1167(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1167(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1203(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1203(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1206(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1206(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1602,6 +1602,36 @@ export class IfcAPI {
     getMemory() {
         const ret = wasm.ifcapi_getMemory(this.__wbg_ptr);
         return takeObject(ret);
+    }
+    /**
+     * Populate `cached_entity_index` from pre-extracted column arrays.
+     *
+     * Used by the streaming pre-pass to share its already-built entity
+     * index across worker realms via SAB-backed Uint32Arrays — every
+     * process worker would otherwise re-scan the entire file in
+     * `processGeometryBatch`'s lazy build path (~5 s on a 1 GB IFC),
+     * even though the pre-pass worker built the same index minutes
+     * earlier.
+     *
+     * Building an `FxHashMap` from the three input slices costs ~1 s on
+     * 14 M entries — about 4–5× faster than re-scanning the file. After
+     * this call, the next `processGeometryBatch` skips the lazy build
+     * branch and reuses the populated cache by `Arc::clone()`.
+     *
+     * `lengths[i]` is the byte length of entity `ids[i]`, so the cache
+     * stores `(start, start + length)` to match the existing tuple layout.
+     * @param {Uint32Array} ids
+     * @param {Uint32Array} starts
+     * @param {Uint32Array} lengths
+     */
+    setEntityIndex(ids, starts, lengths) {
+        const ptr0 = passArray32ToWasm0(ids, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(starts, wasm.__wbindgen_export3);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray32ToWasm0(lengths, wasm.__wbindgen_export3);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.ifcapi_setEntityIndex(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
     }
     /**
      * Clear the cached entity index (call after streaming is complete)
@@ -3149,7 +3179,7 @@ function __wbg_get_imports() {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1203(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1206(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3258,7 +3288,7 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_cast_45cc0390cbb4189c = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 152, function: Function { arguments: [Externref], shim_idx: 153, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1163, __wasm_bindgen_func_elem_1164);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1166, __wasm_bindgen_func_elem_1167);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {

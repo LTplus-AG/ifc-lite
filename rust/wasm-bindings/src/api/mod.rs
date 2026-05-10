@@ -253,6 +253,38 @@ impl IfcAPI {
         self.cached_entity_index.borrow_mut().take();
     }
 
+    /// Populate `cached_entity_index` from pre-extracted column arrays.
+    ///
+    /// Used by the streaming pre-pass to share its already-built entity
+    /// index across worker realms via SAB-backed Uint32Arrays — every
+    /// process worker would otherwise re-scan the entire file in
+    /// `processGeometryBatch`'s lazy build path (~5 s on a 1 GB IFC),
+    /// even though the pre-pass worker built the same index minutes
+    /// earlier.
+    ///
+    /// Building an `FxHashMap` from the three input slices costs ~1 s on
+    /// 14 M entries — about 4–5× faster than re-scanning the file. After
+    /// this call, the next `processGeometryBatch` skips the lazy build
+    /// branch and reuses the populated cache by `Arc::clone()`.
+    ///
+    /// `lengths[i]` is the byte length of entity `ids[i]`, so the cache
+    /// stores `(start, start + length)` to match the existing tuple layout.
+    #[wasm_bindgen(js_name = setEntityIndex)]
+    pub fn set_entity_index(&self, ids: &[u32], starts: &[u32], lengths: &[u32]) {
+        let n = ids.len();
+        if n == 0 || starts.len() != n || lengths.len() != n {
+            return;
+        }
+        let mut index =
+            ifc_lite_core::EntityIndex::with_capacity_and_hasher(n, Default::default());
+        for i in 0..n {
+            let start = starts[i] as usize;
+            let length = lengths[i] as usize;
+            index.insert(ids[i], (start, start + length));
+        }
+        *self.cached_entity_index.borrow_mut() = Some(std::sync::Arc::new(index));
+    }
+
     /// Get WASM memory for zero-copy access
     #[wasm_bindgen(js_name = getMemory)]
     pub fn get_memory(&self) -> JsValue {

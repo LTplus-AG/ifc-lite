@@ -502,6 +502,25 @@ export class IfcAPI {
    */
   getMemory(): any;
   /**
+   * Populate `cached_entity_index` from pre-extracted column arrays.
+   *
+   * Used by the streaming pre-pass to share its already-built entity
+   * index across worker realms via SAB-backed Uint32Arrays — every
+   * process worker would otherwise re-scan the entire file in
+   * `processGeometryBatch`'s lazy build path (~5 s on a 1 GB IFC),
+   * even though the pre-pass worker built the same index minutes
+   * earlier.
+   *
+   * Building an `FxHashMap` from the three input slices costs ~1 s on
+   * 14 M entries — about 4–5× faster than re-scanning the file. After
+   * this call, the next `processGeometryBatch` skips the lazy build
+   * branch and reuses the populated cache by `Arc::clone()`.
+   *
+   * `lengths[i]` is the byte length of entity `ids[i]`, so the cache
+   * stores `(start, start + length)` to match the existing tuple layout.
+   */
+  setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
+  /**
    * Clear the cached entity index (call after streaming is complete)
    */
   clearPrePassCache(): void;
@@ -1116,6 +1135,7 @@ export interface InitOutput {
   readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanRelevantEntitiesFastBytes: (a: number, b: number, c: number) => number;
+  readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly instancedata_color: (a: number, b: number) => void;
   readonly instancedata_expressId: (a: number) => number;
@@ -1222,9 +1242,9 @@ export interface InitOutput {
   readonly profileentryjs_expressId: (a: number) => number;
   readonly symboliccircle_expressId: (a: number) => number;
   readonly __wbg_gpuinstancedgeometryref_free: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1164: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1163: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1203: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1167: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1166: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1206: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export3: (a: number, b: number) => number;

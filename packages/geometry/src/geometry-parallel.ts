@@ -109,6 +109,7 @@ export async function* processParallel(
    */
   const queuedChunks: Uint32Array[] = [];
   let stylesReceived = false;
+  let entityIndexReceived = false;
 
   // Per-worker first-batch timestamps (filled lazily so we don't need
   // workerCount at this point). The closure indexes by workerIndex.
@@ -286,14 +287,24 @@ export async function* processParallel(
   }
 
   const dispatchJobsChunk = (jobs: Uint32Array) => {
-    if (!streamStartSentToWorkers || !stylesReceived) {
-      // Hold until both stream-start AND styles have been posted to
-      // workers — otherwise this chunk would be processed with empty
-      // styles and the meshes come out with default per-type colours.
+    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived) {
+      // Hold until stream-start AND styles AND entity-index have all
+      // been posted to workers. Without styles the meshes would render
+      // with default per-type colours; without the pre-built entity
+      // index, the worker's first WASM call would re-scan the file
+      // (~5 s on 1 GB) to rebuild the index inside Rust.
       queuedChunks.push(jobs);
       return;
     }
     dispatchJobsChunkInternal(jobs);
+  };
+
+  /** Drain queued chunks once all gating conditions are met. */
+  const drainQueuedChunksIfReady = () => {
+    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived) return;
+    while (queuedChunks.length > 0) {
+      dispatchJobsChunkInternal(queuedChunks.shift()!);
+    }
   };
 
   // Step-by-step timing so we can tell exactly where time goes.
@@ -376,12 +387,62 @@ export async function* processParallel(
         }
 
         stylesReceived = true;
-        // Drain queued chunks now that workers have full styles. The
-        // worker's tail-promise serialiser ensures `set-styles` runs
-        // before any subsequent `stream-chunk`.
-        while (queuedChunks.length > 0) {
-          dispatchJobsChunkInternal(queuedChunks.shift()!);
+        // Drain only when ALL gates are open (entity-index too). The
+        // worker's tail-promise serialiser ensures any set-* runs
+        // before any subsequent stream-chunk.
+        drainQueuedChunksIfReady();
+      } else if (evt.type === 'entity-index') {
+        // Pre-pass exported its built entity_index. Forward to every
+        // worker so they skip the ~5 s file re-scan in Rust's lazy
+        // build path. SAB sharing for zero-copy distribution to N
+        // workers — each gets a Uint32Array view over the same buffer.
+        const ids = evt.ids as Uint32Array;
+        const starts = evt.starts as Uint32Array;
+        const lengths = evt.lengths as Uint32Array;
+        console.log(`[stream] entity-index @ ${elapsed()}ms (${ids.length} entries)`);
+
+        if (typeof SharedArrayBuffer !== 'undefined') {
+          // Allocate one SAB triple, copy data once, share across all
+          // workers without postMessage clone cost.
+          const idsBytes = ids.byteLength;
+          const startsBytes = starts.byteLength;
+          const lengthsBytes = lengths.byteLength;
+          const sabIds = new SharedArrayBuffer(idsBytes);
+          const sabStarts = new SharedArrayBuffer(startsBytes);
+          const sabLengths = new SharedArrayBuffer(lengthsBytes);
+          new Uint32Array(sabIds).set(ids);
+          new Uint32Array(sabStarts).set(starts);
+          new Uint32Array(sabLengths).set(lengths);
+          for (const w of workers) {
+            try {
+              w.postMessage({
+                type: 'set-entity-index' as const,
+                ids: new Uint32Array(sabIds),
+                starts: new Uint32Array(sabStarts),
+                lengths: new Uint32Array(sabLengths),
+              });
+            } catch (err) {
+              console.warn('[stream] set-entity-index dispatch failed:', err);
+            }
+          }
+        } else {
+          // SAB unavailable — clone per worker via structured clone.
+          for (const w of workers) {
+            try {
+              w.postMessage({
+                type: 'set-entity-index' as const,
+                ids: ids.slice(),
+                starts: starts.slice(),
+                lengths: lengths.slice(),
+              });
+            } catch (err) {
+              console.warn('[stream] set-entity-index dispatch failed:', err);
+            }
+          }
         }
+
+        entityIndexReceived = true;
+        drainQueuedChunksIfReady();
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;
         console.log(`[stream] prepass complete @ ${elapsed()}ms totalJobs=${prepassJobsTotal} chunks=${chunkArrivals}`);

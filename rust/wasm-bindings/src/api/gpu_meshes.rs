@@ -2923,6 +2923,10 @@ impl IfcAPI {
         // cloning the 14 M-entry HashMap on every batch call.
         let entity_index_arc = std::sync::Arc::new(entity_index);
         *self.cached_entity_index.borrow_mut() = Some(entity_index_arc.clone());
+        // Hold a second clone for the post-scan entity-index export below;
+        // `with_arc_index` consumes the Arc so we'd lose the reference
+        // after the decoder is created.
+        let index_for_export = entity_index_arc.clone();
 
         // ── Style + void resolution (post-scan) ──
         // The streaming scan stashed entity spans for IfcStyledItem,
@@ -3067,6 +3071,35 @@ impl IfcAPI {
         super::set_js_prop(&styles_event, "voidValues", &void_values);
         super::set_js_prop(&styles_event, "facetedBrepIds", &faceted_brep_arr);
         on_event.call1(&JsValue::NULL, &styles_event.into())?;
+
+        // Export the entity_index as 3 column arrays so process workers
+        // can install it via `setEntityIndex` (skipping the ~5 s file
+        // re-scan they'd otherwise pay on the first processGeometryBatch
+        // call). The arrays are filled directly from the Arc'd HashMap;
+        // the Arc shares with `cached_entity_index` so we don't clone the
+        // map data — only walk it once to fill the output arrays.
+        //
+        // Output shape mirrors `setEntityIndex`'s input contract:
+        //   ids[i]     → entity ID (u32)
+        //   starts[i]  → byte offset of entity start
+        //   lengths[i] → byte length of entity (NOT end offset)
+        let n = index_for_export.len();
+        let ids_arr = js_sys::Uint32Array::new_with_length(n as u32);
+        let starts_arr = js_sys::Uint32Array::new_with_length(n as u32);
+        let lengths_arr = js_sys::Uint32Array::new_with_length(n as u32);
+        let mut i = 0u32;
+        for (&id, &(start, end)) in index_for_export.iter() {
+            ids_arr.set_index(i, id);
+            starts_arr.set_index(i, start as u32);
+            lengths_arr.set_index(i, (end - start) as u32);
+            i += 1;
+        }
+        let index_event = js_sys::Object::new();
+        super::set_js_prop(&index_event, "type", &"entity-index".into());
+        super::set_js_prop(&index_event, "ids", &ids_arr);
+        super::set_js_prop(&index_event, "starts", &starts_arr);
+        super::set_js_prop(&index_event, "lengths", &lengths_arr);
+        on_event.call1(&JsValue::NULL, &index_event.into())?;
 
         // Complete event.
         let done = js_sys::Object::new();

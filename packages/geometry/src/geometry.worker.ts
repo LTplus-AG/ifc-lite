@@ -70,6 +70,21 @@ export interface GeometryWorkerSetStylesMessage {
   styleColors: Uint8Array;
 }
 
+/**
+ * Install a pre-built entity index into the worker's IfcAPI. The streaming
+ * pre-pass exports its already-built entity_index after the scan; without
+ * this, every process worker would re-scan the entire file (~5 s on a 1 GB
+ * IFC) on its first `processGeometryBatch` call. With this, the worker
+ * pays ~1 s to build the FxHashMap from the input slices and skips the
+ * file scan entirely.
+ */
+export interface GeometryWorkerSetEntityIndexMessage {
+  type: 'set-entity-index';
+  ids: Uint32Array;
+  starts: Uint32Array;
+  lengths: Uint32Array;
+}
+
 export interface GeometryWorkerPrePassMessage {
   type: 'prepass' | 'prepass-fast' | 'prepass-streaming';
   sharedBuffer: SharedArrayBuffer;
@@ -84,6 +99,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerStreamChunkMessage
   | GeometryWorkerStreamEndMessage
   | GeometryWorkerSetStylesMessage
+  | GeometryWorkerSetEntityIndexMessage
   | GeometryWorkerPrePassMessage;
 
 export interface GeometryWorkerBatchMessage {
@@ -479,6 +495,21 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       activeSession.voidKeys = e.data.voidKeys;
       activeSession.voidCounts = e.data.voidCounts;
       activeSession.voidValues = e.data.voidValues;
+      return;
+    }
+
+    if (e.data.type === 'set-entity-index') {
+      // Hand the pre-built entity index from the pre-pass worker into
+      // this worker's IfcAPI. Without this, processGeometryBatch's lazy
+      // build path fires on the first call and re-scans the entire file
+      // (~5 s on a 1 GB IFC) — the dominant TTFG bottleneck before this
+      // change. Now the only cost is FxHashMap construction from the
+      // input slices (~1 s for 14 M entries).
+      if (!api) {
+        await init();
+        api = new IfcAPI();
+      }
+      api.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
       return;
     }
 

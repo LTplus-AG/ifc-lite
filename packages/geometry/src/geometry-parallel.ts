@@ -49,6 +49,22 @@ export interface ProcessParallelOptions {
     starts: Uint32Array,
     lengths: Uint32Array,
   ) => void;
+  /**
+   * Phase 2 of single-controller-rayon-design.md — when true, spawn ONE
+   * controller worker that runs `processGeometryBatchParallel` with
+   * an internal rayon thread pool, instead of the N-independent-worker
+   * pool. The host can opt in via `localStorage.getItem('ifc-lite:single-controller')`
+   * (set in `useIfcLoader.ts`). Same input/output contract; the
+   * controller mirrors `geometry.worker.ts`'s message protocol so this
+   * file's dispatch loop is unchanged.
+   *
+   * Trade-offs documented in the design doc:
+   *   - peakWasm should drop ~5.3 GB → ~3 GB (one heap, not three).
+   *   - Stream tail should drop on rayon-friendly hosts (10+ cores).
+   *   - Falls back silently to N-worker path if the threaded WASM
+   *     bundle fails to load (no COI, Safari, etc.).
+   */
+  useSingleController?: boolean;
 }
 
 export async function* processParallel(
@@ -84,7 +100,26 @@ export async function* processParallel(
     new Uint8Array(sharedBuffer).set(buffer);
   }
 
-  const makeWorker = () => new Worker(
+  // Phase 2 controller path: ONE worker that does internal rayon
+  // parallelism, instead of N independent WASM-instance workers. The
+  // controller imports the threaded bundle (`@ifc-lite/wasm-threaded`)
+  // and calls processGeometryBatchParallel for each stream-chunk.
+  //
+  // The PRE-PASS worker always stays on the legacy bundle —
+  // `geometry.worker.ts` handles `prepass-streaming` messages; the
+  // controller does not. The legacy bundle is also slimmer (no
+  // wasm-bindgen-rayon snippets) so the pre-pass pays no atomics tax.
+  const useController = options?.useSingleController === true;
+  const makeGeometryWorker = () => useController
+    ? new Worker(
+        new URL('./geometry-controller.worker.ts', import.meta.url),
+        { type: 'module' },
+      )
+    : new Worker(
+        new URL('./geometry.worker.ts', import.meta.url),
+        { type: 'module' },
+      );
+  const makePrepassWorker = () => new Worker(
     new URL('./geometry.worker.ts', import.meta.url),
     { type: 'module' },
   );
@@ -211,11 +246,17 @@ export async function* processParallel(
     ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) : 8;
   const fileSizeMB = buffer.byteLength / (1024 * 1024);
   const estimatedJobs = Math.max(1, Math.ceil(fileSizeMB * 100));
-  const workerCount = pickWorkerCount({ fileSizeMB, cores, deviceMemoryGB, totalJobs: estimatedJobs });
+  // Controller path: ONE worker. The worker spins up (cores - 1) rayon
+  // helpers internally; pickWorkerCount's per-worker budget no longer
+  // applies because we hold ONE WASM heap, not N. N-worker path
+  // unchanged.
+  const workerCount = useController
+    ? 1
+    : pickWorkerCount({ fileSizeMB, cores, deviceMemoryGB, totalJobs: estimatedJobs });
 
   const workers: Worker[] = [];
   for (let i = 0; i < workerCount; i++) {
-    const worker = makeWorker();
+    const worker = makeGeometryWorker();
     workers.push(worker);
     installWorkerHandlers(worker, i);
     // Kick off WASM compile concurrently with the pre-pass scan. The
@@ -328,7 +369,7 @@ export async function* processParallel(
   const elapsed = () => Math.round(performance.now() - t0);
   console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}`);
 
-  const prepassWorker = makeWorker();
+  const prepassWorker = makePrepassWorker();
   let chunkArrivals = 0;
   let totalDispatchedJobs = 0;
   let firstChunkAt = -1;

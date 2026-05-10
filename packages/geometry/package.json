@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^"
+    "@ifc-lite/wasm": "workspace:^",
+    "@ifc-lite/wasm-threaded": "workspace:*"
   },
   "optionalDependencies": {
     "@tauri-apps/api": "^2.0.0"

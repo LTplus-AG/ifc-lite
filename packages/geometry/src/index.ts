@@ -854,6 +854,8 @@ export class GeometryProcessor {
       starts: Uint32Array,
       lengths: Uint32Array,
     ) => void,
+    /** Phase 2 flag — use the single-controller worker (rayon-internal). */
+    useSingleController?: boolean,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -862,6 +864,7 @@ export class GeometryProcessor {
 
     yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab, {
       onEntityIndex,
+      useSingleController,
     });
   }
 
@@ -896,6 +899,8 @@ export class GeometryProcessor {
         starts: Uint32Array,
         lengths: Uint32Array,
       ) => void;
+      /** Phase 2 — opt-in to the single-controller (rayon) worker. */
+      useSingleController?: boolean;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -964,6 +969,7 @@ export class GeometryProcessor {
           options.sharedRtcOffset,
           options.existingSab,
           options.onEntityIndex,
+          options.useSingleController,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

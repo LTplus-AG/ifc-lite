@@ -469,6 +469,42 @@ export class IfcAPI {
    */
   parseToGpuInstancedGeometry(content: string): GpuInstancedGeometryCollection;
   /**
+   * Phase 1.5 — parallel variant of `processGeometryBatch`.
+   *
+   * Same input/output contract as `processGeometryBatch`, but the
+   * per-entity mesh-generation loop runs through rayon `par_chunks`
+   * instead of a serial `for chunk in jobs_flat.chunks(3)`. Available
+   * only in the `threading`-feature build (the threaded WASM bundle).
+   *
+   * Phase 2's controller worker calls this. The serial
+   * `processGeometryBatch` stays for the single-thread bundle and as
+   * a behavioral oracle for cross-bundle parity tests.
+   *
+   * Per-task design:
+   *   - `par_chunks(PER_TASK_ENTITIES * 3)` so each rayon task gets
+   *     enough work (~500 entities, ~60 ms) to amortize per-task
+   *     scheduling overhead. Per the research, tasks <10 µs are net
+   *     negative on rayon's scheduler.
+   *   - Each rayon task creates its OWN `EntityDecoder` and
+   *     `GeometryRouter`. The `Arc<EntityIndex>` is the only shared
+   *     state; everything else is per-task local. This is the
+   *     "thread_local!"-style pattern realised via per-task locals
+   *     instead of true thread-locals (simpler and equivalent for
+   *     our cache lifetime needs).
+   *   - Output `Vec<MeshDataJs>` collected lock-free via
+   *     `flat_map_iter` + `collect`, then funneled into a single
+   *     `MeshCollection` at the end. Per `MeshCollection::add`
+   *     internals, the final pour is just appending pre-built
+   *     `MeshDataJs` records — no per-mesh allocation.
+   *
+   * Pre-pass setup (entity-index lock, void/style index build,
+   * per-element color resolution) stays serial — it's already O(jobs)
+   * but with much smaller per-iteration work than the geometry path.
+   * Parallelising it would add coordination overhead for negligible
+   * gain on the typical 16K-job-per-batch workload.
+   */
+  processGeometryBatchParallel(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array): MeshCollection;
+  /**
    * Process instanced geometry for a subset of pre-scanned entities.
    * Takes raw bytes and pre-pass data from buildPrePassOnce.
    */
@@ -1177,6 +1213,7 @@ export interface InitOutput {
   readonly ifcapi_parseToGpuInstancedGeometry: (a: number, b: number, c: number) => number;
   readonly ifcapi_parseZeroCopy: (a: number, b: number, c: number) => number;
   readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number) => number;
+  readonly ifcapi_processGeometryBatchParallel: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number) => number;
   readonly ifcapi_processInstancedGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => number;
   readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
@@ -1296,9 +1333,9 @@ export interface InitOutput {
   readonly wbg_rayon_poolbuilder_numThreads: (a: number) => number;
   readonly wbg_rayon_poolbuilder_receiver: (a: number) => number;
   readonly wbg_rayon_start_worker: (a: number) => void;
-  readonly __wasm_bindgen_func_elem_1041: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1040: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1309: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1062: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1061: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1330: (a: number, b: number, c: number, d: number) => void;
   readonly memory: WebAssembly.Memory;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;

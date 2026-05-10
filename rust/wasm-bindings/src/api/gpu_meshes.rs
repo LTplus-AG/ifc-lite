@@ -3492,6 +3492,260 @@ impl IfcAPI {
         mesh_collection
     }
 
+    /// Phase 1.5 — parallel variant of `processGeometryBatch`.
+    ///
+    /// Same input/output contract as `processGeometryBatch`, but the
+    /// per-entity mesh-generation loop runs through rayon `par_chunks`
+    /// instead of a serial `for chunk in jobs_flat.chunks(3)`. Available
+    /// only in the `threading`-feature build (the threaded WASM bundle).
+    ///
+    /// Phase 2's controller worker calls this. The serial
+    /// `processGeometryBatch` stays for the single-thread bundle and as
+    /// a behavioral oracle for cross-bundle parity tests.
+    ///
+    /// Per-task design:
+    ///   - `par_chunks(PER_TASK_ENTITIES * 3)` so each rayon task gets
+    ///     enough work (~500 entities, ~60 ms) to amortize per-task
+    ///     scheduling overhead. Per the research, tasks <10 µs are net
+    ///     negative on rayon's scheduler.
+    ///   - Each rayon task creates its OWN `EntityDecoder` and
+    ///     `GeometryRouter`. The `Arc<EntityIndex>` is the only shared
+    ///     state; everything else is per-task local. This is the
+    ///     "thread_local!"-style pattern realised via per-task locals
+    ///     instead of true thread-locals (simpler and equivalent for
+    ///     our cache lifetime needs).
+    ///   - Output `Vec<MeshDataJs>` collected lock-free via
+    ///     `flat_map_iter` + `collect`, then funneled into a single
+    ///     `MeshCollection` at the end. Per `MeshCollection::add`
+    ///     internals, the final pour is just appending pre-built
+    ///     `MeshDataJs` records — no per-mesh allocation.
+    ///
+    /// Pre-pass setup (entity-index lock, void/style index build,
+    /// per-element color resolution) stays serial — it's already O(jobs)
+    /// but with much smaller per-iteration work than the geometry path.
+    /// Parallelising it would add coordination overhead for negligible
+    /// gain on the typical 16K-job-per-batch workload.
+    #[cfg(feature = "threading")]
+    #[wasm_bindgen(js_name = processGeometryBatchParallel)]
+    pub fn process_geometry_batch_parallel(
+        &self,
+        data: &[u8],
+        jobs_flat: &[u32],
+        unit_scale: f64,
+        rtc_x: f64,
+        rtc_y: f64,
+        rtc_z: f64,
+        needs_shift: bool,
+        void_keys: &[u32],
+        void_counts: &[u32],
+        void_values: &[u32],
+        style_ids: &[u32],
+        style_colors: &[u8],
+    ) -> MeshCollection {
+        use super::styling::{
+            get_default_color_for_type, resolve_element_color, resolve_submesh_color,
+        };
+        use ifc_lite_core::EntityDecoder;
+        use ifc_lite_geometry::{calculate_normals, GeometryRouter};
+        use rayon::prelude::*;
+        use std::sync::Arc;
+
+        let content = decode_ifc_bytes(data);
+
+        // Same Mutex-cached entity index pattern as the serial variant.
+        let entity_index_arc: Arc<ifc_lite_core::EntityIndex> = {
+            let mut slot = self.cached_entity_index.lock().unwrap();
+            if let Some(existing) = slot.as_ref() {
+                Arc::clone(existing)
+            } else {
+                let built = Arc::new(ifc_lite_core::build_entity_index(content));
+                *slot = Some(Arc::clone(&built));
+                built
+            }
+        };
+
+        // Reconstruct void_index from flat arrays (serial — small).
+        let mut void_index_local: rustc_hash::FxHashMap<u32, Vec<u32>> =
+            rustc_hash::FxHashMap::default();
+        let mut value_offset = 0usize;
+        for i in 0..void_keys.len() {
+            let host_id = void_keys[i];
+            let count = void_counts[i] as usize;
+            let openings = void_values[value_offset..value_offset + count].to_vec();
+            void_index_local.insert(host_id, openings);
+            value_offset += count;
+        }
+        let void_index = Arc::new(void_index_local);
+
+        // Reconstruct geometry_styles from flat arrays (serial — small).
+        let mut geometry_styles_local: rustc_hash::FxHashMap<u32, [f32; 4]> =
+            rustc_hash::FxHashMap::default();
+        for i in 0..style_ids.len() {
+            let base = i * 4;
+            if base + 3 < style_colors.len() {
+                geometry_styles_local.insert(
+                    style_ids[i],
+                    [
+                        style_colors[base] as f32 / 255.0,
+                        style_colors[base + 1] as f32 / 255.0,
+                        style_colors[base + 2] as f32 / 255.0,
+                        style_colors[base + 3] as f32 / 255.0,
+                    ],
+                );
+            }
+        }
+        let geometry_styles = Arc::new(geometry_styles_local);
+
+        // Build element_styles serially using a single decoder (small
+        // pass; only fires when there are styled items at all).
+        let mut element_styles_local: rustc_hash::FxHashMap<u32, [f32; 4]> =
+            rustc_hash::FxHashMap::default();
+        if !geometry_styles.is_empty() {
+            let mut prep_decoder = EntityDecoder::with_arc_index(content, Arc::clone(&entity_index_arc));
+            for chunk in jobs_flat.chunks(3) {
+                if chunk.len() < 3 {
+                    break;
+                }
+                let id = chunk[0];
+                let start = chunk[1] as usize;
+                let end = chunk[2] as usize;
+                if let Ok(entity) = prep_decoder.decode_at_with_id(id, start, end) {
+                    if entity.get(6).map(|a| !a.is_null()).unwrap_or(false) {
+                        if let Some(color) = resolve_element_color(
+                            &entity,
+                            &geometry_styles,
+                            &mut prep_decoder,
+                        ) {
+                            element_styles_local.insert(id, color);
+                        }
+                    }
+                }
+            }
+        }
+        let element_styles = Arc::new(element_styles_local);
+
+        // Per-task entity count tuned so each rayon task does ~50-80 ms
+        // of work — well above scheduler overhead (~µs) and small enough
+        // that work-stealing balances tail entities. Empirical sweet
+        // spot from the research; bump if we see straggler tasks.
+        const PER_TASK_ENTITIES: usize = 500;
+        let stride = PER_TASK_ENTITIES * 3;
+
+        let collected: Vec<MeshDataJs> = jobs_flat
+            .par_chunks(stride)
+            .flat_map_iter(|big_chunk| {
+                // Per-rayon-task locals. Each task spins up its own
+                // decoder + router; the Arc'd entity index is shared
+                // (read-only) across all tasks via Arc::clone (cheap
+                // refcount bump).
+                let mut decoder = EntityDecoder::with_arc_index(content, Arc::clone(&entity_index_arc));
+                decoder.reserve_cache(big_chunk.len() / 3 * 2);
+                let mut router = GeometryRouter::with_scale(unit_scale);
+                if needs_shift {
+                    router.set_rtc_offset((rtc_x, rtc_y, rtc_z));
+                }
+                let mut local_meshes: Vec<MeshDataJs> =
+                    Vec::with_capacity(big_chunk.len() / 3);
+                let mut type_name_cache: rustc_hash::FxHashMap<
+                    ifc_lite_core::IfcType,
+                    String,
+                > = rustc_hash::FxHashMap::default();
+
+                for chunk in big_chunk.chunks(3) {
+                    if chunk.len() < 3 {
+                        break;
+                    }
+                    let id = chunk[0];
+                    let start = chunk[1] as usize;
+                    let end = chunk[2] as usize;
+
+                    let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
+                        continue;
+                    };
+                    let has_representation =
+                        entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
+                    if !has_representation {
+                        continue;
+                    }
+
+                    let ifc_type = entity.ifc_type;
+                    let has_openings = void_index.contains_key(&id);
+
+                    if has_openings {
+                        if let Ok(mut mesh) = router
+                            .process_element_with_voids(&entity, &mut decoder, &void_index)
+                        {
+                            if !mesh.is_empty() {
+                                if mesh.normals.len() != mesh.positions.len() {
+                                    calculate_normals(&mut mesh);
+                                }
+                                let color = element_styles
+                                    .get(&id)
+                                    .copied()
+                                    .unwrap_or_else(|| get_default_color_for_type(&ifc_type));
+                                let ifc_type_name = type_name_cache
+                                    .entry(ifc_type)
+                                    .or_insert_with(|| ifc_type.name().to_string())
+                                    .clone();
+                                local_meshes.push(MeshDataJs::new(id, ifc_type_name, mesh, color));
+                            }
+                        }
+                    } else {
+                        // Same submesh-aware path as the serial variant.
+                        if let Ok(sub_meshes) =
+                            router.process_element_with_submeshes(&entity, &mut decoder)
+                        {
+                            if !sub_meshes.is_empty() {
+                                let default_color = get_default_color_for_type(&ifc_type);
+                                let element_color = element_styles.get(&id).copied();
+                                let mut mat_color_idx = 0usize;
+                                for sub in sub_meshes.sub_meshes {
+                                    let mut mesh = sub.mesh;
+                                    if mesh.is_empty() {
+                                        continue;
+                                    }
+                                    if mesh.normals.len() != mesh.positions.len() {
+                                        calculate_normals(&mut mesh);
+                                    }
+                                    let color = resolve_submesh_color(
+                                        sub.geometry_id,
+                                        &geometry_styles,
+                                        &mut decoder,
+                                        None,
+                                        &mut mat_color_idx,
+                                        element_color,
+                                        default_color,
+                                    );
+                                    let ifc_type_name = type_name_cache
+                                        .entry(ifc_type)
+                                        .or_insert_with(|| ifc_type.name().to_string())
+                                        .clone();
+                                    local_meshes.push(MeshDataJs::new(
+                                        id,
+                                        ifc_type_name,
+                                        mesh,
+                                        color,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                local_meshes.into_iter()
+            })
+            .collect();
+
+        let mut mesh_collection = MeshCollection::with_capacity(collected.len());
+        if needs_shift {
+            mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
+        }
+        for mesh in collected {
+            mesh_collection.add(mesh);
+        }
+        mesh_collection
+    }
+
     /// Process instanced geometry for a subset of pre-scanned entities.
     /// Takes raw bytes and pre-pass data from buildPrePassOnce.
     #[wasm_bindgen(js_name = processInstancedGeometryBatch)]

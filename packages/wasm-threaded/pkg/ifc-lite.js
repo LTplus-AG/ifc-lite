@@ -223,12 +223,12 @@ if (cachedTextEncoder) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1041(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1041(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1062(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1062(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1309(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1309(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1330(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1330(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1520,6 +1520,72 @@ export class IfcAPI {
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.ifcapi_parseToGpuInstancedGeometry(this.__wbg_ptr, ptr0, len0);
         return GpuInstancedGeometryCollection.__wrap(ret);
+    }
+    /**
+     * Phase 1.5 — parallel variant of `processGeometryBatch`.
+     *
+     * Same input/output contract as `processGeometryBatch`, but the
+     * per-entity mesh-generation loop runs through rayon `par_chunks`
+     * instead of a serial `for chunk in jobs_flat.chunks(3)`. Available
+     * only in the `threading`-feature build (the threaded WASM bundle).
+     *
+     * Phase 2's controller worker calls this. The serial
+     * `processGeometryBatch` stays for the single-thread bundle and as
+     * a behavioral oracle for cross-bundle parity tests.
+     *
+     * Per-task design:
+     *   - `par_chunks(PER_TASK_ENTITIES * 3)` so each rayon task gets
+     *     enough work (~500 entities, ~60 ms) to amortize per-task
+     *     scheduling overhead. Per the research, tasks <10 µs are net
+     *     negative on rayon's scheduler.
+     *   - Each rayon task creates its OWN `EntityDecoder` and
+     *     `GeometryRouter`. The `Arc<EntityIndex>` is the only shared
+     *     state; everything else is per-task local. This is the
+     *     "thread_local!"-style pattern realised via per-task locals
+     *     instead of true thread-locals (simpler and equivalent for
+     *     our cache lifetime needs).
+     *   - Output `Vec<MeshDataJs>` collected lock-free via
+     *     `flat_map_iter` + `collect`, then funneled into a single
+     *     `MeshCollection` at the end. Per `MeshCollection::add`
+     *     internals, the final pour is just appending pre-built
+     *     `MeshDataJs` records — no per-mesh allocation.
+     *
+     * Pre-pass setup (entity-index lock, void/style index build,
+     * per-element color resolution) stays serial — it's already O(jobs)
+     * but with much smaller per-iteration work than the geometry path.
+     * Parallelising it would add coordination overhead for negligible
+     * gain on the typical 16K-job-per-batch workload.
+     * @param {Uint8Array} data
+     * @param {Uint32Array} jobs_flat
+     * @param {number} unit_scale
+     * @param {number} rtc_x
+     * @param {number} rtc_y
+     * @param {number} rtc_z
+     * @param {boolean} needs_shift
+     * @param {Uint32Array} void_keys
+     * @param {Uint32Array} void_counts
+     * @param {Uint32Array} void_values
+     * @param {Uint32Array} style_ids
+     * @param {Uint8Array} style_colors
+     * @returns {MeshCollection}
+     */
+    processGeometryBatchParallel(data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(jobs_flat, wasm.__wbindgen_export3);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray32ToWasm0(void_keys, wasm.__wbindgen_export3);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray32ToWasm0(void_counts, wasm.__wbindgen_export3);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArray32ToWasm0(void_values, wasm.__wbindgen_export3);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passArray32ToWasm0(style_ids, wasm.__wbindgen_export3);
+        const len5 = WASM_VECTOR_LEN;
+        const ptr6 = passArray8ToWasm0(style_colors, wasm.__wbindgen_export3);
+        const len6 = WASM_VECTOR_LEN;
+        const ret = wasm.ifcapi_processGeometryBatchParallel(this.__wbg_ptr, ptr0, len0, ptr1, len1, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6);
+        return MeshCollection.__wrap(ret);
     }
     /**
      * Process instanced geometry for a subset of pre-scanned entities.
@@ -3334,7 +3400,7 @@ function __wbg_get_imports(memory) {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1309(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1330(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3467,19 +3533,19 @@ function __wbg_get_imports(memory) {
         const ret = getStringFromWasm0(arg0, arg1);
         return addHeapObject(ret);
     };
+    imports.wbg.__wbindgen_cast_3fc6002dca60d92b = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 160, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 161, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1061, __wasm_bindgen_func_elem_1062);
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbindgen_cast_443332637da6f2f5 = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 160, function: Function { arguments: [Externref], shim_idx: 161, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1061, __wasm_bindgen_func_elem_1062);
+        return addHeapObject(ret);
+    };
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
         // Cast intrinsic for `U64 -> Externref`.
         const ret = BigInt.asUintN(64, arg0);
-        return addHeapObject(ret);
-    };
-    imports.wbg.__wbindgen_cast_80fdbe88b5d2e7e3 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 155, function: Function { arguments: [Externref], shim_idx: 156, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1040, __wasm_bindgen_func_elem_1041);
-        return addHeapObject(ret);
-    };
-    imports.wbg.__wbindgen_cast_aa4a28ae4cdaf577 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 155, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 156, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1040, __wasm_bindgen_func_elem_1041);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {

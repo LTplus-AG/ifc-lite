@@ -13,6 +13,7 @@ import { Picker, type PointPickSizing } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions, PickResult } from './types.js';
 import type { PointPickNode } from './point-picker.js';
+import type { QuantizedRaycaster } from './quantized-raycaster.js';
 
 /**
  * Supplied by the renderer when point clouds are loaded — returns the
@@ -30,6 +31,13 @@ export class PickingManager {
     private canvas: HTMLCanvasElement;
     private createMeshFromDataFn: (meshData: MeshData) => void;
     private pointPickProvider: PointPickProvider | null = null;
+    /**
+     * Quantised-scene raycaster, set by `Renderer.loadQuantizedScene`. When
+     * present, `pick()` uses CPU raycasting against the quantised buffers
+     * instead of the GPU r32uint Picker (which re-renders `Mesh[]` from
+     * `Scene.getMeshes()` — empty in quantised mode by design).
+     */
+    private quantizedRaycaster: QuantizedRaycaster | null = null;
 
     constructor(
         camera: Camera,
@@ -55,6 +63,15 @@ export class PickingManager {
      */
     setPicker(picker: Picker | null): void {
         this.picker = picker;
+    }
+
+    /**
+     * Attach (or detach) a quantised-scene raycaster for CPU-based picking
+     * on quantised scenes. Called by `Renderer.loadQuantizedScene` /
+     * unload paths.
+     */
+    setQuantizedRaycaster(raycaster: QuantizedRaycaster | null): void {
+        this.quantizedRaycaster = raycaster;
     }
 
     /**
@@ -85,6 +102,22 @@ export class PickingManager {
         // Picking during streaming would be slow and incomplete anyway
         if (options?.isStreaming) {
             return null;
+        }
+
+        // Quantised path: CPU raycast against the quantised buffers. The
+        // legacy GPU r32uint Picker can't run because `Scene.getMeshes()`
+        // is empty in quantised mode (the loader stores a stub mesh array).
+        // Cost: same as a click-time raycast — fast enough that GPU picking
+        // is overkill at quantised scale.
+        if (this.quantizedRaycaster) {
+            const ray = this.camera.unprojectToRay(scaledX, scaledY, this.canvas.width, this.canvas.height);
+            const hit = this.quantizedRaycaster.raycast(ray);
+            if (!hit) return null;
+            // Apply visibility filters post-hit (cheaper than excluding
+            // up-front since each instance has only one expressId).
+            if (options?.hiddenIds?.has(hit.expressId)) return null;
+            if (options?.isolatedIds && !options.isolatedIds.has(hit.expressId)) return null;
+            return { expressId: hit.expressId, modelIndex: 0 };
         }
 
         let meshes = this.scene.getMeshes();

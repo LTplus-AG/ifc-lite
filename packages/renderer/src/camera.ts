@@ -460,9 +460,14 @@ export class Camera {
           if (d < minD) minD = d;
           if (d > maxD) maxD = d;
         }
-        // 10% padding on each side, clamp near above 1 µm so reverse-Z math
-        // stays stable even if the camera ends up inside bounds.
-        near = Math.max(0.01, minD * 0.9);
+        // Bounds-based near aims for tight depth precision on huge models.
+        // BUT: when the camera dollies inside the bounds (or close to a
+        // surface), `minD * 0.9` gets larger than the camera-to-surface
+        // distance and clips geometry. Cap near at a small fixed value
+        // (1 cm) so close-up navigation never clips. We still use the
+        // bounds for `far` so depth precision stays usable on big models.
+        const NEAR_CAP = 0.01;
+        near = Math.max(NEAR_CAP, Math.min(minD * 0.9, distance * 0.05));
         far = Math.max(near * 2, maxD * 1.1);
         usedBoundsPath = true;
       }

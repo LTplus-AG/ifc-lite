@@ -609,6 +609,7 @@ export class Renderer {
             this.quantizedHiddenApplied = null;
             this.quantizedIsolatedApplied = null;
             this.raycastEngine.setQuantizedRaycaster(null);
+            this.pickingManager.setQuantizedRaycaster(null);
         }
 
         if (snapshot.meshCount === 0 || snapshot.instanceCount === 0) {
@@ -644,6 +645,9 @@ export class Renderer {
         // casts are O(candidates × triangles).
         const raycaster = new QuantizedRaycaster(this.quantizedBuffers, snapshot);
         this.raycastEngine.setQuantizedRaycaster(raycaster);
+        // Picking on the quantised path also goes through CPU raycast — the
+        // legacy GPU Picker can't render `Scene.getMeshes()` (empty by design).
+        this.pickingManager.setQuantizedRaycaster(raycaster);
 
         this.quantizedBindGroup = this.quantizedPipeline.createBindGroup(
             this.quantizedBuffers.getMeshUniformBuffer(),

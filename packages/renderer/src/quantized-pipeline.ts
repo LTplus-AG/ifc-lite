@@ -141,7 +141,30 @@ export class QuantizedRenderPipeline {
       fragment: {
         module: shaderModule,
         entryPoint: 'fs_main',
-        targets: [{ format: this.colorFormat }, { format: this.objectIdFormat }],
+        targets: [
+          {
+            format: this.colorFormat,
+            // Alpha blending so the glass-fresnel branch in the fragment
+            // shader (alpha < 0.99) actually composites against the
+            // background — without this, transparent IFC materials write
+            // their alpha to the swapchain but read as opaque colour. The
+            // legacy main pipeline uses the same standard premultiplied
+            // blend (see `pipeline.ts:80-87`).
+            blend: {
+              color: {
+                srcFactor: 'src-alpha',
+                dstFactor: 'one-minus-src-alpha',
+                operation: 'add',
+              },
+              alpha: {
+                srcFactor: 'one',
+                dstFactor: 'one-minus-src-alpha',
+                operation: 'add',
+              },
+            },
+          },
+          { format: this.objectIdFormat },
+        ],
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {

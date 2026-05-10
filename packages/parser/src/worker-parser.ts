@@ -36,12 +36,28 @@ export interface WorkerParserOptions extends ParseOptions {
   workerUrl?: URL | string;
   /** Optional callback receiving the per-parse memory snapshot at completion. */
   onMemorySnapshot?: (snapshot: ParserMemorySnapshot) => void;
+  /**
+   * Tell the worker to wait for `setEntityIndex` before running its WASM
+   * scan. Enable when the streaming geometry pre-pass will hand over the
+   * entity index — saves a duplicate 6–10 s scan on huge files.
+   */
+  waitForEntityIndex?: boolean;
 }
 
 export class WorkerParser {
   private worker: Worker | null = null;
   private requestCounter = 0;
   private readonly workerUrl: URL | string | null;
+  /**
+   * Queued entity-index payload. If `setEntityIndex` is called before the
+   * worker is spawned (rare — happens only if the caller races a parser
+   * worker race condition), buffer it and flush on first parse.
+   */
+  private queuedEntityIndex: {
+    ids: Uint32Array;
+    starts: Uint32Array;
+    lengths: Uint32Array;
+  } | null = null;
 
   /**
    * Returns true when this runtime can run the parser worker:
@@ -172,15 +188,57 @@ export class WorkerParser {
         reject(new Error('Parser worker structured-clone error (likely corrupted message)'));
       };
 
+      // Flush any entity index that was queued before parse started. The
+      // worker buffers it server-side and applies it when the parse path
+      // reaches the scan step.
+      if (this.queuedEntityIndex) {
+        const queued = this.queuedEntityIndex;
+        this.queuedEntityIndex = null;
+        try {
+          worker.postMessage({
+            type: 'set-entity-index',
+            ids: queued.ids,
+            starts: queued.starts,
+            lengths: queued.lengths,
+          });
+        } catch (err) {
+          console.warn('[WorkerParser] queued setEntityIndex failed:', err);
+        }
+      }
+
       const input: ParserWorkerInputMessage = {
         type: 'parse',
         id,
         source,
         yieldIntervalMs: options.yieldIntervalMs,
         deferPropertyAtomIndex: options.deferPropertyAtomIndex,
+        waitForEntityIndex: options.waitForEntityIndex,
       };
       worker.postMessage(input);
     });
+  }
+
+  /**
+   * Hand the worker a pre-built entity index (typically from the streaming
+   * geometry pre-pass). May be called before or after `parseColumnar` —
+   * if before, the payload is queued and posted as soon as the worker is
+   * spawned. The parser worker uses the index to skip its WASM scan.
+   */
+  setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void {
+    if (!this.worker) {
+      this.queuedEntityIndex = { ids, starts, lengths };
+      return;
+    }
+    try {
+      this.worker.postMessage({
+        type: 'set-entity-index',
+        ids,
+        starts,
+        lengths,
+      });
+    } catch (err) {
+      console.warn('[WorkerParser] setEntityIndex postMessage failed:', err);
+    }
   }
 
   /** Terminate the worker if running. Safe to call repeatedly. */

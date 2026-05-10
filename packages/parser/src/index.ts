@@ -116,6 +116,7 @@ import { PropertyExtractor } from './property-extractor.js';
 import { RelationshipExtractor } from './relationship-extractor.js';
 import { ColumnarParser, type IfcDataStore } from './columnar-parser.js';
 import { scanEntitiesInWorker } from './scan-worker-inline.js';
+import { buildEntityRefsFromIndex } from './entity-refs-from-index.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 export interface ParseOptions {
@@ -131,6 +132,19 @@ export interface ParseOptions {
   /** Called when spatial hierarchy is ready, BEFORE property/association parsing completes.
    *  Use this to show the hierarchy panel early while the full parse finishes. */
   onSpatialReady?: (partialStore: import('./columnar-parser.js').IfcDataStore) => void;
+  /**
+   * Pre-built entity index from another worker (typically the streaming
+   * geometry pre-pass). When supplied, `parseColumnar` skips both the
+   * worker-based and WASM scans and synthesizes `EntityRef[]` from the
+   * column arrays directly — saving ~10 s on 1 GB / 14 M-entity files
+   * where the parser would otherwise duplicate the pre-pass scan under
+   * heavy WASM contention with the geometry workers.
+   */
+  preScannedEntityIndex?: {
+    ids: Uint32Array;
+    starts: Uint32Array;
+    lengths: Uint32Array;
+  };
 }
 
 /**
@@ -228,10 +242,20 @@ export class IfcParser {
 
     let entityRefs: EntityRef[] = [];
     let processed = 0;
-    let scanPath: 'worker' | 'wasm' | 'tokenizer' = 'tokenizer';
+    let scanPath: 'worker' | 'wasm' | 'tokenizer' | 'pre-scanned' = 'tokenizer';
+
+    // Pre-scanned path: caller already has the entity index (from the
+    // streaming geometry pre-pass). Synthesize EntityRef[] from the
+    // column arrays without touching the file again.
+    if (options.preScannedEntityIndex) {
+      const { ids, starts, lengths } = options.preScannedEntityIndex;
+      entityRefs = buildEntityRefsFromIndex(uint8Buffer, ids, starts, lengths);
+      processed = entityRefs.length;
+      scanPath = 'pre-scanned';
+    }
 
     // Try Web Worker scanner first (keeps main thread free for UI + geometry)
-    if (!options.disableWorkerScan && typeof Worker !== 'undefined') {
+    if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {
       try {
         entityRefs = await scanEntitiesInWorker(buffer);
         processed = entityRefs.length;

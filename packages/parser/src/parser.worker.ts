@@ -35,6 +35,21 @@ export interface ParserWorkerInputMessage {
   yieldIntervalMs?: number;
   /** Defer indexing of property atoms (huge-file mode). */
   deferPropertyAtomIndex?: boolean;
+  /**
+   * If set, the worker holds the parse before the WASM scan until a
+   * `set-entity-index` message arrives. The streaming geometry pre-pass
+   * already builds the same index in another worker — handing it across
+   * via SAB lets us skip a second 6–10 s file scan.
+   */
+  waitForEntityIndex?: boolean;
+}
+
+/** Hand the worker a pre-built entity index (typically from the geometry pre-pass). */
+export interface ParserWorkerEntityIndexMessage {
+  type: 'set-entity-index';
+  ids: Uint32Array;
+  starts: Uint32Array;
+  lengths: Uint32Array;
 }
 
 /** Progress update from the worker. */
@@ -138,11 +153,73 @@ async function ensureWasmScanApi(): Promise<{ scanEntitiesFastBytes(data: Uint8A
   return cachedFullScanApi;
 }
 
-self.onmessage = async (event: MessageEvent<ParserWorkerInputMessage>) => {
-  const { type, id } = event.data;
-  if (type !== 'parse') return;
+/**
+ * Promise/handoff for a pre-built entity index from the streaming geometry
+ * pre-pass. When the host posts `set-entity-index`, we resolve the pending
+ * waiter (if any) and stash the columns for the next `parse`.
+ */
+let pendingEntityIndex: {
+  ids: Uint32Array;
+  starts: Uint32Array;
+  lengths: Uint32Array;
+} | null = null;
+let entityIndexWaiter: ((value: NonNullable<typeof pendingEntityIndex>) => void) | null = null;
 
-  const { source, yieldIntervalMs, deferPropertyAtomIndex } = event.data;
+function takeEntityIndex(): NonNullable<typeof pendingEntityIndex> | null {
+  if (!pendingEntityIndex) return null;
+  const taken = pendingEntityIndex;
+  pendingEntityIndex = null;
+  return taken;
+}
+
+/**
+ * Wait for an entity-index handoff with a watchdog timeout. If the host
+ * promised one via `waitForEntityIndex` but never delivers (path mismatch,
+ * pre-pass aborted, etc.), we fall through to the regular WASM scan after
+ * the timeout instead of hanging the parse forever.
+ */
+function awaitEntityIndex(timeoutMs: number): Promise<NonNullable<typeof pendingEntityIndex> | null> {
+  const taken = takeEntityIndex();
+  if (taken) return Promise.resolve(taken);
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      entityIndexWaiter = null;
+      console.warn(`[parser.worker] entity-index timeout after ${timeoutMs}ms — falling back to WASM scan`);
+      resolve(null);
+    }, timeoutMs);
+    entityIndexWaiter = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      pendingEntityIndex = null;
+      resolve(value);
+    };
+  });
+}
+
+type ParserInbound = ParserWorkerInputMessage | ParserWorkerEntityIndexMessage;
+
+self.onmessage = async (event: MessageEvent<ParserInbound>) => {
+  const data = event.data;
+  if (data.type === 'set-entity-index') {
+    pendingEntityIndex = {
+      ids: data.ids,
+      starts: data.starts,
+      lengths: data.lengths,
+    };
+    if (entityIndexWaiter) {
+      const resolve = entityIndexWaiter;
+      entityIndexWaiter = null;
+      resolve(pendingEntityIndex);
+    }
+    return;
+  }
+  if (data.type !== 'parse') return;
+
+  const { id, source, yieldIntervalMs, deferPropertyAtomIndex, waitForEntityIndex } = data;
   const startedAt = performance.now();
 
   try {
@@ -155,8 +232,27 @@ self.onmessage = async (event: MessageEvent<ParserWorkerInputMessage>) => {
     // Initialise the WASM scanner up front. `parseColumnar` prefers the
     // WASM scan when `wasmApi` is supplied (5–10× faster on huge files —
     // a 14 M-entity, 986 MB file goes from ~28 s of JS tokenising to ~5 s
-    // of Rust+SIMD).
-    const wasmApi = await ensureWasmScanApi();
+    // of Rust+SIMD). We start init BEFORE awaiting the entity index so the
+    // module compile happens in parallel with the host's pre-pass.
+    const wasmApiPromise = ensureWasmScanApi();
+
+    // If the host promised to ship an entity index, hold here until it
+    // arrives. The streaming geometry pre-pass already walked the file
+    // once and built the same index — reusing it skips a duplicate
+    // 6–10 s scan inside this worker.
+    let preScanned: NonNullable<typeof pendingEntityIndex> | null = null;
+    if (waitForEntityIndex) {
+      // 60 s is generous — pre-pass on a 1 GB file completes in ~5 s.
+      // The fallback path (own WASM scan) costs ~10 s, so an over-long
+      // wait here would hurt more than it helps. The host gates this
+      // flag to paths that actually emit, so timeouts shouldn't fire
+      // in practice.
+      preScanned = await awaitEntityIndex(60_000);
+    } else {
+      preScanned = takeEntityIndex();
+    }
+
+    const wasmApi = await wasmApiPromise;
     const parser = new IfcParser();
     const dataStore: IfcDataStore = await parser.parseColumnar(source as unknown as ArrayBuffer, {
       // Inside a worker, spawning another worker for scan is wasteful.
@@ -164,6 +260,7 @@ self.onmessage = async (event: MessageEvent<ParserWorkerInputMessage>) => {
       wasmApi,
       yieldIntervalMs,
       deferPropertyAtomIndex,
+      preScannedEntityIndex: preScanned ?? undefined,
       onProgress: (progress) => {
         postOutput({ type: 'progress', id, progress });
       },

@@ -848,13 +848,21 @@ export class GeometryProcessor {
     sharedRtcOffset?: { x: number; y: number; z: number },
     /** Reuse a SAB the caller has already shared with another worker. */
     existingSab?: SharedArrayBuffer,
+    /** Callback fired when the streaming pre-pass exports its entity index. */
+    onEntityIndex?: (
+      ids: Uint32Array,
+      starts: Uint32Array,
+      lengths: Uint32Array,
+    ) => void,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
       await this.init();
     }
 
-    yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab);
+    yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab, {
+      onEntityIndex,
+    });
   }
 
   /**
@@ -878,6 +886,16 @@ export class GeometryProcessor {
       sharedRtcOffset?: { x: number; y: number; z: number };
       /** Reuse a SAB already populated by the caller (parser worker, etc.). */
       existingSab?: SharedArrayBuffer;
+      /**
+       * Callback fired when the streaming pre-pass exports its entity
+       * index. Enables a peer worker (e.g. parser) to skip its own scan.
+       * Only fires on the parallel-streaming path.
+       */
+      onEntityIndex?: (
+        ids: Uint32Array,
+        starts: Uint32Array,
+        lengths: Uint32Array,
+      ) => void;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -941,7 +959,12 @@ export class GeometryProcessor {
         && (navigator.hardwareConcurrency ?? 1) > 1;
 
       if (useParallel) {
-        yield* this.processParallel(buffer, options.sharedRtcOffset, options.existingSab);
+        yield* this.processParallel(
+          buffer,
+          options.sharedRtcOffset,
+          options.existingSab,
+          options.onEntityIndex,
+        );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
       }

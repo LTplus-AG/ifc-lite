@@ -1864,6 +1864,23 @@ export function useIfcLoader() {
         });
       };
 
+      // Hoisted so the geometry pre-pass's `onEntityIndex` callback can
+      // hand the SAB triple to the same worker the parser is running in.
+      // Receiving the index lets the parser worker skip its own ~10 s
+      // `scanEntitiesFastBytes` call — the streaming pre-pass already
+      // walked the file and built the same index.
+      let workerParserInstance: WorkerParser | null = null;
+
+      // The geometry pre-pass only emits `entity-index` on the parallel
+      // streaming path inside `processAdaptive`. Files smaller than the
+      // sync threshold (2 MB) and the desktop-stable path don't fire it
+      // — gate `waitForEntityIndex` so the parser doesn't hang.
+      const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
+      const geometryWillEmitEntityIndex =
+        useParserWorker
+        && !shouldUseDesktopStableWasmGeometry
+        && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB;
+
       const startDataModelParsing = () => {
         metadataStartMs = performance.now() - totalStartTime;
         console.log(`[useIfc] Data model parsing start for ${file.name}: ${metadataStartMs.toFixed(0)}ms (${useParserWorker ? 'worker' : 'main-thread'})`);
@@ -1882,8 +1899,13 @@ export function useIfcLoader() {
           // Re-enable once the categorization loop builds the two
           // ref arrays inline so there is no second O(N) walk.
           const worker = new WorkerParser();
+          workerParserInstance = worker;
           return worker.parseColumnar(sharedSource, {
             onSpatialReady: onPartialDataStore,
+            // Hold the parser's WASM scan until the pre-pass hands over
+            // the entity index — but only when we know the geometry
+            // path will actually emit one (parallel-streaming branch).
+            waitForEntityIndex: geometryWillEmitEntityIndex,
             onMemorySnapshot: (snapshot) => {
               if (snapshot.jsHeapBytes !== undefined) {
                 memoryAccounting.recordWorkerMemory('parser', snapshot.jsHeapBytes);
@@ -1970,6 +1992,15 @@ export function useIfcLoader() {
               sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
               batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
               existingSab: sharedSource ?? undefined,
+              // Hand the streaming pre-pass's entity index to the parser
+              // worker so it skips a duplicate ~10 s WASM scan. Safe even
+              // when the parser falls back to main-thread (instance is
+              // null then; the callback no-ops).
+              onEntityIndex: (ids, starts, lengths) => {
+                if (workerParserInstance) {
+                  workerParserInstance.setEntityIndex(ids, starts, lengths);
+                }
+              },
             });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;

@@ -36,12 +36,28 @@ interface PrepassMeta {
   buildingRotation?: number | null;
 }
 
+export interface ProcessParallelOptions {
+  /**
+   * Fires when the streaming pre-pass finishes building the entity index
+   * (after styles), with SAB-backed Uint32Array views over the shared
+   * column buffers. The parser worker uses this to skip its own
+   * `scanEntitiesFastBytes` call (~10 s on 1 GB files under WASM
+   * contention with the geometry workers).
+   */
+  onEntityIndex?: (
+    ids: Uint32Array,
+    starts: Uint32Array,
+    lengths: Uint32Array,
+  ) => void;
+}
+
 export async function* processParallel(
   buffer: Uint8Array,
   coordinator: CoordinateHandler,
   sharedRtcOffset?: { x: number; y: number; z: number },
   /** Optional pre-allocated SAB the caller already shares with another worker. */
   existingSab?: SharedArrayBuffer,
+  options?: ProcessParallelOptions,
 ): AsyncGenerator<StreamingGeometryEvent> {
   coordinator.reset();
 
@@ -425,6 +441,21 @@ export async function* processParallel(
               console.warn('[stream] set-entity-index dispatch failed:', err);
             }
           }
+          // Hand the same SAB triple to the parser worker (or any other
+          // listener) so it can skip its own `scanEntitiesFastBytes` call.
+          // Each consumer gets its own Uint32Array view over the shared
+          // buffers — no extra copy.
+          if (options?.onEntityIndex) {
+            try {
+              options.onEntityIndex(
+                new Uint32Array(sabIds),
+                new Uint32Array(sabStarts),
+                new Uint32Array(sabLengths),
+              );
+            } catch (err) {
+              console.warn('[stream] onEntityIndex callback failed:', err);
+            }
+          }
         } else {
           // SAB unavailable — clone per worker via structured clone.
           for (const w of workers) {
@@ -437,6 +468,13 @@ export async function* processParallel(
               });
             } catch (err) {
               console.warn('[stream] set-entity-index dispatch failed:', err);
+            }
+          }
+          if (options?.onEntityIndex) {
+            try {
+              options.onEntityIndex(ids.slice(), starts.slice(), lengths.slice());
+            } catch (err) {
+              console.warn('[stream] onEntityIndex callback failed:', err);
             }
           }
         }

@@ -38,44 +38,6 @@ export interface WorkerParserOptions extends ParseOptions {
   onMemorySnapshot?: (snapshot: ParserMemorySnapshot) => void;
 }
 
-/**
- * Probe whether `TextDecoder.decode()` accepts a `SharedArrayBuffer`-backed
- * `Uint8Array` in this realm. Firefox refuses for timing-attack reasons;
- * Chromium (and Safari ≥ 17.4) allow it. Cached because the answer is
- * fixed per-runtime and the probe must allocate an SAB.
- *
- * Used at the start of `parseColumnar` to short-circuit to the in-process
- * fallback when the runtime can't decode SAB strings — every step of
- * `parseColumnar` (`detectSchemaVersion`, `batchExtractGlobalIdAndName`,
- * relationship attribute reads) hits TextDecoder over the source bytes.
- */
-let textDecoderAcceptsSabCache: boolean | null = null;
-
-function textDecoderAcceptsSab(): boolean {
-  if (textDecoderAcceptsSabCache !== null) return textDecoderAcceptsSabCache;
-  if (typeof SharedArrayBuffer === 'undefined') {
-    textDecoderAcceptsSabCache = false;
-    return false;
-  }
-  try {
-    const sab = new SharedArrayBuffer(8);
-    new TextDecoder().decode(new Uint8Array(sab));
-    textDecoderAcceptsSabCache = true;
-  } catch {
-    textDecoderAcceptsSabCache = false;
-  }
-  return textDecoderAcceptsSabCache;
-}
-
-/**
- * Reset the SAB-compat probe cache. Tests only — production callers
- * should never need to invalidate the result because the answer is fixed
- * for the lifetime of the realm.
- */
-export function __resetTextDecoderSabProbe(): void {
-  textDecoderAcceptsSabCache = null;
-}
-
 export class WorkerParser {
   private worker: Worker | null = null;
   private requestCounter = 0;
@@ -83,17 +45,17 @@ export class WorkerParser {
 
   /**
    * Returns true when this runtime can run the parser worker:
-   * cross-origin-isolated, `SharedArrayBuffer` available, AND the runtime
-   * accepts `TextDecoder.decode(sab-backed view)`. Callers should check
-   * this before allocating a SAB and falling through to the in-process
-   * parser when it returns false.
+   * `Worker` constructor available, `SharedArrayBuffer` available, and
+   * cross-origin-isolated. Callers should check this before allocating
+   * a SAB and falling through to the in-process parser when it returns
+   * false. The parser itself is SAB-decode-safe (see `utf8-decode.ts`),
+   * so no `TextDecoder` probe is needed here.
    */
   static isSupported(): boolean {
     if (typeof Worker === 'undefined') return false;
     if (typeof SharedArrayBuffer === 'undefined') return false;
     const coi = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated;
-    if (coi === false) return false;
-    return textDecoderAcceptsSab();
+    return coi !== false;
   }
 
   constructor(options: { workerUrl?: URL | string } = {}) {
@@ -113,16 +75,6 @@ export class WorkerParser {
    */
   parseColumnar(source: SharedArrayBuffer, options: WorkerParserOptions = {}): Promise<IfcDataStore> {
     return new Promise((resolve, reject) => {
-      // Short-circuit for runtimes (Firefox) that reject TextDecoder over
-      // SAB-backed views. The parser would crash on its first
-      // `detectSchemaVersion` call inside the worker; surface the
-      // incompatibility synchronously so the caller's catch path uses the
-      // in-process parser without paying a worker spawn + fast-scan cost.
-      if (!textDecoderAcceptsSab()) {
-        reject(new Error('parser worker unavailable: TextDecoder rejects SharedArrayBuffer in this runtime'));
-        return;
-      }
-
       const id = `parse_${Date.now()}_${++this.requestCounter}`;
       let worker: Worker;
       try {

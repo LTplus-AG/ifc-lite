@@ -116,6 +116,7 @@ import { PropertyExtractor } from './property-extractor.js';
 import { RelationshipExtractor } from './relationship-extractor.js';
 import { ColumnarParser, type IfcDataStore } from './columnar-parser.js';
 import { scanEntitiesInWorker } from './scan-worker-inline.js';
+import { safeUtf8Decode } from '@ifc-lite/data';
 
 export interface ParseOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
@@ -248,8 +249,12 @@ export class IfcParser {
           : typeof options.wasmApi.scanEntitiesFastBytes === 'function'
           ? () => options.wasmApi!.scanEntitiesFastBytes(uint8Buffer)
           : () => {
-              const decoder = new TextDecoder();
-              const content = decoder.decode(buffer);
+              // Last-resort scan path: decode the whole source. SAB-safe
+              // via the helper (one scratch copy on Firefox/Chrome with
+              // SAB-decode disabled, zero copy elsewhere). This branch is
+              // only hit when neither byte-level WASM scan API is wired,
+              // so the cost is acceptable.
+              const content = safeUtf8Decode(uint8Buffer);
               return options.wasmApi!.scanEntitiesFast(content);
             };
         const wasmRefs = scanFn() as Array<{
@@ -330,8 +335,10 @@ export function parseEntityOnDemand(
   entityRef: EntityRef
 ): { expressId: number; type: string; attributes: any[] } | null {
   try {
-    const entityText = new TextDecoder().decode(
-      source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+    const entityText = safeUtf8Decode(
+      source,
+      entityRef.byteOffset,
+      entityRef.byteOffset + entityRef.byteLength,
     );
 
     // Parse: #ID = TYPE(attr1, attr2, ...)

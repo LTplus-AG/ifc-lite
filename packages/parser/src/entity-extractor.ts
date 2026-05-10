@@ -9,6 +9,7 @@
 import { createLogger } from '@ifc-lite/data';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import type { IfcEntity, EntityRef } from './types.js';
+import { safeUtf8Decode } from '@ifc-lite/data';
 
 export type { IfcEntity };
 
@@ -29,8 +30,10 @@ export class EntityExtractor {
    */
   extractEntity(ref: EntityRef): IfcEntity | null {
     try {
-      const entityText = new TextDecoder().decode(
-        this.buffer.subarray(ref.byteOffset, ref.byteOffset + ref.byteLength)
+      const entityText = safeUtf8Decode(
+        this.buffer,
+        ref.byteOffset,
+        ref.byteOffset + ref.byteLength,
       );
 
       // Parse: #ID = TYPE(attr1, attr2, ...)

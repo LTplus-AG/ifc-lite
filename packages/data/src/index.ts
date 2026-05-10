@@ -49,3 +49,9 @@ export { IFC_ENTITY_NAMES } from './ifc-entity-names.js';
 
 // Logging utilities
 export { createLogger, logger, type LogLevel, type LogContext } from './logger.js';
+
+// SAB-safe TextDecoder helper. Both Firefox and Chromium reject
+// `TextDecoder.decode()` on SharedArrayBuffer-backed views as a
+// Spectre-class timing-attack mitigation; this helper transparently
+// routes those calls through a thread-local scratch buffer.
+export { safeUtf8Decode, textDecoderAcceptsSab } from './utf8-decode.js';

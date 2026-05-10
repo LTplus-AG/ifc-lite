@@ -39,6 +39,40 @@ function readFixture(name: string): ArrayBuffer | null {
   return ab;
 }
 
+describe('parseColumnar on SharedArrayBuffer source', () => {
+  it('parses a fixture whose source is SAB-backed (no TextDecoder/SAB error)', async () => {
+    if (typeof SharedArrayBuffer === 'undefined') {
+      console.warn('skip: SharedArrayBuffer unavailable in this runtime');
+      return;
+    }
+    const buffer = readFixture('duplex.ifc') ?? readFixture('IfcOpenHouse_IFC4.ifc');
+    if (!buffer) {
+      console.warn('skip: ara3d fixture missing — `pnpm fixtures` to fetch');
+      return;
+    }
+    // Copy bytes into a SAB so parseColumnar must walk the SAB-safe path.
+    const sab = new SharedArrayBuffer(buffer.byteLength);
+    new Uint8Array(sab).set(new Uint8Array(buffer));
+
+    const parser = new IfcParser();
+    // disableWorkerScan: true keeps the scan in-process so the SAB-decode
+    // path is exercised by the parser itself, not the inline scan worker.
+    const store = await parser.parseColumnar(sab as unknown as ArrayBuffer, {
+      disableWorkerScan: true,
+    });
+    expect(store.entityCount).toBeGreaterThan(0);
+    expect(store.schemaVersion).toMatch(/^IFC/);
+    expect(store.entities.count).toBeGreaterThan(0);
+
+    // Also exercise an on-demand extractor (which decodes subarrays of
+    // store.source on the fly) to confirm the main-thread post-parse
+    // path is also SAB-safe.
+    const sampleId = store.entities.expressId[0];
+    const result = store.entities.getName(sampleId);
+    expect(typeof result).toBe('string');
+  }, 120_000);
+});
+
 describe('data-store-transport', () => {
   it('toTransport / fromTransport round-trips a small fixture losslessly', async () => {
     const buffer = readFixture('IfcOpenHouse_IFC4.ifc') ?? readFixture('duplex.ifc');

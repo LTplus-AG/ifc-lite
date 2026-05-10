@@ -41,6 +41,7 @@ import {
     isIfcTypeLikeEntity,
 } from './columnar-parser-indexes.js';
 import { extractRelFast, extractPropertyRelFast } from './columnar-parser-relationships.js';
+import { safeUtf8Decode } from '@ifc-lite/data';
 
 import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
@@ -103,7 +104,7 @@ export interface IfcDataStore {
 
 function detectSchemaVersion(buffer: Uint8Array): IfcDataStore['schemaVersion'] {
     const headerEnd = Math.min(buffer.length, 2000);
-    const headerText = new TextDecoder().decode(buffer.subarray(0, headerEnd)).toUpperCase();
+    const headerText = safeUtf8Decode(buffer, 0, headerEnd).toUpperCase();
 
     if (headerText.includes('IFC5')) return 'IFC5';
     if (headerText.includes('IFC4X3')) return 'IFC4X3';

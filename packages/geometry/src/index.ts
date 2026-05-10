@@ -11,6 +11,7 @@
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
 export { IfcLiteMeshCollector, type StreamingColorUpdateEvent, type StreamingRtcOffsetEvent } from './ifc-lite-mesh-collector.js';
 import type { StreamingColorUpdateEvent, StreamingRtcOffsetEvent } from './ifc-lite-mesh-collector.js';
+import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
 export {
@@ -302,8 +303,9 @@ export class GeometryProcessor {
     }
 
     // Convert buffer to string (IFC files are text)
-    const decoder = new TextDecoder();
-    const content = decoder.decode(buffer);
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
 
     const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content);
     const meshes = collector.collectMeshes();
@@ -631,9 +633,8 @@ export class GeometryProcessor {
         return;
       }
 
-      // Convert buffer to string (IFC files are text)
-      const decoder = new TextDecoder();
-      const content = decoder.decode(buffer);
+      // Convert buffer to string (IFC files are text). SAB-safe.
+      const content = safeUtf8Decode(buffer);
 
       yield { type: 'model-open', modelID: 0 };
 
@@ -773,8 +774,9 @@ export class GeometryProcessor {
     }
 
     // Convert buffer to string (IFC files are text)
-    const decoder = new TextDecoder();
-    const content = decoder.decode(buffer);
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
 
     // Use a placeholder model ID (IFC-Lite doesn't use model IDs)
     yield { type: 'model-open', modelID: 0 };
@@ -908,9 +910,8 @@ export class GeometryProcessor {
         allMeshes = result.meshes;
         console.timeEnd('[GeometryProcessor] native-adaptive-sync');
       } else {
-        // WASM PATH
-        const decoder = new TextDecoder();
-        const content = decoder.decode(buffer);
+        // WASM PATH (SAB-safe).
+        const content = safeUtf8Decode(buffer);
         const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content);
         allMeshes = collector.collectMeshes();
       }
@@ -974,8 +975,9 @@ export class GeometryProcessor {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
-    const decoder = new TextDecoder();
-    const content = decoder.decode(buffer);
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
     return this.bridge.parseSymbolicRepresentations(content);
   }
 
@@ -991,8 +993,9 @@ export class GeometryProcessor {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
-    const decoder = new TextDecoder();
-    const content = decoder.decode(buffer);
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
     return this.bridge.extractProfiles(content, modelIndex);
   }
 

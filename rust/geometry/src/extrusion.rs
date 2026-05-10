@@ -397,11 +397,14 @@ fn create_side_walls(boundary: &[nalgebra::Point2<f64>], depth: f64, mesh: &mut 
 /// Extrude with a different cross section at the top (lofted/tapered extrusion).
 ///
 /// Used for `IfcExtrudedAreaSolidTapered`. The two profiles must share topology
-/// per the IFC WR2 constraint, but in practice authoring tools sometimes emit
-/// loops with different vertex counts. We resample the shorter loop to the
-/// longer one's length (by arc length) so a side wall can always be built.
-/// Holes are paired by index; any pair where either side has fewer than 3
-/// vertices is dropped from both caps so the mesh stays manifold.
+/// per the IFC WR2 constraint, which we trust to mean **same winding direction
+/// and corresponding start vertex** — the side walls are stitched 1:1 by
+/// vertex index, so reversed winding or rotated start indices would cross.
+/// In practice authoring tools sometimes emit loops with different vertex
+/// counts; we resample the shorter loop to the longer one's length (by arc
+/// length) so a side wall can always be built. Holes are paired by index; any
+/// pair where either side has fewer than 3 vertices is dropped from both caps
+/// so the mesh stays manifold.
 #[inline]
 pub fn extrude_profile_lofted(
     start: &Profile2D,
@@ -551,11 +554,13 @@ fn create_lofted_side_walls(
         let v1 = Point3::new(p1.x, p1.y, 0.0);
         let v2 = Point3::new(q1.x, q1.y, depth);
         let v3 = Point3::new(q0.x, q0.y, depth);
-        // Flat normal from the actual 3D quad — the side is no longer vertical
-        // when the two profiles differ.
+        // Outward normal from the actual 3D quad. `edge_b × edge_a` matches
+        // the convention in `create_side_walls` (tangent rotated +90° CCW
+        // around +Z) so tapered faces shade the same direction as uniform
+        // extrusions in the untapered limit.
         let edge_a = v1 - v0;
         let edge_b = v3 - v0;
-        let mut normal = match edge_a.cross(&edge_b).try_normalize(1e-10) {
+        let mut normal = match edge_b.cross(&edge_a).try_normalize(1e-10) {
             Some(n) => n,
             None => continue,
         };
@@ -843,6 +848,46 @@ mod tests {
         assert!(
             has_sloped_normal,
             "expected at least one side-wall normal with sloped Z component"
+        );
+    }
+
+    #[test]
+    fn test_lofted_outer_normals_match_uniform_extrusion_convention() {
+        // In the untapered limit (start == end), the lofted side-wall normals
+        // must match the convention used by the uniform `extrude_profile`:
+        // the radial component (in XY) points outward from the profile center.
+        // Without this, tapered faces shade inverted vs regular extrusions.
+        let rect = create_rectangle(200.0, 200.0);
+        let lofted = extrude_profile_lofted(&rect, &rect, 1000.0, None).unwrap();
+        let uniform = extrude_profile(&rect, 1000.0, None).unwrap();
+
+        // Sample the bottom-left side-wall vertex (x = -100, y = -100, z = 0)
+        // and check the XY normal sign on both meshes.
+        fn radial_sign_at(mesh: &Mesh, x: f32, y: f32) -> Option<(f32, f32)> {
+            for i in 0..mesh.vertex_count() {
+                let px = mesh.positions[i * 3];
+                let py = mesh.positions[i * 3 + 1];
+                let pz = mesh.positions[i * 3 + 2];
+                if (px - x).abs() < 0.5 && (py - y).abs() < 0.5 && pz < 0.5 {
+                    let nx = mesh.normals[i * 3];
+                    let ny = mesh.normals[i * 3 + 1];
+                    if nx.abs() > 0.1 || ny.abs() > 0.1 {
+                        return Some((nx, ny));
+                    }
+                }
+            }
+            None
+        }
+        let lofted_n = radial_sign_at(&lofted, -100.0, -100.0)
+            .expect("lofted: no side-wall vertex at (-100, -100, 0)");
+        let uniform_n = radial_sign_at(&uniform, -100.0, -100.0)
+            .expect("uniform: no side-wall vertex at (-100, -100, 0)");
+        assert!(
+            lofted_n.0.signum() == uniform_n.0.signum()
+                || lofted_n.1.signum() == uniform_n.1.signum(),
+            "lofted normal {:?} disagrees with uniform normal {:?}",
+            lofted_n,
+            uniform_n,
         );
     }
 

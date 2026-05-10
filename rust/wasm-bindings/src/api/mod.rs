@@ -220,8 +220,14 @@ impl MeshCollectionWithRtc {
 #[wasm_bindgen]
 pub struct IfcAPI {
     initialized: bool,
-    /// Cached entity index from buildPrePassOnce, reused by processGeometryBatch
-    cached_entity_index: RefCell<Option<EntityIndex>>,
+    /// Cached entity index from buildPrePassOnce, reused by processGeometryBatch.
+    ///
+    /// Wrapped in `Arc` so successive `processGeometryBatch` calls reuse it
+    /// without cloning the (~14 M-entry, ~600 MB) FxHashMap on every call.
+    /// The streaming pre-pass calls `processGeometryBatch` dozens of times
+    /// per worker — the previous `RefCell<Option<EntityIndex>>::clone()`
+    /// path made each call effectively a full HashMap copy.
+    cached_entity_index: RefCell<Option<std::sync::Arc<EntityIndex>>>,
 }
 
 #[wasm_bindgen]

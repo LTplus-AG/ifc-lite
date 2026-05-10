@@ -101,9 +101,16 @@ export async function* processParallel(
   /** Chunks that arrived before `meta` resolved — drained once stream-start fires. */
   const queuedChunks: Uint32Array[] = [];
 
+  // Per-worker first-batch timestamps (filled lazily so we don't need
+  // workerCount at this point). The closure indexes by workerIndex.
+  const firstBatchByWorker: number[] = [];
   const installWorkerHandlers = (worker: Worker, workerIndex: number) => {
     worker.onmessage = (e: MessageEvent) => {
       const msg = e.data;
+      if (msg.type === 'ready') {
+        console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
+        return;
+      }
       if (msg.type === 'memory') {
         eventQueue.push({
           type: 'workerMemory',
@@ -114,11 +121,11 @@ export async function* processParallel(
         wake();
         return;
       }
-      if (msg.type === 'ready') {
-        // WASM init handshake — purely informational, no action needed.
-        return;
-      }
       if (msg.type === 'batch') {
+        if (firstBatchByWorker[workerIndex] === undefined) {
+          firstBatchByWorker[workerIndex] = elapsed();
+          console.log(`[stream] worker[${workerIndex}] first batch @ ${elapsed()}ms (${msg.meshes?.length ?? 0} meshes)`);
+        }
         const meshes: MeshData[] = msg.meshes.map((m: {
           expressId: number;
           ifcType?: string;
@@ -281,7 +288,15 @@ export async function* processParallel(
     dispatchJobsChunkInternal(jobs);
   };
 
+  // Step-by-step timing so we can tell exactly where time goes.
+  const t0 = performance.now();
+  const elapsed = () => Math.round(performance.now() - t0);
+  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}`);
+
   const prepassWorker = makeWorker();
+  let chunkArrivals = 0;
+  let totalDispatchedJobs = 0;
+  let firstChunkAt = -1;
   prepassWorker.onmessage = (e: MessageEvent) => {
     const data = e.data;
     if (data.type === 'prepass-progress') {
@@ -298,12 +313,25 @@ export async function* processParallel(
           needsShift: evt.needsShift as boolean,
           buildingRotation: (evt.buildingRotation as number | null | undefined) ?? null,
         };
+        console.log(`[stream] meta @ ${elapsed()}ms unitScale=${prepassMeta.unitScale} rtc=[${(prepassMeta.rtcOffset[0]).toFixed(0)},${(prepassMeta.rtcOffset[1]).toFixed(0)},${(prepassMeta.rtcOffset[2]).toFixed(0)}]`);
         sendStreamStartIfReady();
         wake();
       } else if (evt.type === 'jobs') {
-        dispatchJobsChunk(evt.jobs as Uint32Array);
+        const jobsArr = evt.jobs as Uint32Array;
+        const jobCount = Math.floor(jobsArr.length / 3);
+        chunkArrivals++;
+        totalDispatchedJobs += jobCount;
+        if (firstChunkAt < 0) {
+          firstChunkAt = elapsed();
+          console.log(`[stream] first jobs chunk @ ${firstChunkAt}ms (${jobCount} jobs)`);
+        }
+        if (chunkArrivals % 10 === 1 || jobCount < 1000) {
+          console.log(`[stream] chunk #${chunkArrivals} @ ${elapsed()}ms (+${jobCount} jobs, total ${totalDispatchedJobs})`);
+        }
+        dispatchJobsChunk(jobsArr);
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;
+        console.log(`[stream] prepass complete @ ${elapsed()}ms totalJobs=${prepassJobsTotal} chunks=${chunkArrivals}`);
       }
       return;
     }

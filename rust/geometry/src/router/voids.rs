@@ -791,6 +791,15 @@ impl GeometryRouter {
         ctx: &VoidContext,
         element_id: u32,
     ) -> Mesh {
+        // Capture the input triangle count + bounds so the per-host
+        // diagnostic can flag the "cuts attempted but produced no
+        // change" case — the silent-no-op signature when an opening
+        // box doesn't intersect the host mesh.
+        let tris_before = mesh.triangle_count();
+        let host_bounds_capture = {
+            let (mn, mx) = mesh.bounds();
+            ((mn.x, mn.y, mn.z), (mx.x, mx.y, mx.z))
+        };
         if ctx.is_noop() {
             return mesh;
         }
@@ -946,6 +955,18 @@ impl GeometryRouter {
             self.record_host_failure_summary(element_id, &kernel_failures);
             self.record_csg_failures(element_id, kernel_failures);
         }
+
+        // Per-host cut-effect snapshot: tris_before / tris_after lets the
+        // diagnostic surface the silent-no-op case (rectangular boxes
+        // processed but the host mesh came out unchanged — the box
+        // probably didn't intersect the wall, e.g. wrong placement).
+        self.record_host_cut_effect(
+            element_id,
+            tris_before,
+            result.triangle_count(),
+            rect_boxes.len(),
+            host_bounds_capture,
+        );
 
         result
     }

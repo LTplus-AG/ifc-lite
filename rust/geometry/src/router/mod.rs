@@ -130,6 +130,22 @@ pub struct HostOpeningDiagnostic {
     /// First `BoolFailure` reason recorded for this host, as a short
     /// string label. Useful for grouping at a glance.
     pub first_failure_label: Option<String>,
+    /// Triangle count of the host's mesh BEFORE void subtraction.
+    /// `None` until `apply_void_context` runs (or doesn't, if there
+    /// were no openings to apply).
+    pub tris_before: Option<usize>,
+    /// Triangle count AFTER void subtraction. Compare with
+    /// `tris_before` to spot "cuts attempted, no effect" cases — the
+    /// classic silent-no-op signature when an opening box doesn't
+    /// actually intersect the host mesh.
+    pub tris_after: Option<usize>,
+    /// Number of rectangular opening boxes `cut_multiple_rectangular_openings`
+    /// processed for this host. Compare against `tris_before == tris_after`
+    /// to detect the "ran cuts, geometry unchanged" silent-no-op.
+    pub rect_boxes_processed: usize,
+    /// Bounding box of the host mesh (min, max) in world coords. Useful
+    /// for confirming that an opening box should overlap.
+    pub host_bounds: Option<((f32, f32, f32), (f32, f32, f32))>,
 }
 
 /// One opening's worth of diagnostic data — what `classify_openings`
@@ -492,6 +508,28 @@ impl GeometryRouter {
             entry.host_type = host_type.to_string();
         }
         entry.openings.extend(openings);
+    }
+
+    /// Internal: tag the per-host diagnostic with the cut-effect data
+    /// (triangle counts before/after, rectangular boxes processed, host
+    /// bounds). Lets callers spot the "rectangular cut attempted but
+    /// produced no change" case — the silent-no-op signature when an
+    /// opening box's geometry doesn't actually intersect the host mesh
+    /// despite passing the AABB classifier.
+    pub(crate) fn record_host_cut_effect(
+        &self,
+        host_id: u32,
+        tris_before: usize,
+        tris_after: usize,
+        rect_boxes_processed: usize,
+        host_bounds: ((f32, f32, f32), (f32, f32, f32)),
+    ) {
+        let mut log = self.host_opening_diagnostics.borrow_mut();
+        let entry = log.entry(host_id).or_default();
+        entry.tris_before = Some(tris_before);
+        entry.tris_after = Some(tris_after);
+        entry.rect_boxes_processed = rect_boxes_processed;
+        entry.host_bounds = Some(host_bounds);
     }
 
     /// Internal: tag the per-host diagnostic with the failure summary for

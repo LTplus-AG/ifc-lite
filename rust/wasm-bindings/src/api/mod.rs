@@ -444,6 +444,68 @@ pub(super) fn drain_and_log_csg_diagnostics(
             })
             .collect();
 
+        // Silent-no-op detection: hosts where `apply_void_context` ran
+        // but the triangle count came out unchanged despite having
+        // rectangular boxes to cut. Strong signal that the box geometry
+        // didn't intersect the host (placement bug, transform issue,
+        // wrong opening shape) — the AABB clip path doesn't record a
+        // BoolFailure because the kernel never engages.
+        let mut silent_noops: Vec<(u32, &ifc_lite_geometry::HostOpeningDiagnostic)> = host_diags
+            .iter()
+            .filter_map(|(pid, hd)| {
+                let before = hd.tris_before?;
+                let after = hd.tris_after?;
+                if before == after && hd.rect_boxes_processed > 0 {
+                    Some((*pid, hd))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        silent_noops.sort_by(|a, b| b.1.rect_boxes_processed.cmp(&a.1.rect_boxes_processed));
+        let silent_noop_total = silent_noops.len();
+        let silent_noop_lines: Vec<String> = silent_noops
+            .iter()
+            .take(8)
+            .map(|(pid, hd)| {
+                let bounds = hd
+                    .host_bounds
+                    .map(|((x0, y0, z0), (x1, y1, z1))| {
+                        format!(
+                            "host bounds=({:.2},{:.2},{:.2})..({:.2},{:.2},{:.2})",
+                            x0, y0, z0, x1, y1, z1
+                        )
+                    })
+                    .unwrap_or_else(|| "host bounds=?".into());
+                format!(
+                    "  #{pid} {} — {} rect boxes, tris={}→{} (NO CHANGE), {}",
+                    hd.host_type,
+                    hd.rect_boxes_processed,
+                    hd.tris_before.unwrap_or(0),
+                    hd.tris_after.unwrap_or(0),
+                    bounds,
+                )
+            })
+            .collect();
+
+        // Surface silent-no-ops at warn level whenever any are detected,
+        // independent of CSG failure count. This is the highest-signal
+        // diagnostic for a "0 failures but visually un-cut" model like
+        // Smiley-West — the cut pipeline ran clean but the geometry
+        // came out unchanged.
+        if silent_noop_total > 0 {
+            web_sys::console::warn_1(
+                &format!(
+                    "[IFC-LITE] Rectangular cut SILENT NO-OP on {silent_noop_total} hosts \
+                     (rect boxes processed but mesh unchanged — likely opening box \
+                     doesn't intersect host). Top {} (by box count):\n{}",
+                    silent_noop_lines.len(),
+                    silent_noop_lines.join("\n"),
+                )
+                .into(),
+            );
+        }
+
         if total_failures > 0 {
             web_sys::console::warn_1(
                 &format!(

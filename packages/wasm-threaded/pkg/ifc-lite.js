@@ -223,12 +223,12 @@ if (cachedTextEncoder) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1062(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1062(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1080(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1080(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1330(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1330(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1351(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1351(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1506,6 +1506,38 @@ export class IfcAPI {
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.ifcapi_parseMeshesInstancedAsync(this.__wbg_ptr, ptr0, len0, addHeapObject(options));
         return takeObject(ret);
+    }
+    /**
+     * Microbenchmark — pure CPU work (no SAB, no allocations) to
+     * measure rayon parallelism IN ISOLATION from the rest of the
+     * pipeline. If this scales near-linearly with thread count, the
+     * runtime's fundamentally healthy and any per-entity slowdown is
+     * an algorithmic / memory-access problem we can fix. If THIS
+     * doesn't scale, no amount of code rearrangement will help and
+     * Path B is dead for our use case.
+     *
+     * Workload: integer math on local stack memory, deliberately
+     * chosen to have ZERO shared-memory access AND zero allocations
+     * inside the parallel section. Each task spends ~50 ms of pure
+     * CPU compute.
+     *
+     * Returns: `[serial_ms, parallel_ms, observed_threads]` so JS can
+     * compute the speedup ratio.
+     * @param {number} num_tasks
+     * @returns {Float64Array}
+     */
+    benchmarkPureCpuParallelism(num_tasks) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.ifcapi_benchmarkPureCpuParallelism(retptr, this.__wbg_ptr, num_tasks);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v1 = getArrayF64FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export2(r0, r1 * 8, 8);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
     }
     /**
      * Parse IFC file to GPU-ready instanced geometry for zero-copy upload
@@ -3369,6 +3401,9 @@ function __wbg_get_imports(memory) {
         const ret = getObject(arg0).length;
         return ret;
     };
+    imports.wbg.__wbg_log_1d990106d99dacb7 = function(arg0) {
+        console.log(getObject(arg0));
+    };
     imports.wbg.__wbg_meshdatajs_new = function(arg0) {
         const ret = MeshDataJs.__wrap(arg0);
         return addHeapObject(ret);
@@ -3400,7 +3435,7 @@ function __wbg_get_imports(memory) {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1330(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1351(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3434,6 +3469,10 @@ function __wbg_get_imports(memory) {
     imports.wbg.__wbg_new_with_length_aa5eaf41d35235e5 = function(arg0) {
         const ret = new Uint8Array(arg0 >>> 0);
         return addHeapObject(ret);
+    };
+    imports.wbg.__wbg_now_69d776cd24f5215b = function() {
+        const ret = Date.now();
+        return ret;
     };
     imports.wbg.__wbg_of_7779827fa663eec8 = function(arg0, arg1, arg2) {
         const ret = Array.of(getObject(arg0), getObject(arg1), getObject(arg2));
@@ -3533,24 +3572,24 @@ function __wbg_get_imports(memory) {
         const ret = getStringFromWasm0(arg0, arg1);
         return addHeapObject(ret);
     };
-    imports.wbg.__wbindgen_cast_3fc6002dca60d92b = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 160, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 161, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1061, __wasm_bindgen_func_elem_1062);
-        return addHeapObject(ret);
-    };
-    imports.wbg.__wbindgen_cast_443332637da6f2f5 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 160, function: Function { arguments: [Externref], shim_idx: 161, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1061, __wasm_bindgen_func_elem_1062);
-        return addHeapObject(ret);
-    };
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
         // Cast intrinsic for `U64 -> Externref`.
         const ret = BigInt.asUintN(64, arg0);
         return addHeapObject(ret);
     };
+    imports.wbg.__wbindgen_cast_a746c981d2e27385 = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 164, function: Function { arguments: [Externref], shim_idx: 165, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1079, __wasm_bindgen_func_elem_1080);
+        return addHeapObject(ret);
+    };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
         // Cast intrinsic for `F64 -> Externref`.
         const ret = arg0;
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbindgen_cast_d8a6ce55dd0ad8ed = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 164, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 165, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1079, __wasm_bindgen_func_elem_1080);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_link_203404ece0e9bab9 = function(arg0) {

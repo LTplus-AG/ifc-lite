@@ -462,6 +462,24 @@ export class IfcAPI {
    */
   parseMeshesInstancedAsync(content: string, options: any): Promise<any>;
   /**
+   * Microbenchmark — pure CPU work (no SAB, no allocations) to
+   * measure rayon parallelism IN ISOLATION from the rest of the
+   * pipeline. If this scales near-linearly with thread count, the
+   * runtime's fundamentally healthy and any per-entity slowdown is
+   * an algorithmic / memory-access problem we can fix. If THIS
+   * doesn't scale, no amount of code rearrangement will help and
+   * Path B is dead for our use case.
+   *
+   * Workload: integer math on local stack memory, deliberately
+   * chosen to have ZERO shared-memory access AND zero allocations
+   * inside the parallel section. Each task spends ~50 ms of pure
+   * CPU compute.
+   *
+   * Returns: `[serial_ms, parallel_ms, observed_threads]` so JS can
+   * compute the speedup ratio.
+   */
+  benchmarkPureCpuParallelism(num_tasks: number): Float64Array;
+  /**
    * Parse IFC file to GPU-ready instanced geometry for zero-copy upload
    *
    * Groups identical geometries by hash for efficient GPU instancing.
@@ -1188,6 +1206,7 @@ export interface InitOutput {
   readonly gpumeshmetadata_indexOffset: (a: number) => number;
   readonly gpumeshmetadata_vertexCount: (a: number) => number;
   readonly gpumeshmetadata_vertexOffset: (a: number) => number;
+  readonly ifcapi_benchmarkPureCpuParallelism: (a: number, b: number, c: number) => void;
   readonly ifcapi_buildPrePassFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -1333,9 +1352,9 @@ export interface InitOutput {
   readonly wbg_rayon_poolbuilder_numThreads: (a: number) => number;
   readonly wbg_rayon_poolbuilder_receiver: (a: number) => number;
   readonly wbg_rayon_start_worker: (a: number) => void;
-  readonly __wasm_bindgen_func_elem_1062: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1061: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1330: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1080: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1079: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1351: (a: number, b: number, c: number, d: number) => void;
   readonly memory: WebAssembly.Memory;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;

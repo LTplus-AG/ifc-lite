@@ -369,7 +369,117 @@ Phase 5 (parser also rayon) is bonus work; gate on whether parser tail is the ne
 - **Parser worker stays separate (Phase 1-4)** — parser tail is currently dominated by JS phases, not WASM. Move to rayon in Phase 5 if it becomes the bottleneck.
 - **Feature flag for the N-worker → controller transition** — lets us A/B compare in CI and roll back instantly if a regression slips through.
 
-## 12. References
+## 12. Outcome (added after empirical validation)
+
+Phases 1.1, 1.3, 1.4, 1.5, 2 were implemented and tested end-to-end on
+the 986 MB / 14 M-entity test file. The findings invalidate this
+design's wall-clock predictions — preserving the doc as a record of
+the architectural exploration and to prevent the same path being
+re-walked.
+
+### What worked exactly as predicted
+
+- **Build pipeline**: `wasm-bindgen-rayon = "1.3"` builds cleanly with
+  the full RUSTFLAGS bag (the missing `__wasm_init_tls` exports were
+  the March 2026 blocker — fixed in spike `8fcaff96`).
+- **Production Vite build**: works. `workerHelpers.js` ships to
+  `dist/assets/`. Zero "Attempting to create a Worker from an empty
+  source" warnings in the production preview (those were dev-mode
+  artifacts).
+- **Helper threads spawn and run**: confirmed via diagnostic
+  instrumentation. 9 unique rayon thread indices observed, 9-thread
+  pool. No `DataCloneError`, no issue #36 deadlocks.
+- **Pure-CPU microbenchmark scaling**: 9-thread parallelism delivers
+  **5.76× speedup** on a stack-only integer-math workload (219 ms
+  serial → 38 ms parallel). 64 % efficiency. wasm-bindgen-rayon's
+  runtime is healthy.
+- **Memory consolidation**: single-controller + single WASM instance
+  drops peakWasm from 5.3 GB → 2.6 GB on the 986 MB file (50 %
+  reduction). Confirmed.
+
+### What did NOT work — workload mismatch
+
+- **Wall-clock REGRESSED 4× with the controller path enabled**: 14.1 s
+  → 53 s on the 986 MB file. Same correctness (final mesh count
+  identical), but vastly slower stream tail.
+- **Cause**: `processGeometryBatchParallel`'s per-entity work is
+  ~80 µs decode (SAB byte parsing + reference following) plus ~40 µs
+  mesh generation. Threading converts the decode reads to
+  atomic-imported-memory loads, which are slower per-op AND contend
+  across helper threads. Combined with per-rayon-task EntityDecoder
+  cache rebuilds (lost decoder cache locality across tasks) and
+  per-task allocator atomics, the overhead exceeds any parallelism
+  gain on the 40 µs-per-entity mesh portion.
+- **Root finding**: the IFC processGeometryBatch hot path is
+  **memory-traversal-dominated**, not compute-dominated.
+  wasm-bindgen-rayon shines on compute-bound workloads (image
+  codecs — Squoosh, FFmpeg.wasm); IFC parsing/decoding has the
+  opposite shape.
+
+### Option 1 (de-normalize before parallel) post-mortem
+
+Considered as a salvage: serial pre-decode pass that builds a dense
+`Arc<FxHashMap<u32, Arc<DecodedEntity>>>` so the parallel section
+operates on warm in-WASM-heap data, not SAB-imported memory.
+
+Math after the microbench result:
+- Pre-warm pass (serial, decode-bound): 188 K entities × 80 µs = ~15 s
+- Parallel mesh pass (5.76× scaling on the 40 µs portion): 188 K ×
+  40 µs / 5.76 ≈ 1.3 s
+- **Total: ~16 s — WORSE than the 14 s N-worker baseline.**
+
+Decoder cost dominates and decoding is inherently serial-friendly
+(can't escape SAB byte access). Option 1 was abandoned before
+implementation based on the math.
+
+### What the threaded build IS still good for (kept as latent
+infrastructure)
+
+- The threaded WASM build target (`packages/wasm-threaded/pkg/`) and
+  `packages/wasm-threaded` workspace package stay in the repo. They
+  are unused by default (single-thread bundle is the only one the
+  viewer imports today) but available behind the
+  `localStorage['ifc-lite:single-controller']` flag for future
+  experiments where the workload may be CPU-bound (e.g. WebGPU
+  compute-shader fallback, batch geometry simplification, BIM ML).
+- The microbenchmark function (`benchmarkPureCpuParallelism`) stays
+  as a re-runnable verification harness for future contributors who
+  want to confirm the runtime is still healthy before investing in a
+  rayon-based optimization.
+- The full RUSTFLAGS recipe + Cargo configuration is in
+  `.cargo/config.toml` + `scripts/build-wasm.sh` and serves as
+  reference for any future thread-enabled WASM work.
+
+### Realistic next-step paths
+
+Given the workload mismatch, the honest paths to meaningful
+improvement on cold-load wall-clock are NOT parallelism-based. They
+are:
+
+1. **Reduce work per entity** — global CartesianPoint cache that
+   dedups the most-frequently-decoded sub-entity across the entire
+   load. Estimated 1-2 s win on cold-load. Localized Rust change in
+   the decoder.
+2. **Profile-guided Rust hot-path optimization** — `cargo flamegraph`
+   on a native build, find the top 3-5 hot functions, optimize each.
+   Bounded but additive 10-20 % wins.
+3. **Variance reduction** — pre-allocated SAB-backed mesh buffer pool
+   to reduce JS-side GC pressure during peak mesh assembly. Tightens
+   the observed 14-20 s spread to a predictable 14-15 s.
+4. **Workload change** — if repeat loads of the same file are common,
+   a `.ifcl` binary cache format hits ~2-3 s on subsequent loads
+   while leaving cold-load of NEW files unchanged. Real 5× for
+   warm-cold workflows.
+5. **View-aware loading** — UX-side change. Render bounding boxes
+   immediately, mesh only entities in the initial frustum, lazy-mesh
+   on demand. Total load time unchanged but TTFG drops to <2 s.
+
+These are scoped as separate tasks and deferred to a focused
+follow-up session. The threaded-WASM exploration is complete; this
+section documents the wall it hit so future contributors don't
+re-walk it.
+
+## 13. References
 
 - Spike commit: `8fcaff96` on branch `spike/path-b-respike` — known-working build flags + Cargo.toml.
 - Predecessor design: `streaming-load-design.md` (Path A + C; superseded by this for the geometry side).

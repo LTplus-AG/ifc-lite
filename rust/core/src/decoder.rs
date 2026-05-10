@@ -246,6 +246,57 @@ impl<'a> EntityDecoder<'a> {
         self.cache.reserve(additional);
     }
 
+    /// Inject a pre-warmed Arc-shared cache into this decoder's local cache.
+    ///
+    /// Used by the de-normalized parallel path (Option 1 of the
+    /// single-controller-rayon-design): a serial pre-pass builds a
+    /// shared `Arc<FxHashMap<u32, Arc<DecodedEntity>>>` containing all
+    /// entities reachable from the jobs. Each rayon task then injects
+    /// that shared cache into its own decoder via this method, so the
+    /// per-task hot path hits in-WASM-heap Arc handles instead of
+    /// SAB-imported atomic memory.
+    ///
+    /// Cost: one Arc::clone per cached entry (atomic refcount bump).
+    /// For a typical 100K-entry cache × 9 rayon tasks = 900K atomics
+    /// total, ~90 ms wall (incurred ONCE at task setup; the parallel
+    /// hot path then runs lock-free against the populated cache).
+    pub fn inject_shared_cache(
+        &mut self,
+        shared: &FxHashMap<u32, Arc<DecodedEntity>>,
+    ) {
+        self.cache.reserve(shared.len());
+        for (&id, entity) in shared.iter() {
+            self.cache.insert(id, Arc::clone(entity));
+        }
+    }
+
+    /// Decode + cache without returning. Used by the pre-warm pass to
+    /// populate a shared cache. Returns the cached Arc so the caller
+    /// can chase references without re-decoding.
+    pub fn decode_and_cache(
+        &mut self,
+        id: u32,
+        start: usize,
+        end: usize,
+    ) -> Result<Arc<DecodedEntity>> {
+        if let Some(arc) = self.cache.get(&id) {
+            return Ok(Arc::clone(arc));
+        }
+        let _ = self.decode_at(start, end)?;
+        Ok(Arc::clone(
+            self.cache
+                .get(&id)
+                .ok_or_else(|| Error::parse(0, "decode_at didn't populate cache".to_string()))?,
+        ))
+    }
+
+    /// Drain the populated cache out of this decoder for sharing across
+    /// rayon tasks. After calling this, the decoder is empty (cache
+    /// moved out); callers typically then drop the decoder.
+    pub fn drain_cache(&mut self) -> FxHashMap<u32, Arc<DecodedEntity>> {
+        std::mem::take(&mut self.cache)
+    }
+
     /// Clear all caches to free memory
     pub fn clear_cache(&mut self) {
         self.cache.clear();

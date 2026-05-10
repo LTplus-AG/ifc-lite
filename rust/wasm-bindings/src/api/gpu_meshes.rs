@@ -3492,6 +3492,97 @@ impl IfcAPI {
         mesh_collection
     }
 
+    /// Microbenchmark — pure CPU work (no SAB, no allocations) to
+    /// measure rayon parallelism IN ISOLATION from the rest of the
+    /// pipeline. If this scales near-linearly with thread count, the
+    /// runtime's fundamentally healthy and any per-entity slowdown is
+    /// an algorithmic / memory-access problem we can fix. If THIS
+    /// doesn't scale, no amount of code rearrangement will help and
+    /// Path B is dead for our use case.
+    ///
+    /// Workload: integer math on local stack memory, deliberately
+    /// chosen to have ZERO shared-memory access AND zero allocations
+    /// inside the parallel section. Each task spends ~50 ms of pure
+    /// CPU compute.
+    ///
+    /// Returns: `[serial_ms, parallel_ms, observed_threads]` so JS can
+    /// compute the speedup ratio.
+    #[cfg(feature = "threading")]
+    #[wasm_bindgen(js_name = benchmarkPureCpuParallelism)]
+    pub fn benchmark_pure_cpu_parallelism(&self, num_tasks: u32) -> Vec<f64> {
+        use rayon::prelude::*;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        // Pure-compute workload: nested integer math chosen to take
+        // ~50ms per task on a single thread. Returns a checksum so the
+        // optimizer can't dead-code-eliminate it.
+        fn pure_compute_task(seed: u64) -> u64 {
+            let mut x: u64 = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            // ~50ms of work — tuned by trial; pure local arithmetic,
+            // no allocations, no memory access beyond the register.
+            for _ in 0..5_000_000u32 {
+                x = x.wrapping_mul(0xD2B7_4407_B1CE_6E93).wrapping_add(0x1234_5678_9ABC_DEF0);
+                x ^= x >> 17;
+                x = x.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+                x ^= x >> 31;
+            }
+            x
+        }
+
+        let num_tasks = num_tasks.max(1) as usize;
+
+        // SERIAL baseline: all tasks on one thread.
+        let t_serial_start = web_sys::js_sys::Date::now();
+        let mut serial_sum: u64 = 0;
+        for i in 0..num_tasks {
+            serial_sum = serial_sum.wrapping_add(pure_compute_task(i as u64));
+        }
+        let serial_ms = web_sys::js_sys::Date::now() - t_serial_start;
+        std::hint::black_box(serial_sum);
+
+        // PARALLEL: rayon par_iter on the same workload.
+        let unique_threads = std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashSet::<usize>::new(),
+        ));
+        let unique_for_closure = std::sync::Arc::clone(&unique_threads);
+        let task_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let task_count_for_closure = std::sync::Arc::clone(&task_count);
+
+        let t_parallel_start = web_sys::js_sys::Date::now();
+        let parallel_sum: u64 = (0..num_tasks)
+            .into_par_iter()
+            .map(|i| {
+                task_count_for_closure.fetch_add(1, Ordering::Relaxed);
+                if let Some(idx) = rayon::current_thread_index() {
+                    if let Ok(mut s) = unique_for_closure.lock() {
+                        s.insert(idx);
+                    }
+                }
+                pure_compute_task(i as u64)
+            })
+            .sum();
+        let parallel_ms = web_sys::js_sys::Date::now() - t_parallel_start;
+        std::hint::black_box(parallel_sum);
+
+        let observed_threads = unique_threads.lock().map(|s| s.len()).unwrap_or(0) as f64;
+        let observed_tasks = task_count.load(Ordering::Relaxed) as f64;
+
+        web_sys::console::log_1(
+            &format!(
+                "[bench] tasks={} threads_observed={} pool={} serial={:.0}ms parallel={:.0}ms speedup={:.2}x",
+                observed_tasks,
+                observed_threads,
+                rayon::current_num_threads(),
+                serial_ms,
+                parallel_ms,
+                serial_ms / parallel_ms,
+            )
+            .into(),
+        );
+
+        vec![serial_ms, parallel_ms, observed_threads]
+    }
+
     /// Phase 1.5 — parallel variant of `processGeometryBatch`.
     ///
     /// Same input/output contract as `processGeometryBatch`, but the
@@ -3624,16 +3715,46 @@ impl IfcAPI {
         }
         let element_styles = Arc::new(element_styles_local);
 
-        // Per-task entity count tuned so each rayon task does ~50-80 ms
-        // of work — well above scheduler overhead (~µs) and small enough
-        // that work-stealing balances tail entities. Empirical sweet
-        // spot from the research; bump if we see straggler tasks.
-        const PER_TASK_ENTITIES: usize = 500;
+        // Per-task entity count tuned for DECODER CACHE LOCALITY first,
+        // rayon scheduling second. Each rayon task creates its own
+        // EntityDecoder with a fresh cache; sub-entities (CartesianPoint,
+        // IfcAxis2Placement2D, etc.) shared across walls/slabs hit the
+        // serial path's warm cache for ~50% of accesses but MISS in
+        // every task here. Bigger tasks = fewer tasks = more cache
+        // warming amortization.
+        //
+        // 5000 entities/task × 120 µs/entity ≈ 600 ms work. With
+        // 9 rayon threads on the typical chunk (~47K jobs → 9-10
+        // tasks), each thread gets ~1 task. If rayon is actually
+        // parallelizing, wall-clock ≈ 600 ms per chunk × 4 chunks
+        // = ~2.4 s. If rayon falls back to serial: 5.4 s per chunk
+        // × 4 = 22 s — still better than the 500-task variant which
+        // measured 60s due to cache thrashing.
+        const PER_TASK_ENTITIES: usize = 5000;
         let stride = PER_TASK_ENTITIES * 3;
+
+        // Diagnostic: confirm rayon is actually parallelizing. Each
+        // task records the rayon thread index it ran on. If we see
+        // only one unique index (or all None), helpers aren't doing
+        // work and par_iter is serial-fallback. Logged to JS console
+        // via web_sys at the end of the call.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let task_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let unique_threads = std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashSet::<usize>::new(),
+        ));
+        let task_count_for_closure = std::sync::Arc::clone(&task_count);
+        let unique_threads_for_closure = std::sync::Arc::clone(&unique_threads);
 
         let collected: Vec<MeshDataJs> = jobs_flat
             .par_chunks(stride)
             .flat_map_iter(|big_chunk| {
+                task_count_for_closure.fetch_add(1, Ordering::Relaxed);
+                if let Some(idx) = rayon::current_thread_index() {
+                    if let Ok(mut set) = unique_threads_for_closure.lock() {
+                        set.insert(idx);
+                    }
+                }
                 // Per-rayon-task locals. Each task spins up its own
                 // decoder + router; the Arc'd entity index is shared
                 // (read-only) across all tasks via Arc::clone (cheap
@@ -3735,6 +3856,19 @@ impl IfcAPI {
                 local_meshes.into_iter()
             })
             .collect();
+
+        // Emit the diagnostic to JS console BEFORE building MeshCollection
+        // so it shows up promptly in the dev tools.
+        let total_tasks = task_count.load(Ordering::Relaxed);
+        let unique_count = unique_threads.lock().map(|s| s.len()).unwrap_or(0);
+        let pool_size = rayon::current_num_threads();
+        web_sys::console::log_1(
+            &format!(
+                "[parallel] tasks={} unique_threads={} pool_size={} meshes={}",
+                total_tasks, unique_count, pool_size, collected.len()
+            )
+            .into(),
+        );
 
         let mut mesh_collection = MeshCollection::with_capacity(collected.len());
         if needs_shift {

@@ -2495,6 +2495,7 @@ dependencies = [
  "ifc-lite-geometry",
  "js-sys",
  "rayon",
+ "rayon-core",
  "rustc-hash 1.1.0",
  "serde",
  "serde-wasm-bindgen",

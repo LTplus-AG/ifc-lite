@@ -30,6 +30,11 @@
 // (See vite.config.ts alias added by Phase 2 wiring.)
 import init, { initSync, IfcAPI, initThreadPool } from '@ifc-lite/wasm-threaded';
 
+// Optional: import the bench function (only present in threaded build)
+type BenchApi = {
+  benchmarkPureCpuParallelism?: (numTasks: number) => Float64Array;
+};
+
 import type {
   GeometryWorkerInitMessage,
   GeometryWorkerProcessMessage,
@@ -302,6 +307,20 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
             }
           }
         }
+        // Phase 2 microbenchmark — run a CPU-pure parallel task to
+        // measure rayon's actual speedup on this hardware. Helps
+        // distinguish "rayon is broken" vs "our workload doesn't fit
+        // rayon" when stream tail is slow.
+        try {
+          const benchApi = api as unknown as BenchApi;
+          if (typeof benchApi.benchmarkPureCpuParallelism === 'function') {
+            // 9 tasks → one per helper thread — best case for scaling.
+            benchApi.benchmarkPureCpuParallelism(9);
+          }
+        } catch (err) {
+          console.warn('[controller] microbench failed:', err);
+        }
+
         (self as unknown as Worker).postMessage({ type: 'ready' });
         return;
       }

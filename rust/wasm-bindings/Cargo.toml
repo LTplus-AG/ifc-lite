@@ -34,6 +34,14 @@ ifc-lite-core.workspace = true
 ifc-lite-geometry.workspace = true
 js-sys = "=0.3.83"
 rayon = "1.10"
+# CRITICAL for wasm-bindgen-rayon to actually parallelize: the
+# `web_spin_lock` rayon-core feature replaces std::sync::Mutex in
+# rayon's work-stealing coordination paths with a spin-lock. Without
+# this, std::sync::Mutex blocks/zombies inside wasm32 helper workers
+# and rayon helpers report "ready" but never actually steal work —
+# par_iter silently runs serial. (Empirically observed: 4.2× SLOWER
+# than N-worker baseline before this fix.)
+rayon-core = { version = "1", features = ["web_spin_lock"] }
 rustc-hash = "1.1"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "=0.6.5"

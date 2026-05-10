@@ -298,6 +298,22 @@ pub(super) fn drain_and_log_csg_diagnostics(
     let host_diags = router.take_host_opening_diagnostics();
 
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
+    let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
+
+    // Unconditional one-line "I ran" tag at info level. Catches the
+    // "did the diagnostic helper even fire?" question without any
+    // DevTools log-level filtering. If you don't see this line, the
+    // geometry pass didn't reach the drain site at all — the WASM
+    // bundle is stale or a different parse path is in use.
+    web_sys::console::info_1(
+        &format!(
+            "[IFC-LITE] CSG diagnostics: {cls_total} openings classified, \
+             {total_failures} failures, {} hosts tracked",
+            host_diags.len()
+        )
+        .into(),
+    );
+
     let cls_obj = js_sys::Object::new();
     set_js_prop(&cls_obj, "rectangular", &(cls.rectangular as f64).into());
     set_js_prop(&cls_obj, "diagonal", &(cls.diagonal as f64).into());
@@ -310,7 +326,14 @@ pub(super) fn drain_and_log_csg_diagnostics(
     set_js_prop(&cls_obj, "total", &(cls_total as f64).into());
 
     if cls_total > 0 {
-        web_sys::console::debug_1(
+        // info_1, not debug_1 — DevTools hides `debug` by default ("Verbose"
+        // log level), so a debug-only summary effectively never reaches
+        // users investigating a model. The classifier headline + per-host
+        // roll-up are always emitted at `info` so they show up in the
+        // default "All levels" view; the noisy detail (failure breakdown,
+        // worst-failing list) stays at `warn` and only fires when there
+        // is a failure to surface.
+        web_sys::console::info_1(
             &format!(
                 "[IFC-LITE] Opening classifier: rect={} diag={} non_rect={} \
                  floor_opening_guard_saved={} (total={cls_total})",
@@ -320,7 +343,6 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
-    let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
     let products_with_failures = csg_failures.len();
 
     let summary = js_sys::Object::new();
@@ -438,9 +460,11 @@ pub(super) fn drain_and_log_csg_diagnostics(
                 .into(),
             );
         } else {
-            // No failures but we still have host data — emit at debug level
-            // so devs can confirm which path the model is taking.
-            web_sys::console::debug_1(
+            // No failures but we still have host data. info_1 (not debug)
+            // so devs can confirm at a glance that the void-subtraction
+            // path engaged for this model and which host types had
+            // openings.
+            web_sys::console::info_1(
                 &format!(
                     "[IFC-LITE] Opening pipeline: 0 CSG failures. \
                      {} hosts with openings.\n  {}",

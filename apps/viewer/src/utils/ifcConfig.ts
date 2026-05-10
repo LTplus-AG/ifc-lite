@@ -49,6 +49,17 @@ export const CACHE_MAX_SOURCE_SIZE = 150 * 1024 * 1024;
 /** Route desktop IFCs above this threshold through the bounded-memory path. */
 export const HUGE_NATIVE_FILE_THRESHOLD = 128 * 1024 * 1024;
 
+/**
+ * File size at which the browser-File-API entry path streams directly into a
+ * `SharedArrayBuffer` instead of going through `await file.arrayBuffer()`.
+ *
+ * Below this threshold, the doubled peak (ArrayBuffer + SAB) is small enough
+ * that the simpler one-shot read is preferable. Above it, the streaming path
+ * shaves ~`fileSize` MB from peak memory and avoids hitting V8's per-buffer
+ * allocation limits on huge files. (Issue #600.)
+ */
+export const STREAM_SAB_THRESHOLD = 256 * 1024 * 1024;
+
 /** File size thresholds for various optimizations */
 export const THRESHOLDS = {
   /** Use streaming Parquet above this (150MB) */

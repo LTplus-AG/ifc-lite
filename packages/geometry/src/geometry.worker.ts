@@ -74,17 +74,49 @@ export type GeometryWorkerResponse =
 
 let api: IfcAPI | null = null;
 
+/**
+ * Build a Uint8Array view over the shared buffer. Modern wasm-bindgen accepts
+ * SAB-backed views directly and copies them into linear memory itself, so an
+ * extra JS-side `.set()` copy is wasted memory (was N × file_size in the old
+ * code path). If the WASM call rejects the SAB view on a given runtime, the
+ * caller catches the error and retries with `materialiseSharedBytes`.
+ */
+function viewSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
+  return new Uint8Array(sharedBuffer);
+}
+
+/** Fallback path: copy SAB into a fresh ArrayBuffer-backed Uint8Array. */
+function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
+  const local = new Uint8Array(sharedBuffer.byteLength);
+  local.set(new Uint8Array(sharedBuffer));
+  return local;
+}
+
 self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
   try {
     if (e.data.type === 'prepass' || e.data.type === 'prepass-fast') {
       if (!api) { await init(); api = new IfcAPI(); }
-      const localBuffer = new Uint8Array(e.data.sharedBuffer.byteLength);
-      localBuffer.set(new Uint8Array(e.data.sharedBuffer));
+      // Heartbeat: signals "worker alive, parser running" so the host watchdog
+      // can distinguish a stuck pre-pass from one that's still working on a
+      // multi-GB file.
+      (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
+      const sharedBuffer = e.data.sharedBuffer;
+      const isFast = e.data.type === 'prepass-fast';
       // Fast pre-pass: only scan for entity locations (~1-2s)
       // Full pre-pass: also resolves styles + voids (~6s)
-      const result = e.data.type === 'prepass-fast'
-        ? api.buildPrePassFast(localBuffer)
-        : api.buildPrePassOnce(localBuffer);
+      let result: ReturnType<IfcAPI['buildPrePassOnce']>;
+      try {
+        const view = viewSharedBytes(sharedBuffer);
+        result = isFast ? api.buildPrePassFast(view) : api.buildPrePassOnce(view);
+      } catch (err) {
+        // wasm-bindgen on some runtimes rejects SAB-backed views with a
+        // TypeError. Retry once with a materialised copy so we never regress
+        // versus the previous behaviour.
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[Worker] Prepass with SAB view failed (${msg}), retrying with copy`);
+        const copy = materialiseSharedBytes(sharedBuffer);
+        result = isFast ? api.buildPrePassFast(copy) : api.buildPrePassOnce(copy);
+      }
       (self as unknown as Worker).postMessage({ type: 'prepass-result', result });
       return;
     }
@@ -109,9 +141,11 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
       const { sharedBuffer, jobsFlat, unitScale, rtcX, rtcY, rtcZ, needsShift,
               voidKeys, voidCounts, voidValues, styleIds, styleColors } = e.data;
 
-      // Copy shared bytes to local buffer (Firefox requires this for typed array ops)
-      const localBytes = new Uint8Array(sharedBuffer.byteLength);
-      localBytes.set(new Uint8Array(sharedBuffer));
+      // Zero-copy view over the shared bytes. Modern wasm-bindgen reads
+      // SAB-backed Uint8Arrays directly; if the WASM call rejects the view on
+      // some runtime, the catch block in `processBatch` retries with a copy.
+      let localBytes: Uint8Array = viewSharedBytes(sharedBuffer);
+      let sabFallbackTaken = false;
 
       const allMeshes: GeometryWorkerBatchMessage['meshes'] = [];
       const allTransferBuffers: ArrayBuffer[] = [];
@@ -163,6 +197,21 @@ self.onmessage = async (e: MessageEvent<GeometryWorkerRequest>) => {
           collectMeshes(collection);
         } catch (err) {
           const msg = (err as Error).message;
+
+          // First-line defence: if wasm-bindgen rejected the SAB-backed view,
+          // materialise once and retry the SAME batch. Don't split, don't drop
+          // the WASM instance — the failure is the marshaling layer, not the
+          // geometry. Subsequent batches reuse `localBytes`, so the cost is
+          // paid once per worker, matching the previous behaviour.
+          if (!sabFallbackTaken && (localBytes.buffer instanceof SharedArrayBuffer)) {
+            sabFallbackTaken = true;
+            console.warn(
+              `[Worker] processGeometryBatch rejected SAB view (${msg}), falling back to materialised copy`,
+            );
+            localBytes = materialiseSharedBytes(sharedBuffer);
+            await processBatch(jobs);
+            return;
+          }
 
           if (numJobs === 1) {
             // Single entity failed — skip it

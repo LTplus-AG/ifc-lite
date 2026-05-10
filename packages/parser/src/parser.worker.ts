@@ -121,7 +121,9 @@ self.onmessage = async (event: MessageEvent<ParserWorkerInputMessage>) => {
   try {
     // The SAB itself is shared by reference — both this worker and the
     // main thread (and the geometry workers) hold views of the same bytes.
-    // We never transfer or clone it.
+    // We never transfer or clone it. Runtimes that reject TextDecoder over
+    // SAB views (e.g. Firefox's timing-attack mitigation) are filtered out
+    // by the wrapper before this worker is even spawned.
     const parser = new IfcParser();
     const dataStore: IfcDataStore = await parser.parseColumnar(source as unknown as ArrayBuffer, {
       // Inside a worker, spawning another worker for scan is wasteful.

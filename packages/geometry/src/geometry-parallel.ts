@@ -14,6 +14,7 @@
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
+import { pickWorkerCount } from './worker-count.js';
 
 /**
  * Run the full pre-pass in a dedicated worker, then fan geometry jobs
@@ -38,11 +39,24 @@ export async function* processParallel(
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
 
-  // Reuse the caller's SAB when supplied (avoids the second copy of a
-  // potentially huge file). Otherwise allocate one and copy bytes in.
+  // Two ways to skip the file-size allocation+copy:
+  //   1. Caller passed an explicit `existingSab` they already share with
+  //      another worker (e.g. the parser worker via `useIfcLoader`).
+  //   2. The input `buffer` is itself a Uint8Array view over a SAB — true
+  //      when the entry path streamed the file directly into a SAB via
+  //      `acquireFileBuffer` (issue #600 fix).
+  // When neither applies, allocate a fresh SAB and copy bytes in.
   let sharedBuffer: SharedArrayBuffer;
+  const inputBuffer = buffer.buffer;
   if (existingSab && existingSab.byteLength === buffer.byteLength) {
     sharedBuffer = existingSab;
+  } else if (
+    typeof SharedArrayBuffer !== 'undefined'
+    && inputBuffer instanceof SharedArrayBuffer
+    && buffer.byteOffset === 0
+    && buffer.byteLength === inputBuffer.byteLength
+  ) {
+    sharedBuffer = inputBuffer;
   } else {
     sharedBuffer = new SharedArrayBuffer(buffer.byteLength);
     new Uint8Array(sharedBuffer).set(buffer);
@@ -54,15 +68,55 @@ export async function* processParallel(
     { type: 'module' },
   );
 
-  const prePassResult = await new Promise<any>((resolve, reject) => {
+  // Pre-pass with heartbeat: the worker emits `prepass-progress` as soon as
+  // parsing actually begins. We forward those as `progress` events so the
+  // host watchdog (`useIfcLoader`) can distinguish a stuck pre-pass from one
+  // that's still working on a multi-GB file. Heartbeats are queued and
+  // drained between awaits so the `await` for the final result cooperates
+  // with the generator's yields.
+  const heartbeatQueue: StreamingGeometryEvent[] = [];
+  let heartbeatWake: (() => void) | null = null;
+
+  const prePassPromise = new Promise<any>((resolve, reject) => {
     const w = makeWorker();
     w.onmessage = (e: MessageEvent) => {
-      if (e.data.type === 'prepass-result') { w.terminate(); resolve(e.data.result); }
-      else if (e.data.type === 'error') { w.terminate(); reject(new Error(e.data.message)); }
+      const data = e.data;
+      if (data.type === 'prepass-result') {
+        w.terminate();
+        resolve(data.result);
+      } else if (data.type === 'prepass-progress') {
+        heartbeatQueue.push({ type: 'progress', phase: 'prepass' });
+        if (heartbeatWake) { heartbeatWake(); heartbeatWake = null; }
+      } else if (data.type === 'error') {
+        w.terminate();
+        reject(new Error(data.message));
+      }
     };
     w.onerror = (e) => { w.terminate(); reject(new Error(e.message)); };
     w.postMessage({ type: 'prepass', sharedBuffer });
   });
+
+  // Race the prepass against a heartbeat-or-done signal; yield queued
+  // heartbeats and re-arm. Exits when prePassPromise resolves/rejects.
+  let prePassDone = false;
+  let prePassResult: any;
+  let prePassError: unknown = null;
+  prePassPromise.then(
+    (r) => { prePassResult = r; prePassDone = true; if (heartbeatWake) { heartbeatWake(); heartbeatWake = null; } },
+    (err) => { prePassError = err; prePassDone = true; if (heartbeatWake) { heartbeatWake(); heartbeatWake = null; } },
+  );
+
+  while (!prePassDone || heartbeatQueue.length > 0) {
+    while (heartbeatQueue.length > 0) {
+      yield heartbeatQueue.shift()!;
+    }
+    if (prePassDone) break;
+    await new Promise<void>((resolve) => { heartbeatWake = resolve; });
+  }
+
+  if (prePassError) {
+    throw prePassError instanceof Error ? prePassError : new Error(String(prePassError));
+  }
 
   if (!prePassResult || !prePassResult.jobs || prePassResult.totalJobs === 0) {
     const coordinateInfo = coordinator.getFinalCoordinateInfo();
@@ -88,28 +142,22 @@ export async function* processParallel(
     hasRtc: effectiveNeedsShift,
   };
 
-  // ── PHASE 2: Dynamic worker provisioning based on device capability ──
+  // ── PHASE 2: Memory-budget-aware worker provisioning ──
+  // Each worker holds a WASM heap that grows to ~1.5× file size while
+  // building geometry. Spawning more workers than RAM can fund causes the
+  // tab to OOM on big files (issue #600). `computeWorkerCount` clamps by
+  // both core count and available memory; see `worker-count.ts` for the
+  // budget formula.
   const cores = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 2) : 2;
   const deviceMemoryGB = typeof navigator !== 'undefined' ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) : 8;
-  const fileSizeGB = buffer.byteLength / (1024 * 1024 * 1024);
+  const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
-  // Determine optimal workers:
-  // - Desktop (16+ cores, 16+ GB): up to 8 workers
-  // - Laptop (8 cores, 8 GB): 2-4 workers (avoid thermal throttling on fanless)
-  // - Low-end (4 cores, 4 GB): 1-2 workers
-  // - Large files need more memory per worker, so fewer workers
-  let maxWorkers: number;
-  if (cores >= 16 && deviceMemoryGB >= 16) {
-    maxWorkers = Math.min(8, Math.floor(cores / 2));
-  } else if (cores >= 8 && deviceMemoryGB >= 8) {
-    // MacBook Air M-series: 8 cores but fanless → throttles with too many workers
-    // Use 3 workers: enough parallelism without severe throttling
-    maxWorkers = fileSizeGB > 0.5 ? 2 : 3;
-  } else {
-    maxWorkers = Math.max(1, Math.min(2, Math.floor(cores / 2)));
-  }
-
-  const workerCount = Math.min(maxWorkers, totalJobs);
+  const workerCount = pickWorkerCount({
+    fileSizeMB,
+    cores,
+    deviceMemoryGB,
+    totalJobs,
+  });
   const jobsPerWorker = Math.ceil(totalJobs / workerCount);
 
   const chunks: [number, number][] = [];

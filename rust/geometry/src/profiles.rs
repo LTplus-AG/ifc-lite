@@ -1471,7 +1471,20 @@ impl ProfileProcessor {
             Point2::new(0.0, 0.0)
         };
 
-        let rotation = if let Some(dir_attr) = placement.get(1) {
+        // RefDirection lives at attribute index 1 on IfcAxis2Placement2D, but at
+        // index 2 on IfcAxis2Placement3D (index 1 is the Z-Axis there). Reading
+        // attribute 1 unconditionally produced a rotation of 0° for any conic
+        // anchored to a 3D placement — fine for Z-up profiles but visibly wrong
+        // when the X axis is rotated in-plane. Trimmed circles authored with
+        // `IfcAxis2Placement3D` (e.g. Revit reinforcement bars in Rebar2.ifc,
+        // issue #631) all came out with their arc centres rotated by their
+        // RefDirection angle, distorting the directrix.
+        let ref_dir_attr_index = if placement.ifc_type == IfcType::IfcAxis2Placement3D {
+            2
+        } else {
+            1
+        };
+        let rotation = if let Some(dir_attr) = placement.get(ref_dir_attr_index) {
             if let Some(dir) = decoder.resolve_ref(dir_attr)? {
                 let ratios = dir.get(0).and_then(|v| v.as_list());
                 if let Some(ratios) = ratios {

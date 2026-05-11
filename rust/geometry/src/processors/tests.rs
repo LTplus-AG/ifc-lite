@@ -577,6 +577,61 @@ fn test_swept_disk_indexed_polycurve_3d() {
     );
 }
 
+/// Issue #631, sample `Rebar2.ifc`.
+///
+/// The directrix is a planar `IfcCompositeCurve` whose arc segments are
+/// authored as `IfcTrimmedCurve` over an `IfcCircle` placed by
+/// `IfcAxis2Placement3D`. `get_placement_2d` used to read attribute index 1 of
+/// the placement as `RefDirection`, but on a 3D placement that index is the
+/// `Axis` (Z direction). Every arc came back with rotation=0° regardless of
+/// the file's actual `RefDirection`, twisting each bend by the file's
+/// authored angle — visibly distorting Revit-exported bent rebar.
+///
+/// Verify that an arc anchored to `IfcAxis2Placement3D` with `RefDirection`
+/// rotated 90° actually rotates: the bottom of the arc (parameter 270°) lands
+/// at the rotated +X direction, not at world -Y.
+#[test]
+fn test_trimmed_circle_3d_placement_reads_ref_direction() {
+    // Circle radius 10, centred at (100, 100, 0), placed in XY plane with
+    // RefDirection = +Y (rotation 90°). A 270° trim with sense=T produces a
+    // point at radius * (cos(270°+90°), sin(270°+90°)) = (10, 0) in the local
+    // frame ⇒ (100 + 10*cos(90°), 100 + 10*sin(90°)) ≈ (100, 110) in world.
+    //
+    // Without the fix the rotation reads as 0° (the Z-axis x/y components),
+    // so 270° lands at (100, 90) — visibly off.
+    let content = r#"
+#1=IFCCARTESIANPOINT((100.0,100.0,0.0));
+#2=IFCDIRECTION((0.0,0.0,1.0));
+#3=IFCDIRECTION((0.0,1.0,0.0));
+#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);
+#5=IFCCIRCLE(#4,10.0);
+#6=IFCTRIMMEDCURVE(#5,(IFCPARAMETERVALUE(270.0)),(IFCPARAMETERVALUE(0.0)),.T.,.PARAMETER.);
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
+#8=IFCCOMPOSITECURVE((#7),.F.);
+#9=IFCSWEPTDISKSOLID(#8,0.5,$,$,$);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = SweptDiskSolidProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(9).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    assert!(!mesh.is_empty());
+
+    let (min, max) = mesh.bounds();
+    // With RefDirection respected (90° rotation), the trim from 270° to 360°
+    // sweeps from local-frame "below center" to local-frame "right of center";
+    // in world that maps to "left of center" to "below center" because +X
+    // local = +Y world. Mesh extents should clear well above center.y - radius
+    // in the bug case (would otherwise stay near y=100-r).
+    assert!(
+        (max.y as f64) > 105.0,
+        "Arc should rotate with RefDirection — max.y={} suggests rotation was ignored",
+        max.y
+    );
+}
+
 #[test]
 fn test_extruded_area_solid_tapered_falls_back_when_end_missing() {
     // A malformed file with no EndSweptArea should still render as a uniform

@@ -541,6 +541,121 @@ fn issue_635_gable_wall_67828_has_round_window_hole() {
     );
 }
 
+/// Width of a horizontal slab of `mesh` between `z_lo` and `z_hi`,
+/// measured along the wall's longest horizontal axis. Returns the
+/// (long-axis-span, short-axis-span, vertex_count) tuple.
+fn slab_spans(mesh: &Mesh, z_lo: f32, z_hi: f32) -> (f32, f32, usize) {
+    let (mn, mx) = mesh.bounds();
+    let extents = [mx.x - mn.x, mx.y - mn.y, mx.z - mn.z];
+    let long_axis = if extents[0] >= extents[1] { 0 } else { 1 };
+    let short_axis = 1 - long_axis;
+    let mut min_l = f32::INFINITY;
+    let mut max_l = f32::NEG_INFINITY;
+    let mut min_s = f32::INFINITY;
+    let mut max_s = f32::NEG_INFINITY;
+    let mut count = 0usize;
+    for chunk in mesh.positions.chunks_exact(3) {
+        let z = chunk[2];
+        if z < z_lo || z > z_hi {
+            continue;
+        }
+        let l = chunk[long_axis];
+        let s = chunk[short_axis];
+        if l < min_l {
+            min_l = l;
+        }
+        if l > max_l {
+            max_l = l;
+        }
+        if s < min_s {
+            min_s = s;
+        }
+        if s > max_s {
+            max_s = s;
+        }
+        count += 1;
+    }
+    let l_span = if count > 0 { max_l - min_l } else { 0.0 };
+    let s_span = if count > 0 { max_s - min_s } else { 0.0 };
+    (l_span, s_span, count)
+}
+
+/// Issue #635 follow-up: gable wall must be wide at the bottom and narrow
+/// at the top (peak). The pre-fix bug inverted this — wide at top, point at
+/// bottom — because the IfcPolygonalBoundedHalfSpace prism was extruded
+/// along plane_normal instead of Position's Z-axis (per the IFC spec).
+#[test]
+fn issue_635_gable_wall_60012_bottom_must_span_full_width() {
+    let content = match load_fixture(FIXTURE) {
+        Some(c) => c,
+        None => {
+            eprintln!("{} missing — skipping issue-635 inversion test", FIXTURE);
+            return;
+        }
+    };
+
+    let mesh = process_element_only(&content, WALL_60012)
+        .expect("wall #60012 should produce a mesh");
+    assert!(!mesh.is_empty(), "wall #60012 mesh is empty");
+
+    let (mn, mx) = mesh.bounds();
+    // Bottom slab: lowest 0.15 m of the wall.
+    let (bot_long, _bot_short, bot_count) = slab_spans(&mesh, mn.z, mn.z + 0.15);
+    // Top slab: top 0.20 m of the wall — the gable peak.
+    let (top_long, _top_short, top_count) = slab_spans(&mesh, mx.z - 0.20, mx.z);
+
+    assert!(bot_count > 0, "bottom slab has no vertices");
+    assert!(top_count > 0, "top slab has no vertices");
+    // Wall is ~10 m long along its long axis. The bottom must span
+    // the FULL length (>= 8 m), while the gable peak narrows to a
+    // point or near-point at the top (< 2 m).
+    assert!(
+        bot_long >= 8.0,
+        "gable wall #60012 BOTTOM is too narrow ({:.3} m along long axis) — \
+         IfcPolygonalBoundedHalfSpace was inverted (clip kept the wrong side)",
+        bot_long
+    );
+    assert!(
+        top_long <= 4.0,
+        "gable wall #60012 TOP is too wide ({:.3} m) — gable peak should be \
+         narrow, not the full wall length",
+        top_long
+    );
+}
+
+/// Same invariant for wall #67828 (the second gable wall in AC20-FZK-Haus).
+#[test]
+fn issue_635_gable_wall_67828_bottom_must_span_full_width() {
+    let content = match load_fixture(FIXTURE) {
+        Some(c) => c,
+        None => {
+            eprintln!("{} missing — skipping issue-635 inversion test", FIXTURE);
+            return;
+        }
+    };
+
+    let mesh = process_element_only(&content, WALL_67828)
+        .expect("wall #67828 should produce a mesh");
+    assert!(!mesh.is_empty(), "wall #67828 mesh is empty");
+
+    let (mn, mx) = mesh.bounds();
+    let (bot_long, _bot_short, bot_count) = slab_spans(&mesh, mn.z, mn.z + 0.15);
+    let (top_long, _top_short, top_count) = slab_spans(&mesh, mx.z - 0.20, mx.z);
+
+    assert!(bot_count > 0, "bottom slab has no vertices");
+    assert!(top_count > 0, "top slab has no vertices");
+    assert!(
+        bot_long >= 8.0,
+        "gable wall #67828 BOTTOM is too narrow ({:.3} m) — inverted clip",
+        bot_long
+    );
+    assert!(
+        top_long <= 4.0,
+        "gable wall #67828 TOP is too wide ({:.3} m) — gable peak should be narrow",
+        top_long
+    );
+}
+
 /// Issue #635 follow-up: explicit assertion that the round-window cut
 /// produces a polygon-circle hole, not the AABB rectangular fallback.
 /// This guards against regressions where polyline simplification breaks

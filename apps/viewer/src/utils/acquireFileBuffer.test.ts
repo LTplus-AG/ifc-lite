@@ -4,6 +4,9 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 // NOTE: We deliberately avoid importing from `./acquireFileBuffer` directly,
 // because that module pulls in `./ifcConfig`, which references
@@ -147,6 +150,58 @@ describe('acquireFileBuffer', () => {
     } finally {
       (globalThis as { SharedArrayBuffer?: unknown }).SharedArrayBuffer = originalSAB;
     }
+  });
+
+  it('IFCX federation call sites do NOT use SAB streaming (memory regression guard for #647)', () => {
+    // IFCX is JSON. The federation parser path is:
+    //   parseFederatedIfcx → safeUtf8Decode(new Uint8Array(buffer)) → JSON.parse
+    // safeUtf8Decode must copy SAB-backed views into a scratch buffer in
+    // Chromium/Firefox (cross-thread JS string decoding cannot read SAB
+    // directly) and retains that scratch. Net peak with SAB streaming:
+    //   SAB (file.size) + scratch copy (file.size) + JSON string (~file.size)
+    //   + retained scratch — strictly worse than the plain ArrayBuffer path.
+    //
+    // This is a source-level guard: it ensures the two IFCX entry points in
+    // useIfcFederation.ts (loadFederatedIfcx + addIfcxOverlays) stay on
+    // file.arrayBuffer() and don't accidentally regress back to
+    // acquireFileBuffer(). The IFC/STEP path (addModel) keeps SAB streaming.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const sourcePath = join(here, '..', 'hooks', 'useIfcFederation.ts');
+    const source = readFileSync(sourcePath, 'utf8');
+
+    // Find the loadFederatedIfcx and addIfcxOverlays function bodies and
+    // assert each one reads files via file.arrayBuffer(), not acquireFileBuffer.
+    const ifcxFnNames = ['loadFederatedIfcx', 'addIfcxOverlays'];
+    for (const fnName of ifcxFnNames) {
+      // Match the const declaration through the closing `}, [` of useCallback.
+      const startMarker = `const ${fnName} = useCallback`;
+      const startIdx = source.indexOf(startMarker);
+      assert.ok(startIdx >= 0, `expected ${fnName} declaration in useIfcFederation.ts`);
+      // End at the next useCallback dependency-array opener that closes this fn.
+      // We look for the first `}, [` after `startIdx`.
+      const endIdx = source.indexOf('}, [', startIdx);
+      assert.ok(endIdx > startIdx, `expected end of ${fnName} useCallback`);
+      const body = source.slice(startIdx, endIdx);
+      assert.ok(
+        body.includes('file.arrayBuffer()'),
+        `${fnName} must read files via file.arrayBuffer() (IFCX JSON path)`,
+      );
+      assert.ok(
+        !body.includes('acquireFileBuffer'),
+        `${fnName} must NOT use acquireFileBuffer() — SAB streaming worsens peak memory for IFCX/JSON (see PR #647 regression).`,
+      );
+    }
+
+    // Sanity check: the IFC addModel path SHOULD still use acquireFileBuffer
+    // (STEP/IFC binary path benefits from SAB streaming).
+    const addModelStart = source.indexOf('const addModel = useCallback');
+    assert.ok(addModelStart >= 0, 'expected addModel declaration');
+    const addModelEnd = source.indexOf('}, [', addModelStart);
+    const addModelBody = source.slice(addModelStart, addModelEnd);
+    assert.ok(
+      addModelBody.includes('acquireFileBuffer'),
+      'addModel (IFC/STEP path) must keep using acquireFileBuffer() for SAB streaming',
+    );
   });
 
   it('falls back to arrayBuffer() when crossOriginIsolated is explicitly false', async () => {

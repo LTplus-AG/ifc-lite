@@ -936,13 +936,13 @@ export function useIfcFederation() {
       return;
     }
 
-    // Check that all files are IFCX format and read buffers. Large files
-    // stream directly into a SAB to avoid the 2× peak of `file.arrayBuffer()`
-    // followed by the geometry pipeline copying into its own SAB. (#600)
+    // Check that all files are IFCX format and read buffers.
+    // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
+    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
+    // Keep on file.arrayBuffer().
     const buffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
-      const acquired = await acquireFileBuffer(file);
-      const buffer = acquired.buffer as ArrayBuffer;
+      const buffer = await file.arrayBuffer();
       const format = detectFormat(buffer);
       if (format !== 'ifcx') {
         setError(`File "${file.name}" is not an IFCX file. Federated loading only supports IFCX files.`);
@@ -993,13 +993,13 @@ export function useIfcFederation() {
       return;
     }
 
-    // Read new overlay buffers. Large files stream directly into a SAB to
-    // avoid the 2× peak of `file.arrayBuffer()` followed by the geometry
-    // pipeline copying into its own SAB. (#600)
+    // Read new overlay buffers.
+    // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
+    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
+    // Keep on file.arrayBuffer().
     const newBuffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
-      const acquired = await acquireFileBuffer(file);
-      const buffer = acquired.buffer as ArrayBuffer;
+      const buffer = await file.arrayBuffer();
       const format = detectFormat(buffer);
       if (format !== 'ifcx') {
         setError(`File "${file.name}" is not an IFCX file.`);

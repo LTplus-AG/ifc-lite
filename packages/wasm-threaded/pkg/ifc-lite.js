@@ -223,12 +223,12 @@ if (cachedTextEncoder) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1107(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1107(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1117(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1117(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1378(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1378(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1388(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1388(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1792,6 +1792,25 @@ export class IfcAPI {
         const ptr2 = passArray32ToWasm0(lengths, wasm.__wbindgen_export3);
         const len2 = WASM_VECTOR_LEN;
         wasm.ifcapi_setEntityIndex(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+    }
+    /**
+     * Toggle the "render multilayer walls as a single solid" mode (issue #540).
+     *
+     * When `enabled` is `true`, every subsequent `parseMeshes*` call will
+     * suppress geometry emission for `IfcBuildingElementPart` entities whose
+     * `IfcRelAggregates` parent wall is sliceable (has an
+     * `IfcMaterialLayerSetUsage`) AND has its own `Representation`. The
+     * parent wall keeps its per-layer sub-mesh colouring, so the visual
+     * result is the same as the layered render but with one mesh per wall
+     * instead of one per layer part — much cheaper for both CPU and GPU.
+     *
+     * Default is `false`. Pass `true` before calling `parseMeshes`,
+     * `parseMeshesSubset`, `parseMeshesAsync`, `parseMeshesInstanced`, or
+     * `parseMeshesInstancedAsync`.
+     * @param {boolean} enabled
+     */
+    setMergeLayers(enabled) {
+        wasm.ifcapi_setMergeLayers(this.__wbg_ptr, enabled);
     }
     /**
      * Clear the cached entity index (call between loads when reusing
@@ -3440,7 +3459,7 @@ function __wbg_get_imports(memory) {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1378(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1388(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3572,24 +3591,24 @@ function __wbg_get_imports(memory) {
     imports.wbg.__wbg_warn_6e567d0d926ff881 = function(arg0) {
         console.warn(getObject(arg0));
     };
+    imports.wbg.__wbindgen_cast_14f34dd6042f46b7 = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 167, function: Function { arguments: [Externref], shim_idx: 168, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1116, __wasm_bindgen_func_elem_1117);
+        return addHeapObject(ret);
+    };
     imports.wbg.__wbindgen_cast_2241b6af4c4b2941 = function(arg0, arg1) {
         // Cast intrinsic for `Ref(String) -> Externref`.
         const ret = getStringFromWasm0(arg0, arg1);
         return addHeapObject(ret);
     };
+    imports.wbg.__wbindgen_cast_42c169aabd4aa5c0 = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 167, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 168, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1116, __wasm_bindgen_func_elem_1117);
+        return addHeapObject(ret);
+    };
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
         // Cast intrinsic for `U64 -> Externref`.
         const ret = BigInt.asUintN(64, arg0);
-        return addHeapObject(ret);
-    };
-    imports.wbg.__wbindgen_cast_62423eba93f4d670 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 166, function: Function { arguments: [Externref], shim_idx: 167, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1106, __wasm_bindgen_func_elem_1107);
-        return addHeapObject(ret);
-    };
-    imports.wbg.__wbindgen_cast_98c349af0503c7f4 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 166, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 167, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1106, __wasm_bindgen_func_elem_1107);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {

@@ -103,6 +103,29 @@ export function rebuildSpatialHierarchy(
     if (isStoreyLikeSpatialType(typeEnum)) {
       for (const elementId of containedElements) {
         elementToStorey.set(elementId, expressId);
+        // Propagate storey assignment to aggregated descendants (e.g. IfcBuildingElementPart
+        // children of an IfcWall). Without this, parts have no reverse-lookup entry even
+        // though the renderer emits them as standalone meshes.
+        // Cycle guard: malformed IFC files can have aggregate cycles.
+        // Direct storey containment wins — only set the descendant mapping if not already set.
+        const stack: number[] = [elementId];
+        const seen = new Set<number>([elementId]);
+        while (stack.length > 0) {
+          const current = stack.pop() as number;
+          const aggregatedKids = relationships.getRelated(
+            current,
+            RelationshipType.Aggregates,
+            'forward'
+          );
+          for (const kid of aggregatedKids) {
+            if (seen.has(kid)) continue;
+            seen.add(kid);
+            if (!elementToStorey.has(kid)) {
+              elementToStorey.set(kid, expressId);
+            }
+            stack.push(kid);
+          }
+        }
       }
     }
 

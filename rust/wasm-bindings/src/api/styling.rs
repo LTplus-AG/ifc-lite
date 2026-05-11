@@ -390,6 +390,11 @@ pub(crate) struct PrePassData {
     /// their geometry is a single swept solid. Held in an `Arc` so it can be
     /// attached to the `GeometryRouter` without cloning the map.
     pub material_layer_index: std::sync::Arc<ifc_lite_geometry::MaterialLayerIndex>,
+    /// Map from every emitted `IfcBuildingElementPart` whose parent has its own
+    /// `Representation` → parent element id. Captured during
+    /// `propagate_voids_to_parts` so the merge-layers toggle (#540) can skip
+    /// per-part meshes when the parent is sliceable.
+    pub part_to_parent: rustc_hash::FxHashMap<u32, u32>,
 }
 
 /// Single EntityScanner pass that collects everything needed before geometry
@@ -520,8 +525,10 @@ pub(crate) fn combined_pre_pass(
     );
 
     // Propagate voids from aggregate parents (IfcWall) to children (IfcBuildingElementPart)
-    // so that multilayer wall parts also get window/door cutouts.
-    ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
+    // so that multilayer wall parts also get window/door cutouts. Also captures
+    // the part → parent map used by the merge-layers toggle (issue #540).
+    let part_to_parent =
+        ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
 
     PrePassData {
         geometry_styles,
@@ -533,6 +540,7 @@ pub(crate) fn combined_pre_pass(
         complex_jobs,
         element_material_styles,
         material_layer_index,
+        part_to_parent,
     }
 }
 

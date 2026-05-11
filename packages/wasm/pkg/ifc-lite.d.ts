@@ -554,6 +554,22 @@ export class IfcAPI {
    */
   setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
   /**
+   * Toggle the "render multilayer walls as a single solid" mode (issue #540).
+   *
+   * When `enabled` is `true`, every subsequent `parseMeshes*` call will
+   * suppress geometry emission for `IfcBuildingElementPart` entities whose
+   * `IfcRelAggregates` parent wall is sliceable (has an
+   * `IfcMaterialLayerSetUsage`) AND has its own `Representation`. The
+   * parent wall keeps its per-layer sub-mesh colouring, so the visual
+   * result is the same as the layered render but with one mesh per wall
+   * instead of one per layer part — much cheaper for both CPU and GPU.
+   *
+   * Default is `false`. Pass `true` before calling `parseMeshes`,
+   * `parseMeshesSubset`, `parseMeshesAsync`, `parseMeshesInstanced`, or
+   * `parseMeshesInstancedAsync`.
+   */
+  setMergeLayers(enabled: boolean): void;
+  /**
    * Clear the cached entity index (call between loads when reusing
    * the same `IfcAPI` instance — e.g. the parser worker keeps one
    * `IfcAPI` alive across multiple `parse` requests).
@@ -1177,6 +1193,7 @@ export interface InitOutput {
   readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanRelevantEntitiesFastBytes: (a: number, b: number, c: number) => number;
   readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly ifcapi_setMergeLayers: (a: number, b: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly instancedata_color: (a: number, b: number) => void;
   readonly instancedata_expressId: (a: number) => number;
@@ -1283,9 +1300,9 @@ export interface InitOutput {
   readonly profileentryjs_expressId: (a: number) => number;
   readonly symboliccircle_expressId: (a: number) => number;
   readonly __wbg_gpuinstancedgeometryref_free: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1197: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1196: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1236: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1206: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1205: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1245: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export3: (a: number, b: number) => number;

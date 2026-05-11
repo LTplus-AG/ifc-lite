@@ -14,22 +14,39 @@
 use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
 use rustc_hash::FxHashMap;
 
-/// Propagate void (opening) relationships from aggregate parents to their children.
+/// Propagate void (opening) relationships from aggregate parents to their children
+/// and return a child-part → parent-element map covering every emitted aggregate
+/// `IfcWall` → `IfcBuildingElementPart` pair.
 ///
 /// In IFC, multilayer walls use `IfcRelAggregates` to decompose a parent `IfcWall`
 /// into child `IfcBuildingElementPart` entities (one per material layer). The
 /// `IfcRelVoidsElement` relationships reference the parent wall, but the individual
 /// layer parts also need void subtraction to cut windows/doors through each layer.
 ///
-/// This function scans for `IfcRelAggregates` where the parent has voids and copies
-/// those void relationships to every child part that has geometry.
+/// This function scans for `IfcRelAggregates` and, in the same pass:
+///
+/// 1. Copies parent-wall void relationships to every child part that has a
+///    `Representation` so each layer slice still gets window/door cutouts.
+/// 2. Returns a [`FxHashMap`] mapping every emitted child `IfcBuildingElementPart`
+///    id to its parent element id. Callers use this to skip per-part geometry
+///    emission when the "merge multilayer wall as a single solid" toggle is on
+///    (issue #540) — but **only** for parents that have their own
+///    `Representation` attribute set (otherwise the parent has no fallback
+///    geometry and the layer parts must be kept).
+///
+/// The map only contains children whose parent has a non-null `Representation`
+/// (attribute index 6 on `IfcProduct`); parents without their own geometry are
+/// left out of the returned map so the caller can never "skip" the only
+/// geometry available for the assembly.
+#[must_use = "the returned part → parent map is needed to honour the merge-layers toggle"]
 pub fn propagate_voids_to_parts(
     void_index: &mut FxHashMap<u32, Vec<u32>>,
     content: &str,
     decoder: &mut EntityDecoder,
-) {
+) -> FxHashMap<u32, u32> {
     let mut scanner = EntityScanner::new(content);
     let mut propagations: Vec<(u32, Vec<u32>)> = Vec::new();
+    let mut part_to_parent: FxHashMap<u32, u32> = FxHashMap::default();
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         if type_name != "IFCRELAGGREGATES" {
@@ -46,10 +63,6 @@ pub fn propagate_voids_to_parts(
             None => continue,
         };
 
-        if !void_index.contains_key(&parent_id) {
-            continue;
-        }
-
         let children_attr = match entity.get(5) {
             Some(attr) => attr,
             None => continue,
@@ -61,6 +74,19 @@ pub fn propagate_voids_to_parts(
                 .collect(),
             None => continue,
         };
+        if children.is_empty() {
+            continue;
+        }
+
+        // Verify the parent has its own representation. If it doesn't, the
+        // layer parts ARE the only geometry — we still want to propagate
+        // voids (in case the parent declares voids without geometry), but
+        // we must not record the part → parent mapping that would let the
+        // caller skip part emission.
+        let parent_has_repr = decoder
+            .decode_by_id(parent_id)
+            .map(|p| p.get(6).map(|a| !a.is_null()).unwrap_or(false))
+            .unwrap_or(false);
 
         let mut eligible_children = Vec::new();
         for child_id in children {
@@ -69,12 +95,17 @@ pub fn propagate_voids_to_parts(
                     let has_repr = child.get(6).map(|a| !a.is_null()).unwrap_or(false);
                     if has_repr {
                         eligible_children.push(child_id);
+                        // Only record the mapping when the parent itself has
+                        // geometry — otherwise the caller has no fallback.
+                        if parent_has_repr {
+                            part_to_parent.insert(child_id, parent_id);
+                        }
                     }
                 }
             }
         }
 
-        if !eligible_children.is_empty() {
+        if !eligible_children.is_empty() && void_index.contains_key(&parent_id) {
             propagations.push((parent_id, eligible_children));
         }
     }
@@ -91,6 +122,8 @@ pub fn propagate_voids_to_parts(
                 .extend(parent_voids.iter().copied());
         }
     }
+
+    part_to_parent
 }
 
 /// Index mapping host elements to their voids
@@ -382,5 +415,131 @@ mod tests {
 
         let stats = VoidStatistics::from_index(&index);
         assert_eq!(stats.hosts_with_many_voids, 1);
+    }
+
+    // ── propagate_voids_to_parts ─────────────────────────────────────────
+    //
+    // The synthetic IFC strings below are deliberately minimal — they
+    // only carry the entities `propagate_voids_to_parts` actually looks
+    // at (`IFCRELAGGREGATES`, the parent `IFCWALL`/`IFCBUILDINGELEMENTPART`
+    // entries, and an `IFCRELVOIDSELEMENT` for the parent). The geometry
+    // attributes don't matter to the index — only that the parent and
+    // the parts carry a non-null `Representation`.
+
+    use ifc_lite_core::EntityDecoder;
+
+    /// Three-layer wall with one window opening and a parent representation.
+    /// All three parts and the parent each carry a `#51` representation ref so
+    /// every emitted child appears in the returned part→parent map.
+    fn three_layer_wall_with_voids_ifc() -> String {
+        r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('test.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
+#50=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#40));
+#40=IFCEXTRUDEDAREASOLID($,$,$,3.0);
+#100=IFCWALL('0001wall',$,'Parent',$,$,$,#51,$,$);
+#101=IFCBUILDINGELEMENTPART('0001p01',$,'L0',$,$,$,#51,$,$);
+#102=IFCBUILDINGELEMENTPART('0001p02',$,'L1',$,$,$,#51,$,$);
+#103=IFCBUILDINGELEMENTPART('0001p03',$,'L2',$,$,$,#51,$,$);
+#200=IFCOPENINGELEMENT('0001op',$,'Opening',$,$,$,#51,$,$);
+#210=IFCRELVOIDSELEMENT('0001rv',$,$,$,#100,#200);
+#300=IFCRELAGGREGATES('0001ra',$,$,$,#100,(#101,#102,#103));
+ENDSEC;
+END-ISO-10303-21;
+"#
+        .to_string()
+    }
+
+    /// Aggregate where the parent wall has NO representation (null `#51`).
+    /// The parts ARE the only geometry — the map must NOT contain them.
+    fn parts_only_aggregate_ifc() -> String {
+        r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('test.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
+#50=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#40));
+#40=IFCEXTRUDEDAREASOLID($,$,$,3.0);
+#100=IFCWALL('0001wall',$,'Parent',$,$,$,$,$,$);
+#101=IFCBUILDINGELEMENTPART('0001p01',$,'L0',$,$,$,#51,$,$);
+#102=IFCBUILDINGELEMENTPART('0001p02',$,'L1',$,$,$,#51,$,$);
+#103=IFCBUILDINGELEMENTPART('0001p03',$,'L2',$,$,$,#51,$,$);
+#300=IFCRELAGGREGATES('0001ra',$,$,$,#100,(#101,#102,#103));
+ENDSEC;
+END-ISO-10303-21;
+"#
+        .to_string()
+    }
+
+    #[test]
+    fn propagate_voids_returns_part_to_parent_map() {
+        let content = three_layer_wall_with_voids_ifc();
+        let mut decoder = EntityDecoder::new(&content);
+
+        // Seed the index with the parent's voids (caller normally does this
+        // from the IFCRELVOIDSELEMENT pre-scan).
+        let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+        void_index.insert(100, vec![200]);
+
+        let part_to_parent = propagate_voids_to_parts(&mut void_index, &content, &mut decoder);
+
+        // Three parts, all mapped to the same parent.
+        assert_eq!(part_to_parent.len(), 3);
+        assert_eq!(part_to_parent.get(&101).copied(), Some(100));
+        assert_eq!(part_to_parent.get(&102).copied(), Some(100));
+        assert_eq!(part_to_parent.get(&103).copied(), Some(100));
+
+        // Voids were propagated to every child.
+        assert_eq!(void_index.get(&101).map(Vec::as_slice), Some(&[200u32][..]));
+        assert_eq!(void_index.get(&102).map(Vec::as_slice), Some(&[200u32][..]));
+        assert_eq!(void_index.get(&103).map(Vec::as_slice), Some(&[200u32][..]));
+    }
+
+    #[test]
+    fn propagate_voids_skips_parents_without_representation() {
+        let content = parts_only_aggregate_ifc();
+        let mut decoder = EntityDecoder::new(&content);
+
+        // No voids on the parent for this case — we only care about the map.
+        let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+
+        let part_to_parent = propagate_voids_to_parts(&mut void_index, &content, &mut decoder);
+
+        // Parent #100 has null Representation, so the parts are the only
+        // geometry — none of them should appear in the skip-eligible map.
+        assert!(
+            part_to_parent.is_empty(),
+            "expected empty map when parent has no representation, got {:?}",
+            part_to_parent
+        );
+    }
+
+    #[test]
+    fn propagate_voids_returns_empty_map_when_no_aggregates() {
+        let empty = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('0001w',$,'L',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#
+        .to_string();
+        let mut decoder = EntityDecoder::new(&empty);
+        let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+        let part_to_parent = propagate_voids_to_parts(&mut void_index, &empty, &mut decoder);
+        assert!(part_to_parent.is_empty());
+        assert!(void_index.is_empty());
     }
 }

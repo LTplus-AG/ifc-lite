@@ -14,19 +14,20 @@
 //! 3. **Door glazing**: glass-pane `IfcAdvancedBrep` (planar) used to be
 //!    silently dropped under earlier code paths.
 //!
-//! Fixture lives at `tests/fixtures/issue-604/door.ifc` (downloaded from the
-//! issue's `door.ifc.txt` attachment). The test skips cleanly when the
-//! fixture is absent so a fresh clone never panics.
+//! Fixture lives at `tests/models/various/issue-604-door.ifc` (catalogued in
+//! `tests/models/manifest.json` and fetched on demand via `pnpm fixtures`).
+//! The test skips cleanly when the fixture is absent so a fresh clone never
+//! panics.
 
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 use rustc_hash::FxHashMap;
 use std::path::Path;
 
-const FIXTURE: &str = "../../tests/fixtures/issue-604/door.ifc";
+const FIXTURE: &str = "../../tests/models/various/issue-604-door.ifc";
 
 // Sub-shell express IDs of the door's body, taken from the IfcShapeAspect
-// labels in `tests/fixtures/issue-604/door.ifc`:
+// labels in `tests/models/various/issue-604-door.ifc`:
 //   #2369 'Hardware'        → reps #232, #298, #440, #503
 //   #2372 'Panel'           → rep  #712
 //   #2375 'Frame/Mullion'   → rep  #1115
@@ -43,8 +44,7 @@ fn read_fixture() -> Option<String> {
     if !Path::new(FIXTURE).exists() {
         eprintln!(
             "skipping issue-604 regression: fixture missing at {FIXTURE} — \
-             run `curl -sL https://github.com/user-attachments/files/27217337/door.ifc.txt \
-             -o tests/fixtures/issue-604/door.ifc`",
+             run `pnpm fixtures` from the repo root to download it",
         );
         return None;
     }

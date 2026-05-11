@@ -7,10 +7,22 @@
  */
 
 import type { StateCreator } from 'zustand';
-import { UI_DEFAULTS } from '../constants.js';
+import { MERGE_LAYERS_STORAGE_KEY, UI_DEFAULTS } from '../constants.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
+import type { FederatedModel } from '../types.js';
+import type { GeometryResult } from '@ifc-lite/geometry';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
+
+/**
+ * Cross-slice surface UISlice reaches into via the combined Zustand
+ * `get()` to decide whether toggling a load-time setting needs a
+ * reload (only meaningful while a model is in scope).
+ */
+export interface UICrossSliceState {
+  models: Map<string, FederatedModel>;
+  geometryResult: GeometryResult | null;
+}
 
 export interface UISlice {
   // State
@@ -30,6 +42,15 @@ export interface UISlice {
   separationLinesQuality: SeparationLinesQuality;
   separationLinesIntensity: number;
   separationLinesRadius: number;
+  /**
+   * Issue #540 — "Merge Multilayer Walls" load-time toggle. Reading
+   * this on next file load is what the WASM bridge actually uses;
+   * flipping it while a model is in scope sets
+   * `mergeLayersPendingReload` so the UI can prompt the user.
+   */
+  mergeLayers: boolean;
+  /** True after the user flipped `mergeLayers` while a model was loaded. */
+  mergeLayersPendingReload: boolean;
 
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
@@ -51,6 +72,10 @@ export interface UISlice {
   setSeparationLinesQuality: (quality: SeparationLinesQuality) => void;
   setSeparationLinesIntensity: (intensity: number) => void;
   setSeparationLinesRadius: (radius: number) => void;
+  /** Update the merge-layers toggle and persist to localStorage. */
+  setMergeLayers: (v: boolean) => void;
+  /** Acknowledge the reload banner without performing a reload. */
+  clearMergeLayersPendingReload: () => void;
 }
 
 /** Apply the correct CSS classes on <html> for the given theme */
@@ -60,7 +85,18 @@ function applyThemeClasses(theme: ThemeMode) {
   el.classList.toggle('colorful', theme === 'colorful');
 }
 
-export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) => ({
+/**
+ * Returns true when any geometry is loaded — federated model map has
+ * entries OR the legacy single-model `geometryResult` is non-null with
+ * at least one mesh. Centralised here so the merge-layers toggle has
+ * a single source of truth for "is a model loaded?".
+ */
+function hasLoadedModel(state: UICrossSliceState): boolean {
+  if (state.models.size > 0) return true;
+  return (state.geometryResult?.meshes.length ?? 0) > 0;
+}
+
+export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UISlice> = (set, get) => ({
   // Initial state
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
@@ -78,6 +114,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   separationLinesQuality: UI_DEFAULTS.SEPARATION_LINES_QUALITY,
   separationLinesIntensity: UI_DEFAULTS.SEPARATION_LINES_INTENSITY,
   separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
+  mergeLayers: UI_DEFAULTS.MERGE_LAYERS,
+  mergeLayersPendingReload: false,
 
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
@@ -121,4 +159,24 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   setSeparationLinesQuality: (separationLinesQuality) => set({ separationLinesQuality }),
   setSeparationLinesIntensity: (separationLinesIntensity) => set({ separationLinesIntensity }),
   setSeparationLinesRadius: (separationLinesRadius) => set({ separationLinesRadius }),
+
+  setMergeLayers: (next) => {
+    const current = get();
+    if (current.mergeLayers === next) return;
+    // Persist eagerly so the next page-load picks the same value up
+    // through `getInitialMergeLayers` (constants.ts). Wrap in
+    // try/catch — Safari private mode / locked storage throws.
+    try {
+      localStorage.setItem(MERGE_LAYERS_STORAGE_KEY, String(next));
+    } catch {
+      /* storage unavailable — accept the in-memory toggle silently */
+    }
+    // Only ask the user to reload if a model is currently in scope.
+    // Toggling the setting on an empty viewer simply changes the
+    // future load behaviour with no visible effect.
+    const pending = hasLoadedModel(current);
+    set({ mergeLayers: next, mergeLayersPendingReload: pending });
+  },
+
+  clearMergeLayersPendingReload: () => set({ mergeLayersPendingReload: false }),
 });

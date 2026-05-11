@@ -226,28 +226,37 @@ export class Picker {
       { width: 1, height: 1 },
     );
 
-    // Parallel depth-texel readback so the host can unproject the click
-    // to a world-space hit point. depth32float = 4 bytes per texel; we
-    // pad the row to 256 like the color readback.
+    // Depth readback for click-to-world unprojection. WebGPU forbids
+    // partial copies from depth/stencil-format textures — the copy must
+    // cover the entire subresource. So we copy the whole depth image
+    // and index into the buffer client-side after mapping. depth32float
+    // = 4 bytes per texel; bytesPerRow must still be a multiple of 256.
+    const depthBytesPerRow = Math.ceil((width * 4) / 256) * 256;
     const depthBuffer = this.device.createBuffer({
-      size: BYTES_PER_ROW,
+      size: depthBytesPerRow * height,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
     encoder.copyTextureToBuffer(
       {
         texture: this.depthTexture,
-        origin: { x: sampleX, y: sampleY, z: 0 },
+        origin: { x: 0, y: 0, z: 0 },
         aspect: 'depth-only',
       },
-      { buffer: depthBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
-      { width: 1, height: 1 },
+      { buffer: depthBuffer, bytesPerRow: depthBytesPerRow, rowsPerImage: height },
+      { width, height },
     );
 
     this.device.queue.submit([encoder.finish()]);
     // GPUMapMode.READ = 1 (WebGPU spec)
     await Promise.all([readBuffer.mapAsync(1), depthBuffer.mapAsync(1)]);
     const sample = new Uint32Array(readBuffer.getMappedRange())[0];
-    const depth = new Float32Array(depthBuffer.getMappedRange())[0];
+    const depthBytes = new Uint8Array(depthBuffer.getMappedRange());
+    const depthOffset = sampleY * depthBytesPerRow + sampleX * 4;
+    const depth = new Float32Array(
+      depthBytes.buffer,
+      depthBytes.byteOffset + depthOffset,
+      1,
+    )[0];
     readBuffer.unmap();
     depthBuffer.unmap();
     readBuffer.destroy();

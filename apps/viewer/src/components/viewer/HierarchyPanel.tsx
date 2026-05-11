@@ -126,12 +126,38 @@ export function HierarchyPanel() {
     groupingMode,
     setGroupingMode,
     unifiedStoreys,
-    filteredNodes,
-    storeysNodes,
-    modelsNodes,
+    filteredNodes: rawFilteredNodes,
+    storeysNodes: rawStoreysNodes,
+    modelsNodes: rawModelsNodes,
     toggleExpand,
     getNodeElements,
   } = useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryResult });
+
+  // Issue #540: when the user has the merge-layers load setting on,
+  // hide `IfcBuildingElementPart` rows from the tree — the Rust layer
+  // suppresses their meshes, so leaving the rows visible would lead
+  // to dead-clicks. Filter at the consumer (this panel) rather than
+  // in `spatialHierarchy.ts` per the agent coordination plan.
+  const mergeLayersHidesParts = useViewerStore((s) => s.mergeLayers);
+  const PART_TYPE_KEY = 'ifcbuildingelementpart';
+  const stripPartNodes = useCallback(
+    (nodes: TreeNode[]): TreeNode[] => {
+      if (!mergeLayersHidesParts) return nodes;
+      return nodes.filter((node) => {
+        // Only element rows carry an `ifcType` we can compare. Class
+        // grouping ("IfcBuildingElementPart (N)") and ifc-type nodes
+        // also expose an `ifcType`; we strip those too because they
+        // would expand to empty groups after merge.
+        const t = node.ifcType?.toLowerCase();
+        if (!t) return true;
+        return t !== PART_TYPE_KEY;
+      });
+    },
+    [mergeLayersHidesParts],
+  );
+  const filteredNodes = useMemo(() => stripPartNodes(rawFilteredNodes), [stripPartNodes, rawFilteredNodes]);
+  const storeysNodes = useMemo(() => stripPartNodes(rawStoreysNodes), [stripPartNodes, rawStoreysNodes]);
+  const modelsNodes = useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes]);
 
   // Refs for both scroll areas
   const storeysRef = useRef<HTMLDivElement>(null);

@@ -186,9 +186,9 @@ fn generate_reveal_quads(
     }
 
     for (i, &ca) in cross.iter().enumerate() {
-        let oa = cross[1 - i]; // the *other* cross-axis
         // Clamp the orthogonal cross-axis extent to the wall so reveals never
         // overshoot the mesh boundary (e.g. an opening taller than its slab).
+        let oa = cross[1 - i]; // the *other* cross-axis
         let o_min = axis_val(open_min, oa).max(axis_val(wall_min, oa));
         let o_max = axis_val(open_max, oa).min(axis_val(wall_max, oa));
 
@@ -244,12 +244,188 @@ enum OpeningType {
     /// Rectangular opening with AABB clipping
     /// Fields: (min_bounds, max_bounds, extrusion_direction)
     Rectangular(Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
-    /// Diagonal rectangular opening with mesh geometry for batched rotation clipping
-    /// Fields: (opening_mesh, extrusion_direction)
-    DiagonalRectangular(Mesh, Vector3<f64>),
+    /// Diagonal rectangular opening with mesh geometry and a full oriented frame.
+    /// The frame preserves roof-window roll, not just the penetration direction.
+    DiagonalRectangular(Mesh, OpeningFrame),
     /// Non-rectangular opening (circular, arched, or floor openings with rotated footprint)
     /// Uses full CSG subtraction with actual mesh geometry
     NonRectangular(Mesh),
+}
+
+/// World-space basis for an oriented rectangular opening.
+#[derive(Clone, Copy)]
+struct OpeningFrame {
+    depth: Vector3<f64>,
+    cross_a: Vector3<f64>,
+    cross_b: Vector3<f64>,
+}
+
+impl OpeningFrame {
+    fn from_depth(depth: Vector3<f64>) -> Option<Self> {
+        let depth = depth.try_normalize(NORMALIZE_EPSILON)?;
+        let seed = if depth.z.abs() < 0.9 {
+            Vector3::new(0.0, 0.0, 1.0)
+        } else {
+            Vector3::new(0.0, 1.0, 0.0)
+        };
+        let cross_a = seed.cross(&depth).try_normalize(NORMALIZE_EPSILON)?;
+        let cross_b = depth.cross(&cross_a).try_normalize(NORMALIZE_EPSILON)?;
+        Some(Self {
+            depth,
+            cross_a,
+            cross_b,
+        })
+    }
+
+    #[inline]
+    fn to_local_point(&self, p: Point3<f64>) -> Point3<f64> {
+        let v = p.coords;
+        Point3::new(
+            v.dot(&self.depth),
+            v.dot(&self.cross_a),
+            v.dot(&self.cross_b),
+        )
+    }
+
+    #[inline]
+    fn to_world_point(&self, p: Point3<f64>) -> Point3<f64> {
+        let v = self.depth * p.x + self.cross_a * p.y + self.cross_b * p.z;
+        Point3::new(v.x, v.y, v.z)
+    }
+
+    #[inline]
+    fn to_local_vector(&self, v: Vector3<f64>) -> Vector3<f64> {
+        Vector3::new(
+            v.dot(&self.depth),
+            v.dot(&self.cross_a),
+            v.dot(&self.cross_b),
+        )
+    }
+
+    #[inline]
+    fn to_world_vector(&self, v: Vector3<f64>) -> Vector3<f64> {
+        self.depth * v.x + self.cross_a * v.y + self.cross_b * v.z
+    }
+
+    fn is_axis_aligned(&self) -> bool {
+        is_axis_aligned_direction(&self.depth)
+            && is_axis_aligned_direction(&self.cross_a)
+            && is_axis_aligned_direction(&self.cross_b)
+    }
+}
+
+#[inline]
+fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
+    const AXIS_THRESHOLD: f64 = 0.95;
+    dir.x.abs().max(dir.y.abs()).max(dir.z.abs()) > AXIS_THRESHOLD
+}
+
+#[inline]
+fn mesh_point(mesh: &Mesh, index: u32) -> Option<Point3<f64>> {
+    let base = index as usize * 3;
+    Some(Point3::new(
+        *mesh.positions.get(base)? as f64,
+        *mesh.positions.get(base + 1)? as f64,
+        *mesh.positions.get(base + 2)? as f64,
+    ))
+}
+
+fn extent_along_axis(mesh: &Mesh, axis: &Vector3<f64>) -> Option<f64> {
+    let mut min = f64::INFINITY;
+    let mut max = f64::NEG_INFINITY;
+    for chunk in mesh.positions.chunks_exact(3) {
+        let p = Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+        let projection = p.dot(axis);
+        min = min.min(projection);
+        max = max.max(projection);
+    }
+    min.is_finite().then_some(max - min)
+}
+
+fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
+    let mut axes: Vec<(Vector3<f64>, f64)> = Vec::new();
+
+    for tri in mesh.indices.chunks_exact(3) {
+        let (Some(p0), Some(p1), Some(p2)) = (
+            mesh_point(mesh, tri[0]),
+            mesh_point(mesh, tri[1]),
+            mesh_point(mesh, tri[2]),
+        ) else {
+            continue;
+        };
+        let normal_raw = (p1 - p0).cross(&(p2 - p0));
+        let weight = normal_raw.norm();
+        let Some(mut normal) = normal_raw.try_normalize(NORMALIZE_EPSILON) else {
+            continue;
+        };
+
+        if let Some((axis, axis_weight)) = axes
+            .iter_mut()
+            .find(|(axis, _)| normal.dot(axis).abs() > 0.98)
+        {
+            if normal.dot(axis) < 0.0 {
+                normal = -normal;
+            }
+            if let Some(merged) =
+                (*axis * *axis_weight + normal * weight).try_normalize(NORMALIZE_EPSILON)
+            {
+                *axis = merged;
+                *axis_weight += weight;
+            }
+        } else {
+            axes.push((normal, weight));
+        }
+    }
+
+    if axes.len() < 3 {
+        return extrusion_dir.and_then(|dir| OpeningFrame::from_depth(*dir));
+    }
+
+    let depth_index =
+        if let Some(dir) = extrusion_dir.and_then(|d| d.try_normalize(NORMALIZE_EPSILON)) {
+            axes.iter()
+                .enumerate()
+                .max_by(|(_, (a, _)), (_, (b, _))| a.dot(&dir).abs().total_cmp(&b.dot(&dir).abs()))
+                .map(|(index, _)| index)?
+        } else {
+            axes.iter()
+                .enumerate()
+                .filter_map(|(index, (axis, _))| extent_along_axis(mesh, axis).map(|e| (index, e)))
+                .min_by(|(_, a), (_, b)| a.total_cmp(b))
+                .map(|(index, _)| index)?
+        };
+
+    let mut depth = axes[depth_index].0;
+    if let Some(dir) = extrusion_dir {
+        if depth.dot(dir) < 0.0 {
+            depth = -depth;
+        }
+    }
+
+    let mut cross_candidates: Vec<Vector3<f64>> = axes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (axis, _))| {
+            (index != depth_index && axis.dot(&depth).abs() < 0.25).then_some(*axis)
+        })
+        .collect();
+
+    if cross_candidates.len() < 2 {
+        return OpeningFrame::from_depth(depth);
+    }
+
+    let mut cross_a = cross_candidates.remove(0);
+    cross_a = (cross_a - depth * cross_a.dot(&depth)).try_normalize(NORMALIZE_EPSILON)?;
+    let mut cross_b = depth.cross(&cross_a).try_normalize(NORMALIZE_EPSILON)?;
+    if cross_b.dot(&cross_candidates[0]) < 0.0 {
+        cross_b = -cross_b;
+    }
+
+    Some(OpeningFrame {
+        depth,
+        cross_a,
+        cross_b,
+    })
 }
 
 /// Reusable buffers for triangle clipping operations
@@ -809,7 +985,7 @@ impl GeometryRouter {
         let mut csg_operation_count = 0;
         const MAX_CSG_OPERATIONS: usize = 10;
 
-        self.apply_diagonal_openings(&mut result, &ctx.openings, &wall_min, &wall_max);
+        self.apply_diagonal_openings(&mut result, &ctx.openings);
 
         let mut rect_boxes: Vec<(Point3<f64>, Point3<f64>)> = Vec::new();
         // Keep extrusion directions alongside boxes for reveal generation.
@@ -977,7 +1153,9 @@ impl GeometryRouter {
             let geometry_id = sub.geometry_id;
             let voided_mesh = self.apply_void_context(sub.mesh, &ctx);
             if !voided_mesh.is_empty() {
-                voided.sub_meshes.push(SubMesh::new(geometry_id, voided_mesh));
+                voided
+                    .sub_meshes
+                    .push(SubMesh::new(geometry_id, voided_mesh));
             }
         }
 
@@ -1018,41 +1196,39 @@ impl GeometryRouter {
                     if is_floor_opening && vertex_count > 0 {
                         openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
                     } else {
-                        let any_diagonal = item_bounds_with_dir.iter().any(|(_, _, dir)| {
-                            dir.map(|d| {
-                                const AXIS_THRESHOLD: f64 = 0.95;
-                                let abs_x = d.x.abs();
-                                let abs_y = d.y.abs();
-                                let abs_z = d.z.abs();
-                                !(abs_x > AXIS_THRESHOLD
-                                    || abs_y > AXIS_THRESHOLD
-                                    || abs_z > AXIS_THRESHOLD)
-                            })
-                            .unwrap_or(false)
-                        });
+                        let item_meshes = self
+                            .get_opening_item_meshes_world(&opening_entity, decoder)
+                            .unwrap_or_default();
 
-                        if any_diagonal {
-                            // Only use the diagonal path if we have an actual extrusion direction;
-                            // without one the rotation would be arbitrary and produce wrong cuts.
-                            if let Some(dir) = item_bounds_with_dir.iter().find_map(|(_, _, d)| *d)
+                        if item_meshes.len() == item_bounds_with_dir.len() {
+                            for ((min_pt, max_pt, extrusion_dir), item_mesh) in item_bounds_with_dir
+                                .into_iter()
+                                .zip(item_meshes.into_iter())
                             {
-                                let item_meshes = self
-                                    .get_opening_item_meshes_world(&opening_entity, decoder)
-                                    .unwrap_or_default();
-                                if item_meshes.is_empty() {
-                                    openings.push(OpeningType::DiagonalRectangular(
-                                        opening_mesh.clone(),
-                                        dir,
-                                    ));
-                                } else {
-                                    for item_mesh in item_meshes {
-                                        openings
-                                            .push(OpeningType::DiagonalRectangular(item_mesh, dir));
+                                let frame = infer_opening_frame(&item_mesh, extrusion_dir.as_ref());
+                                let direction_is_diagonal = extrusion_dir
+                                    .map(|d| !is_axis_aligned_direction(&d))
+                                    .unwrap_or(false);
+
+                                if let Some(frame) = frame {
+                                    if direction_is_diagonal || !frame.is_axis_aligned() {
+                                        openings.push(OpeningType::DiagonalRectangular(
+                                            item_mesh, frame,
+                                        ));
+                                    } else {
+                                        openings.push(OpeningType::Rectangular(
+                                            min_pt,
+                                            max_pt,
+                                            extrusion_dir,
+                                        ));
                                     }
+                                } else {
+                                    openings.push(OpeningType::Rectangular(
+                                        min_pt,
+                                        max_pt,
+                                        extrusion_dir,
+                                    ));
                                 }
-                            } else {
-                                // No direction available — fall back to CSG
-                                openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
                             }
                         } else {
                             for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
@@ -1162,19 +1338,11 @@ impl GeometryRouter {
         result
     }
 
-    fn apply_diagonal_openings(
-        &self,
-        result: &mut Mesh,
-        openings: &[OpeningType],
-        wall_min: &Point3<f64>,
-        wall_max: &Point3<f64>,
-    ) {
-        use nalgebra::Rotation3;
-
-        let diagonal_openings: Vec<(&Mesh, &Vector3<f64>)> = openings
+    fn apply_diagonal_openings(&self, result: &mut Mesh, openings: &[OpeningType]) {
+        let diagonal_openings: Vec<(&Mesh, &OpeningFrame)> = openings
             .iter()
             .filter_map(|o| match o {
-                OpeningType::DiagonalRectangular(mesh, dir) => Some((mesh, dir)),
+                OpeningType::DiagonalRectangular(mesh, frame) => Some((mesh, frame)),
                 _ => None,
             })
             .collect();
@@ -1183,112 +1351,94 @@ impl GeometryRouter {
             return;
         }
 
-        // Group openings by extrusion direction so each group gets its own
-        // rotate-clip-unrotate pass (directions considered equal within a
-        // small angular tolerance).
-        const DIR_DOT_THRESHOLD: f64 = 0.9998; // ~1° tolerance
-        let mut groups: Vec<(Vector3<f64>, Vec<&Mesh>)> = Vec::new();
-        for (mesh, dir) in &diagonal_openings {
-            let d = *dir;
-            if let Some(group) = groups
-                .iter_mut()
-                .find(|(g, _)| d.dot(g).abs() > DIR_DOT_THRESHOLD)
-            {
-                group.1.push(mesh);
-            } else {
-                groups.push((*d, vec![mesh]));
-            }
-        }
-
-        let wall_corners = [
-            Point3::new(wall_min.x, wall_min.y, wall_min.z),
-            Point3::new(wall_max.x, wall_min.y, wall_min.z),
-            Point3::new(wall_min.x, wall_max.y, wall_min.z),
-            Point3::new(wall_max.x, wall_max.y, wall_min.z),
-            Point3::new(wall_min.x, wall_min.y, wall_max.z),
-            Point3::new(wall_max.x, wall_min.y, wall_max.z),
-            Point3::new(wall_min.x, wall_max.y, wall_max.z),
-            Point3::new(wall_max.x, wall_max.y, wall_max.z),
-        ];
-
-        for (extrusion_dir, group_meshes) in &groups {
-            let target = Vector3::new(1.0, 0.0, 0.0);
-            let rotation = Rotation3::rotation_between(extrusion_dir, &target)
-                .unwrap_or(Rotation3::identity());
-            let inv_rotation = rotation.inverse();
-
-            // Rotate positions and normals into the aligned frame
+        for (opening_mesh, frame) in diagonal_openings {
+            // Transform into the opening's full local frame. For roof windows,
+            // the cross axes carry the roll needed for correctly oriented reveals.
             for chunk in result.positions.chunks_exact_mut(3) {
-                let p = rotation * Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let p = frame.to_local_point(Point3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 chunk[0] = p.x as f32;
                 chunk[1] = p.y as f32;
                 chunk[2] = p.z as f32;
             }
             for chunk in result.normals.chunks_exact_mut(3) {
-                let n = rotation * Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let n = frame.to_local_vector(Vector3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 chunk[0] = n.x as f32;
                 chunk[1] = n.y as f32;
                 chunk[2] = n.z as f32;
             }
 
-            // Compute full rotated wall AABB (needed for reveal depth clamping).
-            let mut rot_wall_min =
-                Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
-            let mut rot_wall_max =
-                Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-            for wc in &wall_corners {
-                let rwc = rotation * wc;
-                rot_wall_min.x = rot_wall_min.x.min(rwc.x);
-                rot_wall_min.y = rot_wall_min.y.min(rwc.y);
-                rot_wall_min.z = rot_wall_min.z.min(rwc.z);
-                rot_wall_max.x = rot_wall_max.x.max(rwc.x);
-                rot_wall_max.y = rot_wall_max.y.max(rwc.y);
-                rot_wall_max.z = rot_wall_max.z.max(rwc.z);
+            // Compute bounds from the actual rotated mesh, not from the original
+            // world AABB. Rotating an AABB for a diagonal wall creates a much
+            // larger empty hull, which makes reveal faces span far beyond the wall.
+            let (rot_wall_min_f32, rot_wall_max_f32) = result.bounds();
+            let rot_wall_min = Point3::new(
+                rot_wall_min_f32.x as f64,
+                rot_wall_min_f32.y as f64,
+                rot_wall_min_f32.z as f64,
+            );
+            let rot_wall_max = Point3::new(
+                rot_wall_max_f32.x as f64,
+                rot_wall_max_f32.y as f64,
+                rot_wall_max_f32.z as f64,
+            );
+
+            let mut rot_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+            let mut rot_max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+            for chunk in opening_mesh.positions.chunks_exact(3) {
+                let p = frame.to_local_point(Point3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
+                rot_min.x = rot_min.x.min(p.x);
+                rot_min.y = rot_min.y.min(p.y);
+                rot_min.z = rot_min.z.min(p.z);
+                rot_max.x = rot_max.x.max(p.x);
+                rot_max.y = rot_max.y.max(p.y);
+                rot_max.z = rot_max.z.max(p.z);
             }
+            rot_min.x = rot_min.x.min(rot_wall_min.x);
+            rot_max.x = rot_max.x.max(rot_wall_max.x);
 
-            for opening_mesh in group_meshes {
-                let mut rot_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
-                let mut rot_max =
-                    Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-                for chunk in opening_mesh.positions.chunks_exact(3) {
-                    let p =
-                        rotation * Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-                    rot_min.x = rot_min.x.min(p.x);
-                    rot_min.y = rot_min.y.min(p.y);
-                    rot_min.z = rot_min.z.min(p.z);
-                    rot_max.x = rot_max.x.max(p.x);
-                    rot_max.y = rot_max.y.max(p.y);
-                    rot_max.z = rot_max.z.max(p.z);
-                }
-                rot_min.x = rot_min.x.min(rot_wall_min.x);
-                rot_max.x = rot_max.x.max(rot_wall_max.x);
+            *result = self.cut_rectangular_opening_no_faces(result, rot_min, rot_max);
 
-                *result = self.cut_rectangular_opening_no_faces(result, rot_min, rot_max);
+            // Generate reveal faces in the opening-local frame. They rotate back
+            // to world space together with the rest of the mesh.
+            let x_dir = Vector3::new(1.0, 0.0, 0.0);
+            generate_reveal_quads(
+                result,
+                &rot_min,
+                &rot_max,
+                &rot_wall_min,
+                &rot_wall_max,
+                Some(&x_dir),
+            );
 
-                // Generate reveal faces in the rotated (X-aligned) frame.
-                // They rotate back to world space together with the rest of the mesh.
-                let x_dir = Vector3::new(1.0, 0.0, 0.0);
-                generate_reveal_quads(
-                    result,
-                    &rot_min,
-                    &rot_max,
-                    &rot_wall_min,
-                    &rot_wall_max,
-                    Some(&x_dir),
-                );
-            }
-
-            // Rotate positions and normals back to world frame
+            // Transform positions and normals back to world frame.
             for chunk in result.positions.chunks_exact_mut(3) {
-                let p =
-                    inv_rotation * Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let p = frame.to_world_point(Point3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 chunk[0] = p.x as f32;
                 chunk[1] = p.y as f32;
                 chunk[2] = p.z as f32;
             }
             for chunk in result.normals.chunks_exact_mut(3) {
-                let n =
-                    inv_rotation * Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let n = frame.to_world_vector(Vector3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 chunk[0] = n.x as f32;
                 chunk[1] = n.y as f32;
                 chunk[2] = n.z as f32;
@@ -1919,10 +2069,7 @@ mod reveal_tests {
 
     /// Build a simple box mesh (12 triangles) for testing.
     #[allow(dead_code)]
-    fn make_box_mesh(
-        min: Point3<f64>,
-        max: Point3<f64>,
-    ) -> Mesh {
+    fn make_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
         let mut m = Mesh::with_capacity(24, 36);
 
         let corners = [
@@ -1938,12 +2085,12 @@ mod reveal_tests {
 
         // 6 faces × 4 vertices each with face normals
         let faces: [(Vector3<f64>, [usize; 4]); 6] = [
-            (Vector3::new(0.0, 0.0, -1.0), [0, 2, 1, 3]),  // -Z
-            (Vector3::new(0.0, 0.0, 1.0), [4, 5, 6, 7]),   // +Z
-            (Vector3::new(0.0, -1.0, 0.0), [0, 1, 5, 4]),   // -Y
-            (Vector3::new(0.0, 1.0, 0.0), [2, 3, 7, 6]),    // +Y
-            (Vector3::new(-1.0, 0.0, 0.0), [0, 4, 7, 3]),   // -X
-            (Vector3::new(1.0, 0.0, 0.0), [1, 2, 6, 5]),    // +X
+            (Vector3::new(0.0, 0.0, -1.0), [0, 2, 1, 3]), // -Z
+            (Vector3::new(0.0, 0.0, 1.0), [4, 5, 6, 7]),  // +Z
+            (Vector3::new(0.0, -1.0, 0.0), [0, 1, 5, 4]), // -Y
+            (Vector3::new(0.0, 1.0, 0.0), [2, 3, 7, 6]),  // +Y
+            (Vector3::new(-1.0, 0.0, 0.0), [0, 4, 7, 3]), // -X
+            (Vector3::new(1.0, 0.0, 0.0), [1, 2, 6, 5]),  // +X
         ];
         for (n, idx) in &faces {
             let b = m.vertex_count() as u32;
@@ -1954,6 +2101,111 @@ mod reveal_tests {
             m.add_triangle(b, b + 1, b + 2);
             m.add_triangle(b, b + 2, b + 3);
         }
+        m
+    }
+
+    /// Build an oriented wall/opening box from local length/thickness/Z extents.
+    fn make_oriented_box_mesh(
+        origin: Point3<f64>,
+        length_axis: Vector3<f64>,
+        thickness_axis: Vector3<f64>,
+        length: (f64, f64),
+        thickness: (f64, f64),
+        height: (f64, f64),
+    ) -> Mesh {
+        let z_axis = Vector3::new(0.0, 0.0, 1.0);
+        let point =
+            |l: f64, t: f64, z: f64| origin + length_axis * l + thickness_axis * t + z_axis * z;
+
+        let corners = [
+            point(length.0, thickness.0, height.0),
+            point(length.1, thickness.0, height.0),
+            point(length.1, thickness.1, height.0),
+            point(length.0, thickness.1, height.0),
+            point(length.0, thickness.0, height.1),
+            point(length.1, thickness.0, height.1),
+            point(length.1, thickness.1, height.1),
+            point(length.0, thickness.1, height.1),
+        ];
+
+        let mut m = Mesh::with_capacity(24, 36);
+        let faces: [[usize; 4]; 6] = [
+            [0, 2, 1, 3],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [2, 3, 7, 6],
+            [0, 4, 7, 3],
+            [1, 2, 6, 5],
+        ];
+
+        for idx in &faces {
+            let edge1 = corners[idx[1]] - corners[idx[0]];
+            let edge2 = corners[idx[2]] - corners[idx[0]];
+            let normal = edge1
+                .cross(&edge2)
+                .try_normalize(1e-10)
+                .unwrap_or(Vector3::new(0.0, 0.0, 1.0));
+            let b = m.vertex_count() as u32;
+            m.add_vertex(corners[idx[0]], normal);
+            m.add_vertex(corners[idx[1]], normal);
+            m.add_vertex(corners[idx[2]], normal);
+            m.add_vertex(corners[idx[3]], normal);
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+
+        m
+    }
+
+    fn make_framed_box_mesh(
+        origin: Point3<f64>,
+        depth_axis: Vector3<f64>,
+        cross_a: Vector3<f64>,
+        cross_b: Vector3<f64>,
+        depth: (f64, f64),
+        a: (f64, f64),
+        b: (f64, f64),
+    ) -> Mesh {
+        let point =
+            |d: f64, av: f64, bv: f64| origin + depth_axis * d + cross_a * av + cross_b * bv;
+
+        let corners = [
+            point(depth.0, a.0, b.0),
+            point(depth.1, a.0, b.0),
+            point(depth.1, a.1, b.0),
+            point(depth.0, a.1, b.0),
+            point(depth.0, a.0, b.1),
+            point(depth.1, a.0, b.1),
+            point(depth.1, a.1, b.1),
+            point(depth.0, a.1, b.1),
+        ];
+
+        let mut m = Mesh::with_capacity(24, 36);
+        let faces: [[usize; 4]; 6] = [
+            [0, 2, 1, 3],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [2, 3, 7, 6],
+            [0, 4, 7, 3],
+            [1, 2, 6, 5],
+        ];
+
+        for idx in &faces {
+            let edge1 = corners[idx[1]] - corners[idx[0]];
+            let edge2 = corners[idx[2]] - corners[idx[0]];
+            let normal = edge1
+                .cross(&edge2)
+                .try_normalize(1e-10)
+                .unwrap_or(Vector3::new(0.0, 0.0, 1.0));
+            let b = m.vertex_count() as u32;
+            m.add_vertex(corners[idx[0]], normal);
+            m.add_vertex(corners[idx[1]], normal);
+            m.add_vertex(corners[idx[2]], normal);
+            m.add_vertex(corners[idx[3]], normal);
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+
         m
     }
 
@@ -1995,7 +2247,11 @@ mod reveal_tests {
         );
 
         // Should have 4 reveal quads = 8 triangles = 16 vertices
-        assert_eq!(mesh.triangle_count(), 8, "Expected 4 reveal quads (8 triangles)");
+        assert_eq!(
+            mesh.triangle_count(),
+            8,
+            "Expected 4 reveal quads (8 triangles)"
+        );
         assert_eq!(mesh.vertex_count(), 16, "Expected 16 vertices (4 per quad)");
     }
 
@@ -2008,7 +2264,14 @@ mod reveal_tests {
 
         let mut mesh = Mesh::new();
         let dir = Vector3::new(0.0, 1.0, 0.0);
-        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
 
         let normals = reveal_normals(&mesh, 0);
 
@@ -2039,12 +2302,23 @@ mod reveal_tests {
 
         let mut mesh = Mesh::new();
         let dir = Vector3::new(0.0, 1.0, 0.0);
-        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
 
         // X edges at wall boundary → no left/right reveals
         // Z bottom at wall boundary → no bottom reveal
         // Only top reveal at Z=2.1 should exist
-        assert_eq!(mesh.triangle_count(), 2, "Only top reveal expected (1 quad = 2 tris)");
+        assert_eq!(
+            mesh.triangle_count(),
+            2,
+            "Only top reveal expected (1 quad = 2 tris)"
+        );
     }
 
     #[test]
@@ -2057,7 +2331,14 @@ mod reveal_tests {
 
         let mut mesh = Mesh::new();
         let dir = Vector3::new(1.0, 0.0, 0.0);
-        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
 
         assert_eq!(mesh.triangle_count(), 8, "4 reveal quads for X-extrusion");
     }
@@ -2072,7 +2353,14 @@ mod reveal_tests {
 
         let mut mesh = Mesh::new();
         let dir = Vector3::new(0.0, 0.0, 1.0);
-        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
 
         assert_eq!(mesh.triangle_count(), 8, "4 reveal quads for Z-extrusion");
     }
@@ -2088,7 +2376,14 @@ mod reveal_tests {
 
         let mut mesh = Mesh::new();
         let dir = Vector3::new(0.0, 1.0, 0.0);
-        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
 
         // Reveal depth should be clamped to wall: Y=0.0..0.3 (not -1.0..1.3)
         for chunk in mesh.positions.chunks_exact(3) {
@@ -2110,9 +2405,20 @@ mod reveal_tests {
 
         let mut mesh = Mesh::new();
         let dir = Vector3::new(0.0, 1.0, 0.0);
-        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
 
-        assert_eq!(mesh.triangle_count(), 0, "No reveals for zero-thickness wall");
+        assert_eq!(
+            mesh.triangle_count(),
+            0,
+            "No reveals for zero-thickness wall"
+        );
     }
 
     #[test]
@@ -2127,12 +2433,96 @@ mod reveal_tests {
 
         let mut mesh = Mesh::new();
         let dir = Vector3::new(0.0, 1.0, 0.0);
-        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
 
         assert_eq!(
             mesh.triangle_count(),
             0,
             "No reveals when opening lies outside sub-mesh on a cross-axis"
+        );
+    }
+
+    #[test]
+    fn test_diagonal_reveals_do_not_expand_mesh_bounds() {
+        // Repro shape for oblique multilayer wall parts: the opening is cut in
+        // a frame aligned to its extrusion direction. Reveal bounds must come
+        // from the actual rotated mesh, not from the rotated world AABB hull.
+        let origin = Point3::new(211.0, 124.0, 8.6);
+        let length_axis = Vector3::new(0.930469718224507, 0.36636880798889876, 0.0);
+        let thickness_axis = Vector3::new(0.36636880798889876, -0.930469718224507, 0.0);
+
+        let wall = make_oriented_box_mesh(
+            origin,
+            length_axis,
+            thickness_axis,
+            (0.0, 14.0),
+            (-0.15, 0.15),
+            (0.0, 2.88),
+        );
+        let opening = make_oriented_box_mesh(
+            origin,
+            length_axis,
+            thickness_axis,
+            (4.0, 6.0),
+            (-0.4, 0.4),
+            (0.9, 2.7),
+        );
+
+        let (before_min, before_max) = wall.bounds();
+        let mut result = wall;
+        let frame = infer_opening_frame(&opening, Some(&thickness_axis)).unwrap();
+        GeometryRouter::new().apply_diagonal_openings(
+            &mut result,
+            &[OpeningType::DiagonalRectangular(opening, frame)],
+        );
+        let (after_min, after_max) = result.bounds();
+
+        assert!(after_min.x >= before_min.x - 1e-3);
+        assert!(after_min.y >= before_min.y - 1e-3);
+        assert!(after_min.z >= before_min.z - 1e-3);
+        assert!(after_max.x <= before_max.x + 1e-3);
+        assert!(after_max.y <= before_max.y + 1e-3);
+        assert!(after_max.z <= before_max.z + 1e-3);
+    }
+
+    #[test]
+    fn test_infers_sloped_brep_opening_frame() {
+        // Roof openings exported as BReps do not expose an extrusion direction.
+        // The frame must be inferred from the box faces so reveal generation
+        // preserves the roof pitch/roll instead of falling back to world axes.
+        let depth_axis = Vector3::new(0.0, -0.5, 0.8660254037844386);
+        let cross_a = Vector3::new(1.0, 0.0, 0.0);
+        let cross_b = depth_axis.cross(&cross_a).normalize();
+        let opening = make_framed_box_mesh(
+            Point3::new(10.0, 20.0, 5.0),
+            depth_axis,
+            cross_a,
+            cross_b,
+            (-0.2, 0.2),
+            (-0.8, 0.8),
+            (-0.4, 0.4),
+        );
+
+        let frame = infer_opening_frame(&opening, None).unwrap();
+
+        assert!(
+            frame.depth.dot(&depth_axis).abs() > 0.99,
+            "shortest inferred axis should be the sloped roof-window depth"
+        );
+        assert!(
+            frame.cross_a.dot(&cross_a).abs() > 0.99 || frame.cross_b.dot(&cross_a).abs() > 0.99,
+            "inferred frame should preserve the opening roll axis"
+        );
+        assert!(
+            !frame.is_axis_aligned(),
+            "sloped BRep opening should use the diagonal frame path"
         );
     }
 
@@ -2148,7 +2538,14 @@ mod reveal_tests {
 
         let mut mesh = Mesh::new();
         let dir = Vector3::new(0.0, 1.0, 0.0);
-        generate_reveal_quads(&mut mesh, &open_min, &open_max, &wall_min, &wall_max, Some(&dir));
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
 
         for chunk in mesh.positions.chunks_exact(3) {
             let z = chunk[2] as f64;
@@ -2182,9 +2579,6 @@ mod reveal_tests {
             0 // X and Y tied, X wins via >=
         );
         // No direction → thinnest wall dim (Y=0.3)
-        assert_eq!(
-            determine_extrusion_axis(None, &wmin, &wmax),
-            1
-        );
+        assert_eq!(determine_extrusion_axis(None, &wmin, &wmax), 1);
     }
 }

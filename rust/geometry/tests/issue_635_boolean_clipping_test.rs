@@ -208,31 +208,67 @@ fn count_hits_through_opening_centre(
     count_ray_hits(wall_mesh, origin, dir)
 }
 
-/// Project all wall vertices that fall inside the opening's AABB-extruded
-/// column into the wall plane, then trace the boundary loop of those
-/// vertices. Returns `(boundary_vertex_count, bbox_aspect_ratio)`.
+/// Identify the rim of the round-window hole on the outer wall faces.
 ///
-/// `bbox_aspect_ratio` is `max(width, height) / min(width, height)` of the
-/// in-plane bounding box of the boundary polygon — close to `1.0` for a
-/// circular hole and >> 1.0 for a degenerate cut.
+/// Approach (centroid-based, robust to clean CSG output):
+///   1. Keep only "wall-face" triangles — those whose normal is roughly
+///      parallel to the wall's thickness axis. This excludes the
+///      cylindrical sub-mesh of the recessed window (its normals are
+///      perpendicular to the thickness axis) and any small triangles
+///      on the wall's top/bottom/sides that lean differently.
+///   2. Of those, classify by centroid position along the thickness
+///      axis: a triangle belongs to whichever of the two outer wall
+///      faces (Y=min or Y=max in opening footprint coords; really
+///      `thickness_axis`-min vs `thickness_axis`-max) its centroid is
+///      closer to.
+///   3. For each outer face independently, build an edge dictionary of
+///      its triangles and mark edges that:
+///        * appear in exactly one triangle of that face (free-edge,
+///          i.e. a topological boundary on that face), AND
+///        * whose midpoint lies inside the opening's in-plane AABB.
+///      Those are rim edges of the hole on that face. The wall's outer
+///      perimeter edges are excluded because their midpoints sit far
+///      outside the opening footprint.
+///
+/// This works whether the CSG output is densely tessellated (many
+/// small triangles around the rim) or minimally tessellated (the rim
+/// is a polygon edge of a large face triangle).
+///
+/// Returns `(boundary_vertex_count, bbox_aspect_ratio)`. The aspect
+/// ratio is `max(width, height) / min(width, height)` of the in-plane
+/// bounding box of the rim — close to `1.0` for a circular hole and
+/// >> 1.0 for a degenerate cut.
 fn opening_boundary_metrics(
     wall_mesh: &Mesh,
     opening_min: [f32; 3],
     opening_max: [f32; 3],
 ) -> (usize, f32) {
-    let (_, grid_axes) = wall_axes(wall_mesh);
+    let (thickness_axis, grid_axes) = wall_axes(wall_mesh);
     let a = grid_axes[0];
     let b = grid_axes[1];
+    let (wall_min, wall_max) = wall_mesh.bounds();
+    let wall_t_min = match thickness_axis {
+        0 => wall_min.x,
+        1 => wall_min.y,
+        _ => wall_min.z,
+    };
+    let wall_t_max = match thickness_axis {
+        0 => wall_max.x,
+        1 => wall_max.y,
+        _ => wall_max.z,
+    };
+    let wall_t_mid = 0.5 * (wall_t_min + wall_t_max);
 
-    // Edge dictionary: count boundary occurrences of each in-plane edge
-    // formed by triangles whose three vertices all sit inside the opening
-    // column. A boundary edge appears in exactly one such triangle (the
-    // others are interior to the hole rim).
-    let mut edge_count: rustc_hash::FxHashMap<((i64, i64), (i64, i64)), usize> =
-        rustc_hash::FxHashMap::default();
     let scale = 1e4_f32;
     let quantize =
         |x: f32, y: f32| -> (i64, i64) { ((x * scale).round() as i64, (y * scale).round() as i64) };
+
+    // Two edge dictionaries — one per outer wall face. Each maps an
+    // (in-plane) edge to its occurrence count on that face.
+    let mut edge_count_low: rustc_hash::FxHashMap<((i64, i64), (i64, i64)), usize> =
+        rustc_hash::FxHashMap::default();
+    let mut edge_count_high: rustc_hash::FxHashMap<((i64, i64), (i64, i64)), usize> =
+        rustc_hash::FxHashMap::default();
 
     for tri in wall_mesh.indices.chunks_exact(3) {
         let i0 = tri[0] as usize * 3;
@@ -261,35 +297,75 @@ fn opening_boundary_metrics(
                 wall_mesh.positions[i2 + 2],
             ],
         ];
-        // Only consider triangles ENTIRELY inside the opening column —
-        // these are the rim triangles of the carved hole.
-        let inside = |v: &[f32; 3]| -> bool {
-            v[a] >= opening_min[a]
-                && v[a] <= opening_max[a]
-                && v[b] >= opening_min[b]
-                && v[b] <= opening_max[b]
-        };
-        if !(inside(&p[0]) && inside(&p[1]) && inside(&p[2])) {
+
+        // Wall-face filter: normal must be roughly parallel to the
+        // wall's thickness axis (cos > 0.7 ≈ within 45°).
+        let e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+        let e2 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
+        let n = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+        let n_len2 = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+        if n_len2 < 1e-20 {
             continue;
         }
+        let n_len = n_len2.sqrt();
+        if n[thickness_axis].abs() / n_len < 0.7 {
+            continue;
+        }
+
+        // Pick which outer face this triangle belongs to by centroid
+        // position along the thickness axis. Triangles on the recess
+        // shoulder (interior X) bin to whichever face their centroid
+        // is closer to — that's fine, they don't form free edges that
+        // sit inside the opening AABB midpoint anyway.
+        let ct = (p[0][thickness_axis] + p[1][thickness_axis] + p[2][thickness_axis]) / 3.0;
+        let target = if ct <= wall_t_mid {
+            &mut edge_count_low
+        } else {
+            &mut edge_count_high
+        };
+
         for (s, e) in [(0usize, 1usize), (1, 2), (2, 0)] {
             let qa = quantize(p[s][a], p[s][b]);
             let qb = quantize(p[e][a], p[e][b]);
+            if qa == qb {
+                continue; // skip degenerate in-plane edge
+            }
             let key = if qa < qb { (qa, qb) } else { (qb, qa) };
-            *edge_count.entry(key).or_insert(0) += 1;
+            *target.entry(key).or_insert(0) += 1;
         }
     }
 
-    // Boundary edges = edges with count == 1.
+    // Rim edges per face = free edges (count == 1) whose midpoint sits
+    // inside the opening's in-plane AABB. Free edges on the wall's
+    // outer perimeter are excluded by the midpoint filter.
     let mut boundary_pts: Vec<(f32, f32)> = Vec::new();
-    for ((qa, qb), count) in &edge_count {
-        if *count == 1 {
-            boundary_pts.push((qa.0 as f32 / scale, qa.1 as f32 / scale));
-            boundary_pts.push((qb.0 as f32 / scale, qb.1 as f32 / scale));
+    let mut collect = |edges: &rustc_hash::FxHashMap<((i64, i64), (i64, i64)), usize>| {
+        for ((qa, qb), count) in edges {
+            if *count != 1 {
+                continue;
+            }
+            let pa = (qa.0 as f32 / scale, qa.1 as f32 / scale);
+            let pb = (qb.0 as f32 / scale, qb.1 as f32 / scale);
+            let mid_a = 0.5 * (pa.0 + pb.0);
+            let mid_b = 0.5 * (pa.1 + pb.1);
+            if mid_a >= opening_min[a]
+                && mid_a <= opening_max[a]
+                && mid_b >= opening_min[b]
+                && mid_b <= opening_max[b]
+            {
+                boundary_pts.push(pa);
+                boundary_pts.push(pb);
+            }
         }
-    }
+    };
+    collect(&edge_count_low);
+    collect(&edge_count_high);
 
-    // Dedupe boundary points (each appears in 2 edges).
+    // Dedupe boundary points (each appears in ≥ 2 rim edges).
     boundary_pts.sort_by(|p, q| {
         p.0.partial_cmp(&q.0)
             .unwrap()
@@ -523,27 +599,24 @@ fn issue_635_gable_wall_60012_has_round_window_hole() {
         hits, op_min, op_max, wall_mesh.triangle_count()
     );
 
-    // Hole shape: a polygon-circle CSG cut is the ideal (~16 verts);
-    // the AABB rectangular fallback yields a 4-edge square hole. Per
-    // maintainer guidance the square fallback is an acceptable closure
-    // for issue #635 — what matters is that the void was cut at all
-    // (already verified above by `hits <= 4`).
-    //
-    // The boundary metric only finds rim triangles whose vertices ALL
-    // sit inside the opening's AABB. Cross-platform CSG kernels with
-    // minimal-vertex output (Linux Manifold) leave the hole as a clean
-    // edge of a large face — no interior rim triangles exist, so this
-    // metric returns 0 and the shape can't be measured. That's not a
-    // regression; the centre-ray check above proves the cut succeeded.
-    // Only enforce shape when boundary triangles were actually found.
+    // Hole shape: the round-window CSG cut should produce a circular
+    // rim on each outer wall face. The boundary metric finds rim free-
+    // edges of wall-face triangles whose midpoint sits inside the
+    // opening's AABB; that rim has ≥ 8 distinct vertices even for a
+    // coarse polygon-circle (the AC20 round window is a 16-gon, but
+    // CSG kernels can collapse co-linear segments down to ~8).
     let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
-    if boundary_verts > 0 {
-        assert!(
-            aspect < 1.5,
-            "round window #60579 boundary aspect ratio {:.3} (expected < 1.5)",
-            aspect
-        );
-    }
+    assert!(
+        boundary_verts >= 8,
+        "round window #60579 hole boundary has only {} vertices — \
+         CSG cut produced no detectable rim on the wall faces",
+        boundary_verts
+    );
+    assert!(
+        aspect < 1.5,
+        "round window #60579 boundary aspect ratio {:.3} (expected < 1.5)",
+        aspect
+    );
 }
 
 #[test]
@@ -574,18 +647,19 @@ fn issue_635_gable_wall_67828_has_round_window_hole() {
         hits, op_min, op_max, wall_mesh.triangle_count()
     );
 
-    // See note in `..._60012_has_round_window_hole`: cut existence is
-    // already verified by `hits <= 4`. The boundary metric is best-
-    // effort shape verification — clean CSG output may leave 0 interior
-    // rim triangles. Only enforce circularity if rim vertices exist.
+    // See note on #60012 — strict shape assertion using the rim metric.
     let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
-    if boundary_verts > 0 {
-        assert!(
-            aspect < 1.5,
-            "round window #68400 boundary aspect ratio {:.3} (expected < 1.5)",
-            aspect
-        );
-    }
+    assert!(
+        boundary_verts >= 8,
+        "round window #68400 hole boundary has only {} vertices — \
+         CSG cut produced no detectable rim on the wall faces",
+        boundary_verts
+    );
+    assert!(
+        aspect < 1.5,
+        "round window #68400 boundary aspect ratio {:.3} (expected < 1.5)",
+        aspect
+    );
 }
 
 /// Width of a horizontal slab of `mesh` between `z_lo` and `z_hi`,
@@ -738,21 +812,22 @@ fn issue_635_round_window_is_circular() {
             opening_id, hits
         );
 
+        // Boundary metric: walks wall-face triangles and finds rim
+        // free-edges whose midpoint sits inside the opening's AABB.
+        // Robust to both densely tessellated and minimally tessellated
+        // CSG output (Linux Manifold leaves the hole as a polygon edge
+        // of a large face triangle — still detected here).
         let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
-        // Boundary metric only finds rim triangles whose vertices ALL
-        // sit inside the opening AABB. Cross-platform CSG kernels that
-        // emit minimal-vertex output (Linux Manifold) leave the hole
-        // as a clean edge of a large face, so this metric returns 0
-        // and shape can't be measured directly. The centre-ray check
-        // above already proved the cut succeeded. Only enforce shape
-        // when rim vertices exist.
-        if boundary_verts > 0 {
-            assert!(
-                aspect < 1.5,
-                "round window #{} hole bbox aspect {:.3} >= 1.5 — non-circular cut",
-                opening_id, aspect
-            );
-        }
+        assert!(
+            boundary_verts >= 8,
+            "round window #{} hole boundary has only {} edges — non-polygonal cut",
+            opening_id, boundary_verts
+        );
+        assert!(
+            aspect < 1.5,
+            "round window #{} hole bbox aspect {:.3} >= 1.5 — non-circular cut",
+            opening_id, aspect
+        );
     }
 }
 

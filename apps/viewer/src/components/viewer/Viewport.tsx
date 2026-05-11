@@ -32,6 +32,7 @@ import {
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
+import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
@@ -717,6 +718,10 @@ export function Viewport({
   // The animation loop reads this to skip post-processing during rapid camera movement.
   const isInteractingRef = useRef(false);
 
+  // Rectangle-select drag state — populated by useMouseControls during
+  // a Ctrl/⌘ + LMB drag, consumed by RectSelectionOverlay below.
+  const [rectSelection, setRectSelection] = useState<RectSelectionRect | null>(null);
+
   // ===== Extracted hooks =====
   useMouseControls({
     canvasRef,
@@ -751,6 +756,7 @@ export function Viewport({
     handlePickForSelection: (pickResult) => handlePickForSelectionRef.current(pickResult),
     setHoverState,
     clearHover,
+    setRectSelection,
     openContextMenu,
     startMeasurement,
     updateMeasurement,
@@ -918,13 +924,18 @@ export function Viewport({
       : undefined;
 
   return (
-    <canvas
-      ref={canvasRef}
-      data-viewport="main"
-      tabIndex={-1}
-      className={`w-full h-full block ${cesiumActive ? 'relative z-[1]' : ''}`}
-      style={canvasStyle}
-      onPointerDown={focusViewportForKeyboardShortcuts}
-    />
+    <div className="relative w-full h-full">
+      <canvas
+        ref={canvasRef}
+        data-viewport="main"
+        tabIndex={-1}
+        className={`w-full h-full block ${cesiumActive ? 'relative z-[1]' : ''}`}
+        style={canvasStyle}
+        onPointerDown={focusViewportForKeyboardShortcuts}
+      />
+      {/* Rectangle-select drag visual. Pointer-events:none so the
+          canvas keeps receiving pointer events during the drag. */}
+      <RectSelectionOverlay rect={rectSelection} />
+    </div>
   );
 }

@@ -33,8 +33,15 @@ export const pointShaderSource = `
       sizing: vec4<f32>,
       sectionPlane: vec4<f32>,
       // x = assetExpressId (federation-aware globalId), y = sectionEnabled,
-      // z = roundShape, w = unused
+      // z = roundShape, w = ASPRS class-visibility bitmask (bit i → class i)
       flags: vec4<u32>,
+      // x = previewStride (1 = render every point, N = render every
+      // Nth instance — used by the section-plane drag preview path).
+      // yzw reserved for future per-frame state.
+      extras: vec4<u32>,
+      // x = deviation centerOffset (m), y = deviation halfRange (m).
+      // Used by colorMode 5 (BIM↔scan deviation heatmap).
+      deviationRange: vec4<f32>,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
 
@@ -43,6 +50,11 @@ export const pointShaderSource = `
       @location(1) rgbAndClass: vec4<f32>,   // unorm8x4 → 0..1 each
       @location(2) intensityPacked: u32,     // low 16 bits = intensity
       @location(3) entityId: u32,
+      // BIM↔scan signed distance, populated by the deviation compute
+      // pass. Zero when the user hasn't computed yet (or when no
+      // mesh is loaded). Bound from a separate vertex buffer so the
+      // existing 24-byte-per-point layout stays unchanged.
+      @location(4) deviation: f32,
     }
 
     struct VertexOutput {
@@ -76,6 +88,23 @@ export const pointShaderSource = `
       }
     }
 
+    // Diverging blue → white → red ramp for the BIM↔scan deviation
+    // heatmap. t is in [-1, 1] where −1 = scan-far on the negative
+    // side of the surface, 0 = exactly on surface, +1 = scan-far on
+    // the positive (outward-normal) side. Negative side (typically
+    // "inside" / "before" the wall) is blue; positive ("outside" /
+    // "past" the wall) is red.
+    fn deviation_ramp(t: f32) -> vec3<f32> {
+      let s = clamp(t, -1.0, 1.0);
+      if (s < 0.0) {
+        // Cool side: deep blue → white as |t| → 0.
+        let k = s + 1.0;       // [-1..0] → [0..1]
+        return mix(vec3<f32>(0.10, 0.30, 0.85), vec3<f32>(0.95, 0.95, 0.95), k);
+      }
+      // Warm side: white → red as t → 1.
+      return mix(vec3<f32>(0.95, 0.95, 0.95), vec3<f32>(0.85, 0.20, 0.10), s);
+    }
+
     fn height_ramp(t: f32) -> vec3<f32> {
       let s = clamp(t, 0.0, 1.0);
       if (s < 0.25) {
@@ -94,7 +123,27 @@ export const pointShaderSource = `
     }
 
     @vertex
-    fn vs_main(input: VertexInput, @builtin(vertex_index) vId: u32) -> VertexOutput {
+    fn vs_main(
+      input: VertexInput,
+      @builtin(vertex_index) vId: u32,
+      @builtin(instance_index) iId: u32,
+    ) -> VertexOutput {
+      // Preview-density stride cull. UI sets extras.x to e.g. 4
+      // while the user drags a section-plane slider so we render
+      // every 4th point and the drag stays responsive on huge scans.
+      // stride <= 1 is the no-op default.
+      let stride = max(1u, uniforms.extras.x);
+      if (stride > 1u && (iId % stride) != 0u) {
+        var skipped: VertexOutput;
+        // Push behind the near plane so the rasteriser drops it.
+        skipped.position = vec4<f32>(0.0, 0.0, -2.0, 1.0);
+        skipped.color = vec4<f32>(0.0);
+        skipped.worldPos = vec3<f32>(0.0);
+        skipped.entityId = 0u;
+        skipped.quadUv = vec2<f32>(0.0);
+        return skipped;
+      }
+
       // Quad corners (two triangles, CCW) in unit disc coords:
       //   tri 1: (-1,-1)(1,-1)(1,1)
       //   tri 2: (-1,-1)(1, 1)(-1,1)
@@ -148,6 +197,24 @@ export const pointShaderSource = `
       let mode = u32(uniforms.colorModeAndExtras.x);
       let intensity01 = f32(input.intensityPacked & 0xffffu) / 65535.0;
       let classId = u32(round(input.rgbAndClass.a * 255.0));
+
+      // Per-class visibility — flags.w is a 32-bit mask. Class ids
+      // outside 0..31 always show (the mask only covers ASPRS LAS 1.4
+      // standard classes). Hidden classes get pushed behind the near
+      // plane via a degenerate clipPos so they're culled before
+      // rasterisation; cheaper than fragment-stage discard.
+      if (classId < 32u) {
+        let bit = (uniforms.flags.w >> classId) & 1u;
+        if (bit == 0u) {
+          var output: VertexOutput;
+          output.position = vec4<f32>(0.0, 0.0, -2.0, 1.0);  // outside [0,1] reverse-Z → culled
+          output.color = vec4<f32>(0.0);
+          output.worldPos = vec3<f32>(0.0);
+          output.entityId = 0u;
+          output.quadUv = vec2<f32>(0.0);
+          return output;
+        }
+      }
       let heightT =
         (worldPos4.y - uniforms.colorModeAndExtras.z) /
         max(1e-6, uniforms.colorModeAndExtras.w - uniforms.colorModeAndExtras.z);
@@ -159,6 +226,15 @@ export const pointShaderSource = `
         case 2u: { rgb = vec3<f32>(intensity01, intensity01, intensity01); }
         case 3u: { rgb = height_ramp(heightT); }
         case 4u: { rgb = uniforms.colorOverride.rgb; }
+        case 5u: {
+          // Deviation: shift by centerOffset so a non-zero baseline
+          // can be re-zeroed (handy when a scan has a global offset
+          // from the model). halfRange = 0 falls through to white.
+          let center = uniforms.deviationRange.x;
+          let half = max(uniforms.deviationRange.y, 1e-6);
+          let dt = (input.deviation - center) / half;
+          rgb = deviation_ramp(dt);
+        }
         default: { rgb = input.rgbAndClass.rgb; }
       }
 

@@ -1569,7 +1569,7 @@ export function useIfcLoader() {
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
-      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
         const renderer = getGlobalRenderer();
         if (!renderer) {
           setError('Renderer not initialised — try again after the viewer mounts.');
@@ -1590,6 +1590,20 @@ export function useIfcLoader() {
           onProgress: setProgress,
           onAssetCountDelta: incCount,
         });
+        // Expose cancellation to the UI (StatusBar shows a Cancel
+        // button while this is non-null). Cleared via the
+        // `clearOwnedCanceller` helper below so a later load that
+        // installed its own canceller never gets clobbered by our
+        // cleanup paths — the helper only nulls the store when the
+        // stored function is still ours.
+        const { setActiveStreamCanceller } = useViewerStore.getState();
+        const cancelStream = () => ingest.streamHandle.cancel();
+        setActiveStreamCanceller(cancelStream);
+        const clearOwnedCanceller = () => {
+          if (useViewerStore.getState().activeStreamCanceller === cancelStream) {
+            setActiveStreamCanceller(null);
+          }
+        };
         // ingestPointCloud's onError callback already runs renderer cleanup
         // + incCount(-1); the outer catch must NOT repeat them or the
         // pointCloudAssetCount will go negative.
@@ -1601,15 +1615,38 @@ export function useIfcLoader() {
           // the spinner / model record now. Free the renderer handle
           // so we don't leak the half-streamed asset.
           if (loadSessionRef.current !== currentSession) {
+            console.warn(
+              `[useIfc] pointcloud ingest rejected on stale session (handle=${ingest.rendererHandle.id}):`,
+              err,
+            );
             renderer.removePointCloudAsset(ingest.rendererHandle);
+            clearOwnedCanceller();
             return;
           }
           const message = err instanceof Error ? err.message : String(err);
-          updateModel(primaryModelId, { loadState: 'error', loadError: message });
-          setError(`${format.toUpperCase()} parsing failed: ${message}`);
+          // Distinguish a user-initiated abort from a real failure so
+          // the status bar shows "Cancelled" instead of a scary error.
+          const isAbort = err instanceof DOMException && err.name === 'AbortError';
+          if (isAbort) {
+            console.log(
+              `[useIfc] pointcloud ingest cancelled (model=${primaryModelId}, handle=${ingest.rendererHandle.id})`,
+            );
+            updateModel(primaryModelId, { loadState: 'error', loadError: 'cancelled' });
+            setError(null);
+            setProgress({ phase: 'Cancelled', percent: 0 });
+          } else {
+            console.error(
+              `[useIfc] pointcloud ingest failed (format=${format}, model=${primaryModelId}):`,
+              err,
+            );
+            updateModel(primaryModelId, { loadState: 'error', loadError: message });
+            setError(`${format.toUpperCase()} parsing failed: ${message}`);
+          }
+          clearOwnedCanceller();
           setLoading(false);
           return;
         }
+        clearOwnedCanceller();
         if (loadSessionRef.current !== currentSession) {
           // A newer load already began. Drop our streamed asset and
           // skip every store/UI mutation so we don't overwrite the

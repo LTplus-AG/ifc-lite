@@ -144,13 +144,23 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 function computeBBox(positions: Float32Array): PointCloudBBox {
+  // Mirrors the e57.ts guards: empty / non-finite input must produce
+  // finite zero-bbox rather than ±Infinity, which would poison camera
+  // fit-to-view and section-plane math.
+  if (positions.length < 3) {
+    return { min: [0, 0, 0], max: [0, 0, 0] };
+  }
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (let i = 0; i < positions.length; i += 3) {
+  let any = false;
+  for (let i = 0; i + 2 < positions.length; i += 3) {
     const x = positions[i], y = positions[i + 1], z = positions[i + 2];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    any = true;
     if (x < minX) minX = x; if (x > maxX) maxX = x;
     if (y < minY) minY = y; if (y > maxY) maxY = y;
     if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
   }
+  if (!any) return { min: [0, 0, 0], max: [0, 0, 0] };
   return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
 }

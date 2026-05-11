@@ -2,23 +2,45 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/**
+ * PTS / XYZ streaming source — whole-file ASCII decode.
+ *
+ * ASCII formats don't support random-access seek by point index, so
+ * we read the whole blob, decode once, and serve as a single chunk.
+ * Memory is still bounded by the host's 25M-point cap via the
+ * `stride` downsample applied here.
+ *
+ * The whole-file approach is simpler and matches PLY's behaviour;
+ * for files past the cap we apply stride downsampling on the way
+ * out so the GPU upload stays bounded.
+ */
+
 import type { DecodedPointChunk } from '../types.js';
-import { decodeE57 } from '../formats/e57.js';
+import {
+  decodeAsciiPoints,
+  type AsciiPointsFormat,
+} from '../formats/ascii-points.js';
 import type {
   DownsampleHint,
   PointSourceInfo,
   StreamingPointSource,
 } from './types.js';
 
-export class E57StreamingSource implements StreamingPointSource {
+export class AsciiPointsStreamingSource implements StreamingPointSource {
   private blob: Blob;
+  private format: AsciiPointsFormat;
   private downsample: DownsampleHint;
   private label?: string;
   private chunk: DecodedPointChunk | null = null;
   private served = false;
 
-  constructor(blob: Blob, options: { label?: string; downsample?: DownsampleHint } = {}) {
+  constructor(
+    blob: Blob,
+    format: AsciiPointsFormat,
+    options: { label?: string; downsample?: DownsampleHint } = {},
+  ) {
     this.blob = blob;
+    this.format = format;
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
   }
@@ -27,16 +49,14 @@ export class E57StreamingSource implements StreamingPointSource {
     abortIfAborted(signal);
     const buf = await this.blob.arrayBuffer();
     abortIfAborted(signal);
-    const decoded = decodeE57(new Uint8Array(buf));
-    if (!decoded) {
-      throw new Error('E57: file contains no Data3D scans');
-    }
-    this.chunk = applyStride(decoded, this.downsample.stride);
+    const bytes = new Uint8Array(buf);
+    const fullChunk = decodeAsciiPoints(bytes, this.format);
+    this.chunk = applyStride(fullChunk, this.downsample.stride);
     return {
       totalPointCount: this.chunk.pointCount,
       bbox: this.chunk.bbox,
       hasColor: !!this.chunk.colors,
-      hasClassification: !!this.chunk.classifications,
+      hasClassification: false,
       hasIntensity: !!this.chunk.intensities,
       label: this.label,
     };
@@ -45,7 +65,7 @@ export class E57StreamingSource implements StreamingPointSource {
   async next(maxPoints: number, signal?: AbortSignal): Promise<DecodedPointChunk | null> {
     abortIfAborted(signal);
     if (!this.chunk || this.served) return null;
-    void maxPoints;
+    void maxPoints; // Whole-file decode: ignore chunk-size hint.
     this.served = true;
     return this.chunk;
   }
@@ -63,7 +83,6 @@ function applyStride(chunk: DecodedPointChunk, stride: number): DecodedPointChun
   const positions = new Float32Array(newCount * 3);
   const colors = chunk.colors ? new Float32Array(newCount * 3) : undefined;
   const intensities = chunk.intensities ? new Uint16Array(newCount) : undefined;
-  const classifications = chunk.classifications ? new Uint8Array(newCount) : undefined;
   let dst = 0;
   for (let i = 0; i < chunk.pointCount; i += s) {
     positions[dst * 3] = chunk.positions[i * 3];
@@ -77,16 +96,12 @@ function applyStride(chunk: DecodedPointChunk, stride: number): DecodedPointChun
     if (intensities && chunk.intensities) {
       intensities[dst] = chunk.intensities[i];
     }
-    if (classifications && chunk.classifications) {
-      classifications[dst] = chunk.classifications[i];
-    }
     dst++;
   }
   return {
     positions,
     colors,
     intensities,
-    classifications,
     pointCount: newCount,
     bbox: chunk.bbox,
   };

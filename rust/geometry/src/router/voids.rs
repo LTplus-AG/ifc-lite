@@ -1599,11 +1599,19 @@ impl GeometryRouter {
         // Add a tiny padding past the wall on both sides so the opening's near/far
         // faces never end up exactly coplanar with the wall's near/far faces.
         // Exact coplanarity leaves 0-thickness sliver artifacts in the rectangular
-        // clip path (the "completely inside" check fails by an EPSILON). Scaled to
-        // wall depth so it stays imperceptible across mm/m unit systems.
+        // clip path (the "completely inside" check in cut_rectangular_opening_no_faces
+        // uses a tolerance of 1e-6 on each axis). Scaled to wall depth so the pad
+        // stays imperceptible across mm/m unit systems.
+        //
+        // NOTE: the floor MUST be strictly greater than the clipper's EPSILON
+        // (1e-6, see `cut_rectangular_opening_no_faces`) — otherwise sub-cm walls
+        // can still land on the equality boundary and re-introduce slivers
+        // (per CodeRabbit review on PR #605). We pick 1e-5 (10x EPSILON) for a
+        // safe margin. For typical walls the *scaled* term dominates anyway
+        // (200 mm wall → 2 µm pad).
         // See issue #604.
         let wall_extent_along_dir = (wall_max_proj - wall_min_proj).abs();
-        let coplanarity_pad = (wall_extent_along_dir * 1e-5).max(1e-6);
+        let coplanarity_pad = (wall_extent_along_dir * 1e-5).max(1e-5);
         let extend_backward = extend_backward + coplanarity_pad;
         let extend_forward = extend_forward + coplanarity_pad;
 

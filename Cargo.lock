@@ -2377,7 +2377,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-core"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "fast-float",
  "futures-core",
@@ -2416,7 +2416,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-engine"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "ifc-lite-processing",
  "memmap2 0.9.10",
@@ -2425,7 +2425,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "approx",
  "earcutr",
@@ -2440,7 +2440,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -2453,7 +2453,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2487,7 +2487,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",

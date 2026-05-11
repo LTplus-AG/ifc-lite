@@ -571,9 +571,30 @@ fn read_axis2_placement_3d(
 
     // Orthogonalise: subtract the component along axis_z, then renormalise
     axis_x -= axis_z * axis_x.dot(&axis_z);
-    let axis_x = axis_x
-        .try_normalize(1e-12)
-        .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
+    let axis_x = axis_x.try_normalize(1e-12).unwrap_or_else(|| {
+        // Fallback that is guaranteed NOT parallel to axis_z: pick the world
+        // basis vector with the smallest |dot| with axis_z, then orthogonalise.
+        // Using a hard-coded (1,0,0) here can collapse the basis when axis_z
+        // itself is along X (CodeRabbit feedback on PR #605).
+        let candidates = [
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+        ];
+        let pick = candidates
+            .iter()
+            .min_by(|a, b| {
+                let da = axis_z.dot(a).abs();
+                let db = axis_z.dot(b).abs();
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .copied()
+            .unwrap_or(Vector3::new(1.0, 0.0, 0.0));
+        let ortho = pick - axis_z * pick.dot(&axis_z);
+        ortho
+            .try_normalize(1e-12)
+            .unwrap_or(Vector3::new(1.0, 0.0, 0.0))
+    });
 
     (location, axis_z, axis_x)
 }
@@ -1085,6 +1106,24 @@ fn sample_curve_polyline(
                     if knots.len() > degree {
                         let t0 = knots[degree];
                         pts[0] = evaluate_bspline_curve(t0, degree, &cps, &knots);
+                        // Also append the explicit terminal endpoint so
+                        // standalone polyline callers (e.g. SoR generator
+                        // profiles) don't lose the last segment. Edge-loop
+                        // callers tolerate the duplicate via dedup later.
+                        // Per CodeRabbit feedback on PR #605.
+                        let t_max_idx = knots.len().saturating_sub(degree + 1);
+                        if t_max_idx > degree {
+                            let t_max = knots[t_max_idx];
+                            let p_end = evaluate_bspline_curve(t_max, degree, &cps, &knots);
+                            // Avoid duplicating the last sampled point.
+                            let near_dup = pts
+                                .last()
+                                .map(|p| (p - p_end).norm_squared() < 1e-18)
+                                .unwrap_or(false);
+                            if !near_dup {
+                                pts.push(p_end);
+                            }
+                        }
                     }
                 }
             }
@@ -1180,10 +1219,23 @@ fn sample_curve_polyline(
 
         if basis_kind == "IFCCIRCLE" {
             if let (Some(p_start), Some(p_end)) = (p1, p2) {
-                return sample_circle_edge_curve(&basis, &p_start, &p_end, sense, decoder);
+                // Edge-loop callers consume `start..pre_end` and rely on the
+                // *next* edge to add the end vertex. When this helper is used
+                // standalone (e.g. as a surface-of-revolution generator
+                // profile) we have to append the terminal point ourselves so
+                // the polyline isn't truncated by one segment.
+                // Per CodeRabbit feedback on PR #605.
+                let mut pts = sample_circle_edge_curve(&basis, &p_start, &p_end, sense, decoder);
+                pts.push(p_end);
+                return pts;
             }
         }
         if basis_kind == "IFCBSPLINECURVEWITHKNOTS" {
+            if let (Some(p_start), Some(p_end)) = (p1, p2) {
+                let mut pts = sample_bspline_edge_curve(&basis, &p_start, sense, decoder);
+                pts.push(p_end);
+                return pts;
+            }
             if let Some(p_start) = p1 {
                 return sample_bspline_edge_curve(&basis, &p_start, sense, decoder);
             }

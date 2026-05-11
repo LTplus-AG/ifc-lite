@@ -499,6 +499,56 @@ async function processGeometryBatches(
 }
 ```
 
+## CSG Kernel
+
+Two boolean / CSG kernels coexist behind a Cargo feature flag.
+
+### Default (legacy BSP)
+
+`rust/geometry/src/bsp_csg.rs` — a Rust port of csg.js (Evan Wallace,
+MIT). Triangle-mesh BSP. Hard-caps at 24 polygons per operand
+(`csg.rs:117`). On cap exceeded or kernel error, falls back to the
+un-cut host mesh and emits a structured `BoolFailure` record (drainable
+via `GeometryRouter::take_csg_failures`). This is the default for the
+`wasm32-unknown-unknown` build target since the alternative (Manifold)
+has unresolved upstream toolchain dependencies on that target.
+
+### Optional (Manifold)
+
+Behind `--features manifold-csg`. Uses [Manifold](https://github.com/elalish/manifold)
+via the `manifold-csg` crate (Apache-2/MIT, native C++ kernel built
+through cmake). No operand cap, manifold-by-construction output, real
+solid-solid `IfcBooleanResult.{DIFFERENCE, UNION, INTERSECTION}`. A
+vertex-weld pre-pass in `rust/geometry/src/manifold_kernel.rs`
+collapses the polygon-soup mesh layout ifc-lite's extruded-solid
+builder produces (24 verts per cube → 8) so Manifold accepts the
+input.
+
+`BoolFailure` records and `GeometryRouter::take_csg_failures` work
+identically under both kernels. Sprint 2 acceptance gates assert
+`total_failures == 0` on `AC20-FZK-Haus.ifc` and
+`C20-Institute-Var-2.ifc` under `--features manifold-csg`; both pass.
+
+### WASM status
+
+`--features manifold-csg-wasm-uu` (which implies `manifold-csg` plus
+upstream's `unstable-wasm-uu`) is currently blocked on a libc++ /
+wasm-cxx-shim incompatibility in the `manifold-csg-sys` crate:
+
+- libc++-18: `_LIBCPP_AVAILABILITY_VERBOSE_ABORT` undefined when the
+  shim's `__assertion_handler` is loaded.
+- libc++-20: musl locale headers
+  (`__locale_dir/locale_base_api/musl.h`) are pulled in despite the
+  shim's `_LIBCPP_HAS_LOCALIZATION 0` define; `locale.h` then fails to
+  resolve in the `wasm32-unknown-unknown` no-libc environment.
+
+Both are upstream issues (`zmerlynn/manifold-csg-sys` and its bundled
+`zmerlynn/wasm-cxx-shim`); not patchable from this repo. Track
+upstream and re-attempt once the shim is updated for current libc++
+versions. Until then `manifold-csg` stays opt-in for native builds
+only and `wasm32-unknown-unknown` builds continue to use the legacy
+BSP path.
+
 ## Performance Metrics
 
 | Operation | Time (typical) | Notes |

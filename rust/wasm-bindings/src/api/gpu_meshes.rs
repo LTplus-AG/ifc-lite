@@ -423,6 +423,10 @@ impl IfcAPI {
             }
         }
 
+        // Drain & surface the opening / CSG diagnostics — see
+        // `super::drain_and_log_csg_diagnostics` for the full output format.
+        let _ = super::drain_and_log_csg_diagnostics(&router);
+
         mesh_collection
     }
 
@@ -1900,6 +1904,12 @@ impl IfcAPI {
                     }
                 }
 
+                // Drain & surface the opening / CSG diagnostics BEFORE
+                // dropping the router. The helper logs to the browser
+                // console at debug/warn levels and returns a JS object the
+                // completion callback exposes via `stats.csgDiagnostics`.
+                let csg_diagnostics = super::drain_and_log_csg_diagnostics(&router);
+
                 // Free large data structures before the completion callback.
                 // The decoder cache + point cache + content string can hold
                 // 200-600 MB at this point — releasing them immediately
@@ -1927,6 +1937,7 @@ impl IfcAPI {
                     if let Some(rotation) = building_rotation {
                         super::set_js_prop(&stats, "buildingRotation", &rotation.into());
                     }
+                    super::set_js_prop(&stats, "csgDiagnostics", &csg_diagnostics);
                     let _ = callback.call1(&JsValue::NULL, &stats);
                 }
 
@@ -3656,6 +3667,14 @@ impl IfcAPI {
                 }
             }
         }
+
+        // Drain & surface the opening / CSG diagnostics. The viewer's
+        // streaming path (>2 MB files) goes processAdaptive ->
+        // processParallel -> Web Workers -> `processGeometryBatch`,
+        // bypassing `parseMeshesAsync` entirely. Without this drain
+        // here the diagnostic helper never fires for any real-world
+        // file the viewer loads.
+        let _ = super::drain_and_log_csg_diagnostics(&router);
 
         mesh_collection
     }

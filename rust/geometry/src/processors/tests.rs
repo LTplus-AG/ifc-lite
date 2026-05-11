@@ -139,6 +139,140 @@ fn test_boolean_result_with_half_space() {
     assert!(!mesh.positions.is_empty());
 }
 
+/// Regression test for T1.2: solid-solid `IfcBooleanResult.DIFFERENCE`.
+///
+/// Pre-T1.2 this was a hard-coded no-op (returned the first operand).
+/// With `manifold-csg` enabled it should now actually subtract.
+#[test]
+#[cfg(feature = "manifold-csg")]
+fn solid_solid_difference_actually_cuts() {
+    // 100×200×300 box with a 50×50×400 cutter punched through it.
+    let content = r#"
+#1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,100.0,200.0);
+#2=IFCDIRECTION((0.0,0.0,1.0));
+#3=IFCEXTRUDEDAREASOLID(#1,$,#2,300.0);
+#11=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,50.0,50.0);
+#12=IFCDIRECTION((0.0,0.0,1.0));
+#13=IFCAXIS2PLACEMENT3D(#14,$,$);
+#14=IFCCARTESIANPOINT((0.0,0.0,-50.0));
+#15=IFCEXTRUDEDAREASOLID(#11,#13,#12,400.0);
+#20=IFCBOOLEANRESULT(.DIFFERENCE.,#3,#15);
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = BooleanClippingProcessor::new();
+
+    let bool_result = decoder.decode_by_id(20).unwrap();
+    let cut_mesh = processor
+        .process(&bool_result, &mut decoder, &schema)
+        .expect("solid-solid difference must succeed under manifold-csg");
+
+    assert!(!cut_mesh.is_empty(), "result must have geometry");
+
+    // Compare to the un-cut base extrusion: the cut should add boundary
+    // triangles (the four side walls of the punched hole), so the
+    // triangle count must increase.
+    use crate::processors::extrusion::ExtrudedAreaSolidProcessor;
+    let base = decoder.decode_by_id(3).unwrap();
+    let base_mesh = ExtrudedAreaSolidProcessor::new(schema.clone())
+        .process(&base, &mut decoder, &schema)
+        .unwrap();
+    assert!(
+        cut_mesh.triangle_count() > base_mesh.triangle_count(),
+        "cut mesh must have more triangles than base ({} vs {})",
+        cut_mesh.triangle_count(),
+        base_mesh.triangle_count(),
+    );
+    assert_eq!(
+        processor.take_failures().len(),
+        0,
+        "no BoolFailure should fire on the happy solid-solid path",
+    );
+}
+
+/// Regression test for T1.4: solid-solid `IfcBooleanResult.UNION`.
+///
+/// Pre-T1.4 this just merged meshes, retaining overlap. With `manifold-csg`
+/// the overlap is removed by a real CSG union.
+#[test]
+#[cfg(feature = "manifold-csg")]
+fn solid_solid_union_removes_overlap() {
+    // Two overlapping 100×100×100 boxes shifted along X by 50.
+    let content = r#"
+#1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,100.0,100.0);
+#2=IFCDIRECTION((0.0,0.0,1.0));
+#3=IFCEXTRUDEDAREASOLID(#1,$,#2,100.0);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+#12=IFCCARTESIANPOINT((50.0,0.0,0.0));
+#13=IFCEXTRUDEDAREASOLID(#1,#11,#2,100.0);
+#20=IFCBOOLEANRESULT(.UNION.,#3,#13);
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = BooleanClippingProcessor::new();
+
+    let bool_result = decoder.decode_by_id(20).unwrap();
+    let union_mesh = processor
+        .process(&bool_result, &mut decoder, &schema)
+        .expect("solid-solid union must succeed under manifold-csg");
+
+    assert!(!union_mesh.is_empty());
+    // Naive mesh-merge of two cubes produces exactly 24 triangles
+    // (12 per cube, untouched). A real CSG union splits the overlapping
+    // faces into new triangles at the intersection seam — the triangle
+    // count differs (typically 28 in this configuration). Either way,
+    // the failing pre-T1.4 path was the naive merge.
+    assert_ne!(
+        union_mesh.triangle_count(),
+        24,
+        "result has the naive mesh-merge triangle count — overlap not removed",
+    );
+    assert_eq!(
+        processor.take_failures().len(),
+        0,
+        "no BoolFailure should fire on the happy union path",
+    );
+
+    // Bbox sanity: the union must span both cubes along X (0..150).
+    let (min, max) = union_mesh.bounds();
+    let half_w = 100.0_f32 * 0.5;
+    let combined_min_x = -half_w; // box A is centred at origin
+    let combined_max_x = 50.0 + half_w; // box B is centred at (50,0,0)
+    assert!((min.x - combined_min_x).abs() < 1.0);
+    assert!((max.x - combined_max_x).abs() < 1.0);
+}
+
+/// Regression test for T1.4: solid-solid `IfcBooleanResult.INTERSECTION`.
+#[test]
+#[cfg(feature = "manifold-csg")]
+fn solid_solid_intersection_returns_overlap() {
+    // Same setup as union but operator INTERSECTION.
+    let content = r#"
+#1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,100.0,100.0);
+#2=IFCDIRECTION((0.0,0.0,1.0));
+#3=IFCEXTRUDEDAREASOLID(#1,$,#2,100.0);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+#12=IFCCARTESIANPOINT((50.0,0.0,0.0));
+#13=IFCEXTRUDEDAREASOLID(#1,#11,#2,100.0);
+#20=IFCBOOLEANRESULT(.INTERSECTION.,#3,#13);
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = BooleanClippingProcessor::new();
+
+    let bool_result = decoder.decode_by_id(20).unwrap();
+    let inter_mesh = processor
+        .process(&bool_result, &mut decoder, &schema)
+        .expect("solid-solid intersection must succeed under manifold-csg");
+
+    // Pre-T1.4 this returned an empty mesh.
+    assert!(
+        !inter_mesh.is_empty(),
+        "intersection of two overlapping boxes must be a non-empty volume",
+    );
+    assert_eq!(processor.take_failures().len(), 0);
+}
+
 #[test]
 fn test_polygonal_bounded_half_space_respects_boundary() {
     let content = r#"

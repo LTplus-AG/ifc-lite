@@ -887,6 +887,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2431,6 +2440,7 @@ dependencies = [
  "earcutr",
  "i_overlay",
  "ifc-lite-core",
+ "manifold-csg",
  "nalgebra",
  "rayon",
  "rustc-hash 1.1.0",
@@ -2924,6 +2934,26 @@ name = "mac"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
+
+[[package]]
+name = "manifold-csg"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf7d61a2fed9e32a65e9f987505c01e7e1b1b34d32b3f75df3ecff77c246b78a"
+dependencies = [
+ "log",
+ "manifold-csg-sys",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "manifold-csg-sys"
+version = "3.4.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7ba98ad842ca99ec2752d2e556f43ce69aa3f8000bd55b188053b383f9cb095"
+dependencies = [
+ "cmake",
+]
 
 [[package]]
 name = "markup5ever"

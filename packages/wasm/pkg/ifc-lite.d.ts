@@ -1196,7 +1196,7 @@ export interface InitOutput {
   readonly __wbg_gpuinstancedgeometryref_free: (a: number, b: number) => void;
   readonly __wasm_bindgen_func_elem_1167: (a: number, b: number, c: number) => void;
   readonly __wasm_bindgen_func_elem_1166: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1206: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1207: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export3: (a: number, b: number) => number;

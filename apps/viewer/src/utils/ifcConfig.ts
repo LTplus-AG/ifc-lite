@@ -49,6 +49,30 @@ export const CACHE_MAX_SOURCE_SIZE = 150 * 1024 * 1024;
 /** Route desktop IFCs above this threshold through the bounded-memory path. */
 export const HUGE_NATIVE_FILE_THRESHOLD = 128 * 1024 * 1024;
 
+/**
+ * File size at which the browser-File-API entry path streams directly into a
+ * `SharedArrayBuffer` instead of going through `await file.arrayBuffer()`.
+ *
+ * Below this threshold, the doubled peak (ArrayBuffer + SAB) is small enough
+ * that the simpler one-shot read is preferable. Above it, the streaming path
+ * shaves ~`fileSize` MB from peak memory and avoids hitting V8's per-buffer
+ * allocation limits on huge files. (Issue #600.)
+ */
+export const STREAM_SAB_THRESHOLD = 256 * 1024 * 1024;
+
+/**
+ * File size at which the browser parser worker defers indexing of property
+ * atoms (`IFCPROPERTYSINGLEVALUE`, `IFCPROPERTYENUMERATEDVALUE`, etc.) until
+ * a property panel actually opens.
+ *
+ * On a 14 M-entity, 986 MB file roughly 3.4 M of those entities are
+ * property atoms. Skipping them in the primary `compactByIdIndex` shaves
+ * ~4 s off the parse path; the deferred index is built on-demand in
+ * ~50 ms when the first property panel hydrates. Mirrors the desktop
+ * `hugeNativeMode` gate.
+ */
+export const HUGE_BROWSER_FILE_THRESHOLD = 500 * 1024 * 1024;
+
 /** File size thresholds for various optimizations */
 export const THRESHOLDS = {
   /** Use streaming Parquet above this (150MB) */

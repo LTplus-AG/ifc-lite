@@ -137,8 +137,25 @@ impl<'a> EntityDecoder<'a> {
 
     /// Decode entity at byte offset
     /// Returns cached entity if already decoded
+    ///
+    /// Validates the `(start, end)` span against `self.content.len()` before
+    /// slicing. Out-of-range or inverted spans return `Error::parse` instead
+    /// of panicking — callers (e.g. `decode_and_cache`, `decode_at_with_id`,
+    /// the streaming pre-pass shard mergers) hand us spans derived from
+    /// untrusted/streamed entity-index data, and a malformed span must not
+    /// take down the whole worker.
     #[inline]
     pub fn decode_at(&mut self, start: usize, end: usize) -> Result<DecodedEntity> {
+        let content_len = self.content.len();
+        if start > end || end > content_len {
+            return Err(Error::parse(
+                0,
+                format!(
+                    "decode_at: invalid byte span ({}, {}) for content length {}",
+                    start, end, content_len,
+                ),
+            ));
+        }
         let line = &self.content[start..end];
         let (id, ifc_type, tokens) = parse_entity(line).map_err(|e| {
             // Add debug info about what failed to parse
@@ -244,6 +261,57 @@ impl<'a> EntityDecoder<'a> {
     /// all entries, reducing both peak memory spikes and timing variance.
     pub fn reserve_cache(&mut self, additional: usize) {
         self.cache.reserve(additional);
+    }
+
+    /// Inject a pre-warmed Arc-shared cache into this decoder's local cache.
+    ///
+    /// Used by the de-normalized parallel path (Option 1 of the
+    /// single-controller-rayon-design): a serial pre-pass builds a
+    /// shared `Arc<FxHashMap<u32, Arc<DecodedEntity>>>` containing all
+    /// entities reachable from the jobs. Each rayon task then injects
+    /// that shared cache into its own decoder via this method, so the
+    /// per-task hot path hits in-WASM-heap Arc handles instead of
+    /// SAB-imported atomic memory.
+    ///
+    /// Cost: one Arc::clone per cached entry (atomic refcount bump).
+    /// For a typical 100K-entry cache × 9 rayon tasks = 900K atomics
+    /// total, ~90 ms wall (incurred ONCE at task setup; the parallel
+    /// hot path then runs lock-free against the populated cache).
+    pub fn inject_shared_cache(
+        &mut self,
+        shared: &FxHashMap<u32, Arc<DecodedEntity>>,
+    ) {
+        self.cache.reserve(shared.len());
+        for (&id, entity) in shared.iter() {
+            self.cache.insert(id, Arc::clone(entity));
+        }
+    }
+
+    /// Decode + cache without returning. Used by the pre-warm pass to
+    /// populate a shared cache. Returns the cached Arc so the caller
+    /// can chase references without re-decoding.
+    pub fn decode_and_cache(
+        &mut self,
+        id: u32,
+        start: usize,
+        end: usize,
+    ) -> Result<Arc<DecodedEntity>> {
+        if let Some(arc) = self.cache.get(&id) {
+            return Ok(Arc::clone(arc));
+        }
+        let _ = self.decode_at(start, end)?;
+        Ok(Arc::clone(
+            self.cache
+                .get(&id)
+                .ok_or_else(|| Error::parse(0, "decode_at didn't populate cache".to_string()))?,
+        ))
+    }
+
+    /// Drain the populated cache out of this decoder for sharing across
+    /// rayon tasks. After calling this, the decoder is empty (cache
+    /// moved out); callers typically then drop the decoder.
+    pub fn drain_cache(&mut self) -> FxHashMap<u32, Arc<DecodedEntity>> {
+        std::mem::take(&mut self.cache)
     }
 
     /// Clear all caches to free memory

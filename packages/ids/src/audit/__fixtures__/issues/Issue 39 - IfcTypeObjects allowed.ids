@@ -1,0 +1,27 @@
+﻿<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Can select IfcTypeObjects that don't have equivalent IfcObject in IFC2x3</title>
+  </info>
+  <specifications>
+    <specification ifcVersion="IFC2X3" name="IfcActuatorType.ModelLabel"
+                   description="Issue is that there's no IFCACTUATOR instance in IFC2x3 so we get a false 'Inconsistent Clauses' 201 error, since subClasses were not being considered">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCACTUATORTYPE</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL">
+          <propertySet>
+            <simpleValue>Pset_ManufacturerTypeInformation</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>ModelLabel</simpleValue>
+          </baseName>
+        </property>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

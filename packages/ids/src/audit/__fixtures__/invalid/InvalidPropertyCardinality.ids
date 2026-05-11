@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd"
+     xmlns="http://standards.buildingsmart.org/IDS">
+	<info>
+		<title>random example to show technical capabilities and usage</title>
+		<copyright>buildingSMART International Ltd</copyright>
+		<date>2021-09-17</date>
+	</info>
+	<specifications>
+		<!-- Covering and wall property do not match -->
+		<specification ifcVersion="IFC2X3" name="binder">
+			<applicability maxOccurs="unbounded">
+				<entity>
+					<name>
+            <simpleValue>IFCWALL</simpleValue>
+					</name>
+				</entity>
+        <property>
+          <propertySet>
+            <simpleValue>ePset_WallCommon</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Reference</simpleValue>
+          </baseName>
+          <value>
+            <simpleValue>Some</simpleValue>
+          </value>
+        </property>
+			</applicability>
+			<requirements>
+        <!-- an optional property has to have dataType -->
+				<property cardinality="optional">
+					<propertySet>
+						<simpleValue>ePset_WallCommon</simpleValue>
+					</propertySet>
+          <baseName>
+						<simpleValue>Reference</simpleValue>
+					</baseName>
+				</property>
+        <!-- a prohibited property cannot have dataType -->
+        <property cardinality="prohibited" dataType="IFCLABEL">
+          <propertySet>
+            <simpleValue>ePset_WallCommon</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Reference</simpleValue>
+          </baseName>
+        </property>
+        <!-- any property cannot have value unless it has dataType -->
+        <property>
+          <propertySet>
+            <simpleValue>ePset_WallCommon</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Reference</simpleValue>
+          </baseName>
+          <value>
+            <simpleValue>Some</simpleValue>
+          </value>
+        </property>
+			</requirements>
+		</specification>
+	</specifications>
+</ids>

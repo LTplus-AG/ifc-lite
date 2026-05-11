@@ -9,19 +9,23 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { MainToolbar } from './MainToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { PropertiesPanel } from './PropertiesPanel';
+import { AddElementPanel } from './AddElementPanel';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
+import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BCFPanel } from './BCFPanel';
 import { IDSPanel } from './IDSPanel';
 import { LensPanel } from './LensPanel';
 import { ListPanel } from './lists/ListPanel';
 import { ScriptPanel } from './ScriptPanel';
+import { GanttPanel } from './schedule/GanttPanel';
 import { CommandPalette } from './CommandPalette';
+import { SearchModal } from './SearchModal';
 import { DesktopEntitlementBanner } from './DesktopEntitlementBanner';
 import {
   closeActiveAnalysisExtension,
@@ -37,6 +41,8 @@ const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
 export function ViewerLayout() {
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
+  // ⌘D / Ctrl+D to duplicate the current selection.
+  useDuplicateShortcut();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Command palette state
@@ -76,6 +82,8 @@ export function ViewerLayout() {
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   const bcfPanelVisible = useViewerStore((s) => s.bcfPanelVisible);
   const setBcfPanelVisible = useViewerStore((s) => s.setBcfPanelVisible);
+  const activeTool = useViewerStore((s) => s.activeTool);
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const idsPanelVisible = useViewerStore((s) => s.idsPanelVisible);
   const setIdsPanelVisible = useViewerStore((s) => s.setIdsPanelVisible);
   const listPanelVisible = useViewerStore((s) => s.listPanelVisible);
@@ -84,6 +92,8 @@ export function ViewerLayout() {
   const setLensPanelVisible = useViewerStore((s) => s.setLensPanelVisible);
   const scriptPanelVisible = useViewerStore((s) => s.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
+  const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
+  const setGanttPanelVisible = useViewerStore((s) => s.setGanttPanelVisible);
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -200,6 +210,7 @@ export function ViewerLayout() {
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+        <SearchModal />
 
         {/* Main Toolbar */}
         <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />
@@ -256,6 +267,8 @@ export function ViewerLayout() {
                   <div className="h-full w-full overflow-hidden panel-container">
                     {activeRightAnalysisExtension ? (
                       activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                    ) : activeTool === 'addElement' ? (
+                      <AddElementPanel onClose={() => setActiveTool('select')} />
                     ) : lensPanelVisible ? (
                       <LensPanel onClose={() => setLensPanelVisible(false)} />
                     ) : idsPanelVisible ? (
@@ -270,8 +283,8 @@ export function ViewerLayout() {
               </PanelGroup>
             </div>
 
-            {/* Bottom Panel - Lists or Script (custom resizable, outside PanelGroup) */}
-            {(listPanelVisible || scriptPanelVisible || !!activeBottomAnalysisExtension) && (
+            {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable) */}
+            {(listPanelVisible || scriptPanelVisible || ganttPanelVisible || !!activeBottomAnalysisExtension) && (
               <div style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
                 {/* Drag handle */}
                 <div
@@ -281,6 +294,8 @@ export function ViewerLayout() {
                 <div className="h-full w-full overflow-hidden border-t pt-1.5">
                   {activeBottomAnalysisExtension ? (
                     activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                  ) : ganttPanelVisible ? (
+                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
                   ) : scriptPanelVisible ? (
                     <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
                   ) : (
@@ -326,7 +341,7 @@ export function ViewerLayout() {
               <div className="absolute inset-x-0 bottom-0 h-[50vh] bg-background border-t rounded-t-xl shadow-xl z-40 animate-in slide-in-from-bottom">
                 <div className="flex items-center justify-between p-2 border-b">
                   <span className="font-medium text-sm">
-                    {activeAnalysisExtension ? activeAnalysisExtension.label : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
+                    {activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Inspector'}
                   </span>
                   <button
                     className="p-1 hover:bg-muted rounded"
@@ -334,6 +349,7 @@ export function ViewerLayout() {
                       setRightPanelCollapsed(true);
                       if (scriptPanelVisible) setScriptPanelVisible(false);
                       if (listPanelVisible) setListPanelVisible(false);
+                      if (ganttPanelVisible) setGanttPanelVisible(false);
                       if (bcfPanelVisible) setBcfPanelVisible(false);
                       if (lensPanelVisible) setLensPanelVisible(false);
                       if (idsPanelVisible) setIdsPanelVisible(false);
@@ -351,10 +367,14 @@ export function ViewerLayout() {
                     activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
                   ) : activeRightAnalysisExtension ? (
                     activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                  ) : ganttPanelVisible ? (
+                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
                   ) : scriptPanelVisible ? (
                     <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
                   ) : listPanelVisible ? (
                     <ListPanel onClose={() => setListPanelVisible(false)} />
+                  ) : activeTool === 'addElement' ? (
+                    <AddElementPanel onClose={() => setActiveTool('select')} />
                   ) : lensPanelVisible ? (
                     <LensPanel onClose={() => setLensPanelVisible(false)} />
                   ) : idsPanelVisible ? (
@@ -386,7 +406,7 @@ export function ViewerLayout() {
                   setRightPanelCollapsed(!rightPanelCollapsed);
                 }}
               >
-                Properties
+                Inspector
               </button>
             </div>
           </div>

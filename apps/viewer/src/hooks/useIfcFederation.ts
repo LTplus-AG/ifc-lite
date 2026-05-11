@@ -10,7 +10,7 @@
  * Extracted from useIfc.ts for better separation of concerns
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store.js';
 import {
@@ -33,8 +33,15 @@ import {
   parseIfcxViewerModel,
   parseStepBufferViewerModel,
 } from './ingest/viewerModelIngest.js';
+import {
+  detectPointCloudFormat,
+  ingestPointCloud,
+  type PointCloudFormat,
+} from './ingest/pointCloudIngest.js';
+import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
-import { getEffectiveGeoreference, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
+import { getEffectiveGeoreference, getEffectiveHorizontalScale, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
+import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
   return typeof (file as NativeFileHandle).path === 'string';
@@ -75,10 +82,14 @@ function getMapUnitScale(georef: ModelGeoref): number {
   return georef.projectedCRS.mapUnitScale ?? georef.lengthUnitScale ?? 1;
 }
 
-function getAxis(conversion: MapConversion): { a: number; o: number; scale: number; denom: number } {
+function getAxis(georef: ModelGeoref): { a: number; o: number; scale: number; denom: number } {
+  const conversion = georef.mapConversion;
   const a = conversion.xAxisAbscissa ?? 1;
   const o = conversion.xAxisOrdinate ?? 0;
-  const scale = conversion.scale ?? 1;
+  // Use the effective horizontal scale: viewer geometry is already in metres,
+  // so applying IfcMapConversion.Scale raw would double-scale — see issue #595.
+  const mapUnitScale = georef.projectedCRS.mapUnitScale ?? georef.lengthUnitScale ?? 1;
+  const scale = getEffectiveHorizontalScale(conversion.scale, mapUnitScale, georef.lengthUnitScale ?? 1);
   const denom = Math.max(a * a + o * o, 1e-12);
   return { a, o, scale, denom };
 }
@@ -145,8 +156,8 @@ function updateBounds(bounds: ReturnType<typeof emptyBounds>, x: number, y: numb
 function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeoref): AffineTransform3D | null {
   const sourceConv = source.mapConversion;
   const refConv = reference.mapConversion;
-  const sourceAxis = getAxis(sourceConv);
-  const refAxis = getAxis(refConv);
+  const sourceAxis = getAxis(source);
+  const refAxis = getAxis(reference);
   const refDenom = refAxis.scale * refAxis.denom;
   if (Math.abs(refDenom) < 1e-12) return null;
 
@@ -366,6 +377,13 @@ export function useIfcFederation() {
     findModelForGlobalId: s.findModelForGlobalId,
   })));
 
+  // Per-call ownership token. Each addModel() bumps this; state writes
+  // (loading/error/progress) in the catch block must compare back to
+  // their captured value before mutating, so a cancelled load A doesn't
+  // overwrite progress for a newer load B that started after A's abort.
+  // Mirrors the same pattern in useIfcLoader.ts.
+  const loadSessionRef = useRef(0);
+
   /**
    * Add a model to the federation (multi-model support)
    * Uses FederationRegistry to assign unique ID offsets - BULLETPROOF against ID collisions
@@ -383,6 +401,16 @@ export function useIfcFederation() {
   ): Promise<string | null> => {
     const modelId = options?.modelId ?? crypto.randomUUID();
     const addStart = performance.now();
+    // Bump the per-call ownership token first so that any error path
+    // (including the load gate) can compare against this captured value
+    // before mutating shared loading/error/progress state.
+    const currentSession = ++loadSessionRef.current;
+    // Memory-aware load gate: if a previous federation load is still in
+    // flight on this tab and admitting this one would exceed the device
+    // memory budget, wait until headroom frees. Single-file loads never
+    // wait. See `federationLoadGate.ts` for the budget formula. (#600)
+    const fileSizeForGateMB = (typeof (file as File).size === 'number' ? (file as File).size : 0) / (1024 * 1024);
+    const gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB);
     try {
       // IMPORTANT: Before adding a new model, check if there's a legacy model
       // (loaded via loadFile) that's not in the Map yet. If so, migrate it first.
@@ -439,14 +467,67 @@ export function useIfcFederation() {
         : await file.arrayBuffer();
       const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
+      // Detect point cloud formats first — we never run them through
+      // detectFormat() (which is IFC-shaped) because they have their own
+      // streaming pipeline that bypasses geometryResult.meshes.
+      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
+
       // Detect file format
-      const format = detectFormat(buffer);
+      const format: ReturnType<typeof detectFormat> | PointCloudFormat =
+        pointCloudFormat ?? detectFormat(buffer);
 
       let parsedDataStore: IfcDataStore | null = null;
       let parsedGeometry: FederatedModel['geometryResult'] = null;
       let schemaVersion: SchemaVersion = 'IFC4';
+      // Renderer handle for streamed point clouds; surviving model lifecycle
+      // depends on persisting it onto the FederatedModel record.
+      let pointCloudHandleId: number | undefined;
 
-      if (format === 'ifcx') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
+        const renderer = getGlobalRenderer();
+        if (!renderer) {
+          setError('Renderer not initialised — try again after the viewer mounts.');
+          setLoading(false);
+          return null;
+        }
+        setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
+        const blob = isNativeFileHandle(file)
+          ? new Blob([buffer])
+          : (file as File);
+        const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
+        const ingest = ingestPointCloud({
+          format,
+          blob,
+          fileName: file.name,
+          buffer,
+          renderer,
+          onProgress: setProgress,
+          onAssetCountDelta: incCount,
+        });
+        // Expose cancellation while the stream is in-flight. Capture
+        // the canceller as a named ref so the cleanup can verify the
+        // store still points at us before clearing — a second
+        // addModel() that began before this one settles must not lose
+        // its Cancel button to our finally block.
+        const { setActiveStreamCanceller } = useViewerStore.getState();
+        const cancelStream = () => ingest.streamHandle.cancel();
+        setActiveStreamCanceller(cancelStream);
+        // ingest.done rejects on stream errors; ingestPointCloud's onError
+        // callback already calls removePointCloudAsset + incCount(-1), so
+        // the outer catch must NOT repeat that cleanup or the count goes
+        // negative when other point clouds are still loaded.
+        try {
+          await ingest.done;
+        } finally {
+          if (useViewerStore.getState().activeStreamCanceller === cancelStream) {
+            setActiveStreamCanceller(null);
+          }
+        }
+        parsedDataStore = ingest.dataStore;
+        parsedGeometry = ingest.geometryResult;
+        schemaVersion = ingest.schemaVersion;
+        pointCloudHandleId = ingest.rendererHandle.id;
+      } else if (format === 'ifcx') {
         setProgress({ phase: 'Parsing IFCX (client-side)', percent: 10 });
         try {
           const result = await parseIfcxViewerModel(buffer, setProgress);
@@ -541,6 +622,29 @@ export function useIfcFederation() {
         for (const mesh of parsedGeometry.meshes) {
           mesh.expressId = mesh.expressId + idOffset;
         }
+        // Point clouds need the same offset so picking / isolation /
+        // property lookup resolve through the FederationRegistry's
+        // global ID space — otherwise two pointcloud models with the
+        // same local expressId collide.
+        for (const asset of parsedGeometry.pointClouds ?? []) {
+          asset.expressId = asset.expressId + idOffset;
+        }
+      }
+      // Streamed point cloud: the GPU asset was opened with a synthetic
+      // local expressId. After registerModelOffset() hands us an
+      // idOffset, the renderer needs to emit the post-offset globalId
+      // in picking + selection outputs — otherwise picks resolve to
+      // the local id and collide across federated models. The shader
+      // reads expressId from a per-asset uniform (`flags.x`) so this
+      // is just a metadata update; no GPU buffer rewrite.
+      if (idOffset > 0 && pointCloudHandleId !== undefined) {
+        const renderer = getGlobalRenderer();
+        if (renderer && parsedGeometry.pointClouds && parsedGeometry.pointClouds.length > 0) {
+          // Use the asset that's already had idOffset folded in above
+          // as the source of truth for the global id.
+          const asset = parsedGeometry.pointClouds[0];
+          renderer.relabelPointCloudAsset({ id: pointCloudHandleId }, asset.expressId);
+        }
       }
 
       // =========================================================================
@@ -567,6 +671,7 @@ export function useIfcFederation() {
         sourceFile: file,
         idOffset,
         maxExpressId,
+        pointCloudHandleId,
       };
 
       // Add to store
@@ -583,10 +688,31 @@ export function useIfcFederation() {
       return modelId;
 
     } catch (err) {
+      // Only mutate shared loading/error/progress state if our session
+      // is still the active one. A second addModel() that started after
+      // we were cancelled has already taken over the spinner — we must
+      // not overwrite it with our "Cancelled" state.
+      const isCurrent = loadSessionRef.current === currentSession;
+      // User-initiated cancel surfaces as an AbortError. Map it to a
+      // benign "Cancelled" state so the federated path matches the
+      // single-model loader rather than reporting a parse failure.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        console.log('[useIfc] addModel cancelled by user');
+        if (isCurrent) {
+          setError(null);
+          setProgress({ phase: 'Cancelled', percent: 0 });
+          setLoading(false);
+        }
+        return null;
+      }
       console.error('[useIfc] addModel failed:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setLoading(false);
+      if (isCurrent) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+        setLoading(false);
+      }
       return null;
+    } finally {
+      releaseFederationLoadSlot(gateSlot);
     }
   }, [setLoading, setError, setProgress, setIfcDataStore, setGeometryResult, storeAddModel, hasModels, registerModelOffset]);
 

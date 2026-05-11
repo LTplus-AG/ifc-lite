@@ -17,6 +17,7 @@ import { ModelNamespace } from './namespaces/model.js';
 import { QueryNamespace, QueryBuilder } from './namespaces/query.js';
 import { ViewerNamespace } from './namespaces/viewer.js';
 import { MutateNamespace } from './namespaces/mutate.js';
+import { StoreNamespace } from './namespaces/store.js';
 import { LensNamespace } from './namespaces/lens.js';
 import { ExportNamespace } from './namespaces/export.js';
 import { IDSNamespace } from './namespaces/ids.js';
@@ -29,12 +30,14 @@ import { CreateNamespace } from './namespaces/create.js';
 import { BsddNamespace } from './namespaces/bsdd.js';
 import { SandboxNamespace } from './namespaces/sandbox.js';
 import { FilesNamespace } from './namespaces/files.js';
+import { ScheduleNamespace } from './namespaces/schedule.js';
 import { RemoteBackend } from './transport/remote-backend.js';
 
 export class BimContext {
   readonly model: ModelNamespace;
   readonly viewer: ViewerNamespace;
   readonly mutate: MutateNamespace;
+  readonly store: StoreNamespace;
   readonly lens: LensNamespace;
   readonly export: ExportNamespace;
   readonly ids: IDSNamespace;
@@ -47,6 +50,7 @@ export class BimContext {
   readonly bsdd: BsddNamespace;
   readonly sandbox: SandboxNamespace;
   readonly files: FilesNamespace;
+  readonly schedule: ScheduleNamespace;
 
   private _queryNamespace: QueryNamespace;
   private _backend: BimBackend;
@@ -65,6 +69,7 @@ export class BimContext {
     this._queryNamespace = new QueryNamespace(this._backend);
     this.viewer = new ViewerNamespace(this._backend);
     this.mutate = new MutateNamespace(this._backend);
+    this.store = new StoreNamespace(this._backend);
     this.lens = new LensNamespace();
     this.export = new ExportNamespace(this._backend);
     this.ids = new IDSNamespace();
@@ -77,6 +82,7 @@ export class BimContext {
     this.bsdd = new BsddNamespace();
     this.sandbox = new SandboxNamespace(this);
     this.files = new FilesNamespace(this._backend);
+    this.schedule = new ScheduleNamespace(this._backend);
     // Cache the bound function so every access returns the same reference
     this._boundOn = this.events.on.bind(this.events);
   }

@@ -39,16 +39,41 @@ if [ "${DEBUG_GEOMETRY:-}" = "1" ]; then
   echo "🔍 Building with debug_geometry feature enabled"
 fi
 
-# Build WASM binary.
-# NOTE: wasm-bindgen-rayon was removed (incompatible with Vite production builds).
-# The .cargo/config.toml uses build-std=["std","panic_abort"] which requires nightly.
-# wasm-bindgen is pinned to 0.2.106 in Cargo.toml for stability.
+# THREADED build path (Phase 1.4 of single-controller-rayon-design.md).
+# When THREADED=1, build a SECOND artifact at packages/wasm-threaded/pkg/
+# with shared memory + rayon enabled. The default (THREADED unset)
+# produces the existing slim single-thread bundle at packages/wasm/pkg/.
+#
+# Key facts validated by the spike at spike/path-b-respike (8fcaff96):
+#  - The full RUSTFLAGS set below is what was missing in March 2026.
+#    `--export=__wasm_init_tls` (and the `__tls_size`/`__tls_align`/
+#    `__tls_base` companions) are required or wasm-bindgen CLI fails
+#    with "failed to find __wasm_init_tls".
+#  - +atomics is unstable; rustc warns but produces working code on
+#    nightly-2025-11-15.
+#  - `wasm-opt --enable-threads` miscompiles wasm-bindgen closure
+#    machinery — keep wasm-opt disabled.
+THREADED="${THREADED:-0}"
+if [ "$THREADED" = "1" ]; then
+  OUT_DIR="../../packages/wasm-threaded/pkg"
+  EXTRA_FEATURES="--features threading"
+  # Set RUSTFLAGS as full replacement (env var overrides
+  # .cargo/config.toml's [target.wasm32].rustflags). Includes the
+  # default flags PLUS the threading-specific ones.
+  export RUSTFLAGS="-C link-arg=--max-memory=4294967296 -C link-arg=-zstack-size=8388608 -C target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base"
+  echo "🧵 Building THREADED bundle → $OUT_DIR"
+else
+  OUT_DIR="../../packages/wasm/pkg"
+  EXTRA_FEATURES=""
+  echo "🟢 Building single-thread bundle → $OUT_DIR"
+fi
+
 rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
   --target web \
-  --out-dir ../../packages/wasm/pkg \
+  --out-dir "$OUT_DIR" \
   --out-name ifc-lite \
   --release \
-  $FEATURES
+  $FEATURES $EXTRA_FEATURES
 
 # NOTE: wasm-opt is disabled.
 # Multiple wasm-opt versions (npm and cargo) have been tested and all miscompile
@@ -60,15 +85,29 @@ echo "ℹ️  wasm-opt disabled — using LLVM -O3 only"
 # Show bundle size
 echo ""
 echo "📊 Bundle size:"
-ls -lh packages/wasm/pkg/ifc-lite_bg.wasm | awk '{print "   WASM: " $5}'
+# OUT_DIR is relative to rust/wasm-bindings/ from wasm-pack's perspective;
+# resolve from repo root for the size check.
+SIZE_PATH="$(echo "$OUT_DIR" | sed 's|^../../||')/ifc-lite_bg.wasm"
+ls -lh "$SIZE_PATH" | awk '{print "   WASM: " $5}'
 
-WASM_SIZE=$(wc -c < packages/wasm/pkg/ifc-lite_bg.wasm)
-TARGET_SIZE=$((1100 * 1024))  # 1100 KB target (larger without wasm-opt)
+WASM_SIZE=$(wc -c < "$SIZE_PATH")
+# Per-bundle budgets:
+#  - single-thread (default): 1100 KB. The slim bundle is what most
+#    users load; keep it tight.
+#  - threaded: 1300 KB. ~15% larger because of atomics + the
+#    wasm-bindgen-rayon thread-pool init code.
+if [ "$THREADED" = "1" ]; then
+  TARGET_SIZE=$((1300 * 1024))
+  TARGET_LABEL="1300 KB (threaded)"
+else
+  TARGET_SIZE=$((1100 * 1024))
+  TARGET_LABEL="1100 KB (single-thread)"
+fi
 
 if [ $WASM_SIZE -lt $TARGET_SIZE ]; then
-  echo "   ✅ Under target!"
+  echo "   ✅ Under $TARGET_LABEL target!"
 else
-  echo "   ⚠️  Over target ($(($WASM_SIZE / 1024))KB)"
+  echo "   ⚠️  Over $TARGET_LABEL target ($(($WASM_SIZE / 1024))KB)"
 fi
 
 echo ""

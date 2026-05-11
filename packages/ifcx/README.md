@@ -1,6 +1,6 @@
 # @ifc-lite/ifcx
 
-IFC5 (IFCX) parser for IFClite. Parses JSON-based IFCX files with ECS composition, USD geometry, and federated layer support.
+IFC5 (IFCX) parser for IFClite. Parses the JSON-based IFCX format with ECS composition, USD geometry, and federated layer support — and writes IFCX too. Compatible with the existing IFClite data pipeline so you can mix IFC4 STEP and IFC5 IFCX in the same scene.
 
 ## Installation
 
@@ -8,47 +8,71 @@ IFC5 (IFCX) parser for IFClite. Parses JSON-based IFCX files with ECS compositio
 npm install @ifc-lite/ifcx
 ```
 
-## Quick Start
+## Parse an IFCX file
 
 ```typescript
-import { parseIfcx, detectFormat } from '@ifc-lite/ifcx';
+import { parseIfcx } from '@ifc-lite/ifcx';
 
-// Detect file format
-const format = detectFormat(buffer); // 'ifcx' | 'ifc' | 'glb' | 'unknown'
+const buffer = await fetch('model.ifcx').then(r => r.arrayBuffer());
 
-// Parse IFCX file
 const result = await parseIfcx(buffer, {
   onProgress: ({ phase, percent }) => console.log(`${phase}: ${percent}%`),
 });
 
-console.log(`${result.entityCount} entities, ${result.meshes.length} meshes`);
+console.log(`${result.entityCount} entities, ${result.meshes.length} pre-tessellated meshes`);
+console.log(`Schema: ${result.schemaVersion}`); // 'IFC5'
+
+// Same MeshData[] shape as @ifc-lite/parser — feed straight into renderer
+renderer.loadGeometry(result.meshes);
 ```
 
-## Features
+## Auto-detect format
 
-- Native IFC5 (IFCX) JSON parsing
-- ECS composition (Entity-Component-System)
-- Pre-tessellated USD geometry extraction
-- Federated layer support with property overlay
-- Compatible with existing ifc-lite data pipeline
-- Format auto-detection (IFC4 STEP vs IFC5 IFCX vs GLB)
-- IFCX export/write support
+```typescript
+import { detectFormat } from '@ifc-lite/ifcx';
 
-## Federated Layers
+const format = detectFormat(buffer);
+// 'ifcx' | 'ifc' | 'glb' | 'unknown'
+
+if (format === 'ifcx') {
+  await parseIfcx(buffer);
+} else if (format === 'ifc') {
+  await ifcParser.parse(buffer); // @ifc-lite/parser
+}
+```
+
+## Federated layers
+
+IFCX supports overlays — a base file with the geometry, plus one or more layers that add or override properties. The package merges them in priority order:
 
 ```typescript
 import { parseFederatedIfcx } from '@ifc-lite/ifcx';
 
 const result = await parseFederatedIfcx([
-  { buffer: baseBuffer, name: 'base.ifcx' },
-  { buffer: overlayBuffer, name: 'overlay.ifcx' },
+  { buffer: baseBytes, name: 'architecture.ifcx' },
+  { buffer: psetOverlayBytes, name: 'fire-safety-overlay.ifcx' },
+  { buffer: scheduleOverlayBytes, name: 'construction-schedule.ifcx' },
 ]);
-// Properties from overlay take precedence over base
+
+// Properties from later layers take precedence over earlier ones —
+// fire-safety FireRating values overwrite anything in the base.
+```
+
+## Write IFCX
+
+The package's writer ships with `@ifc-lite/export` as `Ifc5Exporter`. See the [Export package](../export/README.md) for the full write path. Quick example:
+
+```typescript
+import { Ifc5Exporter } from '@ifc-lite/export';
+
+const exporter = new Ifc5Exporter(store, geometryResult);
+const ifcx = exporter.export({ includeGeometry: true });
+// ifcx.content → IFCX JSON string, save as .ifcx
 ```
 
 ## API
 
-See the [Parsing Guide](../../docs/guide/parsing.md) and [API Reference](../../docs/api/typescript.md#ifc-liteifcx).
+See the [Parsing Guide](https://louistrue.github.io/ifc-lite/guide/parsing/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-liteifcx).
 
 ## License
 

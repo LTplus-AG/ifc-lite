@@ -88,6 +88,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       e.preventDefault();
       setActiveTool('section');
     }
+    if (key === 'p' && !ctrl && !shift) {
+      e.preventDefault();
+      setActiveTool('annotate');
+    }
 
     // Basket controls (automatic context source)
     // I = Isolate from current context
@@ -148,6 +152,26 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     if (key === 'a' && !ctrl && !shift) {
       e.preventDefault();
       resetVisibilityForHomeFromStore();
+    }
+
+    // Add-element tool shortcuts — Enter commits an in-progress slab
+    // polygon; Esc clears any pending points before falling through to
+    // the global Esc handler (which exits the tool).
+    if (activeTool === 'addElement') {
+      const state = useViewerStore.getState();
+      const polygonable = ['slab', 'roof', 'plate', 'space'].includes(state.addElementType);
+      if (key === 'enter' && polygonable && state.addElementSlabMode === 'polygon') {
+        e.preventDefault();
+        // Lazy import keeps this module out of the keyboard hook's
+        // synchronous bundle (the close handler pulls in toast).
+        import('@/components/viewer/selectionHandlers').then((mod) => mod.commitAddElementSlabPolygon());
+        return;
+      }
+      if (key === 'escape' && state.addElementPendingPoints.length > 0) {
+        e.preventDefault();
+        state.clearAddElementPending();
+        return;
+      }
     }
 
     // Measure tool shortcuts
@@ -243,6 +267,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'V', description: 'Select tool', category: 'Tools' },
   { key: 'C', description: 'Walk mode', category: 'Tools' },
   { key: 'M', description: 'Measure tool', category: 'Tools' },
+  { key: 'P', description: 'Annotate tool — drop a pin with a note', category: 'Tools' },
   { key: 'X', description: 'Section tool', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },

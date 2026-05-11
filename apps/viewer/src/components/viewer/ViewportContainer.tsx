@@ -6,6 +6,7 @@ import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore
 import { Viewport } from './Viewport';
 import { ViewportOverlays } from './ViewportOverlays';
 import { ToolOverlays } from './ToolOverlays';
+import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { Section2DPanel } from './Section2DPanel';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -19,8 +20,10 @@ import { openIfcFileDialog } from '@/services/file-dialog';
 import { logToDesktopTerminal } from '@/services/desktop-logger';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
 import { isTauri } from '@/lib/platform';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3 } from 'lucide-react';
-import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import { toast } from '@/components/ui/toast';
+import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
+import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight } from 'lucide-react';
+import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 
@@ -173,6 +176,30 @@ export function ViewportContainer() {
     return geometryResult;
   }, [storeModels, geometryResult, modelIdToIndex]);
 
+  /**
+   * Aggregate point clouds across visible models.
+   *
+   * Phase 0: identity-stamping with modelIndex. Returns the same array
+   * reference when nothing has changed so the consumer effect skips work.
+   */
+  const mergedPointClouds = useMemo(() => {
+    const collected: PointCloudAsset[] = [];
+    if (storeModels.size > 0) {
+      for (const [modelId, model] of storeModels) {
+        if (!model.visible) continue;
+        const assets = model.geometryResult?.pointClouds;
+        if (!assets || assets.length === 0) continue;
+        const modelIndex = modelIdToIndex.get(modelId) ?? 0;
+        for (const asset of assets) {
+          collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
+        }
+      }
+    } else if (geometryResult?.pointClouds) {
+      collected.push(...geometryResult.pointClouds);
+    }
+    return collected;
+  }, [storeModels, geometryResult, modelIdToIndex]);
+
   // Extract georeferencing info merged with any live mutations (for Cesium overlay).
   // Reacts to: model load, Cesium toggle, and every georef field edit.
   const georef = useMemo(() => {
@@ -188,7 +215,11 @@ export function ViewportContainer() {
         georefMutations.get(modelId),
       );
       if (effective?.projectedCRS?.name && effective.mapConversion) {
-        return { ...effective, sourceModelId: modelId };
+        return {
+          ...effective,
+          sourceModelId: modelId,
+          storeyElevations: ds.spatialHierarchy?.storeyElevations,
+        };
       }
     }
 
@@ -200,7 +231,11 @@ export function ViewportContainer() {
         georefMutations.get('__legacy__'),
       );
       if (effective?.projectedCRS?.name && effective.mapConversion) {
-        return { ...effective, sourceModelId: '__legacy__' };
+        return {
+          ...effective,
+          sourceModelId: '__legacy__',
+          storeyElevations: ifcDataStore.spatialHierarchy?.storeyElevations,
+        };
       }
     }
 
@@ -280,12 +315,22 @@ export function ViewportContainer() {
       return;
     }
 
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(e.dataTransfer.files).filter(
+    // Filter to supported files (IFC, IFCX, GLB, point clouds)
+    const allDropped = Array.from(e.dataTransfer.files);
+    const supportedFiles = allDropped.filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
     );
 
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) {
+      // Tell the user *why* — common case is a Recap project / SketchUp
+      // file dropped because they assumed our viewer would understand it.
+      const explained = allDropped.find((f) => describeUnsupportedFormat(f.name));
+      if (explained) {
+        toast.error(`${explained.name}: ${describeUnsupportedFormat(explained.name)}`);
+      }
+      return;
+    }
 
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
@@ -317,6 +362,7 @@ export function ViewportContainer() {
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
     );
 
     if (supportedFiles.length === 0) return;
@@ -528,7 +574,7 @@ export function ViewportContainer() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ifc,.ifcx,.glb"
+          accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
           multiple
           onChange={handleFileSelect}
           className="hidden"
@@ -697,10 +743,18 @@ export function ViewportContainer() {
               IFClite
             </h2>
             <p className="text-zinc-500 dark:text-[#565f89] font-mono text-sm text-center mb-8 border-b border-zinc-200 dark:border-[#3b4261] pb-4 w-full">
-              High-performance web viewer demo
+              IFC toolkit for the open web
             </p>
 
-            {/* Action */}
+            {/*
+              Two-track action area: a primary "open file" track and a
+              secondary "drive with LLM" track sit in mirrored slots — same
+              width, same vertical rhythm, each followed by its own caption
+              line. Reads as one balanced composition instead of a primary
+              CTA + a tacked-on link, while keeping the file-open path
+              visually dominant via the filled-on-hover treatment.
+            */}
+            {/* Track 1 — open / drag */}
             <button
               onClick={async () => {
                 if (!webgpu.supported) {
@@ -736,8 +790,31 @@ export function ViewportContainer() {
               <span>{webgpu.checking ? 'Checking WebGPU...' : webgpu.supported ? 'Open .ifc file' : 'WebGPU Required'}</span>
             </button>
 
-            <p className="mt-3 text-xs font-mono text-zinc-400 dark:text-[#565f89]">
+            <p className="mt-2.5 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
               {webgpu.supported ? 'or drag & drop anywhere' : 'file upload disabled'}
+            </p>
+
+            {/* Subtle "or" rule — anchors the symmetry between the two tracks */}
+            <div className="mt-5 mb-5 w-full flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-zinc-400 dark:text-[#565f89]">
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
+              <span>or</span>
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
+            </div>
+
+            {/* Track 2 — agent / MCP. Compact inline pill, self-centred so
+                it reads as a meta-link sibling to the primary file-open
+                CTA, not a competing full-width button. */}
+            <a
+              href="/mcp"
+              className="group inline-flex self-center items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary transition-all cursor-pointer"
+            >
+              <Sparkles className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
+              <span>Drive with any LLM</span>
+              <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </a>
+
+            <p className="mt-1.5 text-[10px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
+              via MCP · install or try the playground
             </p>
 
             {recentFiles.length > 0 && (
@@ -839,11 +916,13 @@ export function ViewportContainer() {
           coordinateInfo={georef.coordinateInfo}
           geometryResult={mergedGeometryResult}
           lengthUnitScale={georef.lengthUnitScale}
+          storeyElevations={georef.storeyElevations}
         />
       )}
       <Viewport
         geometry={filteredGeometry}
         geometryVersion={geometryVersion}
+        pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}
         computedIsolatedIds={computedIsolatedIds}
         modelIdToIndex={modelIdToIndex}
@@ -851,6 +930,7 @@ export function ViewportContainer() {
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
+      <AnnotationLayer />
       {bcfOverlayVisible && <BCFOverlay />}
       <ViewportOverlays />
       <ToolOverlays />

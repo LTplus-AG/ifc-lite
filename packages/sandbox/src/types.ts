@@ -16,6 +16,8 @@ export interface SandboxPermissions {
   viewer?: boolean;
   /** Allow bim.mutate.* (property editing) */
   mutate?: boolean;
+  /** Allow bim.store.* (document-level edits — addEntity / removeEntity / positional attrs) */
+  store?: boolean;
   /** Allow bim.lens.* (lens definitions) */
   lens?: boolean;
   /** Allow bim.export.* (data export) */
@@ -65,6 +67,7 @@ export const DEFAULT_PERMISSIONS: Required<SandboxPermissions> = {
   query: true,
   viewer: true,
   mutate: false,    // Read-only by default
+  store: false,     // Read-only by default — gates document-level edits
   lens: true,
   export: true,
   files: true,

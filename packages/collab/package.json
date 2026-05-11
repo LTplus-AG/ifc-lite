@@ -1,0 +1,83 @@
+{
+  "name": "@ifc-lite/collab",
+  "version": "0.1.0",
+  "description": "Real-time collaborative BIM via CRDT on IFCX",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./snapshot": {
+      "import": "./dist/snapshot/index.js",
+      "types": "./dist/snapshot/index.d.ts"
+    },
+    "./providers/indexeddb": {
+      "import": "./dist/providers/indexeddb.js",
+      "types": "./dist/providers/indexeddb.d.ts"
+    },
+    "./providers/websocket": {
+      "import": "./dist/providers/websocket.js",
+      "types": "./dist/providers/websocket.d.ts"
+    },
+    "./awareness": {
+      "import": "./dist/awareness/index.js",
+      "types": "./dist/awareness/index.d.ts"
+    },
+    "./snapshot/worker": {
+      "import": "./dist/snapshot/worker.js",
+      "types": "./dist/snapshot/worker.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@automerge/automerge": "^3.2.6",
+    "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/mutations": "workspace:^",
+    "lib0": "^0.2.99",
+    "y-indexeddb": "^9.0.12",
+    "y-protocols": "^1.0.6",
+    "y-websocket": "^2.0.4",
+    "yjs": "^13.6.20"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.3.0",
+    "vitest": "^1.6.0",
+    "ws": "^8.18.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/louistrue/ifc-lite.git",
+    "directory": "packages/collab"
+  },
+  "homepage": "https://louistrue.github.io/ifc-lite/",
+  "bugs": "https://github.com/louistrue/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "ifcx",
+    "ifc5",
+    "bim",
+    "collaboration",
+    "crdt",
+    "yjs",
+    "real-time",
+    "aec"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

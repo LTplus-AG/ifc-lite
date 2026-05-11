@@ -22,6 +22,11 @@
       "@ifc-lite/sandbox/schema": ["../../packages/sandbox/src/bridge-schema.ts"],
       "@ifc-lite/sdk": ["../../packages/sdk/src"],
       "@ifc-lite/sandbox": ["../../packages/sandbox/src"],
+      "@ifc-lite/create": ["../../packages/create/src"],
+      "@ifc-lite/encoding": ["../../packages/encoding/src"],
+      "@ifc-lite/lens": ["../../packages/lens/src"],
+      "@ifc-lite/lists": ["../../packages/lists/src"],
+      "@ifc-lite/server-client": ["../../packages/server-client/src"],
       "@ifc-lite/embed-protocol": ["../../packages/embed-protocol/src"]
     }
   },

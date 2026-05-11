@@ -1,18 +1,18 @@
 {
   "name": "@ifc-lite/parser",
-  "version": "2.1.9",
+  "version": "2.4.0",
   "description": "IFC/STEP parser for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./browser": {
-      "import": "./dist/browser.js",
-      "types": "./dist/browser.d.ts"
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
     }
   },
   "scripts": {
@@ -23,7 +23,8 @@
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/encoding": "workspace:^",
-    "@ifc-lite/ifcx": "workspace:^"
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^5.3.0",

@@ -67,9 +67,10 @@ export function buildExportNamespace(): NamespaceSchema {
       },
       {
         name: 'download',
-        doc: 'Trigger a browser file download with the given content',
+        doc: 'Trigger a browser file download with the given content. mimeType defaults to text/plain.',
         args: ['string', 'string', 'string'],
         paramNames: ['content', 'filename', 'mimeType'],
+        tsParamTypes: [undefined, undefined, 'string | undefined'],
         call: (sdk, args) => {
           sdk.export.download(
             args[0] as string,

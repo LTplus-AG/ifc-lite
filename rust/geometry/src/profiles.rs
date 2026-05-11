@@ -21,6 +21,149 @@ const MAX_CURVE_DEPTH: u32 = 50;
 /// Prevents stack overflow in WASM from Revit exports with deep profile nesting.
 const MAX_PROFILE_DEPTH: u32 = 16;
 
+/// Trim a sampled polyline (>=2 points) to its local parameter range
+/// `[start, end]` where each segment between consecutive points contributes
+/// `1/(n-1)` to the parameter. Returns the start interpolated point, all
+/// intermediate sampled points strictly inside the range, and the end
+/// interpolated point.
+fn trim_polyline(points: &[Point3<f64>], start: f64, end: f64) -> Vec<Point3<f64>> {
+    let n = points.len();
+    if n < 2 || end <= start {
+        return Vec::new();
+    }
+    let s = start.clamp(0.0, 1.0);
+    let e = end.clamp(0.0, 1.0);
+    let denom = (n - 1) as f64;
+    let lerp = |t: f64| -> Point3<f64> {
+        let scaled = t * denom;
+        let mut idx = scaled.floor() as usize;
+        if idx >= n - 1 {
+            return points[n - 1];
+        }
+        let frac = scaled - idx as f64;
+        let a = points[idx];
+        idx += 1;
+        let b = points[idx];
+        Point3::new(
+            a.x + (b.x - a.x) * frac,
+            a.y + (b.y - a.y) * frac,
+            a.z + (b.z - a.z) * frac,
+        )
+    };
+    let mut out = Vec::new();
+    out.push(lerp(s));
+    for (i, p) in points.iter().enumerate() {
+        let t = i as f64 / denom;
+        if t > s && t < e {
+            out.push(*p);
+        }
+    }
+    out.push(lerp(e));
+    out
+}
+
+/// Approximate a 3-point arc as a polyline by fitting a circumcircle in the
+/// plane spanned by the three points and sampling it uniformly in angle.
+///
+/// Falls back to the bare 3-point polyline when the points are colinear or the
+/// fitted circle is degenerate (radius is unreasonably large compared to the
+/// arc span — same threshold the 2D sibling uses).
+fn approximate_arc_3pt_3d(
+    p1: Point3<f64>,
+    p2: Point3<f64>,
+    p3: Point3<f64>,
+    num_segments: usize,
+) -> Vec<Point3<f64>> {
+    let a = p2 - p1;
+    let b = p3 - p1;
+    let normal = a.cross(&b);
+    let normal_len_sq = normal.norm_squared();
+    let arc_span = (p3 - p1).norm();
+    // |a × b|² = 2 * (twice triangle area)² — colinear ⇒ ≈ 0.
+    let collinear_tol = 1e-12_f64.max(arc_span.powi(4) * 1e-12);
+    if normal_len_sq < collinear_tol {
+        return vec![p1, p2, p3];
+    }
+    let n_hat = normal / normal_len_sq.sqrt();
+
+    // Circumcenter via standard formula projected onto the {a, b} plane.
+    let d11 = a.dot(&a);
+    let d22 = b.dot(&b);
+    let d12 = a.dot(&b);
+    let denom = 2.0 * (d11 * d22 - d12 * d12);
+    if denom.abs() < 1e-20 {
+        return vec![p1, p2, p3];
+    }
+    let u = (d22 * (d11 - d12)) / denom;
+    let v = (d11 * (d22 - d12)) / denom;
+    let center = p1 + a * u + b * v;
+    let radius = (p1 - center).norm();
+    if radius > arc_span * 100.0 {
+        return vec![p1, p2, p3];
+    }
+
+    // Local 2D frame in the arc plane: u_axis = (p1 - center) normalised,
+    // v_axis = n_hat × u_axis. Angles read off via atan2 in this frame.
+    let u_axis = (p1 - center) / radius;
+    let v_axis = n_hat.cross(&u_axis);
+
+    let angle_of = |pt: Point3<f64>| -> f64 {
+        let r = pt - center;
+        r.dot(&v_axis).atan2(r.dot(&u_axis))
+    };
+    let a1 = angle_of(p1); // ≈ 0 by construction
+    let a2 = angle_of(p2);
+    let a3 = angle_of(p3);
+
+    // Choose sweep direction so we pass through p2.
+    fn norm_pi(mut a: f64) -> f64 {
+        let two_pi = 2.0 * std::f64::consts::PI;
+        a %= two_pi;
+        if a > std::f64::consts::PI {
+            a -= two_pi;
+        } else if a < -std::f64::consts::PI {
+            a += two_pi;
+        }
+        a
+    }
+    let diff13 = norm_pi(a3 - a1);
+    let diff12 = norm_pi(a2 - a1);
+    let go_direct = if diff13 > 0.0 {
+        diff12 > 0.0 && diff12 < diff13
+    } else {
+        diff12 < 0.0 && diff12 > diff13
+    };
+    let sweep = if go_direct {
+        diff13
+    } else if diff13 > 0.0 {
+        diff13 - 2.0 * std::f64::consts::PI
+    } else {
+        diff13 + 2.0 * std::f64::consts::PI
+    };
+
+    let mut out = Vec::with_capacity(num_segments + 1);
+    for i in 0..=num_segments {
+        let t = i as f64 / num_segments as f64;
+        let angle = a1 + t * sweep;
+        let pt = center + (u_axis * radius * angle.cos()) + (v_axis * radius * angle.sin());
+        out.push(pt);
+    }
+    out
+}
+
+/// Cheap dedup helper for 3D point sequences — used to avoid duplicating the
+/// junction vertex when concatenating contiguous segments.
+fn same_point_3d(prev: Option<&Point3<f64>>, next: &Point3<f64>) -> bool {
+    match prev {
+        Some(p) => {
+            (p.x - next.x).abs() < 1e-9
+                && (p.y - next.y).abs() < 1e-9
+                && (p.z - next.z).abs() < 1e-9
+        }
+        None => false,
+    }
+}
+
 /// Profile processor - processes IFC profiles into 2D contours
 pub struct ProfileProcessor {
     schema: IfcSchema,
@@ -784,6 +927,14 @@ impl ProfileProcessor {
                 self.process_composite_curve_3d_with_depth(curve, decoder, depth)
             }
             IfcType::IfcCircle => self.process_circle_3d(curve, decoder),
+            IfcType::IfcIndexedPolyCurve => {
+                // Native 3D path: handles both IfcCartesianPointList2D (z=0) and
+                // IfcCartesianPointList3D, and fits arc segments in the plane of
+                // their three control points. Falling through to the 2D fallback
+                // would drop the Z coordinate of every 3D point list (issue #631
+                // stirrup case).
+                self.process_indexed_polycurve_3d(curve, decoder)
+            }
             IfcType::IfcTrimmedCurve => {
                 // For trimmed curve, get 2D points and convert to 3D
                 let points_2d = self.process_trimmed_curve_with_depth(curve, decoder, depth)?;
@@ -1025,6 +1176,140 @@ impl ProfileProcessor {
         Ok(result)
     }
 
+    /// Process composite curve into 3D points, honoring `IfcSweptDiskSolid`'s
+    /// `StartParam`/`EndParam`. Per IFC, a composite curve is parameterised so
+    /// segment `i` covers `[i, i+1]`. Segments fully outside `[start, end]` are
+    /// dropped; boundary segments are truncated by linearly interpolating along
+    /// their sampled point list (a per-segment normalised parameter).
+    ///
+    /// Non-conformant out-of-range `EndParam` values (notably Revit, which
+    /// emits a cumulative-per-segment parameter that can exceed `num_segments`)
+    /// are clamped to the upper bound of the spec domain — this matches the
+    /// authoring tool's effective intent (render the whole curve) without
+    /// guessing at a length-unit interpretation that proved wrong on real
+    /// files (see #631 follow-up notes).
+    pub fn get_composite_curve_points_trimmed(
+        &self,
+        curve: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        start_param: Option<f64>,
+        end_param: Option<f64>,
+    ) -> Result<Vec<Point3<f64>>> {
+        let segments_attr = curve
+            .get(0)
+            .ok_or_else(|| Error::geometry("CompositeCurve missing Segments".to_string()))?;
+        let segments = decoder.resolve_ref_list(segments_attr)?;
+        let num_segments = segments.len();
+        if num_segments == 0 {
+            return Ok(Vec::new());
+        }
+
+        let start = start_param.unwrap_or(0.0).max(0.0);
+        let end = end_param.unwrap_or(num_segments as f64).min(num_segments as f64);
+        if end <= start {
+            return Ok(Vec::new());
+        }
+
+        let mut result: Vec<Point3<f64>> = Vec::new();
+        for (idx, segment) in segments.into_iter().enumerate() {
+            let seg_start = idx as f64;
+            let seg_end = seg_start + 1.0;
+            // Skip segments fully outside the trim window
+            if seg_end <= start || seg_start >= end {
+                continue;
+            }
+
+            let parent_curve_attr = segment.get(2).ok_or_else(|| {
+                Error::geometry("CompositeCurveSegment missing ParentCurve".to_string())
+            })?;
+            let parent_curve = decoder
+                .resolve_ref(parent_curve_attr)?
+                .ok_or_else(|| Error::geometry("Failed to resolve ParentCurve".to_string()))?;
+            let same_sense = segment
+                .get(1)
+                .and_then(|v| match v {
+                    ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
+                    _ => None,
+                })
+                .map(|e| e == "T" || e == "TRUE")
+                .unwrap_or(true);
+
+            let mut seg_points = self.get_curve_points_with_depth(&parent_curve, decoder, 1)?;
+            if !same_sense {
+                seg_points.reverse();
+            }
+            if seg_points.len() < 2 {
+                continue;
+            }
+
+            // Map global trim window to this segment's local [0,1] domain
+            let local_start = (start - seg_start).clamp(0.0, 1.0);
+            let local_end = (end - seg_start).clamp(0.0, 1.0);
+            if local_end <= local_start {
+                continue;
+            }
+
+            let trimmed = if local_start == 0.0 && local_end == 1.0 {
+                seg_points
+            } else {
+                trim_polyline(&seg_points, local_start, local_end)
+            };
+
+            if trimmed.is_empty() {
+                continue;
+            }
+            // Drop the first point of the next segment ONLY when it coincides with
+            // the last point already in `result` — i.e. the segments share their
+            // junction vertex and concatenating verbatim would duplicate it.
+            // Composite curves whose adjacent segments are not coordinate-identical
+            // at the boundary (e.g. floating-point drift, or segments stitched
+            // together at deliberately distinct points) must keep the first vertex
+            // or the directrix gets distorted.
+            const JUNCTION_EPS: f64 = 1e-6;
+            let mut iter = trimmed.into_iter();
+            if let Some(first) = iter.next() {
+                let coincident = result.last().map_or(false, |last| {
+                    (first.x - last.x).abs() < JUNCTION_EPS
+                        && (first.y - last.y).abs() < JUNCTION_EPS
+                        && (first.z - last.z).abs() < JUNCTION_EPS
+                });
+                if !coincident {
+                    result.push(first);
+                }
+                result.extend(iter);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Sample an `IfcPolyline` directrix and trim by parameter range.
+    /// IFC parameterises a polyline as `[0, N-1]` where `N` is the number of points
+    /// and each segment between consecutive points contributes 1.0 to the parameter.
+    /// `StartParam` / `EndParam` are converted to a fraction of the polyline and
+    /// `trim_polyline` does the actual cutting (linear interpolation between sampled
+    /// vertices, which is exact for piecewise-linear input).
+    pub fn get_polyline_points_trimmed(
+        &self,
+        curve: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        start_param: Option<f64>,
+        end_param: Option<f64>,
+    ) -> Result<Vec<Point3<f64>>> {
+        let points = self.process_polyline_3d(curve, decoder)?;
+        if points.len() < 2 {
+            return Ok(points);
+        }
+        let max_param = (points.len() - 1) as f64;
+        let s = start_param.unwrap_or(0.0).clamp(0.0, max_param);
+        let e = end_param.unwrap_or(max_param).clamp(0.0, max_param);
+        if e <= s {
+            return Ok(Vec::new());
+        }
+        // Convert IFC parameter (0..N-1) to trim_polyline's local [0,1] domain
+        Ok(trim_polyline(&points, s / max_param, e / max_param))
+    }
+
     /// Process trimmed curve
     /// IfcTrimmedCurve: BasisCurve, Trim1, Trim2, SenseAgreement, MasterRepresentation
     fn process_trimmed_curve_with_depth(
@@ -1186,7 +1471,20 @@ impl ProfileProcessor {
             Point2::new(0.0, 0.0)
         };
 
-        let rotation = if let Some(dir_attr) = placement.get(1) {
+        // RefDirection lives at attribute index 1 on IfcAxis2Placement2D, but at
+        // index 2 on IfcAxis2Placement3D (index 1 is the Z-Axis there). Reading
+        // attribute 1 unconditionally produced a rotation of 0° for any conic
+        // anchored to a 3D placement — fine for Z-up profiles but visibly wrong
+        // when the X axis is rotated in-plane. Trimmed circles authored with
+        // `IfcAxis2Placement3D` (e.g. Revit reinforcement bars in Rebar2.ifc,
+        // issue #631) all came out with their arc centres rotated by their
+        // RefDirection angle, distorting the directrix.
+        let ref_dir_attr_index = if placement.ifc_type == IfcType::IfcAxis2Placement3D {
+            2
+        } else {
+            1
+        };
+        let rotation = if let Some(dir_attr) = placement.get(ref_dir_attr_index) {
             if let Some(dir) = decoder.resolve_ref(dir_attr)? {
                 let ratios = dir.get(0).and_then(|v| v.as_list());
                 if let Some(ratios) = ratios {
@@ -1530,6 +1828,132 @@ impl ProfileProcessor {
         points
     }
 
+    /// Process indexed polycurve in 3D space.
+    ///
+    /// IfcIndexedPolyCurve(Points, Segments, SelfIntersect) where Points is an
+    /// IfcCartesianPointList (2D or 3D). The 2D-only sibling at
+    /// `process_indexed_polycurve` is used for profile-defining curves; this
+    /// version is used as a directrix for IfcSweptDiskSolid and similar 3D
+    /// sweeps (issue #631 — IfcReinforcingBar stirrups).
+    ///
+    /// `IfcCartesianPointList2D` inputs are treated as planar at z=0 so the
+    /// behavior matches the 2D path on existing fixtures.
+    fn process_indexed_polycurve_3d(
+        &self,
+        curve: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<Point3<f64>>> {
+        let points_attr = curve
+            .get(0)
+            .ok_or_else(|| Error::geometry("IndexedPolyCurve missing Points".to_string()))?;
+
+        let points_list = decoder
+            .resolve_ref(points_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve Points list".to_string()))?;
+
+        let coord_list = points_list
+            .get(0)
+            .and_then(|a| a.as_list())
+            .ok_or_else(|| Error::geometry("CartesianPointList missing CoordList".to_string()))?;
+
+        // IfcCartesianPointList3D has 3-tuples; IfcCartesianPointList2D has
+        // 2-tuples. Read whatever is there and default missing components to 0.
+        let all_points: Vec<Point3<f64>> = coord_list
+            .iter()
+            .filter_map(|coord| {
+                coord.as_list().map(|coords| {
+                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+                    Point3::new(x, y, z)
+                })
+            })
+            .collect();
+
+        let segments_attr = curve.get(1);
+        if segments_attr.is_none() || segments_attr.map(|a| a.is_null()).unwrap_or(true) {
+            return Ok(all_points);
+        }
+
+        let segments = segments_attr
+            .unwrap()
+            .as_list()
+            .ok_or_else(|| Error::geometry("Expected segments list".to_string()))?;
+
+        let mut result: Vec<Point3<f64>> = Vec::new();
+        for segment in segments {
+            // Each segment is IFCLINEINDEX((i1,i2,...)) or IFCARCINDEX((i1,i2,i3)).
+            // Typed values arrive as List([String("IFCLINEINDEX"), List([indices...])]).
+            let (is_arc, indices) = if let Some(segment_list) = segment.as_list() {
+                if segment_list.len() >= 2 {
+                    let type_name = segment_list
+                        .first()
+                        .and_then(|v| v.as_string())
+                        .unwrap_or("");
+                    let is_arc_type = type_name.to_uppercase().contains("ARC");
+                    if let Some(AttributeValue::List(indices_list)) = segment_list.get(1) {
+                        (is_arc_type, Some(indices_list.as_slice()))
+                    } else {
+                        (false, Some(segment_list))
+                    }
+                } else {
+                    (false, Some(segment_list))
+                }
+            } else {
+                (false, None)
+            };
+
+            let Some(indices) = indices else { continue };
+            let idx_values: Vec<usize> = indices
+                .iter()
+                .filter_map(|v| v.as_float().map(|f| f as usize - 1))
+                .collect();
+
+            if is_arc && idx_values.len() == 3 {
+                let p1 = all_points.get(idx_values[0]).copied();
+                let p2 = all_points.get(idx_values[1]).copied();
+                let p3 = all_points.get(idx_values[2]).copied();
+                if let (Some(start), Some(mid), Some(end)) = (p1, p2, p3) {
+                    // Adaptive segment count: estimate sweep from chord vs.
+                    // mid-deviation, same heuristic as the 2D path.
+                    let chord = end - start;
+                    let chord_len = chord.norm();
+                    let mid_offset = mid - Point3::new(
+                        0.5 * (start.x + end.x),
+                        0.5 * (start.y + end.y),
+                        0.5 * (start.z + end.z),
+                    );
+                    let mid_dev = mid_offset.norm();
+                    let arc_estimate = if chord_len > 1e-10 {
+                        (mid_dev / chord_len).abs().min(1.0).acos() * 2.0
+                    } else {
+                        0.5
+                    };
+                    let num_segments = ((arc_estimate / std::f64::consts::FRAC_PI_2 * 8.0)
+                        .ceil() as usize)
+                        .clamp(4, 16);
+                    let arc_points = approximate_arc_3pt_3d(start, mid, end, num_segments);
+                    for pt in arc_points {
+                        if !same_point_3d(result.last(), &pt) {
+                            result.push(pt);
+                        }
+                    }
+                }
+            } else {
+                // Line segment — IfcLineIndex permits any number of indices
+                for &idx in &idx_values {
+                    if let Some(&pt) = all_points.get(idx) {
+                        if !same_point_3d(result.last(), &pt) {
+                            result.push(pt);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
     /// Process composite curve into 2D points
     /// IfcCompositeCurve: Segments (list of IfcCompositeCurveSegment), SelfIntersect
     fn process_composite_curve_with_depth(
@@ -1749,5 +2173,331 @@ mod tests {
         assert!(profile.outer.contains(&Point2::new(-1.0, -2.0)));
         assert!(profile.outer.contains(&Point2::new(-1.0, 2.0)));
         assert!(profile.outer.contains(&Point2::new(1.0, 2.0)));
+    }
+
+    // ── trim_polyline / SweptDiskSolid trim-param coverage ────────────────────
+    fn approx_eq_p3(a: Point3<f64>, b: Point3<f64>, tol: f64) -> bool {
+        (a.x - b.x).abs() < tol && (a.y - b.y).abs() < tol && (a.z - b.z).abs() < tol
+    }
+
+    #[test]
+    fn test_trim_polyline_full_range() {
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(2.0, 0.0, 0.0),
+        ];
+        let out = trim_polyline(&pts, 0.0, 1.0);
+        assert_eq!(out.len(), 3);
+        assert!(approx_eq_p3(out[0], pts[0], 1e-9));
+        assert!(approx_eq_p3(out[1], pts[1], 1e-9));
+        assert!(approx_eq_p3(out[2], pts[2], 1e-9));
+    }
+
+    #[test]
+    fn test_trim_polyline_halves() {
+        // 3 points evenly spaced from x=0 to x=2; trim to [0, 0.5] should give x ∈ [0, 1]
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(2.0, 0.0, 0.0),
+        ];
+        let first_half = trim_polyline(&pts, 0.0, 0.5);
+        assert_eq!(first_half.len(), 2);
+        assert!(approx_eq_p3(first_half[0], Point3::new(0.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(first_half[1], Point3::new(1.0, 0.0, 0.0), 1e-9));
+
+        let second_half = trim_polyline(&pts, 0.5, 1.0);
+        assert_eq!(second_half.len(), 2);
+        assert!(approx_eq_p3(second_half[0], Point3::new(1.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(second_half[1], Point3::new(2.0, 0.0, 0.0), 1e-9));
+    }
+
+    #[test]
+    fn test_trim_polyline_strict_interior() {
+        // Trim [0.25, 0.75] over 5 evenly-spaced points (params 0, 0.25, 0.5, 0.75, 1)
+        // Strict interior: only points at param 0.5 are added; boundaries are lerp'd.
+        let pts: Vec<Point3<f64>> = (0..5)
+            .map(|i| Point3::new(i as f64, 0.0, 0.0))
+            .collect();
+        let out = trim_polyline(&pts, 0.25, 0.75);
+        // Expected: lerp(0.25)=x=1.0, mid=x=2.0, lerp(0.75)=x=3.0
+        assert_eq!(out.len(), 3);
+        assert!(approx_eq_p3(out[0], Point3::new(1.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(out[1], Point3::new(2.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(out[2], Point3::new(3.0, 0.0, 0.0), 1e-9));
+    }
+
+    #[test]
+    fn test_trim_polyline_invalid_range() {
+        let pts = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)];
+        // start >= end
+        assert!(trim_polyline(&pts, 0.5, 0.5).is_empty());
+        assert!(trim_polyline(&pts, 0.6, 0.4).is_empty());
+        // too few points
+        assert!(trim_polyline(&pts[..1], 0.0, 1.0).is_empty());
+    }
+
+    #[test]
+    fn test_trim_polyline_two_points_partial() {
+        let pts = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(10.0, 0.0, 0.0)];
+        let out = trim_polyline(&pts, 0.3, 0.7);
+        assert_eq!(out.len(), 2);
+        assert!(approx_eq_p3(out[0], Point3::new(3.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(out[1], Point3::new(7.0, 0.0, 0.0), 1e-9));
+    }
+
+    #[test]
+    fn test_composite_curve_trim_first_segment_only() {
+        // 3-segment composite curve along +Y, each segment 2.0 long
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,4.0,0.0));
+#4=IFCCARTESIANPOINT((0.0,6.0,0.0));
+#5=IFCPOLYLINE((#1,#2));
+#6=IFCPOLYLINE((#2,#3));
+#7=IFCPOLYLINE((#3,#4));
+#8=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
+#9=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
+#10=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#7);
+#11=IFCCOMPOSITECURVE((#8,#9,#10),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let curve = decoder.decode_by_id(11).unwrap();
+
+        // [0,1] → first segment only → points (0,0,0) and (0,2,0)
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.0), Some(1.0))
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[1], Point3::new(0.0, 2.0, 0.0), 1e-9));
+
+        // [1,2] → middle segment only
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(1.0), Some(2.0))
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 2.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[1], Point3::new(0.0, 4.0, 0.0), 1e-9));
+
+        // [0,3] → all three segments concatenated (4 points after de-dup)
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.0), Some(3.0))
+            .unwrap();
+        assert_eq!(pts.len(), 4);
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[3], Point3::new(0.0, 6.0, 0.0), 1e-9));
+    }
+
+    #[test]
+    fn test_composite_curve_trim_clamps_out_of_range() {
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCPOLYLINE((#1,#2));
+#4=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#3);
+#5=IFCCOMPOSITECURVE((#4),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let curve = decoder.decode_by_id(5).unwrap();
+
+        // Negative start clamps to 0
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(-5.0), Some(1.0))
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+
+        // End beyond num_segments clamps to num_segments
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.0), Some(99.0))
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+
+        // start == end → empty
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.5), Some(0.5))
+            .unwrap();
+        assert!(pts.is_empty());
+
+        // start > end → empty
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.8), Some(0.2))
+            .unwrap();
+        assert!(pts.is_empty());
+    }
+
+    #[test]
+    fn test_composite_curve_trim_fractional_multi_segment() {
+        // 3-seg polyline along Y at 2.0 each; trim [0.5, 2.5] should yield
+        // 2nd half of seg 0 + all of seg 1 + 1st half of seg 2:
+        //   y = 1.0, 2.0, 4.0, 5.0
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,4.0,0.0));
+#4=IFCCARTESIANPOINT((0.0,6.0,0.0));
+#5=IFCPOLYLINE((#1,#2));
+#6=IFCPOLYLINE((#2,#3));
+#7=IFCPOLYLINE((#3,#4));
+#8=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
+#9=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
+#10=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#7);
+#11=IFCCOMPOSITECURVE((#8,#9,#10),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let curve = decoder.decode_by_id(11).unwrap();
+
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.5), Some(2.5))
+            .unwrap();
+        // Expected: lerp into seg0 at 0.5 → y=1, end of seg0/start of seg1 → y=2 (kept once),
+        // end of seg1/start of seg2 → y=4 (kept once), lerp into seg2 at 0.5 → y=5
+        let ys: Vec<f64> = pts.iter().map(|p| p.y).collect();
+        assert_eq!(ys.len(), 4, "got points: {:?}", pts);
+        assert!((ys[0] - 1.0).abs() < 1e-9);
+        assert!((ys[1] - 2.0).abs() < 1e-9);
+        assert!((ys[2] - 4.0).abs() < 1e-9);
+        assert!((ys[3] - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_polyline_trim_first_segment() {
+        // 4-point polyline along Y: (0,0,0)→(0,2,0)→(0,4,0)→(0,6,0)
+        // Parameter range is [0, 3]. Trim [0,1] = first segment only.
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,4.0,0.0));
+#4=IFCCARTESIANPOINT((0.0,6.0,0.0));
+#5=IFCPOLYLINE((#1,#2,#3,#4));
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let curve = decoder.decode_by_id(5).unwrap();
+
+        let pts = processor
+            .get_polyline_points_trimmed(&curve, &mut decoder, Some(0.0), Some(1.0))
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[1], Point3::new(0.0, 2.0, 0.0), 1e-9));
+
+        // Trim [1, 2] = middle segment
+        let pts = processor
+            .get_polyline_points_trimmed(&curve, &mut decoder, Some(1.0), Some(2.0))
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 2.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[1], Point3::new(0.0, 4.0, 0.0), 1e-9));
+
+        // Trim [0.5, 2.5] = half + full + half across 3 segments
+        let pts = processor
+            .get_polyline_points_trimmed(&curve, &mut decoder, Some(0.5), Some(2.5))
+            .unwrap();
+        let ys: Vec<f64> = pts.iter().map(|p| p.y).collect();
+        assert_eq!(ys.len(), 4, "got points: {:?}", pts);
+        assert!((ys[0] - 1.0).abs() < 1e-9);
+        assert!((ys[1] - 2.0).abs() < 1e-9);
+        assert!((ys[2] - 4.0).abs() < 1e-9);
+        assert!((ys[3] - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_polyline_trim_clamps_and_inverts() {
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCPOLYLINE((#1,#2));
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let curve = decoder.decode_by_id(3).unwrap();
+
+        // No params → full polyline
+        let pts = processor
+            .get_polyline_points_trimmed(&curve, &mut decoder, None, None)
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+
+        // Inverted → empty
+        let pts = processor
+            .get_polyline_points_trimmed(&curve, &mut decoder, Some(0.8), Some(0.2))
+            .unwrap();
+        assert!(pts.is_empty());
+
+        // Out-of-range clamps
+        let pts = processor
+            .get_polyline_points_trimmed(&curve, &mut decoder, Some(-5.0), Some(99.0))
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+    }
+
+    #[test]
+    fn test_composite_curve_trim_keeps_non_coincident_junction() {
+        // Two segments whose endpoints don't coincide at the boundary
+        // (a real-world artefact: model drift, mismatched cartesian points).
+        // seg 0: (0,0,0)→(0,2,0); seg 1: (0,2.5,0)→(0,4.5,0).
+        // Concatenating segments [0,2] must preserve all 4 distinct points —
+        // dropping the first point of seg 1 would erase the gap and bend the
+        // directrix.
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,2.5,0.0));
+#4=IFCCARTESIANPOINT((0.0,4.5,0.0));
+#5=IFCPOLYLINE((#1,#2));
+#6=IFCPOLYLINE((#3,#4));
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
+#8=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
+#9=IFCCOMPOSITECURVE((#7,#8),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let curve = decoder.decode_by_id(9).unwrap();
+
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.0), Some(2.0))
+            .unwrap();
+        assert_eq!(pts.len(), 4, "got points: {:?}", pts);
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[1], Point3::new(0.0, 2.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[2], Point3::new(0.0, 2.5, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[3], Point3::new(0.0, 4.5, 0.0), 1e-9));
+    }
+
+    #[test]
+    fn test_composite_curve_trim_same_sense_false() {
+        // Single segment with SameSense=F should reverse before trim.
+        // Polyline (0,0,0)→(0,10,0) reversed = (0,10,0)→(0,0,0).
+        // Trim [0, 0.3] of reversed → first 30% of reversed → from y=10 to y=7.
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,10.0,0.0));
+#3=IFCPOLYLINE((#1,#2));
+#4=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.F.,#3);
+#5=IFCCOMPOSITECURVE((#4),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let schema = IfcSchema::new();
+        let processor = ProfileProcessor::new(schema);
+        let curve = decoder.decode_by_id(5).unwrap();
+
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.0), Some(0.3))
+            .unwrap();
+        assert_eq!(pts.len(), 2);
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 10.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(pts[1], Point3::new(0.0, 7.0, 0.0), 1e-9));
     }
 }

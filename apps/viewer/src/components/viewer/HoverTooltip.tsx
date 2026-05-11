@@ -77,6 +77,11 @@ export function HoverTooltip() {
       <div className="text-xs text-muted-foreground">
         #{hoverState.entityId}
       </div>
+      {hoverState.worldXYZ && (
+        <div className="text-[10px] font-mono text-muted-foreground/80 mt-0.5">
+          {hoverState.worldXYZ.x.toFixed(2)}, {hoverState.worldXYZ.y.toFixed(2)}, {hoverState.worldXYZ.z.toFixed(2)}
+        </div>
+      )}
     </div>
   );
 }

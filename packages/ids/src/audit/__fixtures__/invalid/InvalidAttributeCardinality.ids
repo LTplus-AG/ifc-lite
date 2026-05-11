@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids xmlns:xs="http://www.w3.org/2001/XMLSchema" 
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+     xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" 
+     xmlns="http://standards.buildingsmart.org/IDS">
+	<info>
+		<title>Example on use of attributes (for student research)</title>
+		<copyright>buildingSMART International Ltd</copyright>
+		<date>2022-01-12</date>
+	</info>
+	<specifications>
+		<specification ifcVersion="IFC2X3" name="Aachen test">
+			<applicability maxOccurs="unbounded">
+				<entity>
+					<name>
+						<simpleValue>IFCWALL</simpleValue>
+					</name>
+				</entity>
+			</applicability>
+			<requirements>
+        <!-- Attributes without a value constraint cannot be marked as optional for implementation agreement -->
+				<attribute cardinality="optional">
+					<name>
+						<simpleValue>Tag</simpleValue>
+					</name>
+				</attribute>
+				<!-- Attributes with an empty value constraint cannot be marked as optional for implementation agreement -->
+				<attribute cardinality="optional">
+					<name>
+						<simpleValue>Tag</simpleValue>
+					</name>
+					<value>
+						<simpleValue></simpleValue>
+					</value>
+				</attribute>
+        <!-- Attributes with an empty value constraint cannot be marked as optional for implementation agreement -->
+        <attribute cardinality="optional">
+          <name>
+            <simpleValue>Tag</simpleValue>
+          </name>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=""/>
+            </xs:restriction>
+          </value>
+        </attribute>
+			</requirements>
+		</specification>
+	</specifications>
+</ids>

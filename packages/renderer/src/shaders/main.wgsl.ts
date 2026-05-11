@@ -160,8 +160,20 @@ export const mainShaderSource = `
           // Combine all lighting
           var color = baseColor * (ambient + diffuseSun + diffuseFill + rim);
 
+          // flags.x is a bitfield:
+          //   bit 0 (value 1) = isSelected  → selection-highlight + force opaque
+          //   bit 1 (value 2) = isOverlay   → color-override pass; preserve
+          //                                    baseColor.a (overlay pipeline has
+          //                                    src-alpha blending) AND skip the
+          //                                    glass-fresnel branch so low-alpha
+          //                                    ghost tints don't pick up the
+          //                                    near-white reflection tint meant
+          //                                    for real glass materials.
+          let isSelected = (uniforms.flags.x & 1u) == 1u;
+          let isOverlay = (uniforms.flags.x & 2u) == 2u;
+
           // Selection highlight - add glow/fresnel effect
-          if (uniforms.flags.x == 1u) {
+          if (isSelected) {
             let V = normalize(-input.worldPos);
             let NdotV = max(dot(N, V), 0.0);
             let fresnel = pow(1.0 - NdotV, 2.0);
@@ -174,8 +186,8 @@ export const mainShaderSource = `
           // blue highlight, making it appear white instead of blue.
           // Also force alpha to 1.0 for selected objects so the highlight is
           // fully opaque (the selection pipeline has no alpha blending).
-          var finalAlpha = select(uniforms.baseColor.a, 1.0, uniforms.flags.x == 1u);
-          if (finalAlpha < 0.99 && uniforms.flags.x != 1u) {
+          var finalAlpha = select(uniforms.baseColor.a, 1.0, isSelected);
+          if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
             // Calculate view direction for fresnel
             let V = normalize(-input.worldPos);
             let NdotV = max(dot(N, V), 0.0);

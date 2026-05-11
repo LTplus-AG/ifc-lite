@@ -79,9 +79,22 @@ const MAX_INLINE_IMAGE_DATA_URL_CHARS = 1_200_000;
 const MAX_ATTACHMENTS_PER_MESSAGE = 6;
 const MAX_TEXT_ATTACHMENT_BYTES = 512_000;
 const MAX_IMAGE_ATTACHMENT_BYTES = 8_000_000;
+/** Anthropic's PDF content-block limit is ~32 MB; keep our upload cap lower. */
+const MAX_PDF_ATTACHMENT_BYTES = 16_000_000;
 
 function createAttachmentId(): string {
   return crypto.randomUUID();
+}
+
+/** Convert an ArrayBuffer (binary file) to raw base64 — no data-URL prefix. */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  return btoa(binary);
 }
 
 interface ChatSendOptions {
@@ -1019,7 +1032,54 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           remainingSlots -= 1;
           continue;
         }
-        // Only accept text-based files
+        // PDFs are supported by Claude as native document content blocks.
+        // Route them separately from text attachments so the chat request
+        // can emit the correct multimodal block type.
+        if (file.name.match(/\.pdf$/i) || file.type === 'application/pdf') {
+          if (!supportsFileAttachments) {
+            setChatError('Selected model does not support file attachments. Switch model to attach PDFs.');
+            continue;
+          }
+          if (file.size > MAX_PDF_ATTACHMENT_BYTES) {
+            setChatError(`PDF attachments must be smaller than ${Math.round(MAX_PDF_ATTACHMENT_BYTES / 1_000_000)} MB.`);
+            continue;
+          }
+          const buffer = await file.arrayBuffer();
+          const base64 = arrayBufferToBase64(buffer);
+          const attachment: FileAttachment = {
+            id: createAttachmentId(),
+            name: file.name,
+            type: 'application/pdf',
+            size: file.size,
+            pdfBase64: base64,
+            isPdf: true,
+          };
+          addAttachment(attachment);
+          remainingSlots -= 1;
+          continue;
+        }
+        // Excel / ODS binaries — we can't parse them yet, but we don't want
+        // to silently drop them. Register a metadata-only attachment so the
+        // user (and the LLM via the system prompt) know it's there and can
+        // suggest exporting as CSV.
+        if (file.name.match(/\.(xlsx|xls|ods)$/i)) {
+          if (!supportsFileAttachments) {
+            setChatError('Selected model does not support file attachments. Switch model to attach spreadsheets.');
+            continue;
+          }
+          const attachment: FileAttachment = {
+            id: createAttachmentId(),
+            name: file.name,
+            type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            size: file.size,
+            isSpreadsheetBinary: true,
+            textContent: `[Binary spreadsheet ${file.name} (${Math.round(file.size / 1024)} KB). Export to CSV for full content access.]`,
+          };
+          addAttachment(attachment);
+          remainingSlots -= 1;
+          continue;
+        }
+        // Text-based files — CSV, TSV, JSON, TXT
         if (!file.name.match(/\.(csv|json|txt|tsv)$/i)) continue;
         if (!supportsFileAttachments) {
           setChatError('Selected model does not support file attachments. Switch model to attach files.');
@@ -1117,7 +1177,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const modelSupportsImages = modelForUi?.supportsImages ?? false;
   const modelSupportsFiles = modelForUi?.supportsFileAttachments ?? true;
   const attachmentAccept = [
-    modelSupportsFiles ? '.csv,.json,.txt,.tsv' : '',
+    modelSupportsFiles
+      ? '.csv,.json,.txt,.tsv,.pdf,application/pdf,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet'
+      : '',
     modelSupportsImages ? 'image/*' : '',
   ].filter(Boolean).join(',');
   const canAttachInput = modelSupportsFiles || modelSupportsImages;

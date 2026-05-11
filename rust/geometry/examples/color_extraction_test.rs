@@ -26,7 +26,7 @@ fn main() {
     let content = possible_paths
         .iter()
         .find_map(|path| fs::read_to_string(path).ok())
-        .expect("Failed to read IFC file from any known path");
+        .expect("Failed to read IFC file — run `pnpm fixtures` from the repo root to download tests/models/ara3d/AC20-FZK-Haus.ifc");
 
     println!("File size: {} bytes", content.len());
 

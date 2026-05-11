@@ -18,8 +18,11 @@ import {
   Maximize2,
   Building2,
   Save,
+  Trash2,
+  CopyPlus,
 } from 'lucide-react';
 import { useViewerStore, resolveEntityRef } from '@/store';
+import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import {
   executeBasketSet,
@@ -28,6 +31,7 @@ import {
   executeBasketSaveView,
 } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
+import { toast } from '@/components/ui/toast';
 
 export function EntityContextMenu() {
   const contextMenu = useViewerStore((s) => s.contextMenu);
@@ -36,6 +40,10 @@ export function EntityContextMenu() {
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
+  // Store-level mutations
+  const removeEntity = useViewerStore((s) => s.removeEntity);
+  const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
+  const getMutationView = useViewerStore((s) => s.getMutationView);
   // Basket actions
   const menuRef = useRef<HTMLDivElement>(null);
   const { ifcDataStore, models } = useIfc();
@@ -206,6 +214,63 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [resolvedExpressId, activeDataStore, closeContextMenu]);
 
+  // Right-clicked entity's type — used in the toast message.
+  const contextEntityType = useMemo(() => {
+    if (!resolvedExpressId || !activeDataStore) return '';
+    return activeDataStore.entities.getTypeName(resolvedExpressId) || '';
+  }, [resolvedExpressId, activeDataStore]);
+
+  // Mutation view is required to drive bim.store.* — native-metadata-only
+  // models don't have one, so the Delete option stays hidden there.
+  const canEdit = useMemo(() => {
+    if (!contextEntityRef) return false;
+    return getMutationView(contextEntityRef.modelId) !== null;
+  }, [contextEntityRef, getMutationView]);
+
+  const handleDuplicate = useCallback(
+    (direction: DuplicateDirection = '+X') => {
+      if (!contextEntityRef || !canEdit) {
+        closeContextMenu();
+        return;
+      }
+      const result = duplicateEntity(contextEntityRef.modelId, contextEntityRef.expressId, direction);
+      if ('error' in result) {
+        toast.error(`Couldn't duplicate: ${result.error}`);
+      } else {
+        // Move selection onto the new entity so the property panel
+        // refreshes and the user can keep iterating (Cmd+D again
+        // duplicates the duplicate, like a stamp tool).
+        setSelectedEntityId(result.globalId);
+        toast.success(`Duplicated as #${result.expressId} (${direction}) — undo to remove`);
+      }
+      closeContextMenu();
+    },
+    [contextEntityRef, canEdit, duplicateEntity, setSelectedEntityId, closeContextMenu],
+  );
+
+  const handleDeleteEntity = useCallback(() => {
+    if (!contextEntityRef || !canEdit || !contextMenu.entityId) {
+      closeContextMenu();
+      return;
+    }
+    const ok = removeEntity(contextEntityRef.modelId, contextEntityRef.expressId);
+    if (ok) {
+      // Tombstoning only affects export — the rendered mesh is still
+      // in the GPU buffers. Hide it via the existing visibility system
+      // so the entity disappears from the scene and stops being
+      // pickable. `Show all` from the empty-space menu restores it
+      // (along with re-running undo to bring back the overlay).
+      hideEntity(contextMenu.entityId);
+      // Drop the selection so the right panel doesn't cling to a
+      // tombstoned id.
+      setSelectedEntityId(null);
+      toast.success(`${contextEntityType || 'Entity'} #${contextEntityRef.expressId} deleted — undo to restore`);
+    } else {
+      toast.error('Delete failed — entity not found in store overlay');
+    }
+    closeContextMenu();
+  }, [contextEntityRef, canEdit, contextEntityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
+
   if (!contextMenu.isOpen) {
     return null;
   }
@@ -257,6 +322,22 @@ export function EntityContextMenu() {
           <div className="h-px bg-border my-1" />
 
           <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
+
+          {/* Store-level mutations (bim.store.*). Only surfaced when there's
+              a live mutation view on the model — otherwise these would
+              silently no-op and confuse users. */}
+          {canEdit && (
+            <>
+              <div className="h-px bg-border my-1" />
+              <DuplicateRow onDuplicate={handleDuplicate} />
+              <MenuItem
+                icon={Trash2}
+                label="Delete entity"
+                tone="destructive"
+                onClick={handleDeleteEntity}
+              />
+            </>
+          )}
         </>
       )}
 
@@ -269,22 +350,105 @@ export function EntityContextMenu() {
   );
 }
 
+type MenuItemTone = 'default' | 'destructive';
+
 interface MenuItemProps {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /** Right-aligned keyboard hint (e.g. `'⌘D'`). */
+  shortcut?: string;
+  /**
+   * Visual tone:
+   * - `default`     muted icon, neutral hover
+   * - `destructive` red-toned icon and red-tinted hover (Delete entity)
+   */
+  tone?: MenuItemTone;
 }
 
-function MenuItem({ icon: Icon, label, onClick, disabled }: MenuItemProps) {
+/**
+ * Inline directional duplicate row — primary label on the left
+ * (clickable, fires the default +X duplicate), six axis chips on
+ * the right for explicit direction control. Mirrors the column
+ * placement axes the user already sees on the Raw STEP tab.
+ *
+ * Why six chips and not a sub-menu: a flyout for six options is
+ * wasted real estate, and the chip arrows let the user "see and
+ * pick" in one motion.
+ */
+function DuplicateRow({ onDuplicate }: { onDuplicate: (dir: DuplicateDirection) => void }) {
+  return (
+    <div className="px-3 py-1.5 flex items-center gap-2 hover:bg-muted/40">
+      <button
+        type="button"
+        onClick={() => onDuplicate('+X')}
+        className="flex items-center gap-2 text-sm text-left flex-1 min-w-0 hover:text-foreground"
+        title="Duplicate one bbox-width along +X (default)"
+      >
+        <CopyPlus className="h-4 w-4 text-muted-foreground" />
+        <span>Duplicate</span>
+        <span className="ml-auto text-[10px] font-mono text-muted-foreground/70">⌘D</span>
+      </button>
+      <div className="flex items-center gap-0.5 shrink-0 border-l border-border/60 pl-2">
+        <DirectionChip dir="+X" label="→" tooltip="Duplicate +X (east)" onClick={() => onDuplicate('+X')} />
+        <DirectionChip dir="-X" label="←" tooltip="Duplicate −X (west)" onClick={() => onDuplicate('-X')} />
+        <DirectionChip dir="+Y" label="↗" tooltip="Duplicate +Y (north)" onClick={() => onDuplicate('+Y')} />
+        <DirectionChip dir="-Y" label="↙" tooltip="Duplicate −Y (south)" onClick={() => onDuplicate('-Y')} />
+        <DirectionChip dir="+Z" label="↑" tooltip="Duplicate +Z (up)" onClick={() => onDuplicate('+Z')} />
+        <DirectionChip dir="-Z" label="↓" tooltip="Duplicate −Z (down)" onClick={() => onDuplicate('-Z')} />
+      </div>
+    </div>
+  );
+}
+
+function DirectionChip({
+  dir,
+  label,
+  tooltip,
+  onClick,
+}: {
+  dir: DuplicateDirection;
+  label: string;
+  tooltip: string;
+  onClick: () => void;
+}) {
   return (
     <button
-      className="w-full px-3 py-1.5 text-sm text-left flex items-center gap-2 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+      type="button"
+      onClick={onClick}
+      title={tooltip}
+      aria-label={tooltip}
+      className="h-5 w-5 flex items-center justify-center rounded text-[11px] font-mono leading-none text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-foreground transition-colors"
+      data-direction={dir}
+    >
+      {label}
+    </button>
+  );
+}
+
+function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, tone = 'default' }: MenuItemProps) {
+  const iconClass =
+    tone === 'destructive'
+      ? 'h-4 w-4 text-red-500 dark:text-red-400'
+      : 'h-4 w-4 text-muted-foreground';
+  const hoverClass =
+    tone === 'destructive'
+      ? 'hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-700 dark:hover:text-red-300'
+      : 'hover:bg-muted';
+  return (
+    <button
+      className={`w-full px-3 py-1.5 text-sm text-left flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${hoverClass}`}
       onClick={onClick}
       disabled={disabled}
     >
-      <Icon className="h-4 w-4 text-muted-foreground" />
-      <span>{label}</span>
+      <Icon className={iconClass} />
+      <span className="flex-1 min-w-0">{label}</span>
+      {shortcut && (
+        <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
+          {shortcut}
+        </span>
+      )}
     </button>
   );
 }

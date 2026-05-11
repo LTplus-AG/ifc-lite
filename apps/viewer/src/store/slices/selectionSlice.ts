@@ -46,6 +46,13 @@ export interface SelectionSlice {
   setSelectedEntity: (ref: EntityRef | null) => void;
   /** Add entity to multi-selection */
   addEntityToSelection: (ref: EntityRef) => void;
+  /**
+   * Batch-add multiple entities to multi-selection in a single Zustand
+   * `set`. Use for bulk paths like "Select all visible results" — the
+   * naïve loop over `addEntityToSelection` re-renders every subscriber
+   * O(N) times for an N-row select. Empty input is a no-op.
+   */
+  addEntitiesToSelection: (refs: ReadonlyArray<EntityRef>) => void;
   /** Remove entity from multi-selection */
   removeEntityFromSelection: (ref: EntityRef) => void;
   /** Toggle entity in multi-selection */
@@ -167,6 +174,19 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
       selectedEntitiesSet: newSet,
       selectedEntity: ref,
       // NOTE: Don't update selectedEntityId here - caller should use setSelectedEntityId(globalId)
+    };
+  }),
+
+  addEntitiesToSelection: (refs) => set((state) => {
+    if (refs.length === 0) return {};
+    const newSet = new Set(state.selectedEntitiesSet);
+    for (const ref of refs) newSet.add(entityRefToString(ref));
+    // Primary selection becomes the LAST ref in the input — matches the
+    // existing addEntityToSelection convention where the most recent
+    // add is treated as primary.
+    return {
+      selectedEntitiesSet: newSet,
+      selectedEntity: refs[refs.length - 1],
     };
   }),
 

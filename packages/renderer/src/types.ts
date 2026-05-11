@@ -172,6 +172,26 @@ export interface RenderOptions {
   isolatedIds?: Set<number> | null; // Only show these meshes (null = show all)
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
+  /**
+   * Per-frame alpha overrides — primary use case is X-Ray mode.
+   *
+   * Map<expressId, alpha 0..1>. Non-selected meshes/batches whose expressId
+   * appears in this map render at the override alpha through the transparent
+   * pipeline. Selected meshes (`selectedId` / `selectedIds`) are exempt at
+   * every site, so highlights always paint with their own alpha.
+   *
+   * Mixed batches (some entries overridden, some not) take the minimum
+   * override alpha across non-selected ids; selected meshes in the batch
+   * are then redrawn on top by the highlight pass.
+   *
+   * The renderer snapshots this map at frame start, so callers may freely
+   * mutate or recycle their copy after `render()` returns.
+   *
+   * Note: alphas `>= 0.99` are treated as opaque (the cutoff for switching to
+   * the transparent pipeline). Entries at or above that threshold are no-ops
+   * — keep them out of the map to avoid unnecessary work.
+   */
+  transparencyOverrides?: Map<number, number> | null;
   // Building rotation in radians (from IfcSite placement) - used to orient section planes
   buildingRotation?: number;
   selectedModelIndex?: number;    // Model index for multi-model selection (must match mesh.modelIndex)
@@ -209,4 +229,11 @@ export interface PickOptions {
 export interface PickResult {
   expressId: number;
   modelIndex?: number;  // Index of the model this entity belongs to
+  /**
+   * World-space XYZ of the picked surface point. Optional because the
+   * pick path can skip depth readback for callers that only need the
+   * entityId (e.g. selection state). Recovered by sampling the pick
+   * pass's depth texture at the click position and unprojecting.
+   */
+  worldXYZ?: { x: number; y: number; z: number };
 }

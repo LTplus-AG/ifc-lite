@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Renderer, type VisualEnhancementOptions } from '@ifc-lite/renderer';
-import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
+import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
 import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
 import {
   useSelectionState,
@@ -32,10 +32,13 @@ import {
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
+import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
+import { usePointCloudSync } from './usePointCloudSync.js';
+import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
 
 interface ViewportProps {
@@ -43,6 +46,8 @@ interface ViewportProps {
   /** Monotonic counter that increments when geometry changes — used to trigger
    *  streaming effects even when the geometry array reference is stable. */
   geometryVersion?: number;
+  /** Point cloud assets aggregated across visible federated models. */
+  pointClouds?: ReadonlyArray<PointCloudAsset> | null;
   coordinateInfo?: CoordinateInfo;
   computedIsolatedIds?: Set<number> | null;
   modelIdToIndex?: Map<string, number>;
@@ -56,6 +61,7 @@ interface ViewportProps {
 export function Viewport({
   geometry,
   geometryVersion,
+  pointClouds,
   coordinateInfo,
   computedIsolatedIds,
   modelIdToIndex,
@@ -456,10 +462,20 @@ export function Viewport({
     }
 
     // Set cursor based on active tool
-    if (activeTool === 'measure') {
+    if (activeTool === 'measure' || activeTool === 'annotate' || activeTool === 'addElement') {
       canvas.style.cursor = 'crosshair';
     } else {
       canvas.style.cursor = 'default';
+    }
+
+    // Clear add-element pending state + hover point when leaving the
+    // tool so the SVG overlay doesn't paint stale geometry from a
+    // previous session.
+    if (activeTool !== 'addElement') {
+      const state = useViewerStore.getState();
+      if (state.addElementPendingPoints.length > 0 || state.addElementHoverPoint !== null) {
+        state.clearAddElementPending();
+      }
     }
   }, [activeTool, activeMeasurement, cancelMeasurement]);
 
@@ -702,6 +718,10 @@ export function Viewport({
   // The animation loop reads this to skip post-processing during rapid camera movement.
   const isInteractingRef = useRef(false);
 
+  // Rectangle-select drag state — populated by useMouseControls during
+  // a Ctrl/⌘ + LMB drag, consumed by RectSelectionOverlay below.
+  const [rectSelection, setRectSelection] = useState<RectSelectionRect | null>(null);
+
   // ===== Extracted hooks =====
   useMouseControls({
     canvasRef,
@@ -736,6 +756,7 @@ export function Viewport({
     handlePickForSelection: (pickResult) => handlePickForSelectionRef.current(pickResult),
     setHoverState,
     clearHover,
+    setRectSelection,
     openContextMenu,
     startMeasurement,
     updateMeasurement,
@@ -846,6 +867,18 @@ export function Viewport({
     onGeometryReleased,
   });
 
+  usePointCloudSync({
+    rendererRef,
+    isInitialized,
+    pointClouds,
+    hasMeshes: (geometry?.length ?? 0) > 0,
+  });
+
+  usePointCloudLifecycle({
+    rendererRef,
+    isInitialized,
+  });
+
   useRenderUpdates({
     rendererRef,
     isInitialized,
@@ -891,13 +924,18 @@ export function Viewport({
       : undefined;
 
   return (
-    <canvas
-      ref={canvasRef}
-      data-viewport="main"
-      tabIndex={-1}
-      className={`w-full h-full block ${cesiumActive ? 'relative z-[1]' : ''}`}
-      style={canvasStyle}
-      onPointerDown={focusViewportForKeyboardShortcuts}
-    />
+    <div className="relative w-full h-full">
+      <canvas
+        ref={canvasRef}
+        data-viewport="main"
+        tabIndex={-1}
+        className={`w-full h-full block ${cesiumActive ? 'relative z-[1]' : ''}`}
+        style={canvasStyle}
+        onPointerDown={focusViewportForKeyboardShortcuts}
+      />
+      {/* Rectangle-select drag visual. Pointer-events:none so the
+          canvas keeps receiving pointer events during the drag. */}
+      <RectSelectionOverlay rect={rectSelection} />
+    </div>
   );
 }

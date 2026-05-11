@@ -1,5 +1,108 @@
 # @ifc-lite/ids
 
+## 1.15.1
+
+### Patch Changes
+
+- Updated dependencies [[`2ab0e4c`](https://github.com/louistrue/ifc-lite/commit/2ab0e4c0eafc21feb22bfc7cd96c467b8b9ff599)]:
+  - @ifc-lite/parser@2.4.0
+  - @ifc-lite/data@1.17.0
+
+## 1.15.0
+
+### Minor Changes
+
+- [#623](https://github.com/louistrue/ifc-lite/pull/623) [`7c85376`](https://github.com/louistrue/ifc-lite/commit/7c853760ef96e6f0f88ebdc29c17aefae724ff43) Thanks [@louistrue](https://github.com/louistrue)! - Add `auditIDSDocument` and `auditIDSStructure` for in-process IDS document
+  correctness checking — full parity with buildingSMART/IDS-Audit-tool.
+  **The auditor passes all 54 fixtures of the upstream `testing.shared/`
+  regression corpus** (100% parity).
+
+  The auditor runs five configurable phases against any IDS document:
+
+  - **Parse** — wraps `parseIDS` in a permissive shim that returns
+    `IDSAuditIssue`s instead of throwing, strips UTF-8 BOM that xmldom
+    rejects, and surfaces a parsed document even when later phases fail.
+  - **XSD shape** — walks the raw XML DOM against the IDS 1.0 XSD's
+    element shapes (mirrors upstream's `IdsXmlNode.cs` approach: per-
+    element allowed-attribute and allowed-child tables encoded from
+    `Resources/XsdSchemas/ids.xsd`). Catches unknown attributes and
+    child elements anywhere in the document — the only way to flag the
+    upstream `xsdFailure.ids` fixture without pulling in a generic XSD
+    validator.
+  - **XSD field** — required attributes, enum membership, and
+    `xsi:schemaLocation` URL validation against the recognised IDS schemas
+    (Report 107). Each whitespace-separated `@ifcVersion` token is checked
+    individually, so silently-dropped invalid tokens (e.g.
+    `IFC2X3 INVALIDIFCVERSION`) get flagged.
+  - **IFC schema cross-check** — entity names, predefined types (incl.
+    enumeration and pattern restrictions), property-set / property names,
+    attribute names + value-type compatibility (Report 102 — `<value>`
+    constraints on complex/entity-typed attributes are an error),
+    attribute inheritance via the EXPRESS chain, partOf relations with
+    per-version member/owner subtype verification, and
+    classifiable/materializable applicability checks. Backed by the full
+    schema tables in `@ifc-lite/data` (2711 entities, 1485 psets, 7624
+    properties, 390 dataTypes, 2765 attribute rows).
+  - **Coherence** — empty xs:enumerations, inverted bounds, `xs:length` /
+    `xs:minLength` / `xs:maxLength` restrictions, full XSD regex semantics
+    (`\i`, `\c`, `\d`, `\w` and negations translated to JS Unicode
+    property escapes — see `audit/coherence/regex.ts`, ported from
+    upstream `XmlRegex.cs`; char-class subtraction warns), inverted
+    spec-level cardinality, and Report 202 cardinality coherence —
+    `optional` property requires `@dataType`, `prohibited` property
+    forbids it, `optional` material/classification require non-empty
+    value, etc.
+
+  Issues use stable string-literal codes (`E_IFC_ENTITY_UNKNOWN`,
+  `W_IFC_PSET_RESERVED_PREFIX`, `E_RESTRICTION_RANGE`,
+  `E_XSD_SCHEMA_LOCATION`, `E_IFC_DATATYPE_UNKNOWN`,
+  `E_RESTRICTION_BASE_MISMATCH`, …) so consumers can dispatch on them
+  programmatically. Severity buckets (`error`, `warning`, `info`) drive
+  the aggregate `IDSAuditReport.status`.
+
+  Three non-breaking parser additions support the auditor:
+
+  - `IDSPartOfFacet.rawRelation` — the original `@relation` attribute when
+    it didn't normalise to a recognised `PartOfRelation`.
+  - `IDSSpecification.ifcVersionRaw` — the original `@ifcVersion` attribute,
+    so the auditor can flag tokens the parser silently dropped.
+  - `IDSDocument.schemaLocation` — the root `xsi:schemaLocation` value,
+    used by the XSD audit to flag references to non-IDS schemas.
+
+  Two parser corrections aligning with IDS 1.0:
+
+  - `<property>` `dataType` is now correctly read from the **XML attribute**
+    (`<property dataType="IFCLABEL">`) per IDS 1.0, with fallback to the
+    legacy 0.9.7 child-element form. This had previously made every
+    upstream fixture's `dataType` invisible to checks.
+  - Requirement-facet `cardinality="required|optional|prohibited"` is
+    honoured per IDS 1.0, with fallback to the older `minOccurs/maxOccurs`
+    encoding.
+
+  Plus a UTF-8 BOM fix in the parser — many real-world IDS files saved by
+  Windows tooling include a BOM that xmldom otherwise rejects.
+
+  A full 54-fixture regression suite copied from
+  buildingSMART/IDS-Audit-tool's `testing.shared/` corpus (MIT) is
+  included under `packages/ids/src/audit/__fixtures__/`.
+
+### Patch Changes
+
+- Updated dependencies [[`7c85376`](https://github.com/louistrue/ifc-lite/commit/7c853760ef96e6f0f88ebdc29c17aefae724ff43)]:
+  - @ifc-lite/data@1.16.0
+
+## 1.14.11
+
+### Patch Changes
+
+- [#615](https://github.com/louistrue/ifc-lite/pull/615) [`7a7cf79`](https://github.com/louistrue/ifc-lite/commit/7a7cf79c181004f9974bd303181aeeaa97d6869d) Thanks [@louistrue](https://github.com/louistrue)! - Add `@xmldom/xmldom` as a runtime fallback for environments where the
+  global `DOMParser` is undefined (Node.js, Web Workers without DOM,
+  embedded contexts). Browser builds keep using the native `DOMParser` —
+  the xmldom fallback is loaded dynamically only when needed, so the
+  browser bundle is unaffected. Also surface fatal xmldom v0.9 ParseError
+  exceptions as a clear `Failed to parse IDS XML` error instead of letting
+  them bubble unannotated.
+
 ## 1.14.10
 
 ### Patch Changes

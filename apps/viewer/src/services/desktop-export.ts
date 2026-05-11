@@ -10,7 +10,9 @@ import { readNativeFile } from '@/services/file-dialog';
 const exportHydrationByModel = new Map<string, Promise<IfcDataStore | null>>();
 
 function isDesktopRuntime(): boolean {
-  const win = globalThis as Window & { __TAURI_INTERNALS__?: { invoke?: unknown } };
+  // `globalThis` and `Window` aren't structurally compatible per TS, so
+  // route through `unknown` first — the cast is intentional.
+  const win = globalThis as unknown as Window & { __TAURI_INTERNALS__?: { invoke?: unknown } };
   return typeof win.__TAURI_INTERNALS__?.invoke === 'function';
 }
 

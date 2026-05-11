@@ -56,6 +56,7 @@ import { ensureModelExportReady } from '@/services/desktop-export';
 import { StepExporter, MergedExporter, Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type MergeModelInput, type ExportProgress, type StepExportProgress } from '@ifc-lite/export';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -387,6 +388,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
       }
 
       if (!selectedModel) return;
+      // IFC5 export needs a parsed data store + geometry. Native-metadata
+      // models don't carry these, so bail with a descriptive error rather
+      // than passing nulls through.
+      if (!selectedModel.ifcDataStore) {
+        throw new Error('Selected model has no parsed IFC data store available for export');
+      }
       const mutationView = getMutationView(selectedModelId);
       const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
 
@@ -515,7 +522,18 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         setExportProgress(null);
 
-        const blob = new Blob([toBlobPart(result.content)], { type: 'text/plain' });
+        // Splice pending schedule tasks into the STEP via the shared
+        // helper. Same contract every export surface uses so bugs
+        // can't differ between the dialog, the quick button, and the
+        // SDK adapter.
+        const state = useViewerStore.getState();
+        const spliced = spliceScheduleIntoExport(result, selectedModelId, selectedModel.ifcDataStore as IfcDataStore, {
+          scheduleData: state.scheduleData ?? null,
+          scheduleIsEdited: state.scheduleIsEdited === true,
+          scheduleSourceModelId: state.scheduleSourceModelId ?? null,
+        });
+
+        const blob = new Blob([toBlobPart(spliced.content)], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

@@ -18,10 +18,12 @@ import type {
   VisibilityBackendMethods,
   ViewerBackendMethods,
   MutateBackendMethods,
+  StoreBackendMethods,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
   FilesBackendMethods,
+  ScheduleBackendMethods,
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './adapters/types.js';
 import { LEGACY_MODEL_ID } from './adapters/model-compat.js';
@@ -31,10 +33,12 @@ import { createSelectionAdapter } from './adapters/selection-adapter.js';
 import { createVisibilityAdapter } from './adapters/visibility-adapter.js';
 import { createViewerAdapter } from './adapters/viewer-adapter.js';
 import { createMutateAdapter } from './adapters/mutate-adapter.js';
+import { createStoreAdapter } from './adapters/store-adapter.js';
 import { createSpatialAdapter } from './adapters/spatial-adapter.js';
 import { createLensAdapter } from './adapters/lens-adapter.js';
 import { createExportAdapter } from './adapters/export-adapter.js';
 import { createFilesAdapter } from './adapters/files-adapter.js';
+import { createScheduleAdapter } from './adapters/schedule-adapter.js';
 
 export class LocalBackend implements BimBackend {
   readonly model: ModelBackendMethods;
@@ -43,38 +47,42 @@ export class LocalBackend implements BimBackend {
   readonly visibility: VisibilityBackendMethods;
   readonly viewer: ViewerBackendMethods;
   readonly mutate: MutateBackendMethods;
+  readonly store: StoreBackendMethods;
   readonly spatial: SpatialBackendMethods;
   readonly export: ExportBackendMethods;
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
+  readonly schedule: ScheduleBackendMethods;
 
-  private store: StoreApi;
+  private storeApi: StoreApi;
 
   constructor(store: StoreApi) {
-    this.store = store;
+    this.storeApi = store;
     this.model = createModelAdapter(store);
     this.query = createQueryAdapter(store);
     this.selection = createSelectionAdapter(store);
     this.visibility = createVisibilityAdapter(store);
     this.viewer = createViewerAdapter(store);
     this.mutate = createMutateAdapter(store);
+    this.store = createStoreAdapter(store);
     this.spatial = createSpatialAdapter(store);
     this.lens = createLensAdapter(store);
     this.export = createExportAdapter(store);
     this.files = createFilesAdapter(store);
+    this.schedule = createScheduleAdapter(store);
   }
 
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void {
     switch (event) {
       case 'selection:changed':
-        return this.store.subscribe((state, prev) => {
+        return this.storeApi.subscribe((state, prev) => {
           if (state.selectedEntities !== prev.selectedEntities) {
             handler({ refs: state.selectedEntities ?? [] });
           }
         });
 
       case 'model:loaded':
-        return this.store.subscribe((state, prev) => {
+        return this.storeApi.subscribe((state, prev) => {
           if (state.models.size > prev.models.size) {
             for (const [id, model] of state.models) {
               if (!prev.models.has(id)) {
@@ -108,7 +116,7 @@ export class LocalBackend implements BimBackend {
         });
 
       case 'model:removed':
-        return this.store.subscribe((state, prev) => {
+        return this.storeApi.subscribe((state, prev) => {
           if (state.models.size < prev.models.size) {
             for (const id of prev.models.keys()) {
               if (!state.models.has(id)) {
@@ -119,7 +127,7 @@ export class LocalBackend implements BimBackend {
         });
 
       case 'visibility:changed':
-        return this.store.subscribe((state, prev) => {
+        return this.storeApi.subscribe((state, prev) => {
           if (
             state.hiddenEntities !== prev.hiddenEntities ||
             state.isolatedEntities !== prev.isolatedEntities ||
@@ -130,14 +138,14 @@ export class LocalBackend implements BimBackend {
         });
 
       case 'mutation:changed':
-        return this.store.subscribe((state, prev) => {
+        return this.storeApi.subscribe((state, prev) => {
           if (state.mutationVersion !== prev.mutationVersion) {
             handler({});
           }
         });
 
       case 'lens:changed':
-        return this.store.subscribe((state, prev) => {
+        return this.storeApi.subscribe((state, prev) => {
           if (state.activeLensId !== prev.activeLensId) {
             handler({ lensId: state.activeLensId });
           }

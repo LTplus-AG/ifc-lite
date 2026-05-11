@@ -22,6 +22,7 @@ import type {
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { useViewerStore } from '@/store';
 import {
   handleMeasureDown,
   handleMeasureDrag,
@@ -29,7 +30,7 @@ import {
   handleMeasureUp,
   updateMeasureScreenCoords,
 } from './measureHandlers.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover } from './selectionHandlers.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -40,6 +41,12 @@ export interface MouseState {
   startX: number;
   startY: number;
   didDrag: boolean;
+  /**
+   * True while the user is mid-drag in rectangle-select mode (Ctrl/⌘
+   * held over the canvas in select tool). Suppresses orbit/pan in
+   * the drag handlers and triggers `pickRect` on mouseup.
+   */
+  isRectSelecting?: boolean;
 }
 
 export interface UseMouseControlsParams {
@@ -101,7 +108,20 @@ export interface UseMouseControlsParams {
 
   // Callbacks
   handlePickForSelection: (pickResult: PickResult | null) => void;
-  setHoverState: (state: { entityId: number; screenX: number; screenY: number }) => void;
+  setHoverState: (state: {
+    entityId: number;
+    screenX: number;
+    screenY: number;
+    worldXYZ?: { x: number; y: number; z: number };
+  }) => void;
+  /**
+   * Called during a rectangle-selection drag with the current rect
+   * (CSS pixels, canvas-relative). Passed `null` on drag end to clear
+   * any visual overlay. The hook handles the actual `pickRect` call
+   * + selection update internally; this callback is only for the
+   * overlay visual.
+   */
+  setRectSelection?: (rect: { x0: number; y0: number; x1: number; y1: number } | null) => void;
   clearHover: () => void;
   openContextMenu: (entityId: number | null, screenX: number, screenY: number) => void;
   startMeasurement: (point: MeasurePoint) => void;
@@ -185,6 +205,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     calculateScale,
     getPickOptions,
     hasPendingMeasurements,
+    setRectSelection,
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
     hoverThrottleMs,
@@ -257,9 +278,22 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       mouseState.startX = e.clientX;
       mouseState.startY = e.clientY;
       mouseState.didDrag = false;
+      mouseState.isRectSelecting = false;
 
       // Determine action based on active tool and mouse button
       const tool = activeToolRef.current;
+
+      // Rectangle-select gesture: Ctrl/⌘ + LMB drag while in the
+      // select tool. Suppresses orbit/pan; the rect is finalised
+      // and pick happens on mouseup.
+      if (tool === 'select' && e.button === 0 && (e.ctrlKey || e.metaKey)) {
+        mouseState.isRectSelecting = true;
+        const rect = canvas.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        setRectSelection?.({ x0: cx, y0: cy, x1: cx, y1: cy });
+        return;
+      }
 
       // Will this mousedown lead to an orbit drag?
       const isPanGesture = tool === 'pan' || e.button === 1 || e.button === 2 ||
@@ -356,6 +390,18 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       const y = e.clientY - rect.top;
       const tool = activeToolRef.current;
 
+      // Rectangle-select drag: just update the visual; no orbit / pan
+      // / pick / hover work happens in this branch.
+      if (mouseState.isRectSelecting) {
+        setRectSelection?.({
+          x0: mouseState.startX - rect.left,
+          y0: mouseState.startY - rect.top,
+          x1: x,
+          y1: y,
+        });
+        return;
+      }
+
       // Handle measure tool live preview while dragging
       // IMPORTANT: Check tool first, not activeMeasurement, to prevent orbit conflict
       if (tool === 'measure' && mouseState.isDragging && activeMeasurementRef.current) {
@@ -366,6 +412,13 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // Show snap indicators to help user see where they can snap
       if (tool === 'measure' && !mouseState.isDragging && snapEnabledRef.current) {
         if (handleMeasureHover(ctx, x, y)) return;
+      }
+
+      // Add-element tool hover preview. Always runs (regardless of
+      // snap toggle) so the live edge/rectangle/polygon overlay can
+      // track the cursor; magnetic snap is layered on when enabled.
+      if (tool === 'addElement' && !mouseState.isDragging) {
+        if (handleAddElementHover(ctx, x, y)) return;
       }
 
       // Handle orbit/pan for other tools (or measure tool with shift+drag or no active measurement)
@@ -413,7 +466,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           // Uses visibility filtering so hidden elements don't show hover tooltips
           const pickResult = await renderer.pick(x, y, getPickOptions());
           if (pickResult) {
-            setHoverState({ entityId: pickResult.expressId, screenX: e.clientX, screenY: e.clientY });
+            setHoverState({
+              entityId: pickResult.expressId,
+              screenX: e.clientX,
+              screenY: e.clientY,
+              worldXYZ: pickResult.worldXYZ,
+            });
           } else {
             clearHover();
           }
@@ -432,6 +490,39 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       const tool = activeToolRef.current;
+
+      // Rectangle-select finalisation: run pickRect against the
+      // dragged rect, replace the current selection with the result,
+      // then clear the visual.
+      if (mouseState.isRectSelecting) {
+        const canvasRect = canvas.getBoundingClientRect();
+        const x0 = mouseState.startX - canvasRect.left;
+        const y0 = mouseState.startY - canvasRect.top;
+        const x1 = e.clientX - canvasRect.left;
+        const y1 = e.clientY - canvasRect.top;
+        // Tiny rect (just a click + tiny twitch) → no-op so we don't
+        // accidentally clear selection on a missed Ctrl-click.
+        const rectSize = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+        if (rectSize >= 4) {
+          // pickRect can reject on WebGPU validation / device-loss
+          // paths — swallow the error so the pointer event doesn't
+          // surface an unhandled rejection. Selection stays
+          // untouched on failure (better UX than clearing it).
+          void renderer
+            .pickRect(x0, y0, x1, y1, getPickOptions())
+            .then((ids) => {
+              useViewerStore.getState().setSelectedEntityIds(Array.from(ids));
+            })
+            .catch((error) => {
+              console.warn('[useMouseControls] Rectangle selection failed:', error);
+            });
+        }
+        setRectSelection?.(null);
+        mouseState.isRectSelecting = false;
+        mouseState.isDragging = false;
+        mouseState.isPanning = false;
+        return;
+      }
 
       // Handle measure tool completion
       if (tool === 'measure' && activeMeasurementRef.current) {

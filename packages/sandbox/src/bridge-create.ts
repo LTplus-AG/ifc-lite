@@ -13,6 +13,7 @@
 import { IfcCreator } from '@ifc-lite/sdk';
 import type { MethodSchema, MethodSemanticContract } from './bridge-schema.js';
 import { creatorRegistry } from './creator-registry.js';
+import { buildScheduleMethods, SCHEDULE_SPECIAL_METHOD_NAMES } from './bridge-create-schedule.js';
 
 // ============================================================================
 // Auto-discovery for bim.create (IfcCreator methods)
@@ -32,8 +33,11 @@ import { creatorRegistry } from './creator-registry.js';
 type MethodPattern = 'storey-params' | 'element-params' | 'single-dump' | 'no-args' | 'special';
 
 /** Methods with non-standard signatures that need hand-written wiring */
-const SPECIAL_METHODS = new Set([
+const SPECIAL_METHODS = new Set<string>([
   'constructor', 'toIfc', 'setColor',
+  // Scheduling lives in bridge-create-schedule.ts — exported list keeps the
+  // two files synchronised without duplicating the method names.
+  ...SCHEDULE_SPECIAL_METHOD_NAMES,
 ]);
 
 /**
@@ -58,6 +62,13 @@ const ALLOWED_METHODS = new Set([
   'addElement', 'addAxisElement', 'createProfile',
   // Properties and materials
   'addIfcPropertySet', 'addIfcElementQuantity', 'addIfcMaterial',
+  // Scheduling / 4D (IfcTask, IfcWorkSchedule, IfcRelSequence)
+  'addIfcWorkSchedule', 'addIfcWorkPlan', 'addIfcTask', 'addIfcRelSequence',
+  // Canonical IFC relationship names — preferred for schema compliance.
+  'addIfcRelAssignsToControl', 'addIfcRelAssignsToProcess', 'addIfcRelNests',
+  // Ergonomic aliases retained for script authors.
+  'assignTasksToWorkSchedule', 'assignSchedulesToWorkPlan',
+  'assignProductsToTask', 'nestTasks',
   // Low-level geometry
   'getWorldPlacementId',
 ]);
@@ -91,6 +102,7 @@ function methodDoc(name: string): string {
   // addIfcWall → 'Add an IfcWall'
   // addElement → 'Add a generic element'
   // createProfile → 'Create a profile from a ProfileDef'
+  if (name === 'addIfcMaterial') return 'Associate a material with an element via IfcRelAssociatesMaterial (deferred to toIfc). Returns nothing.';
   if (name === 'addIfcBuildingStorey') return 'Add a building storey. Returns storey expressId.';
   if (name === 'addIfcGableRoof') return 'Add a dual-pitch gable roof. `Slope` is in radians. Returns roof expressId.';
   if (name === 'addIfcWallDoor') return 'Add a door hosted in a wall opening. Position is wall-local [alongWall, 0, baseHeight]. Returns door expressId.';
@@ -408,6 +420,12 @@ export function buildCreateMethods(): MethodSchema[] {
     returns: 'void',
     llmSemantics: CREATE_METHOD_SEMANTICS.setColor,
   });
+
+  // ── Scheduling / 4D ────────────────────────────────────────
+  // IfcTask / IfcWorkSchedule / IfcRelSequence chains live in a dedicated
+  // module so this file stays under the ~400-line guideline. Adding a new
+  // scheduling method = touch `bridge-create-schedule.ts` only.
+  methods.push(...buildScheduleMethods());
 
   // ── Auto-discover all other public methods from IfcCreator.prototype ──
   // Type-safe dynamic dispatch: methods are validated against ALLOWED_METHODS

@@ -120,6 +120,14 @@ export interface HoverState {
   entityId: number | null;
   screenX: number;
   screenY: number;
+  /**
+   * World-space hit position from the GPU pick (depth readback +
+   * inverse view-projection). Unset when the picker couldn't recover
+   * one (e.g. `pointCount === 0` clear, or the pick fell on the
+   * background). Useful for point-cloud hover tooltips where the
+   * synthetic entity has no surface property to display.
+   */
+  worldXYZ?: { x: number; y: number; z: number };
 }
 
 export interface ContextMenuState {
@@ -340,6 +348,13 @@ export interface FederatedModel {
   cacheState?: 'none' | 'hit' | 'miss' | 'writing';
   /** Optional load error for this model. */
   loadError?: string | null;
+  /**
+   * Renderer handle for a streamed point cloud (LAS/LAZ) attached to
+   * this model. Stored as a plain number so the field stays JSON-safe.
+   * The viewport's removal effect calls `renderer.removePointCloudAsset`
+   * when the model is dropped from the store.
+   */
+  pointCloudHandleId?: number;
 }
 
 /** Convert EntityRef to string for use as Map/Set key */

@@ -63,143 +63,208 @@ export class RelationshipGraphBuilder {
 
   build(): RelationshipGraph {
     const n = this._sources.length;
+    const forward = buildCSR(n, this._sources, this._targets, this._types, this._relIds);
+    const inverse = buildCSR(n, this._targets, this._sources, this._types, this._relIds);
+    return relationshipGraphFromEdges(forward, inverse);
+  }
+}
 
-    // Build forward CSR (sorted by source, value = target)
-    const forward = this.buildCSR(n, this._sources, this._targets, this._types, this._relIds);
-    // Build inverse CSR (sorted by target, value = source)
-    const inverse = this.buildCSR(n, this._targets, this._sources, this._types, this._relIds);
+/**
+ * Plain-data column representation of `RelationshipEdges` (one half of a
+ * `RelationshipGraph`). Holds CSR offsets, counts, and parallel edge arrays
+ * with no closures.
+ */
+export interface RelationshipEdgesColumns {
+  offsets: Map<number, number>;
+  counts: Map<number, number>;
+  edgeTargets: Uint32Array;
+  edgeTypes: Uint16Array;
+  edgeRelIds: Uint32Array;
+}
 
-    return {
-      forward,
-      inverse,
+/**
+ * Plain-data representation of a complete bidirectional `RelationshipGraph`.
+ * Used as the worker-transport payload — both halves are pure column data,
+ * so the underlying buffers are transferable.
+ */
+export interface RelationshipGraphColumns {
+  forward: RelationshipEdgesColumns;
+  inverse: RelationshipEdgesColumns;
+}
 
-      getRelated: (entityId, relType, direction) => {
-        const edges = direction === 'forward'
-          ? forward.getEdges(entityId, relType)
-          : inverse.getEdges(entityId, relType);
-        return edges.map((e: Edge) => e.target);
-      },
+/**
+ * Build CSR (Compressed Sparse Row) using counting sort.
+ * O(n) instead of O(n log n) — crucial for 12M+ edges.
+ *
+ * Exported because the graph can be reconstructed from raw edge arrays
+ * (e.g. when merging or rebuilding a graph) without going through the
+ * `RelationshipGraphBuilder` mutation API.
+ */
+export function buildCSR(
+  n: number,
+  keys: number[] | Uint32Array,
+  values: number[] | Uint32Array,
+  types: number[] | Uint16Array,
+  relIds: number[] | Uint32Array,
+): RelationshipEdges {
+  if (n === 0) return emptyRelationshipEdges();
 
-      hasRelationship: (sourceId, targetId, relType) => {
-        const edges = forward.getEdges(sourceId, relType);
-        return edges.some((e: Edge) => e.target === targetId);
-      },
-
-      getRelationshipsBetween: (sourceId, targetId) => {
-        const edges = forward.getEdges(sourceId);
-        return edges
-          .filter((e: Edge) => e.target === targetId)
-          .map((e: Edge) => ({
-            relationshipId: e.relationshipId,
-            type: e.type,
-            typeName: RelationshipTypeToString(e.type),
-          }));
-      },
-    };
+  // Step 1: count per key
+  const countMap = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const k = keys[i];
+    countMap.set(k, (countMap.get(k) ?? 0) + 1);
   }
 
-  /**
-   * Build CSR (Compressed Sparse Row) using counting sort.
-   * O(n) instead of O(n log n) — crucial for 12M+ edges.
-   */
-  private buildCSR(
-    n: number,
-    keys: number[],       // sort key (source for forward, target for inverse)
-    values: number[],     // stored value (target for forward, source for inverse)
-    types: number[],
-    relIds: number[],
-  ): RelationshipEdges {
-    if (n === 0) {
-      return this.emptyEdges();
-    }
+  // Step 2: prefix-sum offsets, sorted for deterministic order
+  const offsets = new Map<number, number>();
+  const counts = new Map<number, number>();
+  const uniqueKeys = Array.from(countMap.keys()).sort((a, b) => a - b);
+  let offset = 0;
+  for (const k of uniqueKeys) {
+    offsets.set(k, offset);
+    counts.set(k, countMap.get(k)!);
+    offset += countMap.get(k)!;
+  }
 
-    // Step 1: Count edges per key entity
-    const countMap = new Map<number, number>();
-    for (let i = 0; i < n; i++) {
-      const k = keys[i];
-      countMap.set(k, (countMap.get(k) ?? 0) + 1);
-    }
+  // Step 3: scatter edges into sorted positions
+  const edgeTargets = new Uint32Array(n);
+  const edgeTypes = new Uint16Array(n);
+  const edgeRelIds = new Uint32Array(n);
+  const writePos = new Map<number, number>();
+  for (const [k, o] of offsets) writePos.set(k, o);
 
-    // Step 2: Compute offsets (prefix sums)
-    const offsets = new Map<number, number>();
-    const counts = new Map<number, number>();
-    // Sort unique keys for deterministic CSR order
-    const uniqueKeys = Array.from(countMap.keys()).sort((a, b) => a - b);
-    let offset = 0;
-    for (const k of uniqueKeys) {
-      offsets.set(k, offset);
-      counts.set(k, countMap.get(k)!);
-      offset += countMap.get(k)!;
-    }
+  for (let i = 0; i < n; i++) {
+    const k = keys[i];
+    const pos = writePos.get(k)!;
+    edgeTargets[pos] = values[i];
+    edgeTypes[pos] = types[i];
+    edgeRelIds[pos] = relIds[i];
+    writePos.set(k, pos + 1);
+  }
 
-    // Step 3: Place edges into sorted positions (counting sort scatter)
-    const edgeTargets = new Uint32Array(n);
-    const edgeTypes = new Uint16Array(n);
-    const edgeRelIds = new Uint32Array(n);
-    // Track current write position per key
-    const writePos = new Map<number, number>();
-    for (const [k, o] of offsets) {
-      writePos.set(k, o);
-    }
+  return relationshipEdgesFromColumns({ offsets, counts, edgeTargets, edgeTypes, edgeRelIds });
+}
 
-    for (let i = 0; i < n; i++) {
-      const k = keys[i];
-      const pos = writePos.get(k)!;
-      edgeTargets[pos] = values[i];
-      edgeTypes[pos] = types[i];
-      edgeRelIds[pos] = relIds[i];
-      writePos.set(k, pos + 1);
-    }
+function emptyRelationshipEdges(): RelationshipEdges {
+  return relationshipEdgesFromColumns({
+    offsets: new Map(),
+    counts: new Map(),
+    edgeTargets: new Uint32Array(0),
+    edgeTypes: new Uint16Array(0),
+    edgeRelIds: new Uint32Array(0),
+  });
+}
 
-    return {
-      offsets,
-      counts,
-      edgeTargets,
-      edgeTypes,
-      edgeRelIds,
+/**
+ * Rebuild the closure-bearing `RelationshipEdges` view (one direction of
+ * the graph) from raw CSR columns. Used by both the in-process builder and
+ * the parser-worker transport layer.
+ */
+export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns): RelationshipEdges {
+  const { offsets, counts, edgeTargets, edgeTypes, edgeRelIds } = columns;
 
-      getEdges(entityId: number, type?: RelationshipType): Edge[] {
-        const o = offsets.get(entityId);
-        if (o === undefined) return [];
+  const edges: RelationshipEdges = {
+    offsets,
+    counts,
+    edgeTargets,
+    edgeTypes,
+    edgeRelIds,
 
-        const c = counts.get(entityId)!;
-        const edges: Edge[] = [];
-
-        for (let i = o; i < o + c; i++) {
-          if (type === undefined || edgeTypes[i] === type) {
-            edges.push({
-              target: edgeTargets[i],
-              type: edgeTypes[i],
-              relationshipId: edgeRelIds[i],
-            });
-          }
+    getEdges(entityId: number, type?: RelationshipType): Edge[] {
+      const o = offsets.get(entityId);
+      if (o === undefined) return [];
+      const c = counts.get(entityId)!;
+      const out: Edge[] = [];
+      for (let i = o; i < o + c; i++) {
+        if (type === undefined || edgeTypes[i] === type) {
+          out.push({ target: edgeTargets[i], type: edgeTypes[i], relationshipId: edgeRelIds[i] });
         }
+      }
+      return out;
+    },
 
-        return edges;
-      },
+    getTargets(entityId: number, type?: RelationshipType): number[] {
+      return edges.getEdges(entityId, type).map(e => e.target);
+    },
 
-      getTargets(entityId: number, type?: RelationshipType): number[] {
-        return this.getEdges(entityId, type).map(e => e.target);
-      },
+    hasAnyEdges(entityId: number): boolean {
+      return offsets.has(entityId);
+    },
+  };
+  return edges;
+}
 
-      hasAnyEdges(entityId: number): boolean {
-        return offsets.has(entityId);
-      },
-    };
-  }
+/**
+ * Compose a complete `RelationshipGraph` from the two directional halves.
+ * Splits cleanly so that the column extractor can pull edges without
+ * touching the closures attached above.
+ */
+export function relationshipGraphFromEdges(
+  forward: RelationshipEdges,
+  inverse: RelationshipEdges,
+): RelationshipGraph {
+  return {
+    forward,
+    inverse,
 
-  private emptyEdges(): RelationshipEdges {
-    return {
-      offsets: new Map(),
-      counts: new Map(),
-      edgeTargets: new Uint32Array(0),
-      edgeTypes: new Uint16Array(0),
-      edgeRelIds: new Uint32Array(0),
-      getEdges: () => [],
-      getTargets: () => [],
-      hasAnyEdges: () => false,
-    };
-  }
+    getRelated: (entityId, relType, direction) => {
+      const e = direction === 'forward'
+        ? forward.getEdges(entityId, relType)
+        : inverse.getEdges(entityId, relType);
+      return e.map((edge: Edge) => edge.target);
+    },
+
+    hasRelationship: (sourceId, targetId, relType) => {
+      const e = forward.getEdges(sourceId, relType);
+      return e.some((edge: Edge) => edge.target === targetId);
+    },
+
+    getRelationshipsBetween: (sourceId, targetId) => {
+      return forward.getEdges(sourceId)
+        .filter((edge: Edge) => edge.target === targetId)
+        .map((edge: Edge) => ({
+          relationshipId: edge.relationshipId,
+          type: edge.type,
+          typeName: RelationshipTypeToString(edge.type),
+        }));
+    },
+  };
+}
+
+/**
+ * Reconstruct a `RelationshipGraph` (closures + both halves) from the
+ * column-only POJO produced by `relationshipGraphToColumns`.
+ */
+export function relationshipGraphFromColumns(columns: RelationshipGraphColumns): RelationshipGraph {
+  return relationshipGraphFromEdges(
+    relationshipEdgesFromColumns(columns.forward),
+    relationshipEdgesFromColumns(columns.inverse),
+  );
+}
+
+/**
+ * Extract the column data (CSR offsets, counts, parallel edge arrays) from
+ * a `RelationshipGraph`. The returned typed arrays alias the source — they
+ * detach from the source when used in a `postMessage` transfer list.
+ */
+export function relationshipGraphToColumns(graph: RelationshipGraph): RelationshipGraphColumns {
+  return {
+    forward: {
+      offsets: graph.forward.offsets,
+      counts: graph.forward.counts,
+      edgeTargets: graph.forward.edgeTargets,
+      edgeTypes: graph.forward.edgeTypes,
+      edgeRelIds: graph.forward.edgeRelIds,
+    },
+    inverse: {
+      offsets: graph.inverse.offsets,
+      counts: graph.inverse.counts,
+      edgeTargets: graph.inverse.edgeTargets,
+      edgeTypes: graph.inverse.edgeTypes,
+      edgeRelIds: graph.inverse.edgeRelIds,
+    },
+  };
 }
 
 function RelationshipTypeToString(type: RelationshipType): string {

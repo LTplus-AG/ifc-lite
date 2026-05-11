@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+	<ids:info>
+		<ids:title>Prefabrication of pipes - LOD200</ids:title>
+		<ids:copyright>buildingSMART International Ltd</ids:copyright>
+		<ids:description>This is an example implementation of the PDF exchange requirements for prefab pipes. Use-case can be found here: https://ucm.buildingsmart.org/use-case-details/1682/en and the PDF with requirements here: https://ucm.buildingsmart.org/uploads/use-cases/39fb5bd005525dbf048273aa7453557b0b84c4e99250e6ed8ce5c3370825725f/files/en/20210804094140_er-UC-Prefab-of-pipes-V1.2.0.0.pdf </ids:description>
+		<ids:date>2021-09-17</ids:date>
+		<ids:milestone>LOD200</ids:milestone>
+	</ids:info>
+	<ids:specifications>
+		<ids:specification ifcVersion="IFC2X3" name="mounting part">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<ids:simpleValue>IFCDISCRETEACCESSORY</ids:simpleValue>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<!-- 
+        not a valid measure class 
+        This is also a failure of schema because of capitalization
+        -->
+				<ids:property dataType="IfcDoor">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+          <ids:baseName>
+						<ids:simpleValue>medium</ids:simpleValue>
+					</ids:baseName>
+				</ids:property>
+				<!-- not a valid measure class -->
+				<ids:property dataType="IFCDOOR">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>medium</ids:simpleValue>
+          </ids:baseName>
+				</ids:property>
+				<!-- valid measure class for schema -->
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+          <ids:baseName>
+						<ids:simpleValue>medium</ids:simpleValue>
+					</ids:baseName>
+				</ids:property>
+				<!-- Invalid measure class for schema -->
+				<ids:property dataType="IFCAREADENSITYMEASURE">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+          <ids:baseName>
+						<ids:simpleValue>medium</ids:simpleValue>
+					</ids:baseName>
+				</ids:property>
+			</ids:requirements>
+		</ids:specification>
+	</ids:specifications>
+</ids:ids>

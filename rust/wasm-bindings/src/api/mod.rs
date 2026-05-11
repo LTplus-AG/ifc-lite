@@ -572,6 +572,9 @@ pub(super) fn drain_and_log_csg_diagnostics(
                     ifc_lite_geometry::BoolFailureReason::UnknownBooleanOperator(_) => {
                         "UnknownBooleanOperator"
                     }
+                    ifc_lite_geometry::BoolFailureReason::ManifoldOutputDegenerate { .. } => {
+                        "ManifoldOutputDegenerate"
+                    }
                     ifc_lite_geometry::BoolFailureReason::KernelError(_) => "KernelError",
                 };
                 *by_reason.entry(key).or_insert(0) += 1;

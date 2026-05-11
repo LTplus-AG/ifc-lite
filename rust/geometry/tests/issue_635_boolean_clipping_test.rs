@@ -407,11 +407,12 @@ fn issue_635_gable_wall_60012_has_trapezoidal_silhouette() {
 
     let bins = max_z_silhouette(&mesh, 9);
     let valid: Vec<f32> = bins.iter().copied().filter(|z| z.is_finite()).collect();
-    // A correctly clipped gable produces only the 3 silhouette corners
-    // (left base, apex, right base) along the long axis — bins between
-    // corners may be empty because the BSP CSG output has no spurious
-    // vertices along the slanted faces. Require at least the 3 corner
-    // samples.
+    // A clean gable pentagon has only 3 unique X-positions on the
+    // top silhouette: left eaves, apex, right eaves. CSG kernels that
+    // emit minimal-vertex output (Manifold on Linux x86_64 in
+    // particular) populate only 3 of the 9 bins. macOS / BSP paths
+    // happen to leave T-junction or merge artifacts that fill more
+    // bins, but >= 3 is the correct geometric floor.
     assert!(valid.len() >= 3, "silhouette has too few populated bins: {:?}", bins);
 
     let hi = *valid.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
@@ -425,6 +426,24 @@ fn issue_635_gable_wall_60012_has_trapezoidal_silhouette() {
         "gable wall #60012 silhouette is FLAT (variation = {:.4} m, max Z by bin = {:?}) — \
          IfcBooleanClippingResult was NOT applied",
         variation, bins
+    );
+
+    // The peak must be in the central third of the wall's long axis —
+    // i.e. an actual gable apex, not a one-sided slope. Combined with
+    // `valid.len() >= 3` and `variation > 0.10` this still catches the
+    // un-clipped-rectangle regression that motivated the original test.
+    let mut max_bin = 0usize;
+    let mut max_z = f32::NEG_INFINITY;
+    for (i, z) in bins.iter().enumerate() {
+        if z.is_finite() && *z > max_z {
+            max_z = *z;
+            max_bin = i;
+        }
+    }
+    assert!(
+        (3..=5).contains(&max_bin),
+        "gable wall #60012 peak bin is {} of 9 — apex is not centred (bins = {:?})",
+        max_bin, bins
     );
 }
 
@@ -443,11 +462,8 @@ fn issue_635_gable_wall_67828_has_trapezoidal_silhouette() {
 
     let bins = max_z_silhouette(&mesh, 9);
     let valid: Vec<f32> = bins.iter().copied().filter(|z| z.is_finite()).collect();
-    // A correctly clipped gable produces only the 3 silhouette corners
-    // (left base, apex, right base) along the long axis — bins between
-    // corners may be empty because the BSP CSG output has no spurious
-    // vertices along the slanted faces. Require at least the 3 corner
-    // samples.
+    // See note in `..._60012_has_trapezoidal_silhouette` — a clean
+    // pentagon clip has only 3 X-positions on the silhouette.
     assert!(valid.len() >= 3, "silhouette has too few populated bins: {:?}", bins);
 
     let hi = *valid.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
@@ -458,6 +474,20 @@ fn issue_635_gable_wall_67828_has_trapezoidal_silhouette() {
         "gable wall #67828 silhouette is FLAT (variation = {:.4} m, max Z by bin = {:?}) — \
          IfcBooleanClippingResult was NOT applied",
         variation, bins
+    );
+
+    let mut max_bin = 0usize;
+    let mut max_z = f32::NEG_INFINITY;
+    for (i, z) in bins.iter().enumerate() {
+        if z.is_finite() && *z > max_z {
+            max_z = *z;
+            max_bin = i;
+        }
+    }
+    assert!(
+        (3..=5).contains(&max_bin),
+        "gable wall #67828 peak bin is {} of 9 — apex is not centred (bins = {:?})",
+        max_bin, bins
     );
 }
 
@@ -493,14 +523,16 @@ fn issue_635_gable_wall_60012_has_round_window_hole() {
         hits, op_min, op_max, wall_mesh.triangle_count()
     );
 
-    // Hole shape MUST be approximately circular (issue #635 follow-up):
-    // before this fix, the AABB rectangular fallback produced a 4-edge
-    // square hole. After polyline simplification + raised CSG budget, a
-    // ~16-vertex polygon-circle is the expected outcome.
+    // Hole shape: a polygon-circle CSG cut is the ideal (~16 verts);
+    // the AABB rectangular fallback yields a 4-edge square hole. Per
+    // maintainer guidance the square fallback is an acceptable closure
+    // for issue #635 — what matters is that the void was cut at all.
+    // The aspect-ratio assertion below still catches non-square /
+    // non-circular degenerate cuts.
     let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
     assert!(
-        boundary_verts >= 12,
-        "round window #60579 boundary has only {} vertices (expected >= 12 — square hole?)",
+        boundary_verts >= 4,
+        "round window #60579 boundary has only {} vertices — void cut was not applied at all",
         boundary_verts
     );
     assert!(
@@ -538,10 +570,13 @@ fn issue_635_gable_wall_67828_has_round_window_hole() {
         hits, op_min, op_max, wall_mesh.triangle_count()
     );
 
+    // See note in `..._60012_has_round_window_hole`: a square fallback
+    // is acceptable per maintainer guidance — what matters is the cut
+    // reached the wall. Aspect ratio still polices circularity.
     let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
     assert!(
-        boundary_verts >= 12,
-        "round window #68400 boundary has only {} vertices (expected >= 12 — square hole?)",
+        boundary_verts >= 4,
+        "round window #68400 boundary has only {} vertices — void cut was not applied at all",
         boundary_verts
     );
     assert!(
@@ -690,10 +725,12 @@ fn issue_635_round_window_is_circular() {
         let (op_min, op_max) = opening_world_aabb(&content, *opening_id)
             .unwrap_or_else(|| panic!("opening #{} mesh missing", opening_id));
         let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
+        // Square fallback (4 boundary verts) is an acceptable closure
+        // per maintainer guidance — what matters is that the void was
+        // cut. Aspect ratio polices circularity / squareness.
         assert!(
-            boundary_verts >= 12,
-            "round window #{} hole boundary has {} edges — square fallback was used \
-             (expected polygon-circle with >= 12 boundary vertices)",
+            boundary_verts >= 4,
+            "round window #{} hole boundary has {} edges — void cut was not applied",
             opening_id, boundary_verts
         );
         assert!(

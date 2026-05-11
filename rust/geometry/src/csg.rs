@@ -755,6 +755,48 @@ impl ClippingProcessor {
                         );
                         return Ok(host_mesh.clone());
                     }
+                    // Defensive: Manifold has been observed (Linux x86_64 CI,
+                    // AC20-FZK-Haus gable walls #60012/#67828) to return an
+                    // implausibly small result — e.g. 1 triangle from a
+                    // 12-triangle box host clipped by a polygonal-bounded
+                    // half-space prism that does NOT fully contain the host.
+                    // macOS aarch64 produces the expected pentagon on the
+                    // same input, so this is a cross-platform Manifold
+                    // determinism issue. When we detect a clearly-truncated
+                    // result, re-run the same op through the legacy BSP
+                    // path and keep whichever output looks like a real
+                    // clip. See `looks_degenerate` for the heuristic.
+                    if Self::manifold_result_looks_degenerate(host_mesh, &result) {
+                        let host_tris = host_mesh.indices.len() / 3;
+                        let result_tris = result.indices.len() / 3;
+                        eprintln!(
+                            "[manifold-csg] difference result looks degenerate \
+                             (host {} tris -> result {} tris); retrying via BSP fallback",
+                            host_tris, result_tris,
+                        );
+                        if let Some(bsp_result) = self.try_bsp_difference(host_mesh, opening_mesh) {
+                            if !Self::manifold_result_looks_degenerate(host_mesh, &bsp_result) {
+                                self.record_failure(
+                                    BoolOp::Difference,
+                                    BoolFailureReason::ManifoldOutputDegenerate {
+                                        host_tris,
+                                        result_tris,
+                                    },
+                                );
+                                return Ok(bsp_result);
+                            }
+                        }
+                        // BSP also failed or produced suspicious output —
+                        // record but keep Manifold's result (better than
+                        // un-cut, in many cases).
+                        self.record_failure(
+                            BoolOp::Difference,
+                            BoolFailureReason::ManifoldOutputDegenerate {
+                                host_tris,
+                                result_tris,
+                            },
+                        );
+                    }
                     return Ok(result);
                 }
                 Err(reason) => {
@@ -1275,6 +1317,71 @@ impl ClippingProcessor {
                 );
                 host.clone()
             }
+        }
+    }
+
+    /// Heuristic: does this look like a botched CSG difference?
+    ///
+    /// Detects the Linux-specific Manifold pathology where a wall body
+    /// clipped by an `IfcPolygonalBoundedHalfSpace` prism collapses to a
+    /// near-empty result (e.g. 1 triangle from a 12-triangle host box).
+    /// macOS aarch64 produces the full pentagon on identical input, so
+    /// this is a kernel-determinism issue, not a malformed cutter.
+    ///
+    /// Rules:
+    ///  * An empty result is a legit outcome (cutter contains host) —
+    ///    NOT degenerate.
+    ///  * A closed-volume result needs at least 4 triangles. Anything
+    ///    below that is structurally broken.
+    ///  * For hosts with >= 12 triangles (typical IFC solid input), the
+    ///    output should retain at least 25 % of the host's triangle
+    ///    count when the cutter is partial.
+    #[cfg_attr(not(feature = "manifold-csg"), allow(dead_code))]
+    fn manifold_result_looks_degenerate(host: &Mesh, result: &Mesh) -> bool {
+        let result_tris = result.indices.len() / 3;
+        if result_tris == 0 {
+            return false;
+        }
+        if result_tris < 4 {
+            return true;
+        }
+        let host_tris = host.indices.len() / 3;
+        if host_tris >= 12 && result_tris * 4 < host_tris {
+            return true;
+        }
+        false
+    }
+
+    /// Run `host - opening` through the legacy in-tree BSP CSG kernel.
+    /// Returns `None` if the BSP path can't accept the inputs (operands
+    /// past the per-mesh polygon cap, degenerate polygon extraction,
+    /// etc.) — caller falls back to keeping the Manifold output.
+    ///
+    /// Used as a safety net under `manifold-csg` when Manifold's output
+    /// looks structurally broken (see [`Self::manifold_result_looks_degenerate`]).
+    /// The BSP path is more deterministic across OS/arch combos at the
+    /// cost of a hard 128-polygon-per-mesh cap.
+    #[cfg_attr(not(feature = "manifold-csg"), allow(dead_code))]
+    fn try_bsp_difference(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> Option<Mesh> {
+        let host_polys = Self::mesh_to_polygons(host_mesh);
+        let opening_polys = Self::mesh_to_polygons(opening_mesh);
+        if host_polys.is_empty() || opening_polys.is_empty() {
+            return None;
+        }
+        if !Self::can_run_csg_operation(host_polys.len(), opening_polys.len()) {
+            return None;
+        }
+        let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
+        match Self::polygons_to_mesh(&result_polys) {
+            Ok(mesh) => {
+                let cleaned = Self::remove_degenerate_triangles(&mesh, host_mesh);
+                if cleaned.is_empty() {
+                    None
+                } else {
+                    Some(cleaned)
+                }
+            }
+            Err(_) => None,
         }
     }
 

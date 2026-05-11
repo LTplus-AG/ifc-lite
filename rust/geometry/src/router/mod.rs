@@ -584,6 +584,9 @@ impl GeometryRouter {
                 crate::diagnostics::BoolFailureReason::UnknownBooleanOperator(_) => {
                     "UnknownBooleanOperator"
                 }
+                crate::diagnostics::BoolFailureReason::ManifoldOutputDegenerate { .. } => {
+                    "ManifoldOutputDegenerate"
+                }
                 crate::diagnostics::BoolFailureReason::KernelError(_) => "KernelError",
             };
             entry.first_failure_label = Some(label.to_string());

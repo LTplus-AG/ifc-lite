@@ -623,12 +623,6 @@ export async function* processParallel(
       throw prepassError;
     }
 
-    // Once the Rust `complete` event has been observed, signal end-of-stream
-    // to all workers exactly once.
-    if (!prepassCompleteSeen && prepassJobsTotal > 0) {
-      prepassCompleteSeen = true;
-      onPrepassComplete();
-    }
     // Edge case: pre-pass for a file with zero geometry. The Rust side
     // emits `complete { totalJobs: 0 }`; meta never fired so workers
     // never received stream-start. Tear them down explicitly and yield

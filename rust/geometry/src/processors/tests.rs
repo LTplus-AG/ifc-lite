@@ -499,3 +499,67 @@ fn test_triangulated_face_set_all_invalid_indices() {
     // All indices invalid — mesh should have positions but no valid triangles
     assert!(mesh.indices.is_empty(), "All invalid indices should be stripped");
 }
+
+#[test]
+fn test_extruded_area_solid_tapered() {
+    // Mirrors the structure of the IFC sample in issue #628: a beam tapering
+    // from 200x200 at the base to 200x600 at the top, extruded 2000 along Z.
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCDIRECTION((1.,0.));
+#3=IFCAXIS2PLACEMENT2D(#1,#2);
+#4=IFCRECTANGLEPROFILEDEF(.AREA.,'Start',#3,200.,200.);
+#5=IFCRECTANGLEPROFILEDEF(.AREA.,'End',#3,200.,600.);
+#6=IFCCARTESIANPOINT((0.,0.,0.));
+#7=IFCAXIS2PLACEMENT3D(#6,$,$);
+#8=IFCDIRECTION((0.,0.,1.));
+#9=IFCEXTRUDEDAREASOLIDTAPERED(#4,#7,#8,2000.,#5);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(9).unwrap();
+    assert_eq!(entity.ifc_type, IfcType::IfcExtrudedAreaSolidTapered);
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+
+    assert!(!mesh.is_empty());
+    let (min, max) = mesh.bounds();
+    // Bottom rectangle is 200x200 → ±100 in both X and Y at z=0.
+    // Top rectangle is 200x600 → ±100 in X but ±300 in Y at z=2000.
+    // Bounding box of the union is (±100, ±300, 0..2000).
+    assert!((min.x - -100.0).abs() < 0.01, "min.x = {}", min.x);
+    assert!((max.x - 100.0).abs() < 0.01, "max.x = {}", max.x);
+    assert!((min.y - -300.0).abs() < 0.01, "min.y = {}", min.y);
+    assert!((max.y - 300.0).abs() < 0.01, "max.y = {}", max.y);
+    assert!((min.z - 0.0).abs() < 0.01);
+    assert!((max.z - 2000.0).abs() < 0.01);
+}
+
+#[test]
+fn test_extruded_area_solid_tapered_falls_back_when_end_missing() {
+    // A malformed file with no EndSweptArea should still render as a uniform
+    // extrusion of the start profile.
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCDIRECTION((1.,0.));
+#3=IFCAXIS2PLACEMENT2D(#1,#2);
+#4=IFCRECTANGLEPROFILEDEF(.AREA.,'Start',#3,100.,100.);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCDIRECTION((0.,0.,1.));
+#8=IFCEXTRUDEDAREASOLIDTAPERED(#4,#6,#7,500.,$);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(8).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    assert!(!mesh.is_empty());
+    let (_min, max) = mesh.bounds();
+    assert!((max.z - 500.0).abs() < 0.01);
+    assert!((max.x - 50.0).abs() < 0.01);
+}

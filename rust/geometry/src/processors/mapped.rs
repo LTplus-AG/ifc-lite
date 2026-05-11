@@ -10,6 +10,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use super::boolean::BooleanClippingProcessor;
 use super::brep::FacetedBrepProcessor;
 use super::extrusion::ExtrudedAreaSolidProcessor;
+use super::extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 use super::swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
 use super::tessellated::TriangulatedFaceSetProcessor;
 use crate::router::GeometryProcessor;
@@ -69,6 +70,10 @@ impl GeometryProcessor for MappedItemProcessor {
             let item_mesh = match item.ifc_type {
                 IfcType::IfcExtrudedAreaSolid => {
                     let processor = ExtrudedAreaSolidProcessor::new(schema.clone());
+                    processor.process(&item, decoder, schema)?
+                }
+                IfcType::IfcExtrudedAreaSolidTapered => {
+                    let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
                     processor.process(&item, decoder, schema)?
                 }
                 IfcType::IfcTriangulatedFaceSet => {

@@ -432,6 +432,19 @@ impl GeometryRouter {
     /// `IfcBooleanResult` chains processed via the mapped-item path don't
     /// yet flow their failures here.
     pub fn take_csg_failures(&self) -> FxHashMap<u32, Vec<BoolFailure>> {
+        // Fold in any failures from contexts without a direct router handle
+        // (notably the transient `BooleanClippingProcessor` inside
+        // `MappedItemProcessor`). They have no product attribution, so we
+        // bucket them under product id 0 — keeps the diagnostics surface
+        // visible without inventing a fake host id.
+        let pending = crate::diagnostics::take_pending_mapped_bool_failures();
+        if !pending.is_empty() {
+            self.csg_failures
+                .borrow_mut()
+                .entry(0)
+                .or_default()
+                .extend(pending);
+        }
         std::mem::take(&mut *self.csg_failures.borrow_mut())
     }
 

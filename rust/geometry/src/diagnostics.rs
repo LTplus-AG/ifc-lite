@@ -19,7 +19,33 @@
 //! to (not instead of) the existing fallback. Sprint 2's Manifold migration
 //! and Sprint 1's regression tests both rely on these records.
 
+use std::cell::RefCell;
 use std::fmt;
+
+thread_local! {
+    /// Pending boolean failures from contexts that have no direct router
+    /// handle (notably `MappedItemProcessor`'s transient
+    /// `BooleanClippingProcessor`). The router drains this in
+    /// `take_csg_failures` so mapped boolean chains aren't blind.
+    static PENDING_MAPPED_BOOL_FAILURES: RefCell<Vec<BoolFailure>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+/// Push failures that originated outside any router-owned context (e.g. the
+/// transient `BooleanClippingProcessor` inside `MappedItemProcessor`). They
+/// will be drained by `take_pending_mapped_bool_failures` next time the
+/// router collects diagnostics.
+pub fn push_pending_mapped_bool_failures(failures: Vec<BoolFailure>) {
+    if failures.is_empty() {
+        return;
+    }
+    PENDING_MAPPED_BOOL_FAILURES.with(|cell| cell.borrow_mut().extend(failures));
+}
+
+/// Drain failures pushed via `push_pending_mapped_bool_failures`.
+pub fn take_pending_mapped_bool_failures() -> Vec<BoolFailure> {
+    PENDING_MAPPED_BOOL_FAILURES.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
+}
 
 /// Which boolean operation produced the failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

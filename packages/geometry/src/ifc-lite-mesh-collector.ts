@@ -359,17 +359,21 @@ export class IfcLiteMeshCollector {
         // A JS console.warn is the most reliable "always shows up" channel.
         const diag = stats.csgDiagnostics;
         if (diag) {
-          const c = diag.classification ?? {};
-          // Always-on summary so a maintainer can see at a glance whether
-          // the classifier fix is firing and whether the CSG kernel is
-          // dropping any cuts.
-          // eslint-disable-next-line no-console
-          console.warn(
-            `[IFC-LITE] CSG diagnostics (JS): classifier=${JSON.stringify(c)}, ` +
-              `totalFailures=${diag.totalFailures ?? 0}, ` +
-              `productsWithFailures=${diag.productsWithFailures ?? 0}, ` +
-              `hostsWithOpenings=${diag.hostsWithOpenings ?? 0}`,
-          );
+          const totalFailures = diag.totalFailures ?? 0;
+          // Only surface a `console.warn` when the kernel actually dropped
+          // a cut — successful parses shouldn't add noise to host apps
+          // embedding the viewer. The full diagnostics object is still
+          // attached to `stats.csgDiagnostics` for callers that want it.
+          if (totalFailures > 0) {
+            const c = diag.classification ?? {};
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[IFC-LITE] CSG diagnostics (JS): classifier=${JSON.stringify(c)}, ` +
+                `totalFailures=${totalFailures}, ` +
+                `productsWithFailures=${diag.productsWithFailures ?? 0}, ` +
+                `hostsWithOpenings=${diag.hostsWithOpenings ?? 0}`,
+            );
+          }
         }
         // Wake up the generator if it's waiting
         if (resolveWaiting) {

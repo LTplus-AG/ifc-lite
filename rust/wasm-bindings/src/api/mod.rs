@@ -487,21 +487,20 @@ pub(super) fn drain_and_log_csg_diagnostics(
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
     let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
 
-    // Unconditional one-line "I ran" tag at WARN level. Catches the
-    // "did the diagnostic helper even fire?" question without any
-    // DevTools log-level filtering — `console.warn` is always visible
-    // in the default view, and `info` from inside WASM has been
-    // observed to silently disappear in the streaming-worker path on
-    // some browser/build combos. If you don't see this line, the WASM
-    // bundle is stale or a different parse path is in use.
-    web_sys::console::warn_1(
-        &format!(
-            "[IFC-LITE] CSG diagnostics: {cls_total} openings classified, \
-             {total_failures} failures, {} hosts tracked",
-            host_diags.len()
-        )
-        .into(),
-    );
+    // Only emit the headline at WARN level when the kernel actually
+    // dropped a cut. Zero-failure parses shouldn't spam every embedded
+    // viewer. The full diagnostics summary is still returned to JS so
+    // callers can opt into deeper inspection.
+    if total_failures > 0 {
+        web_sys::console::warn_1(
+            &format!(
+                "[IFC-LITE] CSG diagnostics: {cls_total} openings classified, \
+                 {total_failures} failures, {} hosts tracked",
+                host_diags.len()
+            )
+            .into(),
+        );
+    }
 
     let cls_obj = js_sys::Object::new();
     set_js_prop(&cls_obj, "rectangular", &(cls.rectangular as f64).into());

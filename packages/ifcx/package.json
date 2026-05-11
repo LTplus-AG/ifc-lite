@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ifcx",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "IFC5 (IFCX) parser for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/lists",
-  "version": "1.14.11",
+  "version": "1.14.12",
   "description": "Configurable property tables and schedules from IFC data for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

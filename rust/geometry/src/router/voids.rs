@@ -246,16 +246,10 @@ enum OpeningType {
     Rectangular(Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
     /// Diagonal rectangular opening with mesh geometry and a full oriented frame.
     /// The frame preserves roof-window roll, not just the penetration direction.
-    DiagonalRectangular(Mesh, OpeningFrame, RevealStrategy),
+    DiagonalRectangular(Mesh, OpeningFrame),
     /// Non-rectangular opening (circular, arched, or floor openings with rotated footprint)
     /// Uses full CSG subtraction with actual mesh geometry
     NonRectangular(Mesh),
-}
-
-#[derive(Clone, Copy)]
-enum RevealStrategy {
-    SyntheticBox,
-    OpeningMeshSides,
 }
 
 /// World-space basis for an oriented rectangular opening.
@@ -348,6 +342,36 @@ fn extent_along_axis(mesh: &Mesh, axis: &Vector3<f64>) -> Option<f64> {
     min.is_finite().then_some(max - min)
 }
 
+/// Whether a mesh has only three distinct face-normal axes (i.e. is a clean
+/// box-like opening). Curved or arched openings produce many distinct
+/// triangle normals and must use full CSG instead of the rectangular path.
+///
+/// Matches the anti-parallel merge tolerance used by `infer_opening_frame` so
+/// the two helpers agree on what counts as a single axis.
+fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
+    let mut axes: Vec<Vector3<f64>> = Vec::with_capacity(4);
+    for tri in mesh.indices.chunks_exact(3) {
+        let (Some(p0), Some(p1), Some(p2)) = (
+            mesh_point(mesh, tri[0]),
+            mesh_point(mesh, tri[1]),
+            mesh_point(mesh, tri[2]),
+        ) else {
+            continue;
+        };
+        let Some(normal) = (p1 - p0).cross(&(p2 - p0)).try_normalize(NORMALIZE_EPSILON) else {
+            continue;
+        };
+        if axes.iter().any(|axis| normal.dot(axis).abs() > 0.98) {
+            continue;
+        }
+        axes.push(normal);
+        if axes.len() > 3 {
+            return false;
+        }
+    }
+    axes.len() == 3
+}
+
 fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
     let mut axes: Vec<(Vector3<f64>, f64)> = Vec::new();
 
@@ -432,87 +456,6 @@ fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Opt
         cross_a,
         cross_b,
     })
-}
-
-fn transform_mesh_to_frame(mesh: &Mesh, frame: &OpeningFrame) -> Mesh {
-    let mut transformed = mesh.clone();
-    for chunk in transformed.positions.chunks_exact_mut(3) {
-        let p = frame.to_local_point(Point3::new(
-            chunk[0] as f64,
-            chunk[1] as f64,
-            chunk[2] as f64,
-        ));
-        chunk[0] = p.x as f32;
-        chunk[1] = p.y as f32;
-        chunk[2] = p.z as f32;
-    }
-    for chunk in transformed.normals.chunks_exact_mut(3) {
-        let n = frame.to_local_vector(Vector3::new(
-            chunk[0] as f64,
-            chunk[1] as f64,
-            chunk[2] as f64,
-        ));
-        chunk[0] = n.x as f32;
-        chunk[1] = n.y as f32;
-        chunk[2] = n.z as f32;
-    }
-    transformed
-}
-
-fn add_opening_mesh_side_reveals(
-    result: &mut Mesh,
-    local_opening_mesh: &Mesh,
-    open_min: &Point3<f64>,
-    open_max: &Point3<f64>,
-    wall_min: &Point3<f64>,
-    wall_max: &Point3<f64>,
-) {
-    let center_y = (open_min.y + open_max.y) * 0.5;
-    let center_z = (open_min.z + open_max.z) * 0.5;
-
-    for tri in local_opening_mesh.indices.chunks_exact(3) {
-        let (Some(p0), Some(p1), Some(p2)) = (
-            mesh_point(local_opening_mesh, tri[0]),
-            mesh_point(local_opening_mesh, tri[1]),
-            mesh_point(local_opening_mesh, tri[2]),
-        ) else {
-            continue;
-        };
-
-        let Some(mut normal) = (p1 - p0).cross(&(p2 - p0)).try_normalize(NORMALIZE_EPSILON) else {
-            continue;
-        };
-
-        // Skip the front/back caps of the void. The remaining faces are the
-        // actual BRep side walls, including chamfers that a synthetic box loses.
-        if normal.x.abs() > 0.75 {
-            continue;
-        }
-
-        let tri_center = Point3::new(
-            (p0.x + p1.x + p2.x) / 3.0,
-            (p0.y + p1.y + p2.y) / 3.0,
-            (p0.z + p1.z + p2.z) / 3.0,
-        );
-
-        let inward = Vector3::new(0.0, center_y - tri_center.y, center_z - tri_center.z);
-        if normal.dot(&inward) < 0.0 {
-            normal = -normal;
-        }
-
-        let clamp_depth =
-            |p: Point3<f64>| Point3::new(p.x.max(wall_min.x).min(wall_max.x), p.y, p.z);
-
-        let p0 = clamp_depth(p0);
-        let p1 = clamp_depth(p1);
-        let p2 = clamp_depth(p2);
-
-        let base = result.vertex_count() as u32;
-        result.add_vertex(p0, normal);
-        result.add_vertex(p1, normal);
-        result.add_vertex(p2, normal);
-        result.add_triangle(base, base + 1, base + 2);
-    }
 }
 
 /// Reusable buffers for triangle clipping operations
@@ -1276,45 +1219,37 @@ impl GeometryRouter {
                     .unwrap_or_default();
 
                 if !item_bounds_with_dir.is_empty() {
-                    let is_floor_opening = item_bounds_with_dir
-                        .iter()
-                        .any(|(_, _, dir)| dir.map(|d| d.z.abs() > 0.95).unwrap_or(false));
+                    let item_meshes = self
+                        .get_opening_item_meshes_world(&opening_entity, decoder)
+                        .unwrap_or_default();
 
-                    if is_floor_opening && vertex_count > 0 {
-                        openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
-                    } else {
-                        let item_meshes = self
-                            .get_opening_item_meshes_world(&opening_entity, decoder)
-                            .unwrap_or_default();
+                    if item_meshes.len() == item_bounds_with_dir.len() {
+                        for ((min_pt, max_pt, extrusion_dir), item_mesh) in item_bounds_with_dir
+                            .into_iter()
+                            .zip(item_meshes.into_iter())
+                        {
+                            // Classify per item by inspecting the geometry, not by
+                            // a global extrusion-direction heuristic. Earlier code
+                            // routed every Z-extruded opening through full CSG
+                            // ("is_floor_opening"), which silently failed for roof
+                            // windows on shallow-slope roofs and left the host
+                            // uncut. The frame-based DiagonalRectangular path
+                            // handles tilted rectangular openings — including
+                            // rotated-footprint floor openings — so reserve
+                            // NonRectangular for genuinely curved or arched voids.
+                            let frame = infer_opening_frame(&item_mesh, extrusion_dir.as_ref());
+                            let direction_is_diagonal = extrusion_dir
+                                .map(|d| !is_axis_aligned_direction(&d))
+                                .unwrap_or(false);
+                            let is_clean_box = is_rectangular_box_mesh(&item_mesh);
 
-                        if item_meshes.len() == item_bounds_with_dir.len() {
-                            for ((min_pt, max_pt, extrusion_dir), item_mesh) in item_bounds_with_dir
-                                .into_iter()
-                                .zip(item_meshes.into_iter())
-                            {
-                                let frame = infer_opening_frame(&item_mesh, extrusion_dir.as_ref());
-                                let direction_is_diagonal = extrusion_dir
-                                    .map(|d| !is_axis_aligned_direction(&d))
-                                    .unwrap_or(false);
-
-                                if let Some(frame) = frame {
-                                    if direction_is_diagonal || !frame.is_axis_aligned() {
-                                        openings.push(OpeningType::DiagonalRectangular(
-                                            item_mesh,
-                                            frame,
-                                            if extrusion_dir.is_some() {
-                                                RevealStrategy::SyntheticBox
-                                            } else {
-                                                RevealStrategy::OpeningMeshSides
-                                            },
-                                        ));
-                                    } else {
-                                        openings.push(OpeningType::Rectangular(
-                                            min_pt,
-                                            max_pt,
-                                            extrusion_dir,
-                                        ));
-                                    }
+                            if let Some(frame) = frame {
+                                if !is_clean_box {
+                                    openings.push(OpeningType::NonRectangular(item_mesh));
+                                } else if direction_is_diagonal || !frame.is_axis_aligned() {
+                                    openings.push(OpeningType::DiagonalRectangular(
+                                        item_mesh, frame,
+                                    ));
                                 } else {
                                     openings.push(OpeningType::Rectangular(
                                         min_pt,
@@ -1322,15 +1257,21 @@ impl GeometryRouter {
                                         extrusion_dir,
                                     ));
                                 }
-                            }
-                        } else {
-                            for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
+                            } else if is_clean_box {
                                 openings.push(OpeningType::Rectangular(
                                     min_pt,
                                     max_pt,
                                     extrusion_dir,
                                 ));
+                            } else {
+                                openings.push(OpeningType::NonRectangular(item_mesh));
                             }
+                        }
+                    } else {
+                        for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
+                            openings.push(OpeningType::Rectangular(
+                                min_pt, max_pt, extrusion_dir,
+                            ));
                         }
                     }
                 } else {
@@ -1432,12 +1373,10 @@ impl GeometryRouter {
     }
 
     fn apply_diagonal_openings(&self, result: &mut Mesh, openings: &[OpeningType]) {
-        let diagonal_openings: Vec<(&Mesh, &OpeningFrame, RevealStrategy)> = openings
+        let diagonal_openings: Vec<(&Mesh, &OpeningFrame)> = openings
             .iter()
             .filter_map(|o| match o {
-                OpeningType::DiagonalRectangular(mesh, frame, strategy) => {
-                    Some((mesh, frame, *strategy))
-                }
+                OpeningType::DiagonalRectangular(mesh, frame) => Some((mesh, frame)),
                 _ => None,
             })
             .collect();
@@ -1446,9 +1385,7 @@ impl GeometryRouter {
             return;
         }
 
-        let clipper = ClippingProcessor::new();
-
-        for (opening_mesh, frame, reveal_strategy) in diagonal_openings {
+        for (opening_mesh, frame) in diagonal_openings {
             // Transform into the opening's full local frame. For roof windows,
             // the cross axes carry the roll needed for correctly oriented reveals.
             for chunk in result.positions.chunks_exact_mut(3) {
@@ -1487,11 +1424,14 @@ impl GeometryRouter {
                 rot_wall_max_f32.z as f64,
             );
 
-            let local_opening_mesh = transform_mesh_to_frame(opening_mesh, frame);
             let mut rot_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
             let mut rot_max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-            for chunk in local_opening_mesh.positions.chunks_exact(3) {
-                let p = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+            for chunk in opening_mesh.positions.chunks_exact(3) {
+                let p = frame.to_local_point(Point3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 rot_min.x = rot_min.x.min(p.x);
                 rot_min.y = rot_min.y.min(p.y);
                 rot_min.z = rot_min.z.min(p.z);
@@ -1502,40 +1442,19 @@ impl GeometryRouter {
             rot_min.x = rot_min.x.min(rot_wall_min.x);
             rot_max.x = rot_max.x.max(rot_wall_max.x);
 
-            match reveal_strategy {
-                RevealStrategy::SyntheticBox => {
-                    *result = self.cut_rectangular_opening_no_faces(result, rot_min, rot_max);
+            *result = self.cut_rectangular_opening_no_faces(result, rot_min, rot_max);
 
-                    // Generate reveal faces in the opening-local frame. They rotate back
-                    // to world space together with the rest of the mesh.
-                    let x_dir = Vector3::new(1.0, 0.0, 0.0);
-                    generate_reveal_quads(
-                        result,
-                        &rot_min,
-                        &rot_max,
-                        &rot_wall_min,
-                        &rot_wall_max,
-                        Some(&x_dir),
-                    );
-                }
-                RevealStrategy::OpeningMeshSides => {
-                    if let Ok(cut) = clipper.subtract_mesh(result, &local_opening_mesh) {
-                        if !cut.is_empty() {
-                            *result = cut;
-                        }
-                    } else {
-                        *result = self.cut_rectangular_opening_no_faces(result, rot_min, rot_max);
-                    }
-                    add_opening_mesh_side_reveals(
-                        result,
-                        &local_opening_mesh,
-                        &rot_min,
-                        &rot_max,
-                        &rot_wall_min,
-                        &rot_wall_max,
-                    );
-                }
-            }
+            // Generate reveal faces in the opening-local frame. They rotate back
+            // to world space together with the rest of the mesh.
+            let x_dir = Vector3::new(1.0, 0.0, 0.0);
+            generate_reveal_quads(
+                result,
+                &rot_min,
+                &rot_max,
+                &rot_wall_min,
+                &rot_wall_max,
+                Some(&x_dir),
+            );
 
             // Transform positions and normals back to world frame.
             for chunk in result.positions.chunks_exact_mut(3) {
@@ -2595,11 +2514,7 @@ mod reveal_tests {
         let frame = infer_opening_frame(&opening, Some(&thickness_axis)).unwrap();
         GeometryRouter::new().apply_diagonal_openings(
             &mut result,
-            &[OpeningType::DiagonalRectangular(
-                opening,
-                frame,
-                RevealStrategy::SyntheticBox,
-            )],
+            &[OpeningType::DiagonalRectangular(opening, frame)],
         );
         let (after_min, after_max) = result.bounds();
 

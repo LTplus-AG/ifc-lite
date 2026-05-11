@@ -11,17 +11,21 @@ categories = ["graphics", "parsing"]
 readme = "../../README.md"
 
 [features]
-default = []
+# Manifold is on by default for native consumers (server, desktop, CLI,
+# tests). The WASM crate (`ifc-lite-wasm`) explicitly opts out via
+# `default-features = false` because `manifold-csg-sys` cannot currently
+# compile to `wasm32-unknown-unknown` (upstream `wasm-cxx-shim` is
+# blocked on libc++ 18/20 incompatibilities — see
+# `docs/architecture/geometry-pipeline.md` "WASM status"). Keeping
+# Manifold on the native default ships the better CSG kernel to every
+# build that *can* take it without regressing the slim WASM bundle.
+default = ["manifold-csg"]
 # Use the Manifold (https://github.com/elalish/manifold) C++ kernel for
 # `subtract_mesh` / `union_mesh` / `intersection_mesh` instead of the
 # legacy in-tree BSP port (`bsp_csg.rs`). Removes the 24-polygon operand
-# cap and gives manifold-by-construction output. Off by default while the
-# T1.1 migration (Sprint 2) is in flight; flip to default-on once
-# regression fixtures and bundle-size budget land.
+# cap and gives manifold-by-construction output.
 #
-# Native (Linux/macOS/Windows) only at this gate; WASM support is gated
-# separately by `manifold-csg-wasm-uu` so the bare-WASM provisional path
-# stays opt-in.
+# Native (Linux/macOS/Windows) only — see the note on `default` above.
 manifold-csg = ["dep:manifold-csg"]
 # Enable Manifold on `wasm32-unknown-unknown` (provisional support per
 # upstream — no exception runtime, no threading, requires LLVM 20+).

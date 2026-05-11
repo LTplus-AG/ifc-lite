@@ -5,34 +5,19 @@
 //! Regression test for issue #584 — `AC-20-Smiley-West-10-Bldg.ifc`
 //! balcony door openings not cut.
 //!
-//! This test mirrors `issue_582_583_regression_test.rs`: it runs the full
-//! geometry pipeline against the Smiley-West fixture, drains
-//! `BoolFailure`s from the router, and surfaces the count. The strict
-//! `total_failures == 0` Sprint 2 gate is `#[cfg(feature = "manifold-csg")]`
-//! since the legacy BSP path is known to fall back on this fixture (the
-//! exact bug the migration fixes).
+//! With the per-item geometry classifier (merged from main) and Manifold
+//! on by default, the openings on this fixture are cut cleanly: zero
+//! `BoolFailure`s drained from the router, doors and windows count above
+//! the previously-broken floor.
 //!
 //! ## Sourcing the fixture
 //!
 //! The IFC originates from `http://www.ifcwiki.org/index.php?title=File:Download-Smiley-West.png`
 //! (zipped at `http://www.ifcwiki.org/images/c/c8/AC-20-Smiley-West-10-Bldg.zip`).
-//! Once downloaded:
-//!
-//! ```sh
-//! # 1. Drop the unzipped IFC under tests/models/ara3d/.
-//! mv AC-20-Smiley-West-10-Bldg.ifc tests/models/ara3d/
-//!
-//! # 2. Regenerate the manifest (computes sha256 + size automatically).
-//! pnpm fixtures:manifest
-//!
-//! # 3. Upload to the fixtures-v1 GitHub Release (requires write auth).
-//! pnpm fixtures:upload
-//! ```
-//!
-//! Until the fixture is in the manifest + release, `pnpm fixtures` will
-//! not pull it and these tests will skip cleanly with a hint pointing to
-//! this file. CI is unaffected.
+//! Once downloaded, drop `AC-20-Smiley-West-10-Bldg.ifc` under
+//! `tests/models/ara3d/`. Tests skip cleanly when the fixture is absent.
 
+use ifc_lite_core::IfcType;
 use ifc_lite_geometry::{GeometryRouter, VoidIndex};
 use rustc_hash::FxHashMap;
 
@@ -48,9 +33,9 @@ fn read_fixture(rel: &str) -> Option<String> {
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             eprintln!(
-                "skipping: fixture {path} not present. Source from ifcwiki.org and run \
-                 `pnpm fixtures:manifest` then `pnpm fixtures:upload`. \
-                 See `rust/geometry/tests/issue_584_smiley_west_test.rs` for the recipe."
+                "skipping: fixture {path} not present. Source from ifcwiki.org and drop \
+                 under tests/models/ara3d/. See `rust/geometry/tests/issue_584_smiley_west_test.rs` \
+                 for the recipe."
             );
             None
         }
@@ -58,10 +43,18 @@ fn read_fixture(rel: &str) -> Option<String> {
     }
 }
 
-/// Process every geometry-bearing product in `content` through the void
-/// pipeline and return `(products_processed_with_geometry, total_csg_failures,
-/// products_with_failures)`. Mirrors `issue_582_583_regression_test`.
-fn run_geometry_pipeline(content: &str) -> (usize, usize, usize) {
+#[derive(Default, Debug, Clone, Copy)]
+struct PipelineStats {
+    products_with_geometry: usize,
+    walls_with_geometry: usize,
+    windows_with_geometry: usize,
+    doors_with_geometry: usize,
+    total_mesh_position_floats: usize,
+    csg_failures_total: usize,
+    csg_failures_products: usize,
+}
+
+fn run_geometry_pipeline(content: &str) -> PipelineStats {
     let entity_index = ifc_lite_core::build_entity_index(content);
     let mut decoder = ifc_lite_core::EntityDecoder::with_index(content, entity_index);
     let router = GeometryRouter::with_units(content, &mut decoder);
@@ -73,7 +66,7 @@ fn run_geometry_pipeline(content: &str) -> (usize, usize, usize) {
     }
 
     let mut scanner = ifc_lite_core::EntityScanner::new(content);
-    let mut produced = 0usize;
+    let mut stats = PipelineStats::default();
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         if !ifc_lite_core::has_geometry_by_name(type_name) {
             continue;
@@ -87,43 +80,84 @@ fn run_geometry_pipeline(content: &str) -> (usize, usize, usize) {
         }
         if let Ok(mesh) = router.process_element_with_voids(&entity, &mut decoder, &void_map) {
             if !mesh.is_empty() {
-                produced += 1;
+                stats.products_with_geometry += 1;
+                stats.total_mesh_position_floats += mesh.positions.len();
+                match entity.ifc_type {
+                    IfcType::IfcWall | IfcType::IfcWallStandardCase => {
+                        stats.walls_with_geometry += 1;
+                    }
+                    IfcType::IfcWindow => {
+                        stats.windows_with_geometry += 1;
+                    }
+                    IfcType::IfcDoor => {
+                        stats.doors_with_geometry += 1;
+                    }
+                    _ => {}
+                }
             }
         }
     }
 
     let failures = router.take_csg_failures();
-    let total: usize = failures.values().map(|v| v.len()).sum();
-    let products = failures.len();
-    (produced, total, products)
+    stats.csg_failures_total = failures.values().map(|v| v.len()).sum();
+    stats.csg_failures_products = failures.len();
+    stats
 }
 
 #[test]
-fn issue_584_smiley_west_pipeline_runs_and_records_failures() {
+fn issue_584_smiley_west_doors_and_walls_present() {
     let Some(content) = read_fixture("ara3d/AC-20-Smiley-West-10-Bldg.ifc") else {
         return;
     };
-    let (produced, total_failures, products_with_failures) = run_geometry_pipeline(&content);
-    eprintln!(
-        "[issue #584 Smiley-West] geometry produced for {produced} products; \
-         {total_failures} CSG failures across {products_with_failures} products"
+    let stats = run_geometry_pipeline(&content);
+    eprintln!("[issue #584 Smiley-West] {stats:#?}");
+
+    assert!(
+        stats.products_with_geometry > 0,
+        "Smiley-West produced no geometry at all"
     );
-    assert!(produced > 0, "Smiley-West must yield some geometry");
+
+    // Issue #584 specifically called out balcony door openings not being
+    // cut. Smiley-West is a 10-building model with hundreds of doors.
+    // Floor at 50 catches a regression to host-clone (which would still
+    // emit walls but stop emitting cut doors).
+    assert!(
+        stats.walls_with_geometry >= 100,
+        "issue #584: Smiley-West walls regressed — got {} (expected >=100)",
+        stats.walls_with_geometry
+    );
+    assert!(
+        stats.doors_with_geometry >= 50,
+        "issue #584: Smiley-West doors regressed — got {} (expected >=50)",
+        stats.doors_with_geometry
+    );
 }
 
-/// Sprint 2 acceptance gate. Active only with `--features manifold-csg`:
-/// the legacy BSP path is known to fall back to host-clone on this fixture
-/// (the bug the migration fixes), so asserting `total_failures == 0` would
-/// always fail there.
 #[test]
 #[cfg(feature = "manifold-csg")]
-fn issue_584_smiley_west_no_csg_failures_after_manifold() {
+fn issue_584_smiley_west_no_csg_failures() {
     let Some(content) = read_fixture("ara3d/AC-20-Smiley-West-10-Bldg.ifc") else {
         return;
     };
-    let (_, total_failures, _) = run_geometry_pipeline(&content);
+    let stats = run_geometry_pipeline(&content);
     assert_eq!(
-        total_failures, 0,
-        "post-T1.1, no CSG fallbacks should fire on Smiley-West"
+        stats.csg_failures_total, 0,
+        "issue #584: Smiley-West must have zero CSG fallbacks under default features"
+    );
+}
+
+#[test]
+fn issue_584_smiley_west_total_mesh_complexity_above_floor() {
+    let Some(content) = read_fixture("ara3d/AC-20-Smiley-West-10-Bldg.ifc") else {
+        return;
+    };
+    let stats = run_geometry_pipeline(&content);
+    // Empirically observed (default features): ~1.4M position floats.
+    // Floor at 500k catches host-clone-only fallback or a wholesale
+    // classification regression.
+    assert!(
+        stats.total_mesh_position_floats >= 500_000,
+        "issue #584: Smiley-West total mesh complexity regressed — {} floats (expected >=500000)",
+        stats.total_mesh_position_floats
     );
 }

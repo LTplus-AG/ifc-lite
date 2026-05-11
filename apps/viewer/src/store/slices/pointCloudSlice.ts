@@ -12,7 +12,7 @@
 
 import type { StateCreator } from 'zustand';
 
-export type PointColorModeUi = 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed';
+export type PointColorModeUi = 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed' | 'deviation';
 export type PointSizeModeUi = 'fixed-px' | 'adaptive-world' | 'attenuated';
 
 export interface PointCloudSlice {
@@ -32,6 +32,35 @@ export interface PointCloudSlice {
   /** EDL strength multiplier. 0..3, default 1. */
   pointCloudEdlStrength: number;
   /**
+   * Per-ASPRS-class visibility bitmask (32 bits = covers classes
+   * 0..31, the LAS 1.4 standard range). Bit `i` set → class `i`
+   * visible. Default `0xFFFFFFFF` (all visible). Only point clouds
+   * carry classifications; meshes ignore this.
+   */
+  pointCloudClassMask: number;
+  /**
+   * Stride-cull factor for the splat shader. 1 = render every point,
+   * N>1 = render every Nth point. Used by the section-plane slider's
+   * drag-preview path so dragging over a 100M-point scan stays
+   * responsive. Defaults to 1 (full density).
+   */
+  pointCloudPreviewStride: number;
+  /**
+   * BIM↔scan deviation heatmap range. `centerOffset` shifts the
+   * "white" point off zero (handy when a scan has a global offset
+   * from the model); `halfRange` is the metres mapped to ±1 on the
+   * blue-white-red ramp. Defaults to (0, 0.05) — ±5cm.
+   */
+  pointCloudDeviationCenterOffset: number;
+  pointCloudDeviationHalfRange: number;
+  /**
+   * True once `Renderer.computeDeviations` has populated the deviation
+   * buffers for the current point cloud + mesh set. UI gates the
+   * "Deviation" colour-mode option on this flag so users don't get a
+   * confusing all-blue rendering when nothing has been computed.
+   */
+  pointCloudDeviationComputed: boolean;
+  /**
    * Best-effort count of point cloud assets currently uploaded to the
    * renderer. Updated by ingest paths; UI uses it to show/hide the
    * controls panel and the EDL post-pass.
@@ -45,6 +74,14 @@ export interface PointCloudSlice {
   setPointCloudRoundShape: (enabled: boolean) => void;
   setPointCloudEdlEnabled: (enabled: boolean) => void;
   setPointCloudEdlStrength: (strength: number) => void;
+  setPointCloudClassMask: (mask: number) => void;
+  /** Toggle a single ASPRS class. `classId` is clamped to 0..31. */
+  togglePointCloudClass: (classId: number) => void;
+  /** Set the stride-cull factor (1 = full density). */
+  setPointCloudPreviewStride: (stride: number) => void;
+  setPointCloudDeviationCenterOffset: (m: number) => void;
+  setPointCloudDeviationHalfRange: (m: number) => void;
+  setPointCloudDeviationComputed: (computed: boolean) => void;
   setPointCloudAssetCount: (count: number) => void;
   incrementPointCloudAssetCount: (n?: number) => void;
 }
@@ -67,6 +104,14 @@ export const POINT_CLOUD_DEFAULTS = {
   pointCloudRoundShape: true,
   pointCloudEdlEnabled: true,
   pointCloudEdlStrength: 1,
+  // 0xFFFFFFFF — all 32 classes visible. Stored as `-1 >>> 0` to
+  // keep the value as an unsigned 32-bit integer; JS doesn't have
+  // a u32 literal type so we round-trip through `>>> 0`.
+  pointCloudClassMask: 0xFFFFFFFF,
+  pointCloudPreviewStride: 1,
+  pointCloudDeviationCenterOffset: 0,
+  pointCloudDeviationHalfRange: 0.05,
+  pointCloudDeviationComputed: false,
   pointCloudAssetCount: 0,
 } as const;
 
@@ -91,6 +136,32 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
   setPointCloudEdlStrength: (strength) => set({
     pointCloudEdlStrength: Number.isFinite(strength) ? Math.max(0, Math.min(3, strength)) : 1,
   }),
+  setPointCloudClassMask: (mask) => set({
+    // Coerce through `>>> 0` to keep the stored value as an unsigned
+    // 32-bit integer; non-finite / negative inputs reset to "all on".
+    pointCloudClassMask: Number.isFinite(mask) ? (mask >>> 0) : 0xFFFFFFFF,
+  }),
+  togglePointCloudClass: (classId) => set((s) => {
+    const c = Math.max(0, Math.min(31, classId | 0));
+    const bit = 1 << c;
+    // XOR flips the bit; coerce through `>>> 0` so the stored value
+    // stays in the unsigned 32-bit range.
+    return { pointCloudClassMask: (s.pointCloudClassMask ^ bit) >>> 0 };
+  }),
+  setPointCloudPreviewStride: (stride) => set({
+    pointCloudPreviewStride: Number.isFinite(stride)
+      ? Math.max(1, Math.min(256, Math.floor(stride) || 1))
+      : 1,
+  }),
+  setPointCloudDeviationCenterOffset: (m) => set({
+    pointCloudDeviationCenterOffset: Number.isFinite(m) ? m : 0,
+  }),
+  setPointCloudDeviationHalfRange: (m) => set({
+    // halfRange must stay strictly positive — a zero or negative value
+    // would NaN the GPU ramp's division. Clamp to 0.1 mm minimum.
+    pointCloudDeviationHalfRange: Number.isFinite(m) ? Math.max(1e-4, m) : 0.05,
+  }),
+  setPointCloudDeviationComputed: (computed) => set({ pointCloudDeviationComputed: computed }),
   setPointCloudAssetCount: (count) => set({
     pointCloudAssetCount: Number.isFinite(count) ? Math.max(0, count) : 0,
   }),

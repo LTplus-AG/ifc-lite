@@ -38,6 +38,7 @@ export const en = {
   // ============================================================================
   relations: {
     IfcRelAggregates: 'part of',
+    IfcRelAssignsToGroup: 'grouped in',
     IfcRelContainedInSpatialStructure: 'contained in',
     IfcRelNests: 'nested in',
     IfcRelVoidsElement: 'voiding',

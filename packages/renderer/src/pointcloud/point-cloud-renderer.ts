@@ -26,6 +26,11 @@ import {
   type PointCloudNode,
   type PointCloudNodeMeta,
 } from './point-cloud-node.js';
+import {
+  writePointCloudUniforms,
+  type PointColorMode,
+  type PointSizeMode,
+} from './point-cloud-uniforms.js';
 
 export interface ResolvedSectionPlane {
   normal: [number, number, number];
@@ -34,12 +39,7 @@ export interface ResolvedSectionPlane {
   flipped?: boolean;
 }
 
-export type PointColorMode =
-  | 'rgb'
-  | 'classification'
-  | 'intensity'
-  | 'height'
-  | 'fixed';
+export type { PointColorMode, PointSizeMode };
 
 /**
  * How to size a splat on screen.
@@ -51,21 +51,6 @@ export type PointColorMode =
  *                       blow up to half the screen when you nose into the
  *                       cloud — usually the best default for nav.
  */
-export type PointSizeMode = 'fixed-px' | 'adaptive-world' | 'attenuated';
-
-const COLOR_MODE_INDEX: Record<PointColorMode, number> = {
-  rgb: 0,
-  classification: 1,
-  intensity: 2,
-  height: 3,
-  fixed: 4,
-};
-
-const SIZE_MODE_INDEX: Record<PointSizeMode, number> = {
-  'fixed-px': 0,
-  'adaptive-world': 1,
-  'attenuated': 2,
-};
 
 export interface PointCloudDrawState {
   /** column-major view-projection matrix (16 floats) */
@@ -91,6 +76,29 @@ export interface PointCloudRenderOptions {
   worldRadius?: number;
   /** Render splats as discs instead of squares. Defaults to true. */
   roundShape?: boolean;
+  /**
+   * Per-ASPRS-class visibility bitmask. Bit `i` set → class `i` is
+   * visible. Defaults to `0xFFFFFFFF` (all 32 classes shown). Only
+   * affects points carrying classifications; meshes ignore it.
+   * Stored as an unsigned 32-bit integer in the uniform block.
+   */
+  classMask?: number;
+  /**
+   * Stride-cull factor for the splat shader: 1 = render every point,
+   * 2 = every other, 4 = every fourth, etc. Used by the section-plane
+   * preview path so dragging a slider over a 100M-point scan stays
+   * responsive — UI flips this to e.g. 4 on drag start and back to 1
+   * on drag end. Default 1.
+   */
+  previewStride?: number;
+  /**
+   * BIM↔scan deviation heatmap range. `centerOffset` shifts the
+   * "white" point off zero (handy when a scan has a global offset
+   * from the model); `halfRange` is the metres mapped to ±1 on the
+   * blue→white→red ramp. Defaults to (0, 0.05) → ±5cm.
+   * Only consulted when `colorMode === 'deviation'`.
+   */
+  deviationRange?: { centerOffset: number; halfRange: number };
 }
 
 export interface PointCloudAssetHandle {
@@ -123,6 +131,9 @@ export class PointCloudRenderer {
     sizeMode: 'attenuated',
     worldRadius: 0.02,
     roundShape: true,
+    classMask: 0xFFFFFFFF,
+    previewStride: 1,
+    deviationRange: { centerOffset: 0, halfRange: 0.05 },
   };
 
   constructor(
@@ -142,6 +153,23 @@ export class PointCloudRenderer {
     if (opts.sizeMode !== undefined) this.options.sizeMode = opts.sizeMode;
     if (opts.worldRadius !== undefined) this.options.worldRadius = opts.worldRadius;
     if (opts.roundShape !== undefined) this.options.roundShape = opts.roundShape;
+    if (opts.classMask !== undefined) this.options.classMask = opts.classMask >>> 0;
+    if (opts.previewStride !== undefined) {
+      // Clamp to a sane positive integer — stride 0 would divide by
+      // zero in the shader's modulo. >256 is silly but harmless.
+      const s = Math.max(1, Math.min(256, Math.floor(opts.previewStride) || 1));
+      this.options.previewStride = s;
+    }
+    if (opts.deviationRange !== undefined) {
+      const r = opts.deviationRange;
+      this.options.deviationRange = {
+        centerOffset: Number.isFinite(r.centerOffset) ? r.centerOffset : 0,
+        // halfRange = 0 would divide by zero in the shader; clamp to
+        // a tiny positive value so dragging the slider to the floor
+        // doesn't NaN the colour.
+        halfRange: Number.isFinite(r.halfRange) && r.halfRange > 0 ? r.halfRange : 1e-6,
+      };
+    }
   }
 
   getOptions(): Readonly<Required<PointCloudRenderOptions>> {
@@ -244,6 +272,15 @@ export class PointCloudRenderer {
     return this.nodes.size;
   }
 
+  /**
+   * Iterate every uploaded node. Exposed so the deviation compute
+   * pass can reach each node's vertex + deviation buffers without
+   * the renderer having to mirror its internal map.
+   */
+  getInternalNodes(): Iterable<PointCloudNode> {
+    return this.nodes.values();
+  }
+
   /** Total number of points currently uploaded across all assets. */
   getPointCount(): number {
     let total = 0;
@@ -310,76 +347,41 @@ export class PointCloudRenderer {
     const viewportH = Math.max(1, state.viewport?.height ?? 1);
 
     for (const node of this.nodes.values()) {
-      this.writeUniforms(
+      writePointCloudUniforms(
+        this.device,
+        this.uniformScratch,
+        this.uniformScratchU32,
         node,
-        state.viewProj,
-        normal,
-        distance,
-        enabled,
-        heightMin,
-        heightMax,
-        viewportW,
-        viewportH,
+        {
+          viewProj: state.viewProj,
+          fixedColor: this.options.fixedColor,
+          colorMode: this.options.colorMode,
+          sizeMode: this.options.sizeMode,
+          pointSize: this.options.pointSize,
+          worldRadius: this.options.worldRadius,
+          roundShape: this.options.roundShape,
+          sectionNormal: normal,
+          sectionDist: distance,
+          sectionEnabled: enabled,
+          heightMin,
+          heightMax,
+          viewportW,
+          viewportH,
+          classMask: this.options.classMask,
+          previewStride: this.options.previewStride,
+          deviationCenterOffset: this.options.deviationRange.centerOffset,
+          deviationHalfRange: this.options.deviationRange.halfRange,
+        },
       );
       pass.setBindGroup(0, node.bindGroup);
       for (const chunk of node.chunks) {
         pass.setVertexBuffer(0, chunk.vertexBuffer);
+        // 2nd buffer: per-point deviation float (location 4 in shader).
+        pass.setVertexBuffer(1, chunk.deviationBuffer);
         // Six verts per splat, one instance per source point.
         pass.draw(POINT_QUAD_VERTS, chunk.pointCount, 0, 0);
       }
     }
-  }
-
-  private writeUniforms(
-    node: PointCloudNode,
-    viewProj: Float32Array,
-    sectionNormal: [number, number, number],
-    sectionDist: number,
-    sectionEnabled: boolean,
-    heightMin: number,
-    heightMax: number,
-    viewportW: number,
-    viewportH: number,
-  ): void {
-    const u = this.uniformScratch;
-    const uU32 = this.uniformScratchU32;
-
-    // viewProj — floats 0..15
-    u.set(viewProj.subarray(0, 16), 0);
-    // model — floats 16..31 (identity for now; per-asset transforms can be added later)
-    u.fill(0, 16, 32);
-    u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
-    // colorOverride — floats 32..35
-    u[32] = this.options.fixedColor[0];
-    u[33] = this.options.fixedColor[1];
-    u[34] = this.options.fixedColor[2];
-    u[35] = this.options.fixedColor[3];
-    // colorModeAndExtras — floats 36..39 (mode, pointSize, heightMin, heightMax)
-    u[36] = COLOR_MODE_INDEX[this.options.colorMode];
-    u[37] = this.options.pointSize;
-    u[38] = heightMin;
-    u[39] = heightMax;
-    // sizing — floats 40..43 (sizeMode, worldRadius, viewportW, viewportH)
-    u[40] = SIZE_MODE_INDEX[this.options.sizeMode];
-    u[41] = this.options.worldRadius;
-    u[42] = viewportW;
-    u[43] = viewportH;
-    // sectionPlane — floats 44..47
-    u[44] = sectionNormal[0];
-    u[45] = sectionNormal[1];
-    u[46] = sectionNormal[2];
-    u[47] = sectionDist;
-    // flags (u32 view) — bytes 192..207 = u32 indices 48..51
-    // flags.x = the asset's CURRENT expressId. The shader uses this
-    // when non-zero so the federation registry can relabel a streamed
-    // asset post-upload (its per-vertex entityId attribute is baked
-    // at upload and would otherwise stay at the synthetic local ID).
-    uU32[48] = node.meta.expressId >>> 0;
-    uU32[49] = sectionEnabled ? 1 : 0;
-    uU32[50] = this.options.roundShape ? 1 : 0;
-    uU32[51] = 0;
-
-    this.device.queue.writeBuffer(node.uniformBuffer, 0, u.buffer, u.byteOffset, POINT_UNIFORM_SIZE);
   }
 
   /**

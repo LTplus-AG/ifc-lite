@@ -1,5 +1,208 @@
 # @ifc-lite/pointcloud
 
+## 0.3.0
+
+### Minor Changes
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - E57 multi-scan pose merging — registered files now load.
+
+  Previously a multi-scan E57 with `<pose>` elements threw a clear
+  "re-export as merged" error. This change parses each Data3D's pose
+  (unit quaternion + translation) and applies it before merging, so
+  registered scans line up in the file's global frame.
+
+  Implementation:
+
+  - `Data3DEntry.hasPose: boolean` → `Data3DEntry.pose?: E57Pose`
+    carrying `{ rotation: {w,x,y,z}, translation: {x,y,z} }`.
+  - New `parsePoseElement` walks the `<pose><rotation/><translation/></pose>`
+    structure; non-finite values fall through to identity rather than
+    rejecting the whole file.
+  - New exported `applyPoseInPlace(positions, count, pose)` derives the
+    3×3 rotation matrix from the quaternion (Hamilton convention,
+    `w + xi + yj + zk`) and computes `out = R · in + T` per point.
+  - `decodeE57` applies the pose after `decodeE57Scan` returns and
+    recomputes bbox; identity / absent poses are no-ops.
+  - The "Multi-scan pose merging is not yet supported" rejection is
+    removed.
+
+  3 new tests:
+
+  - Pose extraction from XML (90°-around-Z quaternion + finite
+    translation, plus a no-pose sibling).
+  - `applyPoseInPlace` with a 90°-around-Z + translation, asserting
+    per-axis transforms.
+  - Identity pose round-trips positions unchanged.
+
+  Verified: 64 pointcloud unit tests pass, full repo typecheck (24/24),
+  viewer Vite build green.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - E57 ScaledInteger codec — bit-packed cartesian / intensity / colour.
+
+  ScaledInteger is the more compact encoding most real-world Faro,
+  Trimble, and Leica E57 exports use; previously we threw a clear
+  error on these files. This change implements the decoder so they
+  load directly.
+
+  Per spec ASTM E2807-11 §6.3.4:
+
+  - `bitsPerRecord = ceil(log2(maximum - minimum + 1))`
+  - Bytestream stores `raw_int = original − minimum` packed LSB-first
+    within each byte; decoded float = `(raw_int + minimum) * scale + offset`
+
+  Implementation:
+
+  - New `readBitsLE(bytes, bitOffset, bitsPerRecord)` walks a byte
+    buffer and reconstructs each value into a JS number using
+    `Math.pow(2, n)` instead of `<< n`, so precision holds up to 53
+    bits (covers every real exporter — LiDAR + survey kit tops out
+    around 32 bits). Wider fields throw a clear error.
+  - `readCartesianStream` and `readIntensityStream` now branch on
+    field kind: Float / Integer paths unchanged, ScaledInteger path
+    bit-walks per record.
+  - `writeColorChannel` extended with a ScaledInteger branch that
+    remaps `raw → [0, 1]` via the declared min/max range.
+  - Per-axis packet capacity computation now varies by field kind
+    (Float = `length / byteSize`, ScaledInteger = `length * 8 / bitsPerRecord`)
+    via `floatOrSiPointCapacity`.
+
+  The "ScaledInteger throws clearly" error is removed for cartesian,
+  intensity, and colour — all three now decode. The earlier multi-scan
+  pose rejection stays in place; that's a separate piece of work.
+
+  2 new tests:
+
+  - 8-bit ScaledInteger across all three cartesian axes (round-trip
+    through known raw values).
+  - 12-bit ScaledInteger that crosses byte boundaries (proves the
+    bit-pack walk is correct for non-multiples-of-8).
+
+  Verified: 63 pointcloud unit tests pass, full repo typecheck (24/24),
+  viewer Vite build green.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - PTS / XYZ ASCII point cloud reader.
+
+  Both formats are line-oriented plain-text scans common in legacy
+  survey workflows. They share the same syntax — they differ only in
+  the optional first-line point count (PTS may have one; XYZ never
+  does). One shared decoder + streaming source handles both.
+
+  Auto-detected per-line layouts (by column count of the first data
+  line):
+
+  - 3 cols → `X Y Z`
+  - 4 cols → `X Y Z I` (intensity)
+  - 6 cols → `X Y Z R G B`
+  - 7 cols → `X Y Z I R G B` (canonical PTS)
+  - 9 cols → `X Y Z R G B Nx Ny Nz` (XYZ-with-normals; normals dropped)
+  - 10 cols → `X Y Z I R G B Nx Ny Nz` (PTS-with-normals; normals dropped)
+  - For XYZ with unknown column counts ≥3 we still emit positions and
+    skip the rest, so weird custom exports load instead of erroring.
+
+  Other behaviour:
+
+  - Comment lines (`#`, `//`) and blank lines are skipped.
+  - Intensity normalisation: 0..1 vs 0..255 vs raw sensor detected from
+    the observed maximum, then mapped to u16.
+  - RGB normalisation: same heuristic (>1.0 → 0..255 source).
+  - Whole-file decode wrapped in `AsciiPointsStreamingSource`; the
+    streaming host's 25M-point cap stride-downsamples on the way out.
+
+  Wired into the decode worker, format detection
+  (`detectPointCloudFormat` returns `'pts'` / `'xyz'`), the file
+  picker accept lists, drop handlers, and both `useIfcLoader` /
+  `useIfcFederation` ingest branches. The "PTS / XYZ ASCII points —
+  not yet supported" toast is removed from `describeUnsupportedFormat`.
+
+  10 new unit tests cover layout probing, decoder round-trips for the
+  common shapes, and the comment / header-count edge cases.
+
+### Patch Changes
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Fix LAZ load failing with `WebAssembly: Response has unsupported MIME
+type 'text/plain'` on real-world files (e.g. autzen-classified.laz).
+
+  `laz-perf`'s emscripten shim resolves the wasm via `locateFile()` and
+  calls `fetch("laz-perf.wasm")` relative to its own script directory.
+  In a Vite-bundled module worker that path becomes `/assets/<chunk>/…`
+  or just `/laz-perf.wasm` — both 404, and the SPA fallback returns
+  `index.html` as `text/plain`, which `instantiateStreaming` rightly
+  rejects. The async fallback then 404s the same way and aborts.
+
+  `loadLazPerf` now resolves the wasm asset URL through Vite's
+  `?url` import (`laz-perf/lib/web/laz-perf.wasm?url`), pre-fetches the
+  bytes itself, and hands them to emscripten as `Module.wasmBinary` so
+  the shim's own fetch is bypassed entirely. Failure modes (asset
+  resolution, fetch HTTP error) now produce a precise error message
+  naming the URL and status instead of the opaque emscripten "Aborted".
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Near-term batch — correctness + robustness items from #611.
+
+  **`computeBBox` empty / non-finite guards.** Both `e57.ts` and
+  `ifcx-points.ts` now return `{0,0,0}/{0,0,0}` for empty arrays and
+  skip non-finite triplets. Previously a zero-point or NaN-poisoned
+  chunk produced ±Infinity bounds that broke camera fit-to-view and
+  section-plane sliders.
+
+  **Magic-byte-first format detection.** `detectPointCloudFormat` now
+  probes the buffer (E57 magic, LASF magic, "ply" / "#" / ".PCD"
+  ASCII tokens) before falling back to extension. A LAS file
+  mistakenly named `*.ply` no longer goes down the wrong decoder. LAS
+  vs LAZ still uses the extension to disambiguate (they share the
+  LASF magic).
+
+  **E57 packet-bounds + per-stream guards.** Validate that the
+  DataPacket header, bytestream-length table, and each individual
+  bytestream stay inside `payloadEnd = packetEnd - 4` before reading.
+  Corrupt files now fail with a precise "bytestream X runs past
+  packet payload" error instead of silently reading into the next
+  packet.
+
+  **`e57.ts` split (631 → 4 files).** `e57-page.ts` (header / page CRC
+  / section-header resolver), `e57-xml.ts` (prototype + Data3D
+  parser), `e57-decode.ts` (per-scan binary decoder), `e57.ts`
+  (orchestrator + re-exports). All four under the AGENTS ~400-line
+  guideline.
+
+  **`point-cloud-renderer.ts` extract.** Pulled the uniform-block
+  writer into `point-cloud-uniforms.ts` (`writePointCloudUniforms` +
+  mode index maps). Renderer drops below 400 lines.
+
+  Verified: 62 pointcloud unit tests pass, full repo typecheck
+  (24/24).
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Round 2 of CodeRabbit feedback on PR #614:
+
+  - **E57 stride downsampling drops classifications.** `applyStride` rebuilt
+    positions / colors / intensities into new arrays but never copied the
+    per-point class IDs, so any non-default stride (`{ stride: 2 }` and up)
+    silently lost them and `hasClassification` flipped to false.
+  - **Federation abort can stomp a newer load.** The AbortError handler in
+    `useIfcFederation.addModel()` wrote `progress`, `error`, and `loading`
+    unconditionally — if a second `addModel()` started after the first was
+    cancelled, it lost its spinner and progress to the cancelled load's
+    cleanup. Added a `loadSessionRef` token (mirrors `useIfcLoader`) and
+    gate state writes on `loadSessionRef.current === currentSession`.
+  - **E57 Integer classification subtracts `minimum`.** Class IDs are
+    absolute labels (ASPRS LAS 1.4 0..31), not range-normalised offsets.
+    `raw - minimum` was corrupting class IDs whenever a producer declared
+    a non-zero `minimum` on the Integer-encoded classification field. The
+    Integer branch now matches the ScaledInteger branch's intent: keep
+    the raw byte, clamp to 0..255.
+  - **PCD probe missed `VERSION` / `FIELDS` headers.** The magic-byte
+    detector only recognised `# .PCD …` comment-style headers. Real PCDs
+    emitted by PCL's `pcl_io` and a few third-party tools start directly
+    with `VERSION 0.7\n…` or `FIELDS x y z\n…` — these now route through
+    the PCD decoder instead of falling through to extension-based
+    detection (which would mis-route a renamed PCD).
+  - **Catch-block logging.** Per repo convention, log point-cloud ingest
+    failures in `useIfcLoader.ts` before the early return so abort vs.
+    real-failure vs. stale-session paths are distinguishable in console
+    triage.
+
+  Test cleanup: drop the shadowed (and unused) ScaledInteger packet
+  buffer in `e57.test.ts` so only the live `fullBuf` setup remains.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -22,6 +22,7 @@
 //! | Type | Status | Description |
 //! |------|--------|-------------|
 //! | `IfcExtrudedAreaSolid` | Full | Most common - extruded profiles |
+//! | `IfcExtrudedAreaSolidTapered` | Full | Lofted extrusion between two profiles |
 //! | `IfcFacetedBrep` | Full | Boundary representation meshes |
 //! | `IfcTriangulatedFaceSet` | Full | Pre-triangulated (IFC4) |
 //! | `IfcBooleanClippingResult` | Full | CSG operations (difference, union, intersection) |
@@ -102,14 +103,14 @@ pub use bool2d::{
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
-pub use extrusion::{extrude_profile, extrude_profile_with_voids};
+pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayerIndex};
 pub use mesh::{CoordinateShift, Mesh, SubMesh, SubMeshCollection};
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
-    FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, MappedItemProcessor,
-    PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor, SurfaceOfLinearExtrusionProcessor,
-    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
+    MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
+    SurfaceOfLinearExtrusionProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};

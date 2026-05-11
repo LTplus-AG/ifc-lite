@@ -243,6 +243,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@ifc-lite/parser/browser': path.resolve(__dirname, '../../packages/parser/src/browser.ts'),
       '@ifc-lite/parser': path.resolve(__dirname, '../../packages/parser/src'),
       '@ifc-lite/geometry': path.resolve(__dirname, '../../packages/geometry/src'),
       '@ifc-lite/renderer': path.resolve(__dirname, '../../packages/renderer/src'),
@@ -255,6 +256,11 @@ export default defineConfig({
       '@ifc-lite/ifcx': path.resolve(__dirname, '../../packages/ifcx/src'),
       '@ifc-lite/pointcloud': path.resolve(__dirname, '../../packages/pointcloud/src'),
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
+      // Phase 2 of single-controller-rayon-design.md — threaded bundle
+      // imported by `geometry-controller.worker.ts`. Kept separate from
+      // `@ifc-lite/wasm` so legacy code that doesn't need threading
+      // stays on the slim single-thread bundle.
+      '@ifc-lite/wasm-threaded': path.resolve(__dirname, '../../packages/wasm-threaded/pkg/ifc-lite.js'),
       '@ifc-lite/sdk': path.resolve(__dirname, '../../packages/sdk/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
       '@ifc-lite/sandbox/schema': path.resolve(__dirname, '../../packages/sandbox/src/bridge-schema.ts'),

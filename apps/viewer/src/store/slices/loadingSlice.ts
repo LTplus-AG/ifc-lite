@@ -16,6 +16,15 @@ export interface LoadingSlice {
   geometryProgress: { phase: string; percent: number; indeterminate?: boolean } | null;
   metadataProgress: { phase: string; percent: number; indeterminate?: boolean } | null;
   error: string | null;
+  /**
+   * Cancellation hook for an in-flight long-running operation (e.g.
+   * streaming a 100M-point scan). UI components can show a Cancel
+   * button while this is non-null. The loader hooks register the
+   * canceller after starting the stream and clear it on success /
+   * error. Kept on the loading slice (not its own slice) since it
+   * tracks lifecycle alongside `progress`.
+   */
+  activeStreamCanceller: (() => void) | null;
 
   // Actions
   setLoading: (loading: boolean) => void;
@@ -24,6 +33,7 @@ export interface LoadingSlice {
   setGeometryProgress: (progress: { phase: string; percent: number; indeterminate?: boolean } | null) => void;
   setMetadataProgress: (progress: { phase: string; percent: number; indeterminate?: boolean } | null) => void;
   setError: (error: string | null) => void;
+  setActiveStreamCanceller: (cancel: (() => void) | null) => void;
 }
 
 export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice> = (set) => ({
@@ -34,6 +44,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   geometryProgress: null,
   metadataProgress: null,
   error: null,
+  activeStreamCanceller: null,
 
   // Actions
   setLoading: (loading) => set({ loading }),
@@ -42,4 +53,5 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setGeometryProgress: (geometryProgress) => set({ geometryProgress }),
   setMetadataProgress: (metadataProgress) => set({ metadataProgress }),
   setError: (error) => set({ error }),
+  setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
 });

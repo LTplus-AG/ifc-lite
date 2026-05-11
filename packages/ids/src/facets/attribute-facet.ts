@@ -9,6 +9,7 @@
 import type { IDSAttributeFacet, IFCDataAccessor } from '../types.js';
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
+import { literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
 
 /** Attribute name matching is case-insensitive (IFC schema-defined names) */
 const ATTR_NAME_OPTS: MatchOptions = { caseInsensitive: true };
@@ -39,8 +40,13 @@ export function checkAttributeFacet(
   if (attrNameConstraint.type === 'simpleValue') {
     attrNamesToCheck = [attrNameConstraint.value];
   } else {
-    // For patterns/enumerations, check ALL matching standard attributes (not just the first)
-    attrNamesToCheck = STANDARD_ATTRIBUTES.filter((a) =>
+    // For patterns/enumerations, prefer the entity's own schema-defined
+    // attribute list (so e.g. `IfcMaterialLayerSet.LayerSetName` shows
+    // up for a `.*Name.*` pattern). Fall back to the small standard
+    // list when the accessor doesn't surface one.
+    const allNames = accessor.getAttributeNames?.(expressId);
+    const candidates = allNames && allNames.length > 0 ? allNames : STANDARD_ATTRIBUTES;
+    attrNamesToCheck = candidates.filter((a) =>
       matchConstraint(attrNameConstraint, a, ATTR_NAME_OPTS)
     );
 
@@ -92,8 +98,11 @@ function checkSingleAttribute(
 ): FacetCheckResult {
   const attrValue = getAttributeValue(attrName, expressId, accessor);
 
-  // Check if attribute exists
-  if (attrValue === undefined || attrValue === null || attrValue === '') {
+  // Distinguish "slot truly absent" (undefined/null — IFC `$`) from
+  // "slot explicitly empty" (`''`). Per IDS spec the latter is a
+  // value mismatch, not a missing attribute, so optional facets won't
+  // give it a free pass.
+  if (attrValue === undefined || attrValue === null) {
     return {
       passed: false,
       actualValue: undefined,
@@ -107,6 +116,21 @@ function checkSingleAttribute(
       },
     };
   }
+  if (attrValue === '') {
+    return {
+      passed: false,
+      actualValue: '(empty)',
+      expectedValue: facet.value
+        ? formatConstraint(facet.value)
+        : `attribute "${attrName}" must have a non-empty value`,
+      failure: {
+        type: 'ATTRIBUTE_VALUE_MISMATCH',
+        field: attrName,
+        actual: '(empty)',
+        expected: facet.value ? formatConstraint(facet.value) : 'a non-empty value',
+      },
+    };
+  }
 
   // If no value constraint, just check existence
   if (!facet.value) {
@@ -115,6 +139,30 @@ function checkSingleAttribute(
       actualValue: String(attrValue),
       expectedValue: `attribute "${attrName}" to exist`,
     };
+  }
+
+  // Strict XSD-cast check: the IDS literal MUST cast successfully under
+  // at least one of the attribute's schema-declared XSD types. This
+  // rejects `42.0` against an `xs:integer`-only slot like
+  // `IfcStairFlight.NumberOfRisers`, even though the numbers compare
+  // equal. The accessor returns `undefined` when type info is missing,
+  // in which case we skip the gate and fall back to permissive
+  // comparison (back-compat for accessors that don't surface schema).
+  if (facet.value.type === 'simpleValue') {
+    const xsdTypes = accessor.getAttributeXsdTypes?.(expressId, attrName);
+    if (xsdTypes && !literalCastsUnderAnyType(facet.value.value, xsdTypes)) {
+      return {
+        passed: false,
+        actualValue: String(attrValue),
+        expectedValue: formatConstraint(facet.value),
+        failure: {
+          type: 'ATTRIBUTE_VALUE_MISMATCH',
+          field: attrName,
+          actual: String(attrValue),
+          expected: formatConstraint(facet.value),
+        },
+      };
+    }
   }
 
   // Check value constraint
@@ -149,7 +197,7 @@ function getAttributeValue(
   attrName: string,
   expressId: number,
   accessor: IFCDataAccessor
-): string | undefined {
+): string | number | boolean | undefined {
   const normalizedName = attrName.toLowerCase();
 
   switch (normalizedName) {
@@ -166,3 +214,4 @@ function getAttributeValue(
       return accessor.getAttribute(expressId, attrName);
   }
 }
+

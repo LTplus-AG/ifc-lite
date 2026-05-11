@@ -274,6 +274,179 @@ describe('checkAttributeFacet', () => {
 });
 
 // ============================================================================
+// Attribute Facet — strict XSD-cast gate
+// ============================================================================
+
+describe('checkAttributeFacet — XSD strict-cast gate', () => {
+  it('rejects integer-typed attribute when IDS literal carries a decimal', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 1,
+        type: 'IfcStairFlight',
+        attributes: { NumberOfRisers: 42 },
+        attributeXsdTypes: { NumberOfRisers: ['xs:integer'] },
+      },
+    ]);
+    const result = checkAttributeFacet(
+      {
+        type: 'attribute',
+        name: { type: 'simpleValue', value: 'NumberOfRisers' },
+        value: { type: 'simpleValue', value: '42.0' },
+      },
+      1,
+      accessor
+    );
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('ATTRIBUTE_VALUE_MISMATCH');
+  });
+
+  it('passes integer-typed attribute when IDS literal is an integer', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 1,
+        type: 'IfcStairFlight',
+        attributes: { NumberOfRisers: 42 },
+        attributeXsdTypes: { NumberOfRisers: ['xs:integer'] },
+      },
+    ]);
+    const result = checkAttributeFacet(
+      {
+        type: 'attribute',
+        name: { type: 'simpleValue', value: 'NumberOfRisers' },
+        value: { type: 'simpleValue', value: '42' },
+      },
+      1,
+      accessor
+    );
+    expect(result.passed).toBe(true);
+  });
+
+  it('passes double-typed attribute with either integer or decimal literal', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 1,
+        type: 'IfcSurfaceStyleRefraction',
+        attributes: { RefractionIndex: 42 },
+        attributeXsdTypes: { RefractionIndex: ['xs:double'] },
+      },
+    ]);
+    const intLit = checkAttributeFacet(
+      {
+        type: 'attribute',
+        name: { type: 'simpleValue', value: 'RefractionIndex' },
+        value: { type: 'simpleValue', value: '42' },
+      },
+      1,
+      accessor
+    );
+    const floatLit = checkAttributeFacet(
+      {
+        type: 'attribute',
+        name: { type: 'simpleValue', value: 'RefractionIndex' },
+        value: { type: 'simpleValue', value: '42.0' },
+      },
+      1,
+      accessor
+    );
+    expect(intLit.passed).toBe(true);
+    expect(floatLit.passed).toBe(true);
+  });
+
+  it('passes when at least one type in a union accepts the literal', () => {
+    // Mirrors `Width` on shape profiles: union [xs:double, xs:integer]
+    // accepts both `42` and `42.5`. With actual=42.5 and IDS=42.5 the
+    // value matches and the cast gate doesn't reject.
+    const accessor = createMockAccessor([
+      {
+        expressId: 1,
+        type: 'IfcCShapeProfileDef',
+        attributes: { Width: 42.5 },
+        attributeXsdTypes: { Width: ['xs:double', 'xs:integer'] },
+      },
+    ]);
+    const decimal = checkAttributeFacet(
+      {
+        type: 'attribute',
+        name: { type: 'simpleValue', value: 'Width' },
+        value: { type: 'simpleValue', value: '42.5' },
+      },
+      1,
+      accessor
+    );
+    // 42.5 casts under xs:double; the gate is satisfied and the value
+    // matches numerically.
+    expect(decimal.passed).toBe(true);
+  });
+
+  it('rejects when no type in the union accepts the literal', () => {
+    // Boolean-only slot rejects a numeric IDS literal outright.
+    const accessor = createMockAccessor([
+      {
+        expressId: 1,
+        type: 'IfcPresentationLayerWithStyle',
+        attributes: { LayerOn: true },
+        attributeXsdTypes: { LayerOn: ['xs:boolean'] },
+      },
+    ]);
+    const result = checkAttributeFacet(
+      {
+        type: 'attribute',
+        name: { type: 'simpleValue', value: 'LayerOn' },
+        value: { type: 'simpleValue', value: '42.0' },
+      },
+      1,
+      accessor
+    );
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('ATTRIBUTE_VALUE_MISMATCH');
+  });
+
+  it('falls back to permissive comparison when XSD types are unknown', () => {
+    // Accessor without `attributeXsdTypes` — gate should no-op so the
+    // existing numeric-tolerance path can still match.
+    const accessor = createMockAccessor([
+      {
+        expressId: 1,
+        type: 'IfcStairFlight',
+        attributes: { NumberOfRisers: 42 },
+      },
+    ]);
+    const result = checkAttributeFacet(
+      {
+        type: 'attribute',
+        name: { type: 'simpleValue', value: 'NumberOfRisers' },
+        value: { type: 'simpleValue', value: '42.0' },
+      },
+      1,
+      accessor
+    );
+    // Without schema info we keep the old behaviour (passes by tolerance).
+    expect(result.passed).toBe(true);
+  });
+
+  it('rejects non-date string for xs:date typed attribute', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 1,
+        type: 'IfcClassification',
+        attributes: { EditionDate: '2022-01-01' },
+        attributeXsdTypes: { EditionDate: ['xs:date'] },
+      },
+    ]);
+    const result = checkAttributeFacet(
+      {
+        type: 'attribute',
+        name: { type: 'simpleValue', value: 'EditionDate' },
+        value: { type: 'simpleValue', value: 'not-a-date' },
+      },
+      1,
+      accessor
+    );
+    expect(result.passed).toBe(false);
+  });
+});
+
+// ============================================================================
 // Property Facet
 // ============================================================================
 
@@ -410,8 +583,11 @@ describe('checkPropertyFacet', () => {
     expect(result.failure?.type).toBe('PROPERTY_OUT_OF_BOUNDS');
   });
 
-  it('tries all matching properties in pset (not just first)', () => {
-    // Two properties match the name pattern, first fails value, second passes
+  it('requires ALL matching properties to satisfy value (not just first)', () => {
+    // Per IDS spec — when baseName is a pattern that matches multiple
+    // properties, every match must satisfy the value constraint.
+    // Mirrors buildingSMART fixture
+    // `property/fail-all_matching_properties_must_satisfy_requirements_3_3`.
     const multiPropAccessor = createMockAccessor([
       {
         expressId: 20,
@@ -428,8 +604,23 @@ describe('checkPropertyFacet', () => {
       baseName: { type: 'pattern', pattern: 'Rating_.*' },
       value: sv('HIGH'),
     };
+    // Rating_A=LOW fails the value constraint → spec-level fail.
     const result = checkPropertyFacet(facet, 20, multiPropAccessor);
-    expect(result.passed).toBe(true);
+    expect(result.passed).toBe(false);
+
+    // Sanity check: when every matching property satisfies the value,
+    // we get a pass.
+    const allMatchAccessor = createMockAccessor([
+      {
+        expressId: 20,
+        type: 'IfcWall',
+        properties: [
+          { psetName: 'Custom', propName: 'Rating_A', value: 'HIGH', dataType: 'IFCLABEL' },
+          { psetName: 'Custom', propName: 'Rating_B', value: 'HIGH', dataType: 'IFCLABEL' },
+        ],
+      },
+    ]);
+    expect(checkPropertyFacet(facet, 20, allMatchAccessor).passed).toBe(true);
   });
 
   it('returns value mismatch (not property missing) when property found but value wrong', () => {

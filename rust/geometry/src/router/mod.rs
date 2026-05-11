@@ -20,9 +20,9 @@ mod tests;
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
-    FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, MappedItemProcessor,
-    PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor, ShellBasedSurfaceModelProcessor,
-    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
+    MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
+    ShellBasedSurfaceModelProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -204,6 +204,9 @@ impl GeometryRouter {
 
         // Register default P0 processors
         router.register(Box::new(ExtrudedAreaSolidProcessor::new(
+            schema_clone.clone(),
+        )));
+        router.register(Box::new(ExtrudedAreaSolidTaperedProcessor::new(
             schema_clone.clone(),
         )));
         router.register(Box::new(TriangulatedFaceSetProcessor::new()));
@@ -583,6 +586,12 @@ pub(crate) enum ClassificationKind {
     Rectangular,
     Diagonal,
     NonRectangular,
+    /// Retained for backwards compatibility. After main's per-item geometry
+    /// classification superseded the host-aware floor-opening heuristic this
+    /// variant is no longer bumped (the per-item path makes the same call
+    /// without the global guard). The field on `Stats` remains so older
+    /// JSON consumers don't see schema breakage.
+    #[allow(dead_code)]
     FloorOpeningGuardSaved,
 }
 

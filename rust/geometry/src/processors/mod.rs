@@ -23,6 +23,7 @@ mod advanced_face;
 mod boolean;
 mod brep;
 mod extrusion;
+mod extrusion_tapered;
 mod helpers;
 mod mapped;
 mod surface;
@@ -39,6 +40,7 @@ pub use brep::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, ShellBasedSurfaceModelProcessor,
 };
 pub use extrusion::ExtrudedAreaSolidProcessor;
+pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use mapped::MappedItemProcessor;
 pub use surface::SurfaceOfLinearExtrusionProcessor;
 pub use swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};

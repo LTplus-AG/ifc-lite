@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+	<ids:info>
+		<ids:title>Example of property</ids:title>
+		<ids:copyright>Claudio Benghi</ids:copyright>
+		<ids:date>2023-04-12</ids:date>
+	</ids:info>
+	<ids:specifications>
+		<ids:specification name="Wall with common property" ifcVersion="IFC2X3">
+			<ids:applicability minOccurs="1" maxOccurs="unbounded" >
+				<ids:entity>
+					<ids:name>
+						<ids:simpleValue>IFCWALL</ids:simpleValue>
+					</ids:name />
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:property dataType="IFCLABEL">
+					<ids:propertySet>
+						<ids:simpleValue>Pset_WallCommon</ids:simpleValue>
+					</ids:propertySet>
+					<ids:name>
+						<ids:simpleValue>AcousticRating</ids:simpleValue>
+					</ids:name>
+				</ids:property>
+			</ids:requirements>
+		</ids:specification>
+  </ids:specifications>
+</ids:ids>

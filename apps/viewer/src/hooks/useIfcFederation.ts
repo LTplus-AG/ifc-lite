@@ -42,6 +42,7 @@ import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
 import { getEffectiveGeoreference, getEffectiveHorizontalScale, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
+import { acquireFileBuffer } from '../utils/acquireFileBuffer.js';
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
   return typeof (file as NativeFileHandle).path === 'string';
@@ -461,10 +462,24 @@ export function useIfcFederation() {
       setError(null);
       setProgress({ phase: 'Loading file', percent: 0 });
 
-      // Read file from disk
-      const buffer = isNativeFileHandle(file)
-        ? toExactArrayBuffer(await readNativeFile(file.path))
-        : await file.arrayBuffer();
+      // Read file from disk. The browser path streams files above
+      // `STREAM_SAB_THRESHOLD` directly into a SharedArrayBuffer, eliminating
+      // the doubled peak (ArrayBuffer + SAB) of `await file.arrayBuffer()`
+      // when the geometry pipeline copies into its own SAB. The native path
+      // still reads via Tauri's Rust IPC because it bounds memory differently.
+      // (#600)
+      let buffer: ArrayBuffer;
+      if (isNativeFileHandle(file)) {
+        buffer = toExactArrayBuffer(await readNativeFile(file.path));
+      } else {
+        // The cast preserves the previous ArrayBuffer-shaped contract for
+        // every downstream consumer. When the underlying store is a SAB,
+        // downstream code only ever reads bytes via `new Uint8Array(buffer)`
+        // / `new DataView(buffer)`, both of which work on either backing
+        // store. The cast is purely type-system; runtime is identical.
+        const acquired = await acquireFileBuffer(file as File);
+        buffer = acquired.buffer as ArrayBuffer;
+      }
       const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
       // Detect point cloud formats first — we never run them through
@@ -921,7 +936,10 @@ export function useIfcFederation() {
       return;
     }
 
-    // Check that all files are IFCX format and read buffers
+    // Check that all files are IFCX format and read buffers.
+    // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
+    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
+    // Keep on file.arrayBuffer().
     const buffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();
@@ -975,7 +993,10 @@ export function useIfcFederation() {
       return;
     }
 
-    // Read new overlay buffers
+    // Read new overlay buffers.
+    // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
+    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
+    // Keep on file.arrayBuffer().
     const newBuffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();

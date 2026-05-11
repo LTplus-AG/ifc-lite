@@ -133,8 +133,21 @@ fn scan_shard(content: &[u8], range_start: usize, range_end: usize) -> Vec<Entit
 After each scanner finishes, merge into the shared SAB:
 
 - Pre-allocate a SAB sized for `(estimated_entities * 16 bytes)` headroom (ids + starts + lengths + type_ids = 4 × u32).
-- Each scanner writes a CONTIGUOUS RUN of entries to its own slice, then atomically advances a global write-cursor.
-- Total ordering: shard 0's range comes first, then shard 1, etc. — no merge needed because byte-order matches shard order.
+- **Compute per-shard offsets up front, do NOT advance a single global cursor in completion order.**
+  Completion order is non-deterministic (depends on shard work-distribution and CPU scheduling),
+  so a global "atomic-bump on done" cursor would interleave shards in arrival order — losing the
+  byte-order invariant that downstream consumers rely on.
+- Two-phase merge:
+  1. **Count phase.** Each scanner reports its `entry_count` for its byte-range when finished.
+     Collect the counts into an array indexed by shard.
+  2. **Offset phase.** Run a prefix-sum over `[count_0, count_1, ..., count_{N-1}]` to produce
+     `starting_offset[shard]`. Each scanner then writes its CONTIGUOUS RUN into its assigned slice
+     `entries[starting_offset[shard] .. starting_offset[shard] + count]`. No global append needed.
+- Alternative (if a single global cursor must be used): serialize writes by shard index after
+  counts are known — scanner 0 writes its run, then scanner 1, etc. — so insertion order matches
+  shard order regardless of completion order.
+- Total ordering: shard 0's range comes first in the SAB, then shard 1, etc. — byte-order matches
+  shard order because offsets were assigned by shard index, not by completion timestamp.
 
 ### 5.3 Meta resolution
 
@@ -246,10 +259,32 @@ P0 (`9f446778`) already established:
 - `processParallel` `onEntityIndex` callback
 - `buildEntityRefsFromIndex` for synthesizing EntityRef[] without WASM rescan
 
-These primitives carry over to Path A:
-- `set-entity-index` becomes incremental (call repeatedly with cursor updates) instead of one-shot.
-- `buildEntityRefsFromIndex` extends to consume cursor + slice instead of full arrays.
-- `WorkerParser` adds a polling/subscription mechanism for cursor advances.
+These primitives carry over to Path A, but with one important correction:
+**`set-entity-index` is a full-replace API and must NOT be reused as the incremental
+update mechanism.** Calling `set-entity-index` repeatedly would discard previously-merged
+rows on every advance and force the WASM cache to be rebuilt from scratch each time —
+defeating the streaming win and corrupting in-flight reads against the prior cache.
+
+Path A introduces a dedicated append/grow API alongside the existing replace API:
+
+- **`appendToEntityIndex(cursor, idsSlice, startsSlice, lengthsSlice, typeIdsSlice)`**
+  (alias on the host: `addEntityIndexSlice`). Takes a cursor (the count of rows already
+  present) and a slice of new rows. Implementation merges the slice into the existing
+  in-memory index by `Arc::make_mut` + `extend`, never replacing or shrinking it.
+  Idempotent on `(cursor, slice)`: a re-delivered slice for an already-merged cursor
+  range is a no-op.
+- **`buildEntityRefsFromIndex` extends to consume `(cursor, slice)` semantics** —
+  it returns `EntityRef[]` for ONLY the rows in the new slice (not the whole index),
+  so callers can dispatch incremental work to geometry/parser without re-walking
+  earlier rows.
+- **`WorkerParser` polls (or subscribes to) cursor advances** and calls
+  `appendToEntityIndex(prevCursor, slice)` for each delta. The full-replace
+  `set-entity-index` is only invoked in an explicit "reset" mode (e.g., switching
+  files on a long-lived worker), never inside the streaming loop.
+
+This guarantees we never rebuild or discard earlier rows inadvertently, and
+geometry workers reading the SAB never observe a transient "cleared" state
+between full-replace calls.
 
 ## 8. Migration plan
 

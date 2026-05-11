@@ -137,8 +137,25 @@ impl<'a> EntityDecoder<'a> {
 
     /// Decode entity at byte offset
     /// Returns cached entity if already decoded
+    ///
+    /// Validates the `(start, end)` span against `self.content.len()` before
+    /// slicing. Out-of-range or inverted spans return `Error::parse` instead
+    /// of panicking — callers (e.g. `decode_and_cache`, `decode_at_with_id`,
+    /// the streaming pre-pass shard mergers) hand us spans derived from
+    /// untrusted/streamed entity-index data, and a malformed span must not
+    /// take down the whole worker.
     #[inline]
     pub fn decode_at(&mut self, start: usize, end: usize) -> Result<DecodedEntity> {
+        let content_len = self.content.len();
+        if start > end || end > content_len {
+            return Err(Error::parse(
+                0,
+                format!(
+                    "decode_at: invalid byte span ({}, {}) for content length {}",
+                    start, end, content_len,
+                ),
+            ));
+        }
         let line = &self.content[start..end];
         let (id, ifc_type, tokens) = parse_entity(line).map_err(|e| {
             // Add debug info about what failed to parse

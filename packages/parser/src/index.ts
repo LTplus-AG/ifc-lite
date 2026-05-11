@@ -288,14 +288,32 @@ export class IfcParser {
           : typeof options.wasmApi.scanRelevantEntitiesFastBytes === 'function'
           ? () => options.wasmApi!.scanRelevantEntitiesFastBytes(uint8Buffer)
           : typeof options.wasmApi.scanEntitiesFast === 'function'
-          ? () => {
+          ? (() => {
               // Last-resort scan path: decode the whole source. SAB-safe
               // via the helper (one scratch copy on Firefox/Chrome with
               // SAB-decode disabled, zero copy elsewhere). This branch is
               // only hit when neither byte-level WASM scan API is wired.
-              const content = safeUtf8Decode(uint8Buffer);
-              return options.wasmApi!.scanEntitiesFast(content);
-            }
+              //
+              // Guard on size: `safeUtf8Decode` materialises a JS string
+              // ~2× the source byte length (UTF-16 internal). For files
+              // > 256 MB we'd allocate ~512 MB+ just to feed a legacy
+              // scanner — refuse the path and fall through to the JS
+              // tokeniser (which streams the bytes directly). The threshold
+              // matches the "huge file" cutoff used elsewhere in the loader.
+              const HUGE_BYTES = 256 * 1024 * 1024;
+              if (uint8Buffer.byteLength > HUGE_BYTES) {
+                console.warn(
+                  '[parser] scanEntitiesFast (string API) skipped: source is %d MB, exceeds %d MB safeUtf8Decode budget — falling back to JS tokeniser.',
+                  Math.round(uint8Buffer.byteLength / (1024 * 1024)),
+                  HUGE_BYTES / (1024 * 1024),
+                );
+                return null;
+              }
+              return () => {
+                const content = safeUtf8Decode(uint8Buffer);
+                return options.wasmApi!.scanEntitiesFast(content);
+              };
+            })()
           : null)
       : null;
 

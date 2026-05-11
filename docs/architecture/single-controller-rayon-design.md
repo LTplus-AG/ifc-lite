@@ -1,9 +1,9 @@
 # Single-Controller + Rayon Design (Path B realised)
 
-> **Status:** Design proposal, ready to execute. Builds on the validated spike at `spike/path-b-respike` (commit `8fcaff96`).
+> **Status:** Implemented (Phases 1.1, 1.3, 1.4, 1.5, 2) and **rejected** after end-to-end measurement on the 986 MB / 14 M-entity file. See Section 12 for the empirical outcome. Doc retained as a record of the architectural exploration so the same path is not re-walked.
 > **Scope:** Browser cold-load of arbitrary `.ifc` files. Native (Tauri) path stays as-is.
-> **Target:** Cut total wall-clock for the 986 MB / 14 M-entity test file from **14.1 s → ~6-8 s** by eliminating per-worker memory duplication and using `wasm-bindgen-rayon` for in-WASM parallelism.
-> **Effort:** 2-3 weeks of focused engineering work (5 medium-sized refactors).
+> **Target (predicted, not achieved):** 14.1 s → ~6–8 s by eliminating per-worker memory duplication and using `wasm-bindgen-rayon` for in-WASM parallelism. Actual outcome was a wall-clock regression on the dense-memory mesh workload — see Section 12.
+> **Effort spent:** ~1 week to land Phases 1.1–2 behind a `localStorage` flag (commit `6b2a502d`); kept disabled by default.
 
 ## 1. Why this architecture exists
 
@@ -157,7 +157,7 @@ This eliminates the ~few ms per-call FxHashMap allocation, retains decoder cache
 
 The canonical pattern for streaming results out of rayon ([reference](https://github.com/PaulKinlan/sab-ring-buffer)):
 
-```
+```text
 SAB layout:
 [ header: 16 bytes ]   write_cursor (Int32), read_cursor (Int32), capacity, flags
 [ slot 0  ]            mesh batch descriptor: { offset, length, expressId }

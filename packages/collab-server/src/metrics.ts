@@ -45,6 +45,20 @@ export class MetricsRegistry {
     if (!m) {
       m = { type, help, values: new Map() };
       this.metrics.set(name, m);
+      return m;
+    }
+    // Silently reusing a name with a different type/help corrupts the
+    // metric family (mismatched HELP/TYPE lines on render, ambiguous
+    // semantics for consumers). Surface re-registration loudly.
+    if (m.type !== type) {
+      throw new Error(
+        `@ifc-lite/collab-server: metric "${name}" already registered as ${m.type}, cannot redefine as ${type}`,
+      );
+    }
+    if (m.help !== help) {
+      throw new Error(
+        `@ifc-lite/collab-server: metric "${name}" already registered with different help text`,
+      );
     }
     return m;
   }
@@ -54,6 +68,14 @@ export class MetricsRegistry {
     const m = this.ensure(name, 'counter', help);
     return {
       inc: (n = 1, labels: LabelValues = {}) => {
+        // Counters are monotonic by definition. Negative/NaN/Infinity
+        // increments silently corrupt the series and downstream
+        // rate(...) calculations.
+        if (!Number.isFinite(n) || n < 0) {
+          throw new Error(
+            `@ifc-lite/collab-server: counter "${name}" increment must be a finite non-negative number (got ${n})`,
+          );
+        }
         const key = labelKey(labels);
         m.values.set(key, (m.values.get(key) ?? 0) + n);
       },
@@ -116,7 +138,15 @@ export class MetricsRegistry {
     if (buckets.length === 0) {
       throw new Error(`@ifc-lite/collab-server: bucketedHistogram requires at least one bucket`);
     }
-    const sortedBuckets = [...buckets].sort((a, b) => a - b);
+    // Dedupe before sorting — duplicate bounds increment the same `le`
+    // bucket series twice per observation, throwing off bucket counts
+    // and Prometheus's `histogram_quantile` math.
+    const sortedBuckets = [...new Set(buckets)].sort((a, b) => a - b);
+    if (sortedBuckets.some((b) => !Number.isFinite(b))) {
+      throw new Error(
+        `@ifc-lite/collab-server: bucketedHistogram "${name}" buckets must be finite numbers`,
+      );
+    }
     const sumName = `${name}_sum`;
     const countName = `${name}_count`;
     const bucketName = `${name}_bucket`;

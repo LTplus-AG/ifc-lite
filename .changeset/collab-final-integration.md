@@ -51,6 +51,7 @@ overlay mounting + mousemove forwarding + clean teardown via a
 hand-rolled DOM stub.
 
 Plan doc: v0.1 ☑ (mutations bridge added), v0.2 ☑ (mount-in-viewer
-shipped), v0.5 ☑ (TLS bundle + per-section locks). Open problems #7
-(per-section locks) is now closed; #1, #2, #3, #4, #5, #6, #8, #9,
-#10 were already closed in prior batches.
+shipped), v0.5 ☑ (TLS bundle + per-section locks). Open problems are
+closed in this batch as follows: problem #7 (per-section locks) is
+new in this PR; problems #1, #2, #3, #4, #5, #6, #8, #9, #10 were
+already closed in prior batches.

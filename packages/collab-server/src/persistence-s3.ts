@@ -13,11 +13,21 @@
  * by writing a thin shim around their preferred storage client.
  *
  * Layout per room:
- *   - `s3://bucket/<prefix><sanitizedRoomId>.snap`        ← compacted state
- *   - `s3://bucket/<prefix><sanitizedRoomId>.log/<n>.bin` ← rolling log frames
+ *   - `s3://bucket/<prefix><safeRoomId>.snap`            ← compacted state
+ *   - `s3://bucket/<prefix><safeRoomId>.log/<ulid>.bin`  ← rolling log frames
  *
  * Compaction overwrites `.snap` and truncates the log directory.
+ *
+ * Frame keys are ULID-like (sortable timestamp prefix + random suffix), not
+ * monotonic per-process counters, so multiple writers serving the same room
+ * never produce identical keys. They remain lexicographically sortable, which
+ * is what `load()` relies on to replay frames in append order.
+ *
+ * Room IDs are `encodeURIComponent`-escaped rather than replaced with `_`,
+ * so distinct room IDs never collapse to the same storage prefix.
  */
+
+import { randomBytes } from 'node:crypto';
 
 import type { Persistence } from './persistence.js';
 
@@ -61,8 +71,12 @@ export class S3Persistence implements Persistence {
   private readonly bucket: string;
   private readonly prefix: string;
   private readonly frameMaxBytes: number;
-  /** Per-room counter of next log frame number. */
-  private readonly logCounters = new Map<string, number>();
+  /**
+   * In-process monotonic counter — guarantees same-millisecond appends
+   * sort in submission order. Combined with `randomBytes` it stays
+   * globally unique across processes.
+   */
+  private appendCounter = 0;
 
   constructor(opts: S3PersistenceOptions) {
     this.client = opts.client;
@@ -72,16 +86,38 @@ export class S3Persistence implements Persistence {
     this.frameMaxBytes = opts.frameMaxBytes ?? 1024 * 1024;
   }
 
+  /**
+   * Map a room id to a safe, *unique* key segment. `encodeURIComponent`
+   * preserves distinct ids (so `a/b` and `a_b` never collide) while keeping
+   * the result safe for S3 keys.
+   */
   private safeRoom(roomId: string): string {
-    return roomId.replace(/[^a-zA-Z0-9._-]/g, '_');
+    return encodeURIComponent(roomId);
   }
 
   private snapKey(roomId: string): string {
     return `${this.prefix}${this.safeRoom(roomId)}.snap`;
   }
 
-  private logKey(roomId: string, n: number): string {
-    return `${this.prefix}${this.safeRoom(roomId)}.log/${String(n).padStart(10, '0')}.bin`;
+  /**
+   * Per-frame key composed of:
+   *   - a fixed-width unix-ms timestamp (sorts by wall-clock order),
+   *   - an in-process monotonic counter (breaks ties when two appends
+   *     land in the same millisecond — without this, two same-ms
+   *     appends from the same writer could replay out of order),
+   *   - a random suffix (gives cross-process uniqueness when multiple
+   *     server instances serve the same room).
+   *
+   * Lexicographic key ordering = chronological-then-submission ordering,
+   * which is what `load()` relies on.
+   */
+  private logKey(roomId: string): string {
+    // 13-digit unix-ms is good through the year 2286; pad to 14 for safety.
+    const ts = Date.now().toString().padStart(14, '0');
+    this.appendCounter = (this.appendCounter + 1) >>> 0;
+    const seq = this.appendCounter.toString(16).padStart(8, '0');
+    const rand = randomBytes(8).toString('hex');
+    return `${this.prefix}${this.safeRoom(roomId)}.log/${ts}-${seq}-${rand}.bin`;
   }
 
   private async getObjectBytes(key: string): Promise<Uint8Array | null> {
@@ -123,13 +159,6 @@ export class S3Persistence implements Persistence {
     }
     if (frames.length === 0) return null;
 
-    // Track the next counter we'll use for appends.
-    const lastNum =
-      keys.length > 0
-        ? Number(keys[keys.length - 1].split('/').pop()?.replace('.bin', '') ?? 0)
-        : 0;
-    this.logCounters.set(roomId, lastNum + 1);
-
     return concat(frames);
   }
 
@@ -139,13 +168,11 @@ export class S3Persistence implements Persistence {
         `@ifc-lite/collab-server: frame ${update.byteLength}B exceeds frameMaxBytes ${this.frameMaxBytes}`,
       );
     }
-    const next = this.logCounters.get(roomId) ?? 1;
-    this.logCounters.set(roomId, next + 1);
     const Put = this.cmds.PutObjectCommand;
     await this.client.send(
       new Put({
         Bucket: this.bucket,
-        Key: this.logKey(roomId, next),
+        Key: this.logKey(roomId),
         Body: Buffer.from(update),
         ContentType: 'application/octet-stream',
       }),
@@ -162,9 +189,7 @@ export class S3Persistence implements Persistence {
         ContentType: 'application/octet-stream',
       }),
     );
-    // Remove all log frames; new ones start at 1.
     await this.removeLog(roomId);
-    this.logCounters.set(roomId, 1);
   }
 
   async drop(roomId: string): Promise<void> {
@@ -173,7 +198,6 @@ export class S3Persistence implements Persistence {
       this.client.send(new Del({ Bucket: this.bucket, Key: this.snapKey(roomId) })).catch(swallowNotFound),
       this.removeLog(roomId),
     ]);
-    this.logCounters.delete(roomId);
   }
 
   private async removeLog(roomId: string): Promise<void> {

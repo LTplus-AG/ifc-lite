@@ -154,6 +154,9 @@ export function verifyAgainstPathLocks(registry: PathLockRegistry): VerifyMessag
     try {
       outerType = decoding.readVarUint(decoder);
     } catch {
+      // Malformed envelope: pass through. The frame can't apply anything
+      // to the doc, so room-manager's own readSyncMessage will swallow
+      // it without side effects.
       return { ok: true };
     }
     // Outer 0 = sync; inner 0/1/2 = step1/step2/update.
@@ -164,13 +167,22 @@ export function verifyAgainstPathLocks(registry: PathLockRegistry): VerifyMessag
     } catch {
       return { ok: true };
     }
-    if (inner !== syncProtocol.messageYjsUpdate) return { ok: true };
+    // Both messageYjsSyncStep2 and messageYjsUpdate carry a Yjs binary
+    // update payload that readSyncMessage applies to the doc as a side
+    // effect — they must both go through path-lock checking. Step1 is
+    // pure read intent and is exempt.
+    const isWriteFrame =
+      inner === syncProtocol.messageYjsUpdate ||
+      inner === syncProtocol.messageYjsSyncStep2;
+    if (!isWriteFrame) return { ok: true };
 
     let payload: Uint8Array;
     try {
       payload = decoding.readVarUint8Array(decoder);
     } catch {
-      return { ok: true };
+      // A write-frame with an unreadable payload is suspicious — fail
+      // closed rather than waving the message through to the doc.
+      return { ok: false, reason: 'malformed-update-payload' };
     }
     const paths = harvestUpdatePaths(payload);
     for (const p of paths) {

@@ -46,10 +46,12 @@ const session = await createCollabSession({
   user: { id: userId, name: userId, color: colorForUser(userId) },
   provider: 'websocket',
   serverUrl: SERVER_URL,
-  // disable BroadcastChannel so two tabs in the same browser actually
-  // sync via the server (otherwise BC short-circuits and the server
-  // never sees the writes — easy to confuse).
-  WebSocketPolyfill: undefined,
+  // Force every edit through the websocket. y-websocket's
+  // BroadcastChannel shortcut otherwise lets two tabs in the same
+  // browser sync without ever round-tripping through the server,
+  // which is confusing when you're actively testing server-side
+  // behaviour from this demo.
+  disableBc: true,
 });
 
 // ── Status pill ────────────────────────────────────────────────────
@@ -104,12 +106,19 @@ function entityBoxes(): { path: string; x: number; y: number; w: number; h: numb
 }
 
 function render(): void {
-  // Entities sidebar.
-  entitiesPanel.innerHTML = '';
+  // Entities sidebar. Build nodes with textContent so peer-authored
+  // CRDT values (`e.name` ultimately comes from `attributes.Name`,
+  // which any peer can set) cannot inject HTML.
+  entitiesPanel.replaceChildren();
   for (const e of entityBoxes()) {
     const div = document.createElement('div');
     div.className = 'entity' + (e.path === selectedPath ? ' selected' : '');
-    div.innerHTML = `<span>${e.name}</span><span class="meta">${e.path.slice(0, 8)}</span>`;
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = e.name;
+    const idSpan = document.createElement('span');
+    idSpan.className = 'meta';
+    idSpan.textContent = e.path.slice(0, 8);
+    div.append(nameSpan, idSpan);
     div.addEventListener('click', () => {
       selectedPath = e.path;
       session.presence.setSelection([e.path]);
@@ -195,38 +204,57 @@ document.getElementById('conflict')!.addEventListener('click', () => {
 const bridge = createConflictUIBridge(session.conflicts, { closeAfterMs: 8_000 });
 bridge.onKeepMine('attribute', ({ bucket }) => {
   // Demo behaviour: re-stamp our own Name so we win the next round.
+  // `field` is optional on ConflictBucket and not every kind sets it —
+  // guard explicitly rather than asserting non-null and silently writing
+  // an attribute called "undefined".
+  if (!bucket.field) return;
   session.transact(() => {
-    setAttribute(session.doc, bucket.path, bucket.field!, `${userId}-keep-mine`);
+    setAttribute(session.doc, bucket.path, bucket.field as string, `${userId}-keep-mine`);
   });
 });
 const conflictsPanel = document.getElementById('conflicts')!;
 function renderConflicts(): void {
   const buckets = bridge.active();
+  conflictsPanel.replaceChildren();
   if (buckets.length === 0) {
-    conflictsPanel.innerHTML = '<div class="meta">none</div>';
+    const empty = document.createElement('div');
+    empty.className = 'meta';
+    empty.textContent = 'none';
+    conflictsPanel.appendChild(empty);
     return;
   }
-  conflictsPanel.innerHTML = '';
   for (const b of buckets) renderBucket(b);
 }
 function renderBucket(b: ConflictBucket): void {
+  // CRDT paths/fields/contributors can contain arbitrary peer-authored
+  // strings — build every node with textContent so they cannot inject
+  // HTML.
   const div = document.createElement('div');
   div.className = 'conflict';
-  div.innerHTML = `
-    <div><strong>${b.kind}</strong> · ${b.path}${b.field ? '/' + b.field : ''}</div>
-    <div class="meta">contributors: ${[...b.contributors].join(', ')}</div>
-  `;
+  const header = document.createElement('div');
+  const kind = document.createElement('strong');
+  kind.textContent = b.kind;
+  const trailing = document.createTextNode(
+    ` · ${b.path}${b.field ? '/' + b.field : ''}`,
+  );
+  header.append(kind, trailing);
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent = `contributors: ${[...b.contributors].join(', ')}`;
   const keep = document.createElement('button');
   keep.textContent = 'keep mine';
   keep.addEventListener('click', () => bridge.keepMine(b.key));
   const accept = document.createElement('button');
   accept.textContent = 'accept theirs';
   accept.addEventListener('click', () => bridge.acceptTheirs(b.key));
-  div.append(keep, accept);
+  div.append(header, meta, keep, accept);
   conflictsPanel.appendChild(div);
 }
+// The bridge already fires on every bucket open/update/close, so the
+// previous 1-second setInterval was redundant — and its handle was
+// discarded, leaking the timer on bridge teardown.
 bridge.on(() => renderConflicts());
-setInterval(() => renderConflicts(), 1000);
+renderConflicts();
 
 // ── History sidecar ───────────────────────────────────────────────
 const historyEl = document.getElementById('history')!;

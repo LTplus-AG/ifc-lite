@@ -58,15 +58,25 @@ export async function createWebRtcProvider(
   }
   const { WebrtcProvider } = mod as { WebrtcProvider: new (...args: unknown[]) => unknown };
 
+  // Honor `connect: false` end-to-end. Previously the option was only
+  // reflected in the local status state, not passed to WebrtcProvider,
+  // so the transport still auto-connected and violated the API contract.
+  const autoConnect = options.connect !== false;
   const provider = new WebrtcProvider(roomId, doc, {
     signaling: options.signaling,
     password: options.password,
     awareness: options.awareness,
     maxConns: options.maxConns ?? 20,
     filterBcConns: options.filterBcConns ?? true,
+    connect: autoConnect,
   } as never);
 
-  let status: WebRtcStatus = options.connect === false ? 'disconnected' : 'connecting';
+  // Track whether the consumer has manually disconnected so transient
+  // y-webrtc events (e.g. a `peers` update with count=0) can't flip us
+  // back to `connecting`. Manual disconnect stays disconnected until
+  // `connect()` is called again.
+  let manuallyDisconnected = !autoConnect;
+  let status: WebRtcStatus = autoConnect ? 'connecting' : 'disconnected';
   const listeners = new Set<(s: WebRtcStatus) => void>();
   const setStatus = (s: WebRtcStatus) => {
     if (s === status) return;
@@ -78,6 +88,7 @@ export async function createWebRtcProvider(
   (provider as unknown as { on: (event: string, fn: (...args: unknown[]) => void) => void }).on(
     'peers',
     (info) => {
+      if (manuallyDisconnected) return;
       const i = info as { webrtcPeers?: number[]; bcPeers?: number[] };
       const total = (i.webrtcPeers?.length ?? 0) + (i.bcPeers?.length ?? 0);
       setStatus(total > 0 ? 'connected' : 'connecting');
@@ -85,7 +96,10 @@ export async function createWebRtcProvider(
   );
   (provider as unknown as { on: (event: string, fn: (...args: unknown[]) => void) => void }).on(
     'synced',
-    () => setStatus('connected'),
+    () => {
+      if (manuallyDisconnected) return;
+      setStatus('connected');
+    },
   );
 
   const whenSynced = new Promise<void>((resolve) => {
@@ -107,10 +121,12 @@ export async function createWebRtcProvider(
     },
     whenSynced,
     connect() {
+      manuallyDisconnected = false;
       (provider as unknown as { connect: () => void }).connect();
       setStatus('connecting');
     },
     disconnect() {
+      manuallyDisconnected = true;
       (provider as unknown as { disconnect: () => void }).disconnect();
       setStatus('disconnected');
     },

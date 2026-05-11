@@ -25,6 +25,14 @@ export interface WebSocketProviderOptions {
   connect?: boolean;
   /** Extra params appended to the connect URL. */
   params?: Record<string, string>;
+  /**
+   * Disable the BroadcastChannel intra-browser shortcut. When two tabs
+   * open the same room in the same browser, y-websocket normally syncs
+   * them via BroadcastChannel and never round-trips through the server.
+   * Set true to force every edit through the websocket — useful for
+   * demos / debugging server-side flows.
+   */
+  disableBc?: boolean;
 }
 
 export interface WebSocketProvider {
@@ -57,6 +65,7 @@ export async function createWebSocketProvider(
     WebSocketPolyfill: options.WebSocketPolyfill as never,
     awareness: options.awareness as never,
     connect: options.connect ?? true,
+    disableBc: options.disableBc === true,
     params,
   });
 

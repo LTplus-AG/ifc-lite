@@ -22,7 +22,7 @@
  */
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, type PropertyValue as DataPropertyValue } from '@ifc-lite/data';
 import type { CollabSession } from '../session.js';
 import {
   deletePropertyValue,
@@ -100,11 +100,16 @@ export function bindMutationsToCollab(
   return {
     view,
     setProperty(entityId, psetName, propName, value, valueType = PropertyValueType.Label, unit) {
+      // `BoundPropertyView.setProperty` only exposes scalar values
+      // (string | number | boolean), which is a subset of
+      // `@ifc-lite/data`'s PropertyValue (which also allows null and
+      // recursive arrays). Widen explicitly to the upstream type
+      // rather than silencing the type checker with `as never`.
       const result = view.setProperty(
         entityId,
         psetName,
         propName,
-        value as never,
+        value as DataPropertyValue,
         valueType,
         unit,
       );

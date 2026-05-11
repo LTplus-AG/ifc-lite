@@ -77,7 +77,10 @@ export async function buildBranchTree(sidecar: HistorySidecar): Promise<BranchTr
 
     let prevId: string = anchorId;
     for (const e of entries) {
-      const isMerge = e.label?.startsWith('merge ') === true;
+      // Trust the structural metadata set by `merge()`, not the label.
+      // A user can authorin a regular commit with `label: "merge bar"`
+      // and we don't want that to render as a merge node.
+      const isMerge = typeof e.mergedFromBranch === 'string';
       const node: BranchTreeNode = {
         id: e.entryId,
         kind: isMerge ? 'merge' : 'entry',
@@ -87,15 +90,15 @@ export async function buildBranchTree(sidecar: HistorySidecar): Promise<BranchTr
         parentId: prevId,
       };
       if (isMerge) {
-        const fromBranch = e.label!.match(/^merge (.+?) → /)?.[1];
-        if (fromBranch) node.mergedFromBranch = fromBranch;
+        node.mergedFromBranch = e.mergedFromBranch;
       }
       nodes.push(node);
       edges.push({ from: prevId, to: e.entryId, kind: 'history' });
-      if (isMerge && node.mergedFromBranch) {
-        const sourceEntries = byBranch.get(node.mergedFromBranch) ?? [];
-        const tip = sourceEntries[sourceEntries.length - 1];
-        if (tip) edges.push({ from: tip.entryId, to: e.entryId, kind: 'merge' });
+      // Use the immutable `mergedFromEntryId` captured at merge time —
+      // pointing at the source branch's CURRENT tip would drift the
+      // merge edge whenever that branch advances later.
+      if (isMerge && e.mergedFromEntryId) {
+        edges.push({ from: e.mergedFromEntryId, to: e.entryId, kind: 'merge' });
       }
       prevId = e.entryId;
     }

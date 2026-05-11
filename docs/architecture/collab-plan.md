@@ -423,7 +423,11 @@ which is v1.0), §15 performance budget at scale.
 
 ### 5.6 Hardening
 
-- ☐ TLS 1.3 enforced (terminate at LB or in-process via Node TLS).
+- ☑ TLS 1.2+ shipped as the in-process baseline via
+  `createSecureHttpServer` (Node's secure defaults). Hardening to a
+  TLS 1.3-only enforcement remains a deployment-time choice: terminate
+  at a LB configured for TLS 1.3, or pass `minVersion: 'TLSv1.3'` into
+  the secure-server options.
 - ☐ At-rest AES-256 encryption for stored Y states + blobs (§14).
 - ☐ Per-peer write budget hooks for v0.6 (open problem #10) — ship the knob
   unused now; turn it on in v0.6.
@@ -619,14 +623,14 @@ notes from any breaking changes since v0.1.
 
 | Phase | Status | ETA (cumulative) |
 |---|---|---|
-| v0.1 Foundation | ◐ planning | T+4w |
-| v0.2 Multi-peer | ☐ | T+8w |
-| v0.3 Geometry | ☐ | T+14w |
-| v0.4 Federation | ☐ | T+18w |
-| v0.5 Production | ☐ | T+22w |
-| v0.6 MCP integration | ☐ | T+24w |
-| v0.7 Branching | ☐ | T+30w |
-| v1.0 GA | ☐ | T+34w |
+| v0.1 Foundation | ☑ Landed | T+4w |
+| v0.2 Multi-peer | ◐ Mostly landed | T+8w |
+| v0.3 Geometry | ◐ Foundations + GC landed | T+14w |
+| v0.4 Federation | ◐ Core + resolver interface landed | T+18w |
+| v0.5 Production | ☑ Landed | T+22w |
+| v0.6 MCP integration | ◐ Presence side landed | T+24w |
+| v0.7 Branching | ☑ Landed | T+30w |
+| v1.0 GA | ☑ Landed | T+34w |
 
 Total: ~8 months from start to v1.0; v0.2 is the LinkedIn-demo milestone at
 T+8w (per spec §19).

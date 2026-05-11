@@ -23,7 +23,7 @@
  *     overlay.destroy();
  */
 
-import type { PresenceMap } from './presence.js';
+import type { PresenceMap, Vec3 } from './presence.js';
 import { peerVisuals, cursorScreenPosition, type PeerVisual, type PeerVisualOptions } from './render.js';
 
 export interface PresenceOverlayOptions extends PeerVisualOptions {
@@ -35,6 +35,18 @@ export interface PresenceOverlayOptions extends PeerVisualOptions {
   cursorSize?: number;
   /** Optional override for label font in CSS. Default '12px sans-serif'. */
   font?: string;
+  /**
+   * Host-supplied world→screen projector. When provided, peers' `cursor3d`
+   * values (published by `mountPresenceInViewer` with `raycastToWorld`)
+   * are projected through THIS viewer's camera, so every peer sees
+   * cursors anchored to the same world point regardless of their own
+   * perspective.
+   *
+   * Returning `null` (point is behind the camera, off-screen, etc.)
+   * hides the peer's cursor that frame. `cursor2d` continues to be used
+   * as a fallback when a peer hasn't published a 3D cursor.
+   */
+  worldToScreen?: (worldPos: Vec3) => { x: number; y: number } | null;
 }
 
 export interface PresenceOverlay {
@@ -70,6 +82,20 @@ export function createPresenceOverlay(opts: PresenceOverlayOptions): PresenceOve
   const cursorSize = opts.cursorSize ?? 14;
   const font = opts.font ?? '12px sans-serif';
 
+  // Cache the last drawn peers so resize can redraw without waiting for
+  // the next presence update — otherwise the overlay goes blank between
+  // resize and the next `update(peers)` call.
+  let lastPeers: PresenceMap | null = null;
+
+  const draw = (peers: PresenceMap | null) => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!peers) return;
+    const visuals = peerVisuals(peers, opts);
+    for (const v of visuals) {
+      drawPeer(ctx, v, opts.viewport, cursorSize, font, opts.worldToScreen);
+    }
+  };
+
   const resize = () => {
     const r = opts.container.getBoundingClientRect();
     const dpr = DPR();
@@ -78,15 +104,13 @@ export function createPresenceOverlay(opts: PresenceOverlayOptions): PresenceOve
     canvas.style.width = `${r.width}px`;
     canvas.style.height = `${r.height}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw(lastPeers);
   };
   resize();
 
   const update = (peers: PresenceMap) => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const visuals = peerVisuals(peers, opts);
-    for (const v of visuals) {
-      drawPeer(ctx, v, opts.viewport, cursorSize, font);
-    }
+    lastPeers = peers;
+    draw(peers);
   };
 
   // Auto-resize via ResizeObserver if available.
@@ -112,8 +136,19 @@ function drawPeer(
   viewport: string,
   cursorSize: number,
   font: string,
+  worldToScreen?: (worldPos: Vec3) => { x: number; y: number } | null,
 ): void {
-  const pos = cursorScreenPosition(v, viewport);
+  // Prefer the 3D cursor when both the peer published one AND this
+  // overlay was given a projector — that path is camera-aware and stays
+  // correct across different viewer perspectives. Fall back to cursor2d
+  // (same-viewport pixel coordinates) otherwise.
+  let pos: { x: number; y: number } | null = null;
+  if (v.cursor3d && worldToScreen) {
+    pos = worldToScreen(v.cursor3d);
+  }
+  if (!pos) {
+    pos = cursorScreenPosition(v, viewport);
+  }
   if (!pos) return;
   ctx.globalAlpha = v.opacity;
   ctx.fillStyle = v.color;

@@ -60,6 +60,12 @@ export interface CollabSessionOptions {
   doc?: Y.Doc;
   /** Ws polyfill (e.g. `ws` package in Node tests). */
   WebSocketPolyfill?: unknown;
+  /**
+   * Disable BroadcastChannel intra-browser sync — every edit goes
+   * through the websocket. Forwarded to the websocket provider; ignored
+   * for memory / indexeddb-only sessions. Default `false`.
+   */
+  disableBc?: boolean;
   /** Presence config knobs. */
   presence?: { updateRateHz?: number; staleAfterMs?: number };
 }
@@ -135,6 +141,7 @@ export async function createCollabSession(opts: CollabSessionOptions): Promise<C
       token: opts.token,
       awareness: presence.awareness,
       connect: opts.connect ?? true,
+      disableBc: opts.disableBc,
     });
     ws.onStatus(setStatus);
     synced.push(ws.whenSynced);

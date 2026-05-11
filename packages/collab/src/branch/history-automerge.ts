@@ -44,6 +44,9 @@ interface AutomergeEntry {
   snapshotJson: string;
   /** JSON-stringified diff IFCX (optional). */
   diffJson?: string;
+  /** Immutable merge metadata — see `HistoryEntry` doc comment. */
+  mergedFromBranch?: string;
+  mergedFromEntryId?: string;
 }
 
 export interface AutomergeHistorySidecarOptions {
@@ -198,14 +201,22 @@ export class AutomergeHistorySidecar implements HistorySidecar {
     if (shape.branches[name]) {
       throw new Error(`@ifc-lite/collab: branch "${name}" already exists`);
     }
+    // Default fork point = current head of main when no explicit
+    // entry is supplied, matching `MemoryHistorySidecar` + the documented
+    // interface.
+    let resolvedFork = fromEntryId;
+    if (!resolvedFork) {
+      const mainIds = shape.byBranch.main ?? [];
+      resolvedFork = mainIds[mainIds.length - 1];
+    }
     const info: BranchInfo = {
       name,
-      forkedFromEntryId: fromEntryId,
+      forkedFromEntryId: resolvedFork,
       createdAt: new Date().toISOString(),
     };
     this.doc = A.change(this.doc, `branch ${name}`, (d) => {
       const stored: Record<string, unknown> = { name, createdAt: info.createdAt };
-      if (fromEntryId !== undefined) stored.forkedFromEntryId = fromEntryId;
+      if (resolvedFork !== undefined) stored.forkedFromEntryId = resolvedFork;
       d.branches[name] = stored as unknown as BranchInfo;
       d.byBranch[name] = [];
     });
@@ -218,25 +229,42 @@ export class AutomergeHistorySidecar implements HistorySidecar {
     mergedSnapshot: IfcxFile,
   ): Promise<HistoryEntry> {
     const shape = this.doc as unknown as AutomergeShape;
+    // Validate the source branch up front (matches MemoryHistorySidecar).
+    if (!shape.branches[branch]) {
+      throw new Error(`@ifc-lite/collab: source branch "${branch}" not found`);
+    }
     if (!shape.branches[into]) {
       throw new Error(`@ifc-lite/collab: target branch "${into}" not found`);
     }
+    const sourceIds = shape.byBranch[branch] ?? [];
+    const sourceTipId = sourceIds[sourceIds.length - 1];
     const entryId = this.nextEntryId();
     const at = new Date().toISOString();
     const snapshotJson = JSON.stringify(mergedSnapshot);
     const label = `merge ${branch} → ${into}`;
     this.doc = A.change(this.doc, `merge ${branch} → ${into}`, (d) => {
-      const entry: AutomergeEntry = {
+      // Automerge rejects `undefined` — only set defined fields.
+      const entry: Record<string, unknown> = {
         entryId,
         at,
         branch: into,
         label,
         snapshotJson,
+        mergedFromBranch: branch,
       };
-      d.entries[entryId] = entry;
+      if (sourceTipId !== undefined) entry.mergedFromEntryId = sourceTipId;
+      d.entries[entryId] = entry as unknown as AutomergeEntry;
       d.byBranch[into].push(entryId);
     });
-    return revive({ entryId, at, branch: into, label, snapshotJson });
+    return revive({
+      entryId,
+      at,
+      branch: into,
+      label,
+      snapshotJson,
+      mergedFromBranch: branch,
+      mergedFromEntryId: sourceTipId,
+    });
   }
 
   async clear(): Promise<void> {
@@ -258,5 +286,7 @@ function revive(entry: AutomergeEntry): HistoryEntry {
     label: entry.label,
     snapshot: JSON.parse(entry.snapshotJson) as IfcxFile,
     diff: entry.diffJson ? (JSON.parse(entry.diffJson) as IfcxFile) : undefined,
+    mergedFromBranch: entry.mergedFromBranch,
+    mergedFromEntryId: entry.mergedFromEntryId,
   };
 }

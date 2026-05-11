@@ -28,15 +28,30 @@
  */
 
 import { createPresenceOverlay, type PresenceOverlay } from './awareness/overlay.js';
-import type { PresenceMap } from './awareness/presence.js';
+import type { PresenceMap, Vec3 } from './awareness/presence.js';
 import type { CollabSession } from './session.js';
 
 export interface MountPresenceInViewerOptions {
   session: CollabSession;
   container: HTMLElement;
   viewport: string;
-  /** Opt out of forwarding mousemove → setCursor2d (default: forward). */
+  /** Opt out of forwarding mousemove → setCursor* (default: forward). */
   trackLocalCursor?: boolean;
+  /**
+   * Host-supplied screen→world raycast. When provided, every mousemove
+   * is converted to a 3D world-space point via this callback and
+   * broadcast as `cursor3d`. Each peer then reprojects it through
+   * THEIR camera, so cursors stay anchored to the same point in the
+   * model regardless of camera perspective.
+   *
+   * When omitted, the bridge falls back to publishing `cursor2d` only
+   * (the legacy fixed-projection behaviour — accurate only when every
+   * peer shares the same view, e.g. orthographic plan layouts).
+   *
+   * Return `null` on a ray miss; the bridge will keep the previously
+   * published cursor rather than spamming clears.
+   */
+  raycastToWorld?: (screenX: number, screenY: number) => Vec3 | null;
 }
 
 export type Teardown = () => void;
@@ -58,26 +73,43 @@ export function mountPresenceInViewer(opts: MountPresenceInViewerOptions): Teard
 
   const handleMove = (event: MouseEvent) => {
     const rect = opts.container.getBoundingClientRect();
-    opts.session.presence.setCursor2d(opts.viewport, {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-    });
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+    if (opts.raycastToWorld) {
+      const hit = opts.raycastToWorld(localX, localY);
+      // On a miss we deliberately leave the last cursor3d in place —
+      // see the option doc comment above.
+      if (hit) {
+        opts.session.presence.setCursor3d(hit);
+      }
+      return;
+    }
+    opts.session.presence.setCursor2d(opts.viewport, { x: localX, y: localY });
   };
 
-  const handleLeave = () => {
-    opts.session.presence.setCursor2d(opts.viewport, null);
+  const clearLocalCursor = () => {
+    if (opts.raycastToWorld) {
+      opts.session.presence.setCursor3d(null);
+    } else {
+      opts.session.presence.setCursor2d(opts.viewport, null);
+    }
   };
 
   if (opts.trackLocalCursor !== false) {
     opts.container.addEventListener('mousemove', handleMove);
-    opts.container.addEventListener('mouseleave', handleLeave);
+    opts.container.addEventListener('mouseleave', clearLocalCursor);
   }
 
   return () => {
     presenceUnsub();
     if (opts.trackLocalCursor !== false) {
       opts.container.removeEventListener('mousemove', handleMove);
-      opts.container.removeEventListener('mouseleave', handleLeave);
+      opts.container.removeEventListener('mouseleave', clearLocalCursor);
+      // Explicitly clear our published cursor — unmounting without
+      // a prior `mouseleave` (e.g. SPA route change while pointer is
+      // inside the viewport) used to leave stale cursors visible to
+      // other peers until the session disposed.
+      clearLocalCursor();
     }
     overlay.destroy();
   };

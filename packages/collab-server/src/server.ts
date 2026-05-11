@@ -150,7 +150,25 @@ export async function startCollabServer(
 
   httpServer.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, (ws) => {
-      void handleConnection(ws, req, { roomManager, authenticate });
+      // handleConnection runs async setup (room load, auth callback,
+      // persistence open). If it rejects — e.g. RoomManager.getOrCreate
+      // throws on room-cap or persistence failure — we previously
+      // discarded the promise with `void`, leaving the socket open and
+      // surfacing as a process-level unhandledRejection. Catch the error,
+      // log it, and close the socket with a non-1000 code so the client
+      // sees a deterministic shutdown.
+      handleConnection(ws, req, { roomManager, authenticate }).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error('[collab-server] connection setup failed:', err);
+        try {
+          if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+            // 1011 = server error per RFC 6455
+            ws.close(1011, 'connection setup failed');
+          }
+        } catch {
+          // ignore close errors
+        }
+      });
     });
   });
 

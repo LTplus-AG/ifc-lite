@@ -195,11 +195,18 @@ export class Room {
     const messageType = decoding.readVarUint(decoder);
     switch (messageType) {
       case MESSAGE_SYNC: {
-        const enc = encoding.createEncoder();
-        encoding.writeVarUint(enc, MESSAGE_SYNC);
-        const replyType = syncProtocol.readSyncMessage(decoder, enc, this.doc, conn);
-        // Updates require write capability + a fresh rate-limit token.
-        if (replyType === syncProtocol.messageYjsUpdate) {
+        // Peek the inner sync subtype BEFORE calling readSyncMessage —
+        // y-protocols/sync applies the wire payload to the doc as a side
+        // effect for both messageYjsSyncStep2 and messageYjsUpdate. Doing
+        // the capability/rate-limit check after readSyncMessage means a
+        // viewer can mutate state (and have it broadcast and persisted by
+        // onDocUpdate) before this branch returns reject — the auth
+        // gate would be cosmetic.
+        const subtype = decoding.peekVarUint(decoder);
+        const isWriteFrame =
+          subtype === syncProtocol.messageYjsUpdate ||
+          subtype === syncProtocol.messageYjsSyncStep2;
+        if (isWriteFrame) {
           if (!canWrite(conn.principal)) {
             this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'role' });
             this.counters.reject?.('role');
@@ -210,6 +217,11 @@ export class Room {
             this.counters.reject?.('rate-limit');
             return;
           }
+        }
+        const enc = encoding.createEncoder();
+        encoding.writeVarUint(enc, MESSAGE_SYNC);
+        const replyType = syncProtocol.readSyncMessage(decoder, enc, this.doc, conn);
+        if (replyType === syncProtocol.messageYjsUpdate) {
           this.audit(conn.principal, 'update', shortHash(msg), { bytes: msg.byteLength });
           this.counters.update?.();
         } else if (replyType === syncProtocol.messageYjsSyncStep1) {

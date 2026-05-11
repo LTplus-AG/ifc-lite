@@ -39,7 +39,12 @@ export type Kernel = (source: ParametricSource, params: unknown) => Mesh;
 
 /**
  * Run `kernel` against every fixture and return per-fixture hashes.
- * If `expected` is supplied, mismatches are flagged.
+ *
+ * If `expected` is supplied, *every* fixture must have a matching entry
+ * — a missing entry counts as a failure, not an implicit pass. This is
+ * intentional: a typo in a fixture name or a forgotten baseline update
+ * used to silently report `ok=true`, which made drift unobservable. If
+ * you genuinely want partial baselines, omit `expected` entirely.
  */
 export function runDeterminismHarness(
   kernel: Kernel,
@@ -48,11 +53,21 @@ export function runDeterminismHarness(
 ): DeterminismReport {
   const results: DeterminismResult[] = [];
   let allOk = true;
+  const baselineProvided = expected !== undefined;
   for (const fixture of fixtures) {
     const mesh = kernel(fixture.source, fixture.params);
     const hash = hashMesh(mesh);
     const exp = expected?.[fixture.name];
-    const ok = exp == null ? true : hash === exp;
+    let ok: boolean;
+    if (!baselineProvided) {
+      ok = true;
+    } else if (exp == null) {
+      // Baseline was provided but doesn't cover this fixture — refuse
+      // to silently report success.
+      ok = false;
+    } else {
+      ok = hash === exp;
+    }
     if (!ok) allOk = false;
     results.push({ name: fixture.name, hash, ok, expected: exp });
   }

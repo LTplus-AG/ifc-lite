@@ -47,6 +47,15 @@ export interface HistoryEntry {
   snapshot: IfcxFile;
   /** Optional minimal layer relative to the previous entry on this branch. */
   diff?: IfcxFile;
+  /**
+   * Immutable merge metadata. Set ONLY by `merge()` — never by
+   * `record()`. UI layers (e.g. `branch-tree`) rely on these instead of
+   * parsing `label` so user-authored labels can't be misclassified as
+   * structural metadata, and so the merge edge always points at the
+   * commit that was actually merged (not the source branch's current tip).
+   */
+  mergedFromBranch?: string;
+  mergedFromEntryId?: string;
 }
 
 export interface HistoryDiff {
@@ -101,6 +110,19 @@ export interface HistorySidecar {
   clear(): Promise<void>;
 }
 
+/**
+ * Cheap deep clone for IFCX snapshots. Uses `structuredClone` when
+ * available (Node 17+, all modern browsers) and falls back to a
+ * JSON round-trip otherwise — IFCX is plain JSON so the round-trip is
+ * sufficient and loses nothing.
+ */
+function cloneIfcx(file: IfcxFile): IfcxFile {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(file);
+  }
+  return JSON.parse(JSON.stringify(file)) as IfcxFile;
+}
+
 /* ------------------------------------------------------------------ */
 /* In-memory implementation                                            */
 /* ------------------------------------------------------------------ */
@@ -135,14 +157,17 @@ export class MemoryHistorySidecar implements HistorySidecar {
       this.branchInfo.set(branch, { name: branch, createdAt: new Date().toISOString() });
       this.entriesByBranch.set(branch, []);
     }
+    // Deep-clone snapshot/diff so callers that reuse buffers or mutate
+    // their input objects (common in streaming snapshot pipelines)
+    // cannot poison historical entries after they were recorded.
     const entry: HistoryEntry = {
       entryId: this.nextEntryId(),
       at: new Date().toISOString(),
       branch,
       authorClientId: input.authorClientId,
       label: input.label,
-      snapshot: input.snapshot,
-      diff: input.diff,
+      snapshot: cloneIfcx(input.snapshot),
+      diff: input.diff ? cloneIfcx(input.diff) : undefined,
     };
     const arr = this.entriesByBranch.get(branch)!;
     arr.push(entry);
@@ -210,9 +235,19 @@ export class MemoryHistorySidecar implements HistorySidecar {
     if (this.branchInfo.has(name)) {
       throw new Error(`@ifc-lite/collab: branch "${name}" already exists`);
     }
+    // Honor the documented default: when no explicit fork point is
+    // given, take the current head of `main`. Persisting `undefined`
+    // dropped fork ancestry for every caller that relied on the API
+    // signature's documented behavior.
+    let resolvedFork = fromEntryId;
+    if (!resolvedFork) {
+      const mainEntries = this.entriesByBranch.get('main') ?? [];
+      const head = mainEntries[mainEntries.length - 1];
+      if (head) resolvedFork = head.entryId;
+    }
     const info: BranchInfo = {
       name,
-      forkedFromEntryId: fromEntryId,
+      forkedFromEntryId: resolvedFork,
       createdAt: new Date().toISOString(),
     };
     this.branchInfo.set(name, info);
@@ -225,16 +260,30 @@ export class MemoryHistorySidecar implements HistorySidecar {
     into: string,
     mergedSnapshot: IfcxFile,
   ): Promise<HistoryEntry> {
+    // Validate the source branch up front. Previously only `into` was
+    // checked, so a typo like merge('experimnet', 'main', …) wrote an
+    // irreversible merge entry with no resolvable source.
+    const sourceEntries = this.entriesByBranch.get(branch);
+    if (!sourceEntries) {
+      throw new Error(`@ifc-lite/collab: source branch "${branch}" not found`);
+    }
     const targetEntries = this.entriesByBranch.get(into);
     if (!targetEntries) {
       throw new Error(`@ifc-lite/collab: target branch "${into}" not found`);
     }
+    // Capture the source branch's CURRENT tip — the commit that was
+    // actually merged — into immutable metadata so the merge edge in
+    // the branch-tree view doesn't drift if the source branch keeps
+    // moving later.
+    const sourceTip = sourceEntries[sourceEntries.length - 1];
     const entry: HistoryEntry = {
       entryId: this.nextEntryId(),
       at: new Date().toISOString(),
       branch: into,
       label: `merge ${branch} → ${into}`,
-      snapshot: mergedSnapshot,
+      snapshot: cloneIfcx(mergedSnapshot),
+      mergedFromBranch: branch,
+      mergedFromEntryId: sourceTip?.entryId,
     };
     targetEntries.push(entry);
     return entry;
@@ -296,14 +345,21 @@ export function attachHistorySidecar(
       includeDiff && lastBaseline
         ? extractMinimalLayer(session.doc, lastBaseline, { snapshot: options.snapshot })
         : undefined;
-    lastBaseline = Y.encodeStateAsUpdate(session.doc);
-    return sidecar.record({
+    // Capture the candidate baseline BEFORE record() so we don't read
+    // the doc twice with a window in between, but only commit it to
+    // `lastBaseline` AFTER record() resolves. If persistence rejects,
+    // the next capture must still diff against the previously-recorded
+    // state — otherwise history can silently skip changes.
+    const nextBaseline = Y.encodeStateAsUpdate(session.doc);
+    const entry = await sidecar.record({
       branch,
       snapshot: ifcx,
       diff,
       label,
       authorClientId: session.clientId,
     });
+    lastBaseline = nextBaseline;
+    return entry;
   };
 
   const timer = setInterval(() => {

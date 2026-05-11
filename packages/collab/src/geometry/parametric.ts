@@ -193,6 +193,19 @@ export function cylinder(params: CylinderParams): Mesh {
 /* ------------------------------------------------------------------ */
 
 export function revolvedAreaSolid(params: RevolvedAreaSolidParams): Mesh {
+  // The current implementation only revolves around the Z axis. Accepting
+  // a non-default `axis` and silently still using Z produces geometry the
+  // caller didn't ask for. Reject explicitly so misuse fails loudly until
+  // a general axis path is implemented.
+  if (params.axis) {
+    const [ax, ay, az] = params.axis;
+    const isZ = Math.abs(ax) < 1e-9 && Math.abs(ay) < 1e-9 && Math.abs(az - 1) < 1e-9;
+    if (!isZ) {
+      throw new Error(
+        `@ifc-lite/collab: revolvedAreaSolid currently only supports axis [0, 0, 1], got [${ax}, ${ay}, ${az}]`,
+      );
+    }
+  }
   const angle = params.angle ?? Math.PI * 2;
   const segments = params.segments ?? 16;
   const r = params.profile.radius;
@@ -240,10 +253,17 @@ export function revolvedAreaSolid(params: RevolvedAreaSolidParams): Mesh {
 /**
  * Hash a mesh for determinism / cache-key purposes.
  *
- * 32-bit FNV-1a over a stable byte ordering of positions+indices,
- * returned as 32 hex chars. Position floats are quantized to 8 decimal
+ * 128-bit digest built by running FNV-1a four times in parallel with
+ * different IVs over a stable byte ordering of positions+indices.
+ * Returned as 32 hex chars. Position floats are quantized to 8 decimal
  * places before hashing so trivial floating-point drift doesn't break
  * cache lookups.
+ *
+ * Note: this is not a cryptographic hash — collision-resistance is
+ * "good enough for cache keys and drift detection," not "good enough
+ * for security." The previous implementation returned `.repeat(4)` of
+ * a single 32-bit digest, which looked 128-bit but had only 32 bits of
+ * entropy; the four-IV variant restores real width.
  */
 export function hashMesh(mesh: Mesh): string {
   const enc = new TextEncoder();
@@ -257,10 +277,20 @@ export function hashMesh(mesh: Mesh): string {
     buf.push(String(mesh.indices[i]));
   }
   const bytes = enc.encode(buf.join(','));
-  let h = 0x811c9dc5;
+  // Four 32-bit FNV-1a lanes with independent IVs derived from the
+  // canonical FNV offset basis. Each lane sees the same byte stream;
+  // their concatenated outputs give 128 bits of independent state.
+  const ivs = [0x811c9dc5, 0x84222325, 0xcbf29ce4, 0x100000001] as const;
+  const lanes = ivs.map((iv) => iv >>> 0);
   for (let i = 0; i < bytes.length; i++) {
-    h ^= bytes[i];
-    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    for (let l = 0; l < 4; l++) {
+      let h = lanes[l];
+      h ^= bytes[i];
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+      lanes[l] = h;
+    }
   }
-  return (h >>> 0).toString(16).padStart(8, '0').repeat(4);
+  return lanes
+    .map((h) => (h >>> 0).toString(16).padStart(8, '0'))
+    .join('');
 }

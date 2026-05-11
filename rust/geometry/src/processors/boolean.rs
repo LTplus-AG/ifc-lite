@@ -482,6 +482,59 @@ impl BooleanClippingProcessor {
         Ok(mesh)
     }
 
+    /// Walk the left-spine of a chained
+    /// `IfcBooleanClippingResult(.DIFFERENCE., x, polygonalBoundedHalfSpace)`
+    /// pattern (typical for gable walls clipped by both roof slopes) and
+    /// collect every consecutive `IfcPolygonalBoundedHalfSpace` cutter.
+    /// Returns the deepest non-`IfcBooleanClippingResult` base operand and
+    /// the chain of half-spaces in their IFC application order
+    /// (innermost-first, i.e. the order the spec would have applied them).
+    ///
+    /// Used by `process_with_depth` to BATCH chained polygonal clips into
+    /// a single CSG operation; sequentially subtracting each cutter blows
+    /// past the per-mesh polygon limit and silently drops later clips,
+    /// leaving a flat horizontal cap at the gable apex (issue #635 follow-
+    /// up).
+    fn collect_polygonal_chain(
+        &self,
+        entity: DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<(DecodedEntity, Vec<DecodedEntity>)> {
+        let mut chain: Vec<DecodedEntity> = Vec::new();
+        let mut current = entity;
+        loop {
+            if !matches!(
+                current.ifc_type,
+                IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult
+            ) {
+                break;
+            }
+            // Operator must be DIFFERENCE.
+            let op = current
+                .get(0)
+                .and_then(|v| match v {
+                    ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str().to_string()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| ".DIFFERENCE.".to_string());
+            if op != ".DIFFERENCE." && op != "DIFFERENCE" {
+                break;
+            }
+            let Some(second_attr) = current.get(2) else { break };
+            let Ok(Some(second)) = decoder.resolve_ref(second_attr) else { break };
+            if second.ifc_type != IfcType::IfcPolygonalBoundedHalfSpace {
+                break;
+            }
+            chain.push(second);
+            let Some(first_attr) = current.get(1) else { break };
+            let Ok(Some(first)) = decoder.resolve_ref(first_attr) else { break };
+            current = first;
+        }
+        // Reverse so chain[0] is the innermost (first-applied) clip.
+        chain.reverse();
+        Ok((current, chain))
+    }
+
     /// Internal processing with depth tracking to prevent stack overflow
     fn process_with_depth(
         &self,
@@ -511,6 +564,62 @@ impl BooleanClippingProcessor {
                 _ => None,
             })
             .unwrap_or(".DIFFERENCE.");
+
+        // Fast path for chained polygonal-bounded half-space clips
+        // (e.g. gable walls clipped by both roof slopes — AC20-FZK-Haus
+        // walls #60012, #67828). Sequentially subtracting each cutter
+        // pushes the host polygon count past `MAX_CSG_POLYGONS_PER_MESH`,
+        // silently dropping later clips and leaving a flat horizontal
+        // cap at the apex. Combine all cutter prisms into a single
+        // mesh and run ONE BSP CSG op so the clips compose correctly.
+        if (operator == ".DIFFERENCE." || operator == "DIFFERENCE") && depth == 0 {
+            if let Ok((base, chain)) = self.collect_polygonal_chain(entity.clone(), decoder) {
+                if chain.len() >= 2 {
+                    let mesh = self.process_operand_with_depth(&base, decoder, depth)?;
+                    if mesh.is_empty() {
+                        return Ok(mesh);
+                    }
+                    let mut combined = Mesh::new();
+                    let mut planes: Vec<(Point3<f64>, Vector3<f64>, bool)> =
+                        Vec::with_capacity(chain.len());
+                    let mut all_built = true;
+                    for hs in &chain {
+                        let (pp, pn, ag) = self.parse_half_space_solid(hs, decoder)?;
+                        planes.push((pp, pn, ag));
+                        match self.build_polygonal_bounded_half_space_mesh(
+                            hs, decoder, &mesh, pp, pn, ag,
+                        ) {
+                            Ok(prism) => combined.merge(&prism),
+                            Err(_) => {
+                                all_built = false;
+                                break;
+                            }
+                        }
+                    }
+                    if all_built && !combined.is_empty() {
+                        let clipper = ClippingProcessor::new();
+                        let subtract_result = clipper.subtract_mesh(&mesh, &combined);
+                        self.drain_clipper_failures(&clipper);
+                        if let Ok(clipped) = subtract_result {
+                            if !clipped.is_empty() {
+                                return Ok(clipped);
+                            }
+                        }
+                    }
+                    // Fallback: chain plane clips so the silhouette is at
+                    // least correct (loses the polygon bound).
+                    self.record_failure(
+                        BoolOp::Difference,
+                        BoolFailureReason::PolygonalBoundedHalfSpaceFallback,
+                    );
+                    let mut current = mesh;
+                    for (pp, pn, ag) in planes {
+                        current = self.clip_mesh_with_half_space(&current, pp, pn, ag)?;
+                    }
+                    return Ok(current);
+                }
+            }
+        }
 
         // Get first operand (base geometry)
         let first_operand_attr = entity

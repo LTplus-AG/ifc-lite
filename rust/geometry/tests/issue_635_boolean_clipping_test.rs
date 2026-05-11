@@ -407,7 +407,12 @@ fn issue_635_gable_wall_60012_has_trapezoidal_silhouette() {
 
     let bins = max_z_silhouette(&mesh, 9);
     let valid: Vec<f32> = bins.iter().copied().filter(|z| z.is_finite()).collect();
-    assert!(valid.len() >= 5, "silhouette has too few populated bins: {:?}", bins);
+    // A correctly clipped gable produces only the 3 silhouette corners
+    // (left base, apex, right base) along the long axis — bins between
+    // corners may be empty because the BSP CSG output has no spurious
+    // vertices along the slanted faces. Require at least the 3 corner
+    // samples.
+    assert!(valid.len() >= 3, "silhouette has too few populated bins: {:?}", bins);
 
     let hi = *valid.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
     let lo = *valid.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
@@ -438,7 +443,12 @@ fn issue_635_gable_wall_67828_has_trapezoidal_silhouette() {
 
     let bins = max_z_silhouette(&mesh, 9);
     let valid: Vec<f32> = bins.iter().copied().filter(|z| z.is_finite()).collect();
-    assert!(valid.len() >= 5, "silhouette has too few populated bins: {:?}", bins);
+    // A correctly clipped gable produces only the 3 silhouette corners
+    // (left base, apex, right base) along the long axis — bins between
+    // corners may be empty because the BSP CSG output has no spurious
+    // vertices along the slanted faces. Require at least the 3 corner
+    // samples.
+    assert!(valid.len() >= 3, "silhouette has too few populated bins: {:?}", bins);
 
     let hi = *valid.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
     let lo = *valid.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
@@ -692,5 +702,123 @@ fn issue_635_round_window_is_circular() {
             opening_id, aspect
         );
     }
+}
+
+/// Issue #635 follow-up — gable cap artifact.
+///
+/// Even with the orientation-corrected `IfcPolygonalBoundedHalfSpace`
+/// cutter, walls #60012 and #67828 retained a flat horizontal "lid" at
+/// the original extrusion top (Z=max). Each `IfcBooleanClippingResult`
+/// in the chain was processed sequentially, but the first cut's BSP CSG
+/// output exceeded the `MAX_CSG_POLYGONS_PER_MESH` budget, so the second
+/// cut was silently SKIPPED — leaving the wall's right (or left) corner
+/// uncut. The result was a flat quad straddling the gable apex spanning
+/// the whole long-axis footprint.
+///
+/// A correctly clipped gable wall narrows to a peak at the apex — at most
+/// a thin slice of triangles at Z=max along the centerline, NOT a wide
+/// quad. This test asserts the (X, Y) extent of all "top-Z" triangles
+/// covers less than half the wall's longer horizontal axis.
+fn assert_no_gable_cap(mesh: &Mesh, wall_id: u32) {
+    assert!(!mesh.is_empty(), "wall #{} mesh is empty", wall_id);
+
+    let (mn, mx) = mesh.bounds();
+    let max_z = mx.z;
+    let min_z = mn.z;
+    let height = max_z - min_z;
+    assert!(height > 0.5, "wall #{} height suspiciously small: {}", wall_id, height);
+
+    // "At the top": within 1 mm absolute, capped at 0.5% of wall height.
+    let z_tol = 0.001f32.max(height * 0.005);
+
+    let mut top_x_min = f32::INFINITY;
+    let mut top_x_max = f32::NEG_INFINITY;
+    let mut top_y_min = f32::INFINITY;
+    let mut top_y_max = f32::NEG_INFINITY;
+    let mut top_tri_count = 0usize;
+
+    for tri in mesh.indices.chunks_exact(3) {
+        let i0 = tri[0] as usize * 3;
+        let i1 = tri[1] as usize * 3;
+        let i2 = tri[2] as usize * 3;
+        if i0 + 2 >= mesh.positions.len()
+            || i1 + 2 >= mesh.positions.len()
+            || i2 + 2 >= mesh.positions.len()
+        {
+            continue;
+        }
+        let z0 = mesh.positions[i0 + 2];
+        let z1 = mesh.positions[i1 + 2];
+        let z2 = mesh.positions[i2 + 2];
+        if z0 < max_z - z_tol || z1 < max_z - z_tol || z2 < max_z - z_tol {
+            continue;
+        }
+        top_tri_count += 1;
+        for off in [i0, i1, i2] {
+            let x = mesh.positions[off];
+            let y = mesh.positions[off + 1];
+            top_x_min = top_x_min.min(x);
+            top_x_max = top_x_max.max(x);
+            top_y_min = top_y_min.min(y);
+            top_y_max = top_y_max.max(y);
+        }
+    }
+
+    if top_tri_count == 0 {
+        // No triangles literally at the very top — definitely no cap.
+        return;
+    }
+
+    let wall_x_range = mx.x - mn.x;
+    let wall_y_range = mx.y - mn.y;
+    let top_x_range = top_x_max - top_x_min;
+    let top_y_range = top_y_max - top_y_min;
+
+    // The wall's longer horizontal axis is its length axis. Cap should
+    // narrow to a ridge along this axis. Across the thickness axis the
+    // ridge IS allowed to span the whole wall thickness.
+    let (long_axis_top_range, long_axis_wall_range, axis_label) = if wall_x_range >= wall_y_range {
+        (top_x_range, wall_x_range, "X")
+    } else {
+        (top_y_range, wall_y_range, "Y")
+    };
+    let frac = long_axis_top_range / long_axis_wall_range;
+
+    assert!(
+        frac < 0.5,
+        "gable wall #{} has a flat horizontal cap at Z=max spanning {:.0}% of its length \
+         along the {} axis (top {} range = {:.3}, wall {} range = {:.3}, top tris = {}). \
+         A correctly clipped gable narrows to a ridge line at the apex.",
+        wall_id, frac * 100.0, axis_label, axis_label, long_axis_top_range,
+        axis_label, long_axis_wall_range, top_tri_count,
+    );
+}
+
+#[test]
+fn issue_635_no_gable_cap_60012() {
+    let content = match load_fixture(FIXTURE) {
+        Some(c) => c,
+        None => {
+            eprintln!("{} missing — skipping issue-635 gable cap test", FIXTURE);
+            return;
+        }
+    };
+    let mesh = process_element_only(&content, WALL_60012)
+        .expect("wall #60012 should produce a mesh");
+    assert_no_gable_cap(&mesh, WALL_60012);
+}
+
+#[test]
+fn issue_635_no_gable_cap_67828() {
+    let content = match load_fixture(FIXTURE) {
+        Some(c) => c,
+        None => {
+            eprintln!("{} missing — skipping issue-635 gable cap test", FIXTURE);
+            return;
+        }
+    };
+    let mesh = process_element_only(&content, WALL_67828)
+        .expect("wall #67828 should produce a mesh");
+    assert_no_gable_cap(&mesh, WALL_67828);
 }
 

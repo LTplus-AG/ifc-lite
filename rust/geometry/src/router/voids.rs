@@ -342,14 +342,18 @@ fn extent_along_axis(mesh: &Mesh, axis: &Vector3<f64>) -> Option<f64> {
     min.is_finite().then_some(max - min)
 }
 
-/// Whether a mesh has only three distinct face-normal axes (i.e. is a clean
-/// box-like opening). Curved or arched openings produce many distinct
-/// triangle normals and must use full CSG instead of the rectangular path.
+/// Whether a mesh is a clean axis-aligned (in its own frame) rectangular box —
+/// i.e. exactly 6 planar faces forming a bounding parallelepiped. Curved or
+/// arched openings produce many distinct triangle normals; rectilinear but
+/// non-rectangular openings (e.g. an L-shaped shaft) share the same three axes
+/// as a box but split their faces across more than two parallel planes per
+/// axis. Both cases must go through full CSG rather than the AABB cutters.
 ///
 /// Matches the anti-parallel merge tolerance used by `infer_opening_frame` so
 /// the two helpers agree on what counts as a single axis.
 fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
     let mut axes: Vec<Vector3<f64>> = Vec::with_capacity(4);
+    let mut tri_axes: Vec<(usize, f64)> = Vec::with_capacity(mesh.indices.len() / 3);
     for tri in mesh.indices.chunks_exact(3) {
         let (Some(p0), Some(p1), Some(p2)) = (
             mesh_point(mesh, tri[0]),
@@ -361,15 +365,53 @@ fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
         let Some(normal) = (p1 - p0).cross(&(p2 - p0)).try_normalize(NORMALIZE_EPSILON) else {
             continue;
         };
-        if axes.iter().any(|axis| normal.dot(axis).abs() > 0.98) {
-            continue;
+        let axis_index = match axes
+            .iter()
+            .position(|axis| normal.dot(axis).abs() > 0.98)
+        {
+            Some(idx) => idx,
+            None => {
+                if axes.len() >= 3 {
+                    return false;
+                }
+                axes.push(normal);
+                axes.len() - 1
+            }
+        };
+        // Signed offset along the merged axis. The merged axis direction is
+        // the first normal seen for that group, so opposite faces produce
+        // offsets of opposite sign.
+        let offset = p0.coords.dot(&axes[axis_index]);
+        tri_axes.push((axis_index, offset));
+    }
+    if axes.len() != 3 {
+        return false;
+    }
+
+    // For each axis, the triangle offsets must cluster around exactly 2 values
+    // (the two opposite faces of the box). More than 2 distinct planes means
+    // the footprint is rectilinear-but-not-rectangular (e.g. an L-shape).
+    // Tolerance is 1mm absolute — coarser than float precision but tight
+    // enough to distinguish wall positions in any realistic IFC unit.
+    const PLANE_TOL: f64 = 1e-3;
+    for axis_index in 0..3 {
+        let mut planes: Vec<f64> = Vec::with_capacity(3);
+        for (idx, offset) in &tri_axes {
+            if *idx != axis_index {
+                continue;
+            }
+            if !planes.iter().any(|p| (p - offset).abs() < PLANE_TOL) {
+                planes.push(*offset);
+                if planes.len() > 2 {
+                    return false;
+                }
+            }
         }
-        axes.push(normal);
-        if axes.len() > 3 {
+        if planes.len() != 2 {
             return false;
         }
     }
-    axes.len() == 3
+    true
 }
 
 fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
@@ -2243,6 +2285,69 @@ mod reveal_tests {
         m
     }
 
+    /// Build a Z-extruded L-shaped prism. The six vertical walls share the
+    /// same ±X/±Y normals as a box but sit at three different X (or Y)
+    /// offsets, so a box detector that only counts axes would misclassify it.
+    fn make_l_shape_prism_mesh() -> Mesh {
+        // Footprint corners CCW in XY plane:
+        // (0,0) -> (4,0) -> (4,2) -> (2,2) -> (2,4) -> (0,4) -> back to (0,0)
+        let z0 = 0.0;
+        let z1 = 1.0;
+        let footprint = [
+            (0.0_f64, 0.0_f64),
+            (4.0, 0.0),
+            (4.0, 2.0),
+            (2.0, 2.0),
+            (2.0, 4.0),
+            (0.0, 4.0),
+        ];
+
+        let mut m = Mesh::new();
+        let n = footprint.len();
+
+        // Vertical walls — each footprint edge becomes one rectangular face.
+        for i in 0..n {
+            let (x0, y0) = footprint[i];
+            let (x1, y1) = footprint[(i + 1) % n];
+            let edge = Vector3::new(x1 - x0, y1 - y0, 0.0);
+            let z_up = Vector3::new(0.0, 0.0, 1.0);
+            let normal = edge
+                .cross(&z_up)
+                .try_normalize(1e-10)
+                .unwrap_or(Vector3::new(1.0, 0.0, 0.0));
+            let p0 = Point3::new(x0, y0, z0);
+            let p1 = Point3::new(x1, y1, z0);
+            let p2 = Point3::new(x1, y1, z1);
+            let p3 = Point3::new(x0, y0, z1);
+            let b = m.vertex_count() as u32;
+            m.add_vertex(p0, normal);
+            m.add_vertex(p1, normal);
+            m.add_vertex(p2, normal);
+            m.add_vertex(p3, normal);
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+
+        // Caps: fan-triangulate the L footprint at top and bottom.
+        let bottom_n = Vector3::new(0.0, 0.0, -1.0);
+        let top_n = Vector3::new(0.0, 0.0, 1.0);
+        let bottom_base = m.vertex_count() as u32;
+        for &(x, y) in &footprint {
+            m.add_vertex(Point3::new(x, y, z0), bottom_n);
+        }
+        let top_base = m.vertex_count() as u32;
+        for &(x, y) in &footprint {
+            m.add_vertex(Point3::new(x, y, z1), top_n);
+        }
+        for i in 1..(n as u32 - 1) {
+            // Bottom cap winds clockwise so its normal points -Z.
+            m.add_triangle(bottom_base, bottom_base + i + 1, bottom_base + i);
+            m.add_triangle(top_base, top_base + i, top_base + i + 1);
+        }
+
+        m
+    }
+
     /// Extract the dominant normal (first triangle's normal) of all reveal
     /// triangles (those added after `pre_count` triangles).
     fn reveal_normals(mesh: &Mesh, pre_tri_count: usize) -> Vec<Vector3<f64>> {
@@ -2524,6 +2629,34 @@ mod reveal_tests {
         assert!(after_max.x <= before_max.x + 1e-3);
         assert!(after_max.y <= before_max.y + 1e-3);
         assert!(after_max.z <= before_max.z + 1e-3);
+    }
+
+    #[test]
+    fn test_rectangular_box_detector_accepts_clean_box() {
+        let opening = make_framed_box_mesh(
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            (-0.15, 0.15),
+            (-1.0, 1.0),
+            (0.0, 2.0),
+        );
+        assert!(is_rectangular_box_mesh(&opening));
+    }
+
+    #[test]
+    fn test_rectangular_box_detector_rejects_l_shape() {
+        // An L-shaped vertical shaft has only three face-normal axes
+        // (±X, ±Y, ±Z) — the same as a box — but its ±X / ±Y walls sit at
+        // three different offsets. Without a per-axis plane-count check the
+        // detector would misclassify it as a box and the rectangular cutter
+        // would over-cut the AABB of the L.
+        let opening = make_l_shape_prism_mesh();
+        assert!(
+            !is_rectangular_box_mesh(&opening),
+            "rectilinear non-box footprints must fall through to NonRectangular CSG"
+        );
     }
 
     #[test]

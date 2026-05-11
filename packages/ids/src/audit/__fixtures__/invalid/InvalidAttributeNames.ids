@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+	<ids:info>
+		<ids:title>Example on use of attributes (for student research)</ids:title>
+		<ids:copyright>buildingSMART International Ltd</ids:copyright>
+		<ids:date>2022-01-12</ids:date>
+	</ids:info>
+	<ids:specifications>
+
+		<ids:specification ifcVersion="IFC2X3" name="Aachen test">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<ids:simpleValue>IFCWALL</ids:simpleValue>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:attribute>
+					<ids:name>
+						<ids:simpleValue>InvalidName</ids:simpleValue>
+					</ids:name>
+				</ids:attribute>
+			</ids:requirements>
+		</ids:specification>
+
+		<ids:specification ifcVersion="IFC2X3" name="Aachen test">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<ids:simpleValue>IFCORDERACTION</ids:simpleValue>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:attribute>
+					<ids:name>
+						<!-- valid in ifc2x3 -->
+						<ids:simpleValue>ActionID</ids:simpleValue>
+					</ids:name>
+				</ids:attribute>
+			</ids:requirements>
+		</ids:specification>
+
+		<ids:specification ifcVersion="IFC4" name="Aachen test">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<ids:simpleValue>IFCWALL</ids:simpleValue>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:attribute>
+					<ids:name>
+						<!-- not valid in ifc4 -->
+						<ids:simpleValue>ActionID</ids:simpleValue>
+					</ids:name>
+				</ids:attribute>
+			</ids:requirements>
+		</ids:specification>
+
+	</ids:specifications>
+</ids:ids>

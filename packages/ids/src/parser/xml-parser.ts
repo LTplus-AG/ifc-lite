@@ -63,10 +63,16 @@ if (!DOMParserImpl) {
  * Parse IDS XML content into an IDSDocument
  */
 export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
-  const xmlString =
+  let xmlString =
     typeof xmlContent === 'string'
       ? xmlContent
       : new TextDecoder().decode(xmlContent);
+  // Strip a leading UTF-8 BOM if present — xmldom rejects it as
+  // "unexpected content outside root element". Real-world IDS files
+  // saved by Windows tooling commonly include the BOM.
+  if (xmlString.charCodeAt(0) === 0xfeff) {
+    xmlString = xmlString.slice(1);
+  }
 
   if (!DOMParserImpl) {
     throw new IDSParseError(
@@ -122,6 +128,10 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
   return {
     info: parseInfo(root),
     specifications: parseSpecifications(root),
+    schemaLocation:
+      root.getAttribute('xsi:schemaLocation') ||
+      root.getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'schemaLocation') ||
+      undefined,
   };
 }
 
@@ -176,6 +186,7 @@ function parseSpecification(el: Element, index: number): IDSSpecification {
   const applicabilityEl = getChildElement(el, 'applicability');
   const applicability: IDSApplicability = {
     facets: applicabilityEl ? parseFacets(applicabilityEl) : [],
+    cardinality: applicabilityEl?.getAttribute('cardinality') ?? undefined,
   };
 
   // Parse minOccurs/maxOccurs with NaN validation
@@ -208,6 +219,18 @@ function parseSpecification(el: Element, index: number): IDSSpecification {
     }
   }
 
+  // Apply IDS 1.0 default: an `<applicability>` without an explicit
+  // `minOccurs` is REQUIRED — at least one applicable entity must
+  // match. Authors opt out by setting `minOccurs="0"` (optional) or
+  // using a `prohibited` requirement. We canonicalise here so every
+  // downstream consumer (validator, audit, UI) sees the same shape
+  // and doesn't need to remember the default lives elsewhere. Only
+  // applies when an `<applicability>` element actually exists; specs
+  // without applicability metadata leave the field undefined.
+  if (minOccurs === undefined && (applicabilityEl || maxOccurs !== undefined)) {
+    minOccurs = 1;
+  }
+
   // Parse requirements
   const requirementsEl = getChildElement(el, 'requirements');
   const requirements: IDSRequirement[] = requirementsEl
@@ -221,6 +244,7 @@ function parseSpecification(el: Element, index: number): IDSSpecification {
     instructions: el.getAttribute('instructions') || undefined,
     identifier: el.getAttribute('identifier') || undefined,
     ifcVersions: ifcVersions.length > 0 ? ifcVersions : ['IFC4'],
+    ifcVersionRaw: el.getAttribute('ifcVersion') || undefined,
     applicability,
     requirements,
     minOccurs,
@@ -334,6 +358,10 @@ function parseAttributeFacet(el: Element): IDSAttributeFacet {
 function parsePropertyFacet(el: Element): IDSPropertyFacet {
   const propertySetEl = getChildElement(el, 'propertySet');
   const baseNameEl = getChildElement(el, 'baseName');
+  // IDS 1.0 puts dataType on the @dataType *attribute* (see upstream
+  // IdsProperty.cs). Older 0.9.7 documents used a <dataType> *child*
+  // element. Support both — attribute wins when present.
+  const dataTypeAttr = el.getAttribute('dataType');
   const dataTypeEl = getChildElement(el, 'dataType');
   const valueEl = getChildElement(el, 'value');
 
@@ -344,11 +372,18 @@ function parsePropertyFacet(el: Element): IDSPropertyFacet {
     throw new IDSParseError('Property facet must have a baseName element');
   }
 
+  let dataType: IDSConstraint | undefined;
+  if (dataTypeAttr) {
+    dataType = { type: 'simpleValue', value: dataTypeAttr };
+  } else if (dataTypeEl) {
+    dataType = parseConstraintElement(dataTypeEl);
+  }
+
   return {
     type: 'property',
     propertySet: parseConstraintElement(propertySetEl),
     baseName: parseConstraintElement(baseNameEl),
-    dataType: dataTypeEl ? parseConstraintElement(dataTypeEl) : undefined,
+    dataType,
     value: valueEl ? parseConstraintElement(valueEl) : undefined,
   };
 }
@@ -383,16 +418,39 @@ function parseMaterialFacet(el: Element): IDSMaterialFacet {
  * Parse partOf facet
  */
 function parsePartOfFacet(el: Element): IDSPartOfFacet {
-  const relationAttr = el.getAttribute('relation') || 'IfcRelContainedInSpatialStructure';
+  const relationAttrRaw = el.getAttribute('relation');
+  const relationAttr = relationAttrRaw || 'IfcRelContainedInSpatialStructure';
   const entityEl = getChildElement(el, 'entity');
 
   const relation = normalizePartOfRelation(relationAttr);
-
-  return {
+  // When the source attribute didn't map cleanly onto one of the known
+  // relations (or was missing), preserve the original string so the
+  // auditor can flag the discrepancy without us breaking the existing
+  // narrow `PartOfRelation` enum.
+  const recognised = isRecognisedPartOfRelation(relationAttr);
+  const facet: IDSPartOfFacet = {
     type: 'partOf',
     relation,
     entity: entityEl ? parseEntityFacet(entityEl) : undefined,
   };
+  if (!recognised && relationAttrRaw) {
+    facet.rawRelation = relationAttrRaw;
+  }
+  return facet;
+}
+
+function isRecognisedPartOfRelation(relation: string): boolean {
+  switch (relation) {
+    case 'IfcRelAggregates':
+    case 'IfcRelContainedInSpatialStructure':
+    case 'IfcRelNests':
+    case 'IfcRelVoidsElement':
+    case 'IfcRelFillsElement':
+    case 'IfcRelAssignsToGroup':
+      return true;
+    default:
+      return false;
+  }
 }
 
 /**
@@ -400,6 +458,8 @@ function parsePartOfFacet(el: Element): IDSPartOfFacet {
  */
 function normalizePartOfRelation(relation: string): PartOfRelation {
   const upper = relation.toUpperCase();
+  if (upper.includes('ASSIGNSTOGROUP') || upper.includes('GROUP'))
+    return 'IfcRelAssignsToGroup';
   if (upper.includes('AGGREGATE')) return 'IfcRelAggregates';
   if (upper.includes('CONTAINED') || upper.includes('SPATIAL'))
     return 'IfcRelContainedInSpatialStructure';
@@ -419,12 +479,40 @@ function parseRequirements(parent: Element): IDSRequirement[] {
   for (const child of Array.from(parent.children)) {
     const facet = parseFacet(child);
     if (facet) {
-      // Get optionality from the element
+      // IDS 1.0 uses `cardinality="required|optional|prohibited"` on the
+      // requirement facet. 0.9.7 used minOccurs/maxOccurs. Honour both;
+      // the cardinality attribute wins when present.
+      const cardinalityAttr = child.getAttribute('cardinality');
       const minOccurs = child.getAttribute('minOccurs');
       const maxOccurs = child.getAttribute('maxOccurs');
 
       let optionality: RequirementOptionality = 'required';
-      if (minOccurs === '0' && maxOccurs === '0') {
+      // The XSD enum values are case-sensitive lowercase; preserve any
+      // non-canonical raw input so the auditor can flag it instead of
+      // letting the parser silently default to `required`.
+      let cardinalityRaw: string | undefined;
+      if (cardinalityAttr !== null) {
+        if (
+          cardinalityAttr === 'required' ||
+          cardinalityAttr === 'optional' ||
+          cardinalityAttr === 'prohibited'
+        ) {
+          optionality = cardinalityAttr as RequirementOptionality;
+        } else {
+          // Tolerate case differences for the runtime mapping (so
+          // `"Required"` still parses) but record the raw value so the
+          // audit can flag it.
+          const lower = cardinalityAttr.toLowerCase();
+          if (
+            lower === 'required' ||
+            lower === 'optional' ||
+            lower === 'prohibited'
+          ) {
+            optionality = lower as RequirementOptionality;
+          }
+          cardinalityRaw = cardinalityAttr;
+        }
+      } else if (minOccurs === '0' && maxOccurs === '0') {
         optionality = 'prohibited';
       } else if (minOccurs === '0') {
         optionality = 'optional';
@@ -434,6 +522,7 @@ function parseRequirements(parent: Element): IDSRequirement[] {
         id: `req-${reqIndex++}`,
         facet,
         optionality,
+        cardinalityRaw,
         description: child.getAttribute('description') || undefined,
         instructions: child.getAttribute('instructions') || undefined,
       });
@@ -484,14 +573,32 @@ function parseConstraintElement(el: Element): IDSConstraint {
  * Parse XSD restriction element
  */
 function parseRestriction(el: Element): IDSConstraint {
-  // Check for pattern
-  const patternEl =
-    getChildElementNS(el, 'pattern', XS_NAMESPACE) ||
-    getChildElement(el, 'pattern');
-  if (patternEl) {
+  // Capture the `@base` attribute so the auditor can compare against
+  // an IFC dataType's backing XSD type without inferring from the
+  // restriction shape (which is ambiguous for numeric enumerations).
+  const base = el.getAttribute('base') || undefined;
+
+  // Check for pattern(s). Multiple `<xs:pattern>` siblings inside a
+  // single restriction are OR'd per the XSD spec, so collect every
+  // candidate and join them with `|` (each wrapped in a non-capturing
+  // group so anchors apply uniformly).
+  const patternEls = (() => {
+    const ns = getChildElementsNS(el, 'pattern', XS_NAMESPACE);
+    if (ns.length > 0) return ns;
+    return getChildElements(el, 'pattern');
+  })();
+  if (patternEls.length > 0) {
+    const parts = patternEls
+      .map((p) => p.getAttribute('value') || p.textContent || '')
+      .filter((s) => s.length > 0);
+    const pattern =
+      parts.length === 1
+        ? parts[0]
+        : parts.map((p) => `(?:${p})`).join('|');
     return {
       type: 'pattern',
-      pattern: patternEl.getAttribute('value') || patternEl.textContent || '',
+      pattern,
+      base,
     } satisfies IDSPatternConstraint;
   }
 
@@ -506,6 +613,7 @@ function parseRestriction(el: Element): IDSConstraint {
         values: enumElsNoNS.map(
           (e) => e.getAttribute('value') || e.textContent || ''
         ),
+        base,
       } satisfies IDSEnumerationConstraint;
     }
   } else {
@@ -514,85 +622,66 @@ function parseRestriction(el: Element): IDSConstraint {
       values: enumEls.map(
         (e) => e.getAttribute('value') || e.textContent || ''
       ),
+      base,
     } satisfies IDSEnumerationConstraint;
   }
 
-  // Check for bounds (minInclusive, maxInclusive, minExclusive, maxExclusive)
-  const minInclusiveEl =
-    getChildElementNS(el, 'minInclusive', XS_NAMESPACE) ||
-    getChildElement(el, 'minInclusive');
-  const maxInclusiveEl =
-    getChildElementNS(el, 'maxInclusive', XS_NAMESPACE) ||
-    getChildElement(el, 'maxInclusive');
-  const minExclusiveEl =
-    getChildElementNS(el, 'minExclusive', XS_NAMESPACE) ||
-    getChildElement(el, 'minExclusive');
-  const maxExclusiveEl =
-    getChildElementNS(el, 'maxExclusive', XS_NAMESPACE) ||
-    getChildElement(el, 'maxExclusive');
+  // Check for bounds (minInclusive, maxInclusive, minExclusive,
+  // maxExclusive, length, minLength, maxLength).
+  const facetEls: Record<string, Element | null> = {};
+  for (const facet of [
+    'minInclusive',
+    'maxInclusive',
+    'minExclusive',
+    'maxExclusive',
+    'length',
+    'minLength',
+    'maxLength',
+  ]) {
+    facetEls[facet] =
+      getChildElementNS(el, facet, XS_NAMESPACE) ||
+      getChildElement(el, facet);
+  }
 
-  if (minInclusiveEl || maxInclusiveEl || minExclusiveEl || maxExclusiveEl) {
-    const bounds: IDSBoundsConstraint = {
-      type: 'bounds',
+  if (Object.values(facetEls).some((e) => e !== null)) {
+    const bounds: IDSBoundsConstraint = { type: 'bounds', base };
+    const readNumber = (e: Element | null): number | undefined => {
+      if (!e) return undefined;
+      const v = parseFloat(e.getAttribute('value') || e.textContent || '');
+      return Number.isFinite(v) ? v : undefined;
     };
-
-    if (minInclusiveEl) {
-      const val = parseFloat(
-        minInclusiveEl.getAttribute('value') ||
-          minInclusiveEl.textContent ||
-          ''
-      );
-      if (!isNaN(val)) {
-        bounds.minInclusive = val;
-      }
-    }
-    if (maxInclusiveEl) {
-      const val = parseFloat(
-        maxInclusiveEl.getAttribute('value') ||
-          maxInclusiveEl.textContent ||
-          ''
-      );
-      if (!isNaN(val)) {
-        bounds.maxInclusive = val;
-      }
-    }
-    if (minExclusiveEl) {
-      const val = parseFloat(
-        minExclusiveEl.getAttribute('value') ||
-          minExclusiveEl.textContent ||
-          ''
-      );
-      if (!isNaN(val)) {
-        bounds.minExclusive = val;
-      }
-    }
-    if (maxExclusiveEl) {
-      const val = parseFloat(
-        maxExclusiveEl.getAttribute('value') ||
-          maxExclusiveEl.textContent ||
-          ''
-      );
-      if (!isNaN(val)) {
-        bounds.maxExclusive = val;
-      }
-    }
-
+    const readInt = (e: Element | null): number | undefined => {
+      if (!e) return undefined;
+      const v = parseInt(e.getAttribute('value') || e.textContent || '', 10);
+      return Number.isFinite(v) && v >= 0 ? v : undefined;
+    };
+    bounds.minInclusive = readNumber(facetEls.minInclusive);
+    bounds.maxInclusive = readNumber(facetEls.maxInclusive);
+    bounds.minExclusive = readNumber(facetEls.minExclusive);
+    bounds.maxExclusive = readNumber(facetEls.maxExclusive);
+    bounds.length = readInt(facetEls.length);
+    bounds.minLength = readInt(facetEls.minLength);
+    bounds.maxLength = readInt(facetEls.maxLength);
     return bounds;
   }
 
-  // Default: treat base attribute or text content as simple value
-  const base = el.getAttribute('base');
-  if (base) {
+  // No recognised pattern/enumeration/bounds child. If the element only
+  // carries a `base` attribute (the common "empty restriction" authoring
+  // mistake — e.g. `<xs:restriction base="xs:string"/>`), surface an
+  // empty enumeration so the coherence auditor can flag it. Otherwise
+  // fall through to text content.
+  const text = el.textContent?.trim() || '';
+  if (base && text === '') {
     return {
-      type: 'simpleValue',
-      value: base,
-    };
+      type: 'enumeration',
+      values: [],
+      base,
+    } satisfies IDSEnumerationConstraint;
   }
-
-  return {
-    type: 'simpleValue',
-    value: el.textContent?.trim() || '',
-  };
+  if (text) {
+    return { type: 'simpleValue', value: text };
+  }
+  return { type: 'enumeration', values: [], base } satisfies IDSEnumerationConstraint;
 }
 
 // ============================================================================

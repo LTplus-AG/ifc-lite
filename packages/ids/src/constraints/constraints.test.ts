@@ -51,25 +51,26 @@ describe('matchConstraint — simpleValue', () => {
     expect(matchConstraint(sv('42'), '42.0000005')).toBe(true); // within tolerance
   });
 
-  it('matches boolean true', () => {
+  it('matches boolean true (strict lowercase per IDS spec)', () => {
     expect(matchConstraint(sv('true'), true)).toBe(true);
-    expect(matchConstraint(sv('1'), true)).toBe(true);
+    // Numeric `1` / `0` are NOT valid boolean literals per IDS 1.0.
+    expect(matchConstraint(sv('1'), true)).toBe(false);
     expect(matchConstraint(sv('false'), true)).toBe(false);
   });
 
-  it('matches boolean false', () => {
+  it('matches boolean false (strict lowercase per IDS spec)', () => {
     expect(matchConstraint(sv('false'), false)).toBe(true);
-    expect(matchConstraint(sv('0'), false)).toBe(true);
+    expect(matchConstraint(sv('0'), false)).toBe(false);
     expect(matchConstraint(sv('true'), false)).toBe(false);
   });
 
-  it('matches boolean string values (case-sensitive)', () => {
+  it('matches boolean string values (case-sensitive, lowercase only)', () => {
     expect(matchConstraint(sv('true'), 'true')).toBe(true);
     expect(matchConstraint(sv('false'), 'false')).toBe(true);
     expect(matchConstraint(sv('true'), 'false')).toBe(false);
-    // Case mismatch without caseInsensitive option
-    expect(matchConstraint(sv('TRUE'), 'true')).toBe(true); // boolean comparison still works
-    expect(matchConstraint(sv('false'), 'FALSE')).toBe(true); // boolean comparison still works
+    // Uppercase or mixed-case literals are malformed per IDS spec.
+    expect(matchConstraint(sv('TRUE'), 'true')).toBe(false);
+    expect(matchConstraint(sv('false'), 'FALSE')).toBe(false);
   });
 
   it('returns false for null/undefined', () => {
@@ -132,8 +133,11 @@ describe('matchConstraint — pattern', () => {
     expect(matchConstraint(pat('[invalid'), 'test')).toBe(false);
   });
 
-  it('matches number converted to string', () => {
-    expect(matchConstraint(pat('[0-9]+\\.?[0-9]*'), 3.14)).toBe(true);
+  it('rejects pattern matches against numeric values per IDS spec', () => {
+    // Per IDS 1.0, patterns ONLY apply to string values — a numeric
+    // actual fails outright, even when the textual form would match.
+    expect(matchConstraint(pat('[0-9]+\\.?[0-9]*'), 3.14)).toBe(false);
+    expect(matchConstraint(pat('[0-9]+\\.?[0-9]*'), '3.14')).toBe(true);
   });
 });
 
@@ -232,11 +236,13 @@ describe('matchConstraint — bounds', () => {
     expect(matchConstraint(bounds({ minInclusive: 0, maxInclusive: 100 }), '50')).toBe(true);
   });
 
-  it('respects numeric tolerance at boundaries', () => {
-    // Value just barely below minInclusive but within tolerance
-    expect(matchConstraint(bounds({ minInclusive: 10 }), 10 - 0.5e-6)).toBe(true);
-    // Value beyond tolerance below minInclusive
-    expect(matchConstraint(bounds({ minInclusive: 10 }), 10 - 2e-6)).toBe(false);
+  it('uses strict comparison at boundaries (no implicit tolerance)', () => {
+    // Per upstream IfcOpenShell, bound checks compare strictly so a
+    // value just below `minInclusive` fails (mirrors fixture
+    // `tolerance/fail-comparison_tolerance_for_floating_point_range_greater_than_zero_inclusive`).
+    expect(matchConstraint(bounds({ minInclusive: 10 }), 10 - 0.5e-6)).toBe(false);
+    expect(matchConstraint(bounds({ minInclusive: 10 }), 10 - 2e-5)).toBe(false);
+    expect(matchConstraint(bounds({ minInclusive: 10 }), 10)).toBe(true);
   });
 
   it('no bounds specified accepts any number', () => {

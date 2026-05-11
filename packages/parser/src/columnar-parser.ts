@@ -99,6 +99,15 @@ export interface IfcDataStore {
      * Built from IfcRelAssociatesDocument relationships during parsing.
      */
     onDemandDocumentMap?: Map<number, number[]>;
+
+    /**
+     * Project-level length unit scale to convert raw IFC numeric measure
+     * values into base SI metres. `1.0` for metres, `0.001` for milli,
+     * `0.0254` for inches, etc. Surfaced on the store so consumers
+     * (notably the IDS validator, where IDS literals are always in
+     * base SI units) can convert without re-parsing the unit graph.
+     */
+    lengthUnitScale?: number;
 }
 
 
@@ -507,6 +516,7 @@ export class ColumnarParser {
             quantities: quantityTable,
             relationships: hierarchyRelGraph,
             spatialHierarchy,
+            lengthUnitScale,
         };
         options.onSpatialReady?.(earlyStore);
 
@@ -628,6 +638,7 @@ export class ColumnarParser {
             onDemandClassificationMap,
             onDemandMaterialMap,
             onDemandDocumentMap,
+            lengthUnitScale,
         };
     }
 
@@ -638,7 +649,7 @@ export class ColumnarParser {
     extractPropertiesOnDemand(
         store: IfcDataStore,
         entityId: number
-    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
+    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
         // Use on-demand extraction if map is available (preferred for single-entity access)
         if (!store.onDemandPropertyMap || !store.source?.length) {
             // Fallback to pre-computed property table (e.g., server-parsed data)
@@ -651,7 +662,7 @@ export class ColumnarParser {
         }
 
         const extractor = new EntityExtractor(store.source);
-        const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+        const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
 
         for (const psetId of psetIds) {
             const psetRef = getEntityRefFromStore(store, psetId);
@@ -665,7 +676,7 @@ export class ColumnarParser {
             const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
             const hasProperties = psetAttrs[4];
 
-            const properties: Array<{ name: string; type: number; value: PropertyValue }> = [];
+            const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
 
             if (Array.isArray(hasProperties)) {
                 for (const propRef of hasProperties) {
@@ -682,7 +693,14 @@ export class ColumnarParser {
                     if (!propName) continue;
 
                     const parsed = parsePropertyValue(propEntity);
-                    properties.push({ name: propName, type: parsed.type, value: parsed.value });
+                    const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
+                        name: propName,
+                        type: parsed.type,
+                        value: parsed.value,
+                    };
+                    if (parsed.values) entry.values = parsed.values;
+                    if (parsed.dataType) entry.dataType = parsed.dataType;
+                    properties.push(entry);
                 }
             }
 
@@ -770,7 +788,7 @@ export class ColumnarParser {
 export function extractPropertiesOnDemand(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
     const parser = new ColumnarParser();
     return parser.extractPropertiesOnDemand(store, entityId);
 }
@@ -833,7 +851,7 @@ export function extractEntityAttributesOnDemand(
 export function extractAllEntityAttributes(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; value: string }> {
+): Array<{ name: string; value: string | number | boolean }> {
     const ref = store.entityIndex.byId.get(entityId);
     if (!ref) return [];
 
@@ -844,23 +862,75 @@ export function extractAllEntityAttributes(
     const attrs = entity.attributes || [];
     // Use properly-cased type name from entity table (IfcTypeEnumToString)
     // instead of ref.type which is UPPERCASE from STEP (e.g., IFCWALLSTANDARDCASE)
-    // and breaks multi-word type normalization in getAttributeNames
-    const typeName = store.entities.getTypeName(entityId);
-    const attrNames = getAttributeNames(typeName || ref.type);
+    // and breaks multi-word type normalization in getAttributeNames.
+    // For resource-level entities (IfcTask, IfcTaskTime, IfcMaterial,
+    // IfcClassification, ...) the entity table returns 'Unknown';
+    // fall back to ref.type so the schema-driven attribute-name
+    // resolution still works for those types.
+    const tableName = store.entities.getTypeName(entityId);
+    const typeName = tableName && tableName !== 'Unknown' ? tableName : ref.type;
+    const attrNames = getAttributeNames(typeName);
 
-    const result: Array<{ name: string; value: string }> = [];
+    const result: Array<{ name: string; value: string | number | boolean }> = [];
     const len = Math.min(attrs.length, attrNames.length);
     for (let i = 0; i < len; i++) {
         const attrName = attrNames[i];
         if (SKIP_DISPLAY_ATTRS.has(attrName)) continue;
 
         const raw = attrs[i];
-        if (typeof raw === 'string' && raw) {
-            // Clean enum values: .NOTDEFINED. -> NOTDEFINED
+        // STEP `$` (unset) and `*` (derived) deserialize as null /
+        // undefined and must be skipped. Strings are emitted with
+        // `.ENUM.` markers stripped. Empty strings are preserved so
+        // IDS optional-attribute checks can distinguish "slot truly
+        // absent" from "slot explicitly empty". Numbers and booleans
+        // pass through unchanged so e.g. `CountValue = 0` reads as
+        // present.
+        if (typeof raw === 'string') {
+            // STEP logical-unknown markers (`.U.`, `.X.`) read as
+            // "no value" per IDS spec — they fail any attribute
+            // check, including a bare existence check, so don't
+            // surface them as if the slot were populated.
+            if (raw === '.U.' || raw === '.X.') continue;
+            // Bare boolean tokens (`.T.` / `.F.`) on a schema-typed
+            // IfcBoolean attribute slot — resolve to JS boolean so
+            // IDS checks comparing against `true` / `false` literals
+            // pass without case-sensitive string contortions.
+            if (raw === '.T.') {
+                result.push({ name: attrName, value: true });
+                continue;
+            }
+            if (raw === '.F.') {
+                result.push({ name: attrName, value: false });
+                continue;
+            }
             const display = raw.startsWith('.') && raw.endsWith('.')
                 ? raw.slice(1, -1)
                 : raw;
             result.push({ name: attrName, value: display });
+        } else if (typeof raw === 'number' || typeof raw === 'boolean') {
+            result.push({ name: attrName, value: raw });
+        } else if (Array.isArray(raw) && raw.length === 2) {
+            // Typed STEP values like IFCREAL(0.0), IFCBOOLEAN(.T.) —
+            // return the underlying primitive so attribute existence
+            // and value checks can compare it directly.
+            const inner = raw[1];
+            const tag = String(raw[0]).toUpperCase();
+            if (tag.includes('BOOLEAN')) {
+                result.push({ name: attrName, value: inner === '.T.' || inner === true });
+            } else if (tag.includes('LOGICAL')) {
+                if (inner === '.U.' || inner === '.X.') {
+                    // UNKNOWN logical → don't surface (treated as absent)
+                    continue;
+                }
+                result.push({ name: attrName, value: inner === '.T.' || inner === true });
+            } else if (typeof inner === 'number' || typeof inner === 'boolean') {
+                result.push({ name: attrName, value: inner });
+            } else if (typeof inner === 'string' && inner) {
+                const display = inner.startsWith('.') && inner.endsWith('.')
+                    ? inner.slice(1, -1)
+                    : inner;
+                result.push({ name: attrName, value: display });
+            }
         }
     }
 

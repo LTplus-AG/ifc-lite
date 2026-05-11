@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ids:ids 
+	xmlns:xs="http://www.w3.org/2001/XMLSchema" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+	xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" 
+	xmlns:ids="http://standards.buildingsmart.org/IDS">
+	<ids:info>
+		<ids:title/>
+	</ids:info>
+	<ids:specifications>
+		<ids:specification ifcVersion="IFC4" name="Specification #1">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="IFCWALL"/>
+							<xs:enumeration value="IfcDoor"/>
+						</xs:restriction>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:attribute>
+					<ids:name>
+						<ids:simpleValue>Name</ids:simpleValue>
+					</ids:name>
+				</ids:attribute>
+			</ids:requirements>
+		</ids:specification>
+	</ids:specifications>
+</ids:ids>

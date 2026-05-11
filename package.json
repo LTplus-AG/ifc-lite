@@ -32,6 +32,7 @@
     "test:api": "tsx --test \"tests/api/**/*.test.ts\"",
     "test:regression": "node scripts/test-geometry-regression.mjs",
     "test:esm": "node scripts/verify-esm-entrypoints.mjs",
+    "test:ids-corpus": "node scripts/test-ids-corpus.mjs",
     "typecheck": "turbo typecheck",
     "lint": "pnpm -r lint",
     "docs:serve": "python3 -m mkdocs serve",

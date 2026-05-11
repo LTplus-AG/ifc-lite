@@ -80,12 +80,12 @@ export class EntityNode {
    * Uses the IFC schema to determine attribute names per entity type.
    * Skips GlobalId (shown separately), OwnerHistory, and geometry references.
    */
-  allAttributes(): Array<{ name: string; value: string }> {
+  allAttributes(): Array<{ name: string; value: string | number | boolean }> {
     if (this.store.source && this.store.entityIndex) {
       return extractAllEntityAttributes(this.store, this.expressId);
     }
     // Fallback: return individually known attributes
-    const attrs: Array<{ name: string; value: string }> = [];
+    const attrs: Array<{ name: string; value: string | number | boolean }> = [];
     if (this.name) attrs.push({ name: 'Name', value: this.name });
     if (this.description) attrs.push({ name: 'Description', value: this.description });
     if (this.objectType) attrs.push({ name: 'ObjectType', value: this.objectType });

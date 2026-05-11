@@ -10,7 +10,7 @@
  * Extracted from useIfc.ts for better separation of concerns
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store.js';
 import {
@@ -377,6 +377,13 @@ export function useIfcFederation() {
     findModelForGlobalId: s.findModelForGlobalId,
   })));
 
+  // Per-call ownership token. Each addModel() bumps this; state writes
+  // (loading/error/progress) in the catch block must compare back to
+  // their captured value before mutating, so a cancelled load A doesn't
+  // overwrite progress for a newer load B that started after A's abort.
+  // Mirrors the same pattern in useIfcLoader.ts.
+  const loadSessionRef = useRef(0);
+
   /**
    * Add a model to the federation (multi-model support)
    * Uses FederationRegistry to assign unique ID offsets - BULLETPROOF against ID collisions
@@ -394,6 +401,10 @@ export function useIfcFederation() {
   ): Promise<string | null> => {
     const modelId = options?.modelId ?? crypto.randomUUID();
     const addStart = performance.now();
+    // Bump the per-call ownership token first so that any error path
+    // (including the load gate) can compare against this captured value
+    // before mutating shared loading/error/progress state.
+    const currentSession = ++loadSessionRef.current;
     // Memory-aware load gate: if a previous federation load is still in
     // flight on this tab and admitting this one would exceed the device
     // memory budget, wait until headroom frees. Single-file loads never
@@ -472,7 +483,7 @@ export function useIfcFederation() {
       // depends on persisting it onto the FederatedModel record.
       let pointCloudHandleId: number | undefined;
 
-      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
         const renderer = getGlobalRenderer();
         if (!renderer) {
           setError('Renderer not initialised — try again after the viewer mounts.');
@@ -493,11 +504,25 @@ export function useIfcFederation() {
           onProgress: setProgress,
           onAssetCountDelta: incCount,
         });
+        // Expose cancellation while the stream is in-flight. Capture
+        // the canceller as a named ref so the cleanup can verify the
+        // store still points at us before clearing — a second
+        // addModel() that began before this one settles must not lose
+        // its Cancel button to our finally block.
+        const { setActiveStreamCanceller } = useViewerStore.getState();
+        const cancelStream = () => ingest.streamHandle.cancel();
+        setActiveStreamCanceller(cancelStream);
         // ingest.done rejects on stream errors; ingestPointCloud's onError
         // callback already calls removePointCloudAsset + incCount(-1), so
         // the outer catch must NOT repeat that cleanup or the count goes
         // negative when other point clouds are still loaded.
-        await ingest.done;
+        try {
+          await ingest.done;
+        } finally {
+          if (useViewerStore.getState().activeStreamCanceller === cancelStream) {
+            setActiveStreamCanceller(null);
+          }
+        }
         parsedDataStore = ingest.dataStore;
         parsedGeometry = ingest.geometryResult;
         schemaVersion = ingest.schemaVersion;
@@ -663,9 +688,28 @@ export function useIfcFederation() {
       return modelId;
 
     } catch (err) {
+      // Only mutate shared loading/error/progress state if our session
+      // is still the active one. A second addModel() that started after
+      // we were cancelled has already taken over the spinner — we must
+      // not overwrite it with our "Cancelled" state.
+      const isCurrent = loadSessionRef.current === currentSession;
+      // User-initiated cancel surfaces as an AbortError. Map it to a
+      // benign "Cancelled" state so the federated path matches the
+      // single-model loader rather than reporting a parse failure.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        console.log('[useIfc] addModel cancelled by user');
+        if (isCurrent) {
+          setError(null);
+          setProgress({ phase: 'Cancelled', percent: 0 });
+          setLoading(false);
+        }
+        return null;
+      }
       console.error('[useIfc] addModel failed:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setLoading(false);
+      if (isCurrent) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+        setLoading(false);
+      }
       return null;
     } finally {
       releaseFederationLoadSlot(gateSlot);

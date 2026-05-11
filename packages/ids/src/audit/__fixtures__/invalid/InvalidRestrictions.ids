@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+	<ids:info>
+		<ids:title>Example of property</ids:title>
+		<ids:copyright>Claudio Benghi</ids:copyright>
+		<ids:date>2023-04-12</ids:date>
+	</ids:info>
+	<ids:specifications>
+		<ids:specification name="Wall with common property" ifcVersion="IFC2X3">
+			<ids:applicability maxOccurs="unbounded">
+        <ids:property dataType="IFCLABEL">
+          <ids:propertySet>
+            <!-- this is not enough, ok -->
+            <xs:restriction />
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="MYPSET"/>
+            </xs:restriction>
+          </ids:baseName>
+        </ids:property>
+      </ids:applicability>
+			<ids:requirements>
+				<ids:property dataType="IFCLABEL">
+          <!-- this is required, and cannot be empty, ok via schema -->
+					<ids:propertySet />
+          <ids:baseName>
+            <ids:simpleValue>AcousticRating</ids:simpleValue>
+          </ids:baseName>
+        </ids:property>
+			</ids:requirements>
+		</ids:specification>
+		<ids:specification name="IFCACTUATORTYPE with measure property" ifcVersion="IFC2X3">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<ids:simpleValue>IFCACTUATORTYPE</ids:simpleValue>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:property dataType="IFCPOWERMEASURE">
+					<ids:propertySet>
+						<ids:simpleValue>Pset_ActuatorTypeElectricActuator</ids:simpleValue>
+					</ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string">
+              <xs:totalDigits value="10" />
+            </xs:restriction>
+					</ids:baseName>
+				</ids:property>
+			</ids:requirements>
+		</ids:specification>
+	</ids:specifications>
+</ids:ids>

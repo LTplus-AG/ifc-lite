@@ -120,6 +120,14 @@ export interface HoverState {
   entityId: number | null;
   screenX: number;
   screenY: number;
+  /**
+   * World-space hit position from the GPU pick (depth readback +
+   * inverse view-projection). Unset when the picker couldn't recover
+   * one (e.g. `pointCount === 0` clear, or the pick fell on the
+   * background). Useful for point-cloud hover tooltips where the
+   * synthetic entity has no surface property to display.
+   */
+  worldXYZ?: { x: number; y: number; z: number };
 }
 
 export interface ContextMenuState {

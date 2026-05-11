@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "1.17.0",
+  "version": "1.17.1",
   "description": "Geometry processing bridge for IFC-Lite - 1.9x faster than web-ifc",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc && node -e \"const f='dist/index.js';require('fs').writeFileSync(f,require('fs').readFileSync(f,'utf8').replace(/geometry\\.worker\\.ts/g,'geometry.worker.js'))\"",
+    "build": "pnpm exec tsc && node -e \"const fs=require('fs');for(const f of fs.readdirSync('dist'))if(f.endsWith('.js')){const p='dist/'+f;fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace(/\\.worker\\.ts/g,'.worker.js'))}\"",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },

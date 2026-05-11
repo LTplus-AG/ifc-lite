@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+	<info>
+		<title>Example on use of attributes (for student research)</title>
+		<copyright>buildingSMART International Ltd</copyright>
+		<date>2022-01-12</date>
+	</info>
+	<specifications>
+		<!-- should fail because IfcRelNests cannot be child of an IFC2DCOMPOSITECURVE -->
+		<specification ifcVersion="IFC2X3" name="Aachen test">
+			<applicability maxOccurs="unbounded">
+				<entity>
+					<name>
+						<simpleValue>IFCWALL</simpleValue>
+					</name>
+				</entity>
+			</applicability>
+			
+      <requirements>
+        
+        <!-- optional material must have valid value, this is not ok -->
+				<material cardinality="optional"> 
+					<value>
+						<simpleValue></simpleValue>
+					</value>
+				</material >
+
+        <!-- optional material must have valid value, this is not ok -->
+        <material cardinality="optional" />
+
+        <!-- if not required, then any value is valid, this is ok -->
+        <material  />
+          
+			</requirements>
+		</specification>
+	</specifications>
+</ids>

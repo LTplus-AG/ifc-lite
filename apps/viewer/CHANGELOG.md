@@ -1,5 +1,106 @@
 # @ifc-lite/viewer
 
+## 1.19.2
+
+### Patch Changes
+
+- [#622](https://github.com/louistrue/ifc-lite/pull/622) [`28db7df`](https://github.com/louistrue/ifc-lite/commit/28db7df0fa64dc8cab0d08f4948fb1d9b67e0f70) Thanks [@louistrue](https://github.com/louistrue)! - Cesium overlay: precomputed terrain placement, ground-floor clamping,
+  and a refactored camera path.
+
+  **Placement is now resolved before the bridge is built** (no more
+  "model loads at IFC OrthogonalHeight, then jumps to terrain"):
+
+  - `terrain-elevation.ts` (new module) tries sources in fast-first
+    order — sync `globe.getHeight`, sync `scene.sampleHeight`, async
+    `scene.sampleHeightMostDetailed` with a 3.5 s timeout, then
+    Open-Meteo as a bare-earth fallback. Implausible elevations
+    (e.g. depth-buffer noise from Google Photorealistic 3D Tiles
+    returning `-69184 m`) are range-checked against terrestrial bounds.
+    Results are cached per-session via `clearTerrainElevationCache()`.
+  - `sampleHeightMostDetailed` runs _before_ Open-Meteo so the model
+    lands on the same surface the user actually sees in 3D Tiles
+    (street decks, podiums) rather than the bare-earth DEM.
+  - `createCesiumBridge` accepts a `placementHeightOverride` so the
+    computed placement is baked into the `enuToEcef` origin altitude
+    for both camera frame and model matrix from creation.
+
+  **`findClampAnchorY` (new helper, 9 unit tests)** picks the anchor
+  viewer-Y that auto-clamp pins to terrain. Primary: the
+  `IfcBuildingStorey` whose elevation is closest to 0 (ground floor),
+  within the model AABB. Fallback: `bounds.min.y`. Without this,
+  basements and foundations dragged the model deep below the terrain
+  surface.
+
+  **`oHeightForBaseAltitude`** in the Georeferencing panel now mirrors
+  the auto-clamp formula (anchor-aware, shift- and RTC-aware), so the
+  "Set OrthogonalHeight to Cesium terrain elevation" button produces
+  the same world position as toggling the clamp.
+
+  **UX behaviours**
+
+  - `cesiumTerrainClamp` defaults to `true` (slice + reset path).
+  - Clamp toggle is now actually uncheckable — dropped the auto-toggle
+    branch that fought the user's setting.
+  - Editing OrthogonalHeight directly auto-releases the clamp so the
+    edit takes effect (with clamp on, placement is intentionally
+    terrain-anchored regardless of OrthogonalHeight).
+  - Stale `terrainHeight` / `terrainClipY` are cleared when a re-query
+    fails so the clip plane doesn't drift relative to the new bridge.
+  - Effect 2d depends on `bridgeVersion` so the model matrix refreshes
+    after an async bridge rebuild.
+
+  **Camera navigation refactor.** Reported symptom: orbit/zoom
+  restricted to the terrain plane. Two coupled root causes:
+
+  1. `screenSpaceCameraController.enableInputs` was still default-true.
+     Any input slipping past the overlay's `pointer-events: none`
+     reached Cesium and got processed in the locked frame, fighting
+     our externally-driven pose. Now flipped to `false` (master kill-
+     switch) on top of the per-mode flags.
+  2. `syncCamera` used `lookAtTransform(viewerToEcef)` to write
+     position/direction/up in viewer-space. `lookAtTransform` _locks_
+     Cesium's reference frame; rotate/tilt/zoom operations are then
+     constrained to that local frame — the "stuck to terrain plane"
+     behaviour. Refactored to clear `lookAtTransform` with
+     `Matrix4.IDENTITY` and write position/direction/up directly in
+     ECEF (Cesium's RTC handles shader precision for primitives).
+
+  **Network hygiene.** `queryTerrainElevation` (Open-Meteo) gets a 5 s
+  `AbortController` timeout and a `console.warn` so failures are
+  visible instead of silently swallowed.
+
+- [#622](https://github.com/louistrue/ifc-lite/pull/622) [`28db7df`](https://github.com/louistrue/ifc-lite/commit/28db7df0fa64dc8cab0d08f4948fb1d9b67e0f70) Thanks [@louistrue](https://github.com/louistrue)! - Apply IfcMapConversion.Scale per IFC schema (issue #595).
+
+  Scale converts local engineering coordinates (in the project length unit)
+  to map CRS units (e.g. `0.001` for a millimetre project with a metre map).
+  ifc-lite's geometry pipeline already converts vertices to metres during
+  extraction, so applying the raw Scale to viewer-space coordinates double-
+  scaled the model — making the Cesium 3D world context unusable for files
+  authored per spec.
+
+  Introduces `getEffectiveHorizontalScale(scale, mapUnitScale, lengthUnitScale)`
+  which returns `(scale × mapUnitScale) / lengthUnitScale` — the correct
+  multiplier for metre-converted geometry. For files where Scale is set
+  consistently with the unit difference this evaluates to 1.0 and the
+  geometry passes through unchanged. Wired through:
+
+  - `cesium-bridge.ts` — 3D model origin and the viewer→ENU rotation.
+  - `CesiumOverlay.tsx::buildModelMatrix` — GLB placement.
+  - `reproject.ts` — 2D map centre, footprint, and reverse-pick.
+  - `useIfcFederation.ts` — multi-model alignment transform.
+
+  Adds a visible amber warning in the Georeferencing panel when
+  `Scale × mapUnitScale ≠ lengthUnitScale` (the IFC schema invariant) so
+  authoring errors are discoverable. The warning surfaces both inline (in
+  the expanded Coordinate Operation section) and as a small indicator on
+  the collapsed section header.
+
+- Updated dependencies [[`7c85376`](https://github.com/louistrue/ifc-lite/commit/7c853760ef96e6f0f88ebdc29c17aefae724ff43), [`7c85376`](https://github.com/louistrue/ifc-lite/commit/7c853760ef96e6f0f88ebdc29c17aefae724ff43), [`5439cce`](https://github.com/louistrue/ifc-lite/commit/5439cce34edaff1c050ce8975a330163167df6fd)]:
+  - @ifc-lite/data@1.16.0
+  - @ifc-lite/ids@1.15.0
+  - @ifc-lite/geometry@1.17.1
+  - @ifc-lite/lists@1.14.11
+
 ## 1.19.1
 
 ### Patch Changes

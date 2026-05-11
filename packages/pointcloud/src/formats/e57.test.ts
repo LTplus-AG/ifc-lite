@@ -165,18 +165,146 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.bbox).toEqual({ min: [1.5, 2.5, -3.5], max: [7.0, 8.0, 9.0] });
   });
 
-  it('throws clearly when prototype uses ScaledInteger for cartesian fields', () => {
+  it('accepts a fully-packed packet (bytestreams fill the packet exactly)', () => {
+    // Regression for the false-positive packet-bounds guard that
+    // assumed a 4-byte trailing CRC inside each DataPacket. CRCs are
+    // page-level, not packet-level, so real exporters (Faro Focus,
+    // Leica BLK) emit packets where the last bytestream ends at
+    // `offset + packetLogicalLength` exactly. With the old guard
+    // those packets failed with "bytestream X runs past packet payload".
+    const numPoints = 3;
+    const lenF64 = numPoints * 8;
+    const lengths = [lenF64, lenF64, lenF64];
+    const totalPayload = lengths.reduce((a, b) => a + b, 0);
+    const headerBytes = 4 + 2 + 3 * 2;
+    // No trailing slack: packet = header + payload, bytestreams fill it.
+    const packetSize = headerBytes + totalPayload;
+    const buf = new ArrayBuffer(packetSize);
+    const view = new DataView(buf);
+    view.setUint8(0, 1);
+    view.setUint8(1, 0);
+    view.setUint16(2, packetSize - 1, true);
+    view.setUint16(4, 3, true);
+    for (let i = 0; i < 3; i++) view.setUint16(6 + i * 2, lengths[i], true);
+    let cursor = headerBytes;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, i + 1, true);
+    cursor += lenF64;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, i + 10, true);
+    cursor += lenF64;
+    for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, i + 100, true);
+
     const entry: Data3DEntry = {
       guid: 'test',
-      recordCount: 0,
+      recordCount: numPoints,
       binaryFileOffset: 0,
       prototype: [
-        { name: 'cartesianX', kind: 'ScaledInteger', scale: 0.001, offset: 0, minimum: 0, maximum: 1 },
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
         { name: 'cartesianY', kind: 'Float', precision: 'double' },
         { name: 'cartesianZ', kind: 'Float', precision: 'double' },
       ],
     };
-    expect(() => decodeE57Scan(new Uint8Array(0), entry)).toThrow(/ScaledInteger/);
+    const chunk = decodeE57Scan(new Uint8Array(buf), entry);
+    expect(chunk.pointCount).toBe(3);
+    expect(Array.from(chunk.positions)).toEqual([1, 10, 100, 2, 11, 101, 3, 12, 102]);
+  });
+
+  it('decodes ScaledInteger cartesian streams (bit-packed integer codec)', () => {
+    // Synthetic 2-point packet, bitsPerRecord=8 per axis (span = 255):
+    //   minimum=-100, maximum=155, scale=0.01, offset=0
+    //   bitsPerRecord = ceil(log2(255 - (-100) + 1)) = ceil(log2(256)) = 8
+    // For each point we pack `raw_int = original - minimum` into the
+    // bytestream; decoded float = (raw_int + minimum) * scale + offset.
+    const buf = new ArrayBuffer(22);
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+
+    view.setUint8(0, 1);              // packetType = data
+    view.setUint8(1, 0);              // flags
+    view.setUint16(2, 21, true);      // packetLogicalLength - 1 (total = 22)
+    view.setUint16(4, 3, true);       // bytestreamCount
+    view.setUint16(6, 2, true);       // X bytestream length
+    view.setUint16(8, 2, true);       // Y bytestream length
+    view.setUint16(10, 2, true);      // Z bytestream length
+
+    // X: point0 raw=50 (→ −0.5), point1 raw=100 (→ 0.0)
+    bytes[12] = 50;
+    bytes[13] = 100;
+    // Y: point0 raw=110 (→ 0.10), point1 raw=120 (→ 0.20)
+    bytes[14] = 110;
+    bytes[15] = 120;
+    // Z: point0 raw=200 (→ 1.00), point1 raw=255 (→ 1.55)
+    bytes[16] = 200;
+    bytes[17] = 255;
+    // bytes[18..21] = trailing 4-byte CRC (ignored)
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 2,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+        { name: 'cartesianY', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+        { name: 'cartesianZ', kind: 'ScaledInteger', scale: 0.01, offset: 0, minimum: -100, maximum: 155 },
+      ],
+    };
+    const chunk = decodeE57Scan(bytes, entry);
+    expect(chunk.pointCount).toBe(2);
+    expect(chunk.positions[0]).toBeCloseTo(-0.5, 5);
+    expect(chunk.positions[1]).toBeCloseTo(0.10, 5);
+    expect(chunk.positions[2]).toBeCloseTo(1.00, 5);
+    expect(chunk.positions[3]).toBeCloseTo(0.0, 5);
+    expect(chunk.positions[4]).toBeCloseTo(0.20, 5);
+    expect(chunk.positions[5]).toBeCloseTo(1.55, 5);
+  });
+
+  it('decodes ScaledInteger streams with bitsPerRecord that crosses byte boundaries', () => {
+    // bitsPerRecord = 12 for X (min=0, max=4095). Two 12-bit values
+    // pack into 3 bytes LSB-first: [0xABC, 0xDEF] → [0xBC, 0xFA, 0xDE]
+    //   byte 0 = value0 & 0xFF                          = 0xBC
+    //   byte 1 = (value0 >> 8) | ((value1 & 0xF) << 4)  = 0xA | 0xF0 = 0xFA
+    //   byte 2 = value1 >> 4                            = 0xDE
+    // Y and Z use 4-bit packing (two values per byte) to keep the
+    // packet compact. Three bytestreams are required because
+    // decodeE57Scan demands all three cartesian axes.
+    const fullLen = 4 + 2 + 2*3 + 3 + 1 + 1 + 4;
+    const fullBuf = new ArrayBuffer(fullLen);
+    const fv = new DataView(fullBuf);
+    const fb = new Uint8Array(fullBuf);
+    fv.setUint8(0, 1);
+    fv.setUint8(1, 0);
+    fv.setUint16(2, fullLen - 1, true);
+    fv.setUint16(4, 3, true);
+    fv.setUint16(6, 3, true);  // X length (3 bytes for 2×12-bit values)
+    fv.setUint16(8, 1, true);  // Y length (1 byte, bitsPerRecord=4 covers 2 values)
+    fv.setUint16(10, 1, true); // Z length
+    fb[12] = 0xBC;
+    fb[13] = 0xFA;
+    fb[14] = 0xDE;
+    fb[15] = 0x32; // Y: low nibble = 2, high nibble = 3 (LSB first)
+    fb[16] = 0x54; // Z: low nibble = 4, high nibble = 5
+
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 2,
+      binaryFileOffset: 0,
+      prototype: [
+        // X: 12-bit, raw bytes pack [0xBC, 0xFA, 0xDE] → [0xABC, 0xDEF]
+        { name: 'cartesianX', kind: 'ScaledInteger', scale: 1, offset: 0, minimum: 0, maximum: 4095 },
+        // Y: 4-bit, raw [0x2, 0x3]
+        { name: 'cartesianY', kind: 'ScaledInteger', scale: 1, offset: 0, minimum: 0, maximum: 15 },
+        // Z: 4-bit, raw [0x4, 0x5]
+        { name: 'cartesianZ', kind: 'ScaledInteger', scale: 1, offset: 0, minimum: 0, maximum: 15 },
+      ],
+    };
+    const chunk = decodeE57Scan(fb, entry);
+    expect(chunk.pointCount).toBe(2);
+    // (raw + minimum) * scale + offset, with min=0 scale=1 offset=0 → raw
+    expect(chunk.positions[0]).toBe(0xABC);
+    expect(chunk.positions[1]).toBe(0x2);
+    expect(chunk.positions[2]).toBe(0x4);
+    expect(chunk.positions[3]).toBe(0xDEF);
+    expect(chunk.positions[4]).toBe(0x3);
+    expect(chunk.positions[5]).toBe(0x5);
   });
 });
 
@@ -239,7 +367,7 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
     expect(() => parseE57Xml('<other/>')).toThrow(/e57Root/);
   });
 
-  it('flags scans that carry a <pose> child so multi-scan rejection can fire', () => {
+  it('extracts <pose> rotation + translation when present', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <e57Root type="Structure">
   <data3D type="Vector">
@@ -250,8 +378,8 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
         </prototype>
       </points>
       <pose type="Structure">
-        <rotation type="Structure"><w type="Float">1</w><x type="Float">0</x><y type="Float">0</y><z type="Float">0</z></rotation>
-        <translation type="Structure"><x type="Float">10</x><y type="Float">0</y><z type="Float">0</z></translation>
+        <rotation type="Structure"><w type="Float">0.7071067811865476</w><x type="Float">0</x><y type="Float">0</y><z type="Float">0.7071067811865476</z></rotation>
+        <translation type="Structure"><x type="Float">10</x><y type="Float">3.5</y><z type="Float">-2</z></translation>
       </pose>
     </vectorChild>
     <vectorChild type="Structure">
@@ -265,8 +393,42 @@ describe('parseE57Xml (worker-safe; no DOMParser dependency)', () => {
 </e57Root>`;
     const entries = parseE57Xml(xml);
     expect(entries).toHaveLength(2);
-    expect(entries[0].hasPose).toBe(true);
-    expect(entries[1].hasPose).toBe(false);
+    expect(entries[0].pose).toBeDefined();
+    expect(entries[0].pose!.rotation.w).toBeCloseTo(0.7071, 3);
+    expect(entries[0].pose!.rotation.z).toBeCloseTo(0.7071, 3);
+    expect(entries[0].pose!.translation.x).toBe(10);
+    expect(entries[0].pose!.translation.y).toBe(3.5);
+    expect(entries[0].pose!.translation.z).toBe(-2);
+    expect(entries[1].pose).toBeUndefined();
+  });
+});
+
+describe('applyPoseInPlace', () => {
+  it('rotates 90° around Z + translates per the unit-quaternion convention', async () => {
+    const { applyPoseInPlace } = await import('./e57.js');
+    // 90° rotation around +Z: q = (cos(45°), 0, 0, sin(45°))
+    // (1, 0, 0) → (0, 1, 0); then translate (10, 0, 0) → (10, 1, 0)
+    const positions = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    applyPoseInPlace(positions, 3, {
+      rotation: { w: Math.SQRT1_2, x: 0, y: 0, z: Math.SQRT1_2 },
+      translation: { x: 10, y: 0, z: 0 },
+    });
+    // Float32 lossy → use closeTo
+    expect(positions[0]).toBeCloseTo(10, 5);  expect(positions[1]).toBeCloseTo(1, 5);  expect(positions[2]).toBeCloseTo(0, 5);
+    expect(positions[3]).toBeCloseTo(9, 5);   expect(positions[4]).toBeCloseTo(0, 5);  expect(positions[5]).toBeCloseTo(0, 5);
+    expect(positions[6]).toBeCloseTo(10, 5);  expect(positions[7]).toBeCloseTo(0, 5);  expect(positions[8]).toBeCloseTo(1, 5);
+  });
+
+  it('identity quaternion + zero translation is a no-op', async () => {
+    const { applyPoseInPlace } = await import('./e57.js');
+    const positions = new Float32Array([1.5, 2.5, 3.5]);
+    applyPoseInPlace(positions, 1, {
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
+      translation: { x: 0, y: 0, z: 0 },
+    });
+    expect(positions[0]).toBeCloseTo(1.5, 5);
+    expect(positions[1]).toBeCloseTo(2.5, 5);
+    expect(positions[2]).toBeCloseTo(3.5, 5);
   });
 });
 

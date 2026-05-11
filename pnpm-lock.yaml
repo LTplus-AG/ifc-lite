@@ -786,6 +786,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:*
         version: link:../data
+      '@ifc-lite/parser':
+        specifier: workspace:*
+        version: link:../parser
       '@xmldom/xmldom':
         specifier: ^0.9.10
         version: 0.9.10

@@ -272,7 +272,7 @@ describe('extractMaterialsOnDemand', () => {
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
     expect(result!.type).toBe('MaterialList');
-    expect(result!.materials).toEqual(['Wood', 'Glass']);
+    expect(result!.materials).toEqual([{ name: 'Wood' }, { name: 'Glass' }]);
   });
 
   it('should follow IfcMaterialLayerSetUsage to IfcMaterialLayerSet', () => {

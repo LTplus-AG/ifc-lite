@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ids",
-  "version": "1.14.11",
+  "version": "1.15.0",
   "description": "IDS (Information Delivery Specification) support for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,6 +9,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./bridge": {
+      "import": "./dist/bridge/index.js",
+      "types": "./dist/bridge/index.d.ts"
     }
   },
   "scripts": {
@@ -18,6 +22,7 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:*",
+    "@ifc-lite/parser": "workspace:*",
     "@xmldom/xmldom": "^0.9.10"
   },
   "devDependencies": {

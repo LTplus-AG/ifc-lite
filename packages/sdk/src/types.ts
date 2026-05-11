@@ -102,7 +102,7 @@ export interface QuantityData {
 
 export interface EntityAttributeData {
   name: string;
-  value: string;
+  value: string | number | boolean;
 }
 
 export interface ClassificationData {
@@ -139,10 +139,11 @@ export interface MaterialData {
   type: 'Material' | 'MaterialLayerSet' | 'MaterialProfileSet' | 'MaterialConstituentSet' | 'MaterialList';
   name?: string;
   description?: string;
+  category?: string;
   layers?: MaterialLayerData[];
   profiles?: MaterialProfileData[];
   constituents?: MaterialConstituentData[];
-  materials?: string[];
+  materials?: Array<{ name: string; category?: string }>;
 }
 
 export interface TypePropertiesData {

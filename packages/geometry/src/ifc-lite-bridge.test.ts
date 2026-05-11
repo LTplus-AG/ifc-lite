@@ -6,16 +6,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wasmMocks = vi.hoisted(() => {
   const parseMeshes = vi.fn();
+  const setMergeLayers = vi.fn();
 
   class MockIfcAPI {
     parseMeshes(content: string) {
       return parseMeshes(content);
+    }
+    setMergeLayers(enabled: boolean) {
+      return setMergeLayers(enabled);
     }
   }
 
   return {
     init: vi.fn(async () => undefined),
     parseMeshes,
+    setMergeLayers,
     MockIfcAPI,
   };
 });
@@ -31,6 +36,30 @@ describe('IfcLiteBridge', () => {
   beforeEach(() => {
     wasmMocks.init.mockClear();
     wasmMocks.parseMeshes.mockReset();
+    wasmMocks.setMergeLayers.mockReset();
+  });
+
+  it('forwards setMergeLayers to the WASM API after init', async () => {
+    const bridge = new IfcLiteBridge();
+    await bridge.init();
+
+    bridge.setMergeLayers(true);
+    expect(bridge.getMergeLayers()).toBe(true);
+    expect(wasmMocks.setMergeLayers).toHaveBeenCalledWith(true);
+
+    bridge.setMergeLayers(false);
+    expect(bridge.getMergeLayers()).toBe(false);
+    expect(wasmMocks.setMergeLayers).toHaveBeenLastCalledWith(false);
+  });
+
+  it('caches setMergeLayers calls made before init and replays on init', async () => {
+    const bridge = new IfcLiteBridge();
+    bridge.setMergeLayers(true);
+    expect(wasmMocks.setMergeLayers).not.toHaveBeenCalled();
+    expect(bridge.getMergeLayers()).toBe(true);
+
+    await bridge.init();
+    expect(wasmMocks.setMergeLayers).toHaveBeenCalledWith(true);
   });
 
   it('blocks in-process reinitialization after a fatal wasm runtime error', async () => {

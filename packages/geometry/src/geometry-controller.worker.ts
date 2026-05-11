@@ -43,6 +43,7 @@ import type {
   GeometryWorkerStreamEndMessage,
   GeometryWorkerSetStylesMessage,
   GeometryWorkerSetEntityIndexMessage,
+  GeometryWorkerSetMergeLayersMessage,
   GeometryWorkerPrePassMessage,
   GeometryWorkerBatchMessage,
   GeometryWorkerCompleteMessage,
@@ -59,6 +60,7 @@ export type GeometryControllerRequest =
   | GeometryWorkerStreamEndMessage
   | GeometryWorkerSetStylesMessage
   | GeometryWorkerSetEntityIndexMessage
+  | GeometryWorkerSetMergeLayersMessage
   | GeometryWorkerPrePassMessage;
 
 export type GeometryControllerResponse =
@@ -69,6 +71,26 @@ export type GeometryControllerResponse =
 
 let api: IfcAPI | null = null;
 let threadPoolReady = false;
+
+/**
+ * Cached merge-layers flag (issue #540). The host may post
+ * `set-merge-layers` BEFORE `init`, so we remember the latest value
+ * and re-apply once the threaded IfcAPI is constructed.
+ */
+let mergeLayersFlag: boolean = false;
+let mergeLayersApplied: boolean = false;
+
+/** Narrow typed wrapper for the optional `setMergeLayers` extension. */
+type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
+
+function applyMergeLayersToApi(): void {
+  if (!api || mergeLayersApplied) return;
+  const merging = api as IfcAPIWithMerge;
+  if (typeof merging.setMergeLayers === 'function') {
+    merging.setMergeLayers(mergeLayersFlag);
+  }
+  mergeLayersApplied = true;
+}
 
 /**
  * Per-load processing session — same shape as `geometry.worker.ts`'s
@@ -278,6 +300,8 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
           await init();
         }
         api = new IfcAPI();
+        mergeLayersApplied = false;
+        applyMergeLayersToApi();
 
         // Spin up the rayon thread pool. Per the design (and upstream
         // guidance from issue #36), call from inside this worker (NOT
@@ -387,6 +411,17 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
         activeSession.voidKeys = e.data.voidKeys;
         activeSession.voidCounts = e.data.voidCounts;
         activeSession.voidValues = e.data.voidValues;
+        return;
+      }
+
+      if (e.data.type === 'set-merge-layers') {
+        // Cache the requested merge-layers flag (issue #540). The
+        // host may post this BEFORE `init` (rare but legal); if so
+        // we just hold onto the value and the `init` branch above
+        // applies it to the newly-constructed API.
+        mergeLayersFlag = e.data.enabled === true;
+        mergeLayersApplied = false;
+        applyMergeLayersToApi();
         return;
       }
 

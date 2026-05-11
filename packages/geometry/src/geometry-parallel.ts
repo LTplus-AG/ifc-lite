@@ -65,6 +65,14 @@ export interface ProcessParallelOptions {
    *     bundle fails to load (no COI, Safari, etc.).
    */
   useSingleController?: boolean;
+  /**
+   * Issue #540 — "Merge Multilayer Walls" load-time toggle. When
+   * `true`, the geometry workers' IfcAPI receive
+   * `setMergeLayers(true)` before the first stream-chunk lands, so
+   * Revit-style multilayer-wall part meshes are suppressed at the
+   * Rust layer. Default `false` keeps existing behaviour.
+   */
+  mergeLayers?: boolean;
 }
 
 export async function* processParallel(
@@ -274,6 +282,17 @@ export async function* processParallel(
     // worker's tail-promise serialiser guarantees this `init` completes
     // before any subsequent `stream-start`/`stream-chunk` runs.
     worker.postMessage({ type: 'init' });
+    // Issue #540: forward the user's "Merge Multilayer Walls" toggle
+    // BEFORE any stream-start so the worker's IfcAPI has the flag set
+    // before its first parse call. The tail-promise serialiser inside
+    // each worker preserves this order even though the messages are
+    // posted back-to-back. We always send the message so the controller
+    // path doesn't have to remember whether the host called it — the
+    // default `false` is a cheap no-op.
+    worker.postMessage({
+      type: 'set-merge-layers',
+      enabled: options?.mergeLayers === true,
+    });
   }
 
   const sendStreamEnd = () => {

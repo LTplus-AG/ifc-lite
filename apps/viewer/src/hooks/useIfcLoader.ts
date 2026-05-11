@@ -685,9 +685,14 @@ export function useIfcLoader() {
         setIfcDataStore(null);
         setProgress({ phase: 'Starting native geometry streaming', percent: 10 });
 
+        // Snapshot the user's "Merge Multilayer Walls" preference once
+        // at load time — flipping the toggle mid-stream cannot affect
+        // an in-flight WASM pipeline, the reload banner handles that.
+        const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
         const geometryProcessor = new GeometryProcessor({
           quality: GeometryQuality.Balanced,
           preferNative: true,
+          mergeLayers: mergeLayersAtLoad,
         });
 
         let estimatedTotal = 0;
@@ -1816,9 +1821,13 @@ export function useIfcLoader() {
         && file.size < HUGE_NATIVE_FILE_THRESHOLD;
 
       // Initialize geometry processor first (WASM init is fast if already loaded)
+      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
         preferNative: false,
+        // Issue #540: snapshot at load time so the WASM bridge applies
+        // the flag before the first parseMeshes* call.
+        mergeLayers: mergeLayersAtLoad,
       });
       await geometryProcessor.init();
 

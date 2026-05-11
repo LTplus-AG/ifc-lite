@@ -91,6 +91,13 @@ interface ByteStreamingPrePassResult {
 export interface GeometryProcessorOptions {
   quality?: GeometryQuality; // Default: Balanced
   preferNative?: boolean; // Default: true in Tauri
+  /**
+   * When true, the underlying IFC-Lite WASM API merges Revit-style
+   * multilayer walls — `IfcBuildingElementPart` meshes whose parent
+   * wall is sliceable are suppressed. Default `false` keeps the
+   * existing per-layer rendering behaviour. See issue #540.
+   */
+  mergeLayers?: boolean;
 }
 
 /**
@@ -175,16 +182,23 @@ export class GeometryProcessor {
   private coordinateHandler: CoordinateHandler;
   private isNative: boolean = false;
   private lastNativeStats: PlatformGeometryStats | null = null;
+  private mergeLayers: boolean;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
     this.coordinateHandler = new CoordinateHandler();
     this.isNative = options.preferNative !== false && isTauri();
+    this.mergeLayers = options.mergeLayers === true;
     // Note: options accepted for API compatibility
     void options.quality;
 
     if (!this.isNative) {
       this.bridge = new IfcLiteBridge();
+      // Cache the merge-layers flag on the bridge eagerly — if init()
+      // hasn't run yet the bridge stores the value and replays it on
+      // the freshly-built IfcAPI. Existing call sites can opt in
+      // simply by passing { mergeLayers: true } into the constructor.
+      this.bridge.setMergeLayers(this.mergeLayers);
     }
   }
 
@@ -307,7 +321,7 @@ export class GeometryProcessor {
     // both Firefox and Chromium reject in raw `TextDecoder.decode`.
     const content = safeUtf8Decode(buffer);
 
-    const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content);
+    const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content, { mergeLayers: this.mergeLayers });
     const meshes = collector.collectMeshes();
     const buildingRotation = collector.getBuildingRotation();
 
@@ -638,7 +652,7 @@ export class GeometryProcessor {
 
       yield { type: 'model-open', modelID: 0 };
 
-      const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content);
+      const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content, { mergeLayers: this.mergeLayers });
       let totalMeshes = 0;
       let extractedBuildingRotation: number | undefined = undefined;
 
@@ -781,7 +795,7 @@ export class GeometryProcessor {
     // Use a placeholder model ID (IFC-Lite doesn't use model IDs)
     yield { type: 'model-open', modelID: 0 };
 
-    const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content);
+    const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content, { mergeLayers: this.mergeLayers });
     let totalGeometries = 0;
     let totalInstances = 0;
 
@@ -865,6 +879,10 @@ export class GeometryProcessor {
     yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab, {
       onEntityIndex,
       useSingleController,
+      // Issue #540: forward the merge-layers preference snapshotted
+      // at construction time. processParallel posts `set-merge-layers`
+      // to every spawned worker right after `init`.
+      mergeLayers: this.mergeLayers,
     });
   }
 
@@ -935,7 +953,7 @@ export class GeometryProcessor {
       } else {
         // WASM PATH (SAB-safe).
         const content = safeUtf8Decode(buffer);
-        const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content);
+        const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content, { mergeLayers: this.mergeLayers });
         allMeshes = collector.collectMeshes();
       }
 

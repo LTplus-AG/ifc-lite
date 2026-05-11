@@ -100,7 +100,25 @@ impl IfcAPI {
 
         // Propagate voids from aggregate parents (IfcWall) to children (IfcBuildingElementPart)
         // so that multilayer wall parts also get window/door cutouts.
-        ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, &content, &mut decoder);
+        // Also collects the part → parent map used for the merge-layers toggle (#540).
+        let part_to_parent =
+            ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, &content, &mut decoder);
+
+        // Build the skip set for the merge-layers toggle: when enabled and
+        // the parent wall is sliceable (i.e. its single solid will be cut
+        // into per-layer slabs via `MaterialLayerIndex`), skip emitting the
+        // child part meshes entirely. Empty set when the toggle is off so
+        // existing behaviour is preserved (set lookups are O(1) but still
+        // free when empty).
+        let parts_to_skip: rustc_hash::FxHashSet<u32> = if self.merge_layers() {
+            part_to_parent
+                .iter()
+                .filter(|(_, parent_id)| material_layer_index.is_sliceable(**parent_id))
+                .map(|(part_id, _)| *part_id)
+                .collect()
+        } else {
+            rustc_hash::FxHashSet::default()
+        };
 
         // Create geometry router (without RTC offset initially)
         let mut router = GeometryRouter::with_units(&content, &mut decoder);
@@ -150,6 +168,13 @@ impl IfcAPI {
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             // Check if this is a building element type
             if !ifc_lite_core::has_geometry_by_name(type_name) {
+                continue;
+            }
+
+            // Merge-layers toggle (#540): skip children of sliceable aggregate
+            // parents that have their own representation. The parent wall's
+            // single solid already carries the per-layer colour slices.
+            if parts_to_skip.contains(&id) {
                 continue;
             }
 
@@ -511,6 +536,20 @@ impl IfcAPI {
         // elements by their IfcMaterialLayerSetUsage buildup.
         router.set_material_layer_index(std::sync::Arc::clone(&pre_pass.material_layer_index));
 
+        // Merge-layers toggle (#540): skip `IfcBuildingElementPart`s whose
+        // sliceable parent will already carry the per-layer slices on its
+        // single solid. Empty set when the toggle is off.
+        let parts_to_skip: rustc_hash::FxHashSet<u32> = if self.merge_layers() {
+            pre_pass
+                .part_to_parent
+                .iter()
+                .filter(|(_, parent_id)| pre_pass.material_layer_index.is_sliceable(**parent_id))
+                .map(|(part_id, _)| *part_id)
+                .collect()
+        } else {
+            rustc_hash::FxHashSet::default()
+        };
+
         // ── Phase 4: Process only the requested subset of geometry entities ──
         // Build a combined job list: simple first, then complex (same order as parseMeshesAsync)
         let all_jobs: Vec<(u32, usize, usize, ifc_lite_core::IfcType)> = pre_pass
@@ -536,6 +575,12 @@ impl IfcAPI {
             rustc_hash::FxHashMap::default();
 
         for &(id, job_start, job_end, ifc_type) in &all_jobs[start..end] {
+            // Merge-layers toggle (#540): suppress layer parts whose parent
+            // wall already produces per-layer sub-meshes from its single solid.
+            if parts_to_skip.contains(&id) {
+                continue;
+            }
+
             if let Ok(entity) = decoder.decode_at_with_id(id, job_start, job_end) {
                 let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
                 if !has_representation {
@@ -679,6 +724,29 @@ impl IfcAPI {
         let geometry_styles = build_geometry_style_index(&content, &mut decoder);
         let style_index = build_element_style_index(&content, &geometry_styles, &mut decoder);
 
+        // For the merge-layers toggle (#540): build the material-layer index and
+        // gather aggregate part→parent mappings so we can suppress
+        // `IfcBuildingElementPart`s whose sliceable parent is rendered separately.
+        // Only compute these when the toggle is on — they each cost a full pass.
+        let parts_to_skip: rustc_hash::FxHashSet<u32> = if self.merge_layers() {
+            let material_layer_index =
+                ifc_lite_geometry::MaterialLayerIndex::from_content(&content, &mut decoder);
+            let mut void_index: rustc_hash::FxHashMap<u32, Vec<u32>> =
+                rustc_hash::FxHashMap::default();
+            let part_to_parent = ifc_lite_geometry::propagate_voids_to_parts(
+                &mut void_index,
+                &content,
+                &mut decoder,
+            );
+            part_to_parent
+                .iter()
+                .filter(|(_, parent_id)| material_layer_index.is_sliceable(**parent_id))
+                .map(|(part_id, _)| *part_id)
+                .collect()
+        } else {
+            rustc_hash::FxHashSet::default()
+        };
+
         // OPTIMIZATION: Collect all FacetedBrep IDs for batch processing
         let mut scanner = EntityScanner::new(&content);
         let mut faceted_brep_ids: Vec<u32> = Vec::new();
@@ -710,6 +778,11 @@ impl IfcAPI {
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             // Check if this is a building element type
             if !ifc_lite_core::has_geometry_by_name(type_name) {
+                continue;
+            }
+
+            // Merge-layers toggle (#540).
+            if parts_to_skip.contains(&id) {
                 continue;
             }
 
@@ -819,6 +892,9 @@ impl IfcAPI {
         use rustc_hash::{FxHashMap, FxHasher};
         use std::hash::{Hash, Hasher};
 
+        // Snapshot the merge-layers toggle for the closure (#540).
+        let merge_layers = self.merge_layers();
+
         // Use Option::take() to move ownership into the closure without cloning.
         // This avoids doubling WASM memory usage for large files (700MB+ saves ~700MB).
         let mut content = Some(content);
@@ -851,6 +927,32 @@ impl IfcAPI {
                 let geometry_styles = build_geometry_style_index(&content, &mut decoder);
                 let style_index =
                     build_element_style_index(&content, &geometry_styles, &mut decoder);
+
+                // Merge-layers toggle (#540) — compute the part skip set on
+                // demand. The two extra scans only run when the toggle is on.
+                let parts_to_skip: rustc_hash::FxHashSet<u32> = if merge_layers {
+                    let material_layer_index =
+                        ifc_lite_geometry::MaterialLayerIndex::from_content(
+                            &content,
+                            &mut decoder,
+                        );
+                    let mut void_index: rustc_hash::FxHashMap<u32, Vec<u32>> =
+                        rustc_hash::FxHashMap::default();
+                    let part_to_parent = ifc_lite_geometry::propagate_voids_to_parts(
+                        &mut void_index,
+                        &content,
+                        &mut decoder,
+                    );
+                    part_to_parent
+                        .iter()
+                        .filter(|(_, parent_id)| {
+                            material_layer_index.is_sliceable(**parent_id)
+                        })
+                        .map(|(part_id, _)| *part_id)
+                        .collect()
+                } else {
+                    rustc_hash::FxHashSet::default()
+                };
 
                 // Collect FacetedBrep IDs for batch preprocessing
                 let mut scanner = EntityScanner::new(&content);
@@ -888,6 +990,12 @@ impl IfcAPI {
                 // First pass - process simple geometry immediately
                 while let Some((id, type_name, start, end)) = scanner.next_entity() {
                     if !ifc_lite_core::has_geometry_by_name(type_name) {
+                        continue;
+                    }
+
+                    // Merge-layers toggle (#540): suppress layer parts here so
+                    // they're never even classified into simple/deferred lists.
+                    if parts_to_skip.contains(&id) {
                         continue;
                     }
 
@@ -1277,6 +1385,11 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::{calculate_normals, GeometryRouter};
 
+        // Snapshot the merge-layers toggle BEFORE the closure so we don't
+        // need to capture `self` (which isn't Send) into the async block.
+        // (#540)
+        let merge_layers = self.merge_layers();
+
         // Use Option::take() to move ownership into the closure without cloning.
         // This avoids doubling WASM memory usage for large files (700MB+ saves ~700MB).
         let mut content = Some(content);
@@ -1364,6 +1477,21 @@ impl IfcAPI {
                     &pre_pass.material_layer_index,
                 ));
 
+                // Merge-layers toggle (#540): skip `IfcBuildingElementPart`s
+                // whose sliceable parent will already emit per-layer slices.
+                let parts_to_skip: rustc_hash::FxHashSet<u32> = if merge_layers {
+                    pre_pass
+                        .part_to_parent
+                        .iter()
+                        .filter(|(_, parent_id)| {
+                            pre_pass.material_layer_index.is_sliceable(**parent_id)
+                        })
+                        .map(|(part_id, _)| *part_id)
+                        .collect()
+                } else {
+                    rustc_hash::FxHashSet::default()
+                };
+
                 // Surface RTC offset to JavaScript callers early so they can prepare camera/world state
                 if let Some(ref callback) = on_rtc_offset {
                     let rtc_info = js_sys::Object::new();
@@ -1430,6 +1558,10 @@ impl IfcAPI {
 
                 // Process simple geometry first (walls, slabs, etc.) for fast first frame
                 for &(id, start, end, ifc_type) in &pre_pass.simple_jobs {
+                    // Merge-layers toggle (#540).
+                    if parts_to_skip.contains(&id) {
+                        continue;
+                    }
                     if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
                         // Check if entity actually has representation
                         let has_representation =
@@ -1575,6 +1707,10 @@ impl IfcAPI {
                 // Uses pre-collected job list — no EntityScanner re-scan needed.
 
                 for &(id, start, end, ifc_type) in &pre_pass.complex_jobs {
+                    // Merge-layers toggle (#540).
+                    if parts_to_skip.contains(&id) {
+                        continue;
+                    }
                     if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
                         let has_openings = pre_pass.void_index.contains_key(&id);
                         let ifc_type_name = type_name_cache
@@ -3380,6 +3516,16 @@ impl IfcAPI {
         let mut type_name_cache: rustc_hash::FxHashMap<ifc_lite_core::IfcType, String> =
             rustc_hash::FxHashMap::default();
 
+        // When merge-layers is on, fetch (or lazily build) the set of
+        // IfcBuildingElementPart express IDs to skip. Built once per worker
+        // and reused across every subsequent batch on the same content via
+        // the cached_parts_to_skip slot on IfcAPI.
+        let parts_to_skip: std::sync::Arc<rustc_hash::FxHashSet<u32>> = if self.merge_layers() {
+            self.get_or_build_parts_to_skip(content, &mut decoder)
+        } else {
+            std::sync::Arc::new(rustc_hash::FxHashSet::default())
+        };
+
         // Process only the entities specified in jobs_flat
         for chunk in jobs_flat.chunks(3) {
             if chunk.len() < 3 {
@@ -3388,6 +3534,10 @@ impl IfcAPI {
             let id = chunk[0];
             let start = chunk[1] as usize;
             let end = chunk[2] as usize;
+
+            if parts_to_skip.contains(&id) {
+                continue;
+            }
 
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
                 let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
@@ -3786,6 +3936,17 @@ impl IfcAPI {
         let task_count_for_closure = std::sync::Arc::clone(&task_count);
         let unique_threads_for_closure = std::sync::Arc::clone(&unique_threads);
 
+        // Build the merge-layers skip set once, before rayon fans out.
+        // The set is wrapped in Arc and cloned into every task — each
+        // task only reads, never mutates. Empty when the toggle is off.
+        let parts_to_skip: Arc<rustc_hash::FxHashSet<u32>> = if self.merge_layers() {
+            let mut prep_decoder =
+                EntityDecoder::with_arc_index(content, Arc::clone(&entity_index_arc));
+            self.get_or_build_parts_to_skip(content, &mut prep_decoder)
+        } else {
+            Arc::new(rustc_hash::FxHashSet::default())
+        };
+
         let collected: Vec<MeshDataJs> = jobs_flat
             .par_chunks(stride)
             .flat_map_iter(|big_chunk| {
@@ -3805,6 +3966,7 @@ impl IfcAPI {
                 if needs_shift {
                     router.set_rtc_offset((rtc_x, rtc_y, rtc_z));
                 }
+                let parts_to_skip = Arc::clone(&parts_to_skip);
                 let mut local_meshes: Vec<MeshDataJs> =
                     Vec::with_capacity(big_chunk.len() / 3);
                 let mut type_name_cache: rustc_hash::FxHashMap<
@@ -3819,6 +3981,10 @@ impl IfcAPI {
                     let id = chunk[0];
                     let start = chunk[1] as usize;
                     let end = chunk[2] as usize;
+
+                    if parts_to_skip.contains(&id) {
+                        continue;
+                    }
 
                     let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
                         continue;

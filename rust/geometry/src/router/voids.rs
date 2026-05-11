@@ -1944,7 +1944,21 @@ impl GeometryRouter {
     }
 
     /// Test if a triangle intersects an axis-aligned bounding box using Separating Axis Theorem (SAT)
-    /// Returns true if triangle and box intersect, false if they are separated
+    /// Returns true if triangle and box intersect, false if they are separated.
+    ///
+    /// All separation tests use a small `SAT_EPSILON` slack so that a triangle
+    /// **lying exactly on a box face** (e.g. an extruded wall's outer face
+    /// that is coplanar with the opening AABB's `max.x` face after the opening
+    /// has been extended through the wall thickness) is reported as
+    /// intersecting and gets routed into the actual clipping path. Without
+    /// this slack, FP rounding can produce a tiny gap (the wall mesh is
+    /// stored in f32 and re-promoted to f64 here, while the opening box is
+    /// computed in pure f64) that the strict `<` reads as a separation — and
+    /// the wall's outer face survives un-clipped, leaving the wall solid
+    /// around its opening (issue #584 / Smiley-West balconies, follow-up:
+    /// the per-axis 1e-6 epsilon was correct for the box-axis tests but
+    /// undersized for the triangle-plane test, which uses an un-normalized
+    /// `triangle_normal` whose magnitude scales with triangle area).
     fn triangle_intersects_box(
         &self,
         v0: &Point3<f64>,
@@ -1954,6 +1968,13 @@ impl GeometryRouter {
         box_max: &Point3<f64>,
     ) -> bool {
         use nalgebra::Vector3;
+
+        /// Float slack for SAT separation tests (1 micrometre at the IFC's
+        /// length unit). Big enough to absorb double-precision rounding
+        /// (`v.z - box_center.z` vs `(box_max.z - box_min.z) * 0.5`) on
+        /// box-coplanar triangles, small enough to not pull genuinely
+        /// separated triangles into the clipper.
+        const SAT_EPSILON: f64 = 1e-6;
 
         // Box center and half-extents
         let box_center = Point3::new(
@@ -1995,7 +2016,7 @@ impl GeometryRouter {
             let tri_max = p0.max(p1).max(p2);
             let box_extent = box_half_extents[axis_idx];
 
-            if tri_max < -box_extent || tri_min > box_extent {
+            if tri_max < -box_extent - SAT_EPSILON || tri_min > box_extent + SAT_EPSILON {
                 return false; // Separated on this axis
             }
         }
@@ -2016,7 +2037,21 @@ impl GeometryRouter {
             box_projection += box_half_extents[i] * triangle_normal.dot(&axis).abs();
         }
 
-        if triangle_offset.abs() > box_projection {
+        // Normalize the per-axis epsilon by the triangle-normal magnitude.
+        //
+        // `triangle_normal` is the un-normalized cross product `e0 × e2`, so
+        // `|triangle_normal| ≈ 2 * triangle_area`. Both `triangle_offset` and
+        // `box_projection` scale linearly with that magnitude, but the
+        // physical-space rounding error a "near-coplanar" face needs to absorb
+        // does NOT scale with triangle area. Without scaling SAT_EPSILON, a
+        // tall/wide wall face sitting ~3e-7 m outside the opening box (well
+        // within the f32 → f64 round-trip slop introduced by the mesh
+        // pipeline) becomes a separation gap of ~1.7e-6 in projection units,
+        // which a fixed 1e-6 epsilon misses — leaving the wall's outer face
+        // un-clipped (Smiley-West uncut walls, follow-up to #584).
+        let normal_magnitude = triangle_normal.norm();
+        let t2_epsilon = SAT_EPSILON * normal_magnitude.max(1.0);
+        if triangle_offset.abs() > box_projection + t2_epsilon {
             return false; // Separated by triangle plane
         }
 
@@ -2054,7 +2089,9 @@ impl GeometryRouter {
                         box_half_extents[i] * axis_normalized.dot(&box_axis_vec).abs();
                 }
 
-                if tri_max < -box_projection || tri_min > box_projection {
+                if tri_max < -box_projection - SAT_EPSILON
+                    || tri_min > box_projection + SAT_EPSILON
+                {
                     return false; // Separated on this axis
                 }
             }

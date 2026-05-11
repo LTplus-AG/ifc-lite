@@ -18,7 +18,11 @@
  * or `fetch`.
  */
 
-import { STREAM_SAB_THRESHOLD } from './ifcConfig.js';
+// `STREAM_SAB_THRESHOLD` lives in `ifcConfig`, but importing that module
+// eagerly drags in `import.meta.env.*` (Vite-only) and breaks Node-based
+// unit tests. We dereference it lazily inside the public `acquireFileBuffer`
+// wrapper so the test entry point (`__acquireFileBufferWithThreshold`) can
+// run without ever loading `ifcConfig`.
 
 export interface AcquiredBuffer {
   /**
@@ -43,13 +47,17 @@ function sharedArrayBufferAvailable(): boolean {
 }
 
 /**
- * Reads `file` into an in-memory buffer. Streams chunks into a pre-sized
- * `SharedArrayBuffer` for files ≥ `STREAM_SAB_THRESHOLD` when SAB is
- * available, otherwise falls back to `await file.arrayBuffer()`.
+ * Internal entry point that accepts an injected threshold. Production code
+ * should call `acquireFileBuffer` (which uses `STREAM_SAB_THRESHOLD` from
+ * `ifcConfig`). Tests use this overload so they can exercise the streaming
+ * branch without allocating a multi-hundred-MB buffer.
  */
-export async function acquireFileBuffer(file: File): Promise<AcquiredBuffer> {
+export async function __acquireFileBufferWithThreshold(
+  file: File,
+  threshold: number,
+): Promise<AcquiredBuffer> {
   const useSharedStream =
-    file.size >= STREAM_SAB_THRESHOLD
+    file.size >= threshold
     && sharedArrayBufferAvailable()
     && typeof file.stream === 'function';
 
@@ -85,7 +93,10 @@ export async function acquireFileBuffer(file: File): Promise<AcquiredBuffer> {
       offset += value.byteLength;
     }
   } finally {
-    try { reader.releaseLock(); } catch { /* ignore */ }
+    // releaseLock can throw if the reader is already closed/released by the
+    // platform after a stream error. The lock is gone either way, so cleanup
+    // is safe to swallow here. (CR feedback on #627.)
+    try { reader.releaseLock(); } catch { /* cleanup — safe to ignore */ }
   }
 
   // Validate we read the expected number of bytes. A short read indicates
@@ -102,4 +113,16 @@ export async function acquireFileBuffer(file: File): Promise<AcquiredBuffer> {
     view,
     isShared: true,
   };
+}
+
+/**
+ * Reads `file` into an in-memory buffer. Streams chunks into a pre-sized
+ * `SharedArrayBuffer` for files ≥ `STREAM_SAB_THRESHOLD` when SAB is
+ * available, otherwise falls back to `await file.arrayBuffer()`.
+ */
+export async function acquireFileBuffer(file: File): Promise<AcquiredBuffer> {
+  // Lazy import keeps Node-based test runs out of the Vite `import.meta.env`
+  // path that `ifcConfig` evaluates at module-load time.
+  const { STREAM_SAB_THRESHOLD } = await import('./ifcConfig.js');
+  return __acquireFileBufferWithThreshold(file, STREAM_SAB_THRESHOLD);
 }

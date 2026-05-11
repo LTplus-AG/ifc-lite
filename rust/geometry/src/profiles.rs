@@ -62,78 +62,6 @@ fn trim_polyline(points: &[Point3<f64>], start: f64, end: f64) -> Vec<Point3<f64
     out
 }
 
-/// Trim a sampled polyline by cumulative arc length from `start_len` to
-/// `end_len`, in the same length units as the input points. Used by the
-/// `IfcSweptDiskSolid` Revit-arc-length fallback (see
-/// [`ProfileProcessor::get_composite_curve_points_trimmed`] doc comment).
-///
-/// Both bounds are clamped to `[0, total_length]`. Returns an empty vector for
-/// degenerate inputs (fewer than two points, zero-length curve, or
-/// `end <= start` after clamping).
-fn trim_polyline_by_arclength(
-    points: &[Point3<f64>],
-    start_len: f64,
-    end_len: f64,
-) -> Vec<Point3<f64>> {
-    let n = points.len();
-    if n < 2 {
-        return points.to_vec();
-    }
-    // Cumulative arc length at each vertex.
-    let mut cum = Vec::with_capacity(n);
-    cum.push(0.0_f64);
-    for i in 1..n {
-        let d = (points[i] - points[i - 1]).norm();
-        cum.push(cum[i - 1] + d);
-    }
-    let total = *cum.last().unwrap();
-    if total < 1e-12 {
-        return Vec::new();
-    }
-    let s = start_len.clamp(0.0, total);
-    let e = end_len.clamp(0.0, total);
-    if e <= s {
-        return Vec::new();
-    }
-
-    let lerp_at = |arc: f64| -> Point3<f64> {
-        // Binary search for the segment containing this arc length.
-        let mut lo = 0;
-        let mut hi = n - 1;
-        while lo + 1 < hi {
-            let m = (lo + hi) / 2;
-            if cum[m] <= arc {
-                lo = m;
-            } else {
-                hi = m;
-            }
-        }
-        let seg_len = cum[hi] - cum[lo];
-        let t = if seg_len > 1e-12 {
-            (arc - cum[lo]) / seg_len
-        } else {
-            0.0
-        };
-        let a = points[lo];
-        let b = points[hi];
-        Point3::new(
-            a.x + (b.x - a.x) * t,
-            a.y + (b.y - a.y) * t,
-            a.z + (b.z - a.z) * t,
-        )
-    };
-
-    let mut out = Vec::new();
-    out.push(lerp_at(s));
-    for i in 0..n {
-        if cum[i] > s && cum[i] < e {
-            out.push(points[i]);
-        }
-    }
-    out.push(lerp_at(e));
-    out
-}
-
 /// Approximate a 3-point arc as a polyline by fitting a circumcircle in the
 /// plane spanned by the three points and sampling it uniformly in angle.
 ///
@@ -1249,33 +1177,17 @@ impl ProfileProcessor {
     }
 
     /// Process composite curve into 3D points, honoring `IfcSweptDiskSolid`'s
-    /// `StartParam`/`EndParam`.
+    /// `StartParam`/`EndParam`. Per IFC, a composite curve is parameterised so
+    /// segment `i` covers `[i, i+1]`. Segments fully outside `[start, end]` are
+    /// dropped; boundary segments are truncated by linearly interpolating along
+    /// their sampled point list (a per-segment normalised parameter).
     ///
-    /// ### Spec-conformant path
-    /// Per IFC4 / IFC4.3, an `IfcCompositeCurve` with `n` segments is
-    /// parameterised over `[0, n]` — each segment contributes exactly 1.0 to
-    /// the parameter, so segment `i` covers `[i, i+1]`. Segments fully outside
-    /// `[start, end]` are dropped; boundary segments are truncated by linearly
-    /// interpolating along their sampled point list (a per-segment normalised
-    /// parameter). This branch is taken whenever
-    /// `end_param ≤ num_segments + ε`.
-    ///
-    /// ### SPEC DEVIATION — arc-length fallback for non-conformant trim values
-    /// Revit (and other AECC authoring tools) emit `IfcSweptDiskSolid.EndParam`
-    /// in **arc length** along the directrix instead of segment index. For
-    /// reinforcement bars in particular, the value is the bar's swept length in
-    /// the file's length unit (e.g. mm). Honouring this verbatim per spec —
-    /// clamping to `num_segments` and rendering the whole curve — makes bars
-    /// render at 10–100× their intended length (issue #631, sample
-    /// `Rebar2.ifc`).
-    ///
-    /// Detection: `end_param > num_segments + ε` is impossible under the spec
-    /// parameterisation, so we treat it as a signal that the authoring tool
-    /// used arc-length parameterisation. We then sample the full directrix and
-    /// trim the resulting polyline by cumulative arc length.
-    ///
-    /// Conforming inputs are untouched — they take the spec path and behave
-    /// bit-identically to the previous implementation.
+    /// Non-conformant out-of-range `EndParam` values (notably Revit, which
+    /// emits a cumulative-per-segment parameter that can exceed `num_segments`)
+    /// are clamped to the upper bound of the spec domain — this matches the
+    /// authoring tool's effective intent (render the whole curve) without
+    /// guessing at a length-unit interpretation that proved wrong on real
+    /// files (see #631 follow-up notes).
     pub fn get_composite_curve_points_trimmed(
         &self,
         curve: &DecodedEntity,
@@ -1292,24 +1204,8 @@ impl ProfileProcessor {
             return Ok(Vec::new());
         }
 
-        let raw_start = start_param.unwrap_or(0.0).max(0.0);
-        let raw_end = end_param.unwrap_or(num_segments as f64);
-        if raw_end <= raw_start {
-            return Ok(Vec::new());
-        }
-
-        // SPEC DEVIATION (Revit rebar) — see doc comment above. Trigger only
-        // when the supplied end parameter cannot be a segment-index parameter;
-        // otherwise we stay on the strictly spec-conformant path below.
-        const SEGMENT_INDEX_TOL: f64 = 1e-6;
-        let arclength_mode = raw_end > num_segments as f64 + SEGMENT_INDEX_TOL;
-        if arclength_mode {
-            let full = self.process_composite_curve_3d_with_depth(curve, decoder, 0)?;
-            return Ok(trim_polyline_by_arclength(&full, raw_start, raw_end));
-        }
-
-        let start = raw_start;
-        let end = raw_end.min(num_segments as f64);
+        let start = start_param.unwrap_or(0.0).max(0.0);
+        let end = end_param.unwrap_or(num_segments as f64).min(num_segments as f64);
         if end <= start {
             return Ok(Vec::new());
         }

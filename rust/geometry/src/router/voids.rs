@@ -388,6 +388,21 @@ fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
         return false;
     }
 
+    // The 3 distinct face normals must be mutually orthogonal — otherwise a
+    // shape like a trapezoid extrusion (front/back + top/bottom + two slanted
+    // sides whose normals are anti-parallel and merge into one axis) would
+    // pass with 3 "axes" but not actually be a box. A trapezoid's slanted
+    // axis is not perpendicular to the top/bottom axis. Tolerance 0.02 rad
+    // matches the 0.98 dot tolerance used above for anti-parallel merging.
+    const ORTHOGONAL_DOT_TOL: f64 = 0.02;
+    for i in 0..3 {
+        for j in (i + 1)..3 {
+            if axes[i].dot(&axes[j]).abs() > ORTHOGONAL_DOT_TOL {
+                return false;
+            }
+        }
+    }
+
     // For each axis, the triangle offsets must cluster around exactly 2 values
     // (the two opposite faces of the box). More than 2 distinct planes means
     // the footprint is rectilinear-but-not-rectangular (e.g. an L-shape).
@@ -2838,6 +2853,75 @@ mod reveal_tests {
         assert!(
             !is_rectangular_box_mesh(&opening),
             "rectilinear non-box footprints must fall through to NonRectangular CSG"
+        );
+    }
+
+    /// Regression for #547: a trapezoid extrusion has exactly 3 face-normal
+    /// axes after anti-parallel merging (front/back, top/bottom, and the two
+    /// slanted sides which merge into one axis), but two of those axes are
+    /// not perpendicular. Without an orthogonality check the detector would
+    /// classify it as a box and the AABB cutter would over-cut the host wall.
+    #[test]
+    fn test_rectangular_box_detector_rejects_trapezoid_extrusion() {
+        // Trapezoid extruded along +Y: narrow at z=0 (x ∈ [-0.3, 0.3]),
+        // wide at z=2 (x ∈ [-0.5, 0.5]), thickness 0.6 in y.
+        let mut positions: Vec<f32> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+        let push_v = |positions: &mut Vec<f32>, x: f32, y: f32, z: f32| {
+            positions.extend_from_slice(&[x, y, z]);
+        };
+        // 8 corners: 4 of trapezoid at y=0, 4 at y=0.6.
+        // Order: bl, br, tr, tl on each face (b=bottom narrow, t=top wide).
+        push_v(&mut positions, -0.3, 0.0, 0.0); // 0
+        push_v(&mut positions, 0.3, 0.0, 0.0); // 1
+        push_v(&mut positions, 0.5, 0.0, 2.0); // 2
+        push_v(&mut positions, -0.5, 0.0, 2.0); // 3
+        push_v(&mut positions, -0.3, 0.6, 0.0); // 4
+        push_v(&mut positions, 0.3, 0.6, 0.0); // 5
+        push_v(&mut positions, 0.5, 0.6, 2.0); // 6
+        push_v(&mut positions, -0.5, 0.6, 2.0); // 7
+        // Front (y=0): 0,1,2 + 0,2,3
+        indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+        // Back (y=0.6): 5,4,7 + 5,7,6
+        indices.extend_from_slice(&[5, 4, 7, 5, 7, 6]);
+        // Bottom narrow (z=0): 4,5,1 + 4,1,0
+        indices.extend_from_slice(&[4, 5, 1, 4, 1, 0]);
+        // Top wide (z=2): 3,2,6 + 3,6,7
+        indices.extend_from_slice(&[3, 2, 6, 3, 6, 7]);
+        // Right slanted: 1,5,6 + 1,6,2
+        indices.extend_from_slice(&[1, 5, 6, 1, 6, 2]);
+        // Left slanted: 4,0,3 + 4,3,7
+        indices.extend_from_slice(&[4, 0, 3, 4, 3, 7]);
+
+        let mut mesh = Mesh::new();
+        mesh.positions = positions;
+        mesh.indices = indices;
+        assert!(
+            !is_rectangular_box_mesh(&mesh),
+            "trapezoid extrusion must be rejected — its slanted-side axis is \
+             not perpendicular to the top/bottom axis, so the AABB cutter would \
+             over-cut the host"
+        );
+    }
+
+    /// A box rotated 45° around Z should still be classified as a box: its
+    /// three face-normal axes are mutually orthogonal even though none align
+    /// with world axes. The diagonal cutter then handles the rotation.
+    #[test]
+    fn test_rectangular_box_detector_accepts_rotated_box() {
+        let opening = make_framed_box_mesh(
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.7071067811865476, 0.7071067811865476, 0.0),
+            Vector3::new(-0.7071067811865476, 0.7071067811865476, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            (-0.15, 0.15),
+            (-1.0, 1.0),
+            (0.0, 2.0),
+        );
+        assert!(
+            is_rectangular_box_mesh(&opening),
+            "axis-rotated boxes must still be detected — rotation alone does \
+             not make them non-rectangular"
         );
     }
 

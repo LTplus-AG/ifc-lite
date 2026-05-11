@@ -980,7 +980,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Mesh {
         let ctx = self.build_void_context(element, opening_ids, decoder);
-        self.apply_void_context(mesh, &ctx)
+        self.apply_void_context(mesh, &ctx, element.id)
     }
 
     /// Classify openings and extract clipping planes for an element.
@@ -1023,7 +1023,7 @@ impl GeometryRouter {
                 Vec::new()
             };
 
-        let openings = self.classify_openings(opening_ids, decoder);
+        let openings = self.classify_openings(element, opening_ids, decoder);
         let merged_openings = Self::merge_rectangular_openings(&openings);
 
         VoidContext {
@@ -1041,7 +1041,28 @@ impl GeometryRouter {
     /// batched rectangular clip, then applies the CSG and clipping-plane
     /// passes. All the classification work has already been done in
     /// [`GeometryRouter::build_void_context`].
-    pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext) -> Mesh {
+    ///
+    /// `element_id` is the IFC product express ID of the host element. Any
+    /// `BoolFailure` recorded by the inner CSG kernel is attributed to that
+    /// product and stored on the router (drainable via
+    /// [`GeometryRouter::take_csg_failures`]). The router's failure log is
+    /// the only path failures reach the caller; `apply_void_context` itself
+    /// always returns the (possibly un-cut) mesh.
+    pub(super) fn apply_void_context(
+        &self,
+        mesh: Mesh,
+        ctx: &VoidContext,
+        element_id: u32,
+    ) -> Mesh {
+        // Capture the input triangle count + bounds so the per-host
+        // diagnostic can flag the "cuts attempted but produced no
+        // change" case — the silent-no-op signature when an opening
+        // box doesn't intersect the host mesh.
+        let tris_before = mesh.triangle_count();
+        let host_bounds_capture = {
+            let (mn, mx) = mesh.bounds();
+            ((mn.x, mn.y, mn.z), (mx.x, mx.y, mx.z))
+        };
         if ctx.is_noop() {
             return mesh;
         }
@@ -1188,6 +1209,28 @@ impl GeometryRouter {
             }
         }
 
+        // Drain whatever fallbacks the kernel logged during this element's
+        // void / clip pass, attribute them to the host product, and stash on
+        // the router so the caller can surface them (e.g. flagged in a
+        // viewer overlay or asserted in regression tests).
+        let kernel_failures = clipper.take_failures();
+        if !kernel_failures.is_empty() {
+            self.record_host_failure_summary(element_id, &kernel_failures);
+            self.record_csg_failures(element_id, kernel_failures);
+        }
+
+        // Per-host cut-effect snapshot: tris_before / tris_after lets the
+        // diagnostic surface the silent-no-op case (rectangular boxes
+        // processed but the host mesh came out unchanged — the box
+        // probably didn't intersect the wall, e.g. wrong placement).
+        self.record_host_cut_effect(
+            element_id,
+            tris_before,
+            result.triangle_count(),
+            rect_boxes.len(),
+            host_bounds_capture,
+        );
+
         result
     }
 
@@ -1238,7 +1281,7 @@ impl GeometryRouter {
         let mut voided = SubMeshCollection::new();
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
-            let voided_mesh = self.apply_void_context(sub.mesh, &ctx);
+            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
             if !voided_mesh.is_empty() {
                 voided
                     .sub_meshes
@@ -1251,9 +1294,28 @@ impl GeometryRouter {
 
     fn classify_openings(
         &self,
+        host: &DecodedEntity,
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
     ) -> Vec<OpeningType> {
+        use super::{ClassificationKind, OpeningDiagnostic, OpeningKindDiag};
+
+        // Only treat vertical-extrusion openings as "floor openings" when
+        // the host is an actual horizontal-surface element. For walls, a
+        // vertical (Z) opening extrusion is just how Revit/Archicad encode
+        // door / window openings — it should still take the rectangular
+        // AABB clip path. Pre-this-change the heuristic mis-tagged every
+        // vertical-extrusion opening as a floor opening, routing wall
+        // openings through the (cap-limited, error-prone) CSG path.
+        let host_is_horizontal_surface = matches!(
+            host.ifc_type,
+            IfcType::IfcSlab | IfcType::IfcRoof | IfcType::IfcCovering
+        );
+
+        // Per-opening diagnostic accumulator for this host. Pushed to the
+        // router's `host_opening_diagnostics` map before we return.
+        let mut host_diag: Vec<OpeningDiagnostic> = Vec::with_capacity(opening_ids.len());
+
         let mut openings: Vec<OpeningType> = Vec::new();
         for &opening_id in opening_ids.iter() {
             let opening_entity = match decoder.decode_by_id(opening_id) {
@@ -1268,7 +1330,30 @@ impl GeometryRouter {
 
             let vertex_count = opening_mesh.positions.len() / 3;
 
+            // Local helper: record both the aggregate counter bump and a
+            // per-host diagnostic line in one place. `guard_saved` is the
+            // per-opening flag (whether the host-aware floor-opening guard
+            // kept this opening on the rectangular path).
+            let mut bump = |router: &Self,
+                            ck: ClassificationKind,
+                            kind: OpeningKindDiag,
+                            guard_saved: bool| {
+                router.bump_classification(ck);
+                host_diag.push(OpeningDiagnostic {
+                    opening_id,
+                    kind,
+                    vertex_count,
+                    guard_saved,
+                });
+            };
+
             if vertex_count > 100 {
+                bump(
+                    self,
+                    ClassificationKind::NonRectangular,
+                    OpeningKindDiag::NonRectangular,
+                    false,
+                );
                 openings.push(OpeningType::NonRectangular(opening_mesh));
             } else {
                 let item_bounds_with_dir = self
@@ -1276,6 +1361,22 @@ impl GeometryRouter {
                     .unwrap_or_default();
 
                 if !item_bounds_with_dir.is_empty() {
+                    // Per-item geometry-driven classification (origin/main).
+                    // The earlier "is_floor_opening" host-aware heuristic
+                    // (preserved here only via diagnostics) routed every
+                    // Z-extruded opening through full CSG, which silently
+                    // failed for roof windows on shallow-slope roofs and
+                    // left the host uncut. The frame-based DiagonalRectangular
+                    // path handles tilted rectangular openings — including
+                    // rotated-footprint floor openings — so reserve
+                    // NonRectangular for genuinely curved or arched voids.
+                    //
+                    // The host-is-horizontal flag is no longer used as a
+                    // routing signal but is retained as a diagnostic field
+                    // so we can still observe the historic guard population
+                    // in regression sweeps.
+                    let _host_is_horizontal = host_is_horizontal_surface;
+
                     let item_meshes = self
                         .get_opening_item_meshes_world(&opening_entity, decoder)
                         .unwrap_or_default();
@@ -1285,15 +1386,6 @@ impl GeometryRouter {
                             .into_iter()
                             .zip(item_meshes.into_iter())
                         {
-                            // Classify per item by inspecting the geometry, not by
-                            // a global extrusion-direction heuristic. Earlier code
-                            // routed every Z-extruded opening through full CSG
-                            // ("is_floor_opening"), which silently failed for roof
-                            // windows on shallow-slope roofs and left the host
-                            // uncut. The frame-based DiagonalRectangular path
-                            // handles tilted rectangular openings — including
-                            // rotated-footprint floor openings — so reserve
-                            // NonRectangular for genuinely curved or arched voids.
                             let frame = infer_opening_frame(&item_mesh, extrusion_dir.as_ref());
                             let direction_is_diagonal = extrusion_dir
                                 .map(|d| !is_axis_aligned_direction(&d))
@@ -1302,12 +1394,30 @@ impl GeometryRouter {
 
                             if let Some(frame) = frame {
                                 if !is_clean_box {
+                                    bump(
+                                        self,
+                                        ClassificationKind::NonRectangular,
+                                        OpeningKindDiag::NonRectangular,
+                                        false,
+                                    );
                                     openings.push(OpeningType::NonRectangular(item_mesh));
                                 } else if direction_is_diagonal || !frame.is_axis_aligned() {
+                                    bump(
+                                        self,
+                                        ClassificationKind::Diagonal,
+                                        OpeningKindDiag::Diagonal,
+                                        false,
+                                    );
                                     openings.push(OpeningType::DiagonalRectangular(
                                         item_mesh, frame,
                                     ));
                                 } else {
+                                    bump(
+                                        self,
+                                        ClassificationKind::Rectangular,
+                                        OpeningKindDiag::Rectangular,
+                                        false,
+                                    );
                                     openings.push(OpeningType::Rectangular(
                                         min_pt,
                                         max_pt,
@@ -1315,17 +1425,35 @@ impl GeometryRouter {
                                     ));
                                 }
                             } else if is_clean_box {
+                                bump(
+                                    self,
+                                    ClassificationKind::Rectangular,
+                                    OpeningKindDiag::Rectangular,
+                                    false,
+                                );
                                 openings.push(OpeningType::Rectangular(
                                     min_pt,
                                     max_pt,
                                     extrusion_dir,
                                 ));
                             } else {
+                                bump(
+                                    self,
+                                    ClassificationKind::NonRectangular,
+                                    OpeningKindDiag::NonRectangular,
+                                    false,
+                                );
                                 openings.push(OpeningType::NonRectangular(item_mesh));
                             }
                         }
                     } else {
                         for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
+                            bump(
+                                self,
+                                ClassificationKind::Rectangular,
+                                OpeningKindDiag::Rectangular,
+                                false,
+                            );
                             openings.push(OpeningType::Rectangular(
                                 min_pt, max_pt, extrusion_dir,
                             ));
@@ -1338,10 +1466,27 @@ impl GeometryRouter {
                     let max_f64 =
                         Point3::new(open_max.x as f64, open_max.y as f64, open_max.z as f64);
 
+                    bump(
+                        self,
+                        ClassificationKind::Rectangular,
+                        OpeningKindDiag::Rectangular,
+                        false,
+                    );
                     openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
                 }
             }
         }
+
+        // Stash the per-host diagnostic before returning. `host.ifc_type`
+        // implements `Display` to its STEP name (e.g. "IFCWALLSTANDARDCASE").
+        if !host_diag.is_empty() {
+            self.record_host_opening_diagnostic(
+                host.id,
+                &format!("{}", host.ifc_type),
+                host_diag,
+            );
+        }
+
         openings
     }
 

@@ -336,7 +336,7 @@ export class IfcLiteMeshCollector {
           resolveWaiting = null;
         }
       },
-      onComplete: (stats: { totalMeshes: number; totalVertices: number; totalTriangles: number; rtcOffset?: { x: number; y: number; z: number; hasRtc: boolean }; buildingRotation?: number }) => {
+      onComplete: (stats: { totalMeshes: number; totalVertices: number; totalTriangles: number; rtcOffset?: { x: number; y: number; z: number; hasRtc: boolean }; buildingRotation?: number; csgDiagnostics?: { classification?: { rectangular?: number; diagonal?: number; nonRectangular?: number; floorOpeningGuardSaved?: number; total?: number }; totalFailures?: number; productsWithFailures?: number; hostsWithOpenings?: number } }) => {
         isComplete = true;
 
         // Store building rotation if present
@@ -349,6 +349,31 @@ export class IfcLiteMeshCollector {
         });
         if (failedMeshCount > 0) {
           log.warn(`Skipped ${failedMeshCount} meshes due to errors`, { operation: 'collectMeshesStreaming' });
+        }
+
+        // T1.3 / classifier-fix diagnostics: surface the structured CSG
+        // diagnostics object the WASM bindings attach to `stats`. Logged
+        // here on the JS side too because `web_sys::console::*` from
+        // inside the WASM streaming path can be invisible in some
+        // browser/build combos (worker boundary, log-level filtering).
+        // A JS console.warn is the most reliable "always shows up" channel.
+        const diag = stats.csgDiagnostics;
+        if (diag) {
+          const totalFailures = diag.totalFailures ?? 0;
+          // Only surface a `console.warn` when the kernel actually dropped
+          // a cut — successful parses shouldn't add noise to host apps
+          // embedding the viewer. The full diagnostics object is still
+          // attached to `stats.csgDiagnostics` for callers that want it.
+          if (totalFailures > 0) {
+            const c = diag.classification ?? {};
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[IFC-LITE] CSG diagnostics (JS): classifier=${JSON.stringify(c)}, ` +
+                `totalFailures=${totalFailures}, ` +
+                `productsWithFailures=${diag.productsWithFailures ?? 0}, ` +
+                `hostsWithOpenings=${diag.hostsWithOpenings ?? 0}`,
+            );
+          }
         }
         // Wake up the generator if it's waiting
         if (resolveWaiting) {

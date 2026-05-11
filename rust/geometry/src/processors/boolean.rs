@@ -7,10 +7,12 @@
 //! Handles IfcBooleanResult and IfcBooleanClippingResult for boolean operations
 //! (DIFFERENCE, UNION, INTERSECTION).
 
+use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::{
     calculate_normals, ClippingProcessor, Error, Mesh, Point2, Point3, Profile2D, Result, Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use std::cell::RefCell;
 
 use super::brep::FacetedBrepProcessor;
 use super::extrusion::ExtrudedAreaSolidProcessor;
@@ -41,13 +43,36 @@ const MAX_BOOLEAN_DEPTH: u32 = 10;
 /// - Graceful fallback to first operand if CSG fails on degenerate meshes
 pub struct BooleanClippingProcessor {
     schema: IfcSchema,
+    /// Boolean failures recorded by this processor (the silent solid-solid
+    /// skip, the polygonal-bounded half-space fallthrough, unknown operators)
+    /// and drained from any internal `ClippingProcessor` instances. Drainable
+    /// via [`Self::take_failures`].
+    failures: RefCell<Vec<BoolFailure>>,
 }
 
 impl BooleanClippingProcessor {
     pub fn new() -> Self {
         Self {
             schema: IfcSchema::new(),
+            failures: RefCell::new(Vec::new()),
         }
+    }
+
+    /// Drain the boolean-failure log accumulated since this processor was
+    /// created (or the last `take_failures` call).
+    pub fn take_failures(&self) -> Vec<BoolFailure> {
+        std::mem::take(&mut *self.failures.borrow_mut())
+    }
+
+    fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
+        self.failures.borrow_mut().push(BoolFailure::new(op, reason));
+    }
+
+    /// Move every failure from `clipper` into this processor's log. Used
+    /// after a transient `ClippingProcessor` instance is about to drop.
+    fn drain_clipper_failures(&self, clipper: &ClippingProcessor) {
+        let mut log = self.failures.borrow_mut();
+        log.extend(clipper.take_failures());
     }
 
     /// Process a solid operand with depth tracking
@@ -474,51 +499,114 @@ impl BooleanClippingProcessor {
                     agreement,
                 ) {
                     let clipper = ClippingProcessor::new();
-                    if let Ok(clipped) = clipper.subtract_mesh(&mesh, &bound_mesh) {
+                    let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
+                    self.drain_clipper_failures(&clipper);
+                    if let Ok(clipped) = subtract_result {
                         return Ok(clipped);
                     }
                 }
 
+                // Bounded prism subtract failed (or its build did). The
+                // unbounded plane clip *is* applied, but it's a strict
+                // superset of the bounded cut — the polygonal boundary is
+                // silently dropped. Flag so callers can surface the loss.
+                self.record_failure(
+                    BoolOp::Difference,
+                    BoolFailureReason::PolygonalBoundedHalfSpaceFallback,
+                );
                 return self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement);
             }
 
-            // Solid-solid difference: return base geometry (first operand).
-            //
-            // The csgrs BSP tree can infinite-recurse on arbitrary solid combinations,
-            // causing unrecoverable stack overflow in WASM. Unlike half-space clipping
-            // (handled above), solid-solid CSG cannot be safely bounded.
-            //
-            // Opening subtraction (windows/doors from walls) is handled separately by
-            // the router via subtract_mesh, which works on controlled geometry. Here we
-            // only encounter IfcBooleanResult chains from CAD exports (Tekla, Revit)
-            // where the visual difference from skipping the boolean is negligible.
-            return Ok(mesh);
+            // Solid-solid difference. Under `manifold-csg` we route through
+            // the Manifold kernel; without the feature the legacy BSP path
+            // can stack-overflow on arbitrary solid combinations so we
+            // continue to skip and record `SolidSolidDifferenceSkipped`.
+            #[cfg(feature = "manifold-csg")]
+            {
+                let second_mesh =
+                    self.process_operand_with_depth(&second_operand, decoder, depth)?;
+                if second_mesh.is_empty() {
+                    self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
+                    return Ok(mesh);
+                }
+                let clipper = ClippingProcessor::new();
+                let result = clipper.subtract_mesh(&mesh, &second_mesh);
+                self.drain_clipper_failures(&clipper);
+                return result;
+            }
+            #[cfg(not(feature = "manifold-csg"))]
+            {
+                self.record_failure(
+                    BoolOp::Difference,
+                    BoolFailureReason::SolidSolidDifferenceSkipped,
+                );
+                return Ok(mesh);
+            }
         }
 
-        // Handle UNION operation
+        // Handle UNION operation. Under `manifold-csg` this is a real CSG
+        // union (overlap removed). Without the feature the legacy path
+        // mesh-merges (overlap retained) and records the failure so callers
+        // can flag the loss.
         if operator == ".UNION." || operator == "UNION" {
-            // Merge both meshes (combines geometry without CSG intersection removal)
             let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth)?;
-            if !second_mesh.is_empty() {
+            if second_mesh.is_empty() {
+                self.record_failure(BoolOp::Union, BoolFailureReason::EmptyOperand);
+                return Ok(mesh);
+            }
+            #[cfg(feature = "manifold-csg")]
+            {
+                let clipper = ClippingProcessor::new();
+                let result = clipper.union_mesh(&mesh, &second_mesh);
+                self.drain_clipper_failures(&clipper);
+                return result;
+            }
+            #[cfg(not(feature = "manifold-csg"))]
+            {
+                self.record_failure(
+                    BoolOp::Union,
+                    BoolFailureReason::KernelError(
+                        "IfcBooleanResult.UNION uses mesh-merge (no overlap removal)".into(),
+                    ),
+                );
                 let mut merged = mesh;
                 merged.merge(&second_mesh);
                 return Ok(merged);
             }
-            return Ok(mesh);
         }
 
-        // Handle INTERSECTION operation
+        // Handle INTERSECTION operation. Under `manifold-csg` this returns
+        // a real intersection volume; the legacy path can't compute it
+        // safely (BSP stack risk) so it returns empty and records.
         if operator == ".INTERSECTION." || operator == "INTERSECTION" {
-            // Return empty mesh - we can't safely compute the intersection due to
-            // csgrs BSP recursion, and returning the first operand would over-approximate
-            return Ok(Mesh::new());
+            #[cfg(feature = "manifold-csg")]
+            {
+                let second_mesh =
+                    self.process_operand_with_depth(&second_operand, decoder, depth)?;
+                if second_mesh.is_empty() {
+                    self.record_failure(BoolOp::Intersection, BoolFailureReason::EmptyOperand);
+                    return Ok(Mesh::new());
+                }
+                let clipper = ClippingProcessor::new();
+                let result = clipper.intersection_mesh(&mesh, &second_mesh);
+                self.drain_clipper_failures(&clipper);
+                return result;
+            }
+            #[cfg(not(feature = "manifold-csg"))]
+            {
+                self.record_failure(
+                    BoolOp::Intersection,
+                    BoolFailureReason::KernelError(
+                        "IfcBooleanResult.INTERSECTION not implemented (returns empty)".into(),
+                    ),
+                );
+                return Ok(Mesh::new());
+            }
         }
 
-        // Unknown operator - return first operand
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "[WARN] Unknown CSG operator {}, returning first operand",
-            operator
+        self.record_failure(
+            BoolOp::Unknown,
+            BoolFailureReason::UnknownBooleanOperator(operator.to_string()),
         );
         Ok(mesh)
     }

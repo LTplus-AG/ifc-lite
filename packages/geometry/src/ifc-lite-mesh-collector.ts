@@ -49,14 +49,59 @@ export interface StreamingRtcOffsetEvent {
 
 export type StreamingEvent = StreamingBatchEvent | StreamingCompleteEvent | StreamingColorUpdateEvent | StreamingRtcOffsetEvent;
 
+/**
+ * Optional constructor options for the mesh collector. Currently used
+ * to forward the Revit-style multilayer-wall merge flag from the
+ * viewer's UI toggle (issue #540) down to the WASM API before the
+ * first `parseMeshes*` call.
+ */
+export interface IfcLiteMeshCollectorOptions {
+  /**
+   * When true, the WASM mesh emitters suppress `IfcBuildingElementPart`
+   * meshes whose parent wall is sliceable. Default `false` keeps the
+   * existing per-layer behaviour.
+   */
+  mergeLayers?: boolean;
+}
+
+/**
+ * Narrow typed wrapper for the optional `setMergeLayers` extension.
+ * Once the Rust agent regenerates the WASM `.d.ts` this cast is
+ * redundant — keeping it small and local avoids the need for
+ * `as any` / `@ts-ignore` in the meantime.
+ */
+type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
+
 export class IfcLiteMeshCollector {
   private ifcApi: IfcAPI;
   private content: string;
   private _buildingRotation: number | undefined;
+  private mergeLayers: boolean;
+  private mergeLayersApplied: boolean = false;
 
-  constructor(ifcApi: IfcAPI, content: string) {
+  constructor(ifcApi: IfcAPI, content: string, options: IfcLiteMeshCollectorOptions = {}) {
     this.ifcApi = ifcApi;
     this.content = content;
+    this.mergeLayers = options.mergeLayers === true;
+  }
+
+  /**
+   * Forward the cached `mergeLayers` flag to the IfcAPI once per
+   * collector instance. The Rust agent's contract is "state on the
+   * IfcAPI carries forward to subsequent parseMeshes* calls", so we
+   * only need to push the flag once before the first parse call.
+   *
+   * When the WASM build pre-dates the Rust agent's contract, the
+   * method is missing — we tolerate that silently because the bridge
+   * already logged a warning on its own `applyMergeLayers` path.
+   */
+  private ensureMergeLayersApplied(): void {
+    if (this.mergeLayersApplied) return;
+    this.mergeLayersApplied = true;
+    const api = this.ifcApi as IfcAPIWithMerge;
+    if (typeof api.setMergeLayers === 'function') {
+      api.setMergeLayers(this.mergeLayers);
+    }
   }
 
   /**
@@ -103,6 +148,7 @@ export class IfcLiteMeshCollector {
    * Much faster than web-ifc (~1.9x speedup)
    */
   collectMeshes(): MeshData[] {
+    this.ensureMergeLayersApplied();
     let collection: MeshCollection;
     try {
       collection = this.ifcApi.parseMeshes(this.content);
@@ -192,6 +238,7 @@ export class IfcLiteMeshCollector {
    * @param batchSize Number of meshes per batch (default: 25 for faster first frame)
    */
   async *collectMeshesStreaming(batchSize: number = 25): AsyncGenerator<MeshData[] | StreamingColorUpdateEvent | StreamingRtcOffsetEvent> {
+    this.ensureMergeLayersApplied();
     // Queue to hold batches produced by async callback
     const batchQueue: (MeshData[] | StreamingColorUpdateEvent | StreamingRtcOffsetEvent)[] = [];
     let resolveWaiting: (() => void) | null = null;
@@ -408,6 +455,7 @@ export class IfcLiteMeshCollector {
    * @param batchSize Number of unique geometries per batch (default: 25)
    */
   async *collectInstancedGeometryStreaming(batchSize: number = 25): AsyncGenerator<InstancedGeometry[]> {
+    this.ensureMergeLayersApplied();
     // Queue to hold batches produced by async callback
     const batchQueue: InstancedGeometry[][] = [];
     let resolveWaiting: (() => void) | null = null;

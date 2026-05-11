@@ -237,6 +237,30 @@ pub struct IfcAPI {
     /// because wasm-bindgen's `WasmRefCell` borrow counter underflows
     /// under concurrent `&self` access.
     cached_entity_index: std::sync::Mutex<Option<std::sync::Arc<EntityIndex>>>,
+
+    /// When `true`, the `parseMeshes*` family suppresses geometry emission for
+    /// every `IfcBuildingElementPart` whose `IfcRelAggregates` parent (a) has
+    /// its own `Representation` and (b) is marked `Sliceable` in
+    /// `MaterialLayerIndex`. The parent wall's single solid then carries the
+    /// per-layer colour slices instead of N separate part meshes. Defaults to
+    /// `false` (existing behaviour). See issue #540.
+    ///
+    /// Stored as an atomic so it can be toggled from JS between parse calls
+    /// without locking — all parse paths read it once at the top.
+    merge_layers: std::sync::atomic::AtomicBool,
+
+    /// Lazily-built skip set used by `processGeometryBatch` and
+    /// `processGeometryBatchParallel` when `merge_layers` is on. The set
+    /// holds every `IfcBuildingElementPart` express ID whose parent wall
+    /// (a) has its own `Representation` and (b) is sliceable in
+    /// `MaterialLayerIndex` — i.e. the parts that should be suppressed
+    /// because the parent's single solid covers their geometry.
+    ///
+    /// Built on first batch call and shared with all subsequent calls on
+    /// the same content. Cleared by `clearPrePassCache` (between loads)
+    /// and by `setMergeLayers` (so toggling rebuilds against the latest
+    /// flag value).
+    cached_parts_to_skip: std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
 }
 
 #[wasm_bindgen]
@@ -247,7 +271,12 @@ impl IfcAPI {
         #[cfg(feature = "console_error_panic_hook")]
         console_error_panic_hook::set_once();
 
-        Self { initialized: true, cached_entity_index: std::sync::Mutex::new(None) }
+        Self {
+            initialized: true,
+            cached_entity_index: std::sync::Mutex::new(None),
+            merge_layers: std::sync::atomic::AtomicBool::new(false),
+            cached_parts_to_skip: std::sync::Mutex::new(None),
+        }
     }
 
     /// Check if API is initialized
@@ -271,6 +300,14 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_entity_index Mutex poisoned");
         slot.take();
+        // The parts-to-skip set is keyed off the content scanned during
+        // the previous load; drop it together with the entity index so the
+        // next file's first batch call rebuilds against fresh content.
+        let mut parts_slot = self
+            .cached_parts_to_skip
+            .lock()
+            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+        parts_slot.take();
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -323,6 +360,90 @@ impl IfcAPI {
     #[wasm_bindgen(getter)]
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
+    }
+
+    /// Toggle the "render multilayer walls as a single solid" mode (issue #540).
+    ///
+    /// When `enabled` is `true`, every subsequent `parseMeshes*` call will
+    /// suppress geometry emission for `IfcBuildingElementPart` entities whose
+    /// `IfcRelAggregates` parent wall is sliceable (has an
+    /// `IfcMaterialLayerSetUsage`) AND has its own `Representation`. The
+    /// parent wall keeps its per-layer sub-mesh colouring, so the visual
+    /// result is the same as the layered render but with one mesh per wall
+    /// instead of one per layer part — much cheaper for both CPU and GPU.
+    ///
+    /// Default is `false`. Pass `true` before calling `parseMeshes`,
+    /// `parseMeshesSubset`, `parseMeshesAsync`, `parseMeshesInstanced`, or
+    /// `parseMeshesInstancedAsync`.
+    #[wasm_bindgen(js_name = setMergeLayers)]
+    pub fn set_merge_layers(&self, enabled: bool) {
+        self.merge_layers
+            .store(enabled, std::sync::atomic::Ordering::Relaxed);
+        // Drop any cached skip set so the next batch rebuilds against the
+        // current flag value — toggling off must immediately stop skipping.
+        let mut parts_slot = self
+            .cached_parts_to_skip
+            .lock()
+            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+        parts_slot.take();
+    }
+}
+
+impl IfcAPI {
+    /// Internal accessor used by the parse pipelines to decide whether to
+    /// skip `IfcBuildingElementPart` emission. Not exposed to JS — JS
+    /// callers control the flag via [`Self::set_merge_layers`].
+    pub(crate) fn merge_layers(&self) -> bool {
+        self.merge_layers
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Get or lazily build the cached parts-to-skip set used by
+    /// `processGeometryBatch` and `processGeometryBatchParallel` when the
+    /// merge-layers toggle is on. Two full-file scans (`MaterialLayerIndex`
+    /// + `propagate_voids_to_parts`) are amortised across every batch on
+    /// the same content; first-call cost ~one IFC re-scan, subsequent
+    /// calls are an `Arc::clone`.
+    ///
+    /// Returns an empty set when no eligible parts exist — callers can
+    /// still cheaply test `parts.contains(&id)` without a branch.
+    pub(crate) fn get_or_build_parts_to_skip(
+        &self,
+        content: &str,
+        decoder: &mut ifc_lite_core::EntityDecoder,
+    ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
+        {
+            let slot = self
+                .cached_parts_to_skip
+                .lock()
+                .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+            if let Some(existing) = slot.as_ref() {
+                return std::sync::Arc::clone(existing);
+            }
+        }
+
+        let material_layer_index =
+            ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder);
+        let mut void_index_scratch: rustc_hash::FxHashMap<u32, Vec<u32>> =
+            rustc_hash::FxHashMap::default();
+        let part_to_parent = ifc_lite_geometry::propagate_voids_to_parts(
+            &mut void_index_scratch,
+            content,
+            decoder,
+        );
+        let skip_set: rustc_hash::FxHashSet<u32> = part_to_parent
+            .into_iter()
+            .filter(|(_, parent_id)| material_layer_index.is_sliceable(*parent_id))
+            .map(|(part_id, _)| part_id)
+            .collect();
+
+        let arc = std::sync::Arc::new(skip_set);
+        let mut slot = self
+            .cached_parts_to_skip
+            .lock()
+            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+        *slot = Some(std::sync::Arc::clone(&arc));
+        arc
     }
 }
 

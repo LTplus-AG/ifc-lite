@@ -92,6 +92,19 @@ export interface GeometryWorkerPrePassMessage {
   chunkSize?: number;
 }
 
+/**
+ * Forward the user-facing "Merge Multilayer Walls" toggle (issue #540)
+ * down to this worker's IfcAPI. Hosts should send this AFTER `init`
+ * and BEFORE the first `process` / `stream-start` so the flag is
+ * already in effect when geometry processing begins. Default in
+ * Rust is `false` — sending `enabled: false` (or never sending the
+ * message) keeps existing behaviour.
+ */
+export interface GeometryWorkerSetMergeLayersMessage {
+  type: 'set-merge-layers';
+  enabled: boolean;
+}
+
 export type GeometryWorkerRequest =
   | GeometryWorkerInitMessage
   | GeometryWorkerProcessMessage
@@ -100,6 +113,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerStreamEndMessage
   | GeometryWorkerSetStylesMessage
   | GeometryWorkerSetEntityIndexMessage
+  | GeometryWorkerSetMergeLayersMessage
   | GeometryWorkerPrePassMessage;
 
 export interface GeometryWorkerBatchMessage {
@@ -145,6 +159,33 @@ export type GeometryWorkerResponse =
   | GeometryWorkerMemoryMessage;
 
 let api: IfcAPI | null = null;
+
+/**
+ * Cached merge-layers flag for this worker. The host may post
+ * `set-merge-layers` BEFORE `init` (the controller pattern) so we
+ * remember the latest value and re-apply once the IfcAPI is built.
+ * The Rust agent's contract is: state lives on the IfcAPI instance,
+ * so we only need to push it once per API construction.
+ */
+let mergeLayersFlag: boolean = false;
+let mergeLayersApplied: boolean = false;
+
+/** Narrow typed wrapper for the optional `setMergeLayers` extension. */
+type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
+
+/**
+ * Push the cached `mergeLayersFlag` onto the IfcAPI. Idempotent — only
+ * fires once per API instance unless `markMergeLayersDirty` is called
+ * (used when the host updates the flag mid-session).
+ */
+function applyMergeLayersToApi(): void {
+  if (!api || mergeLayersApplied) return;
+  const merging = api as IfcAPIWithMerge;
+  if (typeof merging.setMergeLayers === 'function') {
+    merging.setMergeLayers(mergeLayersFlag);
+  }
+  mergeLayersApplied = true;
+}
 
 /**
  * Build a Uint8Array view over the shared buffer. Modern wasm-bindgen accepts
@@ -287,6 +328,8 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     if (!api) {
       await init();
       api = new IfcAPI();
+      mergeLayersApplied = false;
+      applyMergeLayersToApi();
     }
     const collection = api.processGeometryBatch(
       session.localBytes, jobs, session.unitScale,
@@ -368,7 +411,12 @@ self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
 async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<void> {
   try {
     if (e.data.type === 'prepass-streaming') {
-      if (!api) { await init(); api = new IfcAPI(); }
+      if (!api) {
+        await init();
+        api = new IfcAPI();
+        mergeLayersApplied = false;
+        applyMergeLayersToApi();
+      }
       // Heartbeat: lets the host watchdog know the worker is alive even
       // before the first chunk lands.
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
@@ -401,7 +449,12 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     }
 
     if (e.data.type === 'prepass' || e.data.type === 'prepass-fast') {
-      if (!api) { await init(); api = new IfcAPI(); }
+      if (!api) {
+        await init();
+        api = new IfcAPI();
+        mergeLayersApplied = false;
+        applyMergeLayersToApi();
+      }
       // Heartbeat: signals "worker alive, parser running" so the host watchdog
       // can distinguish a stuck pre-pass from one that's still working on a
       // multi-GB file.
@@ -434,6 +487,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         await init();
       }
       api = new IfcAPI();
+      mergeLayersApplied = false;
+      applyMergeLayersToApi();
       (self as unknown as Worker).postMessage({ type: 'ready' });
       return;
     }
@@ -442,6 +497,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       if (!api) {
         await init();
         api = new IfcAPI();
+        mergeLayersApplied = false;
+        applyMergeLayersToApi();
       }
       const { sharedBuffer, jobsFlat, unitScale, rtcX, rtcY, rtcZ, needsShift,
               voidKeys, voidCounts, voidValues, styleIds, styleColors } = e.data;
@@ -460,6 +517,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       if (!api) {
         await init();
         api = new IfcAPI();
+        mergeLayersApplied = false;
+        applyMergeLayersToApi();
       }
       activeSession = startSession({
         sharedBuffer: e.data.sharedBuffer,
@@ -508,8 +567,21 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       if (!api) {
         await init();
         api = new IfcAPI();
+        mergeLayersApplied = false;
+        applyMergeLayersToApi();
       }
       api.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
+      return;
+    }
+
+    if (e.data.type === 'set-merge-layers') {
+      // Cache the requested flag — if the API already exists, push it
+      // through immediately; otherwise the next `new IfcAPI()` path
+      // will pick it up via `applyMergeLayersToApi`. Default is false
+      // so omitting this message keeps existing behaviour intact.
+      mergeLayersFlag = e.data.enabled === true;
+      mergeLayersApplied = false;
+      applyMergeLayersToApi();
       return;
     }
 

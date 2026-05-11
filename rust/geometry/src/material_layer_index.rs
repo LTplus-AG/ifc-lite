@@ -165,6 +165,21 @@ impl MaterialLayerIndex {
         self.element_to_buildup.get(&element_id)
     }
 
+    /// Returns `true` when the element has a recorded buildup that is
+    /// `LayerBuildup::Sliceable` — i.e. its single swept solid can be cut
+    /// into per-layer slabs.
+    ///
+    /// Used by the wasm-bindings layer to decide whether an aggregated
+    /// `IfcWall` parent already produces per-layer sub-meshes (so its
+    /// `IfcBuildingElementPart` children can be skipped when the
+    /// merge-layers toggle is on — see issue #540).
+    pub fn is_sliceable(&self, element_id: u32) -> bool {
+        matches!(
+            self.element_to_buildup.get(&element_id),
+            Some(LayerBuildup::Sliceable { .. })
+        )
+    }
+
     /// Number of elements with a recorded buildup (sliceable or not).
     pub fn len(&self) -> usize {
         self.element_to_buildup.len()

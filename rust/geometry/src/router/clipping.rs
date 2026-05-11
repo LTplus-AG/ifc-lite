@@ -3,6 +3,17 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Boolean clipping result extraction: half-space planes and profile drilling.
+//!
+//! NOTE (issue #635): the helpers in this module are currently unused by the
+//! production void path. They were previously called by
+//! `GeometryRouter::build_void_context` to re-apply `IfcBooleanClippingResult`
+//! planes after void subtraction, but that re-application discarded the
+//! polygonal bound from `IfcPolygonalBoundedHalfSpace` and chopped off gable
+//! peaks (AC20-FZK-Haus). Boolean clipping is now applied entirely by
+//! `BooleanClippingProcessor::process` during representation traversal. The
+//! helpers are kept (gated `#[allow(dead_code)]`) for callers that want to
+//! pre-extract the base wall profile + clip planes — e.g. layered-wall
+//! triangulation that needs both pre- and post-clip silhouettes.
 
 use super::GeometryRouter;
 use crate::{Error, Mesh, Point3, Result, Vector3};
@@ -11,6 +22,7 @@ use nalgebra::Matrix4;
 use rustc_hash::FxHashSet;
 
 /// Maximum IfcBooleanClippingResult chain depth we will follow when extracting a base profile.
+#[allow(dead_code)]
 const MAX_CLIPPING_DEPTH: usize = 32;
 
 impl GeometryRouter {
@@ -18,6 +30,7 @@ impl GeometryRouter {
     /// This is much faster than extract_base_profile_and_clips and allows skipping expensive
     /// extraction for the ~95% of elements that don't have clipping.
     #[inline]
+    #[allow(dead_code)] // see module-level note (issue #635)
     pub(super) fn has_clipping_planes(
         &self,
         element: &DecodedEntity,
@@ -76,6 +89,7 @@ impl GeometryRouter {
     /// Drills through IfcBooleanClippingResult to find the base extruded solid,
     /// extracts its actual 2D profile (preserving chamfered corners), and collects clipping planes.
     /// Returns: (profile, depth, thickness_axis, wall_origin, position_transform, clipping_planes)
+    #[allow(dead_code)] // see module-level note (issue #635)
     pub(super) fn extract_base_profile_and_clips(
         &self,
         element: &DecodedEntity,
@@ -154,6 +168,7 @@ impl GeometryRouter {
     }
 
     /// Extract profile from IfcBooleanClippingResult recursively
+    #[allow(dead_code)] // see module-level note (issue #635)
     fn extract_profile_from_boolean_result(
         &self,
         boolean_result: &DecodedEntity,
@@ -223,6 +238,7 @@ impl GeometryRouter {
     }
 
     /// Extract profile, depth, axis, origin, and Position transform from IfcExtrudedAreaSolid
+    #[allow(dead_code)] // see module-level note (issue #635)
     fn extract_profile_from_extruded_solid(
         &self,
         extruded_solid: &DecodedEntity,

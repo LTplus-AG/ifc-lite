@@ -238,6 +238,29 @@ fn is_body_representation(rep_type: &str) -> bool {
     )
 }
 
+/// Pick a unit-vector along the wall's thinnest AABB axis. Used as a
+/// last-ditch extrusion direction for the issue #635 AABB fallback when
+/// the opening doesn't carry an explicit `IfcDirection`.
+#[inline]
+fn wall_thinnest_axis_dir(wall_min: &Point3<f64>, wall_max: &Point3<f64>) -> Vector3<f64> {
+    let ext = [
+        (wall_max.x - wall_min.x).abs(),
+        (wall_max.y - wall_min.y).abs(),
+        (wall_max.z - wall_min.z).abs(),
+    ];
+    let mut axis = 0;
+    for i in 1..3 {
+        if ext[i] < ext[axis] {
+            axis = i;
+        }
+    }
+    match axis {
+        0 => Vector3::new(1.0, 0.0, 0.0),
+        1 => Vector3::new(0.0, 1.0, 0.0),
+        _ => Vector3::new(0.0, 0.0, 1.0),
+    }
+}
+
 /// Classification of an opening for void subtraction.
 #[derive(Clone)]
 enum OpeningType {
@@ -247,9 +270,13 @@ enum OpeningType {
     /// Diagonal rectangular opening with mesh geometry and a full oriented frame.
     /// The frame preserves roof-window roll, not just the penetration direction.
     DiagonalRectangular(Mesh, OpeningFrame),
-    /// Non-rectangular opening (circular, arched, or floor openings with rotated footprint)
-    /// Uses full CSG subtraction with actual mesh geometry
-    NonRectangular(Mesh),
+    /// Non-rectangular opening (circular, arched, or floor openings with
+    /// rotated footprint). Uses full CSG subtraction with the actual mesh
+    /// geometry. The AABB + extrusion direction are kept so that callers can
+    /// fall back to a rectangular box cut when CSG can't run (issue #635 —
+    /// e.g. circular windows whose triangulated profile blows past
+    /// `MAX_CSG_POLYGONS_PER_MESH`).
+    NonRectangular(Mesh, Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
 }
 
 /// World-space basis for an oriented rectangular opening.
@@ -563,13 +590,11 @@ pub(super) struct VoidContext {
     /// Rectangular openings merged into larger boxes to prevent O(2^N)
     /// triangle growth when many adjacent openings tile a surface.
     merged_openings: Vec<OpeningType>,
-    /// Clipping planes (e.g. roof clips) already transformed to world space.
-    world_clipping_planes: Vec<(Point3<f64>, Vector3<f64>, bool)>,
 }
 
 impl VoidContext {
     fn is_noop(&self) -> bool {
-        self.openings.is_empty() && self.world_clipping_planes.is_empty()
+        self.openings.is_empty()
     }
 }
 
@@ -992,44 +1017,21 @@ impl GeometryRouter {
     /// output is reusable across every sub-mesh of the same element.
     pub(super) fn build_void_context(
         &self,
-        element: &DecodedEntity,
+        _element: &DecodedEntity,
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
     ) -> VoidContext {
-        let world_clipping_planes: Vec<(Point3<f64>, Vector3<f64>, bool)> =
-            if self.has_clipping_planes(element, decoder) {
-                let mut object_placement_transform =
-                    match self.get_placement_transform_from_element(element, decoder) {
-                        Ok(t) => t,
-                        Err(_) => Matrix4::identity(),
-                    };
-                self.scale_transform(&mut object_placement_transform);
-
-                let clipping_planes = match self.extract_base_profile_and_clips(element, decoder) {
-                    Ok((_profile, _depth, _axis, _origin, _transform, clips)) => clips,
-                    Err(_) => Vec::new(),
-                };
-
-                clipping_planes
-                    .iter()
-                    .map(|(point, normal, agreement)| {
-                        let world_point = object_placement_transform.transform_point(point);
-                        let rotation = object_placement_transform.fixed_view::<3, 3>(0, 0);
-                        let world_normal = (rotation * normal).normalize();
-                        (world_point, world_normal, *agreement)
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
+        // NOTE (issue #635): we no longer extract `IfcBooleanClippingResult`
+        // planes here. They are applied by `BooleanClippingProcessor::process`
+        // when building the input mesh; re-applying them as unbounded planes
+        // discarded the polygonal bound and chopped off gable peaks (see
+        // `apply_void_context` for the full rationale).
         let openings = self.classify_openings(opening_ids, decoder);
         let merged_openings = Self::merge_rectangular_openings(&openings);
 
         VoidContext {
             openings,
             merged_openings,
-            world_clipping_planes,
         }
     }
 
@@ -1123,7 +1125,12 @@ impl GeometryRouter {
         for opening in &non_rect_openings {
             match *opening {
                 OpeningType::Rectangular(..) | OpeningType::DiagonalRectangular(..) => {}
-                OpeningType::NonRectangular(ref opening_mesh) => {
+                OpeningType::NonRectangular(
+                    ref opening_mesh,
+                    open_min_pt,
+                    open_max_pt,
+                    extrusion_dir,
+                ) => {
                     if csg_operation_count >= MAX_CSG_OPERATIONS {
                         continue;
                     }
@@ -1156,38 +1163,73 @@ impl GeometryRouter {
                     }
 
                     let tri_before = result.triangle_count();
+                    let mut csg_succeeded = false;
                     match clipper.subtract_mesh(&result, opening_mesh) {
                         Ok(csg_result) => {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                                 .max(MIN_VALID_TRIANGLES);
-                            if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
+                            // CSG only counts as a success when the result actually
+                            // changed (either fewer triangles, indicating polygons
+                            // were removed, or more triangles, indicating the
+                            // opening was carved as new boundary tris). When the
+                            // safety thresholds in `subtract_mesh` short-circuit —
+                            // e.g. `MAX_CSG_POLYGONS_PER_MESH` rejects a high-poly
+                            // round/curved opening (issue #635) — the host mesh is
+                            // returned unchanged, leaving the void uncut.
+                            let changed = csg_result.triangle_count() != tri_before;
+                            if !csg_result.is_empty()
+                                && csg_result.triangle_count() >= min_tris
+                                && changed
+                            {
                                 result = csg_result;
+                                csg_succeeded = true;
                             }
                         }
                         Err(_) => {}
                     }
                     csg_operation_count += 1;
-                }
-            }
-        }
 
-        if !ctx.world_clipping_planes.is_empty() {
-            for (plane_point, plane_normal, agreement) in &ctx.world_clipping_planes {
-                let clip_normal = if *agreement {
-                    *plane_normal
-                } else {
-                    -*plane_normal
-                };
-
-                let plane = Plane::new(*plane_point, clip_normal);
-                if let Ok(clipped) = clipper.clip_mesh(&result, &plane) {
-                    if !clipped.is_empty() {
-                        result = clipped;
+                    // AABB fallback (issue #635): when CSG can't subtract the
+                    // opening (most commonly because its triangulated profile
+                    // exceeds `MAX_CSG_POLYGONS_PER_MESH`, i.e. circular /
+                    // arched / arbitrary curved openings), cut the opening's
+                    // axis-aligned bounding box instead. This leaves a square
+                    // hole in place of a round one, but a square hole is
+                    // dramatically less wrong than a missing void on a wall
+                    // that is supposed to host a window or door.
+                    if !csg_succeeded {
+                        let dir = extrusion_dir.or_else(|| {
+                            Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
+                        });
+                        let (final_min, final_max) = if let Some(dir) = dir {
+                            self.extend_opening_along_direction(
+                                *open_min_pt,
+                                *open_max_pt,
+                                wall_min,
+                                wall_max,
+                                dir,
+                            )
+                        } else {
+                            (*open_min_pt, *open_max_pt)
+                        };
+                        let aabb_cut =
+                            self.cut_rectangular_opening(&result, final_min, final_max);
+                        if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
+                            result = aabb_cut;
+                        }
                     }
                 }
             }
         }
 
+        // NOTE (issue #635): the clipping planes from `IfcBooleanClippingResult`
+        // are already applied by `BooleanClippingProcessor::process` during
+        // `process_element` — the post-clip mesh is the *input* to this
+        // function. Re-clipping here was a leftover from before that
+        // processor existed; for `IfcPolygonalBoundedHalfSpace` it actively
+        // *broke* gable walls, because `extract_half_space_plane` discards
+        // the polygonal bound and the resulting unbounded plane chops off
+        // the gable peak. Voids alone are applied here.
         result
     }
 
@@ -1249,6 +1291,32 @@ impl GeometryRouter {
         Ok(voided)
     }
 
+    /// Resolve an AABB + extrusion direction for an opening, used as the
+    /// fallback rectangular cut for high-vertex non-rectangular openings
+    /// (issue #635). The opening's full mesh AABB is the only safe choice
+    /// when we are about to over-approximate with an axis-aligned box —
+    /// a per-item bound can miss part of a multi-item opening (e.g. AC20
+    /// round windows store two extrusions with offset depths and the
+    /// first one alone wouldn't reach all the way through the wall).
+    /// The extrusion direction is best-effort from the first item.
+    fn fallback_aabb_for_opening(
+        &self,
+        opening_entity: &DecodedEntity,
+        opening_mesh: &Mesh,
+        decoder: &mut EntityDecoder,
+    ) -> (Point3<f64>, Point3<f64>, Option<Vector3<f64>>) {
+        let dir = self
+            .get_opening_item_bounds_with_direction(opening_entity, decoder)
+            .ok()
+            .and_then(|items| items.into_iter().find_map(|(_, _, d)| d));
+        let (mn, mx) = opening_mesh.bounds();
+        (
+            Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
+            Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
+            dir,
+        )
+    }
+
     fn classify_openings(
         &self,
         opening_ids: &[u32],
@@ -1269,7 +1337,18 @@ impl GeometryRouter {
             let vertex_count = opening_mesh.positions.len() / 3;
 
             if vertex_count > 100 {
-                openings.push(OpeningType::NonRectangular(opening_mesh));
+                // High-vertex-count openings (circular / arched / faceted
+                // sweeps) won't fit through the BSP CSG safety thresholds,
+                // so always carry the per-item AABB + extrusion direction
+                // as a fallback (issue #635).
+                let (fallback_min, fallback_max, fallback_dir) =
+                    self.fallback_aabb_for_opening(&opening_entity, &opening_mesh, decoder);
+                openings.push(OpeningType::NonRectangular(
+                    opening_mesh,
+                    fallback_min,
+                    fallback_max,
+                    fallback_dir,
+                ));
             } else {
                 let item_bounds_with_dir = self
                     .get_opening_item_bounds_with_direction(&opening_entity, decoder)
@@ -1302,7 +1381,12 @@ impl GeometryRouter {
 
                             if let Some(frame) = frame {
                                 if !is_clean_box {
-                                    openings.push(OpeningType::NonRectangular(item_mesh));
+                                    openings.push(OpeningType::NonRectangular(
+                                        item_mesh,
+                                        min_pt,
+                                        max_pt,
+                                        extrusion_dir,
+                                    ));
                                 } else if direction_is_diagonal || !frame.is_axis_aligned() {
                                     openings.push(OpeningType::DiagonalRectangular(
                                         item_mesh, frame,
@@ -1321,7 +1405,12 @@ impl GeometryRouter {
                                     extrusion_dir,
                                 ));
                             } else {
-                                openings.push(OpeningType::NonRectangular(item_mesh));
+                                openings.push(OpeningType::NonRectangular(
+                                    item_mesh,
+                                    min_pt,
+                                    max_pt,
+                                    extrusion_dir,
+                                ));
                             }
                         }
                     } else {

@@ -1,0 +1,24 @@
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+		 xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/Invalid.xsd">
+		<info>
+				<title>A prohibited facet returns the opposite of a required facet</title>
+		</info>
+		<specifications>
+				<specification name="A prohibited facet returns the opposite of a required facet" ifcVersion="IFC2X3 IFC4" minOccurs="1" maxOccurs="unbounded">
+						<applicability>
+								<entity>
+										<name>
+												<simpleValue>IFCWALL</simpleValue>
+										</name>
+								</entity>
+						</applicability>
+						<requirements>
+								<attribute minOccurs="0" maxOccurs="0">
+										<name>
+												<simpleValue>Name</simpleValue>
+										</name>
+								</attribute>
+						</requirements>
+				</specification>
+		</specifications>
+</ids>

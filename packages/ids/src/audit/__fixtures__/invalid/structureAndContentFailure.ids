@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids:ids
+	xmlns:ids="http://standards.buildingsmart.org/IDS"
+	xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd"
+	>
+	<ids:info>
+		<ids:title>Example for failing xsl</ids:title>
+		<ids:copyright>buildingSMART International Ltd</ids:copyright>
+		<ids:date>2022-01-12</ids:date>
+	</ids:info>
+	<ids:specifications>
+		<ids:specification ifcVersion="IFC2X3" name="some">
+			<ids:applicability maxOccurs="unbounded">
+				<!-- The attribute should cause an xml schema validation error -->
+				<ids:entity invalidAttribute="Should not be here">
+					<ids:name>
+						<ids:simpleValue>NONEXISTINGCLASS</ids:simpleValue>
+					</ids:name>
+					<unexpected />
+				</ids:entity>
+			</ids:applicability>
+		</ids:specification>
+	</ids:specifications>
+</ids:ids>

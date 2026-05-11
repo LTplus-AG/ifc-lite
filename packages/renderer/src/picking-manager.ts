@@ -217,4 +217,56 @@ export class PickingManager {
         );
         return result;
     }
+
+    /**
+     * GPU-based rectangle pick. Renders the same pick pass as `pick()`,
+     * then reads back every texel inside the rect and dedupes the hit
+     * set. Point splats and mesh triangles both participate.
+     *
+     * Rect coordinates are in CSS pixels; we scale to canvas pixels
+     * the same way `pick()` does. Visibility filters from `options`
+     * are applied to meshes before the pass; point nodes are not
+     * filtered (per-asset visibility is binary and the asset count is
+     * tiny).
+     *
+     * Limitations: skips the CPU-raycast and dynamic-mesh-creation
+     * fallbacks that `pick()` uses for very large batched models, so
+     * rect pick may miss entities whose individual meshes haven't been
+     * hydrated. Acceptable for an MVP — rect select is a power-user
+     * tool and the user can fall back to single-click pick.
+     */
+    async pickRect(
+        x0: number,
+        y0: number,
+        x1: number,
+        y1: number,
+        options?: PickOptions,
+    ): Promise<Set<number>> {
+        if (!this.picker) return new Set();
+        const rect = this.canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return new Set();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+        const sx0 = x0 * scaleX, sy0 = y0 * scaleY;
+        const sx1 = x1 * scaleX, sy1 = y1 * scaleY;
+        if (options?.isStreaming) return new Set();
+
+        let meshes = this.scene.getMeshes();
+        if (options?.hiddenIds && options.hiddenIds.size > 0) {
+            meshes = meshes.filter((m) => !options.hiddenIds!.has(m.expressId));
+        }
+        if (options?.isolatedIds !== null && options?.isolatedIds !== undefined) {
+            meshes = meshes.filter((m) => options.isolatedIds!.has(m.expressId));
+        }
+        const viewProj = this.camera.getViewProjMatrix().m;
+        const pointSnap = this.pointPickProvider?.() ?? null;
+        return this.picker.pickRect(
+            sx0, sy0, sx1, sy1,
+            this.canvas.width, this.canvas.height,
+            meshes,
+            viewProj,
+            pointSnap?.nodes ?? undefined,
+            pointSnap?.sizing ?? undefined,
+        );
+    }
 }

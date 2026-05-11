@@ -10,6 +10,7 @@
 
 import type { StateCreator } from 'zustand';
 import type {
+  IDSAuditReport,
   IDSDocument,
   IDSValidationReport,
   IDSSpecificationResult,
@@ -40,6 +41,15 @@ export type IDSFilterMode = 'all' | 'failed' | 'passed';
 export interface IDSSliceState {
   /** Loaded IDS document */
   idsDocument: IDSDocument | null;
+  /**
+   * Audit report for the loaded IDS document itself — flags authoring
+   * issues (missing attributes, invalid IFC entity references, regex
+   * errors, etc.). Distinct from `idsValidationReport`, which describes
+   * how an IFC model conforms to the IDS.
+   */
+  idsAuditReport: IDSAuditReport | null;
+  /** Whether the audit pipeline is currently running. */
+  idsAuditing: boolean;
   /** Validation report after running validation */
   idsValidationReport: IDSValidationReport | null;
   /** Currently active specification (for filtering results) */
@@ -70,6 +80,10 @@ export interface IDSSlice extends IDSSliceState {
   // Document actions
   setIdsDocument: (document: IDSDocument | null) => void;
   clearIdsDocument: () => void;
+
+  // Audit actions
+  setIdsAuditReport: (report: IDSAuditReport | null) => void;
+  setIdsAuditing: (auditing: boolean) => void;
 
   // Validation actions
   setIdsValidationReport: (report: IDSValidationReport | null) => void;
@@ -158,6 +172,8 @@ function buildEntityIdSets(
 export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, get) => ({
   // Initial state
   idsDocument: null,
+  idsAuditReport: null,
+  idsAuditing: false,
   idsValidationReport: null,
   idsActiveSpecificationId: null,
   idsActiveEntityId: null,
@@ -175,6 +191,9 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   setIdsDocument: (idsDocument) =>
     set({
       idsDocument,
+      // Loading a new document invalidates any previous audit/validation
+      // results — they were tied to a specific document instance.
+      idsAuditReport: null,
       idsValidationReport: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
@@ -186,6 +205,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   clearIdsDocument: () =>
     set({
       idsDocument: null,
+      idsAuditReport: null,
       idsValidationReport: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
@@ -193,6 +213,10 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
     }),
+
+  // Audit actions
+  setIdsAuditReport: (idsAuditReport) => set({ idsAuditReport }),
+  setIdsAuditing: (idsAuditing) => set({ idsAuditing }),
 
   // Validation actions
   setIdsValidationReport: (report) => {

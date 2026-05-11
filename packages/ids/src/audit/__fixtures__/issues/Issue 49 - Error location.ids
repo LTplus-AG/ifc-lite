@@ -1,0 +1,51 @@
+<ids:ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns:ids="http://standards.buildingsmart.org/IDS">
+  <!--edited with usBIM.IDSeditor 2.3.4.0 (http://www.accasoftware.com)-->
+  <ids:info>
+    <ids:title>US Bridges and Structures Design-to-Construction Exchange2</ids:title>
+    <ids:copyright>2025</ids:copyright>
+    <ids:version>1.0.202503</ids:version>
+    <ids:description>Data requirements for US workhorse bridges and related structures as defined by TPF-5(372) using ISO 16739-1:2024 IFC4.3.2.0 schema and the buildingSMART International Alignment-based View [AbV] base model view definition.
+
+Version 1.0 DOES NOT contain US Bridge Data Dictionary links via the bSDD</ids:description>
+    <ids:author>jwouellette@gmail.com</ids:author>
+    <ids:date>2025-03-07</ids:date>
+    <ids:purpose>Handover of bridge and structure design from Bridge Engineer to Contractor for quantity take off and pricing, construction process planning, and basis for fabrication detailing.</ids:purpose>
+    <ids:milestone>Design-to-Construction</ids:milestone>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="01.01.01 Person">
+      <ids:applicability minOccurs="0" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCPERSON</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:attribute cardinality="required">
+          <ids:name>
+            <ids:simpleValue>FamilyName</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+        <ids:attribute cardinality="required">
+          <ids:name>
+            <ids:simpleValue>GivenName</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+        <ids:attribute cardinality="required">
+          <ids:name>
+            <ids:simpleValue>Roles</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+        <ids:attribute cardinality="optional">
+          <ids:name>
+            <ids:simpleValue>SuffixTitles</ids:simpleValue>
+          </ids:name>
+          <ids:value>
+            <ids:simpleValue>PE</ids:simpleValue>
+          </ids:value>
+        </ids:attribute>
+      </ids:requirements>
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>

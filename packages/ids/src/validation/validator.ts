@@ -58,7 +58,7 @@ export async function validateIDS(
     const result = await validateSpecification(
       spec,
       accessor,
-      modelInfo.modelId,
+      modelInfo,
       options,
       (progress) => {
         if (onProgress) {
@@ -108,11 +108,12 @@ export async function validateIDS(
 async function validateSpecification(
   spec: IDSSpecification,
   accessor: IFCDataAccessor,
-  modelId: string,
+  modelInfo: IDSModelInfo,
   options: ValidatorOptions,
   onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
 ): Promise<IDSSpecificationResult> {
   const { translator, maxEntities, includePassingEntities = true } = options;
+  const modelId = modelInfo.modelId;
 
   // Phase 1: Find applicable entities
   const applicableIds = findApplicableEntities(spec, accessor);
@@ -321,7 +322,43 @@ function checkRequirement(
       break;
 
     case 'optional':
-      status = 'pass'; // Optional always passes
+      // Per IDS spec: `optional` means "if present, must satisfy".
+      // - Pass when the facet matches.
+      // - Pass when the facet is wholly absent (the missing-attribute /
+      //   missing-property failure types).
+      // - **Fail** when the facet is present but its value/datatype is
+      //   wrong — `optional` does not give a free pass to bad data.
+      if (facetResult.passed) {
+        status = 'pass';
+      } else {
+        const missingFailures = new Set([
+          'ATTRIBUTE_MISSING',
+          'PROPERTY_MISSING',
+          'PSET_MISSING',
+          'CLASSIFICATION_MISSING',
+          'MATERIAL_MISSING',
+          'PARTOF_RELATION_MISSING',
+        ]);
+        if (
+          facetResult.failure?.type &&
+          missingFailures.has(facetResult.failure.type)
+        ) {
+          status = 'pass';
+        } else {
+          status = 'fail';
+          failureReason = translator
+            ? translator.describeFailure({
+                requirement,
+                status: 'fail',
+                facetType: requirement.facet.type,
+                checkedDescription: '',
+                actualValue: facetResult.actualValue,
+                expectedValue: facetResult.expectedValue,
+                failure: facetResult.failure,
+              })
+            : formatFailureReason(facetResult);
+        }
+      }
       break;
 
     case 'prohibited':
@@ -367,6 +404,11 @@ function checkCardinality(
     return undefined;
   }
 
+  // The XML parser canonicalises the IDS 1.0 default — an
+  // `<applicability>` without explicit `minOccurs` becomes `1`
+  // (REQUIRED) — so we don't have to fall back here. The `?? 0`
+  // covers exotic specs that omit applicability entirely but still
+  // declare `maxOccurs`.
   const minExpected = spec.minOccurs ?? 0;
   const maxExpected = spec.maxOccurs;
 

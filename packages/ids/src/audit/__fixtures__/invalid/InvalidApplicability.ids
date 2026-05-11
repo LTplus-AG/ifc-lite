@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"
+				 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+				 xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd"
+				 >
+  <ids:info>
+    <ids:title>random example to show technical capabilities and usage</ids:title>
+    <ids:copyright>buildingSMART International Ltd</ids:copyright>
+    <ids:date>2023-05-22</ids:date>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification ifcVersion="IFC2X3" name="binder" >
+      <ids:applicability maxOccurs="unbounded">
+        <!-- At least one facet -->
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property dataType="IFCLABEL">
+          <ids:propertySet>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="anas.*"/>
+            </xs:restriction>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Anax</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>yes</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+
+    <ids:specification ifcVersion="IFC2X3" name="binder">
+      <!-- Missing applicability -->
+      <ids:requirements>
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="anas.*"/>
+            </xs:restriction>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Anax</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>yes</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>

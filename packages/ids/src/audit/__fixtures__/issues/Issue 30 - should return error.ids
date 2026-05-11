@@ -1,0 +1,32 @@
+<ids:ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns:ids="http://standards.buildingsmart.org/IDS">
+  <!--edited with usBIM.IDSeditor 2.0.6.0 (http://www.accasoftware.com)-->
+  <ids:info>
+    <ids:title>Requisitos de información para arquitecturasasc</ids:title>
+    <ids:version>v1</ids:version>
+    <ids:date>2023-11-28</ids:date>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification ifcVersion="IFC2X3" name="IfcProject.Name DI TEST" identifier="project.001" description="Los modelos deben contener un código de proyecto que siga un patrón característico.">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCBOOLEAN">
+          <ids:propertySet>
+            <ids:simpleValue>dfsdf</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>asdasd</ids:simpleValue>
+          </ids:baseName>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property dataType="IFCCOILTYPEENUM" cardinality="required">
+          <ids:propertySet>
+            <xs:restriction base="xs:string" />
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string" />
+          </ids:baseName>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>

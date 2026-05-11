@@ -15,6 +15,7 @@ export function StatusBar() {
   const progress = useViewerStore((s) => s.progress);
   const error = useViewerStore((s) => s.error);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
+  const activeStreamCanceller = useViewerStore((s) => s.activeStreamCanceller);
   const webgpu = useWebGPU();
 
   const [fps, setFps] = useState(60);
@@ -107,6 +108,19 @@ export function StatusBar() {
           <span className="text-destructive">{error}</span>
         ) : (
           <span>Ready</span>
+        )}
+        {/* Cancel button — only visible while a long-running stream
+            (LAS/LAZ/PLY/PCD/E57) is in flight. The loader hooks
+            register/clear the canceller around `await ingest.done`. */}
+        {activeStreamCanceller && (
+          <button
+            type="button"
+            onClick={() => activeStreamCanceller()}
+            className="px-2 py-0.5 rounded border border-destructive/40 text-destructive text-[10px] uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            title="Cancel the active point cloud stream"
+          >
+            Cancel
+          </button>
         )}
       </div>
 

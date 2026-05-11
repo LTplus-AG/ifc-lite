@@ -12,6 +12,9 @@
 import { useViewerStore } from '@/store';
 import type { PointColorModeUi, PointSizeModeUi } from '@/store/slices/pointCloudSlice';
 import { cn } from '@/lib/utils';
+import { PointCloudLegend } from './PointCloudLegend';
+import { PointCloudClasses } from './PointCloudClasses';
+import { DeviationPanel } from './DeviationPanel';
 
 const COLOR_MODES: Array<{ value: PointColorModeUi; label: string; hint: string }> = [
   { value: 'rgb',            label: 'RGB',            hint: 'Per-point colour from the source' },
@@ -19,6 +22,7 @@ const COLOR_MODES: Array<{ value: PointColorModeUi; label: string; hint: string 
   { value: 'intensity',      label: 'Intensity',      hint: 'Greyscale ramp from per-point intensity' },
   { value: 'height',         label: 'Height',         hint: 'Cool-warm ramp by Y-up world height' },
   { value: 'fixed',          label: 'Solid',          hint: 'Single colour override' },
+  { value: 'deviation',      label: 'Deviation',      hint: 'Signed distance to nearest BIM surface (compute below)' },
 ];
 
 const SIZE_MODES: Array<{ value: PointSizeModeUi; label: string; hint: string }> = [
@@ -30,9 +34,12 @@ const SIZE_MODES: Array<{ value: PointSizeModeUi; label: string; hint: string }>
 export interface PointCloudPanelProps {
   /** Number of currently-loaded point cloud assets — panel hides when 0. */
   assetCount: number;
+  /** Total triangle count across the scene (gates the BIM↔scan deviation
+   *  compute button — useless without a BIM model loaded). */
+  triangleCount: number;
 }
 
-export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
+export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelProps) {
   const colorMode = useViewerStore((s) => s.pointCloudColorMode);
   const setColorMode = useViewerStore((s) => s.setPointCloudColorMode);
   const sizeMode = useViewerStore((s) => s.pointCloudSizeMode);
@@ -45,6 +52,8 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
   const setEdlEnabled = useViewerStore((s) => s.setPointCloudEdlEnabled);
   const edlStrength = useViewerStore((s) => s.pointCloudEdlStrength);
   const setEdlStrength = useViewerStore((s) => s.setPointCloudEdlStrength);
+  const fixedColor = useViewerStore((s) => s.pointCloudFixedColor);
+  const setFixedColor = useViewerStore((s) => s.setPointCloudFixedColor);
 
   if (assetCount <= 0) return null;
 
@@ -81,7 +90,30 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
             </button>
           );
         })}
+        <PointCloudLegend colorMode={colorMode} />
+        {colorMode === 'fixed' && (
+          // Native colour input — keeps the panel dependency-free.
+          // Hex round-trips through float[0..1]: parse `#rrggbb` to a
+          // [r,g,b,1] tuple on input, format the active rgb back to hex
+          // on display. Alpha stays 1 since fixed-mode opacity is
+          // controlled by the splat shape, not the colour swatch.
+          <label className="flex items-center justify-between gap-2 mt-1 px-2 py-1 rounded bg-muted/40">
+            <span className="text-[10px] text-muted-foreground">Solid colour</span>
+            <input
+              type="color"
+              value={rgbToHex(fixedColor)}
+              onChange={(e) => setFixedColor(hexToRgba(e.target.value, fixedColor[3]))}
+              aria-label="Pick the solid colour applied in fixed mode"
+              className="h-6 w-10 rounded border-0 cursor-pointer bg-transparent"
+            />
+          </label>
+        )}
       </div>
+
+      {/* Per-ASPRS-class visibility — toggles the splat shader's
+          class-mask uniform; works in any colour mode but most
+          discoverable when colorMode === 'classification'. */}
+      <PointCloudClasses />
 
       {/* Size mode */}
       <div className="flex flex-col gap-0.5">
@@ -169,6 +201,25 @@ export function PointCloudPanel({ assetCount }: PointCloudPanelProps) {
           </label>
         )}
       </div>
+
+      {/* BIM↔scan deviation heatmap — only useful when both meshes
+          and points are loaded. The panel renders nothing when there
+          are no triangles in the scene. */}
+      <DeviationPanel triangleCount={triangleCount} />
     </div>
   );
+}
+
+function rgbToHex([r, g, b]: [number, number, number, number]): string {
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+function hexToRgba(hex: string, alpha: number): [number, number, number, number] {
+  // Browsers always emit "#rrggbb" from <input type="color">, so we
+  // can skip the 3-char shorthand path. Parse byte-by-byte and divide.
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return [r, g, b, alpha];
 }

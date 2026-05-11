@@ -23,7 +23,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 
-export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57';
+export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
 /**
  * IfcTypeEnum.IfcGeographicElement — the closest IFC4 entity for a scan
@@ -182,27 +182,60 @@ export function detectPointCloudFormat(
   fileName: string,
   buffer: ArrayBuffer | null,
 ): PointCloudFormat | null {
-  const lower = fileName.toLowerCase();
-  if (lower.endsWith('.las')) return 'las';
-  if (lower.endsWith('.laz')) return 'laz';
-  if (lower.endsWith('.ply')) return 'ply';
-  if (lower.endsWith('.pcd')) return 'pcd';
-  if (lower.endsWith('.e57')) return 'e57';
+  // Magic bytes win over extension when both are available — a LAS
+  // file dropped as `*.ply` should still load as LAS, not be forced
+  // through the wrong decoder. PTS / XYZ are ASCII so they have no
+  // distinctive magic and stay extension-only at the bottom.
   if (buffer && buffer.byteLength >= 8) {
     const view = new DataView(buffer, 0, Math.min(buffer.byteLength, 32));
-    if (view.getUint32(0, true) === 0x4653414c) return 'las';
-    // ASCII probe — first three bytes "ply" → PLY; "# .P" or ".PCD" → PCD.
-    const b0 = view.getUint8(0), b1 = view.getUint8(1), b2 = view.getUint8(2);
-    if (b0 === 0x70 /* p */ && b1 === 0x6c /* l */ && b2 === 0x79 /* y */) return 'ply';
-    if (b0 === 0x23 /* # */ && view.byteLength > 4 && view.getUint8(2) === 0x2e /* . */) return 'pcd';
-    // E57 magic = "ASTM-E57" (8 bytes)
+    // E57 magic = "ASTM-E57" (8 bytes) — check before LAS so files
+    // can't accidentally match on the LAS magic in their first 4 bytes.
     if (
       view.getUint8(0) === 0x41 && view.getUint8(1) === 0x53
       && view.getUint8(2) === 0x54 && view.getUint8(3) === 0x4d
       && view.getUint8(4) === 0x2d && view.getUint8(5) === 0x45
       && view.getUint8(6) === 0x35 && view.getUint8(7) === 0x37
     ) return 'e57';
+    if (view.getUint32(0, true) === 0x4653414c /* "LASF" little-endian */) {
+      // LAS and LAZ share the LASF magic; differentiate by extension
+      // when available, otherwise default to LAS (laz-perf will throw
+      // a clear error on a non-LAZ payload).
+      const lower = fileName.toLowerCase();
+      if (lower.endsWith('.laz')) return 'laz';
+      return 'las';
+    }
+    // ASCII probes: "ply" header / PCD header line.
+    const b0 = view.getUint8(0), b1 = view.getUint8(1), b2 = view.getUint8(2);
+    if (b0 === 0x70 /* p */ && b1 === 0x6c /* l */ && b2 === 0x79 /* y */) return 'ply';
+    // PCDs in the wild use three header shapes:
+    //   1. `# .PCD v0.7\n…`              — original commented header
+    //   2. `VERSION 0.7\n…`              — version-first (PCL pcl_io)
+    //   3. `FIELDS x y z\n…`             — fields-first (some converters)
+    // Match all three so a renamed PCD doesn't fall through to the
+    // extension-based detector.
+    if (b0 === 0x23 /* # */ && view.byteLength > 4 && view.getUint8(2) === 0x2e /* . */) return 'pcd';
+    if (
+      b0 === 0x56 /* V */ && b1 === 0x45 /* E */ && b2 === 0x52 /* R */
+      && view.byteLength > 7 && view.getUint8(3) === 0x53 /* S */
+      && view.getUint8(4) === 0x49 /* I */ && view.getUint8(5) === 0x4f /* O */
+      && view.getUint8(6) === 0x4e /* N */
+    ) return 'pcd';
+    if (
+      b0 === 0x46 /* F */ && b1 === 0x49 /* I */ && b2 === 0x45 /* E */
+      && view.byteLength > 6 && view.getUint8(3) === 0x4c /* L */
+      && view.getUint8(4) === 0x44 /* D */ && view.getUint8(5) === 0x53 /* S */
+    ) return 'pcd';
   }
+  // Fall back to extension when the buffer is missing / too short
+  // OR for ASCII formats (PTS / XYZ) that don't carry a magic header.
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.las')) return 'las';
+  if (lower.endsWith('.laz')) return 'laz';
+  if (lower.endsWith('.ply')) return 'ply';
+  if (lower.endsWith('.pcd')) return 'pcd';
+  if (lower.endsWith('.e57')) return 'e57';
+  if (lower.endsWith('.pts')) return 'pts';
+  if (lower.endsWith('.xyz')) return 'xyz';
   return null;
 }
 
@@ -228,9 +261,6 @@ export function describeUnsupportedFormat(fileName: string): string | null {
   if (lower.endsWith('.fls') || lower.endsWith('.lsproj')) {
     return 'Faro Scene project — export to E57 from Scene to load it here.';
   }
-  if (lower.endsWith('.pts') || lower.endsWith('.xyz')) {
-    return 'PTS / XYZ ASCII points — not yet supported (export to PLY or LAS).';
-  }
   return null;
 }
 
@@ -242,6 +272,76 @@ export function describeUnsupportedFormat(fileName: string): string | null {
  * FederationRegistry then layers in the per-model offset on top.
  */
 let nextSyntheticExpressId = 1;
+
+/**
+ * Counter shared across all in-flight ingests. We log up to
+ * `DEBUG_CLASS_LOG_LIMIT` chunks total per page session — enough to
+ * see whether the first scan's classifications are reaching the
+ * renderer without spamming the console for users with many files.
+ *
+ * Reset to zero on a hot module reload (HMR re-evaluates the module),
+ * so the dev workflow is "load file → see ≤ 3 chunk diagnostics".
+ */
+const DEBUG_CLASS_LOG_LIMIT = 3;
+let debugClassChunkLogs = 0;
+
+/**
+ * Log presence + 16-bin histogram of the chunk's classification IDs.
+ * Used to debug "classification colour mode shows everything as
+ * unclassified". Common causes the histogram surfaces immediately:
+ *   - chunk.classifications is undefined → format / decoder didn't
+ *     emit it (look at the format's streaming source).
+ *   - All values 0 or 1 → file is genuinely unclassified (LAS spec
+ *     classes 0 = "Created, never classified", 1 = "Unclassified");
+ *     not a viewer bug.
+ *   - Non-trivial spread but rendering is grey → packing or shader
+ *     read is wrong.
+ */
+function logChunkClassHistogram(
+  fileName: string,
+  format: PointCloudFormat,
+  chunk: DecodedPointChunk,
+): void {
+  const classes = chunk.classifications;
+  if (!classes) {
+    // E57 has no standard classification field per ASTM E2807, so
+    // most scans (Faro Focus, Leica BLK, Trimble) won't carry one.
+    // A non-standard `classification` prototype field IS now read
+    // when present; absence here means the file genuinely doesn't
+    // include per-point class IDs.
+    const hint = format === 'e57'
+      ? ' (E57 spec doesn\'t define classification — file must be from CloudCompare or a custom LIDAR pipeline to have it)'
+      : ' (decoder didn\'t emit any per-point class IDs)';
+    console.log(
+      `[pointcloud-debug] ${format} ${fileName} chunk #${debugClassChunkLogs}: `
+      + `pointCount=${chunk.pointCount} classifications=undefined${hint}`,
+    );
+    return;
+  }
+  // 32-wide histogram (covers the ASPRS LAS 1.4 standard range).
+  // Anything past 31 lands in `overflow` so misclassified high
+  // values still surface.
+  const hist = new Uint32Array(32);
+  let overflow = 0;
+  let sample: number[] = [];
+  const n = Math.min(classes.length, chunk.pointCount);
+  for (let i = 0; i < n; i++) {
+    const c = classes[i];
+    if (c < 32) hist[c]++;
+    else overflow++;
+    if (sample.length < 8) sample.push(c);
+  }
+  const nonZero: string[] = [];
+  for (let c = 0; c < 32; c++) {
+    if (hist[c] > 0) nonZero.push(`${c}=${hist[c]}`);
+  }
+  if (overflow > 0) nonZero.push(`>31:${overflow}`);
+  console.log(
+    `[pointcloud-debug] ${format} ${fileName} chunk #${debugClassChunkLogs}: `
+    + `pointCount=${chunk.pointCount} classes.length=${classes.length} `
+    + `first8=[${sample.join(',')}] hist={${nonZero.join(', ')}}`,
+  );
+}
 
 /**
  * Stream a point cloud into the renderer. Returns immediately; await
@@ -284,6 +384,17 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
         });
       },
       onChunk: (chunk) => {
+        // Per-chunk classification diagnostic. Logs whether the
+        // chunk carries a classifications buffer and a 16-bin class
+        // histogram for the first few chunks of each stream so it's
+        // easy to see whether the source actually carries class IDs
+        // (LAS files often have everything as 0/1 for "unclassified").
+        // Capped at 3 logs per stream to keep the console readable;
+        // further debug-on-demand can be done from devtools.
+        if (debugClassChunkLogs < DEBUG_CLASS_LOG_LIMIT) {
+          debugClassChunkLogs++;
+          logChunkClassHistogram(opts.fileName, opts.format, chunk);
+        }
         // LAS / LAZ / E57 / typical scan-style PLY + PCD all store data
         // Z-up by convention (LIDAR / surveying tradition). The renderer
         // is Y-up internally — the IFCx ingest path applies the same

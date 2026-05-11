@@ -1,0 +1,30 @@
+﻿<ids:ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns:ids="http://standards.buildingsmart.org/IDS">
+  <!--edited with usBIM.IDSeditor 2.0.2.0 (http://www.accasoftware.com)-->
+  <ids:info>
+    <ids:title>New ids file2</ids:title>
+    <ids:milestone>jhnkjn3333</ids:milestone>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Nuova Specifica">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCACTUATOR</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+        <ids:property dataType="IFCACCELERATIONMEASURE">
+          <ids:propertySet>
+            <ids:simpleValue>asca</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string" />
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>w</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements />
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>

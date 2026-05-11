@@ -537,6 +537,125 @@ fn test_extruded_area_solid_tapered() {
     assert!((max.z - 2000.0).abs() < 0.01);
 }
 
+/// Issue #631, sample `IfcReinforcingBar.ifc` (stirrup).
+///
+/// `IfcSweptDiskSolid` directrix is an `IfcIndexedPolyCurve` over an
+/// `IfcCartesianPointList3D`. Before this fix the 3D curve dispatcher had no
+/// arm for `IfcIndexedPolyCurve`, so points were re-read as 2D and collapsed
+/// onto z=0 — the stirrup rendered as a flat near-zero-length line. Verify
+/// that the swept tube spans the full Z range of the input points.
+#[test]
+fn test_swept_disk_indexed_polycurve_3d() {
+    // A simple 3D arc: start (0,0,0), mid (10,0,10), end (20,0,0).
+    // This lives in the XZ plane — Y stays zero, Z varies non-trivially.
+    let content = r#"
+#1=IFCCARTESIANPOINTLIST3D(((0.0,0.0,0.0),(10.0,0.0,10.0),(20.0,0.0,0.0)));
+#2=IFCINDEXEDPOLYCURVE(#1,(IFCARCINDEX((1,2,3))),.F.);
+#3=IFCSWEPTDISKSOLID(#2,1.0,$,$,$);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = SweptDiskSolidProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(3).unwrap();
+    assert_eq!(entity.ifc_type, IfcType::IfcSweptDiskSolid);
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+
+    assert!(!mesh.is_empty(), "3D indexed polycurve directrix should produce geometry");
+
+    let (min, max) = mesh.bounds();
+    // The tube radius is 1.0, so Z extent of the mesh should be close to
+    // (arc max Z + radius) - (-radius) ≈ 11. Without this fix the directrix
+    // collapses to a 1-D line on x and Z extent is ~2 (just the tube radius
+    // around z=0).
+    let z_extent = (max.z - min.z) as f64;
+    assert!(
+        z_extent > 5.0,
+        "stirrup arc should span its declared 3D Z range; got z_extent={}",
+        z_extent
+    );
+}
+
+/// Issue #631, sample `Rebar2.ifc` (Revit-style rebar).
+///
+/// `IfcSweptDiskSolid.EndParam` is emitted in arc length (mm) rather than
+/// segment-index parameter — out of spec, but ubiquitous in Revit exports.
+/// Treating it verbatim per spec would clamp to `num_segments` and render the
+/// entire curve, blowing the rebar up to 10–100× its real length.
+///
+/// We detect `EndParam > num_segments + ε` and re-interpret as arc length.
+/// Verify that a long composite curve trimmed by a small `EndParam` produces a
+/// short tube whose X-extent matches the trim value.
+#[test]
+fn test_swept_disk_revit_arclength_trim_fallback() {
+    // Single 1000-unit straight polyline segment along +X; trim to length 100.
+    // num_segments = 1, EndParam = 100 ⇒ 100 > 1 + ε triggers arc-length mode.
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((1000.0,0.0,0.0));
+#3=IFCPOLYLINE((#1,#2));
+#4=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#3);
+#5=IFCCOMPOSITECURVE((#4),.F.);
+#6=IFCSWEPTDISKSOLID(#5,1.0,$,0.,100.);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = SweptDiskSolidProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(6).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+
+    assert!(!mesh.is_empty());
+    let (min, max) = mesh.bounds();
+    let x_extent = (max.x - min.x) as f64;
+    // Tube radius 1.0 adds ~2 to X extent at each end; expected ≈ 100 + 0 (end
+    // caps are radial, not axial). Generous bounds to allow for the end-cap
+    // contribution and floating-point drift.
+    assert!(
+        (90.0..=115.0).contains(&x_extent),
+        "Revit arc-length trim should clip directrix to ~100 units; got x_extent={}",
+        x_extent
+    );
+}
+
+/// Regression: spec-conformant segment-index trim parameters must keep their
+/// previous semantics. `EndParam ≤ num_segments` ⇒ no arc-length fallback.
+#[test]
+fn test_swept_disk_segment_index_trim_unchanged() {
+    // Two-segment composite curve: segment 0 along +X (0..100), segment 1 along
+    // +X (100..200). EndParam = 1.0 ⇒ render only the first segment under the
+    // spec parameterisation. Total resulting tube X-extent ≈ 100.
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((100.0,0.0,0.0));
+#3=IFCCARTESIANPOINT((200.0,0.0,0.0));
+#4=IFCPOLYLINE((#1,#2));
+#5=IFCPOLYLINE((#2,#3));
+#6=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#4);
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
+#8=IFCCOMPOSITECURVE((#6,#7),.F.);
+#9=IFCSWEPTDISKSOLID(#8,1.0,$,0.,1.);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = SweptDiskSolidProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(9).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+
+    assert!(!mesh.is_empty());
+    let (min, max) = mesh.bounds();
+    let x_extent = (max.x - min.x) as f64;
+    assert!(
+        (95.0..=110.0).contains(&x_extent),
+        "Spec-conformant trim (EndParam=1, num_segments=2) should render the first segment only; got x_extent={}",
+        x_extent
+    );
+}
+
 #[test]
 fn test_extruded_area_solid_tapered_falls_back_when_end_missing() {
     // A malformed file with no EndSweptArea should still render as a uniform

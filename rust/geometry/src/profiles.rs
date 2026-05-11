@@ -62,6 +62,180 @@ fn trim_polyline(points: &[Point3<f64>], start: f64, end: f64) -> Vec<Point3<f64
     out
 }
 
+/// Trim a sampled polyline by cumulative arc length from `start_len` to
+/// `end_len`, in the same length units as the input points. Used by the
+/// `IfcSweptDiskSolid` Revit-arc-length fallback (see
+/// [`ProfileProcessor::get_composite_curve_points_trimmed`] doc comment).
+///
+/// Both bounds are clamped to `[0, total_length]`. Returns an empty vector for
+/// degenerate inputs (fewer than two points, zero-length curve, or
+/// `end <= start` after clamping).
+fn trim_polyline_by_arclength(
+    points: &[Point3<f64>],
+    start_len: f64,
+    end_len: f64,
+) -> Vec<Point3<f64>> {
+    let n = points.len();
+    if n < 2 {
+        return points.to_vec();
+    }
+    // Cumulative arc length at each vertex.
+    let mut cum = Vec::with_capacity(n);
+    cum.push(0.0_f64);
+    for i in 1..n {
+        let d = (points[i] - points[i - 1]).norm();
+        cum.push(cum[i - 1] + d);
+    }
+    let total = *cum.last().unwrap();
+    if total < 1e-12 {
+        return Vec::new();
+    }
+    let s = start_len.clamp(0.0, total);
+    let e = end_len.clamp(0.0, total);
+    if e <= s {
+        return Vec::new();
+    }
+
+    let lerp_at = |arc: f64| -> Point3<f64> {
+        // Binary search for the segment containing this arc length.
+        let mut lo = 0;
+        let mut hi = n - 1;
+        while lo + 1 < hi {
+            let m = (lo + hi) / 2;
+            if cum[m] <= arc {
+                lo = m;
+            } else {
+                hi = m;
+            }
+        }
+        let seg_len = cum[hi] - cum[lo];
+        let t = if seg_len > 1e-12 {
+            (arc - cum[lo]) / seg_len
+        } else {
+            0.0
+        };
+        let a = points[lo];
+        let b = points[hi];
+        Point3::new(
+            a.x + (b.x - a.x) * t,
+            a.y + (b.y - a.y) * t,
+            a.z + (b.z - a.z) * t,
+        )
+    };
+
+    let mut out = Vec::new();
+    out.push(lerp_at(s));
+    for i in 0..n {
+        if cum[i] > s && cum[i] < e {
+            out.push(points[i]);
+        }
+    }
+    out.push(lerp_at(e));
+    out
+}
+
+/// Approximate a 3-point arc as a polyline by fitting a circumcircle in the
+/// plane spanned by the three points and sampling it uniformly in angle.
+///
+/// Falls back to the bare 3-point polyline when the points are colinear or the
+/// fitted circle is degenerate (radius is unreasonably large compared to the
+/// arc span — same threshold the 2D sibling uses).
+fn approximate_arc_3pt_3d(
+    p1: Point3<f64>,
+    p2: Point3<f64>,
+    p3: Point3<f64>,
+    num_segments: usize,
+) -> Vec<Point3<f64>> {
+    let a = p2 - p1;
+    let b = p3 - p1;
+    let normal = a.cross(&b);
+    let normal_len_sq = normal.norm_squared();
+    let arc_span = (p3 - p1).norm();
+    // |a × b|² = 2 * (twice triangle area)² — colinear ⇒ ≈ 0.
+    let collinear_tol = 1e-12_f64.max(arc_span.powi(4) * 1e-12);
+    if normal_len_sq < collinear_tol {
+        return vec![p1, p2, p3];
+    }
+    let n_hat = normal / normal_len_sq.sqrt();
+
+    // Circumcenter via standard formula projected onto the {a, b} plane.
+    let d11 = a.dot(&a);
+    let d22 = b.dot(&b);
+    let d12 = a.dot(&b);
+    let denom = 2.0 * (d11 * d22 - d12 * d12);
+    if denom.abs() < 1e-20 {
+        return vec![p1, p2, p3];
+    }
+    let u = (d22 * (d11 - d12)) / denom;
+    let v = (d11 * (d22 - d12)) / denom;
+    let center = p1 + a * u + b * v;
+    let radius = (p1 - center).norm();
+    if radius > arc_span * 100.0 {
+        return vec![p1, p2, p3];
+    }
+
+    // Local 2D frame in the arc plane: u_axis = (p1 - center) normalised,
+    // v_axis = n_hat × u_axis. Angles read off via atan2 in this frame.
+    let u_axis = (p1 - center) / radius;
+    let v_axis = n_hat.cross(&u_axis);
+
+    let angle_of = |pt: Point3<f64>| -> f64 {
+        let r = pt - center;
+        r.dot(&v_axis).atan2(r.dot(&u_axis))
+    };
+    let a1 = angle_of(p1); // ≈ 0 by construction
+    let a2 = angle_of(p2);
+    let a3 = angle_of(p3);
+
+    // Choose sweep direction so we pass through p2.
+    fn norm_pi(mut a: f64) -> f64 {
+        let two_pi = 2.0 * std::f64::consts::PI;
+        a %= two_pi;
+        if a > std::f64::consts::PI {
+            a -= two_pi;
+        } else if a < -std::f64::consts::PI {
+            a += two_pi;
+        }
+        a
+    }
+    let diff13 = norm_pi(a3 - a1);
+    let diff12 = norm_pi(a2 - a1);
+    let go_direct = if diff13 > 0.0 {
+        diff12 > 0.0 && diff12 < diff13
+    } else {
+        diff12 < 0.0 && diff12 > diff13
+    };
+    let sweep = if go_direct {
+        diff13
+    } else if diff13 > 0.0 {
+        diff13 - 2.0 * std::f64::consts::PI
+    } else {
+        diff13 + 2.0 * std::f64::consts::PI
+    };
+
+    let mut out = Vec::with_capacity(num_segments + 1);
+    for i in 0..=num_segments {
+        let t = i as f64 / num_segments as f64;
+        let angle = a1 + t * sweep;
+        let pt = center + (u_axis * radius * angle.cos()) + (v_axis * radius * angle.sin());
+        out.push(pt);
+    }
+    out
+}
+
+/// Cheap dedup helper for 3D point sequences — used to avoid duplicating the
+/// junction vertex when concatenating contiguous segments.
+fn same_point_3d(prev: Option<&Point3<f64>>, next: &Point3<f64>) -> bool {
+    match prev {
+        Some(p) => {
+            (p.x - next.x).abs() < 1e-9
+                && (p.y - next.y).abs() < 1e-9
+                && (p.z - next.z).abs() < 1e-9
+        }
+        None => false,
+    }
+}
+
 /// Profile processor - processes IFC profiles into 2D contours
 pub struct ProfileProcessor {
     schema: IfcSchema,
@@ -825,6 +999,14 @@ impl ProfileProcessor {
                 self.process_composite_curve_3d_with_depth(curve, decoder, depth)
             }
             IfcType::IfcCircle => self.process_circle_3d(curve, decoder),
+            IfcType::IfcIndexedPolyCurve => {
+                // Native 3D path: handles both IfcCartesianPointList2D (z=0) and
+                // IfcCartesianPointList3D, and fits arc segments in the plane of
+                // their three control points. Falling through to the 2D fallback
+                // would drop the Z coordinate of every 3D point list (issue #631
+                // stirrup case).
+                self.process_indexed_polycurve_3d(curve, decoder)
+            }
             IfcType::IfcTrimmedCurve => {
                 // For trimmed curve, get 2D points and convert to 3D
                 let points_2d = self.process_trimmed_curve_with_depth(curve, decoder, depth)?;
@@ -1067,10 +1249,33 @@ impl ProfileProcessor {
     }
 
     /// Process composite curve into 3D points, honoring `IfcSweptDiskSolid`'s
-    /// `StartParam`/`EndParam`. Per IFC, a composite curve is parameterised so
-    /// segment `i` covers `[i, i+1]`. Segments fully outside `[start, end]` are
-    /// dropped; boundary segments are truncated by linearly interpolating along
-    /// their sampled point list (a per-segment normalised parameter).
+    /// `StartParam`/`EndParam`.
+    ///
+    /// ### Spec-conformant path
+    /// Per IFC4 / IFC4.3, an `IfcCompositeCurve` with `n` segments is
+    /// parameterised over `[0, n]` — each segment contributes exactly 1.0 to
+    /// the parameter, so segment `i` covers `[i, i+1]`. Segments fully outside
+    /// `[start, end]` are dropped; boundary segments are truncated by linearly
+    /// interpolating along their sampled point list (a per-segment normalised
+    /// parameter). This branch is taken whenever
+    /// `end_param ≤ num_segments + ε`.
+    ///
+    /// ### SPEC DEVIATION — arc-length fallback for non-conformant trim values
+    /// Revit (and other AECC authoring tools) emit `IfcSweptDiskSolid.EndParam`
+    /// in **arc length** along the directrix instead of segment index. For
+    /// reinforcement bars in particular, the value is the bar's swept length in
+    /// the file's length unit (e.g. mm). Honouring this verbatim per spec —
+    /// clamping to `num_segments` and rendering the whole curve — makes bars
+    /// render at 10–100× their intended length (issue #631, sample
+    /// `Rebar2.ifc`).
+    ///
+    /// Detection: `end_param > num_segments + ε` is impossible under the spec
+    /// parameterisation, so we treat it as a signal that the authoring tool
+    /// used arc-length parameterisation. We then sample the full directrix and
+    /// trim the resulting polyline by cumulative arc length.
+    ///
+    /// Conforming inputs are untouched — they take the spec path and behave
+    /// bit-identically to the previous implementation.
     pub fn get_composite_curve_points_trimmed(
         &self,
         curve: &DecodedEntity,
@@ -1087,8 +1292,24 @@ impl ProfileProcessor {
             return Ok(Vec::new());
         }
 
-        let start = start_param.unwrap_or(0.0).max(0.0);
-        let end = end_param.unwrap_or(num_segments as f64).min(num_segments as f64);
+        let raw_start = start_param.unwrap_or(0.0).max(0.0);
+        let raw_end = end_param.unwrap_or(num_segments as f64);
+        if raw_end <= raw_start {
+            return Ok(Vec::new());
+        }
+
+        // SPEC DEVIATION (Revit rebar) — see doc comment above. Trigger only
+        // when the supplied end parameter cannot be a segment-index parameter;
+        // otherwise we stay on the strictly spec-conformant path below.
+        const SEGMENT_INDEX_TOL: f64 = 1e-6;
+        let arclength_mode = raw_end > num_segments as f64 + SEGMENT_INDEX_TOL;
+        if arclength_mode {
+            let full = self.process_composite_curve_3d_with_depth(curve, decoder, 0)?;
+            return Ok(trim_polyline_by_arclength(&full, raw_start, raw_end));
+        }
+
+        let start = raw_start;
+        let end = raw_end.min(num_segments as f64);
         if end <= start {
             return Ok(Vec::new());
         }
@@ -1696,6 +1917,132 @@ impl ProfileProcessor {
         }
 
         points
+    }
+
+    /// Process indexed polycurve in 3D space.
+    ///
+    /// IfcIndexedPolyCurve(Points, Segments, SelfIntersect) where Points is an
+    /// IfcCartesianPointList (2D or 3D). The 2D-only sibling at
+    /// `process_indexed_polycurve` is used for profile-defining curves; this
+    /// version is used as a directrix for IfcSweptDiskSolid and similar 3D
+    /// sweeps (issue #631 — IfcReinforcingBar stirrups).
+    ///
+    /// `IfcCartesianPointList2D` inputs are treated as planar at z=0 so the
+    /// behavior matches the 2D path on existing fixtures.
+    fn process_indexed_polycurve_3d(
+        &self,
+        curve: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<Point3<f64>>> {
+        let points_attr = curve
+            .get(0)
+            .ok_or_else(|| Error::geometry("IndexedPolyCurve missing Points".to_string()))?;
+
+        let points_list = decoder
+            .resolve_ref(points_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve Points list".to_string()))?;
+
+        let coord_list = points_list
+            .get(0)
+            .and_then(|a| a.as_list())
+            .ok_or_else(|| Error::geometry("CartesianPointList missing CoordList".to_string()))?;
+
+        // IfcCartesianPointList3D has 3-tuples; IfcCartesianPointList2D has
+        // 2-tuples. Read whatever is there and default missing components to 0.
+        let all_points: Vec<Point3<f64>> = coord_list
+            .iter()
+            .filter_map(|coord| {
+                coord.as_list().map(|coords| {
+                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+                    Point3::new(x, y, z)
+                })
+            })
+            .collect();
+
+        let segments_attr = curve.get(1);
+        if segments_attr.is_none() || segments_attr.map(|a| a.is_null()).unwrap_or(true) {
+            return Ok(all_points);
+        }
+
+        let segments = segments_attr
+            .unwrap()
+            .as_list()
+            .ok_or_else(|| Error::geometry("Expected segments list".to_string()))?;
+
+        let mut result: Vec<Point3<f64>> = Vec::new();
+        for segment in segments {
+            // Each segment is IFCLINEINDEX((i1,i2,...)) or IFCARCINDEX((i1,i2,i3)).
+            // Typed values arrive as List([String("IFCLINEINDEX"), List([indices...])]).
+            let (is_arc, indices) = if let Some(segment_list) = segment.as_list() {
+                if segment_list.len() >= 2 {
+                    let type_name = segment_list
+                        .first()
+                        .and_then(|v| v.as_string())
+                        .unwrap_or("");
+                    let is_arc_type = type_name.to_uppercase().contains("ARC");
+                    if let Some(AttributeValue::List(indices_list)) = segment_list.get(1) {
+                        (is_arc_type, Some(indices_list.as_slice()))
+                    } else {
+                        (false, Some(segment_list))
+                    }
+                } else {
+                    (false, Some(segment_list))
+                }
+            } else {
+                (false, None)
+            };
+
+            let Some(indices) = indices else { continue };
+            let idx_values: Vec<usize> = indices
+                .iter()
+                .filter_map(|v| v.as_float().map(|f| f as usize - 1))
+                .collect();
+
+            if is_arc && idx_values.len() == 3 {
+                let p1 = all_points.get(idx_values[0]).copied();
+                let p2 = all_points.get(idx_values[1]).copied();
+                let p3 = all_points.get(idx_values[2]).copied();
+                if let (Some(start), Some(mid), Some(end)) = (p1, p2, p3) {
+                    // Adaptive segment count: estimate sweep from chord vs.
+                    // mid-deviation, same heuristic as the 2D path.
+                    let chord = end - start;
+                    let chord_len = chord.norm();
+                    let mid_offset = mid - Point3::new(
+                        0.5 * (start.x + end.x),
+                        0.5 * (start.y + end.y),
+                        0.5 * (start.z + end.z),
+                    );
+                    let mid_dev = mid_offset.norm();
+                    let arc_estimate = if chord_len > 1e-10 {
+                        (mid_dev / chord_len).abs().min(1.0).acos() * 2.0
+                    } else {
+                        0.5
+                    };
+                    let num_segments = ((arc_estimate / std::f64::consts::FRAC_PI_2 * 8.0)
+                        .ceil() as usize)
+                        .clamp(4, 16);
+                    let arc_points = approximate_arc_3pt_3d(start, mid, end, num_segments);
+                    for pt in arc_points {
+                        if !same_point_3d(result.last(), &pt) {
+                            result.push(pt);
+                        }
+                    }
+                }
+            } else {
+                // Line segment — IfcLineIndex permits any number of indices
+                for &idx in &idx_values {
+                    if let Some(&pt) = all_points.get(idx) {
+                        if !same_point_3d(result.last(), &pt) {
+                            result.push(pt);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     /// Process composite curve into 2D points

@@ -1168,7 +1168,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               <Button
                 variant="ghost"
                 size="icon-sm"
-                disabled={!geometryResult && models.size === 0}
+                // Stay enabled even with no model loaded — the dropdown
+                // also exposes load-time settings (Merge Multilayer
+                // Walls) that the user should be able to set BEFORE
+                // opening a file. Runtime items inside self-gate via
+                // typeGeometryExists.
                 aria-label={mergeLayers ? 'Class Visibility (Merge Multilayer Walls is on)' : 'Class Visibility'}
                 className="relative"
               >

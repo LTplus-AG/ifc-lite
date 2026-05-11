@@ -44,7 +44,27 @@ export {
 
 // Extracted manager classes
 export { PickingManager } from './picking-manager.js';
+export type { PointPickProvider } from './picking-manager.js';
 export { RaycastEngine } from './raycast-engine.js';
+export { PointPicker, decodePickSample } from './point-picker.js';
+export type { PointPickNode, DecodedPickSample } from './point-picker.js';
+export type { PointPickSizing } from './picker.js';
+
+// Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
+export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+export type {
+    PointCloudAssetHandle,
+    PointCloudRenderOptions,
+    PointColorMode,
+    PointSizeMode,
+    ResolvedSectionPlane as PointResolvedSectionPlane,
+} from './pointcloud/point-cloud-renderer.js';
+export { PointRenderPipeline } from './pointcloud/point-pipeline.js';
+export type {
+    PointCloudChunkInput,
+    PointCloudNode,
+    PointCloudNodeMeta,
+} from './pointcloud/point-cloud-node.js';
 
 import { WebGPUDevice } from './device.js';
 import { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
@@ -74,6 +94,11 @@ import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, ty
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
+import { EdlPass } from './edl-pass.js';
+import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+import type { PointCloudAsset } from '@ifc-lite/geometry';
+import { DeviationPipeline } from './deviation/deviation-pipeline.js';
+import { buildTriangleBVH } from './deviation/triangle-bvh.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -98,6 +123,26 @@ type ResolvedVisualEnhancement = {
 };
 
 /**
+ * Build a deterministic fingerprint of the BVH input mesh set so
+ * `Renderer.computeDeviations` can skip the rebuild when the source
+ * geometry hasn't changed. Folds in expressId / modelIndex / position
+ * + index lengths per mesh so two distinct mesh sets that happen to
+ * share the same aggregate position-length total can't collide on the
+ * same fingerprint and reuse a stale BVH.
+ */
+function computeBvhFingerprint(meshes: ReadonlyArray<import('@ifc-lite/geometry').MeshData>): string {
+    const parts: string[] = [String(meshes.length)];
+    for (const m of meshes) {
+        const id = m.expressId ?? -1;
+        const mi = m.modelIndex ?? -1;
+        const posLen = m.positions?.length ?? 0;
+        const idxLen = m.indices?.length ?? 0;
+        parts.push(`${id}:${mi}:${posLen}:${idxLen}`);
+    }
+    return parts.join('|');
+}
+
+/**
  * Main renderer class
  */
 export class Renderer {
@@ -111,6 +156,23 @@ export class Renderer {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     private postProcessor: PostProcessor | null = null;
+    private edlPass: EdlPass | null = null;
+    private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
+        enabled: false,
+        strength: 1,
+        radiusPx: 1,
+        highQuality: true,
+    };
+    private pointCloudRenderer: PointCloudRenderer | null = null;
+    private deviationPipeline: DeviationPipeline | null = null;
+    /**
+     * Cache of which mesh-set the BVH was built from. We rebuild on
+     * `computeDeviations` only when the cached "fingerprint" misses,
+     * so re-running deviation against the same model is a fast
+     * dispatch — the BVH is multi-second on big BIMs and we don't
+     * want to pay that on every slider drag.
+     */
+    private deviationBvhFingerprint: string | null = null;
     private visualEnhancementState: ResolvedVisualEnhancement = {
         enabled: true,
         edgeContrast: { enabled: true, intensity: 1.0 },
@@ -189,10 +251,354 @@ export class Renderer {
             contactRadius: 1.0,
             contactIntensity: 0.3,
         }, this.pipeline.getSampleCount());
+        this.pointCloudRenderer = new PointCloudRenderer(
+            this.device.getDevice(),
+            this.device.getFormat(),
+            'depth24plus-stencil8',
+            this.pipeline.getSampleCount(),
+        );
+        // Compute pipeline for the BIM↔scan deviation heatmap. Lazily
+        // owns the per-triangle BVH GPU buffers; idle until the first
+        // `computeDeviations` call.
+        this.deviationPipeline = new DeviationPipeline(this.device.getDevice());
+        this.edlPass = new EdlPass(this.device, this.pipeline.getSampleCount());
         this.camera.setAspect(width / height);
 
         // Update picking manager with initialized picker
         this.pickingManager.setPicker(this.picker);
+        // Provide a snapshot of pickable point nodes per pick. The
+        // sizing must mirror the live splat shader so click hit-testing
+        // matches what the user actually sees on screen.
+        this.pickingManager.setPointPickProvider(() => {
+            const pcr = this.pointCloudRenderer;
+            if (!pcr || !pcr.hasAssets()) return null;
+            const opts = pcr.getOptions();
+            const sizeMode = opts.sizeMode === 'fixed-px' ? 0 : opts.sizeMode === 'adaptive-world' ? 1 : 2;
+            return {
+                nodes: pcr.getPickNodes(),
+                sizing: {
+                    sizeMode: sizeMode as 0 | 1 | 2,
+                    worldRadius: opts.worldRadius,
+                    pointSizePx: opts.pointSize,
+                    clickTolerancePx: 2,
+                },
+            };
+        });
+    }
+
+    /**
+     * Replace all loaded point clouds with `assets`.
+     *
+     * Phase 0 entry point — single-chunk inline assets from IFCx
+     * (`pcd::base64`, `points::array`, `points::base64`). Future phases
+     * accept streaming sources via a different overload.
+     */
+    setPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        this.pointCloudRenderer.setAssets(assets);
+        // Replace, not append — bounds may have shrunk (e.g. an IFCx
+        // reload with a smaller scan). `expandModelBoundsForPointClouds`
+        // alone only grows; recompute from scratch to keep
+        // fit-to-view + section-plane sliders accurate.
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /** Append additional point clouds without clearing existing ones. */
+    addPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        for (const asset of assets) {
+            this.pointCloudRenderer.addAsset(asset);
+        }
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /** Total number of point cloud assets currently uploaded. */
+    getPointCloudAssetCount(): number {
+        return this.pointCloudRenderer?.getNodeCount() ?? 0;
+    }
+
+    /** Total number of points across all point cloud assets. */
+    getPointCloudPointCount(): number {
+        return this.pointCloudRenderer?.getPointCount() ?? 0;
+    }
+
+    /** Drop all point cloud GPU resources. */
+    clearPointClouds(): void {
+        this.pointCloudRenderer?.clear();
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /**
+     * Streaming entry: open an empty asset that will receive chunks via
+     * `appendPointCloudChunk`. Call `endPointCloudStream` when no more
+     * chunks will arrive (currently a no-op but kept for symmetry).
+     */
+    beginPointCloudStream(meta: { expressId: number; ifcType?: string; modelIndex?: number }): import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        return this.pointCloudRenderer.beginAsset(meta);
+    }
+
+    appendPointCloudChunk(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput,
+    ): void {
+        if (!this.pointCloudRenderer) return;
+        this.pointCloudRenderer.appendChunk(handle, chunk);
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    endPointCloudStream(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+        this.pointCloudRenderer?.endAsset(handle);
+        this.requestRender();
+    }
+
+    removePointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+        this.pointCloudRenderer?.removeAsset(handle);
+        // Bounds may have shrunk — recompute from scratch so fit-to-view
+        // and section-plane sliders see fresh extents.
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /**
+     * Reassign a streamed point-cloud's expressId after upload. Use
+     * this when the federation registry assigns a new model offset and
+     * the renderer needs to emit the post-offset globalId in picking
+     * outputs. The change takes effect on the next render — no GPU
+     * buffer rewrite needed.
+     */
+    relabelPointCloudAsset(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        newExpressId: number,
+    ): void {
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
+        this.requestRender();
+    }
+
+    /**
+     * Compute model bounds from triangle meshes + remaining point clouds.
+     * Called from removeAsset / clear paths so bounds shrink correctly.
+     * Triangle meshes still drive the bounds when present (existing
+     * Scene-driven path), so this only re-folds in the point cloud
+     * extents over whatever the mesh path left.
+     */
+    private recomputeModelBounds(): void {
+        // Always recompute from scratch: take mesh bounds as the
+        // baseline, then fold in the CURRENT point-cloud bounds on
+        // top. Folding only-up via expandModelBoundsForPointClouds()
+        // is correct when pc bounds grow but never shrinks them when
+        // an asset is removed, leaving stale oversized extents until
+        // every point cloud is gone.
+        const meshBounds = this.computeMeshBounds();
+        const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
+
+        if (!meshBounds && !pcBounds) {
+            this.modelBounds = null;
+            return;
+        }
+        this.modelBounds = meshBounds ?? {
+            min: { x: pcBounds!.min[0], y: pcBounds!.min[1], z: pcBounds!.min[2] },
+            max: { x: pcBounds!.max[0], y: pcBounds!.max[1], z: pcBounds!.max[2] },
+        };
+        if (meshBounds && pcBounds) {
+            this.expandModelBoundsForPointClouds();
+        }
+    }
+
+    /** Aggregate bounds across all batched + individual meshes. Returns
+     *  null if the scene has no mesh geometry. */
+    private computeMeshBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        let any = false;
+        for (const batch of this.scene.getBatchedMeshes()) {
+            if (!batch.bounds) continue;
+            any = true;
+            if (batch.bounds.min[0] < minX) minX = batch.bounds.min[0];
+            if (batch.bounds.min[1] < minY) minY = batch.bounds.min[1];
+            if (batch.bounds.min[2] < minZ) minZ = batch.bounds.min[2];
+            if (batch.bounds.max[0] > maxX) maxX = batch.bounds.max[0];
+            if (batch.bounds.max[1] > maxY) maxY = batch.bounds.max[1];
+            if (batch.bounds.max[2] > maxZ) maxZ = batch.bounds.max[2];
+        }
+        if (!any) return null;
+        return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+    }
+
+    /** Apply rendering options (color mode, fixed override, point size). */
+    setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
+        this.pointCloudRenderer?.setOptions(opts);
+        this.requestRender();
+    }
+
+    /**
+     * Compute BIM ↔ scan deviation for every loaded point cloud asset.
+     *
+     * Walks every triangle in the scene (individual + batched meshes,
+     * regardless of which IFC ingest path produced them — STEP, IFCx,
+     * GLB, or federated combinations), builds a per-triangle BVH on
+     * the GPU, then runs a closest-point compute pass per chunk that
+     * writes signed distance into each chunk's deviation buffer.
+     *
+     * Returns metadata so the UI can populate a histogram + auto-range:
+     * the per-asset point count, the suggested ±range from the 95th
+     * percentile, and the bbox the BVH was built from.
+     *
+     * Idempotent: re-running with the same mesh set reuses the GPU
+     * BVH (the BVH build dominates wall time on big BIMs). Pass
+     * `forceRebuild: true` to invalidate.
+     */
+    async computeDeviations(opts: {
+        /** Clip range applied during compute. 0 → no clip. Default 1m. */
+        maxRange?: number;
+        forceRebuild?: boolean;
+    } = {}): Promise<{
+        bvhTriangles: number;
+        bvhNodes: number;
+        chunksProcessed: number;
+        pointsProcessed: number;
+        bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+        suggestedHalfRange: number;
+    }> {
+        if (!this.deviationPipeline || !this.pointCloudRenderer) {
+            throw new Error('Renderer not initialised — call init() first.');
+        }
+        const meshes = this.collectAllSceneMeshes();
+        // Fingerprint folds in per-mesh expressId / modelIndex /
+        // positions length / triangle count, so two distinct meshes
+        // that happen to share an aggregate position-length total
+        // can't alias each other. A federation reload that swaps one
+        // model for another with the same total triangle count would
+        // otherwise reuse the previous BVH and report wrong distances.
+        const fingerprint = computeBvhFingerprint(meshes);
+        if (opts.forceRebuild || fingerprint !== this.deviationBvhFingerprint) {
+            const bvh = buildTriangleBVH(meshes);
+            this.deviationPipeline.uploadBvh(bvh);
+            this.deviationBvhFingerprint = fingerprint;
+        }
+        const stats = this.deviationPipeline.getBvhStats();
+        const maxRange = opts.maxRange ?? 1.0;
+
+        // Encode every chunk into a single command submit so the GPU
+        // can pipeline the dispatches without a CPU round-trip per
+        // chunk. Histogram readback is a follow-up — for v1 we emit
+        // the deviation buffers and let the splat shader visualise.
+        const encoder = this.device.getDevice().createCommandEncoder({ label: 'pointcloud-deviation' });
+        let chunksProcessed = 0;
+        let pointsProcessed = 0;
+        const nodes = this.pointCloudRenderer.getInternalNodes();
+        for (const node of nodes) {
+            for (const chunk of node.chunks) {
+                const ok = this.deviationPipeline.dispatch(encoder, {
+                    positionsBuffer: chunk.vertexBuffer,
+                    deviationsBuffer: chunk.deviationBuffer,
+                    pointCount: chunk.pointCount,
+                    maxRange,
+                });
+                if (ok) {
+                    chunksProcessed++;
+                    pointsProcessed += chunk.pointCount;
+                }
+            }
+        }
+        this.device.getDevice().queue.submit([encoder.finish()]);
+        // Wait until the GPU finishes the dispatches before resolving.
+        // Otherwise the caller's "compute done" callback fires before
+        // the deviation buffers are actually populated.
+        await this.device.getDevice().queue.onSubmittedWorkDone();
+        this.requestRender();
+
+        // Suggest a default half-range = max(0.01m, max-extent / 1000).
+        // Tighter than the maxRange clip; gives the user a reasonable
+        // starting slider position without a histogram readback.
+        const bb = stats.bounds;
+        const suggestedHalfRange = bb
+            ? Math.max(0.01, Math.max(
+                bb.max[0] - bb.min[0],
+                bb.max[1] - bb.min[1],
+                bb.max[2] - bb.min[2],
+              ) / 1000)
+            : 0.05;
+
+        return {
+            bvhTriangles: stats.triangleCount,
+            bvhNodes: stats.nodeCount,
+            chunksProcessed,
+            pointsProcessed,
+            bounds: stats.bounds,
+            suggestedHalfRange,
+        };
+    }
+
+    /**
+     * Aggregate every triangle source the scene exposes — individual
+     * meshes (created on demand by picking / highlights) AND batched
+     * meshes (the streaming geometry path's compact GPU buffers).
+     * Both formats arrive as `MeshData`; the BVH builder doesn't care
+     * which source they came from.
+     */
+    private collectAllSceneMeshes(): import('@ifc-lite/geometry').MeshData[] {
+        // The Scene keeps every CPU-side MeshData regardless of which
+        // ingest path produced it (STEP / IFCx / GLB). One iteration
+        // covers individual + batched + multi-piece + multi-model.
+        // `forEachMeshData` deduplicates by identity so a colour-merged
+        // batch is only added once even if it's indexed under multiple
+        // contributor expressIds.
+        const out: import('@ifc-lite/geometry').MeshData[] = [];
+        this.scene.forEachMeshData((md) => {
+            if (md.positions && md.positions.length > 0) out.push(md);
+        });
+        return out;
+    }
+
+    /**
+     * Toggle Eye-Dome Lighting and tune its strength.
+     *
+     * EDL adds depth perception to point clouds (and meshes) via screen-
+     * space depth gradient — silhouette pixels get a soft black halo.
+     * Cheap: ~9 texture taps per pixel. Only runs when point clouds are
+     * loaded.
+     */
+    setEdlOptions(opts: { enabled?: boolean; strength?: number; radiusPx?: number; highQuality?: boolean }): void {
+        if (opts.enabled !== undefined) this.edlOptions.enabled = opts.enabled;
+        if (opts.strength !== undefined) this.edlOptions.strength = Math.max(0, Math.min(3, opts.strength));
+        if (opts.radiusPx !== undefined) this.edlOptions.radiusPx = Math.max(1, Math.min(4, opts.radiusPx));
+        if (opts.highQuality !== undefined) this.edlOptions.highQuality = opts.highQuality;
+        this.requestRender();
+    }
+
+    private expandModelBoundsForPointClouds(): void {
+        const pcBounds = this.pointCloudRenderer?.getBounds();
+        if (!pcBounds) return;
+        if (!this.modelBounds) {
+            this.modelBounds = {
+                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
+                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
+            };
+            return;
+        }
+        const m = this.modelBounds;
+        m.min.x = Math.min(m.min.x, pcBounds.min[0]);
+        m.min.y = Math.min(m.min.y, pcBounds.min[1]);
+        m.min.z = Math.min(m.min.z, pcBounds.min[2]);
+        m.max.x = Math.max(m.max.x, pcBounds.max[0]);
+        m.max.y = Math.max(m.max.y, pcBounds.max[1]);
+        m.max.z = Math.max(m.max.z, pcBounds.max[2]);
     }
 
     /**
@@ -704,29 +1110,64 @@ export class Renderer {
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
 
+        // Build the selected-id set once per frame so the X-Ray override paths
+        // can keep highlighted entities at full alpha without per-site checks.
+        const selectedId = options.selectedId;
+        const selectedIds = options.selectedIds;
+        const selectedModelIndex = options.selectedModelIndex;
+        const selectedExpressIds = new Set<number>();
+        if (selectedId !== undefined && selectedId !== null) {
+            selectedExpressIds.add(selectedId);
+        }
+        if (selectedIds) {
+            for (const id of selectedIds) {
+                selectedExpressIds.add(id);
+            }
+        }
+        const hasSelected = selectedExpressIds.size > 0;
+
         // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
-        // Callers supply a fresh Map when contents change (same convention as hiddenIds/isolatedIds).
-        const txOverrides = options.transparencyOverrides;
-        const hasTxOverrides = txOverrides != null && txOverrides.size > 0;
+        // Snapshot the caller's map so mid-frame mutation can't desync classification
+        // and uniform-write decisions for the same batch/mesh.
+        const txOverridesSrc = options.transparencyOverrides;
+        const hasTxOverrides = txOverridesSrc != null && txOverridesSrc.size > 0;
+        const txOverrides = hasTxOverrides ? new Map(txOverridesSrc) : null;
         const alphaForMesh = (expressId: number, fallback: number): number => {
             if (!hasTxOverrides) return fallback;
+            // Selected meshes are exempt — the highlight pass renders them last,
+            // but exempting here also keeps mesh classification + uniform writes
+            // consistent so a selected mesh never enters the transparent pipeline
+            // because of its own override entry.
+            if (hasSelected && selectedExpressIds.has(expressId)) return fallback;
             const a = txOverrides!.get(expressId);
             return a !== undefined ? a : fallback;
         };
-        // alphaForBatch walks batch.expressIds per frame. For typical batch sizes
-        // the cost is well below noise vs. the GPU work, and avoiding a cache
-        // removes the stale-on-mutation bug class entirely.
+        // Cache resolved batch alpha for the frame: classification needs it
+        // (opaque vs transparent routing) and renderBatch needs it for the
+        // uniform write. Without the cache we'd walk batch.expressIds twice
+        // per batch per frame, which becomes the dominant JS cost in X-Ray.
+        const batchAlphaCache = hasTxOverrides
+            ? new WeakMap<{ expressIds: number[]; color: [number, number, number, number] }, number>()
+            : null;
         const alphaForBatch = (
             batch: { expressIds: number[]; color: [number, number, number, number] },
             fallback: number,
         ): number => {
             if (!hasTxOverrides) return fallback;
+            const cached = batchAlphaCache!.get(batch);
+            if (cached !== undefined) return cached;
             let minAlpha = Infinity;
             for (const eid of batch.expressIds) {
+                // Selected ids never drag down a batch's alpha — the highlight
+                // pass redraws them on top, but excluding here also means a
+                // batch made entirely of selected entities stays opaque.
+                if (hasSelected && selectedExpressIds.has(eid)) continue;
                 const a = txOverrides!.get(eid);
                 if (a !== undefined && a < minAlpha) minAlpha = a;
             }
-            return minAlpha === Infinity ? fallback : minAlpha;
+            const resolved = minAlpha === Infinity ? fallback : minAlpha;
+            batchAlphaCache!.set(batch, resolved);
+            return resolved;
         };
 
         // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
@@ -808,9 +1249,6 @@ export class Renderer {
             // Write uniform data to each mesh's buffer BEFORE recording commands
             // This ensures each mesh has its own color data
             const allMeshes = [...opaqueMeshes, ...transparentMeshes];
-            const selectedId = options.selectedId;
-            const selectedIds = options.selectedIds;
-            const selectedModelIndex = options.selectedModelIndex;
 
             // Calculate section plane parameters and model bounds
             // Always calculate bounds when sectionPlane is provided (for preview and active mode)
@@ -848,6 +1286,21 @@ export class Renderer {
                         boundsMax.y = Math.max(boundsMax.y, batch.bounds.max[1]);
                         boundsMax.z = Math.max(boundsMax.z, batch.bounds.max[2]);
                     }
+                }
+                // Fold in point-cloud bounds too — without this, a
+                // pure point-cloud scene falls through to the default
+                // [-100,100], and a mixed scene clips against a
+                // smaller mesh-only range while the point pipeline
+                // (which honours the same sectionPlaneData) keeps
+                // drawing points outside the slider's reach.
+                const pcBoundsForSection = this.pointCloudRenderer?.getBounds();
+                if (pcBoundsForSection) {
+                    boundsMin.x = Math.min(boundsMin.x, pcBoundsForSection.min[0]);
+                    boundsMin.y = Math.min(boundsMin.y, pcBoundsForSection.min[1]);
+                    boundsMin.z = Math.min(boundsMin.z, pcBoundsForSection.min[2]);
+                    boundsMax.x = Math.max(boundsMax.x, pcBoundsForSection.max[0]);
+                    boundsMax.y = Math.max(boundsMax.y, pcBoundsForSection.max[1]);
+                    boundsMax.z = Math.max(boundsMax.z, pcBoundsForSection.max[2]);
                 }
 
                 // If no batched meshes have bounds yet (streaming, degenerate
@@ -1155,16 +1608,6 @@ export class Renderer {
                         transparentBatches.push(batch);
                     } else {
                         opaqueBatches.push(batch);
-                    }
-                }
-
-                const selectedExpressIds = new Set<number>();
-                if (selectedId !== undefined && selectedId !== null) {
-                    selectedExpressIds.add(selectedId);
-                }
-                if (selectedIds) {
-                    for (const id of selectedIds) {
-                        selectedExpressIds.add(id);
                     }
                 }
 
@@ -1502,6 +1945,20 @@ export class Renderer {
                 }
             }
 
+            // Draw point clouds (IFCx inline + streamed LAS/LAZ).
+            // Shares the depth buffer + section plane state with the mesh pipeline so
+            // points occlude triangles and vice versa. The splat shader needs the
+            // viewport size to convert pixel sizes into clip-space offsets.
+            if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
+                this.pointCloudRenderer.draw(pass, {
+                    viewProj,
+                    sectionPlane: sectionPlaneData
+                        ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
+                        : null,
+                    viewport: { width: this.canvas.width, height: this.canvas.height },
+                });
+            }
+
             // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
             // Always show plane when sectionPlane options are provided (as preview or active)
             const modelBounds = this.getModelBounds();
@@ -1584,6 +2041,28 @@ export class Renderer {
                 });
             }
 
+            // Eye-Dome Lighting — runs AFTER contact/separation so it darkens
+            // every layer uniformly. Cheap (~9 depth taps), only active when
+            // there are point clouds in the scene and the user has enabled it.
+            if (
+                this.edlPass
+                && this.edlOptions.enabled
+                && this.pointCloudRenderer?.hasAssets()
+            ) {
+                this.edlPass.apply(
+                    encoder,
+                    {
+                        targetView: textureView,
+                        depthView: this.pipeline.getDepthOnlyTextureView(),
+                    },
+                    {
+                        strength: this.edlOptions.strength,
+                        radiusPx: this.edlOptions.radiusPx,
+                        highQuality: this.edlOptions.highQuality,
+                    },
+                );
+            }
+
             device.queue.submit([encoder.finish()]);
         } catch (error) {
             // Handle WebGPU errors (e.g., device lost, invalid state)
@@ -1608,6 +2087,25 @@ export class Renderer {
      */
     async pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null> {
         return this.pickingManager.pick(x, y, options);
+    }
+
+    /**
+     * GPU-based rectangle pick. Drag-select returns the set of
+     * `expressId`s touched by any pixel inside `[x0,y0]..[x1,y1]`
+     * (CSS pixels, canvas-relative). Both meshes and point clouds
+     * participate.
+     *
+     * See `PickingManager.pickRect` for the visibility-filter +
+     * limitation notes.
+     */
+    async pickRect(
+        x0: number,
+        y0: number,
+        x1: number,
+        y1: number,
+        options?: PickOptions,
+    ): Promise<Set<number>> {
+        return this.pickingManager.pickRect(x0, y0, x1, y1, options);
     }
 
     /**
@@ -1846,12 +2344,25 @@ export class Renderer {
         // Post-processor uniform buffer
         this.postProcessor?.destroy();
         this.postProcessor = null;
+        this.edlPass?.destroy();
+        this.edlPass = null;
 
         // Section-plane renderers
         this.sectionPlaneRenderer?.destroy();
         this.sectionPlaneRenderer = null;
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
+
+        // Point cloud GPU resources
+        this.pointCloudRenderer?.clear();
+        this.pointCloudRenderer = null;
+
+        // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.
+        // Done before queue.destroy() so the GPU calls inside
+        // `destroy()` still have a valid device.
+        this.deviationPipeline?.destroy();
+        this.deviationPipeline = null;
+        this.deviationBvhFingerprint = null;
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();

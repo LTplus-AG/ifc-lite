@@ -259,6 +259,24 @@ impl<'a> EntityScanner<'a> {
         }
     }
 
+    /// Create a scanner positioned at a specific byte offset.
+    ///
+    /// Used by the sharded-scan pre-pass: each shard scans the full file
+    /// (so byte offsets returned are GLOBAL, not relative to the shard's
+    /// range) but starts walking at its assigned start offset. Callers are
+    /// expected to rewind `position` to a known entity boundary (typically
+    /// the byte after a `;\n` terminator) before calling `next_entity`.
+    pub fn new_at(content: &'a str, position: usize) -> Self {
+        let bytes = content.as_bytes();
+        let clamped = position.min(bytes.len());
+        Self { content, bytes, position: clamped }
+    }
+
+    /// Current byte offset of the scanner (start of the next entity to scan).
+    pub fn position(&self) -> usize {
+        self.position
+    }
+
     /// Scan for the next entity
     /// Returns (entity_id, type_name, line_start, line_end)
     #[inline]

@@ -60,7 +60,13 @@
 
 use wasm_bindgen::prelude::*;
 
-// wasm-bindgen-rayon removed — incompatible with Vite production builds
+// Threading-only export. The `threading` Cargo feature pulls in
+// wasm-bindgen-rayon and exposes `initThreadPool` to JS so the
+// single-controller worker (Phase 2) can spin up an internal rayon
+// pool. The default (single-threaded) build omits this entirely so
+// the slim bundle stays slim.
+#[cfg(feature = "threading")]
+pub use wasm_bindgen_rayon::init_thread_pool;
 
 #[cfg(feature = "console_error_panic_hook")]
 pub use console_error_panic_hook::set_once as set_panic_hook;

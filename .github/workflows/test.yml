@@ -1,0 +1,123 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Force JavaScript actions onto Node 24. GitHub deprecated Node 20 for
+# actions in late 2025 and will flip the default in June 2026. Setting
+# this opts us in early so the deprecation warning doesn't show up on
+# every run, and it covers actions like jetli/wasm-pack-action that
+# haven't shipped a Node-24-native release yet.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    name: Build + WASM + Rust + Node
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Fixtures live in a GitHub Release (see tests/models/manifest.json
+          # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
+          # disable the smudge filter so a stray .gitattributes can't
+          # reintroduce it on a contributor branch.
+          lfs: false
+
+      - name: Setup pnpm
+        # v4 reads the version from the `packageManager` field in
+        # package.json (`pnpm@10.8.1`); specifying `with.version` here
+        # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # rust-toolchain.toml pins nightly-2025-11-15 with wasm32-unknown-unknown
+      # + rust-src. `rustup show` triggers install of exactly that toolchain,
+      # so cargo and wasm-pack both see the same channel as local devs.
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
+      # Cache hit = no network. Cache miss (manifest changed) = one cold pull
+      # from the GitHub Release CDN. Pattern documented in AGENTS.md §9.
+      #
+      # Fetch BEFORE build: @ifc-lite/ifcx's build runs
+      # scripts/verify-dist-hello-wall.mjs which loads
+      # tests/models/ifc5/Hello_Wall_hello-wall.ifcx, so the fixtures must
+      # be on disk by the time `pnpm build` reaches that package.
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@v5
+        with:
+          path: tests/models
+          key: fixtures-${{ hashFiles('tests/models/manifest.json') }}
+
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+
+      - name: Verify fixtures
+        run: pnpm fixtures:check
+
+      # Rebuild the wasm bindings from rust/wasm-bindings/ on every run.
+      # packages/wasm/pkg/ is committed but goes stale whenever Rust changes
+      # ship without a maintainer running scripts/build-wasm.sh first; this
+      # step catches Rust → wasm breakage before downstream consumers see it.
+      - name: Build WASM
+        run: bash scripts/build-wasm.sh
+
+      # Build all workspace packages so their dist/ artifacts exist for
+      # downstream consumers — turbo handles the dep graph. Required for
+      # `pnpm -r lint` and any test that crosses package boundaries via
+      # the published entry point.
+      - name: Build packages
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # Workspace exclusions:
+      #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
+      #   - ifc-lite-desktop: Tauri crate needs gtk/webkit2gtk system libs;
+      #     desktop-compat.yml validates the desktop frontend separately.
+      - name: Rust tests
+        run: cargo test --workspace --exclude ifc-lite-wasm --exclude ifc-lite-desktop
+
+      - name: Node tests
+        run: pnpm test

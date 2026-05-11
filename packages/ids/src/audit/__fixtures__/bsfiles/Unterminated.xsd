@@ -1,0 +1,20 @@
+<!-- edited with XMLSpy v2022 (x64) (http://www.altova.com)  -->
+<!-- April 5, 2023 - DRAFT  -->
+<xs:schema xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" targetNamespace="http://standards.buildingsmart.org/IDS" elementFormDefault="qualified" attributeFormDefault="unqualified" version="0.9.4">
+	<xs:import namespace="http://www.w3.org/XML/1998/namespace" schemaLocation="http://www.w3.org/2001/xml.xsd"/>
+	<xs:import namespace="http://www.w3.org/2001/XMLSchema" schemaLocation="https://www.w3.org/2001/XMLSchema.xsd"/>
+	<xs:import namespace="http://www.w3.org/2001/XMLSchema-instance" schemaLocation="http://www.w3.org/2001/XMLSchema-instance"/>
+	<xs:element name="ids">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="info">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="title" type="xs:string"/>
+							<xs:element name="copyright" type="xs:string" minOccurs="0"/>
+							<xs:element name="version" type="xs:string" minOccurs="0"/>
+							<xs:element name="description" type="xs:string" minOccurs="0"/>
+							<xs:element name="author" minOccurs="0">
+								<xs:simpleType>
+									<xs:restriction base="xs:string">
+										<xs:pattern value="[^@]+@[

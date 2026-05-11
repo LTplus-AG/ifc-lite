@@ -130,15 +130,35 @@ export function detectEnclosedAreasWithStats(
   }
 
   // ── 1. Snap endpoints ──
+  // Spatial hash keyed on a snap-sized grid so endpoint resolution stays
+  // O(1) average instead of O(N) linear scans. We probe the cell + its 8
+  // neighbours so a query point near a cell boundary still finds matches
+  // on the other side.
   const vertices: Vertex[] = [];
+  const cellSize = Math.max(snap, EPS);
+  const grid = new Map<string, number[]>();
+  const cellKey = (cx: number, cy: number): string => `${cx},${cy}`;
   const lookup = (pt: Vec2): number => {
-    for (const v of vertices) {
-      const dx = v.pt[0] - pt[0];
-      const dy = v.pt[1] - pt[1];
-      if (dx * dx + dy * dy <= snap * snap) return v.id;
+    const snapSq2 = snap * snap;
+    const cx = Math.floor(pt[0] / cellSize);
+    const cy = Math.floor(pt[1] / cellSize);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const bucket = grid.get(cellKey(cx + dx, cy + dy));
+        if (!bucket) continue;
+        for (const id of bucket) {
+          const ddx = vertices[id].pt[0] - pt[0];
+          const ddy = vertices[id].pt[1] - pt[1];
+          if (ddx * ddx + ddy * ddy <= snapSq2) return id;
+        }
+      }
     }
     const id = vertices.length;
     vertices.push({ id, pt: [pt[0], pt[1]] });
+    const key = cellKey(cx, cy);
+    const bucket = grid.get(key);
+    if (bucket) bucket.push(id);
+    else grid.set(key, [id]);
     return id;
   };
 
@@ -203,54 +223,74 @@ export function detectEnclosedAreasWithStats(
   } while (tjunctionsApplied && tjunctionPasses < Math.max(50, indexedSegs.length * 5));
   log(`T-junction snap: ${tjunctionPasses} pass(es)`);
 
-  const maxIterations = Math.max(100, indexedSegs.length * 10);
-  let changed = true;
-  let guard = 0;
-  while (changed && guard < maxIterations) {
-    changed = false;
-    guard++;
-    outer: for (let i = 0; i < splitSegs.length; i++) {
-      for (let j = i + 1; j < splitSegs.length; j++) {
-        const [ai, bi] = splitSegs[i];
-        const [aj, bj] = splitSegs[j];
-        if (ai === aj || ai === bj || bi === aj || bi === bj) continue;
-        const ip = segmentIntersection(
-          vertices[ai].pt, vertices[bi].pt,
-          vertices[aj].pt, vertices[bj].pt,
-        );
-        if (!ip) continue;
-        const newIdx = lookup(ip);
-        if (newIdx === ai || newIdx === bi || newIdx === aj || newIdx === bj) {
-          // Intersection coincides with an existing vertex — split
-          // only the segments that don't already touch it.
-          if (newIdx !== ai && newIdx !== bi) {
-            splitSegs[i] = [ai, newIdx];
-            splitSegs.push([newIdx, bi]);
-            changed = true;
-          }
-          if (newIdx !== aj && newIdx !== bj) {
-            splitSegs[j] = [aj, newIdx];
-            splitSegs.push([newIdx, bj]);
-            changed = true;
-          }
-          if (changed) break outer;
-        } else {
-          // Genuine T or X crossing.
-          splitSegs[i] = [ai, newIdx];
-          splitSegs.push([newIdx, bi]);
-          splitSegs[j] = [aj, newIdx];
-          splitSegs.push([newIdx, bj]);
-          changed = true;
-          break outer;
-        }
-      }
+  // Collect every interior crossing in a single O(N²) pass, recording
+  // the parametric position along each host segment, then split each
+  // segment at all of its collected crossings in one go. Splits don't
+  // alter geometry — they only subdivide — so further passes are
+  // unnecessary. Replaces the previous "split one pair, restart the
+  // whole scan" loop, which was O(N³) on dense wall sets.
+  //
+  // For each original segment we keep a sorted list of (t, vertexId).
+  // Endpoints (t=0 and t=1) are the existing endpoint vertex ids.
+  const seedSegs = splitSegs.slice();
+  const segSplits: Array<Array<{ t: number; v: number }>> = seedSegs.map(([a, b]) => [
+    { t: 0, v: a },
+    { t: 1, v: b },
+  ]);
+
+  // Optional bbox-based pruning: skip pair checks whose AABBs miss.
+  // Keep simple — cost is dominated by segmentIntersection which already
+  // returns null for non-crossings; the bbox pre-check is just to avoid
+  // the math in the easy 90% case.
+  const segBBoxes = seedSegs.map(([a, b]) => {
+    const ax = vertices[a].pt[0], ay = vertices[a].pt[1];
+    const bx = vertices[b].pt[0], by = vertices[b].pt[1];
+    return {
+      minX: Math.min(ax, bx),
+      maxX: Math.max(ax, bx),
+      minY: Math.min(ay, by),
+      maxY: Math.max(ay, by),
+    };
+  });
+
+  for (let i = 0; i < seedSegs.length; i++) {
+    const [ai, bi] = seedSegs[i];
+    const bi_box = segBBoxes[i];
+    for (let j = i + 1; j < seedSegs.length; j++) {
+      const [aj, bj] = seedSegs[j];
+      if (ai === aj || ai === bj || bi === aj || bi === bj) continue;
+      const bj_box = segBBoxes[j];
+      if (
+        bi_box.maxX < bj_box.minX || bj_box.maxX < bi_box.minX ||
+        bi_box.maxY < bj_box.minY || bj_box.maxY < bi_box.minY
+      ) continue;
+
+      const ip = segmentIntersectionParam(
+        vertices[ai].pt, vertices[bi].pt,
+        vertices[aj].pt, vertices[bj].pt,
+      );
+      if (!ip) continue;
+      const newIdx = lookup(ip.point);
+      const isI_endpoint = newIdx === ai || newIdx === bi;
+      const isJ_endpoint = newIdx === aj || newIdx === bj;
+      if (!isI_endpoint) segSplits[i].push({ t: ip.t, v: newIdx });
+      if (!isJ_endpoint) segSplits[j].push({ t: ip.u, v: newIdx });
     }
   }
 
-  if (changed && guard >= maxIterations) {
-    // Iteration cap hit before the splitter converged — detection
-    // results may be incomplete, but emit them rather than failing.
-    log(`intersection splitter hit iteration cap ${maxIterations}; results may be incomplete`);
+  splitSegs.length = 0;
+  for (const splits of segSplits) {
+    if (splits.length <= 2) {
+      // No interior crossings — keep the segment as-is.
+      splitSegs.push([splits[0].v, splits[1].v]);
+      continue;
+    }
+    splits.sort((a, b) => a.t - b.t);
+    for (let k = 0; k < splits.length - 1; k++) {
+      const a = splits[k].v;
+      const b = splits[k + 1].v;
+      if (a !== b) splitSegs.push([a, b]);
+    }
   }
 
   // Deduplicate (a, b) and (b, a) pairs.
@@ -419,14 +459,14 @@ function closestPointOnSegment(
 
 /**
  * Proper-segment intersection test in 2D. Returns the crossing point
- * when the segments cross strictly inside both (excluding shared
- * endpoints at parameter 0 or 1, which produce no new vertex). Uses
- * a small parametric tolerance so two near-coincident endpoints
- * don't register as a fresh interior crossing.
+ * plus the parametric positions on both segments when they cross
+ * inside both (excluding shared endpoints at parameter 0 or 1, which
+ * produce no new vertex). Uses a small parametric tolerance so two
+ * near-coincident endpoints don't register as a fresh interior crossing.
  */
-function segmentIntersection(
+function segmentIntersectionParam(
   p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2,
-): Vec2 | null {
+): { point: Vec2; t: number; u: number } | null {
   const x1 = p1[0], y1 = p1[1];
   const x2 = p2[0], y2 = p2[1];
   const x3 = p3[0], y3 = p3[1];
@@ -442,5 +482,5 @@ function segmentIntersection(
   if (t < -tol || t > 1 + tol) return null;
   if (u < -tol || u > 1 + tol) return null;
   if ((t < tol || t > 1 - tol) && (u < tol || u > 1 - tol)) return null;
-  return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)];
+  return { point: [x1 + t * (x2 - x1), y1 + t * (y2 - y1)], t, u };
 }

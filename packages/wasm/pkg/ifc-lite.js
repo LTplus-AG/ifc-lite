@@ -9,6 +9,12 @@ function addHeapObject(obj) {
     return idx;
 }
 
+function addBorrowedObject(obj) {
+    if (stack_pointer == 1) throw new Error('out of js stack');
+    heap[--stack_pointer] = obj;
+    return stack_pointer;
+}
+
 const CLOSURE_DTORS = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(state => state.dtor(state.a, state.b));
@@ -177,6 +183,8 @@ function passStringToWasm0(arg, malloc, realloc) {
     return ptr;
 }
 
+let stack_pointer = 128;
+
 function takeObject(idx) {
     const ret = getObject(idx);
     dropObject(idx);
@@ -212,12 +220,12 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-function __wasm_bindgen_func_elem_1161(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_1161(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_1182(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_1182(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_1201(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_1201(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_1221(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_1221(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const GeoReferenceJsFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1322,6 +1330,105 @@ export class IfcAPI {
         return MeshCollection.__wrap(ret);
     }
     /**
+     * Phase 1 of Path C — sharded entity-index scan.
+     *
+     * Walks the bytes in `[range_start, range_end)` once and emits
+     * `(express_id, byte_offset, byte_length)` triples for every entity
+     * whose `#N=` opener falls in that range. Byte offsets are GLOBAL
+     * (relative to file start), so multiple shards' outputs concatenate
+     * without rewriting.
+     *
+     * Cross-boundary handling: the scanner rewinds `range_start` to the
+     * byte after the previous `\n` so we don't mis-parse a half entity.
+     * The previous shard owns any entity whose opener is BEFORE its own
+     * range_end (its terminator may extend past it; that's fine — the
+     * scanner walks STEP entities to their terminating `;`, even if that
+     * terminator is past the shard's nominal range_end).
+     *
+     * Returns nothing through the JS callback for performance signals;
+     * emits exactly one `index-shard` event with three Uint32Arrays:
+     *   `{ type: "index-shard", ids: Uint32Array, starts: Uint32Array,
+     *      lengths: Uint32Array, shardStart: u32, shardEnd: u32 }`
+     *
+     * Used by the JS-side shard coordinator to merge N shards' indices
+     * into a single entity-index without paying the 3 s single-threaded
+     * scan cost. Style and job emission are NOT done here — they remain
+     * the job of the existing `build_pre_pass_streaming` (which can be
+     * called on shard 0 in parallel with the other shards' index-only
+     * scans).
+     * @param {Uint8Array} data
+     * @param {Function} on_event
+     * @param {number} range_start
+     * @param {number} range_end
+     * @returns {any}
+     */
+    scanEntityIndexShard(data, on_event, range_start, range_end) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_export3);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.ifcapi_scanEntityIndexShard(retptr, this.__wbg_ptr, ptr0, len0, addBorrowedObject(on_event), range_start, range_end);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
+        }
+    }
+    /**
+     * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
+     * instead of waiting for the full file scan to complete.
+     *
+     * Single linear walk over the file:
+     *   1. Builds the entity index incrementally from the same scan that
+     *      collects geometry jobs (the old `build_pre_pass_fast` did two
+     *      full-file scans — one for entities, one for the index — which
+     *      doubled wall-clock).
+     *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
+     *      first ~50 geometry jobs have been collected, resolves
+     *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
+     *      JS host can spin up geometry process workers.
+     *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
+     *      the meta phase already buffered some).
+     *   4. Emits `complete` with the total job count at end of scan.
+     *
+     * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
+     * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
+     * (first 100 K bytes scanned + meta + first chunk).
+     *
+     * The callback receives a single `JsValue` argument shaped as one of:
+     *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
+     *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
+     *   `{ type: "complete", totalJobs }`
+     * @param {Uint8Array} data
+     * @param {Function} on_event
+     * @param {number} chunk_size
+     * @returns {any}
+     */
+    buildPrePassStreaming(data, on_event, chunk_size) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_export3);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.ifcapi_buildPrePassStreaming(retptr, this.__wbg_ptr, ptr0, len0, addBorrowedObject(on_event), chunk_size);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
+        }
+    }
+    /**
      * Parse IFC file with streaming GPU-ready geometry batches
      *
      * Yields batches of GPU-ready geometry for progressive rendering with zero-copy upload.
@@ -1548,7 +1655,48 @@ export class IfcAPI {
         return takeObject(ret);
     }
     /**
-     * Clear the cached entity index (call after streaming is complete)
+     * Populate `cached_entity_index` from pre-extracted column arrays.
+     *
+     * Used by the streaming pre-pass to share its already-built entity
+     * index across worker realms via SAB-backed Uint32Arrays — every
+     * process worker would otherwise re-scan the entire file in
+     * `processGeometryBatch`'s lazy build path (~5 s on a 1 GB IFC),
+     * even though the pre-pass worker built the same index minutes
+     * earlier.
+     *
+     * Building an `FxHashMap` from the three input slices costs ~1 s on
+     * 14 M entries — about 4–5× faster than re-scanning the file. After
+     * this call, the next `processGeometryBatch` skips the lazy build
+     * branch and reuses the populated cache by `Arc::clone()`.
+     *
+     * `lengths[i]` is the byte length of entity `ids[i]`, so the cache
+     * stores `(start, start + length)` to match the existing tuple layout.
+     *
+     * Idempotent in the sense that repeated calls REPLACE the cache —
+     * supports the parser-worker pattern of reusing one IfcAPI across
+     * multiple loads with different files.
+     * @param {Uint32Array} ids
+     * @param {Uint32Array} starts
+     * @param {Uint32Array} lengths
+     */
+    setEntityIndex(ids, starts, lengths) {
+        const ptr0 = passArray32ToWasm0(ids, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(starts, wasm.__wbindgen_export3);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray32ToWasm0(lengths, wasm.__wbindgen_export3);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.ifcapi_setEntityIndex(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+    }
+    /**
+     * Clear the cached entity index (call between loads when reusing
+     * the same `IfcAPI` instance — e.g. the parser worker keeps one
+     * `IfcAPI` alive across multiple `parse` requests).
+     *
+     * Panics if the cache Mutex is poisoned. Poisoning means an
+     * earlier panic occurred while the lock was held — silently
+     * continuing would mean operating on an inconsistent cache, so
+     * fail fast.
      */
     clearPrePassCache() {
         wasm.ifcapi_clearPrePassCache(this.__wbg_ptr);
@@ -3093,7 +3241,7 @@ function __wbg_get_imports() {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wasm_bindgen_func_elem_1201(a, state0.b, arg0, arg1);
+                    return __wasm_bindgen_func_elem_1221(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -3205,9 +3353,9 @@ function __wbg_get_imports() {
         const ret = BigInt.asUintN(64, arg0);
         return addHeapObject(ret);
     };
-    imports.wbg.__wbindgen_cast_782a03ac5d769879 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 151, function: Function { arguments: [Externref], shim_idx: 152, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1160, __wasm_bindgen_func_elem_1161);
+    imports.wbg.__wbindgen_cast_49a1621a976e807f = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 154, function: Function { arguments: [Externref], shim_idx: 155, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1181, __wasm_bindgen_func_elem_1182);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {

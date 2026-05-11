@@ -16,9 +16,47 @@
 //! string match).
 //!
 //! Co-authored with Geronimo <gerald.stampfel+geronimo@gmail.com> (PR #585).
+//!
+//! Both helpers are on the hot path during scene construction, where the
+//! same ~50–100 distinct type names are queried thousands of times per file.
+//! We memoise per-name behind a `RwLock<FxHashMap<String, bool>>`: the first
+//! call for a name pays the full `IfcType::from_str` (a ~1300-arm match) +
+//! `is_subtype_of` traversal cost; subsequent calls take a read-lock and a
+//! single hash lookup.
+
+use std::sync::{OnceLock, RwLock};
+
+use rustc_hash::FxHashMap;
 
 use crate::generated::IfcType;
 use crate::legacy_entities::get_legacy_entity_info;
+
+/// Normalise to uppercase ASCII without allocating when the input is already
+/// uppercase (the common case — STEP type tokens are emitted uppercase).
+fn normalise_uppercase(type_name: &str) -> std::borrow::Cow<'_, str> {
+    if type_name.bytes().any(|b| b.is_ascii_lowercase()) {
+        std::borrow::Cow::Owned(type_name.to_ascii_uppercase())
+    } else {
+        std::borrow::Cow::Borrowed(type_name)
+    }
+}
+
+/// Look up a cached bool, or compute via `f` and insert.
+fn cached<F>(cache: &RwLock<FxHashMap<String, bool>>, key: &str, f: F) -> bool
+where
+    F: FnOnce() -> bool,
+{
+    if let Ok(read) = cache.read() {
+        if let Some(&v) = read.get(key) {
+            return v;
+        }
+    }
+    let value = f();
+    if let Ok(mut write) = cache.write() {
+        write.insert(key.to_owned(), value);
+    }
+    value
+}
 
 /// Check if a type name (UPPERCASE STEP string) represents an `IfcProduct`
 /// subtype that can bear geometry (has `ObjectPlacement` + `Representation`).
@@ -28,38 +66,35 @@ use crate::legacy_entities::get_legacy_entity_info;
 ///    inherit from `IfcProduct`, with a small block-list for abstract spatial
 ///    containers (`IfcBuilding`, `IfcBuildingStorey`, `IfcFacility`,
 ///    `IfcFacilityPart`, `IfcSpatialElement`, `IfcSpatialStructureElement`)
-///    that don't carry geometry directly. `IfcSpace` and `IfcSite` are
-///    intentionally kept — they have boundary representations the renderer
-///    consumes.
+///    that don't carry geometry directly. `IfcSpace` and `IfcSite` (and any
+///    concrete subtype of either) are intentionally kept — they have boundary
+///    representations the renderer consumes.
 /// 2. Legacy IFC2x3 / removed-in-IFC4x3 names that aren't in the generated
-///    enum (e.g. `IFCSLABELEMENTEDCASE`, `IFCBUILDINGELEMENT`, `IFCPROXY`)
-///    are resolved through `legacy_entities::get_legacy_entity_info`, which
-///    already carries a `has_geometry` flag.
-/// 3. Reinforcement variants and a couple of legacy names not covered above
-///    fall back to a substring/exact match.
+///    enum (e.g. `IFCSLABELEMENTEDCASE`, `IFCBUILDINGELEMENT`, `IFCPROXY`,
+///    `IFCEQUIPMENTELEMENT`, `IFCELECTRICALDISTRIBUTIONPOINT`) resolve through
+///    `legacy_entities::get_legacy_entity_info`, which carries a
+///    `has_geometry` flag.
+/// 3. Reinforcement variants not covered above fall back to a substring
+///    match (`REINFORCING…` / `REINFORCED…`).
 pub fn has_geometry_by_name(type_name: &str) -> bool {
-    // Avoid an allocation when the input is already uppercase ASCII.
-    let upper_owned;
-    let upper: &str = if type_name.bytes().any(|b| b.is_ascii_lowercase()) {
-        upper_owned = type_name.to_ascii_uppercase();
-        upper_owned.as_str()
-    } else {
-        type_name
-    };
+    static CACHE: OnceLock<RwLock<FxHashMap<String, bool>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| RwLock::new(FxHashMap::default()));
 
-    // Legacy / removed entity names not present in the modern enum carry an
-    // explicit `has_geometry` flag in the legacy registry.
+    let upper = normalise_uppercase(type_name);
+    cached(cache, upper.as_ref(), || compute_has_geometry(upper.as_ref()))
+}
+
+fn compute_has_geometry(upper: &str) -> bool {
     if let Some(info) = get_legacy_entity_info(upper) {
         return info.has_geometry;
     }
 
     let t = IfcType::from_str(upper);
     if matches!(t, IfcType::Unknown(_)) {
-        // Reinforcement bars/meshes and a couple of IFC2x3 names not in the
-        // legacy registry. Keep this list minimal — anything new should land
-        // in `legacy_entities.rs` instead.
-        return upper.contains("REINFORC")
-            || matches!(upper, "IFCEQUIPMENTELEMENT" | "IFCELECTRICALDISTRIBUTIONPOINT");
+        // Reinforcement bars/meshes/elements are common in IFC2x3 files. Match
+        // a tighter prefix than `contains("REINFORC")` to avoid catching
+        // unrelated tokens with the substring.
+        return upper.starts_with("IFCREINFORCING") || upper.starts_with("IFCREINFORCED");
     }
 
     if !t.is_subtype_of(IfcType::IfcProduct) {
@@ -70,8 +105,9 @@ pub fn has_geometry_by_name(type_name: &str) -> bool {
 }
 
 /// Subtypes of `IfcProduct` that exist solely as spatial containers and
-/// aren't rendered directly. `IfcSpace` and `IfcSite` are deliberately
-/// exempt — their boundary representations are consumed by the renderer.
+/// aren't rendered directly. `IfcSpace`/`IfcSite` and their concrete
+/// subtypes are deliberately exempt — their boundary representations are
+/// consumed by the renderer.
 ///
 /// We block by inheritance, not by exact match, so IFC4X3 facility
 /// subclasses like `IfcBridge`/`IfcRoad`/`IfcRailway`/`IfcMarineFacility`
@@ -79,10 +115,60 @@ pub fn has_geometry_by_name(type_name: &str) -> bool {
 /// `IfcSpatialZone`, and any future concrete spatial container all collapse
 /// to the same answer without the whitelist needing to enumerate them.
 fn is_non_geometric_spatial(t: IfcType) -> bool {
-    if matches!(t, IfcType::IfcSpace | IfcType::IfcSite) {
+    if t.is_subtype_of(IfcType::IfcSpace) || t.is_subtype_of(IfcType::IfcSite) {
         return false;
     }
     t.is_subtype_of(IfcType::IfcSpatialElement)
+}
+
+/// Check if an IFC entity class is "simple" geometry (processed first for
+/// fast first frame). Driven off the EXPRESS inheritance graph rather than
+/// a leaf-level blacklist, so new IFC4X3 subtypes (e.g. `IfcSolarDevice`
+/// under `IfcEnergyConversionDevice`) are categorised correctly without
+/// code changes — see PR #585.
+///
+/// Returns `true` for "simple" elements (load first), `false` for
+/// "secondary/complex" (openings, doors, windows, furniture, MEP/distribution
+/// elements, spaces, sites, annotations, virtual/proxy entities).
+pub fn is_simple_geometry_type(type_name: &str) -> bool {
+    static CACHE: OnceLock<RwLock<FxHashMap<String, bool>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| RwLock::new(FxHashMap::default()));
+
+    let upper = normalise_uppercase(type_name);
+    cached(cache, upper.as_ref(), || compute_is_simple(upper.as_ref()))
+}
+
+fn compute_is_simple(upper: &str) -> bool {
+    let t = match get_legacy_entity_info(upper) {
+        Some(info) => info.base_type,
+        None => IfcType::from_str(upper),
+    };
+
+    // Anything not in the modern schema defaults to "simple" priority,
+    // matching the original blacklist's "anything else is simple" behaviour.
+    if matches!(t, IfcType::Unknown(_)) {
+        return true;
+    }
+
+    let is_secondary = t.is_subtype_of(IfcType::IfcOpeningElement)
+        || t.is_subtype_of(IfcType::IfcWindow)
+        || t.is_subtype_of(IfcType::IfcDoor)
+        || t.is_subtype_of(IfcType::IfcFurnishingElement)
+        // Covers IfcEnergyConversionDevice + IfcSolarDevice + every Flow*
+        // and every MEP terminal — all inherit from IfcDistributionElement.
+        || t.is_subtype_of(IfcType::IfcDistributionElement)
+        || matches!(
+            t,
+            // Spatial elements that have geometry but aren't structural.
+            IfcType::IfcSpace
+                | IfcType::IfcSite
+                // Annotations / virtual / proxy.
+                | IfcType::IfcAnnotation
+                | IfcType::IfcVirtualElement
+                | IfcType::IfcBuildingElementProxy
+        );
+
+    !is_secondary
 }
 
 #[cfg(test)]
@@ -150,8 +236,7 @@ mod tests {
     fn reinforcement_variants_have_geometry() {
         assert!(has_geometry_by_name("IFCREINFORCINGBAR"));
         assert!(has_geometry_by_name("IFCREINFORCINGMESH"));
-        // Substring match for unknown reinforcement variants
-        assert!(has_geometry_by_name("IFCREINFORCEDOBSCURE"));
+        assert!(has_geometry_by_name("IFCREINFORCEDSOIL"));
     }
 
     #[test]
@@ -175,6 +260,13 @@ mod tests {
         assert!(has_geometry_by_name("IFCSPACE"));
         assert!(has_geometry_by_name("IFCSITE"));
         assert!(has_geometry_by_name("IFCOPENINGELEMENT"));
+    }
+
+    #[test]
+    fn legacy_ifc2x3_distribution_names_have_geometry() {
+        // Routed through legacy_entities now (was an inline match arm).
+        assert!(has_geometry_by_name("IFCEQUIPMENTELEMENT"));
+        assert!(has_geometry_by_name("IFCELECTRICALDISTRIBUTIONPOINT"));
     }
 
     #[test]
@@ -234,7 +326,45 @@ mod tests {
 
     #[test]
     fn unknown_garbage_excluded() {
+        // Reinforcement substring tightened to a prefix — unrelated tokens
+        // containing "REINFORC" are no longer accepted.
         assert!(!has_geometry_by_name("IFCNOTAREALTYPE"));
         assert!(!has_geometry_by_name(""));
+        assert!(!has_geometry_by_name("FOOREINFORCEDBAR"));
+    }
+
+    #[test]
+    fn cached_results_are_consistent() {
+        // Hit the cache twice for the same name and confirm both return the
+        // same value (regression for any race in the cache layer).
+        for _ in 0..3 {
+            assert!(has_geometry_by_name("IFCWALL"));
+            assert!(!has_geometry_by_name("IFCPROJECT"));
+            assert!(is_simple_geometry_type("IFCWALL"));
+            assert!(!is_simple_geometry_type("IFCWINDOW"));
+        }
+    }
+
+    #[test]
+    fn is_simple_geometry_type_routes_correctly() {
+        // Structural / structural-adjacent: simple.
+        assert!(is_simple_geometry_type("IFCWALL"));
+        assert!(is_simple_geometry_type("IFCSLAB"));
+        assert!(is_simple_geometry_type("IFCBEAM"));
+        assert!(is_simple_geometry_type("IFCCOLUMN"));
+
+        // Secondary categories.
+        assert!(!is_simple_geometry_type("IFCWINDOW"));
+        assert!(!is_simple_geometry_type("IFCDOOR"));
+        assert!(!is_simple_geometry_type("IFCOPENINGELEMENT"));
+        assert!(!is_simple_geometry_type("IFCFLOWSEGMENT"));
+        assert!(!is_simple_geometry_type("IFCSOLARDEVICE"));
+        assert!(!is_simple_geometry_type("IFCSPACE"));
+        assert!(!is_simple_geometry_type("IFCANNOTATION"));
+        assert!(!is_simple_geometry_type("IFCBUILDINGELEMENTPROXY"));
+
+        // Mixed-case input — exercises the `to_ascii_uppercase` branch.
+        assert!(is_simple_geometry_type("IfcWall"));
+        assert!(!is_simple_geometry_type("IfcDoor"));
     }
 }

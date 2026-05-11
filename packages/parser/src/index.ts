@@ -45,6 +45,7 @@ export {
   type LayerStack,
   type PathIndex,
   type MeshData as IfcxMeshData,
+  type PointCloudExtraction,
 } from '@ifc-lite/ifcx';
 
 // New extractors with 100% schema coverage
@@ -115,6 +116,8 @@ import { PropertyExtractor } from './property-extractor.js';
 import { RelationshipExtractor } from './relationship-extractor.js';
 import { ColumnarParser, type IfcDataStore } from './columnar-parser.js';
 import { scanEntitiesInWorker } from './scan-worker-inline.js';
+import { buildEntityRefsFromIndex } from './entity-refs-from-index.js';
+import { safeUtf8Decode } from '@ifc-lite/data';
 
 export interface ParseOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
@@ -129,6 +132,19 @@ export interface ParseOptions {
   /** Called when spatial hierarchy is ready, BEFORE property/association parsing completes.
    *  Use this to show the hierarchy panel early while the full parse finishes. */
   onSpatialReady?: (partialStore: import('./columnar-parser.js').IfcDataStore) => void;
+  /**
+   * Pre-built entity index from another worker (typically the streaming
+   * geometry pre-pass). When supplied, `parseColumnar` skips both the
+   * worker-based and WASM scans and synthesizes `EntityRef[]` from the
+   * column arrays directly — saving ~10 s on 1 GB / 14 M-entity files
+   * where the parser would otherwise duplicate the pre-pass scan under
+   * heavy WASM contention with the geometry workers.
+   */
+  preScannedEntityIndex?: {
+    ids: Uint32Array;
+    starts: Uint32Array;
+    lengths: Uint32Array;
+  };
 }
 
 /**
@@ -215,8 +231,15 @@ export class IfcParser {
    *
    * Uses fast scan + on-demand property extraction for all files.
    * Properties are extracted lazily when accessed, not upfront.
+   *
+   * Accepts both `ArrayBuffer` and `SharedArrayBuffer`. The
+   * cross-worker SAB path (parser worker) passes the latter; the
+   * in-process path passes a regular ArrayBuffer.
    */
-  async parseColumnar(buffer: ArrayBuffer, options: ParseOptions = {}): Promise<IfcDataStore> {
+  async parseColumnar(
+    buffer: ArrayBuffer | SharedArrayBuffer,
+    options: ParseOptions = {},
+  ): Promise<IfcDataStore> {
     const uint8Buffer = new Uint8Array(buffer);
     const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
@@ -226,12 +249,24 @@ export class IfcParser {
 
     let entityRefs: EntityRef[] = [];
     let processed = 0;
+    let scanPath: 'worker' | 'wasm' | 'tokenizer' | 'pre-scanned' = 'tokenizer';
+
+    // Pre-scanned path: caller already has the entity index (from the
+    // streaming geometry pre-pass). Synthesize EntityRef[] from the
+    // column arrays without touching the file again.
+    if (options.preScannedEntityIndex) {
+      const { ids, starts, lengths } = options.preScannedEntityIndex;
+      entityRefs = buildEntityRefsFromIndex(uint8Buffer, ids, starts, lengths);
+      processed = entityRefs.length;
+      scanPath = 'pre-scanned';
+    }
 
     // Try Web Worker scanner first (keeps main thread free for UI + geometry)
-    if (!options.disableWorkerScan && typeof Worker !== 'undefined') {
+    if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {
       try {
         entityRefs = await scanEntitiesInWorker(buffer);
         processed = entityRefs.length;
+        scanPath = 'worker';
       } catch (error) {
         console.warn('[IfcParser] Worker scan failed, falling back to main thread:', error);
         entityRefs.length = 0;
@@ -239,18 +274,52 @@ export class IfcParser {
       }
     }
 
-    // Fallback: WASM scanner (synchronous, blocks main thread)
-    if (entityRefs.length === 0 && options.wasmApi && typeof options.wasmApi.scanEntitiesFast === 'function') {
-      try {
-        const scanFn = typeof options.wasmApi.scanRelevantEntitiesFastBytes === 'function'
-          ? () => options.wasmApi!.scanRelevantEntitiesFastBytes(uint8Buffer)
-          : typeof options.wasmApi.scanEntitiesFastBytes === 'function'
+    // WASM scanner (blocks the parser thread but ~5-10× faster than the
+    // JS tokeniser per the @ifc-lite/wasm docs). The guard accepts any of
+    // the three scan methods — earlier versions required `scanEntitiesFast`
+    // (the legacy string-based API), which silently disabled this branch
+    // for callers that only exposed the modern bytes APIs (e.g. the parser
+    // worker, which deliberately hides `scanRelevantEntitiesFastBytes`
+    // because that scanner filters out IFCSIUNIT/IFCMATERIAL refs the
+    // lite parser still needs).
+    const wasmScanFn: (() => unknown) | null = options.wasmApi
+      ? (typeof options.wasmApi.scanEntitiesFastBytes === 'function'
           ? () => options.wasmApi!.scanEntitiesFastBytes(uint8Buffer)
-          : () => {
-              const decoder = new TextDecoder();
-              const content = decoder.decode(buffer);
-              return options.wasmApi!.scanEntitiesFast(content);
-            };
+          : typeof options.wasmApi.scanRelevantEntitiesFastBytes === 'function'
+          ? () => options.wasmApi!.scanRelevantEntitiesFastBytes(uint8Buffer)
+          : typeof options.wasmApi.scanEntitiesFast === 'function'
+          ? (() => {
+              // Last-resort scan path: decode the whole source. SAB-safe
+              // via the helper (one scratch copy on Firefox/Chrome with
+              // SAB-decode disabled, zero copy elsewhere). This branch is
+              // only hit when neither byte-level WASM scan API is wired.
+              //
+              // Guard on size: `safeUtf8Decode` materialises a JS string
+              // ~2× the source byte length (UTF-16 internal). For files
+              // > 256 MB we'd allocate ~512 MB+ just to feed a legacy
+              // scanner — refuse the path and fall through to the JS
+              // tokeniser (which streams the bytes directly). The threshold
+              // matches the "huge file" cutoff used elsewhere in the loader.
+              const HUGE_BYTES = 256 * 1024 * 1024;
+              if (uint8Buffer.byteLength > HUGE_BYTES) {
+                console.warn(
+                  '[parser] scanEntitiesFast (string API) skipped: source is %d MB, exceeds %d MB safeUtf8Decode budget — falling back to JS tokeniser.',
+                  Math.round(uint8Buffer.byteLength / (1024 * 1024)),
+                  HUGE_BYTES / (1024 * 1024),
+                );
+                return null;
+              }
+              return () => {
+                const content = safeUtf8Decode(uint8Buffer);
+                return options.wasmApi!.scanEntitiesFast(content);
+              };
+            })()
+          : null)
+      : null;
+
+    if (entityRefs.length === 0 && wasmScanFn) {
+      try {
+        const scanFn = wasmScanFn;
         const wasmRefs = scanFn() as Array<{
           expressId?: number;
           type?: string;
@@ -277,6 +346,7 @@ export class IfcParser {
         }
 
         processed = entityRefs.length;
+        scanPath = 'wasm';
       } catch (error) {
         console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
         entityRefs.length = 0;
@@ -309,7 +379,7 @@ export class IfcParser {
     }
 
     const scanElapsedMs = performance.now() - scanStartTime;
-    console.log(`[IfcParser] Fast scan: ${processed} entities in ${scanElapsedMs.toFixed(0)}ms`);
+    console.log(`[IfcParser] Fast scan: ${processed} entities in ${scanElapsedMs.toFixed(0)}ms (path=${scanPath})`);
     options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${scanElapsedMs.toFixed(0)}ms`);
     options.onProgress?.({ phase: 'scanning', percent: 100 });
 
@@ -329,8 +399,10 @@ export function parseEntityOnDemand(
   entityRef: EntityRef
 ): { expressId: number; type: string; attributes: any[] } | null {
   try {
-    const entityText = new TextDecoder().decode(
-      source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+    const entityText = safeUtf8Decode(
+      source,
+      entityRef.byteOffset,
+      entityRef.byteOffset + entityRef.byteLength,
     );
 
     // Parse: #ID = TYPE(attr1, attr2, ...)

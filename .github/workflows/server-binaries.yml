@@ -128,7 +128,14 @@ jobs:
 
   release-server-binaries:
     name: Release Server Binary (${{ matrix.target }})
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    # Only build + upload server binaries for version-tagged releases (e.g.
+    # `v2.1.9`). Without this filter every published release fires this job,
+    # so non-version tags like `fixtures-v1` end up with stray server
+    # tarballs uploaded to the wrong release. Manual `workflow_dispatch`
+    # is still allowed for ad-hoc rebuilds.
+    if: |
+      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
+      || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write

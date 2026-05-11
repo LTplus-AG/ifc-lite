@@ -12,6 +12,14 @@
     {
       "source": "/api/bsdd/:path*",
       "destination": "https://api.bsdd.buildingsmart.org/:path*"
+    },
+    {
+      "source": "/mcp",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/mcp/:path*",
+      "destination": "/index.html"
     }
   ],
   "headers": [

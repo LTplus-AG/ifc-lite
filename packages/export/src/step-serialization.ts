@@ -215,7 +215,13 @@ export function splitTopLevelArgs(text: string): string[] {
     }
   }
 
-  if (current.trim() || text.endsWith(',')) {
+  // Trailing tokens: only push if there's actual content. The previous
+  // `text.endsWith(',')` check pushed an empty trailing token for inputs
+  // like `"a,"`, producing `['a', '']` — STEP doesn't allow trailing
+  // commas, so the right answer is just `['a']`. Empty interior args
+  // (e.g. `"a,,b"` → `['a', '', 'b']`) are still produced because the
+  // comma branch above handles them.
+  if (current.trim()) {
     parts.push(current.trim());
   }
 

@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+	<ids:info>
+		<ids:title>Prefabrication of pipes - LOD200</ids:title>
+		<ids:copyright>buildingSMART International Ltd</ids:copyright>
+		<ids:description>This is an example implementation of the PDF exchange requirements for prefab pipes. Use-case can be found here: https://ucm.buildingsmart.org/use-case-details/1682/en and the PDF with requirements here: https://ucm.buildingsmart.org/uploads/use-cases/39fb5bd005525dbf048273aa7453557b0b84c4e99250e6ed8ce5c3370825725f/files/en/20210804094140_er-UC-Prefab-of-pipes-V1.2.0.0.pdf </ids:description>
+		<ids:date>2021-09-17</ids:date>
+		<ids:milestone>LOD200</ids:milestone>
+	</ids:info>
+	<ids:specifications>
+		<ids:specification ifcVersion="IFC2X3" name="mounting part">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<ids:simpleValue>IFCDISCRETEACCESSORY</ids:simpleValue>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>medium</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="cold water"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>material</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="chrome steel 1.4401"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCLENGTHMEASURE">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>pipe diameter</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:double">
+							<xs:minInclusive value="0.02"/>
+							<xs:maxInclusive value="0.06"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>component designation</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="8000.18"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCTEXT" uri="https://www.igh.hr/en/reference/">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>numbering system</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="first option"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>Pipe system</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="first option"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+			</ids:requirements>
+		</ids:specification>
+		<ids:specification ifcVersion="IFC2X3" name="pipe fittings and pipes">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<xs:restriction base="xs:string">
+							<xs:annotation>
+								<xs:documentation>This applies to either 'IFCFLOWFITTING' ór 'IFCFLOWSEGMENT'</xs:documentation>
+							</xs:annotation>
+							<xs:pattern value="IFCFLOWFITTING|IFCFLOWSEGMENT"/>
+						</xs:restriction>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:property dataType="IFCLABEL" uri="http://identifier.buildingsmart.org/uri/buildingsmart/ifc-4.3/prop/Manufacturer">
+					<ids:propertySet>
+						<ids:simpleValue>Pset_ManufacturerTypeInformation</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>Manufacturer</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="Manufacturer 1"/>
+							<xs:enumeration value="Manufacturer 2"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>medium</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="cold water"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>material</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="chrome steel 1.4401"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCLENGTHMEASURE">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>pipe diameter</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:double">
+							<xs:minInclusive value="0.02"/>
+							<xs:maxInclusive value="0.06"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>component designation</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="arc 45°"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property uri="https://www.igh.hr/en/reference/" dataType="IFCLABEL">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>numbering system</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:annotation>
+								<xs:documentation>Allowed value should be 4 numbers, a dot, and two numbers again. For example '1111.11', '1232.23', etc. are valid. Invalid are '234.12', '2134.2', '23O2.34' (the O is an o not a 0).</xs:documentation>
+							</xs:annotation>
+							<xs:pattern value="[0-9][0-9][0-9][0-9]\.[0-9][0-9]"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCTEXT">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>Pipe system</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="first option"/>
+							<xs:enumeration value="something else"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+				<ids:property dataType="IFCLENGTHMEASURE">
+					<ids:propertySet>
+						<ids:simpleValue>ePset_Pipe</ids:simpleValue>
+					</ids:propertySet>
+					<ids:baseName>
+						<ids:simpleValue>outside diameter_general</ids:simpleValue>
+					</ids:baseName>
+					<ids:value>
+						<xs:restriction base="xs:double">
+							<xs:minInclusive value="0.02"/>
+							<xs:maxInclusive value="0.06"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:property>
+			</ids:requirements>
+		</ids:specification>
+	</ids:specifications>
+</ids:ids>

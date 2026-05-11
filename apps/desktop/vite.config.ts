@@ -45,6 +45,10 @@ export default defineConfig({
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
       '@ifc-lite/embed-protocol': path.resolve(__dirname, '../../packages/embed-protocol/src'),
       '@ifc-lite/embed-sdk': path.resolve(__dirname, '../../packages/embed-sdk/src'),
+      // The MCP playground (rendered at /mcp/playground in the shared App)
+      // imports the browser-safe MCP entry. Subpath alias must come first.
+      '@ifc-lite/mcp/browser': path.resolve(__dirname, '../../packages/mcp/src/browser.ts'),
+      '@ifc-lite/mcp': path.resolve(__dirname, '../../packages/mcp/src'),
       // Tauri API stubs: the shared viewer uses dynamic imports for native file
       // dialogs. In the real Tauri shell these resolve to @tauri-apps packages;
       // in the monorepo CI build (where those packages are absent) we point to

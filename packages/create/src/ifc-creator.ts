@@ -163,7 +163,7 @@ export class IfcCreator {
     });
 
     this.line(id, 'IFCBUILDINGSTOREY',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},$,$,#${storeyPlacementId},$,.ELEMENT.,${elevation}`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},$,#${storeyPlacementId},$,$,.ELEMENT.,${elevation}`);
 
     this.storeyIds.push(id);
     this.storeyElements.set(id, []);

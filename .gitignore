@@ -52,8 +52,16 @@ nul
 # Claude Code local settings (user-specific)
 .claude/settings.local.json
 
-# Local test models
+# Local test models (private, never committed)
 tests/models/local/*
+
+# IFC test fixtures are fetched on demand via `pnpm fixtures` and listed in
+# tests/models/manifest.json. They must NOT be committed to the repo.
+tests/models/**/*.ifc
+tests/models/**/*.IFC
+tests/models/**/*.ifcx
+# Partial downloads from the fetcher.
+tests/models/**/*.part
 
 # Large IFC test fixtures (downloaded separately)
 rust/geometry/tests/*.ifc

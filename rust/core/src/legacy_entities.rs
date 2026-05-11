@@ -99,6 +99,17 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
             has_geometry: false,
         }),
 
+        // IFC2x3 names that have no IFC4x3 enum variant. They map to the
+        // closest modern equivalent; both carry geometry.
+        "IFCEQUIPMENTELEMENT" => Some(LegacyEntityInfo {
+            base_type: IfcType::IfcDistributionElement,
+            has_geometry: true,
+        }),
+        "IFCELECTRICALDISTRIBUTIONPOINT" => Some(LegacyEntityInfo {
+            base_type: IfcType::IfcDistributionElement,
+            has_geometry: true,
+        }),
+
         _ => None,
     }
 }

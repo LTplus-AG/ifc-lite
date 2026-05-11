@@ -101,7 +101,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> =
   cesiumDataSource: loadDataSource(),
   cesiumIonToken: resolveIonToken(),
   cesiumTerrainEnabled: true,
-  cesiumTerrainClamp: false,
+  cesiumTerrainClamp: true,
   cesiumTerrainHeight: null,
   cesiumSourceModelId: null,
   cesiumTerrainClipY: null,

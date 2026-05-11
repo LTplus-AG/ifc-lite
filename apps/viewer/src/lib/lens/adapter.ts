@@ -236,7 +236,7 @@ export function createLensDataProvider(
       if (info.layers?.length) return info.layers[0].materialName;
       if (info.constituents?.length) return info.constituents[0].materialName;
       if (info.profiles?.length) return info.profiles[0].materialName;
-      if (info.materials?.length) return info.materials[0];
+      if (info.materials?.length) return info.materials[0]?.name;
       return undefined;
     },
   };

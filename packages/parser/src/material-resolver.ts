@@ -16,10 +16,17 @@ export interface MaterialInfo {
     type: 'Material' | 'MaterialLayerSet' | 'MaterialProfileSet' | 'MaterialConstituentSet' | 'MaterialList';
     name?: string;
     description?: string;
+    /** IfcMaterial.Category (IFC4+). */
+    category?: string;
     layers?: MaterialLayerInfo[];
     profiles?: MaterialProfileInfo[];
     constituents?: MaterialConstituentInfo[];
-    materials?: string[];
+    /**
+     * Members of an IfcMaterialList. Each entry surfaces the material's
+     * Name plus optional Category — IDS material checks match against
+     * either, so callers must propagate both.
+     */
+    materials?: Array<{ name: string; category?: string }>;
 }
 
 export interface MaterialLayerInfo {
@@ -27,20 +34,30 @@ export interface MaterialLayerInfo {
     thickness?: number;
     isVentilated?: boolean;
     name?: string;
+    /** IfcMaterialLayer.Category. */
     category?: string;
+    /** IfcMaterial.Category — surfaced separately so IDS material checks
+     * can match either the layer's own category or the underlying material's. */
+    materialCategory?: string;
 }
 
 export interface MaterialProfileInfo {
     materialName?: string;
     name?: string;
+    /** IfcMaterialProfile.Category. */
     category?: string;
+    /** IfcMaterial.Category — see above. */
+    materialCategory?: string;
 }
 
 export interface MaterialConstituentInfo {
     materialName?: string;
     name?: string;
     fraction?: number;
+    /** IfcMaterialConstituent.Category. */
     category?: string;
+    /** IfcMaterial.Category — see above. */
+    materialCategory?: string;
 }
 
 /**
@@ -114,6 +131,7 @@ function resolveMaterial(
                 type: 'Material',
                 name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
                 description: typeof attrs[1] === 'string' ? attrs[1] : undefined,
+                category: typeof attrs[2] === 'string' ? attrs[2] : undefined,
             };
         }
 
@@ -132,12 +150,14 @@ function resolveMaterial(
                 // IfcMaterialLayer: [Material, LayerThickness, IsVentilated, Name, Description, Category, Priority]
                 const matId = typeof la[0] === 'number' ? la[0] : undefined;
                 let materialName: string | undefined;
+                let materialCategory: string | undefined;
                 if (matId) {
                     const matRef = store.entityIndex.byId.get(matId);
                     if (matRef) {
                         const matEntity = extractor.extractEntity(matRef);
                         if (matEntity) {
                             materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
+                            materialCategory = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
                         }
                     }
                 }
@@ -148,6 +168,7 @@ function resolveMaterial(
                     isVentilated: la[2] === true || la[2] === '.T.',
                     name: typeof la[3] === 'string' ? la[3] : undefined,
                     category: typeof la[5] === 'string' ? la[5] : undefined,
+                    materialCategory,
                 });
             }
 
@@ -174,12 +195,14 @@ function resolveMaterial(
                 // IfcMaterialProfile: [Name, Description, Material, Profile, Priority, Category]
                 const matId = typeof pa[2] === 'number' ? pa[2] : undefined;
                 let materialName: string | undefined;
+                let materialCategory: string | undefined;
                 if (matId) {
                     const matRef = store.entityIndex.byId.get(matId);
                     if (matRef) {
                         const matEntity = extractor.extractEntity(matRef);
                         if (matEntity) {
                             materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
+                            materialCategory = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
                         }
                     }
                 }
@@ -188,6 +211,7 @@ function resolveMaterial(
                     materialName,
                     name: typeof pa[0] === 'string' ? pa[0] : undefined,
                     category: typeof pa[5] === 'string' ? pa[5] : undefined,
+                    materialCategory,
                 });
             }
 
@@ -214,12 +238,18 @@ function resolveMaterial(
                 // IfcMaterialConstituent: [Name, Description, Material, Fraction, Category]
                 const matId = typeof ca[2] === 'number' ? ca[2] : undefined;
                 let materialName: string | undefined;
+                let materialCategory: string | undefined;
                 if (matId) {
                     const matRef = store.entityIndex.byId.get(matId);
                     if (matRef) {
                         const matEntity = extractor.extractEntity(matRef);
                         if (matEntity) {
                             materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
+                            // IfcMaterial: [Name, Description, Category] — IDS material
+                            // checks consider both the constituent's own category AND
+                            // the underlying IfcMaterial.Category as candidates for
+                            // a value match.
+                            materialCategory = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
                         }
                     }
                 }
@@ -229,6 +259,7 @@ function resolveMaterial(
                     name: typeof ca[0] === 'string' ? ca[0] : undefined,
                     fraction: typeof ca[3] === 'number' ? ca[3] : undefined,
                     category: typeof ca[4] === 'string' ? ca[4] : undefined,
+                    materialCategory,
                 });
             }
 
@@ -243,7 +274,7 @@ function resolveMaterial(
         case 'IFCMATERIALLIST': {
             // IfcMaterialList: [Materials]
             const matIds = Array.isArray(attrs[0]) ? attrs[0].filter((id): id is number => typeof id === 'number') : [];
-            const materials: string[] = [];
+            const materials: Array<{ name: string; category?: string }> = [];
 
             for (const matId of matIds) {
                 const matRef = store.entityIndex.byId.get(matId);
@@ -251,7 +282,8 @@ function resolveMaterial(
                 const matEntity = extractor.extractEntity(matRef);
                 if (matEntity) {
                     const name = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : `Material #${matId}`;
-                    materials.push(name);
+                    const category = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
+                    materials.push({ name, ...(category ? { category } : {}) });
                 }
             }
 

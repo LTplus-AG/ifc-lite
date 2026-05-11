@@ -298,7 +298,9 @@ export async function queryCommand(args: string[]): Promise<void> {
       // B6: Support --unique material
       for (const e of entities) {
         const mat = bim.materials(e.ref);
-        const val = mat?.materials?.[0] ?? mat?.name ?? '(no material)';
+        const first = mat?.materials?.[0];
+        const firstName = typeof first === 'string' ? first : first?.name;
+        const val = firstName ?? mat?.name ?? '(no material)';
         valueCounts.set(val, (valueCounts.get(val) ?? 0) + 1);
       }
     } else if (uniqueProp === 'storey') {

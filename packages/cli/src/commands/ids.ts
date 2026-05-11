@@ -110,12 +110,14 @@ function buildIdsAccessor(store: IfcDataStore): unknown {
       const allAttrs = extractAllEntityAttributes(store, expressId);
       const predefinedType = allAttrs.find(a => a.name === 'PredefinedType');
       if (predefinedType?.value && predefinedType.value !== 'NOTDEFINED') {
-        return predefinedType.value;
+        return typeof predefinedType.value === 'string' ? predefinedType.value : String(predefinedType.value);
       }
 
       // If PredefinedType is USERDEFINED/absent, check ObjectType from full attributes
       const objTypeAttr = allAttrs.find(a => a.name === 'ObjectType');
-      if (objTypeAttr?.value) return objTypeAttr.value;
+      if (objTypeAttr?.value) {
+        return typeof objTypeAttr.value === 'string' ? objTypeAttr.value : String(objTypeAttr.value);
+      }
 
       return undefined;
     },

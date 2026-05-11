@@ -89,22 +89,11 @@ export function buildStoreNamespace(): NamespaceSchema {
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
           const storeyExpressId = args[1] as number;
-          if (!Number.isInteger(storeyExpressId) || storeyExpressId < 0) {
-            throw new Error(`bim.store.addColumn: storeyExpressId must be a non-negative integer, got ${storeyExpressId}`);
-          }
+          requireStoreyId(storeyExpressId, 'addColumn');
           const params = args[2] as Parameters<typeof sdk.store.addColumn>[2];
-          if (!params || !Array.isArray(params.Position) || params.Position.length !== 3) {
-            throw new Error('bim.store.addColumn: params.Position must be [x, y, z]');
-          }
-          if (!params.Position.every((n) => typeof n === 'number' && Number.isFinite(n))) {
-            throw new Error('bim.store.addColumn: params.Position values must be finite numbers');
-          }
-          for (const key of ['Width', 'Depth', 'Height'] as const) {
-            const v = params[key];
-            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
-              throw new Error(`bim.store.addColumn: params.${key} must be a finite number > 0, got ${v}`);
-            }
-          }
+          if (!params) throw new Error('bim.store.addColumn: params is required');
+          requirePositionVec3(params.Position, 'addColumn');
+          requirePositiveDims(params, ['Width', 'Depth', 'Height'], 'addColumn');
           return sdk.store.addColumn(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',
@@ -122,27 +111,12 @@ export function buildStoreNamespace(): NamespaceSchema {
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
           const storeyExpressId = args[1] as number;
-          if (!Number.isInteger(storeyExpressId) || storeyExpressId < 0) {
-            throw new Error(`bim.store.addWall: storeyExpressId must be a non-negative integer, got ${storeyExpressId}`);
-          }
+          requireStoreyId(storeyExpressId, 'addWall');
           const params = args[2] as Parameters<typeof sdk.store.addWall>[2];
-          if (
-            !params
-            || !Array.isArray(params.Start) || params.Start.length !== 3
-            || !Array.isArray(params.End) || params.End.length !== 3
-          ) {
-            throw new Error('bim.store.addWall: params.Start and params.End must be [x, y, z]');
-          }
-          if (!params.Start.every((n) => typeof n === 'number' && Number.isFinite(n))
-              || !params.End.every((n) => typeof n === 'number' && Number.isFinite(n))) {
-            throw new Error('bim.store.addWall: Start/End values must be finite numbers');
-          }
-          for (const key of ['Thickness', 'Height'] as const) {
-            const v = params[key];
-            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
-              throw new Error(`bim.store.addWall: params.${key} must be a finite number > 0, got ${v}`);
-            }
-          }
+          if (!params) throw new Error('bim.store.addWall: params is required');
+          requireAxisVec3(params.Start, 'addWall', 'Start');
+          requireAxisVec3(params.End, 'addWall', 'End');
+          requirePositiveDims(params, ['Thickness', 'Height'], 'addWall');
           return sdk.store.addWall(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',
@@ -160,48 +134,13 @@ export function buildStoreNamespace(): NamespaceSchema {
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
           const storeyExpressId = args[1] as number;
-          if (!Number.isInteger(storeyExpressId) || storeyExpressId < 0) {
-            throw new Error(`bim.store.addSlab: storeyExpressId must be a non-negative integer, got ${storeyExpressId}`);
-          }
+          requireStoreyId(storeyExpressId, 'addSlab');
           const params = args[2] as Parameters<typeof sdk.store.addSlab>[2];
           if (!params) {
             throw new Error('bim.store.addSlab: params is required');
           }
-          const thickness = (params as { Thickness?: unknown }).Thickness;
-          if (typeof thickness !== 'number' || !Number.isFinite(thickness) || thickness <= 0) {
-            throw new Error(`bim.store.addSlab: params.Thickness must be a finite number > 0, got ${thickness}`);
-          }
-          if ((params as { Profile?: unknown }).Profile === 'polygon') {
-            const polygon = params as { Profile: 'polygon'; OuterCurve: unknown; Position?: unknown };
-            if (!Array.isArray(polygon.OuterCurve) || polygon.OuterCurve.length < 3) {
-              throw new Error('bim.store.addSlab: polygon OuterCurve needs at least 3 points');
-            }
-            for (const pt of polygon.OuterCurve) {
-              if (!Array.isArray(pt) || pt.length !== 2
-                  || typeof pt[0] !== 'number' || !Number.isFinite(pt[0])
-                  || typeof pt[1] !== 'number' || !Number.isFinite(pt[1])) {
-                throw new Error('bim.store.addSlab: each OuterCurve point must be [number, number] of finite values');
-              }
-            }
-            if (polygon.Position !== undefined) {
-              if (!Array.isArray(polygon.Position) || polygon.Position.length !== 3
-                  || !polygon.Position.every((n) => typeof n === 'number' && Number.isFinite(n))) {
-                throw new Error('bim.store.addSlab: params.Position must be [x, y, z] of finite numbers');
-              }
-            }
-          } else {
-            const rect = params as { Position: unknown; Width: unknown; Depth: unknown };
-            if (!Array.isArray(rect.Position) || rect.Position.length !== 3
-                || !rect.Position.every((n) => typeof n === 'number' && Number.isFinite(n))) {
-              throw new Error('bim.store.addSlab: params.Position must be [x, y, z] of finite numbers');
-            }
-            for (const key of ['Width', 'Depth'] as const) {
-              const v = (rect as Record<string, unknown>)[key];
-              if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
-                throw new Error(`bim.store.addSlab: params.${key} must be a finite number > 0, got ${v}`);
-              }
-            }
-          }
+          requirePositiveDims(params, ['Thickness'], 'addSlab');
+          validateProfileParams(params, 'addSlab', ['Width', 'Depth']);
           return sdk.store.addSlab(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',

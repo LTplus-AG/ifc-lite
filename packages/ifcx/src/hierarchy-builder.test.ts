@@ -4,10 +4,13 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parseIfcx } from './index.js';
 
 const HELLO_WALL_PATH = 'tests/models/ifc5/Hello_Wall_hello-wall.ifcx';
+// Per AGENTS.md §9 fixtures are fetched on demand; skip the suite cleanly
+// when the bytes aren't on disk so a fresh checkout doesn't crash here.
+const FIXTURES_AVAILABLE = existsSync(HELLO_WALL_PATH);
 const STOREY_PATH = '44af358b-3160-4063-8a89-a868335ff3b5';
 const SPACE_PATH = 'e3035b71-bd9f-4cdc-86fd-b56e2f4605b6';
 const WALL_PATH = '93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b';
@@ -18,7 +21,7 @@ function toArrayBuffer(buffer: Buffer): ArrayBuffer {
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
 }
 
-describe('buildHierarchy', () => {
+describe('buildHierarchy', { skip: !FIXTURES_AVAILABLE && 'tests/models/ifc5/Hello_Wall_hello-wall.ifcx missing — run `pnpm fixtures`' }, () => {
   it('maps Hello Wall space boundaries and nested windows into spatial containment', async () => {
     const buffer = readFileSync(HELLO_WALL_PATH);
     const result = await parseIfcx(toArrayBuffer(buffer));

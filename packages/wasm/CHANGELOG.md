@@ -1,5 +1,56 @@
 # @ifc-lite/wasm
 
+## 1.16.9
+
+### Patch Changes
+
+- [#640](https://github.com/louistrue/ifc-lite/pull/640) [`8408c88`](https://github.com/louistrue/ifc-lite/commit/8408c88c4c0a1e848fade6c60474952eca1a4149) Thanks [@louistrue](https://github.com/louistrue)! - Fix diagonal and roof-window opening cuts. Oblique multilayer wall parts keep
+  their opening soffits within the actual wall geometry, BRep roof openings
+  preserve their full sloped opening frame instead of falling back to world axes,
+  and roof windows on shallow-slope roofs are no longer routed through unstable
+  full CSG by a too-aggressive "vertical extrusion ⇒ floor opening" heuristic —
+  classification is now per-item based on whether the opening mesh is actually a
+  clean rectangular box.
+
+- [#641](https://github.com/louistrue/ifc-lite/pull/641) [`ba7553a`](https://github.com/louistrue/ifc-lite/commit/ba7553af693939896a840074999b5f6806a94815) Thanks [@louistrue](https://github.com/louistrue)! - Fix `IfcReinforcingBar` stirrup rendering (issue #631, sample
+  `IfcReinforcingBar.ifc`).
+
+  `IfcSweptDiskSolid` directrixes that use `IfcIndexedPolyCurve` over
+  `IfcCartesianPointList3D` (typical for stirrups and other bent rebar that
+  lives outside the XY plane) used to fall back to a 2D parser that read x/y
+  from indices 0–1 and silently dropped the Z coordinate. The stirrup
+  collapsed onto z=0 and the resulting tube was a flat near-degenerate line.
+
+  The 3D curve dispatcher now has a native arm for `IfcIndexedPolyCurve` that
+  reads `IfcCartesianPointList2D` (z=0) or `IfcCartesianPointList3D` verbatim
+  and fits `IfcArcIndex` segments using a circumcircle in the plane of their
+  three control points. Straight schema conformance — no spec deviation.
+
+  The second sample on the issue (`Rebar2.ifc`) was already rendering its
+  directrix correctly under the existing segment-index trim path; no change
+  needed there.
+
+## 1.16.8
+
+### Patch Changes
+
+- [#610](https://github.com/louistrue/ifc-lite/pull/610) [`f3d8b1d`](https://github.com/louistrue/ifc-lite/commit/f3d8b1d3d7c15488ebd0bdd2b44c0ed4cb25254a) Thanks [@louistrue](https://github.com/louistrue)! - Two follow-ups to the `IfcSweptDiskSolid` trim-param fix from #606, plus the rebuilt WASM artifact that actually lands the trim-param logic at runtime (CI does not rebuild the WASM binary; consumers were still on the pre-#606 binary).
+
+  - **Junction-point dedup is now coordinate-aware.** When concatenating trimmed composite-curve segments, the previous implementation unconditionally dropped the first point of each subsequent segment — fine when adjacent segments share a coordinate-identical junction vertex, but it silently distorted directrices whose adjacent segments meet at non-coincident endpoints (model drift, mismatched cartesian points). The first point is now dropped only when it coincides with the last point already collected (`< 1e-6`), preserving the gap otherwise.
+
+  - **Cross-section frame no longer flips at sharp bends.** `SweptDiskSolidProcessor` was re-picking the perpendicular `up` vector at every cross-section based on `tangent.x.abs() < 0.9`; consecutive tangents that straddled the threshold flipped the sign of `perp1`, so the same vertex index pointed to opposite angular positions on consecutive rings — visible as a twisted / flat-ribbon tube at L-bends and rebar hooks. Replaced with a Rotation-Minimising Frame: `up` is chosen once for the first sample, and each subsequent frame is propagated by the minimum rotation that aligns the previous tangent onto the current tangent (Rodrigues). Adds three unit tests covering straight-line invariance, 90° L-bend non-flip, and degenerate-input handling.
+
+- [#606](https://github.com/louistrue/ifc-lite/pull/606) [`7d3a40b`](https://github.com/louistrue/ifc-lite/commit/7d3a40b5268491325b8496fc56181818b2141e6e) Thanks [@joepaddock-uk](https://github.com/joepaddock-uk)! - Honor `IfcSweptDiskSolid.StartParam` / `EndParam` for `IfcCompositeCurve` and `IfcPolyline` directrices. Previously these were silently ignored, so a swept disk solid like `IFCSWEPTDISKSOLID(#dir, 0.0095, $, 0., 1.)` with a 3-segment composite-curve directrix swept the entire curve instead of just segment `[0,1]` — most visible in rebar models authored by Revit/Tekla, where bars rendered 3-5× their real length with end hooks unfolded into the bar geometry.
+
+  The dispatch now honors trim parameters for the two directrix types whose IFC parameterisation is unambiguous from the entity:
+
+  - `IfcCompositeCurve` (and subtypes via `is_subtype_of`): segment-index based, each segment contributes 1.0 to the parameter.
+  - `IfcPolyline`: point-index based, each segment between consecutive points contributes 1.0.
+
+  Boundary segments are truncated by linear interpolation along the sampled polyline (exact for piecewise-linear input). Out-of-range params clamp; inverted ranges (`StartParam ≥ EndParam`) produce empty geometry. Other directrix types (`IfcLine`, `IfcCircle`, `IfcTrimmedCurve`, `IfcBSplineCurve`) still ignore trim — their parameterisations are length / angle / knot-based and need separate handling — flagged as a known limitation.
+
+  Adds 11 unit tests in `profiles::tests` covering: full-range identity, exact-half boundaries, strict-interior comparisons, two-point partial trim, fractional multi-segment trim with dedup, out-of-range clamping, inverted ranges, `SameSense=F` reverse-then-trim semantics, and direct-polyline-directrix paths.
+
 ## 1.16.7
 
 ### Patch Changes

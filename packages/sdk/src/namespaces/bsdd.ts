@@ -97,11 +97,50 @@ function setCache(cache: Map<string, { data: BsddClassInfo; ts: number }>, key: 
   cache.set(key, { data, ts: Date.now() });
 }
 
+/**
+ * HTTP error thrown by the bSDD client. Carries the status code so callers
+ * can distinguish "missing class" (404) from "rate-limited" (429) from
+ * unexpected upstream failures.
+ */
+export class BsddHttpError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+  readonly url: string;
+  readonly retryAfterSeconds?: number;
+  constructor(status: number, statusText: string, url: string, retryAfterSeconds?: number) {
+    super(`bSDD API ${status}: ${statusText}`);
+    this.name = 'BsddHttpError';
+    this.status = status;
+    this.statusText = statusText;
+    this.url = url;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function parseRetryAfter(headerValue: string | null): number | undefined {
+  if (!headerValue) return undefined;
+  const seconds = Number(headerValue);
+  // Clamp to a non-negative whole-second value. Malformed headers can
+  // serve fractional or negative numbers; passing those upstream poisons
+  // any retry-scheduling logic that expects a sane delay.
+  if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds));
+  const dateMs = Date.parse(headerValue);
+  if (Number.isFinite(dateMs)) return Math.max(0, Math.round((dateMs - Date.now()) / 1000));
+  return undefined;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, {
     headers: { Accept: 'application/json' },
   });
-  if (!res.ok) throw new Error(`bSDD API ${res.status}: ${res.statusText}`);
+  if (!res.ok) {
+    throw new BsddHttpError(
+      res.status,
+      res.statusText,
+      url,
+      parseRetryAfter(res.headers.get('retry-after')),
+    );
+  }
   return res.json() as Promise<T>;
 }
 
@@ -188,39 +227,46 @@ export class BsddNamespace {
    * Fetch full class info (including properties) for an IFC entity type.
    *
    * Results are cached for 10 minutes (configurable).
-   * Returns null if the bSDD has no data for this type.
+   * Returns null if bSDD has no data for this type (HTTP 404). Other HTTP
+   * failures — most importantly 429 rate-limits — are re-thrown as
+   * `BsddHttpError` so callers can react instead of silently treating them
+   * as "missing".
    */
   async fetchClassInfo(ifcType: string): Promise<BsddClassInfo | null> {
     const uri = this.ifcClassUri(ifcType);
     const cached = getCached(this.cache, uri, this.cacheTtl);
     if (cached) return cached;
 
+    let raw: Record<string, unknown>;
     try {
-      const raw = await fetchJson<Record<string, unknown>>(
+      raw = await fetchJson<Record<string, unknown>>(
         `${this.apiBase}/api/Class/v1?Uri=${encodeURIComponent(uri)}&IncludeClassProperties=true&IncludeClassRelations=true`,
       );
+    } catch (err) {
+      if (err instanceof BsddHttpError && err.status === 404) return null;
+      throw err;
+    }
 
-      let info = mapClassResponse(raw, true);
+    let info = mapClassResponse(raw, true);
 
-      // Fallback: if inline classProperties came back empty, try paginated endpoint
-      if (info.classProperties.length === 0) {
+    // Fallback: if inline classProperties came back empty, try paginated endpoint.
+    // Network failures on the fallback are non-fatal — keep the partial result.
+    if (info.classProperties.length === 0) {
+      try {
         const propsRaw = await fetchJson<Record<string, unknown>>(
           `${this.apiBase}/api/Class/Properties/v1?ClassUri=${encodeURIComponent(uri)}`,
-        ).catch(() => null);
-
-        if (propsRaw) {
-          const propsList = propsRaw.classProperties as Array<Record<string, unknown>> | undefined;
-          if (propsList && propsList.length > 0) {
-            info = { ...info, classProperties: propsList.map((p) => mapProperty(p, true)) };
-          }
+        );
+        const propsList = propsRaw.classProperties as Array<Record<string, unknown>> | undefined;
+        if (propsList && propsList.length > 0) {
+          info = { ...info, classProperties: propsList.map((p) => mapProperty(p, true)) };
         }
+      } catch {
+        // ignore — primary call already succeeded
       }
-
-      setCache(this.cache, uri, info);
-      return info;
-    } catch {
-      return null;
     }
+
+    setCache(this.cache, uri, info);
+    return info;
   }
 
   /**
@@ -238,8 +284,9 @@ export class BsddNamespace {
       const info = mapClassResponse(raw, false);
       setCache(this.cache, classUri, info);
       return info;
-    } catch {
-      return null;
+    } catch (err) {
+      if (err instanceof BsddHttpError && err.status === 404) return null;
+      throw err;
     }
   }
 
@@ -265,8 +312,9 @@ export class BsddNamespace {
         definition: c.definition ? String(c.definition) : null,
         dictionaryUri: String(c.dictionaryUri ?? ''),
       }));
-    } catch {
-      return [];
+    } catch (err) {
+      if (err instanceof BsddHttpError && err.status === 404) return [];
+      throw err;
     }
   }
 
@@ -285,8 +333,9 @@ export class BsddNamespace {
         definition: c.definition ? String(c.definition) : null,
         dictionaryUri: String(c.dictionaryUri ?? ''),
       }));
-    } catch {
-      return [];
+    } catch (err) {
+      if (err instanceof BsddHttpError && err.status === 404) return [];
+      throw err;
     }
   }
 

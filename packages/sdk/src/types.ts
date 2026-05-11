@@ -102,7 +102,7 @@ export interface QuantityData {
 
 export interface EntityAttributeData {
   name: string;
-  value: string;
+  value: string | number | boolean;
 }
 
 export interface ClassificationData {
@@ -139,10 +139,11 @@ export interface MaterialData {
   type: 'Material' | 'MaterialLayerSet' | 'MaterialProfileSet' | 'MaterialConstituentSet' | 'MaterialList';
   name?: string;
   description?: string;
+  category?: string;
   layers?: MaterialLayerData[];
   profiles?: MaterialProfileData[];
   constituents?: MaterialConstituentData[];
-  materials?: string[];
+  materials?: Array<{ name: string; category?: string }>;
 }
 
 export interface TypePropertiesData {
@@ -725,17 +726,28 @@ export interface BimBackend {
 /**
  * Route a string-based SdkRequest to the appropriate typed method on a BimBackend.
  * Used by BimHost for wire protocol compatibility.
+ *
+ * Security: namespace/method come straight off the wire. Use `Object.hasOwn`
+ * lookups so an attacker can't reach prototype members (`__proto__`,
+ * `constructor`, `toString`, …) or methods inherited from a host class.
  */
 export function dispatchToBackend(backend: BimBackend, namespace: string, method: string, args: unknown[]): unknown {
-  const ns = (backend as unknown as Record<string, Record<string, (...a: unknown[]) => unknown>>)[namespace];
+  const backendObj = backend as unknown as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(backendObj, namespace)) {
+    throw new Error(`Unknown namespace '${namespace}'`);
+  }
+  const ns = backendObj[namespace] as Record<string, unknown> | null | undefined;
   if (!ns || typeof ns !== 'object') {
     throw new Error(`Unknown namespace '${namespace}'`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(ns, method)) {
+    throw new Error(`Unknown method '${namespace}.${method}'`);
   }
   const fn = ns[method];
   if (typeof fn !== 'function') {
     throw new Error(`Unknown method '${namespace}.${method}'`);
   }
-  return fn(...args);
+  return (fn as (...a: unknown[]) => unknown).apply(ns, args);
 }
 
 // ============================================================================

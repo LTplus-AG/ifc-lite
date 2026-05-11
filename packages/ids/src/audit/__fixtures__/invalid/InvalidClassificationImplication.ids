@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd"
+     xmlns="http://standards.buildingsmart.org/IDS">
+	<info>
+		<title>Example on use of attributes (for student research)</title>
+		<copyright>buildingSMART International Ltd</copyright>
+		<date>2023-04-20</date>
+	</info>
+	<specifications>
+		<specification ifcVersion="IFC2X3" name="Aachen test">
+			<applicability maxOccurs="unbounded">
+				<entity>
+					<name>
+						<simpleValue>IFC2DCOMPOSITECURVE</simpleValue>
+					</name>
+				</entity>			
+			</applicability>
+			<requirements>
+        <classification>
+          <system>
+            <simpleValue>Uniclass</simpleValue>
+          </system>
+        </classification>
+			</requirements>
+		</specification>
+
+		<specification ifcVersion="IFC2X3" name="Aachen test">
+			<applicability maxOccurs="unbounded">
+				<entity>
+					<name>
+						<simpleValue>IFC2DCOMPOSITECURVE</simpleValue>
+					</name>
+				</entity>
+			</applicability>
+			<requirements>
+				<!-- Making it optional does not trigger the type requirement, so this is ok -->
+        <classification cardinality="optional">
+          <!-- However a value must be specified for optional classifications -->
+          <value>
+            <simpleValue>EF_20</simpleValue>
+          </value>
+          <system>
+            <simpleValue>Uniclass</simpleValue>
+          </system>
+        </classification>
+			</requirements>
+		</specification>
+		
+	</specifications>
+</ids>

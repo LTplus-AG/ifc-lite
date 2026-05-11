@@ -1,5 +1,887 @@
 # @ifc-lite/viewer
 
+## 1.20.0
+
+### Minor Changes
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Per-class visibility toggles for ASPRS-classified point clouds.
+
+  A new "Classes" section in the point cloud panel exposes a checkbox
+  list of every LAS 1.4 standard class (Ground, Vegetation, Building,
+  Water, Wires, Bridge deck, ...). Toggling a class hides every point
+  with that classification. Works in any colour mode; the swatch
+  colours mirror the splat shader's classification palette so the UI
+  matches what's on screen.
+
+  Implementation:
+
+  - New `pointCloudClassMask: number` (u32 bitmask, default
+    `0xFFFFFFFF`) on the point cloud slice. `togglePointCloudClass(id)`
+    flips a single bit; `setPointCloudClassMask(mask)` replaces all 32.
+  - `PointCloudRenderOptions.classMask` plumbed through the renderer.
+    Stored in uniform slot `flags.w` (was unused).
+  - Splat shader checks `(flags.w >> classId) & 1` per vertex; hidden
+    classes get a degenerate `clipPos = vec4(0, 0, -2, 1)` so they're
+    culled before rasterisation rather than wasted on a fragment-stage
+    discard.
+  - New `PointCloudClasses` component in the panel renders a
+    `<details>` collapsible with "Show all" + per-class toggles. A
+    badge surfaces "N of 32 visible" when not all are on.
+  - `usePointCloudSync` forwards the mask to
+    `setPointCloudOptions({ classMask })`.
+
+  Class ids ≥32 always show — the mask only covers the standard
+  range. Custom-labelled scans need a richer UI (deferred).
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - BIM ↔ scan deviation heatmap — GPU compute pipeline that colours each
+  scan point by signed distance to the nearest mesh surface. Works with
+  every IFC ingest path (STEP / IFCx / GLB / federated) and with every
+  point cloud format (inline IFCx + streamed LAS / LAZ / PLY / PCD / E57
+  / PTS / XYZ — anywhere `Scene.forEachMeshData` reaches and any node
+  the splat pipeline already renders).
+
+  Pipeline:
+
+  1. **Per-triangle BVH** built from `Scene.forEachMeshData()` —
+     reaches every CPU-side `MeshData` regardless of source. Median
+     split along longest axis, max 16 tris per leaf, flattened to a
+     `Float32Array` of 32-byte nodes during the build (no second
+     pass).
+  2. **Two GPU storage buffers** — nodes + triangles — uploaded once
+     per mesh-set change. Cached by a `(meshCount, totalPositions)`
+     fingerprint so re-running deviation against the same model is a
+     pure dispatch.
+  3. **Compute shader** with stack-based BVH descent (workgroup-size
+     64). Per point: descend BVH pruning by squared point-to-AABB
+     distance, run Ericson §5.1.5 closest-point-on-triangle on every
+     leaf candidate, output signed distance via the closest face's
+     precomputed normal.
+  4. **Per-chunk deviation buffer** allocated alongside the splat
+     vertex buffer (`STORAGE | VERTEX | COPY_DST`, 4 bytes per point,
+     zero-initialised). Compute reads the vertex buffer's positions
+     directly — no CPU copy of streamed clouds needed.
+  5. **Splat shader** gains a 2nd vertex buffer (location 4 = `f32`
+     deviation), a new `deviation` color mode, and a diverging
+     blue → white → red `deviation_ramp`. Uniform block grows by 16
+     bytes (new `deviationRange: vec4<f32>` slot for centre + half-
+     range), `POINT_UNIFORM_SIZE` 208 → 224.
+  6. **Public API** — `Renderer.computeDeviations({ maxRange?,
+forceRebuild? })` returns `{ bvhTriangles, bvhNodes,
+chunksProcessed, pointsProcessed, bounds, suggestedHalfRange }`.
+     Awaits `queue.onSubmittedWorkDone` so callers see populated
+     buffers when the promise resolves.
+  7. **UI** — new `DeviationPanel` inside `PointCloudPanel`. Compute
+     button (gated on `triangleCount > 0`), live progress + duration
+     readout, range slider in millimetres (1 mm to 1 m), inline
+     blue-white-red legend. Auto-suggests a half-range from the BVH
+     bbox (±max-extent / 1000) and auto-switches the colour mode to
+     `deviation` on success.
+  8. **Slice** — `pointCloudColorMode` gains `'deviation'`, plus
+     `pointCloudDeviationCenterOffset`, `pointCloudDeviationHalfRange`
+     (default ±5 cm), and `pointCloudDeviationComputed`. Sync hook
+     forwards the range to the renderer uniform.
+
+  Sign convention: positive = scan point is on the outward-normal
+  side of the closest triangle (typical "scan overshoots wall by
+  5 mm"). Negative = inside / behind. Non-watertight BIM (typical
+  IFC) means "inside the building" isn't globally defined, but
+  per-surface front/back is always meaningful.
+
+  Limitations / future work:
+
+  - The dispatch processes every uploaded point against every
+    triangle in the scene; isolated / hidden meshes still contribute
+    to the BVH. A `meshFilter` predicate is a natural follow-up.
+  - Histogram + auto-range from p5/p95 not yet implemented — the
+    default half-range suggestion is a coarse bbox/1000 heuristic.
+    Phase B will add a 2nd compute pass with atomic histogram.
+  - The BVH walk uses a 64-deep per-thread stack. Pathologically
+    unbalanced trees (>64 deep) silently drop the deepest branch.
+    Real BIMs don't get there; SAH or surface-area cost would help
+    if we ever hit it.
+
+  Verified: full repo typecheck (24/24), 655 viewer tests, viewer
+  Vite build green.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Near-term UX features from #611.
+
+  **Hover XYZ readback.** GPU pick now also samples the depth texel at
+  the click position and unprojects it through the inverse view-
+  projection. `PickResult` carries an optional `worldXYZ`. Reverse-Z is
+  honoured (depth=1 = near, 0 = far / miss). The hover tooltip shows
+  `x, y, z` (2 decimals) under the entity id. Useful for measurement
+  hooks and point-cloud picks where the synthetic entity has no
+  surface property to display.
+
+  **Solid-color picker.** When the point-cloud panel's colour mode is
+  set to `fixed`, a native `<input type="color">` swatch appears.
+  Hex round-trips through the existing `[r,g,b,a]` store tuple.
+
+  **Colour-mode legend.** A new `PointCloudLegend` component renders
+  inline beneath the colour-mode buttons:
+
+  - Classification → list of ASPRS LAS 1.4 class id / colour swatch /
+    label (Ground, Vegetation, Building, ...). Palette mirrors
+    `point-shader.wgsl.ts` exactly.
+  - Intensity → black-to-white gradient bar with low/high labels.
+  - Height → cool-warm gradient bar (blue → cyan → green → yellow →
+    red), matching the shader's `height_ramp`.
+    RGB and Solid don't render a legend.
+
+  **Cancel button for in-flight streams.** New
+  `activeStreamCanceller` field on the loading slice. Both ingest
+  sites (`useIfcLoader`, `useIfcFederation`) register
+  `() => streamHandle.cancel()` after starting and clear on success /
+  error. `StatusBar` shows a Cancel button while the canceller is
+  non-null. AbortError on cancel is reported as "Cancelled" rather
+  than a scary error string.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - PTS / XYZ ASCII point cloud reader.
+
+  Both formats are line-oriented plain-text scans common in legacy
+  survey workflows. They share the same syntax — they differ only in
+  the optional first-line point count (PTS may have one; XYZ never
+  does). One shared decoder + streaming source handles both.
+
+  Auto-detected per-line layouts (by column count of the first data
+  line):
+
+  - 3 cols → `X Y Z`
+  - 4 cols → `X Y Z I` (intensity)
+  - 6 cols → `X Y Z R G B`
+  - 7 cols → `X Y Z I R G B` (canonical PTS)
+  - 9 cols → `X Y Z R G B Nx Ny Nz` (XYZ-with-normals; normals dropped)
+  - 10 cols → `X Y Z I R G B Nx Ny Nz` (PTS-with-normals; normals dropped)
+  - For XYZ with unknown column counts ≥3 we still emit positions and
+    skip the rest, so weird custom exports load instead of erroring.
+
+  Other behaviour:
+
+  - Comment lines (`#`, `//`) and blank lines are skipped.
+  - Intensity normalisation: 0..1 vs 0..255 vs raw sensor detected from
+    the observed maximum, then mapped to u16.
+  - RGB normalisation: same heuristic (>1.0 → 0..255 source).
+  - Whole-file decode wrapped in `AsciiPointsStreamingSource`; the
+    streaming host's 25M-point cap stride-downsamples on the way out.
+
+  Wired into the decode worker, format detection
+  (`detectPointCloudFormat` returns `'pts'` / `'xyz'`), the file
+  picker accept lists, drop handlers, and both `useIfcLoader` /
+  `useIfcFederation` ingest branches. The "PTS / XYZ ASCII points —
+  not yet supported" toast is removed from `describeUnsupportedFormat`.
+
+  10 new unit tests cover layout probing, decoder round-trips for the
+  common shapes, and the comment / header-count edge cases.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - GPU rectangle pick (marquee select) — meshes + point clouds.
+
+  Hold `Ctrl` (or `⌘` on macOS) and drag with the left mouse button
+  in the select tool to draw a rectangle. On release, every entity
+  (mesh or point cloud) whose pixel falls inside the rect becomes
+  the new selection. A teal-dashed SVG outline tracks the drag.
+
+  Implementation:
+
+  - `Picker.pickRect(x0, y0, x1, y1, …) → Set<expressId>` renders the
+    same pick pass as `pick()` and reads back the texel rect, deduping
+    hits to a Set. Mesh + point splats both participate (point splats
+    share the depth buffer in the pick pass).
+  - A new private `Picker.renderPickPass` extracts the shared render-
+    pass setup so single-pixel `pick` and rect `pickRect` don't drift.
+  - `PickingManager.pickRect` applies the same visibility filtering
+    (`hiddenIds`, `isolatedIds`) as `pick`. The CPU-raycast and
+    dynamic-mesh-creation fallbacks `pick` uses for very large batched
+    models are skipped — rect pick only sees already-hydrated meshes.
+  - `Renderer.pickRect` exposes the manager's API.
+  - New `RectSelectionOverlay` component renders the dashed SVG box
+    while dragging; lives inside `Viewport.tsx` as a sibling of the
+    canvas.
+  - `useMouseControls` tracks a new `mouseState.isRectSelecting` flag,
+    suppresses orbit/pan during the drag, and on mouseup runs
+    `renderer.pickRect(...)` and feeds the result into
+    `setSelectedEntityIds`. A 4-pixel minimum rect size avoids
+    clobbering selection on a stray Ctrl-click.
+  - `MouseState.isRectSelecting?: boolean` and a new
+    `setRectSelection?` callback added to `UseMouseControlsParams`.
+
+  Lasso (polygonal) pick still pending — covered by issue #611's
+  mid-term list. Per-class isolation for points is a separate
+  follow-up.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Section-plane drag preview — render at 1/4 density during slider
+  drag for responsive section-cutting on huge point clouds.
+
+  The splat shader gains a `previewStride` uniform that culls
+  `(instance_index % stride) != 0` at the start of `vs_main`. The
+  section-plane position slider wires `onPointerDown` to set
+  `previewStride: 4` and `onPointerUp` to restore `1`, so scans of
+  millions of points stay responsive while the user drags.
+
+  Implementation:
+
+  - `POINT_UNIFORM_SIZE` bumped from 208 → 224 to add a new
+    `extras: vec4<u32>` slot. `extras.x` carries `previewStride`;
+    `yzw` reserved for future per-frame state.
+  - `PointCloudRenderOptions.previewStride?: number` clamped to
+    [1, 256] in the renderer.
+  - Vertex shader culls hidden instances by writing
+    `clipPos = vec4(0, 0, -2, 1)` (outside reverse-Z `[0, 1]`) so they
+    drop pre-rasterisation.
+  - New `pointCloudPreviewStride` field on the point cloud slice
+    (default 1) with `setPointCloudPreviewStride` action.
+  - `usePointCloudSync` forwards the stride to
+    `setPointCloudOptions`.
+  - `SectionOverlay`'s position slider triggers stride 4 on
+    drag start (pointer + keyboard), 1 on release. Only flips when
+    `pointCloudAssetCount > 0` so IFC-only sessions are unaffected.
+
+  Triangle meshes ignore the stride — they're cheap enough that
+  section drag was already smooth.
+
+  Verified: full repo typecheck (24/24), 655 viewer tests, viewer
+  Vite build green.
+
+### Patch Changes
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Fix LAZ load failing with `WebAssembly: Response has unsupported MIME
+type 'text/plain'` on real-world files (e.g. autzen-classified.laz).
+
+  `laz-perf`'s emscripten shim resolves the wasm via `locateFile()` and
+  calls `fetch("laz-perf.wasm")` relative to its own script directory.
+  In a Vite-bundled module worker that path becomes `/assets/<chunk>/…`
+  or just `/laz-perf.wasm` — both 404, and the SPA fallback returns
+  `index.html` as `text/plain`, which `instantiateStreaming` rightly
+  rejects. The async fallback then 404s the same way and aborts.
+
+  `loadLazPerf` now resolves the wasm asset URL through Vite's
+  `?url` import (`laz-perf/lib/web/laz-perf.wasm?url`), pre-fetches the
+  bytes itself, and hands them to emscripten as `Module.wasmBinary` so
+  the shim's own fetch is bypassed entirely. Failure modes (asset
+  resolution, fetch HTTP error) now produce a precise error message
+  naming the URL and status instead of the opaque emscripten "Aborted".
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Near-term batch — correctness + robustness items from #611.
+
+  **`computeBBox` empty / non-finite guards.** Both `e57.ts` and
+  `ifcx-points.ts` now return `{0,0,0}/{0,0,0}` for empty arrays and
+  skip non-finite triplets. Previously a zero-point or NaN-poisoned
+  chunk produced ±Infinity bounds that broke camera fit-to-view and
+  section-plane sliders.
+
+  **Magic-byte-first format detection.** `detectPointCloudFormat` now
+  probes the buffer (E57 magic, LASF magic, "ply" / "#" / ".PCD"
+  ASCII tokens) before falling back to extension. A LAS file
+  mistakenly named `*.ply` no longer goes down the wrong decoder. LAS
+  vs LAZ still uses the extension to disambiguate (they share the
+  LASF magic).
+
+  **E57 packet-bounds + per-stream guards.** Validate that the
+  DataPacket header, bytestream-length table, and each individual
+  bytestream stay inside `payloadEnd = packetEnd - 4` before reading.
+  Corrupt files now fail with a precise "bytestream X runs past
+  packet payload" error instead of silently reading into the next
+  packet.
+
+  **`e57.ts` split (631 → 4 files).** `e57-page.ts` (header / page CRC
+  / section-header resolver), `e57-xml.ts` (prototype + Data3D
+  parser), `e57-decode.ts` (per-scan binary decoder), `e57.ts`
+  (orchestrator + re-exports). All four under the AGENTS ~400-line
+  guideline.
+
+  **`point-cloud-renderer.ts` extract.** Pulled the uniform-block
+  writer into `point-cloud-uniforms.ts` (`writePointCloudUniforms` +
+  mode index maps). Renderer drops below 400 lines.
+
+  Verified: 62 pointcloud unit tests pass, full repo typecheck
+  (24/24).
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Round 2 of CodeRabbit feedback on PR #614:
+
+  - **E57 stride downsampling drops classifications.** `applyStride` rebuilt
+    positions / colors / intensities into new arrays but never copied the
+    per-point class IDs, so any non-default stride (`{ stride: 2 }` and up)
+    silently lost them and `hasClassification` flipped to false.
+  - **Federation abort can stomp a newer load.** The AbortError handler in
+    `useIfcFederation.addModel()` wrote `progress`, `error`, and `loading`
+    unconditionally — if a second `addModel()` started after the first was
+    cancelled, it lost its spinner and progress to the cancelled load's
+    cleanup. Added a `loadSessionRef` token (mirrors `useIfcLoader`) and
+    gate state writes on `loadSessionRef.current === currentSession`.
+  - **E57 Integer classification subtracts `minimum`.** Class IDs are
+    absolute labels (ASPRS LAS 1.4 0..31), not range-normalised offsets.
+    `raw - minimum` was corrupting class IDs whenever a producer declared
+    a non-zero `minimum` on the Integer-encoded classification field. The
+    Integer branch now matches the ScaledInteger branch's intent: keep
+    the raw byte, clamp to 0..255.
+  - **PCD probe missed `VERSION` / `FIELDS` headers.** The magic-byte
+    detector only recognised `# .PCD …` comment-style headers. Real PCDs
+    emitted by PCL's `pcl_io` and a few third-party tools start directly
+    with `VERSION 0.7\n…` or `FIELDS x y z\n…` — these now route through
+    the PCD decoder instead of falling through to extension-based
+    detection (which would mis-route a renamed PCD).
+  - **Catch-block logging.** Per repo convention, log point-cloud ingest
+    failures in `useIfcLoader.ts` before the early return so abort vs.
+    real-failure vs. stale-session paths are distinguishable in console
+    triage.
+
+  Test cleanup: drop the shadowed (and unused) ScaledInteger packet
+  buffer in `e57.test.ts` so only the live `fullBuf` setup remains.
+
+- Updated dependencies [[`8408c88`](https://github.com/louistrue/ifc-lite/commit/8408c88c4c0a1e848fade6c60474952eca1a4149), [`2334993`](https://github.com/louistrue/ifc-lite/commit/2334993827839b9f5b96ca8008c49543fb597660), [`ba7553a`](https://github.com/louistrue/ifc-lite/commit/ba7553af693939896a840074999b5f6806a94815), [`2ab0e4c`](https://github.com/louistrue/ifc-lite/commit/2ab0e4c0eafc21feb22bfc7cd96c467b8b9ff599), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e), [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e)]:
+  - @ifc-lite/wasm@1.16.9
+  - @ifc-lite/geometry@1.18.0
+  - @ifc-lite/parser@2.4.0
+  - @ifc-lite/data@1.17.0
+  - @ifc-lite/renderer@1.19.0
+  - @ifc-lite/pointcloud@0.3.0
+  - @ifc-lite/ids@1.15.1
+  - @ifc-lite/lists@1.14.12
+
+## 1.19.2
+
+### Patch Changes
+
+- [#622](https://github.com/louistrue/ifc-lite/pull/622) [`28db7df`](https://github.com/louistrue/ifc-lite/commit/28db7df0fa64dc8cab0d08f4948fb1d9b67e0f70) Thanks [@louistrue](https://github.com/louistrue)! - Cesium overlay: precomputed terrain placement, ground-floor clamping,
+  and a refactored camera path.
+
+  **Placement is now resolved before the bridge is built** (no more
+  "model loads at IFC OrthogonalHeight, then jumps to terrain"):
+
+  - `terrain-elevation.ts` (new module) tries sources in fast-first
+    order — sync `globe.getHeight`, sync `scene.sampleHeight`, async
+    `scene.sampleHeightMostDetailed` with a 3.5 s timeout, then
+    Open-Meteo as a bare-earth fallback. Implausible elevations
+    (e.g. depth-buffer noise from Google Photorealistic 3D Tiles
+    returning `-69184 m`) are range-checked against terrestrial bounds.
+    Results are cached per-session via `clearTerrainElevationCache()`.
+  - `sampleHeightMostDetailed` runs _before_ Open-Meteo so the model
+    lands on the same surface the user actually sees in 3D Tiles
+    (street decks, podiums) rather than the bare-earth DEM.
+  - `createCesiumBridge` accepts a `placementHeightOverride` so the
+    computed placement is baked into the `enuToEcef` origin altitude
+    for both camera frame and model matrix from creation.
+
+  **`findClampAnchorY` (new helper, 9 unit tests)** picks the anchor
+  viewer-Y that auto-clamp pins to terrain. Primary: the
+  `IfcBuildingStorey` whose elevation is closest to 0 (ground floor),
+  within the model AABB. Fallback: `bounds.min.y`. Without this,
+  basements and foundations dragged the model deep below the terrain
+  surface.
+
+  **`oHeightForBaseAltitude`** in the Georeferencing panel now mirrors
+  the auto-clamp formula (anchor-aware, shift- and RTC-aware), so the
+  "Set OrthogonalHeight to Cesium terrain elevation" button produces
+  the same world position as toggling the clamp.
+
+  **UX behaviours**
+
+  - `cesiumTerrainClamp` defaults to `true` (slice + reset path).
+  - Clamp toggle is now actually uncheckable — dropped the auto-toggle
+    branch that fought the user's setting.
+  - Editing OrthogonalHeight directly auto-releases the clamp so the
+    edit takes effect (with clamp on, placement is intentionally
+    terrain-anchored regardless of OrthogonalHeight).
+  - Stale `terrainHeight` / `terrainClipY` are cleared when a re-query
+    fails so the clip plane doesn't drift relative to the new bridge.
+  - Effect 2d depends on `bridgeVersion` so the model matrix refreshes
+    after an async bridge rebuild.
+
+  **Camera navigation refactor.** Reported symptom: orbit/zoom
+  restricted to the terrain plane. Two coupled root causes:
+
+  1. `screenSpaceCameraController.enableInputs` was still default-true.
+     Any input slipping past the overlay's `pointer-events: none`
+     reached Cesium and got processed in the locked frame, fighting
+     our externally-driven pose. Now flipped to `false` (master kill-
+     switch) on top of the per-mode flags.
+  2. `syncCamera` used `lookAtTransform(viewerToEcef)` to write
+     position/direction/up in viewer-space. `lookAtTransform` _locks_
+     Cesium's reference frame; rotate/tilt/zoom operations are then
+     constrained to that local frame — the "stuck to terrain plane"
+     behaviour. Refactored to clear `lookAtTransform` with
+     `Matrix4.IDENTITY` and write position/direction/up directly in
+     ECEF (Cesium's RTC handles shader precision for primitives).
+
+  **Network hygiene.** `queryTerrainElevation` (Open-Meteo) gets a 5 s
+  `AbortController` timeout and a `console.warn` so failures are
+  visible instead of silently swallowed.
+
+- [#622](https://github.com/louistrue/ifc-lite/pull/622) [`28db7df`](https://github.com/louistrue/ifc-lite/commit/28db7df0fa64dc8cab0d08f4948fb1d9b67e0f70) Thanks [@louistrue](https://github.com/louistrue)! - Apply IfcMapConversion.Scale per IFC schema (issue #595).
+
+  Scale converts local engineering coordinates (in the project length unit)
+  to map CRS units (e.g. `0.001` for a millimetre project with a metre map).
+  ifc-lite's geometry pipeline already converts vertices to metres during
+  extraction, so applying the raw Scale to viewer-space coordinates double-
+  scaled the model — making the Cesium 3D world context unusable for files
+  authored per spec.
+
+  Introduces `getEffectiveHorizontalScale(scale, mapUnitScale, lengthUnitScale)`
+  which returns `(scale × mapUnitScale) / lengthUnitScale` — the correct
+  multiplier for metre-converted geometry. For files where Scale is set
+  consistently with the unit difference this evaluates to 1.0 and the
+  geometry passes through unchanged. Wired through:
+
+  - `cesium-bridge.ts` — 3D model origin and the viewer→ENU rotation.
+  - `CesiumOverlay.tsx::buildModelMatrix` — GLB placement.
+  - `reproject.ts` — 2D map centre, footprint, and reverse-pick.
+  - `useIfcFederation.ts` — multi-model alignment transform.
+
+  Adds a visible amber warning in the Georeferencing panel when
+  `Scale × mapUnitScale ≠ lengthUnitScale` (the IFC schema invariant) so
+  authoring errors are discoverable. The warning surfaces both inline (in
+  the expanded Coordinate Operation section) and as a small indicator on
+  the collapsed section header.
+
+- Updated dependencies [[`7c85376`](https://github.com/louistrue/ifc-lite/commit/7c853760ef96e6f0f88ebdc29c17aefae724ff43), [`7c85376`](https://github.com/louistrue/ifc-lite/commit/7c853760ef96e6f0f88ebdc29c17aefae724ff43), [`5439cce`](https://github.com/louistrue/ifc-lite/commit/5439cce34edaff1c050ce8975a330163167df6fd)]:
+  - @ifc-lite/data@1.16.0
+  - @ifc-lite/ids@1.15.0
+  - @ifc-lite/geometry@1.17.1
+  - @ifc-lite/lists@1.14.11
+
+## 1.19.1
+
+### Patch Changes
+
+- Updated dependencies [[`7a7cf79`](https://github.com/louistrue/ifc-lite/commit/7a7cf79c181004f9974bd303181aeeaa97d6869d), [`7a7cf79`](https://github.com/louistrue/ifc-lite/commit/7a7cf79c181004f9974bd303181aeeaa97d6869d)]:
+  - @ifc-lite/ids@1.14.11
+  - @ifc-lite/mcp@0.2.0
+
+## 1.19.0
+
+### Minor Changes
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - E57 reader (subset) + clear errors when users drop unsupported formats.
+
+  **E57 (ASTM E2807-11) reader.**
+
+  - 48-byte FileHeader parser (`ASTM-E57` magic + xmlPhysicalOffset/Length
+    - pageSize).
+  - Page-CRC stripping: every 1024-byte physical page ends with 4 bytes
+    of CRC32-C; we strip them to get the logical view that XML offsets
+    reference. CRCs aren't validated (faster + still correct on
+    well-formed files).
+  - XML parser via `DOMParser` walks `e57Root → data3D → vectorChild` and
+    extracts each scan's record count, binary fileOffset, and prototype
+    fields.
+  - Binary section decoder walks DataPackets, reads bytestream length
+    table, decodes uncompressed Float32 / Float64 cartesianX/Y/Z plus
+    optional Float colors and Integer u8 colorRed/Green/Blue.
+  - ScaledIntegerNode encoding throws a clear error so the host can guide
+    the user to a Float-encoded export.
+
+  **Drop UX.** Dropping a file we can't load (Recap `.rwp/.rwi/.rwcx/.dmt`,
+  `.skp`, `.zip`, Faro `.fls`, ASCII `.pts/.xyz`) now shows an
+  explanatory toast describing what the format is and what to do
+  (typically: "export to E57 / LAS / PLY"). Previously the drop was
+  silently rejected.
+
+  **File picker** accepts `.e57` in browser drop, the native dialog, and
+  the recent-files command palette.
+
+  7 new pointcloud unit tests cover the FileHeader parser, page-CRC
+  stripping (full pages and partial trailing page), the binary packet
+  walker on a hand-built single-packet scan with Float64 cartesianX/Y/Z
+
+  - uint8 RGB, and the ScaledInteger error path.
+
+  Tests: 48 pointcloud unit tests pass, full repo typecheck (24/24),
+  test suite green (22 runs), viewer Vite build emits decode-worker
+  chunk correctly.
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Fix LAZ loading + add PLY / PCD as standalone formats; sliders feel
+  responsive on first contact.
+
+  **LAZ silently failed to load.** `laz-perf` is shipped as CommonJS,
+  which Vite/webpack wrap under `.default` differently across builds.
+  The previous probe only checked `lazPerf.createLazPerf` and
+  `lazPerf.default` (as a function), so all real-world LAZ loads threw
+  "could not find createLazPerf factory". The probe now walks four
+  candidate shapes (named export, `default.createLazPerf`, `default` as
+  function, namespace-as-function) and reports the visible keys when
+  none match.
+
+  **PLY + PCD now load directly.** Two new streaming sources backed by
+  the existing format decoders:
+
+  - `PlyStreamingSource` — ASCII + binary little/big-endian, optional
+    RGB (uchar) + intensity. Header probe (64 KB) + whole-file decode.
+  - `PcdStreamingSource` — wraps `decodePcd` (already supported PCD
+    ASCII / binary / binary_compressed via inline LZF).
+
+  Both use stride downsampling for the host's 25M-point cap.
+
+  **Format detection** sniffs `.ply` (magic "ply"), `.pcd` (`# .P` or
+  `.PCD` token), and the existing `.las/.laz` paths.
+
+  **File picker** accepts `.ply` and `.pcd` in browser drop, the native
+  dialog, and the recent-files command palette.
+
+  **Slider UX.** Default size mode is now `fixed-px` (was `attenuated`).
+  The previous default felt inert because the slider in `attenuated` mode
+  is the upper _cap_ on adaptive sizing — at typical wide views the
+  projected world-radius sat well below the cap, so dragging the slider
+  1↔20 px never engaged. `fixed-px` always uses the slider value, and
+  "Auto" is one click away when users want adaptive behaviour.
+
+  **Worker URL fix.** `worker-client.ts` now imports
+  `./decode-worker.ts` (matching geometry's pattern) so Vite's worker
+  plugin resolves through the source-alias path. The package's build
+  script post-rewrites that to `.js` for dist consumers.
+
+  Tests: 41 pointcloud unit tests pass (7 new for PLY ascii/binary +
+  header probe + truncation), full repo typecheck (24/24), full test
+  suite (22 runs green), viewer Vite build emits the decode-worker
+  chunk correctly.
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Phases 1–4 of point cloud loading.
+
+  - **LAS streaming** (`.las` files) — header parser + per-point record decoder
+    for ASPRS Point Data Formats 0–10, with auto-detection of "8-bit RGB
+    in u16 channels" producers and on-the-fly rescaling.
+  - **LAZ streaming** (`.laz` files) — wraps `laz-perf` (Apache-2.0) as a
+    runtime dep, decoded inside a Web Worker so the main thread stays
+    responsive.
+  - **Streaming pipeline** — Blob-backed byte source, decode worker with a
+    postMessage protocol that ships chunks back as transferable typed-array
+    buffers, host-side controller that paces decode, applies a 25M-point
+    memory cap with stride downsampling, and reports progress / completion.
+  - **Renderer streaming API** — `Renderer.beginPointCloudStream`,
+    `appendPointCloudChunk`, `endPointCloudStream`, `removePointCloudAsset`,
+    `setPointCloudOptions`. Streamed assets coexist with IFCx-derived
+    assets in separate ownership buckets so `setPointClouds` doesn't clobber
+    active streams.
+  - **Color modes** — `rgb` / `classification` (ASPRS palette) / `intensity` /
+    `height` (cool-warm ramp) / `fixed`. Per-point classification + intensity
+    travel through the GPU vertex layout and the WGSL shader picks the
+    channel based on the active mode uniform.
+  - **Viewer integration** — file picker accepts `.las,.laz` (browser drop +
+    native dialog), a small bottom-left panel exposes the color modes when
+    point clouds are loaded, and the federation registry's `modelIndex`
+    flows through streaming ingest for multi-model picking parity.
+
+  GPU-based point picking is deferred to a follow-up; clicks on points
+  return null and don't crash existing mesh selection.
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Point cloud rendering quality: splat pipeline + Eye-Dome Lighting.
+
+  The 1-pixel `point-list` rendering looked great from far away but turned
+  into a halftone screen as you zoomed in — `point-list` topology has no
+  `gl_PointSize` equivalent in WebGPU, so density was fixed in screen space.
+
+  This swaps the pipeline for instanced 6-vertex quad splats and adds a
+  post-pass EDL for depth perception.
+
+  **Splat pipeline**
+
+  - `topology: 'triangle-list'`, vertex buffer `stepMode: 'instance'`,
+    6 verts emitted per source point. Vertex shader picks a corner from
+    `vertex_index` and inflates clip-space position by the active size.
+  - Three size modes:
+    - `fixed-px` — every splat is N pixels (1..20)
+    - `adaptive-world` — splat covers a world-space radius, projected each
+      frame; closer = bigger
+    - `attenuated` (default) — adaptive but clamped to [1, N] px so splats
+      stay visible at far plane and don't blow up to half the screen up close
+  - Round shape: fragment discards corners outside the unit disc, so splats
+    render as discs not squares.
+
+  **Eye-Dome Lighting**
+
+  - New `EdlPass` runs after the existing PostProcessor. Samples 4 (low) or
+    8 (high) neighbouring depths at radius R px, computes mean log-depth-
+    diff, darkens by `1 - exp(-300 * meanLog * strength)`. ~9 texture taps
+    per pixel. Only active when point clouds are loaded.
+  - Reverse-Z aware (`max(0, log(centre) - log(neighbour))`), early-out at
+    the far plane.
+
+  **UI**
+
+  - `PointCloudPanel` gains size-mode buttons, a 1–20 px slider, a 1–100 mm
+    world-radius slider (visible in adaptive/attenuated modes), and an EDL
+    toggle with a 0–3 strength slider.
+  - New `pointCloudSlice` fields: `pointCloudSizeMode`, `pointCloudPointSize`,
+    `pointCloudWorldRadius`, `pointCloudRoundShape`, `pointCloudEdlEnabled`,
+    `pointCloudEdlStrength`. Slice clamps numeric ranges.
+
+  Renderer API additions: `setEdlOptions({enabled, strength, radiusPx,
+highQuality})`. `setPointCloudOptions` now also accepts `sizeMode`,
+  `worldRadius`, `roundShape`.
+
+### Patch Changes
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Three Codex review fixes on the streaming ingest path.
+
+  **Streamed point cloud assets leaked across model removal.** The
+  renderer handle returned from `beginPointCloudStream` was discarded,
+  and streamed nodes are intentionally outside the IFCx
+  `setPointClouds` bucket, so removing a model left the GPU buffers
+  allocated for the rest of the session. `FederatedModel` now carries
+  an optional `pointCloudHandleId`; both ingest sites populate it; a
+  new `usePointCloudLifecycle` hook diffs the model map on every
+  change and frees handles for models that disappear.
+
+  **Double cleanup on ingest failure.** The outer `try/catch` in both
+  ingest sites called `removePointCloudAsset` + `incCount(-1)`, but
+  `ingestPointCloud`'s `onError` already does the same before
+  rethrowing. The duplicate cleanup pushed the asset counter negative
+  and caused a "remove twice" warning. The outer `catch` now only
+  handles store / UI state.
+
+  **PCD header probe.** The streaming source used the file's reported
+  size as the upper bound for the header probe; on truncated files
+  that walked off the end with a confusing error. Capped the probe at
+  4 KiB so malformed PCD headers fail with a clear "header > 4 KiB"
+  message.
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Fix two regressions that prevented point clouds from rendering in the viewer:
+
+  1. **IFCx samples extracted zero points.** The entity extractor required
+     `bsi::ifc::class` on every node before assigning an `expressId`, but the
+     buildingSMART Point*Cloud*\*.ifcx fixtures place `pcd::base64` /
+     `points::array` / `points::base64` on nodes that carry only USD
+     `xformop`. Those nodes now also become first-class entities (synthetic
+     `IfcGeographicElement` type) so the point cloud extractor can emit
+     them. Added regression assertions in `verify-dist-hello-wall.mjs`.
+
+  2. **`.las` / `.laz` files were silently ignored on single-file load.**
+     The drop / picker single-file path goes through `useIfcLoader.loadFile`,
+     which only branched on `ifcx` / `glb` / `ifc`. Added the LAS/LAZ branch
+     there and wired it into the streaming ingest. Camera fit-to-view now
+     triggers from `usePointCloudSync` for points-only scenes (the geometry
+     streaming hook bails out early when there are no meshes).
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Fix `TypeError: entities.getTypeName is not a function` when picking a
+  point on a streamed point cloud (LAS / LAZ / PLY / PCD / E57).
+
+  The synthetic `IfcDataStore` that `pointCloudIngest.ts` builds for
+  point-cloud-only models stubbed `entities` with only a handful of
+  methods (`getId`, `getType`, `getName`, `getGlobalId`) and used method
+  names that don't match the real `EntityTable` interface. Picking
+  selects the synthetic expressId, which routes through the regular
+  property / hover / properties-panel pipeline — that pipeline calls
+  `entities.getTypeName`, `entities.getTypeEnum`,
+  `properties.getForEntity`, etc., and crashed on the missing
+  `getTypeName`.
+
+  `emptyDataStore()` now produces a stub that matches the real shape:
+
+  - `entities`: `count=1`, `expressId=Uint32Array([id])`, `typeEnum`,
+    plus `getTypeName` → `'IfcGeographicElement'`, `getName` → file
+    name, `getGlobalId` → `pointcloud-<id>`, and `getTypeEnum`,
+    `getByType`, `hasGeometry`, `getExpressIdByGlobalId`,
+    `getGlobalIdMap` covered.
+  - `properties`: real `PropertyTable` shape — `entityIndex`,
+    `psetIndex`, `propIndex`, `getForEntity`, `getPropertyValue`,
+    `findByProperty` (all empty / no-op).
+  - `quantities` / `relationships`: matching empty stubs.
+  - `entityIndex.byType` includes `IFCGEOGRAPHICELEMENT → [id]` so type
+    filters resolve.
+
+  `emptyDataStore` now takes the synthetic `expressId` and `fileName` so
+  the stub round-trips real data instead of `undefined`.
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Round 3 of point cloud fixes — correctness gaps that block multi-model
+  sessions and silent rendering stalls.
+
+  **Federation relabel for streamed point clouds.**
+  `ingestPointCloud` now emits a synthetic entry on
+  `geometryResult.pointClouds`. Without this, `useIfcFederation`'s
+  `idOffset` fold + `relabelPointCloudAsset` call never fired for
+  LAS/LAZ/PLY/PCD/E57 streams, so picked `expressId`s for streamed
+  assets collided across federated models.
+
+  **Sync-throw cleanup.** Wrap `streamPointCloud()` in `try/catch`
+  inside `ingestPointCloud`. The renderer asset and asset-count
+  increment happen before the worker spins up, so a sync throw during
+  validation/worker setup used to leak both. We now `removePointCloudAsset`
+
+  - `onCountChange(-1)` before re-throwing.
+
+  **`setPointClouds()` shrinks bounds correctly.** The replace path
+  called `expandModelBoundsForPointClouds` (grow-only). Reloading IFCx
+  with a smaller scan kept stale extents until `clear`. Switched to
+  `recomputeModelBounds()` so bounds re-baseline from current state.
+
+  **`requestRender()` after every mutation.** `appendPointCloudChunk`,
+  `setPointCloudOptions`, `setEdlOptions`, `setPointClouds`,
+  `addPointClouds`, `clearPointClouds`, `removePointCloudAsset`,
+  `endPointCloudStream` now schedule a frame. Previously streamed
+  chunks could sit invisible until an unrelated camera move triggered
+  the next render.
+
+  **Worker cancel race.** `worker-client.next()` now re-checks
+  `signal.aborted` after `await session.send()`. A chunk that won the
+  race against `cancel()` would otherwise still call `onChunk` after
+  the host returned to the caller.
+
+  **Multi-scan E57 rejection.** `parseE57Xml` now records `hasPose` per
+  Data3D entry. `decodeE57` rejects multi-scan files where any entry
+  carries a `<pose>` element, with a clear "registered multi-scan;
+  re-export as merged" error. Previously such files silently
+  concatenated in scan-local space and rendered misaligned.
+
+  Verified: 62 pointcloud unit tests (1 new for pose flag), full repo
+  typecheck (24/24), viewer Vite build green.
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Address CodeRabbit + Codex review feedback on PR #608.
+
+  Critical visual / correctness fixes:
+
+  - Point splats rendered ~2× too large because the shader treated the
+    user-facing `pointSizePx` (diameter) as the splat radius. Fixed in
+    both the live splat shader and the picker shader so click targets
+    match the rendered disc.
+  - Routed every detected point-cloud format (`ply`, `pcd`, `e57`) through
+    the streaming ingest in both `useIfcLoader` (single-file drop) and
+    `useIfcFederation` (multi-file). Previously only `las/laz` got the
+    pointcloud branch; `ply/pcd/e57` fell through into the IFC STEP path.
+  - Federation: applied `idOffset` to `geometryResult.pointClouds` too so
+    multi-pointcloud-model loads don't collide on local `expressId`.
+  - `expressId` defaulted to `1` on every ingest, so multiple inline LAS
+    loads collided. Now uses a process-local synthetic counter.
+  - E57 integer color channels are commonly u16 (0..65535); reader was
+    forcing u8 reads, distorting RGB. Now picks element width from the
+    declared min/max range.
+  - PCD `applyStride` preserved positions + colors but dropped intensity
+    and classification, so those color modes silently broke on files
+    past the 25M-point downsample cap.
+  - Inline `uploadAssetToGpu` forwards `intensities` + `classifications`
+    (added to `PointCloudAsset.chunk` shape).
+  - Model bounds recomputed after `removePointCloudAsset` /
+    `clearPointClouds` — previously stayed oversized, breaking
+    fit-to-view and section sliders.
+  - `usePointCloudLifecycle` disposes a model's GPU asset when the model
+    stays in the store but its `pointCloudHandleId` changes (re-stream of
+    the same file used to leak the old handle).
+  - `resetViewerState` now clears the point-cloud slice runtime fields so
+    loading a new file doesn't inherit the previous file's color mode /
+    size / EDL state.
+
+  Correctness / robustness:
+
+  - `streamPointCloud`'s host now closes the source on probe + onOpen
+    failures (single try/finally wrapping the whole open-and-decode
+    flow), so worker-backed sources don't leak the decoder on parse
+    errors or aborts.
+  - `worker-client.close()` clears cached `info`; subsequent `open()`
+    actually re-opens instead of returning stale info next to a null
+    `sourceId`.
+  - `LasStreamingSource.open()` and `LazStreamingSource.open()` are
+    atomic on failure: state is committed only after every step
+    succeeds, so a retry rerruns the probe + RGB-scale detection
+    cleanly. LAZ also frees malloc'd wasm pointers in the catch path.
+  - PLY decoder rejects files where `vertex` isn't the first element
+    (decoder reads from `header.bodyOffset`; non-leading vertex would
+    silently produce garbage).
+  - `decodePointsArray` validates each `colors[i]` is a `[r,g,b]` triple
+    before indexing, so malformed schemas fail with a clear message.
+  - `useIfcLoader` LAS/LAZ/PLY/PCD/E57 branch is guarded by
+    `loadSessionRef` on both error and success paths so a newer load can
+    replace an in-flight one without overwriting the newer model state;
+    stale renderer handle is freed.
+
+  Critical webhook fixes:
+
+  - `ViewportOverlays.tsx` had three imports between executable code;
+    hoisted them above the `const isDesktop = isTauri()` declaration.
+  - `edl-pass.ts` used `0u` for `texture_depth_multisampled_2d`'s
+    `sample_index`; WGSL spec requires `i32`.
+  - `pcd.test.ts` switched from `__dirname` to
+    `fileURLToPath(import.meta.url)` so it works outside vitest's
+    CommonJS-compat shim.
+
+  UX polish:
+
+  - `PointCloudPanel` toggle buttons expose `aria-pressed` so screen
+    readers announce the active option.
+  - `pointCloudSlice` setters reject `NaN`/`Infinity` (Math.min/max
+    passes them through unchanged).
+  - `BlobByteSource.read` clamps a negative `start` to `0`.
+  - File-dialog filters split GLB out of the IFC bucket into a "Mesh
+    Files" group.
+
+  The flattenMatrix transpose flagged in the review is actually correct
+  for USD's row-major-with-translation-in-row-3 convention (verified by
+  inspecting the Point_Cloud_S1 sample's transform; the rendered scan is
+  at the right world position). Added a clarifying comment so future
+  reviewers don't reach for the wrong fix.
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Round 2 of CodeRabbit review fixes — correctness + robustness.
+
+  P1 (real correctness):
+
+  - Federation: streamed point clouds now get the post-`idOffset` global
+    expressId in picking output. New `Renderer.relabelPointCloudAsset()`
+    updates a per-asset uniform (`flags.x`) the shader prefers over the
+    per-vertex attribute, so federation is just a metadata write — no
+    GPU buffer rewrite. `useIfcFederation.addModel` calls it after the
+    pointClouds offset is applied.
+  - Section-plane range now folds in `pointCloudRenderer.getBounds()`, so
+    pure point-cloud scenes don't fall through to `[-100, 100]` and mixed
+    scenes don't clip points outside a smaller mesh-only range.
+  - `recomputeModelBounds()` now recomputes from scratch (mesh baseline +
+    current pc bounds) instead of growing-only. Previously, removing one
+    of several point clouds left stale oversized extents until every
+    point cloud was gone.
+  - `streamPointCloud` validates `chunkSize > 0` upfront; `LasStreamingSource`
+    and `LazStreamingSource` reject `maxPoints <= 0`. Prevents
+    zero-progress decode loops from accidental misuse.
+  - E57 merge uses `some()` instead of `every()`; mixed-attribute files
+    no longer drop colour/intensity for the whole merged cloud just
+    because one scan lacks the channel.
+  - E57 intensity is now allocated for `Integer`-encoded prototypes too
+    (was silently dropped); `ScaledInteger` throws a clear error.
+
+  P2 (robustness):
+
+  - `xml-mini` rejects truncated input — unclosed elements throw instead
+    of silently returning a partial tree.
+  - `worker-client.next()` now sends a `kind: 'abort'` to the worker when
+    the signal fires mid-flight. Previously cancel returned to the caller
+    while the worker kept decoding.
+  - `decodePointsArray` rejects empty arrays (was producing ±Infinity
+    bbox); `decodePointsBase64` rejects empty strings (no silent
+    downgrade to uncoloured cloud).
+  - `transformPositionsZUpToYUp` guards against zero / non-finite
+    homogeneous `w` (malformed `usd::xformop` matrices).
+
+  P3 (polish):
+
+  - `POINT_CLOUD_DEFAULTS` is now an exported constant shared by the
+    slice initializer and `resetViewerState`, so the two paths can't
+    drift.
+  - Replaced `as any` cast around `AbortSignal.any` with a typed
+    intersection.
+  - Doc comment on `pointCloudSizeMode` now matches the actual default
+    (`fixed-px`).
+
+  Verified: 61 pointcloud unit tests pass, full repo typecheck (24/24),
+  test suite green (22 runs), viewer Vite build emits decode-worker
+  chunk correctly.
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Streaming point clouds (LAS / LAZ / PLY / PCD / E57) now arrive in
+  the renderer's Y-up convention, matching the IFCx ingest path.
+
+  Without this, scans rendered rotated 90° onto their side because the
+  renderer is Y-up internally and LIDAR / surveying formats store data
+  Z-up by convention. The IFCx path applied the swap inside
+  `pointcloud-extractor.ts`; the streaming path went straight from the
+  worker's decoded chunk into `appendPointCloudChunk`, skipping the
+  swap.
+
+  `ingestPointCloud` now wraps `onChunk` to re-orient positions and
+  bbox before forwarding to the renderer:
+  Z-up: X=right, Y=forward, Z=up
+  Y-up: X=right, Y=up, Z=back (negate Y to keep right-hand rule)
+
+  Mirrors the geometry / pointcloud extractors' existing handling.
+
+- Updated dependencies [[`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1), [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1)]:
+  - @ifc-lite/pointcloud@0.2.0
+  - @ifc-lite/renderer@1.18.0
+  - @ifc-lite/geometry@1.17.0
+  - @ifc-lite/parser@2.3.0
+
 ## 1.18.0
 
 ### Minor Changes

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePcd } from './pcd.js';
@@ -13,6 +13,13 @@ import { decodePcd } from './pcd.js';
 // fixture-loading tests don't break when this is run outside vitest.
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../../../..');
+
+// Fixtures live in a GitHub Release (AGENTS.md §9). Skip the IFCx-fixture
+// suite cleanly when they're absent so a fresh checkout — or any CI job
+// that hasn't run `pnpm fixtures` yet — doesn't crash with ENOENT.
+const SMALL_PCD = path.join(REPO_ROOT, 'tests/models/ifc5/Point_Cloud_point-cloud.ifcx');
+const LARGE_PCD = path.join(REPO_ROOT, 'tests/models/ifc5/Point_Cloud_S1-pointcloud.ifcx');
+const FIXTURES_AVAILABLE = existsSync(SMALL_PCD) && existsSync(LARGE_PCD);
 
 function buildAsciiPcd(rows: number[][], rgbColumn = false): Uint8Array {
   const fields = rgbColumn ? 'x y z rgb' : 'x y z';
@@ -97,7 +104,7 @@ describe('decodePcd binary', () => {
   });
 });
 
-describe('decodePcd against IFCx fixtures', () => {
+describe.skipIf(!FIXTURES_AVAILABLE)('decodePcd against IFCx fixtures', () => {
   it('decodes the small Point_Cloud sample (ascii subnode 213 points)', () => {
     const fixturePath = path.join(REPO_ROOT, 'tests/models/ifc5/Point_Cloud_point-cloud.ifcx');
     const ifcx = JSON.parse(readFileSync(fixturePath, 'utf-8')) as {

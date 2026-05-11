@@ -67,6 +67,26 @@
 - **`[patch.crates-io]` lives in the workspace root `Cargo.toml`.** Local patch targets go under `rust/vendor/<crate>/`. Every vendored stub must explain, in its own `src/lib.rs` header comment, why it exists and the exact upstream condition that would let it be deleted.
 - **Don't silently bump dep ranges.** Major or patched-version crossings should be called out in the PR description so reviewers can sanity-check for behaviour changes.
 
-## 9. Feedback Loop
+## 9. Test Fixtures
+
+- **No Git LFS.** IFC and IFCX fixtures live under `tests/models/` but are
+  *not* committed. They're catalogued in `tests/models/manifest.json`
+  (path + sha256 + size) and fetched from a GitHub Release on demand via
+  `pnpm fixtures`. See [`tests/models/README.md`](./tests/models/README.md)
+  for the rationale and maintainer workflow.
+- **Adding a fixture:** drop the file under `tests/models/<group>/`,
+  run `pnpm fixtures:manifest` to regenerate the catalogue, then
+  `pnpm fixtures:upload` (requires `gh` CLI write access) to publish the
+  bytes. Commit only the updated `manifest.json`.
+- **Tests must skip cleanly when a fixture is absent.** Use the
+  `read_fixture` pattern in `rust/geometry/src/processors/tests.rs` (Rust)
+  or an `existsSync` + `test.skip()` guard (TypeScript) — point to
+  `pnpm fixtures` in the skip message. Never `panic!` / `throw` on
+  fixture absence; that breaks fresh clones.
+- **CI workflows that run tests** must run `pnpm fixtures` before the
+  test step. Cache by `hashFiles('tests/models/manifest.json')` to avoid
+  re-downloading on every job.
+
+## 10. Feedback Loop
 - If a pattern is confusing or repeatedly error-prone, call it out explicitly in your PR notes.
 - Prefer refactors that make the correct path the easiest path (single source of truth helpers, stricter types, fewer implicit fallbacks).

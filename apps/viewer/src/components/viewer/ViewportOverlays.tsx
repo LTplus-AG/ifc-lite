@@ -323,5 +323,9 @@ function CesiumSettingsOverlay({
  */
 function PointCloudPanelMount() {
   const count = useViewerStore((s) => s.pointCloudAssetCount);
-  return <PointCloudPanel assetCount={count} />;
+  // Triangle total comes from the merged geometry result. The panel
+  // gates the BIM↔scan deviation compute button on triangleCount > 0
+  // so the user can't trigger an empty-BVH compute pass.
+  const triangleCount = useViewerStore((s) => s.geometryResult?.totalTriangles ?? 0);
+  return <PointCloudPanel assetCount={count} triangleCount={triangleCount} />;
 }

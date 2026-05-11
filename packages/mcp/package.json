@@ -1,0 +1,86 @@
+{
+  "name": "@ifc-lite/mcp",
+  "version": "0.2.0",
+  "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ifc-lite-mcp": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    },
+    "./protocol": {
+      "import": "./dist/protocol/index.js",
+      "types": "./dist/protocol/index.d.ts"
+    },
+    "./browser": {
+      "import": "./dist/browser.js",
+      "types": "./dist/browser.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "dev": "pnpm exec tsc --watch",
+    "start": "node dist/cli.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ifc-lite/bcf": "workspace:^",
+    "@ifc-lite/create": "workspace:^",
+    "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/encoding": "workspace:^",
+    "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/mutations": "workspace:^",
+    "@ifc-lite/parser": "workspace:^",
+    "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/sdk": "workspace:^",
+    "@ifc-lite/viewer-core": "workspace:^",
+    "@types/node": "^20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^3.2.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/louistrue/ifc-lite.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://louistrue.github.io/ifc-lite/",
+  "bugs": "https://github.com/louistrue/ifc-lite/issues",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ifc",
+    "bim",
+    "ai-agent",
+    "llm",
+    "claude",
+    "cursor",
+    "json-rpc",
+    "ifc-lite",
+    "aec"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

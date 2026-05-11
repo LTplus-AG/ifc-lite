@@ -21,6 +21,7 @@ import {
   RelationshipGraphBuilder,
   RelationshipType,
   QuantityTableBuilder,
+  safeUtf8Decode,
 } from '@ifc-lite/data';
 import type { SpatialHierarchy, EntityTable, PropertyTable, QuantityTable, RelationshipGraph } from '@ifc-lite/data';
 
@@ -135,9 +136,10 @@ export async function parseIfcx(
 ): Promise<IfcxParseResult> {
   const startTime = performance.now();
 
-  // Phase 1: Parse JSON
+  // Phase 1: Parse JSON. SAB-safe in case the upload entry path streamed
+  // the file directly into a SharedArrayBuffer.
   options.onProgress?.({ phase: 'parse', percent: 0 });
-  const text = new TextDecoder().decode(buffer);
+  const text = safeUtf8Decode(new Uint8Array(buffer));
   let file: IfcxFile;
 
   try {
@@ -332,7 +334,10 @@ export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | 'unk
   }
 
   const bytes = new Uint8Array(buffer, 0, Math.min(100, buffer.byteLength));
-  const start = new TextDecoder().decode(bytes).trim();
+  // SAB-safe: the upload entry path streams the file directly into a
+  // SharedArrayBuffer for files ≥ STREAM_SAB_THRESHOLD, and both Firefox
+  // and Chromium reject TextDecoder.decode() on SAB-backed views.
+  const start = safeUtf8Decode(bytes).trim();
 
   // IFCX is JSON starting with {
   if (start.startsWith('{')) {
@@ -428,7 +433,7 @@ export async function parseFederatedIfcx(
     const { buffer, name } = files[i];
     totalSize += buffer.byteLength;
 
-    const text = new TextDecoder().decode(buffer);
+    const text = safeUtf8Decode(new Uint8Array(buffer));
     let file: IfcxFile;
 
     try {
@@ -549,8 +554,8 @@ export async function addIfcxOverlay(
   overlayName: string,
   options: FederatedParseOptions = {}
 ): Promise<FederatedIfcxParseResult> {
-  // Parse overlay file
-  const text = new TextDecoder().decode(overlayBuffer);
+  // Parse overlay file (SAB-safe).
+  const text = safeUtf8Decode(new Uint8Array(overlayBuffer));
   let file: IfcxFile;
 
   try {

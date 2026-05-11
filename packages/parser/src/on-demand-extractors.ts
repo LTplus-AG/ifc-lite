@@ -37,7 +37,7 @@ export type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialCons
 export interface TypePropertyInfo {
     typeName: string;
     typeId: number;
-    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }>;
+    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }>;
 }
 
 /**
@@ -80,7 +80,7 @@ export type { GeoreferenceInfo as GeorefInfo };
  * - IfcPropertyTableValue: defining/defined value pairs → "Table(N rows)"
  * - IfcPropertyReferenceValue: entity reference → "Reference #ID"
  */
-export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue } {
+export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue; values?: string[]; dataType?: string } {
     const attrs = propEntity.attributes || [];
     const typeUpper = propEntity.type.toUpperCase();
 
@@ -93,7 +93,11 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                     if (Array.isArray(v) && v.length === 2) return String(v[1]); // Typed value
                     return String(v);
                 }).filter(v => v !== 'null' && v !== 'undefined');
-                return { type: 0, value: values.join(', ') };
+                // Surface the raw value list separately so IDS facet
+                // checks can iterate "any matching value passes". The
+                // joined display string remains the primary `value`
+                // for visualisation/property-table consumers.
+                return { type: 0, value: values.join(', ') || null, values };
             }
             return { type: 0, value: null };
         }
@@ -108,7 +112,33 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             if (lower != null && upper != null) {
                 display += ` [${lower} – ${upper}]`;
             }
-            return { type: displayValue != null ? 1 : 0, value: display || null };
+            // Surface every defined bound as a candidate value — IDS
+            // bounded-property checks pass when ANY of the bounds /
+            // setpoint matches the constraint, per upstream ifctester.
+            const candidates: string[] = [];
+            if (lower != null) candidates.push(String(lower));
+            if (upper != null && upper !== lower) candidates.push(String(upper));
+            if (setPoint != null && setPoint !== lower && setPoint !== upper) {
+                candidates.push(String(setPoint));
+            }
+            // Carry the IFC-declared measure tag so the IDS-side data
+            // type comparison and unit conversion both work.
+            const inferDataType = (attr: unknown): string | undefined => {
+                if (Array.isArray(attr) && attr.length === 2) {
+                    return String(attr[0]).toUpperCase();
+                }
+                return undefined;
+            };
+            const dataType =
+                inferDataType(attrs[5]) ||
+                inferDataType(attrs[2]) ||
+                inferDataType(attrs[3]);
+            return {
+                type: displayValue != null ? 1 : 0,
+                value: display || null,
+                ...(candidates.length > 0 ? { values: candidates } : {}),
+                ...(dataType ? { dataType } : {}),
+            };
         }
 
         case 'IFCPROPERTYLISTVALUE': {
@@ -119,7 +149,7 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                     if (Array.isArray(v) && v.length === 2) return String(v[1]);
                     return String(v);
                 }).filter(v => v !== 'null' && v !== 'undefined');
-                return { type: 0, value: values.join(', ') };
+                return { type: 0, value: values.join(', ') || null, values };
             }
             return { type: 0, value: null };
         }
@@ -129,8 +159,29 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             const definingValues = attrs[2];
             const definedValues = attrs[3];
             const rowCount = Array.isArray(definingValues) ? definingValues.length : 0;
-            if (rowCount > 0 && Array.isArray(definedValues)) {
-                return { type: 0, value: `Table (${rowCount} rows)` };
+            if (rowCount > 0 && Array.isArray(definedValues) && Array.isArray(definingValues)) {
+                // Surface both defining and defined values as candidate
+                // matches — IDS table-value checks pass when ANY entry
+                // matches the constraint (per upstream ifctester).
+                const stringify = (v: unknown): string => {
+                    if (Array.isArray(v) && v.length === 2) return String(v[1]);
+                    return String(v);
+                };
+                const values = [
+                    ...definingValues.map(stringify),
+                    ...definedValues.map(stringify),
+                ].filter(v => v !== 'null' && v !== 'undefined');
+                // Tables mix types per column (label / length / …),
+                // so we can't surface a single representative
+                // dataType. Leaving it unset lets the IDS check fall
+                // through to a pure value match against any of the
+                // candidates — which is what upstream ifctester does
+                // for table values.
+                return {
+                    type: 0,
+                    value: `Table (${rowCount} rows)`,
+                    values,
+                };
             }
             return { type: 0, value: null };
         }
@@ -149,11 +200,13 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             const nominalValue = attrs[2];
             let type: number = PropertyValueType.String;
             let value: PropertyValue = nominalValue as PropertyValue;
+            let dataType: string | undefined;
 
             // Handle typed values like IFCBOOLEAN(.T.), IFCREAL(1.5)
             if (Array.isArray(nominalValue) && nominalValue.length === 2) {
                 const innerValue = nominalValue[1];
                 const typeName = String(nominalValue[0]).toUpperCase();
+                dataType = typeName;
 
                 if (typeName.includes('BOOLEAN')) {
                     type = PropertyValueType.Boolean;
@@ -167,7 +220,20 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                         value = innerValue === '.T.' || innerValue === true;
                     }
                 } else if (typeof innerValue === 'number') {
-                    if (Number.isInteger(innerValue)) {
+                    // Preserve the IFC-declared numeric measure (IFCREAL,
+                    // IFCINTEGER, IFCLENGTHMEASURE, IFCAREAMEASURE, …) —
+                    // the source explicitly tagged the value, so don't
+                    // re-infer from JS number-ness (which would
+                    // misclassify e.g. `IFCREAL(0.0)` as integer).
+                    if (typeName === 'IFCINTEGER' || typeName === 'IFCCOUNTMEASURE') {
+                        type = PropertyValueType.Integer;
+                    } else if (
+                        typeName === 'IFCREAL' ||
+                        typeName.endsWith('MEASURE') ||
+                        typeName.endsWith('RATIO')
+                    ) {
+                        type = PropertyValueType.Real;
+                    } else if (Number.isInteger(innerValue)) {
                         type = PropertyValueType.Integer;
                     } else {
                         type = PropertyValueType.Real;
@@ -199,7 +265,7 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                 }
             }
 
-            return { type, value };
+            return { type, value, ...(dataType ? { dataType } : {}) };
         }
     }
 }
@@ -223,8 +289,8 @@ export function extractPsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     psetIds: number[]
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
-    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
+    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
 
     for (const psetId of psetIds) {
         const psetRef = store.entityIndex.byId.get(psetId);
@@ -241,7 +307,7 @@ export function extractPsetsFromIds(
         const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
         const hasProperties = psetAttrs[4];
 
-        const properties: Array<{ name: string; type: number; value: PropertyValue }> = [];
+        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
 
         if (Array.isArray(hasProperties)) {
             for (const propRef of hasProperties) {
@@ -258,7 +324,14 @@ export function extractPsetsFromIds(
                 if (!propName) continue;
 
                 const parsed = parsePropertyValue(propEntity);
-                properties.push({ name: propName, type: parsed.type, value: parsed.value });
+                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
+                    name: propName,
+                    type: parsed.type,
+                    value: parsed.value,
+                };
+                if (parsed.values) entry.values = parsed.values;
+                if (parsed.dataType) entry.dataType = parsed.dataType;
+                properties.push(entry);
             }
         }
 
@@ -305,7 +378,7 @@ export function extractTypePropertiesOnDemand(
         ? typeEntity.attributes[2]
         : typeRef.type;
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
     const seenPsetNames = new Set<string>();
 
     // Source 1: HasPropertySets attribute on the type entity (index 5 for IfcTypeObject subtypes)
@@ -352,7 +425,7 @@ export function extractTypePropertiesOnDemand(
 export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -360,7 +433,7 @@ export function extractTypeEntityOwnProperties(
     const typeEntity = extractor.extractEntity(ref);
     if (!typeEntity) return [];
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
     const seenPsetNames = new Set<string>();
 
     // Source 1: HasPropertySets attribute (index 5 for IfcTypeObject subtypes)

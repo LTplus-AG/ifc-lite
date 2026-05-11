@@ -189,7 +189,7 @@ export { FilesNamespace } from './namespaces/files.js';
 export { ScheduleNamespace } from './namespaces/schedule.js';
 
 // bSDD — buildingSMART Data Dictionary property/classification lookup
-export { BsddNamespace } from './namespaces/bsdd.js';
+export { BsddNamespace, BsddHttpError } from './namespaces/bsdd.js';
 export type { BsddClassInfo, BsddClassProperty, BsddSearchResult, BsddOptions } from './namespaces/bsdd.js';
 
 // Sandbox — secure script execution in QuickJS-WASM

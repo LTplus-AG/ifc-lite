@@ -20,9 +20,9 @@ mod tests;
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
-    FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, MappedItemProcessor,
-    PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor, ShellBasedSurfaceModelProcessor,
-    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
+    MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
+    ShellBasedSurfaceModelProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use crate::{Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -93,6 +93,9 @@ impl GeometryRouter {
 
         // Register default P0 processors
         router.register(Box::new(ExtrudedAreaSolidProcessor::new(
+            schema_clone.clone(),
+        )));
+        router.register(Box::new(ExtrudedAreaSolidTaperedProcessor::new(
             schema_clone.clone(),
         )));
         router.register(Box::new(TriangulatedFaceSetProcessor::new()));

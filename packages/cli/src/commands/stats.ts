@@ -149,7 +149,9 @@ export async function statsCommand(args: string[]): Promise<void> {
   const allBuildingElements = bim.query().toArray();
   for (const e of allBuildingElements) {
     const mat = bim.materials(e.ref);
-    const matName = mat?.materials?.[0] ?? mat?.name;
+    const first = mat?.materials?.[0];
+    const firstName = typeof first === 'string' ? first : first?.name;
+    const matName = firstName ?? mat?.name;
     if (!matName) continue;
 
     materialCounts.set(matName, (materialCounts.get(matName) ?? 0) + 1);

@@ -16,6 +16,13 @@ import { POINT_VERTEX_BYTES } from './point-pipeline.js';
 
 export interface PointCloudGpuChunk {
   vertexBuffer: GPUBuffer;
+  /**
+   * Per-point signed-distance buffer. Always allocated alongside the
+   * vertex buffer (4 bytes per point) so the compute pass and splat
+   * pipeline can both bind it without a "deviation present?" branch.
+   * Initialised to zeros — `Renderer.computeDeviations` overwrites.
+   */
+  deviationBuffer: GPUBuffer;
   pointCount: number;
   bbox: { min: [number, number, number]; max: [number, number, number] };
 }
@@ -70,6 +77,16 @@ export function createNode(
   };
 }
 
+/**
+ * Per-page-session counter for the vertex-buffer class-byte
+ * diagnostic. Mirrors the host-side log in `pointCloudIngest.ts`
+ * so the two can be cross-checked: if the host log shows non-zero
+ * classes but the vertex log shows all 0, the packing path is
+ * dropping them.
+ */
+const DEBUG_VERTEX_CLASS_LOG_LIMIT = 3;
+let debugVertexClassLogs = 0;
+
 /** Convert a renderer-agnostic chunk into a GPU vertex buffer + metadata. */
 export function appendChunkToNode(
   device: GPUDevice,
@@ -110,14 +127,45 @@ export function appendChunkToNode(
     u32[i * 6 + 5] = expressId;
   }
 
+  // Sanity-check the packed buffer: read back the class byte for
+  // the first few vertices so the console shows exactly what the
+  // splat shader will see at `rgbAndClass.a * 255`. Catches the
+  // case where the chunk had non-trivial classes but they got
+  // zeroed during packing (e.g. a buffer-view mismatch).
+  if (debugVertexClassLogs < DEBUG_VERTEX_CLASS_LOG_LIMIT && classes) {
+    debugVertexClassLogs++;
+    const sample: number[] = [];
+    for (let i = 0; i < Math.min(8, count); i++) {
+      sample.push(u8[i * POINT_VERTEX_BYTES + 15]);
+    }
+    console.log(
+      `[pointcloud-debug] vertex-buffer chunk #${debugVertexClassLogs}: `
+      + `packed class bytes (offset +15) first8=[${sample.join(',')}]`,
+    );
+  }
+
   const vertexBuffer = device.createBuffer({
     size: bytes.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    // STORAGE so the deviation compute shader can read positions
+    // straight from the vertex buffer (avoids a duplicate copy).
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
   });
   device.queue.writeBuffer(vertexBuffer, 0, bytes);
 
+  // Pre-allocate the per-point deviation buffer (zero-initialised).
+  // Bound as a vertex attribute by the splat pipeline AND as a
+  // storage buffer by the deviation compute pass.
+  const deviationBuffer = device.createBuffer({
+    size: count * 4,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  // Zero-init explicitly — WebGPU spec doesn't promise zeroed buffers
+  // and some implementations skip the initial clear when STORAGE is set.
+  device.queue.writeBuffer(deviationBuffer, 0, new Float32Array(count));
+
   const gpuChunk: PointCloudGpuChunk = {
     vertexBuffer,
+    deviationBuffer,
     pointCount: count,
     bbox: chunk.bbox,
   };
@@ -152,6 +200,7 @@ export function uploadAssetToGpu(
 export function destroyNode(node: PointCloudNode): void {
   for (const chunk of node.chunks) {
     chunk.vertexBuffer.destroy();
+    chunk.deviationBuffer.destroy();
   }
   node.uniformBuffer.destroy();
   node.chunks = [];

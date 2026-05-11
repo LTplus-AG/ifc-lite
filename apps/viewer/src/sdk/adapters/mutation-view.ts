@@ -100,7 +100,7 @@ export function mergeAttributeMutations(
   const mutations = mutationView.getAttributeMutationsForEntity(expressId);
   if (mutations.length === 0) return baseAttributes;
 
-  const merged = new Map<string, string>();
+  const merged = new Map<string, string | number | boolean>();
   for (const attr of baseAttributes) {
     merged.set(attr.name, attr.value);
   }

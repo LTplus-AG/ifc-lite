@@ -8,13 +8,37 @@ use super::*;
 use crate::router::GeometryProcessor;
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
 
+/// Read a fixture under `tests/models/`, returning `None` and printing a
+/// `pnpm fixtures` hint if the file isn't present yet — either because it's
+/// missing on a fresh clone, or because it's still a leftover Git LFS
+/// pointer from before the move to `tests/models/manifest.json`.
+fn read_fixture(rel: &str) -> Option<String> {
+    let path = format!("../../tests/models/{}", rel);
+    match std::fs::read_to_string(&path) {
+        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            eprintln!(
+                "skipping: fixture {} is still a Git LFS pointer — run `pnpm fixtures` from the repo root to download the real bytes",
+                path,
+            );
+            None
+        }
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                path,
+            );
+            None
+        }
+        Err(e) => panic!("failed to read fixture {}: {}", path, e),
+    }
+}
+
 #[test]
 fn test_advanced_brep_file() {
     use crate::router::GeometryRouter;
 
-    // Read the actual advanced_brep.ifc file
-    let content = std::fs::read_to_string("../../tests/models/ifcopenshell/advanced_brep.ifc")
-        .expect("Failed to read test file");
+    let Some(content) = read_fixture("ifcopenshell/advanced_brep.ifc") else { return };
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -185,10 +209,11 @@ fn test_polygonal_bounded_half_space_respects_boundary() {
 fn test_764_column_file() {
     use crate::router::GeometryRouter;
 
-    // Read the actual 764 column file
-    let content = std::fs::read_to_string(
-        "../../tests/models/ifcopenshell/764--column--no-materials-or-surface-styles-found--augmented.ifc"
-    ).expect("Failed to read test file");
+    let Some(content) = read_fixture(
+        "ifcopenshell/764--column--no-materials-or-surface-styles-found--augmented.ifc",
+    ) else {
+        return;
+    };
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -222,11 +247,9 @@ fn test_764_column_file() {
 fn test_wall_with_opening_file() {
     use crate::router::GeometryRouter;
 
-    // Read the wall-with-opening file
-    let content = std::fs::read_to_string(
-        "../../tests/models/buildingsmart/wall-with-opening-and-window.ifc",
-    )
-    .expect("Failed to read test file");
+    let Some(content) = read_fixture("buildingsmart/wall-with-opening-and-window.ifc") else {
+        return;
+    };
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -475,4 +498,163 @@ fn test_triangulated_face_set_all_invalid_indices() {
 
     // All indices invalid — mesh should have positions but no valid triangles
     assert!(mesh.indices.is_empty(), "All invalid indices should be stripped");
+}
+
+#[test]
+fn test_extruded_area_solid_tapered() {
+    // Mirrors the structure of the IFC sample in issue #628: a beam tapering
+    // from 200x200 at the base to 200x600 at the top, extruded 2000 along Z.
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCDIRECTION((1.,0.));
+#3=IFCAXIS2PLACEMENT2D(#1,#2);
+#4=IFCRECTANGLEPROFILEDEF(.AREA.,'Start',#3,200.,200.);
+#5=IFCRECTANGLEPROFILEDEF(.AREA.,'End',#3,200.,600.);
+#6=IFCCARTESIANPOINT((0.,0.,0.));
+#7=IFCAXIS2PLACEMENT3D(#6,$,$);
+#8=IFCDIRECTION((0.,0.,1.));
+#9=IFCEXTRUDEDAREASOLIDTAPERED(#4,#7,#8,2000.,#5);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(9).unwrap();
+    assert_eq!(entity.ifc_type, IfcType::IfcExtrudedAreaSolidTapered);
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+
+    assert!(!mesh.is_empty());
+    let (min, max) = mesh.bounds();
+    // Bottom rectangle is 200x200 → ±100 in both X and Y at z=0.
+    // Top rectangle is 200x600 → ±100 in X but ±300 in Y at z=2000.
+    // Bounding box of the union is (±100, ±300, 0..2000).
+    assert!((min.x - -100.0).abs() < 0.01, "min.x = {}", min.x);
+    assert!((max.x - 100.0).abs() < 0.01, "max.x = {}", max.x);
+    assert!((min.y - -300.0).abs() < 0.01, "min.y = {}", min.y);
+    assert!((max.y - 300.0).abs() < 0.01, "max.y = {}", max.y);
+    assert!((min.z - 0.0).abs() < 0.01);
+    assert!((max.z - 2000.0).abs() < 0.01);
+}
+
+/// Issue #631, sample `IfcReinforcingBar.ifc` (stirrup).
+///
+/// `IfcSweptDiskSolid` directrix is an `IfcIndexedPolyCurve` over an
+/// `IfcCartesianPointList3D`. Before this fix the 3D curve dispatcher had no
+/// arm for `IfcIndexedPolyCurve`, so points were re-read as 2D and collapsed
+/// onto z=0 — the stirrup rendered as a flat near-zero-length line. Verify
+/// that the swept tube spans the full Z range of the input points.
+#[test]
+fn test_swept_disk_indexed_polycurve_3d() {
+    // A simple 3D arc: start (0,0,0), mid (10,0,10), end (20,0,0).
+    // This lives in the XZ plane — Y stays zero, Z varies non-trivially.
+    let content = r#"
+#1=IFCCARTESIANPOINTLIST3D(((0.0,0.0,0.0),(10.0,0.0,10.0),(20.0,0.0,0.0)));
+#2=IFCINDEXEDPOLYCURVE(#1,(IFCARCINDEX((1,2,3))),.F.);
+#3=IFCSWEPTDISKSOLID(#2,1.0,$,$,$);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = SweptDiskSolidProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(3).unwrap();
+    assert_eq!(entity.ifc_type, IfcType::IfcSweptDiskSolid);
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+
+    assert!(!mesh.is_empty(), "3D indexed polycurve directrix should produce geometry");
+
+    let (min, max) = mesh.bounds();
+    // The tube radius is 1.0, so Z extent of the mesh should be close to
+    // (arc max Z + radius) - (-radius) ≈ 11. Without this fix the directrix
+    // collapses to a 1-D line on x and Z extent is ~2 (just the tube radius
+    // around z=0).
+    let z_extent = (max.z - min.z) as f64;
+    assert!(
+        z_extent > 5.0,
+        "stirrup arc should span its declared 3D Z range; got z_extent={}",
+        z_extent
+    );
+}
+
+/// Issue #631, sample `Rebar2.ifc`.
+///
+/// The directrix is a planar `IfcCompositeCurve` whose arc segments are
+/// authored as `IfcTrimmedCurve` over an `IfcCircle` placed by
+/// `IfcAxis2Placement3D`. `get_placement_2d` used to read attribute index 1 of
+/// the placement as `RefDirection`, but on a 3D placement that index is the
+/// `Axis` (Z direction). Every arc came back with rotation=0° regardless of
+/// the file's actual `RefDirection`, twisting each bend by the file's
+/// authored angle — visibly distorting Revit-exported bent rebar.
+///
+/// Verify that an arc anchored to `IfcAxis2Placement3D` with `RefDirection`
+/// rotated 90° actually rotates: the bottom of the arc (parameter 270°) lands
+/// at the rotated +X direction, not at world -Y.
+#[test]
+fn test_trimmed_circle_3d_placement_reads_ref_direction() {
+    // Circle radius 10, centred at (100, 100, 0), placed in XY plane with
+    // RefDirection = +Y (rotation 90°). A 270° trim with sense=T produces a
+    // point at radius * (cos(270°+90°), sin(270°+90°)) = (10, 0) in the local
+    // frame ⇒ (100 + 10*cos(90°), 100 + 10*sin(90°)) ≈ (100, 110) in world.
+    //
+    // Without the fix the rotation reads as 0° (the Z-axis x/y components),
+    // so 270° lands at (100, 90) — visibly off.
+    let content = r#"
+#1=IFCCARTESIANPOINT((100.0,100.0,0.0));
+#2=IFCDIRECTION((0.0,0.0,1.0));
+#3=IFCDIRECTION((0.0,1.0,0.0));
+#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);
+#5=IFCCIRCLE(#4,10.0);
+#6=IFCTRIMMEDCURVE(#5,(IFCPARAMETERVALUE(270.0)),(IFCPARAMETERVALUE(0.0)),.T.,.PARAMETER.);
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
+#8=IFCCOMPOSITECURVE((#7),.F.);
+#9=IFCSWEPTDISKSOLID(#8,0.5,$,$,$);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = SweptDiskSolidProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(9).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    assert!(!mesh.is_empty());
+
+    let (min, max) = mesh.bounds();
+    // With RefDirection respected (90° rotation), the trim from 270° to 360°
+    // sweeps from local-frame "below center" to local-frame "right of center";
+    // in world that maps to "left of center" to "below center" because +X
+    // local = +Y world. Mesh extents should clear well above center.y - radius
+    // in the bug case (would otherwise stay near y=100-r).
+    assert!(
+        (max.y as f64) > 105.0,
+        "Arc should rotate with RefDirection — max.y={} suggests rotation was ignored",
+        max.y
+    );
+}
+
+#[test]
+fn test_extruded_area_solid_tapered_falls_back_when_end_missing() {
+    // A malformed file with no EndSweptArea should still render as a uniform
+    // extrusion of the start profile.
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCDIRECTION((1.,0.));
+#3=IFCAXIS2PLACEMENT2D(#1,#2);
+#4=IFCRECTANGLEPROFILEDEF(.AREA.,'Start',#3,100.,100.);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCDIRECTION((0.,0.,1.));
+#8=IFCEXTRUDEDAREASOLIDTAPERED(#4,#6,#7,500.,$);
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
+
+    let entity = decoder.decode_by_id(8).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    assert!(!mesh.is_empty());
+    let (_min, max) = mesh.bounds();
+    assert!((max.z - 500.0).abs() < 0.01);
+    assert!((max.x - 50.0).abs() < 0.01);
 }

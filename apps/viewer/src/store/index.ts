@@ -269,7 +269,10 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       cesiumAvailable: false,
       cesiumEnabled: false,
       cesiumTerrainHeight: null,
-      cesiumTerrainClamp: false,
+      // Default the clamp toggle ON so models authored at sea-level
+      // OrthogonalHeight don't load buried below the 3D-tiles terrain on
+      // first activation. Users can still uncheck it manually.
+      cesiumTerrainClamp: true,
       cesiumSourceModelId: null,
       cesiumTerrainClipY: null,
       cesiumGlbLoaded: false,

@@ -7,6 +7,8 @@
  * Leverages Spike 1 approach: ~1,259 MB/s throughput
  */
 
+import { safeUtf8Decode } from '@ifc-lite/data';
+
 export class StepTokenizer {
   private buffer: Uint8Array;
   private position: number = 0;
@@ -275,7 +277,7 @@ export class StepTokenizer {
 
     if (end === start) return null;
 
-    const typeName = new TextDecoder().decode(this.buffer.subarray(start, end));
+    const typeName = safeUtf8Decode(this.buffer, start, end);
     this.position = end;
     return typeName;
   }

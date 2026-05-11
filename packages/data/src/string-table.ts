@@ -10,8 +10,29 @@
 export class StringTable {
   private strings: string[] = [''];
   private index: Map<string, number> = new Map([['', 0]]);
-  
+
   readonly NULL_INDEX = -1;
+
+  /**
+   * Reconstruct a StringTable from a flat array as produced by `getAll()`.
+   *
+   * Used by the parser-worker → main thread transport so a complete table
+   * round-trips without re-interning each string at every call site.
+   * The first slot must be the canonical empty string at index 0.
+   */
+  static fromArray(strings: string[]): StringTable {
+    const table = new StringTable();
+    table.strings = strings.length > 0 && strings[0] === '' ? strings.slice() : ['', ...strings];
+    table.index = new Map();
+    for (let i = 0; i < table.strings.length; i++) {
+      // First occurrence wins so duplicate inputs (rare but possible
+      // after manual concatenation) don't shadow the canonical index.
+      if (!table.index.has(table.strings[i])) {
+        table.index.set(table.strings[i], i);
+      }
+    }
+    return table;
+  }
   
   get count(): number {
     return this.strings.length;

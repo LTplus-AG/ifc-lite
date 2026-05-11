@@ -32,9 +32,15 @@ import { pointShaderSource } from './point-shader.wgsl.js';
  *   [36..39] colorModeAndExtras (mode, pointSizePx, heightMin, heightMax)
  *   [40..43] sizing (sizeMode, worldRadius, viewportW, viewportH)
  *   [44..47] sectionPlane (nx, ny, nz, distance)
- *   [48..51] flags (u32 view: x=unused, y=sectionEnabled, z=roundShape, w=unused)
+ *   [48..51] flags (u32 view: x=expressId, y=sectionEnabled, z=roundShape, w=classMask)
+ *   [52..55] extras (u32 view: x=previewStride, yzw=unused)
+ *   [56..59] deviationRange (centerOffset, halfRange, _, _)
  */
-export const POINT_UNIFORM_SIZE = 208;
+// 15 vec4 slots × 16 bytes = 240. Was 208 before extras (PR-G's
+// stride cull) and deviationRange (PR-H's BIM↔scan heatmap) both
+// claimed their own slots — keeping them separate avoids overloading
+// the flags / colourOverride slots and stays std140-friendly.
+export const POINT_UNIFORM_SIZE = 240;
 export const POINT_VERTEX_BYTES = 24;
 /** Number of vertices emitted per splat (two triangles forming a quad). */
 export const POINT_QUAD_VERTS = 6;
@@ -83,6 +89,15 @@ export class PointRenderPipeline {
               { shaderLocation: 1, offset: 12, format: 'unorm8x4' },
               { shaderLocation: 2, offset: 16, format: 'uint32' },
               { shaderLocation: 3, offset: 20, format: 'uint32' },
+            ],
+          },
+          {
+            // Per-point deviation float (BIM↔scan signed distance).
+            // Always present, zero when the user hasn't computed yet.
+            arrayStride: 4,
+            stepMode: 'instance',
+            attributes: [
+              { shaderLocation: 4, offset: 0, format: 'float32' },
             ],
           },
         ],

@@ -12,6 +12,11 @@ pnpm-lock.yaml linguist-generated=true
 Cargo.lock linguist-generated=true
 # Binary files
 *.wasm binary linguist-generated=true
-# IFC files - use Git LFS for large model files
-*.ifc filter=lfs diff=lfs merge=lfs -text
-*.IFC filter=lfs diff=lfs merge=lfs -text
+# Test fixtures (.ifc/.IFC/.ifcx) are fetched on demand via
+# `pnpm fixtures`. See tests/models/manifest.json for the catalogue and
+# tests/models/README.md for the rationale. The repo no longer uses Git LFS.
+# These overrides on the playground samples are kept as defense-in-depth:
+# if LFS is ever re-introduced for *.ifc, they ensure Vercel still serves
+# the real file bytes for the in-browser playground rather than pointers.
+apps/viewer/public/samples/**/*.ifc -filter -diff -merge text
+apps/viewer/public/samples/**/*.IFC -filter -diff -merge text

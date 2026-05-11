@@ -229,4 +229,11 @@ export interface PickOptions {
 export interface PickResult {
   expressId: number;
   modelIndex?: number;  // Index of the model this entity belongs to
+  /**
+   * World-space XYZ of the picked surface point. Optional because the
+   * pick path can skip depth readback for callers that only need the
+   * entityId (e.g. selection state). Recovered by sampling the pick
+   * pass's depth texture at the click position and unprojecting.
+   */
+  worldXYZ?: { x: number; y: number; z: number };
 }

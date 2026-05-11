@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+	<info>
+		<title>Example on use of attributes (for student research)</title>
+		<copyright>buildingSMART International Ltd</copyright>
+		<date>2022-01-12</date>
+	</info>
+	<specifications>
+
+		<specification ifcVersion="IFC4" name="Aachen test">
+			<applicability maxOccurs="unbounded">
+				<entity>
+					<name>
+						<simpleValue>IFCTASK</simpleValue>
+					</name>
+				</entity>
+			</applicability>
+			<requirements>
+				<attribute>
+					<name>
+            <!-- tasktime is of IfcTaskTime type, so it's only valid if no value is specified... meaning the IFC must be non null -->
+            <!-- this is ok -->
+						<simpleValue>TaskTime</simpleValue>
+					</name>
+				</attribute>
+
+        <attribute>
+          <name>
+            <simpleValue>TaskTime</simpleValue>
+          </name>
+          <value>
+            <!-- tasktime is of IfcTaskTime type, so it's only valid if no value is specified... meaning the IFC must be non null. ERROR -->
+            <!-- this is not valid -->
+            <simpleValue>Any value</simpleValue>
+          </value>
+        </attribute>
+
+        <attribute>
+          <name>
+            <simpleValue>WorkMethod</simpleValue>
+          </name>
+          <value>
+            <!-- WorkMethod is of IfcLabel type, so it can have a value as long as it's a string. -->
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Any value" />
+            </xs:restriction>
+          </value>
+        </attribute>
+
+        <attribute>
+          <name>
+            <simpleValue>WorkMethod</simpleValue>
+          </name>
+          <value>
+            <!-- WorkMethod is of IfcLabel type, so it can have a value, but it cannot be an integer. ERROR -->
+            <xs:restriction base="xs:integer">
+              <xs:enumeration value="10" />
+            </xs:restriction>
+          </value>
+        </attribute>
+
+        <attribute>
+          <name>
+            <simpleValue>WorkMethod</simpleValue>
+          </name>
+          <value>
+            <!-- WorkMethod is of IfcLabel type, so it can have a value, but it must be a string, an empty base is invalid. ERROR  -->
+            <xs:restriction>
+              <xs:enumeration value="10" />
+            </xs:restriction>
+          </value>
+        </attribute>
+
+
+      </requirements>
+		</specification>
+
+    <specification ifcVersion="IFC4" name="other name">
+      <applicability maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCCOSTSCHEDULE</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <attribute>
+          <name>
+            <simpleValue>UpdateDate</simpleValue>
+          </name>
+          <value>
+            <!-- UpdateDate is of datetime type. OK  -->
+            <xs:restriction base="xs:dateTime">
+              <xs:enumeration value="2002-05-30T09:00:00" />
+            </xs:restriction>
+          </value>
+        </attribute>
+        <attribute>
+          <name>
+            <simpleValue>UpdateDate</simpleValue>
+          </name>
+          <value>
+            <!-- UpdateDate is of datetime type. ERROR  -->
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="10" />
+            </xs:restriction>
+          </value>
+        </attribute>
+
+        <attribute>
+          <name>
+            <simpleValue>UpdateDate</simpleValue>
+          </name>
+          <value>
+            <!-- UpdateDate is of datetime type. ERROR  -->
+            <simpleValue>10</simpleValue>
+          </value>
+        </attribute>
+      </requirements>
+    </specification>
+	</specifications>
+</ids>

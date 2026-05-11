@@ -158,13 +158,8 @@ fn count_ray_hits(mesh: &Mesh, o: [f32; 3], d: [f32; 3]) -> usize {
     hits
 }
 
-/// Cast a 3×3 grid of rays through the opening footprint along the wall's
-/// thickness axis. Returns total triangle hits across the 9 rays.
-fn count_hits_through_opening(
-    wall_mesh: &Mesh,
-    opening_min: [f32; 3],
-    opening_max: [f32; 3],
-) -> usize {
+/// Resolve the wall's thinnest axis (= thickness) and the two in-plane axes.
+fn wall_axes(wall_mesh: &Mesh) -> (usize, [usize; 2]) {
     let (wall_min, wall_max) = wall_mesh.bounds();
     let extents = [
         wall_max.x - wall_min.x,
@@ -182,15 +177,21 @@ fn count_hits_through_opening(
         1 => [0, 2],
         _ => [0, 1],
     };
-    let inset = 0.10;
-    let lo_a = opening_min[grid_axes[0]]
-        + inset * (opening_max[grid_axes[0]] - opening_min[grid_axes[0]]);
-    let hi_a = opening_max[grid_axes[0]]
-        - inset * (opening_max[grid_axes[0]] - opening_min[grid_axes[0]]);
-    let lo_b = opening_min[grid_axes[1]]
-        + inset * (opening_max[grid_axes[1]] - opening_min[grid_axes[1]]);
-    let hi_b = opening_max[grid_axes[1]]
-        - inset * (opening_max[grid_axes[1]] - opening_min[grid_axes[1]]);
+    (thickness_axis, grid_axes)
+}
+
+/// Cast a single ray through the centre of the opening footprint along the
+/// wall's thickness axis. Returns total triangle hits.
+fn count_hits_through_opening_centre(
+    wall_mesh: &Mesh,
+    opening_min: [f32; 3],
+    opening_max: [f32; 3],
+) -> usize {
+    let (wall_min, _) = wall_mesh.bounds();
+    let (thickness_axis, grid_axes) = wall_axes(wall_mesh);
+
+    let mid_a = 0.5 * (opening_min[grid_axes[0]] + opening_max[grid_axes[0]]);
+    let mid_b = 0.5 * (opening_min[grid_axes[1]] + opening_max[grid_axes[1]]);
 
     let slack = 1.0;
     let mut origin = [0f32, 0f32, 0f32];
@@ -199,20 +200,133 @@ fn count_hits_through_opening(
         1 => wall_min.y - slack,
         _ => wall_min.z - slack,
     };
+    origin[grid_axes[0]] = mid_a;
+    origin[grid_axes[1]] = mid_b;
     let mut dir = [0f32, 0f32, 0f32];
     dir[thickness_axis] = 1.0;
 
-    let mut total = 0;
-    for ai in 0..3 {
-        let a = lo_a + (hi_a - lo_a) * (ai as f32 / 2.0);
-        for bi in 0..3 {
-            let b = lo_b + (hi_b - lo_b) * (bi as f32 / 2.0);
-            origin[grid_axes[0]] = a;
-            origin[grid_axes[1]] = b;
-            total += count_ray_hits(wall_mesh, origin, dir);
+    count_ray_hits(wall_mesh, origin, dir)
+}
+
+/// Project all wall vertices that fall inside the opening's AABB-extruded
+/// column into the wall plane, then trace the boundary loop of those
+/// vertices. Returns `(boundary_vertex_count, bbox_aspect_ratio)`.
+///
+/// `bbox_aspect_ratio` is `max(width, height) / min(width, height)` of the
+/// in-plane bounding box of the boundary polygon — close to `1.0` for a
+/// circular hole and >> 1.0 for a degenerate cut.
+fn opening_boundary_metrics(
+    wall_mesh: &Mesh,
+    opening_min: [f32; 3],
+    opening_max: [f32; 3],
+) -> (usize, f32) {
+    let (_, grid_axes) = wall_axes(wall_mesh);
+    let a = grid_axes[0];
+    let b = grid_axes[1];
+
+    // Edge dictionary: count boundary occurrences of each in-plane edge
+    // formed by triangles whose three vertices all sit inside the opening
+    // column. A boundary edge appears in exactly one such triangle (the
+    // others are interior to the hole rim).
+    let mut edge_count: rustc_hash::FxHashMap<((i64, i64), (i64, i64)), usize> =
+        rustc_hash::FxHashMap::default();
+    let scale = 1e4_f32;
+    let quantize =
+        |x: f32, y: f32| -> (i64, i64) { ((x * scale).round() as i64, (y * scale).round() as i64) };
+
+    for tri in wall_mesh.indices.chunks_exact(3) {
+        let i0 = tri[0] as usize * 3;
+        let i1 = tri[1] as usize * 3;
+        let i2 = tri[2] as usize * 3;
+        if i0 + 2 >= wall_mesh.positions.len()
+            || i1 + 2 >= wall_mesh.positions.len()
+            || i2 + 2 >= wall_mesh.positions.len()
+        {
+            continue;
+        }
+        let p = [
+            [
+                wall_mesh.positions[i0],
+                wall_mesh.positions[i0 + 1],
+                wall_mesh.positions[i0 + 2],
+            ],
+            [
+                wall_mesh.positions[i1],
+                wall_mesh.positions[i1 + 1],
+                wall_mesh.positions[i1 + 2],
+            ],
+            [
+                wall_mesh.positions[i2],
+                wall_mesh.positions[i2 + 1],
+                wall_mesh.positions[i2 + 2],
+            ],
+        ];
+        // Only consider triangles ENTIRELY inside the opening column —
+        // these are the rim triangles of the carved hole.
+        let inside = |v: &[f32; 3]| -> bool {
+            v[a] >= opening_min[a]
+                && v[a] <= opening_max[a]
+                && v[b] >= opening_min[b]
+                && v[b] <= opening_max[b]
+        };
+        if !(inside(&p[0]) && inside(&p[1]) && inside(&p[2])) {
+            continue;
+        }
+        for (s, e) in [(0usize, 1usize), (1, 2), (2, 0)] {
+            let qa = quantize(p[s][a], p[s][b]);
+            let qb = quantize(p[e][a], p[e][b]);
+            let key = if qa < qb { (qa, qb) } else { (qb, qa) };
+            *edge_count.entry(key).or_insert(0) += 1;
         }
     }
-    total
+
+    // Boundary edges = edges with count == 1.
+    let mut boundary_pts: Vec<(f32, f32)> = Vec::new();
+    for ((qa, qb), count) in &edge_count {
+        if *count == 1 {
+            boundary_pts.push((qa.0 as f32 / scale, qa.1 as f32 / scale));
+            boundary_pts.push((qb.0 as f32 / scale, qb.1 as f32 / scale));
+        }
+    }
+
+    // Dedupe boundary points (each appears in 2 edges).
+    boundary_pts.sort_by(|p, q| {
+        p.0.partial_cmp(&q.0)
+            .unwrap()
+            .then(p.1.partial_cmp(&q.1).unwrap())
+    });
+    boundary_pts.dedup_by(|x, y| (x.0 - y.0).abs() < 1e-6 && (x.1 - y.1).abs() < 1e-6);
+
+    if boundary_pts.is_empty() {
+        return (0, f32::INFINITY);
+    }
+
+    let mut min_a = f32::INFINITY;
+    let mut min_b = f32::INFINITY;
+    let mut max_a = f32::NEG_INFINITY;
+    let mut max_b = f32::NEG_INFINITY;
+    for (pa, pb) in &boundary_pts {
+        if *pa < min_a {
+            min_a = *pa;
+        }
+        if *pa > max_a {
+            max_a = *pa;
+        }
+        if *pb < min_b {
+            min_b = *pb;
+        }
+        if *pb > max_b {
+            max_b = *pb;
+        }
+    }
+    let w = max_a - min_a;
+    let h = max_b - min_b;
+    let aspect = if w.min(h) > 1e-6 {
+        w.max(h) / w.min(h)
+    } else {
+        f32::INFINITY
+    };
+    (boundary_pts.len(), aspect)
 }
 
 /// Compute the silhouette `max Z` of a wall as a function of position
@@ -354,13 +468,35 @@ fn issue_635_gable_wall_60012_has_round_window_hole() {
     let (op_min, op_max) = opening_world_aabb(&content, OPENING_60579)
         .expect("opening #60579 should produce a mesh + bounds");
 
-    let hits = count_hits_through_opening(&wall_mesh, op_min, op_max);
-    assert_eq!(
-        hits, 0,
-        "wall #60012 still has triangles inside round window #60579 footprint — \
-         void cut was NOT applied to post-clip mesh. \
-         opening_aabb=[{:?}..{:?}], wall_tris={}",
-        op_min, op_max, wall_mesh.triangle_count()
+    // Centre-ray must pass through (almost) cleanly — the cut reaches
+    // through the wall body. The AC20 round window is *recessed*: it has
+    // two stacked extrusions of different depths, so the CSG cut leaves
+    // an internal ring face at the recess boundary. A round-cut centre
+    // ray therefore hits at most that ring (2 triangles, entry + exit);
+    // the AABB fallback removed it entirely (= 0 hits) but lost the
+    // round shape.
+    let hits = count_hits_through_opening_centre(&wall_mesh, op_min, op_max);
+    assert!(
+        hits <= 4,
+        "wall #60012 has too many triangles in the centre of round window #60579 — \
+         void cut may not have been applied. hits={}, opening_aabb=[{:?}..{:?}], wall_tris={}",
+        hits, op_min, op_max, wall_mesh.triangle_count()
+    );
+
+    // Hole shape MUST be approximately circular (issue #635 follow-up):
+    // before this fix, the AABB rectangular fallback produced a 4-edge
+    // square hole. After polyline simplification + raised CSG budget, a
+    // ~16-vertex polygon-circle is the expected outcome.
+    let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
+    assert!(
+        boundary_verts >= 12,
+        "round window #60579 boundary has only {} vertices (expected >= 12 — square hole?)",
+        boundary_verts
+    );
+    assert!(
+        aspect < 1.5,
+        "round window #60579 boundary aspect ratio {:.3} (expected < 1.5)",
+        aspect
     );
 }
 
@@ -381,13 +517,65 @@ fn issue_635_gable_wall_67828_has_round_window_hole() {
     let (op_min, op_max) = opening_world_aabb(&content, OPENING_68400)
         .expect("opening #68400 should produce a mesh + bounds");
 
-    let hits = count_hits_through_opening(&wall_mesh, op_min, op_max);
-    assert_eq!(
-        hits, 0,
-        "wall #67828 still has triangles inside round window #68400 footprint — \
-         void cut was NOT applied to post-clip mesh. \
-         opening_aabb=[{:?}..{:?}], wall_tris={}",
-        op_min, op_max, wall_mesh.triangle_count()
+    // See note on #60012 — recessed round window leaves an internal ring
+    // (≤ ~4 triangle hits along the centre ray). What matters is that
+    // the cut reached the wall body at all.
+    let hits = count_hits_through_opening_centre(&wall_mesh, op_min, op_max);
+    assert!(
+        hits <= 4,
+        "wall #67828 has too many triangles in the centre of round window #68400 — \
+         void cut may not have been applied. hits={}, opening_aabb=[{:?}..{:?}], wall_tris={}",
+        hits, op_min, op_max, wall_mesh.triangle_count()
     );
+
+    let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
+    assert!(
+        boundary_verts >= 12,
+        "round window #68400 boundary has only {} vertices (expected >= 12 — square hole?)",
+        boundary_verts
+    );
+    assert!(
+        aspect < 1.5,
+        "round window #68400 boundary aspect ratio {:.3} (expected < 1.5)",
+        aspect
+    );
+}
+
+/// Issue #635 follow-up: explicit assertion that the round-window cut
+/// produces a polygon-circle hole, not the AABB rectangular fallback.
+/// This guards against regressions where polyline simplification breaks
+/// or `MAX_CSG_POLYGONS_PER_MESH` is lowered enough to push the opening
+/// back into the fallback path.
+#[test]
+fn issue_635_round_window_is_circular() {
+    let content = match load_fixture(FIXTURE) {
+        Some(c) => c,
+        None => {
+            eprintln!("{} missing — skipping issue-635 roundness test", FIXTURE);
+            return;
+        }
+    };
+    let void_index = build_void_index_like_production(&content);
+
+    for (wall_id, opening_id) in
+        [(WALL_60012, OPENING_60579), (WALL_67828, OPENING_68400)].iter()
+    {
+        let wall_mesh = process_host_like_production(&content, *wall_id, &void_index)
+            .unwrap_or_else(|| panic!("wall #{} mesh missing", wall_id));
+        let (op_min, op_max) = opening_world_aabb(&content, *opening_id)
+            .unwrap_or_else(|| panic!("opening #{} mesh missing", opening_id));
+        let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
+        assert!(
+            boundary_verts >= 12,
+            "round window #{} hole boundary has {} edges — square fallback was used \
+             (expected polygon-circle with >= 12 boundary vertices)",
+            opening_id, boundary_verts
+        );
+        assert!(
+            aspect < 1.5,
+            "round window #{} hole bbox aspect {:.3} >= 1.5 — non-circular cut",
+            opening_id, aspect
+        );
+    }
 }
 

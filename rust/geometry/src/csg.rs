@@ -111,10 +111,17 @@ impl Triangle {
 
 /// Maximum polygon count for either operand in a csgrs boolean operation.
 ///
-/// Rectangular solids are 12 triangles, so this still allows the simple box-like
-/// boolean cases we expect while avoiding the complex BSP trees that can overflow
-/// the browser's native call stack in WASM.
-const MAX_CSG_POLYGONS_PER_MESH: usize = 24;
+/// Rectangular solids are 12 triangles. A 16-segment circular prism — the
+/// downsampled form of a round-window opening (issue #635) — is 60
+/// triangles, and AC20-FZK-Haus packs two such prisms (outer + recessed)
+/// into a single opening element, totalling ~120 triangles for the cut.
+/// This budget accommodates that combined opening and the wall mesh
+/// without letting the BSP tree explode: 128 is the upper bound past
+/// which BSP CSG performance starts to degrade noticeably and the WASM
+/// browser stack is at risk.
+///
+/// Do NOT raise this above 128.
+const MAX_CSG_POLYGONS_PER_MESH: usize = 128;
 /// Maximum combined polygon count for CSG operations.
 const MAX_CSG_POLYGONS: usize = MAX_CSG_POLYGONS_PER_MESH * 2;
 
@@ -1421,15 +1428,19 @@ mod tests {
 
     #[test]
     fn test_csg_operation_guard_rejects_complex_operands() {
+        // Build a mesh with > MAX_CSG_POLYGONS_PER_MESH triangles. A box is 12
+        // tris, so 12 stacked boxes = 144 tris, comfortably above the
+        // 128-poly budget set for issue #635 round-window CSG support.
         let box_mesh = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
         let mut complex_mesh = Mesh::new();
-        complex_mesh.merge(&box_mesh);
-        complex_mesh.merge(&box_mesh);
-        complex_mesh.merge(&box_mesh);
+        for _ in 0..12 {
+            complex_mesh.merge(&box_mesh);
+        }
 
         let polys_complex = ClippingProcessor::mesh_to_polygons(&complex_mesh);
         let polys_box = ClippingProcessor::mesh_to_polygons(&box_mesh);
 
+        assert!(polys_complex.len() > MAX_CSG_POLYGONS_PER_MESH);
         assert!(!ClippingProcessor::can_run_csg_operation(polys_complex.len(), polys_box.len()));
     }
 }

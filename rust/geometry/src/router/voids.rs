@@ -1198,6 +1198,19 @@ impl GeometryRouter {
                     // dramatically less wrong than a missing void on a wall
                     // that is supposed to host a window or door.
                     if !csg_succeeded {
+                        // Diagnostic for issue #635: when the AABB fallback
+                        // fires, log the opening triangle count so we can
+                        // verify (e.g. round windows after Part A's profile
+                        // simplification) that normal openings hit CSG and
+                        // only genuinely-broken ones land here.
+                        #[cfg(any(debug_assertions, test))]
+                        {
+                            let opening_tris = opening_mesh.triangle_count();
+                            eprintln!(
+                                "[issue-635] AABB fallback used: opening={} tris (over MAX_CSG_POLYGONS_PER_MESH or no change)",
+                                opening_tris
+                            );
+                        }
                         let dir = extrusion_dir.or_else(|| {
                             Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
                         });

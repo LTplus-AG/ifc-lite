@@ -350,6 +350,62 @@ export class IfcAPI {
    */
   processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array): MeshCollection;
   /**
+   * Phase 1 of Path C — sharded entity-index scan.
+   *
+   * Walks the bytes in `[range_start, range_end)` once and emits
+   * `(express_id, byte_offset, byte_length)` triples for every entity
+   * whose `#N=` opener falls in that range. Byte offsets are GLOBAL
+   * (relative to file start), so multiple shards' outputs concatenate
+   * without rewriting.
+   *
+   * Cross-boundary handling: the scanner rewinds `range_start` to the
+   * byte after the previous `\n` so we don't mis-parse a half entity.
+   * The previous shard owns any entity whose opener is BEFORE its own
+   * range_end (its terminator may extend past it; that's fine — the
+   * scanner walks STEP entities to their terminating `;`, even if that
+   * terminator is past the shard's nominal range_end).
+   *
+   * Returns nothing through the JS callback for performance signals;
+   * emits exactly one `index-shard` event with three Uint32Arrays:
+   *   `{ type: "index-shard", ids: Uint32Array, starts: Uint32Array,
+   *      lengths: Uint32Array, shardStart: u32, shardEnd: u32 }`
+   *
+   * Used by the JS-side shard coordinator to merge N shards' indices
+   * into a single entity-index without paying the 3 s single-threaded
+   * scan cost. Style and job emission are NOT done here — they remain
+   * the job of the existing `build_pre_pass_streaming` (which can be
+   * called on shard 0 in parallel with the other shards' index-only
+   * scans).
+   */
+  scanEntityIndexShard(data: Uint8Array, on_event: Function, range_start: number, range_end: number): any;
+  /**
+   * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
+   * instead of waiting for the full file scan to complete.
+   *
+   * Single linear walk over the file:
+   *   1. Builds the entity index incrementally from the same scan that
+   *      collects geometry jobs (the old `build_pre_pass_fast` did two
+   *      full-file scans — one for entities, one for the index — which
+   *      doubled wall-clock).
+   *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
+   *      first ~50 geometry jobs have been collected, resolves
+   *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
+   *      JS host can spin up geometry process workers.
+   *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
+   *      the meta phase already buffered some).
+   *   4. Emits `complete` with the total job count at end of scan.
+   *
+   * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
+   * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
+   * (first 100 K bytes scanned + meta + first chunk).
+   *
+   * The callback receives a single `JsValue` argument shaped as one of:
+   *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
+   *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
+   *   `{ type: "complete", totalJobs }`
+   */
+  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number): any;
+  /**
    * Parse IFC file with streaming GPU-ready geometry batches
    *
    * Yields batches of GPU-ready geometry for progressive rendering with zero-copy upload.
@@ -475,7 +531,37 @@ export class IfcAPI {
    */
   getMemory(): any;
   /**
-   * Clear the cached entity index (call after streaming is complete)
+   * Populate `cached_entity_index` from pre-extracted column arrays.
+   *
+   * Used by the streaming pre-pass to share its already-built entity
+   * index across worker realms via SAB-backed Uint32Arrays — every
+   * process worker would otherwise re-scan the entire file in
+   * `processGeometryBatch`'s lazy build path (~5 s on a 1 GB IFC),
+   * even though the pre-pass worker built the same index minutes
+   * earlier.
+   *
+   * Building an `FxHashMap` from the three input slices costs ~1 s on
+   * 14 M entries — about 4–5× faster than re-scanning the file. After
+   * this call, the next `processGeometryBatch` skips the lazy build
+   * branch and reuses the populated cache by `Arc::clone()`.
+   *
+   * `lengths[i]` is the byte length of entity `ids[i]`, so the cache
+   * stores `(start, start + length)` to match the existing tuple layout.
+   *
+   * Idempotent in the sense that repeated calls REPLACE the cache —
+   * supports the parser-worker pattern of reusing one IfcAPI across
+   * multiple loads with different files.
+   */
+  setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
+  /**
+   * Clear the cached entity index (call between loads when reusing
+   * the same `IfcAPI` instance — e.g. the parser worker keeps one
+   * `IfcAPI` alive across multiple `parse` requests).
+   *
+   * Panics if the cache Mutex is poisoned. Poisoning means an
+   * earlier panic occurred while the lock was held — silently
+   * continuing would mean operating on an inconsistent cache, so
+   * fail fast.
    */
   clearPrePassCache(): void;
   /**
@@ -1061,6 +1147,7 @@ export interface InitOutput {
   readonly gpumeshmetadata_vertexOffset: (a: number) => number;
   readonly ifcapi_buildPrePassFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
+  readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
   readonly ifcapi_debugProcessEntity953: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_debugProcessFirstWall: (a: number, b: number, c: number, d: number) => void;
@@ -1086,8 +1173,10 @@ export interface InitOutput {
   readonly ifcapi_processInstancedGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => number;
   readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
+  readonly ifcapi_scanEntityIndexShard: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanRelevantEntitiesFastBytes: (a: number, b: number, c: number) => number;
+  readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly instancedata_color: (a: number, b: number) => void;
   readonly instancedata_expressId: (a: number) => number;
@@ -1194,9 +1283,9 @@ export interface InitOutput {
   readonly profileentryjs_expressId: (a: number) => number;
   readonly symboliccircle_expressId: (a: number) => number;
   readonly __wbg_gpuinstancedgeometryref_free: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1146: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_1145: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_1186: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_1182: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_1181: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_1221: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export3: (a: number, b: number) => number;

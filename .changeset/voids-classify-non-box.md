@@ -2,4 +2,4 @@
 "@ifc-lite/wasm": patch
 ---
 
-Route non-box IfcOpeningElement geometry through CSG instead of AABB clipping (#547). Low-tessellation openings whose profile isn't a rectangle — trapezoids, chamfered rectangles, beveled windows, coarse arcs — used to slip under the 100-vertex rectangular-path threshold and get cut as their axis-aligned bounding box, removing wall material outside the actual opening. `classify_openings` now checks per-representation-item whether every vertex lies on an AABB corner; items that don't are routed to CSG so the cut matches the real shape.
+Add regression tests for non-box `IfcOpeningElement` classification (#547). PR #640 already routes low-tessellation non-rectangular openings (trapezoids, chamfered rectangles, beveled windows, coarse arcs) through CSG via `is_rectangular_box_mesh` + `infer_opening_frame`. This change adds end-to-end coverage that loads inline IFC fixtures and asserts the cut respects the actual opening profile (trapezoid narrow-edge boundary vertices appear in the voided wall, and many tessellated-box openings on a single wall are all cut without the CSG-budget cap silently dropping any).

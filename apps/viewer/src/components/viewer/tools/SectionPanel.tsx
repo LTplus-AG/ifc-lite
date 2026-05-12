@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { X, Slice, ChevronDown, FileImage, FlipHorizontal2, MousePointerClick, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useViewerStore } from '@/store';
+import { useViewerStore, loadLastSectionMode } from '@/store';
 import { AXIS_INFO } from './sectionConstants';
 import { SectionPlaneVisualization } from './SectionVisualization';
 import { SectionCapControls } from './SectionCapControls';
@@ -84,24 +84,48 @@ export function SectionOverlay() {
     return () => setPreviewStride(1);
   }, [setPreviewStride]);
 
-  // Auto-arm face-pick when the Section tool opens (issue #243 follow-up).
-  // Bonsai/Revit-style point-and-cut is the better default workflow now that
-  // hover-preview (#84) lands the violet quad on dwell — user opens tool →
-  // hover surface → click → cut. Cardinal axis buttons remain available as
-  // a secondary affordance below.
+  // Restore the user's last-used section mode when the panel mounts
+  // (issue #243 follow-up). Two modes round-trip via localStorage:
   //
-  // The 200ms timeout debounces the click that opened the tool: without it
-  // the tool-open click bleeds through to the canvas pick handler and
-  // accidentally sections the floor on the very same frame the panel
-  // mounts. Cleanup disarms on unmount so leaving the tool doesn't leave
-  // pick mode armed for the next tool.
+  //   • 'pick'     — face-pick is the default for first-time users and
+  //                  anyone whose last action was a face pick. The 200ms
+  //                  debounce stops the click that opened the tool from
+  //                  bleeding through to the canvas pick handler and
+  //                  accidentally sectioning the floor on the same frame
+  //                  the panel mounts.
+  //   • 'cardinal' — restore axis + position + flipped so the cut
+  //                  appears exactly where the user left it. Section is
+  //                  enabled by these setters so the cut is immediately
+  //                  visible — matches the user's mental model of
+  //                  "opening the panel where I left it".
+  //
+  // Cleanup disarms pick mode on unmount so leaving the tool doesn't
+  // leave pick mode armed for the next tool.
   useEffect(() => {
-    const t = setTimeout(() => setSectionPickMode(true), 200);
+    const mode = loadLastSectionMode();
+    let armTimer: ReturnType<typeof setTimeout> | null = null;
+
+    if (mode.kind === 'cardinal') {
+      // Read current flipped via getState() so we don't pull the live
+      // store value into the dep array (which would re-run the effect
+      // every flip and clobber the restore on each interaction).
+      const currentFlipped = useViewerStore.getState().sectionPlane.flipped;
+      setSectionPlaneAxis(mode.axis);
+      setSectionPlanePosition(mode.position);
+      if (currentFlipped !== mode.flipped) flipSectionPlane();
+    } else {
+      armTimer = setTimeout(() => setSectionPickMode(true), 200);
+    }
+
     return () => {
-      clearTimeout(t);
+      if (armTimer !== null) clearTimeout(armTimer);
       setSectionPickMode(false);
     };
-  }, [setSectionPickMode]);
+    // The setters are stable refs from zustand; flipSectionPlane reads
+    // current state via getState() so it's intentionally NOT in the dep
+    // array (would cause the restore to re-run on every flip).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setSectionPickMode, setSectionPlaneAxis, setSectionPlanePosition, flipSectionPlane]);
 
   const togglePanel = useCallback(() => {
     setIsPanelCollapsed(prev => !prev);

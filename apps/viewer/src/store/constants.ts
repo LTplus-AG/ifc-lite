@@ -26,8 +26,17 @@ export const SECTION_PLANE_DEFAULTS = {
   AXIS: 'down' as const,
   /** Default section plane position (percentage of model bounds) */
   POSITION: 50,
-  /** Default enabled state */
-  ENABLED: true,
+  /**
+   * Default enabled state.
+   *
+   * MUST be `false`: opening the section tool (button or `x` shortcut)
+   * should leave the model uncut and arm pick mode instead — the cut
+   * appears only after the user clicks a face (or moves the slider /
+   * picks an axis). With `enabled: true` here the user saw a Down cut
+   * appear immediately on tool open even though the panel's mount
+   * effect was about to arm pick mode (issue #243 follow-up).
+   */
+  ENABLED: false,
   /** Default flipped state */
   FLIPPED: false,
   /** Default: render filled/hatched cap surfaces at the cut */

@@ -57,6 +57,13 @@ export type { ForwardModelMapLike } from './store/globalId.js';
 // original face-pick location.
 export { customPlaneCenter } from './store/slices/sectionSlice.js';
 
+// Re-export last-used section mode persistence (issue #243 follow-up):
+// `SectionPanel` reads this on mount to restore either the user's
+// previous cardinal cut (axis + position + flipped) or to rearm pick
+// mode for first-time users / users whose last action was a face pick.
+export { loadLastSectionMode } from './store/slices/sectionSlice.js';
+export type { LastSectionMode } from './store/slices/sectionSlice.js';
+
 // Re-export Schedule (4D) types + helpers
 export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './store/slices/scheduleSlice.js';
 export {

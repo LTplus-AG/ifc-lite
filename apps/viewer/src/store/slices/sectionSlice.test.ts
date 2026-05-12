@@ -4,9 +4,75 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createSectionSlice, customPlaneCenter, type SectionSlice } from './sectionSlice.js';
+import {
+  createSectionSlice,
+  customPlaneCenter,
+  loadLastSectionMode,
+  type SectionSlice,
+} from './sectionSlice.js';
 import { SECTION_PLANE_DEFAULTS } from '../constants.js';
 import type { CustomSectionPlane } from '../types.js';
+
+// ─── Test helpers ──────────────────────────────────────────────────────
+// Replaces the original `dot` + literal-tuple comparison style with two
+// shared helpers that make geometric assertions both stricter and less
+// brittle:
+//   • `assertVecClose` — epsilon compare, ignores signed-zero noise
+//     (`Math.abs(0 - (-0)) === 0`) so tests don't couple to flipped
+//     normal sign quirks (CR feedback PR #650).
+//   • `assertOrthonormalBasis` — checks both orthogonality AND unit
+//     length of tangent + bitangent. The previous "orthonormal"
+//     assertion only checked dot products, so a basis with non-unit
+//     tangent/bitangent would pass silently (CR feedback PR #650).
+function assertVecClose(actual: ArrayLike<number>, expected: ArrayLike<number>, eps = 1e-9): void {
+  assert.strictEqual(actual.length, expected.length, `length mismatch: ${actual.length} vs ${expected.length}`);
+  for (let i = 0; i < expected.length; i++) {
+    const diff = Math.abs(actual[i] - expected[i]);
+    assert.ok(diff < eps, `axis ${i}: expected ${expected[i]}, got ${actual[i]} (|diff|=${diff})`);
+  }
+}
+
+function assertOrthonormalBasis(t: number[], b: number[], n: number[]): void {
+  const dot = (a: number[], c: number[]) => a[0] * c[0] + a[1] * c[1] + a[2] * c[2];
+  const tLen = Math.hypot(t[0], t[1], t[2]);
+  const bLen = Math.hypot(b[0], b[1], b[2]);
+  assert.ok(Math.abs(tLen - 1) < 1e-9, `tangent must be unit length (got ${tLen})`);
+  assert.ok(Math.abs(bLen - 1) < 1e-9, `bitangent must be unit length (got ${bLen})`);
+  assert.ok(Math.abs(dot(t, n)) < 1e-9, `tangent must be perpendicular to normal (dot=${dot(t, n)})`);
+  assert.ok(Math.abs(dot(b, n)) < 1e-9, `bitangent must be perpendicular to normal (dot=${dot(b, n)})`);
+  assert.ok(Math.abs(dot(t, b)) < 1e-9, `tangent must be perpendicular to bitangent (dot=${dot(t, b)})`);
+}
+
+// In-memory localStorage shim for tests that exercise the slice's
+// persistence helpers (last-used section mode, issue #243 follow-up).
+// node:test runs without a DOM, so the slice's `typeof window ===
+// 'undefined'` guards short-circuit by default. We install a real
+// `window.localStorage` for the duration of the persistence tests so
+// save/load actually round-trips through code rather than no-opping.
+class MemoryStorage {
+  private store = new Map<string, string>();
+  get length(): number { return this.store.size; }
+  clear(): void { this.store.clear(); }
+  getItem(key: string): string | null { return this.store.has(key) ? this.store.get(key)! : null; }
+  setItem(key: string, value: string): void { this.store.set(key, String(value)); }
+  removeItem(key: string): void { this.store.delete(key); }
+  key(i: number): string | null { return Array.from(this.store.keys())[i] ?? null; }
+}
+
+function installWindowShim(): { uninstall: () => void; storage: MemoryStorage } {
+  const storage = new MemoryStorage();
+  const g = globalThis as unknown as { window?: unknown };
+  const had = 'window' in g;
+  const prev = g.window;
+  g.window = { localStorage: storage } as unknown;
+  return {
+    storage,
+    uninstall: () => {
+      if (had) g.window = prev;
+      else delete g.window;
+    },
+  };
+}
 
 describe('SectionSlice', () => {
   let state: SectionSlice;
@@ -110,6 +176,10 @@ describe('SectionSlice', () => {
 
   describe('setSectionShowCap', () => {
     it('should toggle the showCap flag without touching clipping', () => {
+      // Explicitly enable clipping first so we can assert "cap toggle
+      // didn't disable it". Default `enabled` is now `false` (issue
+      // #243 follow-up: opening the section tool starts uncut).
+      state.setSectionPlaneEnabled(true);
       assert.strictEqual(state.sectionPlane.showCap, true);
       state.setSectionShowCap(false);
       assert.strictEqual(state.sectionPlane.showCap, false);
@@ -120,6 +190,7 @@ describe('SectionSlice', () => {
 
   describe('setSectionShowOutlines', () => {
     it('should toggle the showOutlines flag independently of showCap and clipping', () => {
+      state.setSectionPlaneEnabled(true);
       assert.strictEqual(state.sectionPlane.showOutlines, true);
       state.setSectionShowOutlines(false);
       assert.strictEqual(state.sectionPlane.showOutlines, false);
@@ -155,6 +226,10 @@ describe('SectionSlice', () => {
 
   describe('toggleSectionPlane', () => {
     it('should toggle enabled from true to false', () => {
+      // Default is now `false` (issue #243 follow-up). Set explicitly
+      // so this test exercises the true → false transition regardless
+      // of the default.
+      state.setSectionPlaneEnabled(true);
       assert.strictEqual(state.sectionPlane.enabled, true);
       state.toggleSectionPlane();
       assert.strictEqual(state.sectionPlane.enabled, false);
@@ -187,7 +262,10 @@ describe('SectionSlice', () => {
       state.setSectionPlaneFromFace([2, 0, 0], [3, 4, 5]);
       const c = state.sectionPlane.custom;
       assert.ok(c, 'custom plane should be set');
-      assert.deepStrictEqual(c!.normal, [1, 0, 0]);
+      // Use the epsilon helper so signed-zero noise from renormalisation
+      // (e.g. `0 / 2 === 0` vs `-0 / 2 === -0`) doesn't cause spurious
+      // failures (CR feedback PR #650).
+      assertVecClose(c!.normal, [1, 0, 0]);
       assert.strictEqual(c!.distance, 3); // dot([3,4,5], [1,0,0])
       assert.deepStrictEqual(c!.pickedAt, [3, 4, 5]);
       assert.strictEqual(state.sectionPlane.enabled, true);
@@ -218,10 +296,7 @@ describe('SectionSlice', () => {
     it('setSectionPlaneFromFace stores an orthonormal tangent + bitangent', () => {
       state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 0]);
       const c = state.sectionPlane.custom!;
-      const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-      assert.ok(Math.abs(dot([...c.normal], [...c.tangent])) < 1e-9);
-      assert.ok(Math.abs(dot([...c.normal], [...c.bitangent])) < 1e-9);
-      assert.ok(Math.abs(dot([...c.tangent], [...c.bitangent])) < 1e-9);
+      assertOrthonormalBasis([...c.tangent], [...c.bitangent], [...c.normal]);
     });
 
     it('setSectionPlaneFromFace ignores a degenerate (zero-length) normal', () => {
@@ -554,6 +629,166 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPlane.showOutlines, SECTION_PLANE_DEFAULTS.SHOW_OUTLINES);
       // Default cap pattern restored.
       assert.strictEqual(state.sectionPlane.capStyle.pattern, 'diagonal');
+    });
+  });
+});
+
+// Last-used section mode persistence (issue #243 follow-up).
+//
+// These tests run in their own top-level describe with an installed
+// `window.localStorage` shim because the slice's persistence helpers
+// short-circuit when `window` is undefined. Keeping the shim scoped to
+// this block (install in beforeEach, uninstall in afterEach) means the
+// rest of the suite still exercises the no-window code path.
+describe('SectionSlice — last-used mode persistence', () => {
+  const SECTION_MODE_KEY = 'ifc-lite:section-last-mode';
+  let state: SectionSlice;
+  let setState: (partial: Partial<SectionSlice> | ((state: SectionSlice) => Partial<SectionSlice>)) => void;
+  let shim: ReturnType<typeof installWindowShim>;
+
+  beforeEach(() => {
+    shim = installWindowShim();
+    setState = (partial) => {
+      if (typeof partial === 'function') {
+        const updates = partial(state);
+        state = { ...state, ...updates };
+      } else {
+        state = { ...state, ...partial };
+      }
+    };
+    state = createSectionSlice(setState, () => state, {} as any);
+  });
+
+  // No afterEach hook is registered (node:test exposes it differently
+  // across versions). Each beforeEach reinstalls the shim, replacing
+  // the previous global, so leakage between tests is bounded.
+
+  describe('default `enabled` and storage state', () => {
+    it('default enabled is `false` so opening the section tool starts uncut', () => {
+      // Bug #1 from PR #650: `ENABLED: true` here meant a Down cut
+      // appeared the moment the panel mounted, before the auto-arm
+      // useEffect could install pick mode.
+      assert.strictEqual(SECTION_PLANE_DEFAULTS.ENABLED, false);
+      assert.strictEqual(state.sectionPlane.enabled, false);
+    });
+  });
+
+  describe('loadLastSectionMode', () => {
+    it('returns the default pick mode when storage is empty', () => {
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('round-trips a stored pick entry', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({ kind: 'pick' }));
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('round-trips a valid cardinal entry', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
+        kind: 'cardinal', axis: 'side', position: 33.5, flipped: true,
+      }));
+      assert.deepStrictEqual(loadLastSectionMode(), {
+        kind: 'cardinal', axis: 'side', position: 33.5, flipped: true,
+      });
+    });
+
+    it('clamps cardinal `position` to [0, 100] on restore', () => {
+      // Belt-and-braces: position is clamped at the slice level too,
+      // but a tampered or stale value shouldn't poison the slider.
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
+        kind: 'cardinal', axis: 'down', position: 9999, flipped: false,
+      }));
+      const m = loadLastSectionMode();
+      assert.strictEqual(m.kind, 'cardinal');
+      if (m.kind === 'cardinal') assert.strictEqual(m.position, 100);
+    });
+
+    it('falls back to pick when JSON is corrupted', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, 'not-valid-json{');
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('falls back to pick on an unknown `kind`', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({ kind: 'martian' }));
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('falls back to pick on a cardinal entry with a bad axis', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
+        kind: 'cardinal', axis: 'sideways', position: 50, flipped: false,
+      }));
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('falls back to pick on a cardinal entry with a non-finite position', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
+        kind: 'cardinal', axis: 'down', position: 'oops', flipped: false,
+      }));
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+  });
+
+  describe('save side-effects on slice actions', () => {
+    it('setSectionPlaneAxis writes a cardinal entry to localStorage', () => {
+      state.setSectionPlaneAxis('front');
+      const raw = shim.storage.getItem(SECTION_MODE_KEY);
+      assert.ok(raw, 'expected a stored entry');
+      assert.deepStrictEqual(JSON.parse(raw!), {
+        kind: 'cardinal', axis: 'front',
+        position: state.sectionPlane.position,
+        flipped:  state.sectionPlane.flipped,
+      });
+    });
+
+    it('setSectionPlanePosition writes a cardinal entry (position carries through)', () => {
+      state.setSectionPlanePosition(42.5);
+      const raw = shim.storage.getItem(SECTION_MODE_KEY);
+      assert.ok(raw);
+      const parsed = JSON.parse(raw!);
+      assert.strictEqual(parsed.kind, 'cardinal');
+      assert.strictEqual(parsed.position, 42.5);
+    });
+
+    it('flipSectionPlane (cardinal mode) writes the new `flipped` to localStorage', () => {
+      state.flipSectionPlane();
+      const raw = shim.storage.getItem(SECTION_MODE_KEY);
+      assert.ok(raw);
+      const parsed = JSON.parse(raw!);
+      assert.strictEqual(parsed.kind, 'cardinal');
+      assert.strictEqual(parsed.flipped, true);
+    });
+
+    it('setSectionPlanePosition does NOT write while in custom mode', () => {
+      // Custom-mode position drives a model-relative distance which we
+      // deliberately don't persist — re-arm pick mode on next open
+      // instead so the user can re-cut on a different model.
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      // The face-pick wrote `{ kind: 'pick' }`; clear it so we can
+      // observe whether the subsequent slider move overwrites it.
+      shim.storage.removeItem(SECTION_MODE_KEY);
+      state.setSectionPlanePosition(60);
+      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
+    });
+
+    it('flipSectionPlane does NOT write while in custom mode', () => {
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      shim.storage.removeItem(SECTION_MODE_KEY);
+      state.flipSectionPlane();
+      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
+    });
+
+    it('setSectionPlaneFromFace writes `{ kind: "pick" }` to localStorage', () => {
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
+      const raw = shim.storage.getItem(SECTION_MODE_KEY);
+      assert.ok(raw);
+      assert.deepStrictEqual(JSON.parse(raw!), { kind: 'pick' });
+    });
+
+    it('resetSectionPlane removes the storage key', () => {
+      state.setSectionPlaneAxis('front');
+      assert.ok(shim.storage.getItem(SECTION_MODE_KEY));
+      state.resetSectionPlane();
+      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
     });
   });
 });

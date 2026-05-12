@@ -50,6 +50,72 @@ const CAP_STYLE_STORAGE_KEY     = 'ifc-lite:section-cap-style';
 const CAP_SHOW_STORAGE_KEY      = 'ifc-lite:section-cap-show';
 const OUTLINES_SHOW_STORAGE_KEY = 'ifc-lite:section-outlines-show';
 
+// Last-used section mode (issue #243 follow-up). When the user reopens
+// the section tool we restore whichever mode they used last:
+//   • 'pick'     — face-pick is rearmed (default for first-time users
+//                  and anyone whose last action was a face pick).
+//   • 'cardinal' — restore the previous axis + position + flipped so the
+//                  cut appears exactly where they left it.
+// Custom (face-picked) planes are NOT persisted: they're tied to the
+// loaded model's world coordinates and would land somewhere meaningless
+// on a different model. Re-arming pick mode lets the user re-cut the
+// equivalent face on the new model with one click.
+const SECTION_MODE_STORAGE_KEY  = 'ifc-lite:section-last-mode';
+
+export type LastSectionMode =
+  | { kind: 'pick' }
+  | { kind: 'cardinal'; axis: SectionPlaneAxis; position: number; flipped: boolean };
+
+const DEFAULT_LAST_MODE: LastSectionMode = { kind: 'pick' };
+
+function isSectionPlaneAxis(v: unknown): v is SectionPlaneAxis {
+  return v === 'down' || v === 'front' || v === 'side';
+}
+
+export function loadLastSectionMode(): LastSectionMode {
+  if (typeof window === 'undefined') return DEFAULT_LAST_MODE;
+  try {
+    const raw = window.localStorage.getItem(SECTION_MODE_STORAGE_KEY);
+    if (!raw) return DEFAULT_LAST_MODE;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed?.kind === 'pick') return { kind: 'pick' };
+    if (
+      parsed?.kind === 'cardinal' &&
+      isSectionPlaneAxis(parsed.axis) &&
+      typeof parsed.position === 'number' && Number.isFinite(parsed.position) &&
+      typeof parsed.flipped === 'boolean'
+    ) {
+      // Clamp position to the same [0, 100] range the slice enforces so
+      // a tampered or stale value can't poison the slider on restore.
+      const position = Math.min(100, Math.max(0, parsed.position));
+      return { kind: 'cardinal', axis: parsed.axis, position, flipped: parsed.flipped };
+    }
+    return DEFAULT_LAST_MODE;
+  } catch {
+    // Corrupted JSON or storage exception — fall back to the default
+    // pick mode silently. We don't warn here because this runs on every
+    // panel mount and would spam the console for any user with bad data.
+    return DEFAULT_LAST_MODE;
+  }
+}
+
+function saveLastSectionMode(mode: LastSectionMode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SECTION_MODE_STORAGE_KEY, JSON.stringify(mode));
+  } catch {
+    // Quota exceeded / private mode — best effort, the preference just
+    // doesn't survive this session.
+  }
+}
+
+function clearLastSectionMode(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(SECTION_MODE_STORAGE_KEY);
+  } catch { /* best-effort */ }
+}
+
 const HATCH_IDS: readonly SectionCapHatchId[] = [
   'solid', 'diagonal', 'crossHatch', 'horizontal',
   'vertical', 'concrete', 'brick', 'insulation',
@@ -234,12 +300,24 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
   sectionPickPreview: null,
 
   // Actions
-  setSectionPlaneAxis: (axis) => set((state) => ({
-    // Changing the axis implicitly means "I want to cut now" — enable the clip
-    // so users don't get stuck in a confusing no-op preview. Also drop any
-    // custom (face-picked) plane so the cardinal preset takes over cleanly.
-    sectionPlane: { ...state.sectionPlane, axis, enabled: true, custom: undefined },
-  })),
+  setSectionPlaneAxis: (axis) => set((state) => {
+    // Persist the cardinal choice so reopening the section tool restores
+    // axis + position + flipped (issue #243 follow-up). Position and
+    // flipped come from current state — picking an axis doesn't reset
+    // either, it just switches which axis the slider walks along.
+    saveLastSectionMode({
+      kind: 'cardinal',
+      axis,
+      position: state.sectionPlane.position,
+      flipped:  state.sectionPlane.flipped,
+    });
+    return {
+      // Changing the axis implicitly means "I want to cut now" — enable the clip
+      // so users don't get stuck in a confusing no-op preview. Also drop any
+      // custom (face-picked) plane so the cardinal preset takes over cleanly.
+      sectionPlane: { ...state.sectionPlane, axis, enabled: true, custom: undefined },
+    };
+  }),
 
   setSectionPlanePosition: (position) => set((state) => {
     // Clamp position to valid range [0, 100]
@@ -251,6 +329,18 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     //     that to a signed `distance`; the action below just stores the
     //     percentage and updates `custom.distance` to match.
     const next: SectionPlane = { ...state.sectionPlane, position: clampedPosition, enabled: true };
+    // Persist the cardinal slider position so the user gets the same cut
+    // back on reopen (issue #243 follow-up). Custom-mode position drives
+    // a face-anchored distance which we deliberately don't persist —
+    // those coordinates are model-relative and meaningless across files.
+    if (!state.sectionPlane.custom) {
+      saveLastSectionMode({
+        kind: 'cardinal',
+        axis:     state.sectionPlane.axis,
+        position: clampedPosition,
+        flipped:  state.sectionPlane.flipped,
+      });
+    }
     if (state.sectionPlane.custom) {
       const c = state.sectionPlane.custom;
       // Re-anchor distance from percentage. The half-extent is derived
@@ -293,7 +383,19 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     // `custom.distance` here as well would double-cancel the shader's
     // own flip (negate-and-negate-again leaves the same half-space
     // clipped) and the flip button would have no visible effect.
-    return { sectionPlane: { ...state.sectionPlane, flipped: !state.sectionPlane.flipped } };
+    const flipped = !state.sectionPlane.flipped;
+    // Persist the flipped state alongside axis + position for cardinal
+    // mode (issue #243 follow-up). Custom-mode flips aren't persisted
+    // because the whole custom plane (anchored at a model point) isn't.
+    if (!state.sectionPlane.custom) {
+      saveLastSectionMode({
+        kind: 'cardinal',
+        axis:     state.sectionPlane.axis,
+        position: state.sectionPlane.position,
+        flipped,
+      });
+    }
+    return { sectionPlane: { ...state.sectionPlane, flipped } };
   }),
 
   setSectionShowCap: (showCap) => set((state) => {
@@ -314,7 +416,9 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
 
   resetSectionPlane: () => set(() => {
     // Reset clears persisted cap style too — users asking for defaults expect
-    // the defaults to stick on the next reload.
+    // the defaults to stick on the next reload. Same goes for the
+    // last-used-mode preference (issue #243 follow-up): a reset should
+    // bring everyone back to the default pick mode on next reopen.
     try {
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(CAP_STYLE_STORAGE_KEY);
@@ -324,6 +428,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     } catch (error) {
       console.warn('[section] failed to clear persisted cap preferences', error);
     }
+    clearLastSectionMode();
     return { sectionPlane: getDefaultSectionPlane(), sectionPickMode: false, sectionPickPreview: null };
   }),
 
@@ -368,6 +473,11 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       tangent:   basis.tangent,
       bitangent: basis.bitangent,
     };
+
+    // Last-used mode is "pick" — reopening the panel rearms face-pick
+    // rather than restoring a cardinal cut. We deliberately don't store
+    // the custom plane itself (model-relative coords).
+    saveLastSectionMode({ kind: 'pick' });
 
     return {
       sectionPlane: {

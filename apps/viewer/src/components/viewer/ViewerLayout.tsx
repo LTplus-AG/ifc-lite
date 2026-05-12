@@ -167,6 +167,12 @@ export function ViewerLayout() {
     cleanupRef.current = cleanup;
   }, [bottomHeight]);
 
+  // Track the gap between the layout viewport (innerHeight) and the visual viewport.
+  // On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the URL bar area,
+  // so anything at `bottom: 0` lands behind it. visualViewport.height excludes
+  // the URL bar overlay, giving us the real visible bottom.
+  const bottomViewportInset = useVisualViewportBottomInset();
+
   // Detect mobile viewport — use both width check AND touch capability
   useEffect(() => {
     const checkMobile = () => {
@@ -315,7 +321,11 @@ export function ViewerLayout() {
 
             {/* Mobile Bottom Sheet - Hierarchy */}
             {!leftPanelCollapsed && (
-              <MobileBottomSheet title="Hierarchy" onClose={() => setLeftPanelCollapsed(true)}>
+              <MobileBottomSheet
+                title="Hierarchy"
+                bottomInset={bottomViewportInset}
+                onClose={() => setLeftPanelCollapsed(true)}
+              >
                 <HierarchyPanel />
               </MobileBottomSheet>
             )}
@@ -324,6 +334,7 @@ export function ViewerLayout() {
             {!rightPanelCollapsed && (
               <MobileBottomSheet
                 title={activeAnalysisExtension ? activeAnalysisExtension.label : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
+                bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
                   if (scriptPanelVisible) setScriptPanelVisible(false);
@@ -354,11 +365,11 @@ export function ViewerLayout() {
               </MobileBottomSheet>
             )}
 
-            {/* Mobile Floating Action Buttons — pill-shaped, clears URL bar (dvh root) + safe-area */}
+            {/* Mobile Floating Action Buttons — sits above the browser URL bar + home-indicator */}
             {leftPanelCollapsed && rightPanelCollapsed && (
               <div
                 className="absolute left-3 right-3 flex justify-center gap-2 z-20"
-                style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+                style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${bottomViewportInset}px + 1rem)` }}
               >
                 <button
                   className="flex items-center gap-1.5 px-4 py-2.5 bg-background/90 backdrop-blur-sm text-foreground border border-border rounded-full shadow-lg text-xs font-medium active:scale-95 transition-transform touch-manipulation"
@@ -393,60 +404,150 @@ export function ViewerLayout() {
 }
 
 /**
- * Mobile bottom sheet with swipe-to-dismiss on the drag handle.
- * Height tracks visible viewport (dvh) so it sits above the browser URL bar
- * and home-indicator safe area.
+ * Tracks the gap between the layout viewport (innerHeight) and the visual viewport.
+ * Returns the number of pixels the layout viewport extends below the visible area —
+ * i.e. how tall the iOS Safari URL bar overlay (or virtual keyboard) is.
+ */
+function useVisualViewportBottomInset(): number {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const gap = window.innerHeight - vv.height - vv.offsetTop;
+      setInset(Math.max(0, Math.round(gap)));
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+  return inset;
+}
+
+/**
+ * Mobile bottom sheet with three snap states (dismissed / default / expanded).
+ * Drag the handle: down to shrink/dismiss, up to enlarge. Velocity-based flicks
+ * cross thresholds instantly; otherwise the sheet snaps to the closest state.
+ *
+ * `bottomInset` lifts the sheet above the iOS Safari URL bar overlay.
  */
 function MobileBottomSheet({
   title,
   onClose,
+  bottomInset,
   children,
 }: {
   title: ReactNode;
   onClose: () => void;
+  bottomInset: number;
   children: ReactNode;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startY: number; startT: number; active: boolean }>({
+  const dragRef = useRef<{ startY: number; startT: number; startHeight: number; active: boolean }>({
     startY: 0,
     startT: 0,
+    startHeight: 0,
     active: false,
   });
 
+  const SPRING = 'height 220ms cubic-bezier(0.2, 0, 0, 1)';
+
+  const getSnapPoints = useCallback(() => {
+    const h = window.visualViewport?.height ?? window.innerHeight;
+    return {
+      collapsed: 0,
+      defaultH: Math.round(h * 0.6),
+      expanded: Math.round(h * 0.92),
+    };
+  }, []);
+
   const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    dragRef.current = { startY: e.clientY, startT: performance.now(), active: true };
-    if (sheetRef.current) sheetRef.current.style.transition = 'none';
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    dragRef.current = {
+      startY: e.clientY,
+      startT: performance.now(),
+      startHeight: sheet.getBoundingClientRect().height,
+      active: true,
+    };
+    sheet.style.transition = 'none';
     e.currentTarget.setPointerCapture(e.pointerId);
   }, []);
 
   const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.active || !sheetRef.current) return;
-    const dy = Math.max(0, e.clientY - dragRef.current.startY);
-    sheetRef.current.style.transform = `translateY(${dy}px)`;
-  }, []);
+    const sheet = sheetRef.current;
+    if (!dragRef.current.active || !sheet) return;
+    const dy = e.clientY - dragRef.current.startY;
+    const { expanded } = getSnapPoints();
+    const newHeight = Math.max(0, Math.min(expanded, dragRef.current.startHeight - dy));
+    sheet.style.height = `${newHeight}px`;
+  }, [getSnapPoints]);
 
   const onPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.active || !sheetRef.current) return;
-    dragRef.current.active = false;
-    const dy = Math.max(0, e.clientY - dragRef.current.startY);
-    const dt = Math.max(1, performance.now() - dragRef.current.startT);
-    const velocity = dy / dt; // px/ms
     const sheet = sheetRef.current;
-    sheet.style.transition = 'transform 200ms cubic-bezier(0.2, 0, 0, 1)';
-    if (dy > 80 || velocity > 0.5) {
-      const height = sheet.getBoundingClientRect().height;
-      sheet.style.transform = `translateY(${height}px)`;
-      window.setTimeout(onClose, 180);
-    } else {
-      sheet.style.transform = 'translateY(0)';
+    if (!dragRef.current.active || !sheet) return;
+    dragRef.current.active = false;
+    const dy = e.clientY - dragRef.current.startY;
+    const dt = Math.max(1, performance.now() - dragRef.current.startT);
+    // Positive velocity = upward drag (intent: enlarge).
+    const upwardVelocity = -dy / dt; // px/ms
+    const { collapsed, defaultH, expanded } = getSnapPoints();
+    const currentHeight = sheet.getBoundingClientRect().height;
+
+    sheet.style.transition = SPRING;
+
+    const snapTo = (h: number) => {
+      sheet.style.height = `${h}px`;
+    };
+
+    // Velocity-driven decisions take precedence over position.
+    if (upwardVelocity > 0.5) {
+      snapTo(expanded);
+      return;
     }
-  }, [onClose]);
+    if (upwardVelocity < -0.5) {
+      // Downward flick: from expanded → default, from default → dismiss.
+      if (dragRef.current.startHeight >= expanded - 8) {
+        snapTo(defaultH);
+      } else {
+        snapTo(collapsed);
+        window.setTimeout(onClose, 200);
+      }
+      return;
+    }
+
+    // Position-based snap: closest of the three targets.
+    const targets: Array<{ state: 'collapsed' | 'default' | 'expanded'; h: number }> = [
+      { state: 'collapsed', h: collapsed },
+      { state: 'default', h: defaultH },
+      { state: 'expanded', h: expanded },
+    ];
+    let closest = targets[1];
+    for (const t of targets) {
+      if (Math.abs(currentHeight - t.h) < Math.abs(currentHeight - closest.h)) closest = t;
+    }
+    snapTo(closest.h);
+    if (closest.state === 'collapsed') window.setTimeout(onClose, 200);
+  }, [getSnapPoints, onClose]);
+
+  // Initial height = default snap. Recompute when viewport changes (URL bar collapses).
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const { defaultH } = getSnapPoints();
+    sheet.style.height = `${defaultH}px`;
+  }, [getSnapPoints]);
 
   return (
     <div
       ref={sheetRef}
-      className="absolute inset-x-0 bottom-0 h-[60dvh] bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300"
+      className="absolute inset-x-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300"
+      style={{ bottom: `${bottomInset}px` }}
     >
       {/* Drag affordance — generously sized for touch */}
       <div
@@ -456,11 +557,11 @@ function MobileBottomSheet({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         role="button"
-        aria-label="Drag to dismiss"
+        aria-label="Drag to resize or dismiss"
       >
         <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
       </div>
-      <div className="flex items-center justify-between px-4 pb-2">
+      <div className="flex items-center justify-between px-4 pb-2 shrink-0">
         <span className="font-semibold text-sm">{title}</span>
         <button
           className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
@@ -472,10 +573,7 @@ function MobileBottomSheet({
           </svg>
         </button>
       </div>
-      <div
-        className="overflow-auto overscroll-contain border-t"
-        style={{ height: 'calc(60dvh - 64px)' }}
-      >
+      <div className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
         {children}
       </div>
     </div>

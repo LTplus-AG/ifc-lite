@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Verify the `Mesh::welded_by_position` API against the calibration
 //! report's claim that "after Trimesh(process=True) welds coincident
 //! vertices, 53% (114/215 on duplex) become watertight."
@@ -53,15 +57,6 @@ fn edge_use_counts(mesh: &Mesh) -> FxHashMap<usize, usize> {
         *counts.entry(use_count).or_default() += 1;
     }
     counts
-}
-
-fn is_watertight(mesh: &Mesh) -> bool {
-    if mesh.indices.is_empty() {
-        return false;
-    }
-    edge_use_counts(mesh)
-        .iter()
-        .all(|(&use_count, _)| use_count == 2)
 }
 
 /// Welding the duplex M_Fixed window collapses the unwelded-triangle-soup

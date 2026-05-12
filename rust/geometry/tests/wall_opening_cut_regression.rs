@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Regression test for the wall-opening cut defect class (defect class 3 in
 //! the calibration report). Documents real kernel defects discovered while
 //! grounding the calibration claims against IfcOpenShell pip 0.8.2:
@@ -173,8 +177,7 @@ fn wall_553010_opening_does_not_empty_wall() {
 #[test]
 fn wall_612315_bbox_must_not_collapse() {
     let mesh = process(612315).expect("fixture available");
-    let (_mn, _mx) = bbox(&mesh.positions).expect("non-empty");
-    let (mn, mx) = bbox(&mesh.positions).unwrap();
+    let (mn, mx) = bbox(&mesh.positions).expect("non-empty");
     let ext = (mx.0 - mn.0, mx.1 - mn.1, mx.2 - mn.2);
     // IOS extent: (11.839, 0.115, 3.406). Pin all three axes — the prior
     // bug collapsed both length (X) and height (Z).

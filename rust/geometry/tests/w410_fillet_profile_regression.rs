@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Regression test for the W410x60 (and any Revit wide-flange) profile-area
 //! calibration failure documented in the geometry-correctness calibration
 //! report: 6 instances of `M_W-Wide Flange:W410X60` in duplex.ifc produced a

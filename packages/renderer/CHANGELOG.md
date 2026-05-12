@@ -1,5 +1,21 @@
 # @ifc-lite/renderer
 
+## 1.19.1
+
+### Patch Changes
+
+- [#645](https://github.com/louistrue/ifc-lite/pull/645) [`9d5f927`](https://github.com/louistrue/ifc-lite/commit/9d5f92774f8c1c29061523678aa7b406fa68e3e6) Thanks [@louistrue](https://github.com/louistrue)! - Fix GPU picker silently failing on small models. `Picker.pick()` was
+  reading back a 1×1 `depth-only` texel for click-to-world unprojection,
+  which WebGPU rejects — depth/stencil-format copies must cover the full
+  subresource. Clicks on files small enough to take the GPU picker path
+  (≤500 mesh pieces; larger models hit the CPU-raycast fallback) silently
+  resolved to `null`, leaving no 3D highlight and no property panel. The
+  depth readback now copies the full depth image and indexes the mapped
+  buffer client-side; no shader, pipeline, or point-picker changes.
+- Updated dependencies [[`1d6e99b`](https://github.com/louistrue/ifc-lite/commit/1d6e99bb23f67e20a192f362ba65ee73a8180f69), [`b6e83d3`](https://github.com/louistrue/ifc-lite/commit/b6e83d3ac4f04fe7c439bf282a25963c6db0b909), [`6f052c3`](https://github.com/louistrue/ifc-lite/commit/6f052c309a99edd1d9a6925d44bbc2aed6cd10a5), [`b8a8206`](https://github.com/louistrue/ifc-lite/commit/b8a82062c4392d05224561dda8a2767a8b7b1857)]:
+  - @ifc-lite/wasm@1.16.10
+  - @ifc-lite/geometry@1.18.1
+
 ## 1.19.0
 
 ### Minor Changes

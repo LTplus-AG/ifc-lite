@@ -206,6 +206,19 @@ pub fn serialize_to_parquet_optimized(
         mesh_index_offsets.push(index_offset);
         mesh_index_counts.push(mesh.indices.len() as u32);
 
+        // Some IFC pipelines (e.g. advanced_brep) yield meshes with positions
+        // but no normals; pad with zeros so the schema's non-null columns stay valid.
+        let mesh_has_normals = mesh.normals.len() == mesh.positions.len();
+        if include_normals && !mesh_has_normals && !mesh.normals.is_empty() {
+            tracing::warn!(
+                express_id = mesh.express_id,
+                ifc_type = %mesh.ifc_type,
+                positions = mesh.positions.len(),
+                normals = mesh.normals.len(),
+                "Mesh normals length mismatch; emitting zero normals"
+            );
+        }
+
         // Quantize and store vertices with Z-up to Y-up transform
         // OPTIMIZATION: Apply coordinate transform server-side to eliminate client per-vertex loops
         // IFC uses Z-up, WebGL uses Y-up. Transform: X stays same, new Y = old Z, new Z = -old Y
@@ -215,9 +228,15 @@ pub fn serialize_to_parquet_optimized(
             vertex_z.push(quantize_position(-mesh.positions[i * 3 + 1])); // New Z = -old Y (depth)
 
             if include_normals {
-                normal_x.push(mesh.normals[i * 3]); // X stays the same
-                normal_y.push(mesh.normals[i * 3 + 2]); // New Y = old Z
-                normal_z.push(-mesh.normals[i * 3 + 1]); // New Z = -old Y
+                if mesh_has_normals {
+                    normal_x.push(mesh.normals[i * 3]); // X stays the same
+                    normal_y.push(mesh.normals[i * 3 + 2]); // New Y = old Z
+                    normal_z.push(-mesh.normals[i * 3 + 1]); // New Z = -old Y
+                } else {
+                    normal_x.push(0.0);
+                    normal_y.push(0.0);
+                    normal_z.push(0.0);
+                }
             }
         }
 
@@ -540,5 +559,23 @@ mod tests {
         assert_eq!(color_to_byte(0.0), 0);
         assert_eq!(color_to_byte(1.0), 255);
         assert_eq!(color_to_byte(0.5), 128);
+    }
+
+    /// Regression test for #586: meshes with positions but no normals
+    /// (e.g. `advanced_brep.ifc`) used to panic when `include_normals = true`.
+    #[test]
+    fn test_optimized_serialize_mesh_without_normals() {
+        let meshes = vec![MeshData::new(
+            42,
+            "IfcAdvancedBrep".to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+            Vec::new(),
+            vec![0, 1, 2],
+            [0.8, 0.8, 0.8, 1.0],
+        )];
+
+        // Both code paths must survive empty normals.
+        assert!(serialize_to_parquet_optimized_with_stats(&meshes, false).is_ok());
+        assert!(serialize_to_parquet_optimized_with_stats(&meshes, true).is_ok());
     }
 }

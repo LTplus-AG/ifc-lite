@@ -7,9 +7,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand } from '../src/columnar-parser';
-import type { IfcDataStore } from '../src/columnar-parser';
-import type { EntityRef } from '../src/types';
+import { extractClassificationsOnDemand, extractMaterialsOnDemand } from '../src/columnar-parser.js';
+import type { IfcDataStore } from '../src/columnar-parser.js';
+import type { EntityRef } from '../src/types.js';
 
 /**
  * Helper: build a minimal IfcDataStore from STEP lines.
@@ -272,7 +272,7 @@ describe('extractMaterialsOnDemand', () => {
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
     expect(result!.type).toBe('MaterialList');
-    expect(result!.materials).toEqual(['Wood', 'Glass']);
+    expect(result!.materials).toEqual([{ name: 'Wood' }, { name: 'Glass' }]);
   });
 
   it('should follow IfcMaterialLayerSetUsage to IfcMaterialLayerSet', () => {

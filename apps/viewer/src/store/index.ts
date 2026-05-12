@@ -19,6 +19,8 @@ import { createUISlice, type UISlice } from './slices/uiSlice.js';
 import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
+export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
+export type { LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
 import { createModelSlice, type ModelSlice } from './slices/modelSlice.js';
@@ -34,6 +36,13 @@ import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
 import { createDesktopEntitlementSlice, type DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.js';
+import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.js';
+import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
+import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js';
+import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
+import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotationsSlice.js';
+import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
+import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -43,7 +52,7 @@ import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, TYPE_VISIBILITY_D
 export type * from './types.js';
 
 // Explicitly re-export multi-model types that need to be imported by name
-export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis } from './types.js';
+export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis, SectionCapStyle, SectionCapHatchId, SectionPlane, SectionPlaneAxis } from './types.js';
 
 // Re-export utility functions for entity references
 export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore } from './types.js';
@@ -83,6 +92,21 @@ export type { DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.j
 // Re-export Cesium types
 export type { CesiumSlice, CesiumDataSource } from './slices/cesiumSlice.js';
 
+// Re-export Schedule (4D) types + selectors
+export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './slices/scheduleSlice.js';
+export type { PlaybackSlice } from './slices/playbackSlice.js';
+export type { OverlaySlice, OverlayLayer, RGBA as OverlayRGBA } from './slices/overlaySlice.js';
+export { composeLayers as composeOverlayLayers } from './slices/overlaySlice.js';
+export {
+  computeScheduleRange,
+  computeHiddenProductIds,
+  computeActiveProductIds,
+  taskStartEpoch,
+  taskFinishEpoch,
+  parseIsoDate,
+} from './slices/scheduleSlice.js';
+export { resolveScheduleSourceModelId } from './slices/schedule-edit-helpers.js';
+
 // Combined store type
 export type ViewerState = LoadingSlice &
   SelectionSlice &
@@ -105,7 +129,14 @@ export type ViewerState = LoadingSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
-  DesktopEntitlementSlice & {
+  DesktopEntitlementSlice &
+  ScheduleSlice &
+  PlaybackSlice &
+  OverlaySlice &
+  SearchSlice &
+  AnnotationsSlice &
+  AddElementSlice &
+  PointCloudSlice & {
     resetViewerState: () => void;
   };
 
@@ -136,6 +167,13 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
   ...createDesktopEntitlementSlice(...args),
+  ...createScheduleSlice(...args),
+  ...createPlaybackSlice(...args),
+  ...createOverlaySlice(...args),
+  ...createSearchSlice(...args),
+  ...createAnnotationsSlice(...args),
+  ...createAddElementSlice(...args),
+  ...createPointCloudSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
@@ -195,12 +233,18 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         cornerValence: 0,
       },
 
-      // Section plane
+      // Section plane: reset axis/position/enabled/flipped (those are
+      // model-relative and meaningless when switching files), but PRESERVE
+      // the user's cap appearance preferences (showCap, showOutlines,
+      // capStyle). Those round-trip to localStorage via the slice's
+      // persistence helpers; clobbering them here was the cause of "my
+      // hatch / colour resets to defaults every time I open a file".
       sectionPlane: {
-        axis: SECTION_PLANE_DEFAULTS.AXIS,
+        ...get().sectionPlane,
+        axis:     SECTION_PLANE_DEFAULTS.AXIS,
         position: SECTION_PLANE_DEFAULTS.POSITION,
-        enabled: SECTION_PLANE_DEFAULTS.ENABLED,
-        flipped: SECTION_PLANE_DEFAULTS.FLIPPED,
+        enabled:  SECTION_PLANE_DEFAULTS.ENABLED,
+        flipped:  SECTION_PLANE_DEFAULTS.FLIPPED,
       },
 
       // Camera
@@ -224,9 +268,13 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
 
       // Cesium
+      cesiumAvailable: false,
       cesiumEnabled: false,
       cesiumTerrainHeight: null,
-      cesiumTerrainClamp: false,
+      // Default the clamp toggle ON so models authored at sea-level
+      // OrthogonalHeight don't load buried below the 3D-tiles terrain on
+      // first activation. Users can still uncheck it manually.
+      cesiumTerrainClamp: true,
       cesiumSourceModelId: null,
       cesiumTerrainClipY: null,
       cesiumGlbLoaded: false,
@@ -331,6 +379,21 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       chatError: null,
       chatAbortController: null,
 
+      // Schedule (4D) - drop panel + data; definitions are re-extracted on
+      // next load. `playbackSpeed`, `playbackLoop`, and `ganttTimeScale` are
+      // intentionally preserved as user preferences that survive file loads.
+      ganttPanelVisible: false,
+      generateScheduleDialogOpen: false,
+      scheduleData: null,
+      scheduleRange: null,
+      activeWorkScheduleId: '',
+      expandedTaskGlobalIds: new Set<string>(),
+      hoveredTaskGlobalId: null,
+      selectedTaskGlobalIds: new Set<string>(),
+      animationEnabled: false,
+      playbackIsPlaying: false,
+      playbackTime: 0,
+
       // Mutations - clear all mutation state so stale changes don't carry over
       mutationViews: new Map(),
       changeSets: new Map(),
@@ -339,6 +402,33 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       redoStacks: new Map(),
       dirtyModels: new Set(),
       mutationVersion: get().mutationVersion + 1,
+
+      // Search - results reference the previous model's expressIds, drop them.
+      searchQuery: '',
+      searchOpen: false,
+      searchHighlightIndex: 0,
+      searchIndexes: new Map(),
+      searchVimCycle: null,
+      searchModalOpen: false,
+      searchFieldFilter: 'all',
+      searchModelFilter: null,
+      searchFilterResult: null,
+      searchFilterRunning: false,
+      searchFilterError: null,
+      searchFilter: { rules: [], combinator: 'AND', limit: 500 },
+      searchFilterSchema: new Map(),
+
+      // Annotations — drop draft + selection so a new file doesn't
+      // inherit the previous file's pin authoring state. Persisted
+      // pins themselves stay in localStorage (cross-file workspace).
+      draft: null,
+      selectedAnnotationId: null,
+
+      // Point cloud — clear runtime fields so a new file doesn't
+      // inherit the previous file's color mode / size / EDL state.
+      // Single-source-of-truth defaults shared with createPointCloudSlice.
+      ...POINT_CLOUD_DEFAULTS,
+      pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
     });
   },
 }));

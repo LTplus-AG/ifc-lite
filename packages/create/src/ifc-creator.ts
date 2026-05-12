@@ -29,59 +29,37 @@ import type {
   ProjectParams, SiteParams, BuildingParams, StoreyParams,
   PropertySetDef, PropertyDef, QuantitySetDef, QuantityDef,
   MaterialDef, MaterialLayerDef,
+  WorkScheduleParams, WorkPlanParams, TaskParams, SequenceParams,
   CreatedEntity, CreateResult,
 } from './types.js';
 
+import {
+  esc, stepLine, num, vecLen, vecNorm, vecCross,
+  NON_ELEMENT_TYPES,
+} from './ifc-creator-math.js';
+
 // ============================================================================
-// Internal helpers
+// STEP attribute helpers (scheduling — optional strings / enums / numbers)
 // ============================================================================
 
-/** Escape a string for STEP format */
-function esc(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "''");
+/** Emit an optional STEP string: `'value'` when present, `$` otherwise. */
+function optStr(v: string | undefined | null): string {
+  return v === undefined || v === null || v === '' ? '$' : `'${esc(v)}'`;
 }
 
-/** Format a STEP line: #ID=TYPE(args); */
-function stepLine(id: number, type: string, args: string): string {
-  return `#${id}=${type}(${args});`;
+/** Emit an optional STEP enum: `.VALUE.` when present, `$` otherwise. */
+function optEnum(v: string | undefined | null): string {
+  return v === undefined || v === null || v === '' ? '$' : `.${v}.`;
 }
 
-/** Serialize a number in STEP format (always with decimal point, no exponent notation) */
-function num(v: number): string {
-  // Exponent notation (e.g. 1e-7) is not valid STEP — use fixed decimal
-  const s = v.toString();
-  if (s.includes('e') || s.includes('E')) return v.toFixed(10).replace(/0+$/, '0');
-  return s.includes('.') ? s : s + '.';
+/** Emit an optional STEP boolean: `.T.`/`.F.`/`$`. */
+function optBool(v: boolean | undefined | null): string {
+  return v === undefined || v === null ? '$' : v ? '.T.' : '.F.';
 }
 
-/** Vector length */
-function vecLen(v: Point3D): number {
-  return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-}
-
-/**
- * IFC types that do NOT follow the IfcElement attribute layout (no Tag/PredefinedType).
- * addElement/addAxisElement skip Tag+PredefinedType for these types.
- */
-const NON_ELEMENT_TYPES = new Set([
-  'IFCBUILDING', 'IFCSITE', 'IFCBUILDINGSTOREY', 'IFCPROJECT',
-  'IFCSPACE', 'IFCZONE', 'IFCSYSTEM', 'IFCGROUP',
-]);
-
-/** Normalize vector — throws on zero-length (indicates geometry bug like Start === End) */
-function vecNorm(v: Point3D): Point3D {
-  const len = vecLen(v);
-  if (len === 0) throw new Error('Cannot normalize zero-length vector (check that Start and End are not identical)');
-  return [v[0] / len, v[1] / len, v[2] / len];
-}
-
-/** Cross product */
-function vecCross(a: Point3D, b: Point3D): Point3D {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ];
+/** Emit an optional STEP real number; `$` when absent. */
+function optReal(v: number | undefined | null): string {
+  return v === undefined || v === null || !Number.isFinite(v) ? '$' : num(v);
 }
 
 // ============================================================================
@@ -185,7 +163,7 @@ export class IfcCreator {
     });
 
     this.line(id, 'IFCBUILDINGSTOREY',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},$,$,#${storeyPlacementId},$,.ELEMENT.,${elevation}`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},$,#${storeyPlacementId},$,$,.ELEMENT.,${elevation}`);
 
     this.storeyIds.push(id);
     this.storeyElements.set(id, []);
@@ -1530,6 +1508,245 @@ export class IfcCreator {
     }
 
     this.elementMaterials.set(elementId, materialRefId);
+  }
+
+  // ============================================================================
+  // Public API — Scheduling / 4D  (IfcWorkSchedule, IfcTask, IfcRelSequence)
+  // ============================================================================
+
+  /**
+   * Create an IfcWorkSchedule. Returns its expressId for assigning tasks
+   * via `assignTasksToWorkSchedule(scheduleId, taskIds)`.
+   */
+  addIfcWorkSchedule(params: WorkScheduleParams): number {
+    return this.buildWorkControl('IFCWORKSCHEDULE', params);
+  }
+
+  /**
+   * Create an IfcWorkPlan — a container that groups multiple IfcWorkSchedules.
+   * Attach schedules to the plan with `assignSchedulesToWorkPlan(planId, scheduleIds)`.
+   */
+  addIfcWorkPlan(params: WorkPlanParams): number {
+    return this.buildWorkControl('IFCWORKPLAN', params);
+  }
+
+  /**
+   * Create an IfcTask. If any Schedule/Actual/Early/Late time field, IsCritical,
+   * or Completion attribute is present, an IfcTaskTime is created and linked.
+   * Returns the task expressId.
+   */
+  addIfcTask(params: TaskParams): number {
+    const hasTaskTime =
+      params.ScheduleStart !== undefined ||
+      params.ScheduleFinish !== undefined ||
+      params.ScheduleDuration !== undefined ||
+      params.ActualStart !== undefined ||
+      params.ActualFinish !== undefined ||
+      params.ActualDuration !== undefined ||
+      params.EarlyStart !== undefined ||
+      params.EarlyFinish !== undefined ||
+      params.LateStart !== undefined ||
+      params.LateFinish !== undefined ||
+      params.FreeFloat !== undefined ||
+      params.TotalFloat !== undefined ||
+      params.RemainingTime !== undefined ||
+      params.StatusTime !== undefined ||
+      params.IsCritical !== undefined ||
+      params.DurationType !== undefined ||
+      params.Completion !== undefined;
+
+    const taskTimeId = hasTaskTime ? this.addIfcTaskTime(params) : 0;
+    const taskId = this.id();
+    const globalId = this.newGlobalId();
+    const name = params.Name;
+    const desc = optStr(params.Description);
+    const objType = optStr(params.ObjectType);
+    const ident = optStr(params.Identification);
+    const longDesc = optStr(params.LongDescription);
+    const status = optStr(params.Status);
+    const workMethod = optStr(params.WorkMethod);
+    const isMile = params.IsMilestone === true ? '.T.' : '.F.';
+    const priority = params.Priority !== undefined ? String(params.Priority | 0) : '$';
+    const taskTimeRef = taskTimeId > 0 ? `#${taskTimeId}` : '$';
+    const predef = optEnum(params.PredefinedType);
+
+    this.line(taskId, 'IFCTASK',
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},${ident},${longDesc},${status},${workMethod},${isMile},${priority},${taskTimeRef},${predef}`);
+
+    this.entities.push({ expressId: taskId, type: 'IfcTask', Name: name });
+    return taskId;
+  }
+
+  /**
+   * Build an IfcTaskTime from the task params (internal helper — prefer
+   * setting the time fields on the task itself via `addIfcTask`).
+   */
+  private addIfcTaskTime(params: TaskParams): number {
+    const ttId = this.id();
+    // [0] Name, [1] DataOrigin, [2] UserDefinedDataOrigin,
+    // [3] DurationType, [4] ScheduleDuration, [5] ScheduleStart, [6] ScheduleFinish,
+    // [7..10] Early/Late Start/Finish, [11] FreeFloat, [12] TotalFloat,
+    // [13] IsCritical, [14] StatusTime,
+    // [15] ActualDuration, [16] ActualStart, [17] ActualFinish,
+    // [18] RemainingTime, [19] Completion
+    const attrs: string[] = [
+      '$',                                      // Name
+      '$',                                      // DataOrigin
+      '$',                                      // UserDefinedDataOrigin
+      optEnum(params.DurationType),             // DurationType
+      optStr(params.ScheduleDuration),          // ScheduleDuration
+      optStr(params.ScheduleStart),             // ScheduleStart
+      optStr(params.ScheduleFinish),            // ScheduleFinish
+      optStr(params.EarlyStart),                // EarlyStart
+      optStr(params.EarlyFinish),               // EarlyFinish
+      optStr(params.LateStart),                 // LateStart
+      optStr(params.LateFinish),                // LateFinish
+      optStr(params.FreeFloat),                 // FreeFloat
+      optStr(params.TotalFloat),                // TotalFloat
+      optBool(params.IsCritical),               // IsCritical
+      optStr(params.StatusTime),                // StatusTime
+      optStr(params.ActualDuration),            // ActualDuration
+      optStr(params.ActualStart),               // ActualStart
+      optStr(params.ActualFinish),              // ActualFinish
+      optStr(params.RemainingTime),             // RemainingTime
+      optReal(params.Completion),               // Completion
+    ];
+    this.line(ttId, 'IFCTASKTIME', attrs.join(','));
+    return ttId;
+  }
+
+  /**
+   * Create an IfcRelSequence between two tasks. The predecessor is `RelatingProcess`
+   * and the successor is `RelatedProcess`. SequenceType defaults to FINISH_START.
+   */
+  addIfcRelSequence(
+    predecessorTaskId: number,
+    successorTaskId: number,
+    params: SequenceParams = {},
+  ): number {
+    const relId = this.id();
+    const globalId = this.newGlobalId();
+    const seqType = optEnum(params.SequenceType ?? 'FINISH_START');
+    const userDef = optStr(params.UserDefinedSequenceType);
+
+    let lagRef = '$';
+    if (params.TimeLag !== undefined) {
+      const lagId = this.id();
+      // IfcLagTime = IfcSchedulingTime(Name, DataOrigin, UDDataOrigin) +
+      //              LagValue (IfcTimeOrRatioSelect) + DurationType
+      const lagValue = `IFCDURATION('${esc(params.TimeLag)}')`;
+      const durType = optEnum(params.LagDurationType ?? 'WORKTIME');
+      this.line(lagId, 'IFCLAGTIME', `$,$,$,${lagValue},${durType}`);
+      lagRef = `#${lagId}`;
+    }
+
+    this.line(relId, 'IFCRELSEQUENCE',
+      `'${globalId}',#${this.ownerHistoryId},$,$,#${predecessorTaskId},#${successorTaskId},${lagRef},${seqType},${userDef}`);
+    return relId;
+  }
+
+  /**
+   * Emit an IfcRelAssignsToControl — binds any IfcObjectDefinition (typically
+   * IfcTasks or sub-schedules) to an IfcControl (IfcWorkSchedule / IfcWorkPlan).
+   * Returns the relationship expressId.
+   */
+  addIfcRelAssignsToControl(relatingControlId: number, relatedObjectIds: number[]): number {
+    if (relatedObjectIds.length === 0) throw new Error('addIfcRelAssignsToControl: relatedObjectIds is empty');
+    const relId = this.id();
+    const globalId = this.newGlobalId();
+    const refs = relatedObjectIds.map(id => `#${id}`).join(',');
+    this.line(relId, 'IFCRELASSIGNSTOCONTROL',
+      `'${globalId}',#${this.ownerHistoryId},$,$,(${refs}),$,#${relatingControlId}`);
+    return relId;
+  }
+
+  /**
+   * Ergonomic alias — assign tasks (or sub-schedules) to a work schedule.
+   * Delegates to {@link addIfcRelAssignsToControl}.
+   */
+  assignTasksToWorkSchedule(scheduleId: number, taskIds: number[]): number {
+    return this.addIfcRelAssignsToControl(scheduleId, taskIds);
+  }
+
+  /**
+   * Ergonomic alias — attach sub-schedules to an IfcWorkPlan. Delegates to
+   * {@link addIfcRelAssignsToControl}.
+   */
+  assignSchedulesToWorkPlan(planId: number, scheduleIds: number[]): number {
+    return this.addIfcRelAssignsToControl(planId, scheduleIds);
+  }
+
+  /**
+   * Emit an IfcRelAssignsToProcess — binds products (walls, slabs, ...) to an
+   * IfcProcess (usually an IfcTask). These drive the Gantt 4D animation.
+   * Returns the relationship expressId.
+   */
+  addIfcRelAssignsToProcess(relatingProcessId: number, relatedObjectIds: number[]): number {
+    if (relatedObjectIds.length === 0) throw new Error('addIfcRelAssignsToProcess: relatedObjectIds is empty');
+    const relId = this.id();
+    const globalId = this.newGlobalId();
+    const refs = relatedObjectIds.map(id => `#${id}`).join(',');
+    this.line(relId, 'IFCRELASSIGNSTOPROCESS',
+      `'${globalId}',#${this.ownerHistoryId},$,$,(${refs}),$,#${relatingProcessId},$`);
+    return relId;
+  }
+
+  /** Ergonomic alias — delegates to {@link addIfcRelAssignsToProcess}. */
+  assignProductsToTask(taskId: number, productIds: number[]): number {
+    return this.addIfcRelAssignsToProcess(taskId, productIds);
+  }
+
+  /**
+   * Emit an IfcRelNests — nests children under a parent object (used for WBS
+   * task hierarchies here). Returns the relationship expressId.
+   */
+  addIfcRelNests(relatingObjectId: number, relatedObjectIds: number[]): number {
+    if (relatedObjectIds.length === 0) throw new Error('addIfcRelNests: relatedObjectIds is empty');
+    const relId = this.id();
+    const globalId = this.newGlobalId();
+    const refs = relatedObjectIds.map(id => `#${id}`).join(',');
+    this.line(relId, 'IFCRELNESTS',
+      `'${globalId}',#${this.ownerHistoryId},$,$,#${relatingObjectId},(${refs})`);
+    return relId;
+  }
+
+  /** Ergonomic alias — delegates to {@link addIfcRelNests}. */
+  nestTasks(parentTaskId: number, childTaskIds: number[]): number {
+    return this.addIfcRelNests(parentTaskId, childTaskIds);
+  }
+
+  /**
+   * Internal — emit an IfcWorkSchedule or IfcWorkPlan (identical attribute
+   * layout). Separate helpers are exposed publicly for ergonomics.
+   */
+  private buildWorkControl(
+    entity: 'IFCWORKSCHEDULE' | 'IFCWORKPLAN',
+    params: WorkScheduleParams,
+  ): number {
+    const id = this.id();
+    const globalId = this.newGlobalId();
+    const name = params.Name;
+    const desc = optStr(params.Description);
+    const objType = '$';
+    const ident = optStr(params.Identification);
+    const creationDate = params.CreationDate ?? new Date().toISOString().slice(0, 19);
+    const purpose = optStr(params.Purpose);
+    const duration = optStr(params.Duration);
+    const totalFloat = optStr(params.TotalFloat);
+    const startTime = params.StartTime;
+    const finishTime = optStr(params.FinishTime);
+    const predef = optEnum(params.PredefinedType);
+
+    // IFC4 IfcWorkSchedule / IfcWorkPlan (same SUPERTYPE layout via IfcWorkControl):
+    // [0] GlobalId, [1] OwnerHistory, [2] Name, [3] Description, [4] ObjectType,
+    // [5] Identification, [6] CreationDate, [7] Creators, [8] Purpose,
+    // [9] Duration, [10] TotalFloat, [11] StartTime, [12] FinishTime, [13] PredefinedType
+    this.line(id, entity,
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},${ident},'${esc(creationDate)}',$,${purpose},${duration},${totalFloat},'${esc(startTime)}',${finishTime},${predef}`);
+
+    const kind = entity === 'IFCWORKSCHEDULE' ? 'IfcWorkSchedule' : 'IfcWorkPlan';
+    this.entities.push({ expressId: id, type: kind, Name: name });
+    return id;
   }
 
   // ============================================================================

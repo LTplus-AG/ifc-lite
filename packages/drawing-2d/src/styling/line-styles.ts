@@ -12,7 +12,7 @@
  * - Phantom: Alternate positions, removed parts
  */
 
-import type { LineStyle, ArchitecturalLine } from '../types';
+import type { LineStyle, ArchitecturalLine } from '../types.js';
 
 /**
  * Dash pattern definitions (as SVG stroke-dasharray values)

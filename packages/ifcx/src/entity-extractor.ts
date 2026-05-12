@@ -10,11 +10,25 @@
 import type { ComposedNode, IfcClass } from './types.js';
 import { ATTR, BUILDING_ELEMENT_TYPES } from './types.js';
 import { buildReachableAttributeIndex, collectIncomingEdgeNames } from './traversal.js';
+import { POINTCLOUD_ATTR_KEYS } from '@ifc-lite/pointcloud';
 import {
   StringTable,
   EntityTableBuilder,
 } from '@ifc-lite/data';
 import type { EntityTable } from '@ifc-lite/data';
+
+/**
+ * Promote a node to a first-class entity when it carries any of the
+ * buildingSMART IFC5 point cloud schemas, even without `bsi::ifc::class`.
+ * The Point_Cloud_*.ifcx fixtures authored by Arjo Nagelhout carry only
+ * USD `xformop` + one of those custom schemas.
+ */
+function nodeIsPointCloud(node: ComposedNode): boolean {
+  for (const key of POINTCLOUD_ATTR_KEYS) {
+    if (node.attributes.has(key)) return true;
+  }
+  return false;
+}
 
 export interface EntityExtractionResult {
   entities: EntityTable;
@@ -43,7 +57,7 @@ export function extractEntities(
   let entityCount = 0;
   for (const node of composed.values()) {
     const ifcClass = node.attributes.get(ATTR.CLASS) as IfcClass | undefined;
-    if (ifcClass) {
+    if (ifcClass || nodeIsPointCloud(node)) {
       entityCount++;
     }
   }
@@ -54,8 +68,12 @@ export function extractEntities(
   // Second pass: extract entities
   for (const node of composed.values()) {
     const ifcClass = node.attributes.get(ATTR.CLASS) as IfcClass | undefined;
-    if (!ifcClass) continue; // Skip non-IFC nodes (geometry-only, materials, etc.)
-    const typeCode = ifcClass.code ?? '';
+    const isPointCloud = nodeIsPointCloud(node);
+    if (!ifcClass && !isPointCloud) continue;
+    // Pointcloud nodes that omit bsi::ifc::class get a synthetic class
+    // — IfcGeographicElement is the closest IFC4.3 fit for "georeferenced
+    // scan attached to a project". Real IFC class wins when present.
+    const typeCode = ifcClass?.code ?? (isPointCloud ? 'IfcGeographicElement' : '');
 
     const expressId = nextExpressId++;
     pathToId.set(node.path, expressId);
@@ -64,8 +82,9 @@ export function extractEntities(
     // Extract name from attributes
     const name = extractName(node, incomingEdgeNames.get(node.path) ?? []) ?? node.path.slice(0, 8);
 
-    // Check if has geometry
-    const hasGeometry = geometryIndex.get(node.path) ?? false;
+    // Check if has geometry — points count too so the hierarchy panel
+    // shows a geometry indicator for scan entries.
+    const hasGeometry = (geometryIndex.get(node.path) ?? false) || isPointCloud;
 
     // Check if this is a type definition
     const isType = typeCode.toUpperCase().endsWith('TYPE');

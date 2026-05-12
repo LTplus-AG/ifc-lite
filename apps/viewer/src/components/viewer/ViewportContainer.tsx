@@ -5,7 +5,9 @@
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { Viewport } from './Viewport';
 import { ViewportOverlays } from './ViewportOverlays';
+import { MergeLayersBanner } from './MergeLayersBanner';
 import { ToolOverlays } from './ToolOverlays';
+import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { Section2DPanel } from './Section2DPanel';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -18,10 +20,13 @@ import { useWebGPU } from '@/hooks/useWebGPU';
 import { openIfcFileDialog } from '@/services/file-dialog';
 import { logToDesktopTerminal } from '@/services/desktop-logger';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
-import { isTauri } from '@/utils/ifcConfig';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3 } from 'lucide-react';
-import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { extractGeoreferencingOnDemand, type IfcDataStore, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
+import { isTauri } from '@/lib/platform';
+import { toast } from '@/components/ui/toast';
+import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
+import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight } from 'lucide-react';
+import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
+import { type IfcDataStore } from '@ifc-lite/parser';
+import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -43,6 +48,7 @@ export function ViewportContainer() {
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const setCesiumSourceModelId = useViewerStore((s) => s.setCesiumSourceModelId);
+  const setCesiumAvailable = useViewerStore((s) => s.setCesiumAvailable);
   // Subscribe to mutationVersion so Cesium reacts to georef edits
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -171,86 +177,100 @@ export function ViewportContainer() {
     return geometryResult;
   }, [storeModels, geometryResult, modelIdToIndex]);
 
+  /**
+   * Aggregate point clouds across visible models.
+   *
+   * Phase 0: identity-stamping with modelIndex. Returns the same array
+   * reference when nothing has changed so the consumer effect skips work.
+   */
+  const mergedPointClouds = useMemo(() => {
+    const collected: PointCloudAsset[] = [];
+    if (storeModels.size > 0) {
+      for (const [modelId, model] of storeModels) {
+        if (!model.visible) continue;
+        const assets = model.geometryResult?.pointClouds;
+        if (!assets || assets.length === 0) continue;
+        const modelIndex = modelIdToIndex.get(modelId) ?? 0;
+        for (const asset of assets) {
+          collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
+        }
+      }
+    } else if (geometryResult?.pointClouds) {
+      collected.push(...geometryResult.pointClouds);
+    }
+    return collected;
+  }, [storeModels, geometryResult, modelIdToIndex]);
+
   // Extract georeferencing info merged with any live mutations (for Cesium overlay).
   // Reacts to: model load, Cesium toggle, and every georef field edit.
   const georef = useMemo(() => {
     if (!cesiumEnabled) return null;
 
-    // Helper: merge original georef with mutations for a model
-    function mergeGeoref(
-      originalCRS: ProjectedCRS | undefined,
-      originalConv: MapConversion | undefined,
-      modelId: string,
-    ): { mapConversion: MapConversion; projectedCRS: ProjectedCRS } | null {
-      const muts = georefMutations.get(modelId);
-      const mutCRS = muts?.projectedCRS;
-      const mutConv = muts?.mapConversion;
-
-      // Build merged ProjectedCRS — mutation fields override originals
-      const hasCRS = originalCRS || mutCRS;
-      if (!hasCRS) return null;
-      const projectedCRS: ProjectedCRS = {
-        id: originalCRS?.id ?? 0,
-        name: (mutCRS?.name ?? originalCRS?.name ?? '') as string,
-        description: mutCRS?.description ?? originalCRS?.description,
-        geodeticDatum: mutCRS?.geodeticDatum ?? originalCRS?.geodeticDatum,
-        verticalDatum: mutCRS?.verticalDatum ?? originalCRS?.verticalDatum,
-        mapProjection: mutCRS?.mapProjection ?? originalCRS?.mapProjection,
-        mapZone: mutCRS?.mapZone ?? originalCRS?.mapZone,
-        mapUnit: mutCRS?.mapUnit ?? originalCRS?.mapUnit,
-      };
-
-      // Need at least an EPSG name to resolve projection
-      if (!projectedCRS.name) return null;
-
-      // Build merged MapConversion
-      const mapConversion: MapConversion = {
-        id: originalConv?.id ?? 0,
-        sourceCRS: originalConv?.sourceCRS ?? 0,
-        targetCRS: originalConv?.targetCRS ?? 0,
-        eastings: (mutConv?.eastings ?? originalConv?.eastings ?? 0) as number,
-        northings: (mutConv?.northings ?? originalConv?.northings ?? 0) as number,
-        orthogonalHeight: (mutConv?.orthogonalHeight ?? originalConv?.orthogonalHeight ?? 0) as number,
-        xAxisAbscissa: mutConv?.xAxisAbscissa ?? originalConv?.xAxisAbscissa,
-        xAxisOrdinate: mutConv?.xAxisOrdinate ?? originalConv?.xAxisOrdinate,
-        scale: mutConv?.scale ?? originalConv?.scale,
-      };
-
-      return { mapConversion, projectedCRS };
-    }
-
     // Check federated models first
     for (const [modelId, model] of storeModels) {
       const ds = model.ifcDataStore;
       if (!ds) continue;
-      const original = extractGeoreferencingOnDemand(ds as IfcDataStore);
-      const merged = mergeGeoref(
-        original?.projectedCRS,
-        original?.mapConversion,
-        modelId,
+      const effective = getEffectiveGeoreference(
+        ds as IfcDataStore,
+        model.geometryResult?.coordinateInfo,
+        georefMutations.get(modelId),
       );
-      if (merged) {
-        // Return coordinateInfo from the SAME model to avoid mismatched transforms
-        const coordInfo = model.geometryResult?.coordinateInfo;
-        return { hasGeoreference: true, ...merged, sourceModelId: modelId, coordinateInfo: coordInfo };
+      if (effective?.projectedCRS?.name && effective.mapConversion) {
+        return {
+          ...effective,
+          sourceModelId: modelId,
+          storeyElevations: ds.spatialHierarchy?.storeyElevations,
+        };
       }
     }
 
     // Fallback to legacy single-model
     if (ifcDataStore) {
-      const original = extractGeoreferencingOnDemand(ifcDataStore as IfcDataStore);
-      const merged = mergeGeoref(
-        original?.projectedCRS,
-        original?.mapConversion,
-        '__legacy__',
+      const effective = getEffectiveGeoreference(
+        ifcDataStore as IfcDataStore,
+        mergedGeometryResult?.coordinateInfo,
+        georefMutations.get('__legacy__'),
       );
-      if (merged) {
-        return { hasGeoreference: true, ...merged, sourceModelId: '__legacy__', coordinateInfo: mergedGeometryResult?.coordinateInfo };
+      if (effective?.projectedCRS?.name && effective.mapConversion) {
+        return {
+          ...effective,
+          sourceModelId: '__legacy__',
+          storeyElevations: ifcDataStore.spatialHierarchy?.storeyElevations,
+        };
       }
     }
 
     return null;
   }, [cesiumEnabled, storeModels, ifcDataStore, georefMutations, mutationVersion, mergedGeometryResult]);
+
+  // Determine whether Cesium button should be visible (model has georef or user added it via mutations).
+  // Runs independently of cesiumEnabled so the button appears/disappears reactively.
+  useEffect(() => {
+    function hasGeoref(): boolean {
+      // Check federated models
+      for (const [modelId, model] of storeModels) {
+        const ds = model.ifcDataStore;
+        if (!ds) continue;
+        const effective = getEffectiveGeoreference(
+          ds as IfcDataStore,
+          model.geometryResult?.coordinateInfo,
+          georefMutations.get(modelId),
+        );
+        if (effective?.projectedCRS?.name) return true;
+      }
+      // Fallback to legacy single-model
+      if (ifcDataStore) {
+        const effective = getEffectiveGeoreference(
+          ifcDataStore as IfcDataStore,
+          mergedGeometryResult?.coordinateInfo,
+          georefMutations.get('__legacy__'),
+        );
+        if (effective?.projectedCRS?.name) return true;
+      }
+      return false;
+    }
+    setCesiumAvailable(hasGeoref());
+  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult]);
 
   // Sync the active Cesium source model ID so terrain actions are scoped correctly
   useEffect(() => {
@@ -296,12 +316,22 @@ export function ViewportContainer() {
       return;
     }
 
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(e.dataTransfer.files).filter(
+    // Filter to supported files (IFC, IFCX, GLB, point clouds)
+    const allDropped = Array.from(e.dataTransfer.files);
+    const supportedFiles = allDropped.filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
     );
 
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) {
+      // Tell the user *why* — common case is a Recap project / SketchUp
+      // file dropped because they assumed our viewer would understand it.
+      const explained = allDropped.find((f) => describeUnsupportedFormat(f.name));
+      if (explained) {
+        toast.error(`${explained.name}: ${describeUnsupportedFormat(explained.name)}`);
+      }
+      return;
+    }
 
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
@@ -333,6 +363,7 @@ export function ViewportContainer() {
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
     );
 
     if (supportedFiles.length === 0) return;
@@ -544,7 +575,7 @@ export function ViewportContainer() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ifc,.ifcx,.glb"
+          accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
           multiple
           onChange={handleFileSelect}
           className="hidden"
@@ -713,10 +744,18 @@ export function ViewportContainer() {
               IFClite
             </h2>
             <p className="text-zinc-500 dark:text-[#565f89] font-mono text-sm text-center mb-8 border-b border-zinc-200 dark:border-[#3b4261] pb-4 w-full">
-              High-performance web viewer demo
+              IFC toolkit for the open web
             </p>
 
-            {/* Action */}
+            {/*
+              Two-track action area: a primary "open file" track and a
+              secondary "drive with LLM" track sit in mirrored slots — same
+              width, same vertical rhythm, each followed by its own caption
+              line. Reads as one balanced composition instead of a primary
+              CTA + a tacked-on link, while keeping the file-open path
+              visually dominant via the filled-on-hover treatment.
+            */}
+            {/* Track 1 — open / drag */}
             <button
               onClick={async () => {
                 if (!webgpu.supported) {
@@ -752,8 +791,31 @@ export function ViewportContainer() {
               <span>{webgpu.checking ? 'Checking WebGPU...' : webgpu.supported ? 'Open .ifc file' : 'WebGPU Required'}</span>
             </button>
 
-            <p className="mt-3 text-xs font-mono text-zinc-400 dark:text-[#565f89]">
+            <p className="mt-2.5 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
               {webgpu.supported ? 'or drag & drop anywhere' : 'file upload disabled'}
+            </p>
+
+            {/* Subtle "or" rule — anchors the symmetry between the two tracks */}
+            <div className="mt-5 mb-5 w-full flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-zinc-400 dark:text-[#565f89]">
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
+              <span>or</span>
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
+            </div>
+
+            {/* Track 2 — agent / MCP. Compact inline pill, self-centred so
+                it reads as a meta-link sibling to the primary file-open
+                CTA, not a competing full-width button. */}
+            <a
+              href="/mcp"
+              className="group inline-flex self-center items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary transition-all cursor-pointer"
+            >
+              <Sparkles className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
+              <span>Drive with any LLM</span>
+              <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </a>
+
+            <p className="mt-1.5 text-[10px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
+              via MCP · install or try the playground
             </p>
 
             {recentFiles.length > 0 && (
@@ -847,27 +909,35 @@ export function ViewportContainer() {
         </div>
       )}
 
-      {/* Cesium 3D world context overlay — rendered behind the WebGPU canvas */}
-      {cesiumEnabled && georef && (
+      {/* Cesium 3D world context overlay — rendered behind the WebGPU canvas (web only) */}
+      {cesiumEnabled && georef && !isTauri() && (
         <CesiumOverlay
           mapConversion={georef.mapConversion}
           projectedCRS={georef.projectedCRS}
           coordinateInfo={georef.coordinateInfo}
           geometryResult={mergedGeometryResult}
+          lengthUnitScale={georef.lengthUnitScale}
+          storeyElevations={georef.storeyElevations}
         />
       )}
       <Viewport
         geometry={filteredGeometry}
         geometryVersion={geometryVersion}
+        pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}
         computedIsolatedIds={computedIsolatedIds}
         modelIdToIndex={modelIdToIndex}
-        cesiumActive={cesiumEnabled && georef !== null}
+        cesiumActive={cesiumEnabled && georef !== null && !isTauri()}
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
+      <AnnotationLayer />
       {bcfOverlayVisible && <BCFOverlay />}
       <ViewportOverlays />
+      {/* Issue #540: non-modal "reload to apply" banner anchored to the
+          top of the canvas. Only renders when the user has flipped the
+          merge-layers toggle while a model is in scope. */}
+      <MergeLayersBanner />
       <ToolOverlays />
       <BasketPresentationDock />
       <Section2DPanel

@@ -211,7 +211,7 @@ pub(crate) fn find_color_for_geometry(
 }
 
 /// Extract RGBA color from IfcStyledItem.Styles attribute
-fn extract_color_from_styles(
+pub(crate) fn extract_color_from_styles(
     styles_attr: &ifc_lite_core::AttributeValue,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<[f32; 4]> {
@@ -385,6 +385,16 @@ pub(crate) struct PrePassData {
     /// Element ID → list of material-based colors (from IfcRelAssociatesMaterial chain).
     /// Used as fallback when a sub-mesh has no direct IfcStyledItem style.
     pub element_material_styles: rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
+    /// Material layer buildup index (IfcMaterialLayerSetUsage → sliceable
+    /// layers). Elements here are eligible for per-layer sub-meshes even if
+    /// their geometry is a single swept solid. Held in an `Arc` so it can be
+    /// attached to the `GeometryRouter` without cloning the map.
+    pub material_layer_index: std::sync::Arc<ifc_lite_geometry::MaterialLayerIndex>,
+    /// Map from every emitted `IfcBuildingElementPart` whose parent has its own
+    /// `Representation` → parent element id. Captured during
+    /// `propagate_voids_to_parts` so the merge-layers toggle (#540) can skip
+    /// per-part meshes when the parent is sliceable.
+    pub part_to_parent: rustc_hash::FxHashMap<u32, u32>,
 }
 
 /// Single EntityScanner pass that collects everything needed before geometry
@@ -483,7 +493,7 @@ pub(crate) fn combined_pre_pass(
             _ => {
                 if ifc_lite_core::has_geometry_by_name(type_name) {
                     let ifc_type = ifc_lite_core::IfcType::from_str(type_name);
-                    if is_simple_geometry_type(type_name) {
+                    if ifc_lite_core::is_simple_geometry_type(type_name) {
                         simple_jobs.push((id, start, end, ifc_type));
                     } else {
                         complex_jobs.push((id, start, end, ifc_type));
@@ -502,9 +512,23 @@ pub(crate) fn combined_pre_pass(
     let element_material_styles =
         build_element_material_styles(&element_to_material, &material_styles, decoder);
 
+    // Flat material_id → color map; merge into geometry_styles so per-layer
+    // slices (whose geometry_id = IfcMaterial id) resolve through the normal
+    // path. IFC express IDs are globally unique across types so no collision.
+    for (&mat_id, &color) in flatten_material_color_index(&material_styles).iter() {
+        geometry_styles.entry(mat_id).or_insert(color);
+    }
+
+    // Scan IfcRelAssociatesMaterial → resolved LayerBuildup per element.
+    let material_layer_index = std::sync::Arc::new(
+        ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder),
+    );
+
     // Propagate voids from aggregate parents (IfcWall) to children (IfcBuildingElementPart)
-    // so that multilayer wall parts also get window/door cutouts.
-    ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
+    // so that multilayer wall parts also get window/door cutouts. Also captures
+    // the part → parent map used by the merge-layers toggle (issue #540).
+    let part_to_parent =
+        ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
 
     PrePassData {
         geometry_styles,
@@ -515,12 +539,14 @@ pub(crate) fn combined_pre_pass(
         simple_jobs,
         complex_jobs,
         element_material_styles,
+        material_layer_index,
+        part_to_parent,
     }
 }
 
 /// Build material style index: maps material IDs to their colors.
 /// Follows: material → IfcMaterialDefinitionRepresentation → IfcStyledRepresentation → orphan IfcStyledItem
-fn build_material_style_index(
+pub(crate) fn build_material_style_index(
     material_def_reprs: &rustc_hash::FxHashMap<u32, Vec<u32>>,
     orphan_styled_items: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -568,7 +594,7 @@ fn build_material_style_index(
 /// individual materials → colors.
 /// Handles: IfcMaterial, IfcMaterialList, IfcMaterialLayerSet, IfcMaterialLayerSetUsage,
 ///          IfcMaterialConstituentSet (IFC4), IfcMaterialProfileSet (IFC4)
-fn build_element_material_styles(
+pub(crate) fn build_element_material_styles(
     element_to_material: &rustc_hash::FxHashMap<u32, u32>,
     material_styles: &rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -717,6 +743,45 @@ pub(crate) fn build_element_material_styles_from_content(
     build_element_material_styles(&element_to_material, &material_styles, decoder)
 }
 
+/// Flatten a `material_id -> Vec<color>` map into `material_id -> color` by
+/// picking the first opaque color per material (falling back to the first
+/// color overall). Used to key layered sub-mesh colour lookups on material
+/// ID — each layer slice's `geometry_id` is its `IfcMaterial` entity ID.
+pub(crate) fn flatten_material_color_index(
+    material_styles: &rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
+) -> rustc_hash::FxHashMap<u32, [f32; 4]> {
+    use rustc_hash::FxHashMap;
+    let mut out: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    for (&mat_id, colors) in material_styles {
+        if colors.is_empty() {
+            continue;
+        }
+        // Prefer an opaque color (alpha >= threshold) so walls don't end up
+        // rendered as the glass-style color when a material carries both.
+        let color = colors
+            .iter()
+            .find(|c| c[3] >= TRANSPARENCY_ALPHA_THRESHOLD)
+            .copied()
+            .unwrap_or(colors[0]);
+        out.insert(mat_id, color);
+    }
+    out
+}
+
+/// Build a flat `material_id -> color` map from a fresh scan of `content`.
+/// Standalone variant for the synchronous parse_meshes path that can't share
+/// state with `combined_pre_pass`.
+pub(crate) fn build_material_color_index_from_content(
+    content: &str,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> rustc_hash::FxHashMap<u32, [f32; 4]> {
+    let (orphan_styled_items, material_def_reprs, _element_to_material) =
+        collect_material_data(content, decoder);
+    let material_styles =
+        build_material_style_index(&material_def_reprs, &orphan_styled_items, decoder);
+    flatten_material_color_index(&material_styles)
+}
+
 /// Collect material-related data from an IFC content scan.
 /// Returns: (orphan_styled_items, material_def_reprs, element_to_material)
 ///
@@ -759,7 +824,7 @@ fn collect_material_data(
 /// Process a single entity for material-related data collection.
 /// Called from both `combined_pre_pass` (inline in the scan loop) and
 /// `collect_material_data` (standalone scan).
-fn collect_material_entity(
+pub(crate) fn collect_material_entity(
     id: u32,
     type_name: &str,
     start: usize,
@@ -886,33 +951,6 @@ pub(crate) fn pick_material_style_for_submesh(
 
     // Fallback: first available color
     Some(material_colors[0])
-}
-
-/// Check if an IFC entity class is "simple" geometry (processed first for fast
-/// first frame).  Instead of whitelisting known simple classes — which breaks
-/// whenever new IFC entity classes appear (e.g. IFC4X3 infrastructure) — we
-/// blacklist the classes that are known to be secondary/complex.  Everything
-/// else with geometry defaults to "simple" priority.
-pub(crate) fn is_simple_geometry_type(type_name: &str) -> bool {
-    !matches!(
-        type_name,
-        // Openings / voids — subtracted, not rendered directly
-        "IFCOPENINGELEMENT" | "IFCOPENINGSTANDARDCASE"
-        // Windows & doors — detailed geometry, lower priority
-        | "IFCWINDOW" | "IFCWINDOWSTANDARDCASE"
-        | "IFCDOOR" | "IFCDOORSTANDARDCASE"
-        // Furnishing — typically high-poly, secondary
-        | "IFCFURNISHINGELEMENT" | "IFCFURNITURE" | "IFCSYSTEMFURNITUREELEMENT"
-        // MEP / distribution — dense small elements
-        | "IFCDISTRIBUTIONELEMENT" | "IFCDISTRIBUTIONFLOWELEMENT" | "IFCDISTRIBUTIONCONTROLELEMENT"
-        | "IFCFLOWSEGMENT" | "IFCFLOWFITTING" | "IFCFLOWTERMINAL"
-        | "IFCFLOWCONTROLLER" | "IFCFLOWMOVINGDEVICE" | "IFCFLOWSTORAGEDEVICE"
-        | "IFCFLOWTREATMENTDEVICE" | "IFCENERGYCONVERSIONDEVICE"
-        // Spatial elements — not structural
-        | "IFCSPACE" | "IFCSITE"
-        // Annotations & virtual
-        | "IFCANNOTATION" | "IFCVIRTUALELEMENT" | "IFCPROXY"
-    )
 }
 
 /// Resolve element color inline during processing by following its

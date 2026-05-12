@@ -17,6 +17,7 @@ import {
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
   extractAllEntityAttributes,
+  extractTypeEntityOwnProperties,
 } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
 
@@ -39,7 +40,7 @@ export async function idsCommand(args: string[]): Promise<void> {
   // Build accessor for validation
   const accessor = buildIdsAccessor(store);
 
-  const report = await bim.ids.validate(idsDoc as any, {
+  const report = await bim.ids.validate(idsDoc, {
     accessor,
     modelInfo: { schemaVersion: store.schemaVersion },
     locale,
@@ -52,7 +53,7 @@ export async function idsCommand(args: string[]): Promise<void> {
 
   if (!jsonOutput) process.stderr.write('\n');
 
-  const summary = bim.ids.summarize(report as any);
+  const summary = bim.ids.summarize(report as { specificationResults: Array<{ entityResults: Array<{ passed: boolean }> }> });
 
   if (jsonOutput) {
     printJson({ summary, report });
@@ -100,8 +101,25 @@ function buildIdsAccessor(store: IfcDataStore): unknown {
       return node.description || undefined;
     },
     getObjectType(expressId: number): string | undefined {
+      // Try EntityNode's objectType first (works for IfcObject subtypes)
       const node = new EntityNode(store, expressId);
-      return node.objectType || undefined;
+      if (node.objectType) return node.objectType;
+
+      // For IfcTypeObject subtypes (IfcWallType, etc.), extract PredefinedType
+      // from entity attributes since they don't have ObjectType.
+      const allAttrs = extractAllEntityAttributes(store, expressId);
+      const predefinedType = allAttrs.find(a => a.name === 'PredefinedType');
+      if (predefinedType?.value && predefinedType.value !== 'NOTDEFINED') {
+        return typeof predefinedType.value === 'string' ? predefinedType.value : String(predefinedType.value);
+      }
+
+      // If PredefinedType is USERDEFINED/absent, check ObjectType from full attributes
+      const objTypeAttr = allAttrs.find(a => a.name === 'ObjectType');
+      if (objTypeAttr?.value) {
+        return typeof objTypeAttr.value === 'string' ? objTypeAttr.value : String(objTypeAttr.value);
+      }
+
+      return undefined;
     },
     getEntitiesByType(typeName: string): number[] {
       const upper = typeName.toUpperCase();
@@ -134,15 +152,31 @@ function buildIdsAccessor(store: IfcDataStore): unknown {
       return undefined;
     },
     getPropertySets(expressId: number) {
+      // Try EntityNode first (relationship-based properties for IfcObject instances)
       const node = new EntityNode(store, expressId);
-      return node.properties().map(pset => ({
-        name: pset.name,
-        properties: pset.properties.map(p => ({
-          name: p.name,
-          value: p.value ?? null,
-          dataType: p.type ?? 'IFCLABEL',
-        })),
-      }));
+      const psets = node.properties();
+
+      const mapPsets = (rawPsets: Array<{ name: string; properties: Array<{ name: string; type: unknown; value: unknown }> }>) =>
+        rawPsets.map(pset => ({
+          name: pset.name,
+          properties: pset.properties.map(p => ({
+            name: p.name,
+            value: p.value ?? null,
+            dataType: p.type ?? 'IFCLABEL',
+          })),
+        }));
+
+      if (psets.length > 0) {
+        return mapPsets(psets);
+      }
+
+      // For IfcTypeObject subtypes, extract from HasPropertySets attribute
+      const typePsets = extractTypeEntityOwnProperties(store, expressId);
+      if (typePsets.length > 0) {
+        return mapPsets(typePsets);
+      }
+
+      return [];
     },
     getClassifications(expressId: number) {
       const classifications = extractClassificationsOnDemand(store, expressId);
@@ -175,10 +209,17 @@ function buildIdsAccessor(store: IfcDataStore): unknown {
       if (parents.length === 0) return undefined;
       const parentId = parents[0];
       const parentType = store.entities.getTypeName(parentId);
+      // Extract predefinedType from parent entity attributes
+      const parentAttrs = extractAllEntityAttributes(store, parentId);
+      const parentPredefined = parentAttrs.find(a => a.name === 'PredefinedType');
+      const predefinedType = parentPredefined?.value && parentPredefined.value !== 'NOTDEFINED'
+        ? parentPredefined.value
+        : undefined;
+
       return {
         expressId: parentId,
         entityType: parentType ?? '',
-        predefinedType: undefined,
+        predefinedType,
       };
     },
     getAttribute(expressId: number, attributeName: string): string | undefined {

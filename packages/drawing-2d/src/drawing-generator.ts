@@ -24,25 +24,25 @@ import type {
   Bounds2D,
   LineCategory,
   ProfileEntry,
-} from './types';
-import { DEFAULT_SECTION_CONFIG, makeEntityKey } from './types';
-import { SectionCutter } from './section-cutter';
-import { PolygonBuilder } from './polygon-builder';
-import { EdgeExtractor, getViewDirection } from './edge-extractor';
-import { HiddenLineClassifier } from './hidden-line';
-import { mergeDrawingLines, deduplicateLines } from './line-merger';
-import { HatchGenerator } from './hatch-generator';
-import { SVGExporter } from './svg-exporter';
-import type { SVGExportOptions } from './svg-exporter';
-import { GPUSectionCutter, isGPUComputeAvailable } from './gpu-section-cutter';
-import { projectProfiles } from './profile-projector';
+} from './types.js';
+import { DEFAULT_SECTION_CONFIG, makeEntityKey } from './types.js';
+import { SectionCutter } from './section-cutter.js';
+import { PolygonBuilder } from './polygon-builder.js';
+import { EdgeExtractor, getViewDirection } from './edge-extractor.js';
+import { HiddenLineClassifier } from './hidden-line.js';
+import { mergeDrawingLines, deduplicateLines } from './line-merger.js';
+import { HatchGenerator } from './hatch-generator.js';
+import { SVGExporter } from './svg-exporter.js';
+import type { SVGExportOptions } from './svg-exporter.js';
+import { GPUSectionCutter, isGPUComputeAvailable } from './gpu-section-cutter.js';
+import { projectProfiles } from './profile-projector.js';
 import {
   boundsEmpty,
   boundsExtendPoint,
   boundsExtendLine,
   projectTo2D,
   lineLength,
-} from './math';
+} from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -128,14 +128,20 @@ export class Drawing2DGenerator {
 
     let cutSegments: CutSegment[];
 
-    if (opts.useGPU && this.gpuCutter && this.gpuDevice) {
-      // GPU path
+    if (opts.useGPU && this.gpuCutter && this.gpuDevice && !config.plane.customPlane) {
+      // GPU path. Falls back to CPU when a custom (face-picked) plane is
+      // active because GPUSectionCutter still assumes cardinal axes —
+      // generalising the GPU path is tracked as follow-up work; for now
+      // CPU is fast enough on the FZK-Haus-class models the face-pick
+      // UX targets.
       cutSegments = await this.gpuCutter.cutMeshes(meshes, config.plane);
     } else {
-      // CPU path
-      if (!this.cpuCutter || this.cpuCutter === null) {
-        this.cpuCutter = new SectionCutter(config.plane);
-      }
+      // CPU path. Always rebuild the cutter so a switch from cardinal
+      // to custom-plane (or between two different custom planes) takes
+      // effect immediately — caching the instance keyed only on
+      // existence, as the previous code did, would silently apply the
+      // first config used for the lifetime of the generator.
+      this.cpuCutter = new SectionCutter(config.plane);
       const cutResult = this.cpuCutter.cutMeshes(meshes);
       cutSegments = cutResult.segments;
     }

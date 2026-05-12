@@ -48,6 +48,23 @@ fn reject_unsupported_streaming_opening_filter(query: &ParseQuery) -> Result<(),
     ))
 }
 
+/// Build the parquet geometry cache key for a given file hash and opening filter.
+///
+/// Must stay in sync with the writer in `parse_parquet` / `parse_parquet_stream`,
+/// which derives the same suffix from `OpeningFilterMode::cache_key_suffix()`.
+fn parquet_cache_key(hash: &str, opening_filter: OpeningFilterMode) -> String {
+    format!("{}-{}-parquet-v2", hash, opening_filter.cache_key_suffix())
+}
+
+/// Build the parquet metadata cache key for a given file hash and opening filter.
+fn parquet_metadata_cache_key(hash: &str, opening_filter: OpeningFilterMode) -> String {
+    format!(
+        "{}-{}-parquet-metadata-v2",
+        hash,
+        opening_filter.cache_key_suffix()
+    )
+}
+
 /// Extract file data from multipart request.
 /// Automatically decompresses gzip-compressed files.
 async fn extract_file(multipart: &mut Multipart) -> Result<Vec<u8>, ApiError> {
@@ -932,18 +949,22 @@ pub async fn get_data_model(
 /// Check if a file hash is already cached.
 /// Allows client to skip upload if file is already processed.
 ///
+/// The optional `opening_filter` query parameter must match the value used when
+/// the file was uploaded — different filter modes produce distinct cache entries.
+///
 /// Response:
 /// - 200: File is cached (geometry available)
 /// - 404: File not cached (needs upload)
 pub async fn check_cache(
     State(state): State<AppState>,
+    Query(query): Query<ParseQuery>,
     axum::extract::Path(hash): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
-    let parquet_cache_key = format!("{}-parquet-v2", hash);
+    let parquet_cache_key = parquet_cache_key(&hash, query.opening_filter);
 
     match state.cache.get_bytes(&parquet_cache_key).await? {
         Some(_) => {
-            tracing::debug!(hash = %hash, "Cache check HIT");
+            tracing::debug!(hash = %hash, cache_key = %parquet_cache_key, "Cache check HIT");
             let response = Response::builder()
                 .status(StatusCode::OK)
                 .body(Body::empty())
@@ -951,7 +972,7 @@ pub async fn check_cache(
             Ok(response)
         }
         None => {
-            tracing::debug!(hash = %hash, "Cache check MISS");
+            tracing::debug!(hash = %hash, cache_key = %parquet_cache_key, "Cache check MISS");
             let response = Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::empty())
@@ -966,15 +987,19 @@ pub async fn check_cache(
 /// Fetch cached Parquet geometry directly without uploading the file.
 /// Used when client-side hash check confirms file is already cached.
 ///
+/// The optional `opening_filter` query parameter must match the value used when
+/// the file was uploaded — different filter modes produce distinct cache entries.
+///
 /// Response:
 /// - 200: Cached Parquet geometry with metadata header
 /// - 404: Cache entry not found
 pub async fn get_cached_geometry(
     State(state): State<AppState>,
+    Query(query): Query<ParseQuery>,
     axum::extract::Path(hash): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
-    let parquet_cache_key = format!("{}-parquet-v2", hash);
-    let metadata_cache_key = format!("{}-parquet-metadata-v2", hash);
+    let parquet_cache_key = parquet_cache_key(&hash, query.opening_filter);
+    let metadata_cache_key = parquet_metadata_cache_key(&hash, query.opening_filter);
 
     match (
         state.cache.get_bytes(&parquet_cache_key).await?,
@@ -1004,5 +1029,40 @@ pub async fn get_cached_geometry(
                 hash
             )))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for #587: the reader (`check_cache`) used to look up
+    /// `{hash}-parquet-v2`, while the writer (`parse_parquet`) stored
+    /// `{hash}-{opening_filter}-parquet-v2`, so the check always returned 404.
+    /// The shared helper must produce the same key the writer stores under.
+    #[test]
+    fn parquet_cache_key_matches_writer_format() {
+        let hash = "0ab20f4e4014";
+
+        // The writer composes `cache_key = format!("{hash}-{suffix}")` and then
+        // `format!("{cache_key}-parquet-v2")`. The helper must produce the same string.
+        for mode in [
+            OpeningFilterMode::Default,
+            OpeningFilterMode::IgnoreAll,
+            OpeningFilterMode::IgnoreOpaque,
+        ] {
+            let writer_cache_key = format!("{}-{}", hash, mode.cache_key_suffix());
+            let writer_parquet_key = format!("{}-parquet-v2", writer_cache_key);
+            let writer_metadata_key = format!("{}-parquet-metadata-v2", writer_cache_key);
+
+            assert_eq!(parquet_cache_key(hash, mode), writer_parquet_key);
+            assert_eq!(parquet_metadata_cache_key(hash, mode), writer_metadata_key);
+        }
+    }
+
+    #[test]
+    fn parquet_cache_key_default_filter_uses_default_suffix() {
+        let key = parquet_cache_key("abc", OpeningFilterMode::Default);
+        assert_eq!(key, "abc-default-parquet-v2");
     }
 }

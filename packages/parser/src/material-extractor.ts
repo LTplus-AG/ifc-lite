@@ -18,7 +18,7 @@
  * - IfcRelAssociatesMaterial: Associates materials with elements
  */
 
-import type { IfcEntity } from './entity-extractor';
+import type { IfcEntity } from './entity-extractor.js';
 import { getString, getNumber, getBoolean, getReference, getReferences } from './attribute-helpers.js';
 
 export interface Material {

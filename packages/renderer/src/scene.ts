@@ -8,17 +8,16 @@
 
 import type { Mesh, InstancedMesh, BatchedMesh, Vec3 } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
-import { MathUtils } from './math.js';
 import type { RenderPipeline } from './pipeline.js';
 import { BATCH_CONSTANTS } from './constants.js';
-
-const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
-let warnedEntityIdRange = false;
-
-interface BoundingBox {
-  min: Vec3;
-  max: Vec3;
-}
+import {
+  type BoundingBox,
+  type RaycastHit,
+  prepareRayDirInv,
+  raycastBoundingBoxes,
+  raycastTriangles,
+} from './scene-raycaster.js';
+import { mergeGeometry, splitMeshDataForBufferLimit } from './scene-geometry.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -335,6 +334,27 @@ export class Scene {
    * Get all MeshData pieces for an expressId (without merging).
    * Optionally filter by modelIndex for multi-model safety.
    */
+  /**
+   * Iterate every CPU-side `MeshData` the scene holds — every piece
+   * for every expressId across every model. Used by the BIM ↔ scan
+   * deviation BVH builder which needs world-space triangle positions
+   * regardless of which IFC ingest path they came from.
+   *
+   * Deduplicates by `MeshData` identity: a colour-merged batch is
+   * stored under every contributor's expressId, and visiting it
+   * multiple times would double-count its triangles in the BVH.
+   */
+  forEachMeshData(visit: (md: MeshData) => void): void {
+    const seen = new Set<MeshData>();
+    for (const pieces of this.meshDataMap.values()) {
+      for (const piece of pieces) {
+        if (seen.has(piece)) continue;
+        seen.add(piece);
+        visit(piece);
+      }
+    }
+  }
+
   getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined {
     let pieces = this.meshDataMap.get(expressId);
     if (!pieces || pieces.length === 0) return undefined;
@@ -524,8 +544,8 @@ export class Scene {
     // This preserves the per-frame time budget while cutting appendToBatches()
     // overhead and front-of-array churn during huge desktop streams.
     const MAX_MESHES_PER_FLUSH = 4096;
-    const MESHES_PER_APPEND = 128;
-    const FLUSH_BUDGET_MS = 10;
+    const MESHES_PER_APPEND = 512;
+    const FLUSH_BUDGET_MS = 12;
     const start = performance.now();
     let processed = 0;
 
@@ -1109,18 +1129,24 @@ export class Scene {
     const expressIds = meshDataArray.map(m => m.expressId);
 
     // Create vertex buffer (interleaved positions + normals)
+    // Use mappedAtCreation to avoid a separate writeBuffer IPC round-trip
+    // (significant win on Chrome/Dawn where each writeBuffer is a Mojo IPC call)
     const vertexBuffer = device.createBuffer({
       size: merged.vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      mappedAtCreation: true,
     });
-    device.queue.writeBuffer(vertexBuffer, 0, merged.vertexData);
+    new Float32Array(vertexBuffer.getMappedRange()).set(merged.vertexData);
+    vertexBuffer.unmap();
 
     // Create index buffer
     const indexBuffer = device.createBuffer({
       size: merged.indices.byteLength,
       usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+      mappedAtCreation: true,
     });
-    device.queue.writeBuffer(indexBuffer, 0, merged.indices);
+    new Uint32Array(indexBuffer.getMappedRange()).set(merged.indices);
+    indexBuffer.unmap();
 
     // Create uniform buffer for this batch
     const uniformBuffer = device.createBuffer({
@@ -1155,97 +1181,15 @@ export class Scene {
 
 
   /**
-   * Merge multiple mesh geometries into single vertex/index buffers
-   *
-   * OPTIMIZATION: Uses efficient loops and bulk index adjustment
+   * Merge multiple mesh geometries into single vertex/index buffers.
+   * Delegates to the extracted mergeGeometry() utility.
    */
   private mergeGeometry(meshDataArray: MeshData[]): {
     vertexData: Float32Array;
     indices: Uint32Array;
     bounds: { min: [number, number, number]; max: [number, number, number] };
   } {
-    let totalVertices = 0;
-    let totalIndices = 0;
-
-    // Calculate total sizes
-    for (const mesh of meshDataArray) {
-      totalVertices += mesh.positions.length / 3;
-      totalIndices += mesh.indices.length;
-    }
-
-    // Create merged buffers
-    const vertexBufferRaw = new ArrayBuffer(totalVertices * 7 * 4);
-    const vertexData = new Float32Array(vertexBufferRaw); // position + normal
-    const vertexDataU32 = new Uint32Array(vertexBufferRaw); // entityId lane
-    const indices = new Uint32Array(totalIndices);
-
-    // Track bounds during merge (avoids a second pass)
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-    let indexOffset = 0;
-    let vertexBase = 0;
-
-    for (const mesh of meshDataArray) {
-      const positions = mesh.positions;
-      const normals = mesh.normals;
-      const vertexCount = positions.length / 3;
-
-      // Interleave vertex data (position + normal + entityId)
-      // This loop is O(n) per mesh and unavoidable for interleaving
-      let outIdx = vertexBase * 7;
-      const perVertexEntityIds = mesh.entityIds; // color-merged batches
-      let entityId = mesh.expressId >>> 0;
-      if (!perVertexEntityIds && entityId > MAX_ENCODED_ENTITY_ID) {
-        if (!warnedEntityIdRange) {
-          warnedEntityIdRange = true;
-          console.warn('[Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.');
-        }
-        entityId = entityId & MAX_ENCODED_ENTITY_ID;
-      }
-      const hasNormals = normals.length > 0;
-      for (let i = 0; i < vertexCount; i++) {
-        const srcIdx = i * 3;
-        const px = positions[srcIdx];
-        const py = positions[srcIdx + 1];
-        const pz = positions[srcIdx + 2];
-        vertexData[outIdx++] = px;
-        vertexData[outIdx++] = py;
-        vertexData[outIdx++] = pz;
-        vertexData[outIdx++] = hasNormals ? normals[srcIdx] : 0;
-        vertexData[outIdx++] = hasNormals ? normals[srcIdx + 1] : 0;
-        vertexData[outIdx++] = hasNormals ? normals[srcIdx + 2] : 0;
-        vertexDataU32[outIdx++] = perVertexEntityIds ? (perVertexEntityIds[i] >>> 0) : entityId;
-
-        // Update bounds
-        if (px < minX) minX = px;
-        if (py < minY) minY = py;
-        if (pz < minZ) minZ = pz;
-        if (px > maxX) maxX = px;
-        if (py > maxY) maxY = py;
-        if (pz > maxZ) maxZ = pz;
-      }
-
-      // Copy indices with vertex base offset
-      // Use subarray for slightly better cache locality
-      const meshIndices = mesh.indices;
-      const indexCount = meshIndices.length;
-      for (let i = 0; i < indexCount; i++) {
-        indices[indexOffset + i] = meshIndices[i] + vertexBase;
-      }
-
-      vertexBase += vertexCount;
-      indexOffset += indexCount;
-    }
-
-    return {
-      vertexData,
-      indices,
-      bounds: {
-        min: [minX, minY, minZ],
-        max: [maxX, maxY, maxZ],
-      },
-    };
+    return mergeGeometry(meshDataArray);
   }
 
   /**
@@ -1257,58 +1201,11 @@ export class Scene {
   }
 
   /**
-   * Split a meshDataArray into chunks where each chunk's largest buffer
-   * (vertex or index) stays within maxBufferSize.
-   *
-   * Each mesh is kept intact — we never split a single element's geometry.
-   * If a single mesh exceeds the limit on its own it is placed in a solo chunk
-   * (WebGPU will clamp or error, but we don't silently drop geometry).
+   * Split a meshDataArray into chunks that fit within GPU buffer limits.
+   * Delegates to the extracted splitMeshDataForBufferLimit() utility.
    */
   private splitMeshDataForBufferLimit(meshDataArray: MeshData[], maxBufferSize: number): MeshData[][] {
-    // Fast path: estimate total size — if it fits, no splitting needed
-    let totalVertexBytes = 0;
-    let totalIndexBytes = 0;
-    for (const mesh of meshDataArray) {
-      totalVertexBytes += (mesh.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
-      totalIndexBytes += mesh.indices.length * BATCH_CONSTANTS.BYTES_PER_INDEX;
-    }
-    if (totalVertexBytes <= maxBufferSize && totalIndexBytes <= maxBufferSize) {
-      return [meshDataArray];
-    }
-
-    // Slow path: partition into chunks
-    const chunks: MeshData[][] = [];
-    let currentChunk: MeshData[] = [];
-    let currentVertexBytes = 0;
-    let currentIndexBytes = 0;
-
-    for (const mesh of meshDataArray) {
-      const meshVertexBytes = (mesh.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
-      const meshIndexBytes = mesh.indices.length * BATCH_CONSTANTS.BYTES_PER_INDEX;
-
-      // Would adding this mesh exceed the limit? Start a new chunk.
-      // (Skip check when chunk is empty — a single mesh must always be included.)
-      if (
-        currentChunk.length > 0 &&
-        (currentVertexBytes + meshVertexBytes > maxBufferSize ||
-         currentIndexBytes + meshIndexBytes > maxBufferSize)
-      ) {
-        chunks.push(currentChunk);
-        currentChunk = [];
-        currentVertexBytes = 0;
-        currentIndexBytes = 0;
-      }
-
-      currentChunk.push(mesh);
-      currentVertexBytes += meshVertexBytes;
-      currentIndexBytes += meshIndexBytes;
-    }
-
-    if (currentChunk.length > 0) {
-      chunks.push(currentChunk);
-    }
-
-    return chunks;
+    return splitMeshDataForBufferLimit(meshDataArray, maxBufferSize);
   }
 
   /**
@@ -1715,242 +1612,33 @@ export class Scene {
   }
 
   /**
-   * Ray-box intersection test (slab method).
-   * Handles zero ray direction components (axis-aligned rays) safely.
-   */
-  private rayIntersectsBox(
-    rayOrigin: Vec3,
-    rayDirInv: Vec3,  // 1/rayDir for efficiency
-    rayDirSign: [number, number, number],
-    box: BoundingBox
-  ): boolean {
-    const bounds = [box.min, box.max];
-
-    let tmin = -Infinity;
-    let tmax = Infinity;
-
-    // X axis
-    if (!isFinite(rayDirInv.x)) {
-      if (rayOrigin.x < box.min.x || rayOrigin.x > box.max.x) return false;
-    } else {
-      tmin = (bounds[rayDirSign[0]].x - rayOrigin.x) * rayDirInv.x;
-      tmax = (bounds[1 - rayDirSign[0]].x - rayOrigin.x) * rayDirInv.x;
-    }
-
-    // Y axis
-    if (!isFinite(rayDirInv.y)) {
-      if (rayOrigin.y < box.min.y || rayOrigin.y > box.max.y) return false;
-    } else {
-      const tymin = (bounds[rayDirSign[1]].y - rayOrigin.y) * rayDirInv.y;
-      const tymax = (bounds[1 - rayDirSign[1]].y - rayOrigin.y) * rayDirInv.y;
-      if (tmin > tymax || tymin > tmax) return false;
-      if (tymin > tmin) tmin = tymin;
-      if (tymax < tmax) tmax = tymax;
-    }
-
-    // Z axis
-    if (!isFinite(rayDirInv.z)) {
-      if (rayOrigin.z < box.min.z || rayOrigin.z > box.max.z) return false;
-    } else {
-      const tzmin = (bounds[rayDirSign[2]].z - rayOrigin.z) * rayDirInv.z;
-      const tzmax = (bounds[1 - rayDirSign[2]].z - rayOrigin.z) * rayDirInv.z;
-      if (tmin > tzmax || tzmin > tmax) return false;
-      if (tzmin > tmin) tmin = tzmin;
-      if (tzmax < tmax) tmax = tzmax;
-    }
-
-    return tmax >= 0;
-  }
-
-  /**
-   * Ray-box intersection returning entry distance (tNear).
-   * Returns null if no intersection, otherwise the distance along the ray
-   * to the entry point (clamped to 0 if the ray originates inside the box).
-   * Handles zero ray direction components (axis-aligned rays) safely.
-   */
-  private rayBoxDistance(
-    rayOrigin: Vec3,
-    rayDirInv: Vec3,
-    rayDirSign: [number, number, number],
-    box: BoundingBox
-  ): number | null {
-    const bounds = [box.min, box.max];
-
-    let tmin = -Infinity;
-    let tmax = Infinity;
-
-    // X axis
-    if (!isFinite(rayDirInv.x)) {
-      // Ray parallel to X: miss if origin outside X slab
-      if (rayOrigin.x < box.min.x || rayOrigin.x > box.max.x) return null;
-    } else {
-      const t1 = (bounds[rayDirSign[0]].x - rayOrigin.x) * rayDirInv.x;
-      const t2 = (bounds[1 - rayDirSign[0]].x - rayOrigin.x) * rayDirInv.x;
-      tmin = t1;
-      tmax = t2;
-    }
-
-    // Y axis
-    if (!isFinite(rayDirInv.y)) {
-      if (rayOrigin.y < box.min.y || rayOrigin.y > box.max.y) return null;
-    } else {
-      const tymin = (bounds[rayDirSign[1]].y - rayOrigin.y) * rayDirInv.y;
-      const tymax = (bounds[1 - rayDirSign[1]].y - rayOrigin.y) * rayDirInv.y;
-      if (tmin > tymax || tymin > tmax) return null;
-      if (tymin > tmin) tmin = tymin;
-      if (tymax < tmax) tmax = tymax;
-    }
-
-    // Z axis
-    if (!isFinite(rayDirInv.z)) {
-      if (rayOrigin.z < box.min.z || rayOrigin.z > box.max.z) return null;
-    } else {
-      const tzmin = (bounds[rayDirSign[2]].z - rayOrigin.z) * rayDirInv.z;
-      const tzmax = (bounds[1 - rayDirSign[2]].z - rayOrigin.z) * rayDirInv.z;
-      if (tmin > tzmax || tzmin > tmax) return null;
-      if (tzmin > tmin) tmin = tzmin;
-      if (tzmax < tmax) tmax = tzmax;
-    }
-
-    if (tmax < 0) return null;
-    return tmin < 0 ? 0 : tmin;
-  }
-
-  /**
-   * Möller–Trumbore ray-triangle intersection
-   * Returns distance to intersection or null if no hit
-   */
-  private rayTriangleIntersect(
-    rayOrigin: Vec3,
-    rayDir: Vec3,
-    v0: Vec3,
-    v1: Vec3,
-    v2: Vec3
-  ): number | null {
-    const EPSILON = 1e-7;
-
-    const edge1 = MathUtils.subtract(v1, v0);
-    const edge2 = MathUtils.subtract(v2, v0);
-    const h = MathUtils.cross(rayDir, edge2);
-    const a = MathUtils.dot(edge1, h);
-
-    if (a > -EPSILON && a < EPSILON) return null; // Ray parallel to triangle
-
-    const f = 1.0 / a;
-    const s = MathUtils.subtract(rayOrigin, v0);
-    const u = f * MathUtils.dot(s, h);
-
-    if (u < 0.0 || u > 1.0) return null;
-
-    const q = MathUtils.cross(s, edge1);
-    const v = f * MathUtils.dot(rayDir, q);
-
-    if (v < 0.0 || u + v > 1.0) return null;
-
-    const t = f * MathUtils.dot(edge2, q);
-
-    if (t > EPSILON) return t; // Ray intersection
-    return null;
-  }
-
-  /**
-   * CPU raycast against all mesh data
-   * Returns expressId and modelIndex of closest hit, or null
-   * For multi-model support: tracks which model's geometry was hit
+   * CPU raycast against all mesh data.
+   * Returns expressId and modelIndex of closest hit, or null.
+   * Delegates to extracted raycaster utilities.
    */
   raycast(
     rayOrigin: Vec3,
     rayDir: Vec3,
     hiddenIds?: Set<number>,
     isolatedIds?: Set<number> | null
-  ): { expressId: number; distance: number; modelIndex?: number } | null {
-    // Precompute ray direction inverse and signs for box tests
-    const rayDirInv: Vec3 = {
-      x: rayDir.x !== 0 ? 1.0 / rayDir.x : Infinity,
-      y: rayDir.y !== 0 ? 1.0 / rayDir.y : Infinity,
-      z: rayDir.z !== 0 ? 1.0 / rayDir.z : Infinity,
-    };
-    const rayDirSign: [number, number, number] = [
-      rayDirInv.x < 0 ? 1 : 0,
-      rayDirInv.y < 0 ? 1 : 0,
-      rayDirInv.z < 0 ? 1 : 0,
-    ];
-
-    let closestHit: { expressId: number; distance: number; modelIndex?: number } | null = null;
-    let closestDistance = Infinity;
+  ): RaycastHit | null {
+    const { rayDirInv, rayDirSign } = prepareRayDirInv(rayDir);
 
     // When geometry data has been released, use bounding-box-only raycast.
-    // This is less accurate but uses only the precomputed bounding boxes.
-    // For precise picking, callers should use GPU picking instead.
     if (this.geometryReleased) {
-      for (const [expressId, bbox] of this.boundingBoxes) {
-        if (hiddenIds?.has(expressId)) continue;
-        if (isolatedIds !== null && isolatedIds !== undefined && !isolatedIds.has(expressId)) continue;
-
-        const tNear = this.rayBoxDistance(rayOrigin, rayDirInv, rayDirSign, bbox);
-        if (tNear !== null && tNear < closestDistance) {
-          closestDistance = tNear;
-          closestHit = { expressId, distance: tNear };
-        }
-      }
-      return closestHit;
+      return raycastBoundingBoxes(rayOrigin, rayDirInv, rayDirSign, this.boundingBoxes, hiddenIds, isolatedIds);
     }
 
-    // First pass: filter by bounding box (fast)
-    const candidates: number[] = [];
-
-    for (const expressId of this.meshDataMap.keys()) {
-      // Skip hidden elements
-      if (hiddenIds?.has(expressId)) continue;
-      // Skip non-isolated elements if isolation is active
-      if (isolatedIds !== null && isolatedIds !== undefined && !isolatedIds.has(expressId)) continue;
-
-      const bbox = this.getEntityBoundingBox(expressId);
-      if (!bbox) continue;
-
-      if (this.rayIntersectsBox(rayOrigin, rayDirInv, rayDirSign, bbox)) {
-        candidates.push(expressId);
-      }
-    }
-
-    // Second pass: test triangles for candidates (accurate)
-    for (const expressId of candidates) {
-      const pieces = this.meshDataMap.get(expressId);
-      if (!pieces) continue;
-
-      for (const piece of pieces) {
-        const positions = piece.positions;
-        const indices = piece.indices;
-        const pieceEntityIds = piece.entityIds; // per-vertex IDs for merged meshes
-
-        // Test each triangle
-        for (let i = 0; i < indices.length; i += 3) {
-          // For color-merged meshes, skip triangles that don't belong to
-          // this entity.  Without this check, hitting ANY triangle in the
-          // merged batch would attribute it to the candidate expressId.
-          if (pieceEntityIds) {
-            const vertIdx = indices[i];
-            if (pieceEntityIds[vertIdx] !== expressId) continue;
-          }
-
-          const i0 = indices[i] * 3;
-          const i1 = indices[i + 1] * 3;
-          const i2 = indices[i + 2] * 3;
-
-          const v0: Vec3 = { x: positions[i0], y: positions[i0 + 1], z: positions[i0 + 2] };
-          const v1: Vec3 = { x: positions[i1], y: positions[i1 + 1], z: positions[i1 + 2] };
-          const v2: Vec3 = { x: positions[i2], y: positions[i2 + 1], z: positions[i2 + 2] };
-
-          const t = this.rayTriangleIntersect(rayOrigin, rayDir, v0, v1, v2);
-          if (t !== null && t < closestDistance) {
-            closestDistance = t;
-            // Track modelIndex from the piece that was actually hit
-            closestHit = { expressId, distance: t, modelIndex: piece.modelIndex };
-          }
-        }
-      }
-    }
-
-    return closestHit;
+    // Full triangle-level raycast with bounding-box pre-filter
+    return raycastTriangles(
+      rayOrigin,
+      rayDir,
+      rayDirInv,
+      rayDirSign,
+      this.meshDataMap,
+      (id) => this.getEntityBoundingBox(id),
+      hiddenIds,
+      isolatedIds,
+    );
   }
 }

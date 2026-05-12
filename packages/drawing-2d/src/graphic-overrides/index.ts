@@ -24,7 +24,7 @@ export type {
   ElementData,
   ResolvedGraphicStyle,
   OverrideResult,
-} from './types';
+} from './types.js';
 
 // Rule Engine
 export {
@@ -34,7 +34,7 @@ export {
   propertyCriterion,
   andCriteria,
   orCriteria,
-} from './rule-engine';
+} from './rule-engine.js';
 
 // Presets
 export {
@@ -47,4 +47,4 @@ export {
   MONOCHROME_PRESET,
   getBuiltInPreset,
   getPresetsByCategory,
-} from './presets';
+} from './presets.js';

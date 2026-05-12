@@ -58,7 +58,7 @@ export async function bcfCommand(args: string[]): Promise<void> {
       if (!outPath) fatal('--out is required');
 
       const data = await readFile(bcfPath);
-      const project = await bcf.read(data.buffer as ArrayBuffer) as any;
+      const project = await bcf.read(data.buffer as ArrayBuffer) as { topics?: Array<{ guid: string }> | Map<string, { guid: string }> };
       const comment = await bcf.createComment({ author, comment: text });
 
       // Add comment to first topic if no topic ID specified

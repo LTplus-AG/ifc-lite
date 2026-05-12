@@ -34,6 +34,28 @@ export interface SectionPlaneConfig {
   position: number;
   /** Whether to flip the view direction */
   flipped: boolean;
+  /**
+   * Optional arbitrary-normal override (issue #243). When supplied, the
+   * cutter uses this plane verbatim (`dot(p, normal) = distance`) and
+   * projects intersection points to 2D via `(dot(p − origin, tangent),
+   * dot(p − origin, bitangent))`. The cardinal `axis` / `position` /
+   * `flipped` fields are then only used by downstream code that pre-dates
+   * arbitrary planes (e.g. legacy SVG export); the geometry produced by
+   * the cutter itself is correct for the explicit plane.
+   *
+   * `tangent` and `bitangent` MUST be the same basis the cap renderer
+   * uses (`planeBasis(normal)` from `@ifc-lite/renderer`) so the round-
+   * trip 3D→2D→3D in the cap pipeline stays exact.
+   */
+  customPlane?: {
+    normal:    Vec3;
+    /** Plane offset: `dot(pointOnPlane, normal)`. */
+    distance:  number;
+    /** Origin = the projected pick point on the plane (basis origin). */
+    origin:    Vec3;
+    tangent:   Vec3;
+    bitangent: Vec3;
+  };
 }
 
 export interface SectionConfig {

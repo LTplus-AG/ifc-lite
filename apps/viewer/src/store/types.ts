@@ -86,6 +86,39 @@ export interface EdgeLockState {
 /** Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience */
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
 
+// Re-export the renderer's canonical cap-styling types so the viewer store and
+// the WebGPU renderer share a single source of truth. Adding a new hatch
+// pattern only requires editing `packages/renderer/src/section-cap-style.ts`.
+export type { HatchPatternId as SectionCapHatchId, SectionCapStyle } from '@ifc-lite/renderer';
+import type { SectionCapStyle } from '@ifc-lite/renderer';
+
+/**
+ * Custom (face-picked) plane override. When present, the renderer uses
+ * `normal` + `distance` directly and ignores `axis` / `position`. The
+ * cardinal `axis` / `position` / `flipped` fields are still kept in sync
+ * (nearest-cardinal for axis, percentage along it for position) so any
+ * downstream reader that pre-dates custom planes (drawings export, BCF
+ * snapshots, view controls) still gets a sensible projection rather than
+ * crashing or emitting empty data.
+ *
+ * Tangent + bitangent are derived once at pick time from `normal` via the
+ * deterministic `planeBasis` helper so the cap shader and cutter share
+ * exactly one orientation — without this the cap-hatch can rotate when
+ * the renderer re-derives the basis on every frame.
+ */
+export interface CustomSectionPlane {
+  /** Unit world-space normal. */
+  normal: [number, number, number];
+  /** Signed plane offset in world units: `dot(pointOnPlane, normal)`. */
+  distance: number;
+  /** World-space hit point at pick time (anchors the slider re-mapping). */
+  pickedAt: [number, number, number];
+  /** First in-plane axis, deterministic from `normal`. */
+  tangent: [number, number, number];
+  /** Second in-plane axis, deterministic from `normal`. */
+  bitangent: [number, number, number];
+}
+
 export interface SectionPlane {
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
@@ -93,6 +126,24 @@ export interface SectionPlane {
   enabled: boolean;
   /** If true, show the opposite side of the cut */
   flipped: boolean;
+  /** Whether to render the filled, hatched cap surface at the plane. Defaults to true. */
+  showCap: boolean;
+  /**
+   * Whether to draw polygon outlines on top of the cut (the crisp black
+   * line the architect expects around each sliced element). Independent
+   * from `showCap` so users can have a hatched fill without outlines,
+   * or vice versa. Defaults to true.
+   */
+  showOutlines: boolean;
+  /** User-defined colour + hatch for the cut surface. */
+  capStyle: SectionCapStyle;
+  /**
+   * Optional arbitrary-normal override populated by face-pick. When set,
+   * the renderer cuts on this plane verbatim; cardinal `axis` / `position`
+   * are kept in sync as the closest cardinal projection (see
+   * `CustomSectionPlane`).
+   */
+  custom?: CustomSectionPlane;
 }
 
 // ============================================================================
@@ -103,6 +154,14 @@ export interface HoverState {
   entityId: number | null;
   screenX: number;
   screenY: number;
+  /**
+   * World-space hit position from the GPU pick (depth readback +
+   * inverse view-projection). Unset when the picker couldn't recover
+   * one (e.g. `pointCount === 0` clear, or the pick fell on the
+   * background). Useful for point-cloud hover tooltips where the
+   * synthetic entity has no surface property to display.
+   */
+  worldXYZ?: { x: number; y: number; z: number };
 }
 
 export interface ContextMenuState {
@@ -272,6 +331,13 @@ export interface NativeMetadataSnapshot {
   spatialTree: NativeMetadataSpatialNode | null;
 }
 
+export type ModelSourceFile = File | {
+  path: string;
+  name: string;
+  size: number;
+  modifiedMs?: number | null;
+};
+
 /** Complete model container for federation */
 export interface FederatedModel {
   /** Unique identifier (UUID generated on load) */
@@ -292,6 +358,8 @@ export interface FederatedModel {
   loadedAt: number;
   /** Original file size in bytes */
   fileSize: number;
+  /** Original source handle used for explicit reload/reposition operations. */
+  sourceFile?: ModelSourceFile;
   /**
    * ID offset for this model (from FederationRegistry)
    * All mesh expressIds are globalIds = originalExpressId + idOffset
@@ -314,6 +382,13 @@ export interface FederatedModel {
   cacheState?: 'none' | 'hit' | 'miss' | 'writing';
   /** Optional load error for this model. */
   loadError?: string | null;
+  /**
+   * Renderer handle for a streamed point cloud (LAS/LAZ) attached to
+   * this model. Stored as a plain number so the field stays JSON-safe.
+   * The viewport's removal effect calls `renderer.removePointCloudAsset`
+   * when the model is dropped from the store.
+   */
+  pointCloudHandleId?: number;
 }
 
 /** Convert EntityRef to string for use as Map/Set key */

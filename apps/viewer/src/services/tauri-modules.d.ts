@@ -17,9 +17,34 @@ declare module '@tauri-apps/plugin-fs' {
   export function exists(path: string): Promise<boolean>;
   export function remove(path: string): Promise<void>;
   export function readDir(path: string): Promise<Array<{ name: string | null }>>;
+  export function stat(path: string): Promise<{ size: number; mtime?: number | null }>;
 }
 
 declare module '@tauri-apps/api/path' {
   export function appDataDir(): Promise<string>;
   export function join(...paths: string[]): Promise<string>;
+}
+
+declare module '@tauri-apps/api/core' {
+  /**
+   * Tauri's IPC entry point. Generic by command name.
+   */
+  export function invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T>;
+}
+
+declare module '@tauri-apps/plugin-dialog' {
+  export interface OpenDialogOptions {
+    title?: string;
+    multiple?: boolean;
+    directory?: boolean;
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }
+  export interface SaveDialogOptions {
+    title?: string;
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }
+  export function open(options?: OpenDialogOptions): Promise<string | string[] | null>;
+  export function save(options?: SaveDialogOptions): Promise<string | null>;
 }

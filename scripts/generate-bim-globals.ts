@@ -34,6 +34,16 @@ function argTypeToTS(argType: string): string {
   }
 }
 
+/**
+ * Strip a trailing ` | undefined` from a type string and flag the parameter
+ * as optional — emits `name?: type` instead of the noisier `name: type | undefined`.
+ */
+function normalizeOptional(tsType: string): { type: string; optional: boolean } {
+  const match = tsType.match(/^(.*?)\s*\|\s*undefined\s*$/);
+  if (match) return { type: match[1].trim(), optional: true };
+  return { type: tsType, optional: false };
+}
+
 /** Generate a TypeScript method signature from a MethodSchema */
 function methodSignature(m: MethodSchema): string {
   const params: string[] = [];
@@ -46,8 +56,9 @@ function methodSignature(m: MethodSchema): string {
       params.push(`...${name}: string[]`);
     } else {
       const name = m.paramNames?.[i] ?? `arg${i}`;
-      const tsType = overrideType ?? argTypeToTS(argType);
-      params.push(`${name}: ${tsType}`);
+      const rawType = overrideType ?? argTypeToTS(argType);
+      const { type, optional } = normalizeOptional(rawType);
+      params.push(`${name}${optional ? '?' : ''}: ${type}`);
     }
   }
 

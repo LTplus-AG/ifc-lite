@@ -48,3 +48,30 @@ export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore 
 
 // Re-export single source of truth for globalId → EntityRef resolution
 export { resolveEntityRef } from './store/resolveEntityRef.js';
+export { toGlobalIdFromModels, fromGlobalIdFromModels, toGlobalIdForRef } from './store/globalId.js';
+export type { ForwardModelMapLike } from './store/globalId.js';
+
+// Re-export custom-section-plane geometry helper (issue #243): projects
+// `pickedAt` onto the live cut plane so visuals (cap basis origin, 3D
+// drag gizmo) follow `distance` instead of staying anchored at the
+// original face-pick location.
+export { customPlaneCenter } from './store/slices/sectionSlice.js';
+
+// Re-export last-used section mode persistence (issue #243 follow-up):
+// `SectionPanel` reads this on mount to restore either the user's
+// previous cardinal cut (axis + position + flipped) or to rearm pick
+// mode for first-time users / users whose last action was a face pick.
+export { loadLastSectionMode } from './store/slices/sectionSlice.js';
+export type { LastSectionMode } from './store/slices/sectionSlice.js';
+
+// Re-export Schedule (4D) types + helpers
+export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './store/slices/scheduleSlice.js';
+export {
+  computeScheduleRange,
+  computeHiddenProductIds,
+  computeActiveProductIds,
+  countGeneratedTasks,
+  taskStartEpoch,
+  taskFinishEpoch,
+  parseIsoDate,
+} from './store/slices/scheduleSlice.js';

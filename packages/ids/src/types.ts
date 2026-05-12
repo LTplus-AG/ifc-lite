@@ -17,6 +17,12 @@ export interface IDSDocument {
   info: IDSInfo;
   /** List of specifications */
   specifications: IDSSpecification[];
+  /**
+   * Raw `xsi:schemaLocation` attribute on the root element, if present.
+   * The audit module checks that this points at an IDS XSD URL —
+   * upstream IDS-Audit-tool flags references to other XSDs (Report 107).
+   */
+  schemaLocation?: string;
 }
 
 /** IDS Document metadata */
@@ -51,6 +57,12 @@ export interface IDSSpecification {
   instructions?: string;
   /** IFC schema versions this applies to */
   ifcVersions: IFCVersion[];
+  /**
+   * The raw `@ifcVersion` attribute string, before tokenisation and
+   * normalisation. The audit module uses this to flag tokens that were
+   * silently dropped because they didn't map to a recognised version.
+   */
+  ifcVersionRaw?: string;
   /** Identifier (optional external reference) */
   identifier?: string;
   /** Applicability - which entities this specification applies to */
@@ -69,6 +81,13 @@ export type IFCVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3_ADD2' | 'IFC4X3';
 export interface IDSApplicability {
   /** All facets must match for entity to be applicable */
   facets: IDSFacet[];
+  /**
+   * Raw `@cardinality` attribute string from the XML. The IDS 1.0 spec
+   * does not allow `cardinality` on `<applicability>` (it is meaningless
+   * there); upstream IDS-Audit-tool flags it as an authoring mistake.
+   * Preserved here so the auditor can do the same check.
+   */
+  cardinality?: string;
 }
 
 /** Requirement definition */
@@ -79,6 +98,15 @@ export interface IDSRequirement {
   facet: IDSFacet;
   /** Optionality of this requirement */
   optionality: RequirementOptionality;
+  /**
+   * The raw `@cardinality` attribute string from the XML, when present
+   * but not equal to one of the canonical XSD enum values
+   * (`required` / `optional` / `prohibited`). Preserved so the auditor
+   * can flag values like `"Required"` or `"Invalid"` that the parser
+   * silently mapped to the default. `undefined` when the attribute was
+   * absent or already canonical.
+   */
+  cardinalityRaw?: string;
   /** Human-readable description */
   description?: string;
   /** Instructions for achieving compliance */
@@ -152,14 +180,22 @@ export interface IDSMaterialFacet {
 /** PartOf facet - match by spatial/compositional relationship */
 export interface IDSPartOfFacet {
   type: 'partOf';
-  /** Relationship type */
+  /** Relationship type (normalised; defaults to `IfcRelContainedInSpatialStructure` when unrecognised). */
   relation: PartOfRelation;
+  /**
+   * The relation string as it appeared in the XML, before normalisation.
+   * Set when the original value didn't map to a recognised
+   * {@link PartOfRelation}. The auditor uses this to flag invalid
+   * relation names.
+   */
+  rawRelation?: string;
   /** Optional entity constraint for the related parent */
   entity?: IDSEntityFacet;
 }
 
 export type PartOfRelation =
   | 'IfcRelAggregates'
+  | 'IfcRelAssignsToGroup'
   | 'IfcRelContainedInSpatialStructure'
   | 'IfcRelNests'
   | 'IfcRelVoidsElement'
@@ -188,6 +224,13 @@ export interface IDSPatternConstraint {
   type: 'pattern';
   /** XSD regex pattern */
   pattern: string;
+  /**
+   * The originating `xs:restriction @base` (e.g. `xs:string`, `xs:integer`).
+   * Set when the constraint came from an `<xs:restriction>` element; the
+   * auditor uses it to determine compatibility with an IFC dataType
+   * without inferring the base from the constraint shape.
+   */
+  base?: string;
 }
 
 /** Enumeration constraint - one of a list of values */
@@ -195,9 +238,16 @@ export interface IDSEnumerationConstraint {
   type: 'enumeration';
   /** List of allowed values */
   values: string[];
+  /**
+   * The originating `xs:restriction @base` (e.g. `xs:string`,
+   * `xs:integer`). Set when the constraint came from an
+   * `<xs:restriction>`; numeric/boolean enumerations carry their base
+   * here so the auditor doesn't false-positive a string-base mismatch.
+   */
+  base?: string;
 }
 
-/** Bounds constraint - numeric range */
+/** Bounds constraint - numeric range or string length */
 export interface IDSBoundsConstraint {
   type: 'bounds';
   /** Minimum inclusive value */
@@ -208,6 +258,19 @@ export interface IDSBoundsConstraint {
   minExclusive?: number;
   /** Maximum exclusive value */
   maxExclusive?: number;
+  /** xs:length — exact string length */
+  length?: number;
+  /** xs:minLength — minimum string length */
+  minLength?: number;
+  /** xs:maxLength — maximum string length */
+  maxLength?: number;
+  /**
+   * The originating `xs:restriction @base` (e.g. `xs:double`,
+   * `xs:integer`). Set when the constraint came from an
+   * `<xs:restriction>` so the auditor can compare against the IFC
+   * dataType's backing type directly.
+   */
+  base?: string;
 }
 
 // ============================================================================
@@ -368,6 +431,8 @@ export type FailureType =
   // PartOf failures
   | 'PARTOF_RELATION_MISSING'
   | 'PARTOF_ENTITY_MISMATCH'
+  | 'PARTOF_PREDEFINED_TYPE_MISMATCH'
+  | 'PARTOF_PREDEFINED_TYPE_MISSING'
   // Prohibited failures
   | 'PROHIBITED_ATTRIBUTE_EXISTS'
   | 'PROHIBITED_PROPERTY_EXISTS'
@@ -388,8 +453,41 @@ export interface IFCDataAccessor {
   getGlobalId(expressId: number): string | undefined;
   /** Get entity description by express ID */
   getDescription(expressId: number): string | undefined;
-  /** Get entity object type (predefined type) by express ID */
+  /**
+   * Get entity object type (predefined type) by express ID.
+   *
+   * Per IDS spec, when the IFC `PredefinedType` is `USERDEFINED` the
+   * predefined-type comparison shifts to the user-defined name in the
+   * adjacent `ObjectType` / `ElementType` slot. Implementations MAY
+   * substitute that name here, but MUST also surface the raw enum value
+   * via `getPredefinedTypeRaw` so the validator can disambiguate
+   * literal `USERDEFINED` matches from user-name matches.
+   */
   getObjectType(expressId: number): string | undefined;
+  /**
+   * Get the raw `PredefinedType` enum token (e.g. `USERDEFINED`,
+   * `NOTDEFINED`, `BEAM`) without substitution to the user-defined
+   * name. Returns `undefined` when the entity has no predefined type.
+   */
+  getPredefinedTypeRaw?(expressId: number): string | undefined;
+  /**
+   * Get the names of every attribute defined on the entity (its IFC
+   * schema-defined attribute names, including inherited ones). Used by
+   * the attribute-facet checker when the IDS uses a pattern or
+   * enumeration on `<name>` so the check can iterate every matching
+   * candidate, not just the small list of standard attribute names.
+   */
+  getAttributeNames?(expressId: number): string[];
+  /**
+   * Get the XSD primitive types (`xs:integer`, `xs:double`, `xs:string`,
+   * `xs:boolean`, `xs:date`, `xs:dateTime`, `xs:duration`) that the IFC
+   * schema declares for the named attribute on the entity. The IDS
+   * validator uses this to enforce strict-cast semantics — an
+   * `xs:integer`-only slot rejects literals like `42.0`, `xs:double`
+   * accepts both `42` and `42.0`, etc. Returns `undefined` when the
+   * type is unknown so callers fall back to permissive comparison.
+   */
+  getAttributeXsdTypes?(expressId: number, attrName: string): readonly string[] | undefined;
   /** Get all entity IDs of a specific type */
   getEntitiesByType(typeName: string): number[];
   /** Get all entity IDs */
@@ -411,8 +509,18 @@ export interface IFCDataAccessor {
     expressId: number,
     relationType: PartOfRelation
   ): ParentInfo | undefined;
+  /**
+   * Walk every ancestor reachable via `relationType` (the IDS spec
+   * treats partOf as transitive — a wall in a storey in a building
+   * IS partOf the building). Optional: when not provided, the
+   * partOf facet falls back to single-step `getParent` traversal.
+   */
+  getAncestors?(
+    expressId: number,
+    relationType: PartOfRelation
+  ): ParentInfo[];
   /** Get attribute value by name */
-  getAttribute(expressId: number, attributeName: string): string | undefined;
+  getAttribute(expressId: number, attributeName: string): string | number | boolean | undefined;
 }
 
 /** Property value result */
@@ -436,6 +544,13 @@ export interface PropertySetInfo {
     name: string;
     value: string | number | boolean | null;
     dataType: string;
+    /**
+     * Optional list of individual values for multi-valued IFC properties
+     * (`IfcPropertyEnumeratedValue`, `IfcPropertyListValue`). When set,
+     * the IDS validator iterates each candidate and passes the constraint
+     * check if any one matches — mirroring upstream ifctester semantics.
+     */
+    values?: Array<string | number | boolean>;
   }>;
 }
 

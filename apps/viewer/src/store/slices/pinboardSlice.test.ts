@@ -41,7 +41,12 @@ describe('PinboardSlice', () => {
 
     state = {
       ...cross,
-      ...createPinboardSlice(setState, () => state, cross as any),
+      // The test mock's cross-slice shape is slightly looser than the
+      // real PinboardCrossSliceState (e.g. cameraCallbacks.getViewpoint
+      // returns null only), so the typed StateCreator can't accept the
+      // mock setState directly. Cast at the boundary — runtime shape
+      // is correct, just structurally narrower than the prod type.
+      ...createPinboardSlice(setState as any, (() => state) as any, cross as any),
     };
   });
 

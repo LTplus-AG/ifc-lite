@@ -132,6 +132,7 @@ interface GPURenderPassEncoder {
   setVertexBuffer(slot: number, buffer: GPUBuffer | null, offset?: number, size?: number): void;
   setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset?: number, size?: number): void;
   setBindGroup(index: number, bindGroup: GPUBindGroup | null, dynamicOffsets?: number[]): void;
+  setStencilReference(reference: number): void;
   draw(vertexCount: number, instanceCount?: number, firstVertex?: number, firstInstance?: number): void;
   drawIndexed(indexCount: number, instanceCount?: number, firstIndex?: number, baseVertex?: number, firstInstance?: number): void;
   end(): void;
@@ -283,6 +284,12 @@ interface GPUBufferDescriptor {
   size: number;
   usage: number;
   label?: string;
+  /**
+   * If true, the buffer is created in a mapped state — the caller can
+   * write to it via `getMappedRange()` without a `writeBuffer` IPC
+   * round-trip. Used in the streaming geometry uploader.
+   */
+  mappedAtCreation?: boolean;
 }
 
 interface GPUBindGroupDescriptor {

@@ -6,6 +6,7 @@
 
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, Plane, Triangle, TriangleVec};
+use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
@@ -44,6 +45,181 @@ fn rotate_and_normalize(
         .ok_or_else(|| Error::geometry("Zero-length direction vector".to_string()))
 }
 
+// ---------------------------------------------------------------------------
+// Reveal face generation helpers
+// ---------------------------------------------------------------------------
+
+/// Determine the primary extrusion axis (0=X, 1=Y, 2=Z) from the opening's
+/// extrusion direction, or fall back to the wall's thinnest AABB dimension.
+#[inline]
+fn determine_extrusion_axis(
+    extrusion_dir: Option<&Vector3<f64>>,
+    wall_min: &Point3<f64>,
+    wall_max: &Point3<f64>,
+) -> usize {
+    if let Some(dir) = extrusion_dir {
+        let ax = dir.x.abs();
+        let ay = dir.y.abs();
+        let az = dir.z.abs();
+        if ax >= ay && ax >= az {
+            0
+        } else if ay >= az {
+            1
+        } else {
+            2
+        }
+    } else {
+        let dx = (wall_max.x - wall_min.x).abs();
+        let dy = (wall_max.y - wall_min.y).abs();
+        let dz = (wall_max.z - wall_min.z).abs();
+        if dx <= dy && dx <= dz {
+            0
+        } else if dy <= dz {
+            1
+        } else {
+            2
+        }
+    }
+}
+
+/// Read a coordinate from a `Point3` by axis index (0=X, 1=Y, 2=Z).
+#[inline(always)]
+fn axis_val(p: &Point3<f64>, axis: usize) -> f64 {
+    match axis {
+        0 => p.x,
+        1 => p.y,
+        _ => p.z,
+    }
+}
+
+/// Build a `Point3` given values for three named axes.
+#[inline(always)]
+fn point_from_axes(a: usize, va: f64, b: usize, vb: f64, c: usize, vc: f64) -> Point3<f64> {
+    let mut coords = [0.0_f64; 3];
+    coords[a] = va;
+    coords[b] = vb;
+    coords[c] = vc;
+    Point3::new(coords[0], coords[1], coords[2])
+}
+
+/// Build a unit `Vector3` pointing along the given axis with the given sign.
+#[inline(always)]
+fn vec_along_axis(axis: usize, sign: f64) -> Vector3<f64> {
+    let mut coords = [0.0_f64; 3];
+    coords[axis] = sign;
+    Vector3::new(coords[0], coords[1], coords[2])
+}
+
+/// Add a single reveal quad (2 triangles) to the mesh, auto-correcting winding
+/// order so the face normal matches the desired direction.
+#[inline]
+fn add_reveal_quad(
+    mesh: &mut Mesh,
+    p0: Point3<f64>,
+    p1: Point3<f64>,
+    p2: Point3<f64>,
+    p3: Point3<f64>,
+    desired_normal: Vector3<f64>,
+) {
+    let edge1 = p1 - p0;
+    let edge2 = p2 - p0;
+    let computed = edge1.cross(&edge2);
+
+    let base = mesh.vertex_count() as u32;
+    mesh.add_vertex(p0, desired_normal);
+    mesh.add_vertex(p1, desired_normal);
+    mesh.add_vertex(p2, desired_normal);
+    mesh.add_vertex(p3, desired_normal);
+
+    if computed.dot(&desired_normal) >= 0.0 {
+        mesh.add_triangle(base, base + 1, base + 2);
+        mesh.add_triangle(base, base + 2, base + 3);
+    } else {
+        mesh.add_triangle(base, base + 2, base + 1);
+        mesh.add_triangle(base, base + 3, base + 2);
+    }
+}
+
+/// Generate 4 reveal quads for a rectangular opening.
+///
+/// Reveals are the inner surfaces of the hole cut through the wall.  Each face
+/// spans the wall thickness (along the extrusion direction) and sits at one
+/// edge of the opening (top, bottom, left, right).
+///
+/// A reveal is **skipped** when the opening edge coincides with the wall
+/// boundary (e.g. a door that starts at floor level has no sill reveal).
+fn generate_reveal_quads(
+    mesh: &mut Mesh,
+    open_min: &Point3<f64>,
+    open_max: &Point3<f64>,
+    wall_min: &Point3<f64>,
+    wall_max: &Point3<f64>,
+    extrusion_dir: Option<&Vector3<f64>>,
+) {
+    let ea = determine_extrusion_axis(extrusion_dir, wall_min, wall_max);
+
+    // Reveal depth along the extrusion axis, clamped to the wall-opening
+    // intersection so reveals never extend beyond either surface.
+    let d_min = axis_val(wall_min, ea).max(axis_val(open_min, ea));
+    let d_max = axis_val(wall_max, ea).min(axis_val(open_max, ea));
+    if d_max - d_min < 1e-4 {
+        return; // No wall thickness to reveal
+    }
+
+    // The two cross-axes (the ones that are NOT the extrusion axis).
+    let cross: [usize; 2] = match ea {
+        0 => [1, 2],
+        1 => [0, 2],
+        _ => [0, 1],
+    };
+
+    // Require positive overlap on both cross-axes before emitting any quads.
+    // Guards callers that apply voids per sub-mesh (multi-layer walls) where a
+    // sub-mesh AABB may not overlap the opening at all — without this check,
+    // floating reveal faces would be emitted far from the sub-mesh geometry.
+    for &ax in &cross {
+        let ov_min = axis_val(open_min, ax).max(axis_val(wall_min, ax));
+        let ov_max = axis_val(open_max, ax).min(axis_val(wall_max, ax));
+        if ov_max - ov_min < 1e-4 {
+            return;
+        }
+    }
+
+    for (i, &ca) in cross.iter().enumerate() {
+        // Clamp the orthogonal cross-axis extent to the wall so reveals never
+        // overshoot the mesh boundary (e.g. an opening taller than its slab).
+        let oa = cross[1 - i]; // the *other* cross-axis
+        let o_min = axis_val(open_min, oa).max(axis_val(wall_min, oa));
+        let o_max = axis_val(open_max, oa).min(axis_val(wall_max, oa));
+
+        // --- Face at open_min[ca] — normal points +ca (into opening) ---
+        let face_lo = axis_val(open_min, ca);
+        if face_lo > axis_val(wall_min, ca) + 1e-4 {
+            add_reveal_quad(
+                mesh,
+                point_from_axes(ea, d_min, ca, face_lo, oa, o_min),
+                point_from_axes(ea, d_max, ca, face_lo, oa, o_min),
+                point_from_axes(ea, d_max, ca, face_lo, oa, o_max),
+                point_from_axes(ea, d_min, ca, face_lo, oa, o_max),
+                vec_along_axis(ca, 1.0),
+            );
+        }
+
+        // --- Face at open_max[ca] — normal points −ca (into opening) ---
+        let face_hi = axis_val(open_max, ca);
+        if face_hi < axis_val(wall_max, ca) - 1e-4 {
+            add_reveal_quad(
+                mesh,
+                point_from_axes(ea, d_min, ca, face_hi, oa, o_max),
+                point_from_axes(ea, d_max, ca, face_hi, oa, o_max),
+                point_from_axes(ea, d_max, ca, face_hi, oa, o_min),
+                point_from_axes(ea, d_min, ca, face_hi, oa, o_min),
+                vec_along_axis(ca, -1.0),
+            );
+        }
+    }
+}
+
 /// Whether the representation type is geometry we can process.
 fn is_body_representation(rep_type: &str) -> bool {
     matches!(
@@ -62,18 +238,308 @@ fn is_body_representation(rep_type: &str) -> bool {
     )
 }
 
+/// Pick a unit-vector along the wall's thinnest AABB axis. Used as a
+/// last-ditch extrusion direction for the issue #635 AABB fallback when
+/// the opening doesn't carry an explicit `IfcDirection`.
+#[inline]
+fn wall_thinnest_axis_dir(wall_min: &Point3<f64>, wall_max: &Point3<f64>) -> Vector3<f64> {
+    let ext = [
+        (wall_max.x - wall_min.x).abs(),
+        (wall_max.y - wall_min.y).abs(),
+        (wall_max.z - wall_min.z).abs(),
+    ];
+    let mut axis = 0;
+    for i in 1..3 {
+        if ext[i] < ext[axis] {
+            axis = i;
+        }
+    }
+    match axis {
+        0 => Vector3::new(1.0, 0.0, 0.0),
+        1 => Vector3::new(0.0, 1.0, 0.0),
+        _ => Vector3::new(0.0, 0.0, 1.0),
+    }
+}
+
 /// Classification of an opening for void subtraction.
 #[derive(Clone)]
 enum OpeningType {
     /// Rectangular opening with AABB clipping
     /// Fields: (min_bounds, max_bounds, extrusion_direction)
     Rectangular(Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
-    /// Diagonal rectangular opening with mesh geometry for batched rotation clipping
-    /// Fields: (opening_mesh, extrusion_direction)
-    DiagonalRectangular(Mesh, Vector3<f64>),
-    /// Non-rectangular opening (circular, arched, or floor openings with rotated footprint)
-    /// Uses full CSG subtraction with actual mesh geometry
-    NonRectangular(Mesh),
+    /// Diagonal rectangular opening with mesh geometry and a full oriented frame.
+    /// The frame preserves roof-window roll, not just the penetration direction.
+    DiagonalRectangular(Mesh, OpeningFrame),
+    /// Non-rectangular opening (circular, arched, or floor openings with
+    /// rotated footprint). Uses full CSG subtraction with the actual mesh
+    /// geometry. The AABB + extrusion direction are kept so that callers can
+    /// fall back to a rectangular box cut when CSG can't run (issue #635 —
+    /// e.g. circular windows whose triangulated profile blows past
+    /// `MAX_CSG_POLYGONS_PER_MESH`).
+    NonRectangular(Mesh, Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
+}
+
+/// World-space basis for an oriented rectangular opening.
+#[derive(Clone, Copy)]
+struct OpeningFrame {
+    depth: Vector3<f64>,
+    cross_a: Vector3<f64>,
+    cross_b: Vector3<f64>,
+}
+
+impl OpeningFrame {
+    fn from_depth(depth: Vector3<f64>) -> Option<Self> {
+        let depth = depth.try_normalize(NORMALIZE_EPSILON)?;
+        let seed = if depth.z.abs() < 0.9 {
+            Vector3::new(0.0, 0.0, 1.0)
+        } else {
+            Vector3::new(0.0, 1.0, 0.0)
+        };
+        let cross_a = seed.cross(&depth).try_normalize(NORMALIZE_EPSILON)?;
+        let cross_b = depth.cross(&cross_a).try_normalize(NORMALIZE_EPSILON)?;
+        Some(Self {
+            depth,
+            cross_a,
+            cross_b,
+        })
+    }
+
+    #[inline]
+    fn to_local_point(&self, p: Point3<f64>) -> Point3<f64> {
+        let v = p.coords;
+        Point3::new(
+            v.dot(&self.depth),
+            v.dot(&self.cross_a),
+            v.dot(&self.cross_b),
+        )
+    }
+
+    #[inline]
+    fn to_world_point(&self, p: Point3<f64>) -> Point3<f64> {
+        let v = self.depth * p.x + self.cross_a * p.y + self.cross_b * p.z;
+        Point3::new(v.x, v.y, v.z)
+    }
+
+    #[inline]
+    fn to_local_vector(&self, v: Vector3<f64>) -> Vector3<f64> {
+        Vector3::new(
+            v.dot(&self.depth),
+            v.dot(&self.cross_a),
+            v.dot(&self.cross_b),
+        )
+    }
+
+    #[inline]
+    fn to_world_vector(&self, v: Vector3<f64>) -> Vector3<f64> {
+        self.depth * v.x + self.cross_a * v.y + self.cross_b * v.z
+    }
+
+    fn is_axis_aligned(&self) -> bool {
+        is_axis_aligned_direction(&self.depth)
+            && is_axis_aligned_direction(&self.cross_a)
+            && is_axis_aligned_direction(&self.cross_b)
+    }
+}
+
+#[inline]
+fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
+    const AXIS_THRESHOLD: f64 = 0.95;
+    dir.x.abs().max(dir.y.abs()).max(dir.z.abs()) > AXIS_THRESHOLD
+}
+
+#[inline]
+fn mesh_point(mesh: &Mesh, index: u32) -> Option<Point3<f64>> {
+    let base = index as usize * 3;
+    Some(Point3::new(
+        *mesh.positions.get(base)? as f64,
+        *mesh.positions.get(base + 1)? as f64,
+        *mesh.positions.get(base + 2)? as f64,
+    ))
+}
+
+fn extent_along_axis(mesh: &Mesh, axis: &Vector3<f64>) -> Option<f64> {
+    let mut min = f64::INFINITY;
+    let mut max = f64::NEG_INFINITY;
+    for chunk in mesh.positions.chunks_exact(3) {
+        let p = Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+        let projection = p.dot(axis);
+        min = min.min(projection);
+        max = max.max(projection);
+    }
+    min.is_finite().then_some(max - min)
+}
+
+/// Whether a mesh is a clean axis-aligned (in its own frame) rectangular box —
+/// i.e. exactly 6 planar faces forming a bounding parallelepiped. Curved or
+/// arched openings produce many distinct triangle normals; rectilinear but
+/// non-rectangular openings (e.g. an L-shaped shaft) share the same three axes
+/// as a box but split their faces across more than two parallel planes per
+/// axis. Both cases must go through full CSG rather than the AABB cutters.
+///
+/// Matches the anti-parallel merge tolerance used by `infer_opening_frame` so
+/// the two helpers agree on what counts as a single axis.
+fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
+    let mut axes: Vec<Vector3<f64>> = Vec::with_capacity(4);
+    let mut tri_axes: Vec<(usize, f64)> = Vec::with_capacity(mesh.indices.len() / 3);
+    for tri in mesh.indices.chunks_exact(3) {
+        let (Some(p0), Some(p1), Some(p2)) = (
+            mesh_point(mesh, tri[0]),
+            mesh_point(mesh, tri[1]),
+            mesh_point(mesh, tri[2]),
+        ) else {
+            continue;
+        };
+        let Some(normal) = (p1 - p0).cross(&(p2 - p0)).try_normalize(NORMALIZE_EPSILON) else {
+            continue;
+        };
+        let axis_index = match axes
+            .iter()
+            .position(|axis| normal.dot(axis).abs() > 0.98)
+        {
+            Some(idx) => idx,
+            None => {
+                if axes.len() >= 3 {
+                    return false;
+                }
+                axes.push(normal);
+                axes.len() - 1
+            }
+        };
+        // Signed offset along the merged axis. The merged axis direction is
+        // the first normal seen for that group, so opposite faces produce
+        // offsets of opposite sign.
+        let offset = p0.coords.dot(&axes[axis_index]);
+        tri_axes.push((axis_index, offset));
+    }
+    if axes.len() != 3 {
+        return false;
+    }
+
+    // The 3 distinct face normals must be mutually orthogonal — otherwise a
+    // shape like a trapezoid extrusion (front/back + top/bottom + two slanted
+    // sides whose normals are anti-parallel and merge into one axis) would
+    // pass with 3 "axes" but not actually be a box. A trapezoid's slanted
+    // axis is not perpendicular to the top/bottom axis. Tolerance 0.02 rad
+    // matches the 0.98 dot tolerance used above for anti-parallel merging.
+    const ORTHOGONAL_DOT_TOL: f64 = 0.02;
+    for i in 0..3 {
+        for j in (i + 1)..3 {
+            if axes[i].dot(&axes[j]).abs() > ORTHOGONAL_DOT_TOL {
+                return false;
+            }
+        }
+    }
+
+    // For each axis, the triangle offsets must cluster around exactly 2 values
+    // (the two opposite faces of the box). More than 2 distinct planes means
+    // the footprint is rectilinear-but-not-rectangular (e.g. an L-shape).
+    // Tolerance is 1mm absolute — coarser than float precision but tight
+    // enough to distinguish wall positions in any realistic IFC unit.
+    const PLANE_TOL: f64 = 1e-3;
+    for axis_index in 0..3 {
+        let mut planes: Vec<f64> = Vec::with_capacity(3);
+        for (idx, offset) in &tri_axes {
+            if *idx != axis_index {
+                continue;
+            }
+            if !planes.iter().any(|p| (p - offset).abs() < PLANE_TOL) {
+                planes.push(*offset);
+                if planes.len() > 2 {
+                    return false;
+                }
+            }
+        }
+        if planes.len() != 2 {
+            return false;
+        }
+    }
+    true
+}
+
+fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
+    let mut axes: Vec<(Vector3<f64>, f64)> = Vec::new();
+
+    for tri in mesh.indices.chunks_exact(3) {
+        let (Some(p0), Some(p1), Some(p2)) = (
+            mesh_point(mesh, tri[0]),
+            mesh_point(mesh, tri[1]),
+            mesh_point(mesh, tri[2]),
+        ) else {
+            continue;
+        };
+        let normal_raw = (p1 - p0).cross(&(p2 - p0));
+        let weight = normal_raw.norm();
+        let Some(mut normal) = normal_raw.try_normalize(NORMALIZE_EPSILON) else {
+            continue;
+        };
+
+        if let Some((axis, axis_weight)) = axes
+            .iter_mut()
+            .find(|(axis, _)| normal.dot(axis).abs() > 0.98)
+        {
+            if normal.dot(axis) < 0.0 {
+                normal = -normal;
+            }
+            if let Some(merged) =
+                (*axis * *axis_weight + normal * weight).try_normalize(NORMALIZE_EPSILON)
+            {
+                *axis = merged;
+                *axis_weight += weight;
+            }
+        } else {
+            axes.push((normal, weight));
+        }
+    }
+
+    if axes.len() < 3 {
+        return extrusion_dir.and_then(|dir| OpeningFrame::from_depth(*dir));
+    }
+
+    let depth_index =
+        if let Some(dir) = extrusion_dir.and_then(|d| d.try_normalize(NORMALIZE_EPSILON)) {
+            axes.iter()
+                .enumerate()
+                .max_by(|(_, (a, _)), (_, (b, _))| a.dot(&dir).abs().total_cmp(&b.dot(&dir).abs()))
+                .map(|(index, _)| index)?
+        } else {
+            axes.iter()
+                .enumerate()
+                .filter_map(|(index, (axis, _))| extent_along_axis(mesh, axis).map(|e| (index, e)))
+                .min_by(|(_, a), (_, b)| a.total_cmp(b))
+                .map(|(index, _)| index)?
+        };
+
+    let mut depth = axes[depth_index].0;
+    if let Some(dir) = extrusion_dir {
+        if depth.dot(dir) < 0.0 {
+            depth = -depth;
+        }
+    }
+
+    let mut cross_candidates: Vec<Vector3<f64>> = axes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (axis, _))| {
+            (index != depth_index && axis.dot(&depth).abs() < 0.25).then_some(*axis)
+        })
+        .collect();
+
+    if cross_candidates.len() < 2 {
+        return OpeningFrame::from_depth(depth);
+    }
+
+    let mut cross_a = cross_candidates.remove(0);
+    cross_a = (cross_a - depth * cross_a.dot(&depth)).try_normalize(NORMALIZE_EPSILON)?;
+    let mut cross_b = depth.cross(&cross_a).try_normalize(NORMALIZE_EPSILON)?;
+    if cross_b.dot(&cross_candidates[0]) < 0.0 {
+        cross_b = -cross_b;
+    }
+
+    Some(OpeningFrame {
+        depth,
+        cross_a,
+        cross_b,
+    })
 }
 
 /// Reusable buffers for triangle clipping operations
@@ -105,6 +571,30 @@ impl ClipBuffers {
         self.result.clear();
         self.remaining.clear();
         self.next_remaining.clear();
+    }
+}
+
+/// Pre-computed per-element void subtraction data.
+///
+/// Building this is expensive: `classify_openings` re-runs `process_element`
+/// on each `IfcOpeningElement`, and clipping-plane extraction resolves the
+/// element's representation. Once built, it can be reused across every
+/// sub-mesh of the same element without re-doing any of that work, so the
+/// per-sub-mesh void path in
+/// [`GeometryRouter::process_element_with_submeshes_and_voids`] pays the
+/// classification cost once per element rather than once per sub-mesh.
+pub(super) struct VoidContext {
+    /// All classified openings. The diagonal-opening pass needs the raw list
+    /// (unmerged) so its per-item box rotation stays accurate.
+    openings: Vec<OpeningType>,
+    /// Rectangular openings merged into larger boxes to prevent O(2^N)
+    /// triangle growth when many adjacent openings tile a surface.
+    merged_openings: Vec<OpeningType>,
+}
+
+impl VoidContext {
+    fn is_noop(&self) -> bool {
+        self.openings.is_empty()
     }
 }
 
@@ -276,7 +766,7 @@ impl GeometryRouter {
 
                 // Use the same transform_mesh as process_element → apply_placement
                 // This handles ObjectPlacement, unit scaling, and conditional RTC
-                self.transform_mesh(&mut mesh, &placement_transform);
+                self.transform_mesh_world(&mut mesh, &placement_transform);
 
                 item_meshes.push(mesh);
             }
@@ -468,9 +958,10 @@ impl GeometryRouter {
     /// 3. **Diagonal wall openings**: Uses AABB clipping without internal face generation
     ///    to avoid rotation artifacts.
     ///
-    /// **Important**: Internal face generation is disabled for all openings because it causes
-    /// visual artifacts (rotated faces, thin lines extending from models). The opening cutouts
-    /// are still geometrically correct - only the internal "reveal" faces are omitted.
+    /// Reveal faces (inner surfaces of the opening holes) are generated as a
+    /// post-clipping step for rectangular and diagonal openings.  For diagonal
+    /// walls the geometry is computed in a rotated axis-aligned frame and
+    /// rotated back, giving correct results for any wall orientation.
     pub fn process_element_with_voids(
         &self,
         element: &DecodedEntity,
@@ -490,48 +981,99 @@ impl GeometryRouter {
                 return self.process_element(element, decoder);
             }
         };
-        use nalgebra::Vector3;
-        let world_clipping_planes: Vec<(Point3<f64>, Vector3<f64>, bool)> =
-            if self.has_clipping_planes(element, decoder) {
-                // Get element's ObjectPlacement transform (for clipping planes)
-                let mut object_placement_transform =
-                    match self.get_placement_transform_from_element(element, decoder) {
-                        Ok(t) => t,
-                        Err(_) => Matrix4::identity(),
-                    };
-                self.scale_transform(&mut object_placement_transform);
 
-                // Extract clipping planes (for roof clips)
-                let clipping_planes = match self.extract_base_profile_and_clips(element, decoder) {
-                    Ok((_profile, _depth, _axis, _origin, _transform, clips)) => clips,
-                    Err(_) => Vec::new(),
-                };
+        Ok(self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder))
+    }
 
-                // Transform clipping planes to world coordinates
-                clipping_planes
-                    .iter()
-                    .map(|(point, normal, agreement)| {
-                        let world_point = object_placement_transform.transform_point(point);
-                        let rotation = object_placement_transform.fixed_view::<3, 3>(0, 0);
-                        let world_normal = (rotation * normal).normalize();
-                        (world_point, world_normal, *agreement)
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
+    /// Apply opening subtraction and clipping planes to an already-built mesh.
+    ///
+    /// Shared entry point used by both the single-mesh path
+    /// ([`process_element_with_voids`]) and the per-sub-mesh path
+    /// ([`process_element_with_submeshes_and_voids`]). The incoming mesh is
+    /// expected to be in the same (world) coordinate space as the element —
+    /// i.e. placement already applied — because opening and clip geometry are
+    /// resolved in world coordinates.
+    ///
+    /// Returns the input mesh unchanged when it is invalid or when no
+    /// openings/clips apply, so callers never lose their input on a
+    /// degenerate opening set.
+    pub(super) fn apply_voids_to_mesh(
+        &self,
+        mesh: Mesh,
+        element: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+    ) -> Mesh {
+        let ctx = self.build_void_context(element, opening_ids, decoder);
+        self.apply_void_context(mesh, &ctx, element.id)
+    }
 
-        let openings = self.classify_openings(opening_ids, decoder);
+    /// Classify openings and extract clipping planes for an element.
+    ///
+    /// This is the expensive half of void subtraction — it decodes every
+    /// `IfcOpeningElement` (running `process_element` on each), classifies
+    /// them as rectangular / diagonal / non-rectangular, merges adjacent
+    /// rectangles, and transforms clipping planes to world space. The
+    /// output is reusable across every sub-mesh of the same element.
+    pub(super) fn build_void_context(
+        &self,
+        element: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+    ) -> VoidContext {
+        // NOTE (issue #635): we no longer extract `IfcBooleanClippingResult`
+        // planes here. They are applied by `BooleanClippingProcessor::process`
+        // when building the input mesh (the wall-inversion fix in
+        // `processors/boolean.rs` makes the bounded-prism construction
+        // correct per IFC); re-applying them as unbounded planes discarded
+        // the polygonal bound and chopped off gable peaks (see
+        // `apply_void_context` for the full rationale).
+        let openings = self.classify_openings(element, opening_ids, decoder);
+        let merged_openings = Self::merge_rectangular_openings(&openings);
 
-        if openings.is_empty() {
-            return self.process_element(element, decoder);
+        VoidContext {
+            openings,
+            merged_openings,
+        }
+    }
+
+    /// Apply a pre-built `VoidContext` to a single mesh.
+    ///
+    /// This is the cheap per-mesh half of void subtraction: it re-reads the
+    /// mesh bounds (which differ per sub-mesh), extends rectangular openings
+    /// along their extrusion axis so they fully penetrate the mesh, runs the
+    /// batched rectangular clip, then applies the CSG and clipping-plane
+    /// passes. All the classification work has already been done in
+    /// [`GeometryRouter::build_void_context`].
+    ///
+    /// `element_id` is the IFC product express ID of the host element. Any
+    /// `BoolFailure` recorded by the inner CSG kernel is attributed to that
+    /// product and stored on the router (drainable via
+    /// [`GeometryRouter::take_csg_failures`]). The router's failure log is
+    /// the only path failures reach the caller; `apply_void_context` itself
+    /// always returns the (possibly un-cut) mesh.
+    pub(super) fn apply_void_context(
+        &self,
+        mesh: Mesh,
+        ctx: &VoidContext,
+        element_id: u32,
+    ) -> Mesh {
+        // Capture the input triangle count + bounds so the per-host
+        // diagnostic can flag the "cuts attempted but produced no
+        // change" case — the silent-no-op signature when an opening
+        // box doesn't intersect the host mesh.
+        let tris_before = mesh.triangle_count();
+        let host_bounds_capture = {
+            let (mn, mx) = mesh.bounds();
+            ((mn.x, mn.y, mn.z), (mx.x, mx.y, mx.z))
+        };
+        if ctx.is_noop() {
+            return mesh;
         }
 
-        use crate::csg::ClippingProcessor;
         let clipper = ClippingProcessor::new();
-        let mut result = wall_mesh;
+        let mut result = mesh;
 
-        // Get wall bounds for clamping opening faces (from result before cutting)
         let (wall_min_f32, wall_max_f32) = result.bounds();
         let wall_min = Point3::new(
             wall_min_f32.x as f64,
@@ -544,35 +1086,25 @@ impl GeometryRouter {
             wall_max_f32.z as f64,
         );
 
-        // Validate wall mesh ONCE before CSG operations (not per-iteration)
-        // This avoids O(n) validation on every loop iteration
         let wall_valid = !result.is_empty()
             && result.positions.iter().all(|&v| v.is_finite())
             && result.triangle_count() >= 4;
 
         if !wall_valid {
-            // Wall mesh is invalid, return as-is
-            return Ok(result);
+            return result;
         }
 
-        // Track CSG operations to prevent excessive complexity
         let mut csg_operation_count = 0;
-        const MAX_CSG_OPERATIONS: usize = 10; // Limit to prevent runaway CSG
+        const MAX_CSG_OPERATIONS: usize = 10;
 
-        self.apply_diagonal_openings(&mut result, &openings, &wall_min, &wall_max);
+        self.apply_diagonal_openings(&mut result, &ctx.openings);
 
-        // Merge adjacent/overlapping rectangular openings to prevent exponential
-        // triangle growth. Without merging, N adjacent openings create O(2^N)
-        // boundary triangles because each clip splits triangles from prior clips.
-        let merged_openings = Self::merge_rectangular_openings(&openings);
-        // Collect all rectangular boxes for single-pass multi-box clipping.
-        // Sequential one-by-one clipping causes exponential triangle growth O(2^N)
-        // because each clip creates boundary triangles that the next clip re-splits.
-        // Single-pass: each triangle is tested against ALL boxes once.
         let mut rect_boxes: Vec<(Point3<f64>, Point3<f64>)> = Vec::new();
+        // Keep extrusion directions alongside boxes for reveal generation.
+        let mut rect_dirs: Vec<Option<Vector3<f64>>> = Vec::new();
         let mut non_rect_openings: Vec<&OpeningType> = Vec::new();
 
-        for opening in &merged_openings {
+        for opening in &ctx.merged_openings {
             match opening {
                 OpeningType::Rectangular(open_min, open_max, extrusion_dir) => {
                     let (final_min, final_max) = if let Some(dir) = extrusion_dir {
@@ -583,6 +1115,7 @@ impl GeometryRouter {
                         (*open_min, *open_max)
                     };
                     rect_boxes.push((final_min, final_max));
+                    rect_dirs.push(*extrusion_dir);
                 }
                 other => {
                     non_rect_openings.push(other);
@@ -590,46 +1123,49 @@ impl GeometryRouter {
             }
         }
 
-        // Single-pass multi-box rectangular clipping
         if !rect_boxes.is_empty() {
-            result = self.cut_multiple_rectangular_openings(&result, &rect_boxes);
+            let (new_result, processed) =
+                self.cut_multiple_rectangular_openings(&result, &rect_boxes);
+            result = new_result;
+
+            // Generate reveal faces only for openings that were actually cut.
+            // The triangle cap inside `cut_multiple_rectangular_openings` may
+            // have short-circuited the loop, leaving a suffix of boxes
+            // unprocessed — emitting reveals for them would add floating
+            // interior faces without a matching cutout.
+            for (i, (open_min, open_max)) in rect_boxes.iter().enumerate().take(processed) {
+                generate_reveal_quads(
+                    &mut result,
+                    open_min,
+                    open_max,
+                    &wall_min,
+                    &wall_max,
+                    rect_dirs[i].as_ref(),
+                );
+            }
         }
 
-        // Process remaining non-rectangular openings only
         for opening in &non_rect_openings {
             match *opening {
-                OpeningType::Rectangular(..) | OpeningType::DiagonalRectangular(..) => {
-                    // Already handled above
-                }
-                OpeningType::NonRectangular(ref opening_mesh) => {
-                    // Safety: limit total CSG operations to prevent crashes on complex geometry
+                OpeningType::Rectangular(..) | OpeningType::DiagonalRectangular(..) => {}
+                OpeningType::NonRectangular(
+                    ref opening_mesh,
+                    open_min_pt,
+                    open_max_pt,
+                    extrusion_dir,
+                ) => {
                     if csg_operation_count >= MAX_CSG_OPERATIONS {
-                        // Skip remaining CSG operations
                         continue;
                     }
 
-                    // Validate opening mesh before CSG (only once per opening)
                     let opening_valid = !opening_mesh.is_empty()
                         && opening_mesh.positions.iter().all(|&v| v.is_finite())
-                        && opening_mesh.positions.len() >= 9; // At least 3 vertices
+                        && opening_mesh.positions.len() >= 9;
 
                     if !opening_valid {
-                        // Skip invalid opening
                         continue;
                     }
 
-                    // Guard CSG against tiny / non-intersecting openings.
-                    //
-                    // Some IfcOpeningElements have vertical (0,0,1) extrusion even in walls
-                    // (e.g. 17 mm connection points). The `is_floor_opening` heuristic
-                    // misclassifies these, forcing them into the CSG path.
-                    // The csgrs BSP tree then destroys the wall mesh because tiny operands
-                    // trigger numerical instability in the BSP split/merge.
-                    //
-                    // Three guards:
-                    // 1. Bounds overlap — skip if opening AABB doesn't touch wall AABB
-                    // 2. Volume threshold — skip openings < 0.1 litre (modelling artefacts)
-                    // 3. Result validation — reject CSG output that loses > 75 % of triangles
                     let (result_min, result_max) = result.bounds();
                     let (open_min_f32, open_max_f32) = opening_mesh.bounds();
                     let no_overlap = open_max_f32.x < result_min.x
@@ -642,7 +1178,6 @@ impl GeometryRouter {
                         continue;
                     }
 
-                    // Guard against CSG on very small openings that can destabilize BSP trees.
                     let open_vol = (open_max_f32.x - open_min_f32.x)
                         * (open_max_f32.y - open_min_f32.y)
                         * (open_max_f32.z - open_min_f32.z);
@@ -650,60 +1185,221 @@ impl GeometryRouter {
                         continue;
                     }
 
-                    // Use full CSG subtraction for non-rectangular shapes
-                    // Note: mesh_to_csgrs validates and filters invalid triangles internally
                     let tri_before = result.triangle_count();
+                    let mut csg_succeeded = false;
                     match clipper.subtract_mesh(&result, opening_mesh) {
                         Ok(csg_result) => {
-                            // Validate result is not degenerate — must retain a reasonable
-                            // fraction of the pre-CSG triangles to catch BSP blowups
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                                 .max(MIN_VALID_TRIANGLES);
-                            if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
+                            // CSG only counts as a success when the result actually
+                            // changed (either fewer triangles, indicating polygons
+                            // were removed, or more triangles, indicating the
+                            // opening was carved as new boundary tris). When the
+                            // safety thresholds in `subtract_mesh` short-circuit —
+                            // e.g. `MAX_CSG_POLYGONS_PER_MESH` rejects a high-poly
+                            // round/curved opening (issue #635) — the host mesh is
+                            // returned unchanged, leaving the void uncut.
+                            let changed = csg_result.triangle_count() != tri_before;
+                            if !csg_result.is_empty()
+                                && csg_result.triangle_count() >= min_tris
+                                && changed
+                            {
                                 result = csg_result;
+                                csg_succeeded = true;
                             }
-                            // If result is degenerate, keep previous result
                         }
-                        Err(_) => {
-                            // Keep original result if CSG fails
-                        }
+                        Err(_) => {}
                     }
                     csg_operation_count += 1;
-                }
-            }
-        }
 
-        // STEP 7: Apply clipping planes (roof clips) if any
-        if !world_clipping_planes.is_empty() {
-            use crate::csg::{ClippingProcessor, Plane};
-            let clipper = ClippingProcessor::new();
-
-            for (_clip_idx, (plane_point, plane_normal, agreement)) in
-                world_clipping_planes.iter().enumerate()
-            {
-                let clip_normal = if *agreement {
-                    *plane_normal
-                } else {
-                    -*plane_normal
-                };
-
-                let plane = Plane::new(*plane_point, clip_normal);
-                if let Ok(clipped) = clipper.clip_mesh(&result, &plane) {
-                    if !clipped.is_empty() {
-                        result = clipped;
+                    // AABB fallback (issue #635): when CSG can't subtract the
+                    // opening (most commonly because its triangulated profile
+                    // exceeds `MAX_CSG_POLYGONS_PER_MESH`, i.e. circular /
+                    // arched / arbitrary curved openings), cut the opening's
+                    // axis-aligned bounding box instead. This leaves a square
+                    // hole in place of a round one, but a square hole is
+                    // dramatically less wrong than a missing void on a wall
+                    // that is supposed to host a window or door.
+                    if !csg_succeeded {
+                        // Diagnostic for issue #635: when the AABB fallback
+                        // fires, log the opening triangle count so we can
+                        // verify (e.g. round windows after Part A's profile
+                        // simplification) that normal openings hit CSG and
+                        // only genuinely-broken ones land here.
+                        #[cfg(any(debug_assertions, test))]
+                        {
+                            let opening_tris = opening_mesh.triangle_count();
+                            eprintln!(
+                                "[issue-635] AABB fallback used: opening={} tris (over MAX_CSG_POLYGONS_PER_MESH or no change)",
+                                opening_tris
+                            );
+                        }
+                        let dir = extrusion_dir.or_else(|| {
+                            Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
+                        });
+                        let (final_min, final_max) = if let Some(dir) = dir {
+                            self.extend_opening_along_direction(
+                                *open_min_pt,
+                                *open_max_pt,
+                                wall_min,
+                                wall_max,
+                                dir,
+                            )
+                        } else {
+                            (*open_min_pt, *open_max_pt)
+                        };
+                        let aabb_cut =
+                            self.cut_rectangular_opening(&result, final_min, final_max);
+                        if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
+                            result = aabb_cut;
+                        }
                     }
                 }
             }
         }
 
-        Ok(result)
+        // NOTE (issue #635): the clipping planes from `IfcBooleanClippingResult`
+        // are already applied by `BooleanClippingProcessor::process` during
+        // `process_element` — the post-clip mesh is the *input* to this
+        // function. Re-clipping here was a leftover from before that
+        // processor existed; for `IfcPolygonalBoundedHalfSpace` it actively
+        // *broke* gable walls, because `extract_half_space_plane` discards
+        // the polygonal bound and the resulting unbounded plane chops off
+        // the gable peak. Voids alone are applied here.
+
+        // Drain whatever fallbacks the kernel logged during this element's
+        // void / clip pass, attribute them to the host product, and stash on
+        // the router so the caller can surface them (e.g. flagged in a
+        // viewer overlay or asserted in regression tests).
+        let kernel_failures = clipper.take_failures();
+        if !kernel_failures.is_empty() {
+            self.record_host_failure_summary(element_id, &kernel_failures);
+            self.record_csg_failures(element_id, kernel_failures);
+        }
+
+        // Per-host cut-effect snapshot: tris_before / tris_after lets the
+        // diagnostic surface the silent-no-op case (rectangular boxes
+        // processed but the host mesh came out unchanged — the box
+        // probably didn't intersect the wall, e.g. wrong placement).
+        self.record_host_cut_effect(
+            element_id,
+            tris_before,
+            result.triangle_count(),
+            rect_boxes.len(),
+            host_bounds_capture,
+        );
+
+        result
+    }
+
+    /// Process an element into per-item sub-meshes with opening subtraction.
+    ///
+    /// Mirrors [`process_element_with_voids`] but preserves each
+    /// `IfcShapeRepresentation` item as its own sub-mesh so that callers can
+    /// look up a direct `IfcStyledItem` color per geometry item (e.g. the
+    /// three extrusion layers of a multi-layer wall). The opening(s) are
+    /// subtracted from each sub-mesh independently so that windows and doors
+    /// cut through every material layer they intersect.
+    ///
+    /// Returns an empty collection when there are no openings (callers should
+    /// fall back to [`process_element_with_submeshes`]) or when every
+    /// sub-mesh is destroyed by void subtraction.
+    pub fn process_element_with_submeshes_and_voids(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<SubMeshCollection> {
+        // Layered single-solid path: slice the element's base mesh by its
+        // material-layer buildup AFTER subtracting voids. This produces one
+        // sub-mesh per layer keyed by IfcMaterial id, so layers show up as
+        // individual colors even when the underlying geometry is a single
+        // swept solid.
+        if let Some(layered) = self.try_layered_sub_meshes(element, decoder, Some(void_index)) {
+            return Ok(layered);
+        }
+
+        let opening_ids = match void_index.get(&element.id) {
+            Some(ids) if !ids.is_empty() => ids.clone(),
+            _ => return Ok(SubMeshCollection::new()),
+        };
+
+        let sub_meshes = self.process_element_with_submeshes(element, decoder)?;
+        if sub_meshes.is_empty() {
+            return Ok(SubMeshCollection::new());
+        }
+
+        // Classify openings + resolve clipping planes ONCE per element. Doing
+        // this per sub-mesh would re-run `process_element` on every opening
+        // and re-extract clipping planes N times, multiplying the expensive
+        // parsing/CSG setup by the sub-mesh count on the exact elements this
+        // path targets (multi-layer walls with windows).
+        let ctx = self.build_void_context(element, &opening_ids, decoder);
+
+        let mut voided = SubMeshCollection::new();
+        for sub in sub_meshes.sub_meshes {
+            let geometry_id = sub.geometry_id;
+            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
+            if !voided_mesh.is_empty() {
+                voided
+                    .sub_meshes
+                    .push(SubMesh::new(geometry_id, voided_mesh));
+            }
+        }
+
+        Ok(voided)
+    }
+
+    /// Resolve an AABB + extrusion direction for an opening, used as the
+    /// fallback rectangular cut for high-vertex non-rectangular openings
+    /// (issue #635). The opening's full mesh AABB is the only safe choice
+    /// when we are about to over-approximate with an axis-aligned box —
+    /// a per-item bound can miss part of a multi-item opening (e.g. AC20
+    /// round windows store two extrusions with offset depths and the
+    /// first one alone wouldn't reach all the way through the wall).
+    /// The extrusion direction is best-effort from the first item.
+    fn fallback_aabb_for_opening(
+        &self,
+        opening_entity: &DecodedEntity,
+        opening_mesh: &Mesh,
+        decoder: &mut EntityDecoder,
+    ) -> (Point3<f64>, Point3<f64>, Option<Vector3<f64>>) {
+        let dir = self
+            .get_opening_item_bounds_with_direction(opening_entity, decoder)
+            .ok()
+            .and_then(|items| items.into_iter().find_map(|(_, _, d)| d));
+        let (mn, mx) = opening_mesh.bounds();
+        (
+            Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
+            Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
+            dir,
+        )
     }
 
     fn classify_openings(
         &self,
+        host: &DecodedEntity,
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
     ) -> Vec<OpeningType> {
+        use super::{ClassificationKind, OpeningDiagnostic, OpeningKindDiag};
+
+        // Only treat vertical-extrusion openings as "floor openings" when
+        // the host is an actual horizontal-surface element. For walls, a
+        // vertical (Z) opening extrusion is just how Revit/Archicad encode
+        // door / window openings — it should still take the rectangular
+        // AABB clip path. Pre-this-change the heuristic mis-tagged every
+        // vertical-extrusion opening as a floor opening, routing wall
+        // openings through the (cap-limited, error-prone) CSG path.
+        let host_is_horizontal_surface = matches!(
+            host.ifc_type,
+            IfcType::IfcSlab | IfcType::IfcRoof | IfcType::IfcCovering
+        );
+
+        // Per-opening diagnostic accumulator for this host. Pushed to the
+        // router's `host_opening_diagnostics` map before we return.
+        let mut host_diag: Vec<OpeningDiagnostic> = Vec::with_capacity(opening_ids.len());
+
         let mut openings: Vec<OpeningType> = Vec::new();
         for &opening_id in opening_ids.iter() {
             let opening_entity = match decoder.decode_by_id(opening_id) {
@@ -718,65 +1414,154 @@ impl GeometryRouter {
 
             let vertex_count = opening_mesh.positions.len() / 3;
 
+            // Local helper: record both the aggregate counter bump and a
+            // per-host diagnostic line in one place. `guard_saved` is the
+            // per-opening flag (whether the host-aware floor-opening guard
+            // kept this opening on the rectangular path).
+            let mut bump = |router: &Self,
+                            ck: ClassificationKind,
+                            kind: OpeningKindDiag,
+                            guard_saved: bool| {
+                router.bump_classification(ck);
+                host_diag.push(OpeningDiagnostic {
+                    opening_id,
+                    kind,
+                    vertex_count,
+                    guard_saved,
+                });
+            };
+
             if vertex_count > 100 {
-                openings.push(OpeningType::NonRectangular(opening_mesh));
+                // High-vertex-count openings (circular / arched / faceted
+                // sweeps) won't fit through the BSP CSG safety thresholds,
+                // so always carry the per-item AABB + extrusion direction
+                // as a fallback (issue #635).
+                let (fallback_min, fallback_max, fallback_dir) =
+                    self.fallback_aabb_for_opening(&opening_entity, &opening_mesh, decoder);
+                bump(
+                    self,
+                    ClassificationKind::NonRectangular,
+                    OpeningKindDiag::NonRectangular,
+                    false,
+                );
+                openings.push(OpeningType::NonRectangular(
+                    opening_mesh,
+                    fallback_min,
+                    fallback_max,
+                    fallback_dir,
+                ));
             } else {
                 let item_bounds_with_dir = self
                     .get_opening_item_bounds_with_direction(&opening_entity, decoder)
                     .unwrap_or_default();
 
                 if !item_bounds_with_dir.is_empty() {
-                    let is_floor_opening = item_bounds_with_dir
-                        .iter()
-                        .any(|(_, _, dir)| dir.map(|d| d.z.abs() > 0.95).unwrap_or(false));
+                    // Per-item geometry-driven classification (origin/main).
+                    // The earlier "is_floor_opening" host-aware heuristic
+                    // (preserved here only via diagnostics) routed every
+                    // Z-extruded opening through full CSG, which silently
+                    // failed for roof windows on shallow-slope roofs and
+                    // left the host uncut. The frame-based DiagonalRectangular
+                    // path handles tilted rectangular openings — including
+                    // rotated-footprint floor openings — so reserve
+                    // NonRectangular for genuinely curved or arched voids.
+                    //
+                    // The host-is-horizontal flag is no longer used as a
+                    // routing signal but is retained as a diagnostic field
+                    // so we can still observe the historic guard population
+                    // in regression sweeps.
+                    let _host_is_horizontal = host_is_horizontal_surface;
 
-                    if is_floor_opening && vertex_count > 0 {
-                        openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
-                    } else {
-                        let any_diagonal = item_bounds_with_dir.iter().any(|(_, _, dir)| {
-                            dir.map(|d| {
-                                const AXIS_THRESHOLD: f64 = 0.95;
-                                let abs_x = d.x.abs();
-                                let abs_y = d.y.abs();
-                                let abs_z = d.z.abs();
-                                !(abs_x > AXIS_THRESHOLD
-                                    || abs_y > AXIS_THRESHOLD
-                                    || abs_z > AXIS_THRESHOLD)
-                            })
-                            .unwrap_or(false)
-                        });
+                    let item_meshes = self
+                        .get_opening_item_meshes_world(&opening_entity, decoder)
+                        .unwrap_or_default();
 
-                        if any_diagonal {
-                            // Only use the diagonal path if we have an actual extrusion direction;
-                            // without one the rotation would be arbitrary and produce wrong cuts.
-                            if let Some(dir) = item_bounds_with_dir.iter().find_map(|(_, _, d)| *d)
-                            {
-                                let item_meshes = self
-                                    .get_opening_item_meshes_world(&opening_entity, decoder)
-                                    .unwrap_or_default();
-                                if item_meshes.is_empty() {
+                    if item_meshes.len() == item_bounds_with_dir.len() {
+                        for ((min_pt, max_pt, extrusion_dir), item_mesh) in item_bounds_with_dir
+                            .into_iter()
+                            .zip(item_meshes.into_iter())
+                        {
+                            let frame = infer_opening_frame(&item_mesh, extrusion_dir.as_ref());
+                            let direction_is_diagonal = extrusion_dir
+                                .map(|d| !is_axis_aligned_direction(&d))
+                                .unwrap_or(false);
+                            let is_clean_box = is_rectangular_box_mesh(&item_mesh);
+
+                            if let Some(frame) = frame {
+                                if !is_clean_box {
+                                    bump(
+                                        self,
+                                        ClassificationKind::NonRectangular,
+                                        OpeningKindDiag::NonRectangular,
+                                        false,
+                                    );
+                                    openings.push(OpeningType::NonRectangular(
+                                        item_mesh,
+                                        min_pt,
+                                        max_pt,
+                                        extrusion_dir,
+                                    ));
+                                } else if direction_is_diagonal || !frame.is_axis_aligned() {
+                                    bump(
+                                        self,
+                                        ClassificationKind::Diagonal,
+                                        OpeningKindDiag::Diagonal,
+                                        false,
+                                    );
                                     openings.push(OpeningType::DiagonalRectangular(
-                                        opening_mesh.clone(),
-                                        dir,
+                                        item_mesh, frame,
                                     ));
                                 } else {
-                                    for item_mesh in item_meshes {
-                                        openings
-                                            .push(OpeningType::DiagonalRectangular(item_mesh, dir));
-                                    }
+                                    bump(
+                                        self,
+                                        ClassificationKind::Rectangular,
+                                        OpeningKindDiag::Rectangular,
+                                        false,
+                                    );
+                                    openings.push(OpeningType::Rectangular(
+                                        min_pt,
+                                        max_pt,
+                                        extrusion_dir,
+                                    ));
                                 }
-                            } else {
-                                // No direction available — fall back to CSG
-                                openings.push(OpeningType::NonRectangular(opening_mesh.clone()));
-                            }
-                        } else {
-                            for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
+                            } else if is_clean_box {
+                                bump(
+                                    self,
+                                    ClassificationKind::Rectangular,
+                                    OpeningKindDiag::Rectangular,
+                                    false,
+                                );
                                 openings.push(OpeningType::Rectangular(
                                     min_pt,
                                     max_pt,
                                     extrusion_dir,
                                 ));
+                            } else {
+                                bump(
+                                    self,
+                                    ClassificationKind::NonRectangular,
+                                    OpeningKindDiag::NonRectangular,
+                                    false,
+                                );
+                                openings.push(OpeningType::NonRectangular(
+                                    item_mesh,
+                                    min_pt,
+                                    max_pt,
+                                    extrusion_dir,
+                                ));
                             }
+                        }
+                    } else {
+                        for (min_pt, max_pt, extrusion_dir) in item_bounds_with_dir {
+                            bump(
+                                self,
+                                ClassificationKind::Rectangular,
+                                OpeningKindDiag::Rectangular,
+                                false,
+                            );
+                            openings.push(OpeningType::Rectangular(
+                                min_pt, max_pt, extrusion_dir,
+                            ));
                         }
                     }
                 } else {
@@ -786,10 +1571,27 @@ impl GeometryRouter {
                     let max_f64 =
                         Point3::new(open_max.x as f64, open_max.y as f64, open_max.z as f64);
 
+                    bump(
+                        self,
+                        ClassificationKind::Rectangular,
+                        OpeningKindDiag::Rectangular,
+                        false,
+                    );
                     openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
                 }
             }
         }
+
+        // Stash the per-host diagnostic before returning. `host.ifc_type`
+        // implements `Display` to its STEP name (e.g. "IFCWALLSTANDARDCASE").
+        if !host_diag.is_empty() {
+            self.record_host_opening_diagnostic(
+                host.id,
+                &format!("{}", host.ifc_type),
+                host_diag,
+            );
+        }
+
         openings
     }
 
@@ -877,19 +1679,11 @@ impl GeometryRouter {
         result
     }
 
-    fn apply_diagonal_openings(
-        &self,
-        result: &mut Mesh,
-        openings: &[OpeningType],
-        wall_min: &Point3<f64>,
-        wall_max: &Point3<f64>,
-    ) {
-        use nalgebra::Rotation3;
-
-        let diagonal_openings: Vec<(&Mesh, &Vector3<f64>)> = openings
+    fn apply_diagonal_openings(&self, result: &mut Mesh, openings: &[OpeningType]) {
+        let diagonal_openings: Vec<(&Mesh, &OpeningFrame)> = openings
             .iter()
             .filter_map(|o| match o {
-                OpeningType::DiagonalRectangular(mesh, dir) => Some((mesh, dir)),
+                OpeningType::DiagonalRectangular(mesh, frame) => Some((mesh, frame)),
                 _ => None,
             })
             .collect();
@@ -898,93 +1692,94 @@ impl GeometryRouter {
             return;
         }
 
-        // Group openings by extrusion direction so each group gets its own
-        // rotate-clip-unrotate pass (directions considered equal within a
-        // small angular tolerance).
-        const DIR_DOT_THRESHOLD: f64 = 0.9998; // ~1° tolerance
-        let mut groups: Vec<(Vector3<f64>, Vec<&Mesh>)> = Vec::new();
-        for (mesh, dir) in &diagonal_openings {
-            let d = *dir;
-            if let Some(group) = groups
-                .iter_mut()
-                .find(|(g, _)| d.dot(g).abs() > DIR_DOT_THRESHOLD)
-            {
-                group.1.push(mesh);
-            } else {
-                groups.push((*d, vec![mesh]));
-            }
-        }
-
-        let wall_corners = [
-            Point3::new(wall_min.x, wall_min.y, wall_min.z),
-            Point3::new(wall_max.x, wall_min.y, wall_min.z),
-            Point3::new(wall_min.x, wall_max.y, wall_min.z),
-            Point3::new(wall_max.x, wall_max.y, wall_min.z),
-            Point3::new(wall_min.x, wall_min.y, wall_max.z),
-            Point3::new(wall_max.x, wall_min.y, wall_max.z),
-            Point3::new(wall_min.x, wall_max.y, wall_max.z),
-            Point3::new(wall_max.x, wall_max.y, wall_max.z),
-        ];
-
-        for (extrusion_dir, group_meshes) in &groups {
-            let target = Vector3::new(1.0, 0.0, 0.0);
-            let rotation = Rotation3::rotation_between(extrusion_dir, &target)
-                .unwrap_or(Rotation3::identity());
-            let inv_rotation = rotation.inverse();
-
-            // Rotate positions and normals into the aligned frame
+        for (opening_mesh, frame) in diagonal_openings {
+            // Transform into the opening's full local frame. For roof windows,
+            // the cross axes carry the roll needed for correctly oriented reveals.
             for chunk in result.positions.chunks_exact_mut(3) {
-                let p = rotation * Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let p = frame.to_local_point(Point3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 chunk[0] = p.x as f32;
                 chunk[1] = p.y as f32;
                 chunk[2] = p.z as f32;
             }
             for chunk in result.normals.chunks_exact_mut(3) {
-                let n = rotation * Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let n = frame.to_local_vector(Vector3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 chunk[0] = n.x as f32;
                 chunk[1] = n.y as f32;
                 chunk[2] = n.z as f32;
             }
 
-            let mut wall_x_min = f64::INFINITY;
-            let mut wall_x_max = f64::NEG_INFINITY;
-            for wc in &wall_corners {
-                let rwc = rotation * wc;
-                wall_x_min = wall_x_min.min(rwc.x);
-                wall_x_max = wall_x_max.max(rwc.x);
+            // Compute bounds from the actual rotated mesh, not from the original
+            // world AABB. Rotating an AABB for a diagonal wall creates a much
+            // larger empty hull, which makes reveal faces span far beyond the wall.
+            let (rot_wall_min_f32, rot_wall_max_f32) = result.bounds();
+            let rot_wall_min = Point3::new(
+                rot_wall_min_f32.x as f64,
+                rot_wall_min_f32.y as f64,
+                rot_wall_min_f32.z as f64,
+            );
+            let rot_wall_max = Point3::new(
+                rot_wall_max_f32.x as f64,
+                rot_wall_max_f32.y as f64,
+                rot_wall_max_f32.z as f64,
+            );
+
+            let mut rot_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+            let mut rot_max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+            for chunk in opening_mesh.positions.chunks_exact(3) {
+                let p = frame.to_local_point(Point3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
+                rot_min.x = rot_min.x.min(p.x);
+                rot_min.y = rot_min.y.min(p.y);
+                rot_min.z = rot_min.z.min(p.z);
+                rot_max.x = rot_max.x.max(p.x);
+                rot_max.y = rot_max.y.max(p.y);
+                rot_max.z = rot_max.z.max(p.z);
             }
+            rot_min.x = rot_min.x.min(rot_wall_min.x);
+            rot_max.x = rot_max.x.max(rot_wall_max.x);
 
-            for opening_mesh in group_meshes {
-                let mut rot_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
-                let mut rot_max =
-                    Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-                for chunk in opening_mesh.positions.chunks_exact(3) {
-                    let p =
-                        rotation * Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-                    rot_min.x = rot_min.x.min(p.x);
-                    rot_min.y = rot_min.y.min(p.y);
-                    rot_min.z = rot_min.z.min(p.z);
-                    rot_max.x = rot_max.x.max(p.x);
-                    rot_max.y = rot_max.y.max(p.y);
-                    rot_max.z = rot_max.z.max(p.z);
-                }
-                rot_min.x = rot_min.x.min(wall_x_min);
-                rot_max.x = rot_max.x.max(wall_x_max);
+            *result = self.cut_rectangular_opening_no_faces(result, rot_min, rot_max);
 
-                *result = self.cut_rectangular_opening_no_faces(result, rot_min, rot_max);
-            }
+            // Generate reveal faces in the opening-local frame. They rotate back
+            // to world space together with the rest of the mesh.
+            let x_dir = Vector3::new(1.0, 0.0, 0.0);
+            generate_reveal_quads(
+                result,
+                &rot_min,
+                &rot_max,
+                &rot_wall_min,
+                &rot_wall_max,
+                Some(&x_dir),
+            );
 
-            // Rotate positions and normals back to world frame
+            // Transform positions and normals back to world frame.
             for chunk in result.positions.chunks_exact_mut(3) {
-                let p =
-                    inv_rotation * Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let p = frame.to_world_point(Point3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 chunk[0] = p.x as f32;
                 chunk[1] = p.y as f32;
                 chunk[2] = p.z as f32;
             }
             for chunk in result.normals.chunks_exact_mut(3) {
-                let n =
-                    inv_rotation * Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let n = frame.to_world_vector(Vector3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
                 chunk[0] = n.x as f32;
                 chunk[1] = n.y as f32;
                 chunk[2] = n.z as f32;
@@ -1066,6 +1861,25 @@ impl GeometryRouter {
         let extend_backward = (open_min_proj - wall_min_proj).max(0.0); // How much wall extends before opening
         let extend_forward = (wall_max_proj - open_max_proj).max(0.0); // How much wall extends after opening
 
+        // Add a tiny padding past the wall on both sides so the opening's near/far
+        // faces never end up exactly coplanar with the wall's near/far faces.
+        // Exact coplanarity leaves 0-thickness sliver artifacts in the rectangular
+        // clip path (the "completely inside" check in cut_rectangular_opening_no_faces
+        // uses a tolerance of 1e-6 on each axis). Scaled to wall depth so the pad
+        // stays imperceptible across mm/m unit systems.
+        //
+        // NOTE: the floor MUST be strictly greater than the clipper's EPSILON
+        // (1e-6, see `cut_rectangular_opening_no_faces`) — otherwise sub-cm walls
+        // can still land on the equality boundary and re-introduce slivers
+        // (per CodeRabbit review on PR #605). We pick 1e-5 (10x EPSILON) for a
+        // safe margin. For typical walls the *scaled* term dominates anyway
+        // (200 mm wall → 2 µm pad).
+        // See issue #604.
+        let wall_extent_along_dir = (wall_max_proj - wall_min_proj).abs();
+        let coplanarity_pad = (wall_extent_along_dir * 1e-5).max(1e-5);
+        let extend_backward = extend_backward + coplanarity_pad;
+        let extend_forward = extend_forward + coplanarity_pad;
+
         // Extend opening bounds along the extrusion direction
         let extended_min = open_min - extrusion_direction * extend_backward;
         let extended_max = open_max + extrusion_direction * extend_forward;
@@ -1100,8 +1914,8 @@ impl GeometryRouter {
     /// Cut a rectangular opening from a mesh using AABB clipping.
     ///
     /// This method clips triangles against the opening bounding box using axis-aligned
-    /// clipping planes. Internal face generation is disabled because it causes visual
-    /// artifacts (rotated faces, thin lines extending from models).
+    /// clipping planes. Reveal faces are generated separately in the caller after
+    /// all clipping is complete (see `generate_reveal_quads`).
     /// Single-pass multi-box rectangular clipping.
     /// Instead of iterating boxes one-by-one (O(2^N) triangle growth from boundary
     /// re-splitting), this tests each triangle against ALL boxes simultaneously.
@@ -1112,7 +1926,7 @@ impl GeometryRouter {
         &self,
         mesh: &Mesh,
         boxes: &[(Point3<f64>, Point3<f64>)],
-    ) -> Mesh {
+    ) -> (Mesh, usize) {
         let mut current = mesh.clone();
 
         // Process each box, but only clip triangles that actually intersect THIS box.
@@ -1125,16 +1939,21 @@ impl GeometryRouter {
         // With merged boxes, adjacency is eliminated.
         //
         // Safety: cap triangle count to prevent OOM from pathological cases.
+        // When the cap trips, the remaining suffix of boxes is left uncut; the
+        // processed count is returned so the caller can skip reveal generation
+        // for openings that didn't actually leave a hole in the mesh.
         const MAX_TRIANGLES: usize = 500_000;
 
-        for (_bi, (open_min, open_max)) in boxes.iter().enumerate() {
+        let mut processed = 0;
+        for (open_min, open_max) in boxes.iter() {
             if current.indices.len() / 3 > MAX_TRIANGLES {
                 break;
             }
             current = self.cut_rectangular_opening(&current, *open_min, *open_max);
+            processed += 1;
         }
 
-        current
+        (current, processed)
     }
 
     pub(super) fn cut_rectangular_opening(
@@ -1259,12 +2078,26 @@ impl GeometryRouter {
             }
         }
 
-        // No internal face generation for diagonal openings
+        // Reveal faces are generated by the caller (see generate_reveal_quads)
         result
     }
 
     /// Test if a triangle intersects an axis-aligned bounding box using Separating Axis Theorem (SAT)
-    /// Returns true if triangle and box intersect, false if they are separated
+    /// Returns true if triangle and box intersect, false if they are separated.
+    ///
+    /// All separation tests use a small `SAT_EPSILON` slack so that a triangle
+    /// **lying exactly on a box face** (e.g. an extruded wall's outer face
+    /// that is coplanar with the opening AABB's `max.x` face after the opening
+    /// has been extended through the wall thickness) is reported as
+    /// intersecting and gets routed into the actual clipping path. Without
+    /// this slack, FP rounding can produce a tiny gap (the wall mesh is
+    /// stored in f32 and re-promoted to f64 here, while the opening box is
+    /// computed in pure f64) that the strict `<` reads as a separation — and
+    /// the wall's outer face survives un-clipped, leaving the wall solid
+    /// around its opening (issue #584 / Smiley-West balconies, follow-up:
+    /// the per-axis 1e-6 epsilon was correct for the box-axis tests but
+    /// undersized for the triangle-plane test, which uses an un-normalized
+    /// `triangle_normal` whose magnitude scales with triangle area).
     fn triangle_intersects_box(
         &self,
         v0: &Point3<f64>,
@@ -1274,6 +2107,13 @@ impl GeometryRouter {
         box_max: &Point3<f64>,
     ) -> bool {
         use nalgebra::Vector3;
+
+        /// Float slack for SAT separation tests (1 micrometre at the IFC's
+        /// length unit). Big enough to absorb double-precision rounding
+        /// (`v.z - box_center.z` vs `(box_max.z - box_min.z) * 0.5`) on
+        /// box-coplanar triangles, small enough to not pull genuinely
+        /// separated triangles into the clipper.
+        const SAT_EPSILON: f64 = 1e-6;
 
         // Box center and half-extents
         let box_center = Point3::new(
@@ -1315,7 +2155,7 @@ impl GeometryRouter {
             let tri_max = p0.max(p1).max(p2);
             let box_extent = box_half_extents[axis_idx];
 
-            if tri_max < -box_extent || tri_min > box_extent {
+            if tri_max < -box_extent - SAT_EPSILON || tri_min > box_extent + SAT_EPSILON {
                 return false; // Separated on this axis
             }
         }
@@ -1336,7 +2176,21 @@ impl GeometryRouter {
             box_projection += box_half_extents[i] * triangle_normal.dot(&axis).abs();
         }
 
-        if triangle_offset.abs() > box_projection {
+        // Normalize the per-axis epsilon by the triangle-normal magnitude.
+        //
+        // `triangle_normal` is the un-normalized cross product `e0 × e2`, so
+        // `|triangle_normal| ≈ 2 * triangle_area`. Both `triangle_offset` and
+        // `box_projection` scale linearly with that magnitude, but the
+        // physical-space rounding error a "near-coplanar" face needs to absorb
+        // does NOT scale with triangle area. Without scaling SAT_EPSILON, a
+        // tall/wide wall face sitting ~3e-7 m outside the opening box (well
+        // within the f32 → f64 round-trip slop introduced by the mesh
+        // pipeline) becomes a separation gap of ~1.7e-6 in projection units,
+        // which a fixed 1e-6 epsilon misses — leaving the wall's outer face
+        // un-clipped (Smiley-West uncut walls, follow-up to #584).
+        let normal_magnitude = triangle_normal.norm();
+        let t2_epsilon = SAT_EPSILON * normal_magnitude.max(1.0);
+        if triangle_offset.abs() > box_projection + t2_epsilon {
             return false; // Separated by triangle plane
         }
 
@@ -1374,7 +2228,9 @@ impl GeometryRouter {
                         box_half_extents[i] * axis_normalized.dot(&box_axis_vec).abs();
                 }
 
-                if tri_max < -box_projection || tri_min > box_projection {
+                if tri_max < -box_projection - SAT_EPSILON
+                    || tri_min > box_projection + SAT_EPSILON
+                {
                     return false; // Separated on this axis
                 }
             }
@@ -1596,5 +2452,734 @@ impl GeometryRouter {
             result.add_vertex(tri.v2, *normal);
             result.add_triangle(base, base + 1, base + 2);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod reveal_tests {
+    use super::*;
+    use crate::Mesh;
+
+    /// Build a simple box mesh (12 triangles) for testing.
+    #[allow(dead_code)]
+    fn make_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
+        let mut m = Mesh::with_capacity(24, 36);
+
+        let corners = [
+            Point3::new(min.x, min.y, min.z), // 0
+            Point3::new(max.x, min.y, min.z), // 1
+            Point3::new(max.x, max.y, min.z), // 2
+            Point3::new(min.x, max.y, min.z), // 3
+            Point3::new(min.x, min.y, max.z), // 4
+            Point3::new(max.x, min.y, max.z), // 5
+            Point3::new(max.x, max.y, max.z), // 6
+            Point3::new(min.x, max.y, max.z), // 7
+        ];
+
+        // 6 faces × 4 vertices each with face normals
+        let faces: [(Vector3<f64>, [usize; 4]); 6] = [
+            (Vector3::new(0.0, 0.0, -1.0), [0, 2, 1, 3]), // -Z
+            (Vector3::new(0.0, 0.0, 1.0), [4, 5, 6, 7]),  // +Z
+            (Vector3::new(0.0, -1.0, 0.0), [0, 1, 5, 4]), // -Y
+            (Vector3::new(0.0, 1.0, 0.0), [2, 3, 7, 6]),  // +Y
+            (Vector3::new(-1.0, 0.0, 0.0), [0, 4, 7, 3]), // -X
+            (Vector3::new(1.0, 0.0, 0.0), [1, 2, 6, 5]),  // +X
+        ];
+        for (n, idx) in &faces {
+            let b = m.vertex_count() as u32;
+            m.add_vertex(corners[idx[0]], *n);
+            m.add_vertex(corners[idx[1]], *n);
+            m.add_vertex(corners[idx[2]], *n);
+            m.add_vertex(corners[idx[3]], *n);
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+        m
+    }
+
+    /// Build an oriented wall/opening box from local length/thickness/Z extents.
+    fn make_oriented_box_mesh(
+        origin: Point3<f64>,
+        length_axis: Vector3<f64>,
+        thickness_axis: Vector3<f64>,
+        length: (f64, f64),
+        thickness: (f64, f64),
+        height: (f64, f64),
+    ) -> Mesh {
+        let z_axis = Vector3::new(0.0, 0.0, 1.0);
+        let point =
+            |l: f64, t: f64, z: f64| origin + length_axis * l + thickness_axis * t + z_axis * z;
+
+        let corners = [
+            point(length.0, thickness.0, height.0),
+            point(length.1, thickness.0, height.0),
+            point(length.1, thickness.1, height.0),
+            point(length.0, thickness.1, height.0),
+            point(length.0, thickness.0, height.1),
+            point(length.1, thickness.0, height.1),
+            point(length.1, thickness.1, height.1),
+            point(length.0, thickness.1, height.1),
+        ];
+
+        let mut m = Mesh::with_capacity(24, 36);
+        let faces: [[usize; 4]; 6] = [
+            [0, 2, 1, 3],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [2, 3, 7, 6],
+            [0, 4, 7, 3],
+            [1, 2, 6, 5],
+        ];
+
+        for idx in &faces {
+            let edge1 = corners[idx[1]] - corners[idx[0]];
+            let edge2 = corners[idx[2]] - corners[idx[0]];
+            let normal = edge1
+                .cross(&edge2)
+                .try_normalize(1e-10)
+                .unwrap_or(Vector3::new(0.0, 0.0, 1.0));
+            let b = m.vertex_count() as u32;
+            m.add_vertex(corners[idx[0]], normal);
+            m.add_vertex(corners[idx[1]], normal);
+            m.add_vertex(corners[idx[2]], normal);
+            m.add_vertex(corners[idx[3]], normal);
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+
+        m
+    }
+
+    fn make_framed_box_mesh(
+        origin: Point3<f64>,
+        depth_axis: Vector3<f64>,
+        cross_a: Vector3<f64>,
+        cross_b: Vector3<f64>,
+        depth: (f64, f64),
+        a: (f64, f64),
+        b: (f64, f64),
+    ) -> Mesh {
+        let point =
+            |d: f64, av: f64, bv: f64| origin + depth_axis * d + cross_a * av + cross_b * bv;
+
+        let corners = [
+            point(depth.0, a.0, b.0),
+            point(depth.1, a.0, b.0),
+            point(depth.1, a.1, b.0),
+            point(depth.0, a.1, b.0),
+            point(depth.0, a.0, b.1),
+            point(depth.1, a.0, b.1),
+            point(depth.1, a.1, b.1),
+            point(depth.0, a.1, b.1),
+        ];
+
+        let mut m = Mesh::with_capacity(24, 36);
+        let faces: [[usize; 4]; 6] = [
+            [0, 2, 1, 3],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [2, 3, 7, 6],
+            [0, 4, 7, 3],
+            [1, 2, 6, 5],
+        ];
+
+        for idx in &faces {
+            let edge1 = corners[idx[1]] - corners[idx[0]];
+            let edge2 = corners[idx[2]] - corners[idx[0]];
+            let normal = edge1
+                .cross(&edge2)
+                .try_normalize(1e-10)
+                .unwrap_or(Vector3::new(0.0, 0.0, 1.0));
+            let b = m.vertex_count() as u32;
+            m.add_vertex(corners[idx[0]], normal);
+            m.add_vertex(corners[idx[1]], normal);
+            m.add_vertex(corners[idx[2]], normal);
+            m.add_vertex(corners[idx[3]], normal);
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+
+        m
+    }
+
+    /// Build a Z-extruded L-shaped prism. The six vertical walls share the
+    /// same ±X/±Y normals as a box but sit at three different X (or Y)
+    /// offsets, so a box detector that only counts axes would misclassify it.
+    fn make_l_shape_prism_mesh() -> Mesh {
+        // Footprint corners CCW in XY plane:
+        // (0,0) -> (4,0) -> (4,2) -> (2,2) -> (2,4) -> (0,4) -> back to (0,0)
+        let z0 = 0.0;
+        let z1 = 1.0;
+        let footprint = [
+            (0.0_f64, 0.0_f64),
+            (4.0, 0.0),
+            (4.0, 2.0),
+            (2.0, 2.0),
+            (2.0, 4.0),
+            (0.0, 4.0),
+        ];
+
+        let mut m = Mesh::new();
+        let n = footprint.len();
+
+        // Vertical walls — each footprint edge becomes one rectangular face.
+        for i in 0..n {
+            let (x0, y0) = footprint[i];
+            let (x1, y1) = footprint[(i + 1) % n];
+            let edge = Vector3::new(x1 - x0, y1 - y0, 0.0);
+            let z_up = Vector3::new(0.0, 0.0, 1.0);
+            let normal = edge
+                .cross(&z_up)
+                .try_normalize(1e-10)
+                .unwrap_or(Vector3::new(1.0, 0.0, 0.0));
+            let p0 = Point3::new(x0, y0, z0);
+            let p1 = Point3::new(x1, y1, z0);
+            let p2 = Point3::new(x1, y1, z1);
+            let p3 = Point3::new(x0, y0, z1);
+            let b = m.vertex_count() as u32;
+            m.add_vertex(p0, normal);
+            m.add_vertex(p1, normal);
+            m.add_vertex(p2, normal);
+            m.add_vertex(p3, normal);
+            m.add_triangle(b, b + 1, b + 2);
+            m.add_triangle(b, b + 2, b + 3);
+        }
+
+        // Caps: fan-triangulate the L footprint at top and bottom.
+        let bottom_n = Vector3::new(0.0, 0.0, -1.0);
+        let top_n = Vector3::new(0.0, 0.0, 1.0);
+        let bottom_base = m.vertex_count() as u32;
+        for &(x, y) in &footprint {
+            m.add_vertex(Point3::new(x, y, z0), bottom_n);
+        }
+        let top_base = m.vertex_count() as u32;
+        for &(x, y) in &footprint {
+            m.add_vertex(Point3::new(x, y, z1), top_n);
+        }
+        for i in 1..(n as u32 - 1) {
+            // Bottom cap winds clockwise so its normal points -Z.
+            m.add_triangle(bottom_base, bottom_base + i + 1, bottom_base + i);
+            m.add_triangle(top_base, top_base + i, top_base + i + 1);
+        }
+
+        m
+    }
+
+    /// Extract the dominant normal (first triangle's normal) of all reveal
+    /// triangles (those added after `pre_count` triangles).
+    fn reveal_normals(mesh: &Mesh, pre_tri_count: usize) -> Vec<Vector3<f64>> {
+        let mut normals = Vec::new();
+        let indices = &mesh.indices[pre_tri_count * 3..];
+        for tri in indices.chunks_exact(3) {
+            let i = tri[0] as usize;
+            let nx = mesh.normals[i * 3] as f64;
+            let ny = mesh.normals[i * 3 + 1] as f64;
+            let nz = mesh.normals[i * 3 + 2] as f64;
+            normals.push(Vector3::new(nx, ny, nz));
+        }
+        normals
+    }
+
+    #[test]
+    fn test_reveals_generated_for_axis_aligned_opening() {
+        // Wall: 10m long (X), 0.3m thick (Y), 3m tall (Z)
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 3.0);
+
+        // Opening: 2m wide at X=4..6, full Y depth, 1m..2.5m in Z
+        let open_min = Point3::new(4.0, -0.3, 1.0);
+        let open_max = Point3::new(6.0, 0.3, 2.5);
+
+        let mut mesh = Mesh::new();
+        let extrusion_dir = Vector3::new(0.0, 1.0, 0.0); // Through the wall
+
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&extrusion_dir),
+        );
+
+        // Should have 4 reveal quads = 8 triangles = 16 vertices
+        assert_eq!(
+            mesh.triangle_count(),
+            8,
+            "Expected 4 reveal quads (8 triangles)"
+        );
+        assert_eq!(mesh.vertex_count(), 16, "Expected 16 vertices (4 per quad)");
+    }
+
+    #[test]
+    fn test_reveal_normals_point_inward() {
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 3.0);
+        let open_min = Point3::new(4.0, -0.3, 1.0);
+        let open_max = Point3::new(6.0, 0.3, 2.5);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
+
+        let normals = reveal_normals(&mesh, 0);
+
+        // Opening center in X/Z cross-section is (5.0, 1.75)
+        // Left face at X=4.0 → normal should have +X component
+        // Right face at X=6.0 → normal should have −X component
+        // Bottom at Z=1.0 → normal should have +Z component
+        // Top at Z=2.5 → normal should have −Z component
+        let has_pos_x = normals.iter().any(|n| n.x > 0.5);
+        let has_neg_x = normals.iter().any(|n| n.x < -0.5);
+        let has_pos_z = normals.iter().any(|n| n.z > 0.5);
+        let has_neg_z = normals.iter().any(|n| n.z < -0.5);
+
+        assert!(has_pos_x, "Should have +X normal (left reveal)");
+        assert!(has_neg_x, "Should have −X normal (right reveal)");
+        assert!(has_pos_z, "Should have +Z normal (bottom reveal)");
+        assert!(has_neg_z, "Should have −Z normal (top reveal)");
+    }
+
+    #[test]
+    fn test_no_reveals_when_opening_at_wall_boundary() {
+        // Door-like opening that starts at wall bottom (Z=0) and spans full width
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 3.0);
+        // Opening at Z=0 (floor) to Z=2.1 (door height), X covers full wall
+        let open_min = Point3::new(0.0, -0.3, 0.0);
+        let open_max = Point3::new(10.0, 0.3, 2.1);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
+
+        // X edges at wall boundary → no left/right reveals
+        // Z bottom at wall boundary → no bottom reveal
+        // Only top reveal at Z=2.1 should exist
+        assert_eq!(
+            mesh.triangle_count(),
+            2,
+            "Only top reveal expected (1 quad = 2 tris)"
+        );
+    }
+
+    #[test]
+    fn test_reveals_with_extrusion_along_x() {
+        // Wall oriented along Y, thickness along X
+        let wall_min = Point3::new(-0.15, 0.0, 0.0);
+        let wall_max = Point3::new(0.15, 10.0, 3.0);
+        let open_min = Point3::new(-0.3, 4.0, 1.0);
+        let open_max = Point3::new(0.3, 6.0, 2.5);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(1.0, 0.0, 0.0);
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
+
+        assert_eq!(mesh.triangle_count(), 8, "4 reveal quads for X-extrusion");
+    }
+
+    #[test]
+    fn test_reveals_with_extrusion_along_z() {
+        // Slab-like: thickness along Z (horizontal openings)
+        let wall_min = Point3::new(0.0, 0.0, -0.15);
+        let wall_max = Point3::new(10.0, 10.0, 0.15);
+        let open_min = Point3::new(3.0, 3.0, -0.3);
+        let open_max = Point3::new(5.0, 5.0, 0.3);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 0.0, 1.0);
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
+
+        assert_eq!(mesh.triangle_count(), 8, "4 reveal quads for Z-extrusion");
+    }
+
+    #[test]
+    fn test_reveals_clamp_to_wall_depth() {
+        // Wall: 0.3m thick along Y
+        let wall_min = Point3::new(0.0, 0.0, 0.0);
+        let wall_max = Point3::new(10.0, 0.3, 3.0);
+        // Opening extends well beyond wall in Y (simulating extend_opening_along_direction)
+        let open_min = Point3::new(4.0, -1.0, 1.0);
+        let open_max = Point3::new(6.0, 1.3, 2.5);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
+
+        // Reveal depth should be clamped to wall: Y=0.0..0.3 (not -1.0..1.3)
+        for chunk in mesh.positions.chunks_exact(3) {
+            let y = chunk[1] as f64;
+            assert!(
+                y >= -1e-3 && y <= 0.3 + 1e-3,
+                "Reveal vertex Y={y} should be within wall bounds [0.0, 0.3]"
+            );
+        }
+    }
+
+    #[test]
+    fn test_no_reveals_when_no_wall_thickness() {
+        // Degenerate wall with zero thickness along extrusion
+        let wall_min = Point3::new(0.0, 0.0, 0.0);
+        let wall_max = Point3::new(10.0, 0.0, 3.0);
+        let open_min = Point3::new(4.0, -0.1, 1.0);
+        let open_max = Point3::new(6.0, 0.1, 2.5);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
+
+        assert_eq!(
+            mesh.triangle_count(),
+            0,
+            "No reveals for zero-thickness wall"
+        );
+    }
+
+    #[test]
+    fn test_no_reveals_when_opening_misses_submesh_on_cross_axis() {
+        // Sub-mesh slab: Z=[0..0.5]. Opening is at Z=[1.0..2.0] — fully above.
+        // Extrusion along Y (wall thickness). Without cross-axis overlap
+        // guards, reveals would be emitted floating above the slab.
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 0.5);
+        let open_min = Point3::new(4.0, -0.3, 1.0);
+        let open_max = Point3::new(6.0, 0.3, 2.0);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
+
+        assert_eq!(
+            mesh.triangle_count(),
+            0,
+            "No reveals when opening lies outside sub-mesh on a cross-axis"
+        );
+    }
+
+    #[test]
+    fn test_diagonal_reveals_do_not_expand_mesh_bounds() {
+        // Repro shape for oblique multilayer wall parts: the opening is cut in
+        // a frame aligned to its extrusion direction. Reveal bounds must come
+        // from the actual rotated mesh, not from the rotated world AABB hull.
+        let origin = Point3::new(211.0, 124.0, 8.6);
+        let length_axis = Vector3::new(0.930469718224507, 0.36636880798889876, 0.0);
+        let thickness_axis = Vector3::new(0.36636880798889876, -0.930469718224507, 0.0);
+
+        let wall = make_oriented_box_mesh(
+            origin,
+            length_axis,
+            thickness_axis,
+            (0.0, 14.0),
+            (-0.15, 0.15),
+            (0.0, 2.88),
+        );
+        let opening = make_oriented_box_mesh(
+            origin,
+            length_axis,
+            thickness_axis,
+            (4.0, 6.0),
+            (-0.4, 0.4),
+            (0.9, 2.7),
+        );
+
+        let (before_min, before_max) = wall.bounds();
+        let mut result = wall;
+        let frame = infer_opening_frame(&opening, Some(&thickness_axis)).unwrap();
+        GeometryRouter::new().apply_diagonal_openings(
+            &mut result,
+            &[OpeningType::DiagonalRectangular(opening, frame)],
+        );
+        let (after_min, after_max) = result.bounds();
+
+        assert!(after_min.x >= before_min.x - 1e-3);
+        assert!(after_min.y >= before_min.y - 1e-3);
+        assert!(after_min.z >= before_min.z - 1e-3);
+        assert!(after_max.x <= before_max.x + 1e-3);
+        assert!(after_max.y <= before_max.y + 1e-3);
+        assert!(after_max.z <= before_max.z + 1e-3);
+    }
+
+    #[test]
+    fn test_rectangular_box_detector_accepts_clean_box() {
+        let opening = make_framed_box_mesh(
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            (-0.15, 0.15),
+            (-1.0, 1.0),
+            (0.0, 2.0),
+        );
+        assert!(is_rectangular_box_mesh(&opening));
+    }
+
+    #[test]
+    fn test_rectangular_box_detector_rejects_l_shape() {
+        // An L-shaped vertical shaft has only three face-normal axes
+        // (±X, ±Y, ±Z) — the same as a box — but its ±X / ±Y walls sit at
+        // three different offsets. Without a per-axis plane-count check the
+        // detector would misclassify it as a box and the rectangular cutter
+        // would over-cut the AABB of the L.
+        let opening = make_l_shape_prism_mesh();
+        assert!(
+            !is_rectangular_box_mesh(&opening),
+            "rectilinear non-box footprints must fall through to NonRectangular CSG"
+        );
+    }
+
+    /// Regression for #547: a trapezoid extrusion has exactly 3 face-normal
+    /// axes after anti-parallel merging (front/back, top/bottom, and the two
+    /// slanted sides which merge into one axis), but two of those axes are
+    /// not perpendicular. Without an orthogonality check the detector would
+    /// classify it as a box and the AABB cutter would over-cut the host wall.
+    #[test]
+    fn test_rectangular_box_detector_rejects_trapezoid_extrusion() {
+        // Trapezoid extruded along +Y: narrow at z=0 (x ∈ [-0.3, 0.3]),
+        // wide at z=2 (x ∈ [-0.5, 0.5]), thickness 0.6 in y.
+        let mut positions: Vec<f32> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+        let push_v = |positions: &mut Vec<f32>, x: f32, y: f32, z: f32| {
+            positions.extend_from_slice(&[x, y, z]);
+        };
+        // 8 corners: 4 of trapezoid at y=0, 4 at y=0.6.
+        // Order: bl, br, tr, tl on each face (b=bottom narrow, t=top wide).
+        push_v(&mut positions, -0.3, 0.0, 0.0); // 0
+        push_v(&mut positions, 0.3, 0.0, 0.0); // 1
+        push_v(&mut positions, 0.5, 0.0, 2.0); // 2
+        push_v(&mut positions, -0.5, 0.0, 2.0); // 3
+        push_v(&mut positions, -0.3, 0.6, 0.0); // 4
+        push_v(&mut positions, 0.3, 0.6, 0.0); // 5
+        push_v(&mut positions, 0.5, 0.6, 2.0); // 6
+        push_v(&mut positions, -0.5, 0.6, 2.0); // 7
+        // Front (y=0): 0,1,2 + 0,2,3
+        indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+        // Back (y=0.6): 5,4,7 + 5,7,6
+        indices.extend_from_slice(&[5, 4, 7, 5, 7, 6]);
+        // Bottom narrow (z=0): 4,5,1 + 4,1,0
+        indices.extend_from_slice(&[4, 5, 1, 4, 1, 0]);
+        // Top wide (z=2): 3,2,6 + 3,6,7
+        indices.extend_from_slice(&[3, 2, 6, 3, 6, 7]);
+        // Right slanted: 1,5,6 + 1,6,2
+        indices.extend_from_slice(&[1, 5, 6, 1, 6, 2]);
+        // Left slanted: 4,0,3 + 4,3,7
+        indices.extend_from_slice(&[4, 0, 3, 4, 3, 7]);
+
+        let mut mesh = Mesh::new();
+        mesh.positions = positions;
+        mesh.indices = indices;
+        assert!(
+            !is_rectangular_box_mesh(&mesh),
+            "trapezoid extrusion must be rejected — its slanted-side axis is \
+             not perpendicular to the top/bottom axis, so the AABB cutter would \
+             over-cut the host"
+        );
+    }
+
+    /// A box rotated 45° around Z should still be classified as a box: its
+    /// three face-normal axes are mutually orthogonal even though none align
+    /// with world axes. The diagonal cutter then handles the rotation.
+    #[test]
+    fn test_rectangular_box_detector_accepts_rotated_box() {
+        let opening = make_framed_box_mesh(
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.7071067811865476, 0.7071067811865476, 0.0),
+            Vector3::new(-0.7071067811865476, 0.7071067811865476, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            (-0.15, 0.15),
+            (-1.0, 1.0),
+            (0.0, 2.0),
+        );
+        assert!(
+            is_rectangular_box_mesh(&opening),
+            "axis-rotated boxes must still be detected — rotation alone does \
+             not make them non-rectangular"
+        );
+    }
+
+    #[test]
+    fn test_infers_sloped_brep_opening_frame() {
+        // Roof openings exported as BReps do not expose an extrusion direction.
+        // The frame must be inferred from the box faces so reveal generation
+        // preserves the roof pitch/roll instead of falling back to world axes.
+        let depth_axis = Vector3::new(0.0, -0.5, 0.8660254037844386);
+        let cross_a = Vector3::new(1.0, 0.0, 0.0);
+        let cross_b = depth_axis.cross(&cross_a).normalize();
+        let opening = make_framed_box_mesh(
+            Point3::new(10.0, 20.0, 5.0),
+            depth_axis,
+            cross_a,
+            cross_b,
+            (-0.2, 0.2),
+            (-0.8, 0.8),
+            (-0.4, 0.4),
+        );
+
+        let frame = infer_opening_frame(&opening, None).unwrap();
+
+        assert!(
+            frame.depth.dot(&depth_axis).abs() > 0.99,
+            "shortest inferred axis should be the sloped roof-window depth"
+        );
+        assert!(
+            frame.cross_a.dot(&cross_a).abs() > 0.99 || frame.cross_b.dot(&cross_a).abs() > 0.99,
+            "inferred frame should preserve the opening roll axis"
+        );
+        assert!(
+            !frame.is_axis_aligned(),
+            "sloped BRep opening should use the diagonal frame path"
+        );
+    }
+
+    #[test]
+    fn test_reveals_clamp_to_wall_on_orthogonal_cross_axis() {
+        // Sub-mesh Z extent is [0..2.0], but opening spans Z=[1.0..3.0] —
+        // taller than the sub-mesh. The left/right reveals (cross-axis X)
+        // must be clamped in Z to the sub-mesh bound, not the opening's.
+        let wall_min = Point3::new(0.0, -0.15, 0.0);
+        let wall_max = Point3::new(10.0, 0.15, 2.0);
+        let open_min = Point3::new(4.0, -0.3, 1.0);
+        let open_max = Point3::new(6.0, 0.3, 3.0);
+
+        let mut mesh = Mesh::new();
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+        generate_reveal_quads(
+            &mut mesh,
+            &open_min,
+            &open_max,
+            &wall_min,
+            &wall_max,
+            Some(&dir),
+        );
+
+        for chunk in mesh.positions.chunks_exact(3) {
+            let z = chunk[2] as f64;
+            assert!(
+                z >= -1e-3 && z <= 2.0 + 1e-3,
+                "Reveal vertex Z={z} should stay within sub-mesh [0.0, 2.0]"
+            );
+        }
+    }
+
+    #[test]
+    fn test_extend_opening_pads_past_wall_on_exact_match() {
+        // Regression test for issue #604: when an opening's depth exactly matches
+        // its wall's depth along the extrusion axis, the extended bounds must NOT
+        // sit exactly on the wall faces — that produces 0-thickness CSG/clip
+        // artifacts. The extension should always overshoot the wall slightly.
+        let router = crate::router::GeometryRouter::new();
+
+        // Wall: 0.2 m thick along Y
+        let wall_min = Point3::new(0.0, 0.0, 0.0);
+        let wall_max = Point3::new(10.0, 0.2, 3.0);
+        // Opening exactly fills the wall in Y (0.0..0.2) — the failing case
+        let open_min = Point3::new(4.0, 0.0, 1.0);
+        let open_max = Point3::new(6.0, 0.2, 2.5);
+        let dir = Vector3::new(0.0, 1.0, 0.0);
+
+        let (new_min, new_max) =
+            router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+
+        // Both faces must overshoot the wall, not sit exactly on it
+        assert!(
+            new_min.y < wall_min.y,
+            "extended opening min Y {} must be strictly below wall min Y {}",
+            new_min.y,
+            wall_min.y,
+        );
+        assert!(
+            new_max.y > wall_max.y,
+            "extended opening max Y {} must be strictly above wall max Y {}",
+            new_max.y,
+            wall_max.y,
+        );
+        // Padding must stay imperceptibly small (<< 1 mm for a 0.2 m wall)
+        let back_pad = wall_min.y - new_min.y;
+        let fwd_pad = new_max.y - wall_max.y;
+        assert!(back_pad > 0.0 && back_pad < 1e-3);
+        assert!(fwd_pad > 0.0 && fwd_pad < 1e-3);
+        // Cross-axis bounds untouched
+        assert_eq!(new_min.x, open_min.x);
+        assert_eq!(new_max.x, open_max.x);
+        assert_eq!(new_min.z, open_min.z);
+        assert_eq!(new_max.z, open_max.z);
+    }
+
+    #[test]
+    fn test_determine_extrusion_axis() {
+        let wmin = Point3::new(0.0, 0.0, 0.0);
+        let wmax = Point3::new(10.0, 0.3, 3.0);
+
+        assert_eq!(
+            determine_extrusion_axis(Some(&Vector3::new(1.0, 0.0, 0.0)), &wmin, &wmax),
+            0
+        );
+        assert_eq!(
+            determine_extrusion_axis(Some(&Vector3::new(0.0, 1.0, 0.0)), &wmin, &wmax),
+            1
+        );
+        assert_eq!(
+            determine_extrusion_axis(Some(&Vector3::new(0.0, 0.0, 1.0)), &wmin, &wmax),
+            2
+        );
+        // Diagonal direction — picks dominant axis
+        assert_eq!(
+            determine_extrusion_axis(Some(&Vector3::new(0.7, 0.7, 0.0)), &wmin, &wmax),
+            0 // X and Y tied, X wins via >=
+        );
+        // No direction → thinnest wall dim (Y=0.3)
+        assert_eq!(determine_extrusion_axis(None, &wmin, &wmax), 1);
     }
 }

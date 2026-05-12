@@ -20,10 +20,11 @@ export function checkClassificationFacet(
 ): FacetCheckResult {
   // Get classifications for the entity
   const classifications = accessor.getClassifications(expressId);
+  const hasAnyClassifications = classifications.length > 0;
 
   // If no value or system constraint, just check if any classification exists
   if (!facet.system && !facet.value) {
-    if (classifications.length === 0) {
+    if (!hasAnyClassifications) {
       return {
         passed: false,
         actualValue: '(none)',
@@ -44,6 +45,26 @@ export function checkClassificationFacet(
     };
   }
 
+  // If entity has no classifications at all, return CLASSIFICATION_MISSING
+  // (not SYSTEM_MISMATCH or VALUE_MISMATCH — those imply we found _some_ classifications)
+  if (!hasAnyClassifications) {
+    const expected = facet.system && facet.value
+      ? `${formatConstraint(facet.system)}:${formatConstraint(facet.value)}`
+      : facet.system
+        ? formatConstraint(facet.system)
+        : formatConstraint(facet.value!);
+
+    return {
+      passed: false,
+      actualValue: '(none)',
+      expectedValue: expected,
+      failure: {
+        type: 'CLASSIFICATION_MISSING',
+        expected,
+      },
+    };
+  }
+
   // Filter by system if specified
   let matchingClassifications = classifications;
   if (facet.system) {
@@ -58,7 +79,7 @@ export function checkClassificationFacet(
 
       return {
         passed: false,
-        actualValue: availableSystems || '(none)',
+        actualValue: availableSystems,
         expectedValue: formatConstraint(facet.system),
         failure: {
           type: 'CLASSIFICATION_SYSTEM_MISMATCH',

@@ -8,7 +8,7 @@
  * and secondary actions in an overflow menu.
  */
 
-import React, { useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import {
   FolderOpen,
   MousePointer2,
@@ -124,7 +124,7 @@ export function MobileToolbar() {
 
   const handleHide = useCallback(() => {
     if (selectedEntityId !== null) {
-      hideEntities(new Set([selectedEntityId]));
+      hideEntities([selectedEntityId]);
     }
   }, [selectedEntityId, hideEntities]);
 
@@ -135,15 +135,16 @@ export function MobileToolbar() {
   const handleExportGLB = useCallback(async () => {
     if (!geometryResult) return;
     try {
-      const glb = await GLTFExporter.exportGLB(geometryResult.meshes);
-      const blob = new Blob([glb], { type: 'model/gltf-binary' });
+      const exporter = new GLTFExporter(geometryResult);
+      const glb = exporter.exportGLB({ includeMetadata: true });
+      const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = 'model.glb';
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('GLB exported');
+      toast.success(`Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`);
     } catch (err) {
       toast.error(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }

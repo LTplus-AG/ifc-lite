@@ -10,11 +10,18 @@
  * Extracted from useIfc.ts for better separation of concerns
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store.js';
-import { detectFormat, parseFederatedIfcx, type IfcDataStore, type FederatedIfcxParseResult } from '@ifc-lite/parser';
-import type { MeshData } from '@ifc-lite/geometry';
+import {
+  detectFormat,
+  parseFederatedIfcx,
+  type IfcDataStore,
+  type FederatedIfcxParseResult,
+  type MapConversion,
+  type ProjectedCRS,
+} from '@ifc-lite/parser';
+import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import { IfcQuery } from '@ifc-lite/query';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import { getDynamicBatchConfig } from '../utils/ifcConfig.js';
@@ -26,7 +33,16 @@ import {
   parseIfcxViewerModel,
   parseStepBufferViewerModel,
 } from './ingest/viewerModelIngest.js';
+import {
+  detectPointCloudFormat,
+  ingestPointCloud,
+  type PointCloudFormat,
+} from './ingest/pointCloudIngest.js';
+import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
+import { getEffectiveGeoreference, getEffectiveHorizontalScale, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
+import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
+import { acquireFileBuffer } from '../utils/acquireFileBuffer.js';
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
   return typeof (file as NativeFileHandle).path === 'string';
@@ -37,6 +53,275 @@ function toExactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
     return bytes.buffer;
   }
   return bytes.slice().buffer;
+}
+
+type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
+
+interface ModelGeoref {
+  mapConversion: MapConversion;
+  projectedCRS: ProjectedCRS;
+  lengthUnitScale: number;
+  coordinateInfo?: CoordinateInfo;
+}
+
+interface AffineTransform3D {
+  m00: number;
+  m01: number;
+  m02: number;
+  tx: number;
+  m10: number;
+  m11: number;
+  m12: number;
+  ty: number;
+  m20: number;
+  m21: number;
+  m22: number;
+  tz: number;
+}
+
+function getMapUnitScale(georef: ModelGeoref): number {
+  return georef.projectedCRS.mapUnitScale ?? georef.lengthUnitScale ?? 1;
+}
+
+function getAxis(georef: ModelGeoref): { a: number; o: number; scale: number; denom: number } {
+  const conversion = georef.mapConversion;
+  const a = conversion.xAxisAbscissa ?? 1;
+  const o = conversion.xAxisOrdinate ?? 0;
+  // Use the effective horizontal scale: viewer geometry is already in metres,
+  // so applying IfcMapConversion.Scale raw would double-scale — see issue #595.
+  const mapUnitScale = georef.projectedCRS.mapUnitScale ?? georef.lengthUnitScale ?? 1;
+  const scale = getEffectiveHorizontalScale(conversion.scale, mapUnitScale, georef.lengthUnitScale ?? 1);
+  const denom = Math.max(a * a + o * o, 1e-12);
+  return { a, o, scale, denom };
+}
+
+function extractModelGeoref(
+  dataStore: IfcDataStore,
+  coordinateInfo?: CoordinateInfo,
+  mutations?: GeorefMutationDataLike,
+): ModelGeoref | null {
+  const georef = getEffectiveGeoreference(dataStore, coordinateInfo, mutations);
+  if (!georef?.mapConversion || !georef.projectedCRS?.name) return null;
+  return {
+    mapConversion: georef.mapConversion,
+    projectedCRS: georef.projectedCRS,
+    lengthUnitScale: georef.lengthUnitScale,
+    coordinateInfo,
+  };
+}
+
+function crsKey(crs: ProjectedCRS): string {
+  return `${crs.name ?? ''}|${crs.geodeticDatum ?? ''}|${crs.mapProjection ?? ''}|${crs.mapZone ?? ''}`.toUpperCase();
+}
+
+function canAlignInSameProjectedCrs(a: ModelGeoref, b: ModelGeoref): boolean {
+  return crsKey(a.projectedCRS) === crsKey(b.projectedCRS);
+}
+
+function totalYupOffset(coordinateInfo?: CoordinateInfo): { x: number; y: number; z: number } {
+  const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
+  const rtc = coordinateInfo?.wasmRtcOffset;
+  const rtcYup = rtc ? { x: rtc.x, y: rtc.z, z: -rtc.y } : { x: 0, y: 0, z: 0 };
+  return {
+    x: shift.x + rtcYup.x,
+    y: shift.y + rtcYup.y,
+    z: shift.z + rtcYup.z,
+  };
+}
+
+function emptyBounds() {
+  return {
+    min: { x: Infinity, y: Infinity, z: Infinity },
+    max: { x: -Infinity, y: -Infinity, z: -Infinity },
+  };
+}
+
+function zeroBounds() {
+  return {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 0, y: 0, z: 0 },
+  };
+}
+
+function updateBounds(bounds: ReturnType<typeof emptyBounds>, x: number, y: number, z: number): boolean {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return false;
+  bounds.min.x = Math.min(bounds.min.x, x);
+  bounds.min.y = Math.min(bounds.min.y, y);
+  bounds.min.z = Math.min(bounds.min.z, z);
+  bounds.max.x = Math.max(bounds.max.x, x);
+  bounds.max.y = Math.max(bounds.max.y, y);
+  bounds.max.z = Math.max(bounds.max.z, z);
+  return true;
+}
+
+function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeoref): AffineTransform3D | null {
+  const sourceConv = source.mapConversion;
+  const refConv = reference.mapConversion;
+  const sourceAxis = getAxis(source);
+  const refAxis = getAxis(reference);
+  const refDenom = refAxis.scale * refAxis.denom;
+  if (Math.abs(refDenom) < 1e-12) return null;
+
+  const sourceMapUnitScale = getMapUnitScale(source);
+  const refMapUnitScale = getMapUnitScale(reference);
+  const sourceOffset = totalYupOffset(source.coordinateInfo);
+  const refOffset = totalYupOffset(reference.coordinateInfo);
+
+  const eVx = sourceAxis.scale * sourceAxis.a;
+  const eVz = sourceAxis.scale * sourceAxis.o;
+  const eC = sourceConv.eastings * sourceMapUnitScale
+    + sourceAxis.scale * (sourceAxis.a * sourceOffset.x + sourceAxis.o * sourceOffset.z)
+    - refConv.eastings * refMapUnitScale;
+
+  const nVx = sourceAxis.scale * sourceAxis.o;
+  const nVz = -sourceAxis.scale * sourceAxis.a;
+  const nC = sourceConv.northings * sourceMapUnitScale
+    + sourceAxis.scale * (sourceAxis.o * sourceOffset.x - sourceAxis.a * sourceOffset.z)
+    - refConv.northings * refMapUnitScale;
+
+  const hC = sourceConv.orthogonalHeight * sourceMapUnitScale
+    + sourceOffset.y
+    - refConv.orthogonalHeight * refMapUnitScale;
+
+  const invRefDenom = 1 / refDenom;
+  const xVx = (refAxis.a * eVx + refAxis.o * nVx) * invRefDenom;
+  const xVz = (refAxis.a * eVz + refAxis.o * nVz) * invRefDenom;
+  const xC = (refAxis.a * eC + refAxis.o * nC) * invRefDenom - refOffset.x;
+
+  const yVx = (-refAxis.o * eVx + refAxis.a * nVx) * invRefDenom;
+  const yVz = (-refAxis.o * eVz + refAxis.a * nVz) * invRefDenom;
+  const yC = (-refAxis.o * eC + refAxis.a * nC) * invRefDenom;
+
+  return {
+    m00: xVx,
+    m01: 0,
+    m02: xVz,
+    tx: xC,
+    m10: 0,
+    m11: 1,
+    m12: 0,
+    ty: hC - refOffset.y,
+    m20: -yVx,
+    m21: 0,
+    m22: -yVz,
+    tz: -yC - refOffset.z,
+  };
+}
+
+function isIdentityTransform(transform: AffineTransform3D): boolean {
+  const eps = 1e-7;
+  return Math.abs(transform.m00 - 1) < eps
+    && Math.abs(transform.m01) < eps
+    && Math.abs(transform.m02) < eps
+    && Math.abs(transform.tx) < eps
+    && Math.abs(transform.m10) < eps
+    && Math.abs(transform.m11 - 1) < eps
+    && Math.abs(transform.m12) < eps
+    && Math.abs(transform.ty) < eps
+    && Math.abs(transform.m20) < eps
+    && Math.abs(transform.m21) < eps
+    && Math.abs(transform.m22 - 1) < eps
+    && Math.abs(transform.tz) < eps;
+}
+
+function applyAlignmentTransformAndUpdateBounds(
+  geometry: FederatedGeometryResult,
+  transform: AffineTransform3D,
+  referenceInfo?: CoordinateInfo,
+): void {
+  const bounds = emptyBounds();
+  let found = false;
+
+  for (const mesh of geometry.meshes) {
+    const positions = mesh.positions;
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = positions[i];
+      const y = positions[i + 1];
+      const z = positions[i + 2];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        continue;
+      }
+
+      const alignedX = transform.m00 * x + transform.m01 * y + transform.m02 * z + transform.tx;
+      const alignedY = transform.m10 * x + transform.m11 * y + transform.m12 * z + transform.ty;
+      const alignedZ = transform.m20 * x + transform.m21 * y + transform.m22 * z + transform.tz;
+      positions[i] = alignedX;
+      positions[i + 1] = alignedY;
+      positions[i + 2] = alignedZ;
+      found = updateBounds(bounds, alignedX, alignedY, alignedZ) || found;
+    }
+
+    // Rotate normals by the transform's 3×3 linear part (translation omitted)
+    // and renormalize. CRS alignment is a rigid rotation, so the linear part
+    // itself is the correct transform for normals; degenerate results from
+    // zero-length or non-finite inputs are left in place.
+    const normals = mesh.normals;
+    if (normals && normals.length >= 3) {
+      for (let i = 0; i < normals.length; i += 3) {
+        const nx = normals[i];
+        const ny = normals[i + 1];
+        const nz = normals[i + 2];
+        if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)) {
+          continue;
+        }
+        const rx = transform.m00 * nx + transform.m01 * ny + transform.m02 * nz;
+        const ry = transform.m10 * nx + transform.m11 * ny + transform.m12 * nz;
+        const rz = transform.m20 * nx + transform.m21 * ny + transform.m22 * nz;
+        const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        if (!Number.isFinite(len) || len < 1e-12) {
+          continue;
+        }
+        normals[i] = rx / len;
+        normals[i + 1] = ry / len;
+        normals[i + 2] = rz / len;
+      }
+    }
+  }
+
+  geometry.coordinateInfo = {
+    originShift: referenceInfo?.originShift ?? { x: 0, y: 0, z: 0 },
+    originalBounds: found ? bounds : zeroBounds(),
+    shiftedBounds: found ? bounds : zeroBounds(),
+    hasLargeCoordinates: referenceInfo?.hasLargeCoordinates ?? false,
+    wasmRtcOffset: referenceInfo?.wasmRtcOffset,
+    buildingRotation: referenceInfo?.buildingRotation,
+  };
+}
+
+function alignGeometryToReferenceGeoref(
+  geometry: FederatedGeometryResult,
+  source: ModelGeoref,
+  reference: ModelGeoref,
+): boolean {
+  if (!canAlignInSameProjectedCrs(source, reference)) {
+    return false;
+  }
+
+  const transform = buildGeorefAlignmentTransform(source, reference);
+  if (!transform) {
+    return false;
+  }
+
+  if (!isIdentityTransform(transform)) {
+    applyAlignmentTransformAndUpdateBounds(geometry, transform, reference.coordinateInfo);
+  }
+  return true;
+}
+
+function findReferenceGeorefModel(): ModelGeoref | null {
+  const state = useViewerStore.getState();
+  const modelEntries = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
+  const sorted = [...modelEntries].sort(([, a], [, b]) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
+  for (const [modelId, model] of sorted) {
+    if (!model.ifcDataStore || !model.geometryResult) continue;
+    const georef = extractModelGeoref(
+      model.ifcDataStore,
+      model.geometryResult.coordinateInfo,
+      state.georefMutations.get(modelId),
+    );
+    if (georef) return georef;
+  }
+  return null;
 }
 
 /**
@@ -93,6 +378,13 @@ export function useIfcFederation() {
     findModelForGlobalId: s.findModelForGlobalId,
   })));
 
+  // Per-call ownership token. Each addModel() bumps this; state writes
+  // (loading/error/progress) in the catch block must compare back to
+  // their captured value before mutating, so a cancelled load A doesn't
+  // overwrite progress for a newer load B that started after A's abort.
+  // Mirrors the same pattern in useIfcLoader.ts.
+  const loadSessionRef = useRef(0);
+
   /**
    * Add a model to the federation (multi-model support)
    * Uses FederationRegistry to assign unique ID offsets - BULLETPROOF against ID collisions
@@ -100,10 +392,26 @@ export function useIfcFederation() {
    */
   const addModel = useCallback(async (
     file: File | NativeFileHandle,
-    options?: { name?: string }
+    options?: {
+      name?: string;
+      modelId?: string;
+      loadedAt?: number;
+      visible?: boolean;
+      collapsed?: boolean;
+    }
   ): Promise<string | null> => {
-    const modelId = crypto.randomUUID();
+    const modelId = options?.modelId ?? crypto.randomUUID();
     const addStart = performance.now();
+    // Bump the per-call ownership token first so that any error path
+    // (including the load gate) can compare against this captured value
+    // before mutating shared loading/error/progress state.
+    const currentSession = ++loadSessionRef.current;
+    // Memory-aware load gate: if a previous federation load is still in
+    // flight on this tab and admitting this one would exceed the device
+    // memory budget, wait until headroom frees. Single-file loads never
+    // wait. See `federationLoadGate.ts` for the budget formula. (#600)
+    const fileSizeForGateMB = (typeof (file as File).size === 'number' ? (file as File).size : 0) / (1024 * 1024);
+    const gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB);
     try {
       // IMPORTANT: Before adding a new model, check if there's a legacy model
       // (loaded via loadFile) that's not in the Map yet. If so, migrate it first.
@@ -143,6 +451,7 @@ export function useIfcFederation() {
           schemaVersion: 'IFC4',
           loadedAt: Date.now() - 1000,
           fileSize: 0,
+          sourceFile: undefined,
           idOffset: legacyOffset,
           maxExpressId: legacyMaxExpressId,
         };
@@ -153,20 +462,87 @@ export function useIfcFederation() {
       setError(null);
       setProgress({ phase: 'Loading file', percent: 0 });
 
-      // Read file from disk
-      const buffer = isNativeFileHandle(file)
-        ? toExactArrayBuffer(await readNativeFile(file.path))
-        : await file.arrayBuffer();
+      // Read file from disk. The browser path streams files above
+      // `STREAM_SAB_THRESHOLD` directly into a SharedArrayBuffer, eliminating
+      // the doubled peak (ArrayBuffer + SAB) of `await file.arrayBuffer()`
+      // when the geometry pipeline copies into its own SAB. The native path
+      // still reads via Tauri's Rust IPC because it bounds memory differently.
+      // (#600)
+      let buffer: ArrayBuffer;
+      if (isNativeFileHandle(file)) {
+        buffer = toExactArrayBuffer(await readNativeFile(file.path));
+      } else {
+        // The cast preserves the previous ArrayBuffer-shaped contract for
+        // every downstream consumer. When the underlying store is a SAB,
+        // downstream code only ever reads bytes via `new Uint8Array(buffer)`
+        // / `new DataView(buffer)`, both of which work on either backing
+        // store. The cast is purely type-system; runtime is identical.
+        const acquired = await acquireFileBuffer(file as File);
+        buffer = acquired.buffer as ArrayBuffer;
+      }
       const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
+      // Detect point cloud formats first — we never run them through
+      // detectFormat() (which is IFC-shaped) because they have their own
+      // streaming pipeline that bypasses geometryResult.meshes.
+      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
+
       // Detect file format
-      const format = detectFormat(buffer);
+      const format: ReturnType<typeof detectFormat> | PointCloudFormat =
+        pointCloudFormat ?? detectFormat(buffer);
 
       let parsedDataStore: IfcDataStore | null = null;
       let parsedGeometry: FederatedModel['geometryResult'] = null;
       let schemaVersion: SchemaVersion = 'IFC4';
+      // Renderer handle for streamed point clouds; surviving model lifecycle
+      // depends on persisting it onto the FederatedModel record.
+      let pointCloudHandleId: number | undefined;
 
-      if (format === 'ifcx') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
+        const renderer = getGlobalRenderer();
+        if (!renderer) {
+          setError('Renderer not initialised — try again after the viewer mounts.');
+          setLoading(false);
+          return null;
+        }
+        setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
+        const blob = isNativeFileHandle(file)
+          ? new Blob([buffer])
+          : (file as File);
+        const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
+        const ingest = ingestPointCloud({
+          format,
+          blob,
+          fileName: file.name,
+          buffer,
+          renderer,
+          onProgress: setProgress,
+          onAssetCountDelta: incCount,
+        });
+        // Expose cancellation while the stream is in-flight. Capture
+        // the canceller as a named ref so the cleanup can verify the
+        // store still points at us before clearing — a second
+        // addModel() that began before this one settles must not lose
+        // its Cancel button to our finally block.
+        const { setActiveStreamCanceller } = useViewerStore.getState();
+        const cancelStream = () => ingest.streamHandle.cancel();
+        setActiveStreamCanceller(cancelStream);
+        // ingest.done rejects on stream errors; ingestPointCloud's onError
+        // callback already calls removePointCloudAsset + incCount(-1), so
+        // the outer catch must NOT repeat that cleanup or the count goes
+        // negative when other point clouds are still loaded.
+        try {
+          await ingest.done;
+        } finally {
+          if (useViewerStore.getState().activeStreamCanceller === cancelStream) {
+            setActiveStreamCanceller(null);
+          }
+        }
+        parsedDataStore = ingest.dataStore;
+        parsedGeometry = ingest.geometryResult;
+        schemaVersion = ingest.schemaVersion;
+        pointCloudHandleId = ingest.rendererHandle.id;
+      } else if (format === 'ifcx') {
         setProgress({ phase: 'Parsing IFCX (client-side)', percent: 10 });
         try {
           const result = await parseIfcxViewerModel(buffer, setProgress);
@@ -190,12 +566,26 @@ export function useIfcFederation() {
         schemaVersion = result.schemaVersion;
       } else {
         setProgress({ phase: 'Starting geometry streaming', percent: 10 });
+
+        // For federated models: use the first model's RTC offset so all models
+        // share the same coordinate origin. This ensures pixel-perfect alignment
+        // without error-prone delta adjustments.
+        let sharedRtcOffset: { x: number; y: number; z: number } | undefined;
+        const existingModelsForRtc = Array.from(useViewerStore.getState().models.values()) as FederatedModel[];
+        if (existingModelsForRtc.length > 0) {
+          const sorted = [...existingModelsForRtc].sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
+          sharedRtcOffset = sorted.find(
+            (model) => model.geometryResult?.coordinateInfo?.wasmRtcOffset != null,
+          )?.geometryResult?.coordinateInfo?.wasmRtcOffset;
+        }
+
         const result = await parseStepBufferViewerModel({
           fileName: file.name,
           buffer,
           fileSizeMB,
           getDynamicBatchSize: getDynamicBatchConfig,
           onProgress: setProgress,
+          sharedRtcOffset,
         });
         parsedDataStore = result.dataStore;
         parsedGeometry = result.geometryResult;
@@ -204,6 +594,27 @@ export function useIfcFederation() {
 
       if (!parsedDataStore || !parsedGeometry) {
         throw new Error('Failed to parse file');
+      }
+
+      const referenceGeoref = findReferenceGeorefModel();
+      // Include any georef edits the user has already saved for this model so
+      // that a reload after editing reflects the new placement. Without this,
+      // extractModelGeoref reads only the raw parsed metadata and mutations
+      // are silently ignored.
+      const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
+      const parsedGeoref = extractModelGeoref(
+        parsedDataStore,
+        parsedGeometry.coordinateInfo,
+        parsedGeorefMutations,
+      );
+      if (referenceGeoref && parsedGeoref) {
+        setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
+        const aligned = alignGeometryToReferenceGeoref(parsedGeometry, parsedGeoref, referenceGeoref);
+        if (!aligned) {
+          console.warn(
+            `[ifc-lite] Skipped georeferenced federation alignment for "${file.name}" because CRS differs from the reference model.`,
+          );
+        }
       }
 
       // =========================================================================
@@ -226,74 +637,36 @@ export function useIfcFederation() {
         for (const mesh of parsedGeometry.meshes) {
           mesh.expressId = mesh.expressId + idOffset;
         }
-      }
-
-      // =========================================================================
-      // COORDINATE ALIGNMENT: Align new model with existing models using RTC delta
-      // WASM applies per-model RTC offsets. To align models from the same project,
-      // we calculate the difference in RTC offsets and apply it to the new model.
-      //
-      // RTC offset is in IFC coordinates (Z-up). After Z-up to Y-up conversion:
-      // - IFC X → WebGL X
-      // - IFC Y → WebGL -Z
-      // - IFC Z → WebGL Y (vertical)
-      // =========================================================================
-      const existingModels = Array.from(useViewerStore.getState().models.values()) as FederatedModel[];
-      if (existingModels.length > 0) {
-        const firstModel = existingModels[0];
-        const firstRtc = firstModel.geometryResult?.coordinateInfo?.wasmRtcOffset;
-        const newRtc = parsedGeometry.coordinateInfo?.wasmRtcOffset;
-
-        // If both models have RTC offsets, use RTC delta for precise alignment
-        if (firstRtc && newRtc) {
-          // Calculate what adjustment is needed to align new model with first model
-          // First model: pos = original - firstRtc
-          // New model: pos = original - newRtc
-          // To align: newPos + adjustment = firstPos (assuming same original)
-          // adjustment = firstRtc - newRtc (add back new's RTC, subtract first's RTC)
-          const adjustX = firstRtc.x - newRtc.x;  // IFC X adjustment
-          const adjustY = firstRtc.y - newRtc.y;  // IFC Y adjustment
-          const adjustZ = firstRtc.z - newRtc.z;  // IFC Z adjustment (vertical)
-
-          // Convert to WebGL coordinates:
-          // IFC X → WebGL X (no change)
-          // IFC Y → WebGL -Z (swap and negate)
-          // IFC Z → WebGL Y (vertical)
-          const webglAdjustX = adjustX;
-          const webglAdjustY = adjustZ;   // IFC Z is WebGL Y (vertical)
-          const webglAdjustZ = -adjustY;  // IFC Y is WebGL -Z
-
-          const hasSignificantAdjust = Math.abs(webglAdjustX) > 0.01 ||
-                                        Math.abs(webglAdjustY) > 0.01 ||
-                                        Math.abs(webglAdjustZ) > 0.01;
-
-          if (hasSignificantAdjust) {
-            // Apply adjustment to all mesh vertices
-            // SUBTRACT adjustment: if firstRtc > newRtc, first was shifted MORE,
-            // so new model needs to be shifted in same direction (subtract more)
-            for (const mesh of parsedGeometry.meshes) {
-              const positions = mesh.positions;
-              for (let i = 0; i < positions.length; i += 3) {
-                positions[i] -= webglAdjustX;
-                positions[i + 1] -= webglAdjustY;
-                positions[i + 2] -= webglAdjustZ;
-              }
-            }
-
-            // Update coordinate info bounds
-            if (parsedGeometry.coordinateInfo) {
-              parsedGeometry.coordinateInfo.shiftedBounds.min.x -= webglAdjustX;
-              parsedGeometry.coordinateInfo.shiftedBounds.max.x -= webglAdjustX;
-              parsedGeometry.coordinateInfo.shiftedBounds.min.y -= webglAdjustY;
-              parsedGeometry.coordinateInfo.shiftedBounds.max.y -= webglAdjustY;
-              parsedGeometry.coordinateInfo.shiftedBounds.min.z -= webglAdjustZ;
-              parsedGeometry.coordinateInfo.shiftedBounds.max.z -= webglAdjustZ;
-            }
-          }
-        } else {
-          // No RTC info - can't align reliably. This happens with old cache entries.
+        // Point clouds need the same offset so picking / isolation /
+        // property lookup resolve through the FederationRegistry's
+        // global ID space — otherwise two pointcloud models with the
+        // same local expressId collide.
+        for (const asset of parsedGeometry.pointClouds ?? []) {
+          asset.expressId = asset.expressId + idOffset;
         }
       }
+      // Streamed point cloud: the GPU asset was opened with a synthetic
+      // local expressId. After registerModelOffset() hands us an
+      // idOffset, the renderer needs to emit the post-offset globalId
+      // in picking + selection outputs — otherwise picks resolve to
+      // the local id and collide across federated models. The shader
+      // reads expressId from a per-asset uniform (`flags.x`) so this
+      // is just a metadata update; no GPU buffer rewrite.
+      if (idOffset > 0 && pointCloudHandleId !== undefined) {
+        const renderer = getGlobalRenderer();
+        if (renderer && parsedGeometry.pointClouds && parsedGeometry.pointClouds.length > 0) {
+          // Use the asset that's already had idOffset folded in above
+          // as the source of truth for the global id.
+          const asset = parsedGeometry.pointClouds[0];
+          renderer.relabelPointCloudAsset({ id: pointCloudHandleId }, asset.expressId);
+        }
+      }
+
+      // =========================================================================
+      // COORDINATE ALIGNMENT: All federated models use the same shared RTC offset
+      // (passed to WASM during parsing above), so no post-processing vertex
+      // adjustment is needed. All models are already in the same coordinate space.
+      // =========================================================================
 
       // Build spatial index AFTER ID offset + RTC alignment so it stores
       // correct globalIds and final world-space positions.
@@ -305,13 +678,15 @@ export function useIfcFederation() {
         name: options?.name ?? file.name,
         ifcDataStore: parsedDataStore,
         geometryResult: parsedGeometry,
-        visible: true,
-        collapsed: hasModels(), // Collapse if not first model
+        visible: options?.visible ?? true,
+        collapsed: options?.collapsed ?? hasModels(), // Collapse if not first model
         schemaVersion,
-        loadedAt: Date.now(),
+        loadedAt: options?.loadedAt ?? Date.now(),
         fileSize: buffer.byteLength,
+        sourceFile: file,
         idOffset,
         maxExpressId,
+        pointCloudHandleId,
       };
 
       // Add to store
@@ -328,10 +703,31 @@ export function useIfcFederation() {
       return modelId;
 
     } catch (err) {
+      // Only mutate shared loading/error/progress state if our session
+      // is still the active one. A second addModel() that started after
+      // we were cancelled has already taken over the spinner — we must
+      // not overwrite it with our "Cancelled" state.
+      const isCurrent = loadSessionRef.current === currentSession;
+      // User-initiated cancel surfaces as an AbortError. Map it to a
+      // benign "Cancelled" state so the federated path matches the
+      // single-model loader rather than reporting a parse failure.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        console.log('[useIfc] addModel cancelled by user');
+        if (isCurrent) {
+          setError(null);
+          setProgress({ phase: 'Cancelled', percent: 0 });
+          setLoading(false);
+        }
+        return null;
+      }
       console.error('[useIfc] addModel failed:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setLoading(false);
+      if (isCurrent) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+        setLoading(false);
+      }
       return null;
+    } finally {
+      releaseFederationLoadSlot(gateSlot);
     }
   }, [setLoading, setError, setProgress, setIfcDataStore, setGeometryResult, storeAddModel, hasModels, registerModelOffset]);
 
@@ -540,7 +936,10 @@ export function useIfcFederation() {
       return;
     }
 
-    // Check that all files are IFCX format and read buffers
+    // Check that all files are IFCX format and read buffers.
+    // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
+    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
+    // Keep on file.arrayBuffer().
     const buffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();
@@ -594,7 +993,10 @@ export function useIfcFederation() {
       return;
     }
 
-    // Read new overlay buffers
+    // Read new overlay buffers.
+    // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
+    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
+    // Keep on file.arrayBuffer().
     const newBuffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();

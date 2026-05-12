@@ -1,6 +1,6 @@
 # @ifc-lite/geometry
 
-Geometry processing bridge for IFClite. Connects the WASM-based geometry engine to the TypeScript pipeline with streaming mesh processing.
+Streaming geometry processor for IFClite. Converts IFC bytes to renderable mesh batches via Rust + WASM (or Tauri native), with first triangles in 300–500ms and progressive streaming for large models.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Geometry processing bridge for IFClite. Connects the WASM-based geometry engine 
 npm install @ifc-lite/geometry
 ```
 
-## Quick Start
+## Process geometry from IFC bytes
 
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';
@@ -16,22 +16,53 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 const processor = new GeometryProcessor();
 await processor.init();
 
-const result = await processor.process(ifcBuffer, {
-  onBatch: (batch) => renderer.addMeshes(batch),
-});
+const buffer = new Uint8Array(await file.arrayBuffer());
+const result = await processor.process(buffer);
+
+console.log(`${result.meshes.length} meshes, ${result.totalTriangles} triangles`);
+// Each mesh: { expressId, positions: Float32Array, normals, indices: Uint32Array, color, ifcType }
 ```
 
-## Features
+## Stream geometry (recommended for large models)
 
-- Streaming geometry processing (100 meshes/batch)
-- First triangles in 300-500ms
-- Up to 5x faster than web-ifc
-- Web Worker support for large files (>50MB)
-- Coordinate system handling and origin shift
+```typescript
+for await (const event of processor.processStreaming(buffer)) {
+  if (event.type === 'batch') {
+    renderer.appendMeshes(event.meshes);
+    console.log(`Loaded ${event.totalSoFar} meshes so far`);
+  } else if (event.type === 'complete') {
+    console.log(`Done: ${event.totalMeshes} meshes`);
+  }
+}
+```
+
+The streaming path emits batches every ~100 meshes so the renderer can paint progressively — first triangles typically arrive 300–500ms after `processStreaming()` returns.
+
+## Coordinate handling
+
+```typescript
+import { CoordinateHandler } from '@ifc-lite/geometry';
+
+const result = await processor.process(buffer);
+
+// Models with large world coordinates (geo-referenced) get auto-shifted
+// to keep float precision inside the renderer.
+if (result.coordinateInfo?.hasLargeCoordinates) {
+  const { x, y, z } = result.coordinateInfo.originShift;
+  console.log(`Origin shifted by [${x}, ${y}, ${z}] for renderer precision`);
+}
+```
+
+## Performance
+
+- **First triangles:** 300–500ms (streaming path)
+- **Throughput:** up to 5× faster than `web-ifc` on the same model
+- **Worker support:** files > 50 MB process off-main-thread automatically
+- **Native (Tauri):** `preferNative: true` constructor option enables the native Rust pipeline for desktop builds
 
 ## API
 
-See the [Geometry Guide](../../docs/guide/geometry.md) and [API Reference](../../docs/api/typescript.md#ifc-litegeometry).
+See the [Geometry Guide](https://louistrue.github.io/ifc-lite/guide/geometry/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litegeometry).
 
 ## License
 

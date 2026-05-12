@@ -26,6 +26,13 @@ import {
 } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
 
+/** Recursive spatial tree node type used when walking the hierarchy. */
+interface SpatialTreeNode {
+  expressId: number;
+  name?: string;
+  children: SpatialTreeNode[];
+}
+
 // ============================================================================
 // Standard IFCX schema imports
 // ============================================================================
@@ -386,8 +393,7 @@ export class Ifc5Exporter {
     this.spatialChildIds.clear();
     this.spatialNodeNames.clear();
     if (spatialHierarchy?.project) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const walkTree = (node: { expressId: number; name?: string; children: any[] }) => {
+      const walkTree = (node: { expressId: number; name?: string; children: SpatialTreeNode[] }) => {
         if (node.name) {
           this.spatialNodeNames.set(node.expressId, node.name);
         }
@@ -643,8 +649,7 @@ export class Ifc5Exporter {
     // Walk spatial hierarchy tree
     const { spatialHierarchy } = this.dataStore;
     if (spatialHierarchy?.project) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const walk = (node: { expressId: number; children: any[] }) => {
+      const walk = (node: { expressId: number; children: SpatialTreeNode[] }) => {
         ids.add(node.expressId);
         for (const child of node.children) walk(child);
       };

@@ -10,6 +10,7 @@ import {
   PersonStanding,
   Ruler,
   Scissors,
+  MapPin,
   Eye,
   EyeOff,
   Equal,
@@ -23,10 +24,12 @@ import {
   ArrowRight,
   Box,
   HelpCircle,
+  Sparkles,
   Loader2,
   Camera,
   Info,
   Layers,
+  Layers2,
   SquareX,
   Building2,
   Plus,
@@ -37,6 +40,7 @@ import {
   Layout,
   LayoutTemplate,
   FileCode2,
+  CalendarClock,
   Globe2,
   Settings,
 } from 'lucide-react';
@@ -48,6 +52,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuSub,
@@ -66,6 +71,7 @@ import { ExportDialog } from './ExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
+import { SearchInline } from './SearchInline';
 // CesiumSettingsDialog removed — settings now shown as overlay on Cesium viewer
 import { useFloorplanView } from '@/hooks/useFloorplanView';
 import { buildDesktopUpgradeUrl, hasDesktopFeatureAccess, type DesktopFeature } from '@/lib/desktop-product';
@@ -84,7 +90,7 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-type Tool = 'select' | 'walk' | 'measure' | 'section';
+type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | string;
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
@@ -100,21 +106,39 @@ interface ToolButtonProps {
   shortcut?: string;
   activeTool: string;
   onToolChange: (tool: Tool) => void;
+  /**
+   * Tailwind classes applied when this tool is active. Defaults to the
+   * shared `bg-primary text-primary-foreground` shape; pass a per-tool
+   * accent (e.g. amber for Annotate) to set tools apart visually
+   * without breaking the toolbar's tool-button rhythm.
+   */
+  activeAccentClass?: string;
 }
 
-function ToolButton({ tool, icon: Icon, label, shortcut, activeTool, onToolChange }: ToolButtonProps) {
+function ToolButton({
+  tool,
+  icon: Icon,
+  label,
+  shortcut,
+  activeTool,
+  onToolChange,
+  activeAccentClass,
+}: ToolButtonProps) {
+  const isActive = activeTool === tool;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant={activeTool === tool ? 'default' : 'ghost'}
+          variant={isActive ? 'default' : 'ghost'}
           size="icon-sm"
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
             onToolChange(tool);
           }}
-          className={cn(activeTool === tool && 'bg-primary text-primary-foreground')}
+          className={cn(
+            isActive && (activeAccentClass ?? 'bg-primary text-primary-foreground'),
+          )}
         >
           <Icon className="h-4 w-4" />
         </Button>
@@ -285,6 +309,12 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
+  // Issue #540: load-time toggle that asks the WASM bridge to merge
+  // Revit-style multilayer walls. We surface this in the Class
+  // Visibility dropdown so users discover it next to the other
+  // "what shows in the scene" controls.
+  const mergeLayers = useViewerStore((state) => state.mergeLayers);
+  const setMergeLayers = useViewerStore((state) => state.setMergeLayers);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
   const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
@@ -305,7 +335,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
   const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
+  const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
+  const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   // Cesium 3D overlay state
+  const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);
   const toggleCesium = useViewerStore((state) => state.toggleCesium);
   const storeModels = useViewerStore((state) => state.models);
@@ -401,6 +434,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
     );
 
     if (supportedFiles.length === 0) return;
@@ -441,6 +475,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
     );
 
     if (supportedFiles.length === 0) return;
@@ -507,21 +542,31 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     return false;
   }, [desktopEntitlement, promptDesktopUpgrade]);
 
-  const handleToggleBottomPanel = useCallback((panel: 'script' | 'list') => {
+  const handleToggleBottomPanel = useCallback((panel: 'script' | 'list' | 'gantt') => {
     if (activeAnalysisExtension?.placement === 'bottom') {
       closeActiveAnalysisExtension();
     }
-    const isScriptPanel = panel === 'script';
-    const nextScriptVisible = isScriptPanel ? !scriptPanelVisible : false;
-    const nextListVisible = isScriptPanel ? false : !listPanelVisible;
+    const nextScriptVisible = panel === 'script' ? !scriptPanelVisible : false;
+    const nextListVisible = panel === 'list' ? !listPanelVisible : false;
+    const nextGanttVisible = panel === 'gantt' ? !ganttPanelVisible : false;
 
     setScriptPanelVisible(nextScriptVisible);
     setListPanelVisible(nextListVisible);
+    setGanttPanelVisible(nextGanttVisible);
 
-    if (nextScriptVisible || nextListVisible) {
+    if (nextScriptVisible || nextListVisible || nextGanttVisible) {
       setRightPanelCollapsed(false);
     }
-  }, [activeAnalysisExtension?.placement, listPanelVisible, scriptPanelVisible, setListPanelVisible, setRightPanelCollapsed, setScriptPanelVisible]);
+  }, [
+    activeAnalysisExtension?.placement,
+    ganttPanelVisible,
+    listPanelVisible,
+    scriptPanelVisible,
+    setGanttPanelVisible,
+    setListPanelVisible,
+    setRightPanelCollapsed,
+    setScriptPanelVisible,
+  ]);
 
   const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
@@ -576,6 +621,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if ((extension.placement ?? 'right') === 'bottom') {
       setScriptPanelVisible(false);
       setListPanelVisible(false);
+      setGanttPanelVisible(false);
       setRightPanelCollapsed(false);
       return;
     }
@@ -588,6 +634,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     analysisExtensionState.activeId,
     analysisExtensionState.extensions,
     setBcfPanelVisible,
+    setGanttPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
     setListPanelVisible,
@@ -599,6 +646,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const panels = new Set<WorkspacePanel>();
     if (scriptPanelVisible) panels.add('script');
     if (listPanelVisible) panels.add('list');
+    if (ganttPanelVisible) panels.add('gantt');
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
@@ -607,6 +655,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   }, [
     analysisExtensionState.activeId,
     bcfPanelVisible,
+    ganttPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
     listPanelVisible,
@@ -618,6 +667,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.size > 1) return 'Multiple Panels';
     if (activeWorkspacePanels.has('script')) return 'Script Editor';
     if (activeWorkspacePanels.has('list')) return 'Lists';
+    if (activeWorkspacePanels.has('gantt')) return 'Schedule';
     if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
@@ -740,7 +790,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         id="file-input-open"
         ref={fileInputRef}
         type="file"
-        accept=".ifc,.ifcx,.glb"
+        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
         multiple
         onChange={handleFileSelect}
         className="hidden"
@@ -748,7 +798,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <input
         ref={addModelInputRef}
         type="file"
-        accept=".ifc,.ifcx,.glb"
+        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
         multiple
         onChange={handleAddModelSelect}
         className="hidden"
@@ -947,6 +997,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Lists
           </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('gantt')}
+            onCheckedChange={() => handleToggleBottomPanel('gantt')}
+          >
+            <CalendarClock className="h-4 w-4 mr-2" />
+            Schedule (Gantt)
+          </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('bcf')}
@@ -1010,6 +1067,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 
+      {/* ── Search (Tier-0 inline; ⌘F or / to focus) ── */}
+      <SearchInline />
+
+      <Separator orientation="vertical" className="h-6 mx-1" />
+
       {/* ── Navigation Tools ── */}
       <ToolButton tool="select" icon={MousePointer2} label="Select" shortcut="V" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton tool="walk" icon={PersonStanding} label="Walk Mode" shortcut="C" activeTool={activeTool} onToolChange={setActiveTool} />
@@ -1019,6 +1081,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       {/* ── Measurement & Section ── */}
       <ToolButton tool="measure" icon={Ruler} label="Measure" shortcut="M" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton tool="section" icon={Scissors} label="Section" shortcut="X" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton
+        tool="annotate"
+        icon={MapPin}
+        label="Annotate"
+        shortcut="P"
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
+        activeAccentClass="bg-amber-500 text-white hover:bg-amber-500/90"
+      />
 
       {/* Floorplan dropdown */}
       {availableStoreys.length > 0 && (
@@ -1094,14 +1165,35 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" disabled={!geometryResult && models.size === 0}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                // Stay enabled even with no model loaded — the dropdown
+                // also exposes load-time settings (Merge Multilayer
+                // Walls) that the user should be able to set BEFORE
+                // opening a file. Runtime items inside self-gate via
+                // typeGeometryExists.
+                aria-label={mergeLayers ? 'Class Visibility (Merge Multilayer Walls is on)' : 'Class Visibility'}
+                className="relative"
+              >
                 <Layers className="h-4 w-4" />
+                {mergeLayers && (
+                  // Tiny accent dot announcing that a non-default load
+                  // setting is active. Decorative — semantics live on
+                  // the button's aria-label and the tooltip.
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary ring-1 ring-background"
+                  />
+                )}
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>Class Visibility</TooltipContent>
+          <TooltipContent>
+            {mergeLayers ? 'Class Visibility · Merge Multilayer Walls is on' : 'Class Visibility'}
+          </TooltipContent>
         </Tooltip>
-        <DropdownMenuContent>
+        <DropdownMenuContent className="w-72">
           {typeGeometryExists.spaces && (
             <DropdownMenuCheckboxItem
               checked={typeVisibility.spaces}
@@ -1129,6 +1221,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               Show Site
             </DropdownMenuCheckboxItem>
           )}
+
+          {/* Load-time toggles live below the runtime visibility
+              switches — they apply on next model open rather than
+              affecting the current scene. The subheader makes that
+              boundary visible at a glance. */}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Load Settings
+          </DropdownMenuLabel>
+          <DropdownMenuCheckboxItem
+            checked={mergeLayers}
+            onCheckedChange={(next) => setMergeLayers(next === true)}
+            // Use items-start so the checkmark and icon line up with
+            // the primary label while the description wraps below.
+            className="items-start gap-2 py-2"
+          >
+            <Layers2 className="h-4 w-4 mr-2 mt-0.5 shrink-0 text-primary" />
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-sm font-medium leading-tight">Merge Multilayer Walls</span>
+              <span className="text-[11px] leading-tight text-muted-foreground">
+                Render walls as 1 solid · Applies on reload
+              </span>
+            </div>
+          </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -1157,8 +1273,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </TooltipContent>
       </Tooltip>
 
-      {/* Cesium 3D Context toggle + settings */}
-      {hasModelsLoaded && (
+      {/* Cesium 3D Context toggle + settings — web only, only when model has georeferencing */}
+      {cesiumAvailable && !desktopShell && (
         <div className="flex items-center">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1271,6 +1387,24 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       {/* Right Side Actions */}
       <div className="flex items-center gap-2 ml-2 pl-2 border-l border-zinc-200 dark:border-zinc-700/60">
+        {/* /mcp cross-link — lives in the meta cluster (Settings / Theme /
+            Help) so it shares space with shell-level navigation rather
+            than competing with the modeling tools to its left. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full"
+              onClick={() => navigateToPath('/mcp')}
+              aria-label="Open ifc-lite MCP"
+            >
+              <Sparkles className="!h-[20px] !w-[20px]" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Drive ifc-lite from any LLM (MCP)</TooltipContent>
+        </Tooltip>
+
         {desktopShell ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1293,7 +1427,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               <ThemeSwitch />
             </div>
           </TooltipTrigger>
-          <TooltipContent>Toggle theme</TooltipContent>
+          <TooltipContent>Toggle theme (Shift+click for secret mode)</TooltipContent>
         </Tooltip>
 
         <Tooltip>

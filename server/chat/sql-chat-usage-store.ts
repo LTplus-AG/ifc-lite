@@ -61,18 +61,6 @@ function getNextCycleResetFromAnchor(anchorAt: number, nowMs: number = Date.now(
   return next.getTime();
 }
 
-function buildCreditSnapshot(config: ChatConfig, row: UsageRow): UsageSnapshot {
-  const used = Math.max(0, Math.round(row.credits_used ?? 0));
-  const resetAt = Math.ceil((row.reset_at ?? Date.now()) / 1000);
-  return {
-    type: 'credits',
-    used,
-    limit: config.proMonthlyCredits,
-    pct: Math.min(100, Math.round((used / config.proMonthlyCredits) * 100)),
-    resetAt,
-  };
-}
-
 function buildFreeSnapshot(config: ChatConfig, row: UsageRow): UsageSnapshot {
   const used = Math.max(0, row.free_requests_used ?? 0);
   const resetAt = Math.ceil((row.free_reset_at ?? (Date.now() + DAY_MS)) / 1000);
@@ -96,11 +84,9 @@ export class SqlChatUsageStore implements ChatUsageStore {
     this.readyPromise = this.bootstrapSchema();
   }
 
-  async getUsageSnapshot(userId: string, tier: UsageTier): Promise<UsageSnapshot> {
+  async getUsageSnapshot(userId: string, _tier: UsageTier): Promise<UsageSnapshot> {
     const row = await this.loadNormalizedRow(userId);
-    return tier === 'pro'
-      ? buildCreditSnapshot(this.config, row)
-      : buildFreeSnapshot(this.config, row);
+    return buildFreeSnapshot(this.config, row);
   }
 
   async consumeFreeRequest(userId: string): Promise<UsageReservationResult> {
@@ -127,42 +113,6 @@ export class SqlChatUsageStore implements ChatUsageStore {
 
     const snapshot = await this.getUsageSnapshot(userId, 'free');
     return { allowed: snapshot.used < this.config.freeDailyLimit, snapshot };
-  }
-
-  async reserveProCredits(userId: string, credits: number): Promise<UsageReservationResult> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const row = await this.loadNormalizedRow(userId);
-      const snapshot = buildCreditSnapshot(this.config, row);
-      if (snapshot.used + credits > this.config.proMonthlyCredits) {
-        return { allowed: false, snapshot };
-      }
-      const nextCredits = (row.credits_used ?? 0) + credits;
-      const updated = await withTimeout(this.sql`
-        UPDATE llm_chat_usage
-        SET credits_used = ${nextCredits},
-            updated_at = ${Date.now()}
-        WHERE user_id = ${userId}
-          AND credits_used = ${row.credits_used ?? 0}
-          AND reset_at = ${row.reset_at ?? 0}
-        RETURNING user_id, credits_used, billing_anchor_at, reset_at, free_requests_used, free_reset_at
-      ` as unknown as Promise<UsageRow[]>, 'reserveProCredits update');
-      if (updated[0]) {
-        return { allowed: true, snapshot: buildCreditSnapshot(this.config, updated[0]) };
-      }
-    }
-
-    const snapshot = await this.getUsageSnapshot(userId, 'pro');
-    return { allowed: snapshot.used + credits <= this.config.proMonthlyCredits, snapshot };
-  }
-
-  async releaseProCredits(userId: string, credits: number): Promise<void> {
-    await this.ensureReady();
-    await withTimeout(this.sql`
-      UPDATE llm_chat_usage
-      SET credits_used = GREATEST(0, credits_used - ${credits}),
-          updated_at = ${Date.now()}
-      WHERE user_id = ${userId}
-    ` as Promise<unknown>, 'releaseProCredits');
   }
 
   private async bootstrapSchema(): Promise<void> {

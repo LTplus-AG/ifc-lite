@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Ifc5Exporter } from './ifc5-exporter.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -27,6 +27,18 @@ import {
 // ============================================================================
 
 const MODELS_DIR = resolve(__dirname, '../../../tests/models/ifc5');
+
+// Fixtures are fetched on demand via `pnpm fixtures` (AGENTS.md §9). Cross-
+// validation tests that load reference IFCx files skip cleanly when the
+// fixtures aren't on disk so a fresh checkout doesn't crash with ENOENT.
+const FIXTURES = {
+  helloWall: 'Hello_Wall_hello-wall.ifcx',
+  accaBuilding: 'ACCA_Building_esempio_01_edificius.ifcx',
+  ifcHero: 'IFC_Hero_Model_IFC_Hero_Model.ifcx',
+} as const;
+const FIXTURES_AVAILABLE = Object.values(FIXTURES).every((name) =>
+  existsSync(resolve(MODELS_DIR, name)),
+);
 
 function loadReferenceFile(filename: string): any {
   return JSON.parse(readFileSync(resolve(MODELS_DIR, filename), 'utf-8'));
@@ -374,7 +386,7 @@ describe('Ifc5Exporter', () => {
       expect(errors).toEqual([]);
     });
 
-    it('uri pattern matches real IFC5 reference files', () => {
+    it.skipIf(!FIXTURES_AVAILABLE)('uri pattern matches real IFC5 reference files', () => {
       const ref = loadReferenceFile('Hello_Wall_hello-wall.ifcx');
       // Extract the URI pattern from reference
       const refUriPattern = /^https:\/\/identifier\.buildingsmart\.org\/uri\/buildingsmart\/ifc\/\d[.\d]*\/class\/\w+$/;
@@ -452,7 +464,7 @@ describe('Ifc5Exporter', () => {
   });
 
   describe('imports', () => {
-    it('import URIs match those used in real IFC5 files', () => {
+    it.skipIf(!FIXTURES_AVAILABLE)('import URIs match those used in real IFC5 files', () => {
       const ref = loadReferenceFile('Hello_Wall_hello-wall.ifcx');
       const refUris = new Set((ref.imports ?? []).map((i: any) => i.uri));
 
@@ -484,7 +496,7 @@ describe('Ifc5Exporter', () => {
     });
   });
 
-  describe('cross-validation against reference files', () => {
+  describe.skipIf(!FIXTURES_AVAILABLE)('cross-validation against reference files', () => {
     it('reference file Hello_Wall_hello-wall.ifcx passes official schema validation', () => {
       const ref = loadReferenceFile('Hello_Wall_hello-wall.ifcx');
       const errors = validateIfcxFile(ref);

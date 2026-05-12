@@ -341,6 +341,9 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
   if (state.models.size > 0) {
     for (const [modelId, model] of state.models) {
       if (!model.visible) continue;
+      // Native-metadata models have no parsed geometry result. Skip them
+      // — they can't contribute mesh-level visible candidates.
+      if (!model.geometryResult) continue;
       const offset = model.idOffset ?? 0;
       for (const mesh of model.geometryResult.meshes) {
         if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility)) continue;

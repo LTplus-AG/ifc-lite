@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Renderer, type VisualEnhancementOptions } from '@ifc-lite/renderer';
-import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
+import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
 import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
 import {
   useSelectionState,
@@ -32,10 +32,13 @@ import {
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
+import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
+import { usePointCloudSync } from './usePointCloudSync.js';
+import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
 
 interface ViewportProps {
@@ -43,6 +46,8 @@ interface ViewportProps {
   /** Monotonic counter that increments when geometry changes — used to trigger
    *  streaming effects even when the geometry array reference is stable. */
   geometryVersion?: number;
+  /** Point cloud assets aggregated across visible federated models. */
+  pointClouds?: ReadonlyArray<PointCloudAsset> | null;
   coordinateInfo?: CoordinateInfo;
   computedIsolatedIds?: Set<number> | null;
   modelIdToIndex?: Map<string, number>;
@@ -56,6 +61,7 @@ interface ViewportProps {
 export function Viewport({
   geometry,
   geometryVersion,
+  pointClouds,
   coordinateInfo,
   computedIsolatedIds,
   modelIdToIndex,
@@ -195,8 +201,17 @@ export function Viewport({
   const { hiddenEntities, isolatedEntities: storeIsolatedEntities } = useVisibilityState();
   const isolatedEntities = computedIsolatedIds ?? storeIsolatedEntities ?? null;
 
-  // Tool state
-  const { activeTool, sectionPlane } = useToolState();
+  // Tool state — `sectionPickMode` arms a face-pick on the next click for
+  // the section tool (issue #243); the action setters are forwarded into
+  // the mouse-controls context.
+  const {
+    activeTool,
+    sectionPlane,
+    sectionPickMode,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
+    setSectionPickPreview,
+  } = useToolState();
 
   // Camera state
   const { updateCameraRotationRealtime, updateScaleRealtime, setCameraCallbacks } = useCameraState();
@@ -313,7 +328,7 @@ export function Viewport({
     if (cesiumActive) {
       clearColorRef.current = [0, 0, 0, 0]; // fully transparent
     } else {
-      clearColorRef.current = getThemeClearColor(theme as 'light' | 'dark');
+      clearColorRef.current = getThemeClearColor(theme as 'light' | 'dark' | 'colorful');
     }
     rendererRef.current?.requestRender();
   }, [cesiumActive, theme]);
@@ -386,7 +401,12 @@ export function Viewport({
   const measurementConstraintEdgeRef = useLatestRef(measurementConstraintEdge);
   const sectionPlaneRef = useLatestRef(sectionPlane);
   const sectionRangeRef = useLatestRef(sectionRange);
+  const sectionPickModeRef = useLatestRef(sectionPickMode);
   const visualEnhancementRef = useLatestRef(visualEnhancement);
+  // Renderer model bounds, kept fresh per-render. The face-pick handler
+  // forwards these to the slice so the cardinal-fallback `position` % is
+  // computed against the actual model extents at click time.
+  const modelBoundsRef = useRef<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>(null);
 
   // Terrain clip Y from Cesium store (read as ref for animation loop)
   const cesiumTerrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
@@ -460,13 +480,32 @@ export function Viewport({
       }
     }
 
-    // Set cursor based on active tool
-    if (activeTool === 'measure') {
+    // Leaving the section tool disarms face-pick so it doesn't ambush the
+    // user on re-entry to a different tool (issue #243).
+    if (activeTool !== 'section' && sectionPickMode) {
+      setSectionPickMode(false);
+    }
+
+    // Set cursor based on active tool. Section + pick-armed gets a
+    // crosshair to telegraph "click a face".
+    if (activeTool === 'measure' || activeTool === 'annotate' || activeTool === 'addElement') {
+      canvas.style.cursor = 'crosshair';
+    } else if (activeTool === 'section' && sectionPickMode) {
       canvas.style.cursor = 'crosshair';
     } else {
       canvas.style.cursor = 'default';
     }
-  }, [activeTool, activeMeasurement, cancelMeasurement]);
+
+    // Clear add-element pending state + hover point when leaving the
+    // tool so the SVG overlay doesn't paint stale geometry from a
+    // previous session.
+    if (activeTool !== 'addElement') {
+      const state = useViewerStore.getState();
+      if (state.addElementPendingPoints.length > 0 || state.addElementHoverPoint !== null) {
+        state.clearAddElementPending();
+      }
+    }
+  }, [activeTool, activeMeasurement, cancelMeasurement, sectionPickMode, setSectionPickMode]);
 
   // Helper: calculate scale bar value (world-space size for 96px scale bar)
   const calculateScale = () => {
@@ -714,6 +753,10 @@ export function Viewport({
   // The animation loop reads this to skip post-processing during rapid camera movement.
   const isInteractingRef = useRef(false);
 
+  // Rectangle-select drag state — populated by useMouseControls during
+  // a Ctrl/⌘ + LMB drag, consumed by RectSelectionOverlay below.
+  const [rectSelection, setRectSelection] = useState<RectSelectionRect | null>(null);
+
   // ===== Extracted hooks =====
   useMouseControls({
     canvasRef,
@@ -725,6 +768,8 @@ export function Viewport({
     snapEnabledRef,
     edgeLockStateRef,
     measurementConstraintEdgeRef,
+    sectionPickModeRef,
+    modelBoundsRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
     selectedEntityIdRef,
@@ -748,6 +793,7 @@ export function Viewport({
     handlePickForSelection: (pickResult) => handlePickForSelectionRef.current(pickResult),
     setHoverState,
     clearHover,
+    setRectSelection,
     openContextMenu,
     startMeasurement,
     updateMeasurement,
@@ -766,6 +812,9 @@ export function Viewport({
     calculateScale,
     getPickOptions,
     hasPendingMeasurements,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
+    setSectionPickPreview,
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
     hoverThrottleMs,
@@ -830,6 +879,7 @@ export function Viewport({
     clearColorRef,
     sectionPlaneRef,
     sectionRangeRef,
+    modelBoundsRef,
     visualEnhancementRef,
     selectedEntityIdsRef,
     coordinateInfoRef,
@@ -856,6 +906,18 @@ export function Viewport({
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,
+  });
+
+  usePointCloudSync({
+    rendererRef,
+    isInitialized,
+    pointClouds,
+    hasMeshes: (geometry?.length ?? 0) > 0,
+  });
+
+  usePointCloudLifecycle({
+    rendererRef,
+    isInitialized,
   });
 
   useRenderUpdates({
@@ -890,6 +952,18 @@ export function Viewport({
   // The model will be rendered by Cesium (as GLB) for correct positioning.
   // Canvas stays in the DOM for picking/interaction.
 
+  // Colorful mode: transparent WebGPU clear colour + CSS gradient on the
+  // canvas element.  The gradient is the *CSS background* of the <canvas>;
+  // premultiplied-alpha compositing shows it through transparent clear-colour
+  // regions while opaque model fragments (alpha=1) stay fully visible.
+  const canvasStyle = cesiumActive
+    ? { opacity: 0 }
+    : theme === 'colorful'
+      ? {
+          background: 'linear-gradient(180deg, #4a5a8a 0%, #6272a8 10%, #7e8dba 20%, #9aa3c8 32%, #b5b8d1 44%, #cdc3d4 56%, #dcccc8 68%, #e8d5be 80%, #f0ddb8 92%, #f5e2b6 100%)',
+        }
+      : undefined;
+
   return (
     <div className="relative w-full h-full">
       <canvas
@@ -897,10 +971,7 @@ export function Viewport({
         data-viewport="main"
         tabIndex={-1}
         className={`w-full h-full block ${cesiumActive ? 'relative z-[1]' : ''}`}
-        style={{
-          touchAction: 'none',        /* Prevent browser touch gestures on 3D viewport */
-          ...(cesiumActive ? { opacity: 0 } : undefined),
-        }}
+        style={{ touchAction: 'none', ...canvasStyle }}
         onPointerDown={focusViewportForKeyboardShortcuts}
       />
       {initError && (
@@ -919,6 +990,9 @@ export function Viewport({
           </div>
         </div>
       )}
+      {/* Rectangle-select drag visual. Pointer-events:none so the
+          canvas keeps receiving pointer events during the drag. */}
+      <RectSelectionOverlay rect={rectSelection} />
     </div>
   );
 }

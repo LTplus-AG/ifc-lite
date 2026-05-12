@@ -1,6 +1,6 @@
 # @ifc-lite/export
 
-Export formats for IFC-Lite. Supports exporting IFC data to glTF/GLB, Apache Parquet, Apache Arrow, IFC STEP, and IFC5 IFCX.
+Export formats for IFClite. Writes glTF/GLB, Apache Parquet, Apache Arrow, IFC STEP (with mutations applied), IFC5 IFCX (JSON + USD geometry), and lightweight LOD0/LOD1 envelopes — all from a single parsed `IfcDataStore`.
 
 ## Installation
 
@@ -8,96 +8,95 @@ Export formats for IFC-Lite. Supports exporting IFC data to glTF/GLB, Apache Par
 npm install @ifc-lite/export
 ```
 
-## Quick Start
+## glTF / GLB — for the web
 
 ```typescript
-import { GLTFExporter, ParquetExporter, exportToStep, Ifc5Exporter, generateLod0, generateLod1 } from '@ifc-lite/export';
+import { GLTFExporter } from '@ifc-lite/export';
 
-// Export geometry to GLB
-const gltfExporter = new GLTFExporter();
-const glb = await gltfExporter.export(parseResult, { format: 'glb' });
+const exporter = new GLTFExporter();
+const glb = await exporter.export(parseResult, {
+  format: 'glb',          // 'glb' (binary) or 'gltf' (JSON + .bin)
+  includeMaterials: true,
+  includeMetadata: true,  // entity types and globalIds in glTF extras
+});
 
-// Export data to Parquet (15-50x smaller than JSON)
-const parquetExporter = new ParquetExporter();
-const parquet = await parquetExporter.exportEntities(parseResult);
-
-// Export to IFC STEP (with mutations applied)
-const step = exportToStep(dataStore, { schema: 'IFC4' });
-
-// Export to IFC5 IFCX (JSON + USD geometry)
-const ifc5 = new Ifc5Exporter(dataStore, geometryResult);
-const result = ifc5.export({ includeGeometry: true });
-// result.content is IFCX JSON, save as .ifcx
-
-// Generate lightweight LOD artifacts from IFC bytes
-const lod0 = await generateLod0(ifcBytes);
-const lod1 = await generateLod1(ifcBytes, { quality: 'medium' });
+// Download
+const url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
 ```
 
-## Features
-
-- GLB/glTF geometry export
-- Apache Parquet serialization (columnar, compressed)
-- Apache Arrow in-memory format
-- IFC STEP export with mutations applied
-- **IFC5 IFCX export** with USD geometry and full schema conversion
-- Lightweight LOD0/LOD1 generation from IFC bytes
-- Cross-schema conversion (IFC2X3 ↔ IFC4 ↔ IFC4X3 ↔ IFC5)
-
-## Lightweight LOD Generation
-
-The LOD generators are environment-agnostic. They accept IFC bytes, not file paths,
-so the same API works in Node, browser, and server runtimes.
+## IFC STEP — with mutations
 
 ```typescript
-import { generateLod0, generateLod1 } from '@ifc-lite/export';
+import { exportToStep } from '@ifc-lite/export';
 
-const bytes = await file.arrayBuffer();
+const stepText = exportToStep(store, {
+  schema: 'IFC4',           // 'IFC2X3' | 'IFC4' | 'IFC4X3'
+  applyMutations: true,     // include edits from MutablePropertyView
+  visibleOnly: false,       // export only entities visible in the renderer
+});
 
-const lod0 = await generateLod0(bytes);
-// => JSON envelopes, transforms, and world-space bounding boxes
-
-const lod1 = await generateLod1(bytes, { quality: 'medium' });
-// => { glb, meta }
+// Save as .ifc
+const blob = new Blob([stepText], { type: 'application/x-step' });
 ```
 
-`generateLod0()` returns cheap geometric envelopes for every placeable element.
+`exportToStep` is the round-trip path for property edits. Edit via `@ifc-lite/mutations`, export with `applyMutations: true`, ship the resulting `.ifc` to whatever consumes IFC.
 
-`generateLod1()` returns:
-- `glb`: binary GLB geometry
-- `meta`: generation status, failed elements, and expressId → node/mesh mapping
+## Apache Parquet — for analytics
 
-If meshing fails, LOD1 degrades gracefully to box geometry derived from LOD0.
+```typescript
+import { ParquetExporter } from '@ifc-lite/export';
 
-## IFC5 Export
+const exporter = new ParquetExporter();
+const entities = await exporter.exportEntities(parseResult);
+const properties = await exporter.exportProperties(parseResult);
+const quantities = await exporter.exportQuantities(parseResult);
 
-The `Ifc5Exporter` converts IFC data from any schema version to the IFC5 IFCX JSON format:
+// Each is ~15–50× smaller than equivalent JSON
+// Loadable directly from DuckDB, Polars, pandas, BigQuery, …
+```
+
+## IFC5 IFCX — JSON + USD geometry
 
 ```typescript
 import { Ifc5Exporter } from '@ifc-lite/export';
 
-const exporter = new Ifc5Exporter(dataStore, geometryResult, mutationView);
+const exporter = new Ifc5Exporter(store, geometryResult, mutationView);
+
 const result = exporter.export({
-  includeGeometry: true,    // Convert meshes to USD format
-  includeProperties: true,  // Map properties to bsi::ifc::prop:: namespace
-  applyMutations: true,     // Apply property edits
-  visibleOnly: false,       // Filter by visibility
+  includeGeometry: true,    // tessellated meshes as USD
+  includeProperties: true,  // psets in bsi::ifc::prop:: namespace
+  applyMutations: true,
+  visibleOnly: false,
 });
 
 // result.content → IFCX JSON string
-// result.stats → { nodeCount, propertyCount, meshCount, fileSize }
+// result.stats   → { nodeCount, propertyCount, meshCount, fileSize }
 ```
 
-Output includes:
-- Entity types converted to IFC5 naming
-- Properties in IFCX attribute namespaces (`bsi::ifc::prop::PsetName::PropName`)
-- Tessellated geometry as USD meshes (`usd::usdgeom::mesh`)
-- Spatial hierarchy as IFCX path-based nodes
-- Presentation data (diffuse color, opacity)
+Cross-schema conversion happens automatically — feed an IFC2X3 store, get IFC5 output.
+
+## LOD0 / LOD1 — lightweight previews
+
+Generate cheap geometric envelopes for use in dashboards, list views, or first-paint hints. Environment-agnostic (Node, browser, server) — accepts raw IFC bytes:
+
+```typescript
+import { generateLod0, generateLod1 } from '@ifc-lite/export';
+
+const bytes = new Uint8Array(await file.arrayBuffer());
+
+// LOD0 — bounding boxes + transforms per element, JSON
+const lod0 = await generateLod0(bytes);
+
+// LOD1 — meshes simplified to bounding boxes / convex hulls, returned as GLB
+const lod1 = await generateLod1(bytes, { quality: 'medium' });
+//   { glb: Uint8Array, meta: { failedElements, expressIdToNodeId, ... } }
+
+// Falls back gracefully to box geometry if a complex element fails to mesh
+```
 
 ## API
 
-See the [Exporting Guide](../../docs/guide/exporting.md) and [API Reference](../../docs/api/typescript.md#ifc-liteexport).
+See the [Exporting Guide](https://louistrue.github.io/ifc-lite/guide/exporting/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-liteexport).
 
 ## License
 

@@ -12,8 +12,8 @@ import type {
   VoidRelationship,
   FillRelationship,
   EntityMetadata,
-} from '../types';
-import { OpeningRelationshipBuilder } from './opening-relationship-builder';
+} from '../types.js';
+import { OpeningRelationshipBuilder } from './opening-relationship-builder.js';
 
 /**
  * Build opening relationships from void and fill relationship arrays

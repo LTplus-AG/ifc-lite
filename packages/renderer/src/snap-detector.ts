@@ -1,6 +1,8 @@
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Ray, Vec3, Intersection } from './raycaster';
-import { Raycaster } from './raycaster';
+import type { Ray, Vec3, Intersection } from './raycaster.js';
+import { Raycaster } from './raycaster.js';
+import { distance, vecEquals, closestPointOnEdgeWithT, screenToWorldRadius } from './snap-geometry-utils.js';
+import { buildGeometryCache, type MeshGeometryCache } from './snap-geometry-cache.js';
 
 export enum SnapType {
   VERTEX = 'vertex',
@@ -73,15 +75,6 @@ const MAGNETIC_CONFIG = {
   CORNER_THRESHOLD: 0.08,
 };
 
-interface MeshGeometryCache {
-  vertices: Vec3[];
-  edges: Array<{ v0: Vec3; v1: Vec3; index: number }>;
-  // Vertex valence map: vertex key -> number of edges connected
-  vertexValence: Map<string, number>;
-  // Edges at each vertex: vertex key -> array of edge indices
-  vertexEdges: Map<string, number[]>;
-}
-
 export class SnapDetector {
   private raycaster = new Raycaster();
   private defaultOptions: SnapOptions = {
@@ -118,8 +111,8 @@ export class SnapDetector {
     const targets: SnapTarget[] = [];
 
     // Calculate world-space snap radius based on screen-space radius and distance
-    const distanceToCamera = this.distance(camera.position, intersection.point);
-    const worldSnapRadius = this.screenToWorldRadius(
+    const distanceToCamera = distance(camera.position, intersection.point);
+    const worldSnapRadius = screenToWorldRadius(
       opts.screenSnapRadius,
       distanceToCamera,
       camera.fov,
@@ -181,8 +174,8 @@ export class SnapDetector {
       };
     }
 
-    const distanceToCamera = this.distance(camera.position, intersection.point);
-    const worldSnapRadius = this.screenToWorldRadius(
+    const distanceToCamera = distance(camera.position, intersection.point);
+    const worldSnapRadius = screenToWorldRadius(
       opts.screenSnapRadius,
       distanceToCamera,
       camera.fov,
@@ -278,7 +271,7 @@ export class SnapDetector {
     }> = [];
 
     for (const edge of cache.edges) {
-      const result = this.closestPointOnEdgeWithT(intersection.point, edge.v0, edge.v1);
+      const result = closestPointOnEdgeWithT(intersection.point, edge.v0, edge.v1);
       if (result.distance < edgeRadius) {
         // Visibility check: edge should be on front-facing side
         // Compute vector from intersection point to edge closest point
@@ -406,7 +399,7 @@ export class SnapDetector {
     const { v0, v1 } = currentLock.edge;
 
     // Project point onto the locked edge
-    const result = this.closestPointOnEdgeWithT(point, v0, v1);
+    const result = closestPointOnEdgeWithT(point, v0, v1);
 
     // Calculate perpendicular distance (distance from point to edge line)
     const perpDistance = result.distance;
@@ -439,8 +432,8 @@ export class SnapDetector {
 
     // Find the matching edge in cache to get proper index
     let matchingEdge = cache.edges.find(e =>
-      (this.vecEquals(e.v0, v0) && this.vecEquals(e.v1, v1)) ||
-      (this.vecEquals(e.v0, v1) && this.vecEquals(e.v1, v0))
+      (vecEquals(e.v0, v0) && vecEquals(e.v1, v1)) ||
+      (vecEquals(e.v0, v1) && vecEquals(e.v1, v0))
     );
 
     const edgeForCorner = matchingEdge || { v0, v1, index: -1 };
@@ -528,7 +521,7 @@ export class SnapDetector {
     const valence = cache.vertexValence.get(vertexKey) || 0;
 
     // Also check distance to vertex
-    const distToVertex = this.distance(point, vertex);
+    const distToVertex = distance(point, vertex);
     const isCloseEnough = distToVertex < radius;
 
     return {
@@ -536,53 +529,6 @@ export class SnapDetector {
       valence,
       vertex,
     };
-  }
-
-  /**
-   * Get closest point on edge segment with parameter t (0-1)
-   */
-  private closestPointOnEdgeWithT(
-    point: Vec3,
-    v0: Vec3,
-    v1: Vec3
-  ): { point: Vec3; distance: number; t: number } {
-    const dx = v1.x - v0.x;
-    const dy = v1.y - v0.y;
-    const dz = v1.z - v0.z;
-
-    const lengthSq = dx * dx + dy * dy + dz * dz;
-    if (lengthSq < 0.0000001) {
-      // Degenerate edge
-      return { point: v0, distance: this.distance(point, v0), t: 0 };
-    }
-
-    // Project point onto line
-    const t = Math.max(0, Math.min(1,
-      ((point.x - v0.x) * dx + (point.y - v0.y) * dy + (point.z - v0.z) * dz) / lengthSq
-    ));
-
-    const closest: Vec3 = {
-      x: v0.x + dx * t,
-      y: v0.y + dy * t,
-      z: v0.z + dz * t,
-    };
-
-    return {
-      point: closest,
-      distance: this.distance(point, closest),
-      t,
-    };
-  }
-
-  /**
-   * Check if two vectors are approximately equal
-   */
-  private vecEquals(a: Vec3, b: Vec3, epsilon: number = 0.0001): boolean {
-    return (
-      Math.abs(a.x - b.x) < epsilon &&
-      Math.abs(a.y - b.y) < epsilon &&
-      Math.abs(a.z - b.z) < epsilon
-    );
   }
 
   /**
@@ -594,176 +540,8 @@ export class SnapDetector {
       return cached;
     }
 
-    // Compute and cache vertices
-    const positions = mesh.positions;
-
-    // Validate input
-    if (!positions || positions.length === 0) {
-      const emptyCache: MeshGeometryCache = {
-        vertices: [],
-        edges: [],
-        vertexValence: new Map(),
-        vertexEdges: new Map(),
-      };
-      this.geometryCache.set(mesh.expressId, emptyCache);
-      return emptyCache;
-    }
-
-    const vertexMap = new Map<string, Vec3>();
-
-    for (let i = 0; i < positions.length; i += 3) {
-      const vertex: Vec3 = {
-        x: positions[i],
-        y: positions[i + 1],
-        z: positions[i + 2],
-      };
-
-      // Skip invalid vertices
-      if (!isFinite(vertex.x) || !isFinite(vertex.y) || !isFinite(vertex.z)) {
-        continue;
-      }
-
-      // Use reduced precision for deduplication
-      const key = `${vertex.x.toFixed(4)}_${vertex.y.toFixed(4)}_${vertex.z.toFixed(4)}`;
-      vertexMap.set(key, vertex);
-    }
-
-    const vertices = Array.from(vertexMap.values());
-
-    // Compute and cache edges + vertex valence for corner detection
-    // Filter out internal triangulation edges (diagonals) - only keep real model edges
-    const edges: Array<{ v0: Vec3; v1: Vec3; index: number }> = [];
-    const vertexValence = new Map<string, number>();
-    const vertexEdges = new Map<string, number[]>();
-    const indices = mesh.indices;
-
-    if (indices) {
-      // First pass: collect edges and their adjacent triangle normals
-      const edgeData = new Map<string, {
-        v0: Vec3; v1: Vec3; idx0: number; idx1: number;
-        normals: Vec3[]; // Normals of triangles sharing this edge
-      }>();
-
-      // Helper to compute triangle normal
-      const computeTriangleNormal = (i: number): Vec3 => {
-        const i0 = indices[i] * 3;
-        const i1 = indices[i + 1] * 3;
-        const i2 = indices[i + 2] * 3;
-
-        const ax = positions[i1] - positions[i0];
-        const ay = positions[i1 + 1] - positions[i0 + 1];
-        const az = positions[i1 + 2] - positions[i0 + 2];
-        const bx = positions[i2] - positions[i0];
-        const by = positions[i2 + 1] - positions[i0 + 1];
-        const bz = positions[i2 + 2] - positions[i0 + 2];
-
-        // Cross product
-        const nx = ay * bz - az * by;
-        const ny = az * bx - ax * bz;
-        const nz = ax * by - ay * bx;
-
-        // Normalize
-        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-        return len > 0 ? { x: nx / len, y: ny / len, z: nz / len } : { x: 0, y: 1, z: 0 };
-      };
-
-      for (let i = 0; i < indices.length; i += 3) {
-        const triNormal = computeTriangleNormal(i);
-        const triangleEdges = [
-          [indices[i], indices[i + 1]],
-          [indices[i + 1], indices[i + 2]],
-          [indices[i + 2], indices[i]],
-        ];
-
-        for (const [idx0, idx1] of triangleEdges) {
-          const i0 = idx0 * 3;
-          const i1 = idx1 * 3;
-
-          const v0: Vec3 = {
-            x: positions[i0],
-            y: positions[i0 + 1],
-            z: positions[i0 + 2],
-          };
-          const v1: Vec3 = {
-            x: positions[i1],
-            y: positions[i1 + 1],
-            z: positions[i1 + 2],
-          };
-
-          // Create canonical edge key (smaller index first)
-          const key = idx0 < idx1 ? `${idx0}_${idx1}` : `${idx1}_${idx0}`;
-
-          if (!edgeData.has(key)) {
-            edgeData.set(key, { v0, v1, idx0, idx1, normals: [triNormal] });
-          } else {
-            const existing = edgeData.get(key);
-            if (existing) {
-              existing.normals.push(triNormal);
-            }
-          }
-        }
-      }
-
-      // Second pass: filter to only real edges (boundary or crease edges)
-      // Skip internal triangulation edges (shared by coplanar triangles)
-      const COPLANAR_THRESHOLD = 0.98; // Dot product threshold for coplanar check
-
-      for (const [key, data] of edgeData) {
-        const { v0, v1, normals } = data;
-
-        // Boundary edge: only one triangle uses it - always a real edge
-        if (normals.length === 1) {
-          const edgeIndex = edges.length;
-          edges.push({ v0, v1, index: edgeIndex });
-
-          // Track vertex valence
-          const v0Key = `${v0.x.toFixed(4)}_${v0.y.toFixed(4)}_${v0.z.toFixed(4)}`;
-          const v1Key = `${v1.x.toFixed(4)}_${v1.y.toFixed(4)}_${v1.z.toFixed(4)}`;
-          vertexValence.set(v0Key, (vertexValence.get(v0Key) || 0) + 1);
-          vertexValence.set(v1Key, (vertexValence.get(v1Key) || 0) + 1);
-          if (!vertexEdges.has(v0Key)) vertexEdges.set(v0Key, []);
-          if (!vertexEdges.has(v1Key)) vertexEdges.set(v1Key, []);
-          const v0Edges = vertexEdges.get(v0Key);
-          const v1Edges = vertexEdges.get(v1Key);
-          if (v0Edges) v0Edges.push(edgeIndex);
-          if (v1Edges) v1Edges.push(edgeIndex);
-          continue;
-        }
-
-        // Shared edge: check if triangles are coplanar (internal triangulation edge)
-        if (normals.length >= 2) {
-          const n1 = normals[0];
-          const n2 = normals[1];
-          const dot = Math.abs(n1.x * n2.x + n1.y * n2.y + n1.z * n2.z);
-
-          // If normals are nearly parallel, triangles are coplanar - skip this edge
-          // (it's an internal triangulation diagonal, not a real model edge)
-          if (dot > COPLANAR_THRESHOLD) {
-            continue; // Skip internal edge
-          }
-
-          // Crease edge: triangles meet at an angle - this is a real edge
-          const edgeIndex = edges.length;
-          edges.push({ v0, v1, index: edgeIndex });
-
-          // Track vertex valence
-          const v0Key = `${v0.x.toFixed(4)}_${v0.y.toFixed(4)}_${v0.z.toFixed(4)}`;
-          const v1Key = `${v1.x.toFixed(4)}_${v1.y.toFixed(4)}_${v1.z.toFixed(4)}`;
-          vertexValence.set(v0Key, (vertexValence.get(v0Key) || 0) + 1);
-          vertexValence.set(v1Key, (vertexValence.get(v1Key) || 0) + 1);
-          if (!vertexEdges.has(v0Key)) vertexEdges.set(v0Key, []);
-          if (!vertexEdges.has(v1Key)) vertexEdges.set(v1Key, []);
-          const v0CreaseEdges = vertexEdges.get(v0Key);
-          const v1CreaseEdges = vertexEdges.get(v1Key);
-          if (v0CreaseEdges) v0CreaseEdges.push(edgeIndex);
-          if (v1CreaseEdges) v1CreaseEdges.push(edgeIndex);
-        }
-      }
-    }
-
-    const cache: MeshGeometryCache = { vertices, edges, vertexValence, vertexEdges };
+    const cache = buildGeometryCache(mesh);
     this.geometryCache.set(mesh.expressId, cache);
-
     return cache;
   }
 
@@ -776,7 +554,7 @@ export class SnapDetector {
 
     // Find vertices within radius - ONLY when VERY close for smooth edge sliding
     for (const vertex of cache.vertices) {
-      const dist = this.distance(vertex, point);
+      const dist = distance(vertex, point);
       // Only snap to vertices when within 20% of snap radius (very tight) to avoid sticky behavior
       if (dist < radius * 0.2) {
         targets.push({
@@ -804,7 +582,7 @@ export class SnapDetector {
     // Find edges near point using cached data
     for (const edge of cache.edges) {
       const closestPoint = this.raycaster.closestPointOnSegment(point, edge.v0, edge.v1);
-      const dist = this.distance(closestPoint, point);
+      const dist = distance(closestPoint, point);
 
       if (dist < edgeRadius) {
         // Edge snap - ABSOLUTE HIGHEST priority for smooth sliding along edges
@@ -877,7 +655,7 @@ export class SnapDetector {
         z: (v0.z + v1.z + v2.z) / 3,
       };
 
-      const dist = this.distance(center, intersection.point);
+      const dist = distance(center, intersection.point);
       if (dist < radius) {
         targets.push({
           type: SnapType.FACE_CENTER,
@@ -917,30 +695,4 @@ export class SnapDetector {
     return targets[0];
   }
 
-  /**
-   * Convert screen-space radius to world-space radius
-   */
-  private screenToWorldRadius(
-    screenRadius: number,
-    distance: number,
-    fov: number,
-    screenHeight: number
-  ): number {
-    // Calculate world height at distance
-    const fovRadians = (fov * Math.PI) / 180;
-    const worldHeight = 2 * distance * Math.tan(fovRadians / 2);
-
-    // Convert screen pixels to world units
-    return (screenRadius / screenHeight) * worldHeight;
-  }
-
-  /**
-   * Vector utilities
-   */
-  private distance(a: Vec3, b: Vec3): number {
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    const dz = a.z - b.z;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
-  }
 }

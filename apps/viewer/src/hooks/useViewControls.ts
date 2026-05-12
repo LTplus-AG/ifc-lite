@@ -43,6 +43,7 @@ function useViewControls({
   const [viewTransform, setViewTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [needsFit, setNeedsFit] = useState(true); // Force fit on first open and axis change
   const prevAxisRef = useRef(sectionPlane.axis); // Track axis changes
+  const prevFlippedRef = useRef(sectionPlane.flipped); // Track flip changes
 
   // Wheel zoom handler
   useEffect(() => {
@@ -158,14 +159,21 @@ function useViewControls({
   // Track axis changes for forced fit-to-view
   const lastFitAxisRef = useRef(sectionPlane.axis);
 
-  // Set needsFit when axis changes
+  // Set needsFit when axis OR flip changes. Flip mirrors the projection's U
+  // axis (see `projectTo2D` in @ifc-lite/drawing-2d), so the polygon bounds
+  // jump from positive X into negative X (or vice versa). Without re-fitting
+  // the new bounds end up off-screen and the user sees "empty 2D panel after
+  // I pressed Flip" — that was the bug behind the recent screenshot report.
   useEffect(() => {
-    if (sectionPlane.axis !== prevAxisRef.current) {
+    const axisChanged = sectionPlane.axis !== prevAxisRef.current;
+    const flipChanged = sectionPlane.flipped !== prevFlippedRef.current;
+    if (axisChanged || flipChanged) {
       prevAxisRef.current = sectionPlane.axis;
-      setNeedsFit(true); // Force fit when axis changes
-      cachedSheetTransformRef.current = null; // Clear cached transform for new axis
+      prevFlippedRef.current = sectionPlane.flipped;
+      setNeedsFit(true);
+      cachedSheetTransformRef.current = null;
     }
-  }, [sectionPlane.axis]);
+  }, [sectionPlane.axis, sectionPlane.flipped]);
 
   // Track previous sheet mode to detect toggle
   const prevSheetEnabledRef = useRef(sheetEnabled);

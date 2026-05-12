@@ -12,13 +12,14 @@ import { Download, Loader2, Check, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useViewerStore } from '@/store';
+import { useViewerStore, countGeneratedTasks } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
+import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 
 interface ExportChangesButtonProps {
   /** Optional custom class name */
@@ -71,15 +72,24 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
     return null;
   }, [models, legacyIfcDataStore, legacyGeometryResult]);
 
-  // Count mutations (includes georef mutations)
+  // Count mutations (includes georef mutations + pending generated schedule tasks)
   const mutationCount = useMemo(() => {
     if (!modelInfo) return 0;
     const mutationView = getMutationView(modelInfo.id);
     let count = mutationView?.getMutations().length || 0;
-    const gm = useViewerStore.getState().georefMutations?.get(modelInfo.id);
+    const state = useViewerStore.getState();
+    const gm = state.georefMutations?.get(modelInfo.id);
     if (gm) {
       if (gm.projectedCRS) count += Object.keys(gm.projectedCRS).length;
       if (gm.mapConversion) count += Object.keys(gm.mapConversion).length;
+    }
+    // Generated schedule tasks are first-class pending edits — they get
+    // spliced into the STEP on export (see injectScheduleIntoStep), so
+    // they belong in the same badge that tells users "you have unsaved
+    // work." Attribution: only count when this is the schedule's source
+    // model, so the badge doesn't inflate on every federated model.
+    if (state.scheduleSourceModelId === modelInfo.id) {
+      count += countGeneratedTasks(state.scheduleData);
     }
     return count;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,7 +147,8 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
                    : 'IFC4';
 
       const exporter = new StepExporter(exportDataStore, mutationView || undefined);
-      const georefMutations = useViewerStore.getState().georefMutations?.get(modelInfo.id) ?? undefined;
+      const state = useViewerStore.getState();
+      const georefMutations = state.georefMutations?.get(modelInfo.id) ?? undefined;
       const result = exporter.export({
         schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3',
         includeGeometry: true,
@@ -148,8 +159,17 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
         application: 'ifc-lite',
       });
 
+      // Splice any pending schedule into the STEP via the shared
+      // helper. Same contract every export surface uses so bugs can't
+      // differ between the quick button, the dialog, and the SDK.
+      const spliced = spliceScheduleIntoExport(result, modelInfo.id, exportDataStore, {
+        scheduleData: state.scheduleData ?? null,
+        scheduleIsEdited: state.scheduleIsEdited === true,
+        scheduleSourceModelId: state.scheduleSourceModelId ?? null,
+      });
+
       // Download the file
-      const blob = new Blob([toBlobPart(result.content)], { type: 'text/plain' });
+      const blob = new Blob([toBlobPart(spliced.content)], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

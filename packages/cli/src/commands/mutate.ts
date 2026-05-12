@@ -20,7 +20,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 /**
  * Parse a --where filter string.
  */
-function parseWhereFilter(filter: string): { psetName: string; propName: string; operator: string; value?: string } {
+export function parseWhereFilter(filter: string): { psetName: string; propName: string; operator: string; value?: string } {
   const dotIdx = filter.indexOf('.');
   if (dotIdx <= 0) {
     fatal(`Invalid --where syntax: "${filter}". Expected: PsetName.PropName[=Value]`);
@@ -44,7 +44,7 @@ function parseWhereFilter(filter: string): { psetName: string; propName: string;
  *   "PsetName.PropName=Value"  → property set mutation
  *   "AttributeName=Value"      → entity attribute mutation (Name, Description, etc.)
  */
-function parseSetArg(setStr: string): { psetName: string | null; propName: string; value: string; isAttribute: boolean } {
+export function parseSetArg(setStr: string): { psetName: string | null; propName: string; value: string; isAttribute: boolean } {
   const dotIdx = setStr.indexOf('.');
   const eqIdx = setStr.indexOf('=');
 
@@ -74,7 +74,7 @@ function parseSetArg(setStr: string): { psetName: string | null; propName: strin
 /**
  * Coerce string value to appropriate type and determine PropertyValueType.
  */
-function coerceValue(value: string): { coerced: string | number | boolean; valueType: PropertyValueType } {
+export function coerceValue(value: string): { coerced: string | number | boolean; valueType: PropertyValueType } {
   if (value === 'true') return { coerced: true, valueType: PropertyValueType.Boolean };
   if (value === 'false') return { coerced: false, valueType: PropertyValueType.Boolean };
   const num = Number(value);
@@ -90,7 +90,7 @@ function coerceValue(value: string): { coerced: string | number | boolean; value
 /**
  * Check if a value matches a filter operator and comparison value.
  */
-function matchesFilter(actual: any, operator: string, expected?: string): boolean {
+export function matchesFilter(actual: any, operator: string, expected?: string): boolean {
   if (operator === 'exists') return actual != null;
   if (actual == null || expected == null) return false;
   const numActual = Number(actual);
@@ -215,7 +215,7 @@ export async function mutateCommand(args: string[]): Promise<void> {
   const schema = store.schemaVersion ?? 'IFC4';
   const exporter = new StepExporter(store, mutationView);
   const result = exporter.export({
-    schema: schema as any,
+    schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
     applyMutations: true,
   });
 
@@ -336,7 +336,7 @@ function applyAttributeMutations(
 /**
  * Split a STEP argument string by commas, respecting nested parens and quoted strings.
  */
-function splitStepArgs(argsStr: string): string[] {
+export function splitStepArgs(argsStr: string): string[] {
   const result: string[] = [];
   let current = '';
   let depth = 0;

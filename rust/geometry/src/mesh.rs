@@ -58,6 +58,10 @@ pub struct Mesh {
     pub normals: Vec<f32>,
     /// Triangle indices (i0, i1, i2)
     pub indices: Vec<u32>,
+    /// Whether RTC offset has already been subtracted from positions.
+    /// Set by `FacetedBrepProcessor::process_with_rtc` to prevent
+    /// `transform_mesh` from double-subtracting RTC.
+    pub rtc_applied: bool,
 }
 
 /// A sub-mesh with its source geometry item ID.
@@ -131,6 +135,7 @@ impl Mesh {
             positions: Vec::new(),
             normals: Vec::new(),
             indices: Vec::new(),
+            rtc_applied: false,
         }
     }
 
@@ -140,6 +145,7 @@ impl Mesh {
             positions: Vec::with_capacity(vertex_count * 3),
             normals: Vec::with_capacity(vertex_count * 3),
             indices: Vec::with_capacity(index_count),
+            rtc_applied: false,
         }
     }
 
@@ -236,6 +242,7 @@ impl Mesh {
             chunk[1] = (chunk[1] as f64 - shift.y) as f32;
             chunk[2] = (chunk[2] as f64 - shift.z) as f32;
         }
+        self.rtc_applied = true;
     }
 
     /// Add a triangle
@@ -266,6 +273,11 @@ impl Mesh {
         // Vectorized index offset - more cache-friendly than loop
         self.indices
             .extend(other.indices.iter().map(|&i| i + vertex_offset));
+
+        // Preserve RTC state: if either mesh has RTC applied, the merged result does too
+        if other.rtc_applied {
+            self.rtc_applied = true;
+        }
     }
 
     /// Batch merge multiple meshes at once (more efficient than individual merges)
@@ -288,6 +300,11 @@ impl Mesh {
                 self.normals.extend_from_slice(&mesh.normals);
                 self.indices
                     .extend(mesh.indices.iter().map(|&i| i + vertex_offset));
+
+                // Preserve RTC state: if any mesh has RTC applied, the merged result does too
+                if mesh.rtc_applied {
+                    self.rtc_applied = true;
+                }
             }
         }
     }
@@ -386,6 +403,7 @@ impl Mesh {
         self.positions.clear();
         self.normals.clear();
         self.indices.clear();
+        self.rtc_applied = false;
     }
 
     /// Filter out triangles with edges exceeding the threshold
@@ -643,6 +661,7 @@ mod tests {
                 0, 1, 5, // invalid: vertex 5 out of bounds
                 3, 4, 5, // invalid: all out of bounds
             ],
+            rtc_applied: false,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -654,6 +673,7 @@ mod tests {
             positions: vec![],
             normals: vec![],
             indices: vec![0, 1, 2],
+            rtc_applied: false,
         };
         mesh.validate_indices();
         assert!(mesh.indices.is_empty());
@@ -665,6 +685,7 @@ mod tests {
             positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
             normals: vec![],
             indices: vec![0, 1, 2, 0, 1], // trailing incomplete triangle
+            rtc_applied: false,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -676,6 +697,7 @@ mod tests {
             positions: vec![0.0; 12], // 4 vertices
             normals: vec![],
             indices: vec![0, 1, 2, 1, 2, 3],
+            rtc_applied: false,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);

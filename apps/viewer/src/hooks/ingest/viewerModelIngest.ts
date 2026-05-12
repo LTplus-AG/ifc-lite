@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { IfcParser, parseIfcx, type IfcDataStore } from '@ifc-lite/parser';
-import { GeometryProcessor, GeometryQuality, type CoordinateInfo, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
+import { IfcParser, parseIfcx, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
+import { GeometryProcessor, GeometryQuality, type CoordinateInfo, type DynamicBatchConfig, type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
 import { calculateMeshBounds, calculateStoreyHeights, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
@@ -44,13 +44,17 @@ export interface StepBufferIngestOptions {
   fileName: string;
   buffer: ArrayBuffer;
   fileSizeMB: number;
-  getDynamicBatchSize: (fileSizeMB: number) => number | { initial: number; subsequent: number };
+  getDynamicBatchSize: (fileSizeMB: number) => number | DynamicBatchConfig;
   onProgress?: (progress: { phase: string; percent: number }) => void;
   onBatch?: (event: StepBatchEvent) => void;
   onColorUpdate?: (updates: Map<number, RgbaColor>) => void;
   onSpatialReady?: (dataStore: IfcDataStore) => void;
   onRtcOffset?: (event: StepRtcOffsetEvent) => void;
   shouldAbort?: () => boolean;
+  /** Shared RTC offset from first federated model (IFC Z-up coords).
+   *  When set, this model uses the same RTC as the first model instead of
+   *  computing its own, ensuring all models share the same coordinate space. */
+  sharedRtcOffset?: { x: number; y: number; z: number };
 }
 
 export interface StepBufferIngestResult extends ViewerModelPayload {
@@ -129,11 +133,26 @@ export async function parseIfcxViewerModel(
   });
 
   const meshes = convertIfcxMeshes(ifcxResult.meshes);
-  if (meshes.length === 0 && ifcxResult.entityCount > 0) {
+  const pointClouds = convertIfcxPointClouds(ifcxResult.pointClouds ?? []);
+  // Treat as overlay-only ONLY when neither meshes nor pointclouds were extracted.
+  // Files that carry just point cloud assets (the buildingSMART Point_Cloud
+  // samples) still represent a renderable model on their own.
+  if (meshes.length === 0 && pointClouds.length === 0 && ifcxResult.entityCount > 0) {
     throw new Error('overlay-only-ifcx');
   }
 
   const { bounds, stats } = calculateMeshBounds(meshes);
+  // Expand bounds to include point cloud asset extents so fit-to-view, the
+  // section-plane slider, and camera near/far all see the points too.
+  for (const pc of pointClouds) {
+    const { min, max } = pc.chunk.bbox;
+    bounds.min.x = Math.min(bounds.min.x, min[0]);
+    bounds.min.y = Math.min(bounds.min.y, min[1]);
+    bounds.min.z = Math.min(bounds.min.z, min[2]);
+    bounds.max.x = Math.max(bounds.max.x, max[0]);
+    bounds.max.y = Math.max(bounds.max.y, max[1]);
+    bounds.max.z = Math.max(bounds.max.z, max[2]);
+  }
   return {
     dataStore: {
       fileSize: ifcxResult.fileSize,
@@ -151,12 +170,26 @@ export async function parseIfcxViewerModel(
     } as unknown as IfcDataStore,
     geometryResult: {
       meshes,
+      pointClouds,
       totalVertices: stats.totalVertices,
       totalTriangles: stats.totalTriangles,
       coordinateInfo: createCoordinateInfo(bounds),
     },
     schemaVersion: 'IFC5',
   };
+}
+
+export function convertIfcxPointClouds(extractions: PointCloudExtraction[]): PointCloudAsset[] {
+  return extractions.map((pc) => ({
+    expressId: pc.expressId,
+    ifcType: pc.ifcType,
+    chunk: {
+      positions: pc.positions,
+      colors: pc.colors,
+      pointCount: pc.pointCount,
+      bbox: pc.bbox,
+    },
+  }));
 }
 
 export async function parseGlbViewerModel(buffer: ArrayBuffer): Promise<ViewerModelPayload> {
@@ -204,6 +237,7 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
   for await (const event of geometryProcessor.processAdaptive(new Uint8Array(options.buffer), {
     sizeThreshold: 2 * 1024 * 1024,
     batchSize: options.getDynamicBatchSize(options.fileSizeMB),
+    sharedRtcOffset: options.sharedRtcOffset,
   })) {
     if (options.shouldAbort?.()) {
       break;

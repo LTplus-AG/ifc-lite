@@ -21,7 +21,7 @@
  * - SfB (Sweden/Denmark)
  */
 
-import type { IfcEntity } from './entity-extractor';
+import type { IfcEntity } from './entity-extractor.js';
 import { getString, getReference, getReferences, getStringList } from './attribute-helpers.js';
 
 export interface Classification {

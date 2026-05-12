@@ -8,27 +8,8 @@ export interface ChatConfig {
   appUrl: string;
   allowedOrigins: string[];
   freeModels: Set<string>;
-  proModels: Set<string>;
   freeDailyLimit: number;
-  proMonthlyCredits: number;
-  costToCredits: number;
   debugCredits: boolean;
-  clerkJwtKey?: string;
-  clerkAllowedIssuers: Set<string>;
-  clerkAudiences: Set<string>;
-  clerkAuthorizedParties: Set<string>;
-}
-
-export interface AuthClaims {
-  sub: string;
-  features?: string[];
-  plan?: string;
-  pla?: string;
-  fea?: string[] | string;
-  exp: number;
-  iss: string;
-  aud?: string | string[];
-  azp?: string;
 }
 
 export type UsageTier = 'pro' | 'free';
@@ -50,8 +31,6 @@ export interface UsageReservationResult {
 export interface ChatUsageStore {
   getUsageSnapshot(userId: string, tier: UsageTier): Promise<UsageSnapshot>;
   consumeFreeRequest(userId: string): Promise<UsageReservationResult>;
-  reserveProCredits(userId: string, credits: number): Promise<UsageReservationResult>;
-  releaseProCredits(userId: string, credits: number): Promise<void>;
 }
 
 export interface ChatHandlerDeps {
@@ -70,15 +49,6 @@ export type HandlerRequest = Request | {
   body?: unknown;
 };
 
-interface JwtHeader {
-  alg?: string;
-  kid?: string;
-}
-
-type ClerkJwk = JsonWebKey & { kid?: string };
-
-const jwksCache = new Map<string, { keys: ClerkJwk[]; expiresAt: number }>();
-const JWKS_TTL_MS = 5 * 60 * 1000;
 const USAGE_STORE_TIMEOUT_MS = 8_000;
 const PROVIDER_FETCH_TIMEOUT_MS = 20_000;
 
@@ -136,15 +106,6 @@ function getEnvSet(key: string, env: Record<string, string | undefined> = proces
   return new Set(values);
 }
 
-function getOptionalEnvSet(keys: string[], env: Record<string, string | undefined> = process.env): Set<string> {
-  for (const key of keys) {
-    const val = env[key]?.trim();
-    if (!val) continue;
-    return new Set(val.split(',').map((s) => s.trim()).filter(Boolean));
-  }
-  return new Set();
-}
-
 function getEnvInt(key: string, env: Record<string, string | undefined> = process.env): number {
   const val = requireEnv(key, env);
   const n = parseInt(val, 10);
@@ -154,20 +115,7 @@ function getEnvInt(key: string, env: Record<string, string | undefined> = proces
   return n;
 }
 
-function normalizeIssuer(issuer: string): string {
-  return issuer.trim().replace(/\/+$/, '');
-}
-
 export function loadChatConfig(env: Record<string, string | undefined> = process.env): ChatConfig {
-  const proModelsLow = getOptionalEnvSet(['LLM_PRO_MODELS_LOW'], env);
-  const proModelsMedium = getOptionalEnvSet(['LLM_PRO_MODELS_MEDIUM'], env);
-  const proModelsHigh = getOptionalEnvSet(['LLM_PRO_MODELS_HIGH'], env);
-  const hasCostBuckets = proModelsLow.size > 0 || proModelsMedium.size > 0 || proModelsHigh.size > 0;
-  const proModels = hasCostBuckets
-    ? new Set([...proModelsLow, ...proModelsMedium, ...proModelsHigh])
-    : getEnvSet('LLM_PRO_MODELS', env);
-  const clerkAllowedIssuers = getOptionalEnvSet(['CLERK_ALLOWED_ISSUERS', 'CLERK_ISSUER_URL'], env);
-
   return {
     apiBase: requireEnv('LLM_API_BASE', env).replace(/\/+$/, ''),
     apiKey: requireEnv('LLM_API_KEY', env),
@@ -177,242 +125,14 @@ export function loadChatConfig(env: Record<string, string | undefined> = process
       .map((s) => s.trim())
       .filter(Boolean),
     freeModels: getEnvSet('LLM_FREE_MODELS', env),
-    proModels,
     freeDailyLimit: getEnvInt('LLM_FREE_DAILY_LIMIT', env),
-    proMonthlyCredits: getEnvInt('LLM_PRO_MONTHLY_CREDITS', env),
-    costToCredits: getEnvInt('LLM_COST_TO_CREDITS', env),
     debugCredits: env.LLM_DEBUG_CREDITS === '1' || env.NODE_ENV !== 'production',
-    clerkJwtKey: env.CLERK_JWT_KEY?.trim() || undefined,
-    clerkAllowedIssuers: new Set([...clerkAllowedIssuers].map(normalizeIssuer)),
-    clerkAudiences: getOptionalEnvSet(['CLERK_JWT_AUDIENCE', 'CLERK_JWT_AUDIENCES'], env),
-    clerkAuthorizedParties: getOptionalEnvSet(['CLERK_AUTHORIZED_PARTY', 'CLERK_AUTHORIZED_PARTIES'], env),
   };
 }
 
-function base64UrlDecode(str: string): string {
-  const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-  return atob(padded);
-}
-
-function base64ToBytes(base64: string): Uint8Array {
-  const normalized = base64.replace(/\s+/g, '');
-  const binary = atob(normalized);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-  return out;
-}
-
-function base64UrlToBytes(value: string): Uint8Array {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-  return base64ToBytes(padded);
-}
-
-function normalizePemKey(input: string): string {
-  let key = input.trim();
-  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith('\'') && key.endsWith('\''))) {
-    key = key.slice(1, -1);
-  }
-  return key.replace(/\\n/g, '\n').replace(/\\ /g, ' ').trim();
-}
-
-function pemToDerBytes(pem: string): Uint8Array {
-  const body = pem
-    .replace(/-----BEGIN PUBLIC KEY-----/g, '')
-    .replace(/-----END PUBLIC KEY-----/g, '')
-    .replace(/['"]/g, '')
-    .trim();
-  return base64ToBytes(body);
-}
-
-async function verifyJwtWithPublicKey(token: string, jwtKeyPem: string): Promise<boolean> {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return false;
-    const [headerB64, payloadB64, signatureB64] = parts;
-
-    const header = JSON.parse(base64UrlDecode(headerB64)) as JwtHeader;
-    if (header.alg !== 'RS256') return false;
-
-    const key = await crypto.subtle.importKey(
-      'spki',
-      Uint8Array.from(pemToDerBytes(normalizePemKey(jwtKeyPem))),
-      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-      false,
-      ['verify'],
-    );
-
-    const data = Uint8Array.from(new TextEncoder().encode(`${headerB64}.${payloadB64}`));
-    const signature = Uint8Array.from(base64UrlToBytes(signatureB64));
-    return crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, signature, data);
-  } catch {
-    return false;
-  }
-}
-
-function normalizeScopedValue(value: string): string {
-  const idx = value.indexOf(':');
-  return idx >= 0 ? value.slice(idx + 1) : value;
-}
-
-export function extractFeatureSet(claims: AuthClaims | null): Set<string> {
-  const out = new Set<string>();
-  if (!claims) return out;
-
-  for (const f of claims.features ?? []) {
-    out.add(normalizeScopedValue(f));
-  }
-
-  if (Array.isArray(claims.fea)) {
-    for (const f of claims.fea) out.add(normalizeScopedValue(f));
-  } else if (typeof claims.fea === 'string') {
-    for (const f of claims.fea.split(',')) {
-      const trimmed = f.trim();
-      if (trimmed) out.add(normalizeScopedValue(trimmed));
-    }
-  }
-
-  return out;
-}
-
-export function hasProPlan(claims: AuthClaims | null): boolean {
-  if (!claims) return false;
-  const plan = claims.plan ?? claims.pla;
-  if (!plan) return false;
-  return normalizeScopedValue(plan) === 'pro';
-}
-
-function matchesExpectedAudience(claims: AuthClaims, config: ChatConfig): boolean {
-  if (config.clerkAudiences.size === 0) return true;
-  const audiences = Array.isArray(claims.aud) ? claims.aud : claims.aud ? [claims.aud] : [];
-  return audiences.some((aud) => config.clerkAudiences.has(aud));
-}
-
-function matchesExpectedAuthorizedParty(
-  claims: AuthClaims,
-  config: ChatConfig,
-  requestOrigin?: string | null,
-  requestUrl?: string | URL,
-): boolean {
-  if (config.clerkAuthorizedParties.size === 0) return true;
-  if (typeof claims.azp !== 'string') return false;
-  if (config.clerkAuthorizedParties.has(claims.azp)) return true;
-
-  if (!requestOrigin || !requestUrl) return false;
-
-  try {
-    const originUrl = new URL(requestOrigin);
-    const targetUrl = new URL(requestUrl);
-    return claims.azp === originUrl.origin && originUrl.origin === targetUrl.origin;
-  } catch {
-    return false;
-  }
-}
-
-function areClaimsAllowed(
-  claims: AuthClaims,
-  config: ChatConfig,
-  requestOrigin?: string | null,
-  requestUrl?: string | URL,
-): boolean {
-  // When a pinned public key is configured, signature verification is already
-  // bound to this Clerk instance, so issuer allowlisting remains optional.
-  if (config.clerkAllowedIssuers.size > 0) {
-    if (!claims.iss || !config.clerkAllowedIssuers.has(normalizeIssuer(claims.iss))) return false;
-  } else if (!config.clerkJwtKey) {
-    return false;
-  }
-  if (!matchesExpectedAudience(claims, config)) return false;
-  if (!matchesExpectedAuthorizedParty(claims, config, requestOrigin, requestUrl)) return false;
-  return true;
-}
-
-async function getJwksForIssuer(iss: string, fetchImpl: typeof fetch): Promise<ClerkJwk[]> {
-  const normalizedIssuer = normalizeIssuer(iss);
-  const now = Date.now();
-  const cached = jwksCache.get(normalizedIssuer);
-  if (cached && cached.expiresAt > now) return cached.keys;
-
-  const res = await fetchImpl(`${normalizedIssuer}/.well-known/jwks.json`);
-  if (!res.ok) return [];
-  const data = await res.json() as { keys?: ClerkJwk[] };
-  const keys = Array.isArray(data.keys) ? data.keys : [];
-  jwksCache.set(normalizedIssuer, { keys, expiresAt: now + JWKS_TTL_MS });
-  return keys;
-}
-
-async function verifyJwtWithIssuerJwks(token: string, iss: string, fetchImpl: typeof fetch): Promise<boolean> {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return false;
-    const [headerB64, payloadB64, signatureB64] = parts;
-
-    const header = JSON.parse(base64UrlDecode(headerB64)) as JwtHeader;
-    if (header.alg !== 'RS256' || !header.kid) return false;
-
-    const jwks = await getJwksForIssuer(iss, fetchImpl);
-    const jwk = jwks.find((k) => k.kid === header.kid && (k.kty === 'RSA' || !k.kty));
-    if (!jwk) return false;
-
-    const key = await crypto.subtle.importKey(
-      'jwk',
-      jwk,
-      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-      false,
-      ['verify'],
-    );
-    const data = Uint8Array.from(new TextEncoder().encode(`${headerB64}.${payloadB64}`));
-    const signature = Uint8Array.from(base64UrlToBytes(signatureB64));
-    return crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, signature, data);
-  } catch {
-    return false;
-  }
-}
-
-export async function verifyToken(
-  token: string | undefined,
-  config: ChatConfig,
-  fetchImpl: typeof fetch = fetch,
-  requestOrigin?: string | null,
-  requestUrl?: string | URL,
-): Promise<AuthClaims | null> {
-  if (!token) return null;
-
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(base64UrlDecode(parts[1])) as AuthClaims;
-    if (!areClaimsAllowed(payload, config, requestOrigin, requestUrl)) return null;
-
-    let valid = false;
-    if (config.clerkJwtKey) {
-      valid = await verifyJwtWithPublicKey(token, config.clerkJwtKey);
-    } else {
-      valid = await verifyJwtWithIssuerJwks(token, payload.iss, fetchImpl);
-    }
-    if (!valid) return null;
-    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
 
 export function isFreeModel(config: ChatConfig, model: string): boolean {
   return config.freeModels.has(model);
-}
-
-export function isPaidModel(config: ChatConfig, model: string): boolean {
-  return config.proModels.has(model);
-}
-
-export function isAllowedModel(config: ChatConfig, model: string): boolean {
-  return config.freeModels.has(model) || config.proModels.has(model);
-}
-
-function getAllowedModelList(config: ChatConfig): string[] {
-  return [...config.freeModels, ...config.proModels];
 }
 
 function debugCredits(config: ChatConfig, event: string, data: Record<string, unknown>): void {
@@ -578,28 +298,6 @@ export async function getAnonymousUserId(req: HandlerRequest): Promise<string> {
   return `anon:${fingerprint.slice(0, 24)}`;
 }
 
-async function safeReleaseCredits(
-  deps: ChatHandlerDeps,
-  userId: string,
-  credits: number,
-  config: ChatConfig,
-): Promise<void> {
-  if (credits <= 0) return;
-  try {
-    await withTimeout(
-      deps.usageStore.releaseProCredits(userId, credits),
-      USAGE_STORE_TIMEOUT_MS,
-      'Usage store timed out while releasing reserved credits.',
-    );
-  } catch (error) {
-    debugCredits(config, 'release_failed', {
-      userId: summarizeUserId(userId),
-      credits,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
 export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
   return async function handler(req: HandlerRequest): Promise<Response> {
     const supportEmail = 'louis@ltplus.com';
@@ -624,26 +322,13 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
       });
     }
 
-    const authHeader = getHeader(req.headers, 'authorization');
-    const token = authHeader?.replace(/^Bearer\s+/i, '') || undefined;
-    const claims = await verifyToken(token, config, deps.fetchImpl, requestOrigin, url);
-    if (token && !claims) {
-      return corsResponse(config, 401, requestOrigin, url, {
-        error: 'Authentication invalid or expired. Please sign in again.',
-        code: 'auth_invalid',
-      }, undefined, isDev);
-    }
-
-    const featureSet = extractFeatureSet(claims);
-    const userTier = (hasProPlan(claims) || featureSet.has('pro_models'))
-      ? 'pro' as const
-      : 'free' as const;
-    const userId = claims?.sub ?? await getAnonymousUserId(req);
+    // All proxy requests are anonymous free tier — identified by IP hash
+    const userId = await getAnonymousUserId(req);
 
     if (isUsageSnapshotRequest) {
       try {
         const snapshot = await withTimeout(
-          deps.usageStore.getUsageSnapshot(userId, userTier),
+          deps.usageStore.getUsageSnapshot(userId, 'free'),
           USAGE_STORE_TIMEOUT_MS,
           'Usage store timed out while loading usage.',
         );
@@ -685,75 +370,40 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
       return corsResponse(config, 400, requestOrigin, url, { error: 'Missing messages or model' }, undefined, isDev);
     }
 
-    if (!isAllowedModel(config, body.model)) {
+    if (!isFreeModel(config, body.model)) {
       return corsResponse(config, 400, requestOrigin, url, {
-        error: `Model not allowed: ${body.model}. Check LLM_*_MODELS env configuration.`,
+        error: `Model not available through proxy: ${body.model}. Use your own API key for non-free models.`,
         code: 'model_not_allowed',
         model: body.model,
-        allowedModels: getAllowedModelList(config),
       }, undefined, isDev);
     }
 
-    if (userTier === 'free' && isPaidModel(config, body.model)) {
-      return corsResponse(config, 403, requestOrigin, url, {
-        error: 'Upgrade to Pro to use this model',
-        code: 'plan_required',
-        upgrade: true,
-      }, undefined, isDev);
-    }
-
-    const billableRequest = userTier === 'pro' && !isFreeModel(config, body.model);
     let usageSnapshot: UsageSnapshot;
-    let reservedCredits = 0;
 
     try {
       usageSnapshot = await withTimeout(
-        deps.usageStore.getUsageSnapshot(userId, userTier),
+        deps.usageStore.getUsageSnapshot(userId, 'free'),
         USAGE_STORE_TIMEOUT_MS,
         'Usage store timed out while loading usage.',
       );
 
-      if (userTier === 'free') {
-        const consumed = await withTimeout(
-          deps.usageStore.consumeFreeRequest(userId),
-          USAGE_STORE_TIMEOUT_MS,
-          'Usage store timed out while reserving a free request.',
-        );
-        usageSnapshot = consumed.snapshot;
-        if (!consumed.allowed) {
-          return corsResponse(config, 429, requestOrigin, url, {
-            error: 'You\'ve reached your daily limit. Upgrade to Pro for more.',
-            type: 'request_cap',
-            code: 'quota_exceeded',
-            limit: config.freeDailyLimit,
-            resetAt: consumed.snapshot.resetAt * 1000,
-          }, {
-            'Retry-After': String(Math.max(1, consumed.snapshot.resetAt - Math.ceil(deps.now() / 1000))),
-            ...buildUsageHeaders(consumed.snapshot),
-          }, isDev);
-        }
-      } else if (billableRequest) {
-        const reserved = await withTimeout(
-          deps.usageStore.reserveProCredits(userId, 1),
-          USAGE_STORE_TIMEOUT_MS,
-          'Usage store timed out while reserving pro credits.',
-        );
-        usageSnapshot = { ...reserved.snapshot, billable: true };
-        if (!reserved.allowed) {
-          return corsResponse(config, 429, requestOrigin, url, {
-            error: `Monthly credits used up. Need more? Reach out at ${supportEmail}.`,
-            type: 'credits',
-            code: 'credits_exhausted',
-            creditsUsed: reserved.snapshot.used,
-            creditsLimit: config.proMonthlyCredits,
-            resetAt: reserved.snapshot.resetAt * 1000,
-            contactEmail: supportEmail,
-          }, {
-            'Retry-After': String(Math.max(1, reserved.snapshot.resetAt - Math.ceil(deps.now() / 1000))),
-            ...buildUsageHeaders(usageSnapshot),
-          }, isDev);
-        }
-        reservedCredits = 1;
+      const consumed = await withTimeout(
+        deps.usageStore.consumeFreeRequest(userId),
+        USAGE_STORE_TIMEOUT_MS,
+        'Usage store timed out while reserving a free request.',
+      );
+      usageSnapshot = consumed.snapshot;
+      if (!consumed.allowed) {
+        return corsResponse(config, 429, requestOrigin, url, {
+          error: 'You\'ve reached your daily limit. Add your own API key in Settings for unlimited access.',
+          type: 'request_cap',
+          code: 'quota_exceeded',
+          limit: config.freeDailyLimit,
+          resetAt: consumed.snapshot.resetAt * 1000,
+        }, {
+          'Retry-After': String(Math.max(1, consumed.snapshot.resetAt - Math.ceil(deps.now() / 1000))),
+          ...buildUsageHeaders(consumed.snapshot),
+        }, isDev);
       }
     } catch (error) {
       if (isTimeoutError(error)) {
@@ -775,9 +425,6 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
     debugCredits(config, 'request_start', {
       userId: summarizeUserId(userId),
       model: body.model,
-      userTier,
-      billableRequest,
-      isFreeModel: isFreeModel(config, body.model),
     });
 
     let upstream: Response;
@@ -806,7 +453,7 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
         () => controller.abort(),
       );
     } catch (error) {
-      await safeReleaseCredits(deps, userId, reservedCredits, config);
+      // No credits to release for free-tier proxy
       if (isTimeoutError(error)) {
         return corsResponse(config, 504, requestOrigin, url, {
           error: 'Provider request timed out before a response was received.',
@@ -821,7 +468,7 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
     }
 
     if (!upstream.ok) {
-      await safeReleaseCredits(deps, userId, reservedCredits, config);
+      // No credits to release for free-tier proxy
 
       let providerErrorText = '';
       let providerBody: unknown = null;
@@ -875,11 +522,11 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
     }
 
     if (!upstream.body) {
-      await safeReleaseCredits(deps, userId, reservedCredits, config);
+      // No credits to release for free-tier proxy
       return corsResponse(config, 502, requestOrigin, url, { error: 'No response body' }, undefined, isDev);
     }
 
-    const finalUsageSnapshot = { ...usageSnapshot, billable: billableRequest };
+    const finalUsageSnapshot = { ...usageSnapshot };
     const usageHeaders = buildUsageHeaders(finalUsageSnapshot);
     const sseEncoder = new TextEncoder();
 
@@ -897,7 +544,7 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
           usageUsed: finalUsageSnapshot.used,
           usageLimit: finalUsageSnapshot.limit,
           pct: finalUsageSnapshot.pct,
-          billable: billableRequest,
+          billable: false,
         });
         controller.enqueue(sseEncoder.encode(`data: ${usageEvent}\n\n`));
       },

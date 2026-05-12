@@ -83,8 +83,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const prevIsStreamingRef = useRef(isStreaming);
   const queuePumpTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
+  // Only activate the timer-based queue pump when the tab is background-throttled
+  // (rAF stops firing). In the foreground, the animation loop already drains the
+  // queue every frame — a parallel setTimeout(0) pump doubles the GPU work and
+  // hurts Chrome (Dawn) where each buffer op is an IPC round-trip.
   const ensureQueuePump = () => {
     if (queuePumpTimerRef.current !== null) return;
+    if (!globalThis.document?.hidden) return; // rAF is active — let the animation loop drain
     queuePumpTimerRef.current = globalThis.setTimeout(() => {
       queuePumpTimerRef.current = null;
       const renderer = rendererRef.current;

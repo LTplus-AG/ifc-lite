@@ -7,9 +7,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractDocumentsOnDemand } from '../src/columnar-parser';
-import type { IfcDataStore } from '../src/columnar-parser';
-import type { EntityRef } from '../src/types';
+import { extractDocumentsOnDemand } from '../src/columnar-parser.js';
+import type { IfcDataStore } from '../src/columnar-parser.js';
+import type { EntityRef } from '../src/types.js';
 import { RelationshipType } from '@ifc-lite/data';
 
 /**

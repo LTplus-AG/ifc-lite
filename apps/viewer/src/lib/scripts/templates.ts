@@ -24,6 +24,7 @@ import spaceValidation from './templates/space-validation.ts?raw';
 import federationCompare from './templates/federation-compare.ts?raw';
 import resetView from './templates/reset-view.ts?raw';
 import createBuilding from './templates/create-building.ts?raw';
+import constructionSchedule from './templates/construction-schedule.ts?raw';
 
 
 export interface ScriptTemplate {
@@ -85,6 +86,12 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
     description:
       'Developer — generate a complete IFC file with walls, slab, columns, beams, stair, and parametric timber gridshell roof with diamond lattice',
     code: stripModuleLine(createBuilding),
+  },
+  {
+    name: 'Construction schedule (4D)',
+    description:
+      'Scheduler — build an IfcWorkSchedule with IfcTasks, IfcRelSequence dependencies, and product assignments that drive the 4D Gantt animation. Accepts a CSV attachment for real task data.',
+    code: stripModuleLine(constructionSchedule),
   },
   {
     name: 'Reset view',

@@ -14,6 +14,9 @@ import type {
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
 
+/** IFC entity/predefined type comparisons are case-insensitive per IDS spec */
+const IFC_CASE_INSENSITIVE = { caseInsensitive: true } as const;
+
 /**
  * Check if an entity matches an entity facet
  */
@@ -38,8 +41,29 @@ export function checkEntityFacet(
     };
   }
 
-  // Check entity type
-  if (!matchConstraint(facet.name, entityType)) {
+  // Per IDS 1.0 spec, entity-name simpleValue literals MUST be
+  // uppercase (`IFCWALL`, not `IfcWall`). Reject malformed authoring
+  // outright before attempting the case-insensitive comparison —
+  // otherwise mixed-case literals would silently match.
+  if (
+    facet.name.type === 'simpleValue' &&
+    facet.name.value !== facet.name.value.toUpperCase()
+  ) {
+    return {
+      passed: false,
+      actualValue: entityType,
+      expectedValue: formatConstraint(facet.name),
+      failure: {
+        type: 'ENTITY_TYPE_MISMATCH',
+        field: 'entityType',
+        actual: entityType,
+        expected: formatConstraint(facet.name),
+      },
+    };
+  }
+
+  // Check entity type (case-insensitive per IDS spec — IFC entity names are case-agnostic)
+  if (!matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE)) {
     return {
       passed: false,
       actualValue: entityType,
@@ -55,9 +79,19 @@ export function checkEntityFacet(
 
   // Check predefined type if specified
   if (facet.predefinedType) {
-    const objectType = accessor.getObjectType(expressId);
+    // Per IDS spec, predefined-type matching has two distinct paths:
+    //   1. Compare against the raw IFC `PredefinedType` enum token
+    //      (BEAM, USERDEFINED, NOTDEFINED, …) — case-insensitive.
+    //   2. When the raw token is `USERDEFINED`, fall back to the
+    //      user-defined name (`ObjectType`/`ElementType`/`ProcessType`)
+    //      — case-sensitive.
+    // The order matters: a fixture asking for `USERDEFINED` literally
+    // must match an entity whose enum is `USERDEFINED` regardless of
+    // its accompanying user-defined name.
+    const rawType = accessor.getPredefinedTypeRaw?.(expressId);
+    const userDefinedType = accessor.getObjectType(expressId);
 
-    if (!objectType) {
+    if (!rawType && !userDefinedType) {
       return {
         passed: false,
         actualValue: entityType,
@@ -70,15 +104,40 @@ export function checkEntityFacet(
       };
     }
 
-    if (!matchConstraint(facet.predefinedType, objectType)) {
+    let matched = false;
+    // Predefined-type enum tokens (BEAM, USERDEFINED, …) MUST be
+    // uppercase per the IFC schema, and the IDS literal MUST match
+    // exactly. Case-sensitive comparison is the spec.
+    if (rawType && matchConstraint(facet.predefinedType, rawType)) {
+      matched = true;
+    } else if (
+      rawType === 'USERDEFINED' &&
+      userDefinedType &&
+      userDefinedType !== rawType &&
+      matchConstraint(facet.predefinedType, userDefinedType)
+    ) {
+      // Case-sensitive comparison for user-defined names.
+      matched = true;
+    } else if (
+      !rawType &&
+      userDefinedType &&
+      matchConstraint(facet.predefinedType, userDefinedType)
+    ) {
+      // No raw enum reported (legacy accessor) — case-sensitive match
+      // against the substituted form.
+      matched = true;
+    }
+
+    if (!matched) {
+      const display = userDefinedType || rawType || '(none)';
       return {
         passed: false,
-        actualValue: `${entityType}[${objectType}]`,
+        actualValue: `${entityType}[${display}]`,
         expectedValue: `${formatConstraint(facet.name)} with predefinedType ${formatConstraint(facet.predefinedType)}`,
         failure: {
           type: 'PREDEFINED_TYPE_MISMATCH',
           field: 'predefinedType',
-          actual: objectType,
+          actual: display,
           expected: formatConstraint(facet.predefinedType),
         },
       };

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/create",
-  "version": "1.14.5",
+  "version": "1.15.0",
   "description": "IFC creation from scratch — walls, slabs, beams, columns, stairs, roofs with geometry, properties and quantities",
   "type": "module",
   "main": "./dist/index.js",
@@ -16,7 +16,11 @@
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@ifc-lite/encoding": "workspace:^",
+    "@ifc-lite/mutations": "workspace:^",
+    "@ifc-lite/parser": "workspace:^"
+  },
   "devDependencies": {
     "typescript": "^5.3.0",
     "vitest": "^1.6.0"

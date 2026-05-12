@@ -9,14 +9,19 @@
 import type {
   IDSPartOfFacet,
   IFCDataAccessor,
+  ParentInfo,
   PartOfRelation,
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
-import { matchConstraint, formatConstraint } from '../constraints/index.js';
+import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
+
+/** IFC entity/predefined type comparisons are case-insensitive per IDS spec */
+const IFC_CASE_INSENSITIVE: MatchOptions = { caseInsensitive: true };
 
 /** Human-readable relation names */
 const RELATION_NAMES: Record<PartOfRelation, string> = {
   IfcRelAggregates: 'aggregated in',
+  IfcRelAssignsToGroup: 'grouped in',
   IfcRelContainedInSpatialStructure: 'contained in',
   IfcRelNests: 'nested in',
   IfcRelVoidsElement: 'voiding',
@@ -31,10 +36,20 @@ export function checkPartOfFacet(
   expressId: number,
   accessor: IFCDataAccessor
 ): FacetCheckResult {
-  // Get parent via the specified relationship
-  const parent = accessor.getParent(expressId, facet.relation);
+  // Per IDS spec, partOf is transitive — a wall contained in a storey
+  // in a building IS partOf the building. Walk every ancestor and
+  // pass if ANY matches the requirement entity. Fall back to single-
+  // step `getParent` when the accessor doesn't expose ancestor
+  // traversal.
+  const ancestors: ParentInfo[] = accessor.getAncestors
+    ? accessor.getAncestors(expressId, facet.relation)
+    : [];
+  if (ancestors.length === 0) {
+    const direct = accessor.getParent(expressId, facet.relation);
+    if (direct) ancestors.push(direct);
+  }
 
-  if (!parent) {
+  if (ancestors.length === 0) {
     const relationName = RELATION_NAMES[facet.relation] || facet.relation;
     const expectedEntity = facet.entity
       ? formatConstraint(facet.entity.name)
@@ -55,6 +70,30 @@ export function checkPartOfFacet(
     };
   }
 
+  // Try each ancestor against the requirement; pass on the first
+  // match. Track the most-specific failure so a partial match (right
+  // entity, wrong predefinedType, say) is reported instead of the
+  // generic "no match" form.
+  let bestFailure: FacetCheckResult | undefined;
+  for (const parent of ancestors) {
+    const result = checkAncestorAgainstFacet(facet, parent);
+    if (result.passed) return result;
+    if (
+      !bestFailure ||
+      (result.failure?.type !== 'PARTOF_ENTITY_MISMATCH' &&
+        bestFailure.failure?.type === 'PARTOF_ENTITY_MISMATCH')
+    ) {
+      bestFailure = result;
+    }
+  }
+  return bestFailure!;
+}
+
+function checkAncestorAgainstFacet(
+  facet: IDSPartOfFacet,
+  parent: ParentInfo
+): FacetCheckResult {
+
   // If no entity constraint, just check if relationship exists
   if (!facet.entity) {
     const relationName = RELATION_NAMES[facet.relation] || facet.relation;
@@ -66,8 +105,8 @@ export function checkPartOfFacet(
     };
   }
 
-  // Check parent entity type
-  if (!matchConstraint(facet.entity.name, parent.entityType)) {
+  // Check parent entity type (case-insensitive for IFC entity names)
+  if (!matchConstraint(facet.entity.name, parent.entityType, IFC_CASE_INSENSITIVE)) {
     const relationName = RELATION_NAMES[facet.relation] || facet.relation;
 
     return {
@@ -95,7 +134,7 @@ export function checkPartOfFacet(
         actualValue: `${parent.entityType} (no predefinedType)`,
         expectedValue: `${formatConstraint(facet.entity.name)} with predefinedType ${formatConstraint(facet.entity.predefinedType)}`,
         failure: {
-          type: 'PARTOF_ENTITY_MISMATCH',
+          type: 'PARTOF_PREDEFINED_TYPE_MISSING',
           field: 'predefinedType',
           expected: formatConstraint(facet.entity.predefinedType),
           context: {
@@ -106,13 +145,13 @@ export function checkPartOfFacet(
       };
     }
 
-    if (!matchConstraint(facet.entity.predefinedType, parent.predefinedType)) {
+    if (!matchConstraint(facet.entity.predefinedType, parent.predefinedType, IFC_CASE_INSENSITIVE)) {
       return {
         passed: false,
         actualValue: `${parent.entityType}[${parent.predefinedType}]`,
         expectedValue: `${formatConstraint(facet.entity.name)}[${formatConstraint(facet.entity.predefinedType)}]`,
         failure: {
-          type: 'PARTOF_ENTITY_MISMATCH',
+          type: 'PARTOF_PREDEFINED_TYPE_MISMATCH',
           field: 'predefinedType',
           actual: parent.predefinedType,
           expected: formatConstraint(facet.entity.predefinedType),

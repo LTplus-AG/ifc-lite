@@ -11,6 +11,7 @@ import {
   Eye,
   Building2,
   Layers,
+  Layers2,
   FileText,
   Calculator,
   Tag,
@@ -20,6 +21,7 @@ import {
   PenLine,
   Crosshair,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -33,7 +35,8 @@ import { getNativeEntityDetails } from '@/services/desktop-native-metadata';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
+import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 
@@ -43,11 +46,14 @@ import { QuantitySetCard } from './properties/QuantitySetCard';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
 import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
+import { ScheduleCard } from './properties/ScheduleCard';
+import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { RelationshipsCard } from './properties/RelationshipsCard';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
+import { RawStepCard } from './properties/RawStepCard';
 
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean };
 type DisplayPropertySet = {
@@ -56,6 +62,41 @@ type DisplayPropertySet = {
   isNewPset: boolean;
   source?: PropertySet['source'];
 };
+
+/**
+ * Synthesize an attribute list from a NewEntity record so the panel's
+ * attributes section renders for overlay-only duplicates / scripted
+ * adds. Positional indices are mapped to schema names; everything past
+ * the schema's defined slots is dropped (no "Arg 9" rows in the bSDD
+ * panel).
+ */
+function attributesFromOverlayEntity(entity: NewEntity): Array<{ name: string; value: string }> {
+  const names = getAttributeNames(entity.type) ?? [];
+  if (names.length === 0) return [];
+  const out: Array<{ name: string; value: string }> = [];
+  // Stop at the smaller of the schema and the actual attributes — IFC
+  // entities can be partially populated (trailing optionals omitted).
+  const len = Math.min(names.length, entity.attributes.length);
+  for (let i = 0; i < len; i++) {
+    const value = entity.attributes[i];
+    let display: string;
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'string') {
+      if (value === '$' || value.length === 0) continue;
+      display = value;
+    } else if (typeof value === 'number') {
+      display = String(value);
+    } else if (typeof value === 'boolean') {
+      display = value ? 'true' : 'false';
+    } else {
+      // Lists / typed values — skip the bSDD attributes panel; users
+      // can still see them on the Raw STEP tab.
+      continue;
+    }
+    out.push({ name: names[i], value: display });
+  }
+  return out;
+}
 
 function mergePropertySetLists(base: DisplayPropertySet[], incoming: DisplayPropertySet[]): DisplayPropertySet[] {
   const merged = base.map(pset => ({
@@ -95,6 +136,10 @@ export function PropertiesPanel() {
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
   const isEntityVisible = useViewerStore((s) => s.isEntityVisible);
+  // Issue #540: surface a small "Layers merged" badge on walls when
+  // the user has the merge-layers load setting active so they
+  // understand the displayed solid is the aggregated representation.
+  const mergeLayersActive = useViewerStore((s) => s.mergeLayers);
   const { query, ifcDataStore, geometryResult, models, getQueryForModel } = useIfc();
 
   // Get model-aware query based on selectedEntity
@@ -364,6 +409,32 @@ export function PropertiesPanel() {
     return modelQuery.entity(originalExpressId);
   }, [selectedEntity, modelQuery]);
 
+  // Overlay-only entity record (duplicates, scripted adds). Carries
+  // the type + positional attributes the StoreEditor recorded — used
+  // as a fallback when the parsed entityNode comes up empty so the
+  // panel doesn't render `UNKNOWN / Unknown` for fresh entities.
+  const overlayEntity = useMemo(() => {
+    let modelId = selectedEntity?.modelId;
+    if (modelId === 'legacy') modelId = '__legacy__';
+    const expressId = selectedEntity?.expressId;
+    if (!modelId || !expressId) return null;
+    const view = mutationViews.get(modelId);
+    return view?.getNewEntity(expressId) ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEntity, mutationViews, mutationVersion]);
+
+  /**
+   * Read a positional attribute from the overlay entity record as a
+   * display string. Returns null when the entity isn't overlay-only
+   * or the slot is empty / not stringy.
+   */
+  const overlayAttr = useCallback((index: number): string | null => {
+    if (!overlayEntity) return null;
+    const value = overlayEntity.attributes[index];
+    if (typeof value === 'string' && value.length > 0 && value !== '$') return value;
+    return null;
+  }, [overlayEntity]);
+
   // Check if the selected entity is a type entity (IfcWallType, etc.)
   // Uses the entity type name to detect — type entity names end with "Type"
   const isTypeEntity = useMemo(() => {
@@ -483,7 +554,14 @@ export function PropertiesPanel() {
   // Merges mutated attributes (from bSDD) into the base attribute list.
   // Note: GlobalId is intentionally excluded since it's shown in the dedicated GUID field above
   const attributes = useMemo(() => {
-    const base = entityNode ? entityNode.allAttributes() : [];
+    const base = entityNode
+      ? entityNode.allAttributes()
+      // Overlay-only entity (duplicate / scripted add) — synthesize the
+      // attribute list from the NewEntity record using the schema's
+      // positional names so the panel still shows Name/Description/etc.
+      : overlayEntity
+        ? attributesFromOverlayEntity(overlayEntity)
+        : [];
 
     // Merge mutated attributes from bSDD
     let modelId = selectedEntity?.modelId;
@@ -510,41 +588,100 @@ export function PropertiesPanel() {
     }
 
     return base;
-  }, [entityNode, selectedEntity, mutationViews, mutationVersion]);
+  }, [entityNode, overlayEntity, selectedEntity, mutationViews, mutationVersion]);
+
+  // Resolve the entity id used for parsed-store lookups. For overlay
+  // duplicates this is the source entity (via the view's alias) — so
+  // materials / classifications / documents / structural rels appear
+  // on the duplicate exactly as they do on the source. Without the
+  // alias resolution the parsed maps would return empty for the
+  // overlay-only id.
+  const lookupExpressId = useMemo(() => {
+    const expressId = selectedEntity?.expressId;
+    if (!expressId) return null;
+    let modelId = selectedEntity?.modelId;
+    if (modelId === 'legacy') modelId = '__legacy__';
+    const view = modelId ? mutationViews.get(modelId) : null;
+    return view?.resolveBaseEntityId(expressId) ?? expressId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEntity, mutationViews, mutationVersion]);
 
   // Extract classifications for the selected entity from the IFC data store
   const classifications = useMemo(() => {
-    if (!selectedEntity) return [];
+    if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractClassificationsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract materials for the selected entity from the IFC data store
   const materialInfo = useMemo(() => {
-    if (!selectedEntity) return null;
+    if (!selectedEntity || lookupExpressId === null) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    return extractMaterialsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract documents for the selected entity from the IFC data store
   const documents = useMemo(() => {
-    if (!selectedEntity) return [];
+    if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractDocumentsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-  }, [selectedEntity, model, ifcDataStore]);
+    return extractDocumentsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract structural relationships (openings, fills, groups, connections)
   const entityRelationships = useMemo(() => {
-    if (!selectedEntity) return null;
+    if (!selectedEntity || lookupExpressId === null) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    const rels = extractRelationshipsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
+    const rels = extractRelationshipsOnDemand(dataStore as IfcDataStore, lookupExpressId);
     const totalCount = rels.voids.length + rels.fills.length + rels.groups.length + rels.connections.length;
     return totalCount > 0 ? rels : null;
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+
+  // 4D schedule — both parsed-from-IFC and locally-generated schedules live in
+  // the schedule slice. ScheduleCard renders nothing when no task in the
+  // schedule lists this entity as a controlled product, so it's safe to call
+  // unconditionally.
+  const scheduleData = useViewerStore((s) => s.scheduleData);
+  // Single-task selection from the Gantt triggers the Task edit card —
+  // pull the set and its size so the Inspector can react to any change.
+  const selectedTaskGlobalIds = useViewerStore((s) => s.selectedTaskGlobalIds);
+  const singleSelectedTaskGlobalId = useMemo(() => {
+    if (selectedTaskGlobalIds.size !== 1) return null;
+    return selectedTaskGlobalIds.values().next().value ?? null;
+  }, [selectedTaskGlobalIds]);
+  // True when the schedule contains at least one task the user generated
+  // locally (no expressId in the host STEP). Mixed schedules — parsed tail +
+  // user-appended task — still surface the pending banner so the user sees
+  // that something will be spliced on export.
+  const scheduleIsGenerated = useMemo(() => {
+    if (!scheduleData || scheduleData.tasks.length === 0) return false;
+    return scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0);
+  }, [scheduleData]);
+  const selectedEntityGlobalId = useMemo(() => {
+    if (!selectedEntity) return null;
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    return (dataStore as IfcDataStore | null)?.entities?.getGlobalId?.(selectedEntity.expressId) ?? null;
   }, [selectedEntity, model, ifcDataStore]);
+  /** True when at least one task in the current schedule controls this entity —
+   *  used to keep the Inspector's empty-state from hiding a populated card.
+   *  Federation-aware: matches globalId first (see `ScheduleCard`). */
+  const hasScheduleForSelection = useMemo(() => {
+    if (!selectedEntity || !scheduleData || scheduleData.tasks.length === 0) return false;
+    const expressId = selectedEntity.expressId;
+    const gid = selectedEntityGlobalId;
+    for (const task of scheduleData.tasks) {
+      const taskHasGlobalIds = task.productGlobalIds.some(Boolean);
+      if (gid && taskHasGlobalIds) {
+        if (task.productGlobalIds.includes(gid)) return true;
+        continue;
+      }
+      if (expressId > 0 && task.productExpressIds.includes(expressId)) return true;
+    }
+    return false;
+  }, [selectedEntity, scheduleData, selectedEntityGlobalId]);
 
   // Extract georeferencing info for the model (used in coordinates section)
   const georef = useMemo(() => {
@@ -552,6 +689,13 @@ export function PropertiesPanel() {
     if (!dataStore) return null;
     const info = extractGeoreferencingOnDemand(dataStore as IfcDataStore);
     return info?.hasGeoreference ? info : null;
+  }, [model, ifcDataStore]);
+
+  // Extract IFC length unit scale (e.g. 0.001 for mm, 0.3048 for ft)
+  const lengthUnitScale = useMemo(() => {
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    if (!dataStore?.source?.length || !dataStore?.entityIndex) return 1;
+    return extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
   }, [model, ifcDataStore]);
 
   // Extract type-level properties (e.g., from IfcWallType's HasPropertySets)
@@ -822,15 +966,19 @@ export function PropertiesPanel() {
 
   const renderedEntityType = isNativeLazySelection
     ? (nativeDetails?.summary.type ?? 'Loading...')
-    : (entityNode?.type ?? 'Unknown');
+    : (entityNode?.type ?? overlayEntity?.type ?? 'Unknown');
   const renderedEntityName = isNativeLazySelection
     ? (nativeDetails?.summary.name ?? `#${selectedEntity?.expressId ?? ''}`)
-    : entityNode?.name;
+    : (entityNode?.name ?? overlayAttr(2) ?? undefined);
   const renderedEntityGlobalId = isNativeLazySelection
     ? (nativeDetails?.summary.globalId ?? null)
-    : entityNode?.globalId;
-  const renderedEntityDescription = isNativeLazySelection ? undefined : entityNode?.description;
-  const renderedEntityObjectType = isNativeLazySelection ? undefined : entityNode?.objectType;
+    : (entityNode?.globalId ?? overlayAttr(0));
+  const renderedEntityDescription = isNativeLazySelection
+    ? undefined
+    : (entityNode?.description ?? overlayAttr(3) ?? undefined);
+  const renderedEntityObjectType = isNativeLazySelection
+    ? undefined
+    : (entityNode?.objectType ?? overlayAttr(4) ?? undefined);
   const renderedSpatialInfo = isNativeLazySelection ? nativeSpatialInfo : spatialInfo;
   const renderedOccurrenceProperties = isNativeLazySelection ? nativeOccurrenceProperties : occurrenceProperties;
   const renderedInheritedTypeProperties = isNativeLazySelection ? [] : inheritedTypeProperties;
@@ -903,8 +1051,18 @@ export function PropertiesPanel() {
     );
   }
 
-  if (!selectedEntityId || (!isNativeLazySelection && (!modelQuery || !entityNode))) {
-    // Show model metadata when a single legacy model is loaded and nothing selected
+  // Newly-created/duplicated entities live only in the mutation overlay,
+  // so the synthesized attributes + Raw STEP tab fall back to
+  // `overlayEntity` when `entityNode` is empty. Without including
+  // `overlayEntity` here the panel collapses to the model-metadata
+  // view the moment a fresh add lands.
+  if (!selectedEntityId || (!isNativeLazySelection && (!modelQuery || (!entityNode && !overlayEntity)))) {
+    // Show model metadata when a single model is loaded and nothing selected.
+    // Handles both federated models (models.size >= 1) and legacy single-model path (models.size === 0).
+    if (models.size === 1) {
+      const singleModel = models.values().next().value as FederatedModel;
+      return <ModelMetadataPanel model={singleModel} />;
+    }
     if (ifcDataStore && models.size === 0 && geometryResult) {
       const legacyModel: FederatedModel = {
         id: '__legacy__',
@@ -921,10 +1079,11 @@ export function PropertiesPanel() {
       };
       return <ModelMetadataPanel model={legacyModel} />;
     }
+    // Multi-model or no model loaded: show empty state
     return (
       <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">Properties</h2>
+          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">Inspector</h2>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-white dark:bg-black">
           <div className="w-16 h-16 border-2 border-dashed border-zinc-300 dark:border-zinc-800 flex items-center justify-center mb-4 bg-zinc-100 dark:bg-zinc-950">
@@ -955,9 +1114,33 @@ export function PropertiesPanel() {
             <Building2 className="h-5 w-5 text-zinc-700 dark:text-zinc-300" />
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
-            <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100">
-              {entityName || `${entityType}`}
-            </h3>
+            <div className="flex items-start gap-2">
+              <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100 min-w-0">
+                {entityName || `${entityType}`}
+              </h3>
+              {/* Issue #540: indicate that the wall solid the user is
+                  looking at represents aggregated multilayer parts. We
+                  over-trigger on any IfcWall* class instead of probing
+                  the aggregation graph — the chip is cheap and
+                  informative, and walls that aren't actually layered
+                  simply confirm the user's selection is the parent. */}
+              {mergeLayersActive && entityType?.toLowerCase().startsWith('ifcwall') && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 rounded-sm px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wider gap-1 leading-none h-[18px] mt-0.5"
+                    >
+                      <Layers2 className="h-2.5 w-2.5" />
+                      Layers merged
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Multilayer wall parts have been merged into the parent solid.
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
             <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{entityType}</p>
             {/* Show associated type entity for occurrences */}
             {!renderedIsTypeEntity && renderedTypeProperties && (
@@ -1155,6 +1338,8 @@ export function PropertiesPanel() {
                 schemaVersion={activeDataStore?.schemaVersion}
                 coordinateInfo={(model?.geometryResult ?? geometryResult)?.coordinateInfo}
                 geometryResult={model?.geometryResult ?? geometryResult}
+                lengthUnitScale={lengthUnitScale}
+                storeyElevations={activeDataStore?.spatialHierarchy?.storeyElevations}
               />
             </CollapsibleContent>
           </Collapsible>
@@ -1188,12 +1373,12 @@ export function PropertiesPanel() {
                       modelId={selectedEntity.modelId}
                       entityId={selectedEntity.expressId}
                       attrName={attr.name}
-                      currentValue={attr.value}
+                      currentValue={String(attr.value)}
                     />
                   ) : (
                     <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
-                      <span className="font-medium whitespace-nowrap" title={attr.value}>
-                        {attr.value}
+                      <span className="font-medium whitespace-nowrap" title={String(attr.value)}>
+                        {String(attr.value)}
                       </span>
                     </div>
                   )}
@@ -1252,10 +1437,32 @@ export function PropertiesPanel() {
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">bSDD</span>
           </TabsTrigger>
+          <TabsTrigger
+            value="raw-step"
+            title="Raw STEP — developer view of positional arguments"
+            className="properties-tab-trigger raw-step-tab-trigger shrink-0 grow-0 px-2 font-mono"
+          >
+            {/* Bracket glyphs read as "code" without an icon dependency,
+                stay readable at 9px, and free up width for the three
+                primary tabs to keep their text visible at the default
+                panel size. */}
+            <span aria-hidden className="text-[10px] leading-none tracking-tight">&lt;/&gt;</span>
+            <span className="sr-only">Raw STEP</span>
+          </TabsTrigger>
         </TabsList>
 
         <ScrollArea className="flex-1 bg-white dark:bg-black">
           <TabsContent value="properties" className="m-0 p-3 overflow-hidden">
+            {/* Task edit card — renders when exactly one Gantt task is
+                selected. Shown above any entity properties because the
+                user's attention shifted to editing the task, not the 3D
+                element. Other tabs (quantities / relationships / bSDD)
+                still show entity content regardless. */}
+            {singleSelectedTaskGlobalId && (
+              <div className="mb-3">
+                <TaskEditCard taskGlobalId={singleSelectedTaskGlobalId} />
+              </div>
+            )}
             {/* Edit toolbar - only shown when edit mode is active */}
             {editMode && selectedEntity && !isNativeLazySelection && (
               <EditToolbar
@@ -1267,7 +1474,12 @@ export function PropertiesPanel() {
                 schemaVersion={activeDataStore?.schemaVersion}
               />
             )}
-            {renderedMergedProperties.length === 0 && renderedClassifications.length === 0 && !renderedMaterialInfo && renderedDocuments.length === 0 ? (
+            {renderedMergedProperties.length === 0
+              && renderedClassifications.length === 0
+              && !renderedMaterialInfo
+              && renderedDocuments.length === 0
+              && !renderedEntityRelationships
+              && !hasScheduleForSelection ? (
               <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">No property sets</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
@@ -1363,6 +1575,21 @@ export function PropertiesPanel() {
                     <RelationshipsCard relationships={renderedEntityRelationships} />
                   </>
                 )}
+
+                {/* 4D / Construction schedule — controlling tasks for this entity.
+                    Gated on `hasScheduleForSelection` so the separator above
+                    doesn't render on its own when ScheduleCard would return null. */}
+                {selectedEntity && scheduleData && hasScheduleForSelection && (
+                  <>
+                    <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
+                    <ScheduleCard
+                      scheduleData={scheduleData}
+                      selectedExpressId={selectedEntity.expressId}
+                      selectedGlobalId={selectedEntityGlobalId}
+                      isGenerated={scheduleIsGenerated}
+                    />
+                  </>
+                )}
               </div>
             )}
           </TabsContent>
@@ -1391,6 +1618,24 @@ export function PropertiesPanel() {
                 existingQuants={renderedExistingQuants}
                 existingAttributes={renderedExistingAttributeNames}
               />
+            )}
+          </TabsContent>
+
+          <TabsContent value="raw-step" className="m-0 p-3 overflow-hidden">
+            {selectedEntity && !isNativeLazySelection ? (
+              <RawStepCard
+                modelId={selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId}
+                entityId={selectedEntity.expressId}
+                entityType={entityType}
+                dataStore={activeDataStore ?? null}
+                enableEditing={editMode}
+              />
+            ) : (
+              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">
+                {isNativeLazySelection
+                  ? 'Raw STEP is not available for native-metadata selections'
+                  : 'Select an entity to inspect raw STEP arguments'}
+              </p>
             )}
           </TabsContent>
         </ScrollArea>

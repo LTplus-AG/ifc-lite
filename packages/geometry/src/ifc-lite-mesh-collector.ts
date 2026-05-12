@@ -49,13 +49,59 @@ export interface StreamingRtcOffsetEvent {
 
 export type StreamingEvent = StreamingBatchEvent | StreamingCompleteEvent | StreamingColorUpdateEvent | StreamingRtcOffsetEvent;
 
+/**
+ * Optional constructor options for the mesh collector. Currently used
+ * to forward the Revit-style multilayer-wall merge flag from the
+ * viewer's UI toggle (issue #540) down to the WASM API before the
+ * first `parseMeshes*` call.
+ */
+export interface IfcLiteMeshCollectorOptions {
+  /**
+   * When true, the WASM mesh emitters suppress `IfcBuildingElementPart`
+   * meshes whose parent wall is sliceable. Default `false` keeps the
+   * existing per-layer behaviour.
+   */
+  mergeLayers?: boolean;
+}
+
+/**
+ * Narrow typed wrapper for the optional `setMergeLayers` extension.
+ * Once the Rust agent regenerates the WASM `.d.ts` this cast is
+ * redundant — keeping it small and local avoids the need for
+ * `as any` / `@ts-ignore` in the meantime.
+ */
+type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
+
 export class IfcLiteMeshCollector {
   private ifcApi: IfcAPI;
   private content: string;
+  private _buildingRotation: number | undefined;
+  private mergeLayers: boolean;
+  private mergeLayersApplied: boolean = false;
 
-  constructor(ifcApi: IfcAPI, content: string) {
+  constructor(ifcApi: IfcAPI, content: string, options: IfcLiteMeshCollectorOptions = {}) {
     this.ifcApi = ifcApi;
     this.content = content;
+    this.mergeLayers = options.mergeLayers === true;
+  }
+
+  /**
+   * Forward the cached `mergeLayers` flag to the IfcAPI once per
+   * collector instance. The Rust agent's contract is "state on the
+   * IfcAPI carries forward to subsequent parseMeshes* calls", so we
+   * only need to push the flag once before the first parse call.
+   *
+   * When the WASM build pre-dates the Rust agent's contract, the
+   * method is missing — we tolerate that silently because the bridge
+   * already logged a warning on its own `applyMergeLayers` path.
+   */
+  private ensureMergeLayersApplied(): void {
+    if (this.mergeLayersApplied) return;
+    this.mergeLayersApplied = true;
+    const api = this.ifcApi as IfcAPIWithMerge;
+    if (typeof api.setMergeLayers === 'function') {
+      api.setMergeLayers(this.mergeLayers);
+    }
   }
 
   /**
@@ -102,6 +148,7 @@ export class IfcLiteMeshCollector {
    * Much faster than web-ifc (~1.9x speedup)
    */
   collectMeshes(): MeshData[] {
+    this.ensureMergeLayersApplied();
     let collection: MeshCollection;
     try {
       collection = this.ifcApi.parseMeshes(this.content);
@@ -173,7 +220,7 @@ export class IfcLiteMeshCollector {
     log.debug(`Collected ${meshes.length} meshes`, { operation: 'collectMeshes' });
 
     // Store building rotation for later use (will be added to CoordinateInfo)
-    (this as any)._buildingRotation = buildingRotation;
+    this._buildingRotation = buildingRotation;
 
     return meshes;
   }
@@ -182,7 +229,7 @@ export class IfcLiteMeshCollector {
    * Get building rotation extracted from IfcSite placement
    */
   getBuildingRotation(): number | undefined {
-    return (this as any)._buildingRotation;
+    return this._buildingRotation;
   }
 
   /**
@@ -191,6 +238,7 @@ export class IfcLiteMeshCollector {
    * @param batchSize Number of meshes per batch (default: 25 for faster first frame)
    */
   async *collectMeshesStreaming(batchSize: number = 25): AsyncGenerator<MeshData[] | StreamingColorUpdateEvent | StreamingRtcOffsetEvent> {
+    this.ensureMergeLayersApplied();
     // Queue to hold batches produced by async callback
     const batchQueue: (MeshData[] | StreamingColorUpdateEvent | StreamingRtcOffsetEvent)[] = [];
     let resolveWaiting: (() => void) | null = null;
@@ -288,12 +336,12 @@ export class IfcLiteMeshCollector {
           resolveWaiting = null;
         }
       },
-      onComplete: (stats: { totalMeshes: number; totalVertices: number; totalTriangles: number; rtcOffset?: { x: number; y: number; z: number; hasRtc: boolean }; buildingRotation?: number }) => {
+      onComplete: (stats: { totalMeshes: number; totalVertices: number; totalTriangles: number; rtcOffset?: { x: number; y: number; z: number; hasRtc: boolean }; buildingRotation?: number; csgDiagnostics?: { classification?: { rectangular?: number; diagonal?: number; nonRectangular?: number; floorOpeningGuardSaved?: number; total?: number }; totalFailures?: number; productsWithFailures?: number; hostsWithOpenings?: number } }) => {
         isComplete = true;
 
         // Store building rotation if present
         if (stats.buildingRotation !== undefined) {
-          (this as any)._buildingRotation = stats.buildingRotation;
+          this._buildingRotation = stats.buildingRotation;
         }
 
         log.debug(`Streaming complete: ${stats.totalMeshes} meshes, ${stats.totalVertices} vertices, ${stats.totalTriangles} triangles`, {
@@ -301,6 +349,31 @@ export class IfcLiteMeshCollector {
         });
         if (failedMeshCount > 0) {
           log.warn(`Skipped ${failedMeshCount} meshes due to errors`, { operation: 'collectMeshesStreaming' });
+        }
+
+        // T1.3 / classifier-fix diagnostics: surface the structured CSG
+        // diagnostics object the WASM bindings attach to `stats`. Logged
+        // here on the JS side too because `web_sys::console::*` from
+        // inside the WASM streaming path can be invisible in some
+        // browser/build combos (worker boundary, log-level filtering).
+        // A JS console.warn is the most reliable "always shows up" channel.
+        const diag = stats.csgDiagnostics;
+        if (diag) {
+          const totalFailures = diag.totalFailures ?? 0;
+          // Only surface a `console.warn` when the kernel actually dropped
+          // a cut — successful parses shouldn't add noise to host apps
+          // embedding the viewer. The full diagnostics object is still
+          // attached to `stats.csgDiagnostics` for callers that want it.
+          if (totalFailures > 0) {
+            const c = diag.classification ?? {};
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[IFC-LITE] CSG diagnostics (JS): classifier=${JSON.stringify(c)}, ` +
+                `totalFailures=${totalFailures}, ` +
+                `productsWithFailures=${diag.productsWithFailures ?? 0}, ` +
+                `hostsWithOpenings=${diag.hostsWithOpenings ?? 0}`,
+            );
+          }
         }
         // Wake up the generator if it's waiting
         if (resolveWaiting) {
@@ -407,6 +480,7 @@ export class IfcLiteMeshCollector {
    * @param batchSize Number of unique geometries per batch (default: 25)
    */
   async *collectInstancedGeometryStreaming(batchSize: number = 25): AsyncGenerator<InstancedGeometry[]> {
+    this.ensureMergeLayersApplied();
     // Queue to hold batches produced by async callback
     const batchQueue: InstancedGeometry[][] = [];
     let resolveWaiting: (() => void) | null = null;

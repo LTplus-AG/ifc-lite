@@ -8,8 +8,8 @@
  * Pre-configured override rule sets for common use cases.
  */
 
-import type { GraphicOverridePreset, GraphicOverrideRule } from './types';
-import { ifcTypeCriterion, propertyCriterion, andCriteria } from './rule-engine';
+import type { GraphicOverridePreset, GraphicOverrideRule } from './types.js';
+import { ifcTypeCriterion, propertyCriterion, andCriteria } from './rule-engine.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS

@@ -1,5 +1,36 @@
 # @ifc-lite/export
 
+## 1.18.0
+
+### Minor Changes
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - `StepExporter` improvements for the overlay-driven add/duplicate/edit flow.
+
+  - Overlay-created entities (`view.createEntity()` / `store.addEntity()`)
+    now respect `includeGeometry: false` and the `visibleOnly` /
+    `allowedEntityIds` closure — same filters that already apply to
+    source entities. Without this a freshly-added wall would smuggle
+    its `IfcCartesianPoint`/`IfcExtrudedAreaSolid` helpers past
+    `exportPropertiesOnly()`.
+  - `deltaOnly` mode now keeps overlay-created entities even when no
+    other modifications exist — the early-return predicate consults
+    `mutationView.getNewEntities()` and `newGeorefLines` so a
+    `createEntity()`-only edit isn't silently dropped from the
+    delta. Regression test
+    (`emits overlay-created entities under deltaOnly when no other
+modifications exist`) locks this behaviour in.
+  - `serializeStepArgs` / `serializeStepValue` are exported from
+    `@ifc-lite/export/step-serialization` so the overlay-emit path
+    and the rest of the codebase share one canonical STEP-formatting
+    implementation.
+
+### Patch Changes
+
+- Updated dependencies [[`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c), [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c), [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c), [`1309f8c`](https://github.com/louistrue/ifc-lite/commit/1309f8cba128b3b6237ebfb9831bf359c426a742), [`1309f8c`](https://github.com/louistrue/ifc-lite/commit/1309f8cba128b3b6237ebfb9831bf359c426a742), [`16d7a63`](https://github.com/louistrue/ifc-lite/commit/16d7a6361a78bb39a2bd61bba6990db5d3df0c04)]:
+  - @ifc-lite/mutations@1.15.0
+  - @ifc-lite/parser@2.2.0
+  - @ifc-lite/geometry@1.16.6
+
 ## 1.17.2
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ifcx",
-  "version": "2.0.2",
+  "version": "2.1.1",
   "description": "IFC5 (IFCX) parser for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/mutations": "workspace:^"
+    "@ifc-lite/mutations": "workspace:^",
+    "@ifc-lite/pointcloud": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^5.3.0"

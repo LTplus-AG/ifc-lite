@@ -1,5 +1,155 @@
 # @ifc-lite/wasm
 
+## 1.16.10
+
+### Patch Changes
+
+- [#605](https://github.com/louistrue/ifc-lite/pull/605) [`1d6e99b`](https://github.com/louistrue/ifc-lite/commit/1d6e99bb23f67e20a192f362ba65ee73a8180f69) Thanks [@louistrue](https://github.com/louistrue)! - Fix the three Revit-door geometry defects called out in #604: opening-cut
+  slivers when the opening's depth equals the host wall's depth, missing door
+  handle hardware (`IfcAdvancedBrep` over `IfcSurfaceOfRevolution` and
+  `IfcCylindricalSurface`), and broken door glazing. The opening extension now
+  overshoots the wall by a unit-independent pad whose floor is strictly above
+  the rectangular clipper's epsilon, surfaces of revolution are tessellated
+  from their generator profile and recovered angular extent, and circular edge
+  boundaries are sampled along the arc instead of collapsing to two-point
+  loops.
+
+- [#648](https://github.com/louistrue/ifc-lite/pull/648) [`b6e83d3`](https://github.com/louistrue/ifc-lite/commit/b6e83d3ac4f04fe7c439bf282a25963c6db0b909) Thanks [@louistrue](https://github.com/louistrue)! - Fix `IfcBooleanClippingResult` on walls clipped by `IfcPolygonalBoundedHalfSpace` (issue #635).
+
+  Three related fixes that together restore correct geometry on walls whose body is a chained `IfcBooleanClippingResult`:
+
+  1. **Round-window voids reach the post-clip mesh.** The `IfcOpeningElement` cut path now runs against the boolean-clipped wall mesh rather than the un-clipped extrusion, so windows and doors are subtracted from the actual visible wall body.
+  2. **Polygonal-bounded half-space orientation.** The cutter prism is built by extruding the polygon along Position's Z-axis (per the IFC spec) instead of along the slope plane normal — gable walls #60012 and #67828 in AC20-FZK-Haus now narrow to a peak and span the full wall length at the bottom (was: inverted, point-down).
+  3. **Chained polygonal half-space clips compose correctly.** When two `IfcPolygonalBoundedHalfSpace` cuts are stacked (one per gable side), the cutter prisms are now MERGED into a single mesh and applied in ONE BSP CSG op. Previously the first cut's output exceeded `MAX_CSG_POLYGONS_PER_MESH`, causing the second cut to silently drop and leaving a flat horizontal cap at the gable apex.
+
+  Round-window opening profiles are also simplified before triangulation so AC20-style 36-segment circles fit under the CSG polygon budget instead of falling back to a square hole. CSG kernel diagnostics (`take_failures`) now surface every silent skip — including the `PolygonalBoundedHalfSpaceFallback` path — so callers can warn on geometry loss.
+
+- [#644](https://github.com/louistrue/ifc-lite/pull/644) [`6f052c3`](https://github.com/louistrue/ifc-lite/commit/6f052c309a99edd1d9a6925d44bbc2aed6cd10a5) Thanks [@louistrue](https://github.com/louistrue)! - Add "Merge Multilayer Walls" load-time toggle (issue #540).
+
+  When enabled, every `IfcBuildingElementPart` whose `IfcRelAggregates`
+  parent wall (a) has its own `Representation` and (b) is sliceable in
+  `MaterialLayerIndex` is suppressed during geometry emission. The parent
+  wall's single swept solid keeps the per-layer sub-mesh colouring via the
+  existing slicer, so the visual result on multilayer walls is the same as
+  the layered render — but with one mesh per wall instead of N per-layer
+  parts. Designed for large Revit-exported models where the per-layer
+  extrusions inflate vertex counts beyond what the viewer can handle.
+
+  New JS surface on `IfcAPI`:
+
+  ```ts
+  setMergeLayers(enabled: boolean): void
+  ```
+
+  Defaults to `false`. Honoured by `parseMeshes`, `parseMeshesSubset`,
+  `parseMeshesAsync`, `parseMeshesInstanced`, `parseMeshesInstancedAsync`,
+  `processGeometryBatch`, and `processGeometryBatchParallel`. The batch
+  paths cache the parts-to-skip set on `IfcAPI` so workers build it once
+  per content and reuse across every batch; the cache is cleared by
+  `clearPrePassCache` and by `setMergeLayers`.
+
+  Voids stay correct: `propagate_voids_to_parts` already copies the
+  parent wall's `IfcRelVoidsElement` references onto its layer parts in
+  the same pass that builds the part → parent map, so windows and doors
+  still cut through the merged solid.
+
+- [#575](https://github.com/louistrue/ifc-lite/pull/575) [`b8a8206`](https://github.com/louistrue/ifc-lite/commit/b8a82062c4392d05224561dda8a2767a8b7b1857) Thanks [@louistrue](https://github.com/louistrue)! - Add regression tests for non-box `IfcOpeningElement` classification (#547). PR #640 already routes low-tessellation non-rectangular openings (trapezoids, chamfered rectangles, beveled windows, coarse arcs) through CSG via `is_rectangular_box_mesh` + `infer_opening_frame`. This change adds end-to-end coverage that loads inline IFC fixtures and asserts the cut respects the actual opening profile (trapezoid narrow-edge boundary vertices appear in the voided wall, and many tessellated-box openings on a single wall are all cut without the CSG-budget cap silently dropping any).
+
+## 1.16.9
+
+### Patch Changes
+
+- [#640](https://github.com/louistrue/ifc-lite/pull/640) [`8408c88`](https://github.com/louistrue/ifc-lite/commit/8408c88c4c0a1e848fade6c60474952eca1a4149) Thanks [@louistrue](https://github.com/louistrue)! - Fix diagonal and roof-window opening cuts. Oblique multilayer wall parts keep
+  their opening soffits within the actual wall geometry, BRep roof openings
+  preserve their full sloped opening frame instead of falling back to world axes,
+  and roof windows on shallow-slope roofs are no longer routed through unstable
+  full CSG by a too-aggressive "vertical extrusion ⇒ floor opening" heuristic —
+  classification is now per-item based on whether the opening mesh is actually a
+  clean rectangular box.
+
+- [#641](https://github.com/louistrue/ifc-lite/pull/641) [`ba7553a`](https://github.com/louistrue/ifc-lite/commit/ba7553af693939896a840074999b5f6806a94815) Thanks [@louistrue](https://github.com/louistrue)! - Fix `IfcReinforcingBar` stirrup rendering (issue #631, sample
+  `IfcReinforcingBar.ifc`).
+
+  `IfcSweptDiskSolid` directrixes that use `IfcIndexedPolyCurve` over
+  `IfcCartesianPointList3D` (typical for stirrups and other bent rebar that
+  lives outside the XY plane) used to fall back to a 2D parser that read x/y
+  from indices 0–1 and silently dropped the Z coordinate. The stirrup
+  collapsed onto z=0 and the resulting tube was a flat near-degenerate line.
+
+  The 3D curve dispatcher now has a native arm for `IfcIndexedPolyCurve` that
+  reads `IfcCartesianPointList2D` (z=0) or `IfcCartesianPointList3D` verbatim
+  and fits `IfcArcIndex` segments using a circumcircle in the plane of their
+  three control points. Straight schema conformance — no spec deviation.
+
+  The second sample on the issue (`Rebar2.ifc`) was already rendering its
+  directrix correctly under the existing segment-index trim path; no change
+  needed there.
+
+## 1.16.8
+
+### Patch Changes
+
+- [#610](https://github.com/louistrue/ifc-lite/pull/610) [`f3d8b1d`](https://github.com/louistrue/ifc-lite/commit/f3d8b1d3d7c15488ebd0bdd2b44c0ed4cb25254a) Thanks [@louistrue](https://github.com/louistrue)! - Two follow-ups to the `IfcSweptDiskSolid` trim-param fix from #606, plus the rebuilt WASM artifact that actually lands the trim-param logic at runtime (CI does not rebuild the WASM binary; consumers were still on the pre-#606 binary).
+
+  - **Junction-point dedup is now coordinate-aware.** When concatenating trimmed composite-curve segments, the previous implementation unconditionally dropped the first point of each subsequent segment — fine when adjacent segments share a coordinate-identical junction vertex, but it silently distorted directrices whose adjacent segments meet at non-coincident endpoints (model drift, mismatched cartesian points). The first point is now dropped only when it coincides with the last point already collected (`< 1e-6`), preserving the gap otherwise.
+
+  - **Cross-section frame no longer flips at sharp bends.** `SweptDiskSolidProcessor` was re-picking the perpendicular `up` vector at every cross-section based on `tangent.x.abs() < 0.9`; consecutive tangents that straddled the threshold flipped the sign of `perp1`, so the same vertex index pointed to opposite angular positions on consecutive rings — visible as a twisted / flat-ribbon tube at L-bends and rebar hooks. Replaced with a Rotation-Minimising Frame: `up` is chosen once for the first sample, and each subsequent frame is propagated by the minimum rotation that aligns the previous tangent onto the current tangent (Rodrigues). Adds three unit tests covering straight-line invariance, 90° L-bend non-flip, and degenerate-input handling.
+
+- [#606](https://github.com/louistrue/ifc-lite/pull/606) [`7d3a40b`](https://github.com/louistrue/ifc-lite/commit/7d3a40b5268491325b8496fc56181818b2141e6e) Thanks [@joepaddock-uk](https://github.com/joepaddock-uk)! - Honor `IfcSweptDiskSolid.StartParam` / `EndParam` for `IfcCompositeCurve` and `IfcPolyline` directrices. Previously these were silently ignored, so a swept disk solid like `IFCSWEPTDISKSOLID(#dir, 0.0095, $, 0., 1.)` with a 3-segment composite-curve directrix swept the entire curve instead of just segment `[0,1]` — most visible in rebar models authored by Revit/Tekla, where bars rendered 3-5× their real length with end hooks unfolded into the bar geometry.
+
+  The dispatch now honors trim parameters for the two directrix types whose IFC parameterisation is unambiguous from the entity:
+
+  - `IfcCompositeCurve` (and subtypes via `is_subtype_of`): segment-index based, each segment contributes 1.0 to the parameter.
+  - `IfcPolyline`: point-index based, each segment between consecutive points contributes 1.0.
+
+  Boundary segments are truncated by linear interpolation along the sampled polyline (exact for piecewise-linear input). Out-of-range params clamp; inverted ranges (`StartParam ≥ EndParam`) produce empty geometry. Other directrix types (`IfcLine`, `IfcCircle`, `IfcTrimmedCurve`, `IfcBSplineCurve`) still ignore trim — their parameterisations are length / angle / knot-based and need separate handling — flagged as a known limitation.
+
+  Adds 11 unit tests in `profiles::tests` covering: full-range identity, exact-half boundaries, strict-interior comparisons, two-point partial trim, fractional multi-segment trim with dedup, out-of-range clamping, inverted ranges, `SameSense=F` reverse-then-trim semantics, and direct-polyline-directrix paths.
+
+## 1.16.7
+
+### Patch Changes
+
+- [#596](https://github.com/louistrue/ifc-lite/pull/596) [`945bb30`](https://github.com/louistrue/ifc-lite/commit/945bb30061ca044f4a51001f7299c17350ce99cf) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcSolarDevice` (and any future `IfcEnergyConversionDevice` / `IfcDistributionElement` subtype) without code changes.
+
+  The geometry pipeline previously gated entities through a hand-maintained leaf-level whitelist (`has_geometry_by_name`) and a hand-maintained leaf-level "secondary priority" blacklist (`is_simple_geometry_type`). New IFC4X3 subtypes silently fell through both — `IfcSolarDevice`, which inherits from `IfcEnergyConversionDevice`, was the latest casualty (PR #585).
+
+  Both functions now derive their answer from the EXPRESS inheritance graph via `IfcType::is_subtype_of`, so any subtype of an already-supported parent is picked up automatically. The legacy IFC2x3 / removed-in-IFC4x3 names not in the modern enum are resolved through the existing `legacy_entities` registry, which already carries a `has_geometry` flag per entry.
+
+  `has_geometry_by_name` also moved out of `rust/core/src/generated/schema.rs` (which is marked "DO NOT EDIT — auto-generated") into a new sibling module `schema_helpers.rs`, so a future re-run of `@ifc-lite/codegen` won't wipe it.
+
+  Co-authored with @geronimi73 (PR #585).
+
+- [#572](https://github.com/louistrue/ifc-lite/pull/572) [`18c6a37`](https://github.com/louistrue/ifc-lite/commit/18c6a37f1cc1426daa32ee60457dd0580a5257f5) Thanks [@louistrue](https://github.com/louistrue)! - Restore inner reveal faces for window and door openings cut from walls, with axis-clamped quads that work for any wall orientation. Rebuilds the WASM bundle with the new reveal generation and defensive guards (full cross-axis overlap check + orthogonal-axis clamp) so multi-layer wall sub-meshes never receive floating reveal quads and skipped openings from the triangle-cap safety path don't leave phantom interior faces.
+
+## 1.16.6
+
+### Patch Changes
+
+- [#563](https://github.com/louistrue/ifc-lite/pull/563) [`7a6eb5e`](https://github.com/louistrue/ifc-lite/commit/7a6eb5e249a00a61d4e7b5574e017c949b083966) Thanks [@louistrue](https://github.com/louistrue)! - Slice single-solid walls by `IfcMaterialLayerSetUsage` so each layer renders in its own material colour. Sub-millimetre layers fold into their thicker neighbour so the clipper never sees degenerate interfaces, and slicing bails cleanly when the representation isn't a single item with an identity Position (multi-item reps, MappedItems, or translated extrusions fall through to the unsliced path).
+
+- [#563](https://github.com/louistrue/ifc-lite/pull/563) [`7a6eb5e`](https://github.com/louistrue/ifc-lite/commit/7a6eb5e249a00a61d4e7b5574e017c949b083966) Thanks [@louistrue](https://github.com/louistrue)! - Subtract voids per sub-mesh so multi-layer walls keep their layer colours after opening cuts (#541). Previously merging the void subtraction onto the combined mesh collapsed all per-item style information, so doors and windows in material-segmented walls came out uniformly coloured.
+
+## 1.16.5
+
+### Patch Changes
+
+- [#565](https://github.com/louistrue/ifc-lite/pull/565) [`7000011`](https://github.com/louistrue/ifc-lite/commit/7000011d6eb372c2dadf7c82f6e76a0583c6abc1) Thanks [@louistrue](https://github.com/louistrue)! - Rebuild WASM bindings for model-level RTC and georeferenced federation alignment fixes.
+
+## 1.16.4
+
+### Patch Changes
+
+- [#519](https://github.com/louistrue/ifc-lite/pull/519) [`643b30f`](https://github.com/louistrue/ifc-lite/commit/643b30ff031d389fe0cb1caf7de6989d79629e4b) Thanks [@louistrue](https://github.com/louistrue)! - Fix geometry processing hang on models with 500K+ geometry elements
+
+  Cache entity index from buildPrePassOnce and reuse it across processGeometryBatch calls, eliminating redundant full-file scans. Cap batch count at 30 to prevent excessive per-batch overhead for models with very high geometry element counts.
+
+## 1.16.3
+
+### Patch Changes
+
+- [#526](https://github.com/louistrue/ifc-lite/pull/526) [`cb59771`](https://github.com/louistrue/ifc-lite/commit/cb59771997e3837a511f584842bce98cd710864e) Thanks [@louistrue](https://github.com/louistrue)! - Restore toNativeBuffer in native-bridge and add Tauri stub aliases to desktop vite config.
+
 ## 1.16.2
 
 ### Patch Changes

@@ -23,6 +23,8 @@ export type CesiumDataSource =
 
 export interface CesiumSlice {
   // State
+  /** Whether a loaded model (or user mutations) provide enough georeferencing to place in Cesium. */
+  cesiumAvailable: boolean;
   cesiumEnabled: boolean;
   cesiumDataSource: CesiumDataSource;
   /** Resolved Cesium ion access token (user override or build-time default). */
@@ -41,6 +43,7 @@ export interface CesiumSlice {
   cesiumGlbLoaded: boolean;
 
   // Actions
+  setCesiumAvailable: (available: boolean) => void;
   setCesiumEnabled: (enabled: boolean) => void;
   toggleCesium: () => void;
   setCesiumDataSource: (source: CesiumDataSource) => void;
@@ -93,16 +96,18 @@ function resolveIonToken(): string {
 }
 
 export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> = (set) => ({
+  cesiumAvailable: false,
   cesiumEnabled: false,
   cesiumDataSource: loadDataSource(),
   cesiumIonToken: resolveIonToken(),
   cesiumTerrainEnabled: true,
-  cesiumTerrainClamp: false,
+  cesiumTerrainClamp: true,
   cesiumTerrainHeight: null,
   cesiumSourceModelId: null,
   cesiumTerrainClipY: null,
   cesiumGlbLoaded: false,
 
+  setCesiumAvailable: (available) => set({ cesiumAvailable: available }),
   setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled }),
   toggleCesium: () => set((s) => ({ cesiumEnabled: !s.cesiumEnabled })),
   setCesiumDataSource: (source) => {

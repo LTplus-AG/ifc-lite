@@ -62,7 +62,7 @@ pub enum StreamEvent {
         metadata: ModelMetadata,
         /// Cache key for the result.
         cache_key: String,
-        /// Coordinate space of the mesh vertices (e.g. "site_local").
+        /// Coordinate space of the mesh vertices: `"site_local"`, `"model_rtc"`, or `"raw_ifc"`.
         #[serde(skip_serializing_if = "Option::is_none")]
         mesh_coordinate_space: Option<String>,
         /// IfcSite ObjectPlacement as a column-major 4×4 matrix (metres).

@@ -9,7 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { createBimContext, type BimContext } from '@ifc-lite/sdk';
+import { createBimContext, type BimContext, type ViewerBackendMethods, type VisibilityBackendMethods } from '@ifc-lite/sdk';
 import { HeadlessBackend } from './headless-backend.js';
 import { createStreamingViewerAdapter, createStreamingVisibilityAdapter } from './streaming-viewer.js';
 
@@ -80,8 +80,8 @@ export async function createStreamingContext(
   const backend = new HeadlessBackend(store, basename(filePath));
 
   // Replace the no-op viewer/visibility adapters with streaming ones
-  (backend as any).viewer = createStreamingViewerAdapter(viewerPort);
-  (backend as any).visibility = createStreamingVisibilityAdapter(viewerPort);
+  (backend as unknown as { viewer: ViewerBackendMethods }).viewer = createStreamingViewerAdapter(viewerPort);
+  (backend as unknown as { visibility: VisibilityBackendMethods }).visibility = createStreamingVisibilityAdapter(viewerPort);
 
   const bim = createBimContext({ backend });
   return { bim, store };

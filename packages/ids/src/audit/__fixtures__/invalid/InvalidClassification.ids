@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd"
+     xmlns="http://standards.buildingsmart.org/IDS">
+	<info>
+		<title>Example on use of classsification</title>
+		<copyright>buildingSMART International Ltd</copyright>
+		<date>2023-04-20</date>
+	</info>
+	<specifications>
+		
+    <specification ifcVersion="IFC2X3" name="Aachen test">
+			<applicability maxOccurs="unbounded">
+				<entity>
+					<name>
+						<simpleValue>IFCWALL</simpleValue>
+					</name>
+				</entity>			
+			</applicability>
+			<requirements>
+        <!-- empty string is not valid -->
+        <classification>
+          <system>
+            <simpleValue></simpleValue>
+          </system>
+        </classification>
+        <!-- empty restriction is not valid -->
+        <classification>
+          <system>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=""/>
+            </xs:restriction>
+          </system>        
+        </classification>
+
+      </requirements>
+		</specification>
+		
+	</specifications>
+</ids>

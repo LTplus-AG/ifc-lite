@@ -10,9 +10,9 @@
 use crate::{Error, Mesh, Point3, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
-use crate::router::GeometryProcessor;
 use super::advanced_face::process_advanced_face;
 use super::helpers::{extract_loop_points_by_id, FaceData, FaceResult};
+use crate::router::GeometryProcessor;
 
 // ---------- FacetedBrepProcessor ----------
 
@@ -99,18 +99,23 @@ impl FacetedBrepProcessor {
     }
 
     /// Triangulate a single face (can be called in parallel)
-    /// Optimized with fast paths for simple faces
+    /// Optimized with fast paths for simple faces.
+    ///
+    /// `rtc`: RTC offset subtracted from f64 coordinates BEFORE f32 conversion.
+    /// For infrastructure models with world-space coordinates (e.g. Y ≈ 6.2M),
+    /// f32 only has ~0.5m precision. Subtracting RTC in f64 first brings
+    /// values near origin where f32 has sub-mm precision, eliminating jitter.
     #[inline]
-    fn triangulate_face(face: &FaceData) -> FaceResult {
+    fn triangulate_face(face: &FaceData, rtc: (f64, f64, f64)) -> FaceResult {
         let n = face.outer_points.len();
 
         // FAST PATH: Triangle without holes - no triangulation needed
         if n == 3 && face.hole_points.is_empty() {
             let mut positions = Vec::with_capacity(9);
             for point in &face.outer_points {
-                positions.push(point.x as f32);
-                positions.push(point.y as f32);
-                positions.push(point.z as f32);
+                positions.push((point.x - rtc.0) as f32);
+                positions.push((point.y - rtc.1) as f32);
+                positions.push((point.z - rtc.2) as f32);
             }
             return FaceResult {
                 positions,
@@ -122,9 +127,9 @@ impl FacetedBrepProcessor {
         if n == 4 && face.hole_points.is_empty() {
             let mut positions = Vec::with_capacity(12);
             for point in &face.outer_points {
-                positions.push(point.x as f32);
-                positions.push(point.y as f32);
-                positions.push(point.z as f32);
+                positions.push((point.x - rtc.0) as f32);
+                positions.push((point.y - rtc.1) as f32);
+                positions.push((point.z - rtc.2) as f32);
             }
             return FaceResult {
                 positions,
@@ -166,9 +171,9 @@ impl FacetedBrepProcessor {
             if is_convex {
                 let mut positions = Vec::with_capacity(n * 3);
                 for point in &face.outer_points {
-                    positions.push(point.x as f32);
-                    positions.push(point.y as f32);
-                    positions.push(point.z as f32);
+                    positions.push((point.x - rtc.0) as f32);
+                    positions.push((point.y - rtc.1) as f32);
+                    positions.push((point.z - rtc.2) as f32);
                 }
                 let mut indices = Vec::with_capacity((n - 2) * 3);
                 for i in 1..n - 1 {
@@ -208,9 +213,9 @@ impl FacetedBrepProcessor {
             Err(_) => {
                 // Fallback to simple fan triangulation without holes
                 for point in &face.outer_points {
-                    positions.push(point.x as f32);
-                    positions.push(point.y as f32);
-                    positions.push(point.z as f32);
+                    positions.push((point.x - rtc.0) as f32);
+                    positions.push((point.y - rtc.1) as f32);
+                    positions.push((point.z - rtc.2) as f32);
                 }
                 for i in 1..face.outer_points.len() - 1 {
                     indices.push(0);
@@ -227,11 +232,11 @@ impl FacetedBrepProcessor {
             all_points_3d.extend(hole.iter());
         }
 
-        // Add vertices
+        // Add vertices (with RTC subtraction in f64 for full precision)
         for point in &all_points_3d {
-            positions.push(point.x as f32);
-            positions.push(point.y as f32);
-            positions.push(point.z as f32);
+            positions.push((point.x - rtc.0) as f32);
+            positions.push((point.y - rtc.1) as f32);
+            positions.push((point.z - rtc.2) as f32);
         }
 
         // Add triangle indices
@@ -249,17 +254,21 @@ impl FacetedBrepProcessor {
 
     /// Batch process multiple FacetedBrep entities for maximum parallelism
     /// Extracts all face data sequentially, then triangulates ALL faces in one parallel batch
-    /// Returns Vec of (brep_index, Mesh) pairs
+    /// Returns Vec of (brep_index, Mesh) pairs.
+    /// `rtc`: RTC offset applied during f64→f32 conversion for precision.
     pub fn process_batch(
         &self,
         brep_ids: &[u32],
         decoder: &mut EntityDecoder,
+        rtc: (f64, f64, f64),
+        large_coord_threshold_file_units: f64,
     ) -> Vec<(usize, Mesh)> {
         use rayon::prelude::*;
 
         // PHASE 1: Sequential - Extract all face data from all BREPs
         // Each entry: (brep_index, face_data)
         let mut all_faces: Vec<(usize, FaceData)> = Vec::with_capacity(brep_ids.len() * 10);
+        let mut raw_large_by_brep = vec![false; brep_ids.len()];
 
         for (brep_idx, &brep_id) in brep_ids.iter().enumerate() {
             // FAST PATH: Get shell ID directly from raw bytes (avoids full entity decode)
@@ -299,6 +308,15 @@ impl FacetedBrepProcessor {
                         None => continue,
                     };
 
+                    if !raw_large_by_brep[brep_idx]
+                        && points.iter().any(|point| {
+                            point.x.abs().max(point.y.abs()).max(point.z.abs())
+                                > large_coord_threshold_file_units
+                        })
+                    {
+                        raw_large_by_brep[brep_idx] = true;
+                    }
+
                     if !orientation {
                         points.reverse();
                     }
@@ -331,7 +349,14 @@ impl FacetedBrepProcessor {
         // Uses rayon thread pool on both native and WASM (via wasm-bindgen-rayon)
         let face_results: Vec<(usize, FaceResult)> = all_faces
             .par_iter()
-            .map(|(brep_idx, face)| (*brep_idx, Self::triangulate_face(face)))
+            .map(|(brep_idx, face)| {
+                let face_rtc = if raw_large_by_brep[*brep_idx] {
+                    rtc
+                } else {
+                    (0.0, 0.0, 0.0)
+                };
+                (*brep_idx, Self::triangulate_face(face, face_rtc))
+            })
             .collect();
 
         // PHASE 3: Group results back by BREP index
@@ -374,10 +399,100 @@ impl FacetedBrepProcessor {
                         positions,
                         normals: Vec::new(),
                         indices,
+                        // RTC is pre-subtracted only for raw world-coordinate Breps.
+                        rtc_applied: raw_large_by_brep[brep_idx]
+                            && (rtc.0 != 0.0 || rtc.1 != 0.0 || rtc.2 != 0.0),
                     },
                 )
             })
             .collect()
+    }
+}
+
+impl FacetedBrepProcessor {
+    /// Process FacetedBrep with RTC offset applied during f64→f32 conversion.
+    /// This preserves sub-centimeter precision for infrastructure models where
+    /// vertices have large world coordinates (e.g. Y ≈ 6.2M meters).
+    pub fn process_with_rtc(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        rtc: (f64, f64, f64),
+    ) -> Result<Mesh> {
+        use rayon::prelude::*;
+
+        let shell_attr = entity
+            .get(0)
+            .ok_or_else(|| Error::geometry("FacetedBrep missing Outer shell".to_string()))?;
+        let shell_id = shell_attr
+            .as_entity_ref()
+            .ok_or_else(|| Error::geometry("Expected entity ref for Outer shell".to_string()))?;
+        let face_ids = decoder
+            .get_entity_ref_list_fast(shell_id)
+            .ok_or_else(|| Error::geometry("Failed to get faces from ClosedShell".to_string()))?;
+
+        let mut face_data_list: Vec<FaceData> = Vec::with_capacity(face_ids.len());
+        for face_id in face_ids {
+            let bound_ids = match decoder.get_entity_ref_list_fast(face_id) {
+                Some(ids) => ids,
+                None => continue,
+            };
+            let mut outer_bound_points: Option<Vec<Point3<f64>>> = None;
+            let mut hole_points: Vec<Vec<Point3<f64>>> = Vec::new();
+            for bound_id in bound_ids {
+                let (loop_id, orientation, is_outer) = match decoder.get_face_bound_fast(bound_id) {
+                    Some(data) => data,
+                    None => continue,
+                };
+                let mut points = match self.extract_loop_points_fast(loop_id, decoder) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                if !orientation {
+                    points.reverse();
+                }
+                if is_outer || outer_bound_points.is_none() {
+                    if outer_bound_points.is_some() && is_outer {
+                        if let Some(prev_outer) = outer_bound_points.take() {
+                            hole_points.push(prev_outer);
+                        }
+                    }
+                    outer_bound_points = Some(points);
+                } else {
+                    hole_points.push(points);
+                }
+            }
+            if let Some(outer_points) = outer_bound_points {
+                face_data_list.push(FaceData {
+                    outer_points,
+                    hole_points,
+                });
+            }
+        }
+
+        let face_results: Vec<FaceResult> = face_data_list
+            .par_iter()
+            .map(|face| Self::triangulate_face(face, rtc))
+            .collect();
+
+        let total_positions: usize = face_results.iter().map(|r| r.positions.len()).sum();
+        let total_indices: usize = face_results.iter().map(|r| r.indices.len()).sum();
+        let mut positions = Vec::with_capacity(total_positions);
+        let mut indices = Vec::with_capacity(total_indices);
+        for result in face_results {
+            let base_idx = (positions.len() / 3) as u32;
+            positions.extend(result.positions);
+            for idx in result.indices {
+                indices.push(base_idx + idx);
+            }
+        }
+        Ok(Mesh {
+            positions,
+            normals: Vec::new(),
+            indices,
+            rtc_applied: true, // RTC already subtracted during f64→f32 conversion
+        })
     }
 }
 
@@ -460,9 +575,12 @@ impl GeometryProcessor for FacetedBrepProcessor {
         }
 
         // PHASE 2: Triangulate all faces in parallel (via rayon on both native and WASM)
+        // Standard processor path uses no RTC (0,0,0) — the router applies RTC
+        // via transform_mesh. For full-precision infra models, the router calls
+        // process_with_rtc instead which passes the actual offset.
         let face_results: Vec<FaceResult> = face_data_list
             .par_iter()
-            .map(Self::triangulate_face)
+            .map(|face| Self::triangulate_face(face, (0.0, 0.0, 0.0)))
             .collect();
 
         // PHASE 3: Sequential - Merge all face results into final mesh
@@ -487,6 +605,7 @@ impl GeometryProcessor for FacetedBrepProcessor {
             positions,
             normals: Vec::new(),
             indices,
+            rtc_applied: false,
         })
     }
 
@@ -641,6 +760,7 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
             positions: all_positions,
             normals: Vec::new(),
             indices: all_indices,
+            rtc_applied: false,
         })
     }
 
@@ -796,6 +916,7 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
             positions: all_positions,
             normals: Vec::new(),
             indices: all_indices,
+            rtc_applied: false,
         })
     }
 

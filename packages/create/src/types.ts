@@ -571,6 +571,130 @@ export interface StoreyParams {
 }
 
 // ============================================================================
+// Scheduling / 4D (IfcWorkSchedule, IfcTask, IfcRelSequence)
+// ============================================================================
+
+export type WorkScheduleType =
+  | 'ACTUAL' | 'BASELINE' | 'PLANNED'
+  | 'USERDEFINED' | 'NOTDEFINED';
+
+/**
+ * IFC task-type enum — union of IFC4 and IFC4X3 `IfcTaskTypeEnum` values.
+ *
+ * IFC4 introduced the first 14. IFC4X3 added 9 more to cover the
+ * operations/maintenance lifecycle (ADJUSTMENT through TROUBLESHOOTING).
+ * The superset is exposed here so scripts can author schedules for
+ * either schema; IFC4 files that try to round-trip the newer values
+ * may fail validation on strict toolchains — caller's responsibility.
+ */
+export type TaskPredefinedType =
+  // IFC4 values
+  | 'ATTENDANCE' | 'CONSTRUCTION' | 'DEMOLITION' | 'DISMANTLE'
+  | 'DISPOSAL' | 'INSTALLATION' | 'LOGISTIC' | 'MAINTENANCE'
+  | 'MOVE' | 'OPERATION' | 'REMOVAL' | 'RENOVATION'
+  | 'USERDEFINED' | 'NOTDEFINED'
+  // IFC4X3 additions (operations / maintenance lifecycle)
+  | 'ADJUSTMENT' | 'CALIBRATION' | 'EMERGENCY' | 'INSPECTION'
+  | 'SAFETY' | 'SHUTDOWN' | 'STARTUP' | 'TESTING' | 'TROUBLESHOOTING';
+
+export type TaskDurationType =
+  | 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED';
+
+export type SequenceType =
+  | 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH'
+  | 'USERDEFINED' | 'NOTDEFINED';
+
+/**
+ * IfcWorkSchedule parameters.
+ *
+ * Timestamps are ISO 8601 datetimes (e.g. "2024-05-01T08:00:00").
+ * `Duration` / `TotalFloat` use ISO 8601 durations (e.g. "P30D", "PT8H").
+ */
+export interface WorkScheduleParams {
+  Name: string;
+  Description?: string;
+  Identification?: string;
+  CreationDate?: string;
+  StartTime: string;
+  FinishTime?: string;
+  Purpose?: string;
+  Duration?: string;
+  TotalFloat?: string;
+  PredefinedType?: WorkScheduleType;
+}
+
+/** IfcWorkPlan parameters — identical shape to IfcWorkSchedule. */
+export interface WorkPlanParams extends WorkScheduleParams {}
+
+/** Canonical IFC-prefixed alias for {@link WorkScheduleParams}. */
+export type IfcWorkScheduleParams = WorkScheduleParams;
+/** Canonical IFC-prefixed alias for {@link WorkPlanParams}. */
+export type IfcWorkPlanParams = WorkPlanParams;
+/** Canonical IFC-prefixed alias for {@link WorkScheduleType}. */
+export type IfcWorkScheduleType = WorkScheduleType;
+/** Canonical IFC-prefixed alias for {@link TaskPredefinedType}. */
+export type IfcTaskPredefinedType = TaskPredefinedType;
+/** Canonical IFC-prefixed alias for {@link TaskDurationType}. */
+export type IfcTaskDurationType = TaskDurationType;
+
+/**
+ * IfcTask parameters.
+ *
+ * When any of the *Start / *Finish / *Duration / IsCritical / Completion
+ * fields is supplied, an IfcTaskTime is created and linked.
+ */
+export interface TaskParams {
+  Name: string;
+  Description?: string;
+  ObjectType?: string;
+  Identification?: string;
+  LongDescription?: string;
+  Status?: string;
+  WorkMethod?: string;
+  IsMilestone?: boolean;
+  Priority?: number;
+  PredefinedType?: TaskPredefinedType;
+  /** ISO 8601 datetime */
+  ScheduleStart?: string;
+  ScheduleFinish?: string;
+  ScheduleDuration?: string;
+  ActualStart?: string;
+  ActualFinish?: string;
+  ActualDuration?: string;
+  EarlyStart?: string;
+  EarlyFinish?: string;
+  LateStart?: string;
+  LateFinish?: string;
+  FreeFloat?: string;
+  TotalFloat?: string;
+  RemainingTime?: string;
+  StatusTime?: string;
+  IsCritical?: boolean;
+  DurationType?: TaskDurationType;
+  /** Percent complete 0..100 */
+  Completion?: number;
+}
+
+/** Canonical IFC-prefixed alias for {@link TaskParams}. */
+export type IfcTaskParams = TaskParams;
+
+/** IfcRelSequence parameters (predecessor → successor edge). */
+export interface IfcRelSequenceParams {
+  SequenceType?: IfcRelSequenceType;
+  /** ISO 8601 duration (e.g. "P2D"). Negative durations indicate leads. */
+  TimeLag?: string;
+  /** Duration type applied to the lag (default WORKTIME). */
+  LagDurationType?: TaskDurationType;
+  UserDefinedSequenceType?: string;
+}
+
+/** @deprecated Use {@link IfcRelSequenceParams}. */
+export type SequenceParams = IfcRelSequenceParams;
+
+/** Canonical alias using the IFC EXPRESS enum name. */
+export type IfcRelSequenceType = SequenceType;
+
+// ============================================================================
 // Creation result
 // ============================================================================
 

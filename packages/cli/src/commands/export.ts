@@ -13,6 +13,7 @@
 import { writeFile } from 'node:fs/promises';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
+import type { ComparisonOp } from '@ifc-lite/sdk';
 
 /**
  * Parse a --where filter string into psetName, propName, operator, value.
@@ -153,7 +154,7 @@ export async function exportCommand(args: string[]): Promise<void> {
   }
   if (propFilter) {
     const parsed = parseWhereFilter(propFilter);
-    q = q.where(parsed.psetName, parsed.propName, parsed.operator as any, parsed.value);
+    q = q.where(parsed.psetName, parsed.propName, parsed.operator as ComparisonOp, parsed.value);
   }
   // Don't apply limit to the query yet — storey filtering must happen first
   let entities = q.toArray();

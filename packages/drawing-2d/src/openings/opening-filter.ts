@@ -15,8 +15,8 @@ import type {
   Vec3,
   SectionPlaneConfig,
   Bounds2D,
-} from '../types';
-import { projectTo2D, getProjectionAxes } from '../math';
+} from '../types.js';
+import { projectTo2D, getProjectionAxes } from '../math.js';
 
 /**
  * Filter options for opening handling

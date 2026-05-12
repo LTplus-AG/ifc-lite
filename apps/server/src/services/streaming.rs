@@ -13,6 +13,7 @@ use ifc_lite_core::{
     EntityScanner, IfcType,
 };
 use ifc_lite_geometry::{calculate_normals, GeometryRouter};
+use ifc_lite_processing::convert_mesh_to_site_local;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::pin::Pin;
@@ -43,6 +44,12 @@ struct PreparedData {
     unit_scale: f64,
     /// RTC offset for large-coordinate models (preserves precision in f32 output)
     rtc_offset: (f64, f64, f64),
+    /// Coordinate space of serialized mesh vertices: `site_local`, `model_rtc`, or `raw_ifc`.
+    mesh_coordinate_space: &'static str,
+    /// IfcSite placement, already cheaply cloneable for the worker pool, and
+    /// only populated when the selected coordinate space is `site_local`.
+    /// Lets `process_batch` rotate mesh vertices into the site axis frame.
+    site_local_rotation: Option<Arc<Vec<f64>>>,
     /// IfcSite ObjectPlacement as a column-major 4×4 matrix (metres).
     site_transform: Option<Vec<f64>>,
     /// IfcBuilding ObjectPlacement as a column-major 4×4 matrix (metres).
@@ -120,24 +127,7 @@ fn prepare_streaming_data(content: String) -> PreparedData {
 
     // Preprocess FacetedBreps and extract unit_scale + rtc_offset
     let mut router = GeometryRouter::with_units(&content, &mut decoder);
-    let rtc_jobs: Vec<(u32, usize, usize, IfcType)> = jobs
-        .iter()
-        .map(|j| (j.id, j.start, j.end, j.ifc_type))
-        .collect();
-    let rtc_offset = match router.detect_rtc_offset_from_jobs(&rtc_jobs, &mut decoder) {
-        Some(offset) => offset,
-        None => {
-            // No usable translation samples — fall back to full-file coordinate scan
-            // for files where large real-world coordinates are encoded in points
-            // rather than in placement transforms.
-            scan_placement_bounds(&content).rtc_offset()
-        }
-    };
-    router.set_rtc_offset(rtc_offset);
-    if !faceted_brep_ids.is_empty() {
-        router.preprocess_faceted_breps(&faceted_brep_ids, &mut decoder);
-    }
-    // Resolve site/building placement transforms for cache consistency
+    // Resolve site/building placement transforms for cache consistency.
     let site_transform: Option<Vec<f64>> = site_entity_pos.and_then(|(start, end)| {
         let entity = decoder.decode_at(start, end).ok()?;
         let matrix = router
@@ -153,12 +143,61 @@ fn prepare_streaming_data(content: String) -> PreparedData {
         Some(matrix.to_vec())
     });
 
+    let rtc_jobs: Vec<(u32, usize, usize, IfcType)> = jobs
+        .iter()
+        .map(|j| (j.id, j.start, j.end, j.ifc_type))
+        .collect();
+    let detected_rtc_offset = match router.detect_rtc_offset_from_jobs(&rtc_jobs, &mut decoder) {
+        Some(offset) => offset,
+        None => {
+            // No usable translation samples — fall back to full-file coordinate scan
+            // for files where large real-world coordinates are encoded in points
+            // rather than in placement transforms.
+            scan_placement_bounds(&content).rtc_offset()
+        }
+    };
+
+    // Three-tier coordinate-space selection, mirroring the non-streaming path:
+    //   1. site_local: IfcSite placement has a non-identity translation.
+    //   2. model_rtc:  fall back to the detected anchor for large-coordinate files.
+    //   3. raw_ifc:    neither anchor applies.
+    const PLACEMENT_IDENTITY_EPSILON: f64 = 1e-9;
+    let site_rtc = site_transform
+        .as_ref()
+        .map(|st| (st[12], st[13], st[14]))
+        .filter(|t| {
+            t.0.abs() > PLACEMENT_IDENTITY_EPSILON
+                || t.1.abs() > PLACEMENT_IDENTITY_EPSILON
+                || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
+        });
+    let detected_has_offset = detected_rtc_offset.0.abs() > PLACEMENT_IDENTITY_EPSILON
+        || detected_rtc_offset.1.abs() > PLACEMENT_IDENTITY_EPSILON
+        || detected_rtc_offset.2.abs() > PLACEMENT_IDENTITY_EPSILON;
+    let (rtc_offset, mesh_coordinate_space): ((f64, f64, f64), &'static str) =
+        if let Some(site) = site_rtc {
+            (site, "site_local")
+        } else if detected_has_offset {
+            (detected_rtc_offset, "model_rtc")
+        } else {
+            ((0.0, 0.0, 0.0), "raw_ifc")
+        };
+    router.set_rtc_offset(rtc_offset);
+    if !faceted_brep_ids.is_empty() {
+        router.preprocess_faceted_breps(&faceted_brep_ids, &mut decoder);
+    }
+
     // OPTIMIZATION: Extract unit_scale before dropping router
     // This allows process_batch to use with_scale() instead of with_units() per mesh
     let unit_scale = router.unit_scale();
     drop(router); // Explicitly drop non-Send router
 
     let parse_time_ms = parse_start.elapsed().as_millis() as u64;
+
+    let site_local_rotation = if mesh_coordinate_space == "site_local" {
+        site_transform.clone().map(Arc::new)
+    } else {
+        None
+    };
 
     PreparedData {
         content: Arc::new(content),
@@ -171,6 +210,8 @@ fn prepare_streaming_data(content: String) -> PreparedData {
         parse_time_ms,
         unit_scale,
         rtc_offset,
+        mesh_coordinate_space,
+        site_local_rotation,
         site_transform,
         building_transform,
     }
@@ -185,6 +226,7 @@ fn process_batch(
     void_index: Arc<FxHashMap<u32, Vec<u32>>>,
     unit_scale: f64,
     rtc_offset: (f64, f64, f64),
+    site_local_rotation: Option<Arc<Vec<f64>>>,
 ) -> Vec<MeshData> {
     jobs.par_iter()
         .filter_map(|job| {
@@ -215,14 +257,19 @@ fn process_batch(
                             .copied()
                             .unwrap_or_else(|| get_default_color(&job.ifc_type));
 
-                        return Some(MeshData::new(
+                        let mut mesh_data = MeshData::new(
                             job.id,
                             job.ifc_type.name().to_string(),
                             mesh.positions,
                             mesh.normals,
                             mesh.indices,
                             color,
-                        ));
+                        );
+                        convert_mesh_to_site_local(
+                            &mut mesh_data,
+                            site_local_rotation.as_deref(),
+                        );
+                        return Some(mesh_data);
                     }
                 }
             }
@@ -341,12 +388,22 @@ pub fn process_streaming(
                 let style_bg = prepared.style_index.clone();
                 let unit_scale = prepared.unit_scale;
                 let rtc_offset = prepared.rtc_offset;
+                let site_local_rotation = prepared.site_local_rotation.clone();
                 let tx_clone = tx.clone();
 
                 // Spawn batch processing task
                 tokio::spawn(async move {
                     let result = tokio::task::spawn_blocking(move || {
-                        process_batch(chunk_vec, content_bg, index_bg, style_bg, void_bg, unit_scale, rtc_offset)
+                        process_batch(
+                            chunk_vec,
+                            content_bg,
+                            index_bg,
+                            style_bg,
+                            void_bg,
+                            unit_scale,
+                            rtc_offset,
+                            site_local_rotation,
+                        )
                     }).await;
 
                     let batch_result = match result {
@@ -444,7 +501,7 @@ pub fn process_streaming(
                 },
             },
             cache_key,
-            mesh_coordinate_space: Some("site_local".to_string()),
+            mesh_coordinate_space: Some(prepared.mesh_coordinate_space.to_string()),
             site_transform: prepared.site_transform,
             building_transform: prepared.building_transform,
         };

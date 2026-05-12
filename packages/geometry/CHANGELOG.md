@@ -1,5 +1,373 @@
 # @ifc-lite/geometry
 
+## 1.18.1
+
+### Patch Changes
+
+- [#644](https://github.com/louistrue/ifc-lite/pull/644) [`6f052c3`](https://github.com/louistrue/ifc-lite/commit/6f052c309a99edd1d9a6925d44bbc2aed6cd10a5) Thanks [@louistrue](https://github.com/louistrue)! - Add "Merge Multilayer Walls" load-time toggle (issue #540).
+
+  When enabled, every `IfcBuildingElementPart` whose `IfcRelAggregates`
+  parent wall (a) has its own `Representation` and (b) is sliceable in
+  `MaterialLayerIndex` is suppressed during geometry emission. The parent
+  wall's single swept solid keeps the per-layer sub-mesh colouring via the
+  existing slicer, so the visual result on multilayer walls is the same as
+  the layered render — but with one mesh per wall instead of N per-layer
+  parts. Designed for large Revit-exported models where the per-layer
+  extrusions inflate vertex counts beyond what the viewer can handle.
+
+  New JS surface on `IfcAPI`:
+
+  ```ts
+  setMergeLayers(enabled: boolean): void
+  ```
+
+  Defaults to `false`. Honoured by `parseMeshes`, `parseMeshesSubset`,
+  `parseMeshesAsync`, `parseMeshesInstanced`, `parseMeshesInstancedAsync`,
+  `processGeometryBatch`, and `processGeometryBatchParallel`. The batch
+  paths cache the parts-to-skip set on `IfcAPI` so workers build it once
+  per content and reuse across every batch; the cache is cleared by
+  `clearPrePassCache` and by `setMergeLayers`.
+
+  Voids stay correct: `propagate_voids_to_parts` already copies the
+  parent wall's `IfcRelVoidsElement` references onto its layer parts in
+  the same pass that builds the part → parent map, so windows and doors
+  still cut through the merged solid.
+
+- Updated dependencies [[`1d6e99b`](https://github.com/louistrue/ifc-lite/commit/1d6e99bb23f67e20a192f362ba65ee73a8180f69), [`b6e83d3`](https://github.com/louistrue/ifc-lite/commit/b6e83d3ac4f04fe7c439bf282a25963c6db0b909), [`6f052c3`](https://github.com/louistrue/ifc-lite/commit/6f052c309a99edd1d9a6925d44bbc2aed6cd10a5), [`b8a8206`](https://github.com/louistrue/ifc-lite/commit/b8a82062c4392d05224561dda8a2767a8b7b1857)]:
+  - @ifc-lite/wasm@1.16.10
+
+## 1.18.0
+
+### Minor Changes
+
+- [#629](https://github.com/louistrue/ifc-lite/pull/629) [`2ab0e4c`](https://github.com/louistrue/ifc-lite/commit/2ab0e4c0eafc21feb22bfc7cd96c467b8b9ff599) Thanks [@louistrue](https://github.com/louistrue)! - **Parse IFC off the main thread.** The browser viewer now runs `IfcParser.parseColumnar`
+  inside a dedicated `WorkerParser` worker that shares the source bytes via
+  `SharedArrayBuffer` with the existing geometry workers. Parse and geometry
+  streaming run in parallel without contending for main-thread time, cutting
+  upload-to-interactive wall-clock by roughly 2× on medium-to-large files.
+
+  New public APIs:
+
+  - `@ifc-lite/parser`
+
+    - `WorkerParser` (browser-only, exported from `@ifc-lite/parser/browser`)
+    - `data-store-transport`: `toTransport(store)` / `fromTransport(payload, source)`
+      plus the `DataStoreTransport` payload type. Lets any consumer ship a
+      fully-typed `IfcDataStore` across a `postMessage` boundary with the
+      typed-array buffers in the transfer list and closures rebuilt on receipt.
+
+  - `@ifc-lite/data`
+
+    - `entityTableFromColumns` / `entityTableToColumns`
+    - `propertyTableFromColumns` / `propertyTableToColumns`
+    - `quantityTableFromColumns` / `quantityTableToColumns`
+    - `relationshipGraphFromColumns` / `relationshipGraphToColumns`
+    - `relationshipEdgesFromColumns`, `relationshipGraphFromEdges`, `buildCSR`
+    - `StringTable.fromArray(strings)`
+    - `EntityTable.rawTypeName` is now exposed (optional column) so the
+      unknown-type display fallback round-trips through column transports.
+
+  - `@ifc-lite/geometry`
+
+    - `processParallel(buffer, coordinator, sharedRtcOffset?, existingSab?, options?)`:
+      `existingSab` lets the geometry workers reuse a SAB the caller already
+      populated. The new fifth argument is `ProcessParallelOptions` with:
+      - `onEntityIndex(ids, starts, lengths)`: invoked once the streaming
+        pre-pass has built the entity index. Hosts forward the SAB-shared
+        columns to `WorkerParser.setEntityIndex(...)` so the parser skips
+        its own ~10 s WASM scan.
+      - `useSingleController`: opt-in (off by default) to the experimental
+        single-controller + wasm-bindgen-rayon path. See
+        `docs/architecture/single-controller-rayon-design.md` §12 for the
+        post-mortem on when this helps and when it regresses.
+    - `GeometryProcessor.processParallel` and `processAdaptive` accept the
+      same options to plumb them through.
+    - `StreamingGeometryEvent` gains a `workerMemory` variant carrying
+      per-worker WASM heap + mesh-byte counts for memory accounting.
+
+  - `@ifc-lite/parser` (additions on top of the worker entry above)
+    - `WorkerParser.setEntityIndex(ids, starts, lengths)`: hand a pre-built
+      entity index to the worker's `IfcAPI`. Pairs with the geometry
+      pre-pass's `onEntityIndex` callback above.
+    - `WorkerParserOptions.waitForEntityIndex`: when true, the worker blocks
+      its WASM scan until `setEntityIndex` arrives (60 s watchdog falls
+      back to the regular scan if it never does).
+    - `IfcParser.parseColumnar`: signature widened to accept
+      `ArrayBuffer | SharedArrayBuffer` (was `ArrayBuffer`); the SAB-backed
+      parser worker no longer needs an `as unknown as ArrayBuffer` cast.
+
+  The viewer auto-falls back to the in-process `IfcParser` when
+  `crossOriginIsolated` is `false` or the worker spawn throws, so behavior is
+  unchanged in environments without SAB.
+
+### Patch Changes
+
+- [#637](https://github.com/louistrue/ifc-lite/pull/637) [`2334993`](https://github.com/louistrue/ifc-lite/commit/2334993827839b9f5b96ca8008c49543fb597660) Thanks [@louistrue](https://github.com/louistrue)! - Fix `Could not resolve entry module "geometry.worker.ts"` when bundling the
+  published `@ifc-lite/geometry` package with Vite/Rollup.
+
+  `src/geometry-parallel.ts` constructs module workers via
+  `new Worker(new URL('./geometry.worker.ts', import.meta.url), ...)`. The post-
+  build step in `package.json` rewrites those `.ts` URLs to `.js` so the npm
+  tarball ships URLs that point at the emitted file — but the rewrite was only
+  applied to `dist/index.js`, and the worker URLs live in `dist/geometry-parallel.js`.
+  Consumers like the `create-ifc-lite` Vite templates therefore tried to load a
+  `.ts` worker entry that is not present in the tarball and the build failed.
+
+  Apply the rewrite to every `.js` file in `dist/`, leaving the source TypeScript
+  URL unchanged so in-repo Vite builds keep resolving the worker from source.
+
+- [#641](https://github.com/louistrue/ifc-lite/pull/641) [`ba7553a`](https://github.com/louistrue/ifc-lite/commit/ba7553af693939896a840074999b5f6806a94815) Thanks [@louistrue](https://github.com/louistrue)! - Fix `IfcReinforcingBar` stirrup rendering (issue #631, sample
+  `IfcReinforcingBar.ifc`).
+
+  `IfcSweptDiskSolid` directrixes that use `IfcIndexedPolyCurve` over
+  `IfcCartesianPointList3D` (typical for stirrups and other bent rebar that
+  lives outside the XY plane) used to fall back to a 2D parser that read x/y
+  from indices 0–1 and silently dropped the Z coordinate. The stirrup
+  collapsed onto z=0 and the resulting tube was a flat near-degenerate line.
+
+  The 3D curve dispatcher now has a native arm for `IfcIndexedPolyCurve` that
+  reads `IfcCartesianPointList2D` (z=0) or `IfcCartesianPointList3D` verbatim
+  and fits `IfcArcIndex` segments using a circumcircle in the plane of their
+  three control points. Straight schema conformance — no spec deviation.
+
+  The second sample on the issue (`Rebar2.ifc`) was already rendering its
+  directrix correctly under the existing segment-index trim path; no change
+  needed there.
+
+- Updated dependencies [[`8408c88`](https://github.com/louistrue/ifc-lite/commit/8408c88c4c0a1e848fade6c60474952eca1a4149), [`ba7553a`](https://github.com/louistrue/ifc-lite/commit/ba7553af693939896a840074999b5f6806a94815), [`2ab0e4c`](https://github.com/louistrue/ifc-lite/commit/2ab0e4c0eafc21feb22bfc7cd96c467b8b9ff599)]:
+  - @ifc-lite/wasm@1.16.9
+  - @ifc-lite/data@1.17.0
+
+## 1.17.1
+
+### Patch Changes
+
+- [#630](https://github.com/louistrue/ifc-lite/pull/630) [`5439cce`](https://github.com/louistrue/ifc-lite/commit/5439cce34edaff1c050ce8975a330163167df6fd) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcExtrudedAreaSolidTapered` (issue #628).
+
+  Tapered extrusions (e.g. beams or columns whose cross-section transitions
+  between a `SweptArea` profile at the base and an `EndSweptArea` profile at
+  `Depth`) were recognised by the parser but silently skipped by the geometry
+  engine, so the elements never appeared in the viewer.
+
+  The Rust geometry crate now ships:
+
+  - `extrude_profile_lofted` in `extrusion.rs` — generates caps from each
+    profile's own triangulation and stitches the side walls 1:1, resampling
+    the shorter outer loop by arc length when authoring tools emit profiles
+    with mismatched vertex counts. Side normals are computed from the actual
+    3D quad so sloped faces shade correctly.
+  - `ExtrudedAreaSolidTaperedProcessor` registered alongside the existing
+    `ExtrudedAreaSolidProcessor`. Falls back to a uniform extrusion if
+    `EndSweptArea` is missing so malformed files still render.
+  - `IfcExtrudedAreaSolidTapered` is now accepted by `profile_extractor`
+    (used by 2D drawing projection) and the `IfcMappedItem` dispatcher.
+
+  Out of scope for this patch and called out for follow-up:
+  `IfcRevolvedAreaSolidTapered`, plus tapered solids participating in
+  `IfcBooleanClippingResult` / openings / material-layer slicing.
+
+- Updated dependencies [[`7c85376`](https://github.com/louistrue/ifc-lite/commit/7c853760ef96e6f0f88ebdc29c17aefae724ff43)]:
+  - @ifc-lite/data@1.16.0
+
+## 1.17.0
+
+### Minor Changes
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Phase 0 of full point cloud loading: render the buildingSMART IFCx
+  pointcloud samples (`pcd::base64`, `points::array`, `points::base64`).
+
+  - New `@ifc-lite/pointcloud` package: renderer-agnostic decoders for PCD
+    (ASCII / binary / binary_compressed via inline LZF) and the two inline
+    IFCx point schemas. Pure TS, no three.js, no WebGPU.
+  - `@ifc-lite/geometry` adds `PointCloudAsset` and `GeometryResult.pointClouds`.
+  - `@ifc-lite/ifcx` adds `extractPointClouds()` and surfaces decoded scans
+    on `IfcxParseResult.pointClouds`. The mesh extractor is unchanged.
+  - `@ifc-lite/parser` re-exports the new `PointCloudExtraction` type.
+  - `@ifc-lite/renderer` gains a WGSL `topology: 'point-list'` pipeline,
+    per-asset GPU buffers, and `Renderer.setPointClouds()` /
+    `Renderer.addPointClouds()`. Points share the depth buffer and section
+    plane state with the triangle pipeline.
+
+### Patch Changes
+
+- [#608](https://github.com/louistrue/ifc-lite/pull/608) [`0b8c860`](https://github.com/louistrue/ifc-lite/commit/0b8c860d3e13c8b498c515854db74e0850ce59f1) Thanks [@louistrue](https://github.com/louistrue)! - Address CodeRabbit + Codex review feedback on PR #608.
+
+  Critical visual / correctness fixes:
+
+  - Point splats rendered ~2× too large because the shader treated the
+    user-facing `pointSizePx` (diameter) as the splat radius. Fixed in
+    both the live splat shader and the picker shader so click targets
+    match the rendered disc.
+  - Routed every detected point-cloud format (`ply`, `pcd`, `e57`) through
+    the streaming ingest in both `useIfcLoader` (single-file drop) and
+    `useIfcFederation` (multi-file). Previously only `las/laz` got the
+    pointcloud branch; `ply/pcd/e57` fell through into the IFC STEP path.
+  - Federation: applied `idOffset` to `geometryResult.pointClouds` too so
+    multi-pointcloud-model loads don't collide on local `expressId`.
+  - `expressId` defaulted to `1` on every ingest, so multiple inline LAS
+    loads collided. Now uses a process-local synthetic counter.
+  - E57 integer color channels are commonly u16 (0..65535); reader was
+    forcing u8 reads, distorting RGB. Now picks element width from the
+    declared min/max range.
+  - PCD `applyStride` preserved positions + colors but dropped intensity
+    and classification, so those color modes silently broke on files
+    past the 25M-point downsample cap.
+  - Inline `uploadAssetToGpu` forwards `intensities` + `classifications`
+    (added to `PointCloudAsset.chunk` shape).
+  - Model bounds recomputed after `removePointCloudAsset` /
+    `clearPointClouds` — previously stayed oversized, breaking
+    fit-to-view and section sliders.
+  - `usePointCloudLifecycle` disposes a model's GPU asset when the model
+    stays in the store but its `pointCloudHandleId` changes (re-stream of
+    the same file used to leak the old handle).
+  - `resetViewerState` now clears the point-cloud slice runtime fields so
+    loading a new file doesn't inherit the previous file's color mode /
+    size / EDL state.
+
+  Correctness / robustness:
+
+  - `streamPointCloud`'s host now closes the source on probe + onOpen
+    failures (single try/finally wrapping the whole open-and-decode
+    flow), so worker-backed sources don't leak the decoder on parse
+    errors or aborts.
+  - `worker-client.close()` clears cached `info`; subsequent `open()`
+    actually re-opens instead of returning stale info next to a null
+    `sourceId`.
+  - `LasStreamingSource.open()` and `LazStreamingSource.open()` are
+    atomic on failure: state is committed only after every step
+    succeeds, so a retry rerruns the probe + RGB-scale detection
+    cleanly. LAZ also frees malloc'd wasm pointers in the catch path.
+  - PLY decoder rejects files where `vertex` isn't the first element
+    (decoder reads from `header.bodyOffset`; non-leading vertex would
+    silently produce garbage).
+  - `decodePointsArray` validates each `colors[i]` is a `[r,g,b]` triple
+    before indexing, so malformed schemas fail with a clear message.
+  - `useIfcLoader` LAS/LAZ/PLY/PCD/E57 branch is guarded by
+    `loadSessionRef` on both error and success paths so a newer load can
+    replace an in-flight one without overwriting the newer model state;
+    stale renderer handle is freed.
+
+  Critical webhook fixes:
+
+  - `ViewportOverlays.tsx` had three imports between executable code;
+    hoisted them above the `const isDesktop = isTauri()` declaration.
+  - `edl-pass.ts` used `0u` for `texture_depth_multisampled_2d`'s
+    `sample_index`; WGSL spec requires `i32`.
+  - `pcd.test.ts` switched from `__dirname` to
+    `fileURLToPath(import.meta.url)` so it works outside vitest's
+    CommonJS-compat shim.
+
+  UX polish:
+
+  - `PointCloudPanel` toggle buttons expose `aria-pressed` so screen
+    readers announce the active option.
+  - `pointCloudSlice` setters reject `NaN`/`Infinity` (Math.min/max
+    passes them through unchanged).
+  - `BlobByteSource.read` clamps a negative `start` to `0`.
+  - File-dialog filters split GLB out of the IFC bucket into a "Mesh
+    Files" group.
+
+  The flattenMatrix transpose flagged in the review is actually correct
+  for USD's row-major-with-translation-in-row-3 convention (verified by
+  inspecting the Point_Cloud_S1 sample's transform; the rendered scan is
+  at the right world position). Added a clarifying comment so future
+  reviewers don't reach for the wrong fix.
+
+## 1.16.6
+
+### Patch Changes
+
+- [#598](https://github.com/louistrue/ifc-lite/pull/598) [`25c9877`](https://github.com/louistrue/ifc-lite/commit/25c9877969d2dcccb9c4e61f57b188cbf5fbbc3c) Thanks [@louistrue](https://github.com/louistrue)! - Add the `bim.store.*` namespace — high-level editing of an already-parsed
+  `IfcDataStore` via the existing mutation overlay. Closes the merge-roundtrip
+  gap from #592 (you can edit `IfcRectangleProfileDef.XDim` or drop a fresh
+  `IfcColumn` into a model without round-tripping through a script + re-parse).
+
+  **`@ifc-lite/mutations`** — new `StoreEditor` facade plus four
+  `MutablePropertyView` extensions: positional-attribute mutations, overlay
+  entity creation/deletion (with watermark seeding), and three helpers used by
+  the viewer's undo/redo (`removePositionalMutation`, `restoreFromTombstone`,
+  `restoreNewEntity`).
+
+  **`@ifc-lite/create`** — new `in-store/` module: `addColumnToStore` builds a
+  12-entity IfcColumn sub-graph (placement, profile, extruded solid,
+  representation, product shape, rel-contained-in-spatial-structure) anchored
+  to a target `IfcBuildingStorey`. `resolveSpatialAnchor` walks the parsed
+  store to find the IfcOwnerHistory, the 'Body' representation context, and
+  the storey's local placement.
+
+  **`@ifc-lite/sdk`** — new `StoreNamespace` exposed as `bim.store` on
+  `BimContext`. Methods: `addEntity`, `removeEntity`, `setPositionalAttribute`,
+  `addColumn`. Backed by `StoreBackendMethods` on `BimBackend`; the
+  `RemoteBackend` proxy round-trips them through the transport.
+
+  **`@ifc-lite/sandbox`** — `bim.store.*` is bridged into the QuickJS sandbox
+  with full TypeScript types via `bim-globals.d.ts` and an LLM cheat sheet in
+  the system prompt. Gated on a new `store: true` permission (default
+  `false`, mirrors the existing `mutate` permission pattern).
+
+  **`@ifc-lite/cli`** — `HeadlessBackend.store` is now functional (was a
+  no-op before). Scripts run via the CLI can edit a parsed model and export it
+  with mutations applied.
+
+  **`@ifc-lite/viewer`** — three new UI surfaces:
+
+  - Raw STEP tab in `PropertiesPanel` — lists every positional STEP argument
+    with an inline pen-icon editor for scalar values (numbers, refs, enums,
+    null). Mutated rows show a purple dot and tinted background.
+  - `EntityContextMenu` gains "Delete entity" (red, calls `removeEntity`
+    with toast + undo support) and "Add column here…" (emerald, only enabled
+    when the right-clicked entity is an `IfcBuildingStorey`).
+  - `AddColumnDialog` modal — storey picker sorted by elevation, position
+    (storey-local metres), cross-section, height, name, optional collapsible
+    for Description/ObjectType/Tag. Anchor-resolution failures surface
+    inline, not as thrown exceptions.
+
+  Plus four new actions on `mutationSlice` (`setPositionalAttribute`,
+  `removeEntity`, `addColumn`, dialog open/close) backed by per-model
+  `StoreEditor` caches, with undo/redo wired for `UPDATE_POSITIONAL_ATTRIBUTE`,
+  `CREATE_ENTITY`, and `DELETE_ENTITY`.
+
+  **`@ifc-lite/parser`** — `package.json` `exports` re-ordered to put `types`
+  before `import` so downstream consumers using TS5 `nodenext` resolution
+  pick up the type declarations.
+
+  **`@ifc-lite/geometry`** — re-exports `MetadataBootstrapEntitySummary` and
+  `MetadataBootstrapSpatialNode` from the package index (used by viewer
+  desktop services).
+
+  **`@ifc-lite/renderer`** — `GPUBufferDescriptor` ambient declaration gains
+  `mappedAtCreation?: boolean`. Internal change; the renderer was already
+  using it at runtime to skip a Mojo IPC round-trip on Chrome/Dawn.
+
+- Updated dependencies [[`945bb30`](https://github.com/louistrue/ifc-lite/commit/945bb30061ca044f4a51001f7299c17350ce99cf), [`18c6a37`](https://github.com/louistrue/ifc-lite/commit/18c6a37f1cc1426daa32ee60457dd0580a5257f5)]:
+  - @ifc-lite/wasm@1.16.7
+
+## 1.16.5
+
+### Patch Changes
+
+- [#519](https://github.com/louistrue/ifc-lite/pull/519) [`643b30f`](https://github.com/louistrue/ifc-lite/commit/643b30ff031d389fe0cb1caf7de6989d79629e4b) Thanks [@louistrue](https://github.com/louistrue)! - Fix geometry processing hang on models with 500K+ geometry elements
+
+  Cache entity index from buildPrePassOnce and reuse it across processGeometryBatch calls, eliminating redundant full-file scans. Cap batch count at 30 to prevent excessive per-batch overhead for models with very high geometry element counts.
+
+- Updated dependencies [[`643b30f`](https://github.com/louistrue/ifc-lite/commit/643b30ff031d389fe0cb1caf7de6989d79629e4b)]:
+  - @ifc-lite/wasm@1.16.4
+
+## 1.16.4
+
+### Patch Changes
+
+- [#503](https://github.com/louistrue/ifc-lite/pull/503) [`e8f3dfd`](https://github.com/louistrue/ifc-lite/commit/e8f3dfdc76871ef956701b0d176a9f197929d4dc) Thanks [@louistrue](https://github.com/louistrue)! - Improve the native geometry bridge so desktop/native streaming emits the same incremental mesh contract as the web viewer, including IFC type metadata on native batches.
+
+- [#526](https://github.com/louistrue/ifc-lite/pull/526) [`cb59771`](https://github.com/louistrue/ifc-lite/commit/cb59771997e3837a511f584842bce98cd710864e) Thanks [@louistrue](https://github.com/louistrue)! - Support color-merged GPU batches with per-vertex entityIds, reduce desktop native streaming overhead, and remove debug console statements.
+
+- [#503](https://github.com/louistrue/ifc-lite/pull/503) [`e8f3dfd`](https://github.com/louistrue/ifc-lite/commit/e8f3dfdc76871ef956701b0d176a9f197929d4dc) Thanks [@louistrue](https://github.com/louistrue)! - Add native desktop streaming telemetry hooks so sibling desktop loads can capture Rust-to-JS first-batch timings and write structured benchmark reports without changing the viewer mesh contract.
+
+- [#503](https://github.com/louistrue/ifc-lite/pull/503) [`e8f3dfd`](https://github.com/louistrue/ifc-lite/commit/e8f3dfdc76871ef956701b0d176a9f197929d4dc) Thanks [@louistrue](https://github.com/louistrue)! - Add a native desktop file-path geometry streaming path so very large IFC files do not need to be copied through browser memory and Tauri IPC before processing.
+
+- Updated dependencies [[`cb59771`](https://github.com/louistrue/ifc-lite/commit/cb59771997e3837a511f584842bce98cd710864e)]:
+  - @ifc-lite/wasm@1.16.3
+
 ## 1.16.3
 
 ### Patch Changes

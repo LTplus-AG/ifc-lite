@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain } from 'lucide-react';
+import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain, AlertTriangle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
@@ -16,6 +16,10 @@ import { useViewerStore } from '@/store';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { LocationMap, type PickedPosition } from './LocationMap';
+import { findClampAnchorY } from '@/lib/geo/clamp-anchor';
+import { detectScaleUnitMismatch, mergeMapConversion, mergeProjectedCRS } from '@/lib/geo/effective-georef';
+import { useIfc } from '@/hooks/useIfc';
+import { toast } from '@/components/ui/toast';
 
 // ── Field-specific assistance data ─────────────────────────────────────
 
@@ -319,9 +323,14 @@ export interface GeoreferencingPanelProps {
   coordinateInfo?: CoordinateInfo;
   /** GeometryResult for KMZ export */
   geometryResult?: GeometryResult | null;
+  /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1. */
+  lengthUnitScale?: number;
+  /** IfcBuildingStorey elevations (express id → metres, viewer-Y aligned).
+   *  Used to anchor the model's ground floor to terrain. */
+  storeyElevations?: Map<number, number>;
 }
 
-export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVersion, coordinateInfo, geometryResult }: GeoreferencingPanelProps) {
+export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVersion, coordinateInfo, geometryResult, lengthUnitScale, storeyElevations }: GeoreferencingPanelProps) {
   const georefMutations = useViewerStore(s => s.georefMutations);
   const setGeorefField = useViewerStore(s => s.setGeorefField);
   const setGeorefFields = useViewerStore(s => s.setGeorefFields);
@@ -330,10 +339,14 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const setCesiumTerrainClamp = useViewerStore(s => s.setCesiumTerrainClamp);
   const cesiumTerrainHeight = useViewerStore(s => s.cesiumTerrainHeight);
   const cesiumSourceModelId = useViewerStore(s => s.cesiumSourceModelId);
+  const models = useViewerStore(s => s.models);
+  const loading = useViewerStore(s => s.loading);
+  const { addModel, clearAllModels } = useIfc();
   // Only show terrain actions when this panel's model is the one backing the Cesium overlay
   const isActiveCesiumModel = !!modelId && modelId === cesiumSourceModelId;
   const [crsOpen, setCrsOpen] = useState(false);
   const [conversionOpen, setConversionOpen] = useState(false);
+  const [showReloadPrompt, setShowReloadPrompt] = useState(false);
 
   useViewerStore(s => s.mutationVersion);
 
@@ -341,41 +354,25 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const supportsStandardGeoreferencing = !schemaVersion?.toUpperCase().includes('2X3');
 
   const mergedCRS = useMemo((): ProjectedCRS | undefined => {
-    const base = georef?.projectedCRS;
-    const muts = mutations?.projectedCRS;
-    if (!base && !muts) return undefined;
-    return {
-      id: base?.id ?? 0,
-      name: muts?.name ?? base?.name ?? '',
-      description: muts?.description ?? base?.description,
-      geodeticDatum: muts?.geodeticDatum ?? base?.geodeticDatum,
-      verticalDatum: muts?.verticalDatum ?? base?.verticalDatum,
-      mapProjection: muts?.mapProjection ?? base?.mapProjection,
-      mapZone: muts?.mapZone ?? base?.mapZone,
-      mapUnit: muts?.mapUnit ?? base?.mapUnit,
-    };
-  }, [georef, mutations]);
+    return mergeProjectedCRS(georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale ?? 1);
+  }, [georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale]);
 
   const mergedConversion = useMemo((): MapConversion | undefined => {
-    const base = georef?.mapConversion;
-    const muts = mutations?.mapConversion;
-    if (!base && !muts) return undefined;
-    return {
-      id: base?.id ?? 0,
-      sourceCRS: base?.sourceCRS ?? 0,
-      targetCRS: base?.targetCRS ?? 0,
-      eastings: muts?.eastings ?? base?.eastings ?? 0,
-      northings: muts?.northings ?? base?.northings ?? 0,
-      orthogonalHeight: muts?.orthogonalHeight ?? base?.orthogonalHeight ?? 0,
-      xAxisAbscissa: muts?.xAxisAbscissa ?? base?.xAxisAbscissa,
-      xAxisOrdinate: muts?.xAxisOrdinate ?? base?.xAxisOrdinate,
-      scale: muts?.scale ?? base?.scale,
-    };
-  }, [georef, mutations]);
+    return mergeMapConversion(georef?.mapConversion, mutations?.mapConversion);
+  }, [georef?.mapConversion, mutations?.mapConversion]);
 
   const angleToGridNorth = useMemo(() => {
     return computeAngleToGridNorth(mergedConversion?.xAxisAbscissa, mergedConversion?.xAxisOrdinate);
   }, [mergedConversion]);
+
+  const scaleMismatch = useMemo(() => {
+    if (!mergedConversion) return null;
+    return detectScaleUnitMismatch(
+      mergedConversion.scale,
+      mergedCRS?.mapUnitScale,
+      lengthUnitScale,
+    );
+  }, [mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale]);
 
   const mapUnitSuffix = useMemo(() => {
     const mapUnit = mergedCRS?.mapUnit?.toUpperCase();
@@ -392,6 +389,26 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return meters; // already meters
   }, [mapUnitSuffix]);
 
+  /**
+   * Given a target world altitude (metres) for the model's ground floor
+   * (the storey nearest elevation 0, falling back to bounds.min.y when
+   * no storeys are present), return the IfcMapConversion.OrthogonalHeight
+   * value (in map units, rounded to 0.01) that would put the ground floor
+   * there — accounting for any RTC / origin shifts the geometry pipeline
+   * applied. This mirrors the auto-clamp formula so the "Set
+   * OrthogonalHeight to Cesium terrain elevation" button produces the same
+   * world position as toggling the clamp.
+   */
+  const oHeightForBaseAltitude = useCallback((targetBaseAltitude: number): number => {
+    const bounds = coordinateInfo?.originalBounds;
+    const anchorY = findClampAnchorY(bounds, storeyElevations);
+    const shiftY = coordinateInfo?.originShift?.y ?? 0;
+    // RTC offset is in IFC Z-up; viewer Y-up takes its Z component.
+    const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
+    const targetOHeightMeters = targetBaseAltitude - shiftY - rtcYupY - anchorY;
+    return Math.round(metersToMapUnit(targetOHeightMeters) * 100) / 100;
+  }, [coordinateInfo, storeyElevations, metersToMapUnit]);
+
   const isMutated = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string): boolean => {
     if (!mutations) return false;
     const entityMuts = mutations[entity];
@@ -399,22 +416,75 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return field in entityMuts;
   }, [mutations]);
 
+  const requestAlignmentReload = useCallback(() => {
+    if (models.size > 1) {
+      setShowReloadPrompt(true);
+    }
+  }, [models.size]);
+
+  const reloadModelsForAlignment = useCallback(async () => {
+    const state = useViewerStore.getState();
+    const snapshot = Array.from(state.models.values()).sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
+    const missingSource = snapshot.find(model => !model.sourceFile);
+    if (snapshot.length < 2) {
+      setShowReloadPrompt(false);
+      return;
+    }
+    if (missingSource) {
+      toast.error(`Cannot reload ${missingSource.name}: source file is not available`);
+      return;
+    }
+
+    try {
+      clearAllModels();
+      for (const model of snapshot) {
+        const sourceFile = model.sourceFile;
+        if (!sourceFile) continue;
+        const reloadedModelId = await addModel(sourceFile, {
+          name: model.name,
+          modelId: model.id,
+          loadedAt: model.loadedAt,
+          visible: model.visible,
+          collapsed: model.collapsed,
+        });
+        if (!reloadedModelId) {
+          throw new Error(`Failed to reload ${model.name}`);
+        }
+        if (model.visible === false) {
+          useViewerStore.getState().setModelVisibility(model.id, false);
+        }
+      }
+      setShowReloadPrompt(false);
+      toast.success('Reloaded models for edited georeferencing');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Reload failed');
+    }
+  }, [addModel, clearAllModels]);
+
   const handleSave = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string, value: string | number) => {
     if (!modelId || !setGeorefField) return;
     const oldValue = entity === 'projectedCRS'
-      ? georef?.projectedCRS?.[field as keyof ProjectedCRS]
-      : georef?.mapConversion?.[field as keyof MapConversion];
+      ? mergedCRS?.[field as keyof ProjectedCRS]
+      : mergedConversion?.[field as keyof MapConversion];
     setGeorefField(modelId, entity, field, value, oldValue as string | number | undefined);
-  }, [modelId, setGeorefField, georef]);
+    // Editing OrthogonalHeight implies "I want this exact altitude" — auto
+    // -release the terrain clamp so the new value actually takes effect
+    // (with clamp on, placement is locked to terrain regardless of oHeight).
+    if (entity === 'mapConversion' && field === 'orthogonalHeight' && terrainClamp) {
+      setCesiumTerrainClamp(false);
+    }
+    requestAlignmentReload();
+  }, [modelId, setGeorefField, mergedCRS, mergedConversion, requestAlignmentReload, terrainClamp, setCesiumTerrainClamp]);
 
   // Handle angle edit: compute and set both XAxisAbscissa and XAxisOrdinate
   const handleAngleChange = useCallback((abscissa: number, ordinate: number) => {
     if (!modelId || !setGeorefFields) return;
     setGeorefFields(modelId, 'mapConversion', [
-      { field: 'xAxisAbscissa', value: abscissa, oldValue: georef?.mapConversion?.xAxisAbscissa },
-      { field: 'xAxisOrdinate', value: ordinate, oldValue: georef?.mapConversion?.xAxisOrdinate },
+      { field: 'xAxisAbscissa', value: abscissa, oldValue: mergedConversion?.xAxisAbscissa },
+      { field: 'xAxisOrdinate', value: ordinate, oldValue: mergedConversion?.xAxisOrdinate },
     ]);
-  }, [modelId, setGeorefFields, georef]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
 
   // Handle position picked from the map (reverse-projected easting/northing + optional terrain height)
   const handleApplyPosition = useCallback((position: PickedPosition) => {
@@ -424,43 +494,48 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       { field: 'northings', value: position.northing, oldValue: mergedConversion?.northings },
     ];
     if (position.terrainHeight !== null) {
+      // position.terrainHeight is the world altitude where the user wants the
+      // base of the model — translate to OrthogonalHeight using the same
+      // bounds/shift accounting as the auto-clamp path.
       fields.push({
         field: 'orthogonalHeight',
-        value: Math.round(position.terrainHeight * 10) / 10,
+        value: oHeightForBaseAltitude(position.terrainHeight),
         oldValue: mergedConversion?.orthogonalHeight,
       });
     }
     setGeorefFields(modelId, 'mapConversion', fields);
     setConversionOpen(true);
-  }, [modelId, setGeorefFields, mergedConversion]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload, oHeightForBaseAltitude]);
 
   const initializeMapConversionDefaults = useCallback(() => {
     if (!modelId || !setGeorefFields) return;
     setGeorefFields(modelId, 'mapConversion', [
-      { field: 'eastings', value: georef?.mapConversion?.eastings ?? 0, oldValue: georef?.mapConversion?.eastings },
-      { field: 'northings', value: georef?.mapConversion?.northings ?? 0, oldValue: georef?.mapConversion?.northings },
-      { field: 'orthogonalHeight', value: georef?.mapConversion?.orthogonalHeight ?? 0, oldValue: georef?.mapConversion?.orthogonalHeight },
-      { field: 'xAxisAbscissa', value: georef?.mapConversion?.xAxisAbscissa ?? 1, oldValue: georef?.mapConversion?.xAxisAbscissa },
-      { field: 'xAxisOrdinate', value: georef?.mapConversion?.xAxisOrdinate ?? 0, oldValue: georef?.mapConversion?.xAxisOrdinate },
-      { field: 'scale', value: georef?.mapConversion?.scale ?? 1, oldValue: georef?.mapConversion?.scale },
+      { field: 'eastings', value: mergedConversion?.eastings ?? 0, oldValue: mergedConversion?.eastings },
+      { field: 'northings', value: mergedConversion?.northings ?? 0, oldValue: mergedConversion?.northings },
+      { field: 'orthogonalHeight', value: mergedConversion?.orthogonalHeight ?? 0, oldValue: mergedConversion?.orthogonalHeight },
+      { field: 'xAxisAbscissa', value: mergedConversion?.xAxisAbscissa ?? 1, oldValue: mergedConversion?.xAxisAbscissa },
+      { field: 'xAxisOrdinate', value: mergedConversion?.xAxisOrdinate ?? 0, oldValue: mergedConversion?.xAxisOrdinate },
+      { field: 'scale', value: mergedConversion?.scale ?? 1, oldValue: mergedConversion?.scale },
     ]);
     setConversionOpen(true);
-  }, [modelId, setGeorefFields, georef]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
 
   const handleEpsgSelect = useCallback((result: EpsgResult) => {
     if (!modelId || !setGeorefFields) return;
     const epsgName = `EPSG:${result.code}`;
     const fieldUpdates: Array<{ field: string; value: string | number; oldValue?: string | number }> = [
-      { field: 'name', value: epsgName, oldValue: georef?.projectedCRS?.name },
+      { field: 'name', value: epsgName, oldValue: mergedCRS?.name },
     ];
     if (result.name) {
-      fieldUpdates.push({ field: 'description', value: result.name, oldValue: georef?.projectedCRS?.description });
+      fieldUpdates.push({ field: 'description', value: result.name, oldValue: mergedCRS?.description });
     }
     if (result.datum) {
-      fieldUpdates.push({ field: 'geodeticDatum', value: result.datum, oldValue: georef?.projectedCRS?.geodeticDatum });
+      fieldUpdates.push({ field: 'geodeticDatum', value: result.datum, oldValue: mergedCRS?.geodeticDatum });
     }
     if (result.projection) {
-      fieldUpdates.push({ field: 'mapProjection', value: result.projection, oldValue: georef?.projectedCRS?.mapProjection });
+      fieldUpdates.push({ field: 'mapProjection', value: result.projection, oldValue: mergedCRS?.mapProjection });
     }
     if (result.unit) {
       const unitUpper = result.unit.toUpperCase();
@@ -471,14 +546,15 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           : unitUpper.includes('FOOT') || unitUpper.includes('FEET')
             ? 'FOOT'
             : result.unit;
-      fieldUpdates.push({ field: 'mapUnit', value: mapUnit, oldValue: georef?.projectedCRS?.mapUnit });
+      fieldUpdates.push({ field: 'mapUnit', value: mapUnit, oldValue: mergedCRS?.mapUnit });
     }
     setGeorefFields(modelId, 'projectedCRS', fieldUpdates);
-    if (!georef?.mapConversion && !mutations?.mapConversion) {
+    if (!mergedConversion && !mutations?.mapConversion) {
       initializeMapConversionDefaults();
     }
     setCrsOpen(true);
-  }, [modelId, setGeorefFields, georef, mutations, initializeMapConversionDefaults]);
+    requestAlignmentReload();
+  }, [modelId, setGeorefFields, mergedCRS, mergedConversion, mutations, initializeMapConversionDefaults, requestAlignmentReload]);
 
   const hasData = mergedCRS || mergedConversion;
   const editable = enableEditing && !!modelId && supportsStandardGeoreferencing;
@@ -513,6 +589,33 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
   return (
     <div>
+      {showReloadPrompt && (
+        <div className="mx-2 my-2 border border-teal-300 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/40 px-2.5 py-2">
+          <div className="flex items-start gap-2">
+            <MapPin className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] text-zinc-700 dark:text-zinc-300">
+                Georeference saved. Reload loaded models to recompute 3D alignment?
+              </p>
+              <div className="mt-1.5 flex items-center gap-2">
+                <button
+                  onClick={reloadModelsForAlignment}
+                  disabled={loading}
+                  className="px-2 py-0.5 text-[10px] font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Reload models
+                </button>
+                <button
+                  onClick={() => setShowReloadPrompt(false)}
+                  className="px-2 py-0.5 text-[10px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800"
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* CRS summary — always visible */}
       <div className="px-2 py-1.5 flex items-center gap-2">
         <Globe className="h-3 w-3 text-teal-500 shrink-0" />
@@ -585,6 +688,19 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             <ChevronRight className={`h-3 w-3 text-teal-500 shrink-0 transition-transform ${conversionOpen ? 'rotate-90' : ''}`} />
             <MapPin className="h-3 w-3 text-teal-500 shrink-0" />
             <span className="font-bold text-[11px] text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1 text-left">Coordinate Operation</span>
+            {scaleMismatch && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertTriangle
+                    className="h-3 w-3 text-amber-500 shrink-0"
+                    aria-label="Scale inconsistent with project/map units"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Scale inconsistent with project/map units — expand to view details
+                </TooltipContent>
+              </Tooltip>
+            )}
             {!conversionOpen && (
               <span className="text-[10px] font-mono text-teal-600/70 dark:text-teal-500/60">
                 E {mergedConversion.eastings.toFixed(0)} N {mergedConversion.northings.toFixed(0)}
@@ -597,12 +713,26 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               <GeorefRow label="Eastings" value={mergedConversion.eastings} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'eastings')} fieldEntity="mapConversion" fieldName="eastings" onSave={v => handleSave('mapConversion', 'eastings', v)} />
               <GeorefRow label="Northings" value={mergedConversion.northings} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'northings')} fieldEntity="mapConversion" fieldName="northings" onSave={v => handleSave('mapConversion', 'northings', v)} />
               <GeorefRow label="OrthogonalHeight" value={mergedConversion.orthogonalHeight} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'orthogonalHeight')} fieldEntity="mapConversion" fieldName="orthogonalHeight" onSave={v => handleSave('mapConversion', 'orthogonalHeight', v)}>
-                <TerrainHeightButton modelId={modelId} editable={editable} onApply={(h) => handleSave('mapConversion', 'orthogonalHeight', Math.round(metersToMapUnit(h) * 100) / 100)} />
+                <TerrainHeightButton modelId={modelId} editable={editable} onApply={(h) => handleSave('mapConversion', 'orthogonalHeight', oHeightForBaseAltitude(h))} />
               </GeorefRow>
               <GeorefRow label="XAxisAbscissa" value={mergedConversion.xAxisAbscissa} isNumber editable={editable} isMutated={isMutated('mapConversion', 'xAxisAbscissa')} fieldEntity="mapConversion" fieldName="xAxisAbscissa" onSave={v => handleSave('mapConversion', 'xAxisAbscissa', v)} />
               <GeorefRow label="XAxisOrdinate" value={mergedConversion.xAxisOrdinate} isNumber editable={editable} isMutated={isMutated('mapConversion', 'xAxisOrdinate')} fieldEntity="mapConversion" fieldName="xAxisOrdinate" onSave={v => handleSave('mapConversion', 'xAxisOrdinate', v)} />
               <AngleRow angle={angleToGridNorth} editable={editable} onAngleChange={handleAngleChange} />
               <GeorefRow label="Scale" value={mergedConversion.scale} isNumber editable={editable} isMutated={isMutated('mapConversion', 'scale')} fieldEntity="mapConversion" fieldName="scale" onSave={v => handleSave('mapConversion', 'scale', v)} />
+              {scaleMismatch && (
+                <div className="px-3 py-2 flex items-start gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20">
+                  <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span className="leading-snug">
+                    <strong>Scale inconsistent with project/map units.</strong>{' '}
+                    Per IFC schema, IfcMapConversion.Scale should bridge the unit
+                    difference between the project length unit and map CRS unit.
+                    Current Scale = {scaleMismatch.rawScale}; expected ≈{' '}
+                    {scaleMismatch.expectedScale.toPrecision(4)}. Geometry is
+                    being placed at {scaleMismatch.effectiveScale.toPrecision(4)}×
+                    its physical size — adjust Scale (or MapUnit) to fix.
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -646,7 +776,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           {cesiumTerrainHeight !== null && editable && modelId && (
             <div className="flex items-center gap-1 ml-5">
               <button
-                onClick={() => handleSave('mapConversion', 'orthogonalHeight', Math.round(metersToMapUnit(cesiumTerrainHeight) * 100) / 100)}
+                onClick={() => handleSave('mapConversion', 'orthogonalHeight', oHeightForBaseAltitude(cesiumTerrainHeight))}
                 className="text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors flex items-center gap-0.5"
               >
                 <Mountain className="h-2.5 w-2.5" />
@@ -663,6 +793,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         projectedCRS={mergedCRS}
         coordinateInfo={coordinateInfo}
         geometryResult={geometryResult}
+        lengthUnitScale={lengthUnitScale}
         editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined}
       />

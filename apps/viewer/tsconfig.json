@@ -7,6 +7,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@ifc-lite/parser": ["../../packages/parser/src"],
+      "@ifc-lite/parser/browser": ["../../packages/parser/src/browser"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
       "@ifc-lite/renderer": ["../../packages/renderer/src"],
       "@ifc-lite/query": ["../../packages/query/src"],

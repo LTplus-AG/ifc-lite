@@ -94,6 +94,34 @@ export interface BatchedMesh {
 // Section plane for clipping
 // Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
+
+export type SectionCapHatchId =
+  | 'solid'
+  | 'diagonal'
+  | 'crossHatch'
+  | 'horizontal'
+  | 'vertical'
+  | 'concrete'
+  | 'brick'
+  | 'insulation';
+
+export interface SectionCapStyleOptions {
+  /** Fill colour behind the hatch. RGBA 0-1. */
+  fillColor?: [number, number, number, number];
+  /** Hatch stroke colour. RGBA 0-1. */
+  strokeColor?: [number, number, number, number];
+  /** Hatch pattern id. */
+  pattern?: SectionCapHatchId;
+  /** Spacing between hatch lines, in screen pixels. */
+  spacingPx?: number;
+  /** Primary angle in radians. */
+  angleRad?: number;
+  /** Line width in pixels. */
+  widthPx?: number;
+  /** Secondary angle (cross-hatch). */
+  secondaryAngleRad?: number;
+}
+
 export interface SectionPlane {
   axis: SectionPlaneAxis;
   position: number; // 0-100 percentage of model bounds
@@ -101,6 +129,24 @@ export interface SectionPlane {
   flipped?: boolean; // If true, show the opposite side of the cut
   min?: number;      // Optional override for min range value
   max?: number;      // Optional override for max range value
+  /** If true (default), render filled cap surfaces with a screen-space hatch. */
+  showCap?: boolean;
+  /**
+   * If true (default), draw polygon outlines on the cut surfaces. Users
+   * can turn surfaces and outlines on/off independently from the UI.
+   */
+  showOutlines?: boolean;
+  /** Override the default cap appearance. */
+  capStyle?: SectionCapStyleOptions;
+  /**
+   * Optional world-space plane normal (unit vector). When provided
+   * together with `distance`, the shader clip uses them verbatim and
+   * ignores `axis`, `position`, `min`, `max`, and any `buildingRotation`.
+   * Used for face-pick / arbitrary slice planes (issue #243).
+   */
+  normal?: [number, number, number];
+  /** Plane offset in world units: `dot(pointOnPlane, normal)`. */
+  distance?: number;
 }
 
 export type ContactShadingQuality = 'off' | 'low' | 'high';
@@ -135,6 +181,26 @@ export interface RenderOptions {
   isolatedIds?: Set<number> | null; // Only show these meshes (null = show all)
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
+  /**
+   * Per-frame alpha overrides — primary use case is X-Ray mode.
+   *
+   * Map<expressId, alpha 0..1>. Non-selected meshes/batches whose expressId
+   * appears in this map render at the override alpha through the transparent
+   * pipeline. Selected meshes (`selectedId` / `selectedIds`) are exempt at
+   * every site, so highlights always paint with their own alpha.
+   *
+   * Mixed batches (some entries overridden, some not) take the minimum
+   * override alpha across non-selected ids; selected meshes in the batch
+   * are then redrawn on top by the highlight pass.
+   *
+   * The renderer snapshots this map at frame start, so callers may freely
+   * mutate or recycle their copy after `render()` returns.
+   *
+   * Note: alphas `>= 0.99` are treated as opaque (the cutoff for switching to
+   * the transparent pipeline). Entries at or above that threshold are no-ops
+   * — keep them out of the map to avoid unnecessary work.
+   */
+  transparencyOverrides?: Map<number, number> | null;
   // Building rotation in radians (from IfcSite placement) - used to orient section planes
   buildingRotation?: number;
   selectedModelIndex?: number;    // Model index for multi-model selection (must match mesh.modelIndex)
@@ -172,4 +238,11 @@ export interface PickOptions {
 export interface PickResult {
   expressId: number;
   modelIndex?: number;  // Index of the model this entity belongs to
+  /**
+   * World-space XYZ of the picked surface point. Optional because the
+   * pick path can skip depth readback for callers that only need the
+   * entityId (e.g. selection state). Recovered by sampling the pick
+   * pass's depth texture at the click position and unprojecting.
+   */
+  worldXYZ?: { x: number; y: number; z: number };
 }

@@ -12,14 +12,34 @@ import { IfcTypeEnumToString, PropertyValueType, QuantityType, RelationshipType 
 
 export interface SQLResult {
   columns: string[];
-  rows: any[][];
-  toArray(): any[];
-  toJSON(): any[];
+  rows: unknown[][];
+  toArray(): unknown[];
+  toJSON(): unknown[];
+}
+
+/** Minimal typed surface for the dynamically-loaded @duckdb/duckdb-wasm module. */
+interface DuckDBModule {
+  selectBundle(bundles: unknown): Promise<{ mainWorker: string; mainModule: string; pthreadWorker: string | null }>;
+  getJsDelivrBundles(): unknown;
+  AsyncDuckDB: new (logger: unknown, worker: Worker) => DuckDBInstance;
+  ConsoleLogger: new () => unknown;
+}
+
+interface DuckDBInstance {
+  instantiate(mainModule: string, pthreadWorker: string | null): Promise<void>;
+  connect(): Promise<DuckDBConnection>;
+  registerFileBuffer(name: string, buf: Uint8Array): Promise<void>;
+  terminate(): Promise<void>;
+}
+
+interface DuckDBConnection {
+  query(sql: string): Promise<{ toArray(): unknown[]; numCols: number; schema: { fields: { name: string }[] } }>;
+  close(): Promise<void>;
 }
 
 export class DuckDBIntegration {
-  private db: any = null;
-  private conn: any = null;
+  private db: DuckDBInstance | null = null;
+  private conn: DuckDBConnection | null = null;
   private initPromise: Promise<void> | null = null;
   private initialized = false;
 
@@ -32,15 +52,17 @@ export class DuckDBIntegration {
 
     this.initPromise = (async () => {
       try {
-        // Dynamic import using Function constructor to prevent Vite static analysis
-        // DuckDB is optional - this will fail gracefully if not installed
-        // @ts-ignore - DuckDB is optional dependency
-        const duckdb = await new Function('return import("@duckdb/duckdb-wasm")')();
-        // @ts-ignore
+        // Dynamic import using Function constructor to prevent Vite static analysis.
+        // DuckDB is optional — this will fail gracefully if not installed.
+        // The Function() trick is required because Vite would otherwise try to
+        // bundle @duckdb/duckdb-wasm, which is a large optional dependency.
+        const duckdb = await new Function('return import("@duckdb/duckdb-wasm")')() as DuckDBModule;
         const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
 
-        const worker = new Worker(bundle.mainWorker!);
-        // @ts-ignore
+        if (!bundle.mainWorker) {
+          throw new Error('DuckDB bundle missing mainWorker');
+        }
+        const worker = new Worker(bundle.mainWorker);
         this.db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
         await this.db.instantiate(bundle.mainModule, bundle.pthreadWorker);
         this.conn = await this.db.connect();
@@ -66,18 +88,19 @@ export class DuckDBIntegration {
       throw new Error('DuckDB not initialized. Call init() first.');
     }
 
+    if (!this.conn) throw new Error('DuckDB connection not available');
     const result = await this.conn.query(sql);
     const rows = result.toArray();
 
     return {
-      columns: result.schema.fields.map((f: any) => f.name),
-      rows: rows,
+      columns: result.schema.fields.map((f) => f.name),
+      rows: rows as unknown[][],
       toArray: () => rows,
-      toJSON: () => rows.map((row: any) => {
-        const obj: any = {};
-        result.schema.fields.forEach((field: any, i: number) => {
+      toJSON: () => rows.map((row: unknown) => {
+        const obj: Record<string, unknown> = {};
+        result.schema.fields.forEach((field, i: number) => {
           // Handle DuckDB row format (could be array or object)
-          obj[field.name] = Array.isArray(row) ? row[i] : row[field.name];
+          obj[field.name] = Array.isArray(row) ? row[i] : (row as Record<string, unknown>)[field.name];
         });
         return obj;
       }),
@@ -89,6 +112,8 @@ export class DuckDBIntegration {
    * This approach works without Arrow dependencies and is more portable
    */
   private async registerTables(store: IfcDataStore): Promise<void> {
+    // conn is guaranteed non-null here — called only from init() after connect()
+    const conn = this.conn!;
     console.log('[DuckDB] Registering tables from store with', store.entities.count, 'entities');
 
     // Create and populate entities table
@@ -110,8 +135,9 @@ export class DuckDBIntegration {
    * Create and populate entities table
    */
   private async createEntitiesTable(store: IfcDataStore): Promise<void> {
+    const conn = this.conn!;
     // Create table
-    await this.conn.query(`
+    await conn.query(`
       CREATE TABLE entities (
         express_id INTEGER PRIMARY KEY,
         global_id VARCHAR,
@@ -150,7 +176,7 @@ export class DuckDBIntegration {
       }
 
       if (values.length > 0) {
-        await this.conn.query(`INSERT INTO entities VALUES ${values.join(', ')}`);
+        await conn.query(`INSERT INTO entities VALUES ${values.join(', ')}`);
       }
     }
 
@@ -161,7 +187,8 @@ export class DuckDBIntegration {
    * Create and populate properties table
    */
   private async createPropertiesTable(store: IfcDataStore): Promise<void> {
-    await this.conn.query(`
+    const conn = this.conn!;
+    await conn.query(`
       CREATE TABLE properties (
         entity_id INTEGER,
         pset_name VARCHAR,
@@ -214,7 +241,7 @@ export class DuckDBIntegration {
       }
 
       if (values.length > 0) {
-        await this.conn.query(`INSERT INTO properties VALUES ${values.join(', ')}`);
+        await conn.query(`INSERT INTO properties VALUES ${values.join(', ')}`);
       }
     }
 
@@ -225,7 +252,8 @@ export class DuckDBIntegration {
    * Create and populate quantities table
    */
   private async createQuantitiesTable(store: IfcDataStore): Promise<void> {
-    await this.conn.query(`
+    const conn = this.conn!;
+    await conn.query(`
       CREATE TABLE quantities (
         entity_id INTEGER,
         qset_name VARCHAR,
@@ -265,7 +293,7 @@ export class DuckDBIntegration {
       }
 
       if (values.length > 0) {
-        await this.conn.query(`INSERT INTO quantities VALUES ${values.join(', ')}`);
+        await conn.query(`INSERT INTO quantities VALUES ${values.join(', ')}`);
       }
     }
 
@@ -276,7 +304,8 @@ export class DuckDBIntegration {
    * Create and populate relationships table
    */
   private async createRelationshipsTable(store: IfcDataStore): Promise<void> {
-    await this.conn.query(`
+    const conn = this.conn!;
+    await conn.query(`
       CREATE TABLE relationships (
         source_id INTEGER,
         target_id INTEGER,
@@ -332,7 +361,7 @@ export class DuckDBIntegration {
       }
 
       if (values.length > 0) {
-        await this.conn.query(`INSERT INTO relationships VALUES ${values.join(', ')}`);
+        await conn.query(`INSERT INTO relationships VALUES ${values.join(', ')}`);
       }
     }
 
@@ -343,44 +372,46 @@ export class DuckDBIntegration {
    * Create convenience views
    */
   private async createViews(): Promise<void> {
+    const conn = this.conn;
+    if (!conn) return;
     try {
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS walls AS
         SELECT * FROM entities WHERE type IN ('IfcWall', 'IfcWallStandardCase')
       `);
 
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS doors AS
         SELECT * FROM entities WHERE type = 'IfcDoor'
       `);
 
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS windows AS
         SELECT * FROM entities WHERE type = 'IfcWindow'
       `);
 
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS slabs AS
         SELECT * FROM entities WHERE type = 'IfcSlab'
       `);
 
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS columns AS
         SELECT * FROM entities WHERE type = 'IfcColumn'
       `);
 
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS beams AS
         SELECT * FROM entities WHERE type = 'IfcBeam'
       `);
 
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS spaces AS
         SELECT * FROM entities WHERE type = 'IfcSpace'
       `);
 
       // Create a view joining entities with their properties
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS entity_properties AS
         SELECT
           e.express_id, e.name as entity_name, e.type as entity_type,
@@ -391,7 +422,7 @@ export class DuckDBIntegration {
       `);
 
       // Create a view joining entities with their quantities
-      await this.conn.query(`
+      await conn.query(`
         CREATE VIEW IF NOT EXISTS entity_quantities AS
         SELECT
           e.express_id, e.name as entity_name, e.type as entity_type,
@@ -413,8 +444,7 @@ export class DuckDBIntegration {
   static async isAvailable(): Promise<boolean> {
     try {
       // Dynamic import using Function constructor to prevent Vite static analysis
-      // @ts-ignore - DuckDB is optional dependency
-      await new Function('return import("@duckdb/duckdb-wasm")')();
+      await new Function('return import("@duckdb/duckdb-wasm")')() as DuckDBModule;
       return true;
     } catch {
       return false;

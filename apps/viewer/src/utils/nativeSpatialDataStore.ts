@@ -4,6 +4,7 @@
 
 import {
   IfcTypeEnumFromString,
+  IfcTypeEnumToString,
   isBuildingLikeSpatialType,
   isStoreyLikeSpatialType,
   type SpatialHierarchy,
@@ -103,7 +104,9 @@ function buildEntityLookup() {
           return typeNameById.get(expressId) ?? 'Unknown';
         },
         getByType(type: string | number) {
-          const key = typeof type === 'string' ? type.toUpperCase() : String(type);
+          const key = typeof type === 'string'
+            ? type.toUpperCase()
+            : IfcTypeEnumToString(type).toUpperCase();
           return byType.get(key) ?? [];
         },
       };
@@ -163,10 +166,28 @@ export function buildIfcDataStoreFromNativeMetadata(snapshot: NativeMetadataSnap
     const elements = node.elements.map((summary) => {
       entityLookup.addSummary(summary);
       if (nextStoreyId !== null) {
-        elementToStorey.set(summary.expressId, nextStoreyId);
+        // Direct storey containment wins — only set if absent. Mirrors the
+        // descendant-walk path in `spatialHierarchy.ts` where direct
+        // IfcRelContainedInSpatialStructure entries take precedence over
+        // inherited aggregate-descendant assignments.
+        if (!elementToStorey.has(summary.expressId)) {
+          elementToStorey.set(summary.expressId, nextStoreyId);
+        }
+        // NOTE: aggregate descendants of an element (e.g. IfcBuildingElementPart
+        // children of an IfcWall) are NOT represented locally in the native
+        // metadata snapshot — `NativeMetadataSpatialNode.children` only contains
+        // spatial sub-nodes and `node.elements` is a flat list of
+        // directly-contained elements (no `children` field on
+        // `NativeMetadataEntitySummary`). They are fetched lazily through
+        // `getNativeMetadataChildren`. The aggregate-descendant-walk fix that
+        // `spatialHierarchy.ts` performs via `relationships.getRelated` cannot
+        // be replicated here without an additional native bootstrap payload
+        // change (see issue #540 follow-up).
       }
       if (nextSpaceId !== null) {
-        elementToSpace.set(summary.expressId, nextSpaceId);
+        if (!elementToSpace.has(summary.expressId)) {
+          elementToSpace.set(summary.expressId, nextSpaceId);
+        }
       }
       return summary.expressId;
     });

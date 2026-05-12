@@ -20,49 +20,16 @@ import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { extractGeoreferencing as extractGeorefFromEntities, type GeoreferenceInfo } from './georef-extractor.js';
 
+// Re-export classification and material resolvers
+export { extractClassificationsOnDemand } from './classification-resolver.js';
+export type { ClassificationInfo } from './classification-resolver.js';
+
+export { extractMaterialsOnDemand } from './material-resolver.js';
+export type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialConstituentInfo } from './material-resolver.js';
+
 // ============================================================================
-// Classification and Material On-Demand Extractors
+// Remaining Interfaces
 // ============================================================================
-
-export interface ClassificationInfo {
-    system?: string;
-    identification?: string;
-    name?: string;
-    location?: string;
-    description?: string;
-    path?: string[];
-}
-
-export interface MaterialInfo {
-    type: 'Material' | 'MaterialLayerSet' | 'MaterialProfileSet' | 'MaterialConstituentSet' | 'MaterialList';
-    name?: string;
-    description?: string;
-    layers?: MaterialLayerInfo[];
-    profiles?: MaterialProfileInfo[];
-    constituents?: MaterialConstituentInfo[];
-    materials?: string[];
-}
-
-export interface MaterialLayerInfo {
-    materialName?: string;
-    thickness?: number;
-    isVentilated?: boolean;
-    name?: string;
-    category?: string;
-}
-
-export interface MaterialProfileInfo {
-    materialName?: string;
-    name?: string;
-    category?: string;
-}
-
-export interface MaterialConstituentInfo {
-    materialName?: string;
-    name?: string;
-    fraction?: number;
-    category?: string;
-}
 
 /**
  * Result of type-level property extraction.
@@ -70,7 +37,7 @@ export interface MaterialConstituentInfo {
 export interface TypePropertyInfo {
     typeName: string;
     typeId: number;
-    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }>;
+    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }>;
 }
 
 /**
@@ -113,7 +80,7 @@ export type { GeoreferenceInfo as GeorefInfo };
  * - IfcPropertyTableValue: defining/defined value pairs → "Table(N rows)"
  * - IfcPropertyReferenceValue: entity reference → "Reference #ID"
  */
-export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue } {
+export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue; values?: string[]; dataType?: string } {
     const attrs = propEntity.attributes || [];
     const typeUpper = propEntity.type.toUpperCase();
 
@@ -126,7 +93,11 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                     if (Array.isArray(v) && v.length === 2) return String(v[1]); // Typed value
                     return String(v);
                 }).filter(v => v !== 'null' && v !== 'undefined');
-                return { type: 0, value: values.join(', ') };
+                // Surface the raw value list separately so IDS facet
+                // checks can iterate "any matching value passes". The
+                // joined display string remains the primary `value`
+                // for visualisation/property-table consumers.
+                return { type: 0, value: values.join(', ') || null, values };
             }
             return { type: 0, value: null };
         }
@@ -141,7 +112,33 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             if (lower != null && upper != null) {
                 display += ` [${lower} – ${upper}]`;
             }
-            return { type: displayValue != null ? 1 : 0, value: display || null };
+            // Surface every defined bound as a candidate value — IDS
+            // bounded-property checks pass when ANY of the bounds /
+            // setpoint matches the constraint, per upstream ifctester.
+            const candidates: string[] = [];
+            if (lower != null) candidates.push(String(lower));
+            if (upper != null && upper !== lower) candidates.push(String(upper));
+            if (setPoint != null && setPoint !== lower && setPoint !== upper) {
+                candidates.push(String(setPoint));
+            }
+            // Carry the IFC-declared measure tag so the IDS-side data
+            // type comparison and unit conversion both work.
+            const inferDataType = (attr: unknown): string | undefined => {
+                if (Array.isArray(attr) && attr.length === 2) {
+                    return String(attr[0]).toUpperCase();
+                }
+                return undefined;
+            };
+            const dataType =
+                inferDataType(attrs[5]) ||
+                inferDataType(attrs[2]) ||
+                inferDataType(attrs[3]);
+            return {
+                type: displayValue != null ? 1 : 0,
+                value: display || null,
+                ...(candidates.length > 0 ? { values: candidates } : {}),
+                ...(dataType ? { dataType } : {}),
+            };
         }
 
         case 'IFCPROPERTYLISTVALUE': {
@@ -152,7 +149,7 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                     if (Array.isArray(v) && v.length === 2) return String(v[1]);
                     return String(v);
                 }).filter(v => v !== 'null' && v !== 'undefined');
-                return { type: 0, value: values.join(', ') };
+                return { type: 0, value: values.join(', ') || null, values };
             }
             return { type: 0, value: null };
         }
@@ -162,8 +159,29 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             const definingValues = attrs[2];
             const definedValues = attrs[3];
             const rowCount = Array.isArray(definingValues) ? definingValues.length : 0;
-            if (rowCount > 0 && Array.isArray(definedValues)) {
-                return { type: 0, value: `Table (${rowCount} rows)` };
+            if (rowCount > 0 && Array.isArray(definedValues) && Array.isArray(definingValues)) {
+                // Surface both defining and defined values as candidate
+                // matches — IDS table-value checks pass when ANY entry
+                // matches the constraint (per upstream ifctester).
+                const stringify = (v: unknown): string => {
+                    if (Array.isArray(v) && v.length === 2) return String(v[1]);
+                    return String(v);
+                };
+                const values = [
+                    ...definingValues.map(stringify),
+                    ...definedValues.map(stringify),
+                ].filter(v => v !== 'null' && v !== 'undefined');
+                // Tables mix types per column (label / length / …),
+                // so we can't surface a single representative
+                // dataType. Leaving it unset lets the IDS check fall
+                // through to a pure value match against any of the
+                // candidates — which is what upstream ifctester does
+                // for table values.
+                return {
+                    type: 0,
+                    value: `Table (${rowCount} rows)`,
+                    values,
+                };
             }
             return { type: 0, value: null };
         }
@@ -182,11 +200,13 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             const nominalValue = attrs[2];
             let type: number = PropertyValueType.String;
             let value: PropertyValue = nominalValue as PropertyValue;
+            let dataType: string | undefined;
 
             // Handle typed values like IFCBOOLEAN(.T.), IFCREAL(1.5)
             if (Array.isArray(nominalValue) && nominalValue.length === 2) {
                 const innerValue = nominalValue[1];
                 const typeName = String(nominalValue[0]).toUpperCase();
+                dataType = typeName;
 
                 if (typeName.includes('BOOLEAN')) {
                     type = PropertyValueType.Boolean;
@@ -200,7 +220,20 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                         value = innerValue === '.T.' || innerValue === true;
                     }
                 } else if (typeof innerValue === 'number') {
-                    if (Number.isInteger(innerValue)) {
+                    // Preserve the IFC-declared numeric measure (IFCREAL,
+                    // IFCINTEGER, IFCLENGTHMEASURE, IFCAREAMEASURE, …) —
+                    // the source explicitly tagged the value, so don't
+                    // re-infer from JS number-ness (which would
+                    // misclassify e.g. `IFCREAL(0.0)` as integer).
+                    if (typeName === 'IFCINTEGER' || typeName === 'IFCCOUNTMEASURE') {
+                        type = PropertyValueType.Integer;
+                    } else if (
+                        typeName === 'IFCREAL' ||
+                        typeName.endsWith('MEASURE') ||
+                        typeName.endsWith('RATIO')
+                    ) {
+                        type = PropertyValueType.Real;
+                    } else if (Number.isInteger(innerValue)) {
                         type = PropertyValueType.Integer;
                     } else {
                         type = PropertyValueType.Real;
@@ -215,10 +248,24 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
             } else if (typeof nominalValue === 'boolean') {
                 type = PropertyValueType.Boolean;
             } else if (nominalValue !== null && nominalValue !== undefined) {
-                value = String(nominalValue);
+                // Normalize untagged STEP enumeration tokens. Conformant IFC wraps
+                // booleans as IFCBOOLEAN(.T.) (handled above), but some authoring
+                // tools emit the bare tokens directly in the NominalValue slot.
+                if (nominalValue === '.T.') {
+                    type = PropertyValueType.Boolean;
+                    value = true;
+                } else if (nominalValue === '.F.') {
+                    type = PropertyValueType.Boolean;
+                    value = false;
+                } else if (nominalValue === '.U.' || nominalValue === '.X.') {
+                    type = PropertyValueType.Logical;
+                    value = null;
+                } else {
+                    value = String(nominalValue);
+                }
             }
 
-            return { type, value };
+            return { type, value, ...(dataType ? { dataType } : {}) };
         }
     }
 }
@@ -228,386 +275,6 @@ export function extractNumericValue(attr: unknown): number | null {
     if (typeof attr === 'number') return attr;
     if (Array.isArray(attr) && attr.length === 2 && typeof attr[1] === 'number') return attr[1];
     return null;
-}
-
-// ============================================================================
-// Classification Extraction
-// ============================================================================
-
-/**
- * Extract classifications for a single entity ON-DEMAND.
- * Uses the onDemandClassificationMap built during parsing.
- * Falls back to relationship graph when on-demand map is not available (e.g., server-loaded models).
- * Also checks type-level associations via IfcRelDefinesByType.
- * Returns an array of classification references with system info.
- */
-export function extractClassificationsOnDemand(
-    store: IfcDataStore,
-    entityId: number
-): ClassificationInfo[] {
-    let classRefIds: number[] | undefined;
-
-    if (store.onDemandClassificationMap) {
-        classRefIds = store.onDemandClassificationMap.get(entityId);
-    } else if (store.relationships) {
-        // Fallback: use relationship graph (server-loaded models)
-        const related = store.relationships.getRelated(entityId, RelationshipType.AssociatesClassification, 'inverse');
-        if (related.length > 0) classRefIds = related;
-    }
-
-    // Also check type-level classifications via IfcRelDefinesByType
-    if (store.relationships) {
-        const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
-        for (const typeId of typeIds) {
-            let typeClassRefs: number[] | undefined;
-            if (store.onDemandClassificationMap) {
-                typeClassRefs = store.onDemandClassificationMap.get(typeId);
-            } else {
-                const related = store.relationships.getRelated(typeId, RelationshipType.AssociatesClassification, 'inverse');
-                if (related.length > 0) typeClassRefs = related;
-            }
-            if (typeClassRefs && typeClassRefs.length > 0) {
-                classRefIds = classRefIds ? [...classRefIds, ...typeClassRefs] : [...typeClassRefs];
-            }
-        }
-    }
-
-    if (!classRefIds || classRefIds.length === 0) return [];
-    if (!store.source?.length) return [];
-
-    const extractor = new EntityExtractor(store.source);
-    const results: ClassificationInfo[] = [];
-
-    for (const classRefId of classRefIds) {
-        const ref = store.entityIndex.byId.get(classRefId);
-        if (!ref) continue;
-
-        const entity = extractor.extractEntity(ref);
-        if (!entity) continue;
-
-        const typeUpper = entity.type.toUpperCase();
-        const attrs = entity.attributes || [];
-
-        if (typeUpper === 'IFCCLASSIFICATIONREFERENCE') {
-            // IfcClassificationReference: [Location, Identification, Name, ReferencedSource, Description, Sort]
-            const info: ClassificationInfo = {
-                location: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                identification: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                name: typeof attrs[2] === 'string' ? attrs[2] : undefined,
-                description: typeof attrs[4] === 'string' ? attrs[4] : undefined,
-            };
-
-            // Walk up to find the classification system name
-            const referencedSourceId = typeof attrs[3] === 'number' ? attrs[3] : undefined;
-            if (referencedSourceId) {
-                const path = walkClassificationChain(store, extractor, referencedSourceId);
-                info.system = path.systemName;
-                info.path = path.codes;
-            }
-
-            results.push(info);
-        } else if (typeUpper === 'IFCCLASSIFICATION') {
-            // IfcClassification: [Source, Edition, EditionDate, Name, Description, Location, ReferenceTokens]
-            results.push({
-                system: typeof attrs[3] === 'string' ? attrs[3] : undefined,
-                name: typeof attrs[3] === 'string' ? attrs[3] : undefined,
-                description: typeof attrs[4] === 'string' ? attrs[4] : undefined,
-                location: typeof attrs[5] === 'string' ? attrs[5] : undefined,
-            });
-        }
-    }
-
-    return results;
-}
-
-/**
- * Walk up the IfcClassificationReference chain to find the root IfcClassification system.
- */
-function walkClassificationChain(
-    store: IfcDataStore,
-    extractor: EntityExtractor,
-    startId: number
-): { systemName?: string; codes: string[] } {
-    const codes: string[] = [];
-    let currentId: number | undefined = startId;
-    const visited = new Set<number>();
-
-    while (currentId !== undefined && !visited.has(currentId)) {
-        visited.add(currentId);
-
-        const ref = store.entityIndex.byId.get(currentId);
-        if (!ref) break;
-
-        const entity = extractor.extractEntity(ref);
-        if (!entity) break;
-
-        const typeUpper = entity.type.toUpperCase();
-        const attrs = entity.attributes || [];
-
-        if (typeUpper === 'IFCCLASSIFICATION') {
-            // Root: IfcClassification [Source, Edition, EditionDate, Name, ...]
-            const systemName = typeof attrs[3] === 'string' ? attrs[3] : undefined;
-            return { systemName, codes };
-        }
-
-        if (typeUpper === 'IFCCLASSIFICATIONREFERENCE') {
-            // IfcClassificationReference [Location, Identification, Name, ReferencedSource, ...]
-            const code = typeof attrs[1] === 'string' ? attrs[1] :
-                         typeof attrs[2] === 'string' ? attrs[2] : undefined;
-            if (code) codes.unshift(code);
-
-            currentId = typeof attrs[3] === 'number' ? attrs[3] : undefined;
-        } else {
-            break;
-        }
-    }
-
-    return { codes };
-}
-
-// ============================================================================
-// Material Extraction
-// ============================================================================
-
-/**
- * Extract materials for a single entity ON-DEMAND.
- * Uses the onDemandMaterialMap built during parsing.
- * Falls back to relationship graph when on-demand map is not available (e.g., server-loaded models).
- * Also checks type-level material assignments via IfcRelDefinesByType.
- * Resolves the full material structure (layers, profiles, constituents, lists).
- */
-export function extractMaterialsOnDemand(
-    store: IfcDataStore,
-    entityId: number
-): MaterialInfo | null {
-    let materialId: number | undefined;
-
-    if (store.onDemandMaterialMap) {
-        materialId = store.onDemandMaterialMap.get(entityId);
-    } else if (store.relationships) {
-        // Fallback: use relationship graph (server-loaded models)
-        const related = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
-        if (related.length > 0) materialId = related[0];
-    }
-
-    // Check type-level material if occurrence has none
-    if (materialId === undefined && store.relationships) {
-        const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
-        for (const typeId of typeIds) {
-            if (store.onDemandMaterialMap) {
-                materialId = store.onDemandMaterialMap.get(typeId);
-            } else {
-                const related = store.relationships.getRelated(typeId, RelationshipType.AssociatesMaterial, 'inverse');
-                if (related.length > 0) materialId = related[0];
-            }
-            if (materialId !== undefined) break;
-        }
-    }
-
-    if (materialId === undefined) return null;
-    if (!store.source?.length) return null;
-
-    const extractor = new EntityExtractor(store.source);
-    return resolveMaterial(store, extractor, materialId, new Set());
-}
-
-/**
- * Resolve a material entity by ID, handling all IFC material types.
- * Uses visited set to prevent infinite recursion on cyclic *Usage references.
- */
-function resolveMaterial(
-    store: IfcDataStore,
-    extractor: EntityExtractor,
-    materialId: number,
-    visited: Set<number> = new Set()
-): MaterialInfo | null {
-    if (visited.has(materialId)) return null;
-    visited.add(materialId);
-
-    const ref = store.entityIndex.byId.get(materialId);
-    if (!ref) return null;
-
-    const entity = extractor.extractEntity(ref);
-    if (!entity) return null;
-
-    const typeUpper = entity.type.toUpperCase();
-    const attrs = entity.attributes || [];
-
-    switch (typeUpper) {
-        case 'IFCMATERIAL': {
-            // IfcMaterial: [Name, Description, Category]
-            return {
-                type: 'Material',
-                name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                description: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-            };
-        }
-
-        case 'IFCMATERIALLAYERSET': {
-            // IfcMaterialLayerSet: [MaterialLayers, LayerSetName, Description]
-            const layerIds = Array.isArray(attrs[0]) ? attrs[0].filter((id): id is number => typeof id === 'number') : [];
-            const layers: MaterialLayerInfo[] = [];
-
-            for (const layerId of layerIds) {
-                const layerRef = store.entityIndex.byId.get(layerId);
-                if (!layerRef) continue;
-                const layerEntity = extractor.extractEntity(layerRef);
-                if (!layerEntity) continue;
-
-                const la = layerEntity.attributes || [];
-                // IfcMaterialLayer: [Material, LayerThickness, IsVentilated, Name, Description, Category, Priority]
-                const matId = typeof la[0] === 'number' ? la[0] : undefined;
-                let materialName: string | undefined;
-                if (matId) {
-                    const matRef = store.entityIndex.byId.get(matId);
-                    if (matRef) {
-                        const matEntity = extractor.extractEntity(matRef);
-                        if (matEntity) {
-                            materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
-                        }
-                    }
-                }
-
-                layers.push({
-                    materialName,
-                    thickness: typeof la[1] === 'number' ? la[1] : undefined,
-                    isVentilated: la[2] === true || la[2] === '.T.',
-                    name: typeof la[3] === 'string' ? la[3] : undefined,
-                    category: typeof la[5] === 'string' ? la[5] : undefined,
-                });
-            }
-
-            return {
-                type: 'MaterialLayerSet',
-                name: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                description: typeof attrs[2] === 'string' ? attrs[2] : undefined,
-                layers,
-            };
-        }
-
-        case 'IFCMATERIALPROFILESET': {
-            // IfcMaterialProfileSet: [Name, Description, MaterialProfiles, CompositeProfile]
-            const profileIds = Array.isArray(attrs[2]) ? attrs[2].filter((id): id is number => typeof id === 'number') : [];
-            const profiles: MaterialProfileInfo[] = [];
-
-            for (const profId of profileIds) {
-                const profRef = store.entityIndex.byId.get(profId);
-                if (!profRef) continue;
-                const profEntity = extractor.extractEntity(profRef);
-                if (!profEntity) continue;
-
-                const pa = profEntity.attributes || [];
-                // IfcMaterialProfile: [Name, Description, Material, Profile, Priority, Category]
-                const matId = typeof pa[2] === 'number' ? pa[2] : undefined;
-                let materialName: string | undefined;
-                if (matId) {
-                    const matRef = store.entityIndex.byId.get(matId);
-                    if (matRef) {
-                        const matEntity = extractor.extractEntity(matRef);
-                        if (matEntity) {
-                            materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
-                        }
-                    }
-                }
-
-                profiles.push({
-                    materialName,
-                    name: typeof pa[0] === 'string' ? pa[0] : undefined,
-                    category: typeof pa[5] === 'string' ? pa[5] : undefined,
-                });
-            }
-
-            return {
-                type: 'MaterialProfileSet',
-                name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                description: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                profiles,
-            };
-        }
-
-        case 'IFCMATERIALCONSTITUENTSET': {
-            // IfcMaterialConstituentSet: [Name, Description, MaterialConstituents]
-            const constituentIds = Array.isArray(attrs[2]) ? attrs[2].filter((id): id is number => typeof id === 'number') : [];
-            const constituents: MaterialConstituentInfo[] = [];
-
-            for (const constId of constituentIds) {
-                const constRef = store.entityIndex.byId.get(constId);
-                if (!constRef) continue;
-                const constEntity = extractor.extractEntity(constRef);
-                if (!constEntity) continue;
-
-                const ca = constEntity.attributes || [];
-                // IfcMaterialConstituent: [Name, Description, Material, Fraction, Category]
-                const matId = typeof ca[2] === 'number' ? ca[2] : undefined;
-                let materialName: string | undefined;
-                if (matId) {
-                    const matRef = store.entityIndex.byId.get(matId);
-                    if (matRef) {
-                        const matEntity = extractor.extractEntity(matRef);
-                        if (matEntity) {
-                            materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
-                        }
-                    }
-                }
-
-                constituents.push({
-                    materialName,
-                    name: typeof ca[0] === 'string' ? ca[0] : undefined,
-                    fraction: typeof ca[3] === 'number' ? ca[3] : undefined,
-                    category: typeof ca[4] === 'string' ? ca[4] : undefined,
-                });
-            }
-
-            return {
-                type: 'MaterialConstituentSet',
-                name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                description: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                constituents,
-            };
-        }
-
-        case 'IFCMATERIALLIST': {
-            // IfcMaterialList: [Materials]
-            const matIds = Array.isArray(attrs[0]) ? attrs[0].filter((id): id is number => typeof id === 'number') : [];
-            const materials: string[] = [];
-
-            for (const matId of matIds) {
-                const matRef = store.entityIndex.byId.get(matId);
-                if (!matRef) continue;
-                const matEntity = extractor.extractEntity(matRef);
-                if (matEntity) {
-                    const name = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : `Material #${matId}`;
-                    materials.push(name);
-                }
-            }
-
-            return {
-                type: 'MaterialList',
-                materials,
-            };
-        }
-
-        case 'IFCMATERIALLAYERSETUSAGE': {
-            // IfcMaterialLayerSetUsage: [ForLayerSet, LayerSetDirection, DirectionSense, OffsetFromReferenceLine, ...]
-            const layerSetId = typeof attrs[0] === 'number' ? attrs[0] : undefined;
-            if (layerSetId) {
-                return resolveMaterial(store, extractor, layerSetId, visited);
-            }
-            return null;
-        }
-
-        case 'IFCMATERIALPROFILESETUSAGE': {
-            // IfcMaterialProfileSetUsage: [ForProfileSet, ...]
-            const profileSetId = typeof attrs[0] === 'number' ? attrs[0] : undefined;
-            if (profileSetId) {
-                return resolveMaterial(store, extractor, profileSetId, visited);
-            }
-            return null;
-        }
-
-        default:
-            return null;
-    }
 }
 
 // ============================================================================
@@ -622,8 +289,8 @@ export function extractPsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     psetIds: number[]
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
-    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
+    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
 
     for (const psetId of psetIds) {
         const psetRef = store.entityIndex.byId.get(psetId);
@@ -640,7 +307,7 @@ export function extractPsetsFromIds(
         const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
         const hasProperties = psetAttrs[4];
 
-        const properties: Array<{ name: string; type: number; value: PropertyValue }> = [];
+        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
 
         if (Array.isArray(hasProperties)) {
             for (const propRef of hasProperties) {
@@ -657,7 +324,14 @@ export function extractPsetsFromIds(
                 if (!propName) continue;
 
                 const parsed = parsePropertyValue(propEntity);
-                properties.push({ name: propName, type: parsed.type, value: parsed.value });
+                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
+                    name: propName,
+                    type: parsed.type,
+                    value: parsed.value,
+                };
+                if (parsed.values) entry.values = parsed.values;
+                if (parsed.dataType) entry.dataType = parsed.dataType;
+                properties.push(entry);
             }
         }
 
@@ -704,7 +378,7 @@ export function extractTypePropertiesOnDemand(
         ? typeEntity.attributes[2]
         : typeRef.type;
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
     const seenPsetNames = new Set<string>();
 
     // Source 1: HasPropertySets attribute on the type entity (index 5 for IfcTypeObject subtypes)
@@ -751,7 +425,7 @@ export function extractTypePropertiesOnDemand(
 export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -759,7 +433,7 @@ export function extractTypeEntityOwnProperties(
     const typeEntity = extractor.extractEntity(ref);
     if (!typeEntity) return [];
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
     const seenPsetNames = new Set<string>();
 
     // Source 1: HasPropertySets attribute (index 5 for IfcTypeObject subtypes)
@@ -994,6 +668,20 @@ export function extractGeoreferencingOnDemand(store: IfcDataStore): Georeference
             const entity = extractor.extractEntity(ref);
             if (entity) {
                 entityMap.set(id, entity);
+
+                // For IfcProjectedCRS, also resolve the MapUnit reference (attribute [6])
+                // so the georef extractor can determine the actual unit scale
+                if (typeName === 'IFCPROJECTEDCRS' && entity.attributes) {
+                    const mapUnitAttr = entity.attributes[6];
+                    const mapUnitRefId = typeof mapUnitAttr === 'number' ? mapUnitAttr : null;
+                    if (mapUnitRefId && !entityMap.has(mapUnitRefId)) {
+                        const unitRef = byId.get(mapUnitRefId);
+                        if (unitRef) {
+                            const unitEntity = extractor.extractEntity(unitRef);
+                            if (unitEntity) entityMap.set(mapUnitRefId, unitEntity);
+                        }
+                    }
+                }
             }
         }
     }

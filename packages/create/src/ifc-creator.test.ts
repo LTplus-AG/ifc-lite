@@ -459,3 +459,142 @@ describe('IfcCreator', () => {
     expect(result.entities.length).toBeGreaterThan(10);
   });
 });
+
+describe('IfcCreator — scheduling / 4D', () => {
+  it('emits IFCWORKSCHEDULE with name, dates, and PredefinedType', () => {
+    const c = new IfcCreator();
+    const scheduleId = c.addIfcWorkSchedule({
+      Name: 'Main schedule',
+      StartTime: '2024-05-01T08:00:00',
+      FinishTime: '2024-06-30T17:00:00',
+      PredefinedType: 'PLANNED',
+    });
+    const result = c.toIfc();
+    expect(scheduleId).toBeGreaterThan(0);
+    expect(result.content).toContain('IFCWORKSCHEDULE');
+    expect(result.content).toContain("'Main schedule'");
+    expect(result.content).toContain("'2024-05-01T08:00:00'");
+    expect(result.content).toContain("'2024-06-30T17:00:00'");
+    expect(result.content).toContain('.PLANNED.');
+  });
+
+  it('emits IFCWORKPLAN with PredefinedType', () => {
+    const c = new IfcCreator();
+    c.addIfcWorkPlan({
+      Name: 'Master plan',
+      StartTime: '2024-01-01T00:00:00',
+      PredefinedType: 'BASELINE',
+    });
+    const result = c.toIfc();
+    expect(result.content).toContain('IFCWORKPLAN');
+    expect(result.content).toContain("'Master plan'");
+    expect(result.content).toContain('.BASELINE.');
+  });
+
+  it('emits IFCTASK with an IFCTASKTIME when dates are provided', () => {
+    const c = new IfcCreator();
+    const taskId = c.addIfcTask({
+      Name: 'Install walls',
+      PredefinedType: 'INSTALLATION',
+      ScheduleStart: '2024-05-06T08:00:00',
+      ScheduleFinish: '2024-05-10T17:00:00',
+      ScheduleDuration: 'P5D',
+      IsCritical: true,
+      IsMilestone: false,
+    });
+    const result = c.toIfc();
+    expect(taskId).toBeGreaterThan(0);
+    expect(result.content).toContain('IFCTASK');
+    expect(result.content).toContain('IFCTASKTIME');
+    expect(result.content).toContain("'Install walls'");
+    expect(result.content).toContain("'2024-05-06T08:00:00'");
+    expect(result.content).toContain("'P5D'");
+    expect(result.content).toContain('.INSTALLATION.');
+    // IsCritical = true is emitted as `.T.` inside the IfcTaskTime line.
+    const taskTimeLine = result.content
+      .split('\n')
+      .find((line) => line.startsWith('#') && line.includes('=IFCTASKTIME('));
+    expect(taskTimeLine).toContain('.T.');
+  });
+
+  it('skips IfcTaskTime when no time fields are present', () => {
+    const c = new IfcCreator();
+    c.addIfcTask({ Name: 'Handover', IsMilestone: true });
+    const result = c.toIfc();
+    expect(result.content).toContain('IFCTASK');
+    expect(result.content).not.toContain('IFCTASKTIME');
+  });
+
+  it('creates IfcRelSequence with IfcLagTime when TimeLag is supplied', () => {
+    const c = new IfcCreator();
+    const a = c.addIfcTask({ Name: 'A' });
+    const b = c.addIfcTask({ Name: 'B' });
+    const relId = c.addIfcRelSequence(a, b, {
+      SequenceType: 'FINISH_START',
+      TimeLag: 'P2D',
+      LagDurationType: 'WORKTIME',
+    });
+    const result = c.toIfc();
+    expect(relId).toBeGreaterThan(0);
+    expect(result.content).toContain('IFCRELSEQUENCE');
+    expect(result.content).toContain('IFCLAGTIME');
+    expect(result.content).toContain(".FINISH_START.");
+    expect(result.content).toContain("IFCDURATION('P2D')");
+  });
+
+  it('creates IfcRelSequence without a lag when TimeLag is omitted', () => {
+    const c = new IfcCreator();
+    const a = c.addIfcTask({ Name: 'A' });
+    const b = c.addIfcTask({ Name: 'B' });
+    c.addIfcRelSequence(a, b);
+    const result = c.toIfc();
+    expect(result.content).toContain('IFCRELSEQUENCE');
+    expect(result.content).not.toContain('IFCLAGTIME');
+  });
+
+  it('emits IFCRELASSIGNSTOCONTROL when assigning tasks to a schedule', () => {
+    const c = new IfcCreator();
+    const s = c.addIfcWorkSchedule({ Name: 'S', StartTime: '2024-01-01T00:00:00' });
+    const t1 = c.addIfcTask({ Name: 'T1' });
+    const t2 = c.addIfcTask({ Name: 'T2' });
+    c.assignTasksToWorkSchedule(s, [t1, t2]);
+    const result = c.toIfc();
+    expect(result.content).toContain('IFCRELASSIGNSTOCONTROL');
+    expect((result.content.match(/IFCRELASSIGNSTOCONTROL/g) ?? []).length).toBe(1);
+  });
+
+  it('emits IFCRELASSIGNSTOPROCESS when binding products to a task', () => {
+    const c = new IfcCreator();
+    const storey = c.addIfcBuildingStorey({ Name: 'L0', Elevation: 0 });
+    const w1 = c.addIfcWall(storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+    const w2 = c.addIfcWall(storey, { Start: [5, 0, 0], End: [5, 5, 0], Thickness: 0.2, Height: 3 });
+    const task = c.addIfcTask({
+      Name: 'Install',
+      PredefinedType: 'INSTALLATION',
+      ScheduleStart: '2024-05-01T08:00:00',
+      ScheduleFinish: '2024-05-05T17:00:00',
+    });
+    c.assignProductsToTask(task, [w1, w2]);
+    const result = c.toIfc();
+    expect(result.content).toContain('IFCRELASSIGNSTOPROCESS');
+  });
+
+  it('emits IFCRELNESTS when nesting child tasks under a parent', () => {
+    const c = new IfcCreator();
+    const parent = c.addIfcTask({ Name: 'Foundations' });
+    const child1 = c.addIfcTask({ Name: 'Excavation' });
+    const child2 = c.addIfcTask({ Name: 'Pour' });
+    c.nestTasks(parent, [child1, child2]);
+    const result = c.toIfc();
+    expect(result.content).toContain('IFCRELNESTS');
+  });
+
+  it('rejects empty id lists on assignment helpers', () => {
+    const c = new IfcCreator();
+    const s = c.addIfcWorkSchedule({ Name: 'S', StartTime: '2024-01-01T00:00:00' });
+    expect(() => c.assignTasksToWorkSchedule(s, [])).toThrow(/empty/);
+    const t = c.addIfcTask({ Name: 'T' });
+    expect(() => c.assignProductsToTask(t, [])).toThrow(/empty/);
+    expect(() => c.nestTasks(t, [])).toThrow(/empty/);
+  });
+});

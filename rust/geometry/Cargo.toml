@@ -11,14 +11,29 @@ categories = ["graphics", "parsing"]
 readme = "../../README.md"
 
 [features]
-default = []
-# csg = ["dep:manifold3d"]
+# Manifold is on by default for native consumers (server, desktop, CLI,
+# tests). The WASM crate (`ifc-lite-wasm`) explicitly opts out via
+# `default-features = false` because `manifold-csg-sys` cannot currently
+# compile to `wasm32-unknown-unknown` (upstream `wasm-cxx-shim` is
+# blocked on libc++ 18/20 incompatibilities — see
+# `docs/architecture/geometry-pipeline.md` "WASM status"). Keeping
+# Manifold on the native default ships the better CSG kernel to every
+# build that *can* take it without regressing the slim WASM bundle.
+default = ["manifold-csg"]
+# Use the Manifold (https://github.com/elalish/manifold) C++ kernel for
+# `subtract_mesh` / `union_mesh` / `intersection_mesh` instead of the
+# legacy in-tree BSP port (`bsp_csg.rs`). Removes the 24-polygon operand
+# cap and gives manifold-by-construction output.
+#
+# Native (Linux/macOS/Windows) only — see the note on `default` above.
+manifold-csg = ["dep:manifold-csg"]
+# Enable Manifold on `wasm32-unknown-unknown` (provisional support per
+# upstream — no exception runtime, no threading, requires LLVM 20+).
+# Implies `manifold-csg`.
+manifold-csg-wasm-uu = ["manifold-csg", "manifold-csg/unstable-wasm-uu"]
 debug_geometry = []
 
 [dependencies]
-
-# CSG operations for opening subtraction
-csgrs = { version = "0.20", default-features = false, features = ["earcut", "f64"] }
 
 # Triangulation
 earcutr = "0.4"
@@ -43,6 +58,12 @@ smallvec = "1.13"
 
 # Error handling
 thiserror = "1.0"
+
+# Optional Manifold CSG kernel (T1.1). Off by default; see the
+# `manifold-csg` feature above for the activation contract.
+# `default-features = false` drops TBB-backed parallelism, which doesn't
+# work on WASM anyway and isn't required for correctness on native.
+manifold-csg = { version = "0.1", default-features = false, optional = true }
 
 [dev-dependencies]
 approx = "0.5"

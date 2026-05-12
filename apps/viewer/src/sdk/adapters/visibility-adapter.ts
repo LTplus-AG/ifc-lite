@@ -28,6 +28,9 @@ function findDescendantNode(root: SpatialNode, expressId: number): SpatialNode |
  */
 function expandSpatialRef(ref: EntityRef, model: ModelLike): number[] {
   const dataStore = model.ifcDataStore;
+  // Native-metadata-only models have no parsed data store — visibility
+  // expansion isn't possible, fall back to the single ref.
+  if (!dataStore) return [ref.expressId];
   const typeName = dataStore.entities.getTypeName(ref.expressId) || '';
   if (!isSpatialStructureTypeName(typeName) || isSpaceLikeSpatialTypeName(typeName)) {
     return [ref.expressId];

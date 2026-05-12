@@ -24,7 +24,13 @@ tokio = { version = "1", features = ["full"] }
 
 # IFC processing (workspace crates)
 ifc-lite-core = { path = "../../rust/core" }
-ifc-lite-geometry = { path = "../../rust/geometry" }
+# NOTE: `default-features = false` skips the `manifold-csg` Cargo feature,
+# which pulls in `manifold-csg-sys` (a C++ kernel that requires a working
+# C++ cross-toolchain). The server binary only uses geometry types and
+# runs the legacy BSP CSG path, so this keeps cross-compile targets
+# (linux-arm64, linux-x64-musl) building without needing libstdc++ for
+# every triple. See rust/geometry/Cargo.toml for the full feature contract.
+ifc-lite-geometry = { path = "../../rust/geometry", default-features = false }
 ifc-lite-processing = { path = "../../rust/processing" }
 
 # Parallelism

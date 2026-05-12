@@ -170,8 +170,8 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
           {/* Material List */}
           {material.type === 'MaterialList' && material.materials && (
             <>
-              {material.materials.map((name, i) => (
-                <MaterialRow key={i} label={`Material ${i + 1}`} value={name} />
+              {material.materials.map((m, i) => (
+                <MaterialRow key={i} label={`Material ${i + 1}`} value={m.name} />
               ))}
             </>
           )}

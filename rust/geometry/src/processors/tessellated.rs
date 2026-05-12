@@ -102,6 +102,7 @@ impl GeometryProcessor for TriangulatedFaceSetProcessor {
             positions,
             normals: Vec::new(),
             indices,
+            rtc_applied: false,
         };
         // Validate: IFC files (especially Revit exports) may have indices beyond vertex count
         mesh.validate_indices();
@@ -529,6 +530,7 @@ impl PolygonalFaceSetProcessor {
             positions: flat_positions,
             normals: flat_normals,
             indices: flat_indices,
+            rtc_applied: false,
         }
     }
 }

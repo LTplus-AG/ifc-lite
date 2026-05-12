@@ -111,8 +111,14 @@ export const PIPELINE_CONSTANTS = {
   DEFAULT_SAMPLE_COUNT: 4,
 
   // Depth buffer
-  /** Depth format for reverse-Z */
-  DEPTH_FORMAT: 'depth32float' as const,
+  /**
+   * Depth/stencil format used by RenderPipeline. Switched from depth32float
+   * to depth24plus-stencil8 when the 3D section work introduced a render
+   * pass shared by the main opaque, the section-plane preview, and the 2D
+   * overlay cap — WebGPU requires a single depth-stencil format across all
+   * pipelines that write to the same pass attachment.
+   */
+  DEPTH_FORMAT: 'depth24plus-stencil8' as const,
 } as const;
 
 // ============================================================================

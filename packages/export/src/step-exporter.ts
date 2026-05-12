@@ -9,23 +9,32 @@
  * Supports applying property and root attribute mutations before export.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcAttributeValue } from '@ifc-lite/parser';
 import {
   EntityExtractor,
   generateHeader,
   getAttributeNames,
   serializeValue,
   ref,
-  type StepValue,
   type MapConversion,
   type ProjectedCRS,
 } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { PropertySet, Property, QuantitySet } from '@ifc-lite/data';
-import { PropertyValueType, QuantityType } from '@ifc-lite/data';
+import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import {
+  escapeStepString,
+  toStepReal,
+  quantityTypeToIfcType,
+  serializePropertyValue,
+  serializeAttributeValue,
+  serializeStepArgs,
+  serializeStepValue,
+  splitTopLevelArgs,
+  splitTopLevelStepArguments,
+} from './step-serialization.js';
 
 /**
  * Options for STEP export
@@ -120,8 +129,11 @@ export class StepExporter {
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView) {
     this.dataStore = dataStore;
     this.mutationView = mutationView || null;
-    // Start new IDs after the highest existing ID
-    this.nextExpressId = this.findMaxExpressId() + 1;
+    const maxExisting = this.findMaxExpressId();
+    const overlayWatermark = typeof mutationView?.peekNextExpressId === 'function'
+      ? mutationView.peekNextExpressId() - 1
+      : 0;
+    this.nextExpressId = Math.max(maxExisting, overlayWatermark) + 1;
     this.entityExtractor = dataStore.source ? new EntityExtractor(dataStore.source) : null;
   }
 
@@ -206,6 +218,13 @@ export class StepExporter {
         targetMap.get(mutation.entityId)!.add(mutation.psetName);
       }
 
+      // Build a reverse index of IfcRelDefinesByProperties → (relId, psetId)
+      // pairs keyed on each related entity. The two property/quantity loops
+      // below previously walked every entity in `entityIndex.byId` per
+      // modified entity (O(E·N)); the index keeps the per-entity step
+      // O(K) where K is the number of rels referencing that entity.
+      const relDefinesByEntity = this.buildRelDefinesByPropertiesIndex();
+
       // Collect modified property sets and find original psets to skip
       for (const [entityId, psetNames] of entityPropMutations) {
         modifiedEntities.add(entityId);
@@ -221,29 +240,23 @@ export class StepExporter {
           newPropertySets.push({ entityId, psets: relevantPsets });
         }
 
-        // Find original property set IDs and relationship IDs to skip
-        // Look for IfcRelDefinesByProperties that reference this entity
-        for (const [relId, relRef] of this.dataStore.entityIndex.byId) {
-          const relType = relRef.type.toUpperCase();
-          if (relType === 'IFCRELDEFINESBYPROPERTIES') {
-            // Parse the relationship to check if it references our entity
-            const relatedEntities = this.getRelatedEntities(relId);
-            const relatedPsetId = this.getRelatedPropertySet(relId);
-
-            if (relatedEntities.includes(entityId) && relatedPsetId) {
-              // Check if this pset is one we're modifying
-              const psetName = this.getPropertySetName(relatedPsetId);
-              if (psetName) {
-                relDefinedPsetNames.add(psetName);
-              }
-              if (psetName && psetNames.has(psetName)) {
-                skipRelationshipIds.add(relId);
-                skipPropertySetIds.add(relatedPsetId);
-                // Also skip the individual properties in this pset
-                const propIds = this.getPropertyIdsInSet(relatedPsetId);
-                for (const propId of propIds) {
-                  skipPropertySetIds.add(propId);
-                }
+        // Find original property set IDs and relationship IDs to skip — look
+        // up only the IfcRelDefinesByProperties rels that reference this entity.
+        const rels = relDefinesByEntity.get(entityId);
+        if (rels) {
+          for (const { relId, psetId: relatedPsetId } of rels) {
+            // Check if this pset is one we're modifying
+            const psetName = this.getPropertySetName(relatedPsetId);
+            if (psetName) {
+              relDefinedPsetNames.add(psetName);
+            }
+            if (psetName && psetNames.has(psetName)) {
+              skipRelationshipIds.add(relId);
+              skipPropertySetIds.add(relatedPsetId);
+              // Also skip the individual properties in this pset
+              const propIds = this.getPropertyIdsInSet(relatedPsetId);
+              for (const propId of propIds) {
+                skipPropertySetIds.add(propId);
               }
             }
           }
@@ -291,22 +304,18 @@ export class StepExporter {
           newQuantitySets.push({ entityId, qsets: relevantQsets });
         }
 
-        // Skip original quantity set entities (IfcElementQuantity)
-        for (const [relId, relRef] of this.dataStore.entityIndex.byId) {
-          const relType = relRef.type.toUpperCase();
-          if (relType === 'IFCRELDEFINESBYPROPERTIES') {
-            const relatedEntities = this.getRelatedEntities(relId);
-            const relatedPsetId = this.getRelatedPropertySet(relId);
-
-            if (relatedEntities.includes(entityId) && relatedPsetId) {
-              const qsetName = this.getElementQuantityName(relatedPsetId);
-              if (qsetName && qsetNames.has(qsetName)) {
-                skipRelationshipIds.add(relId);
-                skipPropertySetIds.add(relatedPsetId);
-                const quantIds = this.getPropertyIdsInSet(relatedPsetId);
-                for (const quantId of quantIds) {
-                  skipPropertySetIds.add(quantId);
-                }
+        // Skip original quantity set entities (IfcElementQuantity).
+        // Same per-entity index lookup as the property branch above.
+        const rels = relDefinesByEntity.get(entityId);
+        if (rels) {
+          for (const { relId, psetId: relatedPsetId } of rels) {
+            const qsetName = this.getElementQuantityName(relatedPsetId);
+            if (qsetName && qsetNames.has(qsetName)) {
+              skipRelationshipIds.add(relId);
+              skipPropertySetIds.add(relatedPsetId);
+              const quantIds = this.getPropertyIdsInSet(relatedPsetId);
+              for (const quantId of quantIds) {
+                skipPropertySetIds.add(quantId);
               }
             }
           }
@@ -379,12 +388,12 @@ export class StepExporter {
         const crs = gm.projectedCRS;
         const crsId = this.nextExpressId++;
         // IfcProjectedCRS(Name, Description, GeodeticDatum, VerticalDatum, MapProjection, MapZone, MapUnit)
-        const name = crs.name ? `'${this.escapeStepString(String(crs.name))}'` : '$';
-        const desc = crs.description ? `'${this.escapeStepString(String(crs.description))}'` : '$';
-        const datum = crs.geodeticDatum ? `'${this.escapeStepString(String(crs.geodeticDatum))}'` : '$';
-        const vDatum = crs.verticalDatum ? `'${this.escapeStepString(String(crs.verticalDatum))}'` : '$';
-        const proj = crs.mapProjection ? `'${this.escapeStepString(String(crs.mapProjection))}'` : '$';
-        const zone = crs.mapZone ? `'${this.escapeStepString(String(crs.mapZone))}'` : '$';
+        const name = crs.name ? `'${escapeStepString(String(crs.name))}'` : '$';
+        const desc = crs.description ? `'${escapeStepString(String(crs.description))}'` : '$';
+        const datum = crs.geodeticDatum ? `'${escapeStepString(String(crs.geodeticDatum))}'` : '$';
+        const vDatum = crs.verticalDatum ? `'${escapeStepString(String(crs.verticalDatum))}'` : '$';
+        const proj = crs.mapProjection ? `'${escapeStepString(String(crs.mapProjection))}'` : '$';
+        const zone = crs.mapZone ? `'${escapeStepString(String(crs.mapZone))}'` : '$';
         const mapUnitRef = crs.mapUnit
           ? `#${this.resolveMapUnitReference(String(crs.mapUnit), newGeorefLines)}`
           : '$';
@@ -397,12 +406,12 @@ export class StepExporter {
         if (contextId) {
           const mc = gm.mapConversion || {};
           const mcId = this.nextExpressId++;
-          const eastings = this.toStepReal(Number(mc.eastings) || 0);
-          const northings = this.toStepReal(Number(mc.northings) || 0);
-          const height = this.toStepReal(Number(mc.orthogonalHeight) || 0);
-          const abscissa = mc.xAxisAbscissa !== undefined ? this.toStepReal(Number(mc.xAxisAbscissa)) : '$';
-          const ordinate = mc.xAxisOrdinate !== undefined ? this.toStepReal(Number(mc.xAxisOrdinate)) : '$';
-          const scale = mc.scale !== undefined ? this.toStepReal(Number(mc.scale)) : '$';
+          const eastings = toStepReal(Number(mc.eastings) || 0);
+          const northings = toStepReal(Number(mc.northings) || 0);
+          const height = toStepReal(Number(mc.orthogonalHeight) || 0);
+          const abscissa = mc.xAxisAbscissa !== undefined ? toStepReal(Number(mc.xAxisAbscissa)) : '$';
+          const ordinate = mc.xAxisOrdinate !== undefined ? toStepReal(Number(mc.xAxisOrdinate)) : '$';
+          const scale = mc.scale !== undefined ? toStepReal(Number(mc.scale)) : '$';
           // IfcMapConversion(SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale)
           newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${crsId},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
           newEntityCount++;
@@ -415,12 +424,12 @@ export class StepExporter {
         if (contextId) {
           const mc = gm.mapConversion;
           const mcId = this.nextExpressId++;
-          const eastings = this.toStepReal(Number(mc.eastings) || 0);
-          const northings = this.toStepReal(Number(mc.northings) || 0);
-          const height = this.toStepReal(Number(mc.orthogonalHeight) || 0);
-          const abscissa = mc.xAxisAbscissa !== undefined ? this.toStepReal(Number(mc.xAxisAbscissa)) : '$';
-          const ordinate = mc.xAxisOrdinate !== undefined ? this.toStepReal(Number(mc.xAxisOrdinate)) : '$';
-          const scale = mc.scale !== undefined ? this.toStepReal(Number(mc.scale)) : '$';
+          const eastings = toStepReal(Number(mc.eastings) || 0);
+          const northings = toStepReal(Number(mc.northings) || 0);
+          const height = toStepReal(Number(mc.orthogonalHeight) || 0);
+          const abscissa = mc.xAxisAbscissa !== undefined ? toStepReal(Number(mc.xAxisAbscissa)) : '$';
+          const ordinate = mc.xAxisOrdinate !== undefined ? toStepReal(Number(mc.xAxisOrdinate)) : '$';
+          const scale = mc.scale !== undefined ? toStepReal(Number(mc.scale)) : '$';
           newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${existingCrsIds[0]},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
           newEntityCount++;
         } else {
@@ -429,8 +438,22 @@ export class StepExporter {
       }
     }
 
-    // If delta only, only export modified entities
-    if (options.deltaOnly && modifiedEntities.size === 0) {
+    // If delta only, only export modified entities. Overlay-created entities
+    // also count — without this, `createEntity()`-only edits would silently
+    // drop out of delta exports.
+    const overlayNewEntityCount = (
+      this.mutationView
+      && options.applyMutations !== false
+      && typeof this.mutationView.getNewEntities === 'function'
+    ) ? this.mutationView.getNewEntities().length : 0;
+    // Georef-only deltas (newGeorefLines populated but no entity changes) must
+    // still produce a non-empty DATA section.
+    if (
+      options.deltaOnly
+      && modifiedEntities.size === 0
+      && overlayNewEntityCount === 0
+      && newGeorefLines.length === 0
+    ) {
       const emptyContent = new TextEncoder().encode(header + 'DATA;\nENDSEC;\nEND-ISO-10303-21;\n');
       return {
         content: emptyContent,
@@ -473,7 +496,18 @@ export class StepExporter {
       const source = this.dataStore.source;
 
       // Extract existing entities from source
+      const overlayActive = !!this.mutationView && (options.applyMutations !== false);
       for (const [expressId, entityRef] of this.dataStore.entityIndex.byId) {
+        // Skip entities deleted via the overlay (only when mutations are applied)
+        if (overlayActive && typeof this.mutationView!.isDeleted === 'function' && this.mutationView!.isDeleted(expressId)) {
+          continue;
+        }
+
+        // Skip overlay-only entities — emitted by the new-entities pass below
+        if (entityRef.byteLength === 0 || entityRef.byteOffset < 0) {
+          continue;
+        }
+
         // Skip entities outside the visible closure
         if (allowedEntityIds !== null && !allowedEntityIds.has(expressId)) {
           continue;
@@ -501,9 +535,20 @@ export class StepExporter {
         const entityText = decoder.decode(
           source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
         );
-        const nextEntityText = modifiedAttributes.has(expressId)
+        let nextEntityText = modifiedAttributes.has(expressId)
           ? this.applyAttributeMutations(entityText, entityType, modifiedAttributes.get(expressId)!)
           : entityText;
+
+        const positional = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
+          ? this.mutationView!.getPositionalMutationsForEntity(expressId)
+          : null;
+        if (positional && positional.size > 0) {
+          nextEntityText = this.applyPositionalMutations(nextEntityText, positional);
+          if (!modifiedEntities.has(expressId)) {
+            modifiedEntities.add(expressId);
+            modifiedEntityCount++;
+          }
+        }
 
         // Apply schema conversion if exporting to a different schema version
         if (converting) {
@@ -570,6 +615,41 @@ export class StepExporter {
     // Add new georeferencing entities (IfcProjectedCRS, IfcMapConversion)
     for (const line of newGeorefLines) {
       entities.push(line);
+    }
+
+    // Add overlay-created entities (store.addEntity / mutationView.createEntity).
+    // Apply the same filters as the source-iteration pass so newly-created
+    // beams/slabs don't smuggle their geometry helpers (IfcCartesianPoint,
+    // IfcExtrudedAreaSolid, etc.) past `includeGeometry:false` /
+    // `exportPropertiesOnly()` modes.
+    if (
+      this.mutationView
+      && (options.applyMutations !== false)
+      && typeof this.mutationView.getNewEntities === 'function'
+    ) {
+      for (const entity of this.mutationView.getNewEntities()) {
+        // STEP requires UPPERCASE entity type tokens. `NewEntity.type` is
+        // stored in canonical PascalCase per the public API contract; the
+        // upper-case happens here at the file-format boundary.
+        const upperType = entity.type.toUpperCase();
+        if (options.includeGeometry === false && this.isGeometryEntity(upperType)) {
+          continue;
+        }
+        if (allowedEntityIds !== null && !allowedEntityIds.has(entity.expressId)) {
+          continue;
+        }
+        const line = `#${entity.expressId}=${upperType}(${serializeStepArgs(entity.attributes)});`;
+        if (converting) {
+          const converted = convertStepLine(line, sourceSchema, schema);
+          if (converted !== null) {
+            entities.push(converted);
+            newEntityCount++;
+          }
+        } else {
+          entities.push(line);
+          newEntityCount++;
+        }
+      }
     }
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
@@ -642,12 +722,12 @@ export class StepExporter {
         const propId = this.nextExpressId++;
         count++;
 
-        const valueStr = this.serializePropertyValue(prop.value, prop.type);
+        const valueStr = serializePropertyValue(prop.value, prop.type);
         const unitId = prop.unit ? this.findUnitId(prop.unit) : null;
         const unitStr = unitId !== null ? ref(unitId) : null;
 
         // #ID=IFCPROPERTYSINGLEVALUE('Name',$,Value,Unit);
-        const line = `#${propId}=IFCPROPERTYSINGLEVALUE('${this.escapeStepString(prop.name)}',$,${valueStr},${unitStr ? serializeValue(unitStr) : '$'});`;
+        const line = `#${propId}=IFCPROPERTYSINGLEVALUE('${escapeStepString(prop.name)}',$,${valueStr},${unitStr ? serializeValue(unitStr) : '$'});`;
         lines.push(line);
         propertyIds.push(propId);
       }
@@ -660,7 +740,7 @@ export class StepExporter {
       const globalId = this.generateGlobalId();
 
       // #ID=IFCPROPERTYSET('GlobalId',$,'Name',$,(#props));
-      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',$,'${this.escapeStepString(pset.name)}',$,(${propRefs}));`;
+      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',$,'${escapeStepString(pset.name)}',$,(${propRefs}));`;
       lines.push(psetLine);
 
       if (typeOwnedPsetNames?.has(pset.name)) {
@@ -697,10 +777,10 @@ export class StepExporter {
         const qId = this.nextExpressId++;
         count++;
 
-        const ifcType = this.quantityTypeToIfcType(q.type);
+        const ifcType = quantityTypeToIfcType(q.type);
         // #ID=IFCQUANTITYLENGTH('Name',$,$,Value,$);
-        const val = this.toStepReal(q.value);
-        const line = `#${qId}=${ifcType}('${this.escapeStepString(q.name)}',$,$,${val},$);`;
+        const val = toStepReal(q.value);
+        const line = `#${qId}=${ifcType}('${escapeStepString(q.name)}',$,$,${val},$);`;
         lines.push(line);
         quantityIds.push(qId);
       }
@@ -713,7 +793,7 @@ export class StepExporter {
       const globalId = this.generateGlobalId();
 
       // #ID=IFCELEMENTQUANTITY('GlobalId',$,'Name',$,$,(#quants));
-      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',$,'${this.escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
+      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',$,'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
       lines.push(qsetLine);
 
       // Create IfcRelDefinesByProperties to link qset to entity
@@ -726,67 +806,6 @@ export class StepExporter {
     }
 
     return { lines, count };
-  }
-
-  /**
-   * Map QuantityType to IFC STEP entity type
-   */
-  private quantityTypeToIfcType(type: QuantityType): string {
-    switch (type) {
-      case QuantityType.Length: return 'IFCQUANTITYLENGTH';
-      case QuantityType.Area: return 'IFCQUANTITYAREA';
-      case QuantityType.Volume: return 'IFCQUANTITYVOLUME';
-      case QuantityType.Count: return 'IFCQUANTITYCOUNT';
-      case QuantityType.Weight: return 'IFCQUANTITYWEIGHT';
-      case QuantityType.Time: return 'IFCQUANTITYTIME';
-      default: return 'IFCQUANTITYCOUNT';
-    }
-  }
-
-  /**
-   * Serialize a property value to STEP format
-   */
-  private serializePropertyValue(value: unknown, type: PropertyValueType): string {
-    if (value === null || value === undefined) {
-      return '$';
-    }
-
-    switch (type) {
-      case PropertyValueType.String:
-      case PropertyValueType.Label:
-      case PropertyValueType.Text:
-        return `IFCLABEL('${this.escapeStepString(String(value))}')`;
-
-      case PropertyValueType.Identifier:
-        return `IFCIDENTIFIER('${this.escapeStepString(String(value))}')`;
-
-      case PropertyValueType.Real:
-        const num = Number(value);
-        if (!Number.isFinite(num)) return '$';
-        return `IFCREAL(${num.toString().includes('.') ? num : num + '.'})`;
-
-      case PropertyValueType.Integer:
-        return `IFCINTEGER(${Math.round(Number(value))})`;
-
-      case PropertyValueType.Boolean:
-      case PropertyValueType.Logical:
-        if (value === true) return `IFCBOOLEAN(.T.)`;
-        if (value === false) return `IFCBOOLEAN(.F.)`;
-        return `IFCLOGICAL(.U.)`;
-
-      case PropertyValueType.Enum:
-        return `.${String(value).toUpperCase()}.`;
-
-      case PropertyValueType.List:
-        if (Array.isArray(value)) {
-          const items = value.map(v => this.serializePropertyValue(v, PropertyValueType.String));
-          return `(${items.join(',')})`;
-        }
-        return '$';
-
-      default:
-        return `IFCLABEL('${this.escapeStepString(String(value))}')`;
-    }
   }
 
   /**
@@ -808,13 +827,13 @@ export class StepExporter {
       return entityText;
     }
 
-    const args = this.splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+    const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
     let changed = false;
 
     for (const [attrName, value] of attributeMutations) {
       const index = attrNames.indexOf(attrName);
       if (index < 0 || index >= args.length) continue;
-      args[index] = this.serializeAttributeValue(value, args[index]);
+      args[index] = serializeAttributeValue(value, args[index]);
       changed = true;
     }
 
@@ -825,84 +844,29 @@ export class StepExporter {
     return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
   }
 
-  private serializeAttributeValue(value: string, currentToken: string): string {
-    const trimmed = value.trim();
-    const current = currentToken.trim();
+  /**
+   * Apply positional STEP argument overrides to an entity line.
+   * Used for non-IfcRoot edits (e.g. profile dimensions) where attributes
+   * have no symbolic names. Indexes that fall outside the existing arg list
+   * are silently ignored.
+   */
+  private applyPositionalMutations(
+    entityText: string,
+    positionals: Map<number, IfcAttributeValue>,
+  ): string {
+    const openParen = entityText.indexOf('(');
+    const closeParen = entityText.lastIndexOf(');');
+    if (openParen < 0 || closeParen < openParen) return entityText;
 
-    if (value === '') return '$';
-    if (trimmed === '$' || trimmed === '*') return trimmed;
-    if (/^#\d+$/.test(trimmed)) return trimmed;
-
-    if (/^\.[A-Z0-9_]+\.$/i.test(current) || /^\.[A-Z0-9_]+\.$/i.test(trimmed)) {
-      return `.${trimmed.replace(/^\./, '').replace(/\.$/, '').toUpperCase()}.`;
+    const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+    let changed = false;
+    for (const [index, value] of positionals) {
+      if (index < 0 || index >= args.length) continue;
+      args[index] = serializeStepValue(value);
+      changed = true;
     }
-
-    if (/^(?:\.T\.|\.F\.|\.U\.)$/i.test(current)) {
-      const normalized = trimmed.toLowerCase();
-      if (normalized === 'true' || normalized === '.t.') return '.T.';
-      if (normalized === 'false' || normalized === '.f.') return '.F.';
-      return '.U.';
-    }
-
-    if (/^-?\d+(?:\.\d+)?(?:E[+-]?\d+)?$/i.test(trimmed) && /^-?\d/.test(current)) {
-      const numberValue = Number(trimmed);
-      if (!Number.isFinite(numberValue)) return '$';
-      return current.includes('.') || /E/i.test(current)
-        ? this.toStepReal(numberValue)
-        : String(numberValue);
-    }
-
-    return serializeValue(value);
-  }
-
-  private splitTopLevelArgs(text: string): string[] {
-    const parts: string[] = [];
-    let current = '';
-    let depth = 0;
-    let inString = false;
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      current += char;
-
-      if (inString) {
-        if (char === '\'') {
-          if (text[i + 1] === '\'') {
-            current += text[i + 1];
-            i++;
-          } else {
-            inString = false;
-          }
-        }
-        continue;
-      }
-
-      if (char === '\'') {
-        inString = true;
-        continue;
-      }
-
-      if (char === '(') {
-        depth++;
-        continue;
-      }
-
-      if (char === ')') {
-        depth--;
-        continue;
-      }
-
-      if (char === ',' && depth === 0) {
-        parts.push(current.slice(0, -1).trim());
-        current = '';
-      }
-    }
-
-    if (current.trim() || text.endsWith(',')) {
-      parts.push(current.trim());
-    }
-
-    return parts;
+    if (!changed) return entityText;
+    return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
   }
 
   private resolveMapUnitReference(unitName: string, newGeorefLines: string[]): number {
@@ -927,7 +891,7 @@ export class StepExporter {
       const name = normalized === 'US SURVEY FOOT' ? 'US SURVEY FOOT' : 'FOOT';
       newGeorefLines.push(`#${dimId}=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);`);
       newGeorefLines.push(`#${siUnitId}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);`);
-      newGeorefLines.push(`#${measureId}=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(${this.toStepReal(factor)}),#${siUnitId});`);
+      newGeorefLines.push(`#${measureId}=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(${toStepReal(factor)}),#${siUnitId});`);
       newGeorefLines.push(`#${convUnitId}=IFCCONVERSIONBASEDUNIT(#${dimId},.LENGTHUNIT.,'${name}',#${measureId});`);
       return convUnitId;
     }
@@ -1018,25 +982,6 @@ export class StepExporter {
   }
 
   /**
-   * Convert a number to a valid STEP REAL literal.
-   * Handles NaN/Infinity (→ 0.) and ensures a decimal point is present.
-   */
-  private toStepReal(v: number): string {
-    if (!Number.isFinite(v)) return '0.';
-    const s = v.toString();
-    return s.includes('.') ? s : s + '.';
-  }
-
-  /**
-   * Escape a string for STEP format
-   */
-  private escapeStepString(str: string): string {
-    return str
-      .replace(/\\/g, '\\\\')
-      .replace(/'/g, "''");
-  }
-
-  /**
    * Generate a new IFC GlobalId (22 character base64)
    */
   private generateGlobalId(): string {
@@ -1099,6 +1044,30 @@ export class StepExporter {
       'IFCCOLOURRGB',
     ]);
     return geometryTypes.has(type);
+  }
+
+  /**
+   * Build a one-shot reverse index of every IfcRelDefinesByProperties in
+   * the source: for each related entity, list the rels and property/quantity
+   * sets that reference it. Used by the export pre-pass so the per-entity
+   * "find owning rels" step is O(K) rather than O(N) per modified entity.
+   */
+  private buildRelDefinesByPropertiesIndex(): Map<number, Array<{ relId: number; psetId: number }>> {
+    const out = new Map<number, Array<{ relId: number; psetId: number }>>();
+    for (const [relId, relRef] of this.dataStore.entityIndex.byId) {
+      if (relRef.type.toUpperCase() !== 'IFCRELDEFINESBYPROPERTIES') continue;
+      const psetId = this.getRelatedPropertySet(relId);
+      if (!psetId) continue;
+      for (const entityId of this.getRelatedEntities(relId)) {
+        let bucket = out.get(entityId);
+        if (!bucket) {
+          bucket = [];
+          out.set(entityId, bucket);
+        }
+        bucket.push({ relId, psetId });
+      }
+    }
+    return out;
   }
 
   /**
@@ -1284,52 +1253,13 @@ export class StepExporter {
     if (!match) return null;
 
     const [, prefix, attrsText, suffix] = match;
-    const attrs = this.splitTopLevelStepArguments(attrsText);
+    const attrs = splitTopLevelStepArguments(attrsText);
     if (attrIndex >= attrs.length) return null;
 
     attrs[attrIndex] = replacement;
     return `${prefix}${attrs.join(',')}${suffix}`;
   }
 
-  /**
-   * Split a STEP argument list on top-level commas while preserving nested syntax.
-   */
-  private splitTopLevelStepArguments(input: string): string[] {
-    const parts: string[] = [];
-    let current = '';
-    let depth = 0;
-    let inString = false;
-
-    for (let i = 0; i < input.length; i++) {
-      const char = input[i];
-
-      if (char === "'") {
-        current += char;
-        if (inString && i + 1 < input.length && input[i + 1] === "'") {
-          current += input[i + 1];
-          i++;
-          continue;
-        }
-        inString = !inString;
-        continue;
-      }
-
-      if (!inString) {
-        if (char === '(') depth++;
-        else if (char === ')') depth--;
-        else if (char === ',' && depth === 0) {
-          parts.push(current);
-          current = '';
-          continue;
-        }
-      }
-
-      current += char;
-    }
-
-    parts.push(current);
-    return parts;
-  }
 }
 
 /**

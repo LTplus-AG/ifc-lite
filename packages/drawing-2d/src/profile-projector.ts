@@ -21,8 +21,8 @@
  * world space (metres), consistent with `MeshData.positions`.
  */
 
-import type { ProfileEntry, SectionPlaneConfig, DrawingLine, LineCategory, Vec3 } from './types';
-import { projectTo2D } from './math';
+import type { ProfileEntry, SectionPlaneConfig, DrawingLine, LineCategory, Vec3 } from './types.js';
+import { projectTo2D } from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API

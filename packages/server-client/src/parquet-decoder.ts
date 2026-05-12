@@ -9,11 +9,13 @@
  * Uses parquet-wasm for efficient Parquet parsing in the browser.
  */
 
-import type { MeshData } from './types';
+import type { MeshData } from './types.js';
+
+// Ambient types in vendor-types.d.ts cover parquet-wasm and apache-arrow APIs.
 
 // WASM initialization state
 let parquetInitialized = false;
-let parquetModule: any = null;
+let parquetModule: typeof import('parquet-wasm/esm/arrow2.js') | null = null;
 
 /**
  * Ensure parquet-wasm WASM module is initialized.
@@ -28,11 +30,10 @@ export async function ensureParquetInit() {
 
   console.log('[parquet-decoder] Starting WASM initialization...');
 
-  let parquet: any;
+  let parquet: typeof import('parquet-wasm/esm/arrow2.js') | undefined;
 
   // Strategy 1: Try ESM build with explicit WASM URL (works with Vite)
   try {
-    // @ts-ignore - Import the ESM module
     parquet = await import('parquet-wasm/esm/arrow2.js');
     console.log('[parquet-decoder] Imported ESM build');
 
@@ -41,7 +42,6 @@ export async function ensureParquetInit() {
       console.log('[parquet-decoder] Calling ESM init to load WASM...');
 
       // Get the WASM file URL - Vite handles this with ?url suffix
-      // @ts-ignore
       const wasmModule = await import('parquet-wasm/esm/arrow2_bg.wasm?url');
       const wasmUrl = wasmModule.default;
       console.log('[parquet-decoder] Loading WASM from:', wasmUrl);
@@ -65,7 +65,6 @@ export async function ensureParquetInit() {
 
   // Strategy 2: Try web build with fetch (alternative for browsers)
   try {
-    // @ts-ignore
     parquet = await import('parquet-wasm/esm/arrow2.js');
 
     if (typeof parquet.default === 'function') {
@@ -155,22 +154,18 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
   const indexParquetData = new Uint8Array(data, offset, indexParquetLen);
 
   // Parse Parquet tables
-  // @ts-ignore - parquet-wasm API
   const meshTable = parquet.readParquet(meshParquetData);
-  // @ts-ignore - parquet-wasm API
   const vertexTable = parquet.readParquet(vertexParquetData);
-  // @ts-ignore - parquet-wasm API
   const indexTable = parquet.readParquet(indexParquetData);
 
-  // Convert to Arrow tables for easier access
-  // @ts-ignore - Apache Arrow types
-  const arrow = await import('apache-arrow');
+  // Convert to Arrow tables for easier access. apache-arrow's browser
+  // export map hides the `.d.ts` from TS5's strict resolver — `any`
+  // here mirrors what the rest of server-client does.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const arrow: any = await import('apache-arrow');
 
-  // @ts-ignore - parquet-wasm returns Arrow IPC stream
   const meshArrow = arrow.tableFromIPC(meshTable.intoIPCStream());
-  // @ts-ignore
   const vertexArrow = arrow.tableFromIPC(vertexTable.intoIPCStream());
-  // @ts-ignore
   const indexArrow = arrow.tableFromIPC(indexTable.intoIPCStream());
 
   // Extract columns from mesh table
@@ -242,10 +237,10 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
 
     meshes[i] = {
       express_id: expressIds[i],
-      ifc_type: ifcTypes?.get(i) ?? 'Unknown',
-      positions: positions as any,
-      normals: normals as any,
-      indices: indices as any,
+      ifc_type: (ifcTypes?.get(i) as string) ?? 'Unknown',
+      positions,
+      normals,
+      indices,
       color: [colorR[i], colorG[i], colorB[i], colorA[i]],
     };
   }
@@ -297,8 +292,10 @@ export async function decodeOptimizedParquetGeometry(
 ): Promise<MeshData[]> {
   // Initialize WASM module (only runs once)
   const parquet = await ensureParquetInit();
-  // @ts-ignore - Apache Arrow types
-  const arrow = await import('apache-arrow');
+  // apache-arrow's browser export map hides the `.d.ts` from TS5's
+  // strict resolver — fall back to `any` for the dynamic import.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const arrow: any = await import('apache-arrow');
 
   const view = new DataView(data);
   let offset = 0;
@@ -338,27 +335,17 @@ export async function decodeOptimizedParquetGeometry(
   const indexData = new Uint8Array(data, offset, indexLen);
 
   // Parse Parquet tables
-  // @ts-ignore
   const instanceTable = parquet.readParquet(instanceData);
-  // @ts-ignore
   const meshTable = parquet.readParquet(meshData);
-  // @ts-ignore
   const materialTable = parquet.readParquet(materialData);
-  // @ts-ignore
   const vertexTable = parquet.readParquet(vertexData);
-  // @ts-ignore
   const indexTable = parquet.readParquet(indexData);
 
   // Convert to Arrow
-  // @ts-ignore
   const instanceArrow = arrow.tableFromIPC(instanceTable.intoIPCStream());
-  // @ts-ignore
   const meshArrow = arrow.tableFromIPC(meshTable.intoIPCStream());
-  // @ts-ignore
   const materialArrow = arrow.tableFromIPC(materialTable.intoIPCStream());
-  // @ts-ignore
   const vertexArrow = arrow.tableFromIPC(vertexTable.intoIPCStream());
-  // @ts-ignore
   const indexArrow = arrow.tableFromIPC(indexTable.intoIPCStream());
 
   // Extract instance columns
@@ -439,10 +426,10 @@ export async function decodeOptimizedParquetGeometry(
     // Convert byte colors to float [0-1]
     meshes[i] = {
       express_id: entityIds[i],
-      ifc_type: ifcTypes?.get(i) ?? 'Unknown',
-      positions: positions as any,
-      normals: normals as any,
-      indices: meshIndicesArray as any,
+      ifc_type: (ifcTypes?.get(i) as string) ?? 'Unknown',
+      positions,
+      normals,
+      indices: meshIndicesArray,
       color: [matR[materialIdx] / 255, matG[materialIdx] / 255, matB[materialIdx] / 255, matA[materialIdx] / 255],
     };
   }

@@ -20,7 +20,7 @@ import { DATA_DEFAULTS } from '../constants.js';
  * consistent.  The types below describe the minimal ModelSlice surface
  * that dataSlice accesses through the merged Zustand state.
  */
-interface DataCrossSliceState {
+export interface DataCrossSliceState {
   activeModelId: string | null;
   models: Map<string, FederatedModel>;
 }

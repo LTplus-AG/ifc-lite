@@ -108,7 +108,6 @@ export class FederationRegistry {
   toGlobalId(modelId: string, expressId: number): number {
     const range = this.modelRanges.get(modelId);
     if (!range) {
-      console.warn(`[FederationRegistry] Unknown model: ${modelId}, returning expressId unchanged`);
       return expressId;
     }
     return expressId + range.offset;

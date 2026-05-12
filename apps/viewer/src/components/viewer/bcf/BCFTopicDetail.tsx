@@ -215,12 +215,12 @@ export function BCFTopicDetail({
                           <img
                             src={vp.snapshot}
                             alt="Viewpoint"
-                            className="w-full aspect-video object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            className="w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => onActivateViewpoint(vp)}
                           />
                         ) : (
                           <div
-                            className="w-full aspect-video bg-muted flex items-center justify-center cursor-pointer hover:bg-muted/80 transition-colors"
+                            className="w-full aspect-video bg-muted flex items-center justify-center cursor-pointer hover:bg-muted/80 transition-colors min-h-[120px]"
                             onClick={() => onActivateViewpoint(vp)}
                           >
                             <Camera className="h-6 w-6 text-muted-foreground" />
@@ -294,7 +294,7 @@ export function BCFTopicDetail({
                         <img
                           src={associatedViewpoint.snapshot}
                           alt="Associated viewpoint"
-                          className="w-full h-16 object-cover"
+                          className="w-full max-h-24 object-contain bg-muted"
                         />
                       </div>
                     )}
@@ -327,7 +327,7 @@ export function BCFTopicDetail({
               <img
                 src={selectedViewpoint.snapshot}
                 alt="Selected viewpoint"
-                className="w-10 h-10 object-cover rounded"
+                className="w-12 h-10 object-contain rounded bg-muted"
               />
             )}
             <div className="flex-1 min-w-0">

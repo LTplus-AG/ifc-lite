@@ -15,9 +15,19 @@ import type {
   GeometryStats,
   StreamingOptions,
   GeometryBatch,
-  NativeBatchTelemetry,
 } from './platform-bridge.js';
-import type { MeshData, CoordinateInfo } from './types.js';
+import type { MeshData } from './types.js';
+import { decodePackedGeometryCacheShard } from './packed-geometry-decoder.js';
+import {
+  convertNativeMesh,
+  convertPackedNativeBatch,
+  convertNativeBatchTelemetry,
+  convertNativeCoordinateInfo,
+  type NativeMeshData,
+  type NativePackedGeometryBatch,
+  type NativeCoordinateInfo,
+  type NativeBatchTelemetryPayload,
+} from './native-bridge-conversion.js';
 
 // Tauri API types - dynamically imported to avoid issues in web builds
 type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -32,19 +42,6 @@ interface NativeStreamingProgress {
   processed: number;
   total: number;
   currentType: string;
-}
-
-interface NativeBatchTelemetryPayload {
-  batchSequence: number;
-  payloadKind: string;
-  meshCount: number;
-  positionsLen: number;
-  normalsLen: number;
-  indicesLen: number;
-  chunkReadyTimeMs: number;
-  packTimeMs: number;
-  emitTimeMs: number;
-  emittedTimeMs: number;
 }
 
 interface NativeColorUpdatePayload {
@@ -718,215 +715,3 @@ export class NativeBridge implements IPlatformBridge {
   }
 }
 
-// Native types from Rust (camelCase due to serde rename)
-interface NativeMeshData {
-  expressId: number;
-  ifcType?: string;
-  positions: number[];
-  normals: number[];
-  indices: number[];
-  color: [number, number, number, number];
-}
-
-interface NativePackedMeshRange {
-  expressId: number;
-  ifcType?: string;
-  positionsOffset: number;
-  positionsLen: number;
-  normalsOffset: number;
-  normalsLen: number;
-  indicesOffset: number;
-  indicesLen: number;
-  color: [number, number, number, number];
-}
-
-interface NativePackedGeometryBatch {
-  meshes: NativePackedMeshRange[];
-  positions: number[];
-  normals: number[];
-  indices: number[];
-  progress: NativeStreamingProgress;
-  telemetry?: NativeBatchTelemetryPayload;
-}
-
-interface NativePoint3 {
-  x: number;
-  y: number;
-  z: number;
-}
-
-interface NativeBounds {
-  min: NativePoint3;
-  max: NativePoint3;
-}
-
-interface NativeCoordinateInfo {
-  originShift: NativePoint3;
-  originalBounds: NativeBounds;
-  shiftedBounds: NativeBounds;
-  hasLargeCoordinates: boolean;
-}
-
-// Conversion functions
-function convertNativeMesh(native: NativeMeshData): MeshData {
-  return {
-    expressId: native.expressId,
-    ifcType: native.ifcType,
-    positions: new Float32Array(native.positions),
-    normals: new Float32Array(native.normals),
-    indices: new Uint32Array(native.indices),
-    color: native.color,
-  };
-}
-
-function convertPackedNativeBatch(native: NativePackedGeometryBatch): MeshData[] {
-  // Copy each packed numeric array once, then hand meshes cheap subarray views
-  // instead of slicing and copying per mesh.
-  const positions = Float32Array.from(native.positions);
-  const normals = Float32Array.from(native.normals);
-  const indices = Uint32Array.from(native.indices);
-
-  return native.meshes.map((mesh) => ({
-    expressId: mesh.expressId,
-    ifcType: mesh.ifcType,
-    positions: positions.subarray(mesh.positionsOffset, mesh.positionsOffset + mesh.positionsLen),
-    normals: normals.subarray(mesh.normalsOffset, mesh.normalsOffset + mesh.normalsLen),
-    indices: indices.subarray(mesh.indicesOffset, mesh.indicesOffset + mesh.indicesLen),
-    color: mesh.color,
-  }));
-}
-
-function toArrayBuffer(payload: unknown): ArrayBuffer {
-  if (payload instanceof ArrayBuffer) {
-    return payload;
-  }
-  if (payload instanceof Uint8Array) {
-    if (
-      payload.byteOffset === 0
-      && payload.byteLength === payload.buffer.byteLength
-      && payload.buffer instanceof ArrayBuffer
-    ) {
-      return payload.buffer;
-    }
-    return payload.slice().buffer;
-  }
-  if (Array.isArray(payload)) {
-    return Uint8Array.from(payload as number[]).buffer;
-  }
-  throw new Error(`Unsupported packed geometry shard payload: ${typeof payload}`);
-}
-
-function decodePackedGeometryCacheShard(
-  payload: unknown,
-  jsReceivedTimeMs: number,
-  batchSequence: number
-): GeometryBatch {
-  const buffer = toArrayBuffer(payload);
-  const header = new Uint32Array(buffer, 0, 8);
-  const [magic, version, meshCount, positionsLen, normalsLen, indicesLen, processed, total] = header;
-  if (magic !== 0x49464342) {
-    throw new Error('Invalid packed geometry cache shard magic');
-  }
-  if (version !== 1) {
-    throw new Error(`Unsupported packed geometry cache shard version: ${version}`);
-  }
-
-  const meshRecordWordLength = 11;
-  const meshWordOffset = 8;
-  const meshTableWords = meshCount * meshRecordWordLength;
-  const dataByteOffset = (meshWordOffset + meshTableWords) * Uint32Array.BYTES_PER_ELEMENT;
-  const positionsByteLength = positionsLen * Float32Array.BYTES_PER_ELEMENT;
-  const normalsByteLength = normalsLen * Float32Array.BYTES_PER_ELEMENT;
-  const indicesByteLength = indicesLen * Uint32Array.BYTES_PER_ELEMENT;
-  const positionsOffset = dataByteOffset;
-  const normalsOffset = positionsOffset + positionsByteLength;
-  const indicesOffset = normalsOffset + normalsByteLength;
-
-  const positions = new Float32Array(buffer, positionsOffset, positionsLen);
-  const normals = new Float32Array(buffer, normalsOffset, normalsLen);
-  const indices = new Uint32Array(buffer, indicesOffset, indicesLen);
-  const meshView = new DataView(
-    buffer,
-    meshWordOffset * Uint32Array.BYTES_PER_ELEMENT,
-    meshTableWords * Uint32Array.BYTES_PER_ELEMENT
-  );
-
-  const meshes: MeshData[] = [];
-  for (let meshIndex = 0; meshIndex < meshCount; meshIndex += 1) {
-    const base = meshIndex * meshRecordWordLength * Uint32Array.BYTES_PER_ELEMENT;
-    const expressId = meshView.getUint32(base, true);
-    const positionsOffsetWords = meshView.getUint32(base + 4, true);
-    const positionsLengthWords = meshView.getUint32(base + 8, true);
-    const normalsOffsetWords = meshView.getUint32(base + 12, true);
-    const normalsLengthWords = meshView.getUint32(base + 16, true);
-    const indicesOffsetWords = meshView.getUint32(base + 20, true);
-    const indicesLengthWords = meshView.getUint32(base + 24, true);
-    const color: [number, number, number, number] = [
-      meshView.getFloat32(base + 28, true),
-      meshView.getFloat32(base + 32, true),
-      meshView.getFloat32(base + 36, true),
-      meshView.getFloat32(base + 40, true),
-    ];
-    meshes.push({
-      expressId,
-      positions: positions.subarray(positionsOffsetWords, positionsOffsetWords + positionsLengthWords),
-      normals: normals.subarray(normalsOffsetWords, normalsOffsetWords + normalsLengthWords),
-      indices: indices.subarray(indicesOffsetWords, indicesOffsetWords + indicesLengthWords),
-      color,
-    });
-  }
-
-  return {
-    meshes,
-    progress: {
-      processed,
-      total,
-      currentType: 'cached',
-    },
-    nativeTelemetry: {
-      batchSequence,
-      payloadKind: 'packed-cache-shard',
-      meshCount,
-      positionsLen,
-      normalsLen,
-      indicesLen,
-      chunkReadyTimeMs: 0,
-      packTimeMs: 0,
-      emitTimeMs: 0,
-      emittedTimeMs: 0,
-      jsReceivedTimeMs,
-    },
-  };
-}
-
-function convertNativeBatchTelemetry(
-  telemetry: NativeBatchTelemetryPayload | undefined,
-  jsReceivedTimeMs: number
-): NativeBatchTelemetry | undefined {
-  if (!telemetry) {
-    return undefined;
-  }
-
-  return {
-    batchSequence: telemetry.batchSequence,
-    payloadKind: telemetry.payloadKind,
-    meshCount: telemetry.meshCount,
-    positionsLen: telemetry.positionsLen,
-    normalsLen: telemetry.normalsLen,
-    indicesLen: telemetry.indicesLen,
-    chunkReadyTimeMs: telemetry.chunkReadyTimeMs,
-    packTimeMs: telemetry.packTimeMs,
-    emitTimeMs: telemetry.emitTimeMs,
-    emittedTimeMs: telemetry.emittedTimeMs,
-    jsReceivedTimeMs,
-  };
-}
-
-function convertNativeCoordinateInfo(native: NativeCoordinateInfo): CoordinateInfo {
-  return {
-    originShift: native.originShift,
-    originalBounds: native.originalBounds,
-    shiftedBounds: native.shiftedBounds,
-    hasLargeCoordinates: native.hasLargeCoordinates,
-  };
-}

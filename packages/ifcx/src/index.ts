@@ -14,12 +14,14 @@ import { composeIfcx, findRoots } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, isQuantityProperty } from './property-extractor.js';
 import { extractGeometry, type MeshData } from './geometry-extractor.js';
+import { extractPointClouds, type PointCloudExtraction } from './pointcloud-extractor.js';
 import { buildHierarchy } from './hierarchy-builder.js';
 import {
   StringTable,
   RelationshipGraphBuilder,
   RelationshipType,
   QuantityTableBuilder,
+  safeUtf8Decode,
 } from '@ifc-lite/data';
 import type { SpatialHierarchy, EntityTable, PropertyTable, QuantityTable, RelationshipGraph } from '@ifc-lite/data';
 
@@ -39,6 +41,10 @@ export { composeIfcx, findRoots, getDescendants } from './composition.js';
 export { extractEntities } from './entity-extractor.js';
 export { extractProperties, isQuantityProperty } from './property-extractor.js';
 export { extractGeometry, type MeshData } from './geometry-extractor.js';
+export {
+  extractPointClouds,
+  type PointCloudExtraction,
+} from './pointcloud-extractor.js';
 export { buildHierarchy } from './hierarchy-builder.js';
 export {
   findTraversalRoots,
@@ -100,6 +106,8 @@ export interface IfcxParseResult {
   strings: StringTable;
   /** Pre-tessellated geometry meshes */
   meshes: MeshData[];
+  /** Decoded point clouds (pcd::base64, points::array, points::base64) */
+  pointClouds: PointCloudExtraction[];
   /** Mapping from IFCX path to express ID */
   pathToId: Map<string, number>;
   /** Mapping from express ID to IFCX path */
@@ -128,9 +136,10 @@ export async function parseIfcx(
 ): Promise<IfcxParseResult> {
   const startTime = performance.now();
 
-  // Phase 1: Parse JSON
+  // Phase 1: Parse JSON. SAB-safe in case the upload entry path streamed
+  // the file directly into a SharedArrayBuffer.
   options.onProgress?.({ phase: 'parse', percent: 0 });
-  const text = new TextDecoder().decode(buffer);
+  const text = safeUtf8Decode(new Uint8Array(buffer));
   let file: IfcxFile;
 
   try {
@@ -165,6 +174,7 @@ export async function parseIfcx(
   // Phase 5: Extract geometry
   options.onProgress?.({ phase: 'geometry', percent: 0 });
   const meshes = extractGeometry(composed, pathToId);
+  const pointClouds = extractPointClouds(composed, pathToId);
   options.onProgress?.({ phase: 'geometry', percent: 100 });
 
   // Phase 6: Build hierarchy
@@ -190,6 +200,7 @@ export async function parseIfcx(
     spatialHierarchy,
     strings,
     meshes,
+    pointClouds,
     pathToId,
     idToPath,
     schemaVersion: 'IFC5',
@@ -323,7 +334,10 @@ export function detectFormat(buffer: ArrayBuffer): 'ifcx' | 'ifc' | 'glb' | 'unk
   }
 
   const bytes = new Uint8Array(buffer, 0, Math.min(100, buffer.byteLength));
-  const start = new TextDecoder().decode(bytes).trim();
+  // SAB-safe: the upload entry path streams the file directly into a
+  // SharedArrayBuffer for files ≥ STREAM_SAB_THRESHOLD, and both Firefox
+  // and Chromium reject TextDecoder.decode() on SAB-backed views.
+  const start = safeUtf8Decode(bytes).trim();
 
   // IFCX is JSON starting with {
   if (start.startsWith('{')) {
@@ -419,7 +433,7 @@ export async function parseFederatedIfcx(
     const { buffer, name } = files[i];
     totalSize += buffer.byteLength;
 
-    const text = new TextDecoder().decode(buffer);
+    const text = safeUtf8Decode(new Uint8Array(buffer));
     let file: IfcxFile;
 
     try {
@@ -479,6 +493,7 @@ export async function parseFederatedIfcx(
   // Phase 5: Extract geometry
   options.onProgress?.({ phase: 'geometry', percent: 0 });
   const meshes = extractGeometry(composed, pathToId);
+  const pointClouds = extractPointClouds(composed, pathToId);
   options.onProgress?.({ phase: 'geometry', percent: 100 });
 
   // Phase 6: Build hierarchy
@@ -510,6 +525,7 @@ export async function parseFederatedIfcx(
     spatialHierarchy,
     strings,
     meshes,
+    pointClouds,
     pathToId,
     idToPath,
     schemaVersion: 'IFC5',
@@ -538,8 +554,8 @@ export async function addIfcxOverlay(
   overlayName: string,
   options: FederatedParseOptions = {}
 ): Promise<FederatedIfcxParseResult> {
-  // Parse overlay file
-  const text = new TextDecoder().decode(overlayBuffer);
+  // Parse overlay file (SAB-safe).
+  const text = safeUtf8Decode(new Uint8Array(overlayBuffer));
   let file: IfcxFile;
 
   try {

@@ -66,8 +66,8 @@ export async function openIfcFileDialog(): Promise<NativeFileHandle | null> {
   try {
     const invoke = await getInvoke();
     return await invoke<NativeFileHandle | null>('open_ifc_file');
-  } catch (error) {
-    console.warn('[FileDialog] Command-based native dialog unavailable, trying plugin fallback:', error);
+  } catch {
+    // Expected in browser builds — fall through to plugin fallback, then browser file input.
   }
 
   try {
@@ -80,9 +80,11 @@ export async function openIfcFileDialog(): Promise<NativeFileHandle | null> {
     const selected = await dialog.open({
       multiple: false,
       directory: false,
-      title: 'Open IFC File',
+      title: 'Open IFC, Mesh or Point Cloud File',
       filters: [
-        { name: 'IFC Files', extensions: ['ifc', 'ifczip', 'ifcxml'] },
+        { name: 'IFC Files', extensions: ['ifc', 'ifczip', 'ifcxml', 'ifcx'] },
+        { name: 'Mesh Files', extensions: ['glb'] },
+        { name: 'Point Clouds', extensions: ['las', 'laz', 'ply', 'pcd', 'e57'] },
         { name: 'All Files', extensions: ['*'] },
       ],
     });
@@ -100,8 +102,8 @@ export async function openIfcFileDialog(): Promise<NativeFileHandle | null> {
       name,
       size: metadata.size,
     };
-  } catch (error) {
-    console.warn('[FileDialog] Failed to open native IFC dialog via plugin fallback:', error);
+  } catch {
+    // No Tauri plugin available — caller falls back to browser <input type="file">.
     return null;
   }
 }
@@ -139,7 +141,10 @@ export async function openGenericFileDialog(options: GenericFileDialogOptions = 
     const bytes = await readNativeFile(normalizedPath);
     const pathSegments = normalizedPath.split(/[\\/]/);
     const name = pathSegments[pathSegments.length - 1] || 'document';
-    return new File([bytes], name, { type: 'application/octet-stream' });
+    // Slice to a fresh ArrayBuffer view — TS5+ narrows `Uint8Array` to
+    // `Uint8Array<ArrayBufferLike>` which `BlobPart` doesn't accept.
+    const blobPart = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).slice();
+    return new File([blobPart], name, { type: 'application/octet-stream' });
   } catch (error) {
     console.warn('[FileDialog] Failed to open generic native file dialog:', error);
     return null;

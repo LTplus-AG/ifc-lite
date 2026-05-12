@@ -301,12 +301,17 @@ export function getRenderThrottleMs(meshCount: number): number {
 
 /**
  * Get clear color based on theme
- * @param theme - 'light' or 'dark'
+ * @param theme - 'light', 'dark', or 'colorful'
  * @returns RGBA clear color tuple
  */
-export function getThemeClearColor(theme: 'light' | 'dark'): [number, number, number, number] {
+export function getThemeClearColor(theme: 'light' | 'dark' | 'colorful'): [number, number, number, number] {
   if (theme === 'light') {
     return [0.96, 0.96, 0.97, 1]; // Light gray
+  }
+  if (theme === 'colorful') {
+    // Transparent — the CSS gradient on the canvas element shows through.
+    // alphaMode:'premultiplied' + fragment alpha=1 keeps models fully opaque.
+    return [0, 0, 0, 0];
   }
   return [0.102, 0.106, 0.149, 1]; // Tokyo Night storm (#1a1b26)
 }

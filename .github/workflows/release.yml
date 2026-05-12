@@ -45,12 +45,37 @@ jobs:
       - name: Install Dependencies
         run: pnpm install
 
+      # Cache + fetch fixtures so cross-package tests that load
+      # tests/models/ifc5/*.ifcx (pointcloud, export, ifcx) can run.
+      # Mirrors the Test workflow; key changes only when the manifest does.
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@v5
+        with:
+          path: tests/models
+          key: fixtures-${{ hashFiles('tests/models/manifest.json') }}
+
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+
+      - name: Verify fixtures
+        run: pnpm fixtures:check
+
       - name: Build Packages
         run: pnpm build
 
       - name: Typecheck
         run: pnpm typecheck
         continue-on-error: true
+
+      # Verify every publishable package can be loaded by Node's native ESM
+      # resolver. Catches broken relative imports (e.g. extensionless specifiers
+      # that bundlers tolerate but Node rejects with ERR_MODULE_NOT_FOUND)
+      # before they reach npm consumers. Must run BEFORE `pnpm run release`
+      # so a regression blocks the publish step.
+      - name: Verify ESM entrypoints
+        run: pnpm test:esm
 
       - name: Run Tests
         run: pnpm test

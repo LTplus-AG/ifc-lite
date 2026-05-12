@@ -123,6 +123,7 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
             positions,
             normals: Vec::new(),
             indices,
+            rtc_applied: false,
         })
     }
 

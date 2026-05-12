@@ -34,6 +34,59 @@
 - **Full API reference:** See [`docs/guide/viewer-api.md`](./docs/guide/viewer-api.md) for launch options, REST API, element creation, and analysis overlays.
 - **Coordinate convention (coding-relevant):** IFC uses Z-up; the viewer uses Y-up internally. The geometry layer converts automatically during mesh parsing. When using `/api/create`, pass coordinates in IFC Z-up convention (`[x, y, z]` where Z is up).
 
-## 7. Feedback Loop
+## 7. Code Quality Standards (Non-Negotiable)
+
+### No `as any` or `@ts-ignore`
+- **Never** use `as any` to silence the compiler. If types don't align, fix the types (add proper generics, declare interfaces, write `.d.ts` stubs for untyped libraries).
+- **Never** use `// @ts-ignore` or `// @ts-expect-error` without a linked issue explaining why and a plan to remove it.
+- If an external library lacks types, write a minimal ambient declaration file (`foo-types.d.ts`) instead of scattering `@ts-ignore` across call sites.
+
+### No bare `catch {}`
+- Every `catch` block must either log the error or re-throw. Silent swallowing hides real bugs.
+- The only exception is cleanup code where failure is truly irrelevant (e.g., `mesh.free()`), and even then add a `/* cleanup — safe to ignore */` comment.
+
+### File size limit: ~400 lines per module
+- If a file exceeds ~400 lines of non-generated code, split it. Extract cohesive helpers into separate modules.
+- Generated files (e.g., `schema-registry.ts`, `entities.ts`) are exempt.
+
+### Tests required for new packages and features
+- Every new package **must** ship with at least one test file covering its public API.
+- New features in existing packages must include tests. PRs adding untested logic to `ids`, `query`, or `cli` should be blocked.
+- Do not use `--passWithNoTests` for any package.
+
+### Dependencies in the right place
+- Root `package.json` dependencies must only contain tooling shared by all workspaces (turbo, typescript, changesets).
+- Package-specific deps (database drivers, domain libraries) go in the consuming package's `package.json`, never the root.
+
+### Undeclared class properties
+- Never use `(this as any).foo` to store state. Declare all properties in the class body with proper types.
+
+## 8. Rust Dependency Policy
+- **`Cargo.lock` is committed.** This workspace mixes libraries (`rust/core`, `rust/geometry`, etc.) and application binaries (`apps/server`, `apps/desktop/src-tauri`). App crates need a committed lockfile to stay reproducible, and CI runs a fresh resolve on every build — without a lockfile, any upstream yank instantly breaks the pipeline. See commit history for the `core2` incident (every published version yanked in 2025) that motivated this decision.
+- **Don't delete `Cargo.lock` to "refresh" dependencies.** Use `cargo update -p <crate>` for targeted upgrades, or `cargo update` for a full refresh. Review the resulting lockfile diff before committing.
+- **`[patch.crates-io]` lives in the workspace root `Cargo.toml`.** Local patch targets go under `rust/vendor/<crate>/`. Every vendored stub must explain, in its own `src/lib.rs` header comment, why it exists and the exact upstream condition that would let it be deleted.
+- **Don't silently bump dep ranges.** Major or patched-version crossings should be called out in the PR description so reviewers can sanity-check for behaviour changes.
+
+## 9. Test Fixtures
+
+- **No Git LFS.** IFC and IFCX fixtures live under `tests/models/` but are
+  *not* committed. They're catalogued in `tests/models/manifest.json`
+  (path + sha256 + size) and fetched from a GitHub Release on demand via
+  `pnpm fixtures`. See [`tests/models/README.md`](./tests/models/README.md)
+  for the rationale and maintainer workflow.
+- **Adding a fixture:** drop the file under `tests/models/<group>/`,
+  run `pnpm fixtures:manifest` to regenerate the catalogue, then
+  `pnpm fixtures:upload` (requires `gh` CLI write access) to publish the
+  bytes. Commit only the updated `manifest.json`.
+- **Tests must skip cleanly when a fixture is absent.** Use the
+  `read_fixture` pattern in `rust/geometry/src/processors/tests.rs` (Rust)
+  or an `existsSync` + `test.skip()` guard (TypeScript) — point to
+  `pnpm fixtures` in the skip message. Never `panic!` / `throw` on
+  fixture absence; that breaks fresh clones.
+- **CI workflows that run tests** must run `pnpm fixtures` before the
+  test step. Cache by `hashFiles('tests/models/manifest.json')` to avoid
+  re-downloading on every job.
+
+## 10. Feedback Loop
 - If a pattern is confusing or repeatedly error-prone, call it out explicitly in your PR notes.
 - Prefer refactors that make the correct path the easiest path (single source of truth helpers, stricter types, fewer implicit fallbacks).

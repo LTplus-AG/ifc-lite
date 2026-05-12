@@ -19,7 +19,7 @@ import type {
   Line2D,
   WindowPartitioningType,
   Bounds2D,
-} from '../types';
+} from '../types.js';
 
 /**
  * Result of window symbol generation

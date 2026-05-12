@@ -1,0 +1,597 @@
+{
+  "version": 1,
+  "release_tag": "fixtures-v1",
+  "base_url": "https://github.com/louistrue/ifc-lite/releases/download/fixtures-v1",
+  "files": [
+    {
+      "path": "ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "size": 2526544
+    },
+    {
+      "path": "ara3d/advanced_model.ifc",
+      "sha256": "3c822eed72ab588697f3f4d4c2b074d1bb888802f877218c769845180f2b7ad2",
+      "size": 35309937
+    },
+    {
+      "path": "ara3d/C20-Institute-Var-2.ifc",
+      "sha256": "a06b9cf1922cc0a1e200719189054510dd3e1d188292325f66614f7c1fdb37b4",
+      "size": 10786515
+    },
+    {
+      "path": "ara3d/dental_clinic.ifc",
+      "sha256": "2ac970ce065ecac4e0c9e5f453a257169e90d0067f419b7e33533a64ef837880",
+      "size": 13003205
+    },
+    {
+      "path": "ara3d/duplex.ifc",
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "size": 2380763
+    },
+    {
+      "path": "ara3d/example.ifc",
+      "sha256": "a493f3919d1e0ff5ab2a3a392829f47daf6314fa773815f1247475a11fff2e44",
+      "size": 413749
+    },
+    {
+      "path": "ara3d/FM_ARC_DigitalHub.ifc",
+      "sha256": "7c4479096feaf8adebb3049dedf5bb126964baea76f9619236a410ad8f2e5b0f",
+      "size": 14056204
+    },
+    {
+      "path": "ara3d/ifcbridge-model01.ifc",
+      "sha256": "09e76df5ab48b726c0d21786f2b4c3417a7600251c99f40eb883718a1e0d2c57",
+      "size": 15171642
+    },
+    {
+      "path": "ara3d/IfcOpenHouse_IFC4.ifc",
+      "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+      "size": 113264
+    },
+    {
+      "path": "ara3d/ISSUE_005_haus.ifc",
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "size": 2526544
+    },
+    {
+      "path": "ara3d/ISSUE_021_Mini Project.ifc",
+      "sha256": "d06a1472b02076be8d8d08ed87e5111c2ddb9b1759996e4177628b71af708332",
+      "size": 3306789
+    },
+    {
+      "path": "ara3d/ISSUE_034_HouseZ.ifc",
+      "sha256": "819247ffc8928c311696e011bae97bed77c90d2fec0ac847528758156f371bcd",
+      "size": 5072788
+    },
+    {
+      "path": "ara3d/ISSUE_044_test_IFCCOMPOSITEPROFILEDEF.ifc",
+      "sha256": "fe243d8450063f0dd13e57748537eb441bb454bc6dbbbc1fec92287974838c6e",
+      "size": 29677
+    },
+    {
+      "path": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "size": 177465622
+    },
+    {
+      "path": "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+      "sha256": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121",
+      "size": 56359451
+    },
+    {
+      "path": "ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC",
+      "sha256": "debf13825f34feef820f6ecfd9d893683be0305b7002b565b47ca01668eee4f5",
+      "size": 71743126
+    },
+    {
+      "path": "ara3d/ISSUE_102_M3D-CON-CD.ifc",
+      "sha256": "5f7423ef7a7c7db1a56e214b802edc9122315d32e7c3d43a4f3ebbeae5979e76",
+      "size": 26870837
+    },
+    {
+      "path": "ara3d/ISSUE_102_M3D-CON.ifc",
+      "sha256": "b5fed839caf83c0f0e9abac29481694f1219a1f96487a431b7f06eead46b2144",
+      "size": 6276472
+    },
+    {
+      "path": "ara3d/ISSUE_126_model.ifc",
+      "sha256": "cf1e47c4ec0ff2e9cfc09267caaf6cb4a54d0fce21bdeccd04ad1e7d3d17b479",
+      "size": 4439637
+    },
+    {
+      "path": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+      "size": 12030684
+    },
+    {
+      "path": "ara3d/ISSUE_159_kleine_Wohnung_R22.ifc",
+      "sha256": "189fdf890806979f527101272a648d232ab0c3c6acf63c03f1e7a7f13d0a4453",
+      "size": 10009680
+    },
+    {
+      "path": "ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc",
+      "sha256": "349e073189b4524dabef7a13b2a022ec6a170f0b4adad220145b6d317f722305",
+      "size": 253284
+    },
+    {
+      "path": "ara3d/KIT-Simple-Road-Test-Web-IFC4x3_RC2.ifc",
+      "sha256": "bf285110d47d69834ad529c172f4f7fdde772b75a1c339e03a1e609ce01d1a3c",
+      "size": 388157
+    },
+    {
+      "path": "ara3d/Office_A_20110811.ifc",
+      "sha256": "3c8e362068a68fb54d0d170d2c12ede3b97608a7be0ad88f2edd5c7364e41b59",
+      "size": 4036369
+    },
+    {
+      "path": "ara3d/S_Office_Integrated Design Archi.ifc",
+      "sha256": "38c4ecbbc67d0759dfcffb2c90664f5b5231e6c48fc54597c62975b41bb629db",
+      "size": 31057999
+    },
+    {
+      "path": "ara3d/Sample_entities.ifc",
+      "sha256": "a117ed9edc29f130145b21c7b63ef10124e356a9529afe07ddff2dcd71a34649",
+      "size": 28760
+    },
+    {
+      "path": "ara3d/schependomlaan.ifc",
+      "sha256": "2c3565ca1904f2aa61adab92024cf3755b2c5b21a498144d3094d7cb58cebec7",
+      "size": 49286967
+    },
+    {
+      "path": "ara3d/tested_sample_project.ifc",
+      "sha256": "1e6a7c10fb2ce79f28d9bef7e4cd4e2529ad6fc625c0807281eac18f03dbf710",
+      "size": 710108
+    },
+    {
+      "path": "buildingsmart/basin-tessellation.ifc",
+      "sha256": "7278769ec5ef35d388819d2f197519061c7f0f68dd43a733f333ddeb74578121",
+      "size": 12131
+    },
+    {
+      "path": "buildingsmart/Building-Architecture.ifc",
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+      "size": 225635
+    },
+    {
+      "path": "buildingsmart/Building-Hvac.ifc",
+      "sha256": "11a8552bc555fa44dfdc49374d1ab2da0a16104c10f086af509f500ce03fa2b3",
+      "size": 179727
+    },
+    {
+      "path": "buildingsmart/Building-Landscaping.ifc",
+      "sha256": "56258ede9b92936f6f2dfc5319a497e1528810c69a3fe5ad5ebf39687539ecd1",
+      "size": 1467652
+    },
+    {
+      "path": "buildingsmart/Building-Structural.ifc",
+      "sha256": "68be722391e7aaa53bb9278645a02aa4b6382f13cc07548a1612e9b1dc3def67",
+      "size": 296640
+    },
+    {
+      "path": "buildingsmart/column-straight-rectangle-tessellation.ifc",
+      "sha256": "58bb9b2cae96edf2c368de95f526650f3f282e4e7fc37c0065c501bdbeed00a1",
+      "size": 4594
+    },
+    {
+      "path": "buildingsmart/Infra-Bridge.ifc",
+      "sha256": "3d1273bb60bda11373e0bcbd8a73c409f49c097b98867573c9493888d8626fcc",
+      "size": 1889294
+    },
+    {
+      "path": "buildingsmart/Infra-Landscaping.ifc",
+      "sha256": "c401a32de2fde4913e6041292dcda816a4c7c174c161c0be99827b34606a6290",
+      "size": 3087021
+    },
+    {
+      "path": "buildingsmart/Infra-Plumbing.ifc",
+      "sha256": "5ceef54dde974f745256ba21ac23f90fe25347da656a20e6f36a49228d556e60",
+      "size": 524740
+    },
+    {
+      "path": "buildingsmart/Infra-Rail.ifc",
+      "sha256": "9b6f29679aa928d29c04090cb1239e2d97f5c4a7114c1f55717171c1a7194e8d",
+      "size": 244773
+    },
+    {
+      "path": "buildingsmart/Infra-Road.ifc",
+      "sha256": "b0f842b07a41490274f3d8485dd59b9818941b804d1b85f8afd0bb7969a66502",
+      "size": 438949
+    },
+    {
+      "path": "buildingsmart/tessellated-item.ifc",
+      "sha256": "758974f7d558f11b8d8121816954179def32594ed7eafcd1faae70ee0a8e5946",
+      "size": 5199
+    },
+    {
+      "path": "buildingsmart/tessellation-with-individual-colors.ifc",
+      "sha256": "3ab1290207d8538da9d8ebc14826b769eeb79fce7d75aaa85c35ed7a5a8dbd92",
+      "size": 2593
+    },
+    {
+      "path": "buildingsmart/wall-with-opening-and-window.ifc",
+      "sha256": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
+      "size": 12492
+    },
+    {
+      "path": "ifc5/ACCA_Building_esempio_01_edificius.ifcx",
+      "sha256": "cdb3e35b3f833af94fadb918665ea1b14a970abe0cd6873bb245f1f0a13ad8db",
+      "size": 7243221
+    },
+    {
+      "path": "ifc5/Domestic_Hot_Water_domestic-hot-water-add-pbr.ifcx",
+      "sha256": "dc6faaa57d36a3412f6579fa34e67a185d9d411a759776f2c277606e4586551b",
+      "size": 4588
+    },
+    {
+      "path": "ifc5/Domestic_Hot_Water_domestic-hot-water.ifc",
+      "sha256": "d35813d893ef6516c213aaf7cae26707cd26520b21102b5a878a49266b80db75",
+      "size": 70501
+    },
+    {
+      "path": "ifc5/Domestic_Hot_Water_domestic-hot-water.ifcx",
+      "sha256": "34d2ae7e5e3137d9de50279fd815b0df819b3420b98b0c17af33e51a594f7d85",
+      "size": 195107
+    },
+    {
+      "path": "ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+      "sha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+      "size": 1919
+    },
+    {
+      "path": "ifc5/Georeferencing_georeferenced-bridge-deck.ifcx",
+      "sha256": "0404e502489513a853d1bd01987b4df31ee2e6605452f1107e30c63276911743",
+      "size": 11584
+    },
+    {
+      "path": "ifc5/Geotech_WekaHills_GeologyModel.ifcx",
+      "sha256": "ae287d58f9c21b1b36423fdc6cfdf640573bddc24de2cb653212ae170e247ed7",
+      "size": 1860954
+    },
+    {
+      "path": "ifc5/Geotech_WekaHills_GI.ifcx",
+      "sha256": "579fccb5ce8676f9262e71d5c26b15c951855f8a95482d9a47e9e7405a0f6ee3",
+      "size": 9023
+    },
+    {
+      "path": "ifc5/Geotech_WekaHills_Site.ifcx",
+      "sha256": "e76c5373edfd97ba2aca968d5b878f27d553bddb93db6d3dfe9af9340e369c66",
+      "size": 1999
+    },
+    {
+      "path": "ifc5/Hello_Wall_advanced_3rd-window-thinwall.ifcx",
+      "sha256": "8ab94ad43a27787a3f4d0ef0b37472457ef6cf5169ac669e285f9be409760afd",
+      "size": 5057
+    },
+    {
+      "path": "ifc5/Hello_Wall_advanced_3rd-window.ifcx",
+      "sha256": "f536bfdb782d10f6a0ec753357b40c1302b232d322d0e35602dddd5a0b2245fc",
+      "size": 5000
+    },
+    {
+      "path": "ifc5/Hello_Wall_advanced_add-2nd-storey.ifcx",
+      "sha256": "bfdb545d66fd582f040cde4d3b9015c7a010d15b2bfa675eae7e997508816401",
+      "size": 1500
+    },
+    {
+      "path": "ifc5/Hello_Wall_advanced_double-wall.ifcx",
+      "sha256": "bf641630543113914b257f9194d7da59e2847806800ae8e290eaf67515984cc5",
+      "size": 5164
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall-add-fire-rating-30.ifcx",
+      "sha256": "2e709858155ab091fb6e2784c8d0f79811722f88b9740767eb17c5d5a529a71b",
+      "size": 631
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall-add-fire-rating-60.ifcx",
+      "sha256": "0946f17c48ebe9dab62ab5a473ae789bb22c35a370133669f5a8445d330c8a63",
+      "size": 631
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall-add-specific-fire-rating.ifcx",
+      "sha256": "cc18df602ef4e43153ee4dc86760903072177741fde7d8db1a9381d5360993e6",
+      "size": 834
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall.ifc",
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "size": 79592
+    },
+    {
+      "path": "ifc5/Hello_Wall_hello-wall.ifcx",
+      "sha256": "4294362c0bd17f27af2c53e68c3f2bffd86f2d71f1b1b5d08b3d86fc8de6332b",
+      "size": 42935
+    },
+    {
+      "path": "ifc5/IFC_Hero_Model_IFC_Hero_Model.ifcx",
+      "sha256": "12e9dd3f29831781300f457c6d7717da935e9471ccc97c6862a01591ff7ff4a6",
+      "size": 19846535
+    },
+    {
+      "path": "ifc5/Linear_placement_of_signals_linear-placement-of-signal.ifc",
+      "sha256": "5f2f1b1bf14ddef048a49f4136189e83469a9b15db43b1708bb4c42d0494de13",
+      "size": 228220
+    },
+    {
+      "path": "ifc5/Linear_placement_of_signals_linear-placement-of-signal.ifcx",
+      "sha256": "2c5613b0235d2bc4943a989014e6173dc95d0becd59ee2177cd8ded10cef10c2",
+      "size": 639359
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Building-Architecture.ifcx",
+      "sha256": "2e56206ee3042f37677d44d958534dbf4ec0ac2d43fca065ae80c4b4c0ef2161",
+      "size": 94827
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Building-Hvac.ifcx",
+      "sha256": "53c6925b49271e09806f92e33365352e4442d58dea347e4f49ab58808559fddc",
+      "size": 79281
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Building-Landscaping.ifcx",
+      "sha256": "920656b8dd7a481a66c8aa2e67c037662df675c5e05e55a94f4002a48223d200",
+      "size": 853046
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Building-Structural.ifcx",
+      "sha256": "40467a0616759d8e08eb3528f47395714645946a67579799713fc5b3bf449211",
+      "size": 122671
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_cci_v1.ifcx",
+      "sha256": "bd701fd56cbe1ae9c8826c650638ff1f88081fc73a77e9455a27937a4cec4c5b",
+      "size": 3261
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_fruitvegs_v1.6.ifcx",
+      "sha256": "37984210c7db0601826c363171abab5a0c1ff4cfaf1fad8e893ffccb62c527a5",
+      "size": 851
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Georeference.ifcx",
+      "sha256": "5f3f069d83b1463eb70741a1677f2160c1414466f759e9c8e0b466d73d09ed89",
+      "size": 2719
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Infra-Bridge.ifcx",
+      "sha256": "a5c63d5af036002ff0908dcb6f4b37a81442c13569b91ed0b6e17e17f7a15efe",
+      "size": 866107
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Infra-Electrical.ifcx",
+      "sha256": "1ad2cc36985a3d9d5045ff6afb30dc5ac669b2444272d7b2cc57f0de2bbad496",
+      "size": 75265
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Infra-Landscaping.ifcx",
+      "sha256": "197987667693d5af41fc443ad6db177677976f764a167f431eb41e00005f63eb",
+      "size": 609410
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Infra-Plumbing.ifcx",
+      "sha256": "805039d1a941f5925e433a0e4e2b774f2ac387e7380134c7f3092a829683e6d7",
+      "size": 206884
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Infra-Rail.ifcx",
+      "sha256": "40f0c131e18bd895977918fe8a57f245ad5220a175f44c2bc5cd81bbcd163d9f",
+      "size": 163676
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_Infra-Road.ifcx",
+      "sha256": "5e244461d48be1c2b3e74de584c0f362f24e8c0ce8bc00759bc85365a5f7a6f6",
+      "size": 233721
+    },
+    {
+      "path": "ifc5/Point_Cloud_point-cloud.ifcx",
+      "sha256": "edd2c096371af0af6f9a4b521c582c737f47f47480e9de3e184da3ef19b38977",
+      "size": 54502
+    },
+    {
+      "path": "ifc5/Point_Cloud_S1-pointcloud.ifcx",
+      "sha256": "d834a84ac8d8f7782ec7b8ca985ac157a309f2e1a21610269146b502a456aabb",
+      "size": 1497390
+    },
+    {
+      "path": "ifc5/Point_Cloud_S1-prefab-facade.ifcx",
+      "sha256": "763b09eb66351e534417f176443305746425e67b54e34c9b9c398e83b9caa8af",
+      "size": 2002313
+    },
+    {
+      "path": "ifc5/Railway_Railway_project_IFC5.ifcx",
+      "sha256": "8ca9454661c0c44eb2f56ab8443291d701556b6581c056106174d0efed870b59",
+      "size": 13885680
+    },
+    {
+      "path": "ifc5/Railway_Railway_project_simple_IFC4X3.ifc",
+      "sha256": "1937d5697ce796a9b0ac8c836fbfa42867e970b22b3a3adf0dafe371886a533b",
+      "size": 1729916
+    },
+    {
+      "path": "ifc5/Railway_Railway_project_simple_IFC5.ifcx",
+      "sha256": "d556237654e036bf61c9fd7df4e31011dba82788f84aa01e71fc2856119b7b41",
+      "size": 1162065
+    },
+    {
+      "path": "ifc5/Road_Roadway_project_IFC5.ifcx",
+      "sha256": "b98f1037865e154a08f2dc0750f25bb779c49117800fd6838127cfc9d3effcde",
+      "size": 8178168
+    },
+    {
+      "path": "ifc5/Tekla_House_TeklaHouse.ifcx",
+      "sha256": "c5a42d143554ac3505bc6f55ee2e4962cb257eeaca0a0f9c49958b4ba823c401",
+      "size": 41766481
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_01_TopHeading_0-1.ifcx",
+      "sha256": "32acad7aed47c199f7141d200e83c9ef129e4a5c23820ec009478fe15b75ced0",
+      "size": 5893
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_02_TopHeading_1-2.ifcx",
+      "sha256": "da3d0b6df7c1343680ad54ccd7c49f023012fd0f03631758e5fa4983cbc5ca64",
+      "size": 1354
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_03_TopHeading_2-3.ifcx",
+      "sha256": "03c1f8416124857acbd39631598c9dc10f64f010f8e6d86f655f2334ff60cc4c",
+      "size": 1358
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_04_TopHeading_3-4.ifcx",
+      "sha256": "d88ad5fb953871a3862763770690717d59d3527e20c869ff46f37160ac3b9163",
+      "size": 1358
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_05_TopHeading_4-5.ifcx",
+      "sha256": "e99075dc16faa33d5e2f66918d99caecc10e86e52f97d8594ad6698d3ae2c289",
+      "size": 1425
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_06_Bench.ifcx",
+      "sha256": "100a456680c83afbdc072e06a9a3d4c209087303a9121bec3a722ae8824405cd",
+      "size": 2498
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_07_Invert.ifcx",
+      "sha256": "93ec7a6a560ec321e667d108f40cb91c3d1871dee163862db8cb9c02f077aad8",
+      "size": 2927
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_08_TopHeading_5-6.ifcx",
+      "sha256": "3d976f41d939c7179a42e291e3d3962e68185f40bcba0bb9540e51ab2993099d",
+      "size": 1358
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_09_TopHeading_6-7.ifcx",
+      "sha256": "916df60caa391e8b199bfc00c5fc3a91c6a3c91238c1c232911c4a9ec27679bb",
+      "size": 1358
+    },
+    {
+      "path": "ifc5/Tunnel_Excavation_10_TopHeading_7-8.ifcx",
+      "sha256": "852273edddec9e04d419a6d01eb77a9a5d2831fe7b8ec6104eb946f204d2ee8c",
+      "size": 1358
+    },
+    {
+      "path": "ifcopenshell/1019-column.ifc",
+      "sha256": "c5ee15218372a75a061070dbee5242eb8aa5dd0cefc5b765d048722ea5e996ee",
+      "size": 6636
+    },
+    {
+      "path": "ifcopenshell/1030-sphere.ifc",
+      "sha256": "0e1233abe55e091da29b4c7abad7895cda31df11a73e64a15d42bb5d2e02a2ab",
+      "size": 1814
+    },
+    {
+      "path": "ifcopenshell/1032-curve.ifc",
+      "sha256": "5d6b889949978c3f39d2684ec3200728e2187f01460178ea6a9ef3bb30e13e4a",
+      "size": 1763
+    },
+    {
+      "path": "ifcopenshell/1269--Project_IfcDuctFitting.ifc",
+      "sha256": "09d6c14b08f66a9237191623435a4ec95e14975c8e19821d7f233249c62af776",
+      "size": 16053
+    },
+    {
+      "path": "ifcopenshell/452--line-segment--curved.ifc",
+      "sha256": "f7d99a455fb2c63247eac45b4b0b28f5e88d28c64d5d290d6946a4c41a1042f4",
+      "size": 7951
+    },
+    {
+      "path": "ifcopenshell/452--line-segment-straight.ifc",
+      "sha256": "38f198180776fe763f2e495981f022f4d6f61222eb355543e19465649847efee",
+      "size": 1874
+    },
+    {
+      "path": "ifcopenshell/567--cylinder--wrong-geometry--augmented.ifc",
+      "sha256": "73995b5360947d542ad771484cfd7f4b4e0e4897c88c47f810bcaf87c8b44ca2",
+      "size": 4017
+    },
+    {
+      "path": "ifcopenshell/764--column--no-materials-or-surface-styles-found--augmented.ifc",
+      "sha256": "428e419c477ba4cf88b746fc75332df6a3114591990583c342cd97ba27b1cb33",
+      "size": 4930
+    },
+    {
+      "path": "ifcopenshell/928-column.ifc",
+      "sha256": "2917ec436a17fd7111fa2450556a6605b245261dfbb8b10b43527c7e2d26ee04",
+      "size": 6239
+    },
+    {
+      "path": "ifcopenshell/advanced_brep.ifc",
+      "sha256": "cbb92a7d952c2acf6d614f4634652446c70934d3c90277d8c76e8dd6e930a861",
+      "size": 10707
+    },
+    {
+      "path": "ifcopenshell/cylinders.ifc",
+      "sha256": "815ddbfb8d413970379d348a3416181ae5b4b87a01bd56001283c04ad78311c6",
+      "size": 4178
+    },
+    {
+      "path": "ifcopenshell/faceted_brep_csg.ifc",
+      "sha256": "64a86e3637cf92960329ac268812c839958a9da620d1a3d1f2fb49a95b4dc08f",
+      "size": 7639
+    },
+    {
+      "path": "ifcopenshell/faceted_brep.ifc",
+      "sha256": "956cf7338f65a352c584678a8c800637be7e9265923403799793e4156444fed7",
+      "size": 14810
+    },
+    {
+      "path": "ifcopenshell/single-circle-compcurve.ifc",
+      "sha256": "b7c836ac174d282e68152923883672ec3fad4d330ad5ad78cf16a41cd6e2a7fb",
+      "size": 1629
+    },
+    {
+      "path": "ifcopenshell/structural_analysis_curve.ifc",
+      "sha256": "aeb03f9a49a1d019f4de5c85064c426e1dc481f19ceb335a1f0079d1d791f36e",
+      "size": 14951
+    },
+    {
+      "path": "various/01_BIMcollab_Example_ARC.ifc",
+      "sha256": "87392cf24264b023e65d8ca1dab1eb8996643c1aa51b9dff9d518ed8904151fc",
+      "size": 18230149
+    },
+    {
+      "path": "various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4",
+      "size": 8714606
+    },
+    {
+      "path": "various/02_BIMcollab_Example_STR_random_C_ebkp.ifc",
+      "sha256": "5349b25dc8df079b20252b8b59f380c93db681b0ec86c480c9ca940e66ff3e1a",
+      "size": 458277
+    },
+    {
+      "path": "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+      "sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df",
+      "size": 342657851
+    },
+    {
+      "path": "various/issue-604-door.ifc",
+      "sha256": "d0a4ea586c2ae1cd247d1026c8967a6a33055df261d71af57be2ed2312a12ad0",
+      "size": 116741
+    },
+    {
+      "path": "various/revit-walls-3.ifc",
+      "sha256": "67fd60b6db9591f870a159f57a9960fd873b501d98a95adffd292b21bdc3737f",
+      "size": 3954
+    },
+    {
+      "path": "various/rvt01.ifc",
+      "sha256": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+      "size": 4199228
+    },
+    {
+      "path": "various/test-colors.ifc",
+      "sha256": "eba83ebe3d1abf6ea476d29c205857f90ff18d3ac32518d8a9f5c581487f906a",
+      "size": 3787
+    },
+    {
+      "path": "various/test.ifc",
+      "sha256": "0be01f34e24ce536c533efd68034df057c08b7dbe59c03837cbcc12e0c00eaba",
+      "size": 2939
+    }
+  ]
+}

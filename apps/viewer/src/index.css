@@ -379,6 +379,43 @@ body {
   color: var(--color-primary) !important;
 }
 
+/* Raw STEP tab — terminal-flavoured dev affordance.
+   Compact (icon-only </>), separates visually from the three "human"
+   tabs with a left divider and a green active state that nods to a
+   shell cursor. Stays width-stable at narrow panel widths because
+   it explicitly opts out of `flex: 1` (uses an `auto`-ish width
+   driven by the </> glyph plus padding). */
+.properties-tab-trigger.raw-step-tab-trigger {
+  flex: 0 0 auto;
+  min-width: 2.25rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  border-left: 1px solid var(--tabs-border);
+  letter-spacing: 0;
+  color: color-mix(in srgb, var(--tab-text) 70%, transparent) !important;
+}
+
+.properties-tab-trigger.raw-step-tab-trigger:hover {
+  background-color: color-mix(in srgb, #10b981 16%, var(--tabs-bg)) !important;
+  color: #047857 !important;
+}
+
+.dark .properties-tab-trigger.raw-step-tab-trigger:hover {
+  background-color: color-mix(in srgb, #10b981 22%, var(--tabs-bg)) !important;
+  color: #34d399 !important;
+}
+
+.properties-tab-trigger.raw-step-tab-trigger[data-state="active"] {
+  background-color: color-mix(in srgb, #10b981 14%, var(--tab-active-bg)) !important;
+  color: #047857 !important;
+  border-top-color: #10b981 !important;
+}
+
+.dark .properties-tab-trigger.raw-step-tab-trigger[data-state="active"] {
+  color: #34d399 !important;
+  border-top-color: #34d399 !important;
+}
+
 /* Quantity cards - cyan accent */
 .dark .border-blue-200,
 .dark .border-blue-800,
@@ -410,6 +447,490 @@ body {
 .dark .bg-emerald-50\/50,
 .dark .bg-emerald-900\/10 {
   background-color: rgba(115, 218, 202, 0.05) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLORFUL MODE — Brutalist Aurora
+   Shift+click the toggle. The same sharp, functional, dense UI — but the
+   sky opened up. An aurora gradient behind the 3D scene, frosted-glass
+   panels, and the full Tokyo Night accent palette in its natural places.
+   No decorative borders. No gradient buttons. Just atmosphere.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@custom-variant colorful (&:where(.colorful, .colorful *));
+
+.colorful {
+  /* Tokyo Night accent palette — used only where colour already exists */
+  --cf-blue: #7aa2f7;
+  --cf-cyan: #7dcfff;
+  --cf-teal: #73daca;
+  --cf-magenta: #bb9af7;
+  --cf-purple: #9d7cd8;
+  --cf-orange: #ff9e64;
+  --cf-pink: #f7768e;
+  --cf-green: #9ece6a;
+  --cf-yellow: #e0af68;
+
+  /* Glass */
+  --cf-glass: rgba(255, 255, 255, 0.48);
+  --cf-glass-strong: rgba(255, 255, 255, 0.68);
+
+  /* ── Semantic tokens ── */
+  --color-background: #e0e6f0 !important;
+  --color-foreground: #1a1b2e !important;
+  --color-card: var(--cf-glass) !important;
+  --color-card-foreground: #1a1b2e !important;
+  --color-popover: var(--cf-glass-strong) !important;
+  --color-popover-foreground: #1a1b2e !important;
+  --color-primary: var(--cf-purple) !important;
+  --color-primary-foreground: #fff !important;
+  --color-secondary: rgba(157, 124, 216, 0.10) !important;
+  --color-secondary-foreground: #2e3050 !important;
+  --color-muted: rgba(0, 0, 0, 0.04) !important;
+  --color-muted-foreground: #555b78 !important;
+  --color-accent: rgba(157, 124, 216, 0.10) !important;
+  --color-accent-foreground: #2e3050 !important;
+  --color-destructive: var(--cf-pink) !important;
+  --color-destructive-foreground: #fff !important;
+  /* Borders: neutral, semi-transparent — NOT coloured */
+  --color-border: rgba(0, 0, 0, 0.10) !important;
+  --color-input: rgba(0, 0, 0, 0.06) !important;
+  --color-ring: var(--cf-purple) !important;
+
+  /* Hierarchy — lavender tints */
+  --hierarchy-selected-bg: rgba(157, 124, 216, 0.12);
+  --hierarchy-selected-text: #1a1b2e;
+  --hierarchy-text: #40445e;
+  --hierarchy-hover-bg: rgba(200, 195, 230, 0.15);
+
+  /* Tabs — warm peach undertone */
+  --tabs-bg: rgba(235, 215, 195, 0.25);
+  --tabs-border: rgba(0, 0, 0, 0.08);
+  --tab-text: #555b78;
+  --tab-active-bg: rgba(245, 230, 210, 0.55);
+  --tab-active-text: #1a1b2e;
+}
+
+/* ── Page background ── */
+.colorful body,
+.colorful #root {
+  background: #dde3f0 !important;
+}
+
+/* ── Toolbar: cool violet-tinted glass ── */
+.colorful .border-b.bg-white,
+.colorful .border-b.dark\:bg-black {
+  background: rgba(230, 225, 245, 0.60) !important;
+  backdrop-filter: blur(20px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+}
+
+/* ── Panels & cards: frosted glass (neutral base) ── */
+.colorful .bg-white,
+.colorful .bg-card,
+.colorful .bg-background {
+  background: var(--cf-glass) !important;
+  backdrop-filter: blur(16px) saturate(1.3) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.3) !important;
+}
+
+.colorful .bg-zinc-50,
+.colorful .bg-zinc-100 {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+.colorful .bg-zinc-900,
+.colorful .bg-zinc-950,
+.colorful .bg-black {
+  background: var(--cf-glass) !important;
+  backdrop-filter: blur(16px) saturate(1.3) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.3) !important;
+}
+
+/* ── Tinted glass per panel — colour echoes the aurora ── */
+
+/* Left panel: cool lavender tint (echoes aurora top) */
+.colorful .panel-container:first-of-type,
+.colorful [id="left-panel"] > .panel-container,
+.colorful [id="left-panel"] > div {
+  background: rgba(200, 195, 230, 0.38) !important;
+  backdrop-filter: blur(16px) saturate(1.4) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.4) !important;
+}
+
+/* Right panel: warm peach/amber tint (echoes aurora bottom) */
+.colorful [id="right-panel"] > .panel-container,
+.colorful [id="right-panel"] > div {
+  background: rgba(235, 215, 195, 0.40) !important;
+  backdrop-filter: blur(16px) saturate(1.4) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.4) !important;
+}
+
+/* Resize handles: thin, tinted */
+.colorful [data-panel-group-direction="horizontal"] > [data-resize-handle] {
+  background-color: rgba(157, 124, 216, 0.18) !important;
+  transition: background-color 0.15s;
+}
+
+.colorful [data-panel-group-direction="horizontal"] > [data-resize-handle]:hover {
+  background-color: rgba(157, 124, 216, 0.35) !important;
+}
+
+.colorful [data-panel-group-direction="horizontal"] > [data-resize-handle][data-resize-handle-active] {
+  background-color: rgba(157, 124, 216, 0.50) !important;
+}
+
+/* ── Borders: single neutral tone everywhere ── */
+.colorful .border-zinc-100,
+.colorful .border-zinc-200,
+.colorful .border-zinc-300,
+.colorful .border-zinc-400,
+.colorful .border-zinc-500,
+.colorful .border-zinc-600,
+.colorful .border-zinc-700,
+.colorful .border-zinc-800,
+.colorful .border-zinc-900,
+.colorful .border-zinc-950 {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+}
+
+.colorful .border,
+.colorful .border-b,
+.colorful .border-t,
+.colorful .border-l,
+.colorful .border-r,
+.colorful .border-border {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+}
+
+/* Purple borders (property editor) stay purple but softened */
+.colorful .border-purple-200,
+.colorful .border-purple-300\/50,
+.colorful .border-purple-500\/30,
+.colorful .border-purple-700,
+.colorful .border-purple-800 {
+  border-color: rgba(157, 124, 216, 0.25) !important;
+}
+
+/* ── Text ── */
+.colorful .text-zinc-900,
+.colorful .text-zinc-800,
+.colorful .text-zinc-700,
+.colorful .text-zinc-100 {
+  color: #1a1b2e !important;
+}
+
+.colorful .text-zinc-500,
+.colorful .text-zinc-400,
+.colorful .text-zinc-600 {
+  color: #555b78 !important;
+}
+
+.colorful .text-zinc-200,
+.colorful .text-zinc-300 {
+  color: #40445e !important;
+}
+
+/* ── Primary: purple (from Tokyo Night magenta/purple family) ── */
+.colorful .bg-primary {
+  background-color: var(--cf-purple) !important;
+}
+
+.colorful .text-primary {
+  color: var(--cf-purple) !important;
+}
+
+.colorful .border-primary {
+  border-color: var(--cf-purple) !important;
+}
+
+/* ── Shadows ── */
+.colorful .shadow-lg,
+.colorful .shadow-xl {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ── Selection ── */
+.colorful ::selection {
+  background-color: rgba(157, 124, 216, 0.25);
+  color: #1a1b2e;
+}
+
+/* ── Scrollbars ── */
+.colorful .scrollbar-thin {
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+.colorful .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+.colorful .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.25);
+}
+
+/* ── Hovers: tinted to match panel context ── */
+.colorful .hover\:bg-primary:hover {
+  background-color: var(--cf-purple) !important;
+}
+
+.colorful .hover\:bg-zinc-50:hover,
+.colorful .hover\:bg-zinc-100:hover,
+.colorful .hover\:bg-zinc-200:hover,
+.colorful .hover\:bg-white:hover {
+  background-color: rgba(200, 195, 230, 0.18) !important;
+}
+
+/* ── Active tabs ── */
+.colorful [data-state="active"] {
+  background-color: var(--cf-glass-strong) !important;
+  color: #1a1b2e !important;
+}
+
+.colorful .data-\[state\=active\]\:bg-white[data-state="active"],
+.colorful .data-\[state\=active\]\:bg-zinc-100[data-state="active"] {
+  background-color: var(--cf-glass-strong) !important;
+}
+
+/* Properties tabs: warm orange accent on active (echoes aurora horizon) */
+.colorful .properties-tab-trigger[data-state="active"] {
+  border-top-color: var(--cf-orange) !important;
+  background: rgba(245, 230, 210, 0.50) !important;
+}
+
+/* ── Tabs container: warmer tint to match right panel ── */
+.colorful .properties-tabs-list {
+  background-color: rgba(235, 215, 195, 0.30) !important;
+  border-bottom-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ── Tree selection: purple tint with left accent ── */
+.colorful .tree-node.selected {
+  background-color: rgba(157, 124, 216, 0.12) !important;
+  border-left-color: var(--cf-purple) !important;
+}
+
+.colorful .hierarchy-item.selected {
+  background-color: rgba(157, 124, 216, 0.12) !important;
+}
+
+/* ── Hierarchy hover: subtle lavender ── */
+.colorful .hierarchy-item:not(.selected):hover {
+  background-color: rgba(200, 195, 230, 0.20) !important;
+}
+
+/* ── Quantity cards ── */
+.colorful .border-blue-200,
+.colorful .border-blue-800,
+.colorful .border-blue-900 {
+  border-color: rgba(122, 162, 247, 0.25) !important;
+}
+
+.colorful .text-blue-700,
+.colorful .text-blue-400 {
+  color: #6a8fd6 !important;
+}
+
+.colorful .bg-blue-50\/20,
+.colorful .bg-blue-950\/20 {
+  background-color: rgba(122, 162, 247, 0.06) !important;
+}
+
+/* ── Success / Location ── */
+.colorful .border-emerald-500\/30 {
+  border-color: rgba(115, 218, 202, 0.25) !important;
+}
+
+.colorful .text-emerald-800,
+.colorful .text-emerald-400 {
+  color: #3d9e88 !important;
+}
+
+.colorful .bg-emerald-50\/50,
+.colorful .bg-emerald-900\/10 {
+  background-color: rgba(115, 218, 202, 0.06) !important;
+}
+
+/* ── Toolbar buttons ── */
+.colorful .toolbar-button:hover {
+  background-color: rgba(200, 195, 230, 0.25) !important;
+}
+
+.colorful .toolbar-button.active {
+  background-color: var(--cf-purple) !important;
+  color: #fff !important;
+}
+
+/* ── Status bar (bottom): warm tint ── */
+.colorful .border-t.bg-white,
+.colorful .border-t.dark\:bg-black {
+  background: rgba(240, 225, 210, 0.50) !important;
+  backdrop-filter: blur(16px) saturate(1.3) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.3) !important;
+}
+
+/* ── Drop overlay ── */
+.colorful .bg-\[\#9ece6a\]\/10 {
+  background-color: rgba(115, 218, 202, 0.10) !important;
+}
+
+.colorful .border-\[\#9ece6a\] {
+  border-color: var(--cf-teal) !important;
+}
+
+.colorful .text-\[\#9ece6a\] {
+  color: var(--cf-teal) !important;
+}
+
+/* ── Popover / dropdown menus: glass ── */
+.colorful [data-radix-popper-content-wrapper] [role="menu"],
+.colorful [data-radix-popper-content-wrapper] [role="listbox"],
+.colorful [data-radix-popper-content-wrapper] [data-radix-collection-item] {
+  background: var(--cf-glass-strong) !important;
+  backdrop-filter: blur(20px) saturate(1.4) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.4) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLORFUL — Component-specific colour variations
+   Each section gets a subtle tint from the Tokyo palette, mapped to its
+   semantic role. Tasteful, not overwhelming.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Section headers in hierarchy: cool lavender bg ── */
+.colorful .bg-zinc-100.border-b,
+.colorful .bg-zinc-900.border-b {
+  background-color: rgba(200, 195, 230, 0.30) !important;
+}
+
+/* ── Section headers in properties: warm peach bg ── */
+.colorful .bg-zinc-50.border-b {
+  background-color: rgba(240, 220, 195, 0.35) !important;
+}
+
+/* Properties section header text: warmer dark tone */
+.colorful .bg-zinc-50 .text-zinc-700,
+.colorful .bg-zinc-50 .text-zinc-600 {
+  color: #5a4a3a !important;
+}
+
+/* ── FILE INFORMATION / STATISTICS / PROJECT INFO section containers ── */
+/* Alternate warm tints for each section in the properties panel */
+.colorful .bg-zinc-50.dark\:bg-zinc-900\/50 {
+  background-color: rgba(240, 220, 195, 0.30) !important;
+}
+
+/* ── LOCATION section: teal/green tint (geography = nature) ── */
+.colorful [class*="border-emerald"] {
+  border-color: rgba(115, 218, 202, 0.25) !important;
+}
+
+/* ── Landing page / empty state — orange-tinted grid world ── */
+
+/* Viewport container bg — only the wrapper div, NOT the canvas.
+   The canvas has data-viewport="main"; we exclude it so the
+   inline aurora gradient isn't overridden by !important.       */
+.colorful div[data-viewport=""]:not(:has(canvas)),
+.colorful div[data-viewport]:not([data-viewport="main"]) {
+  background-color: rgba(245, 235, 220, 0.60) !important;
+}
+
+/* Orange grid only on the empty-state overlay (no model loaded).
+   This div only exists when the landing page renders.           */
+.colorful [data-viewport] > .absolute.z-10 {
+  background-image:
+    linear-gradient(rgba(255, 158, 100, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 158, 100, 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Main landing card: warm glass with orange border */
+.colorful .border-zinc-300.dark\:border-\[\#3b4261\] {
+  border-color: rgba(255, 158, 100, 0.28) !important;
+  background: rgba(255, 248, 240, 0.65) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* Logo background layer: warm tint */
+.colorful .-rotate-3.border {
+  background-color: rgba(255, 225, 195, 0.30) !important;
+  border-color: rgba(255, 158, 100, 0.18) !important;
+}
+
+/* Feature grid cards (SELECT / FILTER / ANALYZE): warm glass */
+.colorful .bg-zinc-100.dark\:bg-\[\#1f2335\] {
+  background-color: rgba(255, 230, 200, 0.35) !important;
+  border-color: rgba(255, 158, 100, 0.20) !important;
+}
+
+/* Feature card icon boxes */
+.colorful .bg-zinc-100 .bg-white.border,
+.colorful .bg-zinc-100 .dark\:bg-\[\#16161e\].border {
+  background-color: rgba(255, 245, 230, 0.55) !important;
+  border-color: rgba(255, 158, 100, 0.15) !important;
+}
+
+/* Recent files list */
+.colorful .bg-zinc-50.dark\:bg-\[\#1f2335\] {
+  background-color: rgba(255, 235, 210, 0.30) !important;
+  border-color: rgba(255, 158, 100, 0.15) !important;
+}
+
+/* Shortcuts badge */
+.colorful .bg-zinc-100.dark\:bg-\[\#1f2335\].border.border-zinc-300 {
+  background-color: rgba(255, 230, 200, 0.35) !important;
+  border-color: rgba(255, 158, 100, 0.20) !important;
+}
+
+/* "Open .ifc file" hover */
+.colorful .hover\:border-primary:hover {
+  border-color: var(--cf-orange) !important;
+}
+
+.colorful .hover\:text-primary:hover {
+  color: var(--cf-orange) !important;
+}
+
+/* Empty state dashed borders: orange */
+.colorful .border-dashed {
+  border-color: rgba(255, 158, 100, 0.35) !important;
+}
+
+/* Empty state icon boxes (NO MODEL / NO SELECTION) */
+.colorful .border-dashed.border-2 {
+  border-color: rgba(255, 158, 100, 0.30) !important;
+  background-color: rgba(255, 235, 210, 0.25) !important;
+}
+
+/* ── Hierarchy SPATIAL/CLASS/TYPE toggle ── */
+/* Outline buttons: lavender tint */
+.colorful [data-variant="outline"] {
+  border-color: rgba(157, 124, 216, 0.22) !important;
+}
+
+.colorful [data-variant="outline"]:hover {
+  background-color: rgba(200, 195, 230, 0.22) !important;
+}
+
+/* ── Properties panel collapsible sections hover (right panel only) ── */
+.colorful [id="right-panel"] .hover\:bg-zinc-50:hover,
+.colorful [id="right-panel"] .hover\:bg-zinc-900:hover {
+  background-color: rgba(240, 220, 195, 0.25) !important;
+}
+
+/* ── Properties subsection backgrounds ── */
+.colorful .bg-zinc-50\/50,
+.colorful .dark\:bg-zinc-900\/50 {
+  background-color: rgba(240, 225, 205, 0.25) !important;
+}
+
+/* ── Tooltip: dark, sharp ── */
+.colorful [role="tooltip"] {
+  background: rgba(26, 27, 46, 0.90) !important;
+  color: #e0e6f0 !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
 }
 
 /* Fix Radix ScrollArea viewport inner div: by default it uses display:table
@@ -513,6 +1034,35 @@ body {
   cursor: not-allowed;
 }
 
+/* Annotation pin idle introduction — fires once on mount, then settles.
+   Driven by a `prefers-reduced-motion` guard so accessibility users
+   don't get hit by the pulse. */
+@keyframes annotation-pin-idle {
+  0% {
+    transform: scale(0.7);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
+  }
+  60% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35),
+      0 0 0 1px rgba(0, 0, 0, 0.15);
+  }
+}
+
+.annotation-pin-idle {
+  animation: annotation-pin-idle 360ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .annotation-pin-idle {
+    animation: none;
+  }
+}
+
 /* Loading skeleton animation */
 @keyframes skeleton-pulse {
   0%, 100% {
@@ -527,14 +1077,4 @@ body {
   background-color: var(--color-muted);
   border-radius: 0.25rem;
   animation: skeleton-pulse 2s ease-in-out infinite;
-}
-
-/* Clerk overlays (billing/sidebar/modal) should always stack above app overlays. */
-.cl-portalRoot,
-.cl-modalBackdrop,
-.cl-modalContent,
-.cl-drawerRoot,
-.cl-drawerBackdrop,
-.cl-drawerContent {
-  z-index: 100000 !important;
 }

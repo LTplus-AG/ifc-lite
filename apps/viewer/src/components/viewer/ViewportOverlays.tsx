@@ -21,8 +21,12 @@ import type { CesiumDataSource } from '@/store/slices/cesiumSlice';
 import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
+import { isTauri } from '@/lib/platform';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
+import { PointCloudPanel } from './PointCloudPanel';
+
+const isDesktop = isTauri();
 
 export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: boolean } = {}) {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
@@ -147,8 +151,9 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
   return (
     <>
-      {/* Bottom-right: Cesium settings overlay OR Navigation controls */}
-      {cesiumEnabled ? (
+      <PointCloudPanelMount />
+      {/* Bottom-right: Cesium settings overlay OR Navigation controls (Cesium is web-only) */}
+      {cesiumEnabled && !isDesktop ? (
         <CesiumSettingsOverlay
           dataSource={cesiumDataSource}
           onDataSourceChange={setCesiumDataSource}
@@ -321,4 +326,17 @@ function CesiumSettingsOverlay({
       </label>
     </div>
   );
+}
+
+/**
+ * Tiny indirection so the panel can subscribe to its own slice without
+ * pulling extra state into the parent overlay component.
+ */
+function PointCloudPanelMount() {
+  const count = useViewerStore((s) => s.pointCloudAssetCount);
+  // Triangle total comes from the merged geometry result. The panel
+  // gates the BIM↔scan deviation compute button on triangleCount > 0
+  // so the user can't trigger an empty-BVH compute pass.
+  const triangleCount = useViewerStore((s) => s.geometryResult?.totalTriangles ?? 0);
+  return <PointCloudPanel assetCount={count} triangleCount={triangleCount} />;
 }

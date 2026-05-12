@@ -9,8 +9,8 @@
  * segments that lie on the same line and are connected or overlapping.
  */
 
-import type { Point2D, Line2D, DrawingLine, EntityKey } from './types';
-import { makeEntityKey } from './types';
+import type { Point2D, Line2D, DrawingLine, EntityKey } from './types.js';
+import { makeEntityKey } from './types.js';
 import {
   EPSILON,
   point2DDistance,
@@ -20,7 +20,7 @@ import {
   point2DNormalize,
   lineDirection,
   projectPointOnLine,
-} from './math';
+} from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LINE MERGER

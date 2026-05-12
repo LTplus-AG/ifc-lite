@@ -9,7 +9,7 @@
  * Do NOT hardcode entity types or attributes here; regenerate instead.
  */
 
-import { getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity } from './generated/schema-registry.js';
+import { getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
 
 /**
  * Get all attribute names for an IFC entity type in STEP positional order.
@@ -41,4 +41,22 @@ export function getInheritanceChain(type: string): string[] {
 export function getAttributeNameAt(type: string, index: number): string | null {
     const names = getAttributeNames(type);
     return names[index] || null;
+}
+
+/**
+ * Normalize an IFC entity type name to canonical EXPRESS PascalCase.
+ *
+ * - `'IFCWALL'` → `'IfcWall'`
+ * - `'IfcWall'` → `'IfcWall'` (unchanged)
+ * - `'IfcVendorExtensionFoo'` → `'IfcVendorExtensionFoo'` (unchanged — unknown to registry)
+ *
+ * Used at user-facing API boundaries to keep the public contract on
+ * canonical PascalCase regardless of how the caller spells the type.
+ */
+export function normalizeIfcTypeName(type: string): string {
+    if (typeof type !== 'string' || type.length === 0) return type;
+    const metadata = getEntityMetadata(type);
+    if (metadata) return metadata.name;
+    // Unknown to registry — preserve as-is (could be a vendor extension).
+    return type;
 }

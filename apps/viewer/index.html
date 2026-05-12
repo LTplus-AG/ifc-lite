@@ -11,6 +11,7 @@
       var saved = localStorage.getItem('ifc-lite-theme');
       var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       if (theme === 'dark') document.documentElement.classList.add('dark');
+      if (theme === 'colorful') document.documentElement.classList.add('colorful');
     })();
   </script>
   

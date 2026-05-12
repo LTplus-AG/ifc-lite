@@ -20,10 +20,12 @@ import type {
   VisibilityBackendMethods,
   ViewerBackendMethods,
   MutateBackendMethods,
+  StoreBackendMethods,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
   FilesBackendMethods,
+  ScheduleBackendMethods,
 } from '../types.js';
 
 function makeRemoteProxy<T extends object>(namespace: string): T {
@@ -46,10 +48,12 @@ export class RemoteBackend implements BimBackend {
   readonly visibility: VisibilityBackendMethods = makeRemoteProxy('visibility');
   readonly viewer: ViewerBackendMethods = makeRemoteProxy('viewer');
   readonly mutate: MutateBackendMethods = makeRemoteProxy('mutate');
+  readonly store: StoreBackendMethods = makeRemoteProxy('store');
   readonly spatial: SpatialBackendMethods = makeRemoteProxy('spatial');
   readonly export: ExportBackendMethods = makeRemoteProxy('export');
   readonly lens: LensBackendMethods = makeRemoteProxy('lens');
   readonly files: FilesBackendMethods = makeRemoteProxy('files');
+  readonly schedule: ScheduleBackendMethods = makeRemoteProxy('schedule');
 
   constructor(private transport: Transport) {}
 

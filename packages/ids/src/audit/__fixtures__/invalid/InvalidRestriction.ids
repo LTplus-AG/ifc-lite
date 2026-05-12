@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+	<ids:info>
+		<ids:title>restriction type checks</ids:title>
+		<ids:copyright>buildingSMART International Ltd</ids:copyright>
+		<ids:date>2021-09-17</ids:date>
+	</ids:info>
+	<ids:specifications>
+		<ids:specification ifcVersion="IFC4" name="binder">
+			<ids:applicability maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<xs:restriction base="xs:string">
+							<xs:pattern value="IFCWALL"/>
+						</xs:restriction>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:property dataType="IFCAREAMEASURE">
+					<ids:propertySet>
+						<ids:simpleValue>CustomPset</ids:simpleValue>
+					</ids:propertySet>
+          <ids:baseName>
+						<ids:simpleValue>SomeDoubleValue</ids:simpleValue>
+					</ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:invalid">
+              <xs:enumeration value="12" /> 
+            </xs:restriction>
+          </ids:value>
+				</ids:property>
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>PsetTeresa</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Codice progetto</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="CUP\d{8}"/>
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+			</ids:requirements>
+		</ids:specification>
+	</ids:specifications>
+</ids:ids>

@@ -15,7 +15,14 @@ export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
-export type { Section2DOverlayOptions, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+// Section cap styling (hatch pattern ids + default colours). The cap itself
+// is now rendered by Section2DOverlayRenderer's fill pass; this module just
+// holds the styling primitives shared with the store and UI.
+export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
+export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
+export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
+export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
+export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
@@ -39,7 +46,27 @@ export {
 
 // Extracted manager classes
 export { PickingManager } from './picking-manager.js';
+export type { PointPickProvider } from './picking-manager.js';
 export { RaycastEngine } from './raycast-engine.js';
+export { PointPicker, decodePickSample } from './point-picker.js';
+export type { PointPickNode, DecodedPickSample } from './point-picker.js';
+export type { PointPickSizing } from './picker.js';
+
+// Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
+export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+export type {
+    PointCloudAssetHandle,
+    PointCloudRenderOptions,
+    PointColorMode,
+    PointSizeMode,
+    ResolvedSectionPlane as PointResolvedSectionPlane,
+} from './pointcloud/point-cloud-renderer.js';
+export { PointRenderPipeline } from './pointcloud/point-pipeline.js';
+export type {
+    PointCloudChunkInput,
+    PointCloudNode,
+    PointCloudNodeMeta,
+} from './pointcloud/point-cloud-node.js';
 
 import { WebGPUDevice } from './device.js';
 import { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
@@ -62,12 +89,18 @@ import type {
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
+import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
 import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
+import { EdlPass } from './edl-pass.js';
+import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+import type { PointCloudAsset } from '@ifc-lite/geometry';
+import { DeviationPipeline } from './deviation/deviation-pipeline.js';
+import { buildTriangleBVH } from './deviation/triangle-bvh.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
@@ -92,6 +125,26 @@ type ResolvedVisualEnhancement = {
 };
 
 /**
+ * Build a deterministic fingerprint of the BVH input mesh set so
+ * `Renderer.computeDeviations` can skip the rebuild when the source
+ * geometry hasn't changed. Folds in expressId / modelIndex / position
+ * + index lengths per mesh so two distinct mesh sets that happen to
+ * share the same aggregate position-length total can't collide on the
+ * same fingerprint and reuse a stale BVH.
+ */
+function computeBvhFingerprint(meshes: ReadonlyArray<import('@ifc-lite/geometry').MeshData>): string {
+    const parts: string[] = [String(meshes.length)];
+    for (const m of meshes) {
+        const id = m.expressId ?? -1;
+        const mi = m.modelIndex ?? -1;
+        const posLen = m.positions?.length ?? 0;
+        const idxLen = m.indices?.length ?? 0;
+        parts.push(`${id}:${mi}:${posLen}:${idxLen}`);
+    }
+    return parts.join('|');
+}
+
+/**
  * Main renderer class
  */
 export class Renderer {
@@ -105,6 +158,23 @@ export class Renderer {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     private postProcessor: PostProcessor | null = null;
+    private edlPass: EdlPass | null = null;
+    private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
+        enabled: false,
+        strength: 1,
+        radiusPx: 1,
+        highQuality: true,
+    };
+    private pointCloudRenderer: PointCloudRenderer | null = null;
+    private deviationPipeline: DeviationPipeline | null = null;
+    /**
+     * Cache of which mesh-set the BVH was built from. We rebuild on
+     * `computeDeviations` only when the cached "fingerprint" misses,
+     * so re-running deviation against the same model is a fast
+     * dispatch — the BVH is multi-second on big BIMs and we don't
+     * want to pay that on every slider drag.
+     */
+    private deviationBvhFingerprint: string | null = null;
     private visualEnhancementState: ResolvedVisualEnhancement = {
         enabled: true,
         edgeContrast: { enabled: true, intensity: 1.0 },
@@ -133,6 +203,10 @@ export class Renderer {
     // Dirty flag: set by requestRender(), consumed by the animation loop.
     // Centralises all render scheduling — callers never call render() directly.
     private _renderRequested: boolean = false;
+
+    // One-shot log guard — prints Y-up clip bounds on first section-enable so
+    // users can confirm the slider is operating on the intended range.
+    private _loggedSectionBounds: boolean = false;
 
     // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
     // A single 192-byte uniform buffer (48 floats) is reused for all batches/meshes within a frame
@@ -167,12 +241,7 @@ export class Renderer {
             this.canvas.height = height;
         }
 
-        // On mobile GPUs, MRT (dual color targets) + MSAA often fails pipeline
-        // validation. Use single-target mode which drops the objectId output.
-        const isMobile = typeof navigator !== 'undefined' &&
-            /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        this.pipeline = new RenderPipeline(this.device, width, height, isMobile);
-        await this.pipeline.init();
+        this.pipeline = new RenderPipeline(this.device, width, height);
         this.instancedPipeline = new InstancedRenderPipeline(this.device, width, height);
         this.picker = new Picker(this.device, width, height);
         this.sectionPlaneRenderer = new SectionPlaneRenderer(
@@ -197,10 +266,354 @@ export class Renderer {
             console.warn('[Renderer] PostProcessor init failed (post-processing disabled):', e);
             this.postProcessor = null;
         }
+        this.pointCloudRenderer = new PointCloudRenderer(
+            this.device.getDevice(),
+            this.device.getFormat(),
+            'depth24plus-stencil8',
+            this.pipeline.getSampleCount(),
+        );
+        // Compute pipeline for the BIM↔scan deviation heatmap. Lazily
+        // owns the per-triangle BVH GPU buffers; idle until the first
+        // `computeDeviations` call.
+        this.deviationPipeline = new DeviationPipeline(this.device.getDevice());
+        this.edlPass = new EdlPass(this.device, this.pipeline.getSampleCount());
         this.camera.setAspect(width / height);
 
         // Update picking manager with initialized picker
         this.pickingManager.setPicker(this.picker);
+        // Provide a snapshot of pickable point nodes per pick. The
+        // sizing must mirror the live splat shader so click hit-testing
+        // matches what the user actually sees on screen.
+        this.pickingManager.setPointPickProvider(() => {
+            const pcr = this.pointCloudRenderer;
+            if (!pcr || !pcr.hasAssets()) return null;
+            const opts = pcr.getOptions();
+            const sizeMode = opts.sizeMode === 'fixed-px' ? 0 : opts.sizeMode === 'adaptive-world' ? 1 : 2;
+            return {
+                nodes: pcr.getPickNodes(),
+                sizing: {
+                    sizeMode: sizeMode as 0 | 1 | 2,
+                    worldRadius: opts.worldRadius,
+                    pointSizePx: opts.pointSize,
+                    clickTolerancePx: 2,
+                },
+            };
+        });
+    }
+
+    /**
+     * Replace all loaded point clouds with `assets`.
+     *
+     * Phase 0 entry point — single-chunk inline assets from IFCx
+     * (`pcd::base64`, `points::array`, `points::base64`). Future phases
+     * accept streaming sources via a different overload.
+     */
+    setPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        this.pointCloudRenderer.setAssets(assets);
+        // Replace, not append — bounds may have shrunk (e.g. an IFCx
+        // reload with a smaller scan). `expandModelBoundsForPointClouds`
+        // alone only grows; recompute from scratch to keep
+        // fit-to-view + section-plane sliders accurate.
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /** Append additional point clouds without clearing existing ones. */
+    addPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        for (const asset of assets) {
+            this.pointCloudRenderer.addAsset(asset);
+        }
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /** Total number of point cloud assets currently uploaded. */
+    getPointCloudAssetCount(): number {
+        return this.pointCloudRenderer?.getNodeCount() ?? 0;
+    }
+
+    /** Total number of points across all point cloud assets. */
+    getPointCloudPointCount(): number {
+        return this.pointCloudRenderer?.getPointCount() ?? 0;
+    }
+
+    /** Drop all point cloud GPU resources. */
+    clearPointClouds(): void {
+        this.pointCloudRenderer?.clear();
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /**
+     * Streaming entry: open an empty asset that will receive chunks via
+     * `appendPointCloudChunk`. Call `endPointCloudStream` when no more
+     * chunks will arrive (currently a no-op but kept for symmetry).
+     */
+    beginPointCloudStream(meta: { expressId: number; ifcType?: string; modelIndex?: number }): import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle {
+        if (!this.pointCloudRenderer) {
+            throw new Error('Renderer not initialized. Call init() first.');
+        }
+        return this.pointCloudRenderer.beginAsset(meta);
+    }
+
+    appendPointCloudChunk(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput,
+    ): void {
+        if (!this.pointCloudRenderer) return;
+        this.pointCloudRenderer.appendChunk(handle, chunk);
+        this.expandModelBoundsForPointClouds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    endPointCloudStream(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+        this.pointCloudRenderer?.endAsset(handle);
+        this.requestRender();
+    }
+
+    removePointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle): void {
+        this.pointCloudRenderer?.removeAsset(handle);
+        // Bounds may have shrunk — recompute from scratch so fit-to-view
+        // and section-plane sliders see fresh extents.
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /**
+     * Reassign a streamed point-cloud's expressId after upload. Use
+     * this when the federation registry assigns a new model offset and
+     * the renderer needs to emit the post-offset globalId in picking
+     * outputs. The change takes effect on the next render — no GPU
+     * buffer rewrite needed.
+     */
+    relabelPointCloudAsset(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        newExpressId: number,
+    ): void {
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
+        this.requestRender();
+    }
+
+    /**
+     * Compute model bounds from triangle meshes + remaining point clouds.
+     * Called from removeAsset / clear paths so bounds shrink correctly.
+     * Triangle meshes still drive the bounds when present (existing
+     * Scene-driven path), so this only re-folds in the point cloud
+     * extents over whatever the mesh path left.
+     */
+    private recomputeModelBounds(): void {
+        // Always recompute from scratch: take mesh bounds as the
+        // baseline, then fold in the CURRENT point-cloud bounds on
+        // top. Folding only-up via expandModelBoundsForPointClouds()
+        // is correct when pc bounds grow but never shrinks them when
+        // an asset is removed, leaving stale oversized extents until
+        // every point cloud is gone.
+        const meshBounds = this.computeMeshBounds();
+        const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
+
+        if (!meshBounds && !pcBounds) {
+            this.modelBounds = null;
+            return;
+        }
+        this.modelBounds = meshBounds ?? {
+            min: { x: pcBounds!.min[0], y: pcBounds!.min[1], z: pcBounds!.min[2] },
+            max: { x: pcBounds!.max[0], y: pcBounds!.max[1], z: pcBounds!.max[2] },
+        };
+        if (meshBounds && pcBounds) {
+            this.expandModelBoundsForPointClouds();
+        }
+    }
+
+    /** Aggregate bounds across all batched + individual meshes. Returns
+     *  null if the scene has no mesh geometry. */
+    private computeMeshBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        let any = false;
+        for (const batch of this.scene.getBatchedMeshes()) {
+            if (!batch.bounds) continue;
+            any = true;
+            if (batch.bounds.min[0] < minX) minX = batch.bounds.min[0];
+            if (batch.bounds.min[1] < minY) minY = batch.bounds.min[1];
+            if (batch.bounds.min[2] < minZ) minZ = batch.bounds.min[2];
+            if (batch.bounds.max[0] > maxX) maxX = batch.bounds.max[0];
+            if (batch.bounds.max[1] > maxY) maxY = batch.bounds.max[1];
+            if (batch.bounds.max[2] > maxZ) maxZ = batch.bounds.max[2];
+        }
+        if (!any) return null;
+        return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+    }
+
+    /** Apply rendering options (color mode, fixed override, point size). */
+    setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
+        this.pointCloudRenderer?.setOptions(opts);
+        this.requestRender();
+    }
+
+    /**
+     * Compute BIM ↔ scan deviation for every loaded point cloud asset.
+     *
+     * Walks every triangle in the scene (individual + batched meshes,
+     * regardless of which IFC ingest path produced them — STEP, IFCx,
+     * GLB, or federated combinations), builds a per-triangle BVH on
+     * the GPU, then runs a closest-point compute pass per chunk that
+     * writes signed distance into each chunk's deviation buffer.
+     *
+     * Returns metadata so the UI can populate a histogram + auto-range:
+     * the per-asset point count, the suggested ±range from the 95th
+     * percentile, and the bbox the BVH was built from.
+     *
+     * Idempotent: re-running with the same mesh set reuses the GPU
+     * BVH (the BVH build dominates wall time on big BIMs). Pass
+     * `forceRebuild: true` to invalidate.
+     */
+    async computeDeviations(opts: {
+        /** Clip range applied during compute. 0 → no clip. Default 1m. */
+        maxRange?: number;
+        forceRebuild?: boolean;
+    } = {}): Promise<{
+        bvhTriangles: number;
+        bvhNodes: number;
+        chunksProcessed: number;
+        pointsProcessed: number;
+        bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+        suggestedHalfRange: number;
+    }> {
+        if (!this.deviationPipeline || !this.pointCloudRenderer) {
+            throw new Error('Renderer not initialised — call init() first.');
+        }
+        const meshes = this.collectAllSceneMeshes();
+        // Fingerprint folds in per-mesh expressId / modelIndex /
+        // positions length / triangle count, so two distinct meshes
+        // that happen to share an aggregate position-length total
+        // can't alias each other. A federation reload that swaps one
+        // model for another with the same total triangle count would
+        // otherwise reuse the previous BVH and report wrong distances.
+        const fingerprint = computeBvhFingerprint(meshes);
+        if (opts.forceRebuild || fingerprint !== this.deviationBvhFingerprint) {
+            const bvh = buildTriangleBVH(meshes);
+            this.deviationPipeline.uploadBvh(bvh);
+            this.deviationBvhFingerprint = fingerprint;
+        }
+        const stats = this.deviationPipeline.getBvhStats();
+        const maxRange = opts.maxRange ?? 1.0;
+
+        // Encode every chunk into a single command submit so the GPU
+        // can pipeline the dispatches without a CPU round-trip per
+        // chunk. Histogram readback is a follow-up — for v1 we emit
+        // the deviation buffers and let the splat shader visualise.
+        const encoder = this.device.getDevice().createCommandEncoder({ label: 'pointcloud-deviation' });
+        let chunksProcessed = 0;
+        let pointsProcessed = 0;
+        const nodes = this.pointCloudRenderer.getInternalNodes();
+        for (const node of nodes) {
+            for (const chunk of node.chunks) {
+                const ok = this.deviationPipeline.dispatch(encoder, {
+                    positionsBuffer: chunk.vertexBuffer,
+                    deviationsBuffer: chunk.deviationBuffer,
+                    pointCount: chunk.pointCount,
+                    maxRange,
+                });
+                if (ok) {
+                    chunksProcessed++;
+                    pointsProcessed += chunk.pointCount;
+                }
+            }
+        }
+        this.device.getDevice().queue.submit([encoder.finish()]);
+        // Wait until the GPU finishes the dispatches before resolving.
+        // Otherwise the caller's "compute done" callback fires before
+        // the deviation buffers are actually populated.
+        await this.device.getDevice().queue.onSubmittedWorkDone();
+        this.requestRender();
+
+        // Suggest a default half-range = max(0.01m, max-extent / 1000).
+        // Tighter than the maxRange clip; gives the user a reasonable
+        // starting slider position without a histogram readback.
+        const bb = stats.bounds;
+        const suggestedHalfRange = bb
+            ? Math.max(0.01, Math.max(
+                bb.max[0] - bb.min[0],
+                bb.max[1] - bb.min[1],
+                bb.max[2] - bb.min[2],
+              ) / 1000)
+            : 0.05;
+
+        return {
+            bvhTriangles: stats.triangleCount,
+            bvhNodes: stats.nodeCount,
+            chunksProcessed,
+            pointsProcessed,
+            bounds: stats.bounds,
+            suggestedHalfRange,
+        };
+    }
+
+    /**
+     * Aggregate every triangle source the scene exposes — individual
+     * meshes (created on demand by picking / highlights) AND batched
+     * meshes (the streaming geometry path's compact GPU buffers).
+     * Both formats arrive as `MeshData`; the BVH builder doesn't care
+     * which source they came from.
+     */
+    private collectAllSceneMeshes(): import('@ifc-lite/geometry').MeshData[] {
+        // The Scene keeps every CPU-side MeshData regardless of which
+        // ingest path produced it (STEP / IFCx / GLB). One iteration
+        // covers individual + batched + multi-piece + multi-model.
+        // `forEachMeshData` deduplicates by identity so a colour-merged
+        // batch is only added once even if it's indexed under multiple
+        // contributor expressIds.
+        const out: import('@ifc-lite/geometry').MeshData[] = [];
+        this.scene.forEachMeshData((md) => {
+            if (md.positions && md.positions.length > 0) out.push(md);
+        });
+        return out;
+    }
+
+    /**
+     * Toggle Eye-Dome Lighting and tune its strength.
+     *
+     * EDL adds depth perception to point clouds (and meshes) via screen-
+     * space depth gradient — silhouette pixels get a soft black halo.
+     * Cheap: ~9 texture taps per pixel. Only runs when point clouds are
+     * loaded.
+     */
+    setEdlOptions(opts: { enabled?: boolean; strength?: number; radiusPx?: number; highQuality?: boolean }): void {
+        if (opts.enabled !== undefined) this.edlOptions.enabled = opts.enabled;
+        if (opts.strength !== undefined) this.edlOptions.strength = Math.max(0, Math.min(3, opts.strength));
+        if (opts.radiusPx !== undefined) this.edlOptions.radiusPx = Math.max(1, Math.min(4, opts.radiusPx));
+        if (opts.highQuality !== undefined) this.edlOptions.highQuality = opts.highQuality;
+        this.requestRender();
+    }
+
+    private expandModelBoundsForPointClouds(): void {
+        const pcBounds = this.pointCloudRenderer?.getBounds();
+        if (!pcBounds) return;
+        if (!this.modelBounds) {
+            this.modelBounds = {
+                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
+                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
+            };
+            return;
+        }
+        const m = this.modelBounds;
+        m.min.x = Math.min(m.min.x, pcBounds.min[0]);
+        m.min.y = Math.min(m.min.y, pcBounds.min[1]);
+        m.min.z = Math.min(m.min.z, pcBounds.min[2]);
+        m.max.x = Math.max(m.max.x, pcBounds.max[0]);
+        m.max.y = Math.max(m.max.y, pcBounds.max[1]);
+        m.max.z = Math.max(m.max.z, pcBounds.max[2]);
     }
 
     /**
@@ -672,7 +1085,7 @@ export class Renderer {
             meshes: this.scene.getMeshes().length,
             contextOk: this.device.isInitialized(),
             gpuErrors: this.device._uncapturedErrorCount,
-            lastGpuError: this.device._lastUncapturedError || (this.pipeline?._pipelineError ?? ''),
+            lastGpuError: this.device._lastUncapturedError ?? '',
             camPos: `${pos.x.toFixed(1)},${pos.y.toFixed(1)},${pos.z.toFixed(1)}`,
             camTgt: `${tgt.x.toFixed(1)},${tgt.y.toFixed(1)},${tgt.z.toFixed(1)}`,
             bounds: b ? `${b.min.x.toFixed(0)}..${b.max.x.toFixed(0)} ${b.min.y.toFixed(0)}..${b.max.y.toFixed(0)} ${b.min.z.toFixed(0)}..${b.max.z.toFixed(0)}` : 'none',
@@ -743,6 +1156,66 @@ export class Renderer {
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
 
+        // Build the selected-id set once per frame so the X-Ray override paths
+        // can keep highlighted entities at full alpha without per-site checks.
+        const selectedId = options.selectedId;
+        const selectedIds = options.selectedIds;
+        const selectedModelIndex = options.selectedModelIndex;
+        const selectedExpressIds = new Set<number>();
+        if (selectedId !== undefined && selectedId !== null) {
+            selectedExpressIds.add(selectedId);
+        }
+        if (selectedIds) {
+            for (const id of selectedIds) {
+                selectedExpressIds.add(id);
+            }
+        }
+        const hasSelected = selectedExpressIds.size > 0;
+
+        // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
+        // Snapshot the caller's map so mid-frame mutation can't desync classification
+        // and uniform-write decisions for the same batch/mesh.
+        const txOverridesSrc = options.transparencyOverrides;
+        const hasTxOverrides = txOverridesSrc != null && txOverridesSrc.size > 0;
+        const txOverrides = hasTxOverrides ? new Map(txOverridesSrc) : null;
+        const alphaForMesh = (expressId: number, fallback: number): number => {
+            if (!hasTxOverrides) return fallback;
+            // Selected meshes are exempt — the highlight pass renders them last,
+            // but exempting here also keeps mesh classification + uniform writes
+            // consistent so a selected mesh never enters the transparent pipeline
+            // because of its own override entry.
+            if (hasSelected && selectedExpressIds.has(expressId)) return fallback;
+            const a = txOverrides!.get(expressId);
+            return a !== undefined ? a : fallback;
+        };
+        // Cache resolved batch alpha for the frame: classification needs it
+        // (opaque vs transparent routing) and renderBatch needs it for the
+        // uniform write. Without the cache we'd walk batch.expressIds twice
+        // per batch per frame, which becomes the dominant JS cost in X-Ray.
+        const batchAlphaCache = hasTxOverrides
+            ? new WeakMap<{ expressIds: number[]; color: [number, number, number, number] }, number>()
+            : null;
+        const alphaForBatch = (
+            batch: { expressIds: number[]; color: [number, number, number, number] },
+            fallback: number,
+        ): number => {
+            if (!hasTxOverrides) return fallback;
+            const cached = batchAlphaCache!.get(batch);
+            if (cached !== undefined) return cached;
+            let minAlpha = Infinity;
+            for (const eid of batch.expressIds) {
+                // Selected ids never drag down a batch's alpha — the highlight
+                // pass redraws them on top, but excluding here also means a
+                // batch made entirely of selected entities stays opaque.
+                if (hasSelected && selectedExpressIds.has(eid)) continue;
+                const a = txOverrides!.get(eid);
+                if (a !== undefined && a < minAlpha) minAlpha = a;
+            }
+            const resolved = minAlpha === Infinity ? fallback : minAlpha;
+            batchAlphaCache!.set(batch, resolved);
+            return resolved;
+        };
+
         // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
         // Only create individual meshes for selected elements (for highlighting)
         // Batches are filtered at render time - fully visible batches render normally,
@@ -808,7 +1281,7 @@ export class Renderer {
             const transparentMeshes: typeof meshes = [];
 
             for (const mesh of meshes) {
-                const alpha = mesh.color[3];
+                const alpha = alphaForMesh(mesh.expressId, mesh.color[3]);
                 const transparency = mesh.material?.transparency ?? 0.0;
                 const isTransparent = alpha < 0.99 || transparency > 0.01;
 
@@ -829,9 +1302,6 @@ export class Renderer {
             // Write uniform data to each mesh's buffer BEFORE recording commands
             // This ensures each mesh has its own color data
             const allMeshes = [...opaqueMeshes, ...transparentMeshes];
-            const selectedId = options.selectedId;
-            const selectedIds = options.selectedIds;
-            const selectedModelIndex = options.selectedModelIndex;
 
             // Calculate section plane parameters and model bounds
             // Always calculate bounds when sectionPlane is provided (for preview and active mode)
@@ -848,23 +1318,17 @@ export class Renderer {
             }
 
             if (options.sectionPlane) {
-                // Get model bounds from ALL geometry sources: individual meshes AND batched meshes
+                // Get model bounds from batched meshes. We deliberately EXCLUDE
+                // individual meshes (`this.scene.getMeshes()`) here: those are
+                // created lazily for selection highlighting and can live at
+                // unexpected world positions (e.g. legacy transforms, overlay
+                // helpers), which would inflate the bounds range and make
+                // "1% of the slider" span the entire real model — producing
+                // the reported symptom where the model pops from fully visible
+                // to fully invisible across a tiny slider range.
                 const boundsMin = { x: Infinity, y: Infinity, z: Infinity };
                 const boundsMax = { x: -Infinity, y: -Infinity, z: -Infinity };
 
-                // Check individual meshes
-                for (const mesh of meshes) {
-                    if (mesh.bounds) {
-                        boundsMin.x = Math.min(boundsMin.x, mesh.bounds.min[0]);
-                        boundsMin.y = Math.min(boundsMin.y, mesh.bounds.min[1]);
-                        boundsMin.z = Math.min(boundsMin.z, mesh.bounds.min[2]);
-                        boundsMax.x = Math.max(boundsMax.x, mesh.bounds.max[0]);
-                        boundsMax.y = Math.max(boundsMax.y, mesh.bounds.max[1]);
-                        boundsMax.z = Math.max(boundsMax.z, mesh.bounds.max[2]);
-                    }
-                }
-
-                // Check batched meshes (most geometry is here!)
                 const batchedMeshes = this.scene.getBatchedMeshes();
                 for (const batch of batchedMeshes) {
                     if (batch.bounds) {
@@ -874,6 +1338,37 @@ export class Renderer {
                         boundsMax.x = Math.max(boundsMax.x, batch.bounds.max[0]);
                         boundsMax.y = Math.max(boundsMax.y, batch.bounds.max[1]);
                         boundsMax.z = Math.max(boundsMax.z, batch.bounds.max[2]);
+                    }
+                }
+                // Fold in point-cloud bounds too — without this, a
+                // pure point-cloud scene falls through to the default
+                // [-100,100], and a mixed scene clips against a
+                // smaller mesh-only range while the point pipeline
+                // (which honours the same sectionPlaneData) keeps
+                // drawing points outside the slider's reach.
+                const pcBoundsForSection = this.pointCloudRenderer?.getBounds();
+                if (pcBoundsForSection) {
+                    boundsMin.x = Math.min(boundsMin.x, pcBoundsForSection.min[0]);
+                    boundsMin.y = Math.min(boundsMin.y, pcBoundsForSection.min[1]);
+                    boundsMin.z = Math.min(boundsMin.z, pcBoundsForSection.min[2]);
+                    boundsMax.x = Math.max(boundsMax.x, pcBoundsForSection.max[0]);
+                    boundsMax.y = Math.max(boundsMax.y, pcBoundsForSection.max[1]);
+                    boundsMax.z = Math.max(boundsMax.z, pcBoundsForSection.max[2]);
+                }
+
+                // If no batched meshes have bounds yet (streaming, degenerate
+                // models), fall back to individual meshes so at least the
+                // slider has a workable range.
+                if (!Number.isFinite(boundsMin.x)) {
+                    for (const mesh of meshes) {
+                        if (mesh.bounds) {
+                            boundsMin.x = Math.min(boundsMin.x, mesh.bounds.min[0]);
+                            boundsMin.y = Math.min(boundsMin.y, mesh.bounds.min[1]);
+                            boundsMin.z = Math.min(boundsMin.z, mesh.bounds.min[2]);
+                            boundsMax.x = Math.max(boundsMax.x, mesh.bounds.max[0]);
+                            boundsMax.y = Math.max(boundsMax.y, mesh.bounds.max[1]);
+                            boundsMax.z = Math.max(boundsMax.z, mesh.bounds.max[2]);
+                        }
                     }
                 }
 
@@ -900,44 +1395,121 @@ export class Renderer {
                 }
 
                 if (options.sectionPlane.enabled) {
-                    // Calculate plane normal based on semantic axis
-                    // down = Y axis (horizontal cut), front = Z axis, side = X axis
-                    let normal: [number, number, number] = [0, 0, 0];
-                    if (options.sectionPlane.axis === 'side') normal[0] = 1;        // X axis
-                    else if (options.sectionPlane.axis === 'down') normal[1] = 1;   // Y axis (horizontal)
-                    else normal[2] = 1;                                              // Z axis (front)
+                    // Explicit normal + distance override (face-pick / arbitrary
+                    // plane, issue #243). Used verbatim: no axis mapping, no
+                    // position slider, no building rotation — the caller already
+                    // has the plane in world space.
+                    const explicitNormal   = options.sectionPlane.normal;
+                    const explicitDistance = options.sectionPlane.distance;
+                    const hasExplicitPlane =
+                        explicitNormal !== undefined &&
+                        explicitDistance !== undefined &&
+                        Number.isFinite(explicitDistance);
 
-                    // Apply building rotation if present (rotate normal around Y axis)
-                    // Building rotation is in X-Y plane (Z is up in IFC, Y is up in WebGL)
-                    if (options.buildingRotation !== undefined && options.buildingRotation !== 0) {
-                        const cosR = Math.cos(options.buildingRotation);
-                        const sinR = Math.sin(options.buildingRotation);
-                        // Rotate normal vector around Y axis (vertical)
-                        // For X-Z plane rotation: x' = x*cos - z*sin, z' = x*sin + z*cos, y' = y
-                        const x = normal[0];
-                        const z = normal[2];
-                        normal[0] = x * cosR - z * sinR;
-                        normal[2] = x * sinR + z * cosR;
-                        // Normalize to maintain unit length
-                        const len = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
-                        if (len > 0.0001) {
-                            normal[0] /= len;
-                            normal[1] /= len;
-                            normal[2] /= len;
+                    let normal: [number, number, number];
+                    let distance: number;
+
+                    if (hasExplicitPlane) {
+                        // Defensive renormalisation in case the caller passed a
+                        // non-unit vector (e.g. mesh face normals quantised by
+                        // the geometry pipeline).
+                        const nx = explicitNormal![0];
+                        const ny = explicitNormal![1];
+                        const nz = explicitNormal![2];
+                        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+                        if (len > 1e-6) {
+                            normal = [nx / len, ny / len, nz / len];
+                            distance = explicitDistance! / len;
+                        } else {
+                            normal = [0, 1, 0];
+                            distance = explicitDistance!;
                         }
+                    } else {
+                        // Cardinal-axis preset path (unchanged behaviour).
+                        // down = Y axis (horizontal cut), front = Z axis, side = X axis
+                        normal = [0, 0, 0];
+                        if (options.sectionPlane.axis === 'side') normal[0] = 1;        // X axis
+                        else if (options.sectionPlane.axis === 'down') normal[1] = 1;   // Y axis (horizontal)
+                        else normal[2] = 1;                                              // Z axis (front)
+
+                        // Apply building rotation if present (rotate normal around Y axis)
+                        // Building rotation is in X-Y plane (Z is up in IFC, Y is up in WebGL)
+                        if (options.buildingRotation !== undefined && options.buildingRotation !== 0) {
+                            const cosR = Math.cos(options.buildingRotation);
+                            const sinR = Math.sin(options.buildingRotation);
+                            // Rotate normal vector around Y axis (vertical)
+                            // For X-Z plane rotation: x' = x*cos - z*sin, z' = x*sin + z*cos, y' = y
+                            const x = normal[0];
+                            const z = normal[2];
+                            normal[0] = x * cosR - z * sinR;
+                            normal[2] = x * sinR + z * cosR;
+                            // Normalize to maintain unit length
+                            const rlen = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+                            if (rlen > 0.0001) {
+                                normal[0] /= rlen;
+                                normal[1] /= rlen;
+                                normal[2] /= rlen;
+                            }
+                        }
+
+                        // Get axis-specific range. The renderer's own `boundsMin/Max`
+                        // are computed from the GPU vertex buffers this frame, so
+                        // they are guaranteed to be in the same Y-up world space as
+                        // `input.worldPos` in the shader. `options.sectionPlane.min/max`
+                        // comes from the UI via `coordinateInfo.shiftedBounds` and can
+                        // be stale during streaming or outright wrong during model
+                        // load (initialised to {0,0,0} before the first bounds update)
+                        // — using those directly was the cause of the "slider moves
+                        // 1% and the whole model disappears" bug.
+                        //
+                        // Policy: always use the renderer's own bounds for the Y-up
+                        // range. Only honour the UI override when it is a valid,
+                        // non-degenerate range that lies INSIDE the actual mesh
+                        // bounds (e.g. storey filtering from the level picker).
+                        const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
+                        let minVal = boundsMin[axisIdx];
+                        let maxVal = boundsMax[axisIdx];
+                        const uiMin = options.sectionPlane.min;
+                        const uiMax = options.sectionPlane.max;
+                        if (
+                            Number.isFinite(uiMin) &&
+                            Number.isFinite(uiMax) &&
+                            (uiMax as number) - (uiMin as number) > 1e-6 &&
+                            (uiMin as number) >= minVal - 1e-3 &&
+                            (uiMax as number) <= maxVal + 1e-3
+                        ) {
+                            minVal = uiMin as number;
+                            maxVal = uiMax as number;
+                        }
+
+                        // Calculate plane distance from position percentage
+                        const range = maxVal - minVal;
+                        distance = minVal + (options.sectionPlane.position / 100) * range;
                     }
 
-                    // Get axis-specific range based on semantic axis
-                    // Use min/max overrides from sectionPlane if provided (storey-based range)
-                    const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
-                    const minVal = options.sectionPlane.min ?? boundsMin[axisIdx];
-                    const maxVal = options.sectionPlane.max ?? boundsMax[axisIdx];
-
-                    // Calculate plane distance from position percentage
-                    const range = maxVal - minVal;
-                    const distance = minVal + (options.sectionPlane.position / 100) * range;
-
                     sectionPlaneData = { normal, distance, enabled: true };
+
+                    // One-shot diagnostic: when section first becomes active,
+                    // log the exact bounds + plane the shader will use. This
+                    // is the fastest way to confirm "bounds mismatch" / "plane
+                    // off-screen" bugs without asking the user to run a
+                    // debugger. The custom-plane branch logs `mode: 'explicit'`
+                    // so reports against tilted planes are easy to spot.
+                    if (!this._loggedSectionBounds) {
+                        this._loggedSectionBounds = true;
+                        console.info('[Section] Y-up bounds used for clip:', {
+                            mode: hasExplicitPlane ? 'explicit' : 'axis-aligned',
+                            axis: options.sectionPlane.axis,
+                            bounds: {
+                                min: { x: boundsMin.x, y: boundsMin.y, z: boundsMin.z },
+                                max: { x: boundsMax.x, y: boundsMax.y, z: boundsMax.z },
+                            },
+                            normal,
+                            distance,
+                            position: options.sectionPlane.position,
+                            batchedMeshCount: this.scene.getBatchedMeshes().length,
+                        });
+                    }
                 }
             }
 
@@ -959,7 +1531,8 @@ export class Renderer {
                     meshBuf[32] = mesh.color[0];
                     meshBuf[33] = mesh.color[1];
                     meshBuf[34] = mesh.color[2];
-                    meshBuf[35] = mesh.color[3];
+                    // Selected meshes always keep their own alpha so highlights stay opaque
+                    meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
                     meshBuf[36] = mesh.material?.metallic ?? 0.0;
                     meshBuf[37] = mesh.material?.roughness ?? 0.6;
                     meshBuf[38] = 0; meshBuf[39] = 0;
@@ -975,8 +1548,11 @@ export class Renderer {
                     }
 
                     // Flags (offset 44-47 as u32)
+                    // flags.y packs: bit 0 = sectionEnabled, bit 1 = flipped
                     meshFlags[0] = isSelected ? 1 : 0;
-                    meshFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                    meshFlags[1] =
+                        (sectionPlaneData?.enabled ? 1 : 0) |
+                        (options.sectionPlane?.flipped ? 2 : 0);
                     meshFlags[2] = edgeEnabledU32;
                     meshFlags[3] = edgeIntensityMilliU32;
 
@@ -1003,14 +1579,12 @@ export class Renderer {
                     storeOp: (useMSAA ? 'discard' : 'store') as GPUStoreOp,
                 },
             ];
-            if (!this.pipeline.isSingleTarget()) {
-                colorAttachments.push({
-                    view: objectIdView,
-                    loadOp: 'clear' as const,
-                    clearValue: { r: 0, g: 0, b: 0, a: 0 },
-                    storeOp: (needsObjectIdPass ? 'store' : 'discard') as GPUStoreOp,
-                });
-            }
+            colorAttachments.push({
+                view: objectIdView,
+                loadOp: 'clear' as const,
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                storeOp: (needsObjectIdPass ? 'store' : 'discard') as GPUStoreOp,
+            });
 
             const pass = encoder.beginRenderPass({
                 colorAttachments,
@@ -1019,6 +1593,11 @@ export class Renderer {
                     depthClearValue: 0.0,  // Reverse-Z: clear to 0.0 (far plane)
                     depthLoadOp: 'clear',
                     depthStoreOp: 'store',
+                    // Stencil is cleared here and preserved for the cap pass
+                    // that runs right after in the same frame.
+                    stencilClearValue: 0,
+                    stencilLoadOp: 'clear',
+                    stencilStoreOp: 'store',
                 },
             });
 
@@ -1112,21 +1691,11 @@ export class Renderer {
                         }
                     }
 
-                    const alpha = batch.color[3];
+                    const alpha = alphaForBatch(batch, batch.color[3]);
                     if (alpha < 0.99) {
                         transparentBatches.push(batch);
                     } else {
                         opaqueBatches.push(batch);
-                    }
-                }
-
-                const selectedExpressIds = new Set<number>();
-                if (selectedId !== undefined && selectedId !== null) {
-                    selectedExpressIds.add(selectedId);
-                }
-                if (selectedIds) {
-                    for (const id of selectedIds) {
-                        selectedExpressIds.add(id);
                     }
                 }
 
@@ -1154,8 +1723,16 @@ export class Renderer {
                 } else {
                     tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                 }
-                tplFlags[0] = 0; // not selected
-                tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                // flags layout (main shader):
+                //   x = isSelected (0/1)
+                //   y = sectionEnabled bitfield:
+                //       bit 0 = enabled, bit 1 = flipped
+                //   z = edgeEnabled (0/1)
+                //   w = edgeIntensityMilli
+                tplFlags[0] = 0;
+                tplFlags[1] =
+                    (sectionPlaneData?.enabled ? 1 : 0) |
+                    (options.sectionPlane?.flipped ? 2 : 0);
                 tplFlags[2] = edgeEnabledU32;
                 tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1167,7 +1744,7 @@ export class Renderer {
                     tpl[32] = batch.color[0];
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
-                    tpl[35] = batch.color[3];
+                    tpl[35] = alphaForBatch(batch, batch.color[3]);
 
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
 
@@ -1186,7 +1763,11 @@ export class Renderer {
 
                 // PERFORMANCE FIX: Render partially visible batches as sub-batches (not individual meshes!)
                 // This is the key optimization: instead of 10,000+ individual draw calls,
-                // we create cached sub-batches with only visible elements and render them as single draw calls
+                // we create cached sub-batches with only visible elements and render them as single draw calls.
+                // We also collect resolved opaque sub-batches so the section cap pass below can
+                // include them in its parity count — otherwise hidden/isolated opaque geometry
+                // would show open, un-capped cut holes.
+                const opaqueSubBatches: typeof allBatchedMeshes = [];
                 if (partiallyVisibleBatches.length > 0) {
                     for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
@@ -1199,12 +1780,14 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            // Use opaque or transparent pipeline based on alpha
-                            const isTransparent = color[3] < 0.99;
+                            // Use opaque or transparent pipeline based on resolved alpha
+                            // (not the parent batch's color[3] — that ignores transparencyOverrides)
+                            const isTransparent = alphaForBatch(subBatch, color[3]) < 0.99;
                             if (isTransparent) {
                                 pass.setPipeline(this.pipeline.getTransparentPipeline());
                             } else {
                                 pass.setPipeline(this.pipeline.getPipeline());
+                                opaqueSubBatches.push(subBatch);
                             }
                             // Render the sub-batch as a single draw call
                             renderBatch(subBatch);
@@ -1218,14 +1801,32 @@ export class Renderer {
                 // Placed AFTER partial batches so depth buffer is complete for both full
                 // and partial batches. Uses 'equal' depth compare — only paints where
                 // original geometry wrote depth, so hidden entities never leak through.
+                //
+                // flags.x bit 1 = overlay: tells the shader to preserve baseColor.a
+                // (the overlay pipeline now has src-alpha blending so low-alpha ghost
+                // tints composite correctly against the opaque pass) AND skip the
+                // glass-fresnel branch (which is meant for real glass materials and
+                // would whiten low-alpha colour overrides at grazing angles).
                 const overrideBatches = this.scene.getOverrideBatches();
                 if (overrideBatches.length > 0) {
                     pass.setPipeline(this.pipeline.getOverlayPipeline());
+                    tplFlags[0] = 2;  // set overlay bit for the duration of these draws
                     for (const batch of overrideBatches) {
                         renderBatch(batch);
                     }
+                    tplFlags[0] = 0;  // restore for any downstream use of the template
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
+
+                // Filled, hatched 3D cut surfaces are now rendered by
+                // Section2DOverlayRenderer using the exact polygons from
+                // SectionCutter (triangle-plane intersection). The old
+                // stencil-parity SectionCapRenderer is no longer in the
+                // render loop — parity XOR on non-manifold IFC geometry
+                // leaks stencil bits into empty sky, and no amount of
+                // bounded quads or second-bit gating fixed that robustly.
+                // See the 2D-overlay draw call further below in this same
+                // render pass, which now emits the cap.
 
                 // Prepare selected meshes once, then render them LAST so transparent batches
                 // don't overwrite highlight color (glass otherwise appears unhighlighted).
@@ -1290,7 +1891,7 @@ export class Renderer {
                         tpl.set(viewProj, 0);
                         tpl.set(mesh.transform.m, 16);
                         tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
-                        tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
+                        tpl[34] = mesh.color[2]; tpl[35] = alphaForMesh(mesh.expressId, mesh.color[3]);
                         tpl[36] = mesh.material?.metallic ?? 0.0;
                         tpl[37] = mesh.material?.roughness ?? 0.6;
                         tpl[38] = 0; tpl[39] = 0;
@@ -1303,7 +1904,9 @@ export class Renderer {
                             tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                         }
                         tplFlags[0] = 0;
-                        tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                        tplFlags[1] =
+                            (sectionPlaneData?.enabled ? 1 : 0) |
+                            (options.sectionPlane?.flipped ? 2 : 0);
                         tplFlags[2] = edgeEnabledU32;
                         tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1357,7 +1960,9 @@ export class Renderer {
                         tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                     }
                     tplFlags[0] = 1; // isSelected
-                    tplFlags[1] = sectionPlaneData?.enabled ? 1 : 0;
+                    tplFlags[1] =
+                        (sectionPlaneData?.enabled ? 1 : 0) |
+                        (options.sectionPlane?.flipped ? 2 : 0);
                     tplFlags[2] = edgeEnabledU32;
                     tplFlags[3] = edgeIntensityMilliU32;
 
@@ -1404,7 +2009,12 @@ export class Renderer {
                 const instancedMeshes = this.scene.getInstancedMeshes();
                 if (instancedMeshes.length > 0) {
                     // Update instanced pipeline uniforms
-                    this.instancedPipeline.updateUniforms(viewProj, sectionPlaneData);
+                    this.instancedPipeline.updateUniforms(
+                        viewProj,
+                        sectionPlaneData
+                            ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
+                            : undefined,
+                    );
 
                     // Switch to instanced pipeline
                     pass.setPipeline(this.instancedPipeline.getPipeline());
@@ -1423,6 +2033,20 @@ export class Renderer {
                 }
             }
 
+            // Draw point clouds (IFCx inline + streamed LAS/LAZ).
+            // Shares the depth buffer + section plane state with the mesh pipeline so
+            // points occlude triangles and vice versa. The splat shader needs the
+            // viewport size to convert pixel sizes into clip-space offsets.
+            if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
+                this.pointCloudRenderer.draw(pass, {
+                    viewProj,
+                    sectionPlane: sectionPlaneData
+                        ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
+                        : null,
+                    viewport: { width: this.canvas.width, height: this.canvas.height },
+                });
+            }
+
             // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
             // Always show plane when sectionPlane options are provided (as preview or active)
             const modelBounds = this.getModelBounds();
@@ -1437,20 +2061,48 @@ export class Renderer {
                         isPreview: !options.sectionPlane.enabled, // Preview mode when not enabled
                         min: options.sectionPlane.min,
                         max: options.sectionPlane.max,
+                        // Custom-plane gizmo override (issue #243). When both
+                        // are set the gizmo bypasses the cardinal path; see
+                        // SectionPlaneRenderer.calculatePlaneVerticesFromNormal.
+                        normal: options.sectionPlane.normal,
+                        distance: options.sectionPlane.distance,
                     }
                 );
 
-                // Draw 2D section overlay on the section plane (when section is active, not preview)
+                // Draw 2D section overlay on the section plane (when section is
+                // active, not preview). The overlay is also the 3D SECTION CAP:
+                // its polygon fills come from `SectionCutter` (exact triangle-
+                // plane intersection), and the new fill shader applies the
+                // user's screen-space hatch + colour directly on those
+                // polygons. This replaces the old stencil-parity cap, which
+                // bled hatch into empty sky on non-manifold IFC geometry —
+                // the polygons here are mathematically correct, so the cap
+                // silhouette matches the 2D drawing exactly.
                 if (options.sectionPlane.enabled && this.section2DOverlayRenderer?.hasGeometry()) {
+                    const o = options.sectionPlane;
+                    const showFills    = o.showCap !== false;
+                    const showOutlines = o.showOutlines !== false;
+                    const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
                     this.section2DOverlayRenderer.draw(
                         pass,
                         {
-                            axis: options.sectionPlane.axis,
-                            position: options.sectionPlane.position,
+                            axis: o.axis,
+                            position: o.position,
                             bounds: modelBounds,
                             viewProj,
-                            min: options.sectionPlane.min,
-                            max: options.sectionPlane.max,
+                            min: o.min,
+                            max: o.max,
+                            showFills,
+                            showOutlines,
+                            capStyle: showFills ? {
+                                fillColor:   style.fillColor,
+                                strokeColor: style.strokeColor,
+                                patternId:   HATCH_PATTERN_IDS[style.pattern],
+                                spacingPx:   style.spacingPx,
+                                angleRad:    style.angleRad,
+                                widthPx:     style.widthPx,
+                                secondaryAngleRad: style.secondaryAngleRad,
+                            } : undefined,
                         }
                     );
                 }
@@ -1468,7 +2120,9 @@ export class Renderer {
                 });
                 this.postProcessor.apply(encoder, {
                     targetView: textureView,
-                    depthView: this.pipeline.getDepthTextureView(),
+                    // Depth-only view required because depth24plus-stencil8
+                    // cannot be sampled as texture_depth_* with aspect 'all'.
+                    depthView: this.pipeline.getDepthOnlyTextureView(),
                     objectIdView: this.pipeline.getObjectIdTextureView(),
                     contactQuality: contactEnabled && visualEnhancement.contactShading.quality === 'high' ? 'high' : 'low',
                     radius: Math.min(3.0, Math.max(1.0, visualEnhancement.contactShading.radius)),
@@ -1478,6 +2132,28 @@ export class Renderer {
                     separationIntensity: separationEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.separationLines.intensity)) : 0.0,
                     enableSeparationLines: separationEnabled,
                 });
+            }
+
+            // Eye-Dome Lighting — runs AFTER contact/separation so it darkens
+            // every layer uniformly. Cheap (~9 depth taps), only active when
+            // there are point clouds in the scene and the user has enabled it.
+            if (
+                this.edlPass
+                && this.edlOptions.enabled
+                && this.pointCloudRenderer?.hasAssets()
+            ) {
+                this.edlPass.apply(
+                    encoder,
+                    {
+                        targetView: textureView,
+                        depthView: this.pipeline.getDepthOnlyTextureView(),
+                    },
+                    {
+                        strength: this.edlOptions.strength,
+                        radiusPx: this.edlOptions.radiusPx,
+                        highQuality: this.edlOptions.highQuality,
+                    },
+                );
             }
 
             device.queue.submit([encoder.finish()]);
@@ -1518,6 +2194,25 @@ export class Renderer {
      */
     async pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null> {
         return this.pickingManager.pick(x, y, options);
+    }
+
+    /**
+     * GPU-based rectangle pick. Drag-select returns the set of
+     * `expressId`s touched by any pixel inside `[x0,y0]..[x1,y1]`
+     * (CSS pixels, canvas-relative). Both meshes and point clouds
+     * participate.
+     *
+     * See `PickingManager.pickRect` for the visibility-filter +
+     * limitation notes.
+     */
+    async pickRect(
+        x0: number,
+        y0: number,
+        x1: number,
+        y1: number,
+        options?: PickOptions,
+    ): Promise<Set<number>> {
+        return this.pickingManager.pickRect(x0, y0, x1, y1, options);
     }
 
     /**
@@ -1631,9 +2326,19 @@ export class Renderer {
     }
 
     /**
-     * Upload 2D section drawing data for 3D overlay rendering
-     * Call this when a 2D drawing is generated to display it on the section plane
-     * Uses same position calculation as section plane: sectionRange min/max if provided, else modelBounds
+     * Upload 2D section drawing data for 3D overlay rendering.
+     *
+     * Cardinal-axis call site: pass `axis` + `position` percentage and the
+     * upload computes the plane offset along the cardinal axis using the
+     * model bounds (or `sectionRange` override). 2D points are then lifted
+     * to 3D via the cardinal-axis swap.
+     *
+     * Custom-plane call site (issue #243): pass `customPlane = { origin,
+     * tangent, bitangent }`. The 2D points are lifted via the explicit
+     * basis, exactly inverting the projection `SectionCutter` applied when
+     * generating the polygons. Without this the cap silhouette lands off
+     * the actual cutting plane (the bug PR #581 hid by suppressing the
+     * cap entirely for non-cardinal planes).
      */
     uploadSection2DOverlay(
         polygons: CutPolygon2D[],
@@ -1641,9 +2346,26 @@ export class Renderer {
         axis: 'down' | 'front' | 'side',
         position: number,  // 0-100 percentage
         sectionRange?: { min?: number; max?: number },  // Same storey-based range as section plane
-        flipped: boolean = false
+        flipped: boolean = false,
+        customPlane?: {
+            origin:    [number, number, number];
+            tangent:   [number, number, number];
+            bitangent: [number, number, number];
+        },
     ): void {
         if (!this.section2DOverlayRenderer) return;
+
+        if (customPlane) {
+            // Custom-plane path: planePosition / axis are unused — the
+            // basis the cap shader needs travels in `customPlane`. We pass
+            // 0 for `planePosition` and the existing `axis` so the cardinal
+            // shader code path that callers depend on (e.g. legacy SVG
+            // export) keeps working when customPlane is omitted.
+            this.section2DOverlayRenderer.uploadDrawing(
+                polygons, lines, axis, 0, flipped, customPlane,
+            );
+            return;
+        }
 
         // Use EXACTLY same calculation as section plane in render() method:
         // minVal = options.sectionPlane.min ?? boundsMin[axisIdx]
@@ -1740,6 +2462,8 @@ export class Renderer {
     destroy(): void {
         // Scene mesh GPU buffers
         this.scene.clear();
+        // Re-arm the section-bounds diagnostic log for the next model.
+        this._loggedSectionBounds = false;
 
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();
@@ -1754,12 +2478,25 @@ export class Renderer {
         // Post-processor uniform buffer
         this.postProcessor?.destroy();
         this.postProcessor = null;
+        this.edlPass?.destroy();
+        this.edlPass = null;
 
         // Section-plane renderers
         this.sectionPlaneRenderer?.destroy();
         this.sectionPlaneRenderer = null;
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
+
+        // Point cloud GPU resources
+        this.pointCloudRenderer?.clear();
+        this.pointCloudRenderer = null;
+
+        // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.
+        // Done before queue.destroy() so the GPU calls inside
+        // `destroy()` still have a valid device.
+        this.deviationPipeline?.destroy();
+        this.deviationPipeline = null;
+        this.deviationBvhFingerprint = null;
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();

@@ -31,6 +31,7 @@ import { askCommand } from './commands/ask.js';
 import { viewCommand } from './commands/view.js';
 import { analyzeCommand } from './commands/analyze.js';
 import { lodCommand } from './commands/lod.js';
+import { mcpCommand } from './commands/mcp.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -78,6 +79,7 @@ const HELP = `
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
     lod       <file.ifc> --level 0|1            Generate lightweight LOD artifacts
+    mcp       <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files
 
   Options:
     --help, -h       Show help
@@ -134,6 +136,10 @@ const HELP = `
     ifc-lite analyze model.ifc --viewer 3456 --rules rules.json --json
     ifc-lite lod model.ifc --level 0 --out model.lod0.json
     ifc-lite lod model.ifc --level 1 --out model.glb --meta model.lod1.json
+    ifc-lite mcp model.ifc
+    ifc-lite mcp model.ifc --read-only
+    ifc-lite mcp arch.ifc struct.ifc --federate
+    ifc-lite mcp model.ifc --transport http --port 8765 --token abc
 
   Pipe-friendly:
     ifc-lite query model.ifc --type IfcWall --json | jq '.[].name'
@@ -229,6 +235,9 @@ async function main(): Promise<void> {
       break;
     case 'lod':
       await lodCommand(commandArgs);
+      break;
+    case 'mcp':
+      await mcpCommand(commandArgs);
       break;
     default:
       process.stderr.write(`Unknown command: ${command}\n`);

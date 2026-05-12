@@ -19,6 +19,12 @@
 
 import { writeFile } from 'node:fs/promises';
 import { IfcCreator } from '@ifc-lite/create';
+import type {
+  WallParams, SlabParams, ColumnParams, BeamParams, StairParams, RoofParams, GableRoofParams,
+  DoorParams, WindowParams, WallDoorParams, WallWindowParams, RampParams, RailingParams,
+  PlateParams, MemberParams, FootingParams, PileParams,
+  SpaceParams, CurtainWallParams, FurnishingParams, ProxyParams,
+} from '@ifc-lite/create';
 import { getFlag, hasFlag, fatal, printJson, validateViewerPort } from '../output.js';
 
 export const ELEMENT_TYPES = [
@@ -147,6 +153,8 @@ export async function createCommand(args: string[]): Promise<void> {
 }
 
 export function addElement(creator: IfcCreator, storey: number, elementType: string, params: Record<string, unknown>): number {
+  // CLI params arrive as Record<string, unknown> from parsed args or JSON input.
+  // We apply defaults then cast to the specific param type at this system boundary.
   const p = params;
   switch (elementType.toLowerCase()) {
     case 'wall':
@@ -157,7 +165,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Thickness: (p.Thickness as number) ?? 0.2,
         Name: (p.Name as string) ?? 'Wall',
         ...p,
-      } as any);
+      } as unknown as WallParams);
     case 'slab':
       return creator.addIfcSlab(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -166,7 +174,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Thickness: (p.Thickness as number) ?? 0.3,
         Name: (p.Name as string) ?? 'Slab',
         ...p,
-      } as any);
+      } as unknown as SlabParams);
     case 'column':
       return creator.addIfcColumn(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -175,7 +183,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Depth: (p.Depth as number) ?? 0.3,
         Name: (p.Name as string) ?? 'Column',
         ...p,
-      } as any);
+      } as unknown as ColumnParams);
     case 'beam':
       return creator.addIfcBeam(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 3],
@@ -184,7 +192,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Height: (p.Height as number) ?? 0.4,
         Name: (p.Name as string) ?? 'Beam',
         ...p,
-      } as any);
+      } as unknown as BeamParams);
     case 'stair':
       return creator.addIfcStair(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -195,7 +203,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Direction: (p.Direction as number) ?? undefined,
         Name: (p.Name as string) ?? 'Stair',
         ...p,
-      } as any);
+      } as unknown as StairParams);
     case 'roof':
       return creator.addIfcRoof(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 3],
@@ -205,7 +213,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Slope: (p.Slope as number) ?? undefined,
         Name: (p.Name as string) ?? 'Roof',
         ...p,
-      } as any);
+      } as unknown as RoofParams);
     case 'gable-roof':
       return creator.addIfcGableRoof(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 3],
@@ -216,7 +224,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Overhang: (p.Overhang as number) ?? undefined,
         Name: (p.Name as string) ?? 'Gable Roof',
         ...p,
-      } as any);
+      } as unknown as GableRoofParams);
     case 'door':
       return creator.addIfcDoor(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -227,7 +235,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         OperationType: (p.OperationType as string) ?? undefined,
         Name: (p.Name as string) ?? 'Door',
         ...p,
-      } as any);
+      } as unknown as DoorParams);
     case 'window':
       return creator.addIfcWindow(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 1],
@@ -237,7 +245,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         PartitioningType: (p.PartitioningType as string) ?? undefined,
         Name: (p.Name as string) ?? 'Window',
         ...p,
-      } as any);
+      } as unknown as WindowParams);
     case 'wall-door': {
       const wallId = (p.WallId as number);
       if (!wallId) fatal('wall-door requires --wall-id (expressId of the host wall)');
@@ -247,7 +255,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Height: (p.Height as number) ?? 2.1,
         Name: (p.Name as string) ?? 'Door',
         ...p,
-      } as any);
+      } as unknown as WallDoorParams);
     }
     case 'wall-window': {
       const wallId = (p.WallId as number);
@@ -258,7 +266,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Height: (p.Height as number) ?? 1.5,
         Name: (p.Name as string) ?? 'Window',
         ...p,
-      } as any);
+      } as unknown as WallWindowParams);
     }
     case 'ramp':
       return creator.addIfcRamp(storey, {
@@ -269,7 +277,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Rise: (p.Rise as number) ?? undefined,
         Name: (p.Name as string) ?? 'Ramp',
         ...p,
-      } as any);
+      } as unknown as RampParams);
     case 'railing':
       return creator.addIfcRailing(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 0],
@@ -278,7 +286,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Width: (p.Width as number) ?? undefined,
         Name: (p.Name as string) ?? 'Railing',
         ...p,
-      } as any);
+      } as unknown as RailingParams);
     case 'plate':
       return creator.addIfcPlate(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -287,7 +295,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Thickness: (p.Thickness as number) ?? 0.01,
         Name: (p.Name as string) ?? 'Plate',
         ...p,
-      } as any);
+      } as unknown as PlateParams);
     case 'member':
       return creator.addIfcMember(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 0],
@@ -296,7 +304,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Height: (p.Height as number) ?? 0.1,
         Name: (p.Name as string) ?? 'Member',
         ...p,
-      } as any);
+      } as unknown as MemberParams);
     case 'footing':
       return creator.addIfcFooting(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -306,7 +314,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         PredefinedType: (p.PredefinedType as string) ?? undefined,
         Name: (p.Name as string) ?? 'Footing',
         ...p,
-      } as any);
+      } as unknown as FootingParams);
     case 'pile':
       return creator.addIfcPile(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -315,7 +323,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         IsRectangular: (p.IsRectangular as boolean) ?? undefined,
         Name: (p.Name as string) ?? 'Pile',
         ...p,
-      } as any);
+      } as unknown as PileParams);
     case 'space':
       return creator.addIfcSpace(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -325,7 +333,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         LongName: (p.LongName as string) ?? undefined,
         Name: (p.Name as string) ?? 'Space',
         ...p,
-      } as any);
+      } as unknown as SpaceParams);
     case 'curtain-wall':
       return creator.addIfcCurtainWall(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 0],
@@ -334,7 +342,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Thickness: (p.Thickness as number) ?? undefined,
         Name: (p.Name as string) ?? 'Curtain Wall',
         ...p,
-      } as any);
+      } as unknown as CurtainWallParams);
     case 'furnishing':
       return creator.addIfcFurnishingElement(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -344,7 +352,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Direction: (p.Direction as number) ?? undefined,
         Name: (p.Name as string) ?? 'Furnishing',
         ...p,
-      } as any);
+      } as unknown as FurnishingParams);
     case 'proxy':
       return creator.addIfcBuildingElementProxy(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -354,7 +362,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         ProxyType: (p.ProxyType as string) ?? undefined,
         Name: (p.Name as string) ?? 'Proxy',
         ...p,
-      } as any);
+      } as unknown as ProxyParams);
     case 'circular-column':
       return creator.addIfcCircularColumn(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -362,7 +370,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Height: (p.Height as number) ?? 3,
         Name: (p.Name as string) ?? 'Circular Column',
         ...p,
-      } as any);
+      } as unknown as Parameters<typeof creator.addIfcCircularColumn>[1]);
     case 'hollow-circular-column':
       return creator.addIfcHollowCircularColumn(storey, {
         Position: (p.Position as [number, number, number]) ?? [0, 0, 0],
@@ -371,7 +379,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Height: (p.Height as number) ?? 3,
         Name: (p.Name as string) ?? 'Hollow Circular Column',
         ...p,
-      } as any);
+      } as unknown as Parameters<typeof creator.addIfcHollowCircularColumn>[1]);
     case 'i-shape-beam':
       return creator.addIfcIShapeBeam(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 3],
@@ -383,7 +391,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         FilletRadius: (p.FilletRadius as number) ?? undefined,
         Name: (p.Name as string) ?? 'I-Shape Beam',
         ...p,
-      } as any);
+      } as unknown as Parameters<typeof creator.addIfcIShapeBeam>[1]);
     case 'l-shape-member':
       return creator.addIfcLShapeMember(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 0],
@@ -393,7 +401,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Thickness: (p.Thickness as number) ?? 0.01,
         Name: (p.Name as string) ?? 'L-Shape Member',
         ...p,
-      } as any);
+      } as unknown as Parameters<typeof creator.addIfcLShapeMember>[1]);
     case 't-shape-member':
       return creator.addIfcTShapeMember(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 0],
@@ -404,7 +412,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         FlangeThickness: (p.FlangeThickness as number) ?? 0.012,
         Name: (p.Name as string) ?? 'T-Shape Member',
         ...p,
-      } as any);
+      } as unknown as Parameters<typeof creator.addIfcTShapeMember>[1]);
     case 'u-shape-member':
       return creator.addIfcUShapeMember(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 0],
@@ -415,7 +423,7 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         FlangeThickness: (p.FlangeThickness as number) ?? 0.01,
         Name: (p.Name as string) ?? 'U-Shape Member',
         ...p,
-      } as any);
+      } as unknown as Parameters<typeof creator.addIfcUShapeMember>[1]);
     case 'rectangle-hollow-beam':
       return creator.addIfcRectangleHollowBeam(storey, {
         Start: (p.Start as [number, number, number]) ?? [0, 0, 3],
@@ -425,13 +433,13 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         WallThickness: (p.WallThickness as number) ?? 0.005,
         Name: (p.Name as string) ?? 'Rectangle Hollow Beam',
         ...p,
-      } as any);
+      } as unknown as Parameters<typeof creator.addIfcRectangleHollowBeam>[1]);
     default:
       fatal(`Unknown element type: ${elementType}\n\nSupported: ${ELEMENT_TYPES.join(', ')}`);
   }
 }
 
-function parseElementParams(args: string[]): Record<string, unknown> {
+export function parseElementParams(args: string[]): Record<string, unknown> {
   const params: Record<string, unknown> = {};
 
   const numFlags = [
@@ -482,6 +490,6 @@ function parseElementParams(args: string[]): Record<string, unknown> {
 }
 
 /** Convert --kebab-flag to PascalCase key */
-function flagToKey(flag: string): string {
+export function flagToKey(flag: string): string {
   return flag.slice(2).split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('');
 }

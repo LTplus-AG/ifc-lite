@@ -301,7 +301,7 @@ export class StyleExtractor {
 
         const validMethods = ['BLINN', 'PHONG', 'METAL', 'GLASS', 'MATT', 'PLASTIC', 'STRAUSS', 'MIRROR'];
         if (validMethods.includes(methodStr)) {
-            return methodStr as any;
+            return methodStr as 'BLINN' | 'PHONG' | 'METAL' | 'GLASS' | 'MATT' | 'PLASTIC' | 'STRAUSS' | 'MIRROR';
         }
 
         return undefined;

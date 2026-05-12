@@ -381,9 +381,13 @@ export class ParquetExporter {
 
     private async toParquet(columns: Record<string, any[]>): Promise<Uint8Array> {
         try {
-            // Dynamic imports for better tree-shaking
-            // @ts-ignore - apache-arrow types have module resolution issues
-            const arrow = await import('apache-arrow');
+            // Dynamic imports for better tree-shaking. The package's
+            // browser/node exports map keeps `Arrow.dom.mjs` opaque to
+            // TS5's strict resolver, so the import is typed `any` here
+            // and consumers fall back to runtime checks. See:
+            // https://github.com/apache/arrow/issues/35835
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const arrow: any = await import('apache-arrow');
 
             // Build Arrow vectors from column data
             const vectors: Record<string, any> = {};
@@ -426,16 +430,10 @@ export class ParquetExporter {
 
             // Try to use parquet-wasm for conversion
             try {
-                // @ts-ignore - parquet-wasm may have type issues
                 const parquet = await import('parquet-wasm');
 
                 // parquet-wasm 0.5+ API: read Arrow IPC and write Parquet
-                // First, read the IPC buffer into a parquet-wasm Table
-                // @ts-ignore - parquet-wasm types may not match exactly
                 const arrowTable = parquet.Table.fromIPCStream(ipcBuffer);
-
-                // Then write to Parquet format
-                // @ts-ignore - parquet-wasm types may not match exactly
                 const parquetBuffer = parquet.writeParquet(arrowTable);
 
                 return new Uint8Array(parquetBuffer);

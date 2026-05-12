@@ -50,8 +50,12 @@ impl GeometryRouter {
         (0.0, 0.0, 0.0)
     }
 
-    /// Sample a building element's world-space translation for RTC offset detection.
-    /// Returns `Some((tx, ty, tz))` if the element has a valid placement transform.
+    /// Sample a building element's world-space position for RTC offset detection.
+    ///
+    /// First checks the placement transform translation. If placement is near
+    /// the origin (< 100 m), also probes the first geometry vertex — infrastructure
+    /// models (12d Model, Civil 3D) embed large world coordinates directly in
+    /// Brep/tessellated geometry with an identity placement.
     fn sample_element_translation(
         &self,
         entity: &DecodedEntity,
@@ -68,11 +72,235 @@ impl GeometryRouter {
         let tx = transform[(0, 3)];
         let ty = transform[(1, 3)];
         let tz = transform[(2, 3)];
-        if tx.is_finite() && ty.is_finite() && tz.is_finite() {
-            Some((tx, ty, tz))
-        } else {
-            None
+        if !tx.is_finite() || !ty.is_finite() || !tz.is_finite() {
+            return None;
         }
+
+        // If placement is near origin, also check actual geometry vertex coordinates.
+        // Infrastructure models embed world coords (e.g. 280 000, 6 214 000) directly
+        // in geometry vertices with identity placement — placement-only sampling
+        // would miss the large coordinates and fail to detect the need for RTC.
+        const NEAR_ORIGIN: f64 = 1000.0;
+        if tx.abs() < NEAR_ORIGIN && ty.abs() < NEAR_ORIGIN && tz.abs() < NEAR_ORIGIN {
+            if let Some((vx, vy, vz)) = self.sample_first_geometry_vertex(entity, decoder) {
+                // Transform vertex by placement to get world-space position.
+                // The vertex is in raw file units but the placement transform is
+                // already unit-scaled, so we must scale the vertex first.
+                let world = transform.transform_point(&nalgebra::Point3::new(
+                    vx * self.unit_scale,
+                    vy * self.unit_scale,
+                    vz * self.unit_scale,
+                ));
+                if world.x.is_finite() && world.y.is_finite() && world.z.is_finite() {
+                    return Some((world.x, world.y, world.z));
+                }
+            }
+        }
+
+        Some((tx, ty, tz))
+    }
+
+    /// Read the first geometry vertex (f64) from an element's representation.
+    ///
+    /// Navigates the IFC representation hierarchy to extract a single vertex
+    /// coordinate without processing the full geometry. Handles the two most
+    /// common representation types:
+    /// - **Brep**: element → IfcProductDefinitionShape → IfcShapeRepresentation
+    ///   → IfcFacetedBrep → IfcClosedShell → IfcFace → IfcFaceBound → IfcPolyLoop
+    ///   → first IfcCartesianPoint
+    /// - **Tessellated**: element → IfcProductDefinitionShape → IfcShapeRepresentation
+    ///   → IfcTriangulatedFaceSet/IfcPolygonalFaceSet → IfcCartesianPointList3D
+    ///   → first coordinate triple
+    fn sample_first_geometry_vertex(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
+        // element attr 6 = Representation (IfcProductDefinitionShape)
+        let rep_attr = entity.get(6)?;
+        if rep_attr.is_null() {
+            return None;
+        }
+        let rep = decoder.resolve_ref(rep_attr).ok()??;
+        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
+            return None;
+        }
+
+        // attr 2 = Representations (list of IfcShapeRepresentation)
+        let reps_attr = rep.get(2)?;
+        let reps = decoder.resolve_ref_list(reps_attr).ok()?;
+
+        for shape_rep in &reps {
+            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
+                continue;
+            }
+            // attr 3 = Items (list of geometry items)
+            let items = match shape_rep.get(3).and_then(|a| a.as_list()) {
+                Some(list) => list,
+                None => continue,
+            };
+
+            for item_ref in items {
+                let item_id = match item_ref.as_entity_ref() {
+                    Some(id) => id,
+                    None => continue,
+                };
+
+                // Try fast CartesianPoint extraction (if item itself is a point)
+                if let Some(coords) = decoder.get_cartesian_point_fast(item_id) {
+                    return Some(coords);
+                }
+
+                let item = match decoder.decode_by_id(item_id) {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+
+                match item.ifc_type {
+                    // ── Brep path ──
+                    // IfcFacetedBrep attr 0 = Outer (IfcClosedShell)
+                    IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
+                        if let Some(pt) = self.brep_first_vertex(&item, decoder) {
+                            return Some(pt);
+                        }
+                    }
+
+                    // ── Tessellated path ──
+                    // attr 0 = Coordinates (IfcCartesianPointList3D)
+                    IfcType::IfcTriangulatedFaceSet | IfcType::IfcPolygonalFaceSet => {
+                        if let Some(pt) = self.tessellated_first_vertex(&item, decoder) {
+                            return Some(pt);
+                        }
+                    }
+
+                    // ── Surface model path ──
+                    IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
+                        // attr 0 = FbsmFaces / SbsmBoundary (set of shells)
+                        if let Some(shells_attr) = item.get(0) {
+                            if let Some(shells) = shells_attr.as_list() {
+                                if let Some(shell_ref) = shells.first() {
+                                    if let Some(shell_id) = shell_ref.as_entity_ref() {
+                                        if let Ok(shell) = decoder.decode_by_id(shell_id) {
+                                            // Reuse brep_first_vertex which navigates shell → face → loop → point
+                                            if let Some(pt) =
+                                                self.shell_first_vertex(&shell, decoder)
+                                            {
+                                                return Some(pt);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    _ => continue,
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract first vertex from a Brep entity (IfcFacetedBrep).
+    /// Navigates: Brep → ClosedShell → Face → FaceBound → PolyLoop → CartesianPoint
+    fn brep_first_vertex(
+        &self,
+        brep: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
+        let shell_id = brep.get_ref(0)?;
+        let shell = decoder.decode_by_id(shell_id).ok()?;
+        self.shell_first_vertex(&shell, decoder)
+    }
+
+    /// Extract first vertex from a shell entity (IfcClosedShell / IfcOpenShell).
+    fn shell_first_vertex(
+        &self,
+        shell: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
+        let faces = shell.get(0)?.as_list()?;
+        let face_id = faces.first()?.as_entity_ref()?;
+        let face = decoder.decode_by_id(face_id).ok()?;
+        let bounds = face.get(0)?.as_list()?;
+        let bound_id = bounds.first()?.as_entity_ref()?;
+        let bound = decoder.decode_by_id(bound_id).ok()?;
+        let loop_id = bound.get_ref(0)?;
+        // Try fast cartesian point extraction from polyloop
+        if let Some(coords) = decoder.get_polyloop_coords_cached(loop_id) {
+            if let Some(&(x, y, z)) = coords.first() {
+                return Some((x, y, z));
+            }
+        }
+        // Fallback: decode the loop and get first point
+        let loop_entity = decoder.decode_by_id(loop_id).ok()?;
+        if loop_entity.ifc_type == IfcType::IfcPolyLoop {
+            let polygon = loop_entity.get(0)?.as_list()?;
+            let pt_id = polygon.first()?.as_entity_ref()?;
+            return decoder.get_cartesian_point_fast(pt_id);
+        }
+        None
+    }
+
+    /// Extract first vertex from a tessellated entity.
+    /// Navigates: FaceSet → CartesianPointList3D → first coordinate triple
+    fn tessellated_first_vertex(
+        &self,
+        faceset: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
+        let coord_id = faceset.get_ref(0)?;
+        let coord_entity = decoder.decode_by_id(coord_id).ok()?;
+        let coord_list = coord_entity.get(0)?.as_list()?;
+        let first_triple = coord_list.first()?.as_list()?;
+        let x = first_triple.first()?.as_float()?;
+        let y = first_triple.get(1)?.as_float()?;
+        let z = first_triple.get(2)?.as_float()?;
+        Some((x, y, z))
+    }
+
+    fn raw_coordinate_is_large(&self, point: (f64, f64, f64)) -> bool {
+        const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
+        let max_abs = point.0.abs().max(point.1.abs()).max(point.2.abs());
+        max_abs * self.unit_scale > LARGE_COORD_THRESHOLD_METERS
+    }
+
+    fn representation_item_uses_raw_large_coordinates(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> bool {
+        let first_vertex = match item.ifc_type {
+            IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
+                self.brep_first_vertex(item, decoder)
+            }
+            IfcType::IfcTriangulatedFaceSet | IfcType::IfcPolygonalFaceSet => {
+                self.tessellated_first_vertex(item, decoder)
+            }
+            IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
+                let Some(shells_attr) = item.get(0) else {
+                    return false;
+                };
+                let Some(shells) = shells_attr.as_list() else {
+                    return false;
+                };
+                let Some(shell_ref) = shells.first() else {
+                    return false;
+                };
+                let Some(shell_id) = shell_ref.as_entity_ref() else {
+                    return false;
+                };
+                match decoder.decode_by_id(shell_id) {
+                    Ok(shell) => self.shell_first_vertex(&shell, decoder),
+                    Err(_) => None,
+                }
+            }
+            _ => None,
+        };
+
+        first_vertex
+            .map(|point| self.raw_coordinate_is_large(point))
+            .unwrap_or(false)
     }
 
     /// Detect RTC offset by scanning the file for building elements.
@@ -270,6 +498,15 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<SubMeshCollection> {
+        // If a material-layer buildup is attached, try slicing single-solid
+        // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
+        // layer gets its own sub-mesh keyed by IfcMaterial id. An empty void
+        // index is passed — the caller's has_openings branch takes the
+        // voids-aware path below.
+        if let Some(layered) = self.try_layered_sub_meshes(element, decoder, None) {
+            return Ok(layered);
+        }
+
         // Get representation (attribute 6 for most building elements)
         let representation_attr = element.get(6).ok_or_else(|| {
             Error::geometry(format!(
@@ -384,7 +621,7 @@ impl GeometryRouter {
                     let mut transform = self.get_placement_transform(&placement, decoder)?;
                     self.scale_transform(&mut transform);
                     for sub in &mut sub_meshes.sub_meshes {
-                        self.transform_mesh(&mut sub.mesh, &transform);
+                        self.transform_mesh_world(&mut sub.mesh, &transform);
                     }
                 }
             }
@@ -486,7 +723,7 @@ impl GeometryRouter {
                     if let Some(mut transform) = mapping_transform.clone() {
                         self.scale_transform(&mut transform);
                         for sub in &mut sub_meshes.sub_meshes[count_before..] {
-                            self.transform_mesh(&mut sub.mesh, &transform);
+                            self.transform_mesh_local(&mut sub.mesh, &transform);
                         }
                     }
                 }
@@ -654,11 +891,63 @@ impl GeometryRouter {
             }
         }
 
+        // For raw world-coordinate FacetedBrep with RTC: subtract RTC from f64
+        // coordinates BEFORE f32 conversion. Do not use this path for ordinary
+        // local Breps whose large position comes from IfcObjectPlacement; those
+        // are shifted uniformly during the final world transform.
+        if item.ifc_type == IfcType::IfcFacetedBrep
+            && self.has_rtc_offset()
+            && self.representation_item_uses_raw_large_coordinates(item, decoder)
+        {
+            let processor = crate::processors::FacetedBrepProcessor::new();
+            let rtc_file_units = (
+                self.rtc_offset.0 / self.unit_scale,
+                self.rtc_offset.1 / self.unit_scale,
+                self.rtc_offset.2 / self.unit_scale,
+            );
+            let mut mesh =
+                processor.process_with_rtc(item, decoder, &self.schema, rtc_file_units)?;
+            mesh.validate_indices();
+            self.scale_mesh(&mut mesh);
+            // Mark positions as already RTC-shifted by setting a flag
+            // (positions are small values near origin, not world-space)
+            if !mesh.positions.is_empty() {
+                let cached = self.get_or_cache_by_hash(mesh);
+                return Ok((*cached).clone());
+            }
+            return Ok(mesh);
+        }
+
         // Check if we have a processor for this type
         if let Some(processor) = self.processors.get(&item.ifc_type) {
             let mut mesh = processor.process(item, decoder, &self.schema)?;
             // Safety net: strip any out-of-bounds indices before downstream use
             mesh.validate_indices();
+
+            // For raw world-coordinate meshes: apply RTC before unit scaling
+            // to avoid jitter from f32 truncation at world-space scale.
+            // This covers FaceBasedSurface, ShellBasedSurface, and any other
+            // processor that stores raw world-space coordinates as f32.
+            if self.has_rtc_offset()
+                && !mesh.rtc_applied
+                && !mesh.positions.is_empty()
+                && self.representation_item_uses_raw_large_coordinates(item, decoder)
+            {
+                // Positions are in file units (pre-scale). RTC offset is in meters.
+                // Convert RTC to file units for consistent subtraction.
+                let rtc_fu = (
+                    self.rtc_offset.0 / self.unit_scale,
+                    self.rtc_offset.1 / self.unit_scale,
+                    self.rtc_offset.2 / self.unit_scale,
+                );
+                for chunk in mesh.positions.chunks_exact_mut(3) {
+                    chunk[0] = (chunk[0] as f64 - rtc_fu.0) as f32;
+                    chunk[1] = (chunk[1] as f64 - rtc_fu.1) as f32;
+                    chunk[2] = (chunk[2] as f64 - rtc_fu.2) as f32;
+                }
+                mesh.rtc_applied = true;
+            }
+
             self.scale_mesh(&mut mesh);
 
             // Deduplicate by hash - buildings with repeated floors have identical geometry
@@ -738,7 +1027,7 @@ impl GeometryRouter {
                 let mut mesh = cached_mesh.as_ref().clone();
                 if let Some(mut transform) = mapping_transform {
                     self.scale_transform(&mut transform);
-                    self.transform_mesh(&mut mesh, &transform);
+                    self.transform_mesh_local(&mut mesh, &transform);
                 }
                 return Ok(mesh);
             }
@@ -790,7 +1079,7 @@ impl GeometryRouter {
         // Apply MappingTarget transformation to this instance
         if let Some(mut transform) = mapping_transform {
             self.scale_transform(&mut transform);
-            self.transform_mesh(&mut mesh, &transform);
+            self.transform_mesh_local(&mut mesh, &transform);
         }
 
         Ok(mesh)

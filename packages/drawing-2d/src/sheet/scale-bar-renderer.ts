@@ -12,8 +12,8 @@
  * - North arrow symbols
  */
 
-import type { ScaleBarConfig, NorthArrowConfig } from './scale-bar-types';
-import type { DrawingScale } from '../styles';
+import type { ScaleBarConfig, NorthArrowConfig } from './scale-bar-types.js';
+import type { DrawingScale } from '../styles.js';
 
 /** Position in paper coordinates (mm) */
 export interface PositionMm {

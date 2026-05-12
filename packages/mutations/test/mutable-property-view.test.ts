@@ -43,6 +43,68 @@ describe('MutablePropertyView', () => {
     expect(view.getPropertyValue(7, 'Pset_Base', 'Status')).toBeNull();
     expect(view.getForEntity(7)).toEqual([]);
   });
+
+  describe('entity aliases (duplicate flow)', () => {
+    it('routes base property reads to the source entity when aliased', () => {
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setOnDemandExtractor((entityId) => entityId === 100 ? [{
+        name: 'Pset_WallCommon',
+        globalId: 'wall-guid',
+        properties: [
+          { name: 'FireRating', type: PropertyValueType.Label, value: 'REI 60' },
+        ],
+      }] : []);
+
+      // Without an alias, the duplicate (id 200) has no base props.
+      expect(view.getForEntity(200)).toEqual([]);
+
+      // After aliasing, the duplicate inherits the source's psets.
+      view.setEntityAlias(200, 100);
+      expect(view.getForEntity(200)).toMatchObject([
+        {
+          name: 'Pset_WallCommon',
+          properties: [
+            { name: 'FireRating', value: 'REI 60' },
+          ],
+        },
+      ]);
+    });
+
+    it('keeps overrides scoped to the duplicate id, not the source', () => {
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setOnDemandExtractor((entityId) => entityId === 100 ? [{
+        name: 'Pset_WallCommon',
+        globalId: 'wall-guid',
+        properties: [
+          { name: 'FireRating', type: PropertyValueType.Label, value: 'REI 60' },
+        ],
+      }] : []);
+
+      view.setEntityAlias(200, 100);
+
+      // Edit on the duplicate.
+      view.setProperty(200, 'Pset_WallCommon', 'FireRating', 'REI 120', PropertyValueType.Label);
+
+      // Source's view of FireRating is unchanged.
+      expect(view.getPropertyValue(100, 'Pset_WallCommon', 'FireRating')).toBe('REI 60');
+      // Duplicate's view shows the override.
+      expect(view.getPropertyValue(200, 'Pset_WallCommon', 'FireRating')).toBe('REI 120');
+    });
+
+    it('clears the alias when sourceId is null', () => {
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setEntityAlias(200, 100);
+      expect(view.getEntityAlias(200)).toBe(100);
+      view.setEntityAlias(200, null);
+      expect(view.getEntityAlias(200)).toBeNull();
+    });
+
+    it('refuses self-aliases (no-op)', () => {
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setEntityAlias(42, 42);
+      expect(view.getEntityAlias(42)).toBeNull();
+    });
+  });
 });
 
 describe('BulkQueryEngine', () => {

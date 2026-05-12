@@ -95,23 +95,28 @@ export const mainShaderSource = `
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragmentOutput {
-          // Section plane clipping - discard fragments ABOVE the plane
-          // For Down axis (normal +Y), keeps everything below cut height (look down into building)
-          if (uniforms.flags.y == 1u) {
+          // Section plane clipping - discard fragments ABOVE the plane.
+          // flags.y packs two bits: bit 0 = enabled, bit 1 = flipped.
+          let sectionEnabled = (uniforms.flags.y & 1u) == 1u;
+          if (sectionEnabled) {
             let planeNormal = uniforms.sectionPlane.xyz;
             let planeDistance = uniforms.sectionPlane.w;
-            let distToPlane = dot(input.worldPos, planeNormal) - planeDistance;
+            let flipped = (uniforms.flags.y & 2u) == 2u;
+            let side = select(1.0, -1.0, flipped);
+            let distToPlane = (dot(input.worldPos, planeNormal) - planeDistance) * side;
             if (distToPlane > 0.0) {
               discard;
             }
           }
 
           // Compute normal — with fallback for zero normals
+          // dpdx/dpdy must be called outside non-uniform control flow (WGSL spec),
+          // so we compute the flat normal unconditionally and select below.
+          let faceN = cross(dpdx(input.worldPos), dpdy(input.worldPos));
           var N = input.normal;
           let nLen2 = dot(N, N);
           if (nLen2 < 0.0001) {
-            // Fallback: compute flat normal from screen-space derivatives
-            let faceN = cross(dpdx(input.worldPos), dpdy(input.worldPos));
+            // Fallback: use flat normal from screen-space derivatives
             let fLen2 = dot(faceN, faceN);
             N = select(vec3<f32>(0.0, 1.0, 0.0), faceN * inverseSqrt(fLen2), fLen2 > 1e-10);
           } else {
@@ -155,8 +160,20 @@ export const mainShaderSource = `
           // Combine all lighting
           var color = baseColor * (ambient + diffuseSun + diffuseFill + rim);
 
+          // flags.x is a bitfield:
+          //   bit 0 (value 1) = isSelected  → selection-highlight + force opaque
+          //   bit 1 (value 2) = isOverlay   → color-override pass; preserve
+          //                                    baseColor.a (overlay pipeline has
+          //                                    src-alpha blending) AND skip the
+          //                                    glass-fresnel branch so low-alpha
+          //                                    ghost tints don't pick up the
+          //                                    near-white reflection tint meant
+          //                                    for real glass materials.
+          let isSelected = (uniforms.flags.x & 1u) == 1u;
+          let isOverlay = (uniforms.flags.x & 2u) == 2u;
+
           // Selection highlight - add glow/fresnel effect
-          if (uniforms.flags.x == 1u) {
+          if (isSelected) {
             let V = normalize(-input.worldPos);
             let NdotV = max(dot(N, V), 0.0);
             let fresnel = pow(1.0 - NdotV, 2.0);
@@ -169,8 +186,8 @@ export const mainShaderSource = `
           // blue highlight, making it appear white instead of blue.
           // Also force alpha to 1.0 for selected objects so the highlight is
           // fully opaque (the selection pipeline has no alpha blending).
-          var finalAlpha = select(uniforms.baseColor.a, 1.0, uniforms.flags.x == 1u);
-          if (finalAlpha < 0.99 && uniforms.flags.x != 1u) {
+          var finalAlpha = select(uniforms.baseColor.a, 1.0, isSelected);
+          if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
             // Calculate view direction for fresnel
             let V = normalize(-input.worldPos);
             let NdotV = max(dot(N, V), 0.0);

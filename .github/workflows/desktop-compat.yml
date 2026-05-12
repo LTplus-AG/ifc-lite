@@ -1,0 +1,107 @@
+name: Desktop Compatibility
+
+# Validates that ifc-lite changes don't break the desktop shell's frontend build.
+# This catches Tauri stub regressions, store type mismatches, and missing
+# override points BEFORE merging to main — preventing the silent breakage
+# that occurred during the desktop branch merge (#503).
+
+on:
+  pull_request:
+    paths:
+      # Only run when shared code that the desktop app consumes changes
+      - 'apps/viewer/src/**'
+      - 'packages/*/src/**'
+      - 'packages/wasm/pkg/**'
+      - 'apps/desktop/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-frontend-build:
+    name: Desktop frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout ifc-lite (PR branch)
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm build
+
+      - name: Build desktop frontend (Vite only, no Tauri)
+        run: pnpm build:desktop
+
+      - name: Verify desktop contract version
+        run: node scripts/check-desktop-contract.mjs
+
+  desktop-override-audit:
+    name: Desktop override audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout ifc-lite (PR branch)
+        uses: actions/checkout@v4
+
+      - name: Check override surface integrity
+        run: |
+          # Every service module that the desktop repo overrides must exist in
+          # the shared viewer. If a file is renamed or removed, the desktop
+          # build will fail with a missing module error.
+          OVERRIDE_MODULES=(
+            "apps/viewer/src/services/file-dialog.ts"
+            "apps/viewer/src/services/desktop-logger.ts"
+            "apps/viewer/src/services/app-navigation.ts"
+            "apps/viewer/src/services/desktop-panel-actions.ts"
+            "apps/viewer/src/services/analysis-extensions.ts"
+            "apps/viewer/src/services/desktop-preferences.ts"
+            "apps/viewer/src/services/desktop-export.ts"
+            "apps/viewer/src/services/bsdd.ts"
+            "apps/viewer/src/services/desktop-cache.ts"
+            "apps/viewer/src/services/desktop-harness.ts"
+            "apps/viewer/src/services/desktop-native-metadata.ts"
+            "apps/viewer/src/lib/desktop-product.ts"
+            "apps/viewer/src/lib/desktop-entitlement.ts"
+            "apps/viewer/src/lib/desktop/desktopEntitlementEvents.ts"
+            "apps/viewer/src/lib/recent-files.ts"
+            "apps/viewer/src/hooks/useIfc.ts"
+          )
+
+          MISSING=0
+          for module in "${OVERRIDE_MODULES[@]}"; do
+            if [ ! -f "$module" ]; then
+              echo "::error file=$module::Desktop override target missing: $module"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+
+          if [ $MISSING -gt 0 ]; then
+            echo ""
+            echo "::error::$MISSING override target(s) missing. The desktop repo overrides these"
+            echo "modules via tsconfig path aliases. Renaming or removing them will break the"
+            echo "desktop build. Update DESKTOP_OVERRIDE_ALIAS_TARGETS in the desktop repo if"
+            echo "this change is intentional."
+            exit 1
+          fi
+
+          echo "All $((${#OVERRIDE_MODULES[@]})) override targets present."

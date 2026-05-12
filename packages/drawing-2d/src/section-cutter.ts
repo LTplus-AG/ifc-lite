@@ -18,8 +18,8 @@ import type {
   SectionCutResult,
   DrawingPolygon,
   EntityKey,
-} from './types';
-import { makeEntityKey } from './types';
+} from './types.js';
+import { makeEntityKey } from './types.js';
 import {
   vec3,
   vec3Lerp,
@@ -27,8 +27,9 @@ import {
   getAxisNormal,
   signedDistanceToPlane,
   projectTo2D,
-} from './math';
-import { PolygonBuilder } from './polygon-builder';
+  projectTo2DBasis,
+} from './math.js';
+import { PolygonBuilder } from './polygon-builder.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION CUTTER CLASS
@@ -39,12 +40,34 @@ export class SectionCutter {
   private planeDistance: number;
   private axis: 'x' | 'y' | 'z';
   private flipped: boolean;
+  /** Set when `config.customPlane` is supplied — disables cardinal projection. */
+  private customPlane: SectionPlaneConfig['customPlane'];
 
   constructor(config: SectionPlaneConfig) {
     this.axis = config.axis;
     this.flipped = config.flipped;
-    this.planeNormal = getAxisNormal(config.axis, config.flipped);
-    this.planeDistance = config.position;
+    this.customPlane = config.customPlane;
+
+    if (this.customPlane) {
+      // Arbitrary-normal mode (issue #243). Use the explicit plane equation
+      // verbatim; cardinal `axis` / `position` are still kept as a fallback
+      // for legacy SVG export but the cutter math from here on uses
+      // `customPlane.normal` + `customPlane.distance`.
+      this.planeNormal = this.customPlane.normal;
+      this.planeDistance = this.customPlane.distance;
+    } else {
+      // Plane equation `dot(x, n) = d` describes the same plane regardless of
+      // which side is "kept", so we always use the unflipped normal here. Using
+      // `getAxisNormal(axis, true)` flips the normal but leaves `position`
+      // unchanged, which describes a DIFFERENT plane (e.g. y = 10 vs y = -10).
+      // That mismatch is exactly what produced "flipped → empty 2D canvas":
+      // the cutter looked for intersections at y = -position, far outside the
+      // model, so no triangles intersected. The `flipped` flag is still kept
+      // and used by `projectTo2D` below to mirror the U axis so the resulting
+      // drawing stays oriented correctly when viewed from the opposite side.
+      this.planeNormal = getAxisNormal(config.axis, false);
+      this.planeDistance = config.position;
+    }
   }
 
   /**
@@ -118,9 +141,15 @@ export class SectionCutter {
       if (intersection) {
         intersectedCount++;
 
-        // Project 3D points to 2D
-        const p0_2d = projectTo2D(intersection.p0, this.axis, this.flipped);
-        const p1_2d = projectTo2D(intersection.p1, this.axis, this.flipped);
+        // Project 3D points to 2D. For face-picked custom planes use the
+        // explicit basis so the polygon coordinates match the lift the
+        // cap renderer applies — see `projectTo2DBasis` in math.ts.
+        const p0_2d = this.customPlane
+          ? projectTo2DBasis(intersection.p0, this.customPlane.origin, this.customPlane.tangent, this.customPlane.bitangent)
+          : projectTo2D(intersection.p0, this.axis, this.flipped);
+        const p1_2d = this.customPlane
+          ? projectTo2DBasis(intersection.p1, this.customPlane.origin, this.customPlane.tangent, this.customPlane.bitangent)
+          : projectTo2D(intersection.p1, this.axis, this.flipped);
 
         // Skip degenerate segments
         const dx = p1_2d.x - p0_2d.x;

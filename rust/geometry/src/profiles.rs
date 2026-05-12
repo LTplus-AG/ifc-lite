@@ -29,6 +29,17 @@ const MAX_CURVE_DEPTH: u32 = 50;
 /// Ramer-Douglas-Peucker so it tessellates into far fewer triangles while
 /// remaining visually circular.
 const SMOOTH_CURVE_SPACING_RATIO: f64 = 1.0 / 16.0;
+/// Max single-edge length as a fraction of the bounding-box diagonal for a
+/// polyline to qualify as an over-tessellated smooth curve. A uniformly
+/// sampled curve has every edge much shorter than the profile diagonal; a
+/// mixed-geometry profile (e.g. Revit I-beam authored as polyline+fillet-arc
+/// composite) has a few flange-top edges that are a large fraction of the
+/// diagonal alongside many short arc-sampling edges, which makes
+/// `mean_edge/diag` alone read as "smooth" while the polygon is anything but.
+/// Reject simplification whenever a single edge exceeds this ratio so RDP
+/// never gets a chance to slice through a sharp polyline corner adjacent to a
+/// fillet arc — that pattern is what produced the +4.31% W410x60 area bug.
+const SMOOTH_CURVE_LONGEST_EDGE_RATIO: f64 = 0.10;
 /// RDP epsilon as fraction of bounding-box diagonal. Larger ⇒ coarser
 /// approximation. For a unit-diameter circle, an N-segment polygon's
 /// max sagitta is `r * (1 - cos(π/N))`; targeting N≈16 (recognizable
@@ -157,18 +168,33 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
         return points.to_vec();
     }
 
-    // Mean edge length / diagonal — small ⇒ over-tessellated curve.
+    // Edge-length statistics. A smooth-curve approximation has every edge
+    // short relative to the diagonal AND uniformly sized; mixed-geometry
+    // profiles (e.g. I-beam authored as polyline + fillet arcs) have a few
+    // long straight edges alongside many short arc-sampling edges and must
+    // not be simplified — RDP would drop the polyline corner vertices that
+    // define the silhouette and slice across the fillet region instead.
     let mut perimeter = 0.0;
+    let mut longest_edge: f64 = 0.0;
     for i in 0..n {
         let a = core[i];
         let b = core[(i + 1) % n];
         let ex = b.x - a.x;
         let ey = b.y - a.y;
-        perimeter += (ex * ex + ey * ey).sqrt();
+        let len = (ex * ex + ey * ey).sqrt();
+        perimeter += len;
+        if len > longest_edge {
+            longest_edge = len;
+        }
     }
     let mean_edge = perimeter / n as f64;
     if mean_edge / diag > SMOOTH_CURVE_SPACING_RATIO {
         // Doesn't look like a smooth curve approximation — leave alone.
+        return points.to_vec();
+    }
+    if longest_edge / diag > SMOOTH_CURVE_LONGEST_EDGE_RATIO {
+        // Mixed-geometry profile: at least one edge is too long to belong to
+        // a uniformly-tessellated smooth curve. Leave the polyline alone.
         return points.to_vec();
     }
 

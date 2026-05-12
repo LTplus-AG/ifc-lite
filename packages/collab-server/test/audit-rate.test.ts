@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MemoryPersistence, startCollabServer } from '../src/server.js';
 import { MemoryAuditSink, shortHash } from '../src/audit-log.js';
 import { createRateLimiter } from '../src/rate-limit.js';
@@ -19,13 +19,24 @@ describe('audit log + rate limit', () => {
   });
 
   it('token bucket refills over time', async () => {
-    const limiter = createRateLimiter({ capacity: 3, refillPerSecond: 100 });
-    expect(limiter.tryConsume(1)).toBe(true);
-    expect(limiter.tryConsume(1)).toBe(true);
-    expect(limiter.tryConsume(1)).toBe(true);
-    expect(limiter.tryConsume(1)).toBe(false);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(limiter.tryConsume(1)).toBe(true);
+    // Use fake timers so the test is deterministic on slow CI. The rate
+    // limiter reads Date.now() for refill timing; a few real milliseconds
+    // between consumes used to be enough to refill a token at 100 tokens/s.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(0));
+    try {
+      const limiter = createRateLimiter({ capacity: 3, refillPerSecond: 100 });
+      expect(limiter.tryConsume(1)).toBe(true);
+      expect(limiter.tryConsume(1)).toBe(true);
+      expect(limiter.tryConsume(1)).toBe(true);
+      // Bucket empty, no virtual time has passed → must reject.
+      expect(limiter.tryConsume(1)).toBe(false);
+      // 50 ms × 100 tokens/s = 5 tokens, capped at capacity=3.
+      vi.advanceTimersByTime(50);
+      expect(limiter.tryConsume(1)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('writes to disallowed roles are rejected and logged', async () => {

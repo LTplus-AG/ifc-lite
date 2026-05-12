@@ -3594,11 +3594,6 @@ function __wbg_get_imports(memory) {
     imports.wbg.__wbg_warn_6e567d0d926ff881 = function(arg0) {
         console.warn(getObject(arg0));
     };
-    imports.wbg.__wbindgen_cast_059fe8fea69d1ac8 = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 182, function: Function { arguments: [Externref], shim_idx: 183, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1176, __wasm_bindgen_func_elem_1177);
-        return addHeapObject(ret);
-    };
     imports.wbg.__wbindgen_cast_2241b6af4c4b2941 = function(arg0, arg1) {
         // Cast intrinsic for `Ref(String) -> Externref`.
         const ret = getStringFromWasm0(arg0, arg1);
@@ -3609,8 +3604,13 @@ function __wbg_get_imports(memory) {
         const ret = BigInt.asUintN(64, arg0);
         return addHeapObject(ret);
     };
-    imports.wbg.__wbindgen_cast_8408bf1a4d6b6c8b = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 182, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 183, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+    imports.wbg.__wbindgen_cast_5981c93f1c3e6401 = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 181, function: Function { arguments: [Externref], shim_idx: 182, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1176, __wasm_bindgen_func_elem_1177);
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbindgen_cast_c66ca3e1e2ec9281 = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 181, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 182, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
         const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1176, __wasm_bindgen_func_elem_1177);
         return addHeapObject(ret);
     };

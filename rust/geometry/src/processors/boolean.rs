@@ -279,82 +279,12 @@ impl BooleanClippingProcessor {
             .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0))
     }
 
-    fn build_prism_mesh(
-        &self,
-        contour_2d: &[Point2<f64>],
-        origin: Point3<f64>,
-        x_axis: Vector3<f64>,
-        y_axis: Vector3<f64>,
-        extrusion_dir: Vector3<f64>,
-        depth: f64,
-    ) -> Result<Mesh> {
-        let profile = Profile2D::new(contour_2d.to_vec());
-        let triangulation = profile.triangulate()?;
-
-        let contour_world: Vec<Point3<f64>> = contour_2d
-            .iter()
-            .map(|p| origin + x_axis * p.x + y_axis * p.y)
-            .collect();
-        let tri_world: Vec<Point3<f64>> = triangulation
-            .points
-            .iter()
-            .map(|p| origin + x_axis * p.x + y_axis * p.y)
-            .collect();
-        let top_world: Vec<Point3<f64>> = tri_world
-            .iter()
-            .map(|p| *p + extrusion_dir * depth)
-            .collect();
-
-        let mut mesh = Mesh::with_capacity(
-            triangulation.points.len() * 2 + contour_world.len() * 4,
-            triangulation.indices.len() * 2 + contour_world.len() * 6,
-        );
-        let zero = Vector3::new(0.0, 0.0, 0.0);
-
-        let push_triangle = |mesh: &mut Mesh, a: Point3<f64>, b: Point3<f64>, c: Point3<f64>| {
-            let base = mesh.vertex_count() as u32;
-            mesh.add_vertex(a, zero);
-            mesh.add_vertex(b, zero);
-            mesh.add_vertex(c, zero);
-            mesh.indices.extend_from_slice(&[base, base + 1, base + 2]);
-        };
-
-        for indices in triangulation.indices.chunks_exact(3) {
-            let i0 = indices[0];
-            let i1 = indices[1];
-            let i2 = indices[2];
-
-            // Base cap faces away from the extruded volume.
-            push_triangle(&mut mesh, tri_world[i2], tri_world[i1], tri_world[i0]);
-            // Top cap faces in the extrusion direction.
-            push_triangle(&mut mesh, top_world[i0], top_world[i1], top_world[i2]);
-        }
-
-        let contour_top: Vec<Point3<f64>> = contour_world
-            .iter()
-            .map(|p| *p + extrusion_dir * depth)
-            .collect();
-
-        for i in 0..contour_world.len() {
-            let next = (i + 1) % contour_world.len();
-            let b0 = contour_world[i];
-            let b1 = contour_world[next];
-            let t0 = contour_top[i];
-            let t1 = contour_top[next];
-
-            push_triangle(&mut mesh, b0, b1, t1);
-            push_triangle(&mut mesh, b0, t1, t0);
-        }
-
-        calculate_normals(&mut mesh);
-        Ok(mesh)
-    }
-
     fn build_polygonal_bounded_half_space_mesh(
         &self,
         half_space: &DecodedEntity,
         decoder: &mut EntityDecoder,
         host_mesh: &Mesh,
+        plane_point: Point3<f64>,
         plane_normal: Vector3<f64>,
         agreement: bool,
     ) -> Result<Mesh> {
@@ -373,32 +303,59 @@ impl BooleanClippingProcessor {
             .resolve_ref(boundary_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve PolygonalBoundary".to_string()))?;
 
-        let mut contour_2d = self.parse_polygonal_boundary_2d(&boundary, decoder)?;
+        let contour_2d = self.parse_polygonal_boundary_2d(&boundary, decoder)?;
 
         let origin = Point3::new(transform[(0, 3)], transform[(1, 3)], transform[(2, 3)]);
         let x_axis =
             Vector3::new(transform[(0, 0)], transform[(1, 0)], transform[(2, 0)]).normalize();
         let y_axis =
             Vector3::new(transform[(0, 1)], transform[(1, 1)], transform[(2, 1)]).normalize();
+        // Per IFC spec (IfcPolygonalBoundedHalfSpace): the polygon is in
+        // Position's XY plane and is extruded INFINITELY along Position's
+        // Z-axis to form an unbounded prism. The bounded half-space is the
+        // intersection of that prism with the IfcHalfSpaceSolid.
+        let z_axis =
+            Vector3::new(transform[(0, 2)], transform[(1, 2)], transform[(2, 2)]).normalize();
 
-        let mut contour_world: Vec<Point3<f64>> = contour_2d
-            .iter()
-            .map(|p| origin + x_axis * p.x + y_axis * p.y)
-            .collect();
-
-        // Extrude along the side of the plane that is removed by the boolean difference.
-        let extrusion_dir = if agreement {
+        // The half-space "material" side (the side we SUBTRACT from the host)
+        // depends on AgreementFlag. Per IFC spec, AgreementFlag=TRUE means the
+        // surface normal points AWAY from the material — so material is on
+        // the NEGATIVE normal side. AgreementFlag=FALSE flips it.
+        let material_side_dir = if agreement {
             -plane_normal
         } else {
             plane_normal
         }
         .normalize();
 
-        if Self::polygon_normal(&contour_world).dot(&extrusion_dir) < 0.0 {
-            contour_2d.reverse();
-            contour_world.reverse();
+        // Project each polygon vertex from its position in Position's XY
+        // plane onto the slope plane along Position's Z-axis. This yields a
+        // (possibly tilted) polygon that lies ON the slope plane and forms
+        // the BASE cap of the bounded half-space prism.
+        //
+        // For a polygon vertex P0 (at z = 0 in Position frame, world = origin
+        // + x_axis*u + y_axis*v), the line P0 + t*z_axis intersects the slope
+        // plane when (P0 + t*z_axis - plane_point) · plane_normal = 0:
+        //
+        //     t = ((plane_point - P0) · plane_normal) / (z_axis · plane_normal)
+        //
+        // If z_axis is parallel to the plane, projection fails and we fall
+        // back to placing the base cap at the polygon's natural location.
+        let z_dot_n = z_axis.dot(&plane_normal);
+        let mut base_world: Vec<Point3<f64>> = contour_2d
+            .iter()
+            .map(|p| origin + x_axis * p.x + y_axis * p.y)
+            .collect();
+        if z_dot_n.abs() > 1e-9 {
+            for (point, contour_pt) in base_world.iter_mut().zip(contour_2d.iter()) {
+                let p0 = origin + x_axis * contour_pt.x + y_axis * contour_pt.y;
+                let t = (plane_point - p0).dot(&plane_normal) / z_dot_n;
+                *point = p0 + z_axis * t;
+            }
         }
 
+        // Compute prism depth: enough to cover the host mesh fully along the
+        // material-side direction.
         let (host_min, host_max) = host_mesh.bounds();
         let host_corners = [
             Point3::new(host_min.x as f64, host_min.y as f64, host_min.z as f64),
@@ -415,11 +372,167 @@ impl BooleanClippingProcessor {
             .hypot((host_max.z - host_min.z) as f64);
         let max_projection = host_corners
             .iter()
-            .map(|corner| (corner - origin).dot(&extrusion_dir))
+            .map(|corner| (corner - plane_point).dot(&material_side_dir))
             .fold(0.0_f64, f64::max);
         let depth = max_projection.max(host_diag) + 1.0;
 
-        self.build_prism_mesh(&contour_2d, origin, x_axis, y_axis, extrusion_dir, depth)
+        // Top cap = base cap translated along material_side_dir by `depth`.
+        let top_world: Vec<Point3<f64>> =
+            base_world.iter().map(|p| *p + material_side_dir * depth).collect();
+
+        // Ensure the polygon winding is consistent with the extrusion
+        // direction so triangulation outputs front-facing caps.
+        let mut base = base_world;
+        let mut top = top_world;
+        let mut contour_2d = contour_2d;
+        if Self::polygon_normal(&base).dot(&material_side_dir) < 0.0 {
+            base.reverse();
+            top.reverse();
+            contour_2d.reverse();
+        }
+
+        self.build_tilted_prism_mesh(&contour_2d, &base, &top)
+    }
+
+    /// Build a closed prism mesh given a parameterising 2D polygon (used
+    /// only for triangulating the caps) and the matching arrays of world-
+    /// space base and top vertices. `base[i]` and `top[i]` must correspond
+    /// to `contour_2d[i]`. Caps are tessellated using `Profile2D::triangulate`
+    /// on `contour_2d`, then each tri is emitted with vertices from `base`
+    /// (bottom) and `top` (top). Side walls connect successive base/top
+    /// pairs into quads.
+    fn build_tilted_prism_mesh(
+        &self,
+        contour_2d: &[Point2<f64>],
+        base_world: &[Point3<f64>],
+        top_world: &[Point3<f64>],
+    ) -> Result<Mesh> {
+        if base_world.len() != contour_2d.len() || top_world.len() != contour_2d.len() {
+            return Err(Error::geometry(
+                "Polygonal bounded half-space cap arrays must match contour length"
+                    .to_string(),
+            ));
+        }
+
+        let profile = Profile2D::new(contour_2d.to_vec());
+        let triangulation = profile.triangulate()?;
+
+        // Map each triangulation vertex back to the corresponding world-space
+        // base/top vertex. `triangulation.points` contains the contour
+        // vertices in the same order they were supplied (earcutr does not
+        // permute the inputs for a simple polygon), so positional indexing
+        // works as long as we account for any re-ordering by re-finding the
+        // closest contour point if needed.
+        //
+        // In practice, triangulation.points == contour_2d for our inputs,
+        // so we look up each tri-point by index identity into contour_2d.
+        let mut tri_to_contour: Vec<usize> = Vec::with_capacity(triangulation.points.len());
+        for tp in &triangulation.points {
+            // Find the contour vertex whose 2D coordinates match this
+            // triangulation vertex (within a small epsilon).
+            let mut best = 0usize;
+            let mut best_d = f64::INFINITY;
+            for (i, cp) in contour_2d.iter().enumerate() {
+                let d = (tp.x - cp.x).powi(2) + (tp.y - cp.y).powi(2);
+                if d < best_d {
+                    best_d = d;
+                    best = i;
+                }
+            }
+            tri_to_contour.push(best);
+        }
+
+        let mut mesh = Mesh::with_capacity(
+            base_world.len() * 2 + contour_2d.len() * 4,
+            triangulation.indices.len() * 2 + contour_2d.len() * 6,
+        );
+        let zero = Vector3::new(0.0, 0.0, 0.0);
+
+        let push_triangle = |mesh: &mut Mesh, a: Point3<f64>, b: Point3<f64>, c: Point3<f64>| {
+            let base_idx = mesh.vertex_count() as u32;
+            mesh.add_vertex(a, zero);
+            mesh.add_vertex(b, zero);
+            mesh.add_vertex(c, zero);
+            mesh.indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
+        };
+
+        for indices in triangulation.indices.chunks_exact(3) {
+            let i0 = tri_to_contour[indices[0]];
+            let i1 = tri_to_contour[indices[1]];
+            let i2 = tri_to_contour[indices[2]];
+
+            // Base cap faces away from the extruded volume.
+            push_triangle(&mut mesh, base_world[i2], base_world[i1], base_world[i0]);
+            // Top cap faces in the extrusion direction.
+            push_triangle(&mut mesh, top_world[i0], top_world[i1], top_world[i2]);
+        }
+
+        for i in 0..base_world.len() {
+            let next = (i + 1) % base_world.len();
+            let b0 = base_world[i];
+            let b1 = base_world[next];
+            let t0 = top_world[i];
+            let t1 = top_world[next];
+
+            push_triangle(&mut mesh, b0, b1, t1);
+            push_triangle(&mut mesh, b0, t1, t0);
+        }
+
+        calculate_normals(&mut mesh);
+        Ok(mesh)
+    }
+
+    /// Walk the left-spine of a chained
+    /// `IfcBooleanClippingResult(.DIFFERENCE., x, polygonalBoundedHalfSpace)`
+    /// pattern (typical for gable walls clipped by both roof slopes) and
+    /// collect every consecutive `IfcPolygonalBoundedHalfSpace` cutter.
+    /// Returns the deepest non-`IfcBooleanClippingResult` base operand and
+    /// the chain of half-spaces in their IFC application order
+    /// (innermost-first, i.e. the order the spec would have applied them).
+    ///
+    /// Used by `process_with_depth` to BATCH chained polygonal clips into
+    /// a single CSG operation; sequentially subtracting each cutter blows
+    /// past the per-mesh polygon limit and silently drops later clips,
+    /// leaving a flat horizontal cap at the gable apex (issue #635 follow-
+    /// up).
+    fn collect_polygonal_chain(
+        &self,
+        entity: DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<(DecodedEntity, Vec<DecodedEntity>)> {
+        let mut chain: Vec<DecodedEntity> = Vec::new();
+        let mut current = entity;
+        loop {
+            if !matches!(
+                current.ifc_type,
+                IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult
+            ) {
+                break;
+            }
+            // Operator must be DIFFERENCE.
+            let op = current
+                .get(0)
+                .and_then(|v| match v {
+                    ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str().to_string()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| ".DIFFERENCE.".to_string());
+            if op != ".DIFFERENCE." && op != "DIFFERENCE" {
+                break;
+            }
+            let Some(second_attr) = current.get(2) else { break };
+            let Ok(Some(second)) = decoder.resolve_ref(second_attr) else { break };
+            if second.ifc_type != IfcType::IfcPolygonalBoundedHalfSpace {
+                break;
+            }
+            chain.push(second);
+            let Some(first_attr) = current.get(1) else { break };
+            let Ok(Some(first)) = decoder.resolve_ref(first_attr) else { break };
+            current = first;
+        }
+        // Reverse so chain[0] is the innermost (first-applied) clip.
+        chain.reverse();
+        Ok((current, chain))
     }
 
     /// Internal processing with depth tracking to prevent stack overflow
@@ -451,6 +564,62 @@ impl BooleanClippingProcessor {
                 _ => None,
             })
             .unwrap_or(".DIFFERENCE.");
+
+        // Fast path for chained polygonal-bounded half-space clips
+        // (e.g. gable walls clipped by both roof slopes — AC20-FZK-Haus
+        // walls #60012, #67828). Sequentially subtracting each cutter
+        // pushes the host polygon count past `MAX_CSG_POLYGONS_PER_MESH`,
+        // silently dropping later clips and leaving a flat horizontal
+        // cap at the apex. Combine all cutter prisms into a single
+        // mesh and run ONE BSP CSG op so the clips compose correctly.
+        if (operator == ".DIFFERENCE." || operator == "DIFFERENCE") && depth == 0 {
+            if let Ok((base, chain)) = self.collect_polygonal_chain(entity.clone(), decoder) {
+                if chain.len() >= 2 {
+                    let mesh = self.process_operand_with_depth(&base, decoder, depth)?;
+                    if mesh.is_empty() {
+                        return Ok(mesh);
+                    }
+                    let mut combined = Mesh::new();
+                    let mut planes: Vec<(Point3<f64>, Vector3<f64>, bool)> =
+                        Vec::with_capacity(chain.len());
+                    let mut all_built = true;
+                    for hs in &chain {
+                        let (pp, pn, ag) = self.parse_half_space_solid(hs, decoder)?;
+                        planes.push((pp, pn, ag));
+                        match self.build_polygonal_bounded_half_space_mesh(
+                            hs, decoder, &mesh, pp, pn, ag,
+                        ) {
+                            Ok(prism) => combined.merge(&prism),
+                            Err(_) => {
+                                all_built = false;
+                                break;
+                            }
+                        }
+                    }
+                    if all_built && !combined.is_empty() {
+                        let clipper = ClippingProcessor::new();
+                        let subtract_result = clipper.subtract_mesh(&mesh, &combined);
+                        self.drain_clipper_failures(&clipper);
+                        if let Ok(clipped) = subtract_result {
+                            if !clipped.is_empty() {
+                                return Ok(clipped);
+                            }
+                        }
+                    }
+                    // Fallback: chain plane clips so the silhouette is at
+                    // least correct (loses the polygon bound).
+                    self.record_failure(
+                        BoolOp::Difference,
+                        BoolFailureReason::PolygonalBoundedHalfSpaceFallback,
+                    );
+                    let mut current = mesh;
+                    for (pp, pn, ag) in planes {
+                        current = self.clip_mesh_with_half_space(&current, pp, pn, ag)?;
+                    }
+                    return Ok(current);
+                }
+            }
+        }
 
         // Get first operand (base geometry)
         let first_operand_attr = entity
@@ -495,6 +664,7 @@ impl BooleanClippingProcessor {
                     &second_operand,
                     decoder,
                     &mesh,
+                    plane_point,
                     plane_normal,
                     agreement,
                 ) {

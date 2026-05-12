@@ -45,6 +45,11 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
   const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
+  // Live face-pick hover preview (issue #243 follow-up). Only set
+  // while pick mode is armed AND the cursor has dwelled ~200ms over a
+  // surface. Drives the violet quad + arrow that telegraph "this is
+  // where I'll cut if you click here" before the user commits.
+  const sectionPickPreview = useViewerStore((s) => s.sectionPickPreview);
   const isCustom = customPlane !== undefined;
 
   const color = isCustom ? CUSTOM_COLOR : axisColors[axis];
@@ -108,7 +113,183 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
           onDragEnd={()  => setPreviewStride(1)}
         />
       )}
+
+      {/* Face-pick hover preview — purely visual, click-through. */}
+      {sectionPickPreview && (
+        <SectionPickPreviewOverlay
+          color={CUSTOM_COLOR}
+          preview={sectionPickPreview}
+        />
+      )}
     </svg>
+  );
+}
+
+/**
+ * Translucent violet quad + tiny normal arrow painted on the surface
+ * the user is hovering while section pick mode is armed (issue #243
+ * follow-up). Purely a hint — does not commit a section plane;
+ * `selectionHandlers.ts` does that on click.
+ *
+ * Rendered as an SVG overlay to match `CustomPlaneDragGizmo` (no new
+ * GPU pipeline, follows the camera "for free" via per-frame
+ * projection). The quad's footprint follows `tangent`/`bitangent` of
+ * the hit normal so it looks like a flat square laid on the surface
+ * regardless of camera angle, and its on-screen radius is clamped to
+ * `[24px, 80px]` so it stays readable from any zoom.
+ *
+ * Pointer-events are forced off so the overlay never intercepts the
+ * click that would commit the actual cut — the SVG container above
+ * already disables them, but child <g> elements with `pointerEvents:
+ * 'auto'` (e.g. the drag gizmo's circle) co-exist in the same tree.
+ */
+function SectionPickPreviewOverlay(props: {
+  color: string;
+  preview: NonNullable<ReturnType<typeof useViewerStore.getState>['sectionPickPreview']>;
+}) {
+  const { color, preview } = props;
+  // Project the four quad corners + the arrow tip every animation
+  // frame so the overlay tracks camera orbit/pan without any extra
+  // store subscription. Cheap (5 mat-mul per frame).
+  const [proj, setProj] = useState<{
+    quad: Array<{ x: number; y: number }>;
+    foot: { x: number; y: number };
+    tip:  { x: number; y: number };
+  } | null>(null);
+
+  useEffect(() => {
+    let raf = 0;
+    const project = () => {
+      const renderer = getGlobalRenderer();
+      const camera = renderer?.getCamera();
+      const canvas = renderer?.getCanvas();
+      if (camera && canvas) {
+        const w = canvas.clientWidth, h = canvas.clientHeight;
+        const [px, py, pz] = preview.point;
+        const [nx, ny, nz] = preview.normal;
+
+        // Build an orthonormal in-plane basis from the normal. This
+        // duplicates `planeBasis()` from the renderer package — done
+        // inline to keep the overlay self-contained and avoid pulling
+        // a renderer dep into the React layer just for two cross
+        // products. The choice of seed (Z vs X) avoids a degenerate
+        // cross when the normal is near ±Y.
+        const seedX = Math.abs(ny) > 0.9 ? 1 : 0;
+        const seedY = Math.abs(ny) > 0.9 ? 0 : 0;
+        const seedZ = Math.abs(ny) > 0.9 ? 0 : 1;
+        // tangent = normalize(cross(normal, seed))
+        let tx = ny * seedZ - nz * seedY;
+        let ty = nz * seedX - nx * seedZ;
+        let tz = nx * seedY - ny * seedX;
+        const tLen = Math.hypot(tx, ty, tz) || 1;
+        tx /= tLen; ty /= tLen; tz /= tLen;
+        // bitangent = cross(normal, tangent)
+        const bx = ny * tz - nz * ty;
+        const by = nz * tx - nx * tz;
+        const bz = nx * ty - ny * tx;
+
+        // Quad half-extent: 0.5m world to start; we'll clamp the
+        // visible size in screen pixels below by interpolating along
+        // the projected diagonal if the apparent size lands outside
+        // [24, 80]px.
+        const halfWorld = 0.5;
+
+        const corner = (s: number, t: number) => {
+          const wx = px + tx * s + bx * t;
+          const wy = py + ty * s + by * t;
+          const wz = pz + tz * s + bz * t;
+          return camera.projectToScreen({ x: wx, y: wy, z: wz }, w, h);
+        };
+
+        const c0 = corner(-halfWorld, -halfWorld);
+        const c1 = corner( halfWorld, -halfWorld);
+        const c2 = corner( halfWorld,  halfWorld);
+        const c3 = corner(-halfWorld,  halfWorld);
+        const foot = camera.projectToScreen({ x: px, y: py, z: pz }, w, h);
+        // Arrow tip 0.4m along the normal — half a typical wall
+        // thickness, enough for the arrowhead to read at default
+        // zoom without dwarfing small objects.
+        const tip = camera.projectToScreen(
+          { x: px + nx * 0.4, y: py + ny * 0.4, z: pz + nz * 0.4 },
+          w, h,
+        );
+
+        if (c0 && c1 && c2 && c3 && foot && tip) {
+          // On-screen size clamp: rescale the four corners about the
+          // foot so the apparent diagonal falls in [24px, 80px]. This
+          // keeps the preview readable at extreme zooms (a 1m quad
+          // can otherwise shrink to 2px from far away or fill the
+          // canvas up close).
+          const dx = c2.x - c0.x;
+          const dy = c2.y - c0.y;
+          const diag = Math.hypot(dx, dy) || 1;
+          const minPx = 50;  // ~50px diagonal — visible but not
+                             // overpowering
+          const maxPx = 140;
+          const scale = diag < minPx ? minPx / diag
+                      : diag > maxPx ? maxPx / diag
+                      : 1;
+          const rescale = (c: { x: number; y: number }) => ({
+            x: foot.x + (c.x - foot.x) * scale,
+            y: foot.y + (c.y - foot.y) * scale,
+          });
+          setProj({
+            quad: [rescale(c0), rescale(c1), rescale(c2), rescale(c3)],
+            foot,
+            tip,
+          });
+        }
+      }
+      raf = requestAnimationFrame(project);
+    };
+    project();
+    return () => cancelAnimationFrame(raf);
+  }, [preview.point, preview.normal, preview.faceKey]);
+
+  if (!proj) return null;
+
+  const { quad, foot, tip } = proj;
+  // Arrow pixel length capped at 36px so it stays a small "telltale"
+  // rather than visually competing with the quad. Direction comes
+  // from the projected normal so it tracks camera orientation.
+  const adx = tip.x - foot.x, ady = tip.y - foot.y;
+  const aLen = Math.hypot(adx, ady) || 1;
+  const ARROW_PX = Math.min(36, aLen);
+  const tipX = foot.x + (adx / aLen) * ARROW_PX;
+  const tipY = foot.y + (ady / aLen) * ARROW_PX;
+
+  return (
+    <g style={{ pointerEvents: 'none' }} aria-hidden>
+      {/* Translucent violet quad — the "you'll cut here" hint. */}
+      <polygon
+        points={quad.map((p) => `${p.x},${p.y}`).join(' ')}
+        fill={color}
+        fillOpacity="0.28"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeOpacity="0.7"
+      />
+      {/* Tiny normal arrow — shaft. */}
+      <line
+        x1={foot.x} y1={foot.y}
+        x2={tipX}   y2={tipY}
+        stroke={color} strokeWidth="2" strokeLinecap="round"
+        opacity="0.9"
+      />
+      {/* Arrowhead — small triangle perpendicular to the shaft. */}
+      <polygon
+        points={(() => {
+          const ux = adx / aLen, uy = ady / aLen;
+          const nxp = -uy, nyp = ux;
+          const baseX = tipX - ux * 6;
+          const baseY = tipY - uy * 6;
+          const ax = baseX + nxp * 4, ay = baseY + nyp * 4;
+          const bx = baseX - nxp * 4, by = baseY - nyp * 4;
+          return `${tipX},${tipY} ${ax},${ay} ${bx},${by}`;
+        })()}
+        fill={color} opacity="0.95"
+      />
+    </g>
   );
 }
 

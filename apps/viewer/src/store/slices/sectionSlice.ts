@@ -134,6 +134,24 @@ const saveShowCap      = (v: boolean) => saveBoolean(CAP_SHOW_STORAGE_KEY,      
 const loadShowOutlines = () => loadBoolean(OUTLINES_SHOW_STORAGE_KEY, SECTION_PLANE_DEFAULTS.SHOW_OUTLINES);
 const saveShowOutlines = (v: boolean) => saveBoolean(OUTLINES_SHOW_STORAGE_KEY, v);
 
+/**
+ * Live "where will I cut if you click here?" preview, set by the hover
+ * dwell handler in `useMouseControls.ts` while `sectionPickMode` is on.
+ *
+ * `normal` is camera-oriented (matches the face-pick commit policy in
+ * `selectionHandlers.ts`) so the preview's arrow points in the same
+ * direction the actual cut will keep, and the user sees a visually
+ * continuous transition on click. `point` is the world-space hit
+ * location. `faceKey` is used by the hover handler to detect "still on
+ * the same face" so cursor wobble within a flat surface doesn't
+ * retrigger the dwell timer or repaint the overlay.
+ */
+export interface SectionPickPreview {
+  normal:  [number, number, number];
+  point:   [number, number, number];
+  faceKey: string;
+}
+
 export interface SectionSlice {
   // State
   sectionPlane: SectionPlane;
@@ -144,6 +162,15 @@ export interface SectionSlice {
    * `selectionHandlers.ts` for the consumer.
    */
   sectionPickMode: boolean;
+  /**
+   * Hover preview for the face-pick gesture (issue #243 follow-up).
+   * Populated by the dwell handler when the cursor pauses ~200ms over a
+   * surface; consumed by `SectionVisualization.tsx` to paint a
+   * translucent violet quad + a tiny normal arrow on the hovered face.
+   * Cleared on cursor leaving the canvas, moving to a different face,
+   * disarming pick mode, or successful commit.
+   */
+  sectionPickPreview: SectionPickPreview | null;
 
   // Actions
   setSectionPlaneAxis: (axis: SectionPlaneAxis) => void;
@@ -172,8 +199,16 @@ export interface SectionSlice {
   ) => void;
   /** Update only the custom plane's signed distance (drag gizmo / numeric input). */
   setSectionCustomDistance: (distance: number) => void;
-  /** Arm/disarm the "next click picks a face" mode. */
+  /** Arm/disarm the "next click picks a face" mode. Disarming clears any active hover preview. */
   setSectionPickMode: (enabled: boolean) => void;
+  /**
+   * Set or clear the live face-pick hover preview. `null` hides the
+   * overlay (cursor left the canvas, moved to a new face, or the pick
+   * mode was disarmed). Only the dwell-aware hover handler should set
+   * this — it is purely a visual hint and does not change `sectionPlane`
+   * (commit happens via `setSectionPlaneFromFace` on click).
+   */
+  setSectionPickPreview: (preview: SectionPickPreview | null) => void;
 }
 
 const getDefaultCapStyle = (): SectionCapStyle => loadCapStyle();
@@ -196,6 +231,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
   // Initial state
   sectionPlane: getDefaultSectionPlane(),
   sectionPickMode: false,
+  sectionPickPreview: null,
 
   // Actions
   setSectionPlaneAxis: (axis) => set((state) => ({
@@ -288,7 +324,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     } catch (error) {
       console.warn('[section] failed to clear persisted cap preferences', error);
     }
-    return { sectionPlane: getDefaultSectionPlane(), sectionPickMode: false };
+    return { sectionPlane: getDefaultSectionPlane(), sectionPickMode: false, sectionPickPreview: null };
   }),
 
   setSectionPlaneFromFace: (normal, point, bounds) => set((state) => {
@@ -296,9 +332,10 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     const len = Math.hypot(nx, ny, nz);
     if (!Number.isFinite(len) || len < 1e-6) {
       // Degenerate normal — disarm pick mode but don't poison the
-      // renderer with NaNs.
+      // renderer with NaNs. Also clear any in-flight hover preview so
+      // the violet quad doesn't linger after a bogus pick attempt.
       console.warn('[section] face-pick received a degenerate normal; ignoring');
-      return { sectionPickMode: false };
+      return { sectionPickMode: false, sectionPickPreview: null };
     }
     const unit: [number, number, number] = [nx / len, ny / len, nz / len];
     const distance = point[0] * unit[0] + point[1] * unit[1] + point[2] * unit[2];
@@ -342,6 +379,11 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
         custom,
       },
       sectionPickMode: false,
+      // Commit consumes the preview — the violet quad transitions
+      // visually into the actual cap on the next render. Clearing here
+      // (rather than waiting for the hover handler) avoids a frame of
+      // double-render where both preview and cap paint the same face.
+      sectionPickPreview: null,
     };
   }),
 
@@ -357,5 +399,23 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     };
   }),
 
-  setSectionPickMode: (enabled) => set(() => ({ sectionPickMode: enabled })),
+  setSectionPickMode: (enabled) => set(() => (
+    // Disarming pick mode also drops any hovering preview overlay so
+    // it doesn't linger after the user toggles off (Esc, second toggle
+    // press, tool change). Re-arming starts fresh.
+    enabled
+      ? { sectionPickMode: true }
+      : { sectionPickMode: false, sectionPickPreview: null }
+  )),
+
+  setSectionPickPreview: (preview) => set((state) => {
+    // Setting a preview while pick mode is OFF would put the violet
+    // quad on screen with no way to commit it — guard against that so
+    // a stale hover event firing after disarm doesn't reintroduce the
+    // overlay.
+    if (preview !== null && !state.sectionPickMode) {
+      return state;
+    }
+    return { sectionPickPreview: preview };
+  }),
 });

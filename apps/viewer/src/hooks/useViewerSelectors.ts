@@ -53,6 +53,7 @@ export function useToolState() {
   const sectionPickMode = useViewerStore((state) => state.sectionPickMode);
   const setSectionPlaneFromFace = useViewerStore((state) => state.setSectionPlaneFromFace);
   const setSectionPickMode = useViewerStore((state) => state.setSectionPickMode);
+  const setSectionPickPreview = useViewerStore((state) => state.setSectionPickPreview);
   const setSectionCustomDistance = useViewerStore((state) => state.setSectionCustomDistance);
 
   return {
@@ -61,6 +62,7 @@ export function useToolState() {
     sectionPickMode,
     setSectionPlaneFromFace,
     setSectionPickMode,
+    setSectionPickPreview,
     setSectionCustomDistance,
   };
 }

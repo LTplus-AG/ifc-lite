@@ -209,6 +209,7 @@ export function Viewport({
     sectionPickMode,
     setSectionPlaneFromFace,
     setSectionPickMode,
+    setSectionPickPreview,
   } = useToolState();
 
   // Camera state
@@ -801,6 +802,7 @@ export function Viewport({
     hasPendingMeasurements,
     setSectionPlaneFromFace,
     setSectionPickMode,
+    setSectionPickPreview,
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
     hoverThrottleMs,

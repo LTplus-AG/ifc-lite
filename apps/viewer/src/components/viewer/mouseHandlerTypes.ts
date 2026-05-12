@@ -113,6 +113,16 @@ export interface MouseHandlerContext {
   ) => void;
   /** Section face-pick: arm/disarm the "next click picks a face" mode. */
   setSectionPickMode?: (enabled: boolean) => void;
+  /**
+   * Section face-pick: set the live hover-preview overlay (issue #243
+   * follow-up). Called by the dwell-aware hover handler in
+   * `useMouseControls.ts` when the cursor pauses ~200ms over a surface,
+   * and with `null` when the preview should hide (cursor leaves the
+   * canvas, moves to a different face, or pick mode is disarmed).
+   */
+  setSectionPickPreview?: (
+    preview: { normal: [number, number, number]; point: [number, number, number]; faceKey: string } | null,
+  ) => void;
 
   // Constants
   HOVER_SNAP_THROTTLE_MS: number;

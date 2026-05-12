@@ -283,7 +283,7 @@ export function SectionOverlay() {
       >
         <span className="font-mono text-xs uppercase tracking-wide">
           {sectionPickMode
-            ? 'Click any face to cut through it'
+            ? 'Hover a surface to preview, click to cut'
             : sectionPlane.enabled
               ? isCustom
                 ? `Custom cut at d=${sectionPlane.custom!.distance.toFixed(2)}m${sectionPlane.flipped ? ' (flipped)' : ''}`

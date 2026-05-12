@@ -313,6 +313,83 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPickMode, false);
     });
 
+    it('setSectionPickPreview stores the preview only while pick mode is armed', () => {
+      // Mode OFF: a stray late-fired hover event must not put the
+      // overlay back on screen with no way to commit it.
+      assert.strictEqual(state.sectionPickMode, false);
+      state.setSectionPickPreview({
+        normal:  [0, 1, 0],
+        point:   [1, 2, 3],
+        faceKey: 'mode-off',
+      });
+      assert.strictEqual(state.sectionPickPreview, null);
+
+      // Mode ON: preview is accepted.
+      state.setSectionPickMode(true);
+      const p: import('./sectionSlice.js').SectionPickPreview = {
+        normal:  [0, 1, 0],
+        point:   [4, 5, 6],
+        faceKey: 'mode-on',
+      };
+      state.setSectionPickPreview(p);
+      assert.deepStrictEqual(state.sectionPickPreview, p);
+
+      // Explicit clear is always allowed (the hover handler uses
+      // `null` to hide the overlay even after disarm — the inverse
+      // case of the guard above).
+      state.setSectionPickPreview(null);
+      assert.strictEqual(state.sectionPickPreview, null);
+    });
+
+    it('setSectionPickMode(false) clears any active preview', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [1, 0, 0],
+        point:   [0, 0, 0],
+        faceKey: 'fk',
+      });
+      assert.ok(state.sectionPickPreview);
+      state.setSectionPickMode(false);
+      assert.strictEqual(state.sectionPickPreview, null);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('setSectionPlaneFromFace clears the preview on commit', () => {
+      // Visually continuous handoff — the preview disappears the same
+      // frame the cap appears so we don't double-paint the face.
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [0, 0, 1],
+        point:   [0, 0, 5],
+        faceKey: 'fk',
+      });
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
+      assert.strictEqual(state.sectionPickPreview, null);
+    });
+
+    it('setSectionPlaneFromFace clears the preview even on a degenerate normal', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [0, 0, 1],
+        point:   [0, 0, 5],
+        faceKey: 'fk',
+      });
+      state.setSectionPlaneFromFace([0, 0, 0], [1, 2, 3]);
+      assert.strictEqual(state.sectionPickPreview, null);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('resetSectionPlane clears the preview', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [0, 1, 0],
+        point:   [0, 0, 0],
+        faceKey: 'fk',
+      });
+      state.resetSectionPlane();
+      assert.strictEqual(state.sectionPickPreview, null);
+    });
+
     it('resetSectionPlane clears the custom plane and disarms pick mode', () => {
       state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
       state.setSectionPickMode(true);

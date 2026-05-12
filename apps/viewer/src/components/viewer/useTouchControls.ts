@@ -11,7 +11,6 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, PickResult } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
-import { getEntityCenter } from '../../utils/viewportUtils.js';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -79,6 +78,40 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     const camera = renderer.getCamera();
     const touchState = touchStateRef.current;
 
+    // Anchor the orbit pivot to the 3D point directly under a finger.
+    // Touch UX: prefer the finger's actual hit, then fall back to ray-projection
+    // at current view distance — never to a selected entity's center, which
+    // would pivot far from the user's touch and feel disconnected.
+    const anchorOrbitPivotUnderFinger = (touch: Touch) => {
+      const rect = canvas.getBoundingClientRect();
+      const tx = touch.clientX - rect.left;
+      const ty = touch.clientY - rect.top;
+      const hit = renderer.raycastScene(tx, ty, {
+        hiddenIds: hiddenEntitiesRef.current,
+        isolatedIds: isolatedEntitiesRef.current,
+      });
+      if (hit?.intersection) {
+        camera.setOrbitCenter(hit.intersection.point);
+        return;
+      }
+      const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
+      const target = camera.getTarget();
+      const toTarget = {
+        x: target.x - ray.origin.x,
+        y: target.y - ray.origin.y,
+        z: target.z - ray.origin.z,
+      };
+      const d = Math.max(
+        1,
+        toTarget.x * ray.direction.x + toTarget.y * ray.direction.y + toTarget.z * ray.direction.z,
+      );
+      camera.setOrbitCenter({
+        x: ray.origin.x + ray.direction.x * d,
+        y: ray.origin.y + ray.direction.y * d,
+        z: ray.origin.z + ray.direction.z * d,
+      });
+    };
+
     const handleTouchStart = async (e: TouchEvent) => {
       e.preventDefault();
       touchState.touches = Array.from(e.touches);
@@ -101,39 +134,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         };
         touchState.didMove = false;
 
-        // Set orbit pivot to the 3D point under the finger.
-        // On miss, place pivot at current distance along the finger ray.
-        const rect = canvas.getBoundingClientRect();
-        const tx = touchState.touches[0].clientX - rect.left;
-        const ty = touchState.touches[0].clientY - rect.top;
-        const hit = renderer.raycastScene(tx, ty, {
-          hiddenIds: hiddenEntitiesRef.current,
-          isolatedIds: isolatedEntitiesRef.current,
-        });
-        if (hit?.intersection) {
-          camera.setOrbitCenter(hit.intersection.point);
-        } else if (selectedEntityIdRef.current) {
-          const center = getEntityCenter(geometryRef.current, selectedEntityIdRef.current);
-          if (center) {
-            camera.setOrbitCenter(center);
-          } else {
-            camera.setOrbitCenter(null);
-          }
-        } else {
-          const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
-          const target = camera.getTarget();
-          const toTarget = {
-            x: target.x - ray.origin.x,
-            y: target.y - ray.origin.y,
-            z: target.z - ray.origin.z,
-          };
-          const d = Math.max(1, toTarget.x * ray.direction.x + toTarget.y * ray.direction.y + toTarget.z * ray.direction.z);
-          camera.setOrbitCenter({
-            x: ray.origin.x + ray.direction.x * d,
-            y: ray.origin.y + ray.direction.y * d,
-            z: ray.origin.z + ray.direction.z * d,
-          });
-        }
+        anchorOrbitPivotUnderFinger(touchState.touches[0]);
       } else if (touchState.touches.length === 1) {
         // Single touch after multi-touch - just update center for orbit
         touchState.lastCenter = {
@@ -223,6 +224,18 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       const previousTouchCount = touchState.touches.length;
       const wasMultiTouch = touchState.multiTouch;
       touchState.touches = Array.from(e.touches);
+
+      // Multi-touch → single-touch transition: re-anchor everything to the
+      // remaining finger so the next orbit move computes a clean delta from
+      // the finger's actual position (not the stale 2-finger midpoint) and
+      // pivots under the finger (not the old pinch pivot).
+      if (previousTouchCount >= 2 && touchState.touches.length === 1) {
+        touchState.lastCenter = {
+          x: touchState.touches[0].clientX,
+          y: touchState.touches[0].clientY,
+        };
+        anchorOrbitPivotUnderFinger(touchState.touches[0]);
+      }
 
       // Only clear interaction when all fingers are lifted (gesture truly ended).
       // Clearing earlier would briefly drop interaction mode during 2-finger → 1-finger

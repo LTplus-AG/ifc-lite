@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -194,7 +194,7 @@ export function ViewerLayout() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
+      <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
         {/* Keyboard Shortcuts Dialog */}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} />
 
@@ -315,83 +315,51 @@ export function ViewerLayout() {
 
             {/* Mobile Bottom Sheet - Hierarchy */}
             {!leftPanelCollapsed && (
-              <div className="absolute inset-x-0 bottom-0 h-[60vh] bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300">
-                {/* Drag handle */}
-                <div className="flex justify-center pt-2 pb-1">
-                  <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
-                </div>
-                <div className="flex items-center justify-between px-4 pb-2">
-                  <span className="font-semibold text-sm">Hierarchy</span>
-                  <button
-                    className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
-                    onClick={() => setLeftPanelCollapsed(true)}
-                  >
-                    <span className="sr-only">Close</span>
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="h-[calc(60vh-56px)] overflow-auto overscroll-contain border-t">
-                  <HierarchyPanel />
-                </div>
-              </div>
+              <MobileBottomSheet title="Hierarchy" onClose={() => setLeftPanelCollapsed(true)}>
+                <HierarchyPanel />
+              </MobileBottomSheet>
             )}
 
             {/* Mobile Bottom Sheet - Properties, BCF, IDS, or Lists */}
             {!rightPanelCollapsed && (
-              <div className="absolute inset-x-0 bottom-0 h-[60vh] bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300">
-                {/* Drag handle */}
-                <div className="flex justify-center pt-2 pb-1">
-                  <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
-                </div>
-                <div className="flex items-center justify-between px-4 pb-2">
-                  <span className="font-semibold text-sm">
-                    {activeAnalysisExtension ? activeAnalysisExtension.label : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
-                  </span>
-                  <button
-                    className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
-                    onClick={() => {
-                      setRightPanelCollapsed(true);
-                      if (scriptPanelVisible) setScriptPanelVisible(false);
-                      if (listPanelVisible) setListPanelVisible(false);
-                      if (bcfPanelVisible) setBcfPanelVisible(false);
-                      if (lensPanelVisible) setLensPanelVisible(false);
-                      if (idsPanelVisible) setIdsPanelVisible(false);
-                      if (activeAnalysisExtension) closeActiveAnalysisExtension();
-                    }}
-                  >
-                    <span className="sr-only">Close</span>
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="h-[calc(60vh-56px)] overflow-auto overscroll-contain border-t">
-                  {activeBottomAnalysisExtension ? (
-                    activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                  ) : activeRightAnalysisExtension ? (
-                    activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                  ) : scriptPanelVisible ? (
-                    <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
-                  ) : listPanelVisible ? (
-                    <ListPanel onClose={() => setListPanelVisible(false)} />
-                  ) : lensPanelVisible ? (
-                    <LensPanel onClose={() => setLensPanelVisible(false)} />
-                  ) : idsPanelVisible ? (
-                    <IDSPanel onClose={() => setIdsPanelVisible(false)} />
-                  ) : bcfPanelVisible ? (
-                    <BCFPanel onClose={() => setBcfPanelVisible(false)} />
-                  ) : (
-                    <PropertiesPanel />
-                  )}
-                </div>
-              </div>
+              <MobileBottomSheet
+                title={activeAnalysisExtension ? activeAnalysisExtension.label : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
+                onClose={() => {
+                  setRightPanelCollapsed(true);
+                  if (scriptPanelVisible) setScriptPanelVisible(false);
+                  if (listPanelVisible) setListPanelVisible(false);
+                  if (bcfPanelVisible) setBcfPanelVisible(false);
+                  if (lensPanelVisible) setLensPanelVisible(false);
+                  if (idsPanelVisible) setIdsPanelVisible(false);
+                  if (activeAnalysisExtension) closeActiveAnalysisExtension();
+                }}
+              >
+                {activeBottomAnalysisExtension ? (
+                  activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                ) : activeRightAnalysisExtension ? (
+                  activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                ) : scriptPanelVisible ? (
+                  <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
+                ) : listPanelVisible ? (
+                  <ListPanel onClose={() => setListPanelVisible(false)} />
+                ) : lensPanelVisible ? (
+                  <LensPanel onClose={() => setLensPanelVisible(false)} />
+                ) : idsPanelVisible ? (
+                  <IDSPanel onClose={() => setIdsPanelVisible(false)} />
+                ) : bcfPanelVisible ? (
+                  <BCFPanel onClose={() => setBcfPanelVisible(false)} />
+                ) : (
+                  <PropertiesPanel />
+                )}
+              </MobileBottomSheet>
             )}
 
-            {/* Mobile Floating Action Buttons — pill-shaped, bottom-safe-area aware */}
+            {/* Mobile Floating Action Buttons — pill-shaped, clears URL bar (dvh root) + safe-area */}
             {leftPanelCollapsed && rightPanelCollapsed && (
-              <div className="absolute bottom-4 left-3 right-3 flex justify-center gap-2 z-20" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+              <div
+                className="absolute left-3 right-3 flex justify-center gap-2 z-20"
+                style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+              >
                 <button
                   className="flex items-center gap-1.5 px-4 py-2.5 bg-background/90 backdrop-blur-sm text-foreground border border-border rounded-full shadow-lg text-xs font-medium active:scale-95 transition-transform touch-manipulation"
                   onClick={() => {
@@ -421,5 +389,95 @@ export function ViewerLayout() {
         {!isMobile && <StatusBar />}
       </div>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Mobile bottom sheet with swipe-to-dismiss on the drag handle.
+ * Height tracks visible viewport (dvh) so it sits above the browser URL bar
+ * and home-indicator safe area.
+ */
+function MobileBottomSheet({
+  title,
+  onClose,
+  children,
+}: {
+  title: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startY: number; startT: number; active: boolean }>({
+    startY: 0,
+    startT: 0,
+    active: false,
+  });
+
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    dragRef.current = { startY: e.clientY, startT: performance.now(), active: true };
+    if (sheetRef.current) sheetRef.current.style.transition = 'none';
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+
+  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active || !sheetRef.current) return;
+    const dy = Math.max(0, e.clientY - dragRef.current.startY);
+    sheetRef.current.style.transform = `translateY(${dy}px)`;
+  }, []);
+
+  const onPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active || !sheetRef.current) return;
+    dragRef.current.active = false;
+    const dy = Math.max(0, e.clientY - dragRef.current.startY);
+    const dt = Math.max(1, performance.now() - dragRef.current.startT);
+    const velocity = dy / dt; // px/ms
+    const sheet = sheetRef.current;
+    sheet.style.transition = 'transform 200ms cubic-bezier(0.2, 0, 0, 1)';
+    if (dy > 80 || velocity > 0.5) {
+      const height = sheet.getBoundingClientRect().height;
+      sheet.style.transform = `translateY(${height}px)`;
+      window.setTimeout(onClose, 180);
+    } else {
+      sheet.style.transform = 'translateY(0)';
+    }
+  }, [onClose]);
+
+  return (
+    <div
+      ref={sheetRef}
+      className="absolute inset-x-0 bottom-0 h-[60dvh] bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300"
+    >
+      {/* Drag affordance — generously sized for touch */}
+      <div
+        className="grid place-items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        role="button"
+        aria-label="Drag to dismiss"
+      >
+        <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
+      </div>
+      <div className="flex items-center justify-between px-4 pb-2">
+        <span className="font-semibold text-sm">{title}</span>
+        <button
+          className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div
+        className="overflow-auto overscroll-contain border-t"
+        style={{ height: 'calc(60dvh - 64px)' }}
+      >
+        {children}
+      </div>
+    </div>
   );
 }

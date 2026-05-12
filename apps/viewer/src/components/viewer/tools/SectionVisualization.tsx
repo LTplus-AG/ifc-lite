@@ -7,16 +7,21 @@
  *
  * In addition to the cardinal-axis corner badge (existing), this also
  * renders the 3D drag gizmo for face-picked custom planes (issue #243):
- * a violet dot at `pickedAt` plus an arrow along the picked normal that
- * the user can click + drag to slide the cut plane perpendicular to its
- * surface. The drag math projects the cursor delta onto the screen-
- * projected normal and converts pixels-per-meter via the camera's
- * point-projection of `pickedAt + normal * 1m`.
+ * a violet dot at the live plane anchor (`pickedAt` projected onto the
+ * current plane via `customPlaneCenter`) plus an arrow along the picked
+ * normal that the user can click + drag to slide the cut plane
+ * perpendicular to its surface. Anchoring to the projected center —
+ * instead of `pickedAt` directly — keeps the gizmo glued to the plane
+ * as `distance` changes; using `pickedAt` directly would freeze the
+ * gizmo at the original face-pick location while the geometry clip
+ * slides to the new distance. The drag math projects the cursor delta
+ * onto the screen-projected normal and converts pixels-per-meter via
+ * the camera's point-projection of `center + normal * 1m`.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { AXIS_INFO } from './sectionConstants';
-import { useViewerStore } from '@/store';
+import { useViewerStore, customPlaneCenter } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
 interface SectionPlaneVisualizationProps {
@@ -109,12 +114,13 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
 
 /**
  * Click+drag arrow that translates the custom section plane along its
- * picked normal. Uses screen-space projection of `pickedAt` and
- * `pickedAt + normal` to convert cursor pixels into world units —
- * resolution-independent and works for any tilt.
+ * picked normal. Uses screen-space projection of `center` (= pickedAt
+ * projected onto the live plane) and `center + normal` to convert
+ * cursor pixels into world units — resolution-independent and works
+ * for any tilt.
  *
  * Re-projects the anchor every animation frame while dragging so the
- * gizmo stays glued to the world point even if the camera moves
+ * gizmo stays glued to the live plane even if the camera moves
  * (orbit / pan are still allowed underneath this overlay because we
  * only call `setPointerCapture` on the handle's <circle>).
  */
@@ -138,6 +144,13 @@ function CustomPlaneDragGizmo(props: {
   // Project the gizmo's two anchor points (foot + tip-of-arrow) every
   // animation frame so it follows the camera. Cheap: two
   // matrix-multiplies per frame.
+  //
+  // The foot anchor is `pickedAt` projected onto the LIVE plane (not
+  // `pickedAt` itself). As the user drags the gizmo only `distance`
+  // changes; pickedAt sits off the moving plane, so anchoring the
+  // gizmo to it would leave the arrow stranded at the original pick
+  // location while the cut slides along the normal. Using the
+  // projected center keeps the gizmo glued to the actual cut plane.
   useEffect(() => {
     let raf = 0;
     const project = () => {
@@ -145,15 +158,16 @@ function CustomPlaneDragGizmo(props: {
       const camera = renderer?.getCamera();
       const canvas = renderer?.getCanvas();
       if (camera && canvas) {
+        const center = customPlaneCenter(customPlane);
         const tipWorld = {
-          x: customPlane.pickedAt[0] + customPlane.normal[0],
-          y: customPlane.pickedAt[1] + customPlane.normal[1],
-          z: customPlane.pickedAt[2] + customPlane.normal[2],
+          x: center[0] + customPlane.normal[0],
+          y: center[1] + customPlane.normal[1],
+          z: center[2] + customPlane.normal[2],
         };
         const footWorld = {
-          x: customPlane.pickedAt[0],
-          y: customPlane.pickedAt[1],
-          z: customPlane.pickedAt[2],
+          x: center[0],
+          y: center[1],
+          z: center[2],
         };
         const w = canvas.clientWidth, h = canvas.clientHeight;
         const p0 = camera.projectToScreen(footWorld, w, h);
@@ -166,7 +180,7 @@ function CustomPlaneDragGizmo(props: {
     };
     project();
     return () => cancelAnimationFrame(raf);
-  }, [customPlane.pickedAt, customPlane.normal]);
+  }, [customPlane.pickedAt, customPlane.normal, customPlane.distance]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
     if (!proj) return;

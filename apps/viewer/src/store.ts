@@ -51,6 +51,12 @@ export { resolveEntityRef } from './store/resolveEntityRef.js';
 export { toGlobalIdFromModels, fromGlobalIdFromModels, toGlobalIdForRef } from './store/globalId.js';
 export type { ForwardModelMapLike } from './store/globalId.js';
 
+// Re-export custom-section-plane geometry helper (issue #243): projects
+// `pickedAt` onto the live cut plane so visuals (cap basis origin, 3D
+// drag gizmo) follow `distance` instead of staying anchored at the
+// original face-pick location.
+export { customPlaneCenter } from './store/slices/sectionSlice.js';
+
 // Re-export Schedule (4D) types + helpers
 export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './store/slices/scheduleSlice.js';
 export {

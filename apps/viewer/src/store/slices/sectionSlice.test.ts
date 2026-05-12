@@ -4,8 +4,9 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createSectionSlice, type SectionSlice } from './sectionSlice.js';
+import { createSectionSlice, customPlaneCenter, type SectionSlice } from './sectionSlice.js';
 import { SECTION_PLANE_DEFAULTS } from '../constants.js';
+import type { CustomSectionPlane } from '../types.js';
 
 describe('SectionSlice', () => {
   let state: SectionSlice;
@@ -282,6 +283,68 @@ describe('SectionSlice', () => {
       state.resetSectionPlane();
       assert.strictEqual(state.sectionPlane.custom, undefined);
       assert.strictEqual(state.sectionPickMode, false);
+    });
+  });
+
+  describe('customPlaneCenter', () => {
+    // Bug guard for the cap polygons + 3D drag gizmo "anchored at original
+    // pick" regression: as `distance` drifts (drag/slider) the visual
+    // center of the plane must slide along the normal, not stay glued to
+    // the original pickedAt — otherwise the cap and gizmo render at the
+    // pick location while the geometry clip moves to the new distance.
+    it('returns pickedAt unchanged when distance == dot(pickedAt, normal)', () => {
+      const plane: CustomSectionPlane = {
+        normal:    [1, 0, 0],
+        distance:  10,
+        pickedAt:  [10, 0, 0],
+        tangent:   [0, 1, 0],
+        bitangent: [0, 0, 1],
+      };
+      const center = customPlaneCenter(plane);
+      assert.deepStrictEqual(center, [10, 0, 0]);
+    });
+
+    it('slides along the normal as distance changes (axis-aligned)', () => {
+      const base: CustomSectionPlane = {
+        normal:    [1, 0, 0],
+        distance:  25,
+        pickedAt:  [10, 0, 0],
+        tangent:   [0, 1, 0],
+        bitangent: [0, 0, 1],
+      };
+      assert.deepStrictEqual(customPlaneCenter(base), [25, 0, 0]);
+
+      const zeroed: CustomSectionPlane = { ...base, distance: 0 };
+      assert.deepStrictEqual(customPlaneCenter(zeroed), [0, 0, 0]);
+    });
+
+    it('produces a point that satisfies dot(center, normal) == distance for an arbitrary normal', () => {
+      const inv = 1 / Math.sqrt(3);
+      const plane: CustomSectionPlane = {
+        normal:    [inv, inv, inv],
+        distance:  4.2,
+        pickedAt:  [1, 2, 3],
+        tangent:   [1, 0, 0], // unused by the projection
+        bitangent: [0, 1, 0],
+      };
+      const c = customPlaneCenter(plane);
+      const dot = c[0] * plane.normal[0] + c[1] * plane.normal[1] + c[2] * plane.normal[2];
+      assert.ok(Math.abs(dot - plane.distance) < 1e-9, `dot(center, normal) = ${dot}, want ${plane.distance}`);
+    });
+
+    it('preserves the lateral (in-plane) offset of pickedAt — center is the perpendicular projection', () => {
+      // Slide pickedAt along the normal only — the projection should land
+      // exactly on the plane and keep the orthogonal components intact.
+      const plane: CustomSectionPlane = {
+        normal:    [0, 1, 0],
+        distance:  5,
+        pickedAt:  [7, 9, 4],   // off-plane by (9 − 5) = 4 along +Y
+        tangent:   [1, 0, 0],
+        bitangent: [0, 0, 1],
+      };
+      const c = customPlaneCenter(plane);
+      // X and Z (in-plane) preserved; Y projected to the plane.
+      assert.deepStrictEqual(c, [7, 5, 4]);
     });
   });
 

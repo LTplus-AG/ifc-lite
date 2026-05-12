@@ -23,6 +23,7 @@ import {
   type SectionConfig,
 } from '@ifc-lite/drawing-2d';
 import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
+import { customPlaneCenter } from '@/store';
 
 // Axis conversion from semantic (down/front/side) to geometric (x/y/z)
 export const AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
@@ -299,10 +300,19 @@ export function useDrawingGeneration({
       // pick (PR #581's bug).
       if (sectionPlane.custom) {
         const c = sectionPlane.custom;
+        // Use the LIVE plane anchor (pickedAt projected onto the current
+        // plane), not pickedAt itself. As the user drags the gizmo only
+        // `distance` changes — pickedAt sits off the live plane, and
+        // using it as the basis origin makes the round-trip lift drop
+        // the normal-component, freezing the cap polygons at the
+        // original pick location while the geometry clip slides. Using
+        // the projected center keeps the basis origin ON the live plane
+        // so the cutter's 2D points lift back to the actual cut surface.
+        const origin = customPlaneCenter(c);
         config.plane.customPlane = {
           normal:    { x: c.normal[0],   y: c.normal[1],   z: c.normal[2]   },
           distance:  c.distance,
-          origin:    { x: c.pickedAt[0], y: c.pickedAt[1], z: c.pickedAt[2] },
+          origin:    { x: origin[0],     y: origin[1],     z: origin[2]     },
           tangent:   { x: c.tangent[0],  y: c.tangent[1],  z: c.tangent[2]  },
           bitangent: { x: c.bitangent[0], y: c.bitangent[1], z: c.bitangent[2] },
         };

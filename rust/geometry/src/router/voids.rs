@@ -1856,6 +1856,36 @@ impl GeometryRouter {
             open_max_proj = open_max_proj.max(proj);
         }
 
+        // Extension is a Revit/ArchiCAD heuristic for openings whose authored
+        // extrusion depth doesn't quite reach the wall faces — extending the
+        // opening along its own extrusion direction makes the cut land
+        // cleanly. The heuristic assumes the extrusion direction IS the
+        // wall-thickness axis. That assumption breaks for openings authored
+        // as e.g. a horizontal slab extruded along the wall's HEIGHT axis
+        // (advanced_model #553029 is one): the opening already spans the
+        // wall in two axes, and extending along the third axis consumes the
+        // wall entirely and the boolean cut returns empty.
+        //
+        // Detect the "wrong-axis extrusion" case by comparing the opening's
+        // projected extent along the extrusion direction to the wall's
+        // smallest bbox dimension. A genuine wall-thickness extrusion has
+        // depth ≤ wall thickness; an off-axis extrusion's projected depth
+        // exceeds the wall thickness in essentially every real model. When
+        // the projected depth is larger than the wall's thinnest axis,
+        // skip extension and return the opening's authored extent verbatim.
+        let opening_proj_extent = (open_max_proj - open_min_proj).abs();
+        let wall_extent_x = (wall_max.x - wall_min.x).abs();
+        let wall_extent_y = (wall_max.y - wall_min.y).abs();
+        let wall_extent_z = (wall_max.z - wall_min.z).abs();
+        let wall_min_extent = wall_extent_x.min(wall_extent_y).min(wall_extent_z);
+        // Allow up to 5% slack so an opening modelled at exactly wall
+        // thickness (or with a small over-extension) still triggers the
+        // wall-thickness extension heuristic — only reject when the opening
+        // is decisively larger than the thinnest wall axis.
+        if opening_proj_extent > wall_min_extent * 1.05 {
+            return (open_min, open_max);
+        }
+
         // Calculate how much to extend in each direction along the extrusion axis
         // If wall extends beyond opening, we need to extend the opening
         let extend_backward = (open_min_proj - wall_min_proj).max(0.0); // How much wall extends before opening

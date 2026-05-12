@@ -71,9 +71,22 @@ pub fn extrude_profile(
 }
 
 /// Check if a profile has an extreme aspect ratio (very elongated shape)
-/// Returns true if the profile's aspect ratio exceeds 100:1
-/// This catches profiles like railings that span building perimeters but have
-/// small cross-sections, which would create problematic cap triangles.
+/// Returns true if the profile is so disproportionate the extrusion caps
+/// can't be emitted as a meaningful filled face.
+///
+/// Originally the threshold was 100:1 — that catches NORMAL residential
+/// walls (a 115 mm × 11.8 m wall profile has ratio 103) and drops their
+/// top/bottom caps, which then makes the wall a hollow tube and breaks
+/// downstream boolean cuts (the opening AABB clip can no longer find
+/// triangles to remove on the cap faces — see advanced_model #612315 /
+/// calibration class 3). Long thin building elements (curtain-wall
+/// mullions, railings, MEP runs) routinely have aspect ratios in the
+/// 100–1000 range.
+///
+/// Raised to 10000:1 so only genuinely pathological profiles (e.g. a
+/// 1 mm × 10 m strip that signals an authoring bug, not a real cross-
+/// section) trigger cap-skipping. The existing 1 mm absolute-dimension
+/// floor below still rejects degenerate input.
 #[inline]
 fn profile_has_extreme_aspect_ratio(outer: &[Point2<f64>]) -> bool {
     if outer.len() < 3 {
@@ -103,10 +116,12 @@ fn profile_has_extreme_aspect_ratio(outer: &[Point2<f64>]) -> bool {
 
     let aspect_ratio = (width / height).max(height / width);
 
-    // Skip caps if aspect ratio > 100:1
-    // This is a very conservative check that only catches truly extreme profiles
-    // The stretched triangle filter will catch any remaining issues
-    aspect_ratio > 100.0
+    // Skip caps only for truly pathological profiles. Real building
+    // elements (walls, slabs, mullions, railings) routinely sit in the
+    // 100–1000 range; only profiles 4 orders of magnitude apart in
+    // their two dimensions are likely authoring artefacts where the
+    // caps wouldn't survive numerical precision anyway.
+    aspect_ratio > 10000.0
 }
 
 /// Extrude a 2D profile with void awareness

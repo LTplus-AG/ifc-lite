@@ -135,5 +135,6 @@ fn duplex_m_fixed_window_world_bbox_matches_ios() {
     assert!(approx(ext.1, 0.417, tol));
     assert!(approx(ext.2, 2.420, tol));
 
-    assert_eq!(mesh.indices.len() / 3, 104);
+    // 108 triangles matches IOS exactly post-aspect-ratio-cap-fix.
+    assert_eq!(mesh.indices.len() / 3, 108);
 }

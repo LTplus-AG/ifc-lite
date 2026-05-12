@@ -1860,29 +1860,51 @@ impl GeometryRouter {
         // extrusion depth doesn't quite reach the wall faces — extending the
         // opening along its own extrusion direction makes the cut land
         // cleanly. The heuristic assumes the extrusion direction IS the
-        // wall-thickness axis. That assumption breaks for openings authored
-        // as e.g. a horizontal slab extruded along the wall's HEIGHT axis
-        // (advanced_model #553029 is one): the opening already spans the
-        // wall in two axes, and extending along the third axis consumes the
-        // wall entirely and the boolean cut returns empty.
+        // wall-thickness axis. That assumption breaks in two distinct ways
+        // that this gate has to catch:
         //
-        // Detect the "wrong-axis extrusion" case by comparing the opening's
-        // projected extent along the extrusion direction to the wall's
-        // smallest bbox dimension. A genuine wall-thickness extrusion has
-        // depth ≤ wall thickness; an off-axis extrusion's projected depth
-        // exceeds the wall thickness in essentially every real model. When
-        // the projected depth is larger than the wall's thinnest axis,
-        // skip extension and return the opening's authored extent verbatim.
+        // 1. The opening already spans the wall in the extrusion direction
+        //    (advanced_model #553029 — a 300 mm horizontal slab extruded
+        //    along +Z, the wall's height axis, that already covers the full
+        //    wall cross-section). Extension stretches the opening to span
+        //    the entire wall.
+        //
+        // 2. The opening's extrusion direction maps (after the opening's
+        //    own `IfcAxis2Placement3D` rotation) to the wall's LONG axis,
+        //    not the wall thickness axis (advanced_model #612334 — a 115 mm
+        //    column whose IfcExtrudedAreaSolid extrudes a 3.4 m profile by
+        //    115 mm, with a Position transform that rotates local +Z to
+        //    world +X = the wall's 11.8 m long axis). Pre-fix, the opening
+        //    depth equalled wall thickness so the symmetric form of (1)
+        //    didn't catch it; extension along +X stretched the opening to
+        //    cover the full 11.8 m wall length and the boolean cut wiped
+        //    the host.
         let opening_proj_extent = (open_max_proj - open_min_proj).abs();
         let wall_extent_x = (wall_max.x - wall_min.x).abs();
         let wall_extent_y = (wall_max.y - wall_min.y).abs();
         let wall_extent_z = (wall_max.z - wall_min.z).abs();
         let wall_min_extent = wall_extent_x.min(wall_extent_y).min(wall_extent_z);
-        // Allow up to 5% slack so an opening modelled at exactly wall
-        // thickness (or with a small over-extension) still triggers the
-        // wall-thickness extension heuristic — only reject when the opening
-        // is decisively larger than the thinnest wall axis.
+        // Case (1): opening already spans the wall in the extrusion
+        // direction. 5% slack covers openings modelled at exactly wall
+        // thickness, which we still want on the extension path so a tiny
+        // coplanarity pad gets applied.
         if opening_proj_extent > wall_min_extent * 1.05 {
+            return (open_min, open_max);
+        }
+        // Case (2): the wall extends much further along the extrusion
+        // direction than ANY dimension of the opening itself. A typical
+        // window/door extrusion makes the wall thickness comparable to the
+        // opening's other dimensions; an off-axis extrusion makes the wall
+        // length or height tower over the opening box. The opening's own
+        // longest dimension is the right reference here: if the wall along
+        // extrusion exceeds it, we'd be stretching the opening across an
+        // axis that wasn't authored to penetrate the wall.
+        let opening_max_dim = (open_max.x - open_min.x)
+            .abs()
+            .max((open_max.y - open_min.y).abs())
+            .max((open_max.z - open_min.z).abs());
+        let wall_proj_extent = (wall_max_proj - wall_min_proj).abs();
+        if wall_proj_extent > opening_max_dim {
             return (open_min, open_max);
         }
 

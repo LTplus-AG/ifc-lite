@@ -100,6 +100,23 @@ export interface GeometryProcessorOptions {
   mergeLayers?: boolean;
 }
 
+let activeWasmStreamingOperation: string | null = null;
+
+function acquireWasmStreamingOperation(operation: string): () => void {
+  if (activeWasmStreamingOperation) {
+    throw new Error(
+      `GeometryProcessor ${operation} cannot start while ${activeWasmStreamingOperation} is still running. ` +
+      'Wait for the active stream to finish, or cancel it before starting another geometry operation.',
+    );
+  }
+  activeWasmStreamingOperation = operation;
+  return () => {
+    if (activeWasmStreamingOperation === operation) {
+      activeWasmStreamingOperation = null;
+    }
+  };
+}
+
 /**
  * Dynamic batch configuration for ramp-up streaming
  * Starts with small batches for fast first frame, ramps up for throughput
@@ -541,6 +558,23 @@ export class GeometryProcessor {
     // per-model; federation-level override requires collector API changes.
     sharedRtcOffset?: { x: number; y: number; z: number },
   ): AsyncGenerator<StreamingGeometryEvent> {
+    const releaseWasmOperation = this.isNative
+      ? null
+      : acquireWasmStreamingOperation('processStreaming');
+
+    try {
+      yield* this.processStreamingUnlocked(buffer, _entityIndex, batchConfig, sharedRtcOffset);
+    } finally {
+      releaseWasmOperation?.();
+    }
+  }
+
+  private async *processStreamingUnlocked(
+    buffer: Uint8Array,
+    _entityIndex?: Map<number, any>,
+    batchConfig: number | DynamicBatchConfig = 25,
+    sharedRtcOffset?: { x: number; y: number; z: number },
+  ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (this.isNative) {
       if (!this.platformBridge) {
@@ -754,6 +788,21 @@ export class GeometryProcessor {
    * @param batchSize Number of unique geometries per batch (default: 25)
    */
   async *processInstancedStreaming(
+    buffer: Uint8Array,
+    batchSize: number = 25
+  ): AsyncGenerator<StreamingInstancedGeometryEvent> {
+    const releaseWasmOperation = this.isNative
+      ? null
+      : acquireWasmStreamingOperation('processInstancedStreaming');
+
+    try {
+      yield* this.processInstancedStreamingUnlocked(buffer, batchSize);
+    } finally {
+      releaseWasmOperation?.();
+    }
+  }
+
+  private async *processInstancedStreamingUnlocked(
     buffer: Uint8Array,
     batchSize: number = 25
   ): AsyncGenerator<StreamingInstancedGeometryEvent> {

@@ -179,6 +179,37 @@ describe('GeometryProcessor byte streaming fallback', () => {
     expect((completeEvent?.coordinateInfo as { buildingRotation?: number })?.buildingRotation).toBe(0.5);
   });
 
+  it('rejects overlapping WASM streaming runs before re-entering the processor', async () => {
+    const firstGeometry = new GeometryProcessor();
+    const secondGeometry = new GeometryProcessor();
+    const buffer = new Uint8Array([65, 66, 67]);
+
+    const firstStream = firstGeometry.processStreaming(buffer);
+    await expect(firstStream.next()).resolves.toMatchObject({
+      value: { type: 'start' },
+      done: false,
+    });
+
+    const overlappingStream = secondGeometry.processStreaming(buffer);
+    await expect(overlappingStream.next()).rejects.toThrow(
+      'GeometryProcessor processStreaming cannot start while processStreaming is still running.',
+    );
+    const overlappingInstancedStream = secondGeometry.processInstancedStreaming(buffer);
+    await expect(overlappingInstancedStream.next()).rejects.toThrow(
+      'GeometryProcessor processInstancedStreaming cannot start while processStreaming is still running.',
+    );
+    expect(wasmMocks.buildPrePassOnce).not.toHaveBeenCalled();
+
+    await firstStream.return?.(undefined);
+
+    const retryStream = secondGeometry.processStreaming(buffer);
+    await expect(retryStream.next()).resolves.toMatchObject({
+      value: { type: 'start' },
+      done: false,
+    });
+    await retryStream.return?.(undefined);
+  });
+
   it('uses byte-based instanced batch processing for large files', async () => {
     wasmMocks.buildPrePassOnce.mockReturnValue({
       jobs: new Uint32Array([21, 0, 84]),

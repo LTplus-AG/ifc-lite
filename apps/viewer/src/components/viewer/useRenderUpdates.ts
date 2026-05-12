@@ -100,13 +100,27 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
           category: line.category,
         }));
 
+      // For face-picked custom planes (issue #243), forward the plane
+      // basis so `uploadDrawing` can lift 2D polygons back to 3D using
+      // the same axes the cutter projected with — without that the cap
+      // silhouette lands off the actual cutting plane (PR #581's bug).
+      const custom = sectionPlane.custom;
+      const customPlane = custom
+        ? {
+            origin:    custom.pickedAt,
+            tangent:   custom.tangent,
+            bitangent: custom.bitangent,
+          }
+        : undefined;
+
       renderer.uploadSection2DOverlay(
         polygons,
         lines,
         sectionPlane.axis,
         sectionPlane.position,
         sectionRangeRef.current ?? undefined,
-        sectionPlane.flipped
+        sectionPlane.flipped,
+        customPlane,
       );
     } else {
       renderer.clearSection2DOverlay();

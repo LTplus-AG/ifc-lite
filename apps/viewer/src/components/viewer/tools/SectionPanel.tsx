@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { X, Slice, ChevronDown, FileImage, FlipHorizontal2 } from 'lucide-react';
+import { X, Slice, ChevronDown, FileImage, FlipHorizontal2, MousePointerClick, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { AXIS_INFO } from './sectionConstants';
@@ -20,6 +20,10 @@ export function SectionOverlay() {
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const toggleSectionPlane = useViewerStore((s) => s.toggleSectionPlane);
   const flipSectionPlane = useViewerStore((s) => s.flipSectionPlane);
+  // Face-pick + custom plane actions (issue #243).
+  const sectionPickMode = useViewerStore((s) => s.sectionPickMode);
+  const setSectionPickMode = useViewerStore((s) => s.setSectionPickMode);
+  const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
   const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
@@ -27,6 +31,7 @@ export function SectionOverlay() {
   const drawingPanelVisible = useViewerStore((s) => s.drawing2DPanelVisible);
   const clearDrawing = useViewerStore((s) => s.clearDrawing2D);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(true);
+  const isCustom = sectionPlane.custom !== undefined;
 
   const handleClose = useCallback(() => {
     setActiveTool('select');
@@ -35,6 +40,26 @@ export function SectionOverlay() {
   const handleAxisChange = useCallback((axis: 'down' | 'front' | 'side') => {
     setSectionPlaneAxis(axis);
   }, [setSectionPlaneAxis]);
+
+  // Toggle the "next click picks a face" arming. The actual click is
+  // intercepted in `selectionHandlers.ts`, which calls
+  // `setSectionPlaneFromFace` and clears pick mode for us. (issue #243)
+  const handleTogglePickMode = useCallback(() => {
+    setSectionPickMode(!sectionPickMode);
+  }, [sectionPickMode, setSectionPickMode]);
+
+  // "Reset to axis" in custom mode — clearing the custom field via
+  // setSectionPlaneAxis re-uses the existing cardinal pathway. We pick
+  // the nearest cardinal that's already in `axis` (kept in sync at pick
+  // time) so the user lands on the closest preset they had before.
+  const handleResetToAxis = useCallback(() => {
+    setSectionPlaneAxis(sectionPlane.axis);
+  }, [sectionPlane.axis, setSectionPlaneAxis]);
+
+  const handleCustomDistanceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = Number(e.target.value);
+    if (Number.isFinite(v)) setSectionCustomDistance(v);
+  }, [setSectionCustomDistance]);
 
   const handlePositionChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
@@ -83,7 +108,10 @@ export function SectionOverlay() {
             <span className="font-medium text-sm">Section</span>
             {sectionPlane.enabled && (
               <span className="text-xs text-primary font-mono">
-                {AXIS_INFO[sectionPlane.axis].label} <span className="inline-block w-12 text-right tabular-nums">{sectionPlane.position.toFixed(1)}%</span>
+                {isCustom
+                  ? <>Custom <span className="inline-block w-16 text-right tabular-nums">{sectionPlane.custom!.distance.toFixed(2)}m</span></>
+                  : <>{AXIS_INFO[sectionPlane.axis].label} <span className="inline-block w-12 text-right tabular-nums">{sectionPlane.position.toFixed(1)}%</span></>
+                }
               </span>
             )}
             <ChevronDown className={`h-3 w-3 transition-transform ${isPanelCollapsed ? '-rotate-90' : ''}`} />
@@ -104,14 +132,16 @@ export function SectionOverlay() {
         {/* Expandable content */}
         {!isPanelCollapsed && (
           <div className="border-t px-3 pb-3 min-w-72">
-            {/* Direction Selection */}
+            {/* Direction Selection. Cardinal presets clear any custom plane;
+                "Pick face" arms a face-pick (issue #243) that overrides the
+                cardinal axis with an arbitrary world-space normal. */}
             <div className="mt-3">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Direction</div>
               <div className="flex gap-1">
                 {(['down', 'front', 'side'] as const).map((axis) => (
                   <Button
                     key={axis}
-                    variant={sectionPlane.axis === axis ? 'default' : 'outline'}
+                    variant={!isCustom && sectionPlane.axis === axis ? 'default' : 'outline'}
                     size="sm"
                     className="flex-1 flex-col h-auto py-1.5"
                     onClick={() => handleAxisChange(axis)}
@@ -119,13 +149,52 @@ export function SectionOverlay() {
                     <span className="text-xs font-medium">{AXIS_INFO[axis].label}</span>
                   </Button>
                 ))}
+                <Button
+                  variant={sectionPickMode || isCustom ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1 flex-col h-auto py-1.5"
+                  onClick={handleTogglePickMode}
+                  aria-pressed={sectionPickMode}
+                  title={
+                    sectionPickMode
+                      ? 'Click any face in the viewport to cut through it'
+                      : 'Pick a face to cut through (Bonsai-style)'
+                  }
+                >
+                  <span className="text-xs font-medium flex items-center gap-1">
+                    <MousePointerClick className="h-3 w-3" />
+                    {sectionPickMode ? 'Click…' : isCustom ? 'Custom' : 'Pick'}
+                  </span>
+                </Button>
               </div>
+              {isCustom && (
+                <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                  <span title="Custom plane normal (world-space unit vector)">
+                    n=({sectionPlane.custom!.normal.map((v) => v.toFixed(2)).join(', ')})
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleResetToAxis}
+                    title="Reset to nearest cardinal axis"
+                    className="h-5 w-5"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
             </div>
 
-            {/* Position Slider */}
+            {/* Position. In cardinal mode this is a 0..100% slider along the
+                axis. In custom mode (issue #243) the numeric input becomes
+                a precise signed distance in world units along the picked
+                normal; the slider still works (it shifts the plane by a
+                small amount along the normal — see sectionSlice). */}
             <div className="mt-3">
               <div className="flex items-center justify-between mb-1">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Position</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {isCustom ? 'Distance (m)' : 'Position'}
+                </div>
                 <div className="flex items-center gap-1">
                   <Button
                     variant={sectionPlane.flipped ? 'default' : 'ghost'}
@@ -137,16 +206,27 @@ export function SectionOverlay() {
                   >
                     <FlipHorizontal2 className="h-3 w-3" />
                   </Button>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={sectionPlane.position}
-                    onChange={handlePositionChange}
-                    aria-label="Section plane position percentage"
-                    className="w-16 text-xs font-mono bg-muted px-1.5 py-0.5 rounded border-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
+                  {isCustom ? (
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={sectionPlane.custom!.distance.toFixed(3)}
+                      onChange={handleCustomDistanceChange}
+                      aria-label="Section plane distance along picked normal (world units)"
+                      className="w-20 text-xs font-mono bg-muted px-1.5 py-0.5 rounded border-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={sectionPlane.position}
+                      onChange={handlePositionChange}
+                      aria-label="Section plane position percentage"
+                      className="w-16 text-xs font-mono bg-muted px-1.5 py-0.5 rounded border-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  )}
                 </div>
               </div>
               <input
@@ -202,9 +282,13 @@ export function SectionOverlay() {
         }}
       >
         <span className="font-mono text-xs uppercase tracking-wide">
-          {sectionPlane.enabled
-            ? `Cut ${AXIS_INFO[sectionPlane.axis].label.toLowerCase()} at ${sectionPlane.position.toFixed(1)}%${sectionPlane.flipped ? ' (flipped)' : ''}`
-            : 'Clip off — drag slider to cut'}
+          {sectionPickMode
+            ? 'Click any face to cut through it'
+            : sectionPlane.enabled
+              ? isCustom
+                ? `Custom cut at d=${sectionPlane.custom!.distance.toFixed(2)}m${sectionPlane.flipped ? ' (flipped)' : ''}`
+                : `Cut ${AXIS_INFO[sectionPlane.axis].label.toLowerCase()} at ${sectionPlane.position.toFixed(1)}%${sectionPlane.flipped ? ' (flipped)' : ''}`
+              : 'Clip off — drag slider to cut'}
         </span>
       </div>
 

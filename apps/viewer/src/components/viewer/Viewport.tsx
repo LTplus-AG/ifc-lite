@@ -200,8 +200,16 @@ export function Viewport({
   const { hiddenEntities, isolatedEntities: storeIsolatedEntities } = useVisibilityState();
   const isolatedEntities = computedIsolatedIds ?? storeIsolatedEntities ?? null;
 
-  // Tool state
-  const { activeTool, sectionPlane } = useToolState();
+  // Tool state — `sectionPickMode` arms a face-pick on the next click for
+  // the section tool (issue #243); the action setters are forwarded into
+  // the mouse-controls context.
+  const {
+    activeTool,
+    sectionPlane,
+    sectionPickMode,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
+  } = useToolState();
 
   // Camera state
   const { updateCameraRotationRealtime, updateScaleRealtime, setCameraCallbacks } = useCameraState();
@@ -387,7 +395,12 @@ export function Viewport({
   const measurementConstraintEdgeRef = useLatestRef(measurementConstraintEdge);
   const sectionPlaneRef = useLatestRef(sectionPlane);
   const sectionRangeRef = useLatestRef(sectionRange);
+  const sectionPickModeRef = useLatestRef(sectionPickMode);
   const visualEnhancementRef = useLatestRef(visualEnhancement);
+  // Renderer model bounds, kept fresh per-render. The face-pick handler
+  // forwards these to the slice so the cardinal-fallback `position` % is
+  // computed against the actual model extents at click time.
+  const modelBoundsRef = useRef<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>(null);
 
   // Terrain clip Y from Cesium store (read as ref for animation loop)
   const cesiumTerrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
@@ -461,8 +474,17 @@ export function Viewport({
       }
     }
 
-    // Set cursor based on active tool
+    // Leaving the section tool disarms face-pick so it doesn't ambush the
+    // user on re-entry to a different tool (issue #243).
+    if (activeTool !== 'section' && sectionPickMode) {
+      setSectionPickMode(false);
+    }
+
+    // Set cursor based on active tool. Section + pick-armed gets a
+    // crosshair to telegraph "click a face".
     if (activeTool === 'measure' || activeTool === 'annotate' || activeTool === 'addElement') {
+      canvas.style.cursor = 'crosshair';
+    } else if (activeTool === 'section' && sectionPickMode) {
       canvas.style.cursor = 'crosshair';
     } else {
       canvas.style.cursor = 'default';
@@ -477,7 +499,7 @@ export function Viewport({
         state.clearAddElementPending();
       }
     }
-  }, [activeTool, activeMeasurement, cancelMeasurement]);
+  }, [activeTool, activeMeasurement, cancelMeasurement, sectionPickMode, setSectionPickMode]);
 
   // Helper: calculate scale bar value (world-space size for 96px scale bar)
   const calculateScale = () => {
@@ -733,6 +755,8 @@ export function Viewport({
     snapEnabledRef,
     edgeLockStateRef,
     measurementConstraintEdgeRef,
+    sectionPickModeRef,
+    modelBoundsRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
     selectedEntityIdRef,
@@ -775,6 +799,8 @@ export function Viewport({
     calculateScale,
     getPickOptions,
     hasPendingMeasurements,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
     hoverThrottleMs,
@@ -839,6 +865,7 @@ export function Viewport({
     clearColorRef,
     sectionPlaneRef,
     sectionRangeRef,
+    modelBoundsRef,
     visualEnhancementRef,
     selectedEntityIdsRef,
     coordinateInfoRef,

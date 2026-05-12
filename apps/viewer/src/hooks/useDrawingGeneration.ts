@@ -34,7 +34,24 @@ export const AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
 interface UseDrawingGenerationParams {
   geometryResult: GeometryResult | null | undefined;
   ifcDataStore: { source: Uint8Array } | null;
-  sectionPlane: { axis: 'down' | 'front' | 'side'; position: number; flipped: boolean };
+  /**
+   * Section plane state. `custom` is the optional face-pick override
+   * (issue #243); when set the cutter cuts on that arbitrary plane and
+   * the cap basis flows from `custom.tangent`/`bitangent` so the cap
+   * silhouette lands precisely on the tilted plane.
+   */
+  sectionPlane: {
+    axis: 'down' | 'front' | 'side';
+    position: number;
+    flipped: boolean;
+    custom?: {
+      normal:    [number, number, number];
+      distance:  number;
+      pickedAt:  [number, number, number];
+      tangent:   [number, number, number];
+      bitangent: [number, number, number];
+    };
+  };
   displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number };
   combinedHiddenIds: Set<number>;
   combinedIsolatedIds: Set<number> | null;
@@ -274,6 +291,22 @@ export function useDrawingGeneration({
 
       // Override the flipped setting
       config.plane.flipped = sectionPlane.flipped;
+
+      // Face-pick custom plane (issue #243): hand the cutter the explicit
+      // basis so its 2D output sits in the same coordinate system the cap
+      // shader will lift back to 3D — without this the polygon and the
+      // shader-clipped silhouette would disagree on every non-cardinal
+      // pick (PR #581's bug).
+      if (sectionPlane.custom) {
+        const c = sectionPlane.custom;
+        config.plane.customPlane = {
+          normal:    { x: c.normal[0],   y: c.normal[1],   z: c.normal[2]   },
+          distance:  c.distance,
+          origin:    { x: c.pickedAt[0], y: c.pickedAt[1], z: c.pickedAt[2] },
+          tangent:   { x: c.tangent[0],  y: c.tangent[1],  z: c.tangent[2]  },
+          bitangent: { x: c.bitangent[0], y: c.bitangent[1], z: c.bitangent[2] },
+        };
+      }
 
       // Filter meshes by visibility (respect 3D hiding/isolation)
       let meshesToProcess = geometryResult.meshes;
@@ -553,9 +586,26 @@ export function useDrawingGeneration({
   // Auto-regenerate when section plane changes
   // Strategy: INSTANT - no debounce, but prevent overlapping computations
   // The generation time itself acts as natural batching for fast slider movements
-  const sectionRef = useRef({ axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped });
+  //
+  // For face-picked custom planes (issue #243), `customKey` collapses the
+  // plane's normal+distance into a string we can compare cheaply — without
+  // it dragging the gizmo wouldn't trigger regeneration because the
+  // cardinal axis/position/flipped triple stays the same.
+  const customKey = (sp: { custom?: { normal: [number, number, number]; distance: number } }) =>
+    sp.custom ? `${sp.custom.normal.join(',')}|${sp.custom.distance}` : '';
+  const sectionRef = useRef({
+    axis: sectionPlane.axis,
+    position: sectionPlane.position,
+    flipped: sectionPlane.flipped,
+    customKey: customKey(sectionPlane),
+  });
   const isGeneratingRef = useRef(false);
-  const latestSectionRef = useRef({ axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped });
+  const latestSectionRef = useRef({
+    axis: sectionPlane.axis,
+    position: sectionPlane.position,
+    flipped: sectionPlane.flipped,
+    customKey: customKey(sectionPlane),
+  });
   const [isRegenerating, setIsRegenerating] = useState(false);
 
   // Stable regenerate function that handles overlapping calls
@@ -583,7 +633,8 @@ export function useDrawingGeneration({
       if (
         current.axis !== targetSection.axis ||
         current.position !== targetSection.position ||
-        current.flipped !== targetSection.flipped
+        current.flipped !== targetSection.flipped ||
+        current.customKey !== targetSection.customKey
       ) {
         // Position changed during generation - regenerate immediately with latest
         // Use microtask to avoid blocking
@@ -592,22 +643,34 @@ export function useDrawingGeneration({
     }
   }, [generateDrawing]);
 
+  const customKeyValue = customKey(sectionPlane);
   useEffect(() => {
     // Always update latest section ref (even if generating)
-    latestSectionRef.current = { axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped };
+    latestSectionRef.current = {
+      axis: sectionPlane.axis,
+      position: sectionPlane.position,
+      flipped: sectionPlane.flipped,
+      customKey: customKeyValue,
+    };
 
     // Check if section plane actually changed from last processed
     const prev = sectionRef.current;
     if (
       prev.axis === sectionPlane.axis &&
       prev.position === sectionPlane.position &&
-      prev.flipped === sectionPlane.flipped
+      prev.flipped === sectionPlane.flipped &&
+      prev.customKey === customKeyValue
     ) {
       return;
     }
 
     // Update processed ref
-    sectionRef.current = { axis: sectionPlane.axis, position: sectionPlane.position, flipped: sectionPlane.flipped };
+    sectionRef.current = {
+      axis: sectionPlane.axis,
+      position: sectionPlane.position,
+      flipped: sectionPlane.flipped,
+      customKey: customKeyValue,
+    };
 
     // If panel is visible OR 3D overlay is enabled, and we have geometry, regenerate INSTANTLY
     if ((panelVisible || displayOptions.show3DOverlay) && geometryResult?.meshes) {
@@ -615,7 +678,7 @@ export function useDrawingGeneration({
       // doRegenerate handles preventing overlaps and will auto-regenerate with latest when done
       doRegenerate();
     }
-  }, [panelVisible, displayOptions.show3DOverlay, sectionPlane.axis, sectionPlane.position, sectionPlane.flipped, geometryResult, combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds, doRegenerate]);
+  }, [panelVisible, displayOptions.show3DOverlay, sectionPlane.axis, sectionPlane.position, sectionPlane.flipped, customKeyValue, geometryResult, combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds, doRegenerate]);
 
   return {
     generateDrawing,

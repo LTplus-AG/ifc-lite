@@ -63,6 +63,10 @@ export interface UseMouseControlsParams {
   snapEnabledRef: MutableRefObject<boolean>;
   edgeLockStateRef: MutableRefObject<EdgeLockState>;
   measurementConstraintEdgeRef: MutableRefObject<MeasurementConstraintEdge | null>;
+  /** Section tool: when true, the next click picks a face for the clip plane (issue #243). */
+  sectionPickModeRef: MutableRefObject<boolean>;
+  /** Renderer model bounds; passed to face-pick so the cardinal-fallback `position` % is correct. */
+  modelBoundsRef: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
 
   // Visibility/selection refs
   hiddenEntitiesRef: MutableRefObject<Set<number>>;
@@ -141,6 +145,14 @@ export interface UseMouseControlsParams {
   calculateScale: () => void;
   getPickOptions: () => { isStreaming: boolean; hiddenIds: Set<number>; isolatedIds: Set<number> | null };
   hasPendingMeasurements: () => boolean;
+  /** Section face-pick: set the clip plane through a world-space face (issue #243). */
+  setSectionPlaneFromFace: (
+    normal: [number, number, number],
+    point:  [number, number, number],
+    bounds?: { min: [number, number, number]; max: [number, number, number] },
+  ) => void;
+  /** Section face-pick: arm/disarm the "next click picks a face" mode. */
+  setSectionPickMode: (enabled: boolean) => void;
 
   // Constants
   HOVER_SNAP_THROTTLE_MS: number;
@@ -164,6 +176,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     snapEnabledRef,
     edgeLockStateRef,
     measurementConstraintEdgeRef,
+    sectionPickModeRef,
+    modelBoundsRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
     selectedEntityIdRef,
@@ -205,6 +219,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     calculateScale,
     getPickOptions,
     hasPendingMeasurements,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
     setRectSelection,
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
@@ -233,6 +249,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       snapEnabledRef,
       edgeLockStateRef,
       measurementConstraintEdgeRef,
+      sectionPickModeRef,
+      modelBoundsRef,
       hiddenEntitiesRef,
       isolatedEntitiesRef,
       geometryRef,
@@ -260,6 +278,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       openContextMenu,
       hasPendingMeasurements,
       getPickOptions,
+      setSectionPlaneFromFace,
+      setSectionPickMode,
       HOVER_SNAP_THROTTLE_MS,
       SLOW_RAYCAST_THRESHOLD_MS,
     };

@@ -92,6 +92,33 @@ export type SectionPlaneAxis = 'down' | 'front' | 'side';
 export type { HatchPatternId as SectionCapHatchId, SectionCapStyle } from '@ifc-lite/renderer';
 import type { SectionCapStyle } from '@ifc-lite/renderer';
 
+/**
+ * Custom (face-picked) plane override. When present, the renderer uses
+ * `normal` + `distance` directly and ignores `axis` / `position`. The
+ * cardinal `axis` / `position` / `flipped` fields are still kept in sync
+ * (nearest-cardinal for axis, percentage along it for position) so any
+ * downstream reader that pre-dates custom planes (drawings export, BCF
+ * snapshots, view controls) still gets a sensible projection rather than
+ * crashing or emitting empty data.
+ *
+ * Tangent + bitangent are derived once at pick time from `normal` via the
+ * deterministic `planeBasis` helper so the cap shader and cutter share
+ * exactly one orientation — without this the cap-hatch can rotate when
+ * the renderer re-derives the basis on every frame.
+ */
+export interface CustomSectionPlane {
+  /** Unit world-space normal. */
+  normal: [number, number, number];
+  /** Signed plane offset in world units: `dot(pointOnPlane, normal)`. */
+  distance: number;
+  /** World-space hit point at pick time (anchors the slider re-mapping). */
+  pickedAt: [number, number, number];
+  /** First in-plane axis, deterministic from `normal`. */
+  tangent: [number, number, number];
+  /** Second in-plane axis, deterministic from `normal`. */
+  bitangent: [number, number, number];
+}
+
 export interface SectionPlane {
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
@@ -110,6 +137,13 @@ export interface SectionPlane {
   showOutlines: boolean;
   /** User-defined colour + hatch for the cut surface. */
   capStyle: SectionCapStyle;
+  /**
+   * Optional arbitrary-normal override populated by face-pick. When set,
+   * the renderer cuts on this plane verbatim; cardinal `axis` / `position`
+   * are kept in sync as the closest cardinal projection (see
+   * `CustomSectionPlane`).
+   */
+  custom?: CustomSectionPlane;
 }
 
 // ============================================================================

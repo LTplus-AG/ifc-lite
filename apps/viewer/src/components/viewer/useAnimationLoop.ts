@@ -39,6 +39,12 @@ export interface UseAnimationLoopParams {
   visualEnhancementRef: MutableRefObject<VisualEnhancementOptions>;
   sectionPlaneRef: MutableRefObject<SectionPlane>;
   sectionRangeRef: MutableRefObject<{ min: number; max: number } | null>;
+  /**
+   * Mirror of the renderer's model bounds, written each frame after
+   * render. Read by the section face-pick handler so the cardinal-
+   * fallback `position` % can be computed against the live extents.
+   */
+  modelBoundsRef?: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
   selectedEntityIdsRef: MutableRefObject<Set<number> | undefined>;
   coordinateInfoRef: MutableRefObject<CoordinateInfo | undefined>;
   isInteractingRef: MutableRefObject<boolean>;
@@ -73,6 +79,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     visualEnhancementRef,
     sectionPlaneRef,
     sectionRangeRef,
+    modelBoundsRef,
     selectedEntityIdsRef,
     coordinateInfoRef,
     isInteractingRef,
@@ -181,10 +188,25 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             capStyle: sectionPlaneRef.current.capStyle,
             min: sectionRangeRef.current?.min,
             max: sectionRangeRef.current?.max,
+            // Custom (face-picked) plane override (issue #243). When set
+            // the renderer uses these verbatim and ignores axis/position/
+            // min/max for the clip math; cap polygons are still emitted
+            // through the same Section2DOverlayRenderer with a custom
+            // basis so the silhouette lands on the tilted plane.
+            normal:   sectionPlaneRef.current.custom?.normal,
+            distance: sectionPlaneRef.current.custom?.distance,
           } : undefined,
           terrainClipY: terrainClipYRef.current ?? undefined,
         });
         lastRenderTime = currentTime;
+        // Snapshot the renderer's current model bounds so the section
+        // face-pick handler can compute a correct cardinal-fallback
+        // `position` percentage. Cheap (a few field reads) and avoids a
+        // race where the click handler reads stale bounds during the
+        // first few frames after a model loads.
+        if (modelBoundsRef) {
+          modelBoundsRef.current = renderer.getModelBounds() ?? modelBoundsRef.current;
+        }
       }
 
       // 4. Sync UI widgets

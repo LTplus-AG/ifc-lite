@@ -7,8 +7,9 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { SectionPlane, SectionPlaneAxis, SectionCapStyle, SectionCapHatchId } from '../types.js';
+import type { SectionPlane, SectionPlaneAxis, SectionCapStyle, SectionCapHatchId, CustomSectionPlane } from '../types.js';
 import { SECTION_PLANE_DEFAULTS, SECTION_CAP_DEFAULTS } from '../constants.js';
+import { planeBasis, nearestCardinalAxis } from '@ifc-lite/renderer';
 
 // ─── Persistence ─────────────────────────────────────────────────────────
 // Cap appearance (hatch pattern, colours, spacing, angle, whether the cap is
@@ -108,6 +109,13 @@ const saveShowOutlines = (v: boolean) => saveBoolean(OUTLINES_SHOW_STORAGE_KEY, 
 export interface SectionSlice {
   // State
   sectionPlane: SectionPlane;
+  /**
+   * When true, the next click on the canvas picks a face and sets the
+   * section plane through it (world-space normal + point). Cleared after
+   * one pick, a missed click, or a tool change. See
+   * `selectionHandlers.ts` for the consumer.
+   */
+  sectionPickMode: boolean;
 
   // Actions
   setSectionPlaneAxis: (axis: SectionPlaneAxis) => void;
@@ -119,6 +127,25 @@ export interface SectionSlice {
   setSectionShowOutlines: (show: boolean) => void;
   setSectionCapStyle: (style: Partial<SectionCapStyle>) => void;
   resetSectionPlane: () => void;
+  /**
+   * Set the section plane from a face pick. `normal` is the face's world-
+   * space unit normal; `point` is any point on the face (typically the
+   * raycast hit). The derived plane equation is
+   * `dot(worldPos, normal) = dot(point, normal)`.
+   *
+   * Also writes the nearest cardinal `axis` + `flipped` and a percentage-
+   * along-that-axis `position` so legacy consumers (drawings, BCF,
+   * tooltips) still see a reasonable axis-aligned approximation.
+   */
+  setSectionPlaneFromFace: (
+    normal: [number, number, number],
+    point: [number, number, number],
+    bounds?: { min: [number, number, number]; max: [number, number, number] },
+  ) => void;
+  /** Update only the custom plane's signed distance (drag gizmo / numeric input). */
+  setSectionCustomDistance: (distance: number) => void;
+  /** Arm/disarm the "next click picks a face" mode. */
+  setSectionPickMode: (enabled: boolean) => void;
 }
 
 const getDefaultCapStyle = (): SectionCapStyle => loadCapStyle();
@@ -140,23 +167,48 @@ const getDefaultSectionPlane = (): SectionPlane => ({
 export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice> = (set) => ({
   // Initial state
   sectionPlane: getDefaultSectionPlane(),
+  sectionPickMode: false,
 
   // Actions
   setSectionPlaneAxis: (axis) => set((state) => ({
     // Changing the axis implicitly means "I want to cut now" — enable the clip
-    // so users don't get stuck in a confusing no-op preview.
-    sectionPlane: { ...state.sectionPlane, axis, enabled: true },
+    // so users don't get stuck in a confusing no-op preview. Also drop any
+    // custom (face-picked) plane so the cardinal preset takes over cleanly.
+    sectionPlane: { ...state.sectionPlane, axis, enabled: true, custom: undefined },
   })),
 
   setSectionPlanePosition: (position) => set((state) => {
     // Clamp position to valid range [0, 100]
     const clampedPosition = Math.min(100, Math.max(0, Number(position) || 0));
-    return {
-      // Moving the slider also enables the cut — previously you had to press
-      // "Cutting" separately, which led to the "it just jitters, doesn't cut"
-      // feedback from users.
-      sectionPlane: { ...state.sectionPlane, position: clampedPosition, enabled: true },
-    };
+    // Slider semantics differ between cardinal and custom modes:
+    //   • cardinal: percentage along the axis between bounds extents.
+    //   • custom: percentage along the picked normal between the bounds-
+    //     diagonal extents centred on `pickedAt`. The renderer translates
+    //     that to a signed `distance`; the action below just stores the
+    //     percentage and updates `custom.distance` to match.
+    const next: SectionPlane = { ...state.sectionPlane, position: clampedPosition, enabled: true };
+    if (state.sectionPlane.custom) {
+      const c = state.sectionPlane.custom;
+      // Re-anchor distance from percentage. The half-extent is derived
+      // from the renderer-supplied bounds when we have them — at this
+      // point in the slice we don't, so we use the existing distance as
+      // the anchor and shift it by the percentage delta. This keeps the
+      // slider responsive without the slice needing a bounds dependency.
+      // The renderer cap path uses `custom.distance` verbatim regardless,
+      // so the visual stays accurate.
+      const dPct = (clampedPosition - state.sectionPlane.position) / 100;
+      const dot = c.pickedAt[0] * c.normal[0] + c.pickedAt[1] * c.normal[1] + c.pickedAt[2] * c.normal[2];
+      // 100% of slider span = ~bounds-diagonal; without bounds, fall
+      // back to a generous fixed step (10 world units per 100%). The
+      // SectionPanel updates this with the real bounds via
+      // `setSectionCustomDistance` once they're known.
+      const fallbackSpan = 10;
+      next.custom = { ...c, distance: c.distance + dPct * fallbackSpan };
+      // Keep `pickedAt` so future deltas remain anchored to the original
+      // pick — only `distance` (and on flip, `normal`) ever change.
+      void dot;
+    }
+    return { sectionPlane: next };
   }),
 
   toggleSectionPlane: () => set((state) => ({
@@ -167,9 +219,26 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     sectionPlane: { ...state.sectionPlane, enabled },
   })),
 
-  flipSectionPlane: () => set((state) => ({
-    sectionPlane: { ...state.sectionPlane, flipped: !state.sectionPlane.flipped },
-  })),
+  flipSectionPlane: () => set((state) => {
+    const sp = state.sectionPlane;
+    const next: SectionPlane = { ...sp, flipped: !sp.flipped };
+    if (sp.custom) {
+      // Flipping a custom plane keeps the same surface but swaps which
+      // half-space is hidden. Negating both `normal` and `distance`
+      // satisfies `dot(p, -n) = -d` ⇔ `dot(p, n) = d`, i.e. same plane,
+      // opposite kept side. Tangent + bitangent are NOT recomputed so the
+      // hatch orientation stays put as the user toggles flip on/off.
+      // (The basis is by definition orthogonal to either ±normal, so
+      // re-using it is geometrically valid.)
+      const c = sp.custom;
+      next.custom = {
+        ...c,
+        normal:   [-c.normal[0], -c.normal[1], -c.normal[2]],
+        distance: -c.distance,
+      };
+    }
+    return { sectionPlane: next };
+  }),
 
   setSectionShowCap: (showCap) => set((state) => {
     saveShowCap(showCap);
@@ -199,6 +268,74 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     } catch (error) {
       console.warn('[section] failed to clear persisted cap preferences', error);
     }
-    return { sectionPlane: getDefaultSectionPlane() };
+    return { sectionPlane: getDefaultSectionPlane(), sectionPickMode: false };
   }),
+
+  setSectionPlaneFromFace: (normal, point, bounds) => set((state) => {
+    const nx = normal[0]; const ny = normal[1]; const nz = normal[2];
+    const len = Math.hypot(nx, ny, nz);
+    if (!Number.isFinite(len) || len < 1e-6) {
+      // Degenerate normal — disarm pick mode but don't poison the
+      // renderer with NaNs.
+      console.warn('[section] face-pick received a degenerate normal; ignoring');
+      return { sectionPickMode: false };
+    }
+    const unit: [number, number, number] = [nx / len, ny / len, nz / len];
+    const distance = point[0] * unit[0] + point[1] * unit[1] + point[2] * unit[2];
+    const basis = planeBasis(unit);
+    const cardinal = nearestCardinalAxis(unit);
+
+    // Re-compute `position` along the chosen cardinal so legacy axis-aligned
+    // consumers (drawings export, BCF) get a percentage that lines up with
+    // the picked plane rather than whatever slider value was set before.
+    // Without `bounds` we keep the previous value (P2 CR comment on PR
+    // #581) — the SectionPanel passes bounds when available.
+    let position = state.sectionPlane.position;
+    if (bounds) {
+      const axisIdx = cardinal.axis === 'side' ? 0 : cardinal.axis === 'down' ? 1 : 2;
+      const axisMin = bounds.min[axisIdx];
+      const axisMax = bounds.max[axisIdx];
+      const range = axisMax - axisMin;
+      if (range > 1e-6) {
+        const along = point[axisIdx];
+        position = Math.min(100, Math.max(0,
+          ((along - axisMin) / range) * 100,
+        ));
+      }
+    }
+
+    const custom: CustomSectionPlane = {
+      normal:    unit,
+      distance,
+      pickedAt:  [point[0], point[1], point[2]],
+      tangent:   basis.tangent,
+      bitangent: basis.bitangent,
+    };
+
+    return {
+      sectionPlane: {
+        ...state.sectionPlane,
+        axis:    cardinal.axis,
+        flipped: cardinal.flipped,
+        position,
+        enabled: true,
+        custom,
+      },
+      sectionPickMode: false,
+    };
+  }),
+
+  setSectionCustomDistance: (distance) => set((state) => {
+    if (!state.sectionPlane.custom || !Number.isFinite(distance)) {
+      return state;
+    }
+    return {
+      sectionPlane: {
+        ...state.sectionPlane,
+        custom: { ...state.sectionPlane.custom, distance },
+      },
+    };
+  }),
+
+  setSectionPickMode: (enabled) => set(() => ({ sectionPickMode: enabled })),
 });

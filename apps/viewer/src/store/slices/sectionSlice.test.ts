@@ -180,6 +180,111 @@ describe('SectionSlice', () => {
     });
   });
 
+  describe('face-pick (custom plane)', () => {
+    it('setSectionPlaneFromFace stores a unit-length normal + signed distance', () => {
+      // Non-unit input: the slice should renormalise before persisting.
+      state.setSectionPlaneFromFace([2, 0, 0], [3, 4, 5]);
+      const c = state.sectionPlane.custom;
+      assert.ok(c, 'custom plane should be set');
+      assert.deepStrictEqual(c!.normal, [1, 0, 0]);
+      assert.strictEqual(c!.distance, 3); // dot([3,4,5], [1,0,0])
+      assert.deepStrictEqual(c!.pickedAt, [3, 4, 5]);
+      assert.strictEqual(state.sectionPlane.enabled, true);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('setSectionPlaneFromFace updates axis + flipped to the signed-dominant cardinal', () => {
+      // CR P1 from #581: dropping the sign produced inverted exports.
+      state.setSectionPlaneFromFace([-1, 0, 0], [0, 0, 0]);
+      assert.strictEqual(state.sectionPlane.axis, 'side');
+      assert.strictEqual(state.sectionPlane.flipped, true);
+
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 0]);
+      assert.strictEqual(state.sectionPlane.axis, 'front');
+      assert.strictEqual(state.sectionPlane.flipped, false);
+    });
+
+    it('setSectionPlaneFromFace updates position % when bounds are supplied', () => {
+      // CR P2 from #581: leaving position stale produced wrong fallback cuts.
+      state.setSectionPlaneFromFace(
+        [0, 1, 0],
+        [0, 5, 0],
+        { min: [0, 0, 0], max: [10, 10, 10] },
+      );
+      assert.strictEqual(state.sectionPlane.position, 50);
+    });
+
+    it('setSectionPlaneFromFace stores an orthonormal tangent + bitangent', () => {
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 0]);
+      const c = state.sectionPlane.custom!;
+      const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      assert.ok(Math.abs(dot([...c.normal], [...c.tangent])) < 1e-9);
+      assert.ok(Math.abs(dot([...c.normal], [...c.bitangent])) < 1e-9);
+      assert.ok(Math.abs(dot([...c.tangent], [...c.bitangent])) < 1e-9);
+    });
+
+    it('setSectionPlaneFromFace ignores a degenerate (zero-length) normal', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPlaneFromFace([0, 0, 0], [1, 2, 3]);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('setSectionPlaneAxis clears any custom plane', () => {
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      assert.ok(state.sectionPlane.custom);
+      state.setSectionPlaneAxis('down');
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPlane.axis, 'down');
+    });
+
+    it('flipSectionPlane negates custom.normal AND custom.distance', () => {
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
+      const before = state.sectionPlane.custom!;
+      assert.strictEqual(before.distance, 5);
+      state.flipSectionPlane();
+      const after = state.sectionPlane.custom!;
+      assert.deepStrictEqual(after.normal, [-0, -0, -1]);
+      assert.strictEqual(after.distance, -5);
+      // Tangent + bitangent unchanged so the hatch doesn't rotate.
+      assert.deepStrictEqual(after.tangent,   before.tangent);
+      assert.deepStrictEqual(after.bitangent, before.bitangent);
+    });
+
+    it('setSectionCustomDistance updates distance without touching anything else', () => {
+      state.setSectionPlaneFromFace([0, 1, 0], [0, 3, 0]);
+      const before = state.sectionPlane.custom!;
+      state.setSectionCustomDistance(7);
+      const after = state.sectionPlane.custom!;
+      assert.strictEqual(after.distance, 7);
+      assert.deepStrictEqual(after.normal,    before.normal);
+      assert.deepStrictEqual(after.pickedAt,  before.pickedAt);
+      assert.deepStrictEqual(after.tangent,   before.tangent);
+    });
+
+    it('setSectionCustomDistance is a no-op without a custom plane', () => {
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      state.setSectionCustomDistance(42);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+    });
+
+    it('setSectionPickMode arms / disarms pick mode', () => {
+      assert.strictEqual(state.sectionPickMode, false);
+      state.setSectionPickMode(true);
+      assert.strictEqual(state.sectionPickMode, true);
+      state.setSectionPickMode(false);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('resetSectionPlane clears the custom plane and disarms pick mode', () => {
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      state.setSectionPickMode(true);
+      state.resetSectionPlane();
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+  });
+
   describe('resetSectionPlane', () => {
     it('should reset to default values', () => {
       state.setSectionPlaneAxis('side');

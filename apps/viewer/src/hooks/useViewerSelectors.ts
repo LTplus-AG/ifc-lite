@@ -50,10 +50,18 @@ export function useVisibilityState() {
 export function useToolState() {
   const activeTool = useViewerStore((state) => state.activeTool);
   const sectionPlane = useViewerStore((state) => state.sectionPlane);
+  const sectionPickMode = useViewerStore((state) => state.sectionPickMode);
+  const setSectionPlaneFromFace = useViewerStore((state) => state.setSectionPlaneFromFace);
+  const setSectionPickMode = useViewerStore((state) => state.setSectionPickMode);
+  const setSectionCustomDistance = useViewerStore((state) => state.setSectionCustomDistance);
 
   return {
     activeTool,
     sectionPlane,
+    sectionPickMode,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
+    setSectionCustomDistance,
   };
 }
 

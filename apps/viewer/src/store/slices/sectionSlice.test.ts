@@ -239,17 +239,53 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPlane.axis, 'down');
     });
 
-    it('flipSectionPlane negates custom.normal AND custom.distance', () => {
+    it('flipSectionPlane toggles `flipped` without mutating custom geometry', () => {
+      // The renderer applies `flipped` independently in the clip shader
+      // (`side = flipped ? -1 : 1`). Mutating `normal` / `distance` here
+      // as well would double-cancel and the flip button would have no
+      // visible effect — see flipSectionPlane in the slice.
       state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
       const before = state.sectionPlane.custom!;
+      assert.strictEqual(state.sectionPlane.flipped, false);
       assert.strictEqual(before.distance, 5);
+
       state.flipSectionPlane();
       const after = state.sectionPlane.custom!;
-      assert.deepStrictEqual(after.normal, [-0, -0, -1]);
-      assert.strictEqual(after.distance, -5);
-      // Tangent + bitangent unchanged so the hatch doesn't rotate.
+      assert.strictEqual(state.sectionPlane.flipped, true);
+      // Geometry is untouched — only the `flipped` boolean changes.
+      assert.deepStrictEqual(after.normal,    before.normal);
+      assert.strictEqual(    after.distance,  before.distance);
+      assert.deepStrictEqual(after.pickedAt,  before.pickedAt);
       assert.deepStrictEqual(after.tangent,   before.tangent);
       assert.deepStrictEqual(after.bitangent, before.bitangent);
+    });
+
+    it('flipSectionPlane is its own inverse — two flips return to the original state', () => {
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
+      const original = state.sectionPlane.custom!;
+      const originalFlipped = state.sectionPlane.flipped;
+
+      state.flipSectionPlane();
+      state.flipSectionPlane();
+
+      const after = state.sectionPlane.custom!;
+      assert.strictEqual(state.sectionPlane.flipped, originalFlipped);
+      // Geometry must never have been mutated through the round-trip.
+      assert.deepStrictEqual(after.normal,    original.normal);
+      assert.strictEqual(    after.distance,  original.distance);
+      assert.deepStrictEqual(after.pickedAt,  original.pickedAt);
+      assert.deepStrictEqual(after.tangent,   original.tangent);
+      assert.deepStrictEqual(after.bitangent, original.bitangent);
+    });
+
+    it('flipSectionPlane toggles `flipped` for cardinal planes too (no custom)', () => {
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPlane.flipped, false);
+      state.flipSectionPlane();
+      assert.strictEqual(state.sectionPlane.flipped, true);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      state.flipSectionPlane();
+      assert.strictEqual(state.sectionPlane.flipped, false);
     });
 
     it('setSectionCustomDistance updates distance without touching anything else', () => {

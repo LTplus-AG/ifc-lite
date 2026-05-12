@@ -248,24 +248,16 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
   })),
 
   flipSectionPlane: () => set((state) => {
-    const sp = state.sectionPlane;
-    const next: SectionPlane = { ...sp, flipped: !sp.flipped };
-    if (sp.custom) {
-      // Flipping a custom plane keeps the same surface but swaps which
-      // half-space is hidden. Negating both `normal` and `distance`
-      // satisfies `dot(p, -n) = -d` ⇔ `dot(p, n) = d`, i.e. same plane,
-      // opposite kept side. Tangent + bitangent are NOT recomputed so the
-      // hatch orientation stays put as the user toggles flip on/off.
-      // (The basis is by definition orthogonal to either ±normal, so
-      // re-using it is geometrically valid.)
-      const c = sp.custom;
-      next.custom = {
-        ...c,
-        normal:   [-c.normal[0], -c.normal[1], -c.normal[2]],
-        distance: -c.distance,
-      };
-    }
-    return { sectionPlane: next };
+    // A plane is geometrically defined by `(normal, distance)`. Which
+    // half-space is kept is a separate choice expressed by `flipped`.
+    // The renderer's clip shader applies `flipped` independently
+    // (`side = flipped ? -1 : 1`, then `distToPlane * side`), so toggling
+    // the boolean alone is sufficient to swap the visible half-space —
+    // for both cardinal and custom planes. Mutating `custom.normal` /
+    // `custom.distance` here as well would double-cancel the shader's
+    // own flip (negate-and-negate-again leaves the same half-space
+    // clipped) and the flip button would have no visible effect.
+    return { sectionPlane: { ...state.sectionPlane, flipped: !state.sectionPlane.flipped } };
   }),
 
   setSectionShowCap: (showCap) => set((state) => {

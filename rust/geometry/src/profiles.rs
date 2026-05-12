@@ -17,6 +17,196 @@ use std::f64::consts::PI;
 /// Prevents stack overflow from deeply nested CompositeCurve → TrimmedCurve → CompositeCurve chains.
 const MAX_CURVE_DEPTH: u32 = 50;
 
+/// Issue #635 — when an `IfcArbitraryClosedProfileDef` is actually a smooth
+/// curve approximated by a many-vertex polyline (e.g. a 127-vertex circle
+/// stand-in for a round window), the resulting prism has too many side
+/// triangles to fit in the BSP CSG polygon budget and the void cut falls
+/// back to an axis-aligned box, turning round windows into squares.
+///
+/// Detect over-tessellated curves by comparing average vertex spacing to
+/// the polygon's bounding-box diagonal — anything denser than this ratio
+/// is treated as a curve approximation and downsampled with
+/// Ramer-Douglas-Peucker so it tessellates into far fewer triangles while
+/// remaining visually circular.
+const SMOOTH_CURVE_SPACING_RATIO: f64 = 1.0 / 16.0;
+/// RDP epsilon as fraction of bounding-box diagonal. Larger ⇒ coarser
+/// approximation. For a unit-diameter circle, an N-segment polygon's
+/// max sagitta is `r * (1 - cos(π/N))`; targeting N≈16 (recognizable
+/// circle) on a 1m-diagonal bbox needs eps ≈ 1/100 of the diagonal.
+const RDP_EPSILON_RATIO: f64 = 1.0 / 100.0;
+/// Absolute lower bound on RDP epsilon, in profile units (typically meters).
+/// Prevents collapsing tiny profiles where ratio-derived epsilon would be
+/// numerically negligible.
+const RDP_EPSILON_MIN: f64 = 5.0e-3;
+/// Only attempt simplification when the polyline has at least this many
+/// vertices. Below this the polyline is already cheap enough.
+const SMOOTH_CURVE_MIN_VERTICES: usize = 24;
+/// Never simplify below this many vertices — keeps the approximation
+/// recognizably round (16-gon reads as a circle).
+const SIMPLIFIED_MIN_VERTICES: usize = 12;
+
+/// Perpendicular distance from `p` to the line through `a` and `b`.
+#[inline]
+fn perpendicular_distance(p: Point2<f64>, a: Point2<f64>, b: Point2<f64>) -> f64 {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq < f64::EPSILON {
+        let ex = p.x - a.x;
+        let ey = p.y - a.y;
+        return (ex * ex + ey * ey).sqrt();
+    }
+    // |(p - a) × (b - a)| / |b - a|
+    let cross = (p.x - a.x) * dy - (p.y - a.y) * dx;
+    cross.abs() / len_sq.sqrt()
+}
+
+/// Ramer-Douglas-Peucker simplification of an open polyline.
+/// Iterative implementation (no recursion) to keep stack usage small —
+/// arbitrary IFC profiles can run into the thousands of vertices.
+fn rdp_simplify_open(points: &[Point2<f64>], epsilon: f64) -> Vec<Point2<f64>> {
+    let n = points.len();
+    if n < 3 {
+        return points.to_vec();
+    }
+    let mut keep = vec![false; n];
+    keep[0] = true;
+    keep[n - 1] = true;
+    // Stack of (start, end) index pairs to process.
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    stack.push((0, n - 1));
+    while let Some((start, end)) = stack.pop() {
+        if end <= start + 1 {
+            continue;
+        }
+        let a = points[start];
+        let b = points[end];
+        let mut max_dist = 0.0;
+        let mut max_idx = start;
+        for (i, p) in points.iter().enumerate().take(end).skip(start + 1) {
+            let d = perpendicular_distance(*p, a, b);
+            if d > max_dist {
+                max_dist = d;
+                max_idx = i;
+            }
+        }
+        if max_dist > epsilon {
+            keep[max_idx] = true;
+            stack.push((start, max_idx));
+            stack.push((max_idx, end));
+        }
+    }
+    points
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| if keep[i] { Some(*p) } else { None })
+        .collect()
+}
+
+/// Best-effort downsampling of a polyline that might approximate a smooth
+/// curve. Closed-loop aware (last == first is preserved). Returns the
+/// original polyline unchanged when it doesn't look over-tessellated or
+/// when simplification would drop it below `SIMPLIFIED_MIN_VERTICES`.
+///
+/// See `SMOOTH_CURVE_SPACING_RATIO` for the detection criterion.
+pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Point2<f64>> {
+    let raw_len = points.len();
+    if raw_len < SMOOTH_CURVE_MIN_VERTICES {
+        return points.to_vec();
+    }
+
+    // A closed polyline may or may not duplicate its first vertex at the
+    // end. Strip the duplicate for the analysis and add it back at the
+    // end if the input had it.
+    let closed = raw_len >= 2
+        && (points[0].x - points[raw_len - 1].x).abs() < 1e-9
+        && (points[0].y - points[raw_len - 1].y).abs() < 1e-9;
+    let core: &[Point2<f64>] = if closed {
+        &points[..raw_len - 1]
+    } else {
+        points
+    };
+    let n = core.len();
+    if n < SMOOTH_CURVE_MIN_VERTICES {
+        return points.to_vec();
+    }
+
+    // Bounding box + diagonal (proxy for "size of profile").
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for p in core {
+        if p.x < min_x {
+            min_x = p.x;
+        }
+        if p.y < min_y {
+            min_y = p.y;
+        }
+        if p.x > max_x {
+            max_x = p.x;
+        }
+        if p.y > max_y {
+            max_y = p.y;
+        }
+    }
+    let dx = max_x - min_x;
+    let dy = max_y - min_y;
+    let diag = (dx * dx + dy * dy).sqrt();
+    if !diag.is_finite() || diag < f64::EPSILON {
+        return points.to_vec();
+    }
+
+    // Mean edge length / diagonal — small ⇒ over-tessellated curve.
+    let mut perimeter = 0.0;
+    for i in 0..n {
+        let a = core[i];
+        let b = core[(i + 1) % n];
+        let ex = b.x - a.x;
+        let ey = b.y - a.y;
+        perimeter += (ex * ex + ey * ey).sqrt();
+    }
+    let mean_edge = perimeter / n as f64;
+    if mean_edge / diag > SMOOTH_CURVE_SPACING_RATIO {
+        // Doesn't look like a smooth curve approximation — leave alone.
+        return points.to_vec();
+    }
+
+    let epsilon = (diag * RDP_EPSILON_RATIO).max(RDP_EPSILON_MIN);
+
+    // RDP needs distinct endpoints; rotate-then-simplify by treating the
+    // closed loop as an open polyline whose first/last vertex are pinned.
+    // This anchors the cut artificially but for symmetric near-circular
+    // profiles the result is still ~uniformly spaced.
+    let mut working: Vec<Point2<f64>> = core.to_vec();
+    working.push(core[0]); // pin the loop closed for RDP
+    let simplified = rdp_simplify_open(&working, epsilon);
+
+    // Drop the duplicated closing vertex from RDP's output before the
+    // sufficiency check.
+    let mut simplified_core = simplified;
+    if simplified_core.len() >= 2 {
+        let last = simplified_core.len() - 1;
+        if (simplified_core[0].x - simplified_core[last].x).abs() < 1e-9
+            && (simplified_core[0].y - simplified_core[last].y).abs() < 1e-9
+        {
+            simplified_core.pop();
+        }
+    }
+
+    if simplified_core.len() < SIMPLIFIED_MIN_VERTICES || simplified_core.len() >= n {
+        // Either too aggressive or no real reduction — keep the original
+        // so we never make an opening worse than it already was.
+        return points.to_vec();
+    }
+
+    if closed {
+        let first = simplified_core[0];
+        simplified_core.push(first);
+    }
+    simplified_core
+}
+
 /// Maximum recursion depth for nested profile definitions (DerivedProfile → parent → parent...).
 /// Prevents stack overflow in WASM from Revit exports with deep profile nesting.
 const MAX_PROFILE_DEPTH: u32 = 16;
@@ -839,7 +1029,12 @@ impl ProfileProcessor {
             .ok_or_else(|| Error::geometry("Failed to resolve OuterCurve".to_string()))?;
 
         // Process outer curve
-        let outer_points = self.process_curve(&curve, decoder)?;
+        let raw_outer = self.process_curve(&curve, decoder)?;
+        // Issue #635 — downsample over-tessellated smooth curves so that
+        // round/curved openings produce extrusions small enough to fit in
+        // the BSP CSG polygon budget and hence get a real polygon-shaped
+        // cut instead of the AABB rectangular fallback.
+        let outer_points = simplify_smooth_curve_polyline(&raw_outer);
         let mut result = Profile2D::new(outer_points);
 
         // Check if this is IfcArbitraryProfileDefWithVoids (has inner curves)
@@ -848,7 +1043,8 @@ impl ProfileProcessor {
             if let Some(inner_curves_attr) = profile.get(3) {
                 let inner_curves = decoder.resolve_ref_list(inner_curves_attr)?;
                 for inner_curve in inner_curves {
-                    let hole_points = self.process_curve(&inner_curve, decoder)?;
+                    let raw_hole = self.process_curve(&inner_curve, decoder)?;
+                    let hole_points = simplify_smooth_curve_polyline(&raw_hole);
                     result.add_hole(hole_points);
                 }
             }

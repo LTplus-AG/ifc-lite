@@ -98,6 +98,18 @@ pub enum BoolFailureReason {
     PolygonalBoundedHalfSpaceFallback,
     /// `IfcBooleanResult` operator string didn't match any known op.
     UnknownBooleanOperator(String),
+    /// Manifold's `difference` returned output that is implausibly small
+    /// relative to the host (e.g. 1 triangle from a 12-triangle box host
+    /// when the cutter does not fully contain the host). Observed on
+    /// Linux x86_64 for the AC20-FZK-Haus gable walls; macOS aarch64 on
+    /// the same input produces the expected pentagon. The caller logged
+    /// this and re-ran the same op through the legacy BSP path; the
+    /// retained output (Manifold or BSP) depends on which one looked
+    /// sane.
+    ManifoldOutputDegenerate {
+        host_tris: usize,
+        result_tris: usize,
+    },
     /// Catch-all for kernel-specific errors. Free-form because the legacy BSP
     /// returns `String` errors and Manifold (Sprint 2) will return its own.
     KernelError(String),
@@ -125,6 +137,13 @@ impl fmt::Display for BoolFailureReason {
             BoolFailureReason::UnknownBooleanOperator(op) => {
                 write!(f, "unknown IfcBooleanResult operator '{op}'")
             }
+            BoolFailureReason::ManifoldOutputDegenerate {
+                host_tris,
+                result_tris,
+            } => write!(
+                f,
+                "Manifold difference returned implausibly small result ({result_tris} triangles from {host_tris}-triangle host) — fell back to BSP"
+            ),
             BoolFailureReason::KernelError(msg) => write!(f, "kernel error: {msg}"),
         }
     }

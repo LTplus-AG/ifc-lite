@@ -3375,8 +3375,8 @@ function __wbg_get_imports() {
         const ret = BigInt.asUintN(64, arg0);
         return addHeapObject(ret);
     };
-    imports.wbg.__wbindgen_cast_a7f9b7b12781c1bc = function(arg0, arg1) {
-        // Cast intrinsic for `Closure(Closure { dtor_idx: 169, function: Function { arguments: [Externref], shim_idx: 170, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+    imports.wbg.__wbindgen_cast_87cdb333eb97349f = function(arg0, arg1) {
+        // Cast intrinsic for `Closure(Closure { dtor_idx: 168, function: Function { arguments: [Externref], shim_idx: 169, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
         const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_1251, __wasm_bindgen_func_elem_1252);
         return addHeapObject(ret);
     };

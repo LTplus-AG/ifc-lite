@@ -15,6 +15,7 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
@@ -182,6 +183,10 @@ export function ViewerLayout() {
   // so anything at `bottom: 0` lands behind it. visualViewport.height excludes
   // the URL bar overlay, giving us the real visible bottom.
   const bottomViewportInset = useVisualViewportBottomInset();
+
+  // Hide mobile floating buttons when the empty-state "Load IFC" card is showing.
+  const { models, geometryResult } = useIfc();
+  const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
 
   // Detect mobile viewport — use both width check AND touch capability
   useEffect(() => {
@@ -388,8 +393,9 @@ export function ViewerLayout() {
             )}
 
             {/* Mobile Floating Buttons — top-left, brutalist vocabulary (tight radii, visible
-                borders, uppercase caption) matching panel headers across the app. */}
-            {leftPanelCollapsed && rightPanelCollapsed && (
+                borders, uppercase caption) matching panel headers across the app.
+                Hidden in the empty state so the "Load IFC" card stays unobstructed. */}
+            {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
               <div className="absolute top-4 left-4 flex flex-col gap-2.5 z-20">
                 <button
                   className="flex flex-col items-center gap-1 group touch-manipulation"

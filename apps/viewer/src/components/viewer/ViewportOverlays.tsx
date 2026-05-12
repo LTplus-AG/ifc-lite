@@ -165,10 +165,10 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
         <div
           className={cn(
             'absolute flex flex-col gap-1 bg-background/90 backdrop-blur-sm border p-1',
-            // Mobile: bottom-left at ~25% up from lower edge — thumb-reachable on
+            // Mobile: bottom-left at ~15% up from lower edge — thumb-reachable on
             // portrait phones and well clear of the URL bar. Tight radii + flat
             // background match the codebase's brutalist panel-chrome vocabulary.
-            isMobile ? 'left-4 bottom-[25%] rounded-md' : 'bottom-4 right-4 rounded-lg shadow-sm',
+            isMobile ? 'left-4 bottom-[15%] rounded-md' : 'bottom-4 right-4 rounded-lg shadow-sm',
           )}
         >
           <Tooltip>

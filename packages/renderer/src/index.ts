@@ -193,6 +193,12 @@ export class Renderer {
     private lastRenderErrorTime: number = 0;
     private readonly RENDER_ERROR_THROTTLE_MS = 1000;
 
+    // Diagnostic counters for mobile debugging
+    private _renderCallCount: number = 0;
+    private _renderSkipCount: number = 0;
+    private _renderErrorCount: number = 0;
+    private _lastRenderError: string = '';
+
 
     // Dirty flag: set by requestRender(), consumed by the animation loop.
     // Centralises all render scheduling — callers never call render() directly.
@@ -248,11 +254,18 @@ export class Renderer {
             this.device.getFormat(),
             this.pipeline.getSampleCount()
         );
-        this.postProcessor = new PostProcessor(this.device, {
-            enableContactShading: true,
-            contactRadius: 1.0,
-            contactIntensity: 0.3,
-        }, this.pipeline.getSampleCount());
+        // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
+        // depth TEXTURE_BINDING), rendering still works without post-processing.
+        try {
+            this.postProcessor = new PostProcessor(this.device, {
+                enableContactShading: true,
+                contactRadius: 1.0,
+                contactIntensity: 0.3,
+            }, this.pipeline.getSampleCount());
+        } catch (e) {
+            console.warn('[Renderer] PostProcessor init failed (post-processing disabled):', e);
+            this.postProcessor = null;
+        }
         this.pointCloudRenderer = new PointCloudRenderer(
             this.device.getDevice(),
             this.device.getFormat(),
@@ -1053,8 +1066,38 @@ export class Renderer {
     /**
      * Render frame
      */
+    /** Get diagnostic info for mobile debugging */
+    getDiagnostics(): {
+        calls: number; skips: number; errors: number; lastError: string;
+        batches: number; meshes: number; contextOk: boolean;
+        gpuErrors: number; lastGpuError: string;
+        camPos: string; camTgt: string; bounds: string;
+    } {
+        const pos = this.camera.getPosition();
+        const tgt = this.camera.getTarget();
+        const b = this.modelBounds;
+        return {
+            calls: this._renderCallCount,
+            skips: this._renderSkipCount,
+            errors: this._renderErrorCount,
+            lastError: this._lastRenderError,
+            batches: this.scene.getBatchedMeshes().length,
+            meshes: this.scene.getMeshes().length,
+            contextOk: this.device.isInitialized(),
+            gpuErrors: this.device._uncapturedErrorCount,
+            lastGpuError: this.device._lastUncapturedError ?? '',
+            camPos: `${pos.x.toFixed(1)},${pos.y.toFixed(1)},${pos.z.toFixed(1)}`,
+            camTgt: `${tgt.x.toFixed(1)},${tgt.y.toFixed(1)},${tgt.z.toFixed(1)}`,
+            bounds: b ? `${b.min.x.toFixed(0)}..${b.max.x.toFixed(0)} ${b.min.y.toFixed(0)}..${b.max.y.toFixed(0)} ${b.min.z.toFixed(0)}..${b.max.z.toFixed(0)}` : 'none',
+        };
+    }
+
     render(options: RenderOptions = {}): void {
-        if (!this.device.isInitialized() || !this.pipeline) return;
+        this._renderCallCount++;
+        if (!this.device.isInitialized() || !this.pipeline) {
+            this._renderSkipCount++;
+            return;
+        }
 
         // Validate canvas dimensions
         // Align width to 64 pixels for WebGPU texture row alignment (256 bytes / 4 bytes per pixel)
@@ -1064,7 +1107,7 @@ export class Renderer {
         const height = Math.max(1, Math.floor(rect.height));
 
         // Skip rendering if canvas is too small
-        if (width < 64 || height < 10) return;
+        if (width < 64 || height < 10) { this._renderSkipCount++; return; }
 
         // Update canvas pixel dimensions if needed
         const dimensionsChanged = this.canvas.width !== width || this.canvas.height !== height;
@@ -1082,10 +1125,11 @@ export class Renderer {
         }
 
         // Skip rendering if canvas is invalid
-        if (this.canvas.width === 0 || this.canvas.height === 0) return;
+        if (this.canvas.width === 0 || this.canvas.height === 0) { this._renderSkipCount++; return; }
 
         // Ensure context is valid before rendering (handles HMR, focus changes, etc.)
         if (!this.device.ensureContext()) {
+            this._renderSkipCount++;
             return; // Skip this frame, context will be ready next frame
         }
 
@@ -1207,6 +1251,13 @@ export class Renderer {
         }
         if (this.instancedPipeline?.needsResize(this.canvas.width, this.canvas.height)) {
             this.instancedPipeline.resize(this.canvas.width, this.canvas.height);
+        }
+
+        // Push a validation error scope to capture the EXACT error (for mobile debugging)
+        // Only do this for the first few renders to avoid performance overhead
+        const captureGpuError = this._renderCallCount <= 5;
+        if (captureGpuError) {
+            device.pushErrorScope('validation');
         }
 
         // Get current texture safely - may return null if context needs reconfiguration
@@ -1516,24 +1567,27 @@ export class Renderer {
             const msaaView = this.pipeline.getMultisampleTextureView();
             const useMSAA = msaaView !== null && this.pipeline.getSampleCount() > 1;
 
+            // Build color attachments — skip objectId in single-target mode
+            const colorAttachments: GPURenderPassColorAttachment[] = [
+                {
+                    // If MSAA enabled: render to multisample texture, resolve to swap chain
+                    // If MSAA disabled: render directly to swap chain
+                    view: useMSAA ? msaaView : textureView,
+                    resolveTarget: useMSAA ? textureView : undefined,
+                    loadOp: 'clear' as const,
+                    clearValue: clearColor,
+                    storeOp: (useMSAA ? 'discard' : 'store') as GPUStoreOp,
+                },
+            ];
+            colorAttachments.push({
+                view: objectIdView,
+                loadOp: 'clear' as const,
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                storeOp: (needsObjectIdPass ? 'store' : 'discard') as GPUStoreOp,
+            });
+
             const pass = encoder.beginRenderPass({
-                colorAttachments: [
-                    {
-                        // If MSAA enabled: render to multisample texture, resolve to swap chain
-                        // If MSAA disabled: render directly to swap chain
-                        view: useMSAA ? msaaView : textureView,
-                        resolveTarget: useMSAA ? textureView : undefined,
-                        loadOp: 'clear',
-                        clearValue: clearColor,
-                        storeOp: useMSAA ? 'discard' : 'store',  // Discard MSAA buffer after resolve
-                    },
-                    {
-                        view: objectIdView,
-                        loadOp: 'clear',
-                        clearValue: { r: 0, g: 0, b: 0, a: 0 },
-                        storeOp: needsObjectIdPass ? 'store' : 'discard',
-                    },
-                ],
+                colorAttachments,
                 depthStencilAttachment: {
                     view: this.pipeline.getDepthTextureView(),
                     depthClearValue: 0.0,  // Reverse-Z: clear to 0.0 (far plane)
@@ -2103,7 +2157,21 @@ export class Renderer {
             }
 
             device.queue.submit([encoder.finish()]);
+
+            // Pop validation error scope and capture the exact error
+            if (captureGpuError) {
+                device.popErrorScope().then((error) => {
+                    if (error) {
+                        const msg = error.message || String(error);
+                        console.error('[WebGPU] Validation error in render pass:', msg);
+                        this.device._lastUncapturedError = `VALIDATION: ${msg}`;
+                        this.device._uncapturedErrorCount++;
+                    }
+                });
+            }
         } catch (error) {
+            this._renderErrorCount++;
+            this._lastRenderError = error instanceof Error ? error.message : String(error);
             // Handle WebGPU errors (e.g., device lost, invalid state)
             // Mark context as invalid so it gets reconfigured next frame
             this.device.invalidateContext();

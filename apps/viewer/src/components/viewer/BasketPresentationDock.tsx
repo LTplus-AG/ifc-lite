@@ -46,6 +46,7 @@ export function BasketPresentationDock() {
   const basketViews = useViewerStore((s) => s.basketViews);
   const activeBasketViewId = useViewerStore((s) => s.activeBasketViewId);
   const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
+  const isMobile = useViewerStore((s) => s.isMobile);
 
   const showPinboard = useViewerStore((s) => s.showPinboard);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
@@ -164,6 +165,8 @@ export function BasketPresentationDock() {
     if (!Number.isFinite(seconds) || seconds <= 0) return;
     setBasketViewTransitionMs(viewId, Math.round(seconds * 1000));
   }, [setBasketViewTransitionMs]);
+
+  if (isMobile) return null;
 
   if (!basketPresentationVisible) {
     return (

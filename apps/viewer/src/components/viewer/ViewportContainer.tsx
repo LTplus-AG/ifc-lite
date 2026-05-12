@@ -591,9 +591,9 @@ export function ViewportContainer() {
           </div>
         )}
 
-        {/* WebGPU Not Supported Banner */}
+        {/* WebGPU Not Supported Banner — compact on mobile */}
         {!webgpu.checking && !webgpu.supported && (
-          <div className="absolute top-0 left-0 right-0 z-40">
+          <div className="absolute top-0 left-0 right-0 z-40 max-h-[40vh] overflow-auto">
             {/* Hazard stripes background */}
             <div
               className="absolute inset-0 opacity-10"
@@ -706,8 +706,8 @@ export function ViewportContainer() {
           </div>
         )}
 
-        {/* Empty state content */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-8 z-10">
+        {/* Empty state content — mobile-optimized padding and scrollable */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 md:p-8 z-10 overflow-auto">
 
           {/* Main Card */}
           <div className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
@@ -850,8 +850,8 @@ export function ViewportContainer() {
             )}
           </div>
 
-          {/* Feature Grid */}
-          <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl w-full">
+          {/* Feature Grid — hidden on mobile to save viewport space */}
+          <div className="mt-16 hidden md:grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl w-full">
             {[
               { icon: MousePointer, label: "Select", desc: "Inspect elements", accentClass: 'text-blue-500 dark:text-[#7aa2f7]' },
               { icon: Layers, label: "Filter", desc: "Isolate storeys", accentClass: 'text-purple-500 dark:text-[#bb9af7]' },

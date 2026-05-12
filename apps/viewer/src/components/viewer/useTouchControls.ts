@@ -11,7 +11,9 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, PickResult } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
-import { getEntityCenter } from '../../utils/viewportUtils.js';
+
+/** Locked gesture mode for 2-finger interactions */
+type TwoFingerGesture = 'none' | 'pinch' | 'pan';
 
 export interface TouchState {
   touches: Touch[];
@@ -21,6 +23,12 @@ export interface TouchState {
   tapStartPos: { x: number; y: number };
   didMove: boolean;
   multiTouch: boolean;
+  /** Locked 2-finger gesture mode (reset on finger lift) */
+  twoFingerGesture: TwoFingerGesture;
+  /** Accumulated distance change since 2-finger gesture start */
+  gestureDistanceAccum: number;
+  /** Accumulated center movement since 2-finger gesture start */
+  gesturePanAccum: number;
 }
 
 export interface UseTouchControlsParams {
@@ -70,6 +78,40 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     const camera = renderer.getCamera();
     const touchState = touchStateRef.current;
 
+    // Anchor the orbit pivot to the 3D point directly under a finger.
+    // Touch UX: prefer the finger's actual hit, then fall back to ray-projection
+    // at current view distance — never to a selected entity's center, which
+    // would pivot far from the user's touch and feel disconnected.
+    const anchorOrbitPivotUnderFinger = (touch: Touch) => {
+      const rect = canvas.getBoundingClientRect();
+      const tx = touch.clientX - rect.left;
+      const ty = touch.clientY - rect.top;
+      const hit = renderer.raycastScene(tx, ty, {
+        hiddenIds: hiddenEntitiesRef.current,
+        isolatedIds: isolatedEntitiesRef.current,
+      });
+      if (hit?.intersection) {
+        camera.setOrbitCenter(hit.intersection.point);
+        return;
+      }
+      const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
+      const target = camera.getTarget();
+      const toTarget = {
+        x: target.x - ray.origin.x,
+        y: target.y - ray.origin.y,
+        z: target.z - ray.origin.z,
+      };
+      const d = Math.max(
+        1,
+        toTarget.x * ray.direction.x + toTarget.y * ray.direction.y + toTarget.z * ray.direction.z,
+      );
+      camera.setOrbitCenter({
+        x: ray.origin.x + ray.direction.x * d,
+        y: ray.origin.y + ray.direction.y * d,
+        z: ray.origin.z + ray.direction.z * d,
+      });
+    };
+
     const handleTouchStart = async (e: TouchEvent) => {
       e.preventDefault();
       touchState.touches = Array.from(e.touches);
@@ -92,39 +134,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         };
         touchState.didMove = false;
 
-        // Set orbit pivot to the 3D point under the finger.
-        // On miss, place pivot at current distance along the finger ray.
-        const rect = canvas.getBoundingClientRect();
-        const tx = touchState.touches[0].clientX - rect.left;
-        const ty = touchState.touches[0].clientY - rect.top;
-        const hit = renderer.raycastScene(tx, ty, {
-          hiddenIds: hiddenEntitiesRef.current,
-          isolatedIds: isolatedEntitiesRef.current,
-        });
-        if (hit?.intersection) {
-          camera.setOrbitCenter(hit.intersection.point);
-        } else if (selectedEntityIdRef.current) {
-          const center = getEntityCenter(geometryRef.current, selectedEntityIdRef.current);
-          if (center) {
-            camera.setOrbitCenter(center);
-          } else {
-            camera.setOrbitCenter(null);
-          }
-        } else {
-          const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
-          const target = camera.getTarget();
-          const toTarget = {
-            x: target.x - ray.origin.x,
-            y: target.y - ray.origin.y,
-            z: target.z - ray.origin.z,
-          };
-          const d = Math.max(1, toTarget.x * ray.direction.x + toTarget.y * ray.direction.y + toTarget.z * ray.direction.z);
-          camera.setOrbitCenter({
-            x: ray.origin.x + ray.direction.x * d,
-            y: ray.origin.y + ray.direction.y * d,
-            z: ray.origin.z + ray.direction.z * d,
-          });
-        }
+        anchorOrbitPivotUnderFinger(touchState.touches[0]);
       } else if (touchState.touches.length === 1) {
         // Single touch after multi-touch - just update center for orbit
         touchState.lastCenter = {
@@ -139,6 +149,10 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           x: (touchState.touches[0].clientX + touchState.touches[1].clientX) / 2,
           y: (touchState.touches[0].clientY + touchState.touches[1].clientY) / 2,
         };
+        // Reset gesture lock for new 2-finger interaction
+        touchState.twoFingerGesture = 'none';
+        touchState.gestureDistanceAccum = 0;
+        touchState.gesturePanAccum = 0;
       }
     };
 
@@ -173,11 +187,30 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         const centerY = (touchState.touches[0].clientY + touchState.touches[1].clientY) / 2;
         const panDx = centerX - touchState.lastCenter.x;
         const panDy = centerY - touchState.lastCenter.y;
-        camera.pan(panDx, panDy, false);
 
         const zoomDelta = distance - touchState.lastDistance;
-        const rect = canvas.getBoundingClientRect();
-        camera.zoom(zoomDelta * 10, false, centerX - rect.left, centerY - rect.top, canvas.width, canvas.height);
+
+        // Determine dominant gesture if not yet locked
+        if (touchState.twoFingerGesture === 'none') {
+          touchState.gestureDistanceAccum += Math.abs(zoomDelta);
+          touchState.gesturePanAccum += Math.abs(panDx) + Math.abs(panDy);
+
+          // Lock gesture after enough movement (8px threshold)
+          const threshold = 8;
+          if (touchState.gestureDistanceAccum > threshold || touchState.gesturePanAccum > threshold) {
+            touchState.twoFingerGesture =
+              touchState.gestureDistanceAccum > touchState.gesturePanAccum ? 'pinch' : 'pan';
+          }
+        }
+
+        // Apply only the locked gesture
+        if (touchState.twoFingerGesture === 'pan') {
+          camera.pan(panDx, panDy, false);
+        } else if (touchState.twoFingerGesture === 'pinch') {
+          const rect = canvas.getBoundingClientRect();
+          camera.zoom(zoomDelta * 3, false, centerX - rect.left, centerY - rect.top, canvas.width, canvas.height);
+        }
+        // While gesture is 'none' (detecting), don't apply either — avoids jitter
 
         touchState.lastDistance = distance;
         touchState.lastCenter = { x: centerX, y: centerY };
@@ -191,6 +224,18 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       const previousTouchCount = touchState.touches.length;
       const wasMultiTouch = touchState.multiTouch;
       touchState.touches = Array.from(e.touches);
+
+      // Multi-touch → single-touch transition: re-anchor everything to the
+      // remaining finger so the next orbit move computes a clean delta from
+      // the finger's actual position (not the stale 2-finger midpoint) and
+      // pivots under the finger (not the old pinch pivot).
+      if (previousTouchCount >= 2 && touchState.touches.length === 1) {
+        touchState.lastCenter = {
+          x: touchState.touches[0].clientX,
+          y: touchState.touches[0].clientY,
+        };
+        anchorOrbitPivotUnderFinger(touchState.touches[0]);
+      }
 
       // Only clear interaction when all fingers are lifted (gesture truly ended).
       // Clearing earlier would briefly drop interaction mode during 2-finger → 1-finger
@@ -229,8 +274,11 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           handlePickForSelection(pickResult);
         }
 
-        // Reset multi-touch flag when all touches end
+        // Reset multi-touch and gesture lock when all touches end
         touchState.multiTouch = false;
+        touchState.twoFingerGesture = 'none';
+        touchState.gestureDistanceAccum = 0;
+        touchState.gesturePanAccum = 0;
       }
     };
 
@@ -245,16 +293,27 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       touchState.multiTouch = false;
     };
 
-    canvas.addEventListener('touchstart', handleTouchStart);
-    canvas.addEventListener('touchmove', handleTouchMove);
-    canvas.addEventListener('touchend', handleTouchEnd);
+    // Use { passive: false } to ensure preventDefault() works on mobile
+    // Safari and Chrome mobile require this for smooth touch handling
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
     canvas.addEventListener('touchcancel', handleTouchCancel);
+
+    // Prevent iOS Safari pull-to-refresh and elastic bounce on the canvas
+    const preventOverscroll = (e: TouchEvent) => {
+      if (e.target === canvas) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchmove', preventOverscroll, { passive: false });
 
     return () => {
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
       canvas.removeEventListener('touchcancel', handleTouchCancel);
+      document.removeEventListener('touchmove', preventOverscroll);
     };
   }, [isInitialized]);
 }

@@ -34,6 +34,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
+  const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
   const { ifcDataStore, geometryResult } = useIfc();
@@ -161,11 +162,19 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
           onClose={toggleCesium}
         />
       ) : (
-        <div className="absolute bottom-4 right-4 flex flex-col gap-1 bg-background/80 backdrop-blur-sm rounded-lg border shadow-sm p-1">
+        <div
+          className={cn(
+            'absolute flex flex-col gap-1 bg-background/90 backdrop-blur-sm border p-1',
+            // Mobile: bottom-left at ~15% up from lower edge — thumb-reachable on
+            // portrait phones and well clear of the URL bar. Tight radii + flat
+            // background match the codebase's brutalist panel-chrome vocabulary.
+            isMobile ? 'left-4 bottom-[15%] rounded-md' : 'bottom-4 right-4 rounded-lg shadow-sm',
+          )}
+        >
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={handleHome}>
-                <Home className="h-4 w-4" />
+              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleHome}>
+                <Home className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Home (H)</TooltipContent>
@@ -173,8 +182,8 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={handleZoomIn}>
-                <ZoomIn className="h-4 w-4" />
+              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomIn}>
+                <ZoomIn className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Zoom In (+)</TooltipContent>
@@ -182,8 +191,8 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={handleZoomOut}>
-                <ZoomOut className="h-4 w-4" />
+              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomOut}>
+                <ZoomOut className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Zoom Out (-)</TooltipContent>
@@ -191,17 +200,17 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
         </div>
       )}
 
-      {/* Context Info (bottom-center) - Storey names */}
+      {/* Context Info — Storey names. Top-center on mobile (URL bar steals the bottom). */}
       {storeyNames && storeyNames.length > 0 && (
         <div className={cn(
           'absolute left-1/2 -translate-x-1/2 px-4 py-2 bg-background/80 backdrop-blur-sm rounded-full border shadow-sm',
-          basketPresentationVisible ? 'bottom-28' : 'bottom-4',
+          isMobile ? 'top-4' : basketPresentationVisible ? 'bottom-28' : 'bottom-4',
         )}>
           <div className="flex items-center gap-2 text-sm">
             <Layers className="h-4 w-4 text-primary" />
             <span className="font-medium">
-              {storeyNames.length === 1 
-                ? storeyNames[0] 
+              {storeyNames.length === 1
+                ? storeyNames[0]
                 : `${storeyNames.length} storeys`}
             </span>
           </div>
@@ -221,20 +230,22 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
         </div>
       )}
 
-      {/* Axis Helper (bottom-left, above scale bar) - IFC Z-up convention */}
-      <div className="absolute bottom-16 left-4">
-        <AxisHelper
-          ref={axisHelperRef}
-          rotationX={initialRotationX}
-          rotationY={initialRotationY}
-        />
-      </div>
-
-      {/* Scale Bar (bottom-left) */}
-      <div className="absolute bottom-4 left-4 flex flex-col items-start gap-1">
-        <div className="h-1 w-24 bg-foreground/80 rounded-full" />
-        <span className="text-xs text-foreground/80">{formatScale(scale)}</span>
-      </div>
+      {/* Axis Helper + Scale Bar — desktop only; mobile keeps the viewport unobstructed */}
+      {!isMobile && (
+        <>
+          <div className="absolute bottom-16 left-4">
+            <AxisHelper
+              ref={axisHelperRef}
+              rotationX={initialRotationX}
+              rotationY={initialRotationY}
+            />
+          </div>
+          <div className="absolute bottom-4 left-4 flex flex-col items-start gap-1">
+            <div className="h-1 w-24 bg-foreground/80 rounded-full" />
+            <span className="text-xs text-foreground/80">{formatScale(scale)}</span>
+          </div>
+        </>
+      )}
     </>
   );
 }

@@ -365,31 +365,34 @@ export function ViewerLayout() {
               </MobileBottomSheet>
             )}
 
-            {/* Mobile Floating Action Buttons — sits above the browser URL bar + home-indicator */}
+            {/* Mobile Floating Buttons — icon-only with caption, mirrors right-side control family */}
             {leftPanelCollapsed && rightPanelCollapsed && (
-              <div
-                className="absolute left-3 right-3 flex justify-center gap-2 z-20"
-                style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${bottomViewportInset}px + 1rem)` }}
-              >
+              <div className="absolute top-4 left-4 flex flex-col gap-3 z-20">
                 <button
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-background/90 backdrop-blur-sm text-foreground border border-border rounded-full shadow-lg text-xs font-medium active:scale-95 transition-transform touch-manipulation"
+                  className="flex flex-col items-center gap-0.5 active:scale-95 transition-transform touch-manipulation"
                   onClick={() => {
                     setRightPanelCollapsed(true);
                     setLeftPanelCollapsed(false);
                   }}
+                  aria-label="Open Hierarchy"
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10M4 18h7" /></svg>
-                  Hierarchy
+                  <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-2xl shadow-sm">
+                    <svg className="h-5 w-5 text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10M4 18h7" /></svg>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground leading-none">Hierarchy</span>
                 </button>
                 <button
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-background/90 backdrop-blur-sm text-foreground border border-border rounded-full shadow-lg text-xs font-medium active:scale-95 transition-transform touch-manipulation"
+                  className="flex flex-col items-center gap-0.5 active:scale-95 transition-transform touch-manipulation"
                   onClick={() => {
                     setLeftPanelCollapsed(true);
                     setRightPanelCollapsed(false);
                   }}
+                  aria-label="Open Properties"
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                  Properties
+                  <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-2xl shadow-sm">
+                    <svg className="h-5 w-5 text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground leading-none">Properties</span>
                 </button>
               </div>
             )}

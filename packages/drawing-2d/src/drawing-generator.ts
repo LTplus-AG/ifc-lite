@@ -128,14 +128,20 @@ export class Drawing2DGenerator {
 
     let cutSegments: CutSegment[];
 
-    if (opts.useGPU && this.gpuCutter && this.gpuDevice) {
-      // GPU path
+    if (opts.useGPU && this.gpuCutter && this.gpuDevice && !config.plane.customPlane) {
+      // GPU path. Falls back to CPU when a custom (face-picked) plane is
+      // active because GPUSectionCutter still assumes cardinal axes —
+      // generalising the GPU path is tracked as follow-up work; for now
+      // CPU is fast enough on the FZK-Haus-class models the face-pick
+      // UX targets.
       cutSegments = await this.gpuCutter.cutMeshes(meshes, config.plane);
     } else {
-      // CPU path
-      if (!this.cpuCutter || this.cpuCutter === null) {
-        this.cpuCutter = new SectionCutter(config.plane);
-      }
+      // CPU path. Always rebuild the cutter so a switch from cardinal
+      // to custom-plane (or between two different custom planes) takes
+      // effect immediately — caching the instance keyed only on
+      // existence, as the previous code did, would silently apply the
+      // first config used for the lifetime of the generator.
+      this.cpuCutter = new SectionCutter(config.plane);
       const cutResult = this.cpuCutter.cutMeshes(meshes);
       cutSegments = cutResult.segments;
     }

@@ -20,6 +20,8 @@ export { Section2DOverlayRenderer } from './section-2d-overlay.js';
 // holds the styling primitives shared with the store and UI.
 export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
+export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
+export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
 export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
@@ -1342,86 +1344,118 @@ export class Renderer {
                 }
 
                 if (options.sectionPlane.enabled) {
-                    // Calculate plane normal based on semantic axis
-                    // down = Y axis (horizontal cut), front = Z axis, side = X axis
-                    let normal: [number, number, number] = [0, 0, 0];
-                    if (options.sectionPlane.axis === 'side') normal[0] = 1;        // X axis
-                    else if (options.sectionPlane.axis === 'down') normal[1] = 1;   // Y axis (horizontal)
-                    else normal[2] = 1;                                              // Z axis (front)
+                    // Explicit normal + distance override (face-pick / arbitrary
+                    // plane, issue #243). Used verbatim: no axis mapping, no
+                    // position slider, no building rotation — the caller already
+                    // has the plane in world space.
+                    const explicitNormal   = options.sectionPlane.normal;
+                    const explicitDistance = options.sectionPlane.distance;
+                    const hasExplicitPlane =
+                        explicitNormal !== undefined &&
+                        explicitDistance !== undefined &&
+                        Number.isFinite(explicitDistance);
 
-                    // Apply building rotation if present (rotate normal around Y axis)
-                    // Building rotation is in X-Y plane (Z is up in IFC, Y is up in WebGL)
-                    if (options.buildingRotation !== undefined && options.buildingRotation !== 0) {
-                        const cosR = Math.cos(options.buildingRotation);
-                        const sinR = Math.sin(options.buildingRotation);
-                        // Rotate normal vector around Y axis (vertical)
-                        // For X-Z plane rotation: x' = x*cos - z*sin, z' = x*sin + z*cos, y' = y
-                        const x = normal[0];
-                        const z = normal[2];
-                        normal[0] = x * cosR - z * sinR;
-                        normal[2] = x * sinR + z * cosR;
-                        // Normalize to maintain unit length
-                        const len = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
-                        if (len > 0.0001) {
-                            normal[0] /= len;
-                            normal[1] /= len;
-                            normal[2] /= len;
+                    let normal: [number, number, number];
+                    let distance: number;
+
+                    if (hasExplicitPlane) {
+                        // Defensive renormalisation in case the caller passed a
+                        // non-unit vector (e.g. mesh face normals quantised by
+                        // the geometry pipeline).
+                        const nx = explicitNormal![0];
+                        const ny = explicitNormal![1];
+                        const nz = explicitNormal![2];
+                        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+                        if (len > 1e-6) {
+                            normal = [nx / len, ny / len, nz / len];
+                            distance = explicitDistance! / len;
+                        } else {
+                            normal = [0, 1, 0];
+                            distance = explicitDistance!;
                         }
-                    }
+                    } else {
+                        // Cardinal-axis preset path (unchanged behaviour).
+                        // down = Y axis (horizontal cut), front = Z axis, side = X axis
+                        normal = [0, 0, 0];
+                        if (options.sectionPlane.axis === 'side') normal[0] = 1;        // X axis
+                        else if (options.sectionPlane.axis === 'down') normal[1] = 1;   // Y axis (horizontal)
+                        else normal[2] = 1;                                              // Z axis (front)
 
-                    // Get axis-specific range. The renderer's own `boundsMin/Max`
-                    // are computed from the GPU vertex buffers this frame, so
-                    // they are guaranteed to be in the same Y-up world space as
-                    // `input.worldPos` in the shader. `options.sectionPlane.min/max`
-                    // comes from the UI via `coordinateInfo.shiftedBounds` and can
-                    // be stale during streaming or outright wrong during model
-                    // load (initialised to {0,0,0} before the first bounds update)
-                    // — using those directly was the cause of the "slider moves
-                    // 1% and the whole model disappears" bug.
-                    //
-                    // Policy: always use the renderer's own bounds for the Y-up
-                    // range. Only honour the UI override when it is a valid,
-                    // non-degenerate range that lies INSIDE the actual mesh
-                    // bounds (e.g. storey filtering from the level picker).
-                    const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
-                    let minVal = boundsMin[axisIdx];
-                    let maxVal = boundsMax[axisIdx];
-                    const uiMin = options.sectionPlane.min;
-                    const uiMax = options.sectionPlane.max;
-                    if (
-                        Number.isFinite(uiMin) &&
-                        Number.isFinite(uiMax) &&
-                        (uiMax as number) - (uiMin as number) > 1e-6 &&
-                        (uiMin as number) >= minVal - 1e-3 &&
-                        (uiMax as number) <= maxVal + 1e-3
-                    ) {
-                        minVal = uiMin as number;
-                        maxVal = uiMax as number;
-                    }
+                        // Apply building rotation if present (rotate normal around Y axis)
+                        // Building rotation is in X-Y plane (Z is up in IFC, Y is up in WebGL)
+                        if (options.buildingRotation !== undefined && options.buildingRotation !== 0) {
+                            const cosR = Math.cos(options.buildingRotation);
+                            const sinR = Math.sin(options.buildingRotation);
+                            // Rotate normal vector around Y axis (vertical)
+                            // For X-Z plane rotation: x' = x*cos - z*sin, z' = x*sin + z*cos, y' = y
+                            const x = normal[0];
+                            const z = normal[2];
+                            normal[0] = x * cosR - z * sinR;
+                            normal[2] = x * sinR + z * cosR;
+                            // Normalize to maintain unit length
+                            const rlen = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+                            if (rlen > 0.0001) {
+                                normal[0] /= rlen;
+                                normal[1] /= rlen;
+                                normal[2] /= rlen;
+                            }
+                        }
 
-                    // Calculate plane distance from position percentage
-                    const range = maxVal - minVal;
-                    const distance = minVal + (options.sectionPlane.position / 100) * range;
+                        // Get axis-specific range. The renderer's own `boundsMin/Max`
+                        // are computed from the GPU vertex buffers this frame, so
+                        // they are guaranteed to be in the same Y-up world space as
+                        // `input.worldPos` in the shader. `options.sectionPlane.min/max`
+                        // comes from the UI via `coordinateInfo.shiftedBounds` and can
+                        // be stale during streaming or outright wrong during model
+                        // load (initialised to {0,0,0} before the first bounds update)
+                        // — using those directly was the cause of the "slider moves
+                        // 1% and the whole model disappears" bug.
+                        //
+                        // Policy: always use the renderer's own bounds for the Y-up
+                        // range. Only honour the UI override when it is a valid,
+                        // non-degenerate range that lies INSIDE the actual mesh
+                        // bounds (e.g. storey filtering from the level picker).
+                        const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
+                        let minVal = boundsMin[axisIdx];
+                        let maxVal = boundsMax[axisIdx];
+                        const uiMin = options.sectionPlane.min;
+                        const uiMax = options.sectionPlane.max;
+                        if (
+                            Number.isFinite(uiMin) &&
+                            Number.isFinite(uiMax) &&
+                            (uiMax as number) - (uiMin as number) > 1e-6 &&
+                            (uiMin as number) >= minVal - 1e-3 &&
+                            (uiMax as number) <= maxVal + 1e-3
+                        ) {
+                            minVal = uiMin as number;
+                            maxVal = uiMax as number;
+                        }
+
+                        // Calculate plane distance from position percentage
+                        const range = maxVal - minVal;
+                        distance = minVal + (options.sectionPlane.position / 100) * range;
+                    }
 
                     sectionPlaneData = { normal, distance, enabled: true };
 
                     // One-shot diagnostic: when section first becomes active,
-                    // log the exact bounds + distance the shader will use.
-                    // This is the fastest way to confirm "bounds mismatch" bugs
-                    // without asking the user to run a debugger.
+                    // log the exact bounds + plane the shader will use. This
+                    // is the fastest way to confirm "bounds mismatch" / "plane
+                    // off-screen" bugs without asking the user to run a
+                    // debugger. The custom-plane branch logs `mode: 'explicit'`
+                    // so reports against tilted planes are easy to spot.
                     if (!this._loggedSectionBounds) {
                         this._loggedSectionBounds = true;
                         console.info('[Section] Y-up bounds used for clip:', {
+                            mode: hasExplicitPlane ? 'explicit' : 'axis-aligned',
                             axis: options.sectionPlane.axis,
-                            axisIdx,
                             bounds: {
                                 min: { x: boundsMin.x, y: boundsMin.y, z: boundsMin.z },
                                 max: { x: boundsMax.x, y: boundsMax.y, z: boundsMax.z },
                             },
-                            uiOverride: { min: uiMin, max: uiMax },
-                            used: { min: minVal, max: maxVal },
-                            position: options.sectionPlane.position,
+                            normal,
                             distance,
+                            position: options.sectionPlane.position,
                             batchedMeshCount: this.scene.getBatchedMeshes().length,
                         });
                     }
@@ -1973,6 +2007,11 @@ export class Renderer {
                         isPreview: !options.sectionPlane.enabled, // Preview mode when not enabled
                         min: options.sectionPlane.min,
                         max: options.sectionPlane.max,
+                        // Custom-plane gizmo override (issue #243). When both
+                        // are set the gizmo bypasses the cardinal path; see
+                        // SectionPlaneRenderer.calculatePlaneVerticesFromNormal.
+                        normal: options.sectionPlane.normal,
+                        distance: options.sectionPlane.distance,
                     }
                 );
 
@@ -2219,9 +2258,19 @@ export class Renderer {
     }
 
     /**
-     * Upload 2D section drawing data for 3D overlay rendering
-     * Call this when a 2D drawing is generated to display it on the section plane
-     * Uses same position calculation as section plane: sectionRange min/max if provided, else modelBounds
+     * Upload 2D section drawing data for 3D overlay rendering.
+     *
+     * Cardinal-axis call site: pass `axis` + `position` percentage and the
+     * upload computes the plane offset along the cardinal axis using the
+     * model bounds (or `sectionRange` override). 2D points are then lifted
+     * to 3D via the cardinal-axis swap.
+     *
+     * Custom-plane call site (issue #243): pass `customPlane = { origin,
+     * tangent, bitangent }`. The 2D points are lifted via the explicit
+     * basis, exactly inverting the projection `SectionCutter` applied when
+     * generating the polygons. Without this the cap silhouette lands off
+     * the actual cutting plane (the bug PR #581 hid by suppressing the
+     * cap entirely for non-cardinal planes).
      */
     uploadSection2DOverlay(
         polygons: CutPolygon2D[],
@@ -2229,9 +2278,26 @@ export class Renderer {
         axis: 'down' | 'front' | 'side',
         position: number,  // 0-100 percentage
         sectionRange?: { min?: number; max?: number },  // Same storey-based range as section plane
-        flipped: boolean = false
+        flipped: boolean = false,
+        customPlane?: {
+            origin:    [number, number, number];
+            tangent:   [number, number, number];
+            bitangent: [number, number, number];
+        },
     ): void {
         if (!this.section2DOverlayRenderer) return;
+
+        if (customPlane) {
+            // Custom-plane path: planePosition / axis are unused — the
+            // basis the cap shader needs travels in `customPlane`. We pass
+            // 0 for `planePosition` and the existing `axis` so the cardinal
+            // shader code path that callers depend on (e.g. legacy SVG
+            // export) keeps working when customPlane is omitted.
+            this.section2DOverlayRenderer.uploadDrawing(
+                polygons, lines, axis, 0, flipped, customPlane,
+            );
+            return;
+        }
 
         // Use EXACTLY same calculation as section plane in render() method:
         // minVal = options.sectionPlane.min ?? boundsMin[axisIdx]

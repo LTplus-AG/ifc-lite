@@ -138,6 +138,15 @@ export interface SectionPlane {
   showOutlines?: boolean;
   /** Override the default cap appearance. */
   capStyle?: SectionCapStyleOptions;
+  /**
+   * Optional world-space plane normal (unit vector). When provided
+   * together with `distance`, the shader clip uses them verbatim and
+   * ignores `axis`, `position`, `min`, `max`, and any `buildingRotation`.
+   * Used for face-pick / arbitrary slice planes (issue #243).
+   */
+  normal?: [number, number, number];
+  /** Plane offset in world units: `dot(pointOnPlane, normal)`. */
+  distance?: number;
 }
 
 export type ContactShadingQuality = 'off' | 'low' | 'high';

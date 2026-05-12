@@ -84,6 +84,25 @@ export function SectionOverlay() {
     return () => setPreviewStride(1);
   }, [setPreviewStride]);
 
+  // Auto-arm face-pick when the Section tool opens (issue #243 follow-up).
+  // Bonsai/Revit-style point-and-cut is the better default workflow now that
+  // hover-preview (#84) lands the violet quad on dwell — user opens tool →
+  // hover surface → click → cut. Cardinal axis buttons remain available as
+  // a secondary affordance below.
+  //
+  // The 200ms timeout debounces the click that opened the tool: without it
+  // the tool-open click bleeds through to the canvas pick handler and
+  // accidentally sections the floor on the very same frame the panel
+  // mounts. Cleanup disarms on unmount so leaving the tool doesn't leave
+  // pick mode armed for the next tool.
+  useEffect(() => {
+    const t = setTimeout(() => setSectionPickMode(true), 200);
+    return () => {
+      clearTimeout(t);
+      setSectionPickMode(false);
+    };
+  }, [setSectionPickMode]);
+
   const togglePanel = useCallback(() => {
     setIsPanelCollapsed(prev => !prev);
   }, []);
@@ -132,40 +151,42 @@ export function SectionOverlay() {
         {/* Expandable content */}
         {!isPanelCollapsed && (
           <div className="border-t px-3 pb-3 min-w-72">
-            {/* Direction Selection. Cardinal presets clear any custom plane;
-                "Pick face" arms a face-pick (issue #243) that overrides the
-                cardinal axis with an arbitrary world-space normal. */}
+            {/* Direction Selection. "Pick face" is the primary affordance —
+                face-pick auto-arms on tool open (issue #243 follow-up) and
+                matches Bonsai/Revit point-and-cut UX. Cardinal presets are
+                demoted to a secondary row below for power users who want
+                an axis-aligned cut without picking a surface. */}
             <div className="mt-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Direction</div>
+              <Button
+                variant={sectionPickMode || isCustom ? 'default' : 'outline'}
+                size="sm"
+                className="w-full flex-col h-auto py-1.5"
+                onClick={handleTogglePickMode}
+                aria-pressed={sectionPickMode}
+                title={
+                  sectionPickMode
+                    ? 'Click any face in the viewport to cut through it'
+                    : 'Pick a face to cut through (Bonsai-style)'
+                }
+              >
+                <span className="text-xs font-medium flex items-center gap-1">
+                  <MousePointerClick className="h-3 w-3" />
+                  {sectionPickMode ? 'Click a face to cut…' : isCustom ? 'Custom (pick again)' : 'Pick face'}
+                </span>
+              </Button>
+              <div className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">or pick an axis</div>
               <div className="flex gap-1">
                 {(['down', 'front', 'side'] as const).map((axis) => (
                   <Button
                     key={axis}
-                    variant={!isCustom && sectionPlane.axis === axis ? 'default' : 'outline'}
+                    variant={!isCustom && sectionPlane.axis === axis ? 'secondary' : 'ghost'}
                     size="sm"
-                    className="flex-1 flex-col h-auto py-1.5"
+                    className="flex-1 h-7 px-2 text-[11px]"
                     onClick={() => handleAxisChange(axis)}
                   >
-                    <span className="text-xs font-medium">{AXIS_INFO[axis].label}</span>
+                    <span className="font-normal">{AXIS_INFO[axis].label}</span>
                   </Button>
                 ))}
-                <Button
-                  variant={sectionPickMode || isCustom ? 'default' : 'outline'}
-                  size="sm"
-                  className="flex-1 flex-col h-auto py-1.5"
-                  onClick={handleTogglePickMode}
-                  aria-pressed={sectionPickMode}
-                  title={
-                    sectionPickMode
-                      ? 'Click any face in the viewport to cut through it'
-                      : 'Pick a face to cut through (Bonsai-style)'
-                  }
-                >
-                  <span className="text-xs font-medium flex items-center gap-1">
-                    <MousePointerClick className="h-3 w-3" />
-                    {sectionPickMode ? 'Click…' : isCustom ? 'Custom' : 'Pick'}
-                  </span>
-                </Button>
               </div>
               {isCustom && (
                 <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-muted-foreground bg-muted/50 rounded px-2 py-1">

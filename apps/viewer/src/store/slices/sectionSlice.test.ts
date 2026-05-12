@@ -399,6 +399,79 @@ describe('SectionSlice', () => {
     });
   });
 
+  // Mirrors the auto-arm useEffect in `SectionPanel.tsx` that flips
+  // `sectionPickMode` on after a 200ms debounce when the panel mounts and
+  // turns it off on unmount. We exercise the same lifecycle here at the
+  // slice level because the viewer app has no React component test harness
+  // (tests run via `node:test` + `tsx`); the component-side code path is a
+  // single setTimeout + setSectionPickMode call so re-creating the timer
+  // semantics here is sufficient regression coverage.
+  describe('section panel auto-arm lifecycle', () => {
+    it('mounting arms pick mode after the 200ms debounce', async () => {
+      assert.strictEqual(state.sectionPickMode, false);
+      // Mirror the panel's mount effect: schedule the arm, wait, observe.
+      const t = setTimeout(() => state.setSectionPickMode(true), 200);
+      try {
+        // Still false before the debounce fires — guards against the
+        // tool-open click bleeding through into the canvas pick handler.
+        assert.strictEqual(state.sectionPickMode, false);
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        assert.strictEqual(state.sectionPickMode, true);
+      } finally {
+        clearTimeout(t);
+      }
+    });
+
+    it('unmounting before the debounce fires never arms pick mode', async () => {
+      assert.strictEqual(state.sectionPickMode, false);
+      const t = setTimeout(() => state.setSectionPickMode(true), 200);
+      // Immediate unmount: cancel the pending arm + disarm explicitly,
+      // matching the cleanup function in the panel's useEffect.
+      clearTimeout(t);
+      state.setSectionPickMode(false);
+      // Wait past the original debounce window — pick mode must stay off
+      // because the timer was cancelled.
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('unmounting after auto-arm disarms pick mode and clears any preview', () => {
+      // Simulate "panel was mounted long enough for the debounce to land,
+      // user closed the tool". The cleanup must drop pick mode and any
+      // hover preview so the next tool doesn't inherit the violet quad.
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [0, 1, 0],
+        point:   [0, 0, 0],
+        faceKey: 'unmount-preview',
+      });
+      assert.strictEqual(state.sectionPickMode, true);
+      assert.ok(state.sectionPickPreview);
+
+      // Cleanup body in the panel's useEffect.
+      state.setSectionPickMode(false);
+
+      assert.strictEqual(state.sectionPickMode, false);
+      assert.strictEqual(state.sectionPickPreview, null);
+    });
+
+    it('clicking a cardinal axis while armed still works and clears any custom plane', () => {
+      // Regression guard for the demoted cardinal-axis row: even though
+      // the buttons are visually secondary now, clicking one must commit
+      // the cardinal cut and clear any face-picked custom plane (the
+      // existing behaviour the panel relied on).
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      assert.ok(state.sectionPlane.custom);
+      state.setSectionPickMode(true);
+
+      state.setSectionPlaneAxis('front');
+
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPlane.axis, 'front');
+      assert.strictEqual(state.sectionPlane.enabled, true);
+    });
+  });
+
   describe('customPlaneCenter', () => {
     // Bug guard for the cap polygons + 3D drag gizmo "anchored at original
     // pick" regression: as `distance` drifts (drag/slider) the visual

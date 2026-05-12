@@ -1,5 +1,41 @@
 # @ifc-lite/geometry
 
+## 1.18.1
+
+### Patch Changes
+
+- [#644](https://github.com/louistrue/ifc-lite/pull/644) [`6f052c3`](https://github.com/louistrue/ifc-lite/commit/6f052c309a99edd1d9a6925d44bbc2aed6cd10a5) Thanks [@louistrue](https://github.com/louistrue)! - Add "Merge Multilayer Walls" load-time toggle (issue #540).
+
+  When enabled, every `IfcBuildingElementPart` whose `IfcRelAggregates`
+  parent wall (a) has its own `Representation` and (b) is sliceable in
+  `MaterialLayerIndex` is suppressed during geometry emission. The parent
+  wall's single swept solid keeps the per-layer sub-mesh colouring via the
+  existing slicer, so the visual result on multilayer walls is the same as
+  the layered render — but with one mesh per wall instead of N per-layer
+  parts. Designed for large Revit-exported models where the per-layer
+  extrusions inflate vertex counts beyond what the viewer can handle.
+
+  New JS surface on `IfcAPI`:
+
+  ```ts
+  setMergeLayers(enabled: boolean): void
+  ```
+
+  Defaults to `false`. Honoured by `parseMeshes`, `parseMeshesSubset`,
+  `parseMeshesAsync`, `parseMeshesInstanced`, `parseMeshesInstancedAsync`,
+  `processGeometryBatch`, and `processGeometryBatchParallel`. The batch
+  paths cache the parts-to-skip set on `IfcAPI` so workers build it once
+  per content and reuse across every batch; the cache is cleared by
+  `clearPrePassCache` and by `setMergeLayers`.
+
+  Voids stay correct: `propagate_voids_to_parts` already copies the
+  parent wall's `IfcRelVoidsElement` references onto its layer parts in
+  the same pass that builds the part → parent map, so windows and doors
+  still cut through the merged solid.
+
+- Updated dependencies [[`1d6e99b`](https://github.com/louistrue/ifc-lite/commit/1d6e99bb23f67e20a192f362ba65ee73a8180f69), [`b6e83d3`](https://github.com/louistrue/ifc-lite/commit/b6e83d3ac4f04fe7c439bf282a25963c6db0b909), [`6f052c3`](https://github.com/louistrue/ifc-lite/commit/6f052c309a99edd1d9a6925d44bbc2aed6cd10a5), [`b8a8206`](https://github.com/louistrue/ifc-lite/commit/b8a82062c4392d05224561dda8a2767a8b7b1857)]:
+  - @ifc-lite/wasm@1.16.10
+
 ## 1.18.0
 
 ### Minor Changes

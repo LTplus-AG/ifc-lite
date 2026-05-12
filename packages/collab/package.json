@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/collab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Real-time collaborative BIM via CRDT on IFCX",
   "type": "module",
   "main": "./dist/index.js",

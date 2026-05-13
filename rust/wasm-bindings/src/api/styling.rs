@@ -31,6 +31,12 @@ pub(crate) fn build_geometry_style_index(
     use rustc_hash::FxHashMap;
 
     let mut style_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    // Stash IfcIndexedColourMap results separately so the merge below can
+    // give IfcStyledItem unconditional precedence regardless of scan order
+    // — files where an IFCINDEXEDCOLOURMAP appears before its matching
+    // IFCSTYLEDITEM otherwise let the colour-map shadow the authored intent
+    // (CodeRabbit feedback on #669).
+    let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);
 
     // One pass over all entities — branch on the relevant type names. Doing
@@ -44,7 +50,10 @@ pub(crate) fn build_geometry_style_index(
                 // IfcStyledItem: Item (ref to geometry), Styles (list of style refs), Name
                 let Some(geometry_id) = styled_item.get_ref(0) else { continue };
 
-                // Skip if we already have a color for this geometry from either path.
+                // Skip if we already have a styled-item color for this geometry
+                // (an earlier IfcStyledItem already won). IfcIndexedColourMap
+                // entries are kept in the side map and merged below with lower
+                // precedence than anything we put into `style_index` here.
                 if style_index.contains_key(&geometry_id) {
                     continue;
                 }
@@ -58,15 +67,17 @@ pub(crate) fn build_geometry_style_index(
                 if let Some((geometry_id, color)) =
                     extract_color_from_indexed_colour_map(id, start, end, decoder)
                 {
-                    // IfcIndexedColourMap should not overwrite an explicit
-                    // IfcStyledItem assignment if both exist (extremely rare,
-                    // but the styled-item is the authored intent). We use
-                    // `or_insert` to preserve whichever landed first.
-                    style_index.entry(geometry_id).or_insert(color);
+                    colour_map_styles.entry(geometry_id).or_insert(color);
                 }
             }
             _ => {}
         }
+    }
+
+    // Merge: IfcStyledItem (in `style_index`) wins unconditionally. Only
+    // geometries WITHOUT a styled-item entry pick up their colour-map colour.
+    for (geometry_id, color) in colour_map_styles {
+        style_index.entry(geometry_id).or_insert(color);
     }
 
     style_index
@@ -503,6 +514,9 @@ pub(crate) fn combined_pre_pass(
     let estimated_elements = content.len() / 2000;
 
     let mut geometry_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    // IfcIndexedColourMap side-map (#663). Merged into `geometry_styles` after
+    // the scan so IfcStyledItem keeps precedence regardless of scan order.
+    let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut faceted_brep_ids: Vec<u32> = Vec::with_capacity(estimated_elements / 10);
     let mut project_id: Option<u32> = None;
@@ -542,6 +556,16 @@ pub(crate) fn combined_pre_pass(
                             }
                         }
                     }
+                }
+            }
+            "IFCINDEXEDCOLOURMAP" => {
+                // IFC4 per-face-set colour mechanism used by CATIA /
+                // 3DEXPERIENCE exports (#663). Held in a side map and merged
+                // below with lower precedence than IfcStyledItem.
+                if let Some((geometry_id, color)) =
+                    extract_color_from_indexed_colour_map(id, start, end, decoder)
+                {
+                    colour_map_styles.entry(geometry_id).or_insert(color);
                 }
             }
             "IFCMATERIALDEFINITIONREPRESENTATION" | "IFCRELASSOCIATESMATERIAL" => {
@@ -591,6 +615,13 @@ pub(crate) fn combined_pre_pass(
                 }
             }
         }
+    }
+
+    // IfcStyledItem wins; only geometries WITHOUT a styled-item entry pick up
+    // their IfcIndexedColourMap colour (#663). Done after the scan so scan
+    // order doesn't decide precedence.
+    for (geometry_id, color) in colour_map_styles {
+        geometry_styles.entry(geometry_id).or_insert(color);
     }
 
     // Build material style index: material_id → [color, ...]

@@ -15,6 +15,18 @@ export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
+
+// IfcAnnotation overlay pipelines (3D world-space). Self-contained — caller
+// passes a GPUDevice + presentation format and invokes `.render(pass, viewProj)`
+// from inside an RGBA-blended pass. See packages/renderer/src/symbolic-overlay-pipelines.ts.
+export {
+  SymbolicFillPipeline,
+  SymbolicTextPipeline,
+  type SymbolicFillInput,
+  type SymbolicTextInput,
+} from './symbolic-overlay-pipelines.js';
+export { SymbolicTextAtlas } from './symbolic-text-atlas.js';
+
 // Section cap styling (hatch pattern ids + default colours). The cap itself
 // is now rendered by Section2DOverlayRenderer's fill pass; this module just
 // holds the styling primitives shared with the store and UI.

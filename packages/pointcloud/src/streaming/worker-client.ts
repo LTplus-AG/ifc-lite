@@ -5,13 +5,27 @@
 /**
  * Main-thread client for the decode worker.
  *
- * Wraps the postMessage protocol behind a `Promise`-based API and
- * exposes a `StreamingPointSource`-shaped facade that hosts (e.g.
- * the viewer ingest) can drive without knowing a worker exists.
+ * Wraps the postMessage protocol behind a `Promise`-based API and exposes
+ * a `StreamingPointSource`-shaped facade that hosts (e.g. the viewer
+ * ingest) can drive without knowing a worker exists.
  *
- * The worker URL is constructed via `new URL(..., import.meta.url)` —
- * Vite, webpack 5, esbuild, and Rollup all bundle it correctly when the
- * `new Worker(url, { type: 'module' })` form is used.
+ * Spawn modes:
+ *
+ * 1. **Published consumer (zero-config).** At publish time
+ *    `scripts/build-worker-bundle.mjs` bundles `decode-worker.ts` plus its
+ *    transitive deps as an IIFE and writes the bundle into
+ *    `dist/streaming/inline-worker.js` as an `INLINE_WORKER_CODE` string.
+ *    `defaultSpawn` dynamically imports that module and spawns the worker
+ *    from a `Blob` URL — no `type: 'module'`, no `import.meta.url`
+ *    resolution. Works against Vite's default `worker.format: 'iife'`
+ *    setting that previously errored on the ES module worker (#666).
+ *
+ * 2. **Workspace dev.** Inside the monorepo, the viewer's vite.config aliases
+ *    `@ifc-lite/pointcloud` to `src/`, where `inline-worker.ts` is a
+ *    placeholder that exports `null`. `defaultSpawn` detects the null and
+ *    falls back to the `new Worker(new URL('./decode-worker.ts', import.meta.url),
+ *    { type: 'module' })` idiom that Vite's `worker-import-meta-url` plugin
+ *    handles natively. HMR + source maps keep working.
  */
 
 import type { DecodedPointChunk } from '../types.js';
@@ -28,31 +42,49 @@ import type {
 export type DecodeWorkerFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
 export interface DecodeWorkerOptions {
-  /** Override the worker constructor — useful for tests or custom bundlers. */
-  spawn?: () => Worker;
+  /**
+   * Override the worker constructor — useful for tests or custom bundlers.
+   * May return a Worker synchronously or a Promise resolving to one; the
+   * client handles both. Sync callbacks remain the common case and stay
+   * type-compatible with the previous signature.
+   */
+  spawn?: () => Worker | Promise<Worker>;
 }
 
-/** Pool a single worker per page; the host can spawn additional workers
- *  with `createDecodeWorkerSource({ spawn })` when concurrent decoding is
- *  desirable (e.g. multiple federated scans). */
-let sharedWorker: Worker | null = null;
+async function defaultSpawn(): Promise<Worker> {
+  // Prefer the published inline bundle. The dynamic import resolves to a
+  // non-null `INLINE_WORKER_CODE` only in the published dist; in the
+  // workspace src tree (and in unit tests) it resolves to `null` and we
+  // fall through to the `new URL(...)` spawn path.
+  const { INLINE_WORKER_CODE } = await import('./inline-worker.js');
+  if (INLINE_WORKER_CODE) {
+    const blob = new Blob([INLINE_WORKER_CODE], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    const worker = new Worker(url, { name: 'ifclite-pointcloud-decode' });
+    // The Worker ctor reads the URL synchronously, so revoking right after
+    // is safe and avoids leaking ~tens of MB of Blob URLs per spawn over a
+    // long-running session.
+    queueMicrotask(() => URL.revokeObjectURL(url));
+    return worker;
+  }
 
-function defaultSpawn(): Worker {
-  // The bare-`.js` form works against the built dist but Vite's
-  // worker-import-meta-url plugin can't resolve it through the source
-  // alias used in the viewer dev build. Geometry uses `.worker.ts` for
-  // the same reason — Vite happily rewrites the suffix on dist builds.
+  // Dev fallback — Vite's `worker-import-meta-url` plugin handles this.
   return new Worker(new URL('./decode-worker.ts', import.meta.url), {
     type: 'module',
     name: 'ifclite-pointcloud-decode',
   });
 }
 
-function getSharedWorker(spawn: () => Worker): Worker {
-  if (!sharedWorker) {
-    sharedWorker = spawn();
+/** Pool a single worker per page; the host can spawn additional workers
+ *  with `createDecodeWorkerSource({ spawn })` when concurrent decoding is
+ *  desirable (e.g. multiple federated scans). */
+let sharedWorkerPromise: Promise<Worker> | null = null;
+
+function getSharedWorker(spawn: () => Worker | Promise<Worker>): Promise<Worker> {
+  if (!sharedWorkerPromise) {
+    sharedWorkerPromise = Promise.resolve(spawn());
   }
-  return sharedWorker;
+  return sharedWorkerPromise;
 }
 
 interface PendingRequest {
@@ -106,13 +138,13 @@ class WorkerSession {
   }
 }
 
-let sharedSession: WorkerSession | null = null;
+let sharedSessionPromise: Promise<WorkerSession> | null = null;
 
-function getSharedSession(spawn: () => Worker): WorkerSession {
-  if (!sharedSession) {
-    sharedSession = new WorkerSession(getSharedWorker(spawn));
+function getSharedSession(spawn: () => Worker | Promise<Worker>): Promise<WorkerSession> {
+  if (!sharedSessionPromise) {
+    sharedSessionPromise = getSharedWorker(spawn).then((worker) => new WorkerSession(worker));
   }
-  return sharedSession;
+  return sharedSessionPromise;
 }
 
 export interface CreateDecodeWorkerSourceOptions extends DecodeWorkerOptions {
@@ -131,7 +163,10 @@ export interface CreateDecodeWorkerSourceOptions extends DecodeWorkerOptions {
 export function createDecodeWorkerSource(
   opts: CreateDecodeWorkerSourceOptions,
 ): StreamingPointSource {
-  const session = getSharedSession(opts.spawn ?? defaultSpawn);
+  // Defer the actual spawn (and the dynamic import of the inline bundle)
+  // until the first `open()` call. Hosts that construct a source eagerly
+  // but only sometimes open it don't pay for the worker chunk.
+  const sessionPromise = getSharedSession(opts.spawn ?? defaultSpawn);
   let sourceId: number | null = null;
   let info: PointSourceInfo | null = null;
 
@@ -139,6 +174,7 @@ export function createDecodeWorkerSource(
     async open(signal?: AbortSignal): Promise<PointSourceInfo> {
       if (info) return info;
       abortIfAborted(signal);
+      const session = await sessionPromise;
       const resp = await session.send<Extract<WorkerResponse, { kind: 'opened' }>>(
         (requestId) => ({
           kind: 'open',
@@ -158,6 +194,7 @@ export function createDecodeWorkerSource(
         throw new Error('decode-worker source not opened');
       }
       abortIfAborted(signal);
+      const session = await sessionPromise;
       const id = sourceId;
       // Propagate aborts that fire WHILE the worker is decoding —
       // without this, cancel() returns immediately to the caller but
@@ -190,7 +227,11 @@ export function createDecodeWorkerSource(
     },
     close(): void {
       if (sourceId !== null) {
-        session.notify({ kind: 'close', sourceId });
+        const id = sourceId;
+        // Fire-and-forget — close() stays sync for callers. The session
+        // promise is always already resolved here because close() can only
+        // be reached after open() awaited it.
+        void sessionPromise.then((session) => session.notify({ kind: 'close', sourceId: id }));
         sourceId = null;
       }
       // Clear cached open()-result too so a subsequent open() actually

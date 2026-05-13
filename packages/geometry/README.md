@@ -76,19 +76,27 @@ standard and the pattern wasm-bindgen produces by default.
 If your bundler can't transform
 `new URL('ifc-lite_bg.wasm', import.meta.url)` inside the worker bundle
 (or you serve the wasm from a CDN at a separate origin), pass explicit
-wasm URLs through `ProcessParallelOptions.wasmUrls`:
+wasm URLs through the `processAdaptive` / `processParallel` `wasmUrls`
+option:
 
 ```ts
+// Vite's `?url` suffix yields a fully-resolved URL string at build time.
+// `@ifc-lite/wasm` and `@ifc-lite/wasm-threaded` both expose the binary
+// at the `./ifc-lite_bg.wasm` subpath so this resolves cleanly through
+// the package's `exports` map.
 import wasmUrl from '@ifc-lite/wasm/ifc-lite_bg.wasm?url';
 
-for await (const event of processor.processStreaming(buffer, {
+for await (const event of processor.processAdaptive(buffer, {
   wasmUrls: { wasm: wasmUrl },
-})) { ... }
+})) { /* ... */ }
 ```
 
-Vite's `?url` suffix yields a fully-resolved URL the worker can pass
-directly to wasm-bindgen's `init(url)` — no `import.meta.url` resolution
-needed inside the worker.
+The worker forwards the URL to wasm-bindgen's documented `init(url)`
+parameter, bypassing the default `new URL(..., import.meta.url)`
+resolution inside the worker entirely. For webpack 5 use
+`new URL('@ifc-lite/wasm/ifc-lite_bg.wasm', import.meta.url).href`;
+for other bundlers, any string the runtime can resolve to the binary
+works.
 
 ## Performance
 

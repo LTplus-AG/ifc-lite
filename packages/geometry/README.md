@@ -53,6 +53,43 @@ if (result.coordinateInfo?.hasLargeCoordinates) {
 }
 ```
 
+## Vite setup
+
+The geometry workers ship as ESM and use the standard
+`new Worker(new URL('./geometry.worker.js', import.meta.url), { type: 'module' })`
+spawn pattern. Vite's default `worker.format: 'iife'` setting can't host
+ESM workers, so consumers need one config line:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  worker: { format: 'es' },
+});
+```
+
+This is the same contract that Mapbox-GL, Three.js, Cesium, and Monaco
+require — ESM workers are not the Vite default, but they are the modern
+standard and the pattern wasm-bindgen produces by default.
+
+If your bundler can't transform
+`new URL('ifc-lite_bg.wasm', import.meta.url)` inside the worker bundle
+(or you serve the wasm from a CDN at a separate origin), pass explicit
+wasm URLs through `ProcessParallelOptions.wasmUrls`:
+
+```ts
+import wasmUrl from '@ifc-lite/wasm/ifc-lite_bg.wasm?url';
+
+for await (const event of processor.processStreaming(buffer, {
+  wasmUrls: { wasm: wasmUrl },
+})) { ... }
+```
+
+Vite's `?url` suffix yields a fully-resolved URL the worker can pass
+directly to wasm-bindgen's `init(url)` — no `import.meta.url` resolution
+needed inside the worker.
+
 ## Performance
 
 - **First triangles:** 300–500ms (streaming path)

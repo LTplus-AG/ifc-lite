@@ -73,6 +73,14 @@ let api: IfcAPI | null = null;
 let threadPoolReady = false;
 
 /**
+ * Captured at the explicit `init` message and forwarded to wasm-bindgen's
+ * `init(url)` call. Mirrors `geometry.worker.ts`'s `cachedWasmUrl` — see
+ * that file for the rationale. Defaults to undefined so wasm-bindgen
+ * falls back to its `import.meta.url`-relative default resolution.
+ */
+let cachedWasmUrl: string | undefined = undefined;
+
+/**
  * Cached merge-layers flag (issue #540). The host may post
  * `set-merge-layers` BEFORE `init`, so we remember the latest value
  * and re-apply once the threaded IfcAPI is constructed.
@@ -294,10 +302,11 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
   messageTail = messageTail.then(async () => {
     try {
       if (e.data.type === 'init') {
+        if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
         if (e.data.wasmModule) {
           initSync({ module_or_path: e.data.wasmModule });
         } else {
-          await init();
+          await init(cachedWasmUrl);
         }
         api = new IfcAPI();
         mergeLayersApplied = false;

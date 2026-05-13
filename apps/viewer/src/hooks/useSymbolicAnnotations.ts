@@ -24,6 +24,46 @@ export interface AnnotationsForStorey {
   storeyId: number;
   storeyElevation: number;
   lines: DrawingLine2D[];
+  texts: AnnotationText2D[];
+  fills: AnnotationFill2D[];
+}
+
+/**
+ * A single text label in renderer 2D space (XZ on the section plane).
+ *
+ * `dirX / dirY` encodes the baseline direction (already mirrored to match the
+ * Y-negated 2D coord system that lines and circles use). `height` is in world
+ * units. `alignment` is the raw IFC `BoxAlignment` string ("bottom-left",
+ * "center", …) — the renderer interprets it.
+ */
+export interface AnnotationText2D {
+  x: number;
+  y: number;
+  dirX: number;
+  dirY: number;
+  height: number;
+  content: string;
+  alignment: string;
+}
+
+/**
+ * A single filled region in renderer 2D space. Outer ring + holes flattened
+ * into one `points` array; `holesOffsets` marks where each hole starts (in
+ * vertex indices, not floats). Empty `holesOffsets` = simple polygon.
+ *
+ * `hatching` is present when the IFC style chain resolved to an
+ * IfcFillAreaStyleHatching. When absent the fill is solid (color only).
+ */
+export interface AnnotationFill2D {
+  points: Float32Array;
+  holesOffsets: Uint32Array;
+  color: [number, number, number, number];
+  hatching?: {
+    spacing: number;
+    angle: number;
+    angleSecondary: number | null;
+    lineWidth: number;
+  };
 }
 
 /** Cached parse result keyed by source identity. */
@@ -31,6 +71,8 @@ interface ParseResult {
   byStorey: Map<number, AnnotationsForStorey>;
   /** Annotations with no resolvable storey — shown on every floor as a fallback. */
   loose: DrawingLine2D[];
+  looseTexts: AnnotationText2D[];
+  looseFills: AnnotationFill2D[];
 }
 
 const CIRCLE_SEGMENTS_FULL = 32;
@@ -107,7 +149,12 @@ function sourceKey(store: IfcDataStore | null | undefined): string | null {
 async function parseAnnotations(
   store: IfcDataStore,
 ): Promise<ParseResult> {
-  const result: ParseResult = { byStorey: new Map(), loose: [] };
+  const result: ParseResult = {
+    byStorey: new Map(),
+    loose: [],
+    looseTexts: [],
+    looseFills: [],
+  };
   const source = store.source;
   if (!source || source.byteLength === 0) return result;
 
@@ -121,32 +168,43 @@ async function parseAnnotations(
     const collection = processor.parseSymbolicRepresentations(source);
     if (!collection || collection.isEmpty) return result;
 
-    const bucketFor = (expressId: number): DrawingLine2D[] => {
+    // Get or create the per-storey bucket for an annotation. Storey lookup
+    // can fail (no spatial hierarchy entry), in which case the caller falls
+    // through to the looseLines / looseTexts / looseFills bucket via the
+    // returned `null`. Two-tier API keeps `bucketFor(...).lines.push(...)`
+    // readable at call sites.
+    const ensureBucket = (expressId: number): AnnotationsForStorey | null => {
       const storeyId = elementToStorey?.get(expressId);
-      if (storeyId === undefined) return result.loose;
+      if (storeyId === undefined) return null;
       let bucket = result.byStorey.get(storeyId);
       if (!bucket) {
         bucket = {
           storeyId,
           storeyElevation: storeyElevations?.get(storeyId) ?? 0,
           lines: [],
+          texts: [],
+          fills: [],
         };
         result.byStorey.set(storeyId, bucket);
       }
-      return bucket.lines;
+      return bucket;
     };
 
     for (let i = 0; i < collection.polylineCount; i++) {
       const poly = collection.getPolyline(i);
       if (!poly) continue;
       if (poly.ifcType !== 'IfcAnnotation') continue;
-      polylineToSegments(poly.points, poly.pointCount, poly.isClosed, bucketFor(poly.expressId));
+      const bucket = ensureBucket(poly.expressId);
+      const out = bucket ? bucket.lines : result.loose;
+      polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out);
     }
 
     for (let i = 0; i < collection.circleCount; i++) {
       const circle = collection.getCircle(i);
       if (!circle) continue;
       if (circle.ifcType !== 'IfcAnnotation') continue;
+      const bucket = ensureBucket(circle.expressId);
+      const out = bucket ? bucket.lines : result.loose;
       circleToSegments(
         circle.centerX,
         circle.centerY,
@@ -154,8 +212,50 @@ async function parseAnnotations(
         circle.startAngle,
         circle.endAngle,
         circle.isFullCircle,
-        bucketFor(circle.expressId),
+        out,
       );
+    }
+
+    for (let i = 0; i < collection.textCount; i++) {
+      const text = collection.getText(i);
+      if (!text) continue;
+      if (text.ifcType !== 'IfcAnnotation') continue;
+      // Skip empty literals so the renderer doesn't waste an instance slot.
+      if (text.content.length === 0) continue;
+      const t2d: AnnotationText2D = {
+        x: text.x,
+        y: text.y,
+        dirX: text.dirX,
+        dirY: text.dirY,
+        height: text.height,
+        content: text.content,
+        alignment: text.alignment,
+      };
+      const bucket = ensureBucket(text.expressId);
+      (bucket ? bucket.texts : result.looseTexts).push(t2d);
+    }
+
+    for (let i = 0; i < collection.fillCount; i++) {
+      const fill = collection.getFill(i);
+      if (!fill) continue;
+      if (fill.ifcType !== 'IfcAnnotation') continue;
+      const points = fill.points;
+      if (points.length < 6) continue; // <3 vertices = no polygon
+      const f2d: AnnotationFill2D = {
+        points,
+        holesOffsets: fill.holesOffsets,
+        color: [fill.fillR, fill.fillG, fill.fillB, fill.fillA],
+        hatching: fill.hasHatching
+          ? {
+              spacing: fill.hatchSpacing,
+              angle: fill.hatchAngle,
+              angleSecondary: Number.isNaN(fill.hatchAngleSecondary) ? null : fill.hatchAngleSecondary,
+              lineWidth: fill.hatchLineWidth,
+            }
+          : undefined,
+      };
+      const bucket = ensureBucket(fill.expressId);
+      (bucket ? bucket.fills : result.looseFills).push(f2d);
     }
   } finally {
     processor.dispose();
@@ -203,93 +303,211 @@ export function liftTo3DLineList(
  */
 const EMPTY_F32 = new Float32Array(0);
 
+// ─── Shared parse cache ─────────────────────────────────────────────────────
+// Parsing the whole file's symbolic representations is not cheap (full WASM
+// walk over every product's representations). Cache results module-globally
+// so the line / text / fill hooks share one parse per model source instead
+// of triggering it once per hook.
+const PARSE_CACHE = new Map<string, ParseResult>();
+const PARSE_INFLIGHT = new Map<string, Promise<void>>();
+
+/** Subscribers that want to re-render when a new parse result lands. */
+type CacheListener = () => void;
+const CACHE_LISTENERS = new Set<CacheListener>();
+function notifyCacheChange(): void {
+  for (const fn of CACHE_LISTENERS) fn();
+}
+
+function ensureParseFor(stores: IfcDataStore[]): void {
+  for (const store of stores) {
+    const key = sourceKey(store);
+    if (!key) continue;
+    if (PARSE_CACHE.has(key)) continue;
+    if (PARSE_INFLIGHT.has(key)) continue;
+
+    const promise = (async () => {
+      try {
+        const result = await parseAnnotations(store);
+        PARSE_CACHE.set(key, result);
+        notifyCacheChange();
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('[useSymbolicAnnotations] parse failed:', error);
+      } finally {
+        PARSE_INFLIGHT.delete(key);
+      }
+    })();
+    PARSE_INFLIGHT.set(key, promise);
+  }
+}
+
+/** Read the active store set from the viewer store. Federation-aware. */
+function useActiveStores(): IfcDataStore[] {
+  const { models, ifcDataStore } = useViewerStore(
+    useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore })),
+  );
+  return useMemo(() => {
+    const out: IfcDataStore[] = [];
+    if (models.size > 0) {
+      for (const [, m] of models) if (m.ifcDataStore) out.push(m.ifcDataStore);
+    } else if (ifcDataStore) {
+      out.push(ifcDataStore);
+    }
+    return out;
+  }, [models, ifcDataStore]);
+}
+
+/** Trigger parse for the active stores when `enabled`, tick on completion. */
+function useAnnotationParseTrigger(enabled: boolean, stores: IfcDataStore[]): number {
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    ensureParseFor(stores);
+    const listener: CacheListener = () => setVersion((v) => v + 1);
+    CACHE_LISTENERS.add(listener);
+    return () => {
+      CACHE_LISTENERS.delete(listener);
+    };
+  }, [enabled, stores]);
+
+  return version;
+}
+
+/** Resolve the world-space Y for a storey bucket (fallback if elevation = 0). */
+function resolveBucketY(elevation: number, fallbackY: number): number {
+  // Authoring tools sometimes leave `IfcBuildingStorey.Elevation` blank and
+  // put the storey Z directly on annotation placements. In that case the
+  // bucket's recorded elevation is 0 even though the real annotation Y is
+  // elsewhere — use the fallback so the overlay stays visible rather than
+  // being buried inside the building.
+  return elevation === 0 ? fallbackY : elevation;
+}
+
 export function useSymbolicAnnotations(params: {
   enabled: boolean;
   /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
   fallbackY?: number;
 }): Float32Array {
   const { enabled, fallbackY = 0 } = params;
-  const { models, ifcDataStore } = useViewerStore(
-    useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore })),
-  );
-
-  // Cache per source key — parsing the whole file's symbolic reps is not
-  // cheap (full WASM walk), so we only do it once per model.
-  const cacheRef = useRef<Map<string, ParseResult>>(new Map());
-  const inflightRef = useRef<Map<string, Promise<void>>>(new Map());
-  const [version, setVersion] = useState(0);
-
-  // Trigger parses for any source that doesn't have a cache entry yet.
-  // Parsing only happens when the feature is enabled, so toggling off skips
-  // the cost entirely on first activation.
-  useEffect(() => {
-    if (!enabled) return;
-    const stores: IfcDataStore[] = [];
-    if (models.size > 0) {
-      for (const [, m] of models) if (m.ifcDataStore) stores.push(m.ifcDataStore);
-    } else if (ifcDataStore) {
-      stores.push(ifcDataStore);
-    }
-
-    let cancelled = false;
-    for (const store of stores) {
-      const key = sourceKey(store);
-      if (!key) continue;
-      if (cacheRef.current.has(key)) continue;
-      if (inflightRef.current.has(key)) continue;
-
-      const promise = (async () => {
-        try {
-          const result = await parseAnnotations(store);
-          if (cancelled) return;
-          cacheRef.current.set(key, result);
-          setVersion((v) => v + 1);
-        } catch (error) {
-          // Silent — if parsing fails the toggle just shows nothing.
-          // eslint-disable-next-line no-console
-          console.warn('[useSymbolicAnnotations] parse failed:', error);
-        } finally {
-          inflightRef.current.delete(key);
-        }
-      })();
-      inflightRef.current.set(key, promise);
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, models, ifcDataStore]);
+  const stores = useActiveStores();
+  const version = useAnnotationParseTrigger(enabled, stores);
 
   return useMemo(() => {
     if (!enabled) return EMPTY_F32;
     void version; // depend on parse-completion ticks
 
-    const stores: IfcDataStore[] = [];
-    if (models.size > 0) {
-      for (const [, m] of models) if (m.ifcDataStore) stores.push(m.ifcDataStore);
-    } else if (ifcDataStore) {
-      stores.push(ifcDataStore);
-    }
-
     const verts: number[] = [];
     for (const store of stores) {
       const key = sourceKey(store);
       if (!key) continue;
-      const cached = cacheRef.current.get(key);
+      const cached = PARSE_CACHE.get(key);
       if (!cached) continue;
 
       for (const bucket of cached.byStorey.values()) {
-        // Authoring tools sometimes leave `IfcBuildingStorey.Elevation` blank
-        // and put the storey Z directly on annotation placements instead.
-        // In that case the bucket's recorded elevation is 0 even though the
-        // real annotation Y is elsewhere — use the fallback so the overlay
-        // remains visible rather than being buried inside the building.
-        const y = bucket.storeyElevation === 0 ? fallbackY : bucket.storeyElevation;
-        liftTo3DLineList(bucket.lines, y, verts);
+        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
       }
       liftTo3DLineList(cached.loose, fallbackY, verts);
     }
 
     if (verts.length === 0) return EMPTY_F32;
     return new Float32Array(verts);
-  }, [enabled, models, ifcDataStore, version, fallbackY]);
+  }, [enabled, stores, version, fallbackY]);
+}
+
+/**
+ * A text annotation lifted into 3D world space.
+ *
+ * `worldPos[1]` is the storey Y the annotation belongs to (or `fallbackY` for
+ * orphans). `dirX / dirZ` is the baseline direction in 3D (already mirrored
+ * from the IFC frame to match the section overlay's coordinate handedness).
+ * `height` is in world units.
+ */
+export interface AnnotationText3D {
+  worldPos: [number, number, number];
+  dirX: number;
+  dirZ: number;
+  height: number;
+  content: string;
+  alignment: string;
+}
+
+/**
+ * A filled region lifted into 3D world space. `points` is a flat
+ * `[x, z, x, z, …]` ring buffer (Y is constant = `worldY`). Holes are tracked
+ * via `holesOffsets` (vertex indices into `points`); the renderer triangulates.
+ */
+export interface AnnotationFill3D {
+  points: Float32Array;
+  holesOffsets: Uint32Array;
+  worldY: number;
+  color: [number, number, number, number];
+  hatching?: AnnotationFill2D['hatching'];
+}
+
+/** Cheap stable empty arrays for the no-data path. */
+const EMPTY_TEXTS: readonly AnnotationText3D[] = Object.freeze([]);
+const EMPTY_FILLS: readonly AnnotationFill3D[] = Object.freeze([]);
+
+/**
+ * Hook for the WebGPU text + fill pipelines. Returns 3D-lifted texts and
+ * fills for every active model. Shares the parse cache with
+ * `useSymbolicAnnotations` so toggling on text+fill rendering after the
+ * line overlay is already up costs no extra parse work.
+ */
+export function useSymbolicAnnotationsRichData(params: {
+  enabled: boolean;
+  fallbackY?: number;
+}): { texts: readonly AnnotationText3D[]; fills: readonly AnnotationFill3D[] } {
+  const { enabled, fallbackY = 0 } = params;
+  const stores = useActiveStores();
+  const version = useAnnotationParseTrigger(enabled, stores);
+
+  return useMemo(() => {
+    if (!enabled) return { texts: EMPTY_TEXTS, fills: EMPTY_FILLS };
+    void version;
+
+    const texts: AnnotationText3D[] = [];
+    const fills: AnnotationFill3D[] = [];
+
+    for (const store of stores) {
+      const key = sourceKey(store);
+      if (!key) continue;
+      const cached = PARSE_CACHE.get(key);
+      if (!cached) continue;
+
+      const pushText = (t: AnnotationText2D, y: number) => {
+        texts.push({
+          worldPos: [t.x, y, t.y],
+          dirX: t.dirX,
+          dirZ: t.dirY,
+          height: t.height,
+          content: t.content,
+          alignment: t.alignment,
+        });
+      };
+      const pushFill = (f: AnnotationFill2D, y: number) => {
+        fills.push({
+          points: f.points,
+          holesOffsets: f.holesOffsets,
+          worldY: y,
+          color: f.color,
+          hatching: f.hatching,
+        });
+      };
+
+      for (const bucket of cached.byStorey.values()) {
+        const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+        for (const t of bucket.texts) pushText(t, y);
+        for (const f of bucket.fills) pushFill(f, y);
+      }
+      for (const t of cached.looseTexts) pushText(t, fallbackY);
+      for (const f of cached.looseFills) pushFill(f, fallbackY);
+    }
+
+    return {
+      texts: texts.length ? texts : EMPTY_TEXTS,
+      fills: fills.length ? fills : EMPTY_FILLS,
+    };
+  }, [enabled, stores, version, fallbackY]);
 }

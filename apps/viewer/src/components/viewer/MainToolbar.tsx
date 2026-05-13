@@ -427,6 +427,22 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- meshLen is a stable proxy for geometryResult
   }, [models, meshLen]);
 
+  // IfcAnnotation has no body mesh, so it can't be detected via the mesh scan.
+  // Look up the entity table directly. byType keys are uppercase STEP names
+  // ('IFCANNOTATION') but cache loads sometimes preserve PascalCase too.
+  const hasIfcAnnotations = useMemo(() => {
+    const has = (store: typeof ifcDataStore | undefined) => {
+      const byType = store?.entityIndex?.byType;
+      if (!byType) return false;
+      return (byType.get('IFCANNOTATION')?.length ?? 0) > 0
+        || (byType.get('IfcAnnotation')?.length ?? 0) > 0;
+    };
+    if (models.size > 0) {
+      for (const [, m] of models) if (has(m.ifcDataStore)) return true;
+    }
+    return has(ifcDataStore);
+  }, [models, ifcDataStore]);
+
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -1219,6 +1235,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             >
               <Building2 className="h-4 w-4 mr-2" style={{ color: '#66cc4d' }} />
               Show Site
+            </DropdownMenuCheckboxItem>
+          )}
+          {hasIfcAnnotations && (
+            <DropdownMenuCheckboxItem
+              checked={typeVisibility.ifcAnnotations}
+              onCheckedChange={() => toggleTypeVisibility('ifcAnnotations')}
+            >
+              <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
+              Show IFC Annotations
             </DropdownMenuCheckboxItem>
           )}
 

@@ -40,6 +40,7 @@ import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
+import { useSymbolicAnnotations } from '../../hooks/useSymbolicAnnotations.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -739,6 +740,23 @@ export function Viewport({
   const show3DOverlay = useViewerStore((s) => s.drawing2DDisplayOptions.show3DOverlay);
   const showHiddenLines = useViewerStore((s) => s.drawing2DDisplayOptions.showHiddenLines);
 
+  // ===== IfcAnnotation symbolic overlay =====
+  // Surfaces IfcAnnotation 2D curves through the section overlay so a
+  // floor-plan view looks like a real engineering drawing (issue #653).
+  // Only active when (a) the user toggles "Show IFC Annotations" on,
+  // (b) a horizontal section plane is active. Parsing is lazy.
+  const ifcAnnotationsVisible = useViewerStore((s) => s.typeVisibility.ifcAnnotations);
+  const sectionPlaneYForAnnotations = useMemo(() => {
+    if (activeTool !== 'section' || sectionPlane.axis !== 'down') return null;
+    if (!sectionRange) return null;
+    return sectionRange.min + (sectionPlane.position / 100) * (sectionRange.max - sectionRange.min);
+  }, [activeTool, sectionPlane.axis, sectionPlane.position, sectionRange]);
+  const annotationsEnabled = ifcAnnotationsVisible && sectionPlaneYForAnnotations !== null;
+  const annotationOverlayLines = useSymbolicAnnotations({
+    enabled: annotationsEnabled,
+    sectionY: sectionPlaneYForAnnotations,
+  });
+
   // ===== Streaming progress =====
   const isStreaming = useViewerStore((state) => state.geometryStreamingActive);
 
@@ -946,6 +964,7 @@ export function Viewport({
     drawing2D,
     show3DOverlay,
     showHiddenLines,
+    extraOverlayLines: annotationOverlayLines,
   });
 
   // Hide WebGPU canvas immediately when Cesium is active.

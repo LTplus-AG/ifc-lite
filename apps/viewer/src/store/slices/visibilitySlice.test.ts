@@ -300,5 +300,11 @@ describe('VisibilitySlice', () => {
       state.toggleTypeVisibility('site');
       assert.strictEqual(state.typeVisibility.site, !initial);
     });
+
+    it('should toggle ifcAnnotations visibility', () => {
+      const initial = state.typeVisibility.ifcAnnotations;
+      state.toggleTypeVisibility('ifcAnnotations');
+      assert.strictEqual(state.typeVisibility.ifcAnnotations, !initial);
+    });
   });
 });

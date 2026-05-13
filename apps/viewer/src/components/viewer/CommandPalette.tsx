@@ -58,6 +58,7 @@ import {
   Sparkles,
   Eraser,
   MapPin,
+  Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -370,6 +371,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().toggleTypeVisibility('openings'); } },
       { id: 'vis:site', label: 'Site', keywords: 'IfcSite terrain show hide', category: 'Visibility', icon: Building2,
         action: () => { useViewerStore.getState().toggleTypeVisibility('site'); } },
+      { id: 'vis:ifcAnnotations', label: 'IFC Annotations', keywords: 'IfcAnnotation 2d drawing symbols text dimension show hide', category: 'Visibility', icon: Pencil,
+        action: () => { useViewerStore.getState().toggleTypeVisibility('ifcAnnotations'); } },
       { id: 'vis:reset-colors', label: 'Reset Colors', keywords: 'clear color override', category: 'Visibility', icon: Palette,
         action: () => { execute('bim.viewer.resetColors()\nconsole.log("Colors reset")'); } },
     );

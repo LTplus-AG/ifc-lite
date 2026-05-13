@@ -197,6 +197,8 @@ export interface TypeVisibility {
   openings: boolean;
   /** IfcSite - on by default (when has geometry) */
   site: boolean;
+  /** IfcAnnotation (2D symbolic curves) - on by default when present */
+  ifcAnnotations: boolean;
 }
 
 // ============================================================================

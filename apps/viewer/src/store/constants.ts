@@ -154,6 +154,8 @@ export const TYPE_VISIBILITY_DEFAULTS = {
   OPENINGS: false,
   /** IfcSite visibility - on by default (when has geometry) */
   SITE: true,
+  /** IfcAnnotation visibility - on by default (engineering-drawing UX) */
+  IFC_ANNOTATIONS: true,
 } as const;
 
 // ============================================================================

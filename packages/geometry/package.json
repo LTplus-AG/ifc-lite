@@ -18,16 +18,24 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^",
-    "@ifc-lite/wasm-threaded": "workspace:*"
+    "@ifc-lite/wasm": "workspace:^"
   },
   "optionalDependencies": {
     "@tauri-apps/api": "^2.0.0"
   },
   "devDependencies": {
+    "@ifc-lite/wasm-threaded": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.6.0"
+  },
+  "peerDependencies": {
+    "@ifc-lite/wasm-threaded": "*"
+  },
+  "peerDependenciesMeta": {
+    "@ifc-lite/wasm-threaded": {
+      "optional": true
+    }
   },
   "license": "MPL-2.0",
   "author": "Louis True",

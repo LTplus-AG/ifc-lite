@@ -1,5 +1,22 @@
 # @ifc-lite/geometry
 
+## 1.18.2
+
+### Patch Changes
+
+- [#656](https://github.com/louistrue/ifc-lite/pull/656) [`384efaa`](https://github.com/louistrue/ifc-lite/commit/384efaaaee45cd6f36d3a107899b3b4106143c9a) Thanks [@maxkrut](https://github.com/maxkrut)! - Reject overlapping WASM streaming geometry runs with a controlled JavaScript error before re-entering the processor.
+
+- [#633](https://github.com/louistrue/ifc-lite/pull/633) [`7b70805`](https://github.com/louistrue/ifc-lite/commit/7b70805632627a6e4351b1735479be18390c8b21) Thanks [@maxkrut](https://github.com/maxkrut)! - Fix published worker URLs to reference the emitted JavaScript file.
+
+  `@ifc-lite/geometry` starts parallel geometry processing by constructing
+  module workers from `geometry-parallel`. The published npm package includes
+  `dist/geometry.worker.js`, but `dist/geometry-parallel.js` still points at
+  `./geometry.worker.ts`, so consumers can fail to load the worker at runtime.
+
+  Keep source worker URLs pointing at TypeScript files for in-repo Vite builds,
+  and extend the post-build rewrite so published `dist/index.js` and
+  `dist/geometry-parallel.js` point at the emitted JavaScript worker files.
+
 ## 1.18.1
 
 ### Patch Changes

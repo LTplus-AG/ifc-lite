@@ -893,10 +893,10 @@ importers:
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
+    devDependencies:
       '@ifc-lite/wasm-threaded':
         specifier: workspace:*
         version: link:../wasm-threaded
-    devDependencies:
       typescript:
         specifier: ^5.3.0
         version: 5.9.3

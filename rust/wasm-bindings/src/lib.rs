@@ -84,7 +84,8 @@ pub use gpu_geometry::{
 pub use utils::set_panic_hook as init_panic_hook;
 pub use zero_copy::{
     get_memory, InstanceData, InstancedGeometry, InstancedMeshCollection, MeshCollection,
-    MeshDataJs, SymbolicCircle, SymbolicPolyline, SymbolicRepresentationCollection, ZeroCopyMesh,
+    MeshDataJs, SymbolicCircle, SymbolicFillArea, SymbolicPolyline,
+    SymbolicRepresentationCollection, SymbolicText, ZeroCopyMesh,
 };
 
 /// Initialize the WASM module.

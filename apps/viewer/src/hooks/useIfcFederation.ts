@@ -355,6 +355,7 @@ export function useIfcFederation() {
     // Multi-model state and actions
     addModel: storeAddModel,
     removeModel: storeRemoveModel,
+    setActiveModel,
     clearAllModels,
     getModel,
     hasModels,
@@ -370,6 +371,7 @@ export function useIfcFederation() {
     setGeometryResult: s.setGeometryResult,
     addModel: s.addModel,
     removeModel: s.removeModel,
+    setActiveModel: s.setActiveModel,
     clearAllModels: s.clearAllModels,
     getModel: s.getModel,
     hasModels: s.hasModels,
@@ -692,9 +694,16 @@ export function useIfcFederation() {
       // Add to store
       storeAddModel(federatedModel);
 
-      // Also set legacy single-model state for backward compatibility
-      setIfcDataStore(parsedDataStore);
-      setGeometryResult(parsedGeometry);
+      // Make the newly-added model active. This also syncs the legacy
+      // single-model `ifcDataStore` / `geometryResult` fields to point at
+      // the new model — which is what the previous direct `setIfcDataStore`
+      // / `setGeometryResult` calls were trying to do. The direct setters
+      // wrote into `activeModelId`'s entry though, which after legacy
+      // promotion was still the *first* model — so the new model's empty
+      // (annotation-only) geometry would clobber the first model's meshes
+      // inside the federation map. `setActiveModel` does the legacy sync
+      // without touching any other model's entry.
+      setActiveModel(modelId);
 
       setProgress({ phase: 'Complete', percent: 100 });
       setLoading(false);
@@ -729,7 +738,7 @@ export function useIfcFederation() {
     } finally {
       releaseFederationLoadSlot(gateSlot);
     }
-  }, [setLoading, setError, setProgress, setIfcDataStore, setGeometryResult, storeAddModel, hasModels, registerModelOffset]);
+  }, [setLoading, setError, setProgress, setIfcDataStore, setGeometryResult, storeAddModel, setActiveModel, hasModels, registerModelOffset]);
 
   /**
    * Remove a model from the federation

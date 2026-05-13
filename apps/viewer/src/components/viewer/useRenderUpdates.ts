@@ -52,12 +52,6 @@ export interface UseRenderUpdatesParams {
   drawing2D: Drawing2D | null;
   show3DOverlay: boolean;
   showHiddenLines: boolean;
-
-  /**
-   * Extra 2D lines to merge into the section overlay (e.g. IfcAnnotation
-   * symbolic polylines). Already in the renderer's section-plane 2D space.
-   */
-  extraOverlayLines?: DrawingLine2D[];
 }
 
 export function useRenderUpdates(params: UseRenderUpdatesParams): void {
@@ -80,7 +74,6 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     drawing2D,
     show3DOverlay,
     showHiddenLines,
-    extraOverlayLines,
   } = params;
 
   // Theme-aware clear color update
@@ -94,30 +87,19 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
 
-    const hasDrawing2D = !!drawing2D && drawing2D.cutPolygons.length > 0 && show3DOverlay;
-    const hasExtraLines = !!extraOverlayLines && extraOverlayLines.length > 0;
+    if (activeTool === 'section' && drawing2D && drawing2D.cutPolygons.length > 0 && show3DOverlay) {
+      const polygons: CutPolygon2D[] = drawing2D.cutPolygons.map((cp) => ({
+        polygon: cp.polygon,
+        ifcType: cp.ifcType,
+        expressId: cp.entityId,
+      }));
 
-    if (activeTool === 'section' && (hasDrawing2D || hasExtraLines)) {
-      const polygons: CutPolygon2D[] = hasDrawing2D
-        ? drawing2D!.cutPolygons.map((cp) => ({
-            polygon: cp.polygon,
-            ifcType: cp.ifcType,
-            expressId: cp.entityId,
-          }))
-        : [];
-
-      const lines: DrawingLine2D[] = hasDrawing2D
-        ? drawing2D!.lines
-            .filter((line) => showHiddenLines || line.visibility !== 'hidden')
-            .map((line) => ({
-              line: line.line,
-              category: line.category,
-            }))
-        : [];
-
-      if (hasExtraLines) {
-        for (const line of extraOverlayLines!) lines.push(line);
-      }
+      const lines: DrawingLine2D[] = drawing2D.lines
+        .filter((line) => showHiddenLines || line.visibility !== 'hidden')
+        .map((line) => ({
+          line: line.line,
+          category: line.category,
+        }));
 
       // For face-picked custom planes (issue #243), forward the plane
       // basis so `uploadDrawing` can lift 2D polygons back to 3D using
@@ -151,7 +133,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     }
 
     renderer.requestRender();
-  }, [drawing2D, activeTool, sectionPlane, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, extraOverlayLines]);
+  }, [drawing2D, activeTool, sectionPlane, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines]);
 
   // Re-render when visibility, selection, or section plane changes
   useEffect(() => {

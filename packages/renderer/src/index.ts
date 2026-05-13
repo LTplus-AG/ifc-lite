@@ -2106,6 +2106,15 @@ export class Renderer {
                         }
                     );
                 }
+
+                // Standalone IFC annotation overlay (issue #653). The line
+                // vertices were pre-lifted to world space at upload time, so
+                // this draw happens regardless of whether a section plane is
+                // active — annotations are a free-floating "drawing layer"
+                // that sits at each annotation's storey elevation.
+                if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
+                    this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
+                }
             }
 
             pass.end();
@@ -2391,6 +2400,28 @@ export class Renderer {
     clearSection2DOverlay(): void {
         if (this.section2DOverlayRenderer) {
             this.section2DOverlayRenderer.clearGeometry();
+        }
+    }
+
+    /**
+     * Upload pre-lifted 3D line-list vertices for the standalone annotation
+     * overlay. Each segment is `[x1, y1, z1, x2, y2, z2]` in world space.
+     * The overlay is drawn regardless of whether a section plane is active.
+     * Pass an empty Float32Array to clear.
+     */
+    uploadAnnotationLines3D(vertices: Float32Array): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.section2DOverlayRenderer.uploadAnnotationLines3D(vertices);
+        this.requestRender();
+    }
+
+    /**
+     * Clear the standalone annotation line overlay.
+     */
+    clearAnnotationLines3D(): void {
+        if (this.section2DOverlayRenderer) {
+            this.section2DOverlayRenderer.clearAnnotationLines3D();
+            this.requestRender();
         }
     }
 

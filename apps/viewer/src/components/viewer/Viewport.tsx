@@ -741,21 +741,37 @@ export function Viewport({
   const showHiddenLines = useViewerStore((s) => s.drawing2DDisplayOptions.showHiddenLines);
 
   // ===== IfcAnnotation symbolic overlay =====
-  // Surfaces IfcAnnotation 2D curves through the section overlay so a
-  // floor-plan view looks like a real engineering drawing (issue #653).
-  // Only active when (a) the user toggles "Show IFC Annotations" on,
-  // (b) a horizontal section plane is active. Parsing is lazy.
+  // Renders IfcAnnotation 2D drawing curves as a standalone 3D line overlay
+  // that's visible regardless of whether a section cut is active. Each
+  // segment is lifted to its containing storey's elevation, so a multi-
+  // storey model shows all storeys' annotations layered correctly in 3D
+  // (issue #653). Parsing is lazy and only runs while the toggle is on.
   const ifcAnnotationsVisible = useViewerStore((s) => s.typeVisibility.ifcAnnotations);
-  const sectionPlaneYForAnnotations = useMemo(() => {
-    if (activeTool !== 'section' || sectionPlane.axis !== 'down') return null;
-    if (!sectionRange) return null;
-    return sectionRange.min + (sectionPlane.position / 100) * (sectionRange.max - sectionRange.min);
-  }, [activeTool, sectionPlane.axis, sectionPlane.position, sectionRange]);
-  const annotationsEnabled = ifcAnnotationsVisible && sectionPlaneYForAnnotations !== null;
-  const annotationOverlayLines = useSymbolicAnnotations({
-    enabled: annotationsEnabled,
-    sectionY: sectionPlaneYForAnnotations,
+  // For annotations whose storey can't be resolved (or whose authored
+  // elevation is 0 because the storey Z lives on the placement instead),
+  // lift to the middle of the model's vertical span so they don't end up
+  // buried inside ground-floor geometry.
+  const annotationFallbackY = useMemo(() => {
+    const bounds = coordinateInfo?.shiftedBounds;
+    if (!bounds) return 0;
+    const min = bounds.min.y;
+    const max = bounds.max.y;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return 0;
+    return (min + max) * 0.5;
+  }, [coordinateInfo]);
+  const annotationVertices3D = useSymbolicAnnotations({
+    enabled: ifcAnnotationsVisible,
+    fallbackY: annotationFallbackY,
   });
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    if (annotationVertices3D.length === 0) {
+      renderer.clearAnnotationLines3D();
+    } else {
+      renderer.uploadAnnotationLines3D(annotationVertices3D);
+    }
+  }, [annotationVertices3D, isInitialized]);
 
   // ===== Streaming progress =====
   const isStreaming = useViewerStore((state) => state.geometryStreamingActive);
@@ -964,7 +980,6 @@ export function Viewport({
     drawing2D,
     show3DOverlay,
     showHiddenLines,
-    extraOverlayLines: annotationOverlayLines,
   });
 
   // Hide WebGPU canvas immediately when Cesium is active.

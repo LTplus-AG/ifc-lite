@@ -13,7 +13,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { DrawingLine2D } from '@ifc-lite/renderer';
-import { polylineToSegments, circleToSegments } from './useSymbolicAnnotations.js';
+import { polylineToSegments, circleToSegments, liftTo3DLineList } from './useSymbolicAnnotations.js';
 
 describe('polylineToSegments', () => {
   it('emits N-1 segments for an open polyline', () => {
@@ -86,5 +86,39 @@ describe('circleToSegments', () => {
     const out: DrawingLine2D[] = [];
     circleToSegments(0, 0, 1, 0, Math.PI / 2, false, out);
     assert.ok(out.every((seg) => seg.category === 'annotation'));
+  });
+});
+
+describe('liftTo3DLineList', () => {
+  it('emits six floats per segment with the storey Y in the middle slot', () => {
+    const lines: DrawingLine2D[] = [
+      { line: { start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, category: 'annotation' },
+      { line: { start: { x: 5, y: 6 }, end: { x: 7, y: 8 } }, category: 'annotation' },
+    ];
+    const out: number[] = [];
+    liftTo3DLineList(lines, 5.45, out);
+    assert.deepEqual(out, [
+      1, 5.45, 2,   3, 5.45, 4,
+      5, 5.45, 6,   7, 5.45, 8,
+    ]);
+  });
+
+  it('appends to an existing output array', () => {
+    const out: number[] = [99, 99, 99];
+    liftTo3DLineList(
+      [{ line: { start: { x: 0, y: 0 }, end: { x: 1, y: 1 } }, category: 'annotation' }],
+      2,
+      out,
+    );
+    assert.equal(out.length, 9);
+    assert.equal(out[0], 99);
+    assert.equal(out[3], 0);
+    assert.equal(out[4], 2);
+  });
+
+  it('does nothing for an empty input', () => {
+    const out: number[] = [];
+    liftTo3DLineList([], 1, out);
+    assert.equal(out.length, 0);
   });
 });

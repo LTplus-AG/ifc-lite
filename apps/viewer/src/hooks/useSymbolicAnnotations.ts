@@ -165,22 +165,50 @@ async function parseAnnotations(
 }
 
 /**
- * Returns the annotation lines to render at a given section-plane Y.
+ * Lift 2D annotation lines (renderer XZ space) to a flat Float32Array of
+ * 3D line-list vertices `[x1, y, z1, x2, y, z2, …]`. The Y coordinate is
+ * the annotation's storey elevation in world space, so the resulting
+ * lines render at the right floor when drawn through the renderer's
+ * world-space line pipeline.
+ *
+ * Exported for unit testing.
+ */
+export function liftTo3DLineList(
+  lines: DrawingLine2D[],
+  y: number,
+  out: number[],
+): void {
+  for (const line of lines) {
+    out.push(line.line.start.x, y, line.line.start.y);
+    out.push(line.line.end.x,   y, line.line.end.y);
+  }
+}
+
+/**
+ * Returns IFC annotation segments as a single Float32Array of pre-lifted 3D
+ * line-list vertices in world space, ready to feed
+ * `renderer.uploadAnnotationLines3D`.
+ *
+ * Each annotation is lifted to its containing storey's elevation. Annotations
+ * with no resolvable storey fall back to `fallbackY` (typically the mid-Y of
+ * the scene bounds) so the overlay stays visible even when the IFC file's
+ * spatial hierarchy doesn't link annotations to a storey — common when the
+ * authoring tool encodes the storey Z directly on the placement point
+ * instead of on `IfcBuildingStorey.Elevation`.
  *
  * When `enabled` is false (toggle off, no models, etc.) the hook does no
- * parse work and returns an empty array — kept stable across renders.
- *
- * The returned lines are already in section-overlay 2D space, ready to be
- * appended to the `lines` array passed to `renderer.uploadSection2DOverlay`.
+ * parse work and returns a stable empty Float32Array. Parsing is lazy —
+ * the WASM `parseSymbolicRepresentations` call only runs after the toggle
+ * is turned on, and the result is cached per model source.
  */
+const EMPTY_F32 = new Float32Array(0);
+
 export function useSymbolicAnnotations(params: {
   enabled: boolean;
-  /** Current section-plane Y in world space. Used to pick the matching storey. */
-  sectionY: number | null;
-  /** Tolerance (m) for matching a storey elevation to `sectionY`. */
-  storeyTolerance?: number;
-}): DrawingLine2D[] {
-  const { enabled, sectionY, storeyTolerance = 5 } = params;
+  /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
+  fallbackY?: number;
+}): Float32Array {
+  const { enabled, fallbackY = 0 } = params;
   const { models, ifcDataStore } = useViewerStore(
     useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore })),
   );
@@ -232,7 +260,7 @@ export function useSymbolicAnnotations(params: {
   }, [enabled, models, ifcDataStore]);
 
   return useMemo(() => {
-    if (!enabled) return [];
+    if (!enabled) return EMPTY_F32;
     void version; // depend on parse-completion ticks
 
     const stores: IfcDataStore[] = [];
@@ -242,33 +270,26 @@ export function useSymbolicAnnotations(params: {
       stores.push(ifcDataStore);
     }
 
-    const out: DrawingLine2D[] = [];
+    const verts: number[] = [];
     for (const store of stores) {
       const key = sourceKey(store);
       if (!key) continue;
       const cached = cacheRef.current.get(key);
       if (!cached) continue;
 
-      // Match storey by elevation if we have a section position; otherwise
-      // emit everything (e.g. user toggled annotations on without a section).
-      if (sectionY !== null && Number.isFinite(sectionY)) {
-        // The section cut typically sits 1.2m above the floor (see
-        // useFloorplanView.activateFloorplan), so match storeys whose
-        // elevation falls within [sectionY - tol - 1.2, sectionY + tol].
-        const lower = sectionY - storeyTolerance - 1.5;
-        const upper = sectionY + storeyTolerance;
-        for (const bucket of cached.byStorey.values()) {
-          if (bucket.storeyElevation >= lower && bucket.storeyElevation <= upper) {
-            for (const line of bucket.lines) out.push(line);
-          }
-        }
-      } else {
-        for (const bucket of cached.byStorey.values()) {
-          for (const line of bucket.lines) out.push(line);
-        }
+      for (const bucket of cached.byStorey.values()) {
+        // Authoring tools sometimes leave `IfcBuildingStorey.Elevation` blank
+        // and put the storey Z directly on annotation placements instead.
+        // In that case the bucket's recorded elevation is 0 even though the
+        // real annotation Y is elsewhere — use the fallback so the overlay
+        // remains visible rather than being buried inside the building.
+        const y = bucket.storeyElevation === 0 ? fallbackY : bucket.storeyElevation;
+        liftTo3DLineList(bucket.lines, y, verts);
       }
-      for (const line of cached.loose) out.push(line);
+      liftTo3DLineList(cached.loose, fallbackY, verts);
     }
-    return out;
-  }, [enabled, models, ifcDataStore, sectionY, storeyTolerance, version]);
+
+    if (verts.length === 0) return EMPTY_F32;
+    return new Float32Array(verts);
+  }, [enabled, models, ifcDataStore, version, fallbackY]);
 }

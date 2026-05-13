@@ -106,11 +106,23 @@ export function createLensDataProvider(
     ): unknown {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return undefined;
-      return resolved.entry.ifcDataStore.properties?.getPropertyValue?.(
-        resolved.expressId,
-        propertySetName,
-        propertyName,
-      );
+      const store = resolved.entry.ifcDataStore;
+      const id = resolved.expressId;
+
+      // On-demand extraction path: pre-built table is empty for client-parsed
+      // stores, so iterate the same psets we expose via getPropertySets.
+      if (store.onDemandPropertyMap && store.source?.length > 0) {
+        const psets = extractPropertiesOnDemand(store, id);
+        for (const pset of psets) {
+          if (pset.name !== propertySetName) continue;
+          for (const prop of pset.properties) {
+            if (prop.name === propertyName) return prop.value;
+          }
+        }
+        return undefined;
+      }
+
+      return store.properties?.getPropertyValue?.(id, propertySetName, propertyName);
     },
 
     getPropertySets(globalId: number): PropertySetInfo[] {

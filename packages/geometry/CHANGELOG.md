@@ -1,5 +1,11 @@
 # @ifc-lite/geometry
 
+## 1.18.3
+
+### Patch Changes
+
+- [#667](https://github.com/louistrue/ifc-lite/pull/667) [`8048ee4`](https://github.com/louistrue/ifc-lite/commit/8048ee411d770255c3e6fcf6a5d9f0369dc16b2f) Thanks [@louistrue](https://github.com/louistrue)! - Drop runtime dependency on the private `@ifc-lite/wasm-threaded` workspace package. Previously published `@ifc-lite/geometry` manifests pointed at `@ifc-lite/wasm-threaded@0.1.0`, which is intentionally non-publishable, causing `npm install @ifc-lite/geometry` to fail. The threaded bundle is only imported by the single-controller worker behind a feature flag and is always supplied via a host bundler alias, so it now lives in `devDependencies` with an optional `peerDependency` documenting the alias contract.
+
 ## 1.18.2
 
 ### Patch Changes

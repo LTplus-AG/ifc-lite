@@ -78,14 +78,6 @@ async function defaultSpawn(): Promise<Worker> {
 /** Pool a single worker per page; the host can spawn additional workers
  *  with `createDecodeWorkerSource({ spawn })` when concurrent decoding is
  *  desirable (e.g. multiple federated scans). */
-let sharedWorkerPromise: Promise<Worker> | null = null;
-
-function getSharedWorker(spawn: () => Worker | Promise<Worker>): Promise<Worker> {
-  if (!sharedWorkerPromise) {
-    sharedWorkerPromise = Promise.resolve(spawn());
-  }
-  return sharedWorkerPromise;
-}
 
 interface PendingRequest {
   resolve: (response: WorkerResponse) => void;
@@ -140,11 +132,41 @@ class WorkerSession {
 
 let sharedSessionPromise: Promise<WorkerSession> | null = null;
 
+/**
+ * Reset hook for the module-level cache. Exported only for tests so the
+ * "construction does not trigger spawn" and "rejected cache is cleared"
+ * regression tests can start from a known clean slate.
+ *
+ * @internal
+ */
+export function __resetSharedSessionForTests(): void {
+  sharedSessionPromise = null;
+}
+
 function getSharedSession(spawn: () => Worker | Promise<Worker>): Promise<WorkerSession> {
-  if (!sharedSessionPromise) {
-    sharedSessionPromise = getSharedWorker(spawn).then((worker) => new WorkerSession(worker));
-  }
-  return sharedSessionPromise;
+  if (sharedSessionPromise) return sharedSessionPromise;
+  // Wrap in an async IIFE so sync throws from a custom `spawn` callback
+  // route through the same catch path as async rejections — without this,
+  // a synchronous throw would propagate before we attached the
+  // cache-reset handler below.
+  const p = (async () => {
+    const worker = await spawn();
+    return new WorkerSession(worker);
+  })();
+  // Clear the cache on rejection so consumers can recover. Without this,
+  // a single failure (CSP blocks `blob:` workers, no `Worker` global at
+  // SSR, the inline-worker dynamic import fails) would poison every
+  // subsequent `createDecodeWorkerSource()` call — even ones using the
+  // documented custom-`spawn` escape hatch.
+  //
+  // Critical: `.catch` is attached as a side handler (we don't return its
+  // result), so the rejection still propagates to whichever `await` is
+  // waiting on `p`. We only erase the module-level reference.
+  p.catch(() => {
+    if (sharedSessionPromise === p) sharedSessionPromise = null;
+  });
+  sharedSessionPromise = p;
+  return p;
 }
 
 export interface CreateDecodeWorkerSourceOptions extends DecodeWorkerOptions {
@@ -163,10 +185,22 @@ export interface CreateDecodeWorkerSourceOptions extends DecodeWorkerOptions {
 export function createDecodeWorkerSource(
   opts: CreateDecodeWorkerSourceOptions,
 ): StreamingPointSource {
-  // Defer the actual spawn (and the dynamic import of the inline bundle)
-  // until the first `open()` call. Hosts that construct a source eagerly
-  // but only sometimes open it don't pay for the worker chunk.
-  const sessionPromise = getSharedSession(opts.spawn ?? defaultSpawn);
+  // Truly lazy — no spawn, no inline-worker import, no Worker global
+  // touch at construction time. Hosts that build a source speculatively
+  // but never open it don't pay for the worker bundle; SSR/test paths
+  // that import this file but never call `open()` don't crash on a
+  // missing `Worker` constructor.
+  //
+  // The per-source `sessionPromise` is a captured reference so `close()`
+  // doesn't have to reach back into the module-level cache (which the
+  // failure-reset above may have cleared by the time close() runs).
+  let sessionPromise: Promise<WorkerSession> | null = null;
+  const ensureSession = (): Promise<WorkerSession> => {
+    if (!sessionPromise) {
+      sessionPromise = getSharedSession(opts.spawn ?? defaultSpawn);
+    }
+    return sessionPromise;
+  };
   let sourceId: number | null = null;
   let info: PointSourceInfo | null = null;
 
@@ -174,7 +208,7 @@ export function createDecodeWorkerSource(
     async open(signal?: AbortSignal): Promise<PointSourceInfo> {
       if (info) return info;
       abortIfAborted(signal);
-      const session = await sessionPromise;
+      const session = await ensureSession();
       const resp = await session.send<Extract<WorkerResponse, { kind: 'opened' }>>(
         (requestId) => ({
           kind: 'open',
@@ -194,7 +228,7 @@ export function createDecodeWorkerSource(
         throw new Error('decode-worker source not opened');
       }
       abortIfAborted(signal);
-      const session = await sessionPromise;
+      const session = await ensureSession();
       const id = sourceId;
       // Propagate aborts that fire WHILE the worker is decoding —
       // without this, cancel() returns immediately to the caller but
@@ -226,11 +260,11 @@ export function createDecodeWorkerSource(
       }
     },
     close(): void {
-      if (sourceId !== null) {
+      if (sourceId !== null && sessionPromise) {
         const id = sourceId;
-        // Fire-and-forget — close() stays sync for callers. The session
-        // promise is always already resolved here because close() can only
-        // be reached after open() awaited it.
+        // Fire-and-forget — close() stays sync for callers. We only enter
+        // this branch if `open()` previously assigned `sourceId`, which
+        // means `sessionPromise` is already resolved (open awaited it).
         void sessionPromise.then((session) => session.notify({ kind: 'close', sourceId: id }));
         sourceId = null;
       }

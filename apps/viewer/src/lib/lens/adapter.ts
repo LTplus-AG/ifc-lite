@@ -14,6 +14,7 @@ import type { LensDataProvider, PropertySetInfo, ClassificationInfo } from '@ifc
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   extractEntityAttributesOnDemand,
+  extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
@@ -115,7 +116,17 @@ export function createLensDataProvider(
     getPropertySets(globalId: number): PropertySetInfo[] {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return [];
-      const psets = resolved.entry.ifcDataStore.properties?.getForEntity?.(resolved.expressId);
+      const store = resolved.entry.ifcDataStore;
+      const id = resolved.expressId;
+
+      // Properties are extracted lazily — the pre-built table is empty unless
+      // server-parsed. Mirror the quantity path and use the on-demand extractor,
+      // which itself falls back to the eager table when no on-demand map exists.
+      if (store.onDemandPropertyMap && store.source?.length > 0) {
+        return extractPropertiesOnDemand(store, id) as PropertySetInfo[];
+      }
+
+      const psets = store.properties?.getForEntity?.(id);
       if (!psets) return [];
       return psets as PropertySetInfo[];
     },

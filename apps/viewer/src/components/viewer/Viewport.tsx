@@ -40,7 +40,7 @@ import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
-import { useSymbolicAnnotations } from '../../hooks/useSymbolicAnnotations.js';
+import { useSymbolicAnnotations, useSymbolicAnnotationsRichData } from '../../hooks/useSymbolicAnnotations.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -763,6 +763,10 @@ export function Viewport({
     enabled: ifcAnnotationsVisible,
     fallbackY: annotationFallbackY,
   });
+  const { texts: annotationTexts3D, fills: annotationFills3D } = useSymbolicAnnotationsRichData({
+    enabled: ifcAnnotationsVisible,
+    fallbackY: annotationFallbackY,
+  });
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
@@ -772,6 +776,37 @@ export function Viewport({
       renderer.uploadAnnotationLines3D(annotationVertices3D);
     }
   }, [annotationVertices3D, isInitialized]);
+
+  // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
+  // pipelines. Map the hook's per-annotation records into the SymbolicFillInput
+  // / SymbolicTextInput shape the renderer expects. Empty arrays clear cleanly.
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    renderer.uploadAnnotationFills3D(
+      annotationFills3D.map((f) => ({
+        points: f.points,
+        holesOffsets: f.holesOffsets,
+        worldY: f.worldY,
+        color: f.color,
+      })),
+    );
+  }, [annotationFills3D, isInitialized]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    renderer.uploadAnnotationTexts3D(
+      annotationTexts3D.map((t) => ({
+        worldPos: t.worldPos,
+        dirX: t.dirX,
+        dirZ: t.dirZ,
+        height: t.height,
+        content: t.content,
+        alignment: t.alignment,
+      })),
+    );
+  }, [annotationTexts3D, isInitialized]);
 
   // ===== Streaming progress =====
   const isStreaming = useViewerStore((state) => state.geometryStreamingActive);

@@ -101,6 +101,12 @@ import type {
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
+import {
+  SymbolicFillPipeline,
+  SymbolicTextPipeline,
+  type SymbolicFillInput,
+  type SymbolicTextInput,
+} from './symbolic-overlay-pipelines.js';
 import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
@@ -169,6 +175,10 @@ export class Renderer {
     private canvas: HTMLCanvasElement;
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
+    // IfcAnnotation overlay pipelines (issue #653). Created on `init()` once
+    // the device exists; nulled until then.
+    private symbolicFillPipeline: SymbolicFillPipeline | null = null;
+    private symbolicTextPipeline: SymbolicTextPipeline | null = null;
     private postProcessor: PostProcessor | null = null;
     private edlPass: EdlPass | null = null;
     private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
@@ -265,6 +275,17 @@ export class Renderer {
             this.device.getDevice(),
             this.device.getFormat(),
             this.pipeline.getSampleCount()
+        );
+        // IfcAnnotation overlay pipelines (issue #653). Share the device +
+        // presentation format with the rest of the renderer so they composite
+        // into the same RGBA pass.
+        this.symbolicFillPipeline = new SymbolicFillPipeline(
+            this.device.getDevice(),
+            this.device.getFormat(),
+        );
+        this.symbolicTextPipeline = new SymbolicTextPipeline(
+            this.device.getDevice(),
+            this.device.getFormat(),
         );
         // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
         // depth TEXTURE_BINDING), rendering still works without post-processing.
@@ -2124,8 +2145,16 @@ export class Renderer {
                 // this draw happens regardless of whether a section plane is
                 // active — annotations are a free-floating "drawing layer"
                 // that sits at each annotation's storey elevation.
+                // Order: fills (background) → lines (outlines on top) →
+                // texts (labels above everything).
+                if (this.symbolicFillPipeline?.hasGeometry()) {
+                    this.symbolicFillPipeline.render(pass, viewProj);
+                }
                 if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
                     this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
+                }
+                if (this.symbolicTextPipeline?.hasGeometry()) {
+                    this.symbolicTextPipeline.render(pass, viewProj);
                 }
             }
 
@@ -2435,6 +2464,26 @@ export class Renderer {
             this.section2DOverlayRenderer.clearAnnotationLines3D();
             this.requestRender();
         }
+    }
+
+    /**
+     * Upload filled IfcAnnotation regions for the symbolic overlay
+     * (issue #653). Pass an empty array to clear.
+     */
+    uploadAnnotationFills3D(fills: readonly SymbolicFillInput[]): void {
+        if (!this.symbolicFillPipeline) return;
+        this.symbolicFillPipeline.upload(fills);
+        this.requestRender();
+    }
+
+    /**
+     * Upload IfcAnnotation text labels for the symbolic overlay
+     * (issue #653). Pass an empty array to clear.
+     */
+    uploadAnnotationTexts3D(texts: readonly SymbolicTextInput[]): void {
+        if (!this.symbolicTextPipeline) return;
+        this.symbolicTextPipeline.upload(texts);
+        this.requestRender();
     }
 
     /**

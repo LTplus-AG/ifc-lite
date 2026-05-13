@@ -5,7 +5,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { detectScaleUnitMismatch, getEffectiveHorizontalScale, inferMapUnitScale, mergeMapConversion, mergeProjectedCRS } from './effective-georef.js';
+import {
+  detectScaleUnitMismatch,
+  getEffectiveHorizontalScale,
+  inferMapUnitScale,
+  mergeMapConversion,
+  mergeProjectedCRS,
+  supportsStandardGeoreferencing,
+} from './effective-georef.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 describe('effective georeferencing', () => {
@@ -35,6 +42,40 @@ describe('effective georeferencing', () => {
 
     assert.strictEqual(merged?.description, 'Edited CRS');
     assert.strictEqual(merged?.mapUnitScale, 2.5);
+  });
+
+  it('treats IFC2X3 files with IfcMapConversion and IfcProjectedCRS as standard georeferencing', () => {
+    assert.strictEqual(
+      supportsStandardGeoreferencing('IFC2X3', {
+        source: 'mapConversion',
+        projectedCRS: {
+          id: 1,
+          name: 'EPSG:2056',
+        },
+        mapConversion: {
+          id: 2,
+          sourceCRS: 10,
+          targetCRS: 11,
+          eastings: 2681750,
+          northings: 1225750,
+          orthogonalHeight: 0,
+        },
+      }),
+      true,
+    );
+  });
+
+  it('keeps pure IfcSite IFC2X3 geolocation in read-only mode', () => {
+    assert.strictEqual(
+      supportsStandardGeoreferencing('IFC2X3', {
+        source: 'siteLocation',
+        projectedCRS: {
+          id: 226,
+          name: 'EPSG:4326',
+        },
+      }),
+      false,
+    );
   });
 
   it('overlays edited IfcMapConversion fields without dropping original rotation and scale', () => {

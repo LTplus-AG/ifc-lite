@@ -19,7 +19,7 @@ import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { lookupProj4 } from '@ifc-lite/data';
-import { getEffectiveHorizontalScale } from './effective-georef';
+import { getEffectiveHorizontalScale } from './geo-scale';
 
 export interface LatLon {
   lat: number;
@@ -28,6 +28,7 @@ export interface LatLon {
 
 // Cache resolved projection definitions (from any source).
 const projDefCache = new Map<string, string | null>();
+const approxDatumWarningCache = new Set<string>();
 
 /**
  * Extract EPSG numeric code from a CRS name like "EPSG:32632" or "EPSG 2056".
@@ -90,13 +91,22 @@ const DATUM_TOWGS84: Record<string, string> = {
  * Strip +nadgrids=... from a proj4 string and add a +towgs84 approximation
  * based on the ellipsoid. Grid files cannot be loaded in the browser.
  */
-function sanitizeProj4(def: string): string {
+function sanitizeProj4(def: string, code?: string | null): string {
   if (!def.includes('+nadgrids') || def.includes('+nadgrids=@null')) return def;
 
   // Extract the ellipsoid to find the right towgs84 approximation
   const ellpsMatch = def.match(/\+ellps=(\S+)/);
   const ellps = ellpsMatch?.[1] ?? '';
   const towgs84 = DATUM_TOWGS84[ellps] ?? '+towgs84=0,0,0,0,0,0,0';
+
+  if (code && !approxDatumWarningCache.has(code)) {
+    approxDatumWarningCache.add(code);
+    console.warn(
+      `[reproject] EPSG:${code} requires browser-unavailable datum grids; `
+      + 'using an approximate +towgs84 transform instead. '
+      + 'Expect metre-level XY differences for some locations.',
+    );
+  }
 
   // Remove +nadgrids=... and add +towgs84
   return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim() + ' ' + towgs84;
@@ -142,7 +152,7 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     try {
       const bundled = await lookupProj4(code);
       if (bundled) {
-        const sanitized = sanitizeProj4(bundled);
+        const sanitized = sanitizeProj4(bundled, code);
         projDefCache.set(code, sanitized);
         return sanitized;
       }
@@ -163,7 +173,7 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
       try {
         const bundled = await lookupProj4(code);
         if (bundled) {
-          const sanitized = sanitizeProj4(bundled);
+          const sanitized = sanitizeProj4(bundled, code);
           projDefCache.set(code, sanitized);
           // For geographic CRS (longlat), check if we can infer a projected CRS
           // from the UTM zone metadata — a projected CRS is much more useful.
@@ -205,7 +215,7 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
   // 5. Network fallback — fetch from epsg.io
   if (code) {
     const raw = await fetchProj4Def(code);
-    const fetched = raw ? sanitizeProj4(raw) : null;
+    const fetched = raw ? sanitizeProj4(raw, code) : null;
     projDefCache.set(code, fetched);
     return fetched;
   }
@@ -235,7 +245,7 @@ function computeProjectedCenter(
   mapUnitScale: number,
   lengthUnitScale: number,
 ): { easting: number; northing: number } {
-  const { ifcX, ifcY } = computeLocalIfcCenter(coordinateInfo);
+  const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
 
   // Geometry coordinates (ifcX, ifcY) are already in metres — the geometry engine
   // converts from the IFC file's native unit during extraction. Only MapConversion
@@ -299,11 +309,13 @@ export async function reprojectToLatLon(
 }
 
 /**
- * Compute the model's local IFC center offset (ifcX, ifcY) from coordinate info.
- * This is the geometry center in IFC Z-up coordinates, before MapConversion is applied.
+ * Compute the model's center in IFC Z-up metres from coordinate info.
+ * This is the geometry center before MapConversion is applied.
  */
-function computeLocalIfcCenter(coordinateInfo?: CoordinateInfo): { ifcX: number; ifcY: number } {
-  if (!coordinateInfo) return { ifcX: 0, ifcY: 0 };
+export function computeModelCenterInIfcMeters(
+  coordinateInfo?: CoordinateInfo,
+): { ifcX: number; ifcY: number; ifcZ: number } {
+  if (!coordinateInfo) return { ifcX: 0, ifcY: 0, ifcZ: 0 };
 
   const bounds = coordinateInfo.originalBounds;
   const shift = coordinateInfo.originShift;
@@ -314,12 +326,18 @@ function computeLocalIfcCenter(coordinateInfo?: CoordinateInfo): { ifcX: number;
     : { x: 0, y: 0, z: 0 };
 
   const cx = (bounds.min.x + bounds.max.x) / 2;
+  const cy = (bounds.min.y + bounds.max.y) / 2;
   const cz = (bounds.min.z + bounds.max.z) / 2;
 
   const worldYupX = cx + shift.x + rtcYup.x;
+  const worldYupY = cy + shift.y + rtcYup.y;
   const worldYupZ = cz + shift.z + rtcYup.z;
 
-  return { ifcX: worldYupX, ifcY: -worldYupZ };
+  return {
+    ifcX: worldYupX,
+    ifcY: -worldYupZ,
+    ifcZ: worldYupY,
+  };
 }
 
 /**
@@ -353,7 +371,7 @@ export async function reprojectFromLatLon(
     // Geometry offsets (ifcX/Y) are already in metres.
     const mapScale = crs.mapUnitScale ?? lengthUnitScale;
     const invScale = mapScale !== 0 ? 1 / mapScale : 1;
-    const { ifcX, ifcY } = computeLocalIfcCenter(coordinateInfo);
+    const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
     // Effective horizontal scale for metre-converted geometry — see issue #595.
     const scale = getEffectiveHorizontalScale(conversion?.scale, mapScale, lengthUnitScale);
     const abscissa = conversion?.xAxisAbscissa ?? 1.0;
@@ -390,6 +408,13 @@ export async function computeFootprintGeoJSON(
   const projDef = await resolveProjection(crs);
   if (!projDef) {
     console.warn('[footprint] failed to resolve projection for CRS:', crs.name);
+    return null;
+  }
+
+  // Geographic CRS values are degrees, while the model bounds are metres.
+  // Without a projected CRS / map conversion, we can show the model pin but
+  // not a trustworthy footprint polygon.
+  if (isGeographicProj4(projDef)) {
     return null;
   }
 

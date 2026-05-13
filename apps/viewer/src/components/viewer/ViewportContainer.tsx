@@ -12,6 +12,7 @@ import { Section2DPanel } from './Section2DPanel';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
+import { CesiumPlacementEditor } from './CesiumPlacementEditor';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
@@ -25,7 +26,7 @@ import { toast } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight } from 'lucide-react';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
-import { type IfcDataStore } from '@ifc-lite/parser';
+import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
@@ -46,6 +47,8 @@ export function ViewportContainer() {
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
   const bcfOverlayVisible = useViewerStore((s) => s.bcfOverlayVisible);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
+  const cesiumPlacementDraft = useViewerStore((s) => s.cesiumPlacementDraft);
+  const cesiumPlacementDraftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const setCesiumSourceModelId = useViewerStore((s) => s.setCesiumSourceModelId);
   const setCesiumAvailable = useViewerStore((s) => s.setCesiumAvailable);
@@ -206,6 +209,27 @@ export function ViewportContainer() {
   const georef = useMemo(() => {
     if (!cesiumEnabled) return null;
 
+    const applyPlacementDraft = <T extends { mapConversion?: MapConversion }>(
+      modelId: string,
+      effective: T,
+    ): T & { baseMapConversion?: T['mapConversion'] } => {
+      const preview = cesiumPlacementDraftModelId === modelId ? cesiumPlacementDraft : null;
+      if (!preview || !effective.mapConversion) {
+        return {
+          ...effective,
+          baseMapConversion: effective.mapConversion,
+        };
+      }
+      return {
+        ...effective,
+        baseMapConversion: effective.mapConversion,
+        mapConversion: {
+          ...effective.mapConversion,
+          ...preview,
+        },
+      };
+    };
+
     // Check federated models first
     for (const [modelId, model] of storeModels) {
       const ds = model.ifcDataStore;
@@ -215,9 +239,14 @@ export function ViewportContainer() {
         model.geometryResult?.coordinateInfo,
         georefMutations.get(modelId),
       );
-      if (effective?.projectedCRS?.name && effective.mapConversion) {
+      if (
+        effective?.projectedCRS?.name
+        && effective.mapConversion
+        && effective.source !== 'siteLocation'
+      ) {
+        const previewed = applyPlacementDraft(modelId, effective);
         return {
-          ...effective,
+          ...previewed,
           sourceModelId: modelId,
           storeyElevations: ds.spatialHierarchy?.storeyElevations,
         };
@@ -231,9 +260,14 @@ export function ViewportContainer() {
         mergedGeometryResult?.coordinateInfo,
         georefMutations.get('__legacy__'),
       );
-      if (effective?.projectedCRS?.name && effective.mapConversion) {
+      if (
+        effective?.projectedCRS?.name
+        && effective.mapConversion
+        && effective.source !== 'siteLocation'
+      ) {
+        const previewed = applyPlacementDraft('__legacy__', effective);
         return {
-          ...effective,
+          ...previewed,
           sourceModelId: '__legacy__',
           storeyElevations: ifcDataStore.spatialHierarchy?.storeyElevations,
         };
@@ -241,7 +275,16 @@ export function ViewportContainer() {
     }
 
     return null;
-  }, [cesiumEnabled, storeModels, ifcDataStore, georefMutations, mutationVersion, mergedGeometryResult]);
+  }, [
+    cesiumEnabled,
+    storeModels,
+    ifcDataStore,
+    georefMutations,
+    mutationVersion,
+    mergedGeometryResult,
+    cesiumPlacementDraft,
+    cesiumPlacementDraftModelId,
+  ]);
 
   // Determine whether Cesium button should be visible (model has georef or user added it via mutations).
   // Runs independently of cesiumEnabled so the button appears/disappears reactively.
@@ -256,7 +299,7 @@ export function ViewportContainer() {
           model.geometryResult?.coordinateInfo,
           georefMutations.get(modelId),
         );
-        if (effective?.projectedCRS?.name) return true;
+        if (effective?.projectedCRS?.name && effective.source !== 'siteLocation') return true;
       }
       // Fallback to legacy single-model
       if (ifcDataStore) {
@@ -265,7 +308,7 @@ export function ViewportContainer() {
           mergedGeometryResult?.coordinateInfo,
           georefMutations.get('__legacy__'),
         );
-        if (effective?.projectedCRS?.name) return true;
+        if (effective?.projectedCRS?.name && effective.source !== 'siteLocation') return true;
       }
       return false;
     }
@@ -913,9 +956,21 @@ export function ViewportContainer() {
       {cesiumEnabled && georef && !isTauri() && (
         <CesiumOverlay
           mapConversion={georef.mapConversion}
+          cameraMapConversion={georef.baseMapConversion}
           projectedCRS={georef.projectedCRS}
           coordinateInfo={georef.coordinateInfo}
           geometryResult={mergedGeometryResult}
+          lengthUnitScale={georef.lengthUnitScale}
+          storeyElevations={georef.storeyElevations}
+        />
+      )}
+      {cesiumEnabled && georef?.mapConversion && !isTauri() && georef.baseMapConversion && (
+        <CesiumPlacementEditor
+          modelId={georef.sourceModelId}
+          mapConversion={georef.mapConversion}
+          baseMapConversion={georef.baseMapConversion}
+          projectedCRS={georef.projectedCRS}
+          coordinateInfo={georef.coordinateInfo}
           lengthUnitScale={georef.lengthUnitScale}
           storeyElevations={georef.storeyElevations}
         />

@@ -1045,8 +1045,251 @@ fn extract_symbolic_item(
             // Lines are infinite, so we just skip them (or could extract as a segment)
             // For now, skip - symbolic representations usually use polylines
         }
+        IfcType::IfcTextLiteral | IfcType::IfcTextLiteralWithExtent => {
+            extract_text_literal(
+                item,
+                decoder,
+                express_id,
+                ifc_type,
+                rep_identifier,
+                unit_scale,
+                transform,
+                rtc_x,
+                rtc_z,
+                collection,
+            );
+        }
+        IfcType::IfcAnnotationFillArea => {
+            extract_annotation_fill_area(
+                item,
+                decoder,
+                express_id,
+                ifc_type,
+                rep_identifier,
+                unit_scale,
+                transform,
+                rtc_x,
+                rtc_z,
+                collection,
+            );
+        }
         _ => {
             // Unknown curve type - skip
         }
     }
+}
+
+/// Parse `IfcTextLiteral` / `IfcTextLiteralWithExtent` into a `SymbolicText`.
+///
+/// Schema (IFC4):
+/// - `IfcTextLiteral`            (Literal, Placement, Path)
+/// - `IfcTextLiteralWithExtent`  + (Extent, BoxAlignment)
+///
+/// The literal string is passed through verbatim — the JS-side `@ifc-lite/encoding`
+/// package decodes STEP escape sequences (`\X2\…\X0\`, `\X\…`). Placement is an
+/// `IfcAxis2Placement2D|3D`; we collapse to 2D and compose with the item's
+/// inherited transform. Font height defaults to `1.0 / unit_scale` (so 1 model
+/// unit) when the IFC text style chain isn't resolved here — the renderer can
+/// override based on its own typography defaults.
+#[allow(clippy::too_many_arguments)]
+fn extract_text_literal(
+    item: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    express_id: u32,
+    ifc_type: &str,
+    rep_identifier: &str,
+    unit_scale: f32,
+    transform: &Transform2D,
+    rtc_x: f32,
+    rtc_z: f32,
+    collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
+) {
+    use crate::zero_copy::SymbolicText;
+
+    // attr 0: Literal (IfcPresentableText / string). Pass through verbatim;
+    // the JS encoding package decodes STEP escapes on consume.
+    let content = match item.get(0).and_then(|a| a.as_string()) {
+        Some(s) => s.to_string(),
+        None => return, // empty literal — nothing to render
+    };
+
+    // attr 1: Placement (IfcAxis2Placement2D | IfcAxis2Placement3D).
+    let placement_transform = if let Some(p_ref) = item.get_ref(1) {
+        if let Ok(p) = decoder.decode_by_id(p_ref) {
+            parse_axis2_placement_2d(&p, decoder, unit_scale)
+        } else {
+            Transform2D::identity()
+        }
+    } else {
+        Transform2D::identity()
+    };
+    let composed = compose_transforms(transform, &placement_transform);
+
+    // attr 3: Extent (IfcPlanarExtent) → SizeInY interpreted as text height
+    // when present (WithExtent only). Falls back to a sensible default
+    // (~0.25 m at 1 m unit_scale) when omitted.
+    let height_model_units = if item.ifc_type == ifc_lite_core::IfcType::IfcTextLiteralWithExtent {
+        item.get_ref(3)
+            .and_then(|extent_ref| decoder.decode_by_id(extent_ref).ok())
+            .and_then(|extent| extent.get(1).and_then(|a| a.as_float()))
+            .map(|h| h as f32)
+            .unwrap_or(0.25 / unit_scale.max(1e-6))
+    } else {
+        0.25 / unit_scale.max(1e-6)
+    };
+
+    // attr 4: BoxAlignment (string enum). Empty when absent.
+    let alignment = if item.ifc_type == ifc_lite_core::IfcType::IfcTextLiteralWithExtent {
+        item.get(4)
+            .and_then(|a| a.as_string())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        String::new()
+    };
+
+    // Anchor point is the placement origin after transform composition.
+    // Negate Y to match the rest of the section-overlay coordinate system
+    // (see polyline/circle paths above).
+    let (wx, wy) = composed.transform_point(0.0, 0.0);
+
+    collection.add_text(SymbolicText::new(
+        express_id,
+        ifc_type.to_string(),
+        wx - rtc_x,
+        -wy + rtc_z,
+        composed.cos_theta,
+        -composed.sin_theta, // mirror to match Y-negated coord system
+        height_model_units * unit_scale,
+        content,
+        alignment,
+        rep_identifier.to_string(),
+    ));
+}
+
+/// Parse `IfcAnnotationFillArea` (outer boundary + optional inner holes) into a
+/// `SymbolicFillArea`. The boundary curves are limited to `IfcPolyline` and
+/// `IfcIndexedPolyCurve` — the two forms used in practice for filled regions.
+/// More exotic curves (composite, BSpline) get skipped silently.
+///
+/// Style resolution (IfcStyledItem → IfcPresentationStyleAssignment →
+/// IfcFillAreaStyle → IfcFillAreaStyleHatching) is deferred to a follow-up:
+/// the first pass renders a default opaque black solid fill. The JS layer can
+/// override that based on per-IFC-type defaults in the meantime.
+#[allow(clippy::too_many_arguments)]
+fn extract_annotation_fill_area(
+    item: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    express_id: u32,
+    ifc_type: &str,
+    rep_identifier: &str,
+    unit_scale: f32,
+    transform: &Transform2D,
+    rtc_x: f32,
+    rtc_z: f32,
+    collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
+) {
+    use crate::zero_copy::SymbolicFillArea;
+
+    // Extract one ring of (x, y) points from any supported IfcCurve. Empty
+    // vec on unsupported types or parse failure.
+    let extract_curve_ring = |curve_id: u32,
+                              decoder: &mut ifc_lite_core::EntityDecoder,
+                              transform: &Transform2D|
+     -> Vec<f32> {
+        let Ok(curve) = decoder.decode_by_id(curve_id) else {
+            return Vec::new();
+        };
+        match curve.ifc_type {
+            ifc_lite_core::IfcType::IfcPolyline => {
+                let Some(points_attr) = curve.get(0) else {
+                    return Vec::new();
+                };
+                let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else {
+                    return Vec::new();
+                };
+                let mut out = Vec::with_capacity(point_entities.len() * 2);
+                for pe in point_entities {
+                    if pe.ifc_type != ifc_lite_core::IfcType::IfcCartesianPoint {
+                        continue;
+                    }
+                    let Some(coords_attr) = pe.get(0) else { continue };
+                    let Some(coords) = coords_attr.as_list() else { continue };
+                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                        * unit_scale;
+                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                        * unit_scale;
+                    let (wx, wy) = transform.transform_point(x, y);
+                    out.push(wx - rtc_x);
+                    out.push(-wy + rtc_z);
+                }
+                out
+            }
+            ifc_lite_core::IfcType::IfcIndexedPolyCurve => {
+                // attr 0: Points (IfcCartesianPointList2D | 3D)
+                let Some(points_ref) = curve.get_ref(0) else {
+                    return Vec::new();
+                };
+                let Ok(points_entity) = decoder.decode_by_id(points_ref) else {
+                    return Vec::new();
+                };
+                // IfcCartesianPointList2D.CoordList is a list-of-list of REALs.
+                let Some(coord_list_attr) = points_entity.get(0) else {
+                    return Vec::new();
+                };
+                let Some(coord_list) = coord_list_attr.as_list() else {
+                    return Vec::new();
+                };
+                let mut out = Vec::with_capacity(coord_list.len() * 2);
+                for tuple in coord_list {
+                    let Some(coords) = tuple.as_list() else { continue };
+                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                        * unit_scale;
+                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                        * unit_scale;
+                    let (wx, wy) = transform.transform_point(x, y);
+                    out.push(wx - rtc_x);
+                    out.push(-wy + rtc_z);
+                }
+                out
+            }
+            _ => Vec::new(),
+        }
+    };
+
+    // attr 0: OuterBoundary (IfcCurve, required)
+    let Some(outer_ref) = item.get_ref(0) else { return };
+    let mut points = extract_curve_ring(outer_ref, decoder, transform);
+    if points.len() < 6 {
+        // Need at least 3 vertices to form a fillable polygon.
+        return;
+    }
+
+    // attr 1: InnerBoundaries (SET OF IfcCurve, optional) — holes.
+    let mut holes_offsets: Vec<u32> = Vec::new();
+    if let Some(inners_attr) = item.get(1) {
+        if let Ok(inner_list) = decoder.resolve_ref_list(inners_attr) {
+            for inner in inner_list {
+                let hole = extract_curve_ring(inner.id, decoder, transform);
+                if hole.len() >= 6 {
+                    let vertex_index = (points.len() / 2) as u32;
+                    holes_offsets.push(vertex_index);
+                    points.extend(hole);
+                }
+            }
+        }
+    }
+
+    collection.add_fill(SymbolicFillArea::new(
+        express_id,
+        ifc_type.to_string(),
+        points,
+        holes_offsets,
+        // Default fill: opaque dark grey (75% black). The JS renderer reads
+        // SymbolicFillArea.fillR/G/B/A and can substitute a per-type palette;
+        // the IfcStyledItem chain that derives the real style lives in a
+        // follow-up commit.
+        [0.0, 0.0, 0.0, 0.75],
+        rep_identifier.to_string(),
+    ));
 }

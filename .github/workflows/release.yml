@@ -33,14 +33,25 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      # rust-toolchain.toml pins nightly-2025-11-15 + wasm32-unknown-unknown.
+      # `rustup show` installs that exact toolchain on GHA runners; matches
+      # test.yml + desktop-compat.yml so the published bundle is byte-identical
+      # to what CI tested. Plain @stable would leave the nightly missing and
+      # `wasm-pack build` would fail with "toolchain not installed" — exactly
+      # the regression observed on Release #403 after #657 untracked the wasm.
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
 
       - name: Install Dependencies
         run: pnpm install
@@ -140,7 +151,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
 
       - name: Verify all packages on npm

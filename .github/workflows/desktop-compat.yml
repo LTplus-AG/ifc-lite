@@ -8,11 +8,20 @@ name: Desktop Compatibility
 on:
   pull_request:
     paths:
-      # Only run when shared code that the desktop app consumes changes
+      # Run when shared code the desktop app consumes changes, OR when the
+      # Rust sources that produce the WASM bundle change (we no longer
+      # commit the .wasm — see #654 — so the desktop frontend build has to
+      # rebuild it from source via turbo).
       - 'apps/viewer/src/**'
       - 'packages/*/src/**'
-      - 'packages/wasm/pkg/**'
       - 'apps/desktop/**'
+      - 'rust/core/src/**'
+      - 'rust/geometry/src/**'
+      - 'rust/wasm-bindings/src/**'
+      - 'rust/**/Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'scripts/build-wasm.sh'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -41,6 +50,20 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      # WASM bundles are no longer committed (see #654); turbo's wasm
+      # packages rebuild from source via scripts/build-wasm.sh, which
+      # needs a Rust toolchain matching rust-toolchain.toml + wasm-pack.
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -235,9 +235,17 @@ Ready-to-run projects in [`examples/`](examples/):
 
 ## Contributing
 
-No Rust toolchain needed — WASM comes pre-built.
+The WASM bundle is built from `rust/` on every fresh build, so a Rust
+toolchain is required. `rust-toolchain.toml` pins the nightly channel
+and the `wasm32-unknown-unknown` target — `rustup show` (or the
+contributing setup guide) installs everything needed.
 
 ```bash
+# 1. Rust toolchain (one-time)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+cargo install wasm-pack   # or: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+# 2. Clone and build
 git clone https://github.com/louistrue/ifc-lite.git
 cd ifc-lite
 pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:5173

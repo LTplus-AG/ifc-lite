@@ -1,6 +1,19 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "rust/**/*.rs",
+    "rust/**/Cargo.toml",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "scripts/build-wasm.sh"
+  ],
   "globalPassThroughEnv": [
+    "RUSTUP_HOME",
+    "CARGO_HOME",
+    "RUSTUP_TOOLCHAIN",
+    "RUSTFLAGS",
+    "CARGO_TARGET_DIR",
     "OPENROUTER_API_KEY",
     "LLM_API_KEY",
     "LLM_API_BASE",

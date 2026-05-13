@@ -421,22 +421,47 @@ export class Section2DOverlayRenderer {
   }
 
   /**
-   * Transform 2D coordinates to 3D coordinates on the section plane
+   * Transform 2D coordinates to 3D coordinates on the section plane.
    *
-   * The 2D projection in drawing-2d/math.ts uses:
+   * Cardinal axis path (legacy, unchanged):
    * - Y axis (down): 2D (x, y) = 3D (x, z) - looking down at XZ plane
    * - Z axis (front): 2D (x, y) = 3D (x, y) - looking along Z at XY plane
    * - X axis (side): 2D (x, y) = 3D (z, y) - looking along X at ZY plane
+   * When flipped, the 2D x coordinate is negated.
    *
-   * When flipped: x is negated in the 2D projection
+   * Custom-plane path (issue #243): when `customPlane` is supplied, the
+   * 3D point is `origin + tangent*x2d + bitangent*y2d`. The same basis
+   * is used by `SectionCutter` to project triangle-plane intersections
+   * to 2D, so the round-trip is exact and the cap polygons land
+   * precisely on the user's tilted plane.
    */
   private transform2Dto3D(
     x2d: number,
     y2d: number,
     axis: 'down' | 'front' | 'side',
     planePosition: number,
-    flipped: boolean = false
+    flipped: boolean = false,
+    customPlane?: {
+      origin: [number, number, number];
+      tangent: [number, number, number];
+      bitangent: [number, number, number];
+    },
   ): [number, number, number] {
+    if (customPlane) {
+      // Custom plane: bypass the cardinal-axis swap. `flipped` is
+      // intentionally ignored because for arbitrary planes the cutter
+      // does not mirror its 2D output (mirroring only makes sense for
+      // cardinal projections that have a consistent "view direction").
+      const o = customPlane.origin;
+      const t = customPlane.tangent;
+      const b = customPlane.bitangent;
+      return [
+        o[0] + t[0] * x2d + b[0] * y2d,
+        o[1] + t[1] * x2d + b[1] * y2d,
+        o[2] + t[2] * x2d + b[2] * y2d,
+      ];
+    }
+
     // Handle flipped - the 2D x coordinate was negated during projection
     const x = flipped ? -x2d : x2d;
 
@@ -454,14 +479,29 @@ export class Section2DOverlayRenderer {
   }
 
   /**
-   * Upload 2D drawing data to GPU buffers
+   * Upload 2D drawing data to GPU buffers.
+   *
+   * For cardinal-axis section planes, pass `axis` + `planePosition` (+
+   * `flipped`) and 2D points are lifted to 3D via the cardinal-axis
+   * coordinate swap. For arbitrary face-picked planes (issue #243),
+   * pass `customPlane = { origin, tangent, bitangent }` instead — the
+   * 2D points are then lifted via `origin + tangent·x + bitangent·y`,
+   * matching the basis the upstream `SectionCutter` used to project
+   * the cut polygons in the first place. Without that the cap silhouette
+   * would land off the actual cutting plane (the bug PR #581 hid by
+   * suppressing the cap entirely for non-cardinal planes).
    */
   uploadDrawing(
     polygons: CutPolygon2D[],
     lines: DrawingLine2D[],
     axis: 'down' | 'front' | 'side',
     planePosition: number,
-    flipped: boolean = false
+    flipped: boolean = false,
+    customPlane?: {
+      origin: [number, number, number];
+      tangent: [number, number, number];
+      bitangent: [number, number, number];
+    },
   ): void {
     this.init();
 
@@ -503,7 +543,7 @@ export class Section2DOverlayRenderer {
       const baseVertex = vertexOffset;
 
       for (const point of outer) {
-        const [x3d, y3d, z3d] = this.transform2Dto3D(point.x, point.y, axis, planePosition, flipped);
+        const [x3d, y3d, z3d] = this.transform2Dto3D(point.x, point.y, axis, planePosition, flipped, customPlane);
         fillVertices.push(x3d, y3d, z3d, color[0], color[1], color[2], color[3]);
         vertexOffset++;
       }
@@ -541,8 +581,8 @@ export class Section2DOverlayRenderer {
       for (let i = 0; i < outer.length; i++) {
         const p1 = outer[i];
         const p2 = outer[(i + 1) % outer.length];
-        const [x1, y1, z1] = this.transform2Dto3D(p1.x, p1.y, axis, planePosition, flipped);
-        const [x2, y2, z2] = this.transform2Dto3D(p2.x, p2.y, axis, planePosition, flipped);
+        const [x1, y1, z1] = this.transform2Dto3D(p1.x, p1.y, axis, planePosition, flipped, customPlane);
+        const [x2, y2, z2] = this.transform2Dto3D(p2.x, p2.y, axis, planePosition, flipped, customPlane);
         lineVertices.push(x1, y1, z1, x2, y2, z2);
       }
 
@@ -551,8 +591,8 @@ export class Section2DOverlayRenderer {
         for (let i = 0; i < hole.length; i++) {
           const p1 = hole[i];
           const p2 = hole[(i + 1) % hole.length];
-          const [x1, y1, z1] = this.transform2Dto3D(p1.x, p1.y, axis, planePosition, flipped);
-          const [x2, y2, z2] = this.transform2Dto3D(p2.x, p2.y, axis, planePosition, flipped);
+          const [x1, y1, z1] = this.transform2Dto3D(p1.x, p1.y, axis, planePosition, flipped, customPlane);
+          const [x2, y2, z2] = this.transform2Dto3D(p2.x, p2.y, axis, planePosition, flipped, customPlane);
           lineVertices.push(x1, y1, z1, x2, y2, z2);
         }
       }
@@ -560,8 +600,8 @@ export class Section2DOverlayRenderer {
 
     // Additional drawing lines (hatching, etc.)
     for (const line of lines) {
-      const [x1, y1, z1] = this.transform2Dto3D(line.line.start.x, line.line.start.y, axis, planePosition, flipped);
-      const [x2, y2, z2] = this.transform2Dto3D(line.line.end.x, line.line.end.y, axis, planePosition, flipped);
+      const [x1, y1, z1] = this.transform2Dto3D(line.line.start.x, line.line.start.y, axis, planePosition, flipped, customPlane);
+      const [x2, y2, z2] = this.transform2Dto3D(line.line.end.x, line.line.end.y, axis, planePosition, flipped, customPlane);
       lineVertices.push(x1, y1, z1, x2, y2, z2);
     }
 

@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MainToolbar } from './MainToolbar';
+import { MobileToolbar } from './MobileToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { AddElementPanel } from './AddElementPanel';
@@ -14,6 +15,7 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
@@ -176,10 +178,22 @@ export function ViewerLayout() {
     cleanupRef.current = cleanup;
   }, [bottomHeight]);
 
-  // Detect mobile viewport
+  // Track the gap between the layout viewport (innerHeight) and the visual viewport.
+  // On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the URL bar area,
+  // so anything at `bottom: 0` lands behind it. visualViewport.height excludes
+  // the URL bar overlay, giving us the real visible bottom.
+  const bottomViewportInset = useVisualViewportBottomInset();
+
+  // Hide mobile floating buttons when the empty-state "Load IFC" card is showing.
+  const { models, geometryResult } = useIfc();
+  const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
+
+  // Detect mobile viewport — use both width check AND touch capability
   useEffect(() => {
     const checkMobile = () => {
-      const mobile = window.innerWidth < 768;
+      const narrowScreen = window.innerWidth < 768;
+      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const mobile = narrowScreen || (hasTouchScreen && window.innerWidth < 1024);
       setIsMobile(mobile);
       // Auto-collapse panels on mobile
       if (mobile) {
@@ -202,7 +216,7 @@ export function ViewerLayout() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
+      <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
         {/* Keyboard Shortcuts Dialog */}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} />
 
@@ -212,9 +226,9 @@ export function ViewerLayout() {
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
 
-        {/* Main Toolbar */}
-        <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />
-        <DesktopEntitlementBanner />
+        {/* Main Toolbar — use compact MobileToolbar on mobile */}
+        {isMobile ? <MobileToolbar /> : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+        {!isMobile && <DesktopEntitlementBanner />}
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (
@@ -309,112 +323,291 @@ export function ViewerLayout() {
 
         {/* Main Content Area - Mobile Layout */}
         {isMobile && (
-          <div className="flex-1 min-h-0 relative">
+          <div className="flex-1 min-h-0 relative overflow-hidden">
             {/* Full-screen Viewport */}
             <div className="h-full w-full">
               <ViewportContainer />
             </div>
 
+            {/* Backdrop overlay when sheet is open */}
+            {(!leftPanelCollapsed || !rightPanelCollapsed) && (
+              <div
+                className="absolute inset-0 bg-black/40 z-30 animate-in fade-in duration-200"
+                onClick={() => {
+                  setLeftPanelCollapsed(true);
+                  setRightPanelCollapsed(true);
+                }}
+              />
+            )}
+
             {/* Mobile Bottom Sheet - Hierarchy */}
             {!leftPanelCollapsed && (
-              <div className="absolute inset-x-0 bottom-0 h-[50vh] bg-background border-t rounded-t-xl shadow-xl z-40 animate-in slide-in-from-bottom">
-                <div className="flex items-center justify-between p-2 border-b">
-                  <span className="font-medium text-sm">Hierarchy</span>
-                  <button
-                    className="p-1 hover:bg-muted rounded"
-                    onClick={() => setLeftPanelCollapsed(true)}
-                  >
-                    <span className="sr-only">Close</span>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="h-[calc(50vh-48px)] overflow-auto">
-                  <HierarchyPanel />
-                </div>
-              </div>
+              <MobileBottomSheet
+                title="Hierarchy"
+                bottomInset={bottomViewportInset}
+                onClose={() => setLeftPanelCollapsed(true)}
+              >
+                <HierarchyPanel />
+              </MobileBottomSheet>
             )}
 
             {/* Mobile Bottom Sheet - Properties, BCF, IDS, or Lists */}
             {!rightPanelCollapsed && (
-              <div className="absolute inset-x-0 bottom-0 h-[50vh] bg-background border-t rounded-t-xl shadow-xl z-40 animate-in slide-in-from-bottom">
-                <div className="flex items-center justify-between p-2 border-b">
-                  <span className="font-medium text-sm">
-                    {activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Inspector'}
-                  </span>
-                  <button
-                    className="p-1 hover:bg-muted rounded"
-                    onClick={() => {
-                      setRightPanelCollapsed(true);
-                      if (scriptPanelVisible) setScriptPanelVisible(false);
-                      if (listPanelVisible) setListPanelVisible(false);
-                      if (ganttPanelVisible) setGanttPanelVisible(false);
-                      if (bcfPanelVisible) setBcfPanelVisible(false);
-                      if (lensPanelVisible) setLensPanelVisible(false);
-                      if (idsPanelVisible) setIdsPanelVisible(false);
-                      if (activeAnalysisExtension) closeActiveAnalysisExtension();
-                    }}
-                  >
-                    <span className="sr-only">Close</span>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="h-[calc(50vh-48px)] overflow-auto">
-                  {activeBottomAnalysisExtension ? (
-                    activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                  ) : activeRightAnalysisExtension ? (
-                    activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                  ) : ganttPanelVisible ? (
-                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
-                  ) : scriptPanelVisible ? (
-                    <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
-                  ) : listPanelVisible ? (
-                    <ListPanel onClose={() => setListPanelVisible(false)} />
-                  ) : activeTool === 'addElement' ? (
-                    <AddElementPanel onClose={() => setActiveTool('select')} />
-                  ) : lensPanelVisible ? (
-                    <LensPanel onClose={() => setLensPanelVisible(false)} />
-                  ) : idsPanelVisible ? (
-                    <IDSPanel onClose={() => setIdsPanelVisible(false)} />
-                  ) : bcfPanelVisible ? (
-                    <BCFPanel onClose={() => setBcfPanelVisible(false)} />
-                  ) : (
-                    <PropertiesPanel />
-                  )}
-                </div>
-              </div>
+              <MobileBottomSheet
+                title={activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : activeTool === 'addElement' ? 'Add element' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
+                bottomInset={bottomViewportInset}
+                onClose={() => {
+                  setRightPanelCollapsed(true);
+                  if (scriptPanelVisible) setScriptPanelVisible(false);
+                  if (listPanelVisible) setListPanelVisible(false);
+                  if (ganttPanelVisible) setGanttPanelVisible(false);
+                  if (bcfPanelVisible) setBcfPanelVisible(false);
+                  if (lensPanelVisible) setLensPanelVisible(false);
+                  if (idsPanelVisible) setIdsPanelVisible(false);
+                  if (activeAnalysisExtension) closeActiveAnalysisExtension();
+                  if (activeTool === 'addElement') setActiveTool('select');
+                }}
+              >
+                {activeBottomAnalysisExtension ? (
+                  activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                ) : activeRightAnalysisExtension ? (
+                  activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                ) : ganttPanelVisible ? (
+                  <GanttPanel onClose={() => setGanttPanelVisible(false)} />
+                ) : scriptPanelVisible ? (
+                  <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
+                ) : listPanelVisible ? (
+                  <ListPanel onClose={() => setListPanelVisible(false)} />
+                ) : activeTool === 'addElement' ? (
+                  <AddElementPanel onClose={() => setActiveTool('select')} />
+                ) : lensPanelVisible ? (
+                  <LensPanel onClose={() => setLensPanelVisible(false)} />
+                ) : idsPanelVisible ? (
+                  <IDSPanel onClose={() => setIdsPanelVisible(false)} />
+                ) : bcfPanelVisible ? (
+                  <BCFPanel onClose={() => setBcfPanelVisible(false)} />
+                ) : (
+                  <PropertiesPanel />
+                )}
+              </MobileBottomSheet>
             )}
 
-            {/* Mobile Action Buttons */}
-            <div className="absolute bottom-4 left-4 right-4 flex justify-center gap-2 z-30">
-              <button
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg text-sm font-medium"
-                onClick={() => {
-                  setRightPanelCollapsed(true);
-                  setLeftPanelCollapsed(!leftPanelCollapsed);
-                }}
-              >
-                Hierarchy
-              </button>
-              <button
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg text-sm font-medium"
-                onClick={() => {
-                  setLeftPanelCollapsed(true);
-                  setRightPanelCollapsed(!rightPanelCollapsed);
-                }}
-              >
-                Inspector
-              </button>
-            </div>
+            {/* Mobile Floating Buttons — top-left, brutalist vocabulary (tight radii, visible
+                borders, uppercase caption) matching panel headers across the app.
+                Hidden in the empty state so the "Load IFC" card stays unobstructed. */}
+            {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
+              <div className="absolute top-4 left-4 flex flex-col gap-2.5 z-20">
+                <button
+                  className="flex flex-col items-center gap-1 group touch-manipulation"
+                  onClick={() => {
+                    setRightPanelCollapsed(true);
+                    setLeftPanelCollapsed(false);
+                  }}
+                  aria-label="Open Hierarchy"
+                >
+                  <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10M4 18h7" /></svg>
+                  </span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">Hierarchy</span>
+                </button>
+                <button
+                  className="flex flex-col items-center gap-1 group touch-manipulation"
+                  onClick={() => {
+                    setLeftPanelCollapsed(true);
+                    setRightPanelCollapsed(false);
+                  }}
+                  aria-label="Open Properties"
+                >
+                  <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                  </span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">Properties</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Status Bar */}
-        <StatusBar />
+        {/* Status Bar — hidden on mobile to maximize viewport space */}
+        {!isMobile && <StatusBar />}
       </div>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Tracks the gap between the layout viewport (innerHeight) and the visual viewport.
+ * Returns the number of pixels the layout viewport extends below the visible area —
+ * i.e. how tall the iOS Safari URL bar overlay (or virtual keyboard) is.
+ */
+function useVisualViewportBottomInset(): number {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const gap = window.innerHeight - vv.height - vv.offsetTop;
+      setInset(Math.max(0, Math.round(gap)));
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+  return inset;
+}
+
+/**
+ * Mobile bottom sheet with three snap states (dismissed / default / expanded).
+ * Drag the handle: down to shrink/dismiss, up to enlarge. Velocity-based flicks
+ * cross thresholds instantly; otherwise the sheet snaps to the closest state.
+ *
+ * `bottomInset` lifts the sheet above the iOS Safari URL bar overlay.
+ */
+function MobileBottomSheet({
+  title,
+  onClose,
+  bottomInset,
+  children,
+}: {
+  title: ReactNode;
+  onClose: () => void;
+  bottomInset: number;
+  children: ReactNode;
+}) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startY: number; startT: number; startHeight: number; active: boolean }>({
+    startY: 0,
+    startT: 0,
+    startHeight: 0,
+    active: false,
+  });
+
+  const SPRING = 'height 220ms cubic-bezier(0.2, 0, 0, 1)';
+
+  const getSnapPoints = useCallback(() => {
+    const h = window.visualViewport?.height ?? window.innerHeight;
+    return {
+      collapsed: 0,
+      defaultH: Math.round(h * 0.6),
+      expanded: Math.round(h * 0.92),
+    };
+  }, []);
+
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    dragRef.current = {
+      startY: e.clientY,
+      startT: performance.now(),
+      startHeight: sheet.getBoundingClientRect().height,
+      active: true,
+    };
+    sheet.style.transition = 'none';
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+
+  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const sheet = sheetRef.current;
+    if (!dragRef.current.active || !sheet) return;
+    const dy = e.clientY - dragRef.current.startY;
+    const { expanded } = getSnapPoints();
+    const newHeight = Math.max(0, Math.min(expanded, dragRef.current.startHeight - dy));
+    sheet.style.height = `${newHeight}px`;
+  }, [getSnapPoints]);
+
+  const onPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const sheet = sheetRef.current;
+    if (!dragRef.current.active || !sheet) return;
+    dragRef.current.active = false;
+    const dy = e.clientY - dragRef.current.startY;
+    const dt = Math.max(1, performance.now() - dragRef.current.startT);
+    // Positive velocity = upward drag (intent: enlarge).
+    const upwardVelocity = -dy / dt; // px/ms
+    const { collapsed, defaultH, expanded } = getSnapPoints();
+    const currentHeight = sheet.getBoundingClientRect().height;
+
+    sheet.style.transition = SPRING;
+
+    const snapTo = (h: number) => {
+      sheet.style.height = `${h}px`;
+    };
+
+    // Velocity-driven decisions take precedence over position.
+    if (upwardVelocity > 0.5) {
+      snapTo(expanded);
+      return;
+    }
+    if (upwardVelocity < -0.5) {
+      // Downward flick: from expanded → default, from default → dismiss.
+      if (dragRef.current.startHeight >= expanded - 8) {
+        snapTo(defaultH);
+      } else {
+        snapTo(collapsed);
+        window.setTimeout(onClose, 200);
+      }
+      return;
+    }
+
+    // Position-based snap: closest of the three targets.
+    const targets: Array<{ state: 'collapsed' | 'default' | 'expanded'; h: number }> = [
+      { state: 'collapsed', h: collapsed },
+      { state: 'default', h: defaultH },
+      { state: 'expanded', h: expanded },
+    ];
+    let closest = targets[1];
+    for (const t of targets) {
+      if (Math.abs(currentHeight - t.h) < Math.abs(currentHeight - closest.h)) closest = t;
+    }
+    snapTo(closest.h);
+    if (closest.state === 'collapsed') window.setTimeout(onClose, 200);
+  }, [getSnapPoints, onClose]);
+
+  // Initial height = default snap. Recompute when viewport changes (URL bar collapses).
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const { defaultH } = getSnapPoints();
+    sheet.style.height = `${defaultH}px`;
+  }, [getSnapPoints]);
+
+  return (
+    <div
+      ref={sheetRef}
+      className="absolute inset-x-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300"
+      style={{ bottom: `${bottomInset}px` }}
+    >
+      {/* Drag affordance — generously sized for touch */}
+      <div
+        className="grid place-items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        role="button"
+        aria-label="Drag to resize or dismiss"
+      >
+        <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
+      </div>
+      <div className="flex items-center justify-between px-4 pb-2 shrink-0">
+        <span className="font-semibold text-sm">{title}</span>
+        <button
+          className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
+        {children}
+      </div>
+    </div>
   );
 }

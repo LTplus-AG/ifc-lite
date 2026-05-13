@@ -10,6 +10,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use super::boolean::BooleanClippingProcessor;
 use super::brep::FacetedBrepProcessor;
 use super::extrusion::ExtrudedAreaSolidProcessor;
+use super::extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 use super::swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
 use super::tessellated::TriangulatedFaceSetProcessor;
 use crate::router::GeometryProcessor;
@@ -71,6 +72,10 @@ impl GeometryProcessor for MappedItemProcessor {
                     let processor = ExtrudedAreaSolidProcessor::new(schema.clone());
                     processor.process(&item, decoder, schema)?
                 }
+                IfcType::IfcExtrudedAreaSolidTapered => {
+                    let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
+                    processor.process(&item, decoder, schema)?
+                }
                 IfcType::IfcTriangulatedFaceSet => {
                     let processor = TriangulatedFaceSetProcessor::new();
                     processor.process(&item, decoder, schema)?
@@ -84,8 +89,17 @@ impl GeometryProcessor for MappedItemProcessor {
                     processor.process(&item, decoder, schema)?
                 }
                 IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
+                    // Drain the transient processor's `BoolFailure` log into
+                    // the thread-local mapped-failure buffer so the router
+                    // can surface failures from `IfcMappedItem` -> boolean
+                    // chains in `take_csg_failures`. Without this drain the
+                    // processor's failures vanish when it goes out of scope.
                     let processor = BooleanClippingProcessor::new();
-                    processor.process(&item, decoder, schema)?
+                    let mesh = processor.process(&item, decoder, schema)?;
+                    crate::diagnostics::push_pending_mapped_bool_failures(
+                        processor.take_failures(),
+                    );
+                    mesh
                 }
                 IfcType::IfcRevolvedAreaSolid => {
                     let processor = RevolvedAreaSolidProcessor::new(schema.clone());

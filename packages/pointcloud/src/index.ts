@@ -47,6 +47,14 @@ export { LazStreamingSource } from './streaming/laz-source.js';
 export { PlyStreamingSource } from './streaming/ply-source.js';
 export { PcdStreamingSource } from './streaming/pcd-source.js';
 export { E57StreamingSource } from './streaming/e57-source.js';
+export { AsciiPointsStreamingSource } from './streaming/ascii-points-source.js';
+export {
+  decodeAsciiPoints,
+  decodeAsciiPointsFromText,
+  probeAsciiPointsLayout,
+  type AsciiPointsFormat,
+  type AsciiPointsLayout,
+} from './formats/ascii-points.js';
 export { parsePlyHeader } from './formats/ply.js';
 export {
   parseE57FileHeader,

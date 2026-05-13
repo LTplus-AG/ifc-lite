@@ -32,6 +32,7 @@ import {
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
+import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
@@ -71,6 +72,7 @@ export function Viewport({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
 
   const focusViewportForKeyboardShortcuts = useCallback(() => {
     const canvas = canvasRef.current;
@@ -199,8 +201,17 @@ export function Viewport({
   const { hiddenEntities, isolatedEntities: storeIsolatedEntities } = useVisibilityState();
   const isolatedEntities = computedIsolatedIds ?? storeIsolatedEntities ?? null;
 
-  // Tool state
-  const { activeTool, sectionPlane } = useToolState();
+  // Tool state — `sectionPickMode` arms a face-pick on the next click for
+  // the section tool (issue #243); the action setters are forwarded into
+  // the mouse-controls context.
+  const {
+    activeTool,
+    sectionPlane,
+    sectionPickMode,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
+    setSectionPickPreview,
+  } = useToolState();
 
   // Camera state
   const { updateCameraRotationRealtime, updateScaleRealtime, setCameraCallbacks } = useCameraState();
@@ -282,9 +293,9 @@ export function Viewport({
   // Tokyo Night storm: #1a1b26 = rgb(26, 27, 38)
   const clearColorRef = useRef<[number, number, number, number]>([0.102, 0.106, 0.149, 1]);
   const visualEnhancement = useMemo<VisualEnhancementOptions>(() => ({
-    enabled: visualEnhancementsEnabled,
+    enabled: isMobile ? false : visualEnhancementsEnabled,
     edgeContrast: {
-      enabled: edgeContrastEnabled,
+      enabled: isMobile ? false : edgeContrastEnabled,
       intensity: edgeContrastIntensity,
     },
     contactShading: {
@@ -293,7 +304,7 @@ export function Viewport({
       radius: contactShadingRadius,
     },
     separationLines: {
-      enabled: separationLinesEnabled,
+      enabled: isMobile ? false : separationLinesEnabled,
       quality: isMobile ? 'low' : separationLinesQuality,
       intensity: isMobile ? Math.min(0.4, separationLinesIntensity) : separationLinesIntensity,
       radius: isMobile ? 1.0 : separationLinesRadius,
@@ -349,6 +360,10 @@ export function Viewport({
     didMove: false,
     // Track if multi-touch occurred (prevents false tap-select after pinch/zoom)
     multiTouch: false,
+    // 2-finger gesture detection
+    twoFingerGesture: 'none',
+    gestureDistanceAccum: 0,
+    gesturePanAccum: 0,
   });
 
   // Double-click detection
@@ -386,7 +401,12 @@ export function Viewport({
   const measurementConstraintEdgeRef = useLatestRef(measurementConstraintEdge);
   const sectionPlaneRef = useLatestRef(sectionPlane);
   const sectionRangeRef = useLatestRef(sectionRange);
+  const sectionPickModeRef = useLatestRef(sectionPickMode);
   const visualEnhancementRef = useLatestRef(visualEnhancement);
+  // Renderer model bounds, kept fresh per-render. The face-pick handler
+  // forwards these to the slice so the cardinal-fallback `position` % is
+  // computed against the actual model extents at click time.
+  const modelBoundsRef = useRef<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>(null);
 
   // Terrain clip Y from Cesium store (read as ref for animation loop)
   const cesiumTerrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
@@ -460,8 +480,17 @@ export function Viewport({
       }
     }
 
-    // Set cursor based on active tool
+    // Leaving the section tool disarms face-pick so it doesn't ambush the
+    // user on re-entry to a different tool (issue #243).
+    if (activeTool !== 'section' && sectionPickMode) {
+      setSectionPickMode(false);
+    }
+
+    // Set cursor based on active tool. Section + pick-armed gets a
+    // crosshair to telegraph "click a face".
     if (activeTool === 'measure' || activeTool === 'annotate' || activeTool === 'addElement') {
+      canvas.style.cursor = 'crosshair';
+    } else if (activeTool === 'section' && sectionPickMode) {
       canvas.style.cursor = 'crosshair';
     } else {
       canvas.style.cursor = 'default';
@@ -476,7 +505,7 @@ export function Viewport({
         state.clearAddElementPending();
       }
     }
-  }, [activeTool, activeMeasurement, cancelMeasurement]);
+  }, [activeTool, activeMeasurement, cancelMeasurement, sectionPickMode, setSectionPickMode]);
 
   // Helper: calculate scale bar value (world-space size for 96px scale bar)
   const calculateScale = () => {
@@ -526,6 +555,7 @@ export function Viewport({
     if (!canvas) return;
 
     setIsInitialized(false);
+    setInitError(null);
 
     let aborted = false;
     let resizeObserver: ResizeObserver | null = null;
@@ -537,6 +567,9 @@ export function Viewport({
       return Math.max(64, Math.floor(size / 64) * 64);
     };
 
+    // Use CSS pixel dimensions for canvas. The Renderer.render() method manages
+    // its own dimension alignment via getBoundingClientRect() — do NOT apply DPR
+    // here as it creates a mismatch that causes constant context reconfiguration.
     const rect = canvas.getBoundingClientRect();
     const width = alignToWebGPU(Math.max(1, Math.floor(rect.width)));
     const height = Math.max(1, Math.floor(rect.height));
@@ -552,7 +585,6 @@ export function Viewport({
 
     renderer.init().then(() => {
       if (aborted) return;
-
       setIsInitialized(true);
 
       const camera = renderer.getCamera();
@@ -664,11 +696,10 @@ export function Viewport({
         },
       });
 
-      // ResizeObserver
+      // ResizeObserver — let renderer handle its own dimension alignment
       resizeObserver = new ResizeObserver(() => {
         if (aborted) return;
         const rect = canvas.getBoundingClientRect();
-        // Use same WebGPU alignment as initialization
         const w = alignToWebGPU(Math.max(1, Math.floor(rect.width)));
         const h = Math.max(1, Math.floor(rect.height));
         renderer.resize(w, h);
@@ -678,6 +709,11 @@ export function Viewport({
 
       // Initial render
       renderCurrent();
+    }).catch((err) => {
+      if (aborted) return;
+      const message = err instanceof Error ? err.message : 'Failed to initialize 3D renderer';
+      console.error('[Viewport] Renderer init failed:', message);
+      setInitError(message);
     });
 
     return () => {
@@ -717,6 +753,10 @@ export function Viewport({
   // The animation loop reads this to skip post-processing during rapid camera movement.
   const isInteractingRef = useRef(false);
 
+  // Rectangle-select drag state — populated by useMouseControls during
+  // a Ctrl/⌘ + LMB drag, consumed by RectSelectionOverlay below.
+  const [rectSelection, setRectSelection] = useState<RectSelectionRect | null>(null);
+
   // ===== Extracted hooks =====
   useMouseControls({
     canvasRef,
@@ -728,6 +768,8 @@ export function Viewport({
     snapEnabledRef,
     edgeLockStateRef,
     measurementConstraintEdgeRef,
+    sectionPickModeRef,
+    modelBoundsRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
     selectedEntityIdRef,
@@ -751,6 +793,7 @@ export function Viewport({
     handlePickForSelection: (pickResult) => handlePickForSelectionRef.current(pickResult),
     setHoverState,
     clearHover,
+    setRectSelection,
     openContextMenu,
     startMeasurement,
     updateMeasurement,
@@ -769,6 +812,9 @@ export function Viewport({
     calculateScale,
     getPickOptions,
     hasPendingMeasurements,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
+    setSectionPickPreview,
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
     hoverThrottleMs,
@@ -833,6 +879,7 @@ export function Viewport({
     clearColorRef,
     sectionPlaneRef,
     sectionRangeRef,
+    modelBoundsRef,
     visualEnhancementRef,
     selectedEntityIdsRef,
     coordinateInfoRef,
@@ -918,13 +965,34 @@ export function Viewport({
       : undefined;
 
   return (
-    <canvas
-      ref={canvasRef}
-      data-viewport="main"
-      tabIndex={-1}
-      className={`w-full h-full block ${cesiumActive ? 'relative z-[1]' : ''}`}
-      style={canvasStyle}
-      onPointerDown={focusViewportForKeyboardShortcuts}
-    />
+    <div className="relative w-full h-full">
+      <canvas
+        ref={canvasRef}
+        data-viewport="main"
+        tabIndex={-1}
+        className={`w-full h-full block ${cesiumActive ? 'relative z-[1]' : ''}`}
+        style={{ touchAction: 'none', ...canvasStyle }}
+        onPointerDown={focusViewportForKeyboardShortcuts}
+      />
+      {initError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/90 z-50 p-4">
+          <div className="text-center max-w-sm space-y-3">
+            <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+              <svg className="h-6 w-6 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <p className="font-semibold text-sm">3D Rendering Failed</p>
+            <p className="text-xs text-muted-foreground">{initError}</p>
+            <p className="text-xs text-muted-foreground">
+              Try using Chrome 113+, Edge 113+, or Safari 18+ with WebGPU support.
+            </p>
+          </div>
+        </div>
+      )}
+      {/* Rectangle-select drag visual. Pointer-events:none so the
+          canvas keeps receiving pointer events during the drag. */}
+      <RectSelectionOverlay rect={rectSelection} />
+    </div>
   );
 }

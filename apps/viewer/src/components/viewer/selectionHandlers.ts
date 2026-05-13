@@ -39,6 +39,47 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     return; // Skip click handling for measure tool
   }
 
+  // Section-tool face-pick (issue #243): clicking any visible face places
+  // the clip plane through it. Intercept BEFORE the generic select path
+  // so the click doesn't also flip the selection.
+  //
+  // Camera-aware orientation: we flip the picked normal if it faces away
+  // from the camera, so the kept half-space is the one the user is looking
+  // at by default (the most common expectation; if the cut goes the wrong
+  // way the existing Flip button still works). This addresses the
+  // CodeRabbit minor on PR #581 about face-pick not being camera-aware.
+  if (tool === 'section' && ctx.sectionPickModeRef?.current) {
+    const hit = renderer.raycastScene(x, y, {
+      hiddenIds:   ctx.hiddenEntitiesRef.current,
+      isolatedIds: ctx.isolatedEntitiesRef.current,
+    });
+    if (hit?.intersection) {
+      const n = hit.intersection.normal;
+      const p = hit.intersection.point;
+      const cam = renderer.getCamera().getPosition();
+      // View vector = camera → hit. If `dot(view, normal) > 0` the normal
+      // points away from the camera; invert so the cut keeps the side
+      // facing the user.
+      const vx = cam.x - p.x, vy = cam.y - p.y, vz = cam.z - p.z;
+      const dot = vx * n.x + vy * n.y + vz * n.z;
+      const sign = dot < 0 ? -1 : 1;
+      const bounds = ctx.modelBoundsRef?.current;
+      ctx.setSectionPlaneFromFace?.(
+        [sign * n.x, sign * n.y, sign * n.z],
+        [p.x, p.y, p.z],
+        bounds ? {
+          min: [bounds.min.x, bounds.min.y, bounds.min.z],
+          max: [bounds.max.x, bounds.max.y, bounds.max.z],
+        } : undefined,
+      );
+    } else {
+      // Missed geometry — disarm so the user isn't stuck in pick mode
+      // after an errant background click.
+      ctx.setSectionPickMode?.(false);
+    }
+    return;
+  }
+
   // Add-element tool — multi-click placement (start→end for walls/beams,
   // corner→opposite for slab rectangle, N+Enter for slab polygon, single
   // for columns). Uses magnetic snap so points lock to vertices/edges

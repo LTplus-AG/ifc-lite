@@ -15,6 +15,7 @@ import type { Renderer, CutPolygon2D, DrawingLine2D, VisualEnhancementOptions } 
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { SectionPlane } from '@/store';
+import { customPlaneCenter } from '@/store';
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
 
 export interface UseRenderUpdatesParams {
@@ -100,13 +101,32 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
           category: line.category,
         }));
 
+      // For face-picked custom planes (issue #243), forward the plane
+      // basis so `uploadDrawing` can lift 2D polygons back to 3D using
+      // the same axes the cutter projected with — without that the cap
+      // silhouette lands off the actual cutting plane (PR #581's bug).
+      // The basis origin is `pickedAt` projected onto the LIVE plane
+      // (`customPlaneCenter`), not `pickedAt` directly: as the user
+      // drags the gizmo only `distance` changes, and pickedAt sits off
+      // the live plane — using it here makes the lift drop the normal-
+      // component, freezing the cap at the original pick location.
+      const custom = sectionPlane.custom;
+      const customPlane = custom
+        ? {
+            origin:    customPlaneCenter(custom),
+            tangent:   custom.tangent,
+            bitangent: custom.bitangent,
+          }
+        : undefined;
+
       renderer.uploadSection2DOverlay(
         polygons,
         lines,
         sectionPlane.axis,
         sectionPlane.position,
         sectionRangeRef.current ?? undefined,
-        sectionPlane.flipped
+        sectionPlane.flipped,
+        customPlane,
       );
     } else {
       renderer.clearSection2DOverlay();

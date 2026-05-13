@@ -6,12 +6,14 @@
 //!
 //! Fast triangle clipping and boolean operations.
 
+use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::error::Result;
 use crate::mesh::Mesh;
 use crate::triangulation::{calculate_polygon_normal, project_to_2d, triangulate_polygon};
 use nalgebra::{Point3, Vector3};
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
+use std::cell::RefCell;
 
 /// Type alias for small triangle collections (typically 1-2 triangles from clipping)
 pub type TriangleVec = SmallVec<[Triangle; 4]>;
@@ -111,10 +113,17 @@ impl Triangle {
 
 /// Maximum polygon count for either operand in a csgrs boolean operation.
 ///
-/// Rectangular solids are 12 triangles, so this still allows the simple box-like
-/// boolean cases we expect while avoiding the complex BSP trees that can overflow
-/// the browser's native call stack in WASM.
-const MAX_CSG_POLYGONS_PER_MESH: usize = 24;
+/// Rectangular solids are 12 triangles. A 16-segment circular prism — the
+/// downsampled form of a round-window opening (issue #635) — is 60
+/// triangles, and AC20-FZK-Haus packs two such prisms (outer + recessed)
+/// into a single opening element, totalling ~120 triangles for the cut.
+/// This budget accommodates that combined opening and the wall mesh
+/// without letting the BSP tree explode: 128 is the upper bound past
+/// which BSP CSG performance starts to degrade noticeably and the WASM
+/// browser stack is at risk.
+///
+/// Do NOT raise this above 128.
+const MAX_CSG_POLYGONS_PER_MESH: usize = 128;
 /// Maximum combined polygon count for CSG operations.
 const MAX_CSG_POLYGONS: usize = MAX_CSG_POLYGONS_PER_MESH * 2;
 
@@ -122,6 +131,9 @@ const MAX_CSG_POLYGONS: usize = MAX_CSG_POLYGONS_PER_MESH * 2;
 pub struct ClippingProcessor {
     /// Epsilon for floating point comparisons
     pub epsilon: f64,
+    /// Boolean / CSG failures recorded since the last `take_failures()`.
+    /// Interior-mutable so the existing `&self` API stays unchanged.
+    failures: RefCell<Vec<BoolFailure>>,
 }
 
 /// Create a box mesh from AABB min/max bounds
@@ -168,6 +180,7 @@ fn aabb_to_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
 }
 
 impl ClippingProcessor {
+    #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
     #[inline]
     fn can_run_csg_operation(polygons_a: usize, polygons_b: usize) -> bool {
         if polygons_a < 4 || polygons_b < 4 {
@@ -183,7 +196,29 @@ impl ClippingProcessor {
 
     /// Create a new clipping processor
     pub fn new() -> Self {
-        Self { epsilon: 1e-6 }
+        Self {
+            epsilon: 1e-6,
+            failures: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Drain and return the failures recorded by this processor since its
+    /// creation (or the last `take_failures` call). The processor's internal
+    /// log is cleared.
+    pub fn take_failures(&self) -> Vec<BoolFailure> {
+        std::mem::take(&mut *self.failures.borrow_mut())
+    }
+
+    /// Number of failures currently buffered (without draining).
+    pub fn failure_count(&self) -> usize {
+        self.failures.borrow().len()
+    }
+
+    /// Internal: append a failure record. Public-crate so the boolean
+    /// processor in `processors/boolean.rs` can record fallbacks that
+    /// happen above the kernel layer.
+    pub(crate) fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
+        self.failures.borrow_mut().push(BoolFailure::new(op, reason));
     }
 
     /// Clip a triangle against a plane
@@ -520,7 +555,9 @@ impl ClippingProcessor {
         Some((contour, normalized_normal))
     }
 
-    /// Convert our Mesh format to BSP polygon list
+    /// Convert our Mesh format to BSP polygon list. Used only by the
+    /// legacy BSP path; under `manifold-csg` this is dead code.
+    #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
     fn mesh_to_polygons(mesh: &Mesh) -> Vec<crate::bsp_csg::Polygon> {
         use crate::bsp_csg::{Polygon, Vertex};
 
@@ -591,7 +628,8 @@ impl ClippingProcessor {
         polygons
     }
 
-    /// Convert BSP polygon list back to our Mesh format
+    /// Convert BSP polygon list back to our Mesh format. Legacy-only.
+    #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
     fn polygons_to_mesh(polygons: &[crate::bsp_csg::Polygon]) -> Result<Mesh> {
         let mut mesh = Mesh::new();
 
@@ -678,37 +716,132 @@ impl ClippingProcessor {
         overlap_x && overlap_y && overlap_z
     }
 
-    /// Subtract opening mesh from host mesh using BSP CSG boolean operations
+    /// Subtract opening mesh from host mesh using CSG boolean operations.
+    ///
+    /// With the `manifold-csg` feature enabled, dispatches to Google's
+    /// Manifold kernel — no operand-size cap, manifold-by-construction
+    /// output. Without the feature, uses the legacy BSP port (`bsp_csg`)
+    /// which silently falls back to the un-cut host when its 24-polygon
+    /// cap is exceeded.
+    ///
+    /// On any failure path the host is returned un-cut and a [`BoolFailure`]
+    /// record is appended to the processor's failure log (drainable via
+    /// [`Self::take_failures`]). An empty host returns an empty mesh without
+    /// recording a failure (it's a fast path, not a fallback).
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> Result<Mesh> {
         if host_mesh.is_empty() {
             return Ok(Mesh::new());
         }
         if opening_mesh.is_empty() {
+            self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
             return Ok(host_mesh.clone());
         }
         if !Self::bounds_overlap(host_mesh, opening_mesh) {
+            self.record_failure(BoolOp::Difference, BoolFailureReason::NoBoundsOverlap);
             return Ok(host_mesh.clone());
         }
 
-        let host_polys = Self::mesh_to_polygons(host_mesh);
-        let opening_polys = Self::mesh_to_polygons(opening_mesh);
-
-        if host_polys.is_empty() || opening_polys.is_empty() {
-            return Ok(host_mesh.clone());
-        }
-
-        if !Self::can_run_csg_operation(host_polys.len(), opening_polys.len()) {
-            return Ok(host_mesh.clone());
-        }
-
-        let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
-
-        match Self::polygons_to_mesh(&result_polys) {
-            Ok(result) => {
-                let cleaned = Self::remove_degenerate_triangles(&result, host_mesh);
-                Ok(cleaned)
+        #[cfg(feature = "manifold-csg")]
+        {
+            match crate::manifold_kernel::difference(host_mesh, opening_mesh) {
+                Ok(result) => {
+                    // An empty result is a legitimate outcome — the cutter
+                    // can fully contain the host. Only treat non-finite /
+                    // invalid kernel output as a failure.
+                    if !self.validate_mesh(&result) {
+                        self.record_failure(
+                            BoolOp::Difference,
+                            BoolFailureReason::KernelOutputInvalid,
+                        );
+                        return Ok(host_mesh.clone());
+                    }
+                    // Defensive: Manifold has been observed (Linux x86_64 CI,
+                    // AC20-FZK-Haus gable walls #60012/#67828) to return an
+                    // implausibly small result — e.g. 1 triangle from a
+                    // 12-triangle box host clipped by a polygonal-bounded
+                    // half-space prism that does NOT fully contain the host.
+                    // macOS aarch64 produces the expected pentagon on the
+                    // same input, so this is a cross-platform Manifold
+                    // determinism issue. When we detect a clearly-truncated
+                    // result, re-run the same op through the legacy BSP
+                    // path and keep whichever output looks like a real
+                    // clip. See `looks_degenerate` for the heuristic.
+                    if Self::manifold_result_looks_degenerate(host_mesh, &result) {
+                        let host_tris = host_mesh.indices.len() / 3;
+                        let result_tris = result.indices.len() / 3;
+                        eprintln!(
+                            "[manifold-csg] difference result looks degenerate \
+                             (host {} tris -> result {} tris); retrying via BSP fallback",
+                            host_tris, result_tris,
+                        );
+                        if let Some(bsp_result) = self.try_bsp_difference(host_mesh, opening_mesh) {
+                            if !Self::manifold_result_looks_degenerate(host_mesh, &bsp_result) {
+                                self.record_failure(
+                                    BoolOp::Difference,
+                                    BoolFailureReason::ManifoldOutputDegenerate {
+                                        host_tris,
+                                        result_tris,
+                                    },
+                                );
+                                return Ok(bsp_result);
+                            }
+                        }
+                        // BSP also failed or produced suspicious output —
+                        // record but keep Manifold's result (better than
+                        // un-cut, in many cases).
+                        self.record_failure(
+                            BoolOp::Difference,
+                            BoolFailureReason::ManifoldOutputDegenerate {
+                                host_tris,
+                                result_tris,
+                            },
+                        );
+                    }
+                    return Ok(result);
+                }
+                Err(reason) => {
+                    self.record_failure(BoolOp::Difference, reason);
+                    return Ok(host_mesh.clone());
+                }
             }
-            Err(_) => Ok(host_mesh.clone()),
+        }
+
+        #[cfg(not(feature = "manifold-csg"))]
+        {
+            let host_polys = Self::mesh_to_polygons(host_mesh);
+            let opening_polys = Self::mesh_to_polygons(opening_mesh);
+
+            if host_polys.is_empty() || opening_polys.is_empty() {
+                self.record_failure(BoolOp::Difference, BoolFailureReason::DegenerateOperand);
+                return Ok(host_mesh.clone());
+            }
+
+            if !Self::can_run_csg_operation(host_polys.len(), opening_polys.len()) {
+                self.record_failure(
+                    BoolOp::Difference,
+                    BoolFailureReason::OperandTooLarge {
+                        polys_a: host_polys.len(),
+                        polys_b: opening_polys.len(),
+                    },
+                );
+                return Ok(host_mesh.clone());
+            }
+
+            let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
+
+            match Self::polygons_to_mesh(&result_polys) {
+                Ok(result) => {
+                    let cleaned = Self::remove_degenerate_triangles(&result, host_mesh);
+                    Ok(cleaned)
+                }
+                Err(e) => {
+                    self.record_failure(
+                        BoolOp::Difference,
+                        BoolFailureReason::KernelError(e.to_string()),
+                    );
+                    Ok(host_mesh.clone())
+                }
+            }
         }
     }
 
@@ -718,6 +851,10 @@ impl ClippingProcessor {
     /// due to numerical precision issues. This function removes triangles that:
     /// 1. Have very small area (thin slivers)
     /// 2. Are located inside the original host mesh bounds (not on the surface)
+    ///
+    /// Legacy BSP path only — Manifold's output is already manifold so this
+    /// post-pass isn't needed.
+    #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
     fn remove_degenerate_triangles(mesh: &Mesh, host_mesh: &Mesh) -> Mesh {
         let (host_min, host_max) = host_mesh.bounds();
 
@@ -953,7 +1090,14 @@ impl ClippingProcessor {
         cleaned
     }
 
-    /// Union two meshes together using BSP CSG boolean operations
+    /// Union two meshes together using CSG boolean operations.
+    ///
+    /// With the `manifold-csg` feature, dispatches to the Manifold kernel
+    /// (no operand cap). Without it, the legacy BSP path is used and
+    /// silently falls back to mesh-merge (no overlap removal) when the
+    /// 24-polygon cap is exceeded — recording a [`BoolFailure`].
+    ///
+    /// Empty operands are handled silently — they have a unique correct answer.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
         if mesh_a.is_empty() {
             return Ok(mesh_b.clone());
@@ -962,46 +1106,101 @@ impl ClippingProcessor {
             return Ok(mesh_a.clone());
         }
 
-        let polys_a = Self::mesh_to_polygons(mesh_a);
-        let polys_b = Self::mesh_to_polygons(mesh_b);
-
-        if polys_a.is_empty() || polys_b.is_empty() {
-            let mut merged = mesh_a.clone();
-            merged.merge(mesh_b);
-            return Ok(merged);
+        #[cfg(feature = "manifold-csg")]
+        {
+            match crate::manifold_kernel::union(mesh_a, mesh_b) {
+                Ok(result) if !result.is_empty() => return Ok(result),
+                Ok(_) => {
+                    self.record_failure(BoolOp::Union, BoolFailureReason::KernelOutputInvalid);
+                    let mut merged = mesh_a.clone();
+                    merged.merge(mesh_b);
+                    return Ok(merged);
+                }
+                Err(reason) => {
+                    self.record_failure(BoolOp::Union, reason);
+                    let mut merged = mesh_a.clone();
+                    merged.merge(mesh_b);
+                    return Ok(merged);
+                }
+            }
         }
 
-        if !Self::can_run_csg_operation(polys_a.len(), polys_b.len()) {
-            let mut merged = mesh_a.clone();
-            merged.merge(mesh_b);
-            return Ok(merged);
-        }
+        #[cfg(not(feature = "manifold-csg"))]
+        {
+            let polys_a = Self::mesh_to_polygons(mesh_a);
+            let polys_b = Self::mesh_to_polygons(mesh_b);
 
-        let result_polys = crate::bsp_csg::union(polys_a, polys_b);
-        Self::polygons_to_mesh(&result_polys)
+            if polys_a.is_empty() || polys_b.is_empty() {
+                self.record_failure(BoolOp::Union, BoolFailureReason::DegenerateOperand);
+                let mut merged = mesh_a.clone();
+                merged.merge(mesh_b);
+                return Ok(merged);
+            }
+
+            if !Self::can_run_csg_operation(polys_a.len(), polys_b.len()) {
+                self.record_failure(
+                    BoolOp::Union,
+                    BoolFailureReason::OperandTooLarge {
+                        polys_a: polys_a.len(),
+                        polys_b: polys_b.len(),
+                    },
+                );
+                let mut merged = mesh_a.clone();
+                merged.merge(mesh_b);
+                return Ok(merged);
+            }
+
+            let result_polys = crate::bsp_csg::union(polys_a, polys_b);
+            Self::polygons_to_mesh(&result_polys)
+        }
     }
 
-    /// Intersect two meshes using BSP CSG boolean operations
+    /// Intersect two meshes using CSG boolean operations.
     ///
-    /// Returns the intersection of two meshes (the volume where both overlap).
+    /// Returns the intersection of two meshes (the volume where both
+    /// overlap). With `manifold-csg`, this is a real CSG intersection.
+    /// Without the feature the legacy BSP path returns an empty mesh
+    /// when its cap is exceeded — recording a [`BoolFailure`].
     pub fn intersection_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
         if mesh_a.is_empty() || mesh_b.is_empty() {
             return Ok(Mesh::new());
         }
 
-        let polys_a = Self::mesh_to_polygons(mesh_a);
-        let polys_b = Self::mesh_to_polygons(mesh_b);
-
-        if polys_a.is_empty() || polys_b.is_empty() {
-            return Ok(Mesh::new());
+        #[cfg(feature = "manifold-csg")]
+        {
+            match crate::manifold_kernel::intersection(mesh_a, mesh_b) {
+                Ok(result) => return Ok(result),
+                Err(reason) => {
+                    self.record_failure(BoolOp::Intersection, reason);
+                    return Ok(Mesh::new());
+                }
+            }
         }
 
-        if !Self::can_run_csg_operation(polys_a.len(), polys_b.len()) {
-            return Ok(Mesh::new());
-        }
+        #[cfg(not(feature = "manifold-csg"))]
+        {
+            let polys_a = Self::mesh_to_polygons(mesh_a);
+            let polys_b = Self::mesh_to_polygons(mesh_b);
 
-        let result_polys = crate::bsp_csg::intersection(polys_a, polys_b);
-        Self::polygons_to_mesh(&result_polys)
+            if polys_a.is_empty() || polys_b.is_empty() {
+                self.record_failure(BoolOp::Intersection, BoolFailureReason::DegenerateOperand);
+                return Ok(Mesh::new());
+            }
+
+            if !Self::can_run_csg_operation(polys_a.len(), polys_b.len()) {
+                self.record_failure(
+                    BoolOp::Intersection,
+                    BoolFailureReason::OperandTooLarge {
+                        polys_a: polys_a.len(),
+                        polys_b: polys_b.len(),
+                    },
+                );
+                return Ok(Mesh::new());
+            }
+
+            let result_polys = crate::bsp_csg::intersection(polys_a, polys_b);
+            Self::polygons_to_mesh(&result_polys)
+        }
     }
 
     /// Union multiple meshes together
@@ -1090,16 +1289,99 @@ impl ClippingProcessor {
     /// unchanged rather than propagating the error. This provides graceful
     /// degradation for problematic void geometries.
     pub fn subtract_meshes_with_fallback(&self, host: &Mesh, voids: &[Mesh]) -> Mesh {
+        // Empty host has nothing to cut — short-circuit before invoking the
+        // kernel. Recording a failure here would be a false positive.
+        if host.is_empty() {
+            return host.clone();
+        }
         match self.subtract_meshes_batched(host, voids) {
             Ok(result) => {
-                // Validate result
-                if result.is_empty() || !self.validate_mesh(&result) {
+                // An empty result is a legitimate outcome (cutters may fully
+                // contain the host). Only non-finite / invalid kernel output
+                // counts as a failure that warrants reverting to the un-cut
+                // host.
+                if !self.validate_mesh(&result) {
+                    self.record_failure(
+                        BoolOp::Difference,
+                        BoolFailureReason::KernelOutputInvalid,
+                    );
                     host.clone()
                 } else {
                     result
                 }
             }
-            Err(_) => host.clone(),
+            Err(e) => {
+                self.record_failure(
+                    BoolOp::Difference,
+                    BoolFailureReason::KernelError(e.to_string()),
+                );
+                host.clone()
+            }
+        }
+    }
+
+    /// Heuristic: does this look like a botched CSG difference?
+    ///
+    /// Detects the Linux-specific Manifold pathology where a wall body
+    /// clipped by an `IfcPolygonalBoundedHalfSpace` prism collapses to a
+    /// near-empty result (e.g. 1 triangle from a 12-triangle host box).
+    /// macOS aarch64 produces the full pentagon on identical input, so
+    /// this is a kernel-determinism issue, not a malformed cutter.
+    ///
+    /// Rules:
+    ///  * An empty result is a legit outcome (cutter contains host) —
+    ///    NOT degenerate.
+    ///  * A closed-volume result needs at least 4 triangles. Anything
+    ///    below that is structurally broken.
+    ///  * For hosts with >= 12 triangles (typical IFC solid input), the
+    ///    output should retain at least 25 % of the host's triangle
+    ///    count when the cutter is partial.
+    #[cfg_attr(not(feature = "manifold-csg"), allow(dead_code))]
+    fn manifold_result_looks_degenerate(host: &Mesh, result: &Mesh) -> bool {
+        let result_tris = result.indices.len() / 3;
+        if result_tris == 0 {
+            return false;
+        }
+        if result_tris < 4 {
+            return true;
+        }
+        let host_tris = host.indices.len() / 3;
+        if host_tris >= 12 && result_tris * 4 < host_tris {
+            return true;
+        }
+        false
+    }
+
+    /// Run `host - opening` through the legacy in-tree BSP CSG kernel.
+    /// Returns `None` if the BSP path can't accept the inputs (operands
+    /// past the per-mesh polygon cap, degenerate polygon extraction,
+    /// etc.) — caller falls back to keeping the Manifold output.
+    ///
+    /// Used as a safety net under `manifold-csg` when Manifold's output
+    /// looks structurally broken (see [`Self::manifold_result_looks_degenerate`]).
+    /// The BSP path is more deterministic across OS/arch combos at the
+    /// cost of a hard 128-polygon-per-mesh cap.
+    #[cfg_attr(not(feature = "manifold-csg"), allow(dead_code))]
+    fn try_bsp_difference(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> Option<Mesh> {
+        let host_polys = Self::mesh_to_polygons(host_mesh);
+        let opening_polys = Self::mesh_to_polygons(opening_mesh);
+        if host_polys.is_empty() || opening_polys.is_empty() {
+            return None;
+        }
+        if !Self::can_run_csg_operation(host_polys.len(), opening_polys.len()) {
+            return None;
+        }
+        let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
+        match Self::polygons_to_mesh(&result_polys) {
+            Ok(mesh) => {
+                let cleaned = Self::remove_degenerate_triangles(&mesh, host_mesh);
+                if cleaned.is_empty() {
+                    None
+                } else {
+                    Some(cleaned)
+                }
+            }
+            Err(_) => None,
         }
     }
 
@@ -1421,15 +1703,19 @@ mod tests {
 
     #[test]
     fn test_csg_operation_guard_rejects_complex_operands() {
+        // Build a mesh with > MAX_CSG_POLYGONS_PER_MESH triangles. A box is 12
+        // tris, so 12 stacked boxes = 144 tris, comfortably above the
+        // 128-poly budget set for issue #635 round-window CSG support.
         let box_mesh = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
         let mut complex_mesh = Mesh::new();
-        complex_mesh.merge(&box_mesh);
-        complex_mesh.merge(&box_mesh);
-        complex_mesh.merge(&box_mesh);
+        for _ in 0..12 {
+            complex_mesh.merge(&box_mesh);
+        }
 
         let polys_complex = ClippingProcessor::mesh_to_polygons(&complex_mesh);
         let polys_box = ClippingProcessor::mesh_to_polygons(&box_mesh);
 
+        assert!(polys_complex.len() > MAX_CSG_POLYGONS_PER_MESH);
         assert!(!ClippingProcessor::can_run_csg_operation(polys_complex.len(), polys_box.len()));
     }
 }

@@ -11,6 +11,7 @@ import {
   Eye,
   Building2,
   Layers,
+  Layers2,
   FileText,
   Calculator,
   Tag,
@@ -20,6 +21,7 @@ import {
   PenLine,
   Crosshair,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -134,6 +136,10 @@ export function PropertiesPanel() {
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
   const isEntityVisible = useViewerStore((s) => s.isEntityVisible);
+  // Issue #540: surface a small "Layers merged" badge on walls when
+  // the user has the merge-layers load setting active so they
+  // understand the displayed solid is the aggregated representation.
+  const mergeLayersActive = useViewerStore((s) => s.mergeLayers);
   const { query, ifcDataStore, geometryResult, models, getQueryForModel } = useIfc();
 
   // Get model-aware query based on selectedEntity
@@ -1108,9 +1114,33 @@ export function PropertiesPanel() {
             <Building2 className="h-5 w-5 text-zinc-700 dark:text-zinc-300" />
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
-            <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100">
-              {entityName || `${entityType}`}
-            </h3>
+            <div className="flex items-start gap-2">
+              <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100 min-w-0">
+                {entityName || `${entityType}`}
+              </h3>
+              {/* Issue #540: indicate that the wall solid the user is
+                  looking at represents aggregated multilayer parts. We
+                  over-trigger on any IfcWall* class instead of probing
+                  the aggregation graph — the chip is cheap and
+                  informative, and walls that aren't actually layered
+                  simply confirm the user's selection is the parent. */}
+              {mergeLayersActive && entityType?.toLowerCase().startsWith('ifcwall') && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 rounded-sm px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wider gap-1 leading-none h-[18px] mt-0.5"
+                    >
+                      <Layers2 className="h-2.5 w-2.5" />
+                      Layers merged
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Multilayer wall parts have been merged into the parent solid.
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
             <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{entityType}</p>
             {/* Show associated type entity for occurrences */}
             {!renderedIsTypeEntity && renderedTypeProperties && (
@@ -1343,12 +1373,12 @@ export function PropertiesPanel() {
                       modelId={selectedEntity.modelId}
                       entityId={selectedEntity.expressId}
                       attrName={attr.name}
-                      currentValue={attr.value}
+                      currentValue={String(attr.value)}
                     />
                   ) : (
                     <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
-                      <span className="font-medium whitespace-nowrap" title={attr.value}>
-                        {attr.value}
+                      <span className="font-medium whitespace-nowrap" title={String(attr.value)}>
+                        {String(attr.value)}
                       </span>
                     </div>
                   )}

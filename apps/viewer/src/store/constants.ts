@@ -26,8 +26,17 @@ export const SECTION_PLANE_DEFAULTS = {
   AXIS: 'down' as const,
   /** Default section plane position (percentage of model bounds) */
   POSITION: 50,
-  /** Default enabled state */
-  ENABLED: true,
+  /**
+   * Default enabled state.
+   *
+   * MUST be `false`: opening the section tool (button or `x` shortcut)
+   * should leave the model uncut and arm pick mode instead — the cut
+   * appears only after the user clicks a face (or moves the slider /
+   * picks an axis). With `enabled: true` here the user saw a Down cut
+   * appear immediately on tool open even though the panel's mount
+   * effect was about to arm pick mode (issue #243 follow-up).
+   */
+  ENABLED: false,
   /** Default flipped state */
   FLIPPED: false,
   /** Default: render filled/hatched cap surfaces at the cut */
@@ -77,6 +86,27 @@ function getInitialTheme(): 'light' | 'dark' | 'colorful' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+/**
+ * localStorage key for the "Merge Multilayer Walls" load-time toggle
+ * (issue #540). Reading the same key both here and on application
+ * boot keeps the user's choice sticky between sessions.
+ */
+export const MERGE_LAYERS_STORAGE_KEY = 'ifc-lite-merge-layers';
+
+/**
+ * Resolve the initial value of the merge-layers toggle from
+ * localStorage. Default `false` matches the IFC-Lite WASM default
+ * — toggling the UI without ever loading a model is a no-op.
+ */
+function getInitialMergeLayers(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(MERGE_LAYERS_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export const UI_DEFAULTS = {
   /** Default active tool */
   ACTIVE_TOOL: 'select',
@@ -104,6 +134,13 @@ export const UI_DEFAULTS = {
   SEPARATION_LINES_INTENSITY: 0.38,
   /** Separation-line radius in pixels */
   SEPARATION_LINES_RADIUS: 1.0,
+  /**
+   * Issue #540: load-time toggle that asks the WASM geometry engine
+   * to merge Revit-style multilayer walls into a single solid. Read
+   * from localStorage on boot so the user's preference survives
+   * reloads. Default `false` keeps existing per-layer rendering.
+   */
+  MERGE_LAYERS: getInitialMergeLayers(),
 } as const;
 
 // ============================================================================

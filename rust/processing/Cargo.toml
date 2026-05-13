@@ -13,7 +13,11 @@ description = "Shared IFC processing pipeline and types used by server and FFI"
 
 [dependencies]
 ifc-lite-core = { path = "../core" }
-ifc-lite-geometry = { path = "../geometry" }
+# `default-features = false` skips `manifold-csg` (C++ kernel) so this
+# crate stays cross-compile friendly. Native consumers (server, desktop,
+# CLI) re-enable Manifold via their own dependency on `ifc-lite-geometry`
+# when they need it. See rust/geometry/Cargo.toml for the feature contract.
+ifc-lite-geometry = { path = "../geometry", default-features = false }
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

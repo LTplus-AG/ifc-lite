@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>@ifc-lite/collab — live demo</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #0e1117;
+      color: #e6edf3;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      padding: 12px 20px;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    header h1 {
+      font-size: 16px;
+      margin: 0;
+      font-weight: 600;
+    }
+    .pill {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+    }
+    .pill.green { background: #1b3024; border-color: #2ea04344; }
+    .pill.red { background: #3a1d1d; border-color: #f8514944; }
+    button {
+      background: #21262d;
+      color: #e6edf3;
+      border: 1px solid #30363d;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { background: #30363d; }
+    button.primary { background: #1f6feb; border-color: #1f6feb; }
+    button.primary:hover { background: #388bfd; }
+    main {
+      flex: 1;
+      display: flex;
+    }
+    #stage {
+      flex: 1;
+      position: relative;
+      background: #161b22;
+      cursor: crosshair;
+    }
+    aside {
+      width: 320px;
+      border-left: 1px solid #30363d;
+      padding: 16px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+    aside h2 {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #8b949e;
+      margin: 16px 0 8px;
+    }
+    aside h2:first-child { margin-top: 0; }
+    .entity {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .entity:hover { background: #21262d; }
+    .entity.selected { background: #1f6feb44; outline: 1px solid #1f6feb; }
+    .conflict {
+      background: #3a1d1d;
+      border: 1px solid #f8514944;
+      padding: 8px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+    }
+    .conflict button {
+      margin-right: 4px;
+      font-size: 11px;
+      padding: 2px 8px;
+    }
+    .meta {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    input[type="text"] {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>@ifc-lite/collab demo</h1>
+    <span id="status" class="pill">connecting…</span>
+    <span id="me" class="pill"></span>
+    <span id="peers" class="pill">0 peers</span>
+    <span style="flex: 1"></span>
+    <button id="add-wall" class="primary">+ wall</button>
+    <button id="undo">⤺ undo</button>
+    <button id="redo">⤻ redo</button>
+    <button id="snapshot">capture snapshot</button>
+    <button id="conflict" title="set the last entity's name to a random value">force conflict</button>
+  </header>
+  <main>
+    <div id="stage"></div>
+    <aside>
+      <h2>entities</h2>
+      <div id="entities"></div>
+      <h2>conflicts</h2>
+      <div id="conflicts"><div class="meta">none</div></div>
+      <h2>history</h2>
+      <div id="history"></div>
+    </aside>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

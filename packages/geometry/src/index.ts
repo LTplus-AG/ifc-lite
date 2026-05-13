@@ -11,6 +11,7 @@
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
 export { IfcLiteMeshCollector, type StreamingColorUpdateEvent, type StreamingRtcOffsetEvent } from './ifc-lite-mesh-collector.js';
 import type { StreamingColorUpdateEvent, StreamingRtcOffsetEvent } from './ifc-lite-mesh-collector.js';
+import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
 export {
@@ -31,6 +32,8 @@ export {
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
 export { GeometryQuality } from './progressive-loader.js';
+export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
+export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 
 export { LODGenerator, type LODConfig, type LODMesh } from './lod.js';
 export {
@@ -88,6 +91,13 @@ interface ByteStreamingPrePassResult {
 export interface GeometryProcessorOptions {
   quality?: GeometryQuality; // Default: Balanced
   preferNative?: boolean; // Default: true in Tauri
+  /**
+   * When true, the underlying IFC-Lite WASM API merges Revit-style
+   * multilayer walls — `IfcBuildingElementPart` meshes whose parent
+   * wall is sliceable are suppressed. Default `false` keeps the
+   * existing per-layer rendering behaviour. See issue #540.
+   */
+  mergeLayers?: boolean;
 }
 
 /**
@@ -132,6 +142,26 @@ export type StreamingGeometryEvent =
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
+  | {
+      /**
+       * Per-worker memory snapshot, emitted once per geometry worker once
+       * it has finished processing. Aggregated by the viewer's
+       * `memoryAccounting` module to surface total WASM heap and mesh
+       * byte counts across all parallel workers.
+       */
+      type: 'workerMemory';
+      workerIndex: number;
+      wasmHeapBytes: number;
+      meshBytes: number;
+    }
+  /**
+   * Liveness heartbeat from a long-running pre-pass / parallel pipeline.
+   * Carries no payload other than a phase tag. Consumers should treat any
+   * `progress` event as "pipeline still alive" and reset their watchdog.
+   * Existing consumers safely ignore unknown discriminants — this variant
+   * is additive.
+   */
+  | { type: 'progress'; phase: 'prepass' | 'workers' }
   | { type: 'complete'; totalMeshes: number; coordinateInfo: import('./types.js').CoordinateInfo };
 
 export type StreamingInstancedGeometryEvent =
@@ -152,16 +182,23 @@ export class GeometryProcessor {
   private coordinateHandler: CoordinateHandler;
   private isNative: boolean = false;
   private lastNativeStats: PlatformGeometryStats | null = null;
+  private mergeLayers: boolean;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
     this.coordinateHandler = new CoordinateHandler();
     this.isNative = options.preferNative !== false && isTauri();
+    this.mergeLayers = options.mergeLayers === true;
     // Note: options accepted for API compatibility
     void options.quality;
 
     if (!this.isNative) {
       this.bridge = new IfcLiteBridge();
+      // Cache the merge-layers flag on the bridge eagerly — if init()
+      // hasn't run yet the bridge stores the value and replays it on
+      // the freshly-built IfcAPI. Existing call sites can opt in
+      // simply by passing { mergeLayers: true } into the constructor.
+      this.bridge.setMergeLayers(this.mergeLayers);
     }
   }
 
@@ -280,10 +317,11 @@ export class GeometryProcessor {
     }
 
     // Convert buffer to string (IFC files are text)
-    const decoder = new TextDecoder();
-    const content = decoder.decode(buffer);
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
 
-    const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content);
+    const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content, { mergeLayers: this.mergeLayers });
     const meshes = collector.collectMeshes();
     const buildingRotation = collector.getBuildingRotation();
 
@@ -609,13 +647,12 @@ export class GeometryProcessor {
         return;
       }
 
-      // Convert buffer to string (IFC files are text)
-      const decoder = new TextDecoder();
-      const content = decoder.decode(buffer);
+      // Convert buffer to string (IFC files are text). SAB-safe.
+      const content = safeUtf8Decode(buffer);
 
       yield { type: 'model-open', modelID: 0 };
 
-      const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content);
+      const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content, { mergeLayers: this.mergeLayers });
       let totalMeshes = 0;
       let extractedBuildingRotation: number | undefined = undefined;
 
@@ -751,13 +788,14 @@ export class GeometryProcessor {
     }
 
     // Convert buffer to string (IFC files are text)
-    const decoder = new TextDecoder();
-    const content = decoder.decode(buffer);
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
 
     // Use a placeholder model ID (IFC-Lite doesn't use model IDs)
     yield { type: 'model-open', modelID: 0 };
 
-    const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content);
+    const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content, { mergeLayers: this.mergeLayers });
     let totalGeometries = 0;
     let totalInstances = 0;
 
@@ -822,13 +860,30 @@ export class GeometryProcessor {
   async *processParallel(
     buffer: Uint8Array,
     sharedRtcOffset?: { x: number; y: number; z: number },
+    /** Reuse a SAB the caller has already shared with another worker. */
+    existingSab?: SharedArrayBuffer,
+    /** Callback fired when the streaming pre-pass exports its entity index. */
+    onEntityIndex?: (
+      ids: Uint32Array,
+      starts: Uint32Array,
+      lengths: Uint32Array,
+    ) => void,
+    /** Phase 2 flag — use the single-controller worker (rayon-internal). */
+    useSingleController?: boolean,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
       await this.init();
     }
 
-    yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset);
+    yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab, {
+      onEntityIndex,
+      useSingleController,
+      // Issue #540: forward the merge-layers preference snapshotted
+      // at construction time. processParallel posts `set-merge-layers`
+      // to every spawned worker right after `init`.
+      mergeLayers: this.mergeLayers,
+    });
   }
 
   /**
@@ -850,6 +905,20 @@ export class GeometryProcessor {
       /** Shared RTC offset from first federated model (IFC Z-up coords).
        *  Overrides per-model RTC detection for federation alignment. */
       sharedRtcOffset?: { x: number; y: number; z: number };
+      /** Reuse a SAB already populated by the caller (parser worker, etc.). */
+      existingSab?: SharedArrayBuffer;
+      /**
+       * Callback fired when the streaming pre-pass exports its entity
+       * index. Enables a peer worker (e.g. parser) to skip its own scan.
+       * Only fires on the parallel-streaming path.
+       */
+      onEntityIndex?: (
+        ids: Uint32Array,
+        starts: Uint32Array,
+        lengths: Uint32Array,
+      ) => void;
+      /** Phase 2 — opt-in to the single-controller (rayon) worker. */
+      useSingleController?: boolean;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -882,10 +951,9 @@ export class GeometryProcessor {
         allMeshes = result.meshes;
         console.timeEnd('[GeometryProcessor] native-adaptive-sync');
       } else {
-        // WASM PATH
-        const decoder = new TextDecoder();
-        const content = decoder.decode(buffer);
-        const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content);
+        // WASM PATH (SAB-safe).
+        const content = safeUtf8Decode(buffer);
+        const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content, { mergeLayers: this.mergeLayers });
         allMeshes = collector.collectMeshes();
       }
 
@@ -914,7 +982,13 @@ export class GeometryProcessor {
         && (navigator.hardwareConcurrency ?? 1) > 1;
 
       if (useParallel) {
-        yield* this.processParallel(buffer, options.sharedRtcOffset);
+        yield* this.processParallel(
+          buffer,
+          options.sharedRtcOffset,
+          options.existingSab,
+          options.onEntityIndex,
+          options.useSingleController,
+        );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
       }
@@ -948,8 +1022,9 @@ export class GeometryProcessor {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
-    const decoder = new TextDecoder();
-    const content = decoder.decode(buffer);
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
     return this.bridge.parseSymbolicRepresentations(content);
   }
 
@@ -965,8 +1040,9 @@ export class GeometryProcessor {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
-    const decoder = new TextDecoder();
-    const content = decoder.decode(buffer);
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
     return this.bridge.extractProfiles(content, modelIndex);
   }
 

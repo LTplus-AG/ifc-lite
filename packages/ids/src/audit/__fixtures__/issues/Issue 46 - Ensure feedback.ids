@@ -1,0 +1,30 @@
+<ids:ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns:ids="http://standards.buildingsmart.org/IDS">
+	<ids:info>
+		<ids:title>example</ids:title>
+	</ids:info>
+	<ids:specifications>
+		<ids:specification ifcVersion="IFC2X3" name="example">
+			<ids:applicability minOccurs="1" maxOccurs="unbounded">
+				<ids:entity>
+					<ids:name>
+						<ids:simpleValue>IFCPOSTALADDRESS</ids:simpleValue>
+					</ids:name>
+				</ids:entity>
+			</ids:applicability>
+			<ids:requirements>
+				<ids:attribute>
+					<ids:name>
+						<ids:simpleValue>AddressLines</ids:simpleValue>
+					</ids:name>
+					<ids:value>
+						<xs:restriction base="xs:string">
+							<xs:enumeration value="xxxxx"/>
+							<xs:enumeration value="yyyyy"/>
+							<xs:enumeration value="zzzz"/>
+						</xs:restriction>
+					</ids:value>
+				</ids:attribute>
+			</ids:requirements>
+		</ids:specification>
+	</ids:specifications>
+</ids:ids>

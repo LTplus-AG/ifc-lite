@@ -26,6 +26,7 @@ import { LazStreamingSource } from './laz-source.js';
 import { PlyStreamingSource } from './ply-source.js';
 import { PcdStreamingSource } from './pcd-source.js';
 import { E57StreamingSource } from './e57-source.js';
+import { AsciiPointsStreamingSource } from './ascii-points-source.js';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -139,7 +140,7 @@ function handleAbort(sourceId: number): void {
 }
 
 function createSource(
-  format: 'las' | 'laz' | 'ply' | 'pcd' | 'e57',
+  format: 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz',
   blob: Blob,
   opts: { label?: string; downsample: { stride: number } },
 ): StreamingPointSource {
@@ -148,6 +149,8 @@ function createSource(
   if (format === 'ply') return new PlyStreamingSource(blob, opts);
   if (format === 'pcd') return new PcdStreamingSource(blob, opts);
   if (format === 'e57') return new E57StreamingSource(blob, opts);
+  if (format === 'pts') return new AsciiPointsStreamingSource(blob, 'pts', opts);
+  if (format === 'xyz') return new AsciiPointsStreamingSource(blob, 'xyz', opts);
   throw new Error(`decode-worker: unknown format "${format}"`);
 }
 

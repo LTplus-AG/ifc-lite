@@ -16,6 +16,9 @@ export class WebGPUDevice {
   private lastHeight: number = 0;
   private contextConfigured: boolean = false;
   private frameCount: number = 0;
+  /** Async GPU validation errors (not caught by try-catch) */
+  _uncapturedErrorCount: number = 0;
+  _lastUncapturedError: string = '';
 
   /**
    * Initialize WebGPU device and canvas context
@@ -38,6 +41,14 @@ export class WebGPUDevice {
     if (!this.context) {
       throw new Error('Failed to get WebGPU context');
     }
+
+    // Capture async GPU errors (validation errors from submit() are async)
+    this.device.onuncapturederror = (event) => {
+      const msg = (event as any).error?.message ?? String(event);
+      console.error('[WebGPU] Uncaptured error:', msg);
+      this._lastUncapturedError = msg;
+      this._uncapturedErrorCount++;
+    };
 
     // Handle device lost - mark context as needing reconfiguration
     // Use type assertion as 'lost' may not be in all WebGPU type definitions

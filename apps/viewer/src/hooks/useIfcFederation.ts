@@ -10,7 +10,7 @@
  * Extracted from useIfc.ts for better separation of concerns
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store.js';
 import {
@@ -41,6 +41,8 @@ import {
 import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
 import { getEffectiveGeoreference, getEffectiveHorizontalScale, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
+import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
+import { acquireFileBuffer } from '../utils/acquireFileBuffer.js';
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
   return typeof (file as NativeFileHandle).path === 'string';
@@ -376,6 +378,13 @@ export function useIfcFederation() {
     findModelForGlobalId: s.findModelForGlobalId,
   })));
 
+  // Per-call ownership token. Each addModel() bumps this; state writes
+  // (loading/error/progress) in the catch block must compare back to
+  // their captured value before mutating, so a cancelled load A doesn't
+  // overwrite progress for a newer load B that started after A's abort.
+  // Mirrors the same pattern in useIfcLoader.ts.
+  const loadSessionRef = useRef(0);
+
   /**
    * Add a model to the federation (multi-model support)
    * Uses FederationRegistry to assign unique ID offsets - BULLETPROOF against ID collisions
@@ -393,6 +402,16 @@ export function useIfcFederation() {
   ): Promise<string | null> => {
     const modelId = options?.modelId ?? crypto.randomUUID();
     const addStart = performance.now();
+    // Bump the per-call ownership token first so that any error path
+    // (including the load gate) can compare against this captured value
+    // before mutating shared loading/error/progress state.
+    const currentSession = ++loadSessionRef.current;
+    // Memory-aware load gate: if a previous federation load is still in
+    // flight on this tab and admitting this one would exceed the device
+    // memory budget, wait until headroom frees. Single-file loads never
+    // wait. See `federationLoadGate.ts` for the budget formula. (#600)
+    const fileSizeForGateMB = (typeof (file as File).size === 'number' ? (file as File).size : 0) / (1024 * 1024);
+    const gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB);
     try {
       // IMPORTANT: Before adding a new model, check if there's a legacy model
       // (loaded via loadFile) that's not in the Map yet. If so, migrate it first.
@@ -443,10 +462,24 @@ export function useIfcFederation() {
       setError(null);
       setProgress({ phase: 'Loading file', percent: 0 });
 
-      // Read file from disk
-      const buffer = isNativeFileHandle(file)
-        ? toExactArrayBuffer(await readNativeFile(file.path))
-        : await file.arrayBuffer();
+      // Read file from disk. The browser path streams files above
+      // `STREAM_SAB_THRESHOLD` directly into a SharedArrayBuffer, eliminating
+      // the doubled peak (ArrayBuffer + SAB) of `await file.arrayBuffer()`
+      // when the geometry pipeline copies into its own SAB. The native path
+      // still reads via Tauri's Rust IPC because it bounds memory differently.
+      // (#600)
+      let buffer: ArrayBuffer;
+      if (isNativeFileHandle(file)) {
+        buffer = toExactArrayBuffer(await readNativeFile(file.path));
+      } else {
+        // The cast preserves the previous ArrayBuffer-shaped contract for
+        // every downstream consumer. When the underlying store is a SAB,
+        // downstream code only ever reads bytes via `new Uint8Array(buffer)`
+        // / `new DataView(buffer)`, both of which work on either backing
+        // store. The cast is purely type-system; runtime is identical.
+        const acquired = await acquireFileBuffer(file as File);
+        buffer = acquired.buffer as ArrayBuffer;
+      }
       const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
       // Detect point cloud formats first — we never run them through
@@ -465,7 +498,7 @@ export function useIfcFederation() {
       // depends on persisting it onto the FederatedModel record.
       let pointCloudHandleId: number | undefined;
 
-      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57') {
+      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
         const renderer = getGlobalRenderer();
         if (!renderer) {
           setError('Renderer not initialised — try again after the viewer mounts.');
@@ -486,11 +519,25 @@ export function useIfcFederation() {
           onProgress: setProgress,
           onAssetCountDelta: incCount,
         });
+        // Expose cancellation while the stream is in-flight. Capture
+        // the canceller as a named ref so the cleanup can verify the
+        // store still points at us before clearing — a second
+        // addModel() that began before this one settles must not lose
+        // its Cancel button to our finally block.
+        const { setActiveStreamCanceller } = useViewerStore.getState();
+        const cancelStream = () => ingest.streamHandle.cancel();
+        setActiveStreamCanceller(cancelStream);
         // ingest.done rejects on stream errors; ingestPointCloud's onError
         // callback already calls removePointCloudAsset + incCount(-1), so
         // the outer catch must NOT repeat that cleanup or the count goes
         // negative when other point clouds are still loaded.
-        await ingest.done;
+        try {
+          await ingest.done;
+        } finally {
+          if (useViewerStore.getState().activeStreamCanceller === cancelStream) {
+            setActiveStreamCanceller(null);
+          }
+        }
         parsedDataStore = ingest.dataStore;
         parsedGeometry = ingest.geometryResult;
         schemaVersion = ingest.schemaVersion;
@@ -656,10 +703,31 @@ export function useIfcFederation() {
       return modelId;
 
     } catch (err) {
+      // Only mutate shared loading/error/progress state if our session
+      // is still the active one. A second addModel() that started after
+      // we were cancelled has already taken over the spinner — we must
+      // not overwrite it with our "Cancelled" state.
+      const isCurrent = loadSessionRef.current === currentSession;
+      // User-initiated cancel surfaces as an AbortError. Map it to a
+      // benign "Cancelled" state so the federated path matches the
+      // single-model loader rather than reporting a parse failure.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        console.log('[useIfc] addModel cancelled by user');
+        if (isCurrent) {
+          setError(null);
+          setProgress({ phase: 'Cancelled', percent: 0 });
+          setLoading(false);
+        }
+        return null;
+      }
       console.error('[useIfc] addModel failed:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setLoading(false);
+      if (isCurrent) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+        setLoading(false);
+      }
       return null;
+    } finally {
+      releaseFederationLoadSlot(gateSlot);
     }
   }, [setLoading, setError, setProgress, setIfcDataStore, setGeometryResult, storeAddModel, hasModels, registerModelOffset]);
 
@@ -868,7 +936,10 @@ export function useIfcFederation() {
       return;
     }
 
-    // Check that all files are IFCX format and read buffers
+    // Check that all files are IFCX format and read buffers.
+    // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
+    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
+    // Keep on file.arrayBuffer().
     const buffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();
@@ -922,7 +993,10 @@ export function useIfcFederation() {
       return;
     }
 
-    // Read new overlay buffers
+    // Read new overlay buffers.
+    // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
+    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
+    // Keep on file.arrayBuffer().
     const newBuffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();

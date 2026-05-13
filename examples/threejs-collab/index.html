@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ifc-lite/collab — 3D walls live demo</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #7d8590;
+        --accent: #1f6feb;
+      }
+      html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text);
+        font: 13px ui-sans-serif, system-ui, -apple-system, sans-serif; overflow: hidden; }
+      #app { display: grid; grid-template-rows: 48px 1fr; height: 100vh; }
+      header { display: flex; align-items: center; gap: 10px; padding: 0 14px;
+        background: var(--panel); border-bottom: 1px solid var(--border); }
+      header h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.2px; }
+      .pill { padding: 3px 8px; border-radius: 999px; background: #21262d; font-size: 11px;
+        color: var(--muted); border: 1px solid var(--border); }
+      .pill.green { color: #3fb950; border-color: #2ea043; }
+      .pill.red   { color: #f85149; border-color: #da3633; }
+      .spacer { flex: 1; }
+      header button { background: #21262d; color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+      header button:hover { background: #30363d; }
+      header button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+      header button.primary:hover { background: #2870e0; }
+      main { display: grid; grid-template-columns: 1fr 280px; height: 100%; min-height: 0; }
+      #stage { position: relative; background:
+        linear-gradient(135deg, #0a1422, #14253c);
+        overflow: hidden; }
+      #viewer { display: block; width: 100%; height: 100%; }
+      aside { background: var(--panel); border-left: 1px solid var(--border);
+        padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+      aside h2 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.6px; color: var(--muted);
+        text-transform: uppercase; }
+      .entity, .conflict, .meta { padding: 6px 8px; border-radius: 6px; }
+      .entity { background: #21262d; margin-bottom: 4px; cursor: pointer; display: flex;
+        justify-content: space-between; align-items: center; gap: 8px; border: 1px solid transparent; }
+      .entity:hover { background: #30363d; }
+      .entity.selected { border-color: var(--accent); background: #1c2a3a; }
+      .entity .swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+      .entity .meta { background: transparent; padding: 0; color: var(--muted); font-size: 11px; }
+      .conflict { background: #2d1818; border: 1px solid #da3633; margin-bottom: 6px; }
+      .conflict button { margin-top: 6px; margin-right: 6px; }
+      .meta { color: var(--muted); font-size: 11px; }
+      .help { color: var(--muted); font-size: 11px; line-height: 1.5; padding: 8px;
+        background: #181d24; border-radius: 6px; border: 1px dashed var(--border); }
+      kbd { background: #21262d; border: 1px solid var(--border); border-radius: 3px;
+        padding: 0 4px; font-size: 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>@ifc-lite/collab — 3D walls</h1>
+        <span id="status" class="pill">connecting…</span>
+        <span id="me" class="pill"></span>
+        <span id="peers" class="pill">0 peers</span>
+        <div class="spacer"></div>
+        <button id="add-wall" class="primary">+ wall</button>
+        <button id="undo" title="undo (Cmd/Ctrl+Z)">⤺ undo</button>
+        <button id="redo" title="redo (Cmd/Ctrl+Shift+Z)">⤻ redo</button>
+        <button id="snapshot">capture snapshot</button>
+        <button id="conflict" title="set the last entity's name to a random value">force conflict</button>
+        <button id="delete" title="delete selected wall">delete</button>
+      </header>
+      <main>
+        <div id="stage">
+          <canvas id="viewer"></canvas>
+        </div>
+        <aside>
+          <div>
+            <h2>How to drive it</h2>
+            <div class="help">
+              Open this URL in a second tab. Click <strong>+ wall</strong>, then click a wall and
+              drag it on the floor. Both tabs see the same scene live.
+              <br><br>
+              <kbd>Click</kbd> select &middot;
+              <kbd>Drag</kbd> move on floor &middot;
+              <kbd>Right-drag</kbd> orbit &middot;
+              <kbd>Wheel</kbd> zoom &middot;
+              <kbd>Esc</kbd> deselect
+            </div>
+          </div>
+          <div>
+            <h2>Entities</h2>
+            <div id="entities"></div>
+          </div>
+          <div>
+            <h2>Conflicts</h2>
+            <div id="conflicts"><div class="meta">none</div></div>
+          </div>
+          <div>
+            <h2>History</h2>
+            <div id="history"></div>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

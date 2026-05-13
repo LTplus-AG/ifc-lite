@@ -569,6 +569,11 @@
       "size": 342657851
     },
     {
+      "path": "various/issue-604-door.ifc",
+      "sha256": "d0a4ea586c2ae1cd247d1026c8967a6a33055df261d71af57be2ed2312a12ad0",
+      "size": 116741
+    },
+    {
       "path": "various/revit-walls-3.ifc",
       "sha256": "67fd60b6db9591f870a159f57a9960fd873b501d98a95adffd292b21bdc3737f",
       "size": 3954

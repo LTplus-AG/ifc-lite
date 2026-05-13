@@ -211,7 +211,7 @@ pub(crate) fn find_color_for_geometry(
 }
 
 /// Extract RGBA color from IfcStyledItem.Styles attribute
-fn extract_color_from_styles(
+pub(crate) fn extract_color_from_styles(
     styles_attr: &ifc_lite_core::AttributeValue,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<[f32; 4]> {
@@ -390,6 +390,11 @@ pub(crate) struct PrePassData {
     /// their geometry is a single swept solid. Held in an `Arc` so it can be
     /// attached to the `GeometryRouter` without cloning the map.
     pub material_layer_index: std::sync::Arc<ifc_lite_geometry::MaterialLayerIndex>,
+    /// Map from every emitted `IfcBuildingElementPart` whose parent has its own
+    /// `Representation` → parent element id. Captured during
+    /// `propagate_voids_to_parts` so the merge-layers toggle (#540) can skip
+    /// per-part meshes when the parent is sliceable.
+    pub part_to_parent: rustc_hash::FxHashMap<u32, u32>,
 }
 
 /// Single EntityScanner pass that collects everything needed before geometry
@@ -520,8 +525,10 @@ pub(crate) fn combined_pre_pass(
     );
 
     // Propagate voids from aggregate parents (IfcWall) to children (IfcBuildingElementPart)
-    // so that multilayer wall parts also get window/door cutouts.
-    ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
+    // so that multilayer wall parts also get window/door cutouts. Also captures
+    // the part → parent map used by the merge-layers toggle (issue #540).
+    let part_to_parent =
+        ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
 
     PrePassData {
         geometry_styles,
@@ -533,12 +540,13 @@ pub(crate) fn combined_pre_pass(
         complex_jobs,
         element_material_styles,
         material_layer_index,
+        part_to_parent,
     }
 }
 
 /// Build material style index: maps material IDs to their colors.
 /// Follows: material → IfcMaterialDefinitionRepresentation → IfcStyledRepresentation → orphan IfcStyledItem
-fn build_material_style_index(
+pub(crate) fn build_material_style_index(
     material_def_reprs: &rustc_hash::FxHashMap<u32, Vec<u32>>,
     orphan_styled_items: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -586,7 +594,7 @@ fn build_material_style_index(
 /// individual materials → colors.
 /// Handles: IfcMaterial, IfcMaterialList, IfcMaterialLayerSet, IfcMaterialLayerSetUsage,
 ///          IfcMaterialConstituentSet (IFC4), IfcMaterialProfileSet (IFC4)
-fn build_element_material_styles(
+pub(crate) fn build_element_material_styles(
     element_to_material: &rustc_hash::FxHashMap<u32, u32>,
     material_styles: &rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -816,7 +824,7 @@ fn collect_material_data(
 /// Process a single entity for material-related data collection.
 /// Called from both `combined_pre_pass` (inline in the scan loop) and
 /// `collect_material_data` (standalone scan).
-fn collect_material_entity(
+pub(crate) fn collect_material_entity(
     id: u32,
     type_name: &str,
     start: usize,

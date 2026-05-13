@@ -9,7 +9,7 @@
  * selection/context-menu interactions to selectionHandlers.ts.
  */
 
-import { useEffect, type MutableRefObject, type RefObject } from 'react';
+import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, PickResult, SnapTarget } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
@@ -41,6 +41,12 @@ export interface MouseState {
   startX: number;
   startY: number;
   didDrag: boolean;
+  /**
+   * True while the user is mid-drag in rectangle-select mode (Ctrl/⌘
+   * held over the canvas in select tool). Suppresses orbit/pan in
+   * the drag handlers and triggers `pickRect` on mouseup.
+   */
+  isRectSelecting?: boolean;
 }
 
 export interface UseMouseControlsParams {
@@ -57,6 +63,10 @@ export interface UseMouseControlsParams {
   snapEnabledRef: MutableRefObject<boolean>;
   edgeLockStateRef: MutableRefObject<EdgeLockState>;
   measurementConstraintEdgeRef: MutableRefObject<MeasurementConstraintEdge | null>;
+  /** Section tool: when true, the next click picks a face for the clip plane (issue #243). */
+  sectionPickModeRef: MutableRefObject<boolean>;
+  /** Renderer model bounds; passed to face-pick so the cardinal-fallback `position` % is correct. */
+  modelBoundsRef: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
 
   // Visibility/selection refs
   hiddenEntitiesRef: MutableRefObject<Set<number>>;
@@ -102,7 +112,20 @@ export interface UseMouseControlsParams {
 
   // Callbacks
   handlePickForSelection: (pickResult: PickResult | null) => void;
-  setHoverState: (state: { entityId: number; screenX: number; screenY: number }) => void;
+  setHoverState: (state: {
+    entityId: number;
+    screenX: number;
+    screenY: number;
+    worldXYZ?: { x: number; y: number; z: number };
+  }) => void;
+  /**
+   * Called during a rectangle-selection drag with the current rect
+   * (CSS pixels, canvas-relative). Passed `null` on drag end to clear
+   * any visual overlay. The hook handles the actual `pickRect` call
+   * + selection update internally; this callback is only for the
+   * overlay visual.
+   */
+  setRectSelection?: (rect: { x0: number; y0: number; x1: number; y1: number } | null) => void;
   clearHover: () => void;
   openContextMenu: (entityId: number | null, screenX: number, screenY: number) => void;
   startMeasurement: (point: MeasurePoint) => void;
@@ -122,6 +145,24 @@ export interface UseMouseControlsParams {
   calculateScale: () => void;
   getPickOptions: () => { isStreaming: boolean; hiddenIds: Set<number>; isolatedIds: Set<number> | null };
   hasPendingMeasurements: () => boolean;
+  /** Section face-pick: set the clip plane through a world-space face (issue #243). */
+  setSectionPlaneFromFace: (
+    normal: [number, number, number],
+    point:  [number, number, number],
+    bounds?: { min: [number, number, number]; max: [number, number, number] },
+  ) => void;
+  /** Section face-pick: arm/disarm the "next click picks a face" mode. */
+  setSectionPickMode: (enabled: boolean) => void;
+  /**
+   * Section face-pick hover preview (issue #243 follow-up). Set by the
+   * dwell handler when the cursor pauses ~200ms over a face; cleared
+   * (passed `null`) when the cursor leaves the canvas, moves to a
+   * different face, or pick mode is disarmed. Purely visual — does not
+   * touch `sectionPlane`.
+   */
+  setSectionPickPreview: (
+    preview: { normal: [number, number, number]; point: [number, number, number]; faceKey: string } | null,
+  ) => void;
 
   // Constants
   HOVER_SNAP_THROTTLE_MS: number;
@@ -145,6 +186,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     snapEnabledRef,
     edgeLockStateRef,
     measurementConstraintEdgeRef,
+    sectionPickModeRef,
+    modelBoundsRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
     selectedEntityIdRef,
@@ -186,6 +229,10 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     calculateScale,
     getPickOptions,
     hasPendingMeasurements,
+    setSectionPlaneFromFace,
+    setSectionPickMode,
+    setSectionPickPreview,
+    setRectSelection,
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
     hoverThrottleMs,
@@ -193,6 +240,37 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     RENDER_THROTTLE_MS_LARGE,
     RENDER_THROTTLE_MS_HUGE,
   } = params;
+
+  // ─── Section face-pick hover preview (issue #243 follow-up) ──────────
+  // Refs persist across render so the dwell timer + sticky-face state
+  // survive the throttled mousemove path. Critical for the anti-jitter
+  // contract: cursor wobble within the same triangle/face must NOT
+  // restart the dwell or repaint the overlay. See `handleSectionPickHover`
+  // in this file for the full UX rules.
+  const sectionDwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sectionLastFaceKeyRef = useRef<string | null>(null);
+  const sectionLastCastPosRef = useRef<{ x: number; y: number } | null>(null);
+  const sectionLastCastTsRef = useRef<number>(0);
+
+  // When `sectionPickMode` flips off (Esc, second toggle press, tool
+  // change), make sure any in-flight dwell timer is cancelled so it
+  // can't call `setSectionPickPreview(...)` after the slice has
+  // already been disarmed. The slice's own guard would no-op the
+  // call, but it's clearer to stop the timer at the source rather
+  // than relying on the late guard.
+  useEffect(() => {
+    const unsub = useViewerStore.subscribe((s, prev) => {
+      if (prev.sectionPickMode && !s.sectionPickMode) {
+        if (sectionDwellTimerRef.current) {
+          clearTimeout(sectionDwellTimerRef.current);
+          sectionDwellTimerRef.current = null;
+        }
+        sectionLastFaceKeyRef.current = null;
+        sectionLastCastPosRef.current = null;
+      }
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -213,6 +291,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       snapEnabledRef,
       edgeLockStateRef,
       measurementConstraintEdgeRef,
+      sectionPickModeRef,
+      modelBoundsRef,
       hiddenEntitiesRef,
       isolatedEntitiesRef,
       geometryRef,
@@ -240,8 +320,127 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       openContextMenu,
       hasPendingMeasurements,
       getPickOptions,
+      setSectionPlaneFromFace,
+      setSectionPickMode,
+      setSectionPickPreview,
       HOVER_SNAP_THROTTLE_MS,
       SLOW_RAYCAST_THRESHOLD_MS,
+    };
+
+    /**
+     * Section face-pick hover preview (issue #243 follow-up).
+     *
+     * Anti-jitter contract — these are the rules the dwell handler
+     * MUST honour, in order:
+     *   1. < 16ms since last raycast → skip (60fps cap).
+     *   2. < 2px movement since last raycast → skip (cheap throttle).
+     *   3. No hit OR degenerate normal → cancel timer + clear preview.
+     *   4. Hit on the SAME face as last cast → no-op (don't restart
+     *      dwell, don't repaint — this is the critical rule that keeps
+     *      cursor wobble inside a flat wall from flickering).
+     *   5. Hit on a NEW face → cancel old timer + clear preview, start
+     *      a fresh 200ms dwell.
+     *   6. Dwell elapses → camera-orient the normal (matches the click
+     *      commit policy in `selectionHandlers.ts` so the previewed
+     *      arrow always points the same direction the actual cut will
+     *      keep), then publish to the slice.
+     *
+     * `faceKey` heuristic: we use the closed-form
+     * `${expressId}:${meshIndex}:${triangleIndex}` from the renderer's
+     * `Intersection`. That uniquely identifies the triangle and is
+     * stable under cursor wobble within a single triangle. For two
+     * adjacent triangles of the same flat wall the keys differ but the
+     * normals are nearly equal — that yields a brief reset of the
+     * dwell timer when crossing the diagonal, which is acceptable
+     * (matches the "moved to a new triangle" intuition and avoids the
+     * complexity of clustering coplanar triangles). The user only
+     * waits a fresh 200ms once per crossing; the per-triangle key
+     * still suppresses the in-triangle wobble that drove the
+     * jitter complaint.
+     */
+    const handleSectionPickHover = (e: MouseEvent, x: number, y: number): void => {
+      const now = performance.now();
+      // 60fps cap — keeps the raycast off the hot path of high-Hz
+      // pointer devices. Reading-clock rate doesn't have to align
+      // with the display refresh; the dwell timer below paints at
+      // 200ms regardless.
+      if (now - sectionLastCastTsRef.current < 16) return;
+      // 2px deadband — fights spurious mousemove events from drift /
+      // touchpad jitter so we don't burn raycasts when the cursor is
+      // effectively still.
+      const last = sectionLastCastPosRef.current;
+      if (last) {
+        const dx = e.clientX - last.x;
+        const dy = e.clientY - last.y;
+        if (dx * dx + dy * dy < 4) return;
+      }
+      sectionLastCastPosRef.current = { x: e.clientX, y: e.clientY };
+      sectionLastCastTsRef.current = now;
+
+      const hit = renderer.raycastScene(x, y, {
+        hiddenIds:   hiddenEntitiesRef.current,
+        isolatedIds: isolatedEntitiesRef.current,
+      });
+
+      // Reject misses and degenerate normals. The renderer's
+      // raycaster *should* always hand back a unit-length normal but
+      // BVH meshes occasionally yield tiny-magnitude normals on
+      // co-planar triangle pairs; the slice would warn and refuse a
+      // commit anyway, so don't waste a preview on it.
+      const nLen = hit ? Math.hypot(hit.intersection.normal.x, hit.intersection.normal.y, hit.intersection.normal.z) : 0;
+      if (!hit || nLen < 1e-6) {
+        if (sectionDwellTimerRef.current) {
+          clearTimeout(sectionDwellTimerRef.current);
+          sectionDwellTimerRef.current = null;
+        }
+        sectionLastFaceKeyRef.current = null;
+        setSectionPickPreview(null);
+        return;
+      }
+
+      const ix = hit.intersection;
+      // Triangle-stable face key — see the JSDoc above for the
+      // adjacent-triangle behaviour.
+      const faceKey = `${ix.expressId}:${ix.meshIndex}:${ix.triangleIndex}`;
+      if (faceKey === sectionLastFaceKeyRef.current) {
+        // Same face — cursor is just wobbling within the triangle.
+        // The preview (if any) is already painted in the right place;
+        // the dwell timer (if any) is already counting down for this
+        // face. Doing nothing here is the entire point of the sticky
+        // faceKey rule.
+        return;
+      }
+      sectionLastFaceKeyRef.current = faceKey;
+
+      // New face — cancel the previous face's pending dwell + drop
+      // any preview still pinned to it so the user doesn't see the
+      // overlay linger on the wrong surface during the new face's
+      // 200ms wait.
+      if (sectionDwellTimerRef.current) clearTimeout(sectionDwellTimerRef.current);
+      setSectionPickPreview(null);
+
+      // Snapshot what we need so the timer closure doesn't capture
+      // a hit object that the raycaster will mutate on the next cast.
+      const px = ix.point.x, py = ix.point.y, pz = ix.point.z;
+      const nx = ix.normal.x / nLen, ny = ix.normal.y / nLen, nz = ix.normal.z / nLen;
+
+      sectionDwellTimerRef.current = setTimeout(() => {
+        sectionDwellTimerRef.current = null;
+        // Camera-aware normal flip — mirrors the commit logic in
+        // `selectionHandlers.ts` so the previewed arrow direction
+        // matches what the click will actually produce. Without this
+        // the preview would point one way and the cap (post-click)
+        // could end up the other, which the user would read as a
+        // bug.
+        const cam = renderer.getCamera().getPosition();
+        const vx = cam.x - px, vy = cam.y - py, vz = cam.z - pz;
+        const sign = (vx * nx + vy * ny + vz * nz) < 0 ? -1 : 1;
+        setSectionPickPreview({
+          normal: [sign * nx, sign * ny, sign * nz],
+          point:  [px, py, pz],
+          faceKey,
+        });
+      }, 200);
     };
 
     // Mouse controls - respect active tool
@@ -258,9 +457,22 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       mouseState.startX = e.clientX;
       mouseState.startY = e.clientY;
       mouseState.didDrag = false;
+      mouseState.isRectSelecting = false;
 
       // Determine action based on active tool and mouse button
       const tool = activeToolRef.current;
+
+      // Rectangle-select gesture: Ctrl/⌘ + LMB drag while in the
+      // select tool. Suppresses orbit/pan; the rect is finalised
+      // and pick happens on mouseup.
+      if (tool === 'select' && e.button === 0 && (e.ctrlKey || e.metaKey)) {
+        mouseState.isRectSelecting = true;
+        const rect = canvas.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        setRectSelection?.({ x0: cx, y0: cy, x1: cx, y1: cy });
+        return;
+      }
 
       // Will this mousedown lead to an orbit drag?
       const isPanGesture = tool === 'pan' || e.button === 1 || e.button === 2 ||
@@ -357,6 +569,18 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       const y = e.clientY - rect.top;
       const tool = activeToolRef.current;
 
+      // Rectangle-select drag: just update the visual; no orbit / pan
+      // / pick / hover work happens in this branch.
+      if (mouseState.isRectSelecting) {
+        setRectSelection?.({
+          x0: mouseState.startX - rect.left,
+          y0: mouseState.startY - rect.top,
+          x1: x,
+          y1: y,
+        });
+        return;
+      }
+
       // Handle measure tool live preview while dragging
       // IMPORTANT: Check tool first, not activeMeasurement, to prevent orbit conflict
       if (tool === 'measure' && mouseState.isDragging && activeMeasurementRef.current) {
@@ -374,6 +598,17 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // track the cursor; magnetic snap is layered on when enabled.
       if (tool === 'addElement' && !mouseState.isDragging) {
         if (handleAddElementHover(ctx, x, y)) return;
+      }
+
+      // Section tool face-pick: dwell-aware hover preview (issue #243
+      // follow-up). Runs INSTEAD of the generic tooltip path while
+      // pick mode is armed so the overlay stays the only signal under
+      // the cursor — the tooltip would just compete visually with the
+      // violet quad. See `handleSectionPickHover` for the full
+      // anti-jitter rules.
+      if (tool === 'section' && !mouseState.isDragging && sectionPickModeRef.current) {
+        handleSectionPickHover(e, x, y);
+        return;
       }
 
       // Handle orbit/pan for other tools (or measure tool with shift+drag or no active measurement)
@@ -421,7 +656,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           // Uses visibility filtering so hidden elements don't show hover tooltips
           const pickResult = await renderer.pick(x, y, getPickOptions());
           if (pickResult) {
-            setHoverState({ entityId: pickResult.expressId, screenX: e.clientX, screenY: e.clientY });
+            setHoverState({
+              entityId: pickResult.expressId,
+              screenX: e.clientX,
+              screenY: e.clientY,
+              worldXYZ: pickResult.worldXYZ,
+            });
           } else {
             clearHover();
           }
@@ -441,6 +681,39 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       const tool = activeToolRef.current;
 
+      // Rectangle-select finalisation: run pickRect against the
+      // dragged rect, replace the current selection with the result,
+      // then clear the visual.
+      if (mouseState.isRectSelecting) {
+        const canvasRect = canvas.getBoundingClientRect();
+        const x0 = mouseState.startX - canvasRect.left;
+        const y0 = mouseState.startY - canvasRect.top;
+        const x1 = e.clientX - canvasRect.left;
+        const y1 = e.clientY - canvasRect.top;
+        // Tiny rect (just a click + tiny twitch) → no-op so we don't
+        // accidentally clear selection on a missed Ctrl-click.
+        const rectSize = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+        if (rectSize >= 4) {
+          // pickRect can reject on WebGPU validation / device-loss
+          // paths — swallow the error so the pointer event doesn't
+          // surface an unhandled rejection. Selection stays
+          // untouched on failure (better UX than clearing it).
+          void renderer
+            .pickRect(x0, y0, x1, y1, getPickOptions())
+            .then((ids) => {
+              useViewerStore.getState().setSelectedEntityIds(Array.from(ids));
+            })
+            .catch((error) => {
+              console.warn('[useMouseControls] Rectangle selection failed:', error);
+            });
+        }
+        setRectSelection?.(null);
+        mouseState.isRectSelecting = false;
+        mouseState.isDragging = false;
+        mouseState.isPanning = false;
+        return;
+      }
+
       // Handle measure tool completion
       if (tool === 'measure' && activeMeasurementRef.current) {
         if (handleMeasureUp(ctx, e)) return;
@@ -456,6 +729,17 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       mouseState.isDragging = false;
       mouseState.isPanning = false;
       camera.stopInertia();
+      // Section face-pick preview: cursor left the canvas, so any
+      // pending dwell timer would otherwise commit a stale hover
+      // when the user returns. Drop the overlay too so we don't leave
+      // a violet quad orphaned on the last-seen face after leaving.
+      if (sectionDwellTimerRef.current) {
+        clearTimeout(sectionDwellTimerRef.current);
+        sectionDwellTimerRef.current = null;
+      }
+      sectionLastFaceKeyRef.current = null;
+      sectionLastCastPosRef.current = null;
+      setSectionPickPreview(null);
       // Restore cursor based on active tool
       if (tool === 'measure') {
         canvas.style.cursor = 'crosshair';
@@ -528,6 +812,15 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         cancelAnimationFrame(measureRaycastFrameRef.current);
         measureRaycastFrameRef.current = null;
       }
+
+      // Section face-pick: drop any pending dwell so the timer
+      // doesn't fire after unmount and call into a stale renderer.
+      if (sectionDwellTimerRef.current) {
+        clearTimeout(sectionDwellTimerRef.current);
+        sectionDwellTimerRef.current = null;
+      }
+      sectionLastFaceKeyRef.current = null;
+      sectionLastCastPosRef.current = null;
     };
   }, [isInitialized]);
 }

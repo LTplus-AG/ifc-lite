@@ -4,8 +4,75 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createSectionSlice, type SectionSlice } from './sectionSlice.js';
+import {
+  createSectionSlice,
+  customPlaneCenter,
+  loadLastSectionMode,
+  type SectionSlice,
+} from './sectionSlice.js';
 import { SECTION_PLANE_DEFAULTS } from '../constants.js';
+import type { CustomSectionPlane } from '../types.js';
+
+// ─── Test helpers ──────────────────────────────────────────────────────
+// Replaces the original `dot` + literal-tuple comparison style with two
+// shared helpers that make geometric assertions both stricter and less
+// brittle:
+//   • `assertVecClose` — epsilon compare, ignores signed-zero noise
+//     (`Math.abs(0 - (-0)) === 0`) so tests don't couple to flipped
+//     normal sign quirks (CR feedback PR #650).
+//   • `assertOrthonormalBasis` — checks both orthogonality AND unit
+//     length of tangent + bitangent. The previous "orthonormal"
+//     assertion only checked dot products, so a basis with non-unit
+//     tangent/bitangent would pass silently (CR feedback PR #650).
+function assertVecClose(actual: ArrayLike<number>, expected: ArrayLike<number>, eps = 1e-9): void {
+  assert.strictEqual(actual.length, expected.length, `length mismatch: ${actual.length} vs ${expected.length}`);
+  for (let i = 0; i < expected.length; i++) {
+    const diff = Math.abs(actual[i] - expected[i]);
+    assert.ok(diff < eps, `axis ${i}: expected ${expected[i]}, got ${actual[i]} (|diff|=${diff})`);
+  }
+}
+
+function assertOrthonormalBasis(t: number[], b: number[], n: number[]): void {
+  const dot = (a: number[], c: number[]) => a[0] * c[0] + a[1] * c[1] + a[2] * c[2];
+  const tLen = Math.hypot(t[0], t[1], t[2]);
+  const bLen = Math.hypot(b[0], b[1], b[2]);
+  assert.ok(Math.abs(tLen - 1) < 1e-9, `tangent must be unit length (got ${tLen})`);
+  assert.ok(Math.abs(bLen - 1) < 1e-9, `bitangent must be unit length (got ${bLen})`);
+  assert.ok(Math.abs(dot(t, n)) < 1e-9, `tangent must be perpendicular to normal (dot=${dot(t, n)})`);
+  assert.ok(Math.abs(dot(b, n)) < 1e-9, `bitangent must be perpendicular to normal (dot=${dot(b, n)})`);
+  assert.ok(Math.abs(dot(t, b)) < 1e-9, `tangent must be perpendicular to bitangent (dot=${dot(t, b)})`);
+}
+
+// In-memory localStorage shim for tests that exercise the slice's
+// persistence helpers (last-used section mode, issue #243 follow-up).
+// node:test runs without a DOM, so the slice's `typeof window ===
+// 'undefined'` guards short-circuit by default. We install a real
+// `window.localStorage` for the duration of the persistence tests so
+// save/load actually round-trips through code rather than no-opping.
+class MemoryStorage {
+  private store = new Map<string, string>();
+  get length(): number { return this.store.size; }
+  clear(): void { this.store.clear(); }
+  getItem(key: string): string | null { return this.store.has(key) ? this.store.get(key)! : null; }
+  setItem(key: string, value: string): void { this.store.set(key, String(value)); }
+  removeItem(key: string): void { this.store.delete(key); }
+  key(i: number): string | null { return Array.from(this.store.keys())[i] ?? null; }
+}
+
+function installWindowShim(): { uninstall: () => void; storage: MemoryStorage } {
+  const storage = new MemoryStorage();
+  const g = globalThis as unknown as { window?: unknown };
+  const had = 'window' in g;
+  const prev = g.window;
+  g.window = { localStorage: storage } as unknown;
+  return {
+    storage,
+    uninstall: () => {
+      if (had) g.window = prev;
+      else delete g.window;
+    },
+  };
+}
 
 describe('SectionSlice', () => {
   let state: SectionSlice;
@@ -109,6 +176,10 @@ describe('SectionSlice', () => {
 
   describe('setSectionShowCap', () => {
     it('should toggle the showCap flag without touching clipping', () => {
+      // Explicitly enable clipping first so we can assert "cap toggle
+      // didn't disable it". Default `enabled` is now `false` (issue
+      // #243 follow-up: opening the section tool starts uncut).
+      state.setSectionPlaneEnabled(true);
       assert.strictEqual(state.sectionPlane.showCap, true);
       state.setSectionShowCap(false);
       assert.strictEqual(state.sectionPlane.showCap, false);
@@ -119,6 +190,7 @@ describe('SectionSlice', () => {
 
   describe('setSectionShowOutlines', () => {
     it('should toggle the showOutlines flag independently of showCap and clipping', () => {
+      state.setSectionPlaneEnabled(true);
       assert.strictEqual(state.sectionPlane.showOutlines, true);
       state.setSectionShowOutlines(false);
       assert.strictEqual(state.sectionPlane.showOutlines, false);
@@ -154,6 +226,10 @@ describe('SectionSlice', () => {
 
   describe('toggleSectionPlane', () => {
     it('should toggle enabled from true to false', () => {
+      // Default is now `false` (issue #243 follow-up). Set explicitly
+      // so this test exercises the true → false transition regardless
+      // of the default.
+      state.setSectionPlaneEnabled(true);
       assert.strictEqual(state.sectionPlane.enabled, true);
       state.toggleSectionPlane();
       assert.strictEqual(state.sectionPlane.enabled, false);
@@ -180,6 +256,359 @@ describe('SectionSlice', () => {
     });
   });
 
+  describe('face-pick (custom plane)', () => {
+    it('setSectionPlaneFromFace stores a unit-length normal + signed distance', () => {
+      // Non-unit input: the slice should renormalise before persisting.
+      state.setSectionPlaneFromFace([2, 0, 0], [3, 4, 5]);
+      const c = state.sectionPlane.custom;
+      assert.ok(c, 'custom plane should be set');
+      // Use the epsilon helper so signed-zero noise from renormalisation
+      // (e.g. `0 / 2 === 0` vs `-0 / 2 === -0`) doesn't cause spurious
+      // failures (CR feedback PR #650).
+      assertVecClose(c!.normal, [1, 0, 0]);
+      assert.strictEqual(c!.distance, 3); // dot([3,4,5], [1,0,0])
+      assert.deepStrictEqual(c!.pickedAt, [3, 4, 5]);
+      assert.strictEqual(state.sectionPlane.enabled, true);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('setSectionPlaneFromFace updates axis + flipped to the signed-dominant cardinal', () => {
+      // CR P1 from #581: dropping the sign produced inverted exports.
+      state.setSectionPlaneFromFace([-1, 0, 0], [0, 0, 0]);
+      assert.strictEqual(state.sectionPlane.axis, 'side');
+      assert.strictEqual(state.sectionPlane.flipped, true);
+
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 0]);
+      assert.strictEqual(state.sectionPlane.axis, 'front');
+      assert.strictEqual(state.sectionPlane.flipped, false);
+    });
+
+    it('setSectionPlaneFromFace updates position % when bounds are supplied', () => {
+      // CR P2 from #581: leaving position stale produced wrong fallback cuts.
+      state.setSectionPlaneFromFace(
+        [0, 1, 0],
+        [0, 5, 0],
+        { min: [0, 0, 0], max: [10, 10, 10] },
+      );
+      assert.strictEqual(state.sectionPlane.position, 50);
+    });
+
+    it('setSectionPlaneFromFace stores an orthonormal tangent + bitangent', () => {
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 0]);
+      const c = state.sectionPlane.custom!;
+      assertOrthonormalBasis([...c.tangent], [...c.bitangent], [...c.normal]);
+    });
+
+    it('setSectionPlaneFromFace ignores a degenerate (zero-length) normal', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPlaneFromFace([0, 0, 0], [1, 2, 3]);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('setSectionPlaneAxis clears any custom plane', () => {
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      assert.ok(state.sectionPlane.custom);
+      state.setSectionPlaneAxis('down');
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPlane.axis, 'down');
+    });
+
+    it('flipSectionPlane toggles `flipped` without mutating custom geometry', () => {
+      // The renderer applies `flipped` independently in the clip shader
+      // (`side = flipped ? -1 : 1`). Mutating `normal` / `distance` here
+      // as well would double-cancel and the flip button would have no
+      // visible effect — see flipSectionPlane in the slice.
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
+      const before = state.sectionPlane.custom!;
+      assert.strictEqual(state.sectionPlane.flipped, false);
+      assert.strictEqual(before.distance, 5);
+
+      state.flipSectionPlane();
+      const after = state.sectionPlane.custom!;
+      assert.strictEqual(state.sectionPlane.flipped, true);
+      // Geometry is untouched — only the `flipped` boolean changes.
+      assert.deepStrictEqual(after.normal,    before.normal);
+      assert.strictEqual(    after.distance,  before.distance);
+      assert.deepStrictEqual(after.pickedAt,  before.pickedAt);
+      assert.deepStrictEqual(after.tangent,   before.tangent);
+      assert.deepStrictEqual(after.bitangent, before.bitangent);
+    });
+
+    it('flipSectionPlane is its own inverse — two flips return to the original state', () => {
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
+      const original = state.sectionPlane.custom!;
+      const originalFlipped = state.sectionPlane.flipped;
+
+      state.flipSectionPlane();
+      state.flipSectionPlane();
+
+      const after = state.sectionPlane.custom!;
+      assert.strictEqual(state.sectionPlane.flipped, originalFlipped);
+      // Geometry must never have been mutated through the round-trip.
+      assert.deepStrictEqual(after.normal,    original.normal);
+      assert.strictEqual(    after.distance,  original.distance);
+      assert.deepStrictEqual(after.pickedAt,  original.pickedAt);
+      assert.deepStrictEqual(after.tangent,   original.tangent);
+      assert.deepStrictEqual(after.bitangent, original.bitangent);
+    });
+
+    it('flipSectionPlane toggles `flipped` for cardinal planes too (no custom)', () => {
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPlane.flipped, false);
+      state.flipSectionPlane();
+      assert.strictEqual(state.sectionPlane.flipped, true);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      state.flipSectionPlane();
+      assert.strictEqual(state.sectionPlane.flipped, false);
+    });
+
+    it('setSectionCustomDistance updates distance without touching anything else', () => {
+      state.setSectionPlaneFromFace([0, 1, 0], [0, 3, 0]);
+      const before = state.sectionPlane.custom!;
+      state.setSectionCustomDistance(7);
+      const after = state.sectionPlane.custom!;
+      assert.strictEqual(after.distance, 7);
+      assert.deepStrictEqual(after.normal,    before.normal);
+      assert.deepStrictEqual(after.pickedAt,  before.pickedAt);
+      assert.deepStrictEqual(after.tangent,   before.tangent);
+    });
+
+    it('setSectionCustomDistance is a no-op without a custom plane', () => {
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      state.setSectionCustomDistance(42);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+    });
+
+    it('setSectionPickMode arms / disarms pick mode', () => {
+      assert.strictEqual(state.sectionPickMode, false);
+      state.setSectionPickMode(true);
+      assert.strictEqual(state.sectionPickMode, true);
+      state.setSectionPickMode(false);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('setSectionPickPreview stores the preview only while pick mode is armed', () => {
+      // Mode OFF: a stray late-fired hover event must not put the
+      // overlay back on screen with no way to commit it.
+      assert.strictEqual(state.sectionPickMode, false);
+      state.setSectionPickPreview({
+        normal:  [0, 1, 0],
+        point:   [1, 2, 3],
+        faceKey: 'mode-off',
+      });
+      assert.strictEqual(state.sectionPickPreview, null);
+
+      // Mode ON: preview is accepted.
+      state.setSectionPickMode(true);
+      const p: import('./sectionSlice.js').SectionPickPreview = {
+        normal:  [0, 1, 0],
+        point:   [4, 5, 6],
+        faceKey: 'mode-on',
+      };
+      state.setSectionPickPreview(p);
+      assert.deepStrictEqual(state.sectionPickPreview, p);
+
+      // Explicit clear is always allowed (the hover handler uses
+      // `null` to hide the overlay even after disarm — the inverse
+      // case of the guard above).
+      state.setSectionPickPreview(null);
+      assert.strictEqual(state.sectionPickPreview, null);
+    });
+
+    it('setSectionPickMode(false) clears any active preview', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [1, 0, 0],
+        point:   [0, 0, 0],
+        faceKey: 'fk',
+      });
+      assert.ok(state.sectionPickPreview);
+      state.setSectionPickMode(false);
+      assert.strictEqual(state.sectionPickPreview, null);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('setSectionPlaneFromFace clears the preview on commit', () => {
+      // Visually continuous handoff — the preview disappears the same
+      // frame the cap appears so we don't double-paint the face.
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [0, 0, 1],
+        point:   [0, 0, 5],
+        faceKey: 'fk',
+      });
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
+      assert.strictEqual(state.sectionPickPreview, null);
+    });
+
+    it('setSectionPlaneFromFace clears the preview even on a degenerate normal', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [0, 0, 1],
+        point:   [0, 0, 5],
+        faceKey: 'fk',
+      });
+      state.setSectionPlaneFromFace([0, 0, 0], [1, 2, 3]);
+      assert.strictEqual(state.sectionPickPreview, null);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('resetSectionPlane clears the preview', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [0, 1, 0],
+        point:   [0, 0, 0],
+        faceKey: 'fk',
+      });
+      state.resetSectionPlane();
+      assert.strictEqual(state.sectionPickPreview, null);
+    });
+
+    it('resetSectionPlane clears the custom plane and disarms pick mode', () => {
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      state.setSectionPickMode(true);
+      state.resetSectionPlane();
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+  });
+
+  // Mirrors the auto-arm useEffect in `SectionPanel.tsx` that flips
+  // `sectionPickMode` on after a 200ms debounce when the panel mounts and
+  // turns it off on unmount. We exercise the same lifecycle here at the
+  // slice level because the viewer app has no React component test harness
+  // (tests run via `node:test` + `tsx`); the component-side code path is a
+  // single setTimeout + setSectionPickMode call so re-creating the timer
+  // semantics here is sufficient regression coverage.
+  describe('section panel auto-arm lifecycle', () => {
+    it('mounting arms pick mode after the 200ms debounce', async () => {
+      assert.strictEqual(state.sectionPickMode, false);
+      // Mirror the panel's mount effect: schedule the arm, wait, observe.
+      const t = setTimeout(() => state.setSectionPickMode(true), 200);
+      try {
+        // Still false before the debounce fires — guards against the
+        // tool-open click bleeding through into the canvas pick handler.
+        assert.strictEqual(state.sectionPickMode, false);
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        assert.strictEqual(state.sectionPickMode, true);
+      } finally {
+        clearTimeout(t);
+      }
+    });
+
+    it('unmounting before the debounce fires never arms pick mode', async () => {
+      assert.strictEqual(state.sectionPickMode, false);
+      const t = setTimeout(() => state.setSectionPickMode(true), 200);
+      // Immediate unmount: cancel the pending arm + disarm explicitly,
+      // matching the cleanup function in the panel's useEffect.
+      clearTimeout(t);
+      state.setSectionPickMode(false);
+      // Wait past the original debounce window — pick mode must stay off
+      // because the timer was cancelled.
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      assert.strictEqual(state.sectionPickMode, false);
+    });
+
+    it('unmounting after auto-arm disarms pick mode and clears any preview', () => {
+      // Simulate "panel was mounted long enough for the debounce to land,
+      // user closed the tool". The cleanup must drop pick mode and any
+      // hover preview so the next tool doesn't inherit the violet quad.
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({
+        normal:  [0, 1, 0],
+        point:   [0, 0, 0],
+        faceKey: 'unmount-preview',
+      });
+      assert.strictEqual(state.sectionPickMode, true);
+      assert.ok(state.sectionPickPreview);
+
+      // Cleanup body in the panel's useEffect.
+      state.setSectionPickMode(false);
+
+      assert.strictEqual(state.sectionPickMode, false);
+      assert.strictEqual(state.sectionPickPreview, null);
+    });
+
+    it('clicking a cardinal axis while armed still works and clears any custom plane', () => {
+      // Regression guard for the demoted cardinal-axis row: even though
+      // the buttons are visually secondary now, clicking one must commit
+      // the cardinal cut and clear any face-picked custom plane (the
+      // existing behaviour the panel relied on).
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      assert.ok(state.sectionPlane.custom);
+      state.setSectionPickMode(true);
+
+      state.setSectionPlaneAxis('front');
+
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPlane.axis, 'front');
+      assert.strictEqual(state.sectionPlane.enabled, true);
+    });
+  });
+
+  describe('customPlaneCenter', () => {
+    // Bug guard for the cap polygons + 3D drag gizmo "anchored at original
+    // pick" regression: as `distance` drifts (drag/slider) the visual
+    // center of the plane must slide along the normal, not stay glued to
+    // the original pickedAt — otherwise the cap and gizmo render at the
+    // pick location while the geometry clip moves to the new distance.
+    it('returns pickedAt unchanged when distance == dot(pickedAt, normal)', () => {
+      const plane: CustomSectionPlane = {
+        normal:    [1, 0, 0],
+        distance:  10,
+        pickedAt:  [10, 0, 0],
+        tangent:   [0, 1, 0],
+        bitangent: [0, 0, 1],
+      };
+      const center = customPlaneCenter(plane);
+      assert.deepStrictEqual(center, [10, 0, 0]);
+    });
+
+    it('slides along the normal as distance changes (axis-aligned)', () => {
+      const base: CustomSectionPlane = {
+        normal:    [1, 0, 0],
+        distance:  25,
+        pickedAt:  [10, 0, 0],
+        tangent:   [0, 1, 0],
+        bitangent: [0, 0, 1],
+      };
+      assert.deepStrictEqual(customPlaneCenter(base), [25, 0, 0]);
+
+      const zeroed: CustomSectionPlane = { ...base, distance: 0 };
+      assert.deepStrictEqual(customPlaneCenter(zeroed), [0, 0, 0]);
+    });
+
+    it('produces a point that satisfies dot(center, normal) == distance for an arbitrary normal', () => {
+      const inv = 1 / Math.sqrt(3);
+      const plane: CustomSectionPlane = {
+        normal:    [inv, inv, inv],
+        distance:  4.2,
+        pickedAt:  [1, 2, 3],
+        tangent:   [1, 0, 0], // unused by the projection
+        bitangent: [0, 1, 0],
+      };
+      const c = customPlaneCenter(plane);
+      const dot = c[0] * plane.normal[0] + c[1] * plane.normal[1] + c[2] * plane.normal[2];
+      assert.ok(Math.abs(dot - plane.distance) < 1e-9, `dot(center, normal) = ${dot}, want ${plane.distance}`);
+    });
+
+    it('preserves the lateral (in-plane) offset of pickedAt — center is the perpendicular projection', () => {
+      // Slide pickedAt along the normal only — the projection should land
+      // exactly on the plane and keep the orthogonal components intact.
+      const plane: CustomSectionPlane = {
+        normal:    [0, 1, 0],
+        distance:  5,
+        pickedAt:  [7, 9, 4],   // off-plane by (9 − 5) = 4 along +Y
+        tangent:   [1, 0, 0],
+        bitangent: [0, 0, 1],
+      };
+      const c = customPlaneCenter(plane);
+      // X and Z (in-plane) preserved; Y projected to the plane.
+      assert.deepStrictEqual(c, [7, 5, 4]);
+    });
+  });
+
   describe('resetSectionPlane', () => {
     it('should reset to default values', () => {
       state.setSectionPlaneAxis('side');
@@ -200,6 +629,166 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPlane.showOutlines, SECTION_PLANE_DEFAULTS.SHOW_OUTLINES);
       // Default cap pattern restored.
       assert.strictEqual(state.sectionPlane.capStyle.pattern, 'diagonal');
+    });
+  });
+});
+
+// Last-used section mode persistence (issue #243 follow-up).
+//
+// These tests run in their own top-level describe with an installed
+// `window.localStorage` shim because the slice's persistence helpers
+// short-circuit when `window` is undefined. Keeping the shim scoped to
+// this block (install in beforeEach, uninstall in afterEach) means the
+// rest of the suite still exercises the no-window code path.
+describe('SectionSlice — last-used mode persistence', () => {
+  const SECTION_MODE_KEY = 'ifc-lite:section-last-mode';
+  let state: SectionSlice;
+  let setState: (partial: Partial<SectionSlice> | ((state: SectionSlice) => Partial<SectionSlice>)) => void;
+  let shim: ReturnType<typeof installWindowShim>;
+
+  beforeEach(() => {
+    shim = installWindowShim();
+    setState = (partial) => {
+      if (typeof partial === 'function') {
+        const updates = partial(state);
+        state = { ...state, ...updates };
+      } else {
+        state = { ...state, ...partial };
+      }
+    };
+    state = createSectionSlice(setState, () => state, {} as any);
+  });
+
+  // No afterEach hook is registered (node:test exposes it differently
+  // across versions). Each beforeEach reinstalls the shim, replacing
+  // the previous global, so leakage between tests is bounded.
+
+  describe('default `enabled` and storage state', () => {
+    it('default enabled is `false` so opening the section tool starts uncut', () => {
+      // Bug #1 from PR #650: `ENABLED: true` here meant a Down cut
+      // appeared the moment the panel mounted, before the auto-arm
+      // useEffect could install pick mode.
+      assert.strictEqual(SECTION_PLANE_DEFAULTS.ENABLED, false);
+      assert.strictEqual(state.sectionPlane.enabled, false);
+    });
+  });
+
+  describe('loadLastSectionMode', () => {
+    it('returns the default pick mode when storage is empty', () => {
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('round-trips a stored pick entry', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({ kind: 'pick' }));
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('round-trips a valid cardinal entry', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
+        kind: 'cardinal', axis: 'side', position: 33.5, flipped: true,
+      }));
+      assert.deepStrictEqual(loadLastSectionMode(), {
+        kind: 'cardinal', axis: 'side', position: 33.5, flipped: true,
+      });
+    });
+
+    it('clamps cardinal `position` to [0, 100] on restore', () => {
+      // Belt-and-braces: position is clamped at the slice level too,
+      // but a tampered or stale value shouldn't poison the slider.
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
+        kind: 'cardinal', axis: 'down', position: 9999, flipped: false,
+      }));
+      const m = loadLastSectionMode();
+      assert.strictEqual(m.kind, 'cardinal');
+      if (m.kind === 'cardinal') assert.strictEqual(m.position, 100);
+    });
+
+    it('falls back to pick when JSON is corrupted', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, 'not-valid-json{');
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('falls back to pick on an unknown `kind`', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({ kind: 'martian' }));
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('falls back to pick on a cardinal entry with a bad axis', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
+        kind: 'cardinal', axis: 'sideways', position: 50, flipped: false,
+      }));
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+
+    it('falls back to pick on a cardinal entry with a non-finite position', () => {
+      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
+        kind: 'cardinal', axis: 'down', position: 'oops', flipped: false,
+      }));
+      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
+    });
+  });
+
+  describe('save side-effects on slice actions', () => {
+    it('setSectionPlaneAxis writes a cardinal entry to localStorage', () => {
+      state.setSectionPlaneAxis('front');
+      const raw = shim.storage.getItem(SECTION_MODE_KEY);
+      assert.ok(raw, 'expected a stored entry');
+      assert.deepStrictEqual(JSON.parse(raw!), {
+        kind: 'cardinal', axis: 'front',
+        position: state.sectionPlane.position,
+        flipped:  state.sectionPlane.flipped,
+      });
+    });
+
+    it('setSectionPlanePosition writes a cardinal entry (position carries through)', () => {
+      state.setSectionPlanePosition(42.5);
+      const raw = shim.storage.getItem(SECTION_MODE_KEY);
+      assert.ok(raw);
+      const parsed = JSON.parse(raw!);
+      assert.strictEqual(parsed.kind, 'cardinal');
+      assert.strictEqual(parsed.position, 42.5);
+    });
+
+    it('flipSectionPlane (cardinal mode) writes the new `flipped` to localStorage', () => {
+      state.flipSectionPlane();
+      const raw = shim.storage.getItem(SECTION_MODE_KEY);
+      assert.ok(raw);
+      const parsed = JSON.parse(raw!);
+      assert.strictEqual(parsed.kind, 'cardinal');
+      assert.strictEqual(parsed.flipped, true);
+    });
+
+    it('setSectionPlanePosition does NOT write while in custom mode', () => {
+      // Custom-mode position drives a model-relative distance which we
+      // deliberately don't persist — re-arm pick mode on next open
+      // instead so the user can re-cut on a different model.
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      // The face-pick wrote `{ kind: 'pick' }`; clear it so we can
+      // observe whether the subsequent slider move overwrites it.
+      shim.storage.removeItem(SECTION_MODE_KEY);
+      state.setSectionPlanePosition(60);
+      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
+    });
+
+    it('flipSectionPlane does NOT write while in custom mode', () => {
+      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
+      shim.storage.removeItem(SECTION_MODE_KEY);
+      state.flipSectionPlane();
+      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
+    });
+
+    it('setSectionPlaneFromFace writes `{ kind: "pick" }` to localStorage', () => {
+      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
+      const raw = shim.storage.getItem(SECTION_MODE_KEY);
+      assert.ok(raw);
+      assert.deepStrictEqual(JSON.parse(raw!), { kind: 'pick' });
+    });
+
+    it('resetSectionPlane removes the storage key', () => {
+      state.setSectionPlaneAxis('front');
+      assert.ok(shim.storage.getItem(SECTION_MODE_KEY));
+      state.resetSectionPlane();
+      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
     });
   });
 });

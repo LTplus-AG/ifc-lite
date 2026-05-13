@@ -221,7 +221,7 @@ function getWorkerBlobUrl(): string {
  * Caller keeps the original buffer intact for columnar parsing.
  */
 export function scanEntitiesInWorker(
-  buffer: ArrayBuffer,
+  buffer: ArrayBuffer | SharedArrayBuffer,
 ): Promise<EntityRefWorkerResult[]> {
   return new Promise((resolve, reject) => {
     try {

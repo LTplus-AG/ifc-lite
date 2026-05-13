@@ -298,6 +298,31 @@ export function projectTo2D(point: Vec3, axis: 'x' | 'y' | 'z', flipped: boolean
   return { x: flipped ? -u : u, y: v };
 }
 
+/**
+ * Project a 3D point to 2D using an explicit in-plane basis (issue #243).
+ * `(x, y) = (dot(point − origin, tangent), dot(point − origin, bitangent))`.
+ *
+ * This is the inverse of `Section2DOverlayRenderer.transform2Dto3D` on the
+ * custom-plane path — the renderer lifts these 2D points back to 3D via
+ * `origin + tangent·x + bitangent·y`, so the basis must be IDENTICAL on
+ * both ends. Use `planeBasis(normal)` from `@ifc-lite/renderer` to
+ * derive that basis once and pass it through both call sites.
+ */
+export function projectTo2DBasis(
+  point: Vec3,
+  origin: Vec3,
+  tangent: Vec3,
+  bitangent: Vec3,
+): Point2D {
+  const dx = point.x - origin.x;
+  const dy = point.y - origin.y;
+  const dz = point.z - origin.z;
+  return {
+    x: dx * tangent.x   + dy * tangent.y   + dz * tangent.z,
+    y: dx * bitangent.x + dy * bitangent.y + dz * bitangent.z,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // POLYGON OPERATIONS
 // ═══════════════════════════════════════════════════════════════════════════

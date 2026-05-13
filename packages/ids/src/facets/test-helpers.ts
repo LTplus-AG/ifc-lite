@@ -32,7 +32,13 @@ interface MockEntity {
   classifications?: Array<{ system?: string; value?: string }>;
   materials?: Array<{ name: string; category?: string }>;
   parent?: { expressId?: number; type: string; relation: string; predefinedType?: string };
-  attributes?: Record<string, string>;
+  attributes?: Record<string, string | number | boolean>;
+  /**
+   * Optional per-attribute XSD-type metadata, mirroring the schema
+   * lookup the production accessor performs via `getAttributeXsdTypes`.
+   * Lets attribute-facet tests exercise the strict-cast gate.
+   */
+  attributeXsdTypes?: Record<string, readonly string[]>;
 }
 
 export function createMockAccessor(entities: MockEntity[]): IFCDataAccessor {
@@ -128,10 +134,20 @@ export function createMockAccessor(entities: MockEntity[]): IFCDataAccessor {
         predefinedType: entity.parent.predefinedType,
       };
     },
-    getAttribute(expressId: number, attributeName: string): string | undefined {
+    getAttribute(
+      expressId: number,
+      attributeName: string
+    ): string | number | boolean | undefined {
       const entity = entityMap.get(expressId);
       if (!entity?.attributes) return undefined;
       return entity.attributes[attributeName];
+    },
+    getAttributeXsdTypes(
+      expressId: number,
+      attributeName: string
+    ): readonly string[] | undefined {
+      const entity = entityMap.get(expressId);
+      return entity?.attributeXsdTypes?.[attributeName];
     },
   };
 }

@@ -29,6 +29,7 @@ import {
   Camera,
   Info,
   Layers,
+  Layers2,
   SquareX,
   Building2,
   Plus,
@@ -51,6 +52,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuSub,
@@ -307,6 +309,12 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
+  // Issue #540: load-time toggle that asks the WASM bridge to merge
+  // Revit-style multilayer walls. We surface this in the Class
+  // Visibility dropdown so users discover it next to the other
+  // "what shows in the scene" controls.
+  const mergeLayers = useViewerStore((state) => state.mergeLayers);
+  const setMergeLayers = useViewerStore((state) => state.setMergeLayers);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
   const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
@@ -426,7 +434,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
     );
 
     if (supportedFiles.length === 0) return;
@@ -467,7 +475,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // Filter to supported files (IFC, IFCX, GLB)
     const supportedFiles = Array.from(files).filter(
       f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57')
+        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
     );
 
     if (supportedFiles.length === 0) return;
@@ -782,7 +790,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         id="file-input-open"
         ref={fileInputRef}
         type="file"
-        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57"
+        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
         multiple
         onChange={handleFileSelect}
         className="hidden"
@@ -790,7 +798,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <input
         ref={addModelInputRef}
         type="file"
-        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57"
+        accept=".ifc,.ifcx,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
         multiple
         onChange={handleAddModelSelect}
         className="hidden"
@@ -1157,14 +1165,35 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" disabled={!geometryResult && models.size === 0}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                // Stay enabled even with no model loaded — the dropdown
+                // also exposes load-time settings (Merge Multilayer
+                // Walls) that the user should be able to set BEFORE
+                // opening a file. Runtime items inside self-gate via
+                // typeGeometryExists.
+                aria-label={mergeLayers ? 'Class Visibility (Merge Multilayer Walls is on)' : 'Class Visibility'}
+                className="relative"
+              >
                 <Layers className="h-4 w-4" />
+                {mergeLayers && (
+                  // Tiny accent dot announcing that a non-default load
+                  // setting is active. Decorative — semantics live on
+                  // the button's aria-label and the tooltip.
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary ring-1 ring-background"
+                  />
+                )}
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>Class Visibility</TooltipContent>
+          <TooltipContent>
+            {mergeLayers ? 'Class Visibility · Merge Multilayer Walls is on' : 'Class Visibility'}
+          </TooltipContent>
         </Tooltip>
-        <DropdownMenuContent>
+        <DropdownMenuContent className="w-72">
           {typeGeometryExists.spaces && (
             <DropdownMenuCheckboxItem
               checked={typeVisibility.spaces}
@@ -1192,6 +1221,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               Show Site
             </DropdownMenuCheckboxItem>
           )}
+
+          {/* Load-time toggles live below the runtime visibility
+              switches — they apply on next model open rather than
+              affecting the current scene. The subheader makes that
+              boundary visible at a glance. */}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Load Settings
+          </DropdownMenuLabel>
+          <DropdownMenuCheckboxItem
+            checked={mergeLayers}
+            onCheckedChange={(next) => setMergeLayers(next === true)}
+            // Use items-start so the checkmark and icon line up with
+            // the primary label while the description wraps below.
+            className="items-start gap-2 py-2"
+          >
+            <Layers2 className="h-4 w-4 mr-2 mt-0.5 shrink-0 text-primary" />
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-sm font-medium leading-tight">Merge Multilayer Walls</span>
+              <span className="text-[11px] leading-tight text-muted-foreground">
+                Render walls as 1 solid · Applies on reload
+              </span>
+            </div>
+          </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>
 

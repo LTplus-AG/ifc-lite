@@ -1,5 +1,353 @@
 # @ifc-lite/renderer
 
+## 1.20.0
+
+### Minor Changes
+
+- [#650](https://github.com/louistrue/ifc-lite/pull/650) [`2ff772d`](https://github.com/louistrue/ifc-lite/commit/2ff772d0174f8cd6657f7e4090e15bc7744e8158) Thanks [@louistrue](https://github.com/louistrue)! - Arbitrary-normal section planes with face-pick (Bonsai-style) and a
+  properly-rendered cap on tilted planes (#243). Click any face in the
+  section tool's "Pick" mode to cut through it; the kept half-space
+  defaults to the side facing the camera. The cardinal "Down / Front /
+  Side" presets are unchanged.
+
+  Renderer:
+
+  - New `planeBasis(normal)` + `nearestCardinalAxis(normal)` exports
+    derive a deterministic in-plane basis used by both the cap renderer
+    and the 2D cutter — without a single shared derivation the cap hatch
+    rotated when state was reconstructed.
+  - `SectionPlaneRenderOptions` and `SectionPlane` gain optional
+    `normal` + `distance` fields. When set, the shader clips on that
+    plane verbatim (no axis mapping, no building-rotation, no
+    position-percentage math) and the gizmo renders as a violet quad
+    oriented from `planeBasis(normal)`.
+  - `Section2DOverlayRenderer.uploadDrawing` accepts an optional
+    `customPlane = { origin, tangent, bitangent }`. When supplied it
+    replaces the cardinal-axis 2D→3D coordinate swap with
+    `origin + tangent·x + bitangent·y`, so the cap silhouette lands
+    exactly on the tilted plane (the bug PR #581 hid by suppressing the
+    cap entirely for non-cardinal planes).
+
+  Drawing-2d:
+
+  - `SectionPlaneConfig` gains an optional `customPlane`. `SectionCutter`
+    uses it verbatim for the plane equation and projects intersections
+    to 2D via `(dot(p − origin, tangent), dot(p − origin, bitangent))`,
+    matching the cap renderer's lift exactly.
+  - `DrawingGenerator` now rebuilds the CPU cutter on each `generate()`
+    call so a switch from cardinal to custom (or between custom planes)
+    takes effect immediately.
+
+  Tests: 11 new viewer tests covering normalisation, sign-preserving
+  cardinal mapping, basis orthonormality, half-space flip, slice
+  clearing on cardinal preset, and degenerate-normal handling. 6 new
+  renderer tests covering basis derivation across cardinal axes,
+  near-axis tilts, and the +Y / −Y reference-axis boundary.
+
+## 1.19.1
+
+### Patch Changes
+
+- [#645](https://github.com/louistrue/ifc-lite/pull/645) [`9d5f927`](https://github.com/louistrue/ifc-lite/commit/9d5f92774f8c1c29061523678aa7b406fa68e3e6) Thanks [@louistrue](https://github.com/louistrue)! - Fix GPU picker silently failing on small models. `Picker.pick()` was
+  reading back a 1×1 `depth-only` texel for click-to-world unprojection,
+  which WebGPU rejects — depth/stencil-format copies must cover the full
+  subresource. Clicks on files small enough to take the GPU picker path
+  (≤500 mesh pieces; larger models hit the CPU-raycast fallback) silently
+  resolved to `null`, leaving no 3D highlight and no property panel. The
+  depth readback now copies the full depth image and indexes the mapped
+  buffer client-side; no shader, pipeline, or point-picker changes.
+- Updated dependencies [[`1d6e99b`](https://github.com/louistrue/ifc-lite/commit/1d6e99bb23f67e20a192f362ba65ee73a8180f69), [`b6e83d3`](https://github.com/louistrue/ifc-lite/commit/b6e83d3ac4f04fe7c439bf282a25963c6db0b909), [`6f052c3`](https://github.com/louistrue/ifc-lite/commit/6f052c309a99edd1d9a6925d44bbc2aed6cd10a5), [`b8a8206`](https://github.com/louistrue/ifc-lite/commit/b8a82062c4392d05224561dda8a2767a8b7b1857)]:
+  - @ifc-lite/wasm@1.16.10
+  - @ifc-lite/geometry@1.18.1
+
+## 1.19.0
+
+### Minor Changes
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Per-class visibility toggles for ASPRS-classified point clouds.
+
+  A new "Classes" section in the point cloud panel exposes a checkbox
+  list of every LAS 1.4 standard class (Ground, Vegetation, Building,
+  Water, Wires, Bridge deck, ...). Toggling a class hides every point
+  with that classification. Works in any colour mode; the swatch
+  colours mirror the splat shader's classification palette so the UI
+  matches what's on screen.
+
+  Implementation:
+
+  - New `pointCloudClassMask: number` (u32 bitmask, default
+    `0xFFFFFFFF`) on the point cloud slice. `togglePointCloudClass(id)`
+    flips a single bit; `setPointCloudClassMask(mask)` replaces all 32.
+  - `PointCloudRenderOptions.classMask` plumbed through the renderer.
+    Stored in uniform slot `flags.w` (was unused).
+  - Splat shader checks `(flags.w >> classId) & 1` per vertex; hidden
+    classes get a degenerate `clipPos = vec4(0, 0, -2, 1)` so they're
+    culled before rasterisation rather than wasted on a fragment-stage
+    discard.
+  - New `PointCloudClasses` component in the panel renders a
+    `<details>` collapsible with "Show all" + per-class toggles. A
+    badge surfaces "N of 32 visible" when not all are on.
+  - `usePointCloudSync` forwards the mask to
+    `setPointCloudOptions({ classMask })`.
+
+  Class ids ≥32 always show — the mask only covers the standard
+  range. Custom-labelled scans need a richer UI (deferred).
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - BIM ↔ scan deviation heatmap — GPU compute pipeline that colours each
+  scan point by signed distance to the nearest mesh surface. Works with
+  every IFC ingest path (STEP / IFCx / GLB / federated) and with every
+  point cloud format (inline IFCx + streamed LAS / LAZ / PLY / PCD / E57
+  / PTS / XYZ — anywhere `Scene.forEachMeshData` reaches and any node
+  the splat pipeline already renders).
+
+  Pipeline:
+
+  1. **Per-triangle BVH** built from `Scene.forEachMeshData()` —
+     reaches every CPU-side `MeshData` regardless of source. Median
+     split along longest axis, max 16 tris per leaf, flattened to a
+     `Float32Array` of 32-byte nodes during the build (no second
+     pass).
+  2. **Two GPU storage buffers** — nodes + triangles — uploaded once
+     per mesh-set change. Cached by a `(meshCount, totalPositions)`
+     fingerprint so re-running deviation against the same model is a
+     pure dispatch.
+  3. **Compute shader** with stack-based BVH descent (workgroup-size
+     64). Per point: descend BVH pruning by squared point-to-AABB
+     distance, run Ericson §5.1.5 closest-point-on-triangle on every
+     leaf candidate, output signed distance via the closest face's
+     precomputed normal.
+  4. **Per-chunk deviation buffer** allocated alongside the splat
+     vertex buffer (`STORAGE | VERTEX | COPY_DST`, 4 bytes per point,
+     zero-initialised). Compute reads the vertex buffer's positions
+     directly — no CPU copy of streamed clouds needed.
+  5. **Splat shader** gains a 2nd vertex buffer (location 4 = `f32`
+     deviation), a new `deviation` color mode, and a diverging
+     blue → white → red `deviation_ramp`. Uniform block grows by 16
+     bytes (new `deviationRange: vec4<f32>` slot for centre + half-
+     range), `POINT_UNIFORM_SIZE` 208 → 224.
+  6. **Public API** — `Renderer.computeDeviations({ maxRange?,
+forceRebuild? })` returns `{ bvhTriangles, bvhNodes,
+chunksProcessed, pointsProcessed, bounds, suggestedHalfRange }`.
+     Awaits `queue.onSubmittedWorkDone` so callers see populated
+     buffers when the promise resolves.
+  7. **UI** — new `DeviationPanel` inside `PointCloudPanel`. Compute
+     button (gated on `triangleCount > 0`), live progress + duration
+     readout, range slider in millimetres (1 mm to 1 m), inline
+     blue-white-red legend. Auto-suggests a half-range from the BVH
+     bbox (±max-extent / 1000) and auto-switches the colour mode to
+     `deviation` on success.
+  8. **Slice** — `pointCloudColorMode` gains `'deviation'`, plus
+     `pointCloudDeviationCenterOffset`, `pointCloudDeviationHalfRange`
+     (default ±5 cm), and `pointCloudDeviationComputed`. Sync hook
+     forwards the range to the renderer uniform.
+
+  Sign convention: positive = scan point is on the outward-normal
+  side of the closest triangle (typical "scan overshoots wall by
+  5 mm"). Negative = inside / behind. Non-watertight BIM (typical
+  IFC) means "inside the building" isn't globally defined, but
+  per-surface front/back is always meaningful.
+
+  Limitations / future work:
+
+  - The dispatch processes every uploaded point against every
+    triangle in the scene; isolated / hidden meshes still contribute
+    to the BVH. A `meshFilter` predicate is a natural follow-up.
+  - Histogram + auto-range from p5/p95 not yet implemented — the
+    default half-range suggestion is a coarse bbox/1000 heuristic.
+    Phase B will add a 2nd compute pass with atomic histogram.
+  - The BVH walk uses a 64-deep per-thread stack. Pathologically
+    unbalanced trees (>64 deep) silently drop the deepest branch.
+    Real BIMs don't get there; SAH or surface-area cost would help
+    if we ever hit it.
+
+  Verified: full repo typecheck (24/24), 655 viewer tests, viewer
+  Vite build green.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Near-term UX features from #611.
+
+  **Hover XYZ readback.** GPU pick now also samples the depth texel at
+  the click position and unprojects it through the inverse view-
+  projection. `PickResult` carries an optional `worldXYZ`. Reverse-Z is
+  honoured (depth=1 = near, 0 = far / miss). The hover tooltip shows
+  `x, y, z` (2 decimals) under the entity id. Useful for measurement
+  hooks and point-cloud picks where the synthetic entity has no
+  surface property to display.
+
+  **Solid-color picker.** When the point-cloud panel's colour mode is
+  set to `fixed`, a native `<input type="color">` swatch appears.
+  Hex round-trips through the existing `[r,g,b,a]` store tuple.
+
+  **Colour-mode legend.** A new `PointCloudLegend` component renders
+  inline beneath the colour-mode buttons:
+
+  - Classification → list of ASPRS LAS 1.4 class id / colour swatch /
+    label (Ground, Vegetation, Building, ...). Palette mirrors
+    `point-shader.wgsl.ts` exactly.
+  - Intensity → black-to-white gradient bar with low/high labels.
+  - Height → cool-warm gradient bar (blue → cyan → green → yellow →
+    red), matching the shader's `height_ramp`.
+    RGB and Solid don't render a legend.
+
+  **Cancel button for in-flight streams.** New
+  `activeStreamCanceller` field on the loading slice. Both ingest
+  sites (`useIfcLoader`, `useIfcFederation`) register
+  `() => streamHandle.cancel()` after starting and clear on success /
+  error. `StatusBar` shows a Cancel button while the canceller is
+  non-null. AbortError on cancel is reported as "Cancelled" rather
+  than a scary error string.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - GPU rectangle pick (marquee select) — meshes + point clouds.
+
+  Hold `Ctrl` (or `⌘` on macOS) and drag with the left mouse button
+  in the select tool to draw a rectangle. On release, every entity
+  (mesh or point cloud) whose pixel falls inside the rect becomes
+  the new selection. A teal-dashed SVG outline tracks the drag.
+
+  Implementation:
+
+  - `Picker.pickRect(x0, y0, x1, y1, …) → Set<expressId>` renders the
+    same pick pass as `pick()` and reads back the texel rect, deduping
+    hits to a Set. Mesh + point splats both participate (point splats
+    share the depth buffer in the pick pass).
+  - A new private `Picker.renderPickPass` extracts the shared render-
+    pass setup so single-pixel `pick` and rect `pickRect` don't drift.
+  - `PickingManager.pickRect` applies the same visibility filtering
+    (`hiddenIds`, `isolatedIds`) as `pick`. The CPU-raycast and
+    dynamic-mesh-creation fallbacks `pick` uses for very large batched
+    models are skipped — rect pick only sees already-hydrated meshes.
+  - `Renderer.pickRect` exposes the manager's API.
+  - New `RectSelectionOverlay` component renders the dashed SVG box
+    while dragging; lives inside `Viewport.tsx` as a sibling of the
+    canvas.
+  - `useMouseControls` tracks a new `mouseState.isRectSelecting` flag,
+    suppresses orbit/pan during the drag, and on mouseup runs
+    `renderer.pickRect(...)` and feeds the result into
+    `setSelectedEntityIds`. A 4-pixel minimum rect size avoids
+    clobbering selection on a stray Ctrl-click.
+  - `MouseState.isRectSelecting?: boolean` and a new
+    `setRectSelection?` callback added to `UseMouseControlsParams`.
+
+  Lasso (polygonal) pick still pending — covered by issue #611's
+  mid-term list. Per-class isolation for points is a separate
+  follow-up.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Section-plane drag preview — render at 1/4 density during slider
+  drag for responsive section-cutting on huge point clouds.
+
+  The splat shader gains a `previewStride` uniform that culls
+  `(instance_index % stride) != 0` at the start of `vs_main`. The
+  section-plane position slider wires `onPointerDown` to set
+  `previewStride: 4` and `onPointerUp` to restore `1`, so scans of
+  millions of points stay responsive while the user drags.
+
+  Implementation:
+
+  - `POINT_UNIFORM_SIZE` bumped from 208 → 224 to add a new
+    `extras: vec4<u32>` slot. `extras.x` carries `previewStride`;
+    `yzw` reserved for future per-frame state.
+  - `PointCloudRenderOptions.previewStride?: number` clamped to
+    [1, 256] in the renderer.
+  - Vertex shader culls hidden instances by writing
+    `clipPos = vec4(0, 0, -2, 1)` (outside reverse-Z `[0, 1]`) so they
+    drop pre-rasterisation.
+  - New `pointCloudPreviewStride` field on the point cloud slice
+    (default 1) with `setPointCloudPreviewStride` action.
+  - `usePointCloudSync` forwards the stride to
+    `setPointCloudOptions`.
+  - `SectionOverlay`'s position slider triggers stride 4 on
+    drag start (pointer + keyboard), 1 on release. Only flips when
+    `pointCloudAssetCount > 0` so IFC-only sessions are unaffected.
+
+  Triangle meshes ignore the stride — they're cheap enough that
+  section drag was already smooth.
+
+  Verified: full repo typecheck (24/24), 655 viewer tests, viewer
+  Vite build green.
+
+### Patch Changes
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - E57 ScaledInteger codec — bit-packed cartesian / intensity / colour.
+
+  ScaledInteger is the more compact encoding most real-world Faro,
+  Trimble, and Leica E57 exports use; previously we threw a clear
+  error on these files. This change implements the decoder so they
+  load directly.
+
+  Per spec ASTM E2807-11 §6.3.4:
+
+  - `bitsPerRecord = ceil(log2(maximum - minimum + 1))`
+  - Bytestream stores `raw_int = original − minimum` packed LSB-first
+    within each byte; decoded float = `(raw_int + minimum) * scale + offset`
+
+  Implementation:
+
+  - New `readBitsLE(bytes, bitOffset, bitsPerRecord)` walks a byte
+    buffer and reconstructs each value into a JS number using
+    `Math.pow(2, n)` instead of `<< n`, so precision holds up to 53
+    bits (covers every real exporter — LiDAR + survey kit tops out
+    around 32 bits). Wider fields throw a clear error.
+  - `readCartesianStream` and `readIntensityStream` now branch on
+    field kind: Float / Integer paths unchanged, ScaledInteger path
+    bit-walks per record.
+  - `writeColorChannel` extended with a ScaledInteger branch that
+    remaps `raw → [0, 1]` via the declared min/max range.
+  - Per-axis packet capacity computation now varies by field kind
+    (Float = `length / byteSize`, ScaledInteger = `length * 8 / bitsPerRecord`)
+    via `floatOrSiPointCapacity`.
+
+  The "ScaledInteger throws clearly" error is removed for cartesian,
+  intensity, and colour — all three now decode. The earlier multi-scan
+  pose rejection stays in place; that's a separate piece of work.
+
+  2 new tests:
+
+  - 8-bit ScaledInteger across all three cartesian axes (round-trip
+    through known raw values).
+  - 12-bit ScaledInteger that crosses byte boundaries (proves the
+    bit-pack walk is correct for non-multiples-of-8).
+
+  Verified: 63 pointcloud unit tests pass, full repo typecheck (24/24),
+  viewer Vite build green.
+
+- [#614](https://github.com/louistrue/ifc-lite/pull/614) [`7efc878`](https://github.com/louistrue/ifc-lite/commit/7efc8783314559b674509131f1e203ae7c1fda8e) Thanks [@louistrue](https://github.com/louistrue)! - Near-term batch — correctness + robustness items from #611.
+
+  **`computeBBox` empty / non-finite guards.** Both `e57.ts` and
+  `ifcx-points.ts` now return `{0,0,0}/{0,0,0}` for empty arrays and
+  skip non-finite triplets. Previously a zero-point or NaN-poisoned
+  chunk produced ±Infinity bounds that broke camera fit-to-view and
+  section-plane sliders.
+
+  **Magic-byte-first format detection.** `detectPointCloudFormat` now
+  probes the buffer (E57 magic, LASF magic, "ply" / "#" / ".PCD"
+  ASCII tokens) before falling back to extension. A LAS file
+  mistakenly named `*.ply` no longer goes down the wrong decoder. LAS
+  vs LAZ still uses the extension to disambiguate (they share the
+  LASF magic).
+
+  **E57 packet-bounds + per-stream guards.** Validate that the
+  DataPacket header, bytestream-length table, and each individual
+  bytestream stay inside `payloadEnd = packetEnd - 4` before reading.
+  Corrupt files now fail with a precise "bytestream X runs past
+  packet payload" error instead of silently reading into the next
+  packet.
+
+  **`e57.ts` split (631 → 4 files).** `e57-page.ts` (header / page CRC
+  / section-header resolver), `e57-xml.ts` (prototype + Data3D
+  parser), `e57-decode.ts` (per-scan binary decoder), `e57.ts`
+  (orchestrator + re-exports). All four under the AGENTS ~400-line
+  guideline.
+
+  **`point-cloud-renderer.ts` extract.** Pulled the uniform-block
+  writer into `point-cloud-uniforms.ts` (`writePointCloudUniforms` +
+  mode index maps). Renderer drops below 400 lines.
+
+  Verified: 62 pointcloud unit tests pass, full repo typecheck
+  (24/24).
+
+- Updated dependencies [[`8408c88`](https://github.com/louistrue/ifc-lite/commit/8408c88c4c0a1e848fade6c60474952eca1a4149), [`2334993`](https://github.com/louistrue/ifc-lite/commit/2334993827839b9f5b96ca8008c49543fb597660), [`ba7553a`](https://github.com/louistrue/ifc-lite/commit/ba7553af693939896a840074999b5f6806a94815), [`2ab0e4c`](https://github.com/louistrue/ifc-lite/commit/2ab0e4c0eafc21feb22bfc7cd96c467b8b9ff599)]:
+  - @ifc-lite/wasm@1.16.9
+  - @ifc-lite/geometry@1.18.0
+
 ## 1.18.0
 
 ### Minor Changes

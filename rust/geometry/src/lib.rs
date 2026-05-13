@@ -22,6 +22,7 @@
 //! | Type | Status | Description |
 //! |------|--------|-------------|
 //! | `IfcExtrudedAreaSolid` | Full | Most common - extruded profiles |
+//! | `IfcExtrudedAreaSolidTapered` | Full | Lofted extrusion between two profiles |
 //! | `IfcFacetedBrep` | Full | Boundary representation meshes |
 //! | `IfcTriangulatedFaceSet` | Full | Pre-triangulated (IFC4) |
 //! | `IfcBooleanClippingResult` | Full | CSG operations (difference, union, intersection) |
@@ -68,9 +69,17 @@
 //! - **Boolean operations**: ~20 entities/sec
 
 pub mod bool2d;
+// Legacy BSP CSG kernel. Unused when `manifold-csg` is enabled; the
+// `#[allow(dead_code)]` keeps the build warning-clean while the migration
+// is in flight. Once the legacy path is removed, drop both the module and
+// the attribute.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
 mod bsp_csg;
 pub mod csg;
+pub mod diagnostics;
 pub mod error;
+#[cfg(feature = "manifold-csg")]
+mod manifold_kernel;
 pub mod extrusion;
 pub mod material_layer_index;
 pub mod mesh;
@@ -92,20 +101,24 @@ pub use bool2d::{
     subtract_multiple_2d, union_contours,
 };
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
+pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
-pub use extrusion::{extrude_profile, extrude_profile_with_voids};
+pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayerIndex};
 pub use mesh::{CoordinateShift, Mesh, SubMesh, SubMeshCollection};
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
-    FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, MappedItemProcessor,
-    PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor, SurfaceOfLinearExtrusionProcessor,
-    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
+    MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
+    SurfaceOfLinearExtrusionProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
-pub use router::{GeometryProcessor, GeometryRouter};
+pub use router::{
+    ClassificationStats, GeometryProcessor, GeometryRouter, HostOpeningDiagnostic,
+    OpeningDiagnostic, OpeningKindDiag,
+};
 pub use transform::{
     apply_rtc_offset, parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
     parse_cartesian_point, parse_cartesian_point_from_id, parse_direction, parse_direction_from_id,

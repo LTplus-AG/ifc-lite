@@ -21,7 +21,7 @@ interface UsageRow {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DB_TIMEOUT_MS = 8_000;
+const DB_TIMEOUT_MS = 15_000;
 
 class UsageStoreTimeoutError extends Error {
   constructor(operation: string) {
@@ -116,29 +116,25 @@ export class SqlChatUsageStore implements ChatUsageStore {
   }
 
   private async bootstrapSchema(): Promise<void> {
+    // Single round-trip schema bootstrap. Combining the CREATE + ALTERs into one
+    // DO block keeps cold starts within the per-query timeout budget on Neon.
     await withTimeout(this.sql`
-      CREATE TABLE IF NOT EXISTS llm_chat_usage (
-        user_id TEXT PRIMARY KEY,
-        credits_used DOUBLE PRECISION NOT NULL DEFAULT 0,
-        billing_anchor_at BIGINT NOT NULL DEFAULT 0,
-        reset_at BIGINT NOT NULL DEFAULT 0,
-        free_requests_used INTEGER NOT NULL DEFAULT 0,
-        free_reset_at BIGINT NOT NULL DEFAULT 0,
-        updated_at BIGINT NOT NULL DEFAULT 0
-      )
-    ` as Promise<unknown>, 'bootstrap create table');
-    await withTimeout(this.sql`
-      ALTER TABLE llm_chat_usage
-      ADD COLUMN IF NOT EXISTS billing_anchor_at BIGINT
-    ` as Promise<unknown>, 'bootstrap billing_anchor_at');
-    await withTimeout(this.sql`
-      ALTER TABLE llm_chat_usage
-      ADD COLUMN IF NOT EXISTS free_requests_used INTEGER NOT NULL DEFAULT 0
-    ` as Promise<unknown>, 'bootstrap free_requests_used');
-    await withTimeout(this.sql`
-      ALTER TABLE llm_chat_usage
-      ADD COLUMN IF NOT EXISTS free_reset_at BIGINT NOT NULL DEFAULT 0
-    ` as Promise<unknown>, 'bootstrap free_reset_at');
+      DO $$
+      BEGIN
+        CREATE TABLE IF NOT EXISTS llm_chat_usage (
+          user_id TEXT PRIMARY KEY,
+          credits_used DOUBLE PRECISION NOT NULL DEFAULT 0,
+          billing_anchor_at BIGINT NOT NULL DEFAULT 0,
+          reset_at BIGINT NOT NULL DEFAULT 0,
+          free_requests_used INTEGER NOT NULL DEFAULT 0,
+          free_reset_at BIGINT NOT NULL DEFAULT 0,
+          updated_at BIGINT NOT NULL DEFAULT 0
+        );
+        ALTER TABLE llm_chat_usage ADD COLUMN IF NOT EXISTS billing_anchor_at BIGINT;
+        ALTER TABLE llm_chat_usage ADD COLUMN IF NOT EXISTS free_requests_used INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE llm_chat_usage ADD COLUMN IF NOT EXISTS free_reset_at BIGINT NOT NULL DEFAULT 0;
+      END $$;
+    ` as Promise<unknown>, 'bootstrap schema');
   }
 
   private async ensureReady(): Promise<void> {
@@ -152,7 +148,9 @@ export class SqlChatUsageStore implements ChatUsageStore {
     const initialResetAt = getNextCycleResetFromAnchor(initialAnchorAt, now);
     const initialFreeResetAt = now + DAY_MS;
 
-    await withTimeout(this.sql`
+    // Single round-trip upsert: insert the default row if missing, otherwise
+    // no-op update so RETURNING always yields the current row.
+    const rows = await withTimeout(this.sql`
       INSERT INTO llm_chat_usage (
         user_id,
         credits_used,
@@ -171,15 +169,9 @@ export class SqlChatUsageStore implements ChatUsageStore {
         ${initialFreeResetAt},
         ${now}
       )
-      ON CONFLICT (user_id) DO NOTHING
-    ` as Promise<unknown>, 'loadNormalizedRow insert');
-
-    const rows = await withTimeout(this.sql`
-      SELECT user_id, credits_used, billing_anchor_at, reset_at, free_requests_used, free_reset_at
-      FROM llm_chat_usage
-      WHERE user_id = ${userId}
-      LIMIT 1
-    ` as unknown as Promise<UsageRow[]>, 'loadNormalizedRow select');
+      ON CONFLICT (user_id) DO UPDATE SET user_id = EXCLUDED.user_id
+      RETURNING user_id, credits_used, billing_anchor_at, reset_at, free_requests_used, free_reset_at
+    ` as unknown as Promise<UsageRow[]>, 'loadNormalizedRow upsert');
     const row = rows[0];
     if (!row) {
       throw new Error('Failed to load llm_chat_usage row');

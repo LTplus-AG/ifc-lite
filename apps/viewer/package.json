@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@mlc-ai/web-llm": "^0.2.83",
     "react-markdown": "^9.0.1",
     "remark-gfm": "^4.0.0",
     "three": "^0.183.1",

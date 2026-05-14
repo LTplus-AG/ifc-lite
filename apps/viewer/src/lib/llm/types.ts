@@ -132,15 +132,16 @@ export interface FileAttachment {
   isSpreadsheetBinary?: boolean;
 }
 
-export type ModelTier = 'free' | 'byok';
+export type ModelTier = 'free' | 'byok' | 'local';
 
 /**
  * Where requests for this model are routed.
  * - 'proxy': through the server-side proxy (free models)
  * - 'anthropic': direct browser-to-Anthropic API (user's own key)
  * - 'openai': direct browser-to-OpenAI API (user's own key)
+ * - 'webllm': in-browser inference via WebGPU (no network, no key)
  */
-export type ModelSource = 'proxy' | 'anthropic' | 'openai';
+export type ModelSource = 'proxy' | 'anthropic' | 'openai' | 'webllm';
 
 /** Relative cost indicator for paid models */
 export type ModelCost = '$' | '$$' | '$$$';

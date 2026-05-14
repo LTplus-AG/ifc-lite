@@ -10,6 +10,7 @@ import {
   ChevronUp,
   Clock3,
   Cloud,
+  Cpu,
   CreditCard,
   ExternalLink,
   Eye,
@@ -51,6 +52,9 @@ import {
   subscribeApiKeys,
   type ApiKeyConfig,
 } from '@/services/api-keys';
+import { LOCAL_WEBLLM_MODELS, getLocalModelMeta } from '@/lib/llm/models';
+import { detectWebLLMSupport, type WebLLMCapability } from '@/lib/llm/webgpu-capability';
+import { hasWebLLMConsent } from '@/lib/llm/webllm-consent';
 
 export function SettingsPage() {
   const desktopEntitlement = useViewerStore((s) => s.desktopEntitlement);
@@ -98,7 +102,10 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-6">
-          {/* API Keys Section */}
+          {/* Local model (WebLLM) — primary, no setup */}
+          <LocalModelSection />
+
+          {/* API Keys Section — advanced, collapsed by default */}
           <ApiKeysSection apiKeys={apiKeys} />
 
           <section className="rounded-lg border bg-card p-6 shadow-sm">
@@ -331,6 +338,81 @@ function ApiKeyInput({
   );
 }
 
+function LocalModelSection() {
+  const [support, setSupport] = useState<WebLLMCapability | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    detectWebLLMSupport().then((cap) => { if (!cancelled) setSupport(cap); });
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <section className="rounded-lg border bg-card p-6 shadow-sm">
+      <div className="mb-5 flex items-center gap-3">
+        <Cpu className="h-5 w-5" />
+        <div>
+          <h1 className="text-2xl font-semibold">Local Model</h1>
+          <p className="text-sm text-muted-foreground">
+            Run a coding model entirely in your browser via WebGPU — free, private, offline-capable.
+            No API key required, no data leaves your device.
+          </p>
+        </div>
+      </div>
+
+      {support === null && (
+        <p className="text-sm text-muted-foreground">Checking WebGPU support…</p>
+      )}
+
+      {support?.supported === false && (
+        <div className="rounded-md border border-dashed p-4 text-xs space-y-2">
+          <p className="font-medium text-foreground">Not available in this browser.</p>
+          <p className="text-muted-foreground">
+            {support.reason === 'no-webgpu' && 'WebGPU is required. Try Chrome, Edge, or Safari 18+.'}
+            {support.reason === 'no-adapter' && 'No WebGPU adapter — your GPU driver may not be supported.'}
+            {support.reason === 'not-cross-origin-isolated' && 'Your hosting environment is missing cross-origin isolation headers. The main viewer at ifc-lite.com is fine; this only affects custom embeds.'}
+          </p>
+          <p className="text-muted-foreground">
+            Use a BYOK API key below, or our hosted free tier in the chat panel.
+          </p>
+        </div>
+      )}
+
+      {support?.supported && (
+        <div className="space-y-3">
+          {LOCAL_WEBLLM_MODELS.map((m) => {
+            const meta = getLocalModelMeta(m.id);
+            return (
+              <div key={m.id} className="rounded-md border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{m.name}</div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{m.notes}</p>
+                  </div>
+                  {meta && (
+                    <Badge variant="outline" className="text-[10px] shrink-0">
+                      {meta.approxSizeMB >= 1000 ? `${(meta.approxSizeMB / 1000).toFixed(1)} GB` : `${meta.approxSizeMB} MB`}
+                    </Badge>
+                  )}
+                </div>
+                {meta && (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    {meta.blurb} · {meta.vramRequirementGB} GB VRAM recommended ·
+                    {hasWebLLMConsent(m.id) ? ' downloaded' : ' not yet downloaded'}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          <div className="rounded-md border border-dashed p-3 text-[11px] text-muted-foreground">
+            Pick a local model in the chat panel&apos;s model selector to download it on first use.
+            Models are cached in your browser&apos;s storage and reused across sessions.
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
   const [anthropicKey, setAnthropicKey] = useState(apiKeys.anthropicKey);
   const [openaiKey, setOpenaiKey] = useState(apiKeys.openaiKey);
@@ -365,10 +447,13 @@ function ApiKeysSection({ apiKeys }: { apiKeys: ApiKeyConfig }) {
       <div className="mb-5 flex items-center gap-3">
         <Key className="h-5 w-5" />
         <div>
-          <h1 className="text-2xl font-semibold">API Keys</h1>
+          <h1 className="text-2xl font-semibold">
+            Advanced: API Keys <span className="text-sm font-normal text-muted-foreground">(optional)</span>
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Bring your own Anthropic or OpenAI API key to unlock additional models.
-            You can configure one or both providers independently.
+            Bring your own Anthropic or OpenAI API key for frontier-model access.
+            Most users won&apos;t need this — the local model above and the hosted free tier
+            cover the common cases. Keys are stored only in this browser.
           </p>
         </div>
       </div>

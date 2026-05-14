@@ -36,8 +36,10 @@ import { useViewerStore } from '@/store';
 import { buildErrorFeedbackContent } from '@/store/slices/chatSlice';
 import { ChatMessageComponent } from './chat/ChatMessage';
 import { ModelSelector } from './chat/ModelSelector';
+import { ModelDownloadCard } from './chat/ModelDownloadCard';
 import { fetchUsageSnapshot, streamChat, type StreamMessage, type TextContentPart, type ImageContentPart, type UsageInfo } from '@/lib/llm/stream-client';
 import { streamAnthropicChat, streamOpenAiChat } from '@/lib/llm/stream-direct';
+import { streamWebLLMChat, WebLLMConsentRequiredError } from '@/lib/llm/stream-webllm';
 import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/llm/message-capabilities';
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
@@ -806,7 +808,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         }
     };
     const handleError = (err: Error) => {
-        setChatError(err.message);
+        if (err instanceof WebLLMConsentRequiredError) {
+          setChatError('Click "Download" above to fetch the local model before sending.');
+        } else {
+          setChatError(err.message);
+        }
         setChatAbortController(null);
         commitAssistantTurn();
     };
@@ -827,6 +833,17 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       });
     } else if (route.kind === 'openai') {
       await streamOpenAiChat(route.apiKey, {
+        model: activeModel,
+        messages: streamMessages,
+        system: systemPrompt,
+        signal: abortController.signal,
+        onChunk: handleChunk,
+        onComplete: handleComplete,
+        onFinishReason: handleFinishReason,
+        onError: handleError,
+      });
+    } else if (route.kind === 'webllm') {
+      await streamWebLLMChat({
         model: activeModel,
         messages: streamMessages,
         system: systemPrompt,
@@ -1260,6 +1277,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       {needsByokKey && canUseAiAssistant && (
         <InlineKeyPrompt provider={needsAnthropicKey ? 'anthropic' : 'openai'} />
       )}
+
+      {/* Local-model download / consent card — shown when user picks a WebLLM model */}
+      {canUseAiAssistant && <ModelDownloadCard modelId={activeModel} />}
 
       {/* Clear confirmation */}
       {showClearConfirm && (

@@ -19,6 +19,7 @@ export type StreamRoute =
   | { kind: 'proxy'; model: string }
   | { kind: 'anthropic'; model: string; apiKey: string }
   | { kind: 'openai'; model: string; apiKey: string }
+  | { kind: 'webllm'; model: string }
   | { kind: 'missing-key'; provider: 'anthropic' | 'openai' };
 
 export function resolveStreamRoute(modelId: string, keys: ApiKeyConfig): StreamRoute {
@@ -34,6 +35,9 @@ export function resolveStreamRoute(modelId: string, keys: ApiKeyConfig): StreamR
     const apiKey = keys.openaiKey.trim();
     if (!apiKey) return { kind: 'missing-key', provider: 'openai' };
     return { kind: 'openai', model: modelId, apiKey };
+  }
+  if (source === 'webllm') {
+    return { kind: 'webllm', model: modelId };
   }
   return { kind: 'proxy', model: modelId };
 }

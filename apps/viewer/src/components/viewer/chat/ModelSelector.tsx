@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Key } from 'lucide-react';
+import { Check, Cpu, Key } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -20,9 +20,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
-import { FREE_MODELS, getModelById, getByokModelsForSource } from '@/lib/llm/models';
+import {
+  FREE_MODELS,
+  getModelById,
+  getByokModelsForSource,
+  getLocalModelMeta,
+  LOCAL_WEBLLM_MODELS,
+} from '@/lib/llm/models';
 import type { LLMModel } from '@/lib/llm/types';
 import { hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
+import { detectWebLLMSupport, type WebLLMCapability } from '@/lib/llm/webgpu-capability';
 
 function formatContextWindow(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(0)}M`;
@@ -41,6 +48,7 @@ export function ModelSelector() {
 
   const [hasAnthropic, setHasAnthropic] = useState(hasAnthropicKey);
   const [hasOpenai, setHasOpenai] = useState(hasOpenaiKey);
+  const [webLLMSupport, setWebLLMSupport] = useState<WebLLMCapability | null>(null);
 
   useEffect(() => {
     const refresh = () => {
@@ -48,6 +56,12 @@ export function ModelSelector() {
       setHasOpenai(hasOpenaiKey());
     };
     return subscribeApiKeys(refresh);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    detectWebLLMSupport().then((cap) => { if (!cancelled) setWebLLMSupport(cap); });
+    return () => { cancelled = true; };
   }, []);
 
   const handleChange = useCallback((value: string) => {
@@ -107,6 +121,34 @@ export function ModelSelector() {
                 </span>
               </SelectItem>
             ))}
+          </>
+        )}
+
+        {/* Local (WebLLM) — only shown when WebGPU + COI available */}
+        {webLLMSupport?.supported && LOCAL_WEBLLM_MODELS.length > 0 && (
+          <>
+            <div className="px-2 py-1 mt-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+              Local (browser, free)
+              <Cpu className="h-2.5 w-2.5 text-emerald-500" />
+            </div>
+            {LOCAL_WEBLLM_MODELS.map((m) => {
+              const meta = getLocalModelMeta(m.id);
+              return (
+                <SelectItem key={m.id} value={m.id} className="text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span>{m.name}</span>
+                    <span className="text-muted-foreground text-[10px]">{m.provider}</span>
+                    {meta && (
+                      <span className="text-muted-foreground/50 text-[10px]">
+                        {meta.approxSizeMB >= 1000
+                          ? `${(meta.approxSizeMB / 1000).toFixed(1)} GB`
+                          : `${meta.approxSizeMB} MB`}
+                      </span>
+                    )}
+                  </span>
+                </SelectItem>
+              );
+            })}
           </>
         )}
 

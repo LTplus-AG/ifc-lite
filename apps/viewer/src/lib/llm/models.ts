@@ -212,7 +212,72 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
 ];
 
 export const BYOK_MODELS: LLMModel[] = [...ANTHROPIC_BYOK_MODELS, ...OPENAI_BYOK_MODELS];
-export const ALL_MODELS = [...FREE_MODELS, ...BYOK_MODELS];
+
+// ── Local (WebLLM, in-browser) models ──────────────────────────────────────
+// Model ids are MLC catalog ids — passed verbatim to CreateMLCEngine.
+// Assets are fetched from huggingface.co/mlc-ai/<id> on first chat open.
+
+export interface LocalModelMeta {
+  /** Approximate on-disk size after download, in MB. Used for the consent banner. */
+  approxSizeMB: number;
+  /** Approximate VRAM/working-set requirement, in GB. Lets us pick a default. */
+  vramRequirementGB: number;
+  /** Friendly subtitle for the picker, e.g. "Best balance" or "Mobile-friendly". */
+  blurb: string;
+}
+
+const LOCAL_MODELS: Array<LLMModel & { local: LocalModelMeta }> = [
+  {
+    id: 'Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC',
+    name: 'Qwen2.5 Coder 7B',
+    provider: 'Local (browser)',
+    tier: 'local',
+    source: 'webllm',
+    contextWindow: 32_768,
+    supportsImages: false,
+    supportsFileAttachments: true,
+    notes: 'Recommended local model. Runs in your browser via WebGPU. Free, private, offline after first load. 32K-token context fits the full BIM toolkit.',
+    local: { approxSizeMB: 4200, vramRequirementGB: 6, blurb: 'Recommended — full BIM context · desktops & M-series Macs' },
+  },
+  {
+    id: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
+    name: 'Qwen2.5 Coder 1.5B',
+    provider: 'Local (browser)',
+    tier: 'local',
+    source: 'webllm',
+    // MLC's q4f16 1.5B build is compiled with a 4096-token window — much
+    // smaller than the model's nominal 32K — to keep KV-cache memory bounded.
+    contextWindow: 4_096,
+    supportsImages: false,
+    supportsFileAttachments: true,
+    notes: 'Lightweight — works on most laptops and iPad Safari. 4K-token context is too small for the full BIM toolkit; intended for general chat, not script-assistant tasks.',
+    local: { approxSizeMB: 900, vramRequirementGB: 2, blurb: 'Mobile-friendly · 4K context — general chat only' },
+  },
+  {
+    id: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC',
+    name: 'Hermes 3 (Llama 3.2 3B)',
+    provider: 'Local (browser)',
+    tier: 'local',
+    source: 'webllm',
+    contextWindow: 8_192,
+    supportsImages: false,
+    supportsFileAttachments: true,
+    notes: 'Tuned for instruction-following and tool use. 8K context fits short BIM tasks but truncates aggressively — Qwen 7B preferred when you can spare the disk space.',
+    local: { approxSizeMB: 1800, vramRequirementGB: 3, blurb: 'Better explanations · 8K context' },
+  },
+];
+
+export const LOCAL_WEBLLM_MODELS: LLMModel[] = LOCAL_MODELS.map(({ local: _local, ...m }) => m);
+
+const LOCAL_MODEL_META: Record<string, LocalModelMeta> = Object.fromEntries(
+  LOCAL_MODELS.map((m) => [m.id, m.local]),
+);
+
+export function getLocalModelMeta(id: string): LocalModelMeta | undefined {
+  return LOCAL_MODEL_META[id];
+}
+
+export const ALL_MODELS = [...FREE_MODELS, ...BYOK_MODELS, ...LOCAL_WEBLLM_MODELS];
 
 const FALLBACK_MODEL: LLMModel = {
   id: 'llm-model-missing',

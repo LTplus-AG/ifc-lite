@@ -12,13 +12,18 @@
  * draw is transparent (IfcSpace, IfcOpeningElement, glass, …) silently
  * fails — the equality test never matches.
  *
- * To fix that, the renderer promotes any mesh or batch carrying a colour
- * override to the opaque pipeline, regardless of its native alpha. The
- * base draw then writes depth and the overlay paint succeeds.
+ * To fix that, the renderer promotes the base draw of overridden entities
+ * to the opaque pipeline so depth gets written and the overlay paint
+ * succeeds. To avoid turning non-overridden batchmates opaque, batches
+ * with mixed override membership are split into a "promoted" sub-batch
+ * (all overridden) and a "remaining" sub-batch (all not), each routed
+ * through its appropriate pipeline.
  *
- * These helpers express that decision as pure functions so they can be
- * unit-tested without a GPU device. See issue #677 for the bug they fix.
+ * These helpers express the routing decision as pure functions so they
+ * can be unit-tested without a GPU device. See issue #677.
  */
+
+export type RGBAOverrideMap = ReadonlyMap<number, readonly [number, number, number, number]>;
 
 const OPAQUE_ALPHA_CUTOFF = 0.99;
 
@@ -51,7 +56,7 @@ export function shouldRouteMeshTransparent(
   alpha: number,
   transparency: number,
   expressId: number,
-  colorOverrides: Map<number, [number, number, number, number]> | null,
+  colorOverrides: RGBAOverrideMap | null,
 ): boolean {
   const nativelyTransparent = alpha < OPAQUE_ALPHA_CUTOFF || transparency > 0.01;
   if (!nativelyTransparent) return false;
@@ -66,26 +71,59 @@ export function shouldRouteMeshTransparent(
 
 /**
  * Decide whether a batch (or sub-batch) should render through the transparent
- * pipeline. A batch is promoted to opaque if *any* of its expressIds carries
- * a colour override — the overlay paint pass only paints the overridden ids,
- * and non-overridden ids in the same batch render with their batch colour
- * through the opaque pipeline.
+ * pipeline. A batch is promoted to opaque **only when every id in it** carries
+ * a deliberate override — i.e. when promotion can't make any unrelated
+ * batchmate opaque. Mixed batches must be split upstream via
+ * {@link splitVisibleIdsByPromotion}; the splitter calls this helper on each
+ * homogeneous sub-batch.
  *
  * @param alpha          Resolved batch alpha (post `transparencyOverrides`).
- * @param expressIds     The batch's expressIds.
+ * @param expressIds     The (sub-)batch's expressIds.
  * @param colorOverrides Active lens / Pset override map, or null when none.
  */
 export function shouldRouteBatchTransparent(
   alpha: number,
   expressIds: ReadonlyArray<number>,
-  colorOverrides: Map<number, [number, number, number, number]> | null,
+  colorOverrides: RGBAOverrideMap | null,
 ): boolean {
   if (alpha >= OPAQUE_ALPHA_CUTOFF) return false;
-  if (colorOverrides != null && colorOverrides.size > 0) {
-    for (const eid of expressIds) {
-      const override = colorOverrides.get(eid);
-      if (override != null && override[3] >= OVERRIDE_PROMOTION_MIN_ALPHA) return false;
-    }
+  if (colorOverrides == null || colorOverrides.size === 0 || expressIds.length === 0) {
+    return true;
   }
-  return true;
+  // Promote ONLY when every id carries a deliberate override. Mixed batches
+  // must be split upstream — promoting them whole would turn non-overridden
+  // batchmates opaque (regression flagged on PR #682).
+  for (const eid of expressIds) {
+    const override = colorOverrides.get(eid);
+    if (override == null || override[3] < OVERRIDE_PROMOTION_MIN_ALPHA) return true;
+  }
+  return false;
+}
+
+/**
+ * Partition a visible-id set into the subset that needs opaque-pipeline
+ * promotion (deliberate colour overrides, alpha ≥ 0.2) and the rest.
+ *
+ * Used by the renderer's batch loop when a transparent parent batch has
+ * mixed override membership: each subset becomes its own partial sub-batch
+ * so non-overridden batchmates keep their native transparent routing.
+ *
+ * Returns `null` when no split is needed — either the override map is empty
+ * or no id in `visibleIds` carries a deliberate override. The caller should
+ * then route the whole input through its native pipeline.
+ */
+export function splitVisibleIdsByPromotion(
+  visibleIds: Iterable<number>,
+  colorOverrides: RGBAOverrideMap | null,
+): { promoted: Set<number>; remaining: Set<number> } | null {
+  if (colorOverrides == null || colorOverrides.size === 0) return null;
+  const promoted = new Set<number>();
+  const remaining = new Set<number>();
+  for (const id of visibleIds) {
+    const o = colorOverrides.get(id);
+    if (o != null && o[3] >= OVERRIDE_PROMOTION_MIN_ALPHA) promoted.add(id);
+    else remaining.add(id);
+  }
+  if (promoted.size === 0) return null;
+  return { promoted, remaining };
 }

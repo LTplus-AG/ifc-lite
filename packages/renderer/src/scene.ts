@@ -57,7 +57,9 @@ export class Scene {
   // Overlay batches render on top using depthCompare 'equal', so they only
   // paint where original geometry already wrote depth. Clearing is instant.
   private overrideBatches: BatchedMesh[] = [];
-  private colorOverrides: Map<number, [number, number, number, number]> | null = null;
+  // Defensively-typed: the renderer is the sole writer (via setColorOverrides),
+  // external readers go through getColorOverrides() and get a ReadonlyMap.
+  private colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null = null;
 
   // Streaming optimization: track pending batch rebuilds
   private pendingBatchKeys: Set<string> = new Set();
@@ -1367,7 +1369,11 @@ export class Scene {
       return;
     }
 
-    this.colorOverrides = overrides;
+    // Defensive copy so external callers can mutate or reuse `overrides`
+    // without aliasing the renderer's pipeline-routing state. Tuples are
+    // frozen by the readonly type — we don't deep-clone the inner arrays
+    // because they're treated as immutable by every consumer.
+    this.colorOverrides = new Map(overrides);
 
     // Group expressIds by override color
     const colorGroups = new Map<string, { color: [number, number, number, number]; meshData: MeshData[] }>();
@@ -1419,7 +1425,6 @@ export class Scene {
 
   /**
    * Get the active expressId → RGBA override map, or null if none.
-   * Read-only — callers must not mutate.
    *
    * Used by the renderer to promote overridden meshes/batches to the opaque
    * pipeline so the overlay paint pass (depthCompare 'equal') finds matching
@@ -1427,8 +1432,12 @@ export class Scene {
    * transparent pipeline (IfcSpace, IfcOpeningElement, glass, …) silently
    * fails to paint — the transparent pipeline doesn't write depth, so the
    * equality test rejects every fragment.
+   *
+   * Returns a `ReadonlyMap` view: the renderer holds the only writeable
+   * reference (via `setColorOverrides`) so routing decisions stay in sync
+   * with the overlay batches we built from the same data.
    */
-  getColorOverrides(): Map<number, [number, number, number, number]> | null {
+  getColorOverrides(): ReadonlyMap<number, readonly [number, number, number, number]> | null {
     return this.colorOverrides;
   }
 

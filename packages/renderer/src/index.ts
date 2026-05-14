@@ -97,7 +97,7 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
 import { EdlPass } from './edl-pass.js';
-import { shouldRouteMeshTransparent, shouldRouteBatchTransparent } from './overlay-routing.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion } from './overlay-routing.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationPipeline } from './deviation/deviation-pipeline.js';
@@ -1669,6 +1669,55 @@ export class Renderer {
                     color: [number, number, number, number];
                 }> = [];
 
+                // Push a partial sub-batch entry, splitting by promotion when needed.
+                // For transparent parent batches with mixed override membership, this
+                // emits two entries (`:promoted` and `:remaining`) so non-overridden
+                // batchmates keep their native transparent routing instead of getting
+                // dragged opaque alongside the overridden ones.
+                const pushVisibleAsPartial = (
+                    sourceBatch: typeof allBatchedMeshes[number],
+                    visibleIds: Set<number>,
+                    isTransparent: boolean,
+                ) => {
+                    const baseKey = `${sourceBatch.colorKey}:${sourceBatch.id}`;
+                    if (!isTransparent) {
+                        partiallyVisibleBatches.push({
+                            sourceBatchKey: baseKey,
+                            colorKey: sourceBatch.colorKey,
+                            visibleIds,
+                            color: sourceBatch.color,
+                        });
+                        return;
+                    }
+                    const split = splitVisibleIdsByPromotion(visibleIds, colorOverrides);
+                    // No promotion or every visible id promoted → single sub-batch,
+                    // classifier downstream routes via shouldRouteBatchTransparent.
+                    if (split == null || split.remaining.size === 0) {
+                        partiallyVisibleBatches.push({
+                            sourceBatchKey: baseKey,
+                            colorKey: sourceBatch.colorKey,
+                            visibleIds,
+                            color: sourceBatch.color,
+                        });
+                        return;
+                    }
+                    // Mixed — emit one promoted (opaque-routed) and one remaining
+                    // (transparent-routed) sub-batch. Distinct sourceBatchKeys so the
+                    // partial-batch cache can hold both simultaneously.
+                    partiallyVisibleBatches.push({
+                        sourceBatchKey: `${baseKey}:promoted`,
+                        colorKey: sourceBatch.colorKey,
+                        visibleIds: split.promoted,
+                        color: sourceBatch.color,
+                    });
+                    partiallyVisibleBatches.push({
+                        sourceBatchKey: `${baseKey}:remaining`,
+                        colorKey: sourceBatch.colorKey,
+                        visibleIds: split.remaining,
+                        color: sourceBatch.color,
+                    });
+                };
+
                 for (const batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
@@ -1678,6 +1727,9 @@ export class Renderer {
                         }
                     }
 
+                    const alpha = alphaForBatch(batch, batch.color[3]);
+                    const nativelyTransparent = alpha < 0.99;
+
                     // Check visibility
                     if (hasVisibilityFiltering) {
                         const vis = batchVisibility.get(batch);
@@ -1685,33 +1737,32 @@ export class Renderer {
 
                         // Handle partially visible batches - create sub-batches instead of individual meshes
                         if (!vis.fullyVisible) {
-                            // Collect the visible expressIds from this batch
                             const visibleIds = new Set<number>();
                             for (const expressId of batch.expressIds) {
                                 const isHidden = options.hiddenIds?.has(expressId) ?? false;
                                 const isIsolated = !hasIsolatedFilter || options.isolatedIds!.has(expressId);
-                                if (!isHidden && isIsolated) {
-                                    visibleIds.add(expressId);
-                                }
+                                if (!isHidden && isIsolated) visibleIds.add(expressId);
                             }
                             if (visibleIds.size > 0) {
-                                partiallyVisibleBatches.push({
-                                    sourceBatchKey: `${batch.colorKey}:${batch.id}`,
-                                    colorKey: batch.colorKey,
-                                    visibleIds,
-                                    color: batch.color,
-                                });
+                                pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
                             continue; // Don't add batch to render list
                         }
                     }
 
-                    const alpha = alphaForBatch(batch, batch.color[3]);
-                    // Batches containing any lens/Pset-overridden entity are
-                    // promoted to opaque so the overlay paint pass finds depth.
-                    // Non-overridden ids in the same batch render with their
-                    // batch colour through the opaque pipeline; the overlay
-                    // then paints over the overridden ids only.
+                    // Fully visible (or no filtering). Transparent batches with mixed
+                    // override membership must be split so non-overridden batchmates
+                    // stay transparent — see splitVisibleIdsByPromotion / issue #677.
+                    if (nativelyTransparent) {
+                        const split = splitVisibleIdsByPromotion(batch.expressIds, colorOverrides);
+                        if (split != null && split.remaining.size > 0) {
+                            // Mixed promotion — re-route through the partial-batch path
+                            // with distinct sourceBatchKeys for each subset.
+                            pushVisibleAsPartial(batch, new Set(batch.expressIds), true);
+                            continue;
+                        }
+                    }
+
                     if (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides)) {
                         transparentBatches.push(batch);
                     } else {

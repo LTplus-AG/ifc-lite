@@ -25,58 +25,22 @@
  * 10-core hosts.
  */
 
-// The THREADED WASM bundle (`@ifc-lite/wasm-threaded`) is intentionally
-// workspace-only — see packages/wasm-threaded/package.json `_intent`.
-// Consumers of the published `@ifc-lite/geometry` package do NOT have it
-// in their node_modules, and the controller path that uses it is opt-in
-// (gated by `useSingleController` in geometry-parallel.ts).
+// Import the THREADED bundle. The viewer's vite.config.ts maps
+// `@ifc-lite/wasm-threaded` to `packages/wasm-threaded/pkg/ifc-lite.js`
+// (see vite.config.ts alias added by Phase 2 wiring), so this static
+// specifier resolves naturally for the workspace source-alias build.
 //
-// Issue #676: a static `import … from '@ifc-lite/wasm-threaded'` here
-// caused Turbopack / webpack / esbuild to fail at the *consumer's* build
-// step, even when `useSingleController` was never enabled, because the
-// bundler statically follows worker imports during chunking. To fix it:
-//   1. Type-only imports are erased by TSC and never reach the published
-//      JS, so the bundler never sees them.
-//   2. The runtime import below uses an indirect specifier built at call
-//      time, which defeats static-import detection in every bundler we
-//      ship to. Hosts that opt into the controller path must alias
-//      `@ifc-lite/wasm-threaded` in their bundler config (see the
-//      viewer's `vite.config.ts` Phase 2 wiring); without that alias the
-//      worker emits a clear error at runtime, not at build time.
-import type { IfcAPI as ThreadedIfcAPI } from '@ifc-lite/wasm-threaded';
+// Published-package contract (issue #676): `scripts/transform-controller-worker-dist.mjs`
+// runs after `tsc` and rewrites this single line in `dist/geometry-controller.worker.js`
+// into a lazy `await import(<runtime-built-specifier>)` so consumer bundlers
+// (Turbopack, webpack, esbuild) don't try to resolve `@ifc-lite/wasm-threaded`
+// at their build step — that package is workspace-only per
+// `packages/wasm-threaded/package.json` `_intent`. The
+// `geometry-controller-dist.test.ts` regression pins both halves of this
+// contract (no static import in dist, dynamic loader present).
+import init, { initSync, IfcAPI, initThreadPool } from '@ifc-lite/wasm-threaded';
 
-type ThreadedModule = {
-  default: (input?: unknown) => Promise<unknown>;
-  initSync: (opts: { module_or_path: unknown }) => unknown;
-  IfcAPI: new () => ThreadedIfcAPI;
-  initThreadPool: (numThreads: number) => Promise<void>;
-};
-
-let threadedModule: ThreadedModule | null = null;
-
-async function loadThreadedModule(): Promise<ThreadedModule> {
-  if (threadedModule) return threadedModule;
-  // The specifier is concatenated at runtime so neither Turbopack /
-  // webpack / Vite static-import detection nor esbuild's metafile
-  // scanner picks it up at the consumer's build step. The actual module
-  // is resolved by the host's bundler alias (workspace path) at runtime.
-  const specifier = ['@ifc-lite', 'wasm-threaded'].join('/');
-  try {
-    threadedModule = (await import(/* @vite-ignore */ specifier)) as ThreadedModule;
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `[controller] failed to load @ifc-lite/wasm-threaded (${detail}). ` +
-      `The single-controller path requires the threaded WASM bundle. ` +
-      `Alias '@ifc-lite/wasm-threaded' to packages/wasm-threaded/pkg/ifc-lite.js ` +
-      `in your bundler config (see viewer's vite.config.ts Phase 2 wiring), ` +
-      `or omit useSingleController to stay on the N-worker fallback.`,
-    );
-  }
-  return threadedModule;
-}
-
-// Optional: bench function (only present in threaded build)
+// Optional: import the bench function (only present in threaded build)
 type BenchApi = {
   benchmarkPureCpuParallelism?: (numTasks: number) => Float64Array;
 };
@@ -115,7 +79,7 @@ export type GeometryControllerResponse =
   | GeometryWorkerErrorMessage
   | GeometryWorkerMemoryMessage;
 
-let api: ThreadedIfcAPI | null = null;
+let api: IfcAPI | null = null;
 let threadPoolReady = false;
 
 /**
@@ -135,7 +99,7 @@ let mergeLayersFlag: boolean = false;
 let mergeLayersApplied: boolean = false;
 
 /** Narrow typed wrapper for the optional `setMergeLayers` extension. */
-type IfcAPIWithMerge = ThreadedIfcAPI & { setMergeLayers?: (enabled: boolean) => void };
+type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
 
 function applyMergeLayersToApi(): void {
   if (!api || mergeLayersApplied) return;
@@ -226,7 +190,7 @@ function flushPending(session: ControllerSession): void {
 
 function collectMeshes(
   session: ControllerSession,
-  collection: ReturnType<ThreadedIfcAPI['processGeometryBatch']>,
+  collection: ReturnType<IfcAPI['processGeometryBatch']>,
 ): void {
   for (let i = 0; i < collection.length; i++) {
     const mesh = collection.get(i);
@@ -265,7 +229,7 @@ async function processBatchParallel(
       throw new Error('controller API not initialised before stream-chunk');
     }
     type ParallelApi = {
-      processGeometryBatchParallel: ThreadedIfcAPI['processGeometryBatch'];
+      processGeometryBatchParallel: typeof IfcAPI.prototype.processGeometryBatch;
     };
     const collection = (api as unknown as ParallelApi).processGeometryBatchParallel(
       session.localBytes, jobs, session.unitScale,
@@ -348,15 +312,6 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
   messageTail = messageTail.then(async () => {
     try {
       if (e.data.type === 'init') {
-        // Lazily resolve the threaded bundle — see `loadThreadedModule`
-        // for why this is dynamic. Any module-load failure is surfaced
-        // to the host as an `error` message by the outer try/catch.
-        const {
-          default: init,
-          initSync,
-          IfcAPI,
-          initThreadPool,
-        } = await loadThreadedModule();
         if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
         if (e.data.wasmModule) {
           initSync({ module_or_path: e.data.wasmModule });

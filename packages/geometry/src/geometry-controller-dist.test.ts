@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Regression pin for issue #676: the published `geometry-controller.worker.js`
+ * Regression pin for issue #676: the published `dist/geometry-controller.worker.js`
  * must NOT contain a static `import … from '@ifc-lite/wasm-threaded'` statement.
  *
  * Why: the threaded bundle is workspace-only (see
@@ -13,9 +13,10 @@
  * resolve `@ifc-lite/wasm-threaded` even when `useSingleController` is off —
  * exactly the build failure ocni-dtu reported on Next 16 + Turbopack.
  *
- * The runtime path uses a dynamic import with an indirect specifier
- * (concatenated at call time) so bundlers can't statically resolve the
- * target. This test asserts the build output preserves that contract.
+ * Source-level static import (resolved by Vite alias in the viewer's
+ * workspace build) is converted to a dynamic indirect loader at build
+ * time by `scripts/transform-controller-worker-dist.mjs`. This test
+ * asserts the post-build dist preserves that contract.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -44,8 +45,18 @@ describe('#676 controller worker is bundler-safe for consumers without @ifc-lite
   maybe('controller still references the threaded module via dynamic import', () => {
     // Smoke check: the loader function survives the build so consumers who
     // opt into useSingleController can still resolve via bundler alias.
-    const src = readFileSync(distControllerJs, 'utf8');
-    expect(src).toMatch(/await import\(/);
-    expect(src).toMatch(/wasm-threaded/);
+    // Strip line/block comments before checking so a stray mention in a
+    // doc comment can't satisfy the assertion.
+    const raw = readFileSync(distControllerJs, 'utf8');
+    const codeOnly = raw
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(codeOnly).toMatch(/await import\(/);
+    expect(codeOnly).toMatch(/wasm-threaded/);
+    // The transform also rewrites the `init` handler to await the loader.
+    // If a future tsc emit shape change desynchronises the script and the
+    // handler stops calling the loader, this assertion fails before any
+    // consumer notices the regression at runtime.
+    expect(codeOnly).toMatch(/__loadThreadedModule\(\)/);
   });
 });

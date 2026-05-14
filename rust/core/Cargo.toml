@@ -18,7 +18,8 @@ serde = ["dep:serde"]
 [dependencies]
 
 # Even faster float parsing (2-3x faster than lexical-core)
-fast-float = "0.2"
+# fast-float2 is the maintained fork of unmaintained fast-float (GHSA-x8jh-xj3x-gx3c, GHSA-8655-xgh5-5vvq)
+fast-float2 = "0.2"
 
 # Async streaming
 futures-core = "0.3"

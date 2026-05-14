@@ -1417,6 +1417,21 @@ export class Scene {
     return this.overrideBatches.length > 0;
   }
 
+  /**
+   * Get the active expressId → RGBA override map, or null if none.
+   * Read-only — callers must not mutate.
+   *
+   * Used by the renderer to promote overridden meshes/batches to the opaque
+   * pipeline so the overlay paint pass (depthCompare 'equal') finds matching
+   * depth. Without this, an override on an entity that defaults to the
+   * transparent pipeline (IfcSpace, IfcOpeningElement, glass, …) silently
+   * fails to paint — the transparent pipeline doesn't write depth, so the
+   * equality test rejects every fragment.
+   */
+  getColorOverrides(): Map<number, [number, number, number, number]> | null {
+    return this.colorOverrides;
+  }
+
   /** Destroy GPU resources for overlay batches */
   private destroyOverrideBatches(): void {
     for (const batch of this.overrideBatches) {

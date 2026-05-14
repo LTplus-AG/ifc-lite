@@ -442,14 +442,13 @@ export function ViewportContainer() {
         if (ifcType === 'IfcSite' && !typeVisibility.site) continue;
       }
 
-      if (ifcType === 'IfcSpace' || ifcType === 'IfcOpeningElement') {
-        cache.push({
-          ...mesh,
-          color: [mesh.color[0], mesh.color[1], mesh.color[2], Math.min(mesh.color[3] * 0.3, 0.3)],
-        });
-      } else {
-        cache.push(mesh);
-      }
+      // Mesh alpha flows through unchanged. The previous code re-multiplied
+      // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
+      // lens / Pset colour rules even when the user explicitly chose alpha 1.0.
+      // Defaults still come from styling.rs / default-materials.ts; the
+      // renderer promotes overridden entities to the opaque pipeline so the
+      // overlay paint pass finds matching depth. See issue #677.
+      cache.push(mesh);
     }
 
     filteredSourceLenRef.current = allMeshes.length;

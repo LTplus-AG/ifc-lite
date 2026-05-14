@@ -97,6 +97,7 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
 import { EdlPass } from './edl-pass.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent } from './overlay-routing.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationPipeline } from './deviation/deviation-pipeline.js';
@@ -1216,6 +1217,15 @@ export class Renderer {
             return resolved;
         };
 
+        // Lens / Pset color overrides: when an entity has an override, force
+        // its base draw through the opaque pipeline so it writes depth. The
+        // overlay paint pass uses depthCompare 'equal' and otherwise silently
+        // drops fragments belonging to entities whose default pipeline is
+        // transparent (IfcSpace, IfcOpeningElement, glass, …). See issue #677.
+        // Pure routing decision lives in overlay-routing.ts and is unit-tested
+        // there.
+        const colorOverrides = this.scene.getColorOverrides();
+
         // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
         // Only create individual meshes for selected elements (for highlighting)
         // Batches are filtered at render time - fully visible batches render normally,
@@ -1283,7 +1293,12 @@ export class Renderer {
             for (const mesh of meshes) {
                 const alpha = alphaForMesh(mesh.expressId, mesh.color[3]);
                 const transparency = mesh.material?.transparency ?? 0.0;
-                const isTransparent = alpha < 0.99 || transparency > 0.01;
+                const isTransparent = shouldRouteMeshTransparent(
+                    alpha,
+                    transparency,
+                    mesh.expressId,
+                    colorOverrides,
+                );
 
                 if (isTransparent) {
                     transparentMeshes.push(mesh);
@@ -1692,7 +1707,12 @@ export class Renderer {
                     }
 
                     const alpha = alphaForBatch(batch, batch.color[3]);
-                    if (alpha < 0.99) {
+                    // Batches containing any lens/Pset-overridden entity are
+                    // promoted to opaque so the overlay paint pass finds depth.
+                    // Non-overridden ids in the same batch render with their
+                    // batch colour through the opaque pipeline; the overlay
+                    // then paints over the overridden ids only.
+                    if (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides)) {
                         transparentBatches.push(batch);
                     } else {
                         opaqueBatches.push(batch);
@@ -1781,8 +1801,14 @@ export class Renderer {
 
                         if (subBatch) {
                             // Use opaque or transparent pipeline based on resolved alpha
-                            // (not the parent batch's color[3] — that ignores transparencyOverrides)
-                            const isTransparent = alphaForBatch(subBatch, color[3]) < 0.99;
+                            // (not the parent batch's color[3] — that ignores transparencyOverrides).
+                            // Promote to opaque if any expressId in the sub-batch carries a
+                            // lens/Pset colour override, so the overlay paint pass finds depth.
+                            const isTransparent = shouldRouteBatchTransparent(
+                                alphaForBatch(subBatch, color[3]),
+                                subBatch.expressIds,
+                                colorOverrides,
+                            );
                             if (isTransparent) {
                                 pass.setPipeline(this.pipeline.getTransparentPipeline());
                             } else {

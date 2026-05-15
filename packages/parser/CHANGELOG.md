@@ -1,5 +1,11 @@
 # @ifc-lite/parser
 
+## 2.4.1
+
+### Patch Changes
+
+- [#658](https://github.com/louistrue/ifc-lite/pull/658) [`bfb5e1b`](https://github.com/louistrue/ifc-lite/commit/bfb5e1bdc917ab771de4540b6c5686b9fb0e5fa7) Thanks [@louistrue](https://github.com/louistrue)! - Restore IFC2X3 georeferencing extraction from legacy site locations and standard map conversion data so Cesium placement and inspector metadata stay available for older models.
+
 ## 2.4.0
 
 ### Minor Changes

@@ -65,6 +65,38 @@ describe('effective georeferencing', () => {
     );
   });
 
+  it('treats IFC2X3 files with only IfcMapConversion (no IfcProjectedCRS name yet) as editable', () => {
+    // Extension-bearing IFC2X3 files sometimes carry one half of the
+    // georef pair; once we've parsed it, the editor should surface the
+    // data instead of hiding behind a schema notice. See issue #683.
+    assert.strictEqual(
+      supportsStandardGeoreferencing('IFC2X3', {
+        source: 'mapConversion',
+        mapConversion: {
+          id: 2,
+          sourceCRS: 10,
+          targetCRS: 11,
+          eastings: 2681750,
+          northings: 1225750,
+          orthogonalHeight: 0,
+        },
+      }),
+      true,
+    );
+  });
+
+  it('treats IFC2X3 files with only IfcProjectedCRS as editable so users can add IfcMapConversion', () => {
+    assert.strictEqual(
+      supportsStandardGeoreferencing('IFC2X3', {
+        projectedCRS: {
+          id: 1,
+          name: 'EPSG:2056',
+        },
+      }),
+      true,
+    );
+  });
+
   it('keeps pure IfcSite IFC2X3 geolocation in read-only mode', () => {
     assert.strictEqual(
       supportsStandardGeoreferencing('IFC2X3', {

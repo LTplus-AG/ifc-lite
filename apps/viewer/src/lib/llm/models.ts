@@ -145,7 +145,7 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
     provider: 'Anthropic',
     tier: 'byok',
     source: 'anthropic',
-    contextWindow: 200_000,
+    contextWindow: 1_000_000,
     supportsImages: true,
     supportsFileAttachments: true,
     cost: '$$$',

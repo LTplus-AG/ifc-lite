@@ -108,49 +108,68 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   }, [modelList, selectedModelId, legacyGeometryResult]);
 
   /**
-   * Convert global visibility-state IDs to local expressIds for the
-   * selected model. The store keys hide / isolation maps both globally
-   * (legacy) and per-model (federated). Same shape as ExportDialog.
+   * Build the hidden / isolation sets in **global** ID space.
+   *
+   * `MeshData.expressId` carries the federated global ID (`local +
+   * idOffset`, see `store/types.ts:365`), and the legacy / global store
+   * sets (`hiddenEntities`, `isolatedEntities`) are also global —
+   * `basketVisibleSet.ts:405-412` is the canonical reference for which
+   * set lives in which space. Only the per-model `*ByModel` Maps store
+   * raw local IDs, so those need an offset added before they can match
+   * a mesh expressId. This is the opposite shape from the STEP exporter
+   * (which works in local entity space), so don't reuse ExportDialog's
+   * helpers here.
    */
-  const getLocalHiddenIds = useCallback((modelId: string): Set<number> => {
+  const getGlobalHiddenIds = useCallback((modelId: string): Set<number> => {
     if (modelId === '__legacy__') return hiddenEntities;
 
     const model = models.get(modelId);
     if (!model) return new Set();
     const offset = model.idOffset ?? 0;
 
-    const modelHidden = hiddenEntitiesByModel.get(modelId);
-    if (modelHidden && modelHidden.size > 0) return modelHidden;
-
-    const localIds = new Set<number>();
+    const out = new Set<number>();
+    // Global IDs from the legacy / global store — already global, just
+    // restrict to this model's range so we don't carry over hidden IDs
+    // that belong to sibling federated models.
     for (const globalId of hiddenEntities) {
       const localId = globalId - offset;
       if (localId > 0 && localId <= model.maxExpressId) {
-        localIds.add(localId);
+        out.add(globalId);
       }
     }
-    return localIds;
+    // Per-model entries are LOCAL IDs — convert to global.
+    const modelHidden = hiddenEntitiesByModel.get(modelId);
+    if (modelHidden) {
+      for (const localId of modelHidden) {
+        out.add(localId + offset);
+      }
+    }
+    return out;
   }, [models, hiddenEntities, hiddenEntitiesByModel]);
 
-  const getLocalIsolatedIds = useCallback((modelId: string): Set<number> | null => {
+  const getGlobalIsolatedIds = useCallback((modelId: string): Set<number> | null => {
     if (modelId === '__legacy__') return isolatedEntities;
 
     const model = models.get(modelId);
     if (!model) return null;
     const offset = model.idOffset ?? 0;
 
-    const modelIsolated = isolatedEntitiesByModel.get(modelId);
-    if (modelIsolated && modelIsolated.size > 0) return modelIsolated;
-
-    if (!isolatedEntities) return null;
-    const localIds = new Set<number>();
-    for (const globalId of isolatedEntities) {
-      const localId = globalId - offset;
-      if (localId > 0 && localId <= model.maxExpressId) {
-        localIds.add(localId);
+    const out = new Set<number>();
+    if (isolatedEntities) {
+      for (const globalId of isolatedEntities) {
+        const localId = globalId - offset;
+        if (localId > 0 && localId <= model.maxExpressId) {
+          out.add(globalId);
+        }
       }
     }
-    return localIds.size > 0 ? localIds : null;
+    const modelIsolated = isolatedEntitiesByModel.get(modelId);
+    if (modelIsolated) {
+      for (const localId of modelIsolated) {
+        out.add(localId + offset);
+      }
+    }
+    return out.size > 0 ? out : null;
   }, [models, isolatedEntities, isolatedEntitiesByModel]);
 
   const handleExport = useCallback(() => {
@@ -161,15 +180,15 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
 
     try {
       const exporter = new GLTFExporter(selectedModel.geometryResult);
-      const localHidden = visibleOnly ? getLocalHiddenIds(selectedModelId) : undefined;
-      const localIsolated = visibleOnly ? getLocalIsolatedIds(selectedModelId) : undefined;
+      const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
+      const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
 
       const glb = exporter.exportGLB({
         includeMetadata,
         colorSource,
         visibleOnly,
-        hiddenEntityIds: localHidden,
-        isolatedEntityIds: localIsolated,
+        hiddenEntityIds: globalHidden,
+        isolatedEntityIds: globalIsolated,
       });
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
@@ -201,8 +220,8 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     includeMetadata,
     colorSource,
     visibleOnly,
-    getLocalHiddenIds,
-    getLocalIsolatedIds,
+    getGlobalHiddenIds,
+    getGlobalIsolatedIds,
   ]);
 
   return (

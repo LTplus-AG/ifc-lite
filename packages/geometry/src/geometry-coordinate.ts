@@ -56,6 +56,15 @@ export function convertMeshCollectionToBatch(
       if (!mesh) continue;
 
       try {
+        // Optional SurfaceColour for the GLB exporter's "Shading" mode.
+        // Mirrors the copy in IfcLiteMeshCollector — absent when the file
+        // didn't author a distinct DiffuseColour (the common case).
+        const shadingArray = (mesh as { shadingColor?: ArrayLike<number> }).shadingColor;
+        const shadingColor: [number, number, number, number] | undefined =
+          shadingArray && shadingArray.length === 4
+            ? [shadingArray[0], shadingArray[1], shadingArray[2], shadingArray[3]]
+            : undefined;
+
         batch.push({
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
@@ -63,6 +72,7 @@ export function convertMeshCollectionToBatch(
           normals: mesh.normals,
           indices: mesh.indices,
           color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
+          ...(shadingColor ? { shadingColor } : {}),
         });
       } finally {
         mesh.free();

@@ -564,7 +564,13 @@ export function commitAddElementSlabPolygon(): void {
  */
 export async function handleContextMenu(ctx: MouseHandlerContext, e: MouseEvent): Promise<void> {
   e.preventDefault();
-  const { canvas, renderer } = ctx;
+  const { canvas, renderer, mouseState } = ctx;
+  // Right-drag is the pan gesture (see useMouseControls). Some browsers
+  // still fire `contextmenu` after a tiny right-drag — skip when the
+  // user actually moved, so panning never accidentally pops the menu.
+  if (mouseState.didDrag) {
+    return;
+  }
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;

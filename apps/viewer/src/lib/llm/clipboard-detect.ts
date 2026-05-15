@@ -55,8 +55,12 @@ export async function readClipboardKey(provider: BYOKProvider): Promise<string |
       return trimmed;
     }
     return null;
-  } catch {
-    /* clipboard read denied / insecure context — safe to ignore, manual paste still works */
+  } catch (err) {
+    // Permission denied / insecure context / no transient activation — these
+    // are expected on Firefox and Safari without an explicit user grant, and
+    // the manual-paste fallback still works. Log at debug level for diagnostic
+    // but never escalate to the UI.
+    console.debug('[byok] clipboard read failed', err);
     return null;
   }
 }

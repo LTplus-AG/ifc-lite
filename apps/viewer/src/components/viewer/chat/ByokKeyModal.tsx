@@ -293,13 +293,15 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
         <button
           type="button"
           onClick={() => setWalkthroughOpen((v) => !v)}
+          aria-expanded={walkthroughOpen}
+          aria-controls={`byok-walkthrough-${provider}`}
           className="w-full flex items-center justify-between gap-2 p-3 text-xs hover:bg-muted/30 transition-colors"
         >
           <span className="font-medium">Don&apos;t have a key? 60-second walkthrough</span>
           {walkthroughOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </button>
         {walkthroughOpen && (
-          <div className="border-t p-3 space-y-2.5 text-xs">
+          <div id={`byok-walkthrough-${provider}`} className="border-t p-3 space-y-2.5 text-xs">
             <ol className="space-y-2 list-decimal list-inside text-muted-foreground">
               <li>
                 Open the {meta.label} console — opens in a new tab.

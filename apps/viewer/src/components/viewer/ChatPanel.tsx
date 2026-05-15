@@ -1269,6 +1269,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               size="icon-xs"
               onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
               className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
+              aria-label={keyStateAnthropic || keyStateOpenai ? 'Manage API keys' : 'Add API key for frontier models'}
             >
               <KeyRound className="h-3.5 w-3.5" />
             </Button>

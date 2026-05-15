@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { extractGeoreferencing, transformToWorld, transformToLocal, getCoordinateSystemDescription, computeAngleToGridNorth } from '../src/georef-extractor.js';
 import type { IfcEntity } from '../src/entity-extractor.js';
+import { getAttributeNames } from '../src/ifc-schema.js';
 
 describe('Georeferencing Extractor', () => {
   it('should extract IfcMapConversion', () => {
@@ -250,5 +251,35 @@ describe('Georeferencing Extractor', () => {
 
     const description = getCoordinateSystemDescription(georef);
     expect(description).toBe('Local Engineering Coordinates');
+  });
+
+  it('extracts legacy IFC2X3 IfcSite geolocation', () => {
+    const entities = new Map<number, IfcEntity>();
+    const siteAttrNames = getAttributeNames('IfcSite');
+    const attributes = new Array(siteAttrNames.length).fill(null);
+    attributes[siteAttrNames.indexOf('RefLatitude')] = [50, 2, 20];
+    attributes[siteAttrNames.indexOf('RefLongitude')] = [14, 28, 0];
+    attributes[siteAttrNames.indexOf('RefElevation')] = 245;
+
+    entities.set(300, {
+      expressId: 300,
+      type: 'IfcSite',
+      attributes,
+    });
+
+    const entitiesByType = new Map<string, number[]>();
+    entitiesByType.set('IfcSite', [300]);
+
+    const georef = extractGeoreferencing(entities, entitiesByType);
+
+    expect(georef.hasGeoreference).toBe(true);
+    expect(georef.source).toBe('siteLocation');
+    expect(georef.projectedCRS?.name).toBe('EPSG:4326');
+    expect(georef.projectedCRS?.description).toBe('Legacy IfcSite geolocation');
+    expect(georef.mapConversion?.eastings).toBeCloseTo(14.4666667, 6);
+    expect(georef.mapConversion?.northings).toBeCloseTo(50.0388889, 6);
+    expect(georef.mapConversion?.orthogonalHeight).toBe(245);
+    expect(georef.transformMatrix).toBeUndefined();
+    expect(getCoordinateSystemDescription(georef)).toContain('Site:');
   });
 });

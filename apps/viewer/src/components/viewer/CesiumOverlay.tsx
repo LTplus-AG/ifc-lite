@@ -3,9 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * CesiumOverlay — renders a CesiumJS globe behind the WebGPU canvas,
- * providing real-world 3D context (terrain, buildings, imagery) for
- * georeferenced IFC models.
+ * CesiumOverlay — renders Google Photorealistic 3D Tiles behind the WebGPU
+ * canvas, providing real-world 3D context for georeferenced IFC models.
  *
  * Architecture:
  *   - A separate <div> behind the WebGPU <canvas> (z-index layering)
@@ -26,8 +25,11 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { createCesiumBridge, type CesiumBridge } from '@/lib/geo/cesium-bridge';
-import { findClampAnchorY } from '@/lib/geo/clamp-anchor';
-import { getEffectiveHorizontalScale } from '@/lib/geo/effective-georef';
+import {
+  computeCesiumPlacement,
+  shouldPreferOrthometricTerrain,
+} from '@/lib/geo/cesium-placement';
+import { getEffectiveHorizontalScale } from '@/lib/geo/geo-scale';
 
 // Lazy-loaded Cesium module and CSS
 let cesiumPromise: Promise<typeof import('cesium')> | null = null;
@@ -210,6 +212,7 @@ function buildModelMatrix(
 
 export interface CesiumOverlayProps {
   mapConversion?: MapConversion;
+  cameraMapConversion?: MapConversion;
   projectedCRS?: ProjectedCRS;
   coordinateInfo?: CoordinateInfo;
   geometryResult?: GeometryResult | null;
@@ -223,6 +226,7 @@ export interface CesiumOverlayProps {
 
 export function CesiumOverlay({
   mapConversion,
+  cameraMapConversion,
   projectedCRS,
   coordinateInfo,
   geometryResult,
@@ -232,6 +236,7 @@ export function CesiumOverlay({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<InstanceType<typeof import('cesium').Viewer> | null>(null);
   const bridgeRef = useRef<CesiumBridge | null>(null);
+  const cameraBridgeRef = useRef<CesiumBridge | null>(null);
   const rafRef = useRef<number | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -242,9 +247,9 @@ export function CesiumOverlay({
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
   const ionToken = useViewerStore((s) => s.cesiumIonToken);
   const terrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
-  const terrainClamp = useViewerStore((s) => s.cesiumTerrainClamp);
-  const terrainHeight = useViewerStore((s) => s.cesiumTerrainHeight);
+  const terrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
   const setCesiumTerrainHeight = useViewerStore((s) => s.setCesiumTerrainHeight);
+  const setCesiumTerrainSource = useViewerStore((s) => s.setCesiumTerrainSource);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
   const setCesiumGlbLoaded = useViewerStore((s) => s.setCesiumGlbLoaded);
 
@@ -341,18 +346,7 @@ export function CesiumOverlay({
         scene.globe.showGroundAtmosphere = false;
         scene.backgroundColor = Cesium.Color.TRANSPARENT;
         scene.globe.baseColor = Cesium.Color.TRANSPARENT;
-
-        // Add imagery
-        try {
-          const imageryProvider = await Cesium.IonImageryProvider.fromAssetId(2);
-          viewer.imageryLayers.addImageryProvider(imageryProvider);
-        } catch {
-          viewer.imageryLayers.addImageryProvider(
-            new Cesium.OpenStreetMapImageryProvider({
-              url: 'https://a.tile.openstreetmap.org/',
-            })
-          );
-        }
+        scene.globe.show = false;
 
         // Add terrain
         if (terrainEnabled && ionToken) {
@@ -397,7 +391,8 @@ export function CesiumOverlay({
   }, [cesiumEnabled, ionToken, terrainEnabled, dataSource]);
 
   // ─── Effect 2: Build the coordinate bridge with terrain-aware placement ─
-  // Precomputes the model placement (terrain-clamped if applicable) BEFORE
+  // Precomputes the model placement (floored to the visible surface when
+  // necessary) BEFORE
   // building the bridge that the GLB and camera will share. This way the
   // model loads into Cesium at its final altitude — no post-load shifting,
   // no camera/model frame divergence, no compensation gymnastics.
@@ -405,14 +400,15 @@ export function CesiumOverlay({
   // Sequence:
   //   1. Build a tentative bridge to recover the model's WGS84 lat/lon.
   //   2. Query terrain at that lat/lon (sync first, async with retry next).
-  //   3. Decide whether to clamp (user toggle OR model authored below terrain).
+  //   3. Auto-floor the model if its authored base sits below the visible surface.
   //   4. Rebuild the bridge with placementHeight baked into its enuToEcef
   //      origin so model matrix and camera frame share a single altitude.
-  //   5. Push terrain-derived state (height, clip Y, clamp toggle) and
+  //   5. Push terrain-derived state (height, clip Y) and
   //      install the bridge.
   useEffect(() => {
     if (status !== 'ready' || !mapConversion || !projectedCRS) {
       bridgeRef.current = null;
+      cameraBridgeRef.current = null;
       prevPlacementRef.current = null;
       return;
     }
@@ -424,12 +420,15 @@ export function CesiumOverlay({
       const viewer = viewerRef.current;
       if (!Cesium || !viewer) return;
 
-      const tentative = await createCesiumBridge(
-        mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+      const cameraConversion = cameraMapConversion ?? mapConversion;
+      const usesSeparateCameraBridge = cameraConversion !== mapConversion;
+      const cameraTentative = await createCesiumBridge(
+        cameraConversion, projectedCRS, coordinateInfo, lengthUnitScale,
       );
       if (cancelled) return;
-      if (!tentative) {
+      if (!cameraTentative) {
         bridgeRef.current = null;
+        cameraBridgeRef.current = null;
         return;
       }
 
@@ -439,46 +438,81 @@ export function CesiumOverlay({
       // Google Photorealistic 3D Tiles (where there's no Cesium terrain
       // provider for getHeight to read). Cached per-session.
       const t0 = performance.now();
-      let terrainH: number | null = null;
-      try { terrainH = await tentative.queryTerrainHeight(Cesium, viewer); }
+      const preferOrthometricTerrain = shouldPreferOrthometricTerrain(projectedCRS);
+      let terrainSample = null;
+      try {
+        terrainSample = await cameraTentative.queryTerrainHeight(Cesium, viewer, {
+          cacheNamespace: [
+            terrainEnabled ? 'terrain' : 'ellipsoid',
+            dataSource,
+            preferOrthometricTerrain ? 'orthometric' : 'visual-surface',
+          ].join(':'),
+          preferOrthometric: preferOrthometricTerrain,
+        });
+      }
       catch (err) { console.warn('[CesiumOverlay] terrain query failed:', err); }
       if (cancelled) return;
       const terrainMs = performance.now() - t0;
-
-      const bounds = coordinateInfo?.originalBounds;
-      const mvy = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
-      const minY = bounds?.min.y ?? 0;
-      // Clamp anchor: viewer-Y of the storey nearest elevation 0 (typical
-      // ground floor), falling back to bounds.min.y. Without this, basements
-      // and foundations drag the model deep below terrain.
-      const clampAnchorY = findClampAnchorY(bounds, storeyElevations);
-      const anchorOffset = mvy - clampAnchorY;
-      const ifcOHeight = tentative.modelOrigin.height;
-      // Clamp is purely the user's choice. We do NOT auto-clamp on top of
-      // the user's setting — that would reactivate the toggle the moment
-      // the user disables it (since terrain is almost always above sea-level
-      // OrthogonalHeights, the auto condition would re-fire forever and the
-      // checkbox becomes un-uncheckable).
-      const placementHeight =
-        terrainClamp && terrainH !== null
-          ? terrainH + anchorOffset
-          : ifcOHeight;
+      const terrainH = terrainSample?.height ?? null;
+      const modelTentative = usesSeparateCameraBridge
+        ? await createCesiumBridge(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale)
+        : cameraTentative;
+      if (cancelled) return;
+      if (!modelTentative) {
+        bridgeRef.current = null;
+        return;
+      }
+      let placement = computeCesiumPlacement({
+        coordinateInfo,
+        projectedCRS,
+        ifcOriginHeight: modelTentative.modelOrigin.height,
+        terrainHeight: terrainH,
+        storeyElevations,
+      });
+      const cameraPlacement = usesSeparateCameraBridge
+        ? computeCesiumPlacement({
+            coordinateInfo,
+            projectedCRS,
+            ifcOriginHeight: cameraTentative.modelOrigin.height,
+            terrainHeight: terrainH,
+            storeyElevations,
+          })
+        : placement;
+      if (usesSeparateCameraBridge) {
+        const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
+        const deltaHeightMeters = (
+          mapConversion.orthogonalHeight - cameraConversion.orthogonalHeight
+        ) * mapScale;
+        const floorPlacementHeight = terrainH !== null
+          ? terrainH + cameraPlacement.anchorOffset
+          : Number.NEGATIVE_INFINITY;
+        placement = {
+          ...placement,
+          placementHeight: Math.max(
+            cameraPlacement.placementHeight + deltaHeightMeters,
+            floorPlacementHeight,
+          ),
+        };
+      }
 
       console.debug(
         `[CesiumOverlay] placement decision: terrain=${terrainH?.toFixed(2) ?? 'null'}m`
-        + ` ifcOHeight=${ifcOHeight.toFixed(2)}m anchorY=${clampAnchorY.toFixed(2)}m`
-        + ` (minY=${minY.toFixed(2)}m, ${storeyElevations?.size ?? 0} storeys)`
-        + ` clamp=${terrainClamp} placement=${placementHeight.toFixed(2)}m`
+        + ` source=${terrainSample?.source ?? 'none'}`
+        + ` ref=${terrainSample?.reference ?? 'none'}`
+        + ` ifcOHeight=${placement.ifcOriginHeight.toFixed(2)}m`
+        + ` anchorY=${placement.clampAnchorY.toFixed(2)}m`
+        + ` (minY=${placement.minY.toFixed(2)}m, ${storeyElevations?.size ?? 0} storeys)`
+        + ` placement=${placement.placementHeight.toFixed(2)}m`
         + ` (terrain query: ${terrainMs.toFixed(0)}ms)`
       );
 
       // Build the final bridge with the placement baked in (or reuse the
       // tentative one when the placement matches its IFC-derived origin).
-      let bridge = tentative;
-      if (Math.abs(placementHeight - ifcOHeight) > 1e-6) {
+      let bridge = modelTentative;
+      if (Math.abs(placement.placementHeight - placement.ifcOriginHeight) > 1e-6) {
         const final = await createCesiumBridge(
           mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
-          placementHeight,
+          placement.placementHeight,
         );
         if (cancelled) return;
         if (!final) {
@@ -488,35 +522,38 @@ export function CesiumOverlay({
         bridge = final;
       }
 
-      if (terrainH !== null) {
+      if (terrainSample) {
         setCesiumTerrainHeight(terrainH);
+        setCesiumTerrainSource(
+          `${terrainSample.source}${terrainSample.reference === 'orthometric' ? ' (orthometric)' : ''}`,
+        );
         // terrainClipY stays in viewer-space; it represents the world terrain
-        // altitude expressed in the bridge's frame so a clip plane at that Y
-        // matches the terrain surface. Use the clamp anchor (ground floor)
-        // rather than minY so the clip plane matches the user's ground level
-        // rather than the basement floor.
-        const terrainClipY = clampAnchorY + (terrainH - ifcOHeight);
-        setCesiumTerrainClipY(terrainClipY);
+        // altitude expressed in the camera bridge's committed frame. Draft
+        // placement edits must not move this floor, or the camera will drift.
+        setCesiumTerrainClipY(cameraPlacement.terrainClipY);
       } else {
         // Failed re-query (offline, API down) — clear stale store fields so
         // the clip plane doesn't drift relative to the new bridge.
         setCesiumTerrainHeight(null);
+        setCesiumTerrainSource(null);
         setCesiumTerrainClipY(null);
       }
 
       // World-camera stability: when this rebuild changes the placement
-      // altitude (clamp toggled, OrthogonalHeight edited), shift the IFC
+      // altitude (surface floor or OrthogonalHeight edited), shift the IFC
       // viewer-space camera Y by the inverse delta so the user's WORLD
       // camera ECEF position stays put. Without this, the entire frame
       // translates with the model and edits feel like the camera is
       // moving instead of the model — exactly what the user reported.
       const prevPlacement = prevPlacementRef.current;
-      prevPlacementRef.current = placementHeight;
-      if (prevPlacement !== null) {
-        const dh = placementHeight - prevPlacement;
+      if (!usesSeparateCameraBridge) {
+        prevPlacementRef.current = placement.placementHeight;
+      }
+      if (!usesSeparateCameraBridge && prevPlacement !== null) {
+        const dh = placement.placementHeight - prevPlacement;
         // 5 cm threshold — rejects float jitter from cached terrain reads
         // re-flowing through the same effect, while a real placement edit
-        // (clamp toggle, OrthogonalHeight change) is always far larger.
+        // is always far larger.
         if (Math.abs(dh) > 0.05) {
           const renderer = getGlobalRenderer();
           if (renderer) {
@@ -530,7 +567,18 @@ export function CesiumOverlay({
         }
       }
 
+      let cameraBridge = usesSeparateCameraBridge ? cameraTentative : bridge;
+      if (usesSeparateCameraBridge && Math.abs(cameraPlacement.placementHeight - cameraPlacement.ifcOriginHeight) > 1e-6) {
+        const finalCamera = await createCesiumBridge(
+          cameraConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+          cameraPlacement.placementHeight,
+        );
+        if (cancelled) return;
+        cameraBridge = finalCamera ?? cameraTentative;
+      }
+
       bridgeRef.current = bridge;
+      cameraBridgeRef.current = cameraBridge;
       setBridgeVersion((v) => v + 1);
     })();
 
@@ -539,7 +587,20 @@ export function CesiumOverlay({
     // owns those (it destroys/recreates the viewer when they change), and
     // listing them here would cause a redundant bridge rebuild while the
     // viewer is being torn down.
-  }, [status, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, terrainClamp, storeyElevations]);
+  }, [
+    status,
+    mapConversion,
+    cameraMapConversion,
+    projectedCRS,
+    coordinateInfo,
+    lengthUnitScale,
+    terrainEnabled,
+    dataSource,
+    storeyElevations,
+    setCesiumTerrainHeight,
+    setCesiumTerrainSource,
+    setCesiumTerrainClipY,
+  ]);
 
   // ─── Effect 2c: Load GLB into Cesium (only when geometry changes) ───────
   // This is the heavy operation — only re-runs when geometry actually changes.
@@ -630,7 +691,7 @@ export function CesiumOverlay({
   }, [status, bridgeVersion, geometryResult]);
 
   // ─── Effect 2d: Update model matrix (instant, no reload) ────────────────
-  // When terrain clamp, terrain height, or georef changes, just update the
+  // When terrain placement or georef changes, just update the
   // existing model's matrix — no GLB re-export, no flicker.
   useEffect(() => {
     const model = cesiumModelRef.current;
@@ -643,10 +704,8 @@ export function CesiumOverlay({
     model.modelMatrix = newMatrix;
     viewer.scene.requestRender();
     // Depend on bridgeVersion so the matrix is rebuilt with the *new* bridge
-    // after async createCesiumBridge replaces it. Placement (terrain clamp)
-    // is now baked into bridge.modelOrigin.height by Effect 2, so terrain
-    // clamp/height changes drive a bridge rebuild instead of a per-frame
-    // matrix recomputation here.
+    // after async createCesiumBridge replaces it. Placement is baked into
+    // bridge.modelOrigin.height by Effect 2.
   }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, bridgeVersion]);
 
   // ─── Effect 3: Camera sync loop ─────────────────────────────────────────
@@ -662,23 +721,32 @@ export function CesiumOverlay({
       if (cancelled) return;
 
       const bridge = bridgeRef.current;
+      const cameraBridge = cameraBridgeRef.current ?? bridge;
       const renderer = getGlobalRenderer();
       const Cesium = cesiumModule;
-      if (!viewer || !bridge || !renderer || !Cesium) {
+      if (!viewer || !bridge || !cameraBridge || !renderer || !Cesium) {
         rafRef.current = requestAnimationFrame(syncCamera);
         return;
       }
 
       const camera = renderer.getCamera();
-      const camPos = camera.getPosition();
-      const camTarget = camera.getTarget();
+      let camPos = camera.getPosition();
+      let camTarget = camera.getTarget();
       const camUp = camera.getUp();
       const fov = camera.getFOV();
 
-      // bridge.modelOrigin.height already has the placement baked in (terrain
-      // clamp resolved at bridge creation by Effect 2), so the camera frame
-      // and the model matrix share the same enuToEcef origin altitude.
-      bridge.syncCamera(Cesium, viewer, camPos, camTarget, camUp, fov);
+      if (terrainClipY !== null) {
+        const minCameraY = terrainClipY + 0.05;
+        if (camPos.y < minCameraY) {
+          const dy = minCameraY - camPos.y;
+          camPos = { ...camPos, y: minCameraY };
+          camTarget = { ...camTarget, y: camTarget.y + dy };
+        }
+      }
+
+      // bridge.modelOrigin.height already has the placement baked in, so the
+      // camera frame and the model matrix share the same enuToEcef origin altitude.
+      cameraBridge.syncCamera(Cesium, viewer, camPos, camTarget, camUp, fov);
 
       rafRef.current = requestAnimationFrame(syncCamera);
     }
@@ -692,7 +760,7 @@ export function CesiumOverlay({
         rafRef.current = null;
       }
     };
-  }, [status]);
+  }, [status, terrainClipY]);
 
   if (!cesiumEnabled || !mapConversion || !projectedCRS) {
     return null;
@@ -721,7 +789,7 @@ export function CesiumOverlay({
 }
 
 /**
- * Add the selected 3D data source layer to the Cesium viewer.
+ * Add the Google Photorealistic 3D Tiles layer to the Cesium viewer.
  */
 async function addDataSourceLayer(
   Cesium: typeof import('cesium'),
@@ -731,16 +799,11 @@ async function addDataSourceLayer(
 ) {
   try {
     switch (dataSource) {
-      case 'osm-buildings': {
-        if (!ionToken) return;
-        const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(96188);
-        viewer.scene.primitives.add(tileset);
-        break;
-      }
-      case 'google-photorealistic': {
+      case 'google-photorealistic':
+      default: {
         try {
           const tileset = await Cesium.createGooglePhotorealistic3DTileset();
-          viewer.scene.primitives.add(tileset);
+        viewer.scene.primitives.add(tileset);
         } catch {
           if (ionToken) {
             const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
@@ -749,10 +812,6 @@ async function addDataSourceLayer(
         }
         break;
       }
-      case 'bing-aerial':
-      default:
-        // No 3D tileset for Bing — imagery is added separately via imageryLayers
-        break;
     }
   } catch (err) {
     console.warn('[CesiumOverlay] Failed to add data source:', dataSource, err);

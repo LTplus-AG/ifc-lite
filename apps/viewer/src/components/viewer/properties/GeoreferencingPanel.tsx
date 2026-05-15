@@ -16,8 +16,13 @@ import { useViewerStore } from '@/store';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { LocationMap, type PickedPosition } from './LocationMap';
-import { findClampAnchorY } from '@/lib/geo/clamp-anchor';
-import { detectScaleUnitMismatch, mergeMapConversion, mergeProjectedCRS } from '@/lib/geo/effective-georef';
+import { computeOrthogonalHeightForBaseAltitude } from '@/lib/geo/cesium-placement';
+import {
+  detectScaleUnitMismatch,
+  mergeMapConversion,
+  mergeProjectedCRS,
+  supportsStandardGeoreferencing,
+} from '@/lib/geo/effective-georef';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 
@@ -335,9 +340,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const setGeorefField = useViewerStore(s => s.setGeorefField);
   const setGeorefFields = useViewerStore(s => s.setGeorefFields);
   const cesiumEnabled = useViewerStore(s => s.cesiumEnabled);
-  const terrainClamp = useViewerStore(s => s.cesiumTerrainClamp);
-  const setCesiumTerrainClamp = useViewerStore(s => s.setCesiumTerrainClamp);
   const cesiumTerrainHeight = useViewerStore(s => s.cesiumTerrainHeight);
+  const cesiumTerrainSource = useViewerStore(s => s.cesiumTerrainSource);
   const cesiumSourceModelId = useViewerStore(s => s.cesiumSourceModelId);
   const models = useViewerStore(s => s.models);
   const loading = useViewerStore(s => s.loading);
@@ -351,7 +355,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   useViewerStore(s => s.mutationVersion);
 
   const mutations = modelId ? georefMutations?.get(modelId) : undefined;
-  const supportsStandardGeoreferencing = !schemaVersion?.toUpperCase().includes('2X3');
+  const isLegacySiteGeoreference = georef?.source === 'siteLocation';
+  const canUseStandardGeoreferencing = supportsStandardGeoreferencing(schemaVersion, georef);
 
   const mergedCRS = useMemo((): ProjectedCRS | undefined => {
     return mergeProjectedCRS(georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale ?? 1);
@@ -382,13 +387,6 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return 'm';
   }, [mergedCRS?.mapUnit]);
 
-  // Convert meters to map units (Cesium always returns meters)
-  const metersToMapUnit = useCallback((meters: number): number => {
-    if (mapUnitSuffix === 'ftUS') return meters / 0.3048006096;
-    if (mapUnitSuffix === 'ft') return meters / 0.3048;
-    return meters; // already meters
-  }, [mapUnitSuffix]);
-
   /**
    * Given a target world altitude (metres) for the model's ground floor
    * (the storey nearest elevation 0, falling back to bounds.min.y when
@@ -400,14 +398,14 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
    * world position as toggling the clamp.
    */
   const oHeightForBaseAltitude = useCallback((targetBaseAltitude: number): number => {
-    const bounds = coordinateInfo?.originalBounds;
-    const anchorY = findClampAnchorY(bounds, storeyElevations);
-    const shiftY = coordinateInfo?.originShift?.y ?? 0;
-    // RTC offset is in IFC Z-up; viewer Y-up takes its Z component.
-    const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
-    const targetOHeightMeters = targetBaseAltitude - shiftY - rtcYupY - anchorY;
-    return Math.round(metersToMapUnit(targetOHeightMeters) * 100) / 100;
-  }, [coordinateInfo, storeyElevations, metersToMapUnit]);
+    return computeOrthogonalHeightForBaseAltitude({
+      coordinateInfo,
+      projectedCRS: mergedCRS,
+      lengthUnitScale: lengthUnitScale ?? 1,
+      storeyElevations,
+      targetBaseAltitude,
+    });
+  }, [coordinateInfo, mergedCRS, lengthUnitScale, storeyElevations]);
 
   const isMutated = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string): boolean => {
     if (!mutations) return false;
@@ -467,14 +465,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       ? mergedCRS?.[field as keyof ProjectedCRS]
       : mergedConversion?.[field as keyof MapConversion];
     setGeorefField(modelId, entity, field, value, oldValue as string | number | undefined);
-    // Editing OrthogonalHeight implies "I want this exact altitude" — auto
-    // -release the terrain clamp so the new value actually takes effect
-    // (with clamp on, placement is locked to terrain regardless of oHeight).
-    if (entity === 'mapConversion' && field === 'orthogonalHeight' && terrainClamp) {
-      setCesiumTerrainClamp(false);
-    }
     requestAlignmentReload();
-  }, [modelId, setGeorefField, mergedCRS, mergedConversion, requestAlignmentReload, terrainClamp, setCesiumTerrainClamp]);
+  }, [modelId, setGeorefField, mergedCRS, mergedConversion, requestAlignmentReload]);
 
   // Handle angle edit: compute and set both XAxisAbscissa and XAxisOrdinate
   const handleAngleChange = useCallback((abscissa: number, ordinate: number) => {
@@ -557,18 +549,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   }, [modelId, setGeorefFields, mergedCRS, mergedConversion, mutations, initializeMapConversionDefaults, requestAlignmentReload]);
 
   const hasData = mergedCRS || mergedConversion;
-  const editable = enableEditing && !!modelId && supportsStandardGeoreferencing;
-
-  if (enableEditing && !supportsStandardGeoreferencing) {
-    return (
-      <div className="px-2 py-1.5 flex items-center gap-2">
-        <Globe className="h-3 w-3 text-zinc-400" />
-        <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-          Georeferencing editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.
-        </span>
-      </div>
-    );
-  }
+  const editable = enableEditing && !!modelId && canUseStandardGeoreferencing;
 
   // When no georef data exists, show "Add Georeferencing" in edit mode
   if (!hasData && !georef?.hasGeoreference) {
@@ -614,6 +595,21 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {/* Only flag the legacy-site / unsupported-schema state when there is
+          actually nothing extractable to show. If we have a projectedCRS or
+          mapConversion (even partially), the data sections below speak for
+          themselves — the schema notice is just noise that contradicts the
+          live data the properties panel already renders. */}
+      {!canUseStandardGeoreferencing && !mergedCRS && !mergedConversion && (
+        <div className="px-3 py-1.5 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-900">
+          <Globe className="h-3 w-3 text-zinc-400 shrink-0" />
+          <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+            {isLegacySiteGeoreference
+              ? 'Showing legacy IfcSite geolocation from IFC2X3. This view is read-only.'
+              : 'Georeferencing editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.'}
+          </span>
         </div>
       )}
       {/* CRS summary — always visible */}
@@ -751,28 +747,25 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
-      {/* Terrain clamp toggle — only when Cesium overlay is active */}
+      {/* Sampled surface height — only when Cesium overlay is active */}
       {cesiumEnabled && isActiveCesiumModel && mergedConversion && (
         <div className="px-3 py-1.5 border-t border-zinc-100 dark:border-zinc-900 space-y-1">
           <div className="flex items-center gap-2">
             <Mountain className="h-3 w-3 text-teal-500 shrink-0" />
-            <label className="flex items-center gap-1.5 cursor-pointer flex-1">
-              <input
-                type="checkbox"
-                checked={terrainClamp}
-                onChange={(e) => setCesiumTerrainClamp(e.target.checked)}
-                className="accent-teal-500 h-3 w-3"
-              />
-              <span className="text-[10px] text-zinc-600 dark:text-zinc-400">Clamp to terrain</span>
-            </label>
+            <span className="text-[10px] text-zinc-600 dark:text-zinc-400 flex-1">Visible surface height</span>
             {cesiumTerrainHeight !== null ? (
-              <span className="text-[9px] font-mono text-teal-500">
+              <span className="text-[9px] font-mono text-teal-500" title={cesiumTerrainSource ?? undefined}>
                 {cesiumTerrainHeight.toFixed(1)} m
               </span>
             ) : (
               <span className="text-[9px] font-mono text-zinc-400">querying...</span>
             )}
           </div>
+          {cesiumTerrainSource && (
+            <div className="ml-5 text-[9px] text-zinc-500 dark:text-zinc-400">
+              sampled via {cesiumTerrainSource}
+            </div>
+          )}
           {cesiumTerrainHeight !== null && editable && modelId && (
             <div className="flex items-center gap-1 ml-5">
               <button
@@ -780,7 +773,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
                 className="text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors flex items-center gap-0.5"
               >
                 <Mountain className="h-2.5 w-2.5" />
-                Set OrthogonalHeight to {cesiumTerrainHeight.toFixed(1)} m
+                Set OrthogonalHeight to sampled terrain height ({cesiumTerrainHeight.toFixed(1)} m)
               </button>
             </div>
           )}
@@ -809,6 +802,7 @@ function TerrainHeightButton({ modelId, editable, onApply }: {
 }) {
   const cesiumEnabled = useViewerStore(s => s.cesiumEnabled);
   const terrainHeight = useViewerStore(s => s.cesiumTerrainHeight);
+  const terrainSource = useViewerStore(s => s.cesiumTerrainSource);
   const sourceModelId = useViewerStore(s => s.cesiumSourceModelId);
 
   // Only show when this panel's model is the active Cesium model
@@ -828,7 +822,10 @@ function TerrainHeightButton({ modelId, editable, onApply }: {
           <span>{terrainHeight.toFixed(1)} m</span>
         </button>
       </TooltipTrigger>
-      <TooltipContent>Set OrthogonalHeight to Cesium terrain elevation ({terrainHeight.toFixed(1)} m)</TooltipContent>
+      <TooltipContent>
+        Set OrthogonalHeight to sampled terrain height ({terrainHeight.toFixed(1)} m
+        {terrainSource ? ` via ${terrainSource}` : ''})
+      </TooltipContent>
     </Tooltip>
   );
 }

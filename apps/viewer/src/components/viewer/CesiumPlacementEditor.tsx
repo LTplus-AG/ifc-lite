@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Move, RotateCcw, X } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown, GripVertical, Move, RotateCcw, X } from 'lucide-react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
@@ -123,6 +123,56 @@ function rayFromPointerEvent(clientX: number, clientY: number): PointerRay | nul
   return ray;
 }
 
+const PANEL_WIDTH = 320;
+const PANEL_MARGIN = 16;
+const PANEL_STORAGE_KEY = 'ifc-lite:cesium-placement-panel:v1';
+
+interface PanelPreferences {
+  x?: number;
+  y?: number;
+  collapsed?: boolean;
+}
+
+function readPanelPreferences(): PanelPreferences {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(PANEL_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as PanelPreferences;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err) {
+    console.warn('[CesiumPlacementEditor] failed to read panel prefs', err);
+    return {};
+  }
+}
+
+function writePanelPreferences(prefs: PanelPreferences): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(prefs));
+  } catch (err) {
+    console.warn('[CesiumPlacementEditor] failed to persist panel prefs', err);
+  }
+}
+
+function clampPanelPosition(x: number, y: number, panelHeight: number): ScreenPoint {
+  if (typeof window === 'undefined') return { x, y };
+  const maxX = Math.max(PANEL_MARGIN, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN);
+  const maxY = Math.max(PANEL_MARGIN, window.innerHeight - panelHeight - PANEL_MARGIN);
+  return {
+    x: Math.min(Math.max(x, PANEL_MARGIN), maxX),
+    y: Math.min(Math.max(y, PANEL_MARGIN), maxY),
+  };
+}
+
+function defaultPanelPosition(panelHeight: number): ScreenPoint {
+  if (typeof window === 'undefined') return { x: 0, y: 0 };
+  return {
+    x: Math.max(PANEL_MARGIN, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN),
+    y: Math.max(PANEL_MARGIN, window.innerHeight - panelHeight - PANEL_MARGIN),
+  };
+}
+
 export function CesiumPlacementEditor({
   modelId,
   mapConversion,
@@ -147,6 +197,83 @@ export function CesiumPlacementEditor({
     planeCorners: [ScreenPoint, ScreenPoint, ScreenPoint, ScreenPoint];
   } | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+
+  // Panel chrome state: position (draggable, persisted), collapse, and the
+  // header-drag offset captured on pointer-down. Position is lazy-initialised
+  // from localStorage so we don't flicker through a centred mount.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelCollapsed, setPanelCollapsed] = useState<boolean>(
+    () => readPanelPreferences().collapsed ?? false,
+  );
+  const [panelPosition, setPanelPosition] = useState<ScreenPoint | null>(() => {
+    const prefs = readPanelPreferences();
+    if (typeof prefs.x === 'number' && typeof prefs.y === 'number') {
+      return { x: prefs.x, y: prefs.y };
+    }
+    return null;
+  });
+  const panelDragRef = useRef<{ offsetX: number; offsetY: number; pointerId: number } | null>(null);
+
+  // Place the panel at bottom-right on first mount when no saved position
+  // exists, and clamp it back on-screen after viewport resizes.
+  useLayoutEffect(() => {
+    const apply = () => {
+      const height = panelRef.current?.offsetHeight ?? 280;
+      setPanelPosition((prev) => {
+        if (prev === null) return defaultPanelPosition(height);
+        return clampPanelPosition(prev.x, prev.y, height);
+      });
+    };
+    apply();
+    if (typeof window === 'undefined') return;
+    window.addEventListener('resize', apply);
+    return () => window.removeEventListener('resize', apply);
+  }, [panelCollapsed]);
+
+  useEffect(() => {
+    if (!panelPosition) return;
+    writePanelPreferences({ x: panelPosition.x, y: panelPosition.y, collapsed: panelCollapsed });
+  }, [panelPosition, panelCollapsed]);
+
+  const handlePanelHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Ignore drags that originate inside the header's action buttons —
+    // those have their own click handlers.
+    if ((e.target as HTMLElement).closest('[data-panel-action]')) return;
+    if (!panelRef.current) return;
+    const rect = panelRef.current.getBoundingClientRect();
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    panelDragRef.current = {
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      pointerId: e.pointerId,
+    };
+  }, []);
+
+  const handlePanelHeaderPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = panelDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const height = panelRef.current?.offsetHeight ?? 280;
+    setPanelPosition(clampPanelPosition(e.clientX - drag.offsetX, e.clientY - drag.offsetY, height));
+  }, []);
+
+  const handlePanelHeaderPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = panelDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    panelDragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (_err) {
+      /* cleanup — safe to ignore: pointer already released by browser */
+    }
+  }, []);
+
+  const togglePanelCollapsed = useCallback(() => {
+    setPanelCollapsed((prev) => !prev);
+  }, []);
 
   useEffect(() => {
     if (!editMode) return;
@@ -388,23 +515,59 @@ export function CesiumPlacementEditor({
     resetDraft();
   }, [resetDraft, setActiveTool, setEditMode]);
 
-  if (!editMode || !projection) return null;
+  if (!editMode) return null;
 
-  const planePoints = projection.planeCorners.map((point) => `${point.x},${point.y}`).join(' ');
-  const minPlaneX = Math.min(...projection.planeCorners.map((point) => point.x));
-  const maxPlaneX = Math.max(...projection.planeCorners.map((point) => point.x));
-  const minPlaneY = Math.min(...projection.planeCorners.map((point) => point.y));
-  const maxPlaneY = Math.max(...projection.planeCorners.map((point) => point.y));
-  const hitPadding = 16;
-  const [c0, c1, c2, c3] = projection.planeCorners;
-  const xAxisStart = { x: (c0.x + c3.x) / 2, y: (c0.y + c3.y) / 2 };
-  const xAxisEnd = { x: (c1.x + c2.x) / 2, y: (c1.y + c2.y) / 2 };
-  const zAxisStart = { x: (c0.x + c1.x) / 2, y: (c0.y + c1.y) / 2 };
-  const zAxisEnd = { x: (c2.x + c3.x) / 2, y: (c2.y + c3.y) / 2 };
+  // The gizmo overlay (SVG axes + drag pads) renders only once we have a
+  // valid projection of the anchor; the side panel renders unconditionally
+  // so the user can still nudge, apply, or close even if the gizmo is
+  // off-screen or behind the camera.
+  const gizmoVisuals = projection
+    ? (() => {
+        const planePoints = projection.planeCorners
+          .map((point) => `${point.x},${point.y}`)
+          .join(' ');
+        const minPlaneX = Math.min(...projection.planeCorners.map((p) => p.x));
+        const maxPlaneX = Math.max(...projection.planeCorners.map((p) => p.x));
+        const minPlaneY = Math.min(...projection.planeCorners.map((p) => p.y));
+        const maxPlaneY = Math.max(...projection.planeCorners.map((p) => p.y));
+        const hitPadding = 16;
+        const [c0, c1, c2, c3] = projection.planeCorners;
+        const xAxisStart = { x: (c0.x + c3.x) / 2, y: (c0.y + c3.y) / 2 };
+        const xAxisEnd = { x: (c1.x + c2.x) / 2, y: (c1.y + c2.y) / 2 };
+        const zAxisStart = { x: (c0.x + c1.x) / 2, y: (c0.y + c1.y) / 2 };
+        const zAxisEnd = { x: (c2.x + c3.x) / 2, y: (c2.y + c3.y) / 2 };
+        return {
+          planePoints,
+          minPlaneX,
+          maxPlaneX,
+          minPlaneY,
+          maxPlaneY,
+          hitPadding,
+          xAxisStart,
+          xAxisEnd,
+          zAxisStart,
+          zAxisEnd,
+        };
+      })()
+    : null;
 
-  return (
-    <>
-      <svg className="absolute inset-0 z-20 h-full w-full pointer-events-none">
+  const renderGizmo = () => {
+    if (!gizmoVisuals || !projection) return null;
+    const {
+      planePoints,
+      minPlaneX,
+      maxPlaneX,
+      minPlaneY,
+      maxPlaneY,
+      hitPadding,
+      xAxisStart,
+      xAxisEnd,
+      zAxisStart,
+      zAxisEnd,
+    } = gizmoVisuals;
+    return (
+      <>
+        <svg className="absolute inset-0 z-20 h-full w-full pointer-events-none">
         <defs>
           <pattern id="cesium-placement-grid" width="12" height="12" patternUnits="userSpaceOnUse">
             <path d="M 12 0 L 0 0 0 12" fill="none" stroke="rgb(45 212 191)" strokeWidth="0.8" opacity="0.45" />
@@ -516,140 +679,223 @@ export function CesiumPlacementEditor({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       />
+      </>
+    );
+  };
 
-      <div className="absolute right-4 top-16 z-30 w-[320px] border border-teal-300/40 bg-zinc-950/85 p-3 font-mono text-[10px] text-zinc-100 shadow-2xl backdrop-blur-md">
-        <div className="mb-2 flex items-center gap-2">
-          <Move className="h-3.5 w-3.5 text-teal-300" />
-          <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-teal-200">Move Georeference</span>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="ml-auto rounded-sm p-1 text-zinc-400 hover:bg-white/10 hover:text-white"
-            aria-label="Close georeference move mode"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+  return (
+    <>
+      {renderGizmo()}
 
-        <div className="grid grid-cols-4 gap-1 border-y border-white/10 py-2">
-          <Metric label="Delta E" value={formatSigned(deltaE, mapUnitSuffix)} accent="text-teal-200" />
-          <Metric label="Delta N" value={formatSigned(deltaN, mapUnitSuffix)} accent="text-teal-200" />
-          <Metric label="Delta Z" value={formatSigned(deltaH, mapUnitSuffix)} accent="text-amber-200" />
-          <Metric label="Delta R" value={formatSigned(deltaAngle, 'deg')} accent="text-fuchsia-200" />
-        </div>
-
-        <div className="mt-2 space-y-1 text-zinc-400">
-          <div className="pb-1 text-[9px] leading-snug text-zinc-500">
-            Drag the teal pad to move Eastings/Northings. Drag the yellow knob to change height.
+      <div
+        ref={panelRef}
+        className={cn(
+          'absolute z-30 select-none border-2 border-zinc-900 dark:border-zinc-100',
+          'bg-white text-zinc-900 dark:bg-black dark:text-zinc-100 font-mono',
+        )}
+        style={{
+          left: panelPosition?.x ?? 0,
+          top: panelPosition?.y ?? 0,
+          width: PANEL_WIDTH,
+          visibility: panelPosition ? 'visible' : 'hidden',
+          boxShadow: '4px 4px 0px 0px rgba(0,0,0,0.35)',
+        }}
+      >
+        {/* Header — drag handle, title, dirty indicator, collapse/close */}
+        <div
+          className={cn(
+            'flex items-center gap-2 px-2.5 py-2 border-b-2 border-zinc-900 dark:border-zinc-100',
+            'bg-zinc-50 dark:bg-zinc-950 cursor-grab active:cursor-grabbing touch-none',
+          )}
+          onPointerDown={handlePanelHeaderPointerDown}
+          onPointerMove={handlePanelHeaderPointerMove}
+          onPointerUp={handlePanelHeaderPointerUp}
+          onPointerCancel={handlePanelHeaderPointerUp}
+          role="toolbar"
+          aria-label="Move georeference panel header"
+        >
+          <GripVertical className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-600" aria-hidden />
+          <Move className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+          <span className="text-[11px] font-bold uppercase tracking-[0.18em]">
+            Move Georef
+          </span>
+          {dirty && (
+            <span
+              className="h-1.5 w-1.5 bg-amber-500"
+              title="Unsaved changes"
+              aria-label="Unsaved changes"
+            />
+          )}
+          <div className="ml-auto flex items-center gap-0.5">
+            <button
+              type="button"
+              data-panel-action
+              onClick={togglePanelCollapsed}
+              className={cn(
+                'inline-flex h-6 w-6 items-center justify-center border border-transparent',
+                'hover:bg-zinc-200 dark:hover:bg-zinc-800',
+              )}
+              aria-label={panelCollapsed ? 'Expand panel' : 'Collapse panel'}
+              aria-expanded={!panelCollapsed}
+            >
+              <ChevronDown
+                className={cn(
+                  'h-3.5 w-3.5 transition-transform',
+                  panelCollapsed && '-rotate-90',
+                )}
+              />
+            </button>
+            <button
+              type="button"
+              data-panel-action
+              onClick={handleClose}
+              className={cn(
+                'inline-flex h-6 w-6 items-center justify-center border border-transparent',
+                'hover:bg-zinc-200 dark:hover:bg-zinc-800',
+              )}
+              aria-label="Close georeference move mode"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <PreviewRow label="Eastings" value={`${activeDraft.eastings.toFixed(2)} ${mapUnitSuffix}`} />
-          <PreviewRow label="Northings" value={`${activeDraft.northings.toFixed(2)} ${mapUnitSuffix}`} />
-          <PreviewRow label="OrthogonalHeight" value={`${activeDraft.orthogonalHeight.toFixed(2)} ${mapUnitSuffix}`} />
-          <PreviewRow label="XAxis angle" value={`${activeAngle.toFixed(2)} deg`} />
         </div>
 
-        <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-[9px]">
-          <span className="text-zinc-500">Nudge 1 m</span>
-          <button
-            type="button"
-            onClick={() => nudge(0, nudgeStep)}
-            className="border border-white/10 px-2 py-1 text-teal-200 hover:border-teal-300 hover:bg-teal-300/10"
-            aria-label="Nudge north"
-          >
-            N+
-          </button>
-          <span />
-          <button
-            type="button"
-            onClick={() => nudge(-nudgeStep, 0)}
-            className="border border-white/10 px-2 py-1 text-teal-200 hover:border-teal-300 hover:bg-teal-300/10"
-            aria-label="Nudge west"
-          >
-            E-
-          </button>
-          <button
-            type="button"
-            onClick={() => nudge(nudgeStep, 0)}
-            className="border border-white/10 px-2 py-1 text-teal-200 hover:border-teal-300 hover:bg-teal-300/10"
-            aria-label="Nudge east"
-          >
-            E+
-          </button>
-          <button
-            type="button"
-            onClick={() => nudge(0, -nudgeStep)}
-            className="border border-white/10 px-2 py-1 text-teal-200 hover:border-teal-300 hover:bg-teal-300/10"
-            aria-label="Nudge south"
-          >
-            N-
-          </button>
-        </div>
+        {!panelCollapsed && (
+          <div className="p-3 text-[10px]">
+            <div className="grid grid-cols-4 gap-1 border-b border-zinc-200 dark:border-zinc-800 pb-2">
+              <Metric
+                label="Delta E"
+                value={formatSigned(deltaE, mapUnitSuffix)}
+                accent="text-emerald-700 dark:text-emerald-300"
+              />
+              <Metric
+                label="Delta N"
+                value={formatSigned(deltaN, mapUnitSuffix)}
+                accent="text-emerald-700 dark:text-emerald-300"
+              />
+              <Metric
+                label="Delta Z"
+                value={formatSigned(deltaH, mapUnitSuffix)}
+                accent="text-amber-700 dark:text-amber-300"
+              />
+              <Metric
+                label="Delta R"
+                value={formatSigned(deltaAngle, 'deg')}
+                accent="text-fuchsia-700 dark:text-fuchsia-300"
+              />
+            </div>
 
-        <div className="mt-2 flex items-center gap-1 text-[9px]">
-          <span className="mr-auto text-zinc-500">Height</span>
-          <button
-            type="button"
-            onClick={() => nudgeHeight(-nudgeStep)}
-            className="border border-white/10 px-2 py-1 text-amber-200 hover:border-amber-300 hover:bg-amber-300/10"
-            aria-label="Nudge height down"
-          >
-            Z-
-          </button>
-          <button
-            type="button"
-            onClick={() => nudgeHeight(nudgeStep)}
-            className="border border-white/10 px-2 py-1 text-amber-200 hover:border-amber-300 hover:bg-amber-300/10"
-            aria-label="Nudge height up"
-          >
-            Z+
-          </button>
-        </div>
+            <div className="mt-2 space-y-1">
+              <div className="pb-1 text-[9px] leading-snug text-zinc-500 dark:text-zinc-400">
+                Drag the pad on the model to move Eastings/Northings. Drag the
+                knob to change height.
+              </div>
+              <PreviewRow
+                label="Eastings"
+                value={`${activeDraft.eastings.toFixed(2)} ${mapUnitSuffix}`}
+              />
+              <PreviewRow
+                label="Northings"
+                value={`${activeDraft.northings.toFixed(2)} ${mapUnitSuffix}`}
+              />
+              <PreviewRow
+                label="OrthogonalHeight"
+                value={`${activeDraft.orthogonalHeight.toFixed(2)} ${mapUnitSuffix}`}
+              />
+              <PreviewRow label="XAxis angle" value={`${activeAngle.toFixed(2)} deg`} />
+            </div>
 
-        <div className="mt-2 flex items-center gap-1 text-[9px]">
-          <span className="mr-auto text-zinc-500">Rotate</span>
-          <button
-            type="button"
-            onClick={() => nudgeRotation(-1)}
-            className="border border-white/10 px-2 py-1 text-fuchsia-200 hover:border-fuchsia-300 hover:bg-fuchsia-300/10"
-            aria-label="Rotate negative one degree"
-          >
-            R-
-          </button>
-          <button
-            type="button"
-            onClick={() => nudgeRotation(1)}
-            className="border border-white/10 px-2 py-1 text-fuchsia-200 hover:border-fuchsia-300 hover:bg-fuchsia-300/10"
-            aria-label="Rotate positive one degree"
-          >
-            R+
-          </button>
-        </div>
+            <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-[9px]">
+              <span className="text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                Nudge 1 m
+              </span>
+              <NudgeButton onClick={() => nudge(0, nudgeStep)} aria-label="Nudge north">
+                N+
+              </NudgeButton>
+              <span />
+              <NudgeButton onClick={() => nudge(-nudgeStep, 0)} aria-label="Nudge west">
+                E-
+              </NudgeButton>
+              <NudgeButton onClick={() => nudge(nudgeStep, 0)} aria-label="Nudge east">
+                E+
+              </NudgeButton>
+              <NudgeButton onClick={() => nudge(0, -nudgeStep)} aria-label="Nudge south">
+                N-
+              </NudgeButton>
+            </div>
 
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleApply}
-            disabled={!dirty}
-            className={cn(
-              'inline-flex flex-1 items-center justify-center gap-1.5 border px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide',
-              dirty
-                ? 'border-teal-300 bg-teal-300 text-zinc-950 hover:bg-teal-200'
-                : 'border-white/10 text-zinc-500',
-            )}
-          >
-            <Check className="h-3 w-3" />
-            Set as georeference
-          </button>
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={!dirty}
-            className="inline-flex items-center justify-center gap-1 border border-white/10 px-2 py-1.5 text-[10px] uppercase tracking-wide text-zinc-300 hover:bg-white/10 disabled:text-zinc-600"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Reset
-          </button>
-        </div>
+            <div className="mt-2 flex items-center gap-1 text-[9px]">
+              <span className="mr-auto text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                Height
+              </span>
+              <NudgeButton
+                onClick={() => nudgeHeight(-nudgeStep)}
+                tone="amber"
+                aria-label="Nudge height down"
+              >
+                Z-
+              </NudgeButton>
+              <NudgeButton
+                onClick={() => nudgeHeight(nudgeStep)}
+                tone="amber"
+                aria-label="Nudge height up"
+              >
+                Z+
+              </NudgeButton>
+            </div>
+
+            <div className="mt-2 flex items-center gap-1 text-[9px]">
+              <span className="mr-auto text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                Rotate
+              </span>
+              <NudgeButton
+                onClick={() => nudgeRotation(-1)}
+                tone="fuchsia"
+                aria-label="Rotate negative one degree"
+              >
+                R-
+              </NudgeButton>
+              <NudgeButton
+                onClick={() => nudgeRotation(1)}
+                tone="fuchsia"
+                aria-label="Rotate positive one degree"
+              >
+                R+
+              </NudgeButton>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={!dirty}
+                className={cn(
+                  'inline-flex flex-1 items-center justify-center gap-1.5 border-2 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors',
+                  dirty
+                    ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:border-emerald-700 dark:border-emerald-500 dark:bg-emerald-500 dark:text-zinc-950 dark:hover:bg-emerald-400 dark:hover:border-emerald-400'
+                    : 'border-zinc-300 bg-zinc-100 text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600 cursor-not-allowed',
+                )}
+              >
+                <Check className="h-3 w-3" />
+                Set as georeference
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={!dirty}
+                className={cn(
+                  'inline-flex items-center justify-center gap-1 border-2 px-2 py-1.5 text-[10px] uppercase tracking-wide transition-colors',
+                  dirty
+                    ? 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800'
+                    : 'border-zinc-200 bg-zinc-50 text-zinc-400 dark:border-zinc-900 dark:bg-zinc-950 dark:text-zinc-600 cursor-not-allowed',
+                )}
+              >
+                <RotateCcw className="h-3 w-3" />
+                Reset
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -658,8 +904,12 @@ export function CesiumPlacementEditor({
 function Metric({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
     <div>
-      <div className="text-[8px] uppercase tracking-[0.16em] text-zinc-500">{label}</div>
-      <div className={cn('mt-0.5 whitespace-nowrap text-[10px]', accent)}>{value}</div>
+      <div className="text-[8px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+        {label}
+      </div>
+      <div className={cn('mt-0.5 whitespace-nowrap text-[10px] font-semibold', accent)}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -667,8 +917,40 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
 function PreviewRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span>{label}</span>
-      <span className="text-zinc-100">{value}</span>
+      <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
+      <span className="text-zinc-900 dark:text-zinc-100">{value}</span>
     </div>
+  );
+}
+
+type NudgeButtonProps = {
+  children: React.ReactNode;
+  onClick: () => void;
+  tone?: 'emerald' | 'amber' | 'fuchsia';
+} & Pick<React.ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'>;
+
+function NudgeButton({ children, onClick, tone = 'emerald', ...rest }: NudgeButtonProps) {
+  const toneClass = {
+    emerald:
+      'text-emerald-700 hover:bg-emerald-50 hover:border-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-950 dark:hover:border-emerald-400',
+    amber:
+      'text-amber-700 hover:bg-amber-50 hover:border-amber-600 dark:text-amber-300 dark:hover:bg-amber-950 dark:hover:border-amber-400',
+    fuchsia:
+      'text-fuchsia-700 hover:bg-fuchsia-50 hover:border-fuchsia-600 dark:text-fuchsia-300 dark:hover:bg-fuchsia-950 dark:hover:border-fuchsia-400',
+  }[tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'border-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900',
+        'px-2 py-1 font-bold tracking-wider transition-colors',
+        toneClass,
+      )}
+      {...rest}
+    >
+      {children}
+    </button>
   );
 }

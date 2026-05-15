@@ -149,6 +149,9 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
     supportsImages: true,
     supportsFileAttachments: true,
     cost: '$$$',
+    // Opus 4.7 returns 400 if temperature/top_p/top_k are present.
+    // See `whats-new-claude-4-7` docs § Sampling parameters removed.
+    acceptsSamplingParams: false,
   },
   {
     id: 'claude-opus-4-6',
@@ -196,6 +199,9 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
     supportsImages: true,
     supportsFileAttachments: true,
     cost: '$$$',
+    // GPT-5 reasoning family only accepts the default temperature (1).
+    // Sending any other value returns 400 from /v1/chat/completions.
+    acceptsSamplingParams: false,
   },
   {
     id: 'gpt-5.5',
@@ -207,6 +213,7 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
     supportsImages: true,
     supportsFileAttachments: true,
     cost: '$$',
+    acceptsSamplingParams: false,
   },
   {
     id: 'gpt-5.4',

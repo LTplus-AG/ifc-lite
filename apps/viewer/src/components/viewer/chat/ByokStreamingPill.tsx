@@ -37,25 +37,25 @@ export function ByokStreamingPill({ modelId, className }: ByokStreamingPillProps
   if (route.kind !== 'anthropic' && route.kind !== 'openai') return null;
 
   const host = route.kind === 'anthropic' ? 'api.anthropic.com' : 'api.openai.com';
-  const filterToken = route.kind === 'anthropic' ? 'anthropic.com' : 'openai.com';
+  const shortHost = route.kind === 'anthropic' ? 'anthropic.com' : 'openai.com';
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span
           className={cn(
-            'inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-mono text-emerald-700 dark:text-emerald-400',
+            'inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-mono text-emerald-700 dark:text-emerald-400',
             className,
           )}
         >
           <Lock className="h-2.5 w-2.5" />
-          → {host}
+          {shortHost}
         </span>
       </TooltipTrigger>
       <TooltipContent className="max-w-xs text-xs leading-relaxed">
         Messages from this model go directly from your browser to{' '}
         <code className="font-mono">{host}</code>. To verify, open DevTools →
-        Network and filter <code className="font-mono">{filterToken}</code>.
+        Network and filter <code className="font-mono">{shortHost}</code>.
       </TooltipContent>
     </Tooltip>
   );

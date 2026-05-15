@@ -163,6 +163,14 @@ export interface LLMModel {
   cost?: ModelCost;
   /** OpenAI API variant: 'chat' (default) or 'responses' (Codex-style models) */
   openaiApi?: 'chat' | 'responses';
+  /**
+   * Whether the model accepts the classic sampling parameters (`temperature`,
+   * `top_p`, `top_k`). Default: true. Set to `false` for models that reject
+   * them (Anthropic Claude Opus 4.7 and later — see
+   * https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7).
+   * When `false`, the stream client omits these params from the request body.
+   */
+  acceptsSamplingParams?: boolean;
 }
 
 export type ChatStatus = 'idle' | 'sending' | 'streaming' | 'error';

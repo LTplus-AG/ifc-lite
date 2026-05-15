@@ -177,49 +177,11 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
           </div>
         )}
 
-        {/* Entity Statistics */}
-        <div className="border-b border-zinc-200 dark:border-zinc-800">
-          <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
-            <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
-              Statistics
-            </h4>
-          </div>
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-            <div className="flex items-center gap-3 px-3 py-2">
-              <Database className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Total Entities</span>
-              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {dataStore?.entityCount?.toLocaleString() ?? 'N/A'}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 px-3 py-2">
-              <Layers className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Building Storeys</span>
-              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {stats.storeys}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 px-3 py-2">
-              <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Elements with Geometry</span>
-              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {stats.elementsWithGeometry.toLocaleString()}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 px-3 py-2">
-              <Hash className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">Max Express ID</span>
-              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {model.maxExpressId.toLocaleString()}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Georeferencing */}
-        <GeoreferencingPanel georef={georef} modelId={model.id} enableEditing schemaVersion={model.schemaVersion} coordinateInfo={model.geometryResult?.coordinateInfo} geometryResult={model.geometryResult} lengthUnitScale={unitInfo?.scale} />
-
-        {/* IfcProject Data */}
+        {/* IfcProject Data — placed near the top so the model's name,
+            description, and project-level psets are the first thing users
+            see after file info. Previously the section was at the bottom
+            of the panel (below the map), which buried critical project
+            identity below scrollable georeferencing content. */}
         {projectData && (
           <div className="border-b border-zinc-200 dark:border-zinc-800">
             <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
@@ -267,6 +229,50 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             )}
           </div>
         )}
+
+        {/* Entity Statistics */}
+        <div className="border-b border-zinc-200 dark:border-zinc-800">
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
+            <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
+              Statistics
+            </h4>
+          </div>
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+            <div className="flex items-center gap-3 px-3 py-2">
+              <Database className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+              <span className="text-xs text-zinc-500">Total Entities</span>
+              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
+                {dataStore?.entityCount?.toLocaleString() ?? 'N/A'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2">
+              <Layers className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+              <span className="text-xs text-zinc-500">Building Storeys</span>
+              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
+                {stats.storeys}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2">
+              <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+              <span className="text-xs text-zinc-500">Elements with Geometry</span>
+              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
+                {stats.elementsWithGeometry.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2">
+              <Hash className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+              <span className="text-xs text-zinc-500">Max Express ID</span>
+              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
+                {model.maxExpressId.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Georeferencing — kept at the bottom because it embeds a
+            tall location map; placing it earlier would push the
+            statistics + project metadata below the fold. */}
+        <GeoreferencingPanel georef={georef} modelId={model.id} enableEditing schemaVersion={model.schemaVersion} coordinateInfo={model.geometryResult?.coordinateInfo} geometryResult={model.geometryResult} lengthUnitScale={unitInfo?.scale} />
       </ScrollArea>
     </div>
   );

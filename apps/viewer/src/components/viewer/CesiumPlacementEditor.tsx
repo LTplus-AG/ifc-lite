@@ -733,13 +733,26 @@ export function CesiumPlacementEditor({
           'absolute z-30 select-none border-2 border-zinc-900 dark:border-zinc-100',
           'bg-white text-zinc-900 dark:bg-black dark:text-zinc-100 font-mono',
         )}
-        style={{
-          left: panelPosition?.x ?? 0,
-          top: panelPosition?.y ?? 0,
-          width: PANEL_WIDTH,
-          visibility: panelPosition ? 'visible' : 'hidden',
-          boxShadow: '4px 4px 0px 0px rgba(0,0,0,0.35)',
-        }}
+        style={
+          // First render (no saved position yet): anchor bottom-right via
+          // CSS right/bottom so the panel appears immediately, no
+          // measure-first flicker, no offsetParent dependency. Once the
+          // user drags (or a saved position is restored), switch to
+          // absolute left/top in container-local coordinates.
+          panelPosition
+            ? {
+                left: panelPosition.x,
+                top: panelPosition.y,
+                width: PANEL_WIDTH,
+                boxShadow: '4px 4px 0px 0px rgba(0,0,0,0.35)',
+              }
+            : {
+                right: PANEL_MARGIN,
+                bottom: PANEL_MARGIN,
+                width: PANEL_WIDTH,
+                boxShadow: '4px 4px 0px 0px rgba(0,0,0,0.35)',
+              }
+        }
       >
         {/* Header — drag handle, title, dirty indicator, collapse/close */}
         <div

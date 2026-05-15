@@ -49,11 +49,14 @@ import type { ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
-import { Check, Image as ImageIcon, Key, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { Check, Image as ImageIcon, KeyRound } from 'lucide-react';
 import { hasDesktopFeatureAccess } from '@/lib/desktop-product';
 import { getModelById } from '@/lib/llm/models';
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
-import { getApiKeys, updateApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
+import { getApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
+import { ByokKeyModal } from './chat/ByokKeyModal';
+import { ByokStreamingPill } from './chat/ByokStreamingPill';
+import type { BYOKProvider } from '@/lib/llm/clipboard-detect';
 import { useSandbox } from '@/hooks/useSandbox';
 
 // Environment variable for the proxy URL
@@ -246,6 +249,19 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     return subscribeApiKeys(refresh);
   }, [setChatHasByokKey]);
 
+  // BYOK key modal — controlled state for both auto-open (on locked-model pick)
+  // and manual open via the header 🔑 button. `provider` selects the initial tab.
+  const [byokModal, setByokModal] = useState<{ open: boolean; provider: BYOKProvider }>({
+    open: false,
+    provider: 'anthropic',
+  });
+  const openByokModal = useCallback((provider: BYOKProvider) => {
+    setByokModal({ open: true, provider });
+  }, []);
+  const closeByokModal = useCallback(() => {
+    setByokModal((s) => ({ ...s, open: false }));
+  }, []);
+
   const displayUsage: UsageInfo | null = usage;
   const usageResetLabel = displayUsage?.resetAt && displayUsage.resetAt > 0
     ? new Date(displayUsage.resetAt * 1000).toLocaleDateString()
@@ -424,10 +440,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     // doesn't stack orphaned user messages on repeated sends.
     const route = resolveStreamRoute(activeModel, getApiKeys());
     if (route.kind === 'missing-key') {
+      openByokModal(route.provider);
       setChatError(
-        route.provider === 'anthropic'
-          ? 'Enter your Anthropic API key above to use this model.'
-          : 'Enter your OpenAI API key above to use this model.',
+        `${route.provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} key required for this model — set it up to continue.`,
       );
       return;
     }
@@ -1188,6 +1203,17 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const needsAnthropicKey = modelSource === 'anthropic' && !keyStateAnthropic;
   const needsOpenaiKey = modelSource === 'openai' && !keyStateOpenai;
   const needsByokKey = needsAnthropicKey || needsOpenaiKey;
+
+  // Auto-open the BYOK modal when the user picks a locked model. We only fire on
+  // the *transition* into needsByokKey so the modal doesn't keep popping back up
+  // after the user dismisses it without entering a key.
+  const prevNeedsByokRef = useRef(false);
+  useEffect(() => {
+    if (needsByokKey && !prevNeedsByokRef.current) {
+      openByokModal(needsAnthropicKey ? 'anthropic' : 'openai');
+    }
+    prevNeedsByokRef.current = needsByokKey;
+  }, [needsByokKey, needsAnthropicKey, openByokModal]);
   const showSupportEmail = Boolean(error && error.includes('louis@ltplus.com'));
   const canContinue = Boolean(
     !isActive && (streamingContent.trim().length > 0 || lastFinishReason === 'length'),
@@ -1227,7 +1253,24 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         </Tooltip>
 
         <ModelSelector />
+        <ByokStreamingPill modelId={activeModel} className="ml-1" />
         <div className="flex-1" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
+              className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {keyStateAnthropic || keyStateOpenai ? 'Manage API keys' : 'Add API key for frontier models'}
+          </TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1256,9 +1299,20 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         </div>
       )}
 
-      {/* Inline BYOK key prompt — shown when user picks a model without the matching key */}
-      {needsByokKey && canUseAiAssistant && (
-        <InlineKeyPrompt provider={needsAnthropicKey ? 'anthropic' : 'openai'} />
+      {/* Slim CTA banner — appears when the modal has been dismissed but the
+          selected model still needs a key. Re-opens the modal on click. */}
+      {needsByokKey && canUseAiAssistant && !byokModal.open && (
+        <button
+          type="button"
+          onClick={() => openByokModal(needsAnthropicKey ? 'anthropic' : 'openai')}
+          className="w-full border-b bg-amber-500/10 px-3 py-2 text-left text-xs hover:bg-amber-500/15 transition-colors flex items-center gap-2"
+        >
+          <KeyRound className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+          <span>
+            <strong>{needsAnthropicKey ? 'Anthropic' : 'OpenAI'} key needed</strong>{' '}
+            for this model — click to set it up
+          </span>
+        </button>
       )}
 
       {/* Clear confirmation */}
@@ -1449,7 +1503,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={!canUseAiAssistant ? 'AI assistant not available' : needsByokKey ? `Enter your ${needsAnthropicKey ? 'Anthropic' : 'OpenAI'} API key above` : 'Ask anything...'}
+            placeholder={!canUseAiAssistant ? 'AI assistant not available' : needsByokKey ? `Add your ${needsAnthropicKey ? 'Anthropic' : 'OpenAI'} key to chat with this model` : 'Ask anything...'}
             rows={1}
             className="flex-1 resize-none rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground px-3 py-1.5 text-sm min-h-[32px] max-h-[120px] focus:outline-none focus:ring-1 focus:ring-ring"
             style={{ height: 'auto', overflow: 'hidden' }}
@@ -1517,90 +1571,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           <span className="text-[10px] text-muted-foreground/30">⌘L</span>
         </div>
       </div>
-    </div>
-  );
-}
 
-// ── Inline BYOK key prompt (shown inside chat panel when key is missing) ──
-
-const PROVIDER_INFO = {
-  anthropic: {
-    label: 'Anthropic',
-    placeholder: 'sk-ant-api03-...',
-    url: 'https://console.anthropic.com/settings/keys',
-    urlLabel: 'console.anthropic.com',
-  },
-  openai: {
-    label: 'OpenAI',
-    placeholder: 'sk-...',
-    url: 'https://platform.openai.com/api-keys',
-    urlLabel: 'platform.openai.com',
-  },
-} as const;
-
-function InlineKeyPrompt({ provider }: { provider: 'anthropic' | 'openai' }) {
-  const [value, setValue] = useState('');
-  const [show, setShow] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const info = PROVIDER_INFO[provider];
-
-  const handleSave = useCallback(() => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    if (provider === 'anthropic') {
-      updateApiKeys({ anthropicKey: trimmed });
-    } else {
-      updateApiKeys({ openaiKey: trimmed });
-    }
-    setSaved(true);
-  }, [value, provider]);
-
-  // Brief success state before the parent unmounts this component
-  if (saved) {
-    return (
-      <div className="border-b bg-emerald-500/10 px-3 py-2 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400">
-        <Check className="h-3.5 w-3.5" />
-        <span>{info.label} key saved — ready to chat</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="border-b bg-muted/30 px-3 py-2.5 space-y-1.5">
-      <div className="flex items-center gap-1.5 text-xs font-medium">
-        <Key className="h-3.5 w-3.5" />
-        {info.label} API key required
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        Paste your key below — stored in your browser only, sent directly to {info.label}.{' '}
-        <a href={info.url} target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-0.5">
-          Get a key <ExternalLink className="h-2.5 w-2.5" />
-        </a>
-      </p>
-      <div className="flex gap-1.5">
-        <div className="relative flex-1">
-          <input
-            type={show ? 'text' : 'password'}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
-            placeholder={info.placeholder}
-            autoComplete="off"
-            spellCheck={false}
-            className="w-full rounded border border-input bg-background px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring pr-7"
-          />
-          <button
-            type="button"
-            onClick={() => setShow(!show)}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            {show ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-          </button>
-        </div>
-        <Button size="sm" className="h-7 px-3 text-xs" onClick={handleSave} disabled={!value.trim()}>
-          Save
-        </Button>
-      </div>
+      <ByokKeyModal
+        open={byokModal.open}
+        onOpenChange={(open) => (open ? openByokModal(byokModal.provider) : closeByokModal())}
+        initialProvider={byokModal.provider}
+      />
     </div>
   );
 }

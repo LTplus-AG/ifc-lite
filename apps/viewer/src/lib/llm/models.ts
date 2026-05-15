@@ -140,6 +140,17 @@ export const FREE_MODELS: LLMModel[] = rawFreeModels.map(applyCapabilities);
 
 const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
   {
+    id: 'claude-opus-4-7',
+    name: 'Claude Opus 4.7',
+    provider: 'Anthropic',
+    tier: 'byok',
+    source: 'anthropic',
+    contextWindow: 200_000,
+    supportsImages: true,
+    supportsFileAttachments: true,
+    cost: '$$$',
+  },
+  {
     id: 'claude-opus-4-6',
     name: 'Claude Opus 4.6',
     provider: 'Anthropic',
@@ -175,6 +186,28 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
 ];
 
 const OPENAI_BYOK_MODELS: LLMModel[] = [
+  {
+    id: 'gpt-5.5-pro',
+    name: 'GPT-5.5 Pro',
+    provider: 'OpenAI',
+    tier: 'byok',
+    source: 'openai',
+    contextWindow: 1_000_000,
+    supportsImages: true,
+    supportsFileAttachments: true,
+    cost: '$$$',
+  },
+  {
+    id: 'gpt-5.5',
+    name: 'GPT-5.5',
+    provider: 'OpenAI',
+    tier: 'byok',
+    source: 'openai',
+    contextWindow: 1_000_000,
+    supportsImages: true,
+    supportsFileAttachments: true,
+    cost: '$$',
+  },
   {
     id: 'gpt-5.4',
     name: 'GPT-5.4',

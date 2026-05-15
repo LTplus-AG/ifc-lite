@@ -124,7 +124,12 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      {/* `min-h-0` is required: without it `flex-1` falls back to
+          min-height:auto and the ScrollArea grows past the panel's
+          height instead of constraining the inner viewport, so the map
+          (and any tall content underneath) overflowed past the right
+          panel's clip box. */}
+      <ScrollArea className="flex-1 min-h-0">
         {/* File Information */}
         <div className="border-b border-zinc-200 dark:border-zinc-800">
           <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">

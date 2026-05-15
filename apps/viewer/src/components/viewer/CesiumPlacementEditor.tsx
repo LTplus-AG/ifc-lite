@@ -155,21 +155,32 @@ function writePanelPreferences(prefs: PanelPreferences): void {
   }
 }
 
-function clampPanelPosition(x: number, y: number, panelHeight: number): ScreenPoint {
-  if (typeof window === 'undefined') return { x, y };
-  const maxX = Math.max(PANEL_MARGIN, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN);
-  const maxY = Math.max(PANEL_MARGIN, window.innerHeight - panelHeight - PANEL_MARGIN);
+interface ContainerBox {
+  width: number;
+  height: number;
+}
+
+function clampPanelPosition(
+  x: number,
+  y: number,
+  panelHeight: number,
+  container: ContainerBox,
+): ScreenPoint {
+  // ViewportContainer is the offset parent — its width is the panel-group
+  // centre column, not the full window. Clamp inside its rect, leaving
+  // PANEL_MARGIN on every edge.
+  const maxX = Math.max(PANEL_MARGIN, container.width - PANEL_WIDTH - PANEL_MARGIN);
+  const maxY = Math.max(PANEL_MARGIN, container.height - panelHeight - PANEL_MARGIN);
   return {
     x: Math.min(Math.max(x, PANEL_MARGIN), maxX),
     y: Math.min(Math.max(y, PANEL_MARGIN), maxY),
   };
 }
 
-function defaultPanelPosition(panelHeight: number): ScreenPoint {
-  if (typeof window === 'undefined') return { x: 0, y: 0 };
+function defaultPanelPosition(panelHeight: number, container: ContainerBox): ScreenPoint {
   return {
-    x: Math.max(PANEL_MARGIN, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN),
-    y: Math.max(PANEL_MARGIN, window.innerHeight - panelHeight - PANEL_MARGIN),
+    x: Math.max(PANEL_MARGIN, container.width - PANEL_WIDTH - PANEL_MARGIN),
+    y: Math.max(PANEL_MARGIN, container.height - panelHeight - PANEL_MARGIN),
   };
 }
 
@@ -214,21 +225,44 @@ export function CesiumPlacementEditor({
   });
   const panelDragRef = useRef<{ offsetX: number; offsetY: number; pointerId: number } | null>(null);
 
-  // Place the panel at bottom-right on first mount when no saved position
-  // exists, and clamp it back on-screen after viewport resizes.
+  // Resolve the panel's positioning container (its `offsetParent`, which is
+  // ViewportContainer's relative root). We measure it for default placement,
+  // clamping, and drag math so the panel stays inside the centre viewport
+  // column instead of being computed against the whole window.
+  const getContainerBox = useCallback((): ContainerBox | null => {
+    const parent = panelRef.current?.offsetParent as HTMLElement | null;
+    if (!parent) return null;
+    const rect = parent.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  }, []);
+
+  const getContainerOrigin = useCallback((): { left: number; top: number } | null => {
+    const parent = panelRef.current?.offsetParent as HTMLElement | null;
+    if (!parent) return null;
+    const rect = parent.getBoundingClientRect();
+    return { left: rect.left, top: rect.top };
+  }, []);
+
+  // When a saved position exists, clamp it on mount and after resizes so
+  // it stays inside the viewport container. When no saved position exists
+  // we leave panelPosition === null and rely on CSS right/bottom anchoring
+  // for the default bottom-right placement, which avoids a measure-first
+  // flicker and works even when the offsetParent isn't measurable yet.
   useLayoutEffect(() => {
     const apply = () => {
+      const container = getContainerBox();
+      if (!container) return;
       const height = panelRef.current?.offsetHeight ?? 280;
       setPanelPosition((prev) => {
-        if (prev === null) return defaultPanelPosition(height);
-        return clampPanelPosition(prev.x, prev.y, height);
+        if (prev === null) return null;
+        return clampPanelPosition(prev.x, prev.y, height, container);
       });
     };
     apply();
     if (typeof window === 'undefined') return;
     window.addEventListener('resize', apply);
     return () => window.removeEventListener('resize', apply);
-  }, [panelCollapsed]);
+  }, [panelCollapsed, getContainerBox]);
 
   useEffect(() => {
     if (!panelPosition) return;
@@ -256,9 +290,15 @@ export function CesiumPlacementEditor({
     if (!drag || drag.pointerId !== e.pointerId) return;
     e.preventDefault();
     e.stopPropagation();
+    const container = getContainerBox();
+    const origin = getContainerOrigin();
+    if (!container || !origin) return;
     const height = panelRef.current?.offsetHeight ?? 280;
-    setPanelPosition(clampPanelPosition(e.clientX - drag.offsetX, e.clientY - drag.offsetY, height));
-  }, []);
+    // Translate pointer-client coords into container-local coords, then clamp.
+    const localX = e.clientX - drag.offsetX - origin.left;
+    const localY = e.clientY - drag.offsetY - origin.top;
+    setPanelPosition(clampPanelPosition(localX, localY, height, container));
+  }, [getContainerBox, getContainerOrigin]);
 
   const handlePanelHeaderPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const drag = panelDragRef.current;

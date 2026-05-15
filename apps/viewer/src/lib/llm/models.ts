@@ -190,8 +190,8 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
 
 const OPENAI_BYOK_MODELS: LLMModel[] = [
   {
-    id: 'gpt-5.5-pro',
-    name: 'GPT-5.5 Pro',
+    id: 'gpt-5.5',
+    name: 'GPT-5.5',
     provider: 'OpenAI',
     tier: 'byok',
     source: 'openai',
@@ -201,18 +201,6 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
     cost: '$$$',
     // GPT-5 reasoning family only accepts the default temperature (1).
     // Sending any other value returns 400 from /v1/chat/completions.
-    acceptsSamplingParams: false,
-  },
-  {
-    id: 'gpt-5.5',
-    name: 'GPT-5.5',
-    provider: 'OpenAI',
-    tier: 'byok',
-    source: 'openai',
-    contextWindow: 1_000_000,
-    supportsImages: true,
-    supportsFileAttachments: true,
-    cost: '$$',
     acceptsSamplingParams: false,
   },
   {

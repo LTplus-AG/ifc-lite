@@ -7,15 +7,23 @@
  *
  * Replaces the inline password-style strip in ChatPanel. Renders one tab per
  * supported provider; each tab pairs the request-flow SVG with concrete,
- * DevTools-verifiable trust claims, a clipboard-detect shortcut, and an
- * "Open Console → Create Key → return" walkthrough.
+ * DevTools-verifiable trust claims and an "Open Console → Create Key →
+ * paste here" walkthrough.
+ *
+ * Clipboard handling: we deliberately do NOT do background `clipboard.readText()`
+ * polling. Modern browsers gate that behind either transient user activation
+ * or an explicit clipboard-read permission we can't request a prompt for —
+ * and on macOS Chromium, every silent read triggers the native Paste affordance
+ * even though we silently swallow the result. Instead, the input is autofocused
+ * on open so the user's Cmd+V lands directly in the field, and a green inline
+ * confirmation appears the moment the pasted value matches the provider shape.
  *
  * The web build ships this. Desktop also uses it (the /settings page is
  * desktop-only and not deployed on Vercel).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, ClipboardPaste, ExternalLink, Eye, EyeOff, Key, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown, ChevronUp, ExternalLink, Eye, EyeOff, Key, Trash2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -38,7 +46,6 @@ import {
 import {
   looksLikeProviderKey,
   maskKey,
-  readClipboardKey,
   type BYOKProvider,
 } from '@/lib/llm/clipboard-detect';
 
@@ -145,42 +152,16 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
 
   const [value, setValue] = useState('');
   const [show, setShow] = useState(false);
-  const [clipboardCandidate, setClipboardCandidate] = useState<string | null>(null);
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
-  // Set when the user clicks "Open Console" so we re-poll the clipboard on tab return.
-  const [awaitingClipboard, setAwaitingClipboard] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const unlockedModels = useMemo(() => getByokModelsForSource(provider), [provider]);
 
-  // NOTE: we deliberately do NOT call `readClipboardKey` on mount or tab switch.
-  // On macOS Chromium, a background `clipboard.readText()` triggers the native
-  // "Paste" affordance even when no user gesture is in play — surprising users
-  // with an OS prompt the moment they open the modal.
-  //
-  // Instead, clipboard detection runs in three explicit, user-gestured paths:
-  //   1. user pastes into the input (handled by the onPaste handler below)
-  //   2. user clicks the "Detect from clipboard" button (also below)
-  //   3. user returns from "Open Console" — we armed `awaitingClipboard` on
-  //      that click, so the visibilitychange/focus listener below is allowed
-  //      to call readText() with the expectation set by the walkthrough.
+  // Autofocus the input so the user's Cmd+V lands directly in the field
+  // without an extra click. Re-runs on tab switch.
   useEffect(() => {
-    if (!awaitingClipboard) return;
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      void readClipboardKey(provider).then((match) => {
-        if (match && match !== savedKey) {
-          setClipboardCandidate(match);
-          setAwaitingClipboard(false);
-        }
-      });
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onVisible);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onVisible);
-    };
-  }, [awaitingClipboard, provider, savedKey]);
+    inputRef.current?.focus();
+  }, [provider]);
 
   const handleSave = useCallback((next: string) => {
     const trimmed = next.trim();
@@ -188,7 +169,6 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
     const field = provider === 'anthropic' ? 'anthropicKey' : 'openaiKey';
     updateApiKeys({ [field]: trimmed });
     setValue('');
-    setClipboardCandidate(null);
     toast.success(`${PROVIDER_META[provider].label} key saved`);
   }, [provider]);
 
@@ -199,36 +179,12 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
   }, [provider]);
 
   const handleOpenConsole = useCallback(() => {
-    setAwaitingClipboard(true);
     window.open(meta.consoleUrl, '_blank', 'noopener,noreferrer');
   }, [meta.consoleUrl]);
 
-  // Paste into the input → if the pasted text matches the provider shape, we
-  // promote it to the "Use it" candidate banner so the user is one click away
-  // (instead of two: paste, then click Save). For non-matching content we let
-  // the normal paste behaviour happen so the input still works as expected.
-  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
-    const pasted = e.clipboardData.getData('text').trim();
-    if (looksLikeProviderKey(provider, pasted) && pasted !== savedKey) {
-      e.preventDefault();
-      setValue('');
-      setClipboardCandidate(pasted);
-    }
-  }, [provider, savedKey]);
-
-  // Explicit "Detect from clipboard" — the button click is a fresh user gesture,
-  // so the OS paste prompt that may appear on macOS Chromium is expected by the
-  // user rather than surprise-shown on mount.
-  const handleManualClipboardCheck = useCallback(async () => {
-    const match = await readClipboardKey(provider);
-    if (match && match !== savedKey) {
-      setClipboardCandidate(match);
-    } else {
-      toast.info(`No ${meta.label} key found on clipboard`);
-    }
-  }, [provider, savedKey, meta.label]);
-
-  const inputIsValid = value.trim().length === 0 || looksLikeProviderKey(provider, value);
+  const trimmedValue = value.trim();
+  const inputIsValid = trimmedValue.length === 0 || looksLikeProviderKey(provider, value);
+  const inputLooksGood = trimmedValue.length > 0 && looksLikeProviderKey(provider, value) && trimmedValue !== savedKey;
 
   return (
     <div className="space-y-4">
@@ -270,46 +226,21 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
         </TrustBullet>
       </ul>
 
-      {/* Clipboard candidate — the friction killer */}
-      {clipboardCandidate && (
-        <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs">
-            <ClipboardPaste className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>
-              {meta.label} key on your clipboard:{' '}
-              <code className="font-mono">{maskKey(clipboardCandidate)}</code>
-            </span>
-          </div>
-          <Button size="sm" className="h-7 px-3 text-xs" onClick={() => handleSave(clipboardCandidate)}>
-            Use it
-          </Button>
-        </div>
-      )}
-
-      {/* Manual paste */}
+      {/* Paste-driven key entry. The input is autofocused on mount so Cmd+V
+          lands here immediately after the user returns from the provider
+          console — no extra click required. */}
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <label className="text-xs font-medium" htmlFor={`byok-${provider}-input`}>
-            {savedKey ? 'Replace existing key' : 'Paste your key'}
-          </label>
-          <button
-            type="button"
-            onClick={handleManualClipboardCheck}
-            className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
-            title={`Read clipboard and detect a ${meta.label} key`}
-          >
-            <ClipboardPaste className="h-3 w-3" />
-            Detect from clipboard
-          </button>
-        </div>
+        <label className="text-xs font-medium" htmlFor={`byok-${provider}-input`}>
+          {savedKey ? 'Replace existing key' : 'Paste your key'}
+        </label>
         <div className="flex gap-2">
           <div className="relative flex-1">
             <input
+              ref={inputRef}
               id={`byok-${provider}-input`}
               type={show ? 'text' : 'password'}
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              onPaste={handlePaste}
               onKeyDown={(e) => { if (e.key === 'Enter' && inputIsValid) handleSave(value); }}
               placeholder={meta.placeholder}
               autoComplete="off"
@@ -325,10 +256,16 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
               {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </button>
           </div>
-          <Button size="sm" onClick={() => handleSave(value)} disabled={!inputIsValid || value.trim().length === 0}>
+          <Button size="sm" onClick={() => handleSave(value)} disabled={!inputIsValid || trimmedValue.length === 0}>
             Save
           </Button>
         </div>
+        {inputLooksGood && (
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+            <Check className="h-3 w-3" />
+            Looks like a {meta.label} key (<code className="font-mono">{maskKey(trimmedValue)}</code>) — press Enter or Save.
+          </p>
+        )}
         {!inputIsValid && (
           <p className="text-[11px] text-destructive">
             That doesn&apos;t look like a {meta.label} key (expected prefix{' '}
@@ -365,7 +302,7 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
           <div className="border-t p-3 space-y-2.5 text-xs">
             <ol className="space-y-2 list-decimal list-inside text-muted-foreground">
               <li>
-                Open the {meta.label} console — we&apos;ll watch for the key on your clipboard when you return.
+                Open the {meta.label} console — opens in a new tab.
               </li>
               <li>
                 Click <strong>Create Key</strong>, name it <code className="bg-muted px-1 rounded">ifc-lite</code>.
@@ -374,7 +311,7 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
                 Set a spending limit (e.g.&nbsp;$10/month) so a leaked key can&apos;t burn you. The provider enforces it.
               </li>
               <li>
-                Copy the key, return here — we&apos;ll detect it automatically.
+                Copy the key, come back here, paste it into the input above (the field is already focused — just press <code className="bg-muted px-1 rounded">⌘V</code>).
               </li>
             </ol>
             <p className="text-[11px] text-muted-foreground/80">{meta.pricingHint}</p>

@@ -110,11 +110,17 @@ export function ByokKeyModal({ open, onOpenChange, initialProvider = 'anthropic'
 
         <Tabs value={provider} onValueChange={(v) => setProvider(v as BYOKProvider)}>
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="anthropic" className="flex items-center gap-1.5">
+            <TabsTrigger
+              value="anthropic"
+              className="flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
+            >
               Anthropic
               {apiKeys.anthropicKey && <Check className="h-3 w-3 text-emerald-500" />}
             </TabsTrigger>
-            <TabsTrigger value="openai" className="flex items-center gap-1.5">
+            <TabsTrigger
+              value="openai"
+              className="flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
+            >
               OpenAI
               {apiKeys.openaiKey && <Check className="h-3 w-3 text-emerald-500" />}
             </TabsTrigger>
@@ -146,17 +152,17 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
 
   const unlockedModels = useMemo(() => getByokModelsForSource(provider), [provider]);
 
-  // First-chance clipboard check on mount of this tab.
-  useEffect(() => {
-    let cancelled = false;
-    void readClipboardKey(provider).then((match) => {
-      if (!cancelled && match && match !== savedKey) setClipboardCandidate(match);
-    });
-    return () => { cancelled = true; };
-  }, [provider, savedKey]);
-
-  // Re-check the clipboard whenever the user returns to this tab — typically
-  // after they clicked "Open Console", made a key, and came back.
+  // NOTE: we deliberately do NOT call `readClipboardKey` on mount or tab switch.
+  // On macOS Chromium, a background `clipboard.readText()` triggers the native
+  // "Paste" affordance even when no user gesture is in play — surprising users
+  // with an OS prompt the moment they open the modal.
+  //
+  // Instead, clipboard detection runs in three explicit, user-gestured paths:
+  //   1. user pastes into the input (handled by the onPaste handler below)
+  //   2. user clicks the "Detect from clipboard" button (also below)
+  //   3. user returns from "Open Console" — we armed `awaitingClipboard` on
+  //      that click, so the visibilitychange/focus listener below is allowed
+  //      to call readText() with the expectation set by the walkthrough.
   useEffect(() => {
     if (!awaitingClipboard) return;
     const onVisible = () => {
@@ -196,6 +202,31 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
     setAwaitingClipboard(true);
     window.open(meta.consoleUrl, '_blank', 'noopener,noreferrer');
   }, [meta.consoleUrl]);
+
+  // Paste into the input → if the pasted text matches the provider shape, we
+  // promote it to the "Use it" candidate banner so the user is one click away
+  // (instead of two: paste, then click Save). For non-matching content we let
+  // the normal paste behaviour happen so the input still works as expected.
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text').trim();
+    if (looksLikeProviderKey(provider, pasted) && pasted !== savedKey) {
+      e.preventDefault();
+      setValue('');
+      setClipboardCandidate(pasted);
+    }
+  }, [provider, savedKey]);
+
+  // Explicit "Detect from clipboard" — the button click is a fresh user gesture,
+  // so the OS paste prompt that may appear on macOS Chromium is expected by the
+  // user rather than surprise-shown on mount.
+  const handleManualClipboardCheck = useCallback(async () => {
+    const match = await readClipboardKey(provider);
+    if (match && match !== savedKey) {
+      setClipboardCandidate(match);
+    } else {
+      toast.info(`No ${meta.label} key found on clipboard`);
+    }
+  }, [provider, savedKey, meta.label]);
 
   const inputIsValid = value.trim().length === 0 || looksLikeProviderKey(provider, value);
 
@@ -257,9 +288,20 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
 
       {/* Manual paste */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium" htmlFor={`byok-${provider}-input`}>
-          {savedKey ? 'Replace existing key' : 'Or paste manually'}
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs font-medium" htmlFor={`byok-${provider}-input`}>
+            {savedKey ? 'Replace existing key' : 'Paste your key'}
+          </label>
+          <button
+            type="button"
+            onClick={handleManualClipboardCheck}
+            className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+            title={`Read clipboard and detect a ${meta.label} key`}
+          >
+            <ClipboardPaste className="h-3 w-3" />
+            Detect from clipboard
+          </button>
+        </div>
         <div className="flex gap-2">
           <div className="relative flex-1">
             <input
@@ -267,6 +309,7 @@ function ProviderTab({ provider, savedKey }: { provider: BYOKProvider; savedKey:
               type={show ? 'text' : 'password'}
               value={value}
               onChange={(e) => setValue(e.target.value)}
+              onPaste={handlePaste}
               onKeyDown={(e) => { if (e.key === 'Enter' && inputIsValid) handleSave(value); }}
               placeholder={meta.placeholder}
               autoComplete="off"

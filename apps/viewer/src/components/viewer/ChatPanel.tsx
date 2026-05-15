@@ -262,7 +262,13 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     setByokModal((s) => ({ ...s, open: false }));
   }, []);
 
-  const displayUsage: UsageInfo | null = usage;
+  // The usage indicator tracks the free-tier proxy quota we enforce server-side.
+  // BYOK routes go directly from the browser to the provider, so the user's
+  // own provider account is what gates them — our quota doesn't apply, and
+  // showing it here is misleading. Hide it whenever the active model is
+  // direct-to-provider.
+  const activeModelSource = getModelById(activeModel)?.source ?? 'proxy';
+  const displayUsage: UsageInfo | null = activeModelSource === 'proxy' ? usage : null;
   const usageResetLabel = displayUsage?.resetAt && displayUsage.resetAt > 0
     ? new Date(displayUsage.resetAt * 1000).toLocaleDateString()
     : '—';

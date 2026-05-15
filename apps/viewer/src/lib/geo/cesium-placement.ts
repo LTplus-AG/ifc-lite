@@ -154,6 +154,57 @@ export function viewerDeltaToProjectedDelta(
   };
 }
 
+export interface Ray3 {
+  origin: { x: number; y: number; z: number };
+  direction: { x: number; y: number; z: number };
+}
+
+/**
+ * Intersect a ray with the horizontal plane y = planeY. Returns null when the
+ * ray is (near-)parallel to the plane or the hit lies behind the ray origin.
+ *
+ * Used by the placement gizmo's XY drag: a stable horizontal drag plane
+ * through the gizmo anchor avoids the projection-Jacobian instability of
+ * linearised screen-axis approximations, which blow up to "huge jumps" at
+ * oblique camera angles when the gizmo plane is near-edge-on to the camera.
+ */
+export function intersectRayWithHorizontalPlane(
+  ray: Ray3,
+  planeY: number,
+): { x: number; y: number; z: number } | null {
+  const dirY = ray.direction.y;
+  if (!Number.isFinite(dirY) || Math.abs(dirY) < 1e-6) return null;
+  const t = (planeY - ray.origin.y) / dirY;
+  if (!Number.isFinite(t) || t < 0) return null;
+  return {
+    x: ray.origin.x + ray.direction.x * t,
+    y: planeY,
+    z: ray.origin.z + ray.direction.z * t,
+  };
+}
+
+/**
+ * Find the Y-coordinate on the vertical line (anchorX, *, anchorZ) closest
+ * to a ray. Returns null when the ray's horizontal component vanishes (the
+ * ray is parallel to the vertical line — no meaningful "grab" point).
+ *
+ * Used by the placement gizmo's height drag so the slider tracks the cursor
+ * accurately at any camera tilt, instead of linearising screen-space pixels
+ * per metre.
+ */
+export function closestYOnVerticalLineFromRay(
+  ray: Ray3,
+  anchorX: number,
+  anchorZ: number,
+): number | null {
+  const dx = ray.direction.x;
+  const dz = ray.direction.z;
+  const horiz = dx * dx + dz * dz;
+  if (!Number.isFinite(horiz) || horiz < 1e-12) return null;
+  const s = (dx * (anchorX - ray.origin.x) + dz * (anchorZ - ray.origin.z)) / horiz;
+  return ray.origin.y + s * ray.direction.y;
+}
+
 export function projectedDeltaToViewerDelta(
   eastingsDelta: number,
   northingsDelta: number,

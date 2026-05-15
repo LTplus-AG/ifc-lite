@@ -597,7 +597,12 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           </div>
         </div>
       )}
-      {!canUseStandardGeoreferencing && (
+      {/* Only flag the legacy-site / unsupported-schema state when there is
+          actually nothing extractable to show. If we have a projectedCRS or
+          mapConversion (even partially), the data sections below speak for
+          themselves — the schema notice is just noise that contradicts the
+          live data the properties panel already renders. */}
+      {!canUseStandardGeoreferencing && !mergedCRS && !mergedConversion && (
         <div className="px-3 py-1.5 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-900">
           <Globe className="h-3 w-3 text-zinc-400 shrink-0" />
           <span className="text-[10px] text-zinc-500 dark:text-zinc-400">

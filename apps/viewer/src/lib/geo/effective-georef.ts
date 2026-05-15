@@ -52,6 +52,18 @@ export function supportsStandardGeoreferencing(
   georef: Pick<GeoreferenceInfo, 'source' | 'projectedCRS' | 'mapConversion'> | null | undefined,
 ): boolean {
   if (hasStandardGeoreferencing(georef)) return true;
+  // Any extracted IfcProjectedCRS / IfcMapConversion makes editing useful,
+  // regardless of the declared schema. IFC2X3 files commonly carry these
+  // via extensions; once we've parsed them, surface the full editor instead
+  // of hiding behind a schema-version notice that contradicts what the
+  // properties panel already shows for the same entities.
+  if (
+    georef
+    && georef.source !== 'siteLocation'
+    && (georef.projectedCRS?.name || georef.mapConversion)
+  ) {
+    return true;
+  }
   return !schemaVersion?.toUpperCase().includes('2X3');
 }
 

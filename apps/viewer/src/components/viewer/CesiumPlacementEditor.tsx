@@ -10,7 +10,9 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import {
+  closestYOnVerticalLineFromRay,
   getMapUnitScale,
+  intersectRayWithHorizontalPlane,
   mapUnitsToMeters,
   metersToMapUnits,
   projectedDeltaToViewerDelta,
@@ -33,8 +35,6 @@ interface CesiumPlacementEditorProps {
 type ScreenPoint = { x: number; y: number };
 type WorldPoint = { x: number; y: number; z: number };
 
-const DRAG_AXIS_SAMPLE_METERS = 25;
-
 function getGizmoWorldSize(coordinateInfo: CoordinateInfo | undefined): number {
   const bounds = coordinateInfo?.originalBounds;
   if (!bounds) return 25;
@@ -45,20 +45,24 @@ function getGizmoWorldSize(coordinateInfo: CoordinateInfo | undefined): number {
   return Math.min(80, Math.max(15, size));
 }
 
+// Drag math is anchored in WORLD SPACE (ray-plane / ray-line intersection)
+// rather than projected screen-axis pixels. Screen-space linearisations alias
+// badly when the gizmo plane is near-edge-on to the camera (det → 0), which
+// previously produced "huge jumps" for XY drag at oblique tilts. Ray-based
+// math stays exact at any camera angle short of full grazing.
 type DragState =
   | {
       mode: 'height';
-      startCursor: ScreenPoint;
       startDraft: CesiumPlacementDraft;
-      screenNormal: ScreenPoint;
-      pixelsPerMeter: number;
+      anchorX: number;
+      anchorZ: number;
+      startWorldY: number;
     }
   | {
       mode: 'xy';
-      startCursor: ScreenPoint;
       startDraft: CesiumPlacementDraft;
-      screenX: ScreenPoint;
-      screenZ: ScreenPoint;
+      planeY: number;
+      startHit: WorldPoint;
     };
 
 function round2(value: number): number {
@@ -91,30 +95,32 @@ function axisFromAngleDegrees(angleDegrees: number): Pick<MapConversion, 'xAxisA
   };
 }
 
-function intersectPointerWithPlaneY(
-  clientX: number,
-  clientY: number,
-  planeY: number,
-): WorldPoint | null {
+interface PointerRay {
+  origin: { x: number; y: number; z: number };
+  direction: { x: number; y: number; z: number };
+}
+
+/**
+ * Resolve a CSS-pixel pointer event into a world-space ray via the renderer
+ * camera. Returns null when the renderer/canvas isn't mounted yet.
+ *
+ * Note: `unprojectToRay` consumes drawing-buffer pixels, so we rescale the
+ * CSS-pixel pointer coordinates by `canvas.width / rect.width` (and the same
+ * for height). Mixing CSS and drawing-buffer units silently scales the ray
+ * direction on high-DPI displays — the previous gizmo bug-pattern.
+ */
+function rayFromPointerEvent(clientX: number, clientY: number): PointerRay | null {
   const renderer = getGlobalRenderer();
   const camera = renderer?.getCamera();
   const canvas = renderer?.getCanvas();
   if (!camera || !canvas) return null;
-
   const rect = canvas.getBoundingClientRect();
-  const x = ((clientX - rect.left) / Math.max(rect.width, 1)) * canvas.width;
-  const y = ((clientY - rect.top) / Math.max(rect.height, 1)) * canvas.height;
-  const ray = camera.unprojectToRay(x, y, canvas.width, canvas.height);
-  if (!ray || Math.abs(ray.direction.y) < 1e-6) return null;
-
-  const t = (planeY - ray.origin.y) / ray.direction.y;
-  if (!Number.isFinite(t) || t < 0) return null;
-
-  return {
-    x: ray.origin.x + ray.direction.x * t,
-    y: planeY,
-    z: ray.origin.z + ray.direction.z * t,
-  };
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const bufferX = ((clientX - rect.left) / rect.width) * canvas.width;
+  const bufferY = ((clientY - rect.top) / rect.height) * canvas.height;
+  const ray = camera.unprojectToRay(bufferX, bufferY, canvas.width, canvas.height);
+  if (!ray) return null;
+  return ray;
 }
 
 export function CesiumPlacementEditor({
@@ -138,10 +144,7 @@ export function CesiumPlacementEditor({
   const [projection, setProjection] = useState<{
     center: ScreenPoint;
     heightTip: ScreenPoint;
-    heightAxisMeters: number;
     planeCorners: [ScreenPoint, ScreenPoint, ScreenPoint, ScreenPoint];
-    planeX: ScreenPoint;
-    planeZ: ScreenPoint;
   } | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
 
@@ -241,32 +244,11 @@ export function CesiumPlacementEditor({
         const c1 = corner(gizmoHalfWorldSize, -gizmoHalfWorldSize);
         const c2 = corner(gizmoHalfWorldSize, gizmoHalfWorldSize);
         const c3 = corner(-gizmoHalfWorldSize, gizmoHalfWorldSize);
-        const planeX = camera.projectToScreen(
-          {
-            ...anchorWorld,
-            x: anchorWorld.x + ux.x * DRAG_AXIS_SAMPLE_METERS,
-            z: anchorWorld.z + ux.z * DRAG_AXIS_SAMPLE_METERS,
-          },
-          w,
-          h,
-        );
-        const planeZ = camera.projectToScreen(
-          {
-            ...anchorWorld,
-            x: anchorWorld.x + uz.x * DRAG_AXIS_SAMPLE_METERS,
-            z: anchorWorld.z + uz.z * DRAG_AXIS_SAMPLE_METERS,
-          },
-          w,
-          h,
-        );
-        if (center && heightTip && c0 && c1 && c2 && c3 && planeX && planeZ) {
+        if (center && heightTip && c0 && c1 && c2 && c3) {
           setProjection({
             center,
             heightTip,
-            heightAxisMeters,
             planeCorners: [c0, c1, c2, c3],
-            planeX,
-            planeZ,
           });
         }
       }
@@ -278,45 +260,38 @@ export function CesiumPlacementEditor({
 
   const handleHeightPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
     if (!projection) return;
+    const ray = rayFromPointerEvent(e.clientX, e.clientY);
+    if (!ray) return;
+    const startWorldY = closestYOnVerticalLineFromRay(ray, anchorWorld.x, anchorWorld.z);
+    if (startWorldY === null) return;
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    const dx = projection.heightTip.x - projection.center.x;
-    const dy = projection.heightTip.y - projection.center.y;
-    const pixelsPerMeter = Math.hypot(dx, dy);
-    if (pixelsPerMeter < 1e-3) return;
     dragStateRef.current = {
       mode: 'height',
-      startCursor: { x: e.clientX, y: e.clientY },
       startDraft: activeDraft,
-      screenNormal: { x: dx / pixelsPerMeter, y: dy / pixelsPerMeter },
-      pixelsPerMeter: pixelsPerMeter / projection.heightAxisMeters,
+      anchorX: anchorWorld.x,
+      anchorZ: anchorWorld.z,
+      startWorldY,
     };
-  }, [activeDraft, projection]);
+  }, [activeDraft, anchorWorld.x, anchorWorld.z, projection]);
 
   const handlePlanePointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
     if (!projection) return;
+    const ray = rayFromPointerEvent(e.clientX, e.clientY);
+    if (!ray) return;
+    const startHit = intersectRayWithHorizontalPlane(ray, anchorWorld.y);
+    if (!startHit) return;
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    const screenX = {
-      x: projection.planeX.x - projection.center.x,
-      y: projection.planeX.y - projection.center.y,
-    };
-    const screenZ = {
-      x: projection.planeZ.x - projection.center.x,
-      y: projection.planeZ.y - projection.center.y,
-    };
-    const determinant = screenX.x * screenZ.y - screenX.y * screenZ.x;
-    if (Math.abs(determinant) < 1e-3) return;
     dragStateRef.current = {
       mode: 'xy',
-      startCursor: { x: e.clientX, y: e.clientY },
       startDraft: activeDraft,
-      screenX,
-      screenZ,
+      planeY: anchorWorld.y,
+      startHit,
     };
-  }, [activeDraft, projection]);
+  }, [activeDraft, anchorWorld.y, projection]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<Element>) => {
     const dragState = dragStateRef.current;
@@ -324,30 +299,33 @@ export function CesiumPlacementEditor({
     e.preventDefault();
     e.stopPropagation();
 
+    const ray = rayFromPointerEvent(e.clientX, e.clientY);
+    if (!ray) return;
+
     if (dragState.mode === 'height') {
-      const dx = e.clientX - dragState.startCursor.x;
-      const dy = e.clientY - dragState.startCursor.y;
-      const meters = (dx * dragState.screenNormal.x + dy * dragState.screenNormal.y) / dragState.pixelsPerMeter;
+      const worldY = closestYOnVerticalLineFromRay(ray, dragState.anchorX, dragState.anchorZ);
+      if (worldY === null) return;
+      const deltaMeters = worldY - dragState.startWorldY;
       updateDraft({
         orthogonalHeight: round2(
-          dragState.startDraft.orthogonalHeight + metersToMapUnits(meters, projectedCRS, lengthUnitScale),
+          dragState.startDraft.orthogonalHeight
+            + metersToMapUnits(deltaMeters, projectedCRS, lengthUnitScale),
         ),
       });
       return;
     }
 
-    const screenDeltaX = e.clientX - dragState.startCursor.x;
-    const screenDeltaY = e.clientY - dragState.startCursor.y;
-    const determinant = dragState.screenX.x * dragState.screenZ.y - dragState.screenX.y * dragState.screenZ.x;
-    if (Math.abs(determinant) < 1e-3) return;
-    const deltaX = ((screenDeltaX * dragState.screenZ.y - screenDeltaY * dragState.screenZ.x) / determinant)
-      * DRAG_AXIS_SAMPLE_METERS;
-    const deltaZ = ((dragState.screenX.x * screenDeltaY - dragState.screenX.y * screenDeltaX) / determinant)
-      * DRAG_AXIS_SAMPLE_METERS;
+    const hit = intersectRayWithHorizontalPlane(ray, dragState.planeY);
+    if (!hit) return;
+    const deltaX = hit.x - dragState.startHit.x;
+    const deltaZ = hit.z - dragState.startHit.z;
+    // The horizontal-plane hit gives the world-space displacement directly;
+    // viewerDeltaToProjectedDelta then applies the file's xAxis rotation and
+    // unit scale to express it in Eastings/Northings.
     const projectedDelta = viewerDeltaToProjectedDelta(
       deltaX,
       deltaZ,
-      activeDraft,
+      dragState.startDraft,
       projectedCRS,
       lengthUnitScale,
     );
@@ -355,7 +333,7 @@ export function CesiumPlacementEditor({
       eastings: round2(dragState.startDraft.eastings + projectedDelta.eastings),
       northings: round2(dragState.startDraft.northings + projectedDelta.northings),
     });
-  }, [activeDraft, lengthUnitScale, projectedCRS, updateDraft]);
+  }, [lengthUnitScale, projectedCRS, updateDraft]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent<Element>) => {
     if (!dragStateRef.current) return;

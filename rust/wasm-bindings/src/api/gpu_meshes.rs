@@ -57,8 +57,13 @@ impl IfcAPI {
         // Create decoder with pre-built index
         let mut decoder = EntityDecoder::with_index(&content, entity_index);
 
-        // Build style index: first map geometry IDs to colors, then map element IDs to colors
-        let mut geometry_styles = build_geometry_style_index(&content, &mut decoder);
+        // Build style index: first map geometry IDs to colors, then map element IDs to colors.
+        // `geometry_shading_styles` carries the SurfaceColour for styled
+        // items whose DiffuseColour differs — used by the GLB exporter's
+        // "Shading" colour source (sparse, only present when authored).
+        let style_indexes = super::styling::build_geometry_style_indexes(&content, &mut decoder);
+        let mut geometry_styles = style_indexes.colors;
+        let geometry_shading_styles = style_indexes.shading_colors;
         let style_index = build_element_style_index(&content, &geometry_styles, &mut decoder);
         // Build material-based styles for sub-element color fallback (windows, doors)
         let element_material_styles =
@@ -205,7 +210,9 @@ impl IfcAPI {
                 let mut added_any_mesh = false;
 
                 let mut push_mesh_if_valid =
-                    |mesh: &mut ifc_lite_geometry::Mesh, color: [f32; 4]| {
+                    |mesh: &mut ifc_lite_geometry::Mesh,
+                     color: [f32; 4],
+                     shading_color: Option<[f32; 4]>| {
                         if mesh.is_empty() {
                             return;
                         }
@@ -272,8 +279,9 @@ impl IfcAPI {
                             return;
                         }
 
-                        let mesh_data =
+                        let mut mesh_data =
                             MeshDataJs::new(id, ifc_type_name.clone(), mesh.clone(), color);
+                        mesh_data.set_shading_color(shading_color);
                         mesh_collection.add(mesh_data);
                         added_any_mesh = true;
                     };
@@ -308,7 +316,9 @@ impl IfcAPI {
                                 style_index.get(&id).copied(),
                                 default_color,
                             );
-                            push_mesh_if_valid(&mut mesh, color);
+                            let shading =
+                                geometry_shading_styles.get(&sub.geometry_id).copied();
+                            push_mesh_if_valid(&mut mesh, color, shading);
                         }
                     } else {
                         match router
@@ -329,7 +339,10 @@ impl IfcAPI {
                             Ok(mut mesh) => {
                                 let color =
                                     style_index.get(&id).copied().unwrap_or(default_color);
-                                push_mesh_if_valid(&mut mesh, color);
+                                // No per-geometry shading info here (color
+                                // came from build_element_style_index which
+                                // doesn't track the source geometry id).
+                                push_mesh_if_valid(&mut mesh, color, None);
                             }
                         }
                     }
@@ -364,7 +377,9 @@ impl IfcAPI {
                                 style_index.get(&id).copied(),
                                 default_color,
                             );
-                            push_mesh_if_valid(&mut mesh, color);
+                            let shading =
+                                geometry_shading_styles.get(&sub.geometry_id).copied();
+                            push_mesh_if_valid(&mut mesh, color, shading);
                         }
                     } else {
                         match router.process_element(&entity, &mut decoder) {
@@ -382,7 +397,7 @@ impl IfcAPI {
                             }
                             Ok(mut mesh) => {
                                 let color = style_index.get(&id).copied().unwrap_or(default_color);
-                                push_mesh_if_valid(&mut mesh, color);
+                                push_mesh_if_valid(&mut mesh, color, None);
                             }
                         }
                     }
@@ -595,14 +610,18 @@ impl IfcAPI {
                     .or_insert_with(|| ifc_type.name().to_string())
                     .clone();
 
-                let mut push_mesh = |mesh: &mut ifc_lite_geometry::Mesh, color: [f32; 4]| {
+                let mut push_mesh = |mesh: &mut ifc_lite_geometry::Mesh,
+                                     color: [f32; 4],
+                                     shading_color: Option<[f32; 4]>| {
                     if mesh.is_empty() {
                         return;
                     }
                     if mesh.normals.len() != mesh.positions.len() {
                         calculate_normals(mesh);
                     }
-                    let mesh_data = MeshDataJs::new(id, ifc_type_name.clone(), mesh.clone(), color);
+                    let mut mesh_data =
+                        MeshDataJs::new(id, ifc_type_name.clone(), mesh.clone(), color);
+                    mesh_data.set_shading_color(shading_color);
                     mesh_collection.add(mesh_data);
                 };
 
@@ -634,7 +653,11 @@ impl IfcAPI {
                                 element_color,
                                 default_color,
                             );
-                            push_mesh(&mut mesh, color);
+                            let shading = pre_pass
+                                .geometry_shading_styles
+                                .get(&sub.geometry_id)
+                                .copied();
+                            push_mesh(&mut mesh, color, shading);
                         }
                     } else if let Ok(mut mesh) = router.process_element_with_voids(
                         &entity,
@@ -642,7 +665,7 @@ impl IfcAPI {
                         &pre_pass.void_index,
                     ) {
                         let color = element_color.unwrap_or(default_color);
-                        push_mesh(&mut mesh, color);
+                        push_mesh(&mut mesh, color, None);
                     }
                 } else {
                     let skip_submesh = matches!(ifc_type, ifc_lite_core::IfcType::IfcSite);
@@ -675,11 +698,15 @@ impl IfcAPI {
                                 element_color,
                                 default_color,
                             );
-                            push_mesh(&mut mesh, color);
+                            let shading = pre_pass
+                                .geometry_shading_styles
+                                .get(&sub.geometry_id)
+                                .copied();
+                            push_mesh(&mut mesh, color, shading);
                         }
                     } else if let Ok(mut mesh) = router.process_element(&entity, &mut decoder) {
                         let color = element_color.unwrap_or(default_color);
-                        push_mesh(&mut mesh, color);
+                        push_mesh(&mut mesh, color, None);
                     }
                 }
             }
@@ -1614,16 +1641,21 @@ impl IfcAPI {
                                         element_color,
                                         default_color,
                                     );
+                                    let shading = pre_pass
+                                        .geometry_shading_styles
+                                        .get(&sub.geometry_id)
+                                        .copied();
 
                                     total_vertices += mesh.positions.len() / 3;
                                     total_triangles += mesh.indices.len() / 3;
 
-                                    let mesh_data = MeshDataJs::new(
+                                    let mut mesh_data = MeshDataJs::new(
                                         id,
                                         ifc_type_name.clone(),
                                         mesh,
                                         color,
                                     );
+                                    mesh_data.set_shading_color(shading);
                                     batch_meshes.push(mesh_data);
                                 }
                                 processed += 1;
@@ -1756,16 +1788,21 @@ impl IfcAPI {
                                         element_color,
                                         default_color,
                                     );
+                                    let shading = pre_pass
+                                        .geometry_shading_styles
+                                        .get(&sub.geometry_id)
+                                        .copied();
 
                                     total_vertices += mesh.positions.len() / 3;
                                     total_triangles += mesh.indices.len() / 3;
 
-                                    let mesh_data = MeshDataJs::new(
+                                    let mut mesh_data = MeshDataJs::new(
                                         id,
                                         ifc_type_name.clone(),
                                         mesh,
                                         color,
                                     );
+                                    mesh_data.set_shading_color(shading);
                                     batch_meshes.push(mesh_data);
                                 }
                             } else if let Ok(mut mesh) = router.process_element_with_voids(
@@ -1830,12 +1867,17 @@ impl IfcAPI {
                                         element_color,
                                         default_color,
                                     );
+                                    let shading = pre_pass
+                                        .geometry_shading_styles
+                                        .get(&sub.geometry_id)
+                                        .copied();
 
                                     total_vertices += mesh.positions.len() / 3;
                                     total_triangles += mesh.indices.len() / 3;
 
-                                    let mesh_data =
+                                    let mut mesh_data =
                                         MeshDataJs::new(id, ifc_type_name.clone(), mesh, color);
+                                    mesh_data.set_shading_color(shading);
                                     batch_meshes.push(mesh_data);
                                 }
                             } else {

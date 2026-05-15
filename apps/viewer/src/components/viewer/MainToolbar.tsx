@@ -65,9 +65,10 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { GLTFExporter, CSVExporter } from '@ifc-lite/export';
+import { CSVExporter } from '@ifc-lite/export';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
+import { GLBExportDialog } from './GLBExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -674,26 +675,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 
-  const handleExportGLB = useCallback(() => {
-    if (!requireDesktopFeature('exports', 'Exports')) return;
-    if (!geometryResult) return;
-    try {
-      const exporter = new GLTFExporter(geometryResult);
-      const glb = exporter.exportGLB({ includeMetadata: true });
-      const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model.glb';
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(`Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`);
-    } catch (err) {
-      console.error('Export failed:', err);
-      toast.error(`GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [geometryResult, requireDesktopFeature]);
-
   const handleScreenshot = useCallback(() => {
     if (!requireDesktopFeature('exports', 'Exports')) return;
     const canvas = document.querySelector('canvas');
@@ -886,10 +867,21 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleExportGLB}>
-            <Download className="h-4 w-4 mr-2" />
-            Export GLB (3D Model)
-          </DropdownMenuItem>
+          {hasDesktopFeatureAccess(desktopEntitlement, 'exports') ? (
+            <GLBExportDialog
+              trigger={
+                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export GLB (3D Model)
+                </DropdownMenuItem>
+              }
+            />
+          ) : (
+            <DropdownMenuItem onClick={() => promptDesktopUpgrade('Exports')}>
+              <Download className="h-4 w-4 mr-2" />
+              Export GLB (3D Model)
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={!ifcDataStore}>

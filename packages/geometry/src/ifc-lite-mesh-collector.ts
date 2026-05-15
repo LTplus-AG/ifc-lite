@@ -179,6 +179,15 @@ export class IfcLiteMeshCollector {
           colorArray[3],
         ];
 
+        // Optional SurfaceColour for the GLB exporter's "Shading" mode.
+        // Absent when the file didn't author a distinct DiffuseColour
+        // (the common case) — the exporter falls back to `color`.
+        const shadingArray = (mesh as { shadingColor?: ArrayLike<number> }).shadingColor;
+        const shadingColor: [number, number, number, number] | undefined =
+          shadingArray && shadingArray.length === 4
+            ? [shadingArray[0], shadingArray[1], shadingArray[2], shadingArray[3]]
+            : undefined;
+
         // Z-up→Y-up conversion and winding order reversal are now done
         // in Rust (MeshDataJs::new) for performance.
         meshes.push({
@@ -188,6 +197,7 @@ export class IfcLiteMeshCollector {
           normals: mesh.normals,
           indices: mesh.indices,
           color,
+          ...(shadingColor ? { shadingColor } : {}),
         });
 
         // Free the individual mesh to avoid memory leaks

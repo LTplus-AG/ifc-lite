@@ -311,50 +311,72 @@ named, persistent tool. No AI authoring. No new permissions surface.
 | 1.E Review screen | T13-T15 | Yes |
 | 1.F Resource caps + audit | T16-T18 | Yes |
 
-### Milestone 1.A — IndexedDB store
+### Milestone 1.A — Storage abstraction
 
-- [ ] **P1.T1** — `extensions` and `extension-bundles` object stores
-  with schema versioning.
-  **Where:** `packages/extensions/src/storage/idb.ts`.
+- [x] **P1.T1** — Storage interface + in-memory implementation.
+  **Where:** `packages/extensions/src/storage/{types,memory,index}.ts`.
   **Depends on:** P0.T5.
-  **Acceptance:** put/get/list/delete; transactional; schema
-  versioning with migration hook. Tests using fake-indexeddb.
+  **Acceptance:** put/get/list/delete for records and bundles;
+  defensive copies; cascade delete. Tests using the in-memory impl.
   **Effort:** M.
+  Notes: **plan deviation.** Spec said `storage/idb.ts` directly,
+  but the package is host-agnostic — it cannot depend on IndexedDB.
+  Implemented as an `ExtensionStorage` interface with an in-memory
+  implementation here. The viewer-side IDB adapter (Phase 1.B in the
+  UI) wraps `idb` behind this interface; the desktop adapter will
+  wrap a filesystem.
 
-- [ ] **P1.T2** — `InstalledExtensionRecord` type and CRUD ops.
-  **Where:** `packages/extensions/src/storage/records.ts`.
+- [x] **P1.T2** — `InstalledExtensionRecord` type and CRUD ops.
+  **Where:** `packages/extensions/src/storage/types.ts`.
   **Depends on:** P1.T1.
   **Acceptance:** record carries id, version, bundle hash, granted
-  capabilities, enabled flag, install timestamp. Tests cover round-trip.
+  capabilities, enabled flag, install timestamp, source, lastActivatedAt,
+  config. Tests cover round-trip.
   **Effort:** S.
 
-- [ ] **P1.T3** — Bundle hashing (SHA-256) + integrity check on load.
+- [x] **P1.T3** — Bundle hashing (SHA-256) + integrity check on load.
   `[security]`
-  **Where:** `packages/extensions/src/storage/integrity.ts`.
+  **Where:** `packages/extensions/src/storage/hash.ts`,
+  consumed by `host/loader.ts`.
   **Depends on:** P1.T1.
   **Acceptance:** install records canonical hash; load verifies; on
-  mismatch refuses with structured error. Tests cover happy path and
-  tamper.
+  mismatch refuses with structured error. Tests cover known digests
+  (empty, "abc"), determinism, sub-array views, mismatch detection.
   **Effort:** S.
+  Notes: Uses WebCrypto `crypto.subtle.digest('SHA-256')` — available
+  in Node ≥ 15 and all modern browsers. Constant-time-ish `hexEqual`
+  helper for digest comparison.
 
 ### Milestone 1.B — Loader + activation
 
-- [ ] **P1.T4** — `ExtensionLoader` — discover installed extensions,
+- [x] **P1.T4** — `ExtensionLoader` — discover installed extensions,
   validate, register contributions.
   **Where:** `packages/extensions/src/host/loader.ts`.
   **Depends on:** P0.T10, P1.T2.
-  **Acceptance:** on construct, scans storage, validates each,
-  registers contributions with `SlotRegistry`. Failures captured in
-  a per-extension status, not thrown. Tests cover good / bad / mixed.
+  **Acceptance:** scans storage; per-record hash check, manifest re-
+  validation, capability parse, slot registration, activation-event
+  registration. Failures captured in `LoadedExtensionStatus`, never
+  thrown. Tests cover good / bad-hash / missing-bundle / disabled /
+  id-mismatch / mixed.
   **Effort:** M.
+  Notes: 14 tests including the one-bad-extension-doesn't-block-others
+  invariant. Composes existing modules — no behaviour newly
+  introduced beyond orchestration.
 
-- [ ] **P1.T5** — Activation event dispatcher. `onStartup`,
-  `onCommand:<id>` only in Phase 1.
+- [x] **P1.T5** — Activation event dispatcher.
   **Where:** `packages/extensions/src/host/activation.ts`.
   **Depends on:** P1.T4.
-  **Acceptance:** event arrival → activation if not active; dedupe;
-  rejection paths logged. Tests with mock command dispatcher.
+  **Acceptance:** `register(id, events[])`, `unregister(id)`,
+  `fire(event)` returns activated ids, listeners fire sequentially per
+  extension, at-most-once per session unless `resetActivation` called.
+  Tests cover replace, unregister, sequential await order,
+  unsubscribe.
   **Effort:** M.
+  Notes: 13 tests. Activation events from the full v1 set
+  (`onStartup`, `onCommand:<id>`, `onLens:<id>`, `onExporter:<id>`,
+  `onIdsValidator:<id>`, `onSchema:<v>`, `onSlot:<id>`,
+  `onModelLoad`) — Phase 1.B's host integration narrows initial usage
+  to `onStartup` + `onCommand:<id>` but the dispatcher is full-fat.
 
 - [ ] **P1.T6** — Sandbox wiring. Per-extension QuickJS context with
   capability-scoped `ctx`.
@@ -365,6 +387,9 @@ named, persistent tool. No AI authoring. No new permissions surface.
   if present; `ctx` exposes only fields whose capabilities are
   granted. Tests assert grant ↔ ctx-field equivalence.
   **Effort:** L. `[security]`
+  Notes: deferred — requires extending the existing sandbox bridge
+  with per-capability gating. Substantial security-sensitive work
+  best tackled in a focused review-friendly diff.
 
 ### Milestone 1.C — Host integration
 
@@ -395,15 +420,23 @@ named, persistent tool. No AI authoring. No new permissions surface.
 
 ### Milestone 1.D — Promote-to-tool UX
 
-- [ ] **P1.T10** — Static-analysis capability inference for promoted
+- [x] **P1.T10** — Static-analysis capability inference for promoted
   scripts. `[security]`
-  **Where:** `apps/viewer/src/lib/scripts/infer-capabilities.ts`.
+  **Where:** `packages/extensions/src/inference/{capability,catalogue,index}.ts`.
   **Depends on:** P0.T7.
-  **Acceptance:** AST walker over a saved script returns a minimal
-  capability set (e.g. detects `bim.viewer.colorize`, `bim.export.csv`,
-  no network). Conservative: any uncertainty maps to read-only.
-  Tests cover ≥ 20 sample scripts.
+  **Acceptance:** AST walker (acorn) over a saved script returns a
+  minimal capability set (e.g. detects `bim.viewer.colorize`,
+  `bim.export.csv`). Conservative: any uncertainty maps to the broader
+  capability or surfaces the call as `unknown`. Tests cover 25+ sample
+  scripts including computed-access, top-level await, malformed input.
   **Effort:** L.
+  Notes: **plan deviation.** Spec located this in
+  `apps/viewer/src/lib/scripts/`. Moved into the host-agnostic
+  `@ifc-lite/extensions` package so the same inference can run in
+  the CLI, the MCP server, and the AI authoring loop. acorn +
+  acorn-walk added as deps (tiny, standard, widely-vetted ES
+  parser; deliberate trade-off over zero-dep regex which would
+  under-grant on edge cases).
 
 - [ ] **P1.T11** — "Promote to tool" button in `ScriptPanel`.
   **Where:** `apps/viewer/src/components/viewer/ScriptPanel.tsx`.
@@ -458,14 +491,19 @@ named, persistent tool. No AI authoring. No new permissions surface.
   extensions; tests with a deliberately-greedy fixture.
   **Effort:** L.
 
-- [ ] **P1.T17** — Audit log writer.
-  **Where:** `packages/extensions/src/audit/log.ts`,
-  `apps/viewer/src/components/extensions/AuditLogPanel.tsx`.
+- [~] **P1.T17** — Audit log writer.
+  **Where:** `packages/extensions/src/audit/{log,types,index}.ts`.
   **Depends on:** P1.T2.
-  **Acceptance:** append-only ring buffer (default 30 days / 10 MB);
-  records install / uninstall / activation / capability grant; UI
-  panel exposes export-as-JSON. Tests cover write-then-read.
+  **Acceptance:** append-only ring buffer with byte + count caps,
+  records install / uninstall / update / enable / disable /
+  capability_grant / capability_revoke / activate / deactivate /
+  mutation_summary / network_fetch / unhealthy / killed. JSON export
+  with self-describing envelope. Tests cover monotonic seqs, filters,
+  byte- and count-based eviction, clear semantics.
   **Effort:** M.
+  Notes: library layer done. **Viewer-side AuditLogPanel deferred to
+  the UI batch** — needs React + browser to verify accessibility and
+  storage persistence. The headless writer is complete and tested.
 
 - [ ] **P1.T18** — Settings → Extensions page.
   **Where:** `apps/viewer/src/components/viewer/SettingsPage.tsx`

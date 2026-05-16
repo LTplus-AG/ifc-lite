@@ -72,3 +72,15 @@ export { SlotRegistry } from './slot-registry.js';
 
 // ---------- Bundle
 export * from './bundle/index.js';
+
+// ---------- Storage
+export * from './storage/index.js';
+
+// ---------- Host (loader + activation dispatcher)
+export * from './host/index.js';
+
+// ---------- Audit log
+export * from './audit/index.js';
+
+// ---------- Capability inference (for promote-to-tool UX)
+export * from './inference/index.js';

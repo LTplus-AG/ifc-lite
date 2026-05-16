@@ -39,7 +39,7 @@ debug_geometry = []
 earcutr = "0.4"
 
 # 2D polygon boolean operations for profile-level void subtraction
-i_overlay = "1.9"
+i_overlay = "6.0"
 
 # Core IFC parsing
 ifc-lite-core.workspace = true

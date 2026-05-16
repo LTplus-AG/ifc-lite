@@ -2156,47 +2156,45 @@ dependencies = [
 
 [[package]]
 name = "i_float"
-version = "1.6.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "775f9961a8d2f879725da8aff789bb20a3ddf297473e0c90af75e69313919490"
+checksum = "36c8fc32799c6cde9c7604188e4ece27acf3ddcb2d40b038113e3f0bc525aac7"
 dependencies = [
- "serde",
+ "libm",
 ]
 
 [[package]]
 name = "i_key_sort"
-version = "0.2.0"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "347c253b4748a1a28baf94c9ce133b6b166f08573157e05afe718812bc599fcd"
+checksum = "d73d122b937fca067feb0ad74f62388920272b27c356d4df2d0cfdd59e044cf0"
 
 [[package]]
 name = "i_overlay"
-version = "1.10.0"
+version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efc99d863511ee3f7f8d7375c7f477314bd5a36bc409bb6c2ac2037939bb8391"
+checksum = "b0f8ed01b5f7de7c2e5661d9ac807aacb33ad76f591f973d89b58e998f552c34"
 dependencies = [
  "i_float",
  "i_key_sort",
  "i_shape",
  "i_tree",
- "rayon",
 ]
 
 [[package]]
 name = "i_shape"
-version = "1.6.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27dbe9e5238d6b9c694c08415bf00fb370b089949bd818ab01f41f8927b8774c"
+checksum = "1d12d0501b145b966d1801f90e4fcc20b65b39617055d131efa8699068bb1de1"
 dependencies = [
  "i_float",
- "serde",
 ]
 
 [[package]]
 name = "i_tree"
-version = "0.8.3"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "155181bc97d770181cf9477da51218a19ee92a8e5be642e796661aee2b601139"
+checksum = "4804bdc1dc124eb7e1aa9e144ecc04096bcf787a10a15fa44af682b51f0f6cce"
 
 [[package]]
 name = "iana-time-zone"
@@ -2349,7 +2347,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-core"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -2388,7 +2386,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-engine"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "ifc-lite-processing",
  "memmap2 0.9.10",
@@ -2397,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "approx",
  "earcutr",
@@ -2413,7 +2411,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -2426,7 +2424,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2460,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",

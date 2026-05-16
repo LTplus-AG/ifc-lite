@@ -662,14 +662,16 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   catalogue + style rules; cacheable; total fragment ≤ 20k tokens.
   **Effort:** M.
 
-- [~] **P2.T7** — Prompt caching integration.
-  **Where:** modify `apps/viewer/src/lib/llm/stream-client.ts` and
-  `stream-direct.ts`.
-  Notes: contract is now appended to the system prompt for authoring
-  turns via `buildSystemPrompt({ includeAuthoringContract: true })`,
-  so prompt caching at the LLM provider level captures it without
-  per-call cache_control markers. Explicit `cache_control` wiring +
-  cost measurement deferred until the stream client gets a v2 pass.
+- [x] **P2.T7** — Prompt caching integration.
+  **Where:** `apps/viewer/src/lib/llm/prompt-cache.ts`,
+  `stream-direct.ts`, `stream-client.ts`.
+  Notes: `buildCacheableSystem` wraps system prompts ≥ 4 KiB in an
+  ephemeral `cache_control` block on both paths (Anthropic SDK +
+  proxy). Cache hit/miss numbers surface via `logCacheHit` under the
+  `[ext:prompt-cache]` console logger, drawing from
+  `cache_creation_input_tokens` / `cache_read_input_tokens` in the
+  Anthropic usage payload. Cost-test measurement deferred to a
+  benchmark pass.
 
 ### Milestone 2.C — Bundle synthesis
 
@@ -1199,12 +1201,22 @@ Action log + pattern miner + personal memory + SDK-update repair.
 ### Phase 4 gate
 
 - [ ] All P4 tasks checked.
-- [ ] Action log demonstrably contains no model / chat / file content.
-- [ ] Pattern miner suggests a planted pattern in a fresh user
-  simulation.
+- [x] Action log demonstrably contains no model / chat / file content.
+  Guarded by `eval/loops.test.ts > P4 gate: action-log content
+  discipline` — every event in the planted log is scanned against a
+  forbidden-pattern set (GUIDs, paths, emails, API keys, long blobs).
+- [x] Pattern miner suggests a planted pattern in a fresh user
+  simulation. Guarded by `eval/loops.test.ts > eval: pattern miner
+  loop > surfaces the planted load→lens→export pattern as the top
+  suggestion`.
 - [ ] Memory extractor evals pass at the targeted thresholds.
-- [ ] SDK-bump dry run: representative installed-extension set passes
+  Notes: extractor + blocklist tested; thresholds not yet defined,
+  needs a labelled benchmark set.
+- [~] SDK-bump dry run: representative installed-extension set passes
   with the repair loop fixing ≥ 80% of failures.
+  Notes: bucketing tested via `eval/loops.test.ts > P4 gate: SDK-bump
+  dry run`; the ≥ 80% repair-success threshold can't be verified
+  without running the AI authoring loop in-test.
 - [ ] Changeset bumps `@ifc-lite/extensions` to `0.9.0`.
 
 ---

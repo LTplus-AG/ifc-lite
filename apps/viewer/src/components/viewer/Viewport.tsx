@@ -653,19 +653,20 @@ export function Viewport({
         },
         unprojectToFloor: (clientX, clientY, worldY) => {
           // Inverse of projectToScreen, but only against a horizontal
-          // plane at the given world Y. Used by drag handles to keep
-          // an endpoint on the storey floor while the cursor moves.
-          // Mirrors `raycastStoreyFloor` in selectionHandlers but
-          // doesn't require a MouseHandlerContext, so it can be
-          // called from any overlay.
+          // plane at the given world Y. `unprojectToRay` expects
+          // drawing-buffer coords (c.width / c.height) — same space
+          // `projectToScreen` uses above — so we scale the CSS-space
+          // cursor delta by DPR before handing it over. This matches
+          // what raycastStoreyFloor does for the mouse handlers
+          // (after #723 — see the matching fix there).
           const c = canvasRef.current;
           if (!c) return null;
-          // clientX/clientY are page-space; convert to canvas-local
-          // before unprojecting (matches the renderer's coord system).
           const rect = c.getBoundingClientRect();
-          const x = clientX - rect.left;
-          const y = clientY - rect.top;
-          const ray = camera.unprojectToRay(x, y, c.clientWidth, c.clientHeight);
+          const cssX = clientX - rect.left;
+          const cssY = clientY - rect.top;
+          const x = (cssX / rect.width) * c.width;
+          const y = (cssY / rect.height) * c.height;
+          const ray = camera.unprojectToRay(x, y, c.width, c.height);
           if (!ray) return null;
           const dy = ray.direction.y;
           if (Math.abs(dy) < 1e-6) return null;

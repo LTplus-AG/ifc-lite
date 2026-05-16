@@ -138,7 +138,7 @@ a `modelIndex × buildingGap` to every storey's offset.
 New `LevelDisplayDropdown` between the floorplan dropdown and the
 class-visibility dropdown in `MainToolbar.tsx`:
 
-```
+```text
 [ Floorplan ▾ ] [ View ▾ ] [ Layers ▾ ]
                   │
                   ├ ◯ Stacked

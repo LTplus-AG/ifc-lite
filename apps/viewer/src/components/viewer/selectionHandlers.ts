@@ -221,7 +221,15 @@ function raycastStoreyFloor(
   const camera = ctx.renderer.getCamera();
   const canvas = ctx.renderer.getCanvas();
   if (!camera || !canvas) return null;
-  const ray = camera.unprojectToRay(x, y, canvas.clientWidth, canvas.clientHeight);
+  // x/y arrive in CSS space (handleSelectionClick subtracts the
+  // bounding-rect origin). `unprojectToRay` expects drawing-buffer
+  // coords, which differ from CSS by DPR. Convert both the cursor
+  // and the canvas size so the ray is computed in the same space
+  // `projectToScreen` writes to — otherwise pick drifts at DPR ≠ 1.
+  const rect = canvas.getBoundingClientRect();
+  const sx = rect.width > 0 ? (x / rect.width) * canvas.width : x;
+  const sy = rect.height > 0 ? (y / rect.height) * canvas.height : y;
+  const ray = camera.unprojectToRay(sx, sy, canvas.width, canvas.height);
   if (!ray) return null;
   const planeY = resolveStoreyFloorY();
   // Looking down typically means D.y < 0; reject parallel / near-parallel

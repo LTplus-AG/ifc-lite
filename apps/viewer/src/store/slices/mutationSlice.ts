@@ -332,6 +332,23 @@ export interface MutationSlice {
     expressId: number,
   ) => { yawZ: number; refDirection: [number, number, number] } | null;
   /**
+   * Read the entity's storey-local placement coordinates. Returns
+   * null when the placement chain isn't a simple
+   * `IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint`
+   * (i.e. when `translateEntity` / `setEntityPosition` wouldn't work
+   * either). The action lazily creates the `StoreEditor` on first
+   * call so it works on a freshly-loaded model that hasn't seen any
+   * mutations yet — `MutablePropertyView` is the only thing
+   * `PropertiesPanel` registers up front, and the editor is a thin
+   * facade we can build on demand. Pairing the gate condition with
+   * the existing read-actions keeps "is this entity movable?" and
+   * "what are its coords?" answered by the same code path.
+   */
+  readEntityPosition: (
+    modelId: string,
+    expressId: number,
+  ) => [number, number, number] | null;
+  /**
    * Resize a rectangular-profile wall by setting new start AND end
    * points. Atomically updates the placement origin, RefDirection,
    * profile length, and profile origin. Returns null for walls that
@@ -1065,34 +1082,62 @@ export const createMutationSlice: StateCreator<
           'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D chain',
       };
     }
+    if (state.refDirectionId === null) {
+      // Implicit RefDirection means the axis placement points at no
+      // IfcDirection — STEP `$` slot. Materialising a fresh
+      // IfcDirection here would require a multi-mutation atomic undo
+      // entry to avoid orphans; we don't have that primitive yet.
+      // In practice every entity our in-store builders emit
+      // (addColumn / addWall / addSlab / …) carries an explicit
+      // RefDirection, so this branch only trips on hand-rolled
+      // source-buffer entities. Surface a clear refusal so the UI
+      // can show "rotate not supported for this entity" rather than
+      // silently leaking entities.
+      return {
+        ok: false,
+        reason:
+          'Entity has an implicit reference direction (no IfcDirection on its axis placement). Rotation would require materialising a new IfcDirection, which isn\'t undoable yet.',
+      };
+    }
     const newYaw = state.yawZ + deltaYaw;
     const newRatios: [number, number, number] = [
       Math.cos(newYaw),
       Math.sin(newYaw),
       state.refDirection[2],
     ];
-    if (state.refDirectionId === null) {
-      // Materialise + repoint. The create goes direct to the editor;
-      // the axis-placement attribute write goes through the slice so
-      // undo handles it. See note above.
-      const newDirId = editor.addEntity('IfcDirection', [newRatios]).expressId;
-      get().setPositionalAttribute(modelId, state.axisPlacementId, 2, `#${newDirId}`);
-    } else {
-      get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
-    }
+    get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
     return { ok: true, newYawZ: newYaw };
   },
 
   readEntityRotation: (modelId, expressId) => {
+    // Lazy editor creation — see the note on `readEntityPosition`
+    // below. A freshly-loaded model has a mutation view but no
+    // cached editor; building one on read so the rotation UI lights
+    // up on first selection, not after the first unrelated edit.
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
-    const editor = get().storeEditors.get(modelId);
+    const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return null;
     const state = resolveRotationState(dataStore, view, editor, expressId);
     if (!state) return null;
     return { yawZ: state.yawZ, refDirection: state.refDirection };
+  },
+
+  readEntityPosition: (modelId, expressId) => {
+    // Mirror of `readEntityRotation`'s lazy-create pattern. Used by
+    // `GeometryEditCard` to seed its inputs AND by `GizmoOverlay`
+    // as its "is this entity movable?" gate — one code path means
+    // the controls and the visual gizmo agree on availability.
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolvePlacementChain(dataStore, view, editor, expressId);
+    return chain ? chain.coordinates : null;
   },
 
   resizeWall: (modelId, expressId, newStart, newEnd) => {
@@ -1135,9 +1180,13 @@ export const createMutationSlice: StateCreator<
   },
 
   readWallEndpoints: (modelId, expressId) => {
+    // Same lazy-create pattern as `readEntityRotation` /
+    // `readEntityPosition` — handles need to surface on first
+    // selection, not after an unrelated mutation has primed the
+    // editor cache.
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
-    const editor = get().storeEditors.get(modelId);
+    const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return null;

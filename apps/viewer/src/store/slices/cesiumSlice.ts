@@ -189,10 +189,16 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
     // the toolbar pill in sync so the user can't end up "moving the
     // georef" while the rest of the UI claims it's read-only. Turning
     // it off does *not* exit global edit; other sub-tools (properties,
-    // geometry) may still be in use.
+    // geometry) may still be in use — but we DO clear the placement
+    // draft so callers exiting via the setter don't leave stale draft
+    // state behind (matches the toggle's disable branch).
     enabled
       ? { cesiumPlacementEditMode: true, editEnabled: true }
-      : { cesiumPlacementEditMode: false },
+      : {
+          cesiumPlacementEditMode: false,
+          cesiumPlacementDraftModelId: null,
+          cesiumPlacementDraft: null,
+        },
   ),
   toggleCesiumPlacementEditMode: () => set((s) => (
     s.cesiumPlacementEditMode

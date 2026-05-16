@@ -134,7 +134,10 @@ export function WallEndpointOverlay() {
       if (!mounted) return;
       const vp = getViewpoint?.();
       if (vp) {
-        const sig = `${vp.position.x},${vp.position.y},${vp.position.z},${vp.target.x},${vp.target.y},${vp.target.z},${vp.fov}`;
+        // projectionMode + orthoSize matter for ortho-zoom-only
+        // moves that leave position / target / fov untouched — see
+        // the matching note in GizmoOverlay.
+        const sig = `${vp.position.x},${vp.position.y},${vp.position.z},${vp.target.x},${vp.target.y},${vp.target.z},${vp.fov},${vp.projectionMode},${vp.orthoSize ?? ''}`;
         if (sig !== lastViewpointRef.current) {
           lastViewpointRef.current = sig;
           setFrameTick((n) => (n + 1) % 1_000_000);

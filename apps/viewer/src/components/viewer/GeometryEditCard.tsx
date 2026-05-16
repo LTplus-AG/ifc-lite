@@ -36,7 +36,6 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
-import { resolvePlacementChain } from '@/lib/placement-edit';
 
 interface GeometryEditCardProps {
   modelId: string;
@@ -46,10 +45,13 @@ interface GeometryEditCardProps {
 }
 
 /**
- * Read the current placement coordinates for the entity. Pulls the
- * dataStore + view + editor from the live store, then walks the
- * chain. Returns null when the chain doesn't match the expected
- * shape, which the UI translates into a disabled Move state.
+ * Read the current placement coordinates for the entity via the
+ * mutation slice's `readEntityPosition` action — which lazily
+ * creates the `StoreEditor` on first call, so this works on a
+ * freshly-loaded model that hasn't seen any mutations yet. Returns
+ * null when the chain doesn't match the expected shape (entities
+ * with mapped representations etc.), which the UI translates into
+ * a disabled Move state.
  */
 function useEntityCoordinates(
   modelId: string,
@@ -59,17 +61,12 @@ function useEntityCoordinates(
   // previous Move in this same session must surface in the inputs
   // on the next render.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const readEntityPosition = useViewerStore((s) => s.readEntityPosition);
   return useMemo(() => {
-    const state = useViewerStore.getState();
-    const view = state.mutationViews.get(modelId);
-    const editor = state.storeEditors.get(modelId);
-    const dataStore = state.models.get(modelId)?.ifcDataStore;
-    if (!view || !editor || !dataStore) return null;
-    const chain = resolvePlacementChain(dataStore, view, editor, entityId);
-    return chain ? chain.coordinates : null;
+    return readEntityPosition(modelId, entityId);
     // mutationVersion is the dependency that forces re-resolve.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, entityId, mutationVersion]);
+  }, [modelId, entityId, mutationVersion, readEntityPosition]);
 }
 
 const STEP_PRESETS = [0.1, 0.5, 1];

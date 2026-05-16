@@ -34,7 +34,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
-import { resolvePlacementChain } from '@/lib/placement-edit';
 import { getEntityCenter } from '@/utils/viewportUtils';
 
 type Vec2 = { x: number; y: number };
@@ -70,6 +69,7 @@ export function GizmoOverlay() {
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
   const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
   const translateEntity = useViewerStore((s) => s.translateEntity);
+  const readEntityPosition = useViewerStore((s) => s.readEntityPosition);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models, geometryResult } = useIfc();
 
@@ -90,7 +90,11 @@ export function GizmoOverlay() {
     cursorStart: Vec2;
   } | null>(null);
 
-  // Decide whether the gizmo is renderable at all this frame.
+  // Decide whether the gizmo is renderable at all this frame. The
+  // movability gate is `readEntityPosition` (slice action that
+  // lazily creates the StoreEditor) so the arrows surface on the
+  // user's first selection — no need to wait for an unrelated
+  // mutation to prime the editor cache.
   const ready = useMemo(() => {
     if (!editEnabled) return null;
     if (activeTool !== 'select') return null;
@@ -100,21 +104,10 @@ export function GizmoOverlay() {
     const model = models.get(selectedEntity.modelId);
     if (!model?.ifcDataStore) return null;
 
-    // Pull the live mutation view + editor from the store. Skip the
-    // gizmo when no overlay has been created yet (rare — the slice
-    // creates one on demand whenever a mutation runs, but for a
-    // freshly-loaded model the user may not have edited anything).
-    const state = useViewerStore.getState();
-    const view = state.mutationViews.get(selectedEntity.modelId);
-    const editor = state.storeEditors.get(selectedEntity.modelId);
-    if (!view || !editor) return null;
+    const coords = readEntityPosition(selectedEntity.modelId, selectedEntity.expressId);
+    if (!coords) return null;
 
-    // Confirm the entity has a translatable placement before we draw
-    // arrows. Saves the user from grabbing an arrow that does nothing.
-    const chain = resolvePlacementChain(model.ifcDataStore, view, editor, selectedEntity.expressId);
-    if (!chain) return null;
-
-    // Origin in renderer frame.
+    // Origin in renderer frame — bbox center of the entity's meshes.
     const meshes = (model.geometryResult ?? geometryResult)?.meshes ?? null;
     const origin = pickViewerOrigin(meshes, selectedEntityId);
     if (!origin) return null;
@@ -129,6 +122,7 @@ export function GizmoOverlay() {
     models,
     geometryResult,
     projectToScreen,
+    readEntityPosition,
     mutationVersion,
     frameTick,
   ]);
@@ -141,7 +135,12 @@ export function GizmoOverlay() {
       if (!mounted) return;
       const vp = getViewpoint?.();
       if (vp) {
-        const sig = `${vp.position.x},${vp.position.y},${vp.position.z},${vp.target.x},${vp.target.y},${vp.target.z},${vp.fov}`;
+        // Include projectionMode + orthoSize so ortho-zoom-only
+        // changes (which leave position / target / fov untouched)
+        // still wake the overlay. Without these the gizmo lags
+        // ortho zoom; the perspective path was already covered by
+        // fov in the signature.
+        const sig = `${vp.position.x},${vp.position.y},${vp.position.z},${vp.target.x},${vp.target.y},${vp.target.z},${vp.fov},${vp.projectionMode},${vp.orthoSize ?? ''}`;
         if (sig !== lastViewpointRef.current) {
           lastViewpointRef.current = sig;
           setFrameTick((n) => (n + 1) % 1_000_000);
@@ -222,7 +221,14 @@ export function GizmoOverlay() {
     const idx = drag.axis === 'x' ? 0 : drag.axis === 'y' ? 1 : 2;
     delta[idx] = metres - (drag.axis === 'x' ? previous.x : drag.axis === 'y' ? previous.y : previous.z);
     if (Math.abs(delta[idx]) < 1e-6) return;
-    translateEntity(ready.modelId, ready.expressId, delta);
+    // Only advance the per-axis accumulator if the mutation actually
+    // landed. If `translateEntity` rejects (placement chain doesn't
+    // resolve, missing data store, etc.) the model state didn't
+    // change, so leaving the accumulator at its previous value means
+    // the next pointer-move frame retries the full delta instead of
+    // silently dropping it. Keeps drag state and model state in sync.
+    const result = translateEntity(ready.modelId, ready.expressId, delta);
+    if (!result.ok) return;
     if (drag.axis === 'x') previous.x = metres;
     else if (drag.axis === 'y') previous.y = metres;
     else previous.z = metres;

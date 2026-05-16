@@ -293,7 +293,11 @@ describe('placement-edit', () => {
     assert.ok(Math.abs(state.refDirection[1] - 1) < 1e-9);
   });
 
-  it('rotateProductYaw materialises a fresh IfcDirection when implicit', () => {
+  it('rotateProductYaw refuses to act when RefDirection is implicit', () => {
+    // Avoids the orphan-on-undo problem: creating a fresh
+    // IfcDirection here without a batched-mutation primitive would
+    // leave it behind after undo. Refusing is the safer default
+    // until we have multi-entity atomic undo.
     const { point, axis, local, column } = makeFixture();
     const editor = new StubStoreEditor([point, axis, local, column]);
     const view = new StubView();
@@ -304,18 +308,7 @@ describe('placement-edit', () => {
       100,
       Math.PI / 4,
     );
-    assert.ok(result.ok);
-    // The axis placement should now point at a newly-allocated direction id.
-    const state = resolveRotationState(
-      dataStoreStub,
-      view as unknown as Parameters<typeof resolveRotationState>[1],
-      editor as unknown as Parameters<typeof resolveRotationState>[2],
-      100,
-    );
-    assert.ok(state);
-    assert.notStrictEqual(state.refDirectionId, null);
-    assert.ok(Math.abs(state.refDirection[0] - Math.cos(Math.PI / 4)) < 1e-9);
-    assert.ok(Math.abs(state.refDirection[1] - Math.sin(Math.PI / 4)) < 1e-9);
+    assert.strictEqual(result.ok, false);
   });
 
   /**

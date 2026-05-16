@@ -47,6 +47,7 @@ import { getEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import type { AddElementType } from './addElementSlice.js';
+import { resolvePlacementChain } from '@/lib/placement-edit.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -277,6 +278,32 @@ export interface MutationSlice {
    * Returns true if the entity was known to the store or overlay.
    */
   removeEntity: (modelId: string, expressId: number) => boolean;
+  /**
+   * Translate an IfcProduct by a storey-local delta (IFC Z-up). Walks
+   * the placement chain to the terminal `IfcCartesianPoint` and writes
+   * the new coordinates via `setPositionalAttribute` so the edit
+   * stacks with other overlay mutations and undoes cleanly.
+   *
+   * Returns `{ ok: false }` for entities whose placement isn't a
+   * simple `IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint`
+   * chain (mapped representations, 2D placements, non-product
+   * entities). The viewer surfaces the reason as a toast.
+   */
+  translateEntity: (
+    modelId: string,
+    expressId: number,
+    deltaIfc: [number, number, number],
+  ) => { ok: true; newCoordinates: [number, number, number] } | { ok: false; reason: string };
+  /**
+   * Absolute version of `translateEntity` — replaces the entity's
+   * storey-local position instead of adding a delta. Same chain
+   * requirements apply.
+   */
+  setEntityPosition: (
+    modelId: string,
+    expressId: number,
+    position: [number, number, number],
+  ) => { ok: true; newCoordinates: [number, number, number] } | { ok: false; reason: string };
   /**
    * Add a fully-anchored IfcColumn (and its sub-graph) to a parsed model.
    * Returns the new column's expressId, or null if the model can't be
@@ -919,6 +946,53 @@ export const createMutationSlice: StateCreator<
     // Return the mutation we just pushed onto the undo stack.
     const stack = get().undoStacks.get(modelId);
     return stack ? stack[stack.length - 1] : null;
+  },
+
+  translateEntity: (modelId, expressId, delta) => {
+    // Read the existing placement chain WITHOUT committing the edit
+    // yet — we'll route the actual write through `setPositionalAttribute`
+    // below so undo/redo + dirty-tracking come for free.
+    const view = get().mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    const chain = resolvePlacementChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
+      };
+    }
+    const [x, y, z] = chain.coordinates;
+    const next: [number, number, number] = [x + delta[0], y + delta[1], z + delta[2]];
+    // Go through the slice's own `setPositionalAttribute` action so
+    // the mutation lands on the undo stack with the standard envelope.
+    get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, next);
+    return { ok: true, newCoordinates: next };
+  },
+
+  setEntityPosition: (modelId, expressId, position) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    const chain = resolvePlacementChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
+      };
+    }
+    get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, position);
+    return { ok: true, newCoordinates: position };
   },
 
   removeEntity: (modelId, expressId) => {

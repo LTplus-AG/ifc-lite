@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
+import { GeometryEditCard } from './GeometryEditCard';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -1454,14 +1455,21 @@ export function PropertiesPanel() {
             )}
             {/* Edit toolbar - only shown when edit mode is active */}
             {editMode && selectedEntity && !isNativeLazySelection && (
-              <EditToolbar
-                modelId={selectedEntity.modelId}
-                entityId={selectedEntity.expressId}
-                entityType={entityType}
-                existingPsets={renderedMergedProperties.map(p => p.name)}
-                existingQtos={renderedQuantities.map(q => q.name)}
-                schemaVersion={activeDataStore?.schemaVersion}
-              />
+              <>
+                <GeometryEditCard
+                  modelId={selectedEntity.modelId}
+                  entityId={selectedEntity.expressId}
+                  entityLabel={entityType ? `${entityType} #${selectedEntity.expressId}` : `#${selectedEntity.expressId}`}
+                />
+                <EditToolbar
+                  modelId={selectedEntity.modelId}
+                  entityId={selectedEntity.expressId}
+                  entityType={entityType}
+                  existingPsets={renderedMergedProperties.map(p => p.name)}
+                  existingQtos={renderedQuantities.map(q => q.name)}
+                  schemaVersion={activeDataStore?.schemaVersion}
+                />
+              </>
             )}
             {renderedMergedProperties.length === 0
               && renderedClassifications.length === 0

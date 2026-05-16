@@ -1384,11 +1384,11 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "earcutr"
-version = "0.4.3"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79127ed59a85d7687c409e9978547cffb7dc79675355ed22da6b66fd5f6ead01"
+checksum = "afc28d89ac6cb489f679fcf51aaa62b4667bb0fb73a30f1d4d23949069707c07"
 dependencies = [
- "itertools 0.11.0",
+ "itertools 0.14.0",
  "num-traits",
 ]
 
@@ -2349,7 +2349,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-core"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -2388,7 +2388,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-engine"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "ifc-lite-processing",
  "memmap2 0.9.10",
@@ -2397,7 +2397,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "approx",
  "earcutr",
@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -2426,7 +2426,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2460,7 +2460,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",
@@ -2565,9 +2565,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.11.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]

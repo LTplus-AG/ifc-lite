@@ -36,7 +36,7 @@ debug_geometry = []
 [dependencies]
 
 # Triangulation
-earcutr = "0.4"
+earcutr = "0.5"
 
 # 2D polygon boolean operations for profile-level void subtraction
 i_overlay = "1.9"

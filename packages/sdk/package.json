@@ -32,7 +32,7 @@
     "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {
-    "typescript": "^5.3.0",
+    "typescript": "^6.0.3",
     "vitest": "^1.6.0"
   },
   "license": "MPL-2.0",

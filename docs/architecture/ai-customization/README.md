@@ -43,6 +43,10 @@ the LLM already wired into the app.
 9. [`08-prior-art-research.md`](./08-prior-art-research.md) — Long-form
    research notes on every precedent we considered, what we take, and
    what we reject.
+10. [`09-implementation-plan.md`](./09-implementation-plan.md) — Live
+    task tracker: phases, milestones, numbered tasks (`P<n>.T<n>`),
+    file paths, acceptance criteria, effort estimates. Check boxes
+    as work lands.
 
 ## Non-goals
 

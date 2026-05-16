@@ -97,6 +97,12 @@ export function cloneElementMetadata(
 ): CloneMetadataResult {
   if (targetExpressIds.length === 0) return { relationshipsTouched: 0 };
 
+  // Dedupe caller-side input so a target listed twice doesn't
+  // produce two appends. The per-rel `currentRelated.includes`
+  // guard below would catch it on the second pass, but on the
+  // first pass both copies would land in the new list.
+  const uniqueTargets = Array.from(new Set(targetExpressIds));
+
   let touched = 0;
   for (const [type, index] of RELATIONSHIPS_TO_CLONE) {
     const relIds = dataStore.entityIndex.byType.get(type) ?? [];
@@ -107,7 +113,7 @@ export function cloneElementMetadata(
       if (!currentRelated.includes(sourceExpressId)) continue;
       // Skip targets that are already in the list — avoids duplicates
       // when this is called twice for the same operation (idempotent).
-      const additions = targetExpressIds.filter((t) => !currentRelated.includes(t));
+      const additions = uniqueTargets.filter((t) => !currentRelated.includes(t));
       if (additions.length === 0) continue;
       const newList = appendTargetsToList(attrs[index], additions);
       editor.setPositionalAttribute(relId, index, newList as IfcAttributeValue);

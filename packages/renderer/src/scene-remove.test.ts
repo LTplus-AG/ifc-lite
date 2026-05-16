@@ -31,20 +31,17 @@ describe('Scene.removeMeshesForEntity', () => {
     assert.strictEqual(scene.removeMeshesForEntity(123), false);
   });
 
-  it('drops dedicated meshes from meshDataMap on success', () => {
+  it('drops dedicated meshes from meshDataMap and returns true', () => {
     const scene = new Scene();
     const mesh = makeMesh(42);
     scene.addMeshData(mesh);
     // Pre-condition: the mesh is registered.
     assert.ok(scene['meshDataMap'].get(42));
-    // Bookkeeping side returns true (no bucket was attached
-    // because we didn't go through appendToBatches; the test
-    // exercises only the meshDataMap + boundingBoxes path. The
-    // affectedKeys set is empty so the public boolean is `false`
-    // — that's the documented behaviour for color-merged / no-
-    // bucket meshes. We assert the side effect directly.)
-    const result = scene.removeMeshesForEntity(42);
-    void result;
+    // A dedicated mesh (no per-vertex `entityIds`) counts as
+    // removed even when it never made it into a bucket — the
+    // bookkeeping side returns true so the bulk-count helper
+    // matches the documented contract.
+    assert.strictEqual(scene.removeMeshesForEntity(42), true);
     assert.strictEqual(scene['meshDataMap'].get(42), undefined);
   });
 
@@ -93,13 +90,13 @@ describe('Scene.removeMeshesForEntity', () => {
 });
 
 describe('Scene.removeMeshesForEntities', () => {
-  it('counts entities with dedicated meshes only', () => {
+  it('counts every entity with at least one dedicated mesh removed', () => {
     const scene = new Scene();
     scene.addMeshData(makeMesh(1));
     scene.addMeshData(makeMesh(2));
     // No mesh for 3 — should be skipped silently.
     const count = scene.removeMeshesForEntities([1, 2, 3]);
-    assert.strictEqual(count, 0); // dedicated meshes had no bucket in this test setup; see note above
+    assert.strictEqual(count, 2);
     assert.strictEqual(scene['meshDataMap'].get(1), undefined);
     assert.strictEqual(scene['meshDataMap'].get(2), undefined);
   });

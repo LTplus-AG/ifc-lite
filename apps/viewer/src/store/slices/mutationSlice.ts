@@ -1414,9 +1414,12 @@ export const createMutationSlice: StateCreator<
       Name: 'Wall (split R)',
     });
     if ('error' in right) {
-      // Best-effort rollback of the left half — its create-entity
-      // mutation is still on the undo stack, so the user can
-      // recover with Ctrl+Z if we ship a partial state.
+      // Roll back the left half so the action is atomic from the
+      // caller's perspective — without this the model is left in
+      // a partial state (one orphaned half-wall) on the
+      // exceedingly rare path where addWall succeeds for the left
+      // but fails for the right.
+      state.removeEntity(modelId, left.expressId);
       return { ok: false, reason: `Couldn't build right half: ${right.error}` };
     }
 
@@ -1540,19 +1543,11 @@ export const createMutationSlice: StateCreator<
       return { ok: false, reason: 'Element is not contained in a building storey' };
     }
 
-    // Shrink the source's extrusion to the "left" length. The
-    // source keeps its placement / profile / Pset rels — only the
-    // IfcExtrudedAreaSolid.Depth changes. One write, one undo
-    // entry, identity preserved. Goes through the slice's own
-    // setPositionalAttribute action so undo recovers it. The
-    // `shrinkLinearElementDepth` helper in linear-element-edit
-    // describes the same contract for callers outside the slice.
-    state.setPositionalAttribute(modelId, chain.extrudedSolidId, 3, geo.geometry.leftDepth);
-
-    // Add the "right" half via the matching builder so it picks up
-    // the same in-store mesh + undo plumbing every other addElement
-    // gesture uses. The dispatch is one-to-one with the chain's
-    // resolved element type.
+    // Add the "right" half FIRST so a builder failure leaves the
+    // source untouched (no partial-commit state). The source's
+    // extrusion shrink happens only after the new half lands.
+    // The dispatch is one-to-one with the chain's resolved
+    // element type.
     let addResult: { expressId: number } | { error: string };
     if (chain.elementType === 'IfcBeam') {
       addResult = state.addBeam(modelId, storeyExpressId, {
@@ -1583,11 +1578,14 @@ export const createMutationSlice: StateCreator<
       });
     }
     if ('error' in addResult) {
-      // Best-effort rollback of the depth shrink would need an
-      // explicit undo trip — the user can recover with Ctrl+Z, so
-      // we just surface the reason and bail.
       return { ok: false, reason: `Couldn't build right half: ${addResult.error}` };
     }
+
+    // Right half built — now shrink the source's extrusion to the
+    // "left" length. One write, one undo entry, identity
+    // preserved. Goes through the slice's own
+    // setPositionalAttribute action so undo recovers it.
+    state.setPositionalAttribute(modelId, chain.extrudedSolidId, 3, geo.geometry.leftDepth);
 
     // Carry Pset / classification / material rels onto the new
     // right half so it inherits the source's metadata. The source
@@ -1723,6 +1721,9 @@ export const createMutationSlice: StateCreator<
     }
     const right = buildHalf(geo.rightFootprint, 'R');
     if ('error' in right) {
+      // Roll back the left half so we don't leave a partial state
+      // (orphaned half-slab) on a right-half build failure.
+      state.removeEntity(modelId, left.expressId);
       return { ok: false, reason: `Couldn't build right half: ${right.error}` };
     }
 

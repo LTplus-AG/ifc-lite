@@ -218,4 +218,37 @@ describe('linear-element-edit', () => {
     // projects to t = 2 along Z.
     assert.strictEqual(projectOntoLinearAxis(chain, [1.2, 0, 2]), 2);
   });
+
+  it('rejects an explicit zero-length axis', () => {
+    const entities = makeBeamFixture();
+    // Override the axis IfcDirection to (0,0,0).
+    entities.find((e) => e.expressId === 96)!.attributes = [[0, 0, 0]];
+    const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveLinearElementChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveLinearElementChain>[1];
+    assert.strictEqual(resolveLinearElementChain(dataStoreStub, view, editor, 100), null);
+  });
+
+  it('rejects an axis with NaN components', () => {
+    const entities = makeBeamFixture();
+    entities.find((e) => e.expressId === 96)!.attributes = [[NaN, 0, 0]];
+    const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveLinearElementChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveLinearElementChain>[1];
+    assert.strictEqual(resolveLinearElementChain(dataStoreStub, view, editor, 100), null);
+  });
+
+  it('rejects non-finite extrusion depth', () => {
+    const entities = makeBeamFixture();
+    entities.find((e) => e.expressId === 93)!.attributes = [92, null, null, NaN];
+    const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveLinearElementChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveLinearElementChain>[1];
+    assert.strictEqual(resolveLinearElementChain(dataStoreStub, view, editor, 100), null);
+  });
+
+  it('rejects non-finite cross-section dimensions', () => {
+    const entities = makeBeamFixture();
+    entities.find((e) => e.expressId === 92)!.attributes = ['.AREA.', null, null, Infinity, 0.5];
+    const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveLinearElementChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveLinearElementChain>[1];
+    assert.strictEqual(resolveLinearElementChain(dataStoreStub, view, editor, 100), null);
+  });
 });

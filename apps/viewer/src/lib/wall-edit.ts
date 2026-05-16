@@ -209,6 +209,9 @@ export function computeWallSplitGeometry(
   if (!Number.isFinite(distance)) {
     return { ok: false, reason: 'Split distance must be a finite number' };
   }
+  if (!Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+    return { ok: false, reason: 'Wall has no readable extrusion height' };
+  }
   const len = chain.wallLength;
   if (
     distance <= MIN_WALL_SEGMENT_LENGTH ||

@@ -340,7 +340,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'X', description: 'Section tool', category: 'Tools' },
   { key: 'E', description: 'Toggle edit mode (unlocks property + geometry edits)', category: 'Tools' },
   { key: 'W', description: 'Draw Wall (requires edit mode)', category: 'Tools' },
-  { key: 'K', description: 'Split tool — click a wall to cut it (requires edit mode)', category: 'Tools' },
+  { key: 'K', description: 'Toggle Split tool — click a wall to cut it (auto-enables edit mode)', category: 'Tools' },
   { key: 'R / Shift+R', description: 'Rotate selected entity ±15° about Z (requires edit mode)', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },

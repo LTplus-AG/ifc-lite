@@ -135,12 +135,18 @@ export function resolveLinearElementChain(
     if (!dirAttrs) return null;
     const ratios = asDirectionRatios(dirAttrs[0]);
     if (!ratios) return null;
-    // Normalise — the builder writes unit vectors but we don't want
-    // to trust that for source-buffer entities.
+    // Reject NaN / Infinity components — those would propagate into
+    // every downstream split / projection call. The builder writes
+    // unit vectors but source-buffer entities can be malformed.
+    if (!Number.isFinite(ratios[0]) || !Number.isFinite(ratios[1]) || !Number.isFinite(ratios[2])) {
+      return null;
+    }
     const len = Math.hypot(ratios[0], ratios[1], ratios[2]);
-    axisDirection = len > 1e-9
-      ? [ratios[0] / len, ratios[1] / len, ratios[2] / len]
-      : [0, 0, 1];
+    // Zero-length axis isn't translatable; refuse rather than fall
+    // back silently to world +Z (which would silently mis-orient
+    // every downstream operation).
+    if (len < 1e-9) return null;
+    axisDirection = [ratios[0] / len, ratios[1] / len, ratios[2] / len];
   }
 
   // Representation chain: same shape as walls but the length lives
@@ -166,17 +172,35 @@ export function resolveLinearElementChain(
   if (!solidAttrs) return null;
   const profileId = asExpressIdRef(solidAttrs[0]);
   const depthRaw = solidAttrs[3];
-  if (profileId === null || typeof depthRaw !== 'number') return null;
+  if (
+    profileId === null ||
+    typeof depthRaw !== 'number' ||
+    !Number.isFinite(depthRaw) ||
+    depthRaw <= 0
+  ) {
+    return null;
+  }
 
   // Cross-section dimensions from the IfcRectangleProfileDef
   // (Width = XDim attr 3, Height = YDim attr 4). Not strictly
   // needed for the split math, but exposed so callers building the
-  // new element can carry the same cross-section forward.
+  // new element can carry the same cross-section forward. Reject
+  // non-finite / non-positive — would silently produce zero-area
+  // or NaN-area profiles downstream.
   const profileAttrs = readAttributes(dataStore, view, editor, profileId);
   if (!profileAttrs) return null;
   const profileWidth = profileAttrs[3];
   const profileHeight = profileAttrs[4];
-  if (typeof profileWidth !== 'number' || typeof profileHeight !== 'number') return null;
+  if (
+    typeof profileWidth !== 'number' ||
+    typeof profileHeight !== 'number' ||
+    !Number.isFinite(profileWidth) ||
+    !Number.isFinite(profileHeight) ||
+    profileWidth <= 0 ||
+    profileHeight <= 0
+  ) {
+    return null;
+  }
 
   return {
     elementType,

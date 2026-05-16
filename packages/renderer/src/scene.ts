@@ -540,18 +540,36 @@ export class Scene {
     // Track which buckets need re-batching so we don't repeatedly
     // mark the same key.
     const affectedKeys = new Set<string>();
+    // Separate "did we remove anything dedicated?" from "did any
+    // bucket need rebatching?" — a dedicated mesh that's mid-stream
+    // and not yet bucketed still counts as a removal for the
+    // caller's bulk-count contract.
+    let removedDedicated = false;
 
     for (const meshData of meshDataList) {
       // Color-merged path: shared mesh, keep it but drop our entry.
       if (meshData.entityIds && meshData.entityIds.length > 0) {
         continue;
       }
+      removedDedicated = true;
 
-      // Dedicated mesh — drop from its bucket.
+      // Dedicated mesh — drop from its bucket and decrement the
+      // bucket's vertexBytes counter so subsequent
+      // resolveActiveBucket calls see the updated size and don't
+      // unnecessarily split it.
       const bucket = this.meshDataBucket.get(meshData);
       if (bucket) {
         const idx = bucket.meshData.indexOf(meshData);
-        if (idx >= 0) bucket.meshData.splice(idx, 1);
+        if (idx >= 0) {
+          bucket.meshData.splice(idx, 1);
+          // Match the byte-accounting `splitMeshForStreaming` uses
+          // (positions + normals). Without this, the bucket's size
+          // estimate stays inflated after removal and
+          // `resolveActiveBucket` may force unnecessary splits on
+          // subsequent inserts.
+          const bytes = meshData.positions.byteLength + meshData.normals.byteLength;
+          bucket.vertexBytes = Math.max(0, bucket.vertexBytes - bytes);
+        }
         affectedKeys.add(bucket.key);
       }
       this.meshDataBucket.delete(meshData);
@@ -563,7 +581,9 @@ export class Scene {
     for (const key of affectedKeys) {
       this.pendingBatchKeys.add(key);
     }
-    return affectedKeys.size > 0;
+    // True when at least one dedicated mesh was removed — covers
+    // the case where a mesh was queued but not yet bucketed.
+    return removedDedicated;
   }
 
   /**

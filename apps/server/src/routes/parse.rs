@@ -173,7 +173,8 @@ pub async fn parse_stream(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
     mut multipart: Multipart,
-) -> Result<Sse<impl futures::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
     reject_unsupported_streaming_opening_filter(&query)?;
 
     // Extract file
@@ -199,10 +200,12 @@ pub async fn parse_stream(
                 })
                 .unwrap()
             });
-            Ok(Event::default().data(json))
+            Ok::<_, Infallible>(Event::default().data(json))
         });
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
 }
 
 /// SSE event types for Parquet streaming.
@@ -251,10 +254,8 @@ pub async fn parse_parquet_stream(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
     mut multipart: Multipart,
-) -> Result<
-    Sse<std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>>>,
-    ApiError,
-> {
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
     use crate::services::serialize_to_parquet;
     use crate::types::MeshData;
     use base64::{engine::general_purpose::STANDARD, Engine};
@@ -338,7 +339,9 @@ pub async fn parse_parquet_stream(
             )),
         ]));
 
-        return Ok(Sse::new(fast_stream).keep_alive(KeepAlive::default()));
+        return Ok(Sse::new(fast_stream)
+            .keep_alive(KeepAlive::default())
+            .into_response());
     }
 
     tracing::info!(
@@ -521,7 +524,9 @@ pub async fn parse_parquet_stream(
     let boxed_stream: std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,
     > = Box::pin(stream);
-    Ok(Sse::new(boxed_stream).keep_alive(KeepAlive::default()))
+    Ok(Sse::new(boxed_stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
 }
 
 /// POST /api/v1/parse/metadata - Quick metadata only (no geometry).

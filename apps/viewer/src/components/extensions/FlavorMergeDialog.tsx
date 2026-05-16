@@ -27,6 +27,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, GitMerge, X } from 'lucide-react';
 import {
+  flavorMergedId,
   mergeFlavors,
   type Flavor,
   type MergeConflict,
@@ -107,7 +108,7 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
         if (!choice || choice === 'ours') continue;
         applyChoice(merged, conflict, choice, theirs, base);
       }
-      merged.id = `${theirs.id}.merge-${Date.now()}`;
+      merged.id = flavorMergedId(theirs.id);
       merged.updatedAt = new Date().toISOString();
       await host.flavors.put(merged, 'three-way merge');
       toast.success(`Merged into ${merged.id}`);

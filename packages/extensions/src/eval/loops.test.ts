@@ -23,8 +23,10 @@
 
 import { describe, expect, it } from 'vitest';
 import { ActionLog } from '../log/writer.js';
-import { mineSequences } from '../miner/sequence.js';
-import { scorePatterns } from '../miner/score.js';
+// Drive the loop through the public IdleMineScheduler API rather than
+// reaching into the algorithm internals (mineSequences/scorePatterns).
+// The internals can re-tune without breaking the public-surface eval.
+import { IdleMineScheduler } from '../miner/scheduler.js';
 import { filterAgainstInstalled } from '../miner/filter.js';
 import { planFromPattern } from '../miner/plan-stub.js';
 import { extractMemoryProposals, mergeIntoOverlay } from '../flavor/memory-extractor.js';
@@ -51,38 +53,42 @@ function plantedLog(): ActionLog {
   return log;
 }
 
+/**
+ * Drive the miner through `IdleMineScheduler.fireNow()` — the same
+ * entry point the viewer uses for the Ideas panel's Re-mine button.
+ * The scheduler is configured with the same defaults as production so
+ * the eval tracks real behaviour.
+ */
+function minePatterns(log: ActionLog) {
+  const scheduler = new IdleMineScheduler({
+    miner: { minLength: 3, maxLength: 5 },
+  });
+  scheduler.setEvents(log.list());
+  return scheduler.fireNow().patterns;
+}
+
 describe('eval: pattern miner loop', () => {
   it('surfaces the planted load→lens→export pattern as the top suggestion', () => {
-    const log = plantedLog();
-    const events = log.list();
-    const patterns = mineSequences(events, { minLength: 3, maxLength: 5 });
-    const scored = scorePatterns(patterns);
-    const top = scored[0];
-    expect(top).toBeDefined();
-    expect(top.sequence).toEqual(['model.load', 'lens.apply', 'export.run']);
+    const patterns = minePatterns(plantedLog());
+    expect(patterns[0]).toBeDefined();
+    expect(patterns[0].sequence).toEqual(['model.load', 'lens.apply', 'export.run']);
   });
 
   it('plan stub for the planted pattern carries the right command id', () => {
-    const log = plantedLog();
-    const patterns = mineSequences(log.list());
-    const scored = scorePatterns(patterns);
-    const plan = planFromPattern(scored[0]);
+    const patterns = minePatterns(plantedLog());
+    const plan = planFromPattern(patterns[0]);
     expect(plan.contributions[0]?.id).toMatch(/^ext\.suggested\..*\.run$/);
     expect(plan.triggers[0]).toMatch(/^onCommand:ext\.suggested/);
   });
 
   it('filters out patterns already covered by an installed extension', () => {
-    const log = plantedLog();
-    const patterns = mineSequences(log.list());
-    const scored = scorePatterns(patterns);
-    const filtered = filterAgainstInstalled(scored, [
+    const patterns = minePatterns(plantedLog());
+    const filtered = filterAgainstInstalled(patterns, [
       {
         id: 'com.example.csv-pipeline',
         grantedCapabilities: ['model.read', 'viewer.colorize', 'export.create:csv'],
       },
     ]);
-    // The planted pattern's intent surface (load, lens.apply, export.run)
-    // is covered by model.read + viewer.colorize + export.create:csv.
     const sequences = filtered.map((p) => p.sequence.join('>'));
     expect(sequences).not.toContain('model.load>lens.apply>export.run');
   });

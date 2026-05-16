@@ -37,3 +37,8 @@ export {
   summariseDiagnostics,
   type DiagnosticGroup,
 } from './diagnostics.js';
+export {
+  formatBundleForPrompt,
+  type FormatBundleForPromptOptions,
+  type FormattedBundle,
+} from './format-prompt.js';

@@ -17,13 +17,15 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Download, FilePlus, GitMerge, Palette, RefreshCcw, Upload, X } from 'lucide-react';
+import { Palette } from 'lucide-react';
 import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
-import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
+import { FlavorListView } from './FlavorListView';
+import { FlavorImportPreview } from './FlavorImportPreview';
+import * as toastText from './toast-helpers';
 
 interface FlavorDialogProps {
   open: boolean;
@@ -85,9 +87,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       a.download = `${id || 'flavor'}.iflv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(`Exported ${id}.iflv`);
+      toast.success(toastText.flavorExported(`${id}.iflv`));
     } catch (err) {
-      toast.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(toastText.failed('Export', err));
     } finally {
       setBusy(false);
     }
@@ -101,9 +103,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       // to the bare pointer set on failure so the user can still
       // recover.
       await host.switchFlavor(id);
-      toast.success(`Switched to ${id}`);
+      toast.success(toastText.flavorSwitched(id));
     } catch (err) {
-      toast.error(`Activate failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(toastText.failed('Activate', err));
     } finally {
       setBusy(false);
     }
@@ -114,9 +116,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     setBusy(true);
     try {
       await host.flavors.delete(id);
-      toast.success(`Deleted ${id}`);
+      toast.success(toastText.flavorDeleted(id));
     } catch (err) {
-      toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(toastText.failed('Delete', err));
     } finally {
       setBusy(false);
     }
@@ -127,9 +129,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     setBusy(true);
     try {
       await host.flavors.resetToDefaults();
-      toast.success('Reset to baseline flavor');
+      toast.success(toastText.flavorReset());
     } catch (err) {
-      toast.error(`Reset failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(toastText.failed('Reset', err));
     } finally {
       setBusy(false);
     }
@@ -156,10 +158,10 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     setBusy(true);
     try {
       const flavor = await host.flavors.importFlavor(preview.unpacked, { strategy });
-      toast.success(`Imported ${flavor.name}`);
+      toast.success(toastText.flavorImported(flavor.name));
       setPreview(null);
     } catch (err) {
-      toast.error(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(toastText.failed('Import', err));
     } finally {
       setBusy(false);
     }
@@ -176,175 +178,40 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         </DialogHeader>
 
         {preview ? (
-          <div className="space-y-3">
-            <div className="text-sm font-medium">Import preview</div>
-            <div className="rounded border bg-muted/30 p-3 text-xs space-y-1">
-              <div>
-                <span className="text-muted-foreground">Name:</span>{' '}
-                <span className="font-medium">{preview.unpacked.flavor.name}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">ID:</span>{' '}
-                <code className="font-mono">{preview.unpacked.flavor.id}</code>
-              </div>
-              {preview.unpacked.flavor.description && (
-                <div className="text-muted-foreground">{preview.unpacked.flavor.description}</div>
-              )}
-              <div className="text-muted-foreground">
-                {preview.unpacked.flavor.extensions.length} extensions ·{' '}
-                {preview.unpacked.flavor.lenses.length} lenses ·{' '}
-                {preview.unpacked.flavor.savedQueries.length} queries
-              </div>
-              {preview.unpacked.summary && (
-                <div className="italic text-muted-foreground border-l-2 border-muted pl-2 mt-1">
-                  {preview.unpacked.summary}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setPreview(null)} disabled={busy}>
-                Cancel
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (!preview) return;
-                  setMergeTarget(preview.unpacked.flavor);
-                  setPreview(null);
-                }}
-                disabled={busy}
-              >
-                <GitMerge className="mr-1 h-3.5 w-3.5" />
-                Merge…
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleConfirmImport('save-as-new')}
-                disabled={busy}
-              >
-                <FilePlus className="mr-1 h-3.5 w-3.5" />
-                Save as new
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => void handleConfirmImport('replace')}
-                disabled={busy}
-              >
-                Replace existing
-              </Button>
-            </div>
-          </div>
+          <FlavorImportPreview
+            unpacked={preview.unpacked}
+            busy={busy}
+            onCancel={() => setPreview(null)}
+            onMerge={() => {
+              setMergeTarget(preview.unpacked.flavor);
+              setPreview(null);
+            }}
+            onSaveAsNew={() => void handleConfirmImport('save-as-new')}
+            onReplace={() => void handleConfirmImport('replace')}
+          />
         ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-muted-foreground">
-                Flavors bundle your extensions, lenses, queries, and layout. Switch to
-                isolate experiments; export to share or back up.
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={busy}
-                >
-                  <Upload className="mr-1 h-3.5 w-3.5" />
-                  Import
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => void handleReset()} disabled={busy}>
-                  <RefreshCcw className="mr-1 h-3.5 w-3.5" />
-                  Reset
-                </Button>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".iflv"
-                className="hidden"
-                onChange={(e) => {
-                  void handleFiles(e.target.files);
-                  e.target.value = '';
-                }}
-              />
-            </div>
-
-            {flavors.length === 0 ? (
-              <div className="rounded border bg-muted/30 px-4 py-6 text-center text-xs text-muted-foreground">
-                No flavors yet. Click <span className="font-medium">Reset</span> to create
-                the baseline, or <span className="font-medium">Import</span> a `.iflv`.
-              </div>
-            ) : (
-              <ul className="divide-y border rounded">
-                {flavors.map((flavor) => {
-                  const isActive = flavor.id === activeId;
-                  return (
-                    <li
-                      key={flavor.id}
-                      className={`flex items-start gap-3 px-3 py-2 ${isActive ? 'bg-primary/5' : ''}`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{flavor.name}</span>
-                          {isActive && (
-                            <span className="text-[10px] uppercase tracking-wide bg-primary/20 text-primary rounded px-1.5 py-0.5 font-semibold">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground font-mono break-all">
-                          {flavor.id}
-                        </div>
-                        {flavor.description && (
-                          <div className="text-[11px] text-muted-foreground mt-0.5">
-                            {flavor.description}
-                          </div>
-                        )}
-                        <div className="text-[10px] text-muted-foreground mt-0.5">
-                          {flavor.extensions.length} ext · {flavor.lenses.length} lens ·{' '}
-                          {flavor.savedQueries.length} qry · updated{' '}
-                          {new Date(flavor.updatedAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {!isActive && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void handleActivate(flavor.id)}
-                            disabled={busy}
-                          >
-                            Activate
-                          </Button>
-                        )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => void handleExport(flavor.id)}
-                          disabled={busy}
-                          aria-label={`Export ${flavor.id}`}
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                        </Button>
-                        {!isActive && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => void handleDelete(flavor.id)}
-                            disabled={busy}
-                            aria-label={`Delete ${flavor.id}`}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+          <>
+            <FlavorListView
+              flavors={flavors}
+              activeId={activeId}
+              busy={busy}
+              onActivate={(id) => void handleActivate(id)}
+              onExport={(id) => void handleExport(id)}
+              onDelete={(id) => void handleDelete(id)}
+              onImportClick={() => fileInputRef.current?.click()}
+              onReset={() => void handleReset()}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".iflv"
+              className="hidden"
+              onChange={(e) => {
+                void handleFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </>
         )}
 
         <FlavorMergeDialog

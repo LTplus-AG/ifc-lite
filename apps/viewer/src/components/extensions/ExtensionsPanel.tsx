@@ -25,6 +25,8 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useInstalledExtensions } from '@/hooks/useInstalledExtensions';
+import { useForkExtension } from '@/hooks/useForkExtension';
+import { useRunExtensionTests } from '@/hooks/useRunExtensionTests';
 import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
@@ -33,82 +35,20 @@ import { PrivacyPanel } from './PrivacyPanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 import { useViewerStore } from '@/store';
+import * as toastText from './toast-helpers';
 
 interface ExtensionsPanelProps {
   onClose?: () => void;
 }
 
-// Fork-prompt size caps. The whole bundle source flows into the chat
-// turn; without limits a large bundle could blow the model's input
-// budget on its own.
-const MAX_FORK_FILES = 6;
-const MAX_FORK_FILE_CHARS = 4000;
-
 export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const host = useExtensionHost();
   const installed = useInstalledExtensions();
-  const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
-  const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
+  const handleFork = useForkExtension();
+  const { runTests, isRunning } = useRunExtensionTests();
   const pendingAuthoredBundle = useViewerStore((s) => s.pendingAuthoredBundle);
   const setPendingAuthoredBundle = useViewerStore((s) => s.setPendingAuthoredBundle);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFork = useCallback(
-    async (id: string) => {
-      try {
-        const bundle = host.loader.getBundle(id);
-        if (!bundle) {
-          toast.error(`Bundle for ${id} not loaded.`);
-          return;
-        }
-        const manifestText = JSON.stringify(bundle.manifest, null, 2);
-        const fileList = Array.from(bundle.files.keys()).filter((p) => p !== 'manifest.json');
-        const fileSummaries = fileList
-          .slice(0, MAX_FORK_FILES)
-          .map((path) => {
-            const f = bundle.files.get(path);
-            if (!f) return '';
-            const fullText = f.text ?? new TextDecoder().decode(f.bytes);
-            const truncated = fullText.length > MAX_FORK_FILE_CHARS;
-            const text = truncated
-              ? `${fullText.slice(0, MAX_FORK_FILE_CHARS)}\n\n/* …truncated (${fullText.length - MAX_FORK_FILE_CHARS} chars omitted) */`
-              : fullText;
-            // Widget JSON gets the widget fence; manifest is handled
-            // separately above; everything else is code. We can't
-            // reliably tell widget vs. non-widget JSON by extension —
-            // pick the safer "code" fence so the parser doesn't try to
-            // re-parse arbitrary JSON as a widget.
-            const fence = `ifc-extension-${path.endsWith('.json') && path.startsWith('widgets/') ? 'widget' : 'code'}`;
-            return [`\`\`\`${fence} path="${path}"`, text, '```'].join('\n');
-          })
-          .filter(Boolean)
-          .join('\n\n');
-        const prompt = [
-          `Fork the installed extension ${bundle.manifest.id} (v${bundle.manifest.version}).`,
-          '',
-          'Current manifest:',
-          '```ifc-extension-manifest',
-          manifestText,
-          '```',
-          '',
-          fileSummaries
-            ? `Current bundle files:\n\n${fileSummaries}`
-            : '(no other files in bundle)',
-          fileList.length > MAX_FORK_FILES
-            ? `\n…plus ${fileList.length - MAX_FORK_FILES} more files not shown.`
-            : '',
-          '',
-          'What would you like to change?',
-        ].filter(Boolean).join('\n');
-        queueChatPrompt(prompt);
-        setChatPanelVisible(true);
-        toast.success(`Routed ${bundle.manifest.id} to chat for editing.`);
-      } catch (err) {
-        toast.error(`Fork failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-    [host, queueChatPrompt, setChatPanelVisible],
-  );
   const [pending, setPending] = useState<{
     bytes: Uint8Array;
     summary: ExtensionInstallSummary;
@@ -118,8 +58,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair' | 'privacy'>('installed');
-  /** Per-row "tests running" set so repeated Beaker clicks don't queue. */
-  const [runningTests, setRunningTests] = useState<Set<string>>(new Set());
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -348,7 +286,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() => void handleFork(record.id)}
+                      onClick={() => handleFork(record.id)}
                       aria-label={`Fork ${record.id}`}
                       title="Fork: edit this extension in the chat"
                     >
@@ -357,52 +295,17 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     <Button
                       size="icon"
                       variant="ghost"
-                      disabled={runningTests.has(record.id)}
-                      onClick={() => {
-                        if (runningTests.has(record.id)) return;
-                        setRunningTests((prev) => {
-                          const next = new Set(prev);
-                          next.add(record.id);
-                          return next;
-                        });
-                        toast.info(`Running tests for ${record.id}…`);
-                        host.runTests(record.id)
-                          .then((summary) => {
-                            if (summary.results.length === 0) {
-                              toast.info(`${record.id}: no tests declared.`);
-                            } else if (summary.failed === 0) {
-                              toast.success(`${record.id}: ${summary.passed}/${summary.results.length} passed`);
-                            } else {
-                              toast.error(
-                                `${record.id}: ${summary.failed} failed — ${summary.results.find((r) => !r.passed)?.error ?? 'see console'}`,
-                              );
-                              console.warn('[ext-host] test failures:', summary);
-                            }
-                          })
-                          .catch((err) => {
-                            toast.error(
-                              `Tests failed to run: ${err instanceof Error ? err.message : String(err)}`,
-                            );
-                          })
-                          .finally(() => {
-                            setRunningTests((prev) => {
-                              const next = new Set(prev);
-                              next.delete(record.id);
-                              return next;
-                            });
-                          });
-                      }}
+                      disabled={isRunning(record.id)}
+                      onClick={() => runTests(record.id)}
                       aria-label={`Run tests for ${record.id}`}
                     >
-                      <Beaker className={`h-3.5 w-3.5 ${runningTests.has(record.id) ? 'animate-pulse' : ''}`} />
+                      <Beaker className={`h-3.5 w-3.5 ${isRunning(record.id) ? 'animate-pulse' : ''}`} />
                     </Button>
                     <Switch
                       checked={record.enabled}
                       onCheckedChange={(checked) => {
                         host.setEnabled(record.id, checked).catch((err) => {
-                          toast.error(
-                            `Failed to ${checked ? 'enable' : 'disable'} ${record.id}: ${err instanceof Error ? err.message : String(err)}`,
-                          );
+                          toast.error(toastText.failed(checked ? 'Enable' : 'Disable', err));
                         });
                       }}
                       aria-label={record.enabled ? 'Disable extension' : 'Enable extension'}
@@ -413,9 +316,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                       onClick={() => {
                         if (!confirm(`Uninstall ${record.id}?`)) return;
                         host.uninstall(record.id).catch((err) => {
-                          toast.error(
-                            `Failed to uninstall ${record.id}: ${err instanceof Error ? err.message : String(err)}`,
-                          );
+                          toast.error(toastText.failed('Uninstall', err));
                         });
                       }}
                       aria-label={`Uninstall ${record.id}`}

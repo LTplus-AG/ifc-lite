@@ -286,10 +286,18 @@ function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleRe
     if (text === undefined) {
       reasons.push(`regex: result has no text representation`);
     } else if (expect.regex.length > MAX_REGEX_PATTERN_LENGTH) {
-      // Defence against pathological patterns from untrusted manifests.
-      // 256 chars is plenty for any reasonable expectation; longer is a
-      // smell. We refuse to compile rather than risk ReDoS.
+      // Length cap is a shallow defence — pathological short patterns
+      // (`(a+)+$` is 7 chars and catastrophic) still get through. For
+      // registry-distributed extensions a real defence would run the
+      // regex in a Worker with a timeout, or use re2-wasm. v1 assumes
+      // manifest tests are author-trusted; harden this when remote
+      // bundles can land via the registry (RFC §10).
       reasons.push(`regex: pattern exceeds ${MAX_REGEX_PATTERN_LENGTH}-char limit`);
+    } else if (hasRedosShape(expect.regex)) {
+      // Cheap shape check for the well-known catastrophic-backtracking
+      // patterns: `(...+)+`, `(...+)*`, `(.*)+`, `(.*)*` and their
+      // siblings. Surfaces obvious ReDoS in the test runner.
+      reasons.push(`regex: pattern has catastrophic-backtracking shape`);
     } else {
       try {
         const re = new RegExp(expect.regex);
@@ -405,6 +413,18 @@ function jsonTypeOf(value: unknown): string {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'array';
   return typeof value;
+}
+
+/**
+ * Cheap shape check for catastrophic-backtracking patterns. Catches
+ * the textbook `(a+)+`, `(a*)*`, `(.+)+`, `(.+)*` shapes — a quantifier
+ * directly wrapping a quantifier inside a group. Not exhaustive (a
+ * determined adversary can still craft ReDoS), but rejects the
+ * obvious ones at no runtime cost.
+ */
+function hasRedosShape(pattern: string): boolean {
+  // Quantifier (+, *, {n,}) inside a group followed by another quantifier.
+  return /\([^()]*[+*][^()]*\)\s*[+*{]/.test(pattern);
 }
 
 function formatValue(value: unknown): string {

@@ -14,6 +14,8 @@
  */
 
 import {
+  DEFAULT_FLAVOR_ID,
+  flavorImportedId,
   packFlavor,
   switchFlavor,
   unpackFlavor,
@@ -133,7 +135,7 @@ export class FlavorService {
     if (opts.strategy === 'save-as-new') {
       flavor = {
         ...flavor,
-        id: opts.newId ?? `${flavor.id}.imported-${Date.now()}`,
+        id: opts.newId ?? flavorImportedId(flavor.id),
         updatedAt: new Date().toISOString(),
       };
     }
@@ -145,7 +147,7 @@ export class FlavorService {
 
   /** Reset to a clean baseline flavor. */
   async resetToDefaults(): Promise<Flavor> {
-    const id = 'flv.default';
+    const id = DEFAULT_FLAVOR_ID;
     const now = new Date().toISOString();
     const flavor: Flavor = {
       schemaVersion: 1,

@@ -18,6 +18,7 @@
  */
 
 import type { AuthoringPlan, PlannedContribution } from '../authoring/plan.js';
+import { suggestedCommandId } from '../ids.js';
 import type { ActionIntent } from '../log/types.js';
 import type { MinedPattern } from './types.js';
 
@@ -52,18 +53,19 @@ export function planFromPattern(pattern: MinedPattern): AuthoringPlan {
   const verb = humanVerb(pattern.sequence);
   const caps = unionCaps(pattern.sequence);
   const slug = pattern.sequence.join('-').replace(/[^a-z0-9-]/g, '');
+  const commandId = suggestedCommandId(slug);
 
   const contributions: PlannedContribution[] = [
     {
       kind: 'command',
       label: `One-click "${verb}"`,
-      id: `ext.suggested.${slug}.run`,
+      id: commandId,
       slot: 'commandPalette',
     },
     {
       kind: 'toolbar',
       label: `Toolbar button for "${verb}"`,
-      id: `ext.suggested.${slug}.run`,
+      id: commandId,
       slot: 'toolbar.right',
     },
   ];
@@ -73,7 +75,7 @@ export function planFromPattern(pattern: MinedPattern): AuthoringPlan {
     rationale: humanRationale(pattern, verb),
     contributions,
     capabilities: caps,
-    triggers: [`onCommand:ext.suggested.${slug}.run`],
+    triggers: [`onCommand:${commandId}`],
     widgets: [],
     tests: [{
       name: 'Tool executes against the canonical fixture',

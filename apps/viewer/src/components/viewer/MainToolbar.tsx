@@ -77,6 +77,7 @@ import { useFloorplanView } from '@/hooks/useFloorplanView';
 import { buildDesktopUpgradeUrl, hasDesktopFeatureAccess, type DesktopFeature } from '@/lib/desktop-product';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { ThemeSwitch } from './ThemeSwitch';
+import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { toast } from '@/components/ui/toast';
 import { navigateToPath } from '@/services/app-navigation';
 import { getStartupHarnessRequest, setActiveHarnessRequest, tryClaimStartupHarnessRequest } from '@/services/desktop-harness';
@@ -1389,6 +1390,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Extension toolbar contributions (right-aligned) */}
+      <ExtensionToolbarSlot slot="toolbar.right" />
 
       {/* Loading Progress */}
       {loading && (geometryProgress || metadataProgress || progress) && (

@@ -11,3 +11,12 @@ export type {
 export { mineSequences, splitSessions } from './sequence.js';
 export { scorePattern, scorePatterns, topPatterns } from './score.js';
 export { planFromPattern } from './plan-stub.js';
+export {
+  IdleMineScheduler,
+  type IdleSchedulerOptions,
+  type MineEvent,
+} from './scheduler.js';
+export {
+  filterAgainstInstalled,
+  type InstalledExtensionSummary,
+} from './filter.js';

@@ -19,13 +19,14 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { FilePlus, Puzzle, Trash2, Upload, X } from 'lucide-react';
+import { FilePlus, FileText, Puzzle, Trash2, Upload, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useInstalledExtensions } from '@/hooks/useInstalledExtensions';
 import { CapabilityReview } from './CapabilityReview';
+import { AuditLogPanel } from './AuditLogPanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 
@@ -43,6 +44,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [showAudit, setShowAudit] = useState(false);
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -102,6 +104,16 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <div className="flex items-center gap-1">
           <Button
             size="sm"
+            variant={showAudit ? 'secondary' : 'ghost'}
+            onClick={() => setShowAudit((v) => !v)}
+            aria-label="Toggle audit log"
+            aria-pressed={showAudit}
+          >
+            <FileText className="mr-1 h-3.5 w-3.5" />
+            Audit
+          </Button>
+          <Button
+            size="sm"
             variant="outline"
             onClick={() => fileInputRef.current?.click()}
             disabled={busy}
@@ -137,7 +149,9 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         Bundles run in a sandboxed QuickJS runtime with explicit capability grants.
       </div>
 
-      {/* Drop zone + list */}
+      {showAudit ? (
+        <AuditLogPanel />
+      ) : (
       <div
         className={`flex-1 overflow-auto transition-colors ${
           dragOver ? 'bg-primary/5' : ''
@@ -230,6 +244,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           </ul>
         )}
       </div>
+      )}
 
       {pending && (
         <CapabilityReview

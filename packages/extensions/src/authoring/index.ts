@@ -9,3 +9,10 @@ export {
   type PlannedWidget,
   type PlannedTest,
 } from './plan.js';
+export {
+  classifyIntent,
+  type ChatIntent,
+  type ClassificationContext,
+  type Classification,
+} from './classify.js';
+export { buildAuthoringContract } from './prompt.js';

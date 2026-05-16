@@ -44,3 +44,9 @@ export {
   type OverlayClampOptions,
   type ClampedOverlay,
 } from './overlay.js';
+export {
+  migrateSavedScripts,
+  type SavedScript,
+  type MigrationResult,
+  type SyntheticExtension,
+} from './migrate-scripts.js';

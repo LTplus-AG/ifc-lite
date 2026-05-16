@@ -466,7 +466,7 @@ named, persistent tool. No AI authoring. No new permissions surface.
   `@ifc-lite/extensions/audit/log.ts`. Viewer-side tests deferred to
   the user's browser verification pass.
 
-- [ ] **P1.T8** — Command palette slot wiring.
+- [x] **P1.T8** — Command palette slot wiring.
   **Where:** `apps/viewer/src/components/viewer/CommandPalette.tsx`
   (existing, modify).
   **Depends on:** P1.T7.
@@ -475,7 +475,7 @@ named, persistent tool. No AI authoring. No new permissions surface.
   invoke. Manual + automated test.
   **Effort:** M. `[ux]`
 
-- [ ] **P1.T9** — Toolbar.right + keybindings slots.
+- [x] **P1.T9** — Toolbar.right + keybindings slots.
   **Where:** `apps/viewer/src/components/viewer/MainToolbar.tsx`,
   new `apps/viewer/src/hooks/useExtensionKeybindings.ts`.
   **Depends on:** P1.T7.
@@ -504,14 +504,14 @@ named, persistent tool. No AI authoring. No new permissions surface.
   parser; deliberate trade-off over zero-dep regex which would
   under-grant on edge cases).
 
-- [ ] **P1.T11** — "Promote to tool" button in `ScriptPanel`.
+- [x] **P1.T11** — "Promote to tool" button in `ScriptPanel`.
   **Where:** `apps/viewer/src/components/viewer/ScriptPanel.tsx`.
   **Depends on:** P1.T7, P1.T10.
   **Acceptance:** appears on any saved script with a successful run;
   opens the promote dialog (T12).
   **Effort:** S. `[ux]`
 
-- [ ] **P1.T12** — Promote dialog: name, icon picker (lucide names),
+- [x] **P1.T12** — Promote dialog: name, icon picker (lucide names),
   category, optional hotkey.
   **Where:** `apps/viewer/src/components/extensions/PromoteToolDialog.tsx`.
   **Depends on:** P1.T11.
@@ -617,7 +617,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.A — Intent classifier + plan card
 
-- [ ] **P2.T1** — Intent classifier (rule-based; LLM-assisted fallback).
+- [x] **P2.T1** — Intent classifier (rule-based; LLM-assisted fallback).
   **Where:** `apps/viewer/src/lib/llm/intent-classifier.ts`.
   **Depends on:** P1 phase gate.
   **Acceptance:** classifies prompts into one-shot / authoring / fork /
@@ -631,7 +631,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   preserves fidelity; tests on serialisation.
   **Effort:** S.
 
-- [ ] **P2.T3** — Plan card React component (editable structured plan
+- [x] **P2.T3** — Plan card React component (editable structured plan
   in chat).
   **Where:** `apps/viewer/src/components/viewer/chat/PlanCard.tsx`.
   **Depends on:** P2.T2.
@@ -656,7 +656,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   snapshot tests.
   **Effort:** M.
 
-- [ ] **P2.T6** — Authoring contract prompt section.
+- [x] **P2.T6** — Authoring contract prompt section.
   **Where:** `apps/viewer/src/lib/llm/extension-authoring-prompt.ts`.
   **Depends on:** P2.T5.
   **Acceptance:** assembles manifest schema + widget DSL + capability
@@ -774,7 +774,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   variant + nesting.
   **Effort:** M.
 
-- [ ] **P2.T20** — Widget renderer (React).
+- [x] **P2.T20** — Widget renderer (React).
   **Where:** `apps/viewer/src/components/extensions/widgets/`
   (one component per node).
   **Depends on:** P2.T19.
@@ -782,14 +782,14 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   JSONPath-like accessors works; tests for each node + e2e a11y.
   **Effort:** XL. `[a11y]`
 
-- [ ] **P2.T21** — Theming token mapping (variant/tone/density → Tailwind).
+- [x] **P2.T21** — Theming token mapping (variant/tone/density → Tailwind).
   **Where:** `apps/viewer/src/components/extensions/widgets/tokens.ts`.
   **Depends on:** P2.T20.
   **Acceptance:** consistent visuals with rest of viewer; dark mode
   tested.
   **Effort:** M.
 
-- [ ] **P2.T22** — Command dispatch from widgets.
+- [x] **P2.T22** — Command dispatch from widgets.
   **Where:** `apps/viewer/src/services/command-dispatcher.ts` (new).
   **Depends on:** P2.T20, P1.T9.
   **Acceptance:** button / interactive nodes invoke commands via
@@ -980,7 +980,7 @@ mergeable.
 
 ### Milestone 3.F — Migration + safety nets
 
-- [ ] **P3.T15** — Saved-scripts → starter flavor migration.
+- [x] **P3.T15** — Saved-scripts → starter flavor migration.
   **Where:** `apps/viewer/src/services/saved-scripts-migration.ts`.
   **Depends on:** P3.T4.
   **Acceptance:** one-time opt-in dialog; produces a "My scripts"
@@ -1066,7 +1066,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   planted sets.
   **Effort:** M.
 
-- [ ] **P4.T6** — Filter against installed extensions / saved tools.
+- [x] **P4.T6** — Filter against installed extensions / saved tools.
   **Where:** `packages/extensions/src/miner/filter.ts`.
   **Depends on:** P4.T5.
   **Acceptance:** removes patterns already covered. Tests cover
@@ -1082,7 +1082,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 ### Milestone 4.C — Suggestion UX
 
-- [ ] **P4.T8** — Idle scheduler.
+- [x] **P4.T8** — Idle scheduler.
   **Where:** `apps/viewer/src/services/miner-scheduler.ts`.
   **Depends on:** P4.T4.
   **Acceptance:** runs miner on idle; throttled; respects power /
@@ -1112,7 +1112,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   **Acceptance:** capped at 4000 tokens; round-trip; tests cover cap.
   **Effort:** S.
 
-- [ ] **P4.T12** — System prompt integration.
+- [x] **P4.T12** — System prompt integration.
   **Where:** modify `apps/viewer/src/lib/llm/system-prompt.ts`.
   **Depends on:** P4.T11.
   **Acceptance:** overlay appended; cached separately so cache hits

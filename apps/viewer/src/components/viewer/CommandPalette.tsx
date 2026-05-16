@@ -72,6 +72,10 @@ import {
   executeBasketClear,
 } from '@/store/basket/basketCommands';
 import { useSandbox } from '@/hooks/useSandbox';
+import { useSlotContributions } from '@/hooks/useSlotContributions';
+import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import type { CommandContribution } from '@ifc-lite/extensions';
+import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { GLTFExporter, CSVExporter } from '@ifc-lite/export';
 import { getRecentFiles, formatFileSize, getCachedFile } from '@/lib/recent-files';
@@ -89,7 +93,8 @@ type Category =
   | 'Panels'
   | 'Export'
   | 'Automation'
-  | 'Preferences';
+  | 'Preferences'
+  | 'Extensions';
 
 interface Command {
   id: string;
@@ -189,6 +194,23 @@ function downloadBlob(data: BlobPart, name: string, mime: string) {
 /** Exclusively activate a right-panel content panel (BCF / IDS / Lens / Extensions).
  *  Closes all others first so the if-else chain in ViewerLayout renders it.
  *  If the target is already active, closes it (back to Properties). */
+/**
+ * Resolve a lucide icon name (as declared in an extension manifest)
+ * to a React component. We keep a small whitelist rather than
+ * importing the entire icon set; unknown names fall back to the
+ * caller's default.
+ */
+function lookupIcon(name: string | undefined): React.ElementType | undefined {
+  if (!name) return undefined;
+  const map: Record<string, React.ElementType> = {
+    Sparkles, Puzzle, Palette, Camera, Download, FileJson, Sun, Home,
+    Maximize2, Crosshair, Orbit, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
+    Layout, TreeDeciduous, FileCode2, MessageSquare, ClipboardCheck,
+    FileSpreadsheet, CalendarClock, Info, Clock, FolderOpen,
+  };
+  return map[name];
+}
+
 function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'extensions') {
   const s = useViewerStore.getState();
   const isActive =
@@ -258,6 +280,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigatedByKeyboard = useRef(false);
 
   const { execute } = useSandbox();
+  const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
+  const extensionHost = useOptionalExtensionHost();
 
   useEffect(() => {
     if (open) {
@@ -484,8 +508,41 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().toggleHoverTooltips(); } },
     );
 
+    // ── Extension contributions ──
+    // Surfaced under the "Extensions" category. Clicking dispatches
+    // through the activation event so the runtime executes the
+    // bundle's command handler (or surfaces the failure clearly).
+    for (const contribution of extensionCommands) {
+      const payload = contribution.payload;
+      if (!payload?.id || !payload.title) continue;
+      c.push({
+        id: `ext:${payload.id}`,
+        label: payload.title,
+        keywords: `${payload.id} ${payload.paletteCategory ?? ''} extension`,
+        category: 'Extensions',
+        icon: lookupIcon(payload.icon) ?? Sparkles,
+        detail: payload.paletteCategory,
+        action: () => {
+          if (!extensionHost) return;
+          // Fire the activation event first so onCommand:<id>-subscribed
+          // extensions wake up, then invoke the command handler. The
+          // runtime dedupes activations.
+          void extensionHost.dispatcher
+            .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
+            .then(() => extensionHost.runCommand(payload.id))
+            .catch((err) => {
+              paletteToast.error(
+                `Failed to run extension command: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            });
+        },
+      });
+    }
+
     return c;
-  }, [execute, recentFiles]);
+  }, [execute, recentFiles, extensionCommands, extensionHost]);
 
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.

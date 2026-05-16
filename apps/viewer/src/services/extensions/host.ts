@@ -39,9 +39,12 @@ import {
   parseCapabilities,
   sha256Hex,
   unpackBundle,
+  wrapEntrySource,
   type Bundle,
+  type ExtensionContextV1,
   type InstalledExtensionRecord,
   type LoadedExtensionStatus,
+  type RuntimeRunResult,
   type SlotContribution,
   type SlotListener,
   type ValidationError,
@@ -297,6 +300,53 @@ export class ExtensionHostService {
       version: record.version,
     });
     this.emit();
+  }
+
+  /**
+   * Dispatch an extension command. Finds the owning extension,
+   * activates it if needed, loads the handler source from the bundle,
+   * wraps it, injects `__ifclite_ctx__`, and runs.
+   *
+   * Throws if no extension declares the command, or if the bundle is
+   * missing the entry path. Runtime errors during execution propagate.
+   */
+  async runCommand(commandId: string): Promise<RuntimeRunResult | undefined> {
+    // Find the extension that owns this commandId.
+    const records = await this.storage.listExtensions();
+    for (const record of records) {
+      if (!record.enabled) continue;
+      const bundle = this.loader.getBundle(record.id);
+      if (!bundle) continue;
+      const entry = bundle.manifest.entry.commands?.[commandId];
+      const declared = bundle.manifest.contributes?.commands?.some((c) => c.id === commandId);
+      if (!entry || !declared) continue;
+
+      // Ensure runtime is up.
+      const grants = parseCapabilities(record.grantedCapabilities);
+      if (!grants.ok) {
+        throw new Error(`Cannot run ${commandId}: stored capabilities for ${record.id} are invalid.`);
+      }
+      const activation = await this.runtime.activate(record.id, grants.value, bundle);
+
+      const file = bundle.files.get(entry);
+      if (!file) {
+        throw new Error(`Command handler "${entry}" missing from bundle ${record.id}.`);
+      }
+      const source = file.text ?? new TextDecoder().decode(file.bytes);
+      const wrapped = wrapEntrySource(source, {
+        entryFnName: 'run',
+        filename: entry,
+      });
+      if (!wrapped.ok) {
+        throw new Error(
+          `Failed to prepare command "${commandId}": ${wrapped.errors[0]?.message ?? 'wrap error'}`,
+        );
+      }
+      const ctx: ExtensionContextV1 = { bim: this.sdk };
+      await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
+      return activation.sandbox.run(wrapped.value, { filename: entry });
+    }
+    throw new Error(`No installed, enabled extension owns command "${commandId}".`);
   }
 
   /** Read the current install state (storage snapshot). */

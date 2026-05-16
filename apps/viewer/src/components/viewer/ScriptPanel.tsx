@@ -29,6 +29,7 @@ import {
   PanelRightOpen,
   Undo2,
   Redo2,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -57,6 +58,8 @@ import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { navigateToPath } from '@/services/app-navigation';
 import { CodeEditor } from './CodeEditor';
 import { ChatPanel } from './ChatPanel';
+import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
+import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import type { LogEntry } from '@/store/slices/scriptSlice';
 
 interface ScriptPanelProps {
@@ -233,6 +236,10 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
     createScript(name, code);
   }, [createScript]);
 
+  const extensionHost = useOptionalExtensionHost();
+  const [promoteOpen, setPromoteOpen] = useState(false);
+  const canPromote = !!extensionHost && editorContent.trim().length > 0;
+
   const handleDeleteConfirm = useCallback(() => {
     if (deleteConfirmId) {
       deleteScript(deleteConfirmId);
@@ -355,6 +362,21 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
               </Button>
             </TooltipTrigger>
             <TooltipContent>Save (Ctrl+S)</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setPromoteOpen(true)}
+                disabled={!canPromote}
+                aria-label="Promote script to a persistent tool"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Promote to a persistent tool</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -555,6 +577,18 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {promoteOpen && extensionHost && (
+        <PromoteToolDialog
+          open={promoteOpen}
+          source={editorContent}
+          initialName={
+            savedScripts.find((s) => s.id === activeScriptId)?.name
+            ?? 'My tool'
+          }
+          onClose={() => setPromoteOpen(false)}
+        />
+      )}
     </div>
   );
 }

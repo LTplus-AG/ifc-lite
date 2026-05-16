@@ -54,6 +54,13 @@ export interface ScriptEditorPromptContext {
 export interface PromptTaskContext {
   userPrompt?: string;
   diagnostics?: ScriptDiagnostic[];
+  /**
+   * Personal prompt overlay from the active flavor (RFC §06.4). When
+   * present, it's appended at the very end of the system prompt
+   * inside a clearly-delimited block so we can cache the everything-
+   * else portion across users and only invalidate the tail.
+   */
+  personalOverlay?: string;
 }
 
 interface NamespacedMethod {
@@ -760,6 +767,14 @@ if (!rows) {
   if (task?.diagnostics && task.diagnostics.length > 0) {
     prompt += `\n\n## ACTIVE DIAGNOSTICS`;
     prompt += `\n${formatDiagnosticsForPrompt(task.diagnostics)}`;
+  }
+
+  if (task?.personalOverlay && task.personalOverlay.trim().length > 0) {
+    // Personal prompt overlay — durable user preferences captured by
+    // the memory loop (RFC §06.4). Cached separately so the rest of
+    // the prompt stays cacheable across users.
+    prompt += `\n\n## PERSONAL CONTEXT (from the user's flavor)`;
+    prompt += `\n${task.personalOverlay.trim()}`;
   }
 
   return prompt;

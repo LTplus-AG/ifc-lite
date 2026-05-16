@@ -144,6 +144,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
   } = useScriptState();
 
   const { execute, reset } = useSandbox();
+  const extensionHost = useOptionalExtensionHost();
   const [outputCollapsed, setOutputCollapsed] = useState(false);
   const chatPanelVisible = useViewerStore((s) => s.chatPanelVisible);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
@@ -221,8 +222,13 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
 
   const handleRun = useCallback(async () => {
     if (executionState === 'running') return;
+    const startedAt = performance.now();
     await execute(editorContent);
-  }, [execute, editorContent, executionState]);
+    extensionHost?.emitAction('script.execute', {
+      templateId: activeScriptId ?? undefined,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  }, [execute, editorContent, executionState, extensionHost, activeScriptId]);
 
   const handleSave = useCallback(() => {
     if (activeScriptId) {
@@ -236,7 +242,6 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
     createScript(name, code);
   }, [createScript]);
 
-  const extensionHost = useOptionalExtensionHost();
   const [promoteOpen, setPromoteOpen] = useState(false);
   const canPromote = !!extensionHost && editorContent.trim().length > 0;
 

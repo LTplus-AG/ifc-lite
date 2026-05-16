@@ -31,19 +31,28 @@
  */
 
 import {
+  ActionLog,
   ActivationDispatcher,
   AuditLog,
   ExtensionLoader,
   ExtensionRuntime,
+  IdleMineScheduler,
   SlotRegistry,
+  filterAgainstInstalled,
   parseCapabilities,
+  planFromPattern,
   sha256Hex,
   unpackBundle,
   wrapEntrySource,
+  type ActionIntent,
+  type ActionParams,
+  type AuthoringPlan,
   type Bundle,
   type ExtensionContextV1,
   type InstalledExtensionRecord,
   type LoadedExtensionStatus,
+  type MinedPattern,
+  type MineEvent,
   type RuntimeRunResult,
   type SlotContribution,
   type SlotListener,
@@ -53,6 +62,7 @@ import {
 import type { BimContext } from '@ifc-lite/sdk';
 import { IdbExtensionStorage } from './idb-storage.js';
 import { createBimSandboxFactory } from './sandbox-factory.js';
+import { FlavorService } from './flavor-service.js';
 
 export interface ExtensionHostServiceOptions {
   sdk: BimContext;
@@ -71,8 +81,13 @@ export class ExtensionHostService {
   readonly slotRegistry = new SlotRegistry();
   readonly dispatcher = new ActivationDispatcher();
   readonly audit = new AuditLog();
+  readonly flavors = new FlavorService();
+  readonly actionLog = new ActionLog();
+  readonly miner: IdleMineScheduler;
   readonly runtime: ExtensionRuntime;
   readonly loader: ExtensionLoader;
+  private suggestions: MineEvent | undefined;
+  private suggestionListeners = new Set<(event: MineEvent) => void>();
   readonly sdk: BimContext;
 
   private initialized = false;
@@ -88,6 +103,20 @@ export class ExtensionHostService {
       storage: this.storage,
       registry: this.slotRegistry,
       dispatcher: this.dispatcher,
+    });
+
+    this.miner = new IdleMineScheduler();
+    // Pipe every logged action into the miner so the idle timer
+    // re-arms as the user works.
+    this.actionLog.subscribe((event) => {
+      this.miner.push(event);
+    });
+    // When the miner fires, filter against currently-installed tools
+    // and notify listeners. The filter call is async (it reads
+    // storage); store the most recent event so late subscribers can
+    // still see the latest suggestions.
+    this.miner.subscribe((event) => {
+      void this.handleMineEvent(event);
     });
 
     this.dispatcher.onActivate(async (id) => {
@@ -369,8 +398,52 @@ export class ExtensionHostService {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Log a user-level action. Viewer slices call this from their
+   * reducers / sagas so the action log mirrors the user's intents
+   * for the pattern miner.
+   *
+   * Content-free metadata only — see `ActionParams` for the schema.
+   */
+  emitAction<K extends ActionIntent>(intent: K, params: ActionParams[K]): void {
+    this.actionLog.append({ intent, params });
+  }
+
+  /** Subscribe to mine results (already filtered against installs). */
+  onSuggestions(listener: (event: MineEvent) => void): () => void {
+    this.suggestionListeners.add(listener);
+    // Surface the most recent event immediately so late subscribers
+    // (panels that mount after a mine fired) don't miss it.
+    if (this.suggestions) {
+      try {
+        listener(this.suggestions);
+      } catch (err) {
+        console.error('[ext-host] Suggestion listener threw on replay:', err);
+      }
+    }
+    return () => {
+      this.suggestionListeners.delete(listener);
+    };
+  }
+
+  /** Read the last mine result, if any. */
+  getSuggestions(): MineEvent | undefined {
+    return this.suggestions;
+  }
+
+  /**
+   * Build an `AuthoringPlan` stub from a mined pattern. The UI hands
+   * the stub off to the chat panel as the seed for an authoring turn.
+   */
+  acceptSuggestion(pattern: MinedPattern): AuthoringPlan {
+    return planFromPattern(pattern);
+  }
+
   /** Tear down everything. Called on flavor switch / sign-out. */
   async dispose(): Promise<void> {
+    this.miner.dispose();
+    this.suggestionListeners.clear();
+    this.suggestions = undefined;
     await this.runtime.disposeAll();
     for (const id of this.dispatcher.listExtensions()) {
       this.dispatcher.unregister(id);
@@ -378,6 +451,33 @@ export class ExtensionHostService {
     this.slotRegistry.clear();
     this.listeners.clear();
     this.initialized = false;
+  }
+
+  private async handleMineEvent(event: MineEvent): Promise<void> {
+    let filtered = event.patterns;
+    try {
+      const installed = await this.storage.listExtensions();
+      filtered = filterAgainstInstalled(
+        event.patterns,
+        installed.map((ext) => ({
+          id: ext.id,
+          grantedCapabilities: ext.grantedCapabilities,
+        })),
+      );
+    } catch (err) {
+      // If storage fails we still surface the unfiltered patterns —
+      // worst case the user sees a "you already have this" duplicate.
+      console.warn('[ext-host] filterAgainstInstalled failed; surfacing raw patterns:', err);
+    }
+    const next: MineEvent = { ...event, patterns: filtered };
+    this.suggestions = next;
+    for (const listener of this.suggestionListeners) {
+      try {
+        listener(next);
+      } catch (err) {
+        console.error('[ext-host] Suggestion listener threw:', err);
+      }
+    }
   }
 
   private emit(): void {

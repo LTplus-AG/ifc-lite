@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { FilePlus, FileText, Puzzle, Trash2, Upload, X } from 'lucide-react';
+import { FilePlus, FileText, Lightbulb, Puzzle, Trash2, Upload, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -27,6 +27,7 @@ import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useInstalledExtensions } from '@/hooks/useInstalledExtensions';
 import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
+import { IdeasPanel } from './IdeasPanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 
@@ -44,7 +45,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [showAudit, setShowAudit] = useState(false);
+  const [view, setView] = useState<'installed' | 'ideas' | 'audit'>('installed');
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -104,10 +105,20 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <div className="flex items-center gap-1">
           <Button
             size="sm"
-            variant={showAudit ? 'secondary' : 'ghost'}
-            onClick={() => setShowAudit((v) => !v)}
+            variant={view === 'ideas' ? 'secondary' : 'ghost'}
+            onClick={() => setView((v) => (v === 'ideas' ? 'installed' : 'ideas'))}
+            aria-label="Toggle ideas panel"
+            aria-pressed={view === 'ideas'}
+          >
+            <Lightbulb className="mr-1 h-3.5 w-3.5" />
+            Ideas
+          </Button>
+          <Button
+            size="sm"
+            variant={view === 'audit' ? 'secondary' : 'ghost'}
+            onClick={() => setView((v) => (v === 'audit' ? 'installed' : 'audit'))}
             aria-label="Toggle audit log"
-            aria-pressed={showAudit}
+            aria-pressed={view === 'audit'}
           >
             <FileText className="mr-1 h-3.5 w-3.5" />
             Audit
@@ -149,8 +160,10 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         Bundles run in a sandboxed QuickJS runtime with explicit capability grants.
       </div>
 
-      {showAudit ? (
+      {view === 'audit' ? (
         <AuditLogPanel />
+      ) : view === 'ideas' ? (
+        <IdeasPanel />
       ) : (
       <div
         className={`flex-1 overflow-auto transition-colors ${

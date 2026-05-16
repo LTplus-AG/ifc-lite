@@ -15,6 +15,7 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useActionLogger } from '@/hooks/useActionLogger';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
@@ -46,6 +47,9 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
+  // Bridge viewer state transitions into the extension action log
+  // so the idle pattern miner can surface one-click tool suggestions.
+  useActionLogger();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Command palette state

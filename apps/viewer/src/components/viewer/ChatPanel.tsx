@@ -58,6 +58,7 @@ import { ByokKeyModal } from './chat/ByokKeyModal';
 import { ByokStreamingPill } from './chat/ByokStreamingPill';
 import type { BYOKProvider } from '@/lib/llm/clipboard-detect';
 import { useSandbox } from '@/hooks/useSandbox';
+import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 
 // Environment variable for the proxy URL
 const PROXY_URL = import.meta.env.VITE_LLM_PROXY_URL as string || '/api/chat';
@@ -203,6 +204,7 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ onClose }: ChatPanelProps) {
+  const extensionHost = useOptionalExtensionHost();
   const messages = useViewerStore((s) => s.chatMessages);
   const status = useViewerStore((s) => s.chatStatus);
   const streamingContent = useViewerStore((s) => s.chatStreamingContent);
@@ -439,6 +441,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       setChatError('AI assistant is available with Desktop Pro.');
       return;
     }
+
+    // Action log: record the user sent a chat message. Content-free —
+    // we only log the coarse intent, never the prompt text.
+    extensionHost?.emitAction('chat.message', {
+      intent: options?.intent === 'repair' ? 'one-shot' : 'query',
+    });
 
     // Resolve the stream route BEFORE any user-visible side effects (adding
     // the user message, clearing attachments, setting sending state). If the
@@ -884,7 +892,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     canUseAiAssistant, status, activeModel, attachments,
     addMessage, setChatStatus, updateStreaming, finalizeAssistant,
     setChatError, setChatAbortController, clearAttachments, setChatUsage, resizeInput,
-    buildRepairPromptFromLiveState, triggerAutoRepair, execute,
+    buildRepairPromptFromLiveState, triggerAutoRepair, execute, extensionHost,
   ]);
 
   const handleSend = useCallback(() => {

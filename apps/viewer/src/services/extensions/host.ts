@@ -474,11 +474,6 @@ export class ExtensionHostService {
   }
 
   /**
-   * Re-run every installed extension's tests against the supplied SDK
-   * version. The result feeds the repair queue UI: outdated or
-   * permissive ranges with failing tests land in `needsRepair`.
-   */
-  /**
    * Switch to the named flavor, enabling its declared extensions and
    * disabling anything the previous flavor had that this one doesn't.
    * Returns the structured switch result so the UI can surface
@@ -516,6 +511,11 @@ export class ExtensionHostService {
     this.emit();
   }
 
+  /**
+   * Re-run every installed extension's tests against the supplied SDK
+   * version. The result feeds the repair queue UI: outdated or
+   * permissive ranges with failing tests land in `needsRepair`.
+   */
   async revalidateForSdk(sdkVersion: string): Promise<RevalidationSummary> {
     const records = await this.storage.listExtensions();
     const installed = records.map((rec) => {

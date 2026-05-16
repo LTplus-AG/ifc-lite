@@ -56,6 +56,18 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     });
   }, [open, host, refresh]);
 
+  // When the dialog closes (or the preview is dismissed), zero the
+  // preview bytes so a sensitive `.iflv` doesn't sit in memory longer
+  // than necessary. Best effort — the GC will reclaim eventually.
+  useEffect(() => {
+    if (open) return;
+    if (preview) {
+      preview.bytes.fill(0);
+      setPreview(null);
+    }
+    if (mergeTarget) setMergeTarget(null);
+  }, [open, preview, mergeTarget]);
+
   const handleExport = async (id: string) => {
     setBusy(true);
     try {

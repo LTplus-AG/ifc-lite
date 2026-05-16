@@ -82,12 +82,22 @@ const DEFAULT_BLOCKLIST: readonly RegExp[] = [
  * Each entry includes a `template` the extractor uses to phrase the
  * proposal. `{verb}` is filled from the matched verb in the turn.
  */
+/**
+ * Modal verbs that turn `always` from a stable preference into a
+ * hypothetical / observation ("the wall is always IFC", "I will always
+ * check"). When the captured fragment contains one of these we drop
+ * the proposal — it's noise, not a preference.
+ */
+const MODAL_NOISE_RE = /\b(?:will|would|might|may|should|could|might've|would've|users? )\b/i;
+
 const PREFERENCE_PATTERNS: { rx: RegExp; template: string; confidence: number }[] = [
-  { rx: /\balways (.{4,80}?)(?:[.!?\n]|$)/i, template: 'Always {0}.', confidence: 0.85 },
+  // Start-of-sentence "always" (or after a sentence boundary) — avoids
+  // "I will always", "users always", "the wall is always".
+  { rx: /(?:^|[.!?]\s+)always (.{4,80}?)(?:[.!?\n]|$)/i, template: 'Always {0}.', confidence: 0.85 },
   { rx: /\b(?:i (?:always|usually|prefer to)|by default,? i) (.{4,80}?)(?:[.!?\n]|$)/i, template: 'I prefer to {0}.', confidence: 0.8 },
-  { rx: /\bnever (.{4,80}?)(?:[.!?\n]|$)/i, template: 'Never {0}.', confidence: 0.85 },
+  { rx: /(?:^|[.!?]\s+)never (.{4,80}?)(?:[.!?\n]|$)/i, template: 'Never {0}.', confidence: 0.85 },
   { rx: /\bremind me to (.{4,80}?)(?:[.!?\n]|$)/i, template: 'Remind me to {0}.', confidence: 0.7 },
-  { rx: /\bdo not (.{4,80}?)(?:[.!?\n]|$)/i, template: 'Do not {0}.', confidence: 0.8 },
+  { rx: /(?:^|[.!?]\s+)do not (.{4,80}?)(?:[.!?\n]|$)/i, template: 'Do not {0}.', confidence: 0.8 },
   { rx: /\bmy preference (?:is|for [^.]+ is) (.{4,80}?)(?:[.!?\n]|$)/i, template: 'Preference: {0}.', confidence: 0.75 },
 ];
 
@@ -114,6 +124,9 @@ export function extractMemoryProposals(
       if (!m) continue;
       const captured = m[1].trim();
       if (captured.length < 4) continue;
+      // Drop hypothetical/observational sentences — "always" alone
+      // isn't a preference if it's modified by a modal verb.
+      if (MODAL_NOISE_RE.test(captured)) continue;
       const phrasing = renderTemplate(pattern.template, captured);
       if (failsBlocklist(phrasing, blocklist)) continue;
       const key = phrasing.toLowerCase();
@@ -141,9 +154,11 @@ function failsBlocklist(phrasing: string, blocklist: readonly RegExp[]): boolean
   for (const rx of blocklist) {
     if (rx.test(phrasing)) return true;
   }
-  // Reject if it contains more than 2 numeric tokens — likely IDs.
+  // Reject if it contains two or more numeric tokens — likely IDs.
+  // Privacy-leaning default: prefer dropping a good proposal over
+  // surfacing one that may carry an identifier the user didn't notice.
   const numericTokens = phrasing.match(/\b\d+\b/g) ?? [];
-  if (numericTokens.length > 2) return true;
+  if (numericTokens.length >= 2) return true;
   return false;
 }
 

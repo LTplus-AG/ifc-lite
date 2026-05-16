@@ -84,14 +84,23 @@ export async function switchFlavor(
   // Step 1: deactivate / disable extensions not in the target.
   for (const ext of opts.installed) {
     if (!wanted.has(ext.id) && ext.enabled) {
-      touched.push(ext);
       try {
         await opts.callbacks.deactivate(ext.id);
         await opts.callbacks.setEnabled(ext.id, false);
+        touched.push(ext);
         disabled.push(ext.id);
       } catch (err) {
+        // Don't push the failing entry to touched — rollback would
+        // re-call the same op that just failed. If deactivate threw
+        // mid-flight, set the prior enabled=true to make sure the
+        // ledger lines up, then roll back the items that did succeed.
+        try {
+          await opts.callbacks.setEnabled(ext.id, ext.enabled);
+        } catch {
+          // Best effort.
+        }
         failures.push(ext.id);
-        await rollback(opts.callbacks, touched);
+        await rollback(opts.callbacks, touched, ext.id);
         return { ok: false, active: opts.current ?? opts.target, failures, disabled, enabled };
       }
     }
@@ -100,15 +109,22 @@ export async function switchFlavor(
   // Step 2: enable + load extensions the target requires.
   for (const ext of opts.installed) {
     if (wanted.has(ext.id) && !ext.enabled) {
-      touched.push(ext);
       try {
         await opts.callbacks.setEnabled(ext.id, true);
         const ok = await opts.callbacks.reload(ext.id);
-        if (!ok) throw new Error(`reload returned false`);
+        if (!ok) throw new Error('reload returned false');
+        touched.push(ext);
         enabled.push(ext.id);
       } catch (err) {
+        // Reset the persisted enabled flag back to what it was so the
+        // ledger matches reality, then roll back the previous touches.
+        try {
+          await opts.callbacks.setEnabled(ext.id, ext.enabled);
+        } catch {
+          // Best effort.
+        }
         failures.push(ext.id);
-        await rollback(opts.callbacks, touched);
+        await rollback(opts.callbacks, touched, ext.id);
         return { ok: false, active: opts.current ?? opts.target, failures, disabled, enabled };
       }
     }
@@ -128,10 +144,13 @@ export async function switchFlavor(
 async function rollback(
   callbacks: FlavorSwitcherCallbacks,
   touched: readonly FlavorExtensionState[],
+  skipId?: string,
 ): Promise<void> {
   // Restore each touched extension to its prior `enabled` state.
+  // Skip the one that just failed so we don't re-trigger the same op.
   // Best effort — log but don't throw further.
   for (const ext of touched) {
+    if (ext.id === skipId) continue;
     try {
       await callbacks.setEnabled(ext.id, ext.enabled);
       if (ext.enabled) {

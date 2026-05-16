@@ -33,28 +33,31 @@ export function useActionLogger(): void {
     let prev = useViewerStore.getState();
 
     const unsubscribe = useViewerStore.subscribe((state) => {
-      // model.load — when a new model is added to the federation.
-      if (state.models.size > prev.models.size) {
-        for (const [id, model] of state.models) {
-          if (!prev.models.has(id)) {
-            host.emitAction('model.load', {
-              schema: model.schemaVersion,
-              entityCount: model.ifcDataStore?.entityCount,
-              sizeBytes: model.fileSize,
-            });
-          }
+      // model.load / model.unload — compare by id, not by size, so a
+      // simultaneous add+remove transition still emits the right events.
+      for (const [id, model] of state.models) {
+        if (!prev.models.has(id)) {
+          host.emitAction('model.load', {
+            schema: model.schemaVersion,
+            entityCount: model.ifcDataStore?.entityCount,
+            sizeBytes: model.fileSize,
+          });
+        }
+      }
+      for (const id of prev.models.keys()) {
+        if (!state.models.has(id)) {
+          host.emitAction('model.unload', {});
         }
       }
 
-      // model.unload — when a model is removed from the federation.
-      if (state.models.size < prev.models.size) {
-        host.emitAction('model.unload', {});
-      }
-
       // lens.apply / lens.clear — track active lens transitions.
+      // Project the lens id through a short hash so a user-named lens
+      // (e.g. "John's basement check") doesn't leak into the action
+      // log. The pattern miner only needs identity for matching, not
+      // the original string.
       if (state.activeLensId !== prev.activeLensId) {
         if (state.activeLensId) {
-          host.emitAction('lens.apply', { id: state.activeLensId });
+          host.emitAction('lens.apply', { id: hashLensId(state.activeLensId) });
         } else {
           host.emitAction('lens.clear', {});
         }
@@ -72,4 +75,18 @@ export function useActionLogger(): void {
 
     return unsubscribe;
   }, [host]);
+}
+
+/**
+ * Project a lens id into a short stable token so the action log never
+ * carries the original string. We only need identity for the miner;
+ * djb2 is plenty for 30-50 distinct lenses per user.
+ */
+function hashLensId(id: string): string {
+  let hash = 5381;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) + hash + id.charCodeAt(i)) | 0;
+  }
+  // Unsigned 32-bit hex — 8 chars, stable, opaque.
+  return `lens-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }

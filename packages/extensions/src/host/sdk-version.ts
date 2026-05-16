@@ -57,16 +57,20 @@ interface Comparator {
   version: ParsedVersion;
 }
 
-const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:[.-].*)?$/;
 const COMPARATOR_RE = /^(>=|<=|>|<|\^|~|=)?\s*(\d+(?:\.\d+){0,2}(?:[.-].*)?)$/;
+// Accept shorthand: `2`, `2.1`, `2.1.0`, with an optional prerelease /
+// build suffix. Reject 4+ dotted segments outright — silent truncation
+// of `1.2.3.4` to `1.2.3` would hide manifest typos.
+const VERSION_PARSE_RE = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[.-].*)?$/;
 
 function parseVersion(raw: string): ParsedVersion | undefined {
-  // Allow shorthand "2", "2.1", "2.1.0", and tolerate -prerelease suffix.
-  const parts = raw.trim().split(/[.-]/);
-  const nums = parts.slice(0, 3).map((p) => Number.parseInt(p, 10));
-  if (nums.some((n) => Number.isNaN(n))) return undefined;
-  while (nums.length < 3) nums.push(0);
-  return { major: nums[0], minor: nums[1], patch: nums[2] };
+  const m = raw.trim().match(VERSION_PARSE_RE);
+  if (!m) return undefined;
+  const major = Number.parseInt(m[1], 10);
+  const minor = m[2] !== undefined ? Number.parseInt(m[2], 10) : 0;
+  const patch = m[3] !== undefined ? Number.parseInt(m[3], 10) : 0;
+  if ([major, minor, patch].some((n) => Number.isNaN(n))) return undefined;
+  return { major, minor, patch };
 }
 
 function parseRange(raw: string): Comparator[] | 'permissive' {
@@ -113,6 +117,12 @@ function satisfies(comp: Comparator, target: ParsedVersion): boolean {
       const lo = cmp(target, comp.version) >= 0;
       const hi = target.major === comp.version.major && target.minor === comp.version.minor;
       return lo && hi;
+    }
+    default: {
+      // Exhaustiveness: if a new op variant lands without updating this
+      // switch, fail loudly instead of returning undefined → falsy.
+      const exhaustive: never = comp.op;
+      throw new Error(`Unreachable comparator op: ${exhaustive as string}`);
     }
   }
 }

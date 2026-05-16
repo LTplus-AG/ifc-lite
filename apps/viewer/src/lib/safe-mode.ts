@@ -5,10 +5,11 @@
 /**
  * Safe-mode entry point.
  *
- * The user reaches safe mode by:
- *   - Appending `?safe=1` to the URL on web.
- *   - Holding Shift while launching on desktop (Tauri side wires that
- *     to the same query parameter on the loaded URL).
+ * The user reaches safe mode by appending `?safe=1` (or `?safe=true`)
+ * to the URL. The desktop Shift-launch wiring referenced in the spec
+ * is a follow-up — the Tauri side needs to append the same query
+ * parameter to the loaded URL when Shift is held; until that lands,
+ * desktop users use the same URL flag from the address bar.
  *
  * In safe mode the host:
  *   - Skips automatic activation of the currently-active flavor.

@@ -29,7 +29,7 @@ import type {
   ManifestTest,
   ManifestTestExpect,
 } from '../types.js';
-import type { ExtensionRuntime } from '../host/runtime.js';
+import type { ActivationRecord, ExtensionRuntime } from '../host/runtime.js';
 import { wrapEntrySource } from '../host/source-wrap.js';
 
 export interface TestRunResult {
@@ -72,6 +72,7 @@ export interface RunBundleTestsOptions {
 }
 
 const DECODER = new TextDecoder();
+const MAX_REGEX_PATTERN_LENGTH = 256;
 
 /**
  * Run every test declared in `bundle.manifest.tests` against the
@@ -89,8 +90,8 @@ export async function runBundleTests(
   for (const test of tests) {
     const startedAt = performance.now();
     try {
-      await opts.runtime.activate(opts.bundle.manifest.id, opts.grants, opts.bundle);
-      const result = await runSingleTest(opts.runtime, opts.bundle, test, opts.loadFixture);
+      const record = await opts.runtime.activate(opts.bundle.manifest.id, opts.grants, opts.bundle);
+      const result = await runSingleTest(record, opts.bundle, test, opts.loadFixture);
       results.push({
         name: test.name,
         passed: result.passed,
@@ -125,7 +126,7 @@ interface SingleResult {
 }
 
 async function runSingleTest(
-  runtime: ExtensionRuntime,
+  record: ActivationRecord,
   bundle: Bundle,
   test: ManifestTest,
   loadFixture?: (name: string) => Promise<unknown>,
@@ -146,13 +147,6 @@ async function runSingleTest(
       passed: false,
       error: `Entry did not wrap: ${wrapped.errors[0]?.message ?? 'unknown error'}`,
     };
-  }
-
-  const record = runtime.activate
-    ? await runtime.activate(bundle.manifest.id, [], bundle).catch(() => undefined)
-    : undefined;
-  if (!record) {
-    return { passed: false, error: 'Runtime did not produce an activation record.' };
   }
 
   let bim: unknown = {};
@@ -225,6 +219,11 @@ function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleRe
     const text = readText(value);
     if (text === undefined) {
       reasons.push(`regex: result has no text representation`);
+    } else if (expect.regex.length > MAX_REGEX_PATTERN_LENGTH) {
+      // Defence against pathological patterns from untrusted manifests.
+      // 256 chars is plenty for any reasonable expectation; longer is a
+      // smell. We refuse to compile rather than risk ReDoS.
+      reasons.push(`regex: pattern exceeds ${MAX_REGEX_PATTERN_LENGTH}-char limit`);
     } else {
       try {
         const re = new RegExp(expect.regex);
@@ -254,12 +253,14 @@ function readField(value: unknown, field: string): unknown {
 }
 
 function readByteLength(value: unknown): number | undefined {
+  // Check string before the object guard — strings are not objects but
+  // do have a measurable encoded byte length.
+  if (typeof value === 'string') return new TextEncoder().encode(value).byteLength;
   if (value === null || typeof value !== 'object') return undefined;
   const obj = value as Record<string, unknown>;
   if (typeof obj.byteLength === 'number') return obj.byteLength;
   if (obj.bytes instanceof Uint8Array) return obj.bytes.byteLength;
   if (typeof obj.text === 'string') return new TextEncoder().encode(obj.text).byteLength;
-  if (typeof value === 'string') return new TextEncoder().encode(value).byteLength;
   return undefined;
 }
 

@@ -49,11 +49,15 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
   const chatMessages = useViewerStore((s) => s.chatMessages);
 
   const refresh = async () => {
-    setLogSize({ events: host.actionLog.size(), bytes: host.actionLog.byteSize() });
-    const flavor = await host.flavors.getActive();
-    setActiveFlavor(flavor);
-    if (flavor && !dirty) {
-      setOverlayDraft(flavor.promptOverlay?.content ?? '');
+    try {
+      setLogSize({ events: host.actionLog.size(), bytes: host.actionLog.byteSize() });
+      const flavor = await host.flavors.getActive();
+      setActiveFlavor(flavor);
+      if (flavor && !dirty) {
+        setOverlayDraft(flavor.promptOverlay?.content ?? '');
+      }
+    } catch (err) {
+      console.warn('[PrivacyPanel] refresh failed:', err);
     }
   };
 
@@ -243,6 +247,11 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
                   <div className="rounded border bg-muted/30 px-3 py-2 space-y-2">
                     <div className="text-[11px] font-medium">
                       {proposals.length} candidate preference{proposals.length === 1 ? '' : 's'}
+                    </div>
+                    <div className="text-[10px] text-amber-700 dark:text-amber-400 italic">
+                      Rule-based scan — review each line before saving.
+                      The extractor uses a heuristic blocklist; it is not
+                      a guarantee that no content slips through.
                     </div>
                     <ul className="space-y-1 text-[11px]">
                       {proposals.map((p, i) => (

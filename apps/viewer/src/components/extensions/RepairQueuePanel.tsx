@@ -14,7 +14,7 @@
  * Spec: docs/architecture/ai-customization/06-self-improvement.md §5.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { CheckCircle2, RefreshCcw, ShieldAlert, Wrench, X } from 'lucide-react';
 import type { RevalidationItem, RevalidationSummary } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
@@ -35,9 +35,16 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
   const [summary, setSummary] = useState<RevalidationSummary | undefined>();
   const [busy, setBusy] = useState(false);
-  const version = sdkVersion ?? (typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0');
+  // SDK version comes from the Vite-injected __APP_VERSION__ define.
+  // We deliberately do NOT fall back to '0.0.0' on miss — a fake low
+  // version would flag every range as outdated and produce a wave of
+  // false-positive repair prompts.
+  const version =
+    sdkVersion
+    ?? (typeof __APP_VERSION__ === 'string' && __APP_VERSION__.length > 0 ? __APP_VERSION__ : undefined);
 
-  const run = async () => {
+  const run = useCallback(async () => {
+    if (!version) return;
     setBusy(true);
     try {
       const next = await host.revalidateForSdk(version);
@@ -47,14 +54,14 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
     } finally {
       setBusy(false);
     }
-  };
-
-  useEffect(() => {
-    void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, version]);
 
+  // Eager-run is gated behind an explicit user click. Mounting alone
+  // shouldn't spin up sandboxes for every installed extension — that
+  // can be expensive when many extensions are installed and outdated.
+
   const repairItem = (item: RevalidationItem) => {
+    if (!version) return;
     queueChatPrompt(buildRepairPrompt(item, version));
     setChatPanelVisible(true);
     toast.success(`Routing repair for ${item.extensionId}…`);
@@ -73,7 +80,7 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
           )}
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={() => void run()} disabled={busy}>
+          <Button size="sm" variant="ghost" onClick={() => void run()} disabled={busy || !version}>
             <RefreshCcw className="mr-1 h-3.5 w-3.5" />
             Re-run
           </Button>
@@ -86,9 +93,17 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
       </div>
 
       <ScrollArea className="flex-1">
-        {!summary ? (
-          <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-            Running compatibility check…
+        {!version ? (
+          <div className="px-6 py-12 text-center text-sm text-rose-600 dark:text-rose-400">
+            SDK version unknown — cannot revalidate. Set <code className="font-mono">__APP_VERSION__</code> via Vite define.
+          </div>
+        ) : !summary ? (
+          <div className="px-6 py-12 text-center text-sm text-muted-foreground space-y-3">
+            <div>No compatibility check has run for this session.</div>
+            <Button size="sm" variant="outline" onClick={() => void run()} disabled={busy}>
+              <RefreshCcw className="mr-1 h-3.5 w-3.5" />
+              Run check
+            </Button>
           </div>
         ) : summary.items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">

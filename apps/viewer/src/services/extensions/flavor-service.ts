@@ -5,16 +5,15 @@
 /**
  * `FlavorService` — viewer-side façade for the flavor library.
  *
- * Wraps `InMemoryFlavorStorage` for now; the IDB-backed adapter lands
- * with the persistence pass (P3.T17 — safe-mode launch). The service
- * owns the active-flavor pointer, list/CRUD, switch logic, and
- * snapshot management.
+ * Defaults to the IDB-backed storage adapter so flavors persist across
+ * reloads. Tests can pass `InMemoryFlavorStorage` via options. The
+ * service owns the active-flavor pointer, list/CRUD, switch logic,
+ * and snapshot management.
  *
  * Spec: docs/architecture/ai-customization/05-flavors-and-sharing.md.
  */
 
 import {
-  InMemoryFlavorStorage,
   packFlavor,
   switchFlavor,
   unpackFlavor,
@@ -26,6 +25,7 @@ import {
   type FlavorSwitchResult,
   type UnpackedFlavor,
 } from '@ifc-lite/extensions';
+import { IdbFlavorStorage } from './idb-flavor-storage.js';
 
 export interface FlavorServiceOptions {
   storage?: FlavorStorage;
@@ -36,7 +36,7 @@ export class FlavorService {
   private listeners = new Set<() => void>();
 
   constructor(opts: FlavorServiceOptions = {}) {
-    this.storage = opts.storage ?? new InMemoryFlavorStorage();
+    this.storage = opts.storage ?? new IdbFlavorStorage();
   }
 
   async list(): Promise<Flavor[]> {
@@ -80,7 +80,9 @@ export class FlavorService {
       current,
       callbacks,
     });
-    if (result.ok) this.emit();
+    // Always emit — even on failure the rollback ran and the in-memory
+    // extension state likely moved. The UI needs to refresh either way.
+    this.emit();
     return result;
   }
 

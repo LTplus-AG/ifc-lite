@@ -83,10 +83,19 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
   const conflictKey = (c: MergeConflict): string => `${c.kind}:${c.key}`;
 
   const handleApply = async () => {
-    if (!mergeResult || !theirs) return;
+    if (!mergeResult || !theirs || !base) return;
     setBusy(true);
     try {
-      const merged = { ...mergeResult.merged };
+      // Deep clone so applyChoice's index mutations on inner arrays
+      // don't reach back into the memoised mergeResult.
+      const merged: Flavor = {
+        ...mergeResult.merged,
+        extensions: [...mergeResult.merged.extensions],
+        lenses: [...mergeResult.merged.lenses],
+        savedQueries: [...mergeResult.merged.savedQueries],
+        keybindings: [...mergeResult.merged.keybindings],
+        settings: { ...mergeResult.merged.settings },
+      };
       // Apply per-conflict resolution: where the user picked theirs,
       // we already merged in their value via the conflict choice;
       // where they picked base we have to re-write the merged field.
@@ -96,7 +105,7 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
       for (const conflict of mergeResult.conflicts) {
         const choice = resolutions[conflictKey(conflict)];
         if (!choice || choice === 'ours') continue;
-        applyChoice(merged, conflict, choice, theirs, base!);
+        applyChoice(merged, conflict, choice, theirs, base);
       }
       merged.id = `${theirs.id}.merge-${Date.now()}`;
       merged.updatedAt = new Date().toISOString();
@@ -157,6 +166,7 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
               {mergeResult.conflicts.map((conflict) => {
                 const key = conflictKey(conflict);
                 const choice = resolutions[key] ?? 'ours';
+                const hasBase = conflict.base !== undefined;
                 return (
                   <li key={key} className="px-3 py-2 space-y-1.5">
                     <div className="flex items-center gap-2 text-xs">
@@ -165,7 +175,9 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
                       </code>
                       <span className="font-mono text-[11px] break-all">{conflict.key}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-[11px]">
+                    <div
+                      className={`grid gap-2 text-[11px] ${hasBase ? 'grid-cols-3' : 'grid-cols-2'}`}
+                    >
                       <ResolutionChip
                         label="Theirs"
                         value={conflict.theirs}

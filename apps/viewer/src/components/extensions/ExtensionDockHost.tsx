@@ -18,9 +18,17 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { parseWhen, evaluateWhen, type DockContribution, type SlotContribution } from '@ifc-lite/extensions';
+import {
+  parseWhen,
+  evaluateWhen,
+  validateWidget,
+  type DockContribution,
+  type SlotContribution,
+  type WhenContext,
+} from '@ifc-lite/extensions';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { useViewerStore } from '@/store';
 import { WidgetRenderer, type WidgetRendererContext } from './widget/WidgetRenderer';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -33,7 +41,16 @@ interface ExtensionDockHostProps {
 
 export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
   const contributions = useSlotContributions<DockContribution>(slot);
-  const visible = useFiltered(contributions);
+  // Derive the when-clause context from live viewer state so
+  // contributions can key on selection / model presence. Future
+  // additions (schema, viewer.open, embed flag) thread through here.
+  const modelLoaded = useViewerStore((s) => s.models.size > 0);
+  const selectionCount = useViewerStore((s) => s.selectedEntities.length);
+  const whenContext = useMemo<WhenContext>(
+    () => ({ 'model.loaded': modelLoaded, 'selection.count': selectionCount }),
+    [modelLoaded, selectionCount],
+  );
+  const visible = useFiltered(contributions, whenContext);
   const [activeId, setActiveId] = useState<string | undefined>(visible[0]?.payload.id);
 
   useEffect(() => {
@@ -76,18 +93,18 @@ export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
   );
 }
 
-function useFiltered(contributions: SlotContribution<DockContribution>[]): SlotContribution<DockContribution>[] {
+function useFiltered(
+  contributions: SlotContribution<DockContribution>[],
+  whenContext: WhenContext,
+): SlotContribution<DockContribution>[] {
   return useMemo(() => {
     return contributions.filter((c) => {
       if (!c.payload.when) return true;
       const parsed = parseWhen(c.payload.when);
       if (!parsed.ok) return false;
-      // Minimal context — dock visibility commonly keys on model.loaded.
-      // Future: surface a richer context here as the viewer fills out
-      // more of the WhenContext vocabulary.
-      return evaluateWhen(parsed.value, { 'model.loaded': true });
+      return evaluateWhen(parsed.value, whenContext);
     });
-  }, [contributions]);
+  }, [contributions, whenContext]);
 }
 
 function DockBody({ contribution }: { contribution: SlotContribution<DockContribution> }) {
@@ -122,7 +139,15 @@ function DockBody({ contribution }: { contribution: SlotContribution<DockContrib
         }
         const text = file.text ?? new TextDecoder().decode(file.bytes);
         const json = JSON.parse(text);
-        if (!cancelled) setWidget(json);
+        // Validate the shape before handing it to the renderer so we
+        // surface a clean structured error instead of a deep crash.
+        const validated = validateWidget(json, contribution.payload.widget);
+        if (!validated.ok) {
+          const first = validated.errors[0];
+          if (!cancelled) setError(`Widget ${first?.path || ''} ${first?.message ?? 'failed validation'}`);
+          return;
+        }
+        if (!cancelled) setWidget(validated.value);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }

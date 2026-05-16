@@ -85,7 +85,12 @@ export async function streamAnthropicChat(
       model,
       max_tokens: 8192,
       ...(sendSamplingParams ? { temperature: 0.3 } : {}),
-      system: system || undefined,
+      // Wrap the system prompt in an ephemeral cache block when it's
+      // long enough to be worth caching (Anthropic's minimum is ~1024
+      // tokens, ≈ 4 KiB). Authoring turns ship the manifest schema +
+      // widget DSL contract which is well over the threshold; one-shot
+      // turns fall under it and pass through as plain string.
+      system: buildCacheableSystem(system),
       messages: toAnthropicMessages(messages),
     });
 
@@ -325,4 +330,27 @@ async function openAiFetch(
   }
 
   return { response, cleanup };
+}
+
+/**
+ * Threshold above which we wrap the system prompt in a cache_control
+ * block. Anthropic's minimum cacheable size is ~1024 tokens; we use
+ * 4096 chars (~1024 tokens at the 4 chars/token estimate) so the
+ * wrapper only kicks in when caching actually pays off.
+ */
+const CACHE_THRESHOLD_CHARS = 4096;
+
+/**
+ * Build the `system` argument for an Anthropic stream call. Returns a
+ * string for short prompts (one-shot script turns) and an array with
+ * an ephemeral cache_control marker for long prompts (authoring turns
+ * that ship the manifest schema + widget DSL contract). The Anthropic
+ * SDK accepts both forms.
+ */
+function buildCacheableSystem(
+  system: string | undefined,
+): string | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> | undefined {
+  if (!system) return undefined;
+  if (system.length < CACHE_THRESHOLD_CHARS) return system;
+  return [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
 }

@@ -170,3 +170,126 @@ describe('eval: SDK update loop', () => {
     expect(summary.needsRepair).toHaveLength(0);
   });
 });
+
+/**
+ * Phase-gate criteria from the implementation plan. These tests guard
+ * the spec-level invariants the RFC promises users:
+ *   - "Action log demonstrably contains no model / chat / file content"
+ *   - "SDK-bump dry run: representative installed-extension set passes
+ *      with the repair loop fixing ≥ 80% of failures"
+ *
+ * Together with the planted-pattern test above they cover the three
+ * P4 gate criteria the implementation plan calls out as machine-
+ * verifiable.
+ */
+describe('P4 gate: action-log content discipline', () => {
+  /** RegExps that match the no-content rule's forbidden shapes. */
+  const FORBIDDEN_PATTERNS: { rx: RegExp; what: string }[] = [
+    { rx: /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/, what: 'GUID' },
+    { rx: /\b[A-Za-z]:\\[^\s]+/, what: 'Windows path' },
+    { rx: /\/[^\s/]*\/[^\s/]+\.\w{2,5}\b/, what: 'POSIX path' },
+    { rx: /\b\S+@\S+\.\S+\b/, what: 'email' },
+    { rx: /\bsk-[A-Za-z0-9-]{12,}/, what: 'API key' },
+    // Long alphanumeric blob (likely an IFC GlobalId or token).
+    { rx: /\b[A-Za-z0-9]{20,}/, what: 'long alphanumeric blob' },
+  ];
+
+  it('records nothing matching the no-content rule for the planted log', () => {
+    const log = plantedLog();
+    const events = log.list();
+    for (const event of events) {
+      const json = JSON.stringify(event);
+      for (const { rx, what } of FORBIDDEN_PATTERNS) {
+        if (rx.test(json)) {
+          throw new Error(
+            `Action event matched forbidden pattern "${what}" — ${rx} in ${json}`,
+          );
+        }
+      }
+    }
+    // Sanity: the log we're checking actually has events.
+    expect(events.length).toBeGreaterThan(0);
+  });
+
+  it('rejects an action event that smuggles user content via params', () => {
+    // We can't statically enforce the no-content rule (param values
+    // are typed but not regex-validated), so this test asserts the
+    // existing FORBIDDEN_PATTERNS would catch a planted leak.
+    const planted = {
+      seq: 1,
+      ts: '2026-01-01T00:00:00Z',
+      intent: 'lens.apply' as const,
+      // A user-named lens shouldn't end up in the log, but if it did:
+      params: { id: 'building-foo@bar.com' },
+      success: true,
+    };
+    const json = JSON.stringify(planted);
+    const matched = FORBIDDEN_PATTERNS.find((p) => p.rx.test(json));
+    expect(matched?.what).toBe('email');
+  });
+});
+
+describe('P4 gate: SDK-bump dry run', () => {
+  /**
+   * Build a representative installed-set with mixed compatibility
+   * verdicts. The plan's acceptance bar is "≥80% of failing tests
+   * resolve cleanly". In v1 the resolution loop is the AI authoring
+   * pipeline, which we can't run from a test; instead we measure
+   * the *flagging* behaviour: outdated extensions with failing tests
+   * land in needsRepair, and the gate verifies the bucket count.
+   */
+  function repBundle(opts: { id: string; declared: string; passes: boolean }) {
+    const encoder = new TextEncoder();
+    const id = opts.id;
+    const source = opts.passes
+      ? `function run() { return { ok: true, mimeType: 'application/json', bytes: new Uint8Array(64) }; }`
+      : `function run() { return 'fail'; }`;
+    const manifest: ExtensionManifest = {
+      manifestVersion: 1,
+      id,
+      name: id,
+      description: 'd',
+      version: '1.0.0',
+      engines: { ifcLiteSdk: opts.declared },
+      capabilities: [],
+      activation: [`onCommand:${id}.run`],
+      contributes: { commands: [{ id: `${id}.run`, title: 'Run' }] },
+      entry: { commands: { [`${id}.run`]: 'src/run.js' } },
+      tests: [{
+        name: 'shape',
+        command: `${id}.run`,
+        fixture: 'empty-model',
+        expect: { jsonShape: { ok: { type: 'boolean' } } },
+      }],
+    };
+    const files = new Map<string, { path: string; bytes: Uint8Array; text?: string }>();
+    files.set('src/run.js', { path: 'src/run.js', bytes: encoder.encode(source), text: source });
+    return { manifest, files };
+  }
+
+  it('correctly buckets a representative installed set', async () => {
+    const installed = [
+      repBundle({ id: 'com.ex.a', declared: '>=2.0.0', passes: true }),  // compatible
+      repBundle({ id: 'com.ex.b', declared: '>=2.0.0', passes: true }),  // compatible
+      repBundle({ id: 'com.ex.c', declared: '^1.0.0', passes: true }),   // outdated-pass
+      repBundle({ id: 'com.ex.d', declared: '^1.0.0', passes: false }),  // outdated-fail
+      repBundle({ id: 'com.ex.e', declared: '^1.0.0', passes: false }),  // outdated-fail
+    ];
+    const runtime = new ExtensionRuntime({ factory: createMemorySandboxFactory() });
+    const summary = await revalidateAgainstSdk({
+      sdk: '2.5.0',
+      installed: installed.map((b) => ({ id: b.manifest.id, engines: b.manifest.engines, grants: [] })),
+      resolveBundle: (id) => installed.find((b) => b.manifest.id === id),
+      runtime,
+    });
+    const compatible = summary.items.filter((i) => i.compatibility.status === 'compatible').length;
+    const failedTests = summary.items.filter((i) => i.outcome === 'fail').length;
+    expect(compatible).toBe(2);
+    expect(failedTests).toBe(2);
+    // 3 of 5 (60%) didn't need repair; 2 of 5 (40%) need authoring help.
+    // The plan's ≥80% repair-success threshold can't be verified
+    // without the AI loop in-test — but the flagging numbers above
+    // are what feeds it. This guards the bucketing logic.
+    expect(summary.needsRepair).toHaveLength(2);
+  });
+});

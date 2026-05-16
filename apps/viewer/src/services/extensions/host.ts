@@ -44,15 +44,10 @@ import {
   planFromPattern,
   revalidateAgainstSdk,
   runBundleTests,
-  sha256Hex,
   syntheticFixtureLoader,
-  unpackBundle,
-  wrapEntrySource,
   type ActionIntent,
   type ActionParams,
   type AuthoringPlan,
-  type Bundle,
-  type ExtensionContextV1,
   type InstalledExtensionRecord,
   type LoadedExtensionStatus,
   type MinedPattern,
@@ -62,7 +57,6 @@ import {
   type SlotContribution,
   type SlotListener,
   type TestRunSummary,
-  type ValidationError,
   type ValidationResult,
 } from '@ifc-lite/extensions';
 import type { BimContext } from '@ifc-lite/sdk';
@@ -70,17 +64,21 @@ import { IdbExtensionStorage } from './idb-storage.js';
 import { IdbLogStorage } from './idb-log-storage.js';
 import { createBimSandboxFactory } from './sandbox-factory.js';
 import { FlavorService } from './flavor-service.js';
+import { runExtensionCommand } from './host-commands.js';
+import {
+  ExtensionInstallError,
+  installFromBytes,
+  previewBundleBytes,
+  setEnabled,
+  uninstall,
+  type ExtensionInstallSummary,
+} from './host-installer.js';
+
+export { ExtensionInstallError } from './host-installer.js';
+export type { ExtensionInstallSummary } from './host-installer.js';
 
 export interface ExtensionHostServiceOptions {
   sdk: BimContext;
-}
-
-export interface ExtensionInstallSummary {
-  id: string;
-  version: string;
-  bundleHash: string;
-  capabilities: string[];
-  bundle: Bundle;
 }
 
 export class ExtensionHostService {
@@ -212,174 +210,44 @@ export class ExtensionHostService {
   }
 
   /** Inspect a `.iflx` byte string without installing it. */
-  async previewBundle(bytes: Uint8Array): Promise<ValidationResult<ExtensionInstallSummary>> {
-    const unpacked = unpackBundle(bytes);
-    if (!unpacked.ok) return unpacked;
-    const hash = await sha256Hex(bytes);
-    return {
-      ok: true,
-      value: {
-        id: unpacked.value.manifest.id,
-        version: unpacked.value.manifest.version,
-        bundleHash: hash,
-        capabilities: unpacked.value.manifest.capabilities,
-        bundle: unpacked.value,
-      },
-    };
+  /** Inspect a `.iflx` byte string without installing it. */
+  previewBundle(bytes: Uint8Array): Promise<ValidationResult<ExtensionInstallSummary>> {
+    return previewBundleBytes(bytes);
   }
 
   /**
-   * Install a previewed bundle. `grantedCapabilities` is the user-
-   * approved subset of `bundle.manifest.capabilities` from the review
-   * screen.
+   * Install a previewed bundle. Delegates to the lifecycle helpers in
+   * `host-installer.ts`. `grantedCapabilities` is the user-approved
+   * subset of `bundle.manifest.capabilities` from the review screen.
    */
-  async installFromBytes(
+  installFromBytes(
     bytes: Uint8Array,
     grantedCapabilities: string[],
   ): Promise<LoadedExtensionStatus> {
-    const preview = await this.previewBundle(bytes);
-    if (!preview.ok) {
-      throw new ExtensionInstallError('Bundle did not unpack', preview.errors);
-    }
-    const { bundle, bundleHash, id, version } = preview.value;
-
-    // Validate: callers can only grant capabilities the manifest
-    // actually declares. Drops accidental grant escalation if the
-    // review screen pre-filled state from an earlier version of the
-    // bundle.
-    const declaredCaps = new Set(bundle.manifest.capabilities);
-    const unexpected = grantedCapabilities.filter((cap) => !declaredCaps.has(cap));
-    if (unexpected.length > 0) {
-      throw new ExtensionInstallError(
-        `Unexpected capability grants not declared by manifest: ${unexpected.join(', ')}`,
-        unexpected.map((cap) => ({
-          path: 'grantedCapabilities',
-          code: 'invalid_capability' as const,
-          message: `Capability "${cap}" was not requested by the bundle manifest.`,
-        })),
-      );
-    }
-
-    // Snapshot the previous install so we can restore it if the new
-    // bundle fails to load. Without this, a bad update wipes the
-    // user's previously-working install entirely.
-    const previous = await this.storage.getExtension(id);
-    let previousBundleBytes: Uint8Array | undefined;
-    if (previous && previous.version !== version) {
-      previousBundleBytes = await this.storage.getBundle(id, previous.version);
-      await this.runtime.deactivate(id);
-      await this.loader.unload(id);
-    }
-
-    const record: InstalledExtensionRecord = {
-      id,
-      version,
-      bundleHash,
-      grantedCapabilities,
-      enabled: true,
-      installedAt: new Date().toISOString(),
-      source: 'local',
-    };
-    await this.storage.putBundle(id, version, bytes);
-    await this.storage.putExtension(record);
-
-    const status = await this.loader.load(id);
-    if (!status || !status.ok) {
-      // Roll back. Delete the new bundle + record we just wrote.
-      await this.storage.deleteBundle(id, version);
-      await this.storage.deleteExtension(id);
-
-      // Restore the previous install if we had one — re-write its
-      // record and bundle bytes, then re-load. Best effort: log if
-      // restore itself fails, don't mask the original error.
-      if (previous && previousBundleBytes) {
-        try {
-          await this.storage.putBundle(id, previous.version, previousBundleBytes);
-          await this.storage.putExtension(previous);
-          await this.loader.load(id);
-        } catch (restoreErr) {
-          console.error(
-            `[ext-host] Failed to restore previous install of ${id}:`,
-            restoreErr,
-          );
-        }
-      }
-      throw new ExtensionInstallError(
-        'Loader rejected the new bundle',
-        status?.errors ?? [],
-      );
-    }
-
-    this.audit.append({
-      kind: previous ? 'update' : 'install',
-      extensionId: id,
-      version,
-      previousVersion: previous?.version,
-      grantedCapabilities,
-    });
-    // Mirror to the action log so the miner can see install activity.
-    this.emitAction('extension.install', { id });
-
-    // Re-fire onStartup so the freshly-loaded extension activates if it
-    // declared the event. Other startup-subscribed extensions are
-    // unaffected (the dispatcher dedupes activations per session).
-    await this.dispatcher.fire('onStartup');
-    this.emit();
-    return status;
+    return installFromBytes(this.installerDeps(), bytes, grantedCapabilities);
   }
 
   /** Uninstall an extension and remove its bundle. */
-  async uninstall(id: string): Promise<void> {
-    const record = await this.storage.getExtension(id);
-    if (!record) return;
-    await this.runtime.deactivate(id);
-    await this.loader.unload(id);
-    // Delete bundle bytes too — the storage's cascade already handles
-    // this on deleteExtension, but call it explicitly so the contract
-    // is clear at this layer and a future storage impl can't drift.
-    await this.storage.deleteBundle(id, record.version);
-    await this.storage.deleteExtension(id);
-    this.audit.append({
-      kind: 'uninstall',
-      extensionId: id,
-      version: record.version,
-    });
-    this.emitAction('extension.uninstall', { id });
-    this.emit();
+  uninstall(id: string): Promise<void> {
+    return uninstall(this.installerDeps(), id);
   }
 
   /** Enable/disable without uninstalling. */
-  async setEnabled(id: string, enabled: boolean): Promise<void> {
-    const record = await this.storage.getExtension(id);
-    if (!record) return;
-    if (record.enabled === enabled) return;
+  setEnabled(id: string, enabled: boolean): Promise<void> {
+    return setEnabled(this.installerDeps(), id, enabled);
+  }
 
-    if (enabled) {
-      // Persist enabled=true only after the loader confirms it can
-      // bring the extension up. Without this, a failed load leaves the
-      // persisted state lying about runtime reality.
-      const tentative = { ...record, enabled: true };
-      await this.storage.putExtension(tentative);
-      const status = await this.loader.load(id);
-      if (!status?.ok) {
-        await this.storage.putExtension(record);
-        throw new ExtensionInstallError(
-          `Failed to enable extension ${id}`,
-          status?.errors ?? [],
-        );
-      }
-    } else {
-      await this.runtime.deactivate(id);
-      await this.loader.unload(id);
-      await this.storage.putExtension({ ...record, enabled: false });
-    }
-    this.audit.append({
-      kind: enabled ? 'enable' : 'disable',
-      extensionId: id,
-      version: record.version,
-    });
-    this.emitAction(enabled ? 'extension.enable' : 'extension.disable', { id });
-    this.emit();
+  /** Bundle the host primitives the installer needs. */
+  private installerDeps() {
+    return {
+      storage: this.storage,
+      runtime: this.runtime,
+      loader: this.loader,
+      dispatcher: this.dispatcher,
+      audit: this.audit,
+      emitAction: <K extends ActionIntent>(intent: K, params: ActionParams[K]) => this.emitAction(intent, params),
+      emit: () => this.emit(),
+    };
   }
 
   /**
@@ -387,52 +255,20 @@ export class ExtensionHostService {
    * activates it if needed, loads the handler source from the bundle,
    * wraps it, injects `__ifclite_ctx__`, and runs.
    *
-   * Throws if no extension declares the command, or if the bundle is
-   * missing the entry path. Runtime errors during execution propagate.
+   * Implementation lives in `host-commands.ts` — this method is a
+   * thin delegator that injects the host's primitives.
    */
-  async runCommand(commandId: string): Promise<RuntimeRunResult | undefined> {
-    // Find the extension that owns this commandId.
-    const records = await this.storage.listExtensions();
-    for (const record of records) {
-      if (!record.enabled) continue;
-      const bundle = this.loader.getBundle(record.id);
-      if (!bundle) continue;
-      const entry = bundle.manifest.entry.commands?.[commandId];
-      const declared = bundle.manifest.contributes?.commands?.some((c) => c.id === commandId);
-      if (!entry || !declared) continue;
-
-      // Ensure runtime is up.
-      const grants = parseCapabilities(record.grantedCapabilities);
-      if (!grants.ok) {
-        throw new Error(`Cannot run ${commandId}: stored capabilities for ${record.id} are invalid.`);
-      }
-      const activation = await this.runtime.activate(record.id, grants.value, bundle);
-
-      // Fire the matching `onCommand:<id>` activation event so any
-      // listener the extension declared for the command's lifecycle
-      // gets the activate hook. Idempotent — the dispatcher already
-      // dedupes per session.
-      await this.dispatcher.fire(`onCommand:${commandId}` as const);
-
-      const file = bundle.files.get(entry);
-      if (!file) {
-        throw new Error(`Command handler "${entry}" missing from bundle ${record.id}.`);
-      }
-      const source = file.text ?? new TextDecoder().decode(file.bytes);
-      const wrapped = wrapEntrySource(source, {
-        entryFnName: 'run',
-        filename: entry,
-      });
-      if (!wrapped.ok) {
-        throw new Error(
-          `Failed to prepare command "${commandId}": ${wrapped.errors[0]?.message ?? 'wrap error'}`,
-        );
-      }
-      const ctx: ExtensionContextV1 = { bim: this.sdk };
-      await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
-      return activation.sandbox.run(wrapped.value, { filename: entry });
-    }
-    throw new Error(`No installed, enabled extension owns command "${commandId}".`);
+  runCommand(commandId: string): Promise<RuntimeRunResult | undefined> {
+    return runExtensionCommand(
+      {
+        storage: this.storage,
+        loader: this.loader,
+        runtime: this.runtime,
+        dispatcher: this.dispatcher,
+        sdk: this.sdk,
+      },
+      commandId,
+    );
   }
 
   /** Read the current install state (storage snapshot). */
@@ -639,11 +475,3 @@ export class ExtensionHostService {
   }
 }
 
-export class ExtensionInstallError extends Error {
-  readonly validationErrors: readonly ValidationError[];
-  constructor(message: string, errors: readonly ValidationError[]) {
-    super(message);
-    this.name = 'ExtensionInstallError';
-    this.validationErrors = errors;
-  }
-}

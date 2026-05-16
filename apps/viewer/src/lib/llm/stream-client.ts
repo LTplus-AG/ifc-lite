@@ -9,6 +9,8 @@
  * back as SSE. Extracts usage headers from the response for UI display.
  */
 
+import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
+
 /** A text content part in a multimodal message */
 export interface TextContentPart {
   type: 'text';
@@ -213,7 +215,17 @@ export async function streamChat(options: StreamOptions): Promise<void> {
     'Content-Type': 'application/json',
   };
 
-  const requestBody = JSON.stringify({ messages, model, system });
+  // Shape the system prompt with cache_control markers when it's
+  // long enough to be worth caching. The proxy passes the body
+  // through to Anthropic, which accepts both string and array forms.
+  // Authoring turns (which ship the ~5 KiB manifest/widget/capability
+  // contract) hit this path; one-shot turns fall under the threshold
+  // and pass through as plain string.
+  const requestBody = JSON.stringify({
+    messages,
+    model,
+    system: buildCacheableSystem(system),
+  });
   const fetchChat = async (url: string) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(new Error('Chat request timed out. Please try again.')), STREAM_REQUEST_TIMEOUT_MS);
@@ -343,7 +355,10 @@ export async function streamChat(options: StreamOptions): Promise<void> {
 
   const ok = await readSseStream(response.body, signal, (data) => {
     const parsed = JSON.parse(data) as {
-      __ifcLiteUsage?: UsageInfo;
+      __ifcLiteUsage?: UsageInfo & {
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
       choices?: Array<{
         delta?: { content?: string };
         finish_reason?: string | null;
@@ -353,6 +368,9 @@ export async function streamChat(options: StreamOptions): Promise<void> {
     // Final usage update emitted by proxy after stream-end reconciliation.
     if (parsed.__ifcLiteUsage && onUsageInfo) {
       onUsageInfo(parsed.__ifcLiteUsage);
+      // Surface cache hit/miss numbers under the same logger as the
+      // direct path; observability stays consistent across both flows.
+      logCacheHit(parsed.__ifcLiteUsage);
       return;
     }
 

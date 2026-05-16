@@ -16,6 +16,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { getModelById } from './models.js';
+import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 
@@ -109,6 +110,10 @@ export async function streamAnthropicChat(
     const finalMessage = await stream.finalMessage();
 
     if (signal?.aborted) return;
+
+    // Surface cache hit/miss numbers in dev tools so we can see
+    // whether the authoring contract is paying off.
+    logCacheHit(finalMessage.usage as { cache_creation_input_tokens?: number; cache_read_input_tokens?: number });
 
     const stopReason = finalMessage.stop_reason;
     onFinishReason?.(stopReason === 'end_turn' ? 'stop' : stopReason);
@@ -330,27 +335,4 @@ async function openAiFetch(
   }
 
   return { response, cleanup };
-}
-
-/**
- * Threshold above which we wrap the system prompt in a cache_control
- * block. Anthropic's minimum cacheable size is ~1024 tokens; we use
- * 4096 chars (~1024 tokens at the 4 chars/token estimate) so the
- * wrapper only kicks in when caching actually pays off.
- */
-const CACHE_THRESHOLD_CHARS = 4096;
-
-/**
- * Build the `system` argument for an Anthropic stream call. Returns a
- * string for short prompts (one-shot script turns) and an array with
- * an ephemeral cache_control marker for long prompts (authoring turns
- * that ship the manifest schema + widget DSL contract). The Anthropic
- * SDK accepts both forms.
- */
-function buildCacheableSystem(
-  system: string | undefined,
-): string | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> | undefined {
-  if (!system) return undefined;
-  if (system.length < CACHE_THRESHOLD_CHARS) return system;
-  return [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
 }

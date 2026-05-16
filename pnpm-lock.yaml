@@ -56,27 +56,69 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@ifc-lite/bcf':
+        specifier: workspace:^
+        version: link:../../packages/bcf
       '@ifc-lite/cache':
         specifier: workspace:^
         version: link:../../packages/cache
+      '@ifc-lite/create':
+        specifier: workspace:^
+        version: link:../../packages/create
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../../packages/data
+      '@ifc-lite/drawing-2d':
+        specifier: workspace:^
+        version: link:../../packages/drawing-2d
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../../packages/encoding
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../../packages/export
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../../packages/extensions
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
+      '@ifc-lite/ids':
+        specifier: workspace:^
+        version: link:../../packages/ids
+      '@ifc-lite/lens':
+        specifier: workspace:^
+        version: link:../../packages/lens
+      '@ifc-lite/lists':
+        specifier: workspace:^
+        version: link:../../packages/lists
+      '@ifc-lite/mcp':
+        specifier: workspace:^
+        version: link:../../packages/mcp
+      '@ifc-lite/mutations':
+        specifier: workspace:^
+        version: link:../../packages/mutations
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../../packages/parser
+      '@ifc-lite/pointcloud':
+        specifier: workspace:^
+        version: link:../../packages/pointcloud
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../../packages/query
       '@ifc-lite/renderer':
         specifier: workspace:^
         version: link:../../packages/renderer
+      '@ifc-lite/sandbox':
+        specifier: workspace:^
+        version: link:../../packages/sandbox
+      '@ifc-lite/sdk':
+        specifier: workspace:^
+        version: link:../../packages/sdk
+      '@ifc-lite/server-client':
+        specifier: workspace:^
+        version: link:../../packages/server-client
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial

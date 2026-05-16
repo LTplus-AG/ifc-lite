@@ -1,5 +1,22 @@
 name: Release
 
+# PUBLISH AUTHENTICATION — Phase B trusted publishing
+#
+# This workflow does NOT use long-lived publish tokens. It mints
+# short-lived credentials via OIDC at runtime:
+#
+#   npm        — Trusted Publisher configured per `@ifc-lite/*` package on
+#                npmjs.com. `id-token: write` + npm CLI ≥ 11.5.1 +
+#                NPM_CONFIG_PROVENANCE=true completes the OIDC handshake
+#                automatically; no NPM_TOKEN needed.
+#   crates.io  — Trusted Publisher configured per crate on crates.io.
+#                rust-lang/crates-io-auth-action exchanges the OIDC token
+#                for a 30-minute CARGO_REGISTRY_TOKEN.
+#
+# The release job runs in the `release-publish` GitHub Environment so any
+# residual repo-scoped secrets are unreachable from other jobs. See
+# docs/security/incident-response.md (Phase E) for the rotation runbook.
+
 on:
   push:
     branches:
@@ -14,6 +31,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    environment: release-publish
     permissions:
       contents: write
       pull-requests: write
@@ -38,6 +56,12 @@ jobs:
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
+
+      # npm trusted publishing needs CLI ≥ 11.5.1; Node 22 still ships
+      # npm 10.x. Upgrade explicitly so `changeset publish` (which
+      # invokes pnpm/npm under the hood) can complete the OIDC handshake.
+      - name: Upgrade npm to a trusted-publishing-capable version
+        run: npm install -g npm@latest
 
       # rust-toolchain.toml pins nightly-2025-11-15 + wasm32-unknown-unknown.
       # `rustup show` installs that exact toolchain on GHA runners; matches
@@ -100,6 +124,14 @@ jobs:
       - name: Run Tests
         run: pnpm test
 
+      # Exchange the workflow's OIDC ID-token for a short-lived (30-minute)
+      # crates.io access token. Trusted Publisher must be configured on
+      # crates.io for each of ifc-lite-core, ifc-lite-geometry, ifc-lite-wasm
+      # pointing at this repo + this workflow before the first run.
+      - name: Authenticate to crates.io (OIDC)
+        id: crates-auth
+        uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
+
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1.8.0
@@ -110,9 +142,13 @@ jobs:
           title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # npm publishes use OIDC trusted publishing — no NPM_TOKEN.
+          # `id-token: write` (set at job level) + npm CLI ≥ 11.5.1 +
+          # NPM_CONFIG_PROVENANCE complete the handshake automatically
+          # and attach SLSA provenance to every tarball.
+          NPM_CONFIG_PROVENANCE: 'true'
+          # crates.io token minted via OIDC above; expires in 30 minutes.
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
 
       - name: Get Version
         id: get-version

@@ -49,7 +49,7 @@ async-stream = "0.3"
 cacache = "13"
 
 # Hashing
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 
 # Logging

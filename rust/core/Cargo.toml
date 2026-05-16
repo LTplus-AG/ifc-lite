@@ -31,7 +31,7 @@ lexical-core = "1.0"
 # Fast byte searching
 memchr = "2.7"
 # Parser
-nom = "7.1"
+nom = "8.0"
 
 # Fast hashing
 rustc-hash = "1.1"

@@ -29,7 +29,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Move as MoveIcon, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Copy, Move as MoveIcon, RotateCw, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,6 +77,8 @@ const STEP_PRESETS = [0.1, 0.5, 1];
 export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEditCardProps) {
   const setEntityPosition = useViewerStore((s) => s.setEntityPosition);
   const translateEntity = useViewerStore((s) => s.translateEntity);
+  const rotateEntity = useViewerStore((s) => s.rotateEntity);
+  const readEntityRotation = useViewerStore((s) => s.readEntityRotation);
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
   const removeEntity = useViewerStore((s) => s.removeEntity);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
@@ -132,6 +134,25 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
       }
     },
     [modelId, entityId, step, translateEntity],
+  );
+
+  // Live rotation read — re-pulls after each mutation so the angle
+  // display tracks R/T keyboard rotations and gizmo drags.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const rotation = useMemo(() => {
+    return readEntityRotation(modelId, entityId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, entityId, mutationVersion, readEntityRotation]);
+  const yawDegrees = rotation ? (rotation.yawZ * 180) / Math.PI : null;
+
+  const rotateBy = useCallback(
+    (deltaDeg: number) => {
+      const result = rotateEntity(modelId, entityId, (deltaDeg * Math.PI) / 180);
+      if (!result.ok) {
+        toast.error(`Couldn't rotate: ${result.reason}`);
+      }
+    },
+    [modelId, entityId, rotateEntity],
   );
 
   const onDuplicate = useCallback(() => {
@@ -228,6 +249,60 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
               </>
             )}
           </div>
+
+          {/* Rotation — yaw about storey-up Z. R / Shift+R fire the
+              same action; this row gives the discoverable UI plus a
+              readout for the current angle. */}
+          {rotation && (
+            <div className="flex items-center gap-1 pt-1 border-t border-purple-200/60 dark:border-purple-900/40">
+              <RotateCw className="h-3 w-3 shrink-0 text-purple-700 dark:text-purple-400" />
+              <span className="text-[11px] font-mono text-purple-800 dark:text-purple-300 flex-1">
+                yaw {yawDegrees !== null ? `${yawDegrees.toFixed(1)}°` : '—'}
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="h-6 w-6 text-purple-700"
+                    onClick={() => rotateBy(-15)}
+                    aria-label="Rotate −15°"
+                  >
+                    ⟲
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Rotate −15° (Shift+R)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="h-6 w-6 text-purple-700"
+                    onClick={() => rotateBy(15)}
+                    aria-label="Rotate +15°"
+                  >
+                    ⟳
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Rotate +15° (R)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="h-6 w-6 text-purple-700"
+                    onClick={() => rotateBy(90)}
+                    aria-label="Rotate +90°"
+                  >
+                    90
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Rotate +90°</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
 
           {/* Actions — duplicate + delete. Available even when Move isn't. */}
           <div className="flex items-center gap-1 pt-1 border-t border-purple-200/60 dark:border-purple-900/40">

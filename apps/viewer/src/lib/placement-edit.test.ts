@@ -8,6 +8,10 @@ import {
   resolvePlacementChain,
   translateProduct,
   setProductPosition,
+  resolveRotationState,
+  rotateProductYaw,
+  resolveWallEditChain,
+  resizeRectangleWall,
 } from './placement-edit.js';
 
 /**
@@ -36,8 +40,10 @@ interface OverlayEntity {
 class StubStoreEditor {
   private overlay = new Map<number, OverlayEntity>();
   private positional = new Map<number, Map<number, unknown>>();
+  private nextId: number;
   constructor(initial: OverlayEntity[]) {
     for (const e of initial) this.overlay.set(e.expressId, e);
+    this.nextId = Math.max(0, ...initial.map((e) => e.expressId)) + 1;
   }
   getNewEntity(id: number): OverlayEntity | null {
     return this.overlay.get(id) ?? null;
@@ -54,6 +60,16 @@ class StubStoreEditor {
     // same through the MutablePropertyView).
     const ent = this.overlay.get(id);
     if (ent) ent.attributes[index] = value;
+  }
+  /**
+   * Mirror StoreEditor.addEntity well enough for rotateProductYaw's
+   * IfcDirection materialisation path. Returns an EntityRef-shaped
+   * record with just the express id (the only field the SUT reads).
+   */
+  addEntity(type: string, attributes: unknown[]): { expressId: number } {
+    const id = this.nextId++;
+    this.overlay.set(id, { expressId: id, type, attributes: attributes.slice() });
+    return { expressId: id };
   }
 }
 
@@ -207,6 +223,227 @@ describe('placement-edit', () => {
     );
     assert.ok(chain);
     assert.deepStrictEqual(chain.coordinates, [9, 9, 9]);
+  });
+
+  it('reads rotation state with explicit RefDirection', () => {
+    const { point, local, column } = makeFixture();
+    // Override axis: give it an explicit RefDirection of [0, 1, 0] = 90° yaw.
+    const dir: OverlayEntity = {
+      expressId: 96,
+      type: 'IFCDIRECTION',
+      attributes: [[0, 1, 0]],
+    };
+    const axis: OverlayEntity = {
+      expressId: 98,
+      type: 'IFCAXIS2PLACEMENT3D',
+      attributes: [97, null, 96],
+    };
+    const editor = new StubStoreEditor([point, dir, axis, local, column]) as unknown as Parameters<typeof resolveRotationState>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveRotationState>[1];
+    const state = resolveRotationState(dataStoreStub, view, editor, 100);
+    assert.ok(state);
+    assert.strictEqual(state.refDirectionId, 96);
+    assert.deepStrictEqual(state.refDirection, [0, 1, 0]);
+    assert.ok(Math.abs(state.yawZ - Math.PI / 2) < 1e-9);
+  });
+
+  it('reports implicit [1,0,0] when RefDirection is null', () => {
+    const { point, axis, local, column } = makeFixture();
+    const editor = new StubStoreEditor([point, axis, local, column]) as unknown as Parameters<typeof resolveRotationState>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveRotationState>[1];
+    const state = resolveRotationState(dataStoreStub, view, editor, 100);
+    assert.ok(state);
+    assert.strictEqual(state.refDirectionId, null);
+    assert.deepStrictEqual(state.refDirection, [1, 0, 0]);
+    assert.strictEqual(state.yawZ, 0);
+  });
+
+  it('rotateProductYaw updates existing RefDirection in place', () => {
+    const { point, local, column } = makeFixture();
+    const dir: OverlayEntity = {
+      expressId: 96,
+      type: 'IFCDIRECTION',
+      attributes: [[1, 0, 0]],
+    };
+    const axis: OverlayEntity = {
+      expressId: 98,
+      type: 'IFCAXIS2PLACEMENT3D',
+      attributes: [97, null, 96],
+    };
+    const editor = new StubStoreEditor([point, dir, axis, local, column]);
+    const view = new StubView();
+    const result = rotateProductYaw(
+      dataStoreStub,
+      view as unknown as Parameters<typeof rotateProductYaw>[1],
+      editor as unknown as Parameters<typeof rotateProductYaw>[2],
+      100,
+      Math.PI / 2,
+    );
+    assert.ok(result.ok);
+    assert.ok(Math.abs(result.newYawZ - Math.PI / 2) < 1e-9);
+    // Read back via resolve to confirm.
+    const state = resolveRotationState(
+      dataStoreStub,
+      view as unknown as Parameters<typeof resolveRotationState>[1],
+      editor as unknown as Parameters<typeof resolveRotationState>[2],
+      100,
+    );
+    assert.ok(state);
+    assert.ok(Math.abs(state.refDirection[0]) < 1e-9);
+    assert.ok(Math.abs(state.refDirection[1] - 1) < 1e-9);
+  });
+
+  it('rotateProductYaw materialises a fresh IfcDirection when implicit', () => {
+    const { point, axis, local, column } = makeFixture();
+    const editor = new StubStoreEditor([point, axis, local, column]);
+    const view = new StubView();
+    const result = rotateProductYaw(
+      dataStoreStub,
+      view as unknown as Parameters<typeof rotateProductYaw>[1],
+      editor as unknown as Parameters<typeof rotateProductYaw>[2],
+      100,
+      Math.PI / 4,
+    );
+    assert.ok(result.ok);
+    // The axis placement should now point at a newly-allocated direction id.
+    const state = resolveRotationState(
+      dataStoreStub,
+      view as unknown as Parameters<typeof resolveRotationState>[1],
+      editor as unknown as Parameters<typeof resolveRotationState>[2],
+      100,
+    );
+    assert.ok(state);
+    assert.notStrictEqual(state.refDirectionId, null);
+    assert.ok(Math.abs(state.refDirection[0] - Math.cos(Math.PI / 4)) < 1e-9);
+    assert.ok(Math.abs(state.refDirection[1] - Math.sin(Math.PI / 4)) < 1e-9);
+  });
+
+  /**
+   * Wall edit chain — fixture mirrors `addWallToStore`'s output:
+   *   #100 IfcWall
+   *     ├── attrs[5] ObjectPlacement → #99 IfcLocalPlacement
+   *     │     attrs[1] RelativePlacement → #98 IfcAxis2Placement3D
+   *     │       attrs[0] Location → #97 IfcCartesianPoint([0, 0, 0])
+   *     │       attrs[2] RefDirection → #96 IfcDirection([1, 0, 0])
+   *     └── attrs[6] Representation → #95 IfcProductDefinitionShape
+   *           attrs[2] Representations[0] → #94 IfcShapeRepresentation
+   *             attrs[3] Items[0] → #93 IfcExtrudedAreaSolid
+   *               attrs[0] SweptArea → #92 IfcRectangleProfileDef
+   *                 attrs[2] Position → #91 IfcAxis2Placement2D
+   *                   attrs[0] Location → #90 IfcCartesianPoint([2.5, 0])
+   *                 attrs[3] XDim = 5  · attrs[4] YDim = 0.2
+   */
+  function makeWallFixture() {
+    const startPoint: OverlayEntity = {
+      expressId: 97,
+      type: 'IFCCARTESIANPOINT',
+      attributes: [[0, 0, 0]],
+    };
+    const refDir: OverlayEntity = {
+      expressId: 96,
+      type: 'IFCDIRECTION',
+      attributes: [[1, 0, 0]],
+    };
+    const axis: OverlayEntity = {
+      expressId: 98,
+      type: 'IFCAXIS2PLACEMENT3D',
+      attributes: [97, null, 96],
+    };
+    const local: OverlayEntity = {
+      expressId: 99,
+      type: 'IFCLOCALPLACEMENT',
+      attributes: [null, 98],
+    };
+    const profileOrigin: OverlayEntity = {
+      expressId: 90,
+      type: 'IFCCARTESIANPOINT',
+      attributes: [[2.5, 0]],
+    };
+    const profilePos: OverlayEntity = {
+      expressId: 91,
+      type: 'IFCAXIS2PLACEMENT2D',
+      attributes: [90, null],
+    };
+    const profile: OverlayEntity = {
+      expressId: 92,
+      type: 'IFCRECTANGLEPROFILEDEF',
+      attributes: ['.AREA.', null, 91, 5, 0.2],
+    };
+    const solid: OverlayEntity = {
+      expressId: 93,
+      type: 'IFCEXTRUDEDAREASOLID',
+      attributes: [92, null, null, 3],
+    };
+    const shapeRep: OverlayEntity = {
+      expressId: 94,
+      type: 'IFCSHAPEREPRESENTATION',
+      attributes: [null, 'Body', 'SweptSolid', [93]],
+    };
+    const productShape: OverlayEntity = {
+      expressId: 95,
+      type: 'IFCPRODUCTDEFINITIONSHAPE',
+      attributes: [null, null, [94]],
+    };
+    const wall: OverlayEntity = {
+      expressId: 100,
+      type: 'IFCWALL',
+      attributes: ['guid', null, 'Wall-1', null, null, 99, 95, null],
+    };
+    return {
+      entities: [startPoint, refDir, axis, local, profileOrigin, profilePos, profile, solid, shapeRep, productShape, wall],
+      ids: { startPoint: 97, refDir: 96, profile: 92, profileOrigin: 90, wall: 100 },
+    };
+  }
+
+  it('resolveWallEditChain walks placement + representation', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resolveWallEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveWallEditChain>[1];
+    const chain = resolveWallEditChain(dataStoreStub, view, editor, fx.ids.wall);
+    assert.ok(chain);
+    assert.strictEqual(chain.startPointId, fx.ids.startPoint);
+    assert.strictEqual(chain.refDirectionId, fx.ids.refDir);
+    assert.strictEqual(chain.profileId, fx.ids.profile);
+    assert.strictEqual(chain.profileOriginPointId, fx.ids.profileOrigin);
+    assert.strictEqual(chain.wallLength, 5);
+    assert.strictEqual(chain.thickness, 0.2);
+  });
+
+  it('resizeRectangleWall updates all four entities atomically', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities);
+    const view = new StubView();
+    const result = resizeRectangleWall(
+      dataStoreStub,
+      view as unknown as Parameters<typeof resizeRectangleWall>[1],
+      editor as unknown as Parameters<typeof resizeRectangleWall>[2],
+      fx.ids.wall,
+      [1, 2, 0],
+      [4, 6, 0],
+    );
+    assert.ok(result.ok);
+    const newLen = Math.hypot(3, 4);
+    assert.ok(Math.abs(result.newLength - newLen) < 1e-9);
+    // Re-resolve to confirm the writes landed.
+    const chain = resolveWallEditChain(
+      dataStoreStub,
+      view as unknown as Parameters<typeof resolveWallEditChain>[1],
+      editor as unknown as Parameters<typeof resolveWallEditChain>[2],
+      fx.ids.wall,
+    );
+    assert.ok(chain);
+    assert.deepStrictEqual(chain.startCoordinates, [1, 2, 0]);
+    assert.ok(Math.abs(chain.wallLength - newLen) < 1e-9);
+    assert.ok(Math.abs(chain.refDirection[0] - 3 / newLen) < 1e-9);
+    assert.ok(Math.abs(chain.refDirection[1] - 4 / newLen) < 1e-9);
+  });
+
+  it('resizeRectangleWall rejects a zero-length resize', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resizeRectangleWall>[2];
+    const view = new StubView() as unknown as Parameters<typeof resizeRectangleWall>[1];
+    const result = resizeRectangleWall(dataStoreStub, view, editor, fx.ids.wall, [0, 0, 0], [0, 0, 0]);
+    assert.strictEqual(result.ok, false);
   });
 
   it('treats 2D coordinates as having Z=0', () => {

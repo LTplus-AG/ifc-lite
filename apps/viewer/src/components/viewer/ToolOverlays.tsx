@@ -11,6 +11,7 @@ import { MeasureOverlay } from './tools/MeasurePanel';
 import { SectionOverlay } from './tools/SectionPanel';
 import { AddElementOverlay } from './tools/AddElementOverlay';
 import { GizmoOverlay } from './tools/GizmoOverlay';
+import { WallEndpointOverlay } from './tools/WallEndpointOverlay';
 
 export function ToolOverlays() {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -27,12 +28,20 @@ export function ToolOverlays() {
     return <AddElementOverlay />;
   }
 
-  // Select tool: surface the move gizmo when edit mode is on and a
-  // single translatable entity is selected. GizmoOverlay self-gates;
-  // returns null otherwise so this branch is safe to always render
-  // for the select tool.
+  // Select tool: surface the move gizmo + wall-endpoint handles when
+  // edit mode is on. Both overlays self-gate (return null when their
+  // conditions aren't met) so always-rendering them here is safe.
+  // Wall handles render on top of the gizmo so a wall selection
+  // gets both axis arrows for translate AND endpoint drag handles
+  // for resize — they don't overlap visually (gizmo at bbox center,
+  // handles at start/end).
   if (activeTool === 'select') {
-    return <GizmoOverlay />;
+    return (
+      <>
+        <GizmoOverlay />
+        <WallEndpointOverlay />
+      </>
+    );
   }
 
   return null;

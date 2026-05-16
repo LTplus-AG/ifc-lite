@@ -228,6 +228,14 @@ export interface CameraCallbacks {
   frameSelection?: () => void;
   orbit?: (deltaX: number, deltaY: number) => void;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
+  /**
+   * Unproject a screen pixel onto the horizontal plane at the
+   * specified world Y. Used by drag handles (wall endpoints,
+   * georeference move) to convert a cursor position back into
+   * world coordinates on the storey floor. Returns null when the
+   * camera ray is parallel to the plane or points the wrong way.
+   */
+  unprojectToFloor?: (clientX: number, clientY: number, worldY: number) => { x: number; y: number; z: number } | null;
   setProjectionMode?: (mode: ProjectionMode) => void;
   toggleProjectionMode?: () => void;
   getProjectionMode?: () => ProjectionMode;

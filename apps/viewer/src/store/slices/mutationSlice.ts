@@ -47,7 +47,13 @@ import { getEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import type { AddElementType } from './addElementSlice.js';
-import { resolvePlacementChain } from '@/lib/placement-edit.js';
+import {
+  resolvePlacementChain,
+  resolveRotationState,
+  rotateProductYaw,
+  resolveWallEditChain,
+  resizeRectangleWall,
+} from '@/lib/placement-edit.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -304,6 +310,47 @@ export interface MutationSlice {
     expressId: number,
     position: [number, number, number],
   ) => { ok: true; newCoordinates: [number, number, number] } | { ok: false; reason: string };
+  /**
+   * Rotate an IfcProduct about the storey-up Z axis by `deltaYaw`
+   * radians. Updates RefDirection on the placement's IfcAxis2Placement3D.
+   * If no explicit RefDirection exists (rare — most builders emit one),
+   * a fresh `IfcDirection` is materialised and the axis placement is
+   * re-pointed at it.
+   */
+  rotateEntity: (
+    modelId: string,
+    expressId: number,
+    deltaYaw: number,
+  ) => { ok: true; newYawZ: number } | { ok: false; reason: string };
+  /**
+   * Snapshot of the placement's current yaw about Z (radians) plus
+   * the metadata the UI needs to render a rotation gizmo. Returns
+   * null when the placement chain isn't translatable.
+   */
+  readEntityRotation: (
+    modelId: string,
+    expressId: number,
+  ) => { yawZ: number; refDirection: [number, number, number] } | null;
+  /**
+   * Resize a rectangular-profile wall by setting new start AND end
+   * points. Atomically updates the placement origin, RefDirection,
+   * profile length, and profile origin. Returns null for walls that
+   * don't follow the `addWallToStore` shape.
+   */
+  resizeWall: (
+    modelId: string,
+    expressId: number,
+    newStart: [number, number, number],
+    newEnd: [number, number, number],
+  ) => { ok: true; newLength: number } | { ok: false; reason: string };
+  /**
+   * Read a wall's current start/end so the UI can render endpoint
+   * handles. Returns null for non-rectangle walls.
+   */
+  readWallEndpoints: (
+    modelId: string,
+    expressId: number,
+  ) => { start: [number, number, number]; end: [number, number, number]; thickness: number } | null;
   /**
    * Add a fully-anchored IfcColumn (and its sub-graph) to a parsed model.
    * Returns the new column's expressId, or null if the model can't be
@@ -993,6 +1040,117 @@ export const createMutationSlice: StateCreator<
     }
     get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, position);
     return { ok: true, newCoordinates: position };
+  },
+
+  rotateEntity: (modelId, expressId, deltaYaw) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    // resolveRotationState gives us both the current angle and whether
+    // RefDirection is materialised. When it's null we delegate to
+    // rotateProductYaw which materialises a fresh IfcDirection — that
+    // create lives outside the undo stack (acceptable; undo of the
+    // axis-placement reference rewrite restores the null pointer and
+    // leaves an orphan direction in the overlay). The rewrite itself
+    // goes through `setPositionalAttribute` so it IS on the undo stack.
+    const state = resolveRotationState(dataStore, view, editor, expressId);
+    if (!state) {
+      return {
+        ok: false,
+        reason:
+          'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D chain',
+      };
+    }
+    const newYaw = state.yawZ + deltaYaw;
+    const newRatios: [number, number, number] = [
+      Math.cos(newYaw),
+      Math.sin(newYaw),
+      state.refDirection[2],
+    ];
+    if (state.refDirectionId === null) {
+      // Materialise + repoint. The create goes direct to the editor;
+      // the axis-placement attribute write goes through the slice so
+      // undo handles it. See note above.
+      const newDirId = editor.addEntity('IfcDirection', [newRatios]).expressId;
+      get().setPositionalAttribute(modelId, state.axisPlacementId, 2, `#${newDirId}`);
+    } else {
+      get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
+    }
+    return { ok: true, newYawZ: newYaw };
+  },
+
+  readEntityRotation: (modelId, expressId) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = get().storeEditors.get(modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const state = resolveRotationState(dataStore, view, editor, expressId);
+    if (!state) return null;
+    return { yawZ: state.yawZ, refDirection: state.refDirection };
+  },
+
+  resizeWall: (modelId, expressId, newStart, newEnd) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    // resolveWallEditChain reads all four ids without mutating. We
+    // then write each via the slice's setPositionalAttribute so the
+    // four writes land as four separate mutations on the undo stack
+    // — coarse, but matches how the gizmo's translateEntity works.
+    // A future pass can introduce a batched-mutation primitive.
+    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation',
+      };
+    }
+    const dx = newEnd[0] - newStart[0];
+    const dy = newEnd[1] - newStart[1];
+    const dz = newEnd[2] - newStart[2];
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-6) return { ok: false, reason: 'Wall length must be greater than zero' };
+    if (Math.abs(dz) > Math.max(1e-6 * length, 1e-9)) {
+      return { ok: false, reason: 'Start and end must lie on the same storey plane' };
+    }
+    const dir: [number, number, number] = [dx / length, dy / length, 0];
+
+    get().setPositionalAttribute(modelId, chain.startPointId, 0, newStart);
+    get().setPositionalAttribute(modelId, chain.refDirectionId, 0, dir);
+    get().setPositionalAttribute(modelId, chain.profileId, 3, length);
+    get().setPositionalAttribute(modelId, chain.profileOriginPointId, 0, [length / 2, 0]);
+
+    return { ok: true, newLength: length };
+  },
+
+  readWallEndpoints: (modelId, expressId) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = get().storeEditors.get(modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    if (!chain) return null;
+    const [sx, sy, sz] = chain.startCoordinates;
+    const [dx, dy, dz] = chain.refDirection;
+    const end: [number, number, number] = [
+      sx + dx * chain.wallLength,
+      sy + dy * chain.wallLength,
+      sz + dz * chain.wallLength,
+    ];
+    return { start: [sx, sy, sz], end, thickness: chain.thickness };
   },
 
   removeEntity: (modelId, expressId) => {

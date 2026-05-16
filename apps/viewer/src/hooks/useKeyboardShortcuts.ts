@@ -116,6 +116,31 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       }
     }
 
+    // R / Shift+R = rotate selected entity ±15° about the storey-up
+    // Z axis. Only fires while edit mode is on and a single entity
+    // is selected. The rotateEntity action handles the placement
+    // chain walk + undo registration.
+    if (key === 'r' && !ctrl) {
+      const state = useViewerStore.getState();
+      if (state.editEnabled && state.selectedEntity) {
+        e.preventDefault();
+        const deltaDeg = shift ? -15 : 15;
+        const result = state.rotateEntity(
+          state.selectedEntity.modelId,
+          state.selectedEntity.expressId,
+          (deltaDeg * Math.PI) / 180,
+        );
+        if (!result.ok) {
+          // Surface the reason via the existing toast helper rather
+          // than a console warning — the user just pressed a key and
+          // deserves immediate feedback.
+          void import('@/components/ui/toast').then((m) => {
+            m.toast.error(`Couldn't rotate: ${result.reason}`);
+          });
+        }
+      }
+    }
+
     // Basket controls (automatic context source)
     // I = Isolate from current context
     if (key === 'i' && !ctrl && !shift) {
@@ -295,6 +320,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'X', description: 'Section tool', category: 'Tools' },
   { key: 'E', description: 'Toggle edit mode (unlocks property + geometry edits)', category: 'Tools' },
   { key: 'W', description: 'Draw Wall (requires edit mode)', category: 'Tools' },
+  { key: 'R / Shift+R', description: 'Rotate selected entity ±15° about Z (requires edit mode)', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },
   { key: 'Ctrl+C', description: 'Clear measurements (Measure tool)', category: 'Tools' },

@@ -42,6 +42,10 @@ export default defineConfig({
       '@ifc-lite/server-client': path.resolve(__dirname, '../../packages/server-client/src'),
       '@ifc-lite/sandbox/schema': path.resolve(__dirname, '../../packages/sandbox/src/bridge-schema.ts'),
       '@ifc-lite/sandbox': path.resolve(__dirname, '../../packages/sandbox/src'),
+      // The desktop shell re-uses the viewer's source via the `@` alias, so
+      // anything the viewer imports (incl. the extension host service) must
+      // resolve here too. Point at the package's src to skip a build step.
+      '@ifc-lite/extensions': path.resolve(__dirname, '../../packages/extensions/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
       '@ifc-lite/embed-protocol': path.resolve(__dirname, '../../packages/embed-protocol/src'),
       '@ifc-lite/embed-sdk': path.resolve(__dirname, '../../packages/embed-sdk/src'),

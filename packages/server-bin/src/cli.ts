@@ -82,7 +82,7 @@ async function main() {
       case '--version':
       case '-v': {
         const info = getBinaryInfo();
-        const pkg = await import('../package.json', { assert: { type: 'json' } });
+        const pkg = await import('../package.json', { with: { type: 'json' } });
         console.log(`@ifc-lite/server-bin v${pkg.default.version}`);
         process.exit(0);
         break;

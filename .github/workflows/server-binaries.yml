@@ -34,6 +34,9 @@ on:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
+permissions:
+  contents: read
+
 jobs:
   validate-server-binaries:
     name: Validate Server Binary (${{ matrix.target }})
@@ -58,18 +61,19 @@ jobs:
 
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           lfs: false
+          persist-credentials: false
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable (snapshot pinned 2026-05)
         with:
           targets: ${{ matrix.rust-target }}
 
       - name: Install cross
         if: matrix.target == 'linux-x64-musl'
-        uses: taiki-e/install-action@cross
+        uses: taiki-e/install-action@b47b3b9ab771927700bcf4ef8a4f79e1d7c9a8cd # cross (snapshot pinned 2026-05)
 
       - name: Install Linux Cross-Compilation Tools
         if: matrix.cross == true && runner.os == 'Linux'
@@ -120,7 +124,7 @@ jobs:
           Compress-Archive -Path "dist/ifc-lite-server.exe" -DestinationPath "ifc-lite-server-${{ matrix.target }}.zip"
 
       - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ifc-lite-server-${{ matrix.target }}
           path: ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}
@@ -171,18 +175,19 @@ jobs:
 
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           lfs: false
+          persist-credentials: false
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable (snapshot pinned 2026-05)
         with:
           targets: ${{ matrix.rust-target }}
 
       - name: Install cross
         if: matrix.target == 'linux-x64-musl'
-        uses: taiki-e/install-action@cross
+        uses: taiki-e/install-action@b47b3b9ab771927700bcf4ef8a4f79e1d7c9a8cd # cross (snapshot pinned 2026-05)
 
       - name: Install Linux Cross-Compilation Tools
         if: matrix.cross == true && runner.os == 'Linux'
@@ -234,7 +239,7 @@ jobs:
 
       - name: Upload Build Artifact
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ifc-lite-server-${{ matrix.target }}
           path: ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}

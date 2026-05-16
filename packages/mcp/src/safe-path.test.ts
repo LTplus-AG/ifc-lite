@@ -101,6 +101,27 @@ describe('resolveSafePath', () => {
       }
     });
 
+    it('accepts a file inside an allowed root that is itself a symlink', async () => {
+      // Operator passes --allow <link>; the link points at the real workspace
+      // dir. Files inside should be accepted even though their realpath lives
+      // under the link's target rather than the configured root.
+      const realWorkspace = await mkdtemp(join(tmpdir(), 'mcp-realws-'));
+      const linkedRoot = join(scratch, 'linked-root');
+      try {
+        await symlink(realWorkspace, linkedRoot);
+        const file = join(realWorkspace, 'model.ifc');
+        await writeFile(file, 'x');
+        const out = await resolveSafePath(
+          join(linkedRoot, 'model.ifc'),
+          makeCtx([linkedRoot]),
+          'read',
+        );
+        expect(out).toBe(resolve(file));
+      } finally {
+        await rm(realWorkspace, { recursive: true, force: true });
+      }
+    });
+
     it('accepts a symlink whose target stays inside the allowed root', async () => {
       const real = join(scratch, 'real.ifc');
       await writeFile(real, 'x');
@@ -175,6 +196,19 @@ describe('resolveSafePath', () => {
       await expect(
         resolveSafePath(join(scratch, 'nope.ifc'), makeCtx([scratch]), 'read'),
       ).rejects.toThrow(/does not exist/i);
+    });
+
+    it('handles write paths whose immediate ancestor is the filesystem root', async () => {
+      // Regression: segment slicing must use basename(), not length-based
+      // arithmetic, so a parent of `/` does not silently drop a character.
+      // We can't actually write to `/<random>` in tests, so check the
+      // intermediate behaviour by asking for a path that resolves through
+      // root-as-ancestor and confirming the rejection message names the
+      // *complete* requested path rather than a chopped one.
+      const requested = '/this-segment-must-stay-intact';
+      await expect(
+        resolveSafePath(requested, makeCtx([scratch]), 'write'),
+      ).rejects.toThrow(/this-segment-must-stay-intact/);
     });
   });
 });

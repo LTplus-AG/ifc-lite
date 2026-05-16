@@ -885,4 +885,29 @@ ENDSEC;\n";
         s.push_str(");");
         assert!(parse_entity(&s).is_ok());
     }
+
+    fn nested(n: usize) -> String {
+        let mut s = String::from("#1=IFCWALL(");
+        for _ in 0..n {
+            s.push('(');
+        }
+        s.push('1');
+        for _ in 0..n {
+            s.push(')');
+        }
+        s.push_str(");");
+        s
+    }
+
+    /// Boundary: parsing succeeds exactly at MAX_NESTING_DEPTH.
+    #[test]
+    fn test_parse_entity_accepts_exactly_max_nesting() {
+        assert!(parse_entity(&nested(MAX_NESTING_DEPTH as usize)).is_ok());
+    }
+
+    /// Boundary: parsing fails at MAX_NESTING_DEPTH + 1.
+    #[test]
+    fn test_parse_entity_rejects_one_over_max_nesting() {
+        assert!(parse_entity(&nested(MAX_NESTING_DEPTH as usize + 1)).is_err());
+    }
 }

@@ -25,7 +25,7 @@
 
 import { realpath } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, resolve, sep } from 'node:path';
+import { basename, dirname, resolve, sep } from 'node:path';
 import type { ModelRegistry, ServerConfig } from './context.js';
 import { ToolErrorCode, ToolExecutionError } from './errors.js';
 
@@ -76,7 +76,7 @@ export async function resolveSafePath(
     });
   }
   const requested = resolve(raw);
-  const roots = buildAllowedRoots(ctx);
+  const roots = await buildAllowedRoots(ctx);
   rejectIfSensitiveHome(requested);
   ensureWithinRoots(requested, roots);
   const canonical = await canonicalise(requested, mode);
@@ -85,17 +85,30 @@ export async function resolveSafePath(
   return canonical;
 }
 
-function buildAllowedRoots(ctx: PathContext): string[] {
-  const roots = new Set<string>();
+async function buildAllowedRoots(ctx: PathContext): Promise<string[]> {
+  const raw = new Set<string>();
   for (const p of ctx.config.allowedPaths ?? []) {
-    roots.add(resolve(p));
+    raw.add(resolve(p));
   }
-  if (roots.size === 0) {
+  if (raw.size === 0) {
     for (const m of ctx.registry.list()) {
-      if (m.filePath) roots.add(dirname(m.filePath));
+      if (m.filePath) raw.add(dirname(m.filePath));
     }
-    roots.add(resolve(process.cwd()));
-    roots.add(resolve(tmpdir()));
+    raw.add(resolve(process.cwd()));
+    raw.add(resolve(tmpdir()));
+  }
+  // Include both the configured form and its realpath. The bounds check
+  // runs first against the requested path (configured form) and then
+  // against its realpath (canonical form); covering both shapes here
+  // ensures a symlinked root (e.g. --allow /workspace where /workspace is
+  // itself a symlink) still accepts files that legitimately live inside.
+  const roots = new Set<string>(raw);
+  for (const root of raw) {
+    try {
+      roots.add(await realpath(root));
+    } catch {
+      /* root does not yet exist on disk; the configured form stays in. */
+    }
   }
   return [...roots];
 }
@@ -148,9 +161,11 @@ async function canonicalise(p: string, mode: PathMode): Promise<string> {
   }
   // Write target: walk up until we find an existing ancestor, realpath it,
   // then reattach the missing tail. This catches symlinks anywhere along
-  // the existing portion of the path.
+  // the existing portion of the path. We use basename() for each segment
+  // so the logic stays correct when an ancestor is the filesystem root
+  // (where slice-by-length arithmetic would be off by one).
   let cursor = dirname(p);
-  const tail: string[] = [p.slice(cursor.length + 1)];
+  const tail: string[] = [basename(p)];
   while (true) {
     try {
       const real = await realpath(cursor);
@@ -165,7 +180,7 @@ async function canonicalise(p: string, mode: PathMode): Promise<string> {
         message: `Path '${p}' has no existing ancestor`,
       });
     }
-    tail.unshift(cursor.slice(parent.length + 1));
+    tail.unshift(basename(cursor));
     cursor = parent;
   }
 }

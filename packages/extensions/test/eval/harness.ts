@@ -19,7 +19,7 @@
  * call it without re-implementing the validate-then-execute scaffolding.
  */
 
-import { loadBundleFromDirectory } from '../../src/bundle/loader.js';
+import { loadBundleFromDirectory } from '../../src/bundle/loader-node.js';
 import type { ValidationError } from '../../src/types.js';
 
 export interface EvalResult {

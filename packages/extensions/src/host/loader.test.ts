@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { packBundle } from '../bundle/iflx.js';
-import { loadBundleFromDirectory } from '../bundle/loader.js';
+import { loadBundleFromDirectory } from '../bundle/loader-node.js';
 import { SlotRegistry } from '../slot-registry.js';
 import { InMemoryExtensionStorage } from '../storage/memory.js';
 import { sha256Hex } from '../storage/hash.js';

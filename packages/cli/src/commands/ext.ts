@@ -20,10 +20,10 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
-  loadBundleFromDirectory,
   validateManifest,
   type ValidationError,
 } from '@ifc-lite/extensions';
+import { loadBundleFromDirectory } from '@ifc-lite/extensions/node';
 import { hasFlag, fatal } from '../output.js';
 import {
   extKeygenCommand,

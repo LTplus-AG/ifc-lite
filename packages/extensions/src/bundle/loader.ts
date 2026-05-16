@@ -3,19 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Bundle layout walker.
+ * Browser-safe parts of the bundle loader.
  *
- * An extension on disk is a directory with `manifest.json` at the root,
- * source files under `src/`, optional `widgets/` and `tests/`, etc. This
- * module reads such a directory (Node fs) into an in-memory `Bundle`
- * value, validates the manifest, and confirms that every file referenced
- * by `entry.*` and `contributes.dock[*].widget` exists in the bundle.
+ * `buildBundleFromFiles` is the heart of the validation pipeline: take
+ * an in-memory map of files, parse + migrate + validate the manifest,
+ * and confirm every file the manifest references actually exists.
+ * Pure function, no I/O, safe to bundle for the browser.
+ *
+ * The Node-side directory walker (`loadBundleFromDirectory`) lives in
+ * `./loader-node.ts` so vite / rollup don't try to bundle `node:fs` /
+ * `node:path` into the viewer's browser build.
  *
  * Spec: docs/architecture/ai-customization/01-extension-model.md §2.
  */
 
-import { promises as fs } from 'node:fs';
-import { join, posix, relative, sep } from 'node:path';
 import type {
   Bundle,
   BundleFile,
@@ -26,57 +27,9 @@ import type {
 import { validateManifest } from '../manifest/index.js';
 import { migrateManifest } from '../migrations/index.js';
 
-const TEXT_EXTENSIONS = new Set([
-  '.js', '.mjs', '.cjs', '.ts', '.tsx', '.json',
-  '.md', '.txt', '.svg', '.css', '.html',
-]);
-const MAX_DIRECTORY_FILES = 1024;
-const MAX_FILE_BYTES = 4 * 1024 * 1024; // 4 MiB per file.
-const MAX_BUNDLE_BYTES = 16 * 1024 * 1024; // 16 MiB aggregate.
-
-/**
- * Load a bundle from a filesystem directory. Returns a fully-validated
- * Bundle on success.
- */
-export async function loadBundleFromDirectory(
-  rootDir: string,
-): Promise<ValidationResult<Bundle>> {
-  let stat: import('node:fs').Stats;
-  try {
-    stat = await fs.stat(rootDir);
-  } catch (err) {
-    return failOne('', 'invalid_reference',
-      `Bundle directory does not exist: ${rootDir}`,
-      err instanceof Error ? err.message : undefined);
-  }
-  if (!stat.isDirectory()) {
-    return failOne('', 'type_mismatch',
-      `Bundle path is not a directory: ${rootDir}`);
-  }
-
-  const files = new Map<string, BundleFile>();
-  try {
-    await collectFiles(rootDir, rootDir, files);
-  } catch (err) {
-    return failOne('', 'invalid_reference',
-      err instanceof Error ? err.message : 'Failed to read bundle directory.');
-  }
-
-  const manifestFile = files.get('manifest.json');
-  if (!manifestFile) {
-    return failOne('manifest.json', 'required',
-      'Bundle is missing manifest.json at the root.');
-  }
-
-  return buildBundleFromFiles(files, manifestFile, {
-    kind: 'directory',
-    origin: rootDir,
-  });
-}
-
 /**
  * Build a Bundle from an in-memory file map and a manifest file entry.
- * Shared between the directory loader and the .iflx unpacker.
+ * Shared between the directory loader and the `.iflx` unpacker.
  */
 export function buildBundleFromFiles(
   files: Map<string, BundleFile>,
@@ -169,54 +122,8 @@ function checkReferencedFiles(
   return errors;
 }
 
-async function collectFiles(
-  rootDir: string,
-  current: string,
-  out: Map<string, BundleFile>,
-  state: { totalBytes: number } = { totalBytes: 0 },
-): Promise<void> {
-  const entries = await fs.readdir(current, { withFileTypes: true });
-  for (const e of entries) {
-    if (out.size >= MAX_DIRECTORY_FILES) {
-      throw new Error(`Bundle exceeds maximum file count (${MAX_DIRECTORY_FILES}).`);
-    }
-    if (e.name.startsWith('.')) continue; // skip dotfiles (.DS_Store etc.)
-    const full = join(current, e.name);
-    if (e.isDirectory()) {
-      await collectFiles(rootDir, full, out, state);
-      continue;
-    }
-    if (!e.isFile()) continue;
-    const bytes = await fs.readFile(full);
-    if (bytes.byteLength > MAX_FILE_BYTES) {
-      throw new Error(`File ${full} exceeds max bundle file size of ${MAX_FILE_BYTES} bytes.`);
-    }
-    state.totalBytes += bytes.byteLength;
-    if (state.totalBytes > MAX_BUNDLE_BYTES) {
-      throw new Error(
-        `Bundle aggregate size exceeds ${MAX_BUNDLE_BYTES} bytes (already ${state.totalBytes}).`,
-      );
-    }
-    const rel = relative(rootDir, full).split(sep).join(posix.sep);
-    const file: BundleFile = {
-      path: rel,
-      bytes: new Uint8Array(bytes),
-    };
-    if (isProbablyText(rel)) {
-      file.text = decodeText(file);
-    }
-    out.set(rel, file);
-  }
-}
-
 function decodeText(file: BundleFile): string {
   return new TextDecoder('utf-8', { fatal: false }).decode(file.bytes);
-}
-
-function isProbablyText(path: string): boolean {
-  const dot = path.lastIndexOf('.');
-  if (dot < 0) return false;
-  return TEXT_EXTENSIONS.has(path.slice(dot).toLowerCase());
 }
 
 function normalise(p: string): string {

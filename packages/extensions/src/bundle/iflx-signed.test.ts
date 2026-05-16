@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { packBundle, unpackBundle, unpackBundleWithSignature } from './iflx.js';
-import { loadBundleFromDirectory } from './loader.js';
+import { loadBundleFromDirectory } from './loader-node.js';
 import { generateKeyPair } from '../signing/keys.js';
 import { signBundle } from '../signing/sign.js';
 import { verifyBundle } from '../signing/verify.js';

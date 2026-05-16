@@ -24,7 +24,6 @@ import {
   generateKeyPair,
   importPrivateKey,
   importPublicKey,
-  loadBundleFromDirectory,
   packBundle,
   signBundle,
   unpackBundleWithSignature,
@@ -34,6 +33,7 @@ import {
   type SerialisedPrivateKey,
   type SerialisedPublicKey,
 } from '@ifc-lite/extensions';
+import { loadBundleFromDirectory } from '@ifc-lite/extensions/node';
 import { hasFlag, fatal } from '../output.js';
 
 // ---------------------------------------------------------------------------

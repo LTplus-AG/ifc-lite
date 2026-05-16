@@ -913,7 +913,7 @@ mergeable.
 
 ### Milestone 3.C — Export
 
-- [ ] **P3.T7** — Flavor bundler (zips full flavor + bundles to
+- [x] **P3.T7** — Flavor bundler (zips full flavor + bundles to
   `.iflv`).
   **Where:** `packages/extensions/src/flavor/bundler.ts`.
   **Depends on:** P3.T1.
@@ -931,7 +931,7 @@ mergeable.
 
 ### Milestone 3.D — Import + diff view
 
-- [ ] **P3.T9** — Flavor unpacker + validator. `[security]`
+- [x] **P3.T9** — Flavor unpacker + validator. `[security]`
   **Where:** `packages/extensions/src/flavor/unpacker.ts`.
   **Depends on:** P3.T7.
   **Acceptance:** validates magic, version, schema; rejects mismatch;
@@ -1073,7 +1073,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   overlap heuristics.
   **Effort:** M.
 
-- [ ] **P4.T7** — Plan-stub generator (pattern → `AuthoringPlan`).
+- [x] **P4.T7** — Plan-stub generator (pattern → `AuthoringPlan`).
   **Where:** `packages/extensions/src/miner/plan-stub.ts`.
   **Depends on:** P2.T2, P4.T6.
   **Acceptance:** produces a plan that the authoring pipeline accepts
@@ -1106,7 +1106,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 ### Milestone 4.D — Personal prompt overlay
 
-- [ ] **P4.T11** — Prompt overlay storage + Zod schema.
+- [x] **P4.T11** — Prompt overlay storage + Zod schema.
   **Where:** `packages/extensions/src/memory/overlay.ts`.
   **Depends on:** P3.T1.
   **Acceptance:** capped at 4000 tokens; round-trip; tests cover cap.

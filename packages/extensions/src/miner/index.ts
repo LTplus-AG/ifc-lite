@@ -10,3 +10,4 @@ export type {
 } from './types.js';
 export { mineSequences, splitSessions } from './sequence.js';
 export { scorePattern, scorePatterns, topPatterns } from './score.js';
+export { planFromPattern } from './plan-stub.js';

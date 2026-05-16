@@ -32,3 +32,15 @@ export {
   type FlavorStorage,
   type FlavorStorageOptions,
 } from './storage.js';
+export {
+  packFlavor,
+  unpackFlavor,
+  type FlavorPackOptions,
+  type UnpackedFlavor,
+} from './packer.js';
+export {
+  clampOverlay,
+  overlayParagraphDiff,
+  type OverlayClampOptions,
+  type ClampedOverlay,
+} from './overlay.js';

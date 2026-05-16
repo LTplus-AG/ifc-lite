@@ -8,3 +8,11 @@ export {
   type TestRunResult,
   type TestRunSummary,
 } from './runner.js';
+export {
+  buildSyntheticBim,
+  syntheticFixtureLoader,
+  CANONICAL_FIXTURES,
+  type SyntheticBim,
+  type SyntheticEntity,
+  type SyntheticFixtureSpec,
+} from './synthetic.js';

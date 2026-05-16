@@ -84,7 +84,11 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   const handleActivate = async (id: string) => {
     setBusy(true);
     try {
-      await host.flavors.activate(id);
+      // Drive the full switcher: enable/disable extensions to match
+      // the target flavor, then move the active pointer. Falls back
+      // to the bare pointer set on failure so the user can still
+      // recover.
+      await host.switchFlavor(id);
       toast.success(`Switched to ${id}`);
     } catch (err) {
       toast.error(`Activate failed: ${err instanceof Error ? err.message : String(err)}`);

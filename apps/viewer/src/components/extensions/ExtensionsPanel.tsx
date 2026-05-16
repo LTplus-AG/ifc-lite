@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { Beaker, FilePlus, FileText, Lightbulb, Puzzle, Trash2, Upload, Wrench, X } from 'lucide-react';
+import { Beaker, FilePlus, FileText, Lightbulb, Puzzle, Shield, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -29,6 +29,7 @@ import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
 import { RepairQueuePanel } from './RepairQueuePanel';
+import { PrivacyPanel } from './PrivacyPanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 
@@ -46,7 +47,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
+  const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair' | 'privacy'>('installed');
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -136,6 +137,16 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           </Button>
           <Button
             size="sm"
+            variant={view === 'privacy' ? 'secondary' : 'ghost'}
+            onClick={() => setView((v) => (v === 'privacy' ? 'installed' : 'privacy'))}
+            aria-label="Toggle privacy panel"
+            aria-pressed={view === 'privacy'}
+          >
+            <Shield className="mr-1 h-3.5 w-3.5" />
+            Privacy
+          </Button>
+          <Button
+            size="sm"
             variant="outline"
             onClick={() => fileInputRef.current?.click()}
             disabled={busy}
@@ -177,6 +188,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <IdeasPanel />
       ) : view === 'repair' ? (
         <RepairQueuePanel />
+      ) : view === 'privacy' ? (
+        <PrivacyPanel />
       ) : (
       <div
         className={`flex-1 overflow-auto transition-colors ${

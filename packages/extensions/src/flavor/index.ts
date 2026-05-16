@@ -50,3 +50,10 @@ export {
   type MigrationResult,
   type SyntheticExtension,
 } from './migrate-scripts.js';
+export {
+  switchFlavor,
+  type FlavorSwitcherCallbacks,
+  type FlavorExtensionState,
+  type FlavorSwitchOptions,
+  type FlavorSwitchResult,
+} from './switcher.js';

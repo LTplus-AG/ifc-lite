@@ -16,10 +16,14 @@
 import {
   InMemoryFlavorStorage,
   packFlavor,
+  switchFlavor,
   unpackFlavor,
   validateFlavor,
   type Flavor,
+  type FlavorExtensionState,
   type FlavorStorage,
+  type FlavorSwitcherCallbacks,
+  type FlavorSwitchResult,
   type UnpackedFlavor,
 } from '@ifc-lite/extensions';
 
@@ -57,6 +61,27 @@ export class FlavorService {
   async activate(id: string | undefined): Promise<void> {
     await this.storage.setActiveId(id);
     this.emit();
+  }
+
+  /**
+   * Switch to a target flavor, enabling its extension list and
+   * disabling anything the prior flavor had that this one doesn't.
+   * Callers wire the `callbacks` to their extension loader/runtime.
+   */
+  async switchTo(
+    target: Flavor,
+    installed: readonly FlavorExtensionState[],
+    callbacks: FlavorSwitcherCallbacks,
+  ): Promise<FlavorSwitchResult> {
+    const current = await this.getActive();
+    const result = await switchFlavor({
+      target,
+      installed,
+      current,
+      callbacks,
+    });
+    if (result.ok) this.emit();
+    return result;
   }
 
   /** Serialise the active (or named) flavor to a `.iflv` byte array. */

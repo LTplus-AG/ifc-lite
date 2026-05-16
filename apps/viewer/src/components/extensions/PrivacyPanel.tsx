@@ -1,0 +1,213 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `PrivacyPanel` — local privacy controls.
+ *
+ * Surfaces the no-content rule from RFC §06 §7 in prose, plus three
+ * actions the user can take any time:
+ *
+ *   - Export the action log as a JSON file (data they can audit).
+ *   - Clear the action log.
+ *   - Edit the prompt overlay (their personal notes the assistant
+ *     sees alongside the system prompt).
+ *
+ * Everything here is local. Nothing here triggers a network call.
+ *
+ * Spec: docs/architecture/ai-customization/06-self-improvement.md §7.
+ */
+
+import { useEffect, useState } from 'react';
+import { Download, Eraser, ScrollText, Save, Shield, X } from 'lucide-react';
+import {
+  clampOverlay,
+  type Flavor,
+} from '@ifc-lite/extensions';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { toast } from '@/components/ui/toast';
+
+interface PrivacyPanelProps {
+  onClose?: () => void;
+}
+
+export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
+  const host = useExtensionHost();
+  const [logSize, setLogSize] = useState({ events: 0, bytes: 0 });
+  const [activeFlavor, setActiveFlavor] = useState<Flavor | undefined>();
+  const [overlayDraft, setOverlayDraft] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = async () => {
+    setLogSize({ events: host.actionLog.size(), bytes: host.actionLog.byteSize() });
+    const flavor = await host.flavors.getActive();
+    setActiveFlavor(flavor);
+    if (flavor && !dirty) {
+      setOverlayDraft(flavor.promptOverlay?.content ?? '');
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    const offFlavor = host.flavors.onChange(() => void refresh());
+    const offLog = host.actionLog.subscribe(() => {
+      setLogSize({ events: host.actionLog.size(), bytes: host.actionLog.byteSize() });
+    });
+    return () => {
+      offFlavor();
+      offLog();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host]);
+
+  const handleExportLog = () => {
+    const json = host.actionLog.exportJson();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ifclite-action-log-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Action log exported.');
+  };
+
+  const handleClearLog = () => {
+    if (!confirm('Clear the local action log? Suggestions reset until you build up new patterns.')) return;
+    host.actionLog.clear();
+    setLogSize({ events: 0, bytes: 0 });
+    toast.success('Action log cleared.');
+  };
+
+  const handleSaveOverlay = async () => {
+    if (!activeFlavor) {
+      toast.error('No active flavor — switch to one before editing its overlay.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const clamped = clampOverlay(overlayDraft, { maxTokens: 4000 });
+      await host.flavors.put(
+        { ...activeFlavor, promptOverlay: clamped.overlay },
+        'overlay edit',
+      );
+      setOverlayDraft(clamped.overlay.content);
+      setDirty(false);
+      if (clamped.truncated) {
+        toast.info(`Overlay clamped to ~${clamped.estimatedTokens} tokens.`);
+      } else {
+        toast.success(`Overlay saved (${clamped.estimatedTokens} tokens).`);
+      }
+    } catch (err) {
+      toast.error(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          <h2 className="text-sm font-semibold">Privacy</h2>
+        </div>
+        {onClose && (
+          <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close">
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="px-4 py-3 space-y-4 text-xs">
+          <section className="space-y-1.5">
+            <h3 className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+              What we store locally
+            </h3>
+            <p className="text-muted-foreground leading-relaxed">
+              ifc-lite keeps a content-free <strong>action log</strong> of the
+              high-level intents you perform (model loads, lens applies,
+              exports). We use it to mine recurring patterns and surface
+              one-click tool suggestions. The log never records model
+              content, chat content, file names, or API keys.
+            </p>
+            <p className="text-muted-foreground leading-relaxed">
+              Suggestions, the audit log, the prompt overlay, and your
+              flavor library are all stored in your browser's IndexedDB —
+              nothing here is sent off device unless you explicitly export.
+            </p>
+          </section>
+
+          <section className="space-y-1.5">
+            <h3 className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+              Action log
+            </h3>
+            <div className="rounded border bg-muted/30 px-3 py-2">
+              <div>
+                {logSize.events} events · {(logSize.bytes / 1024).toFixed(1)} KiB
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Button size="sm" variant="outline" onClick={handleExportLog} disabled={logSize.events === 0}>
+                  <Download className="mr-1 h-3.5 w-3.5" />
+                  Export JSON
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleClearLog} disabled={logSize.events === 0}>
+                  <Eraser className="mr-1 h-3.5 w-3.5" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-1.5">
+            <h3 className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+              Prompt overlay
+            </h3>
+            <p className="text-muted-foreground">
+              Notes appended to the AI assistant's system prompt for the
+              active flavor. Use it for stable preferences ("write CSV
+              exports with semicolons", "default to red color for IfcWall").
+              Capped at ~4000 tokens.
+            </p>
+            {!activeFlavor ? (
+              <div className="rounded border bg-muted/30 px-3 py-2 text-muted-foreground italic">
+                No active flavor. Activate or import one to attach overlay
+                notes to it.
+              </div>
+            ) : (
+              <>
+                <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <ScrollText className="h-3 w-3" />
+                  Editing overlay for{' '}
+                  <span className="font-medium text-foreground">{activeFlavor.name}</span>
+                </div>
+                <textarea
+                  className="w-full min-h-[160px] rounded border bg-background p-2 font-mono text-[11px] leading-relaxed"
+                  value={overlayDraft}
+                  onChange={(e) => {
+                    setOverlayDraft(e.target.value);
+                    setDirty(true);
+                  }}
+                  placeholder="e.g. Always export CSV with semicolon separators. Default lens for IfcWall: by-fire-rating."
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-muted-foreground">
+                    {Math.ceil(overlayDraft.length / 4)} approx tokens
+                  </span>
+                  <Button size="sm" onClick={() => void handleSaveOverlay()} disabled={busy || !dirty}>
+                    <Save className="mr-1 h-3.5 w-3.5" />
+                    Save overlay
+                  </Button>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}

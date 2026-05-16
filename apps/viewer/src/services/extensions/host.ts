@@ -468,6 +468,44 @@ export class ExtensionHostService {
    * version. The result feeds the repair queue UI: outdated or
    * permissive ranges with failing tests land in `needsRepair`.
    */
+  /**
+   * Switch to the named flavor, enabling its declared extensions and
+   * disabling anything the previous flavor had that this one doesn't.
+   * Returns the structured switch result so the UI can surface
+   * failures inline.
+   */
+  async switchFlavor(targetId: string): Promise<void> {
+    const flavors = await this.flavors.list();
+    const target = flavors.find((f) => f.id === targetId);
+    if (!target) throw new Error(`Unknown flavor: ${targetId}`);
+    const records = await this.storage.listExtensions();
+    const installed = records.map((r) => ({ id: r.id, enabled: r.enabled }));
+
+    const result = await this.flavors.switchTo(target, installed, {
+      setEnabled: async (id, enabled) => {
+        await this.setEnabled(id, enabled);
+      },
+      deactivate: async (id) => {
+        await this.runtime.deactivate(id);
+        await this.loader.unload(id);
+      },
+      reload: async (id) => {
+        const status = await this.loader.load(id);
+        return !!status?.ok;
+      },
+      setActiveFlavor: async (id) => {
+        await this.flavors.activate(id);
+      },
+    });
+
+    if (!result.ok) {
+      throw new Error(
+        `Flavor switch failed for: ${result.failures.join(', ')}`,
+      );
+    }
+    this.emit();
+  }
+
   async revalidateForSdk(sdkVersion: string): Promise<RevalidationSummary> {
     const records = await this.storage.listExtensions();
     const installed = records.map((rec) => {

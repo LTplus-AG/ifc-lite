@@ -378,9 +378,10 @@ named, persistent tool. No AI authoring. No new permissions surface.
   `onModelLoad`) — Phase 1.B's host integration narrows initial usage
   to `onStartup` + `onCommand:<id>` but the dispatcher is full-fat.
 
-- [~] **P1.T6** — Sandbox wiring. Per-extension sandbox handle with
-  capability-derived permissions and per-method capability checking.
-  **Where:** `packages/extensions/src/host/{permissions,runtime,check}.ts`.
+- [x] **P1.T6** — Sandbox wiring. Per-extension sandbox handle with
+  capability-derived permissions, per-method capability checking, and
+  end-to-end `entry.activate(ctx)` execution.
+  **Where:** `packages/extensions/src/host/{permissions,runtime,check,source-wrap,memory-factory}.ts`.
   **Depends on:** P0.T7, P1.T5.
   **Acceptance:**
   - `capabilitiesToPermissions` maps the granted capability set to the
@@ -388,22 +389,40 @@ named, persistent tool. No AI authoring. No new permissions surface.
     export/files/lens). Outer-ring whole-namespace gate.
   - `ExtensionRuntime` manages one sandbox per active extension via a
     pluggable `RuntimeSandboxFactory` (viewer plugs `@ifc-lite/sandbox`
-    in; tests use a stub). Idempotent activate / deactivate /
-    disposeAll. Tracks `activatedAt`, granted capabilities, and
-    derived permissions per active record.
+    in; tests use the in-memory factory). Idempotent activate /
+    deactivate / disposeAll.
   - `checkMethodCall` / `assertMethodCall` / `CapabilityDeniedError` —
     inner-ring per-method check used by the future bridge wrapper.
-  - 38 new tests covering permission derivation across every capability
-    scope, activation lifecycle, idempotence, factory error
-    propagation, and both pass and deny paths for the method check.
+  - `wrapEntrySource` implements the v1 calling convention: plain
+    function declarations (no `export`), wrapped in an IIFE that
+    injects `__ifclite_ctx__` and aliases `bim`. Rejects ES module
+    syntax with structured errors.
+  - `entry.activate(ctx)` execution: runtime reads the entry script
+    from the bundle, wraps it, installs the ctx global, calls
+    `sandbox.run`. Captures logs, duration, return value into
+    `ActivationRecord.activateResult`. Disposes the sandbox on any
+    failure (parse error, bad source, throw during run, missing
+    entry file).
+  - `deactivateWithBundle` mirrors the activate flow for the optional
+    `entry.deactivate` script; errors during deactivate are swallowed
+    so sandbox dispose always runs.
+  - `createMemorySandboxFactory` — host-realm `new Function`-backed
+    factory used by tests. Documented as **not a security boundary**;
+    production hosts use the QuickJS factory.
+  - 76 new tests across permissions, runtime, check, source-wrap,
+    memory-factory, and the end-to-end activation flow. Coverage
+    includes the wrap shape, banned-construct detection, async
+    activate, ctx plumbing, fire-and-forget Promise return, error
+    propagation paths, and idempotence.
   **Effort:** L. `[security]`
-  Notes: **Scoped deviation.** The original P1.T6 also called for
-  evaluating `entry.activate(ctx)` at activation time. That requires
-  settling a cross-realm `ctx` calling convention for QuickJS (the
-  existing sandbox uses globals, not parameters). That convention
-  design is its own focused diff and lands with the viewer-side UI
-  wiring; the runtime here exposes the sandbox handle so the host can
-  drive script evaluation when ready.
+  Notes: v1 ctx exposes `{ bim }` only. Future ctx fields (`fetch`,
+  `storage`, `notify`, `onDispose`, `t`, `meta`) hang off the same
+  contract and land in subsequent phases without rewriting
+  extensions. Async user code runs inside the sandbox's microtask
+  queue; the runtime does not await user Promises (the IIFE returns
+  the Promise to the caller via `activateResult.value`). The viewer
+  will plug `@ifc-lite/sandbox` in by adapting its `Sandbox.eval` to
+  the `RuntimeSandboxHandle.run` shape — straightforward map.
 
 ### Milestone 1.C — Host integration
 

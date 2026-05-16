@@ -22,9 +22,10 @@
  * (lifecycle) and `02-security.md §5` (sandbox enforcement).
  */
 
-import type { Capability } from '../types.js';
+import type { Bundle, Capability } from '../types.js';
 import type { SandboxPermissionsLike } from './permissions.js';
 import { capabilitiesToPermissions } from './permissions.js';
+import { wrapEntrySource } from './source-wrap.js';
 
 /**
  * A live sandbox handle the runtime hands back to callers. The exact
@@ -32,8 +33,42 @@ import { capabilitiesToPermissions } from './permissions.js';
  * tests use the in-memory stub).
  */
 export interface RuntimeSandboxHandle {
+  /**
+   * Evaluate the given source inside the sandbox. The runtime expects
+   * sources that have already been wrapped by `wrapEntrySource`; the
+   * `__ifclite_ctx__` global must be available inside the realm.
+   */
+  run(source: string, options?: RuntimeRunOptions): Promise<RuntimeRunResult>;
+
+  /**
+   * Install a value as a global inside the sandbox. Called by the
+   * runtime to install `__ifclite_ctx__` before each `run`. The host
+   * implementation marshals the value across the realm boundary.
+   */
+  setGlobal(name: string, value: unknown): Promise<void> | void;
+
   /** Dispose the underlying sandbox and free its resources. */
   dispose(): Promise<void> | void;
+}
+
+export interface RuntimeRunOptions {
+  /** Source identifier shown in stack traces. */
+  filename?: string;
+}
+
+export interface RuntimeRunResult {
+  /** Whatever the IIFE returned. May be a Promise if `activate` is async. */
+  value: unknown;
+  /** Console output captured during the run. */
+  logs: RuntimeLogEntry[];
+  /** Wall-clock duration of the run. */
+  durationMs: number;
+}
+
+export interface RuntimeLogEntry {
+  level: 'info' | 'warn' | 'error' | 'log';
+  message: string;
+  timestamp: number;
 }
 
 /**
@@ -65,10 +100,20 @@ export interface ActivationRecord {
   grants: readonly Capability[];
   /** Sandbox handle for later disposal. */
   sandbox: RuntimeSandboxHandle;
+  /**
+   * Result of evaluating the `entry.activate` script. Absent when the
+   * bundle declares no `entry.activate`.
+   */
+  activateResult?: RuntimeRunResult;
 }
 
 export interface ExtensionRuntimeOptions {
   factory: RuntimeSandboxFactory;
+  /**
+   * Optional shared SDK reference. Future ctx fields (storage, fetch,
+   * notify) hang off this; today only `bim` is plumbed through.
+   */
+  sdk?: unknown;
   /** Optional clock for deterministic tests. */
   now?: () => Date;
   /**
@@ -79,31 +124,72 @@ export interface ExtensionRuntimeOptions {
   defaultLimits?: RuntimeSandboxCreateOptions['limits'];
 }
 
+/**
+ * Minimal v1 `ctx` shape exposed to extension entry functions. Each
+ * field is the OCAP capability handle the extension is permitted to
+ * use; in v1 only `bim` is plumbed. Future ctx fields (fetch, storage,
+ * notify, onDispose, t, meta) land in subsequent phases.
+ *
+ * Spec: docs/architecture/ai-customization/01-extension-model.md §9.
+ */
+export interface ExtensionContextV1 {
+  bim: unknown;
+}
+
+/**
+ * Thrown when an entry script fails to parse or contains constructs
+ * the wrapper does not support. Distinct from CapabilityDeniedError
+ * (runtime-time capability violations) and ScriptError (sandbox eval
+ * runtime errors).
+ */
+export class EntrySourceError extends Error {
+  readonly extensionId: string;
+  readonly entryPath: string;
+  readonly validationErrors: readonly import('../types.js').ValidationError[];
+
+  constructor(
+    extensionId: string,
+    entryPath: string,
+    errors: readonly import('../types.js').ValidationError[],
+  ) {
+    const summary = errors.map((e) => `${e.path || '<root>'}: ${e.message}`).join('; ');
+    super(`Entry script ${entryPath} for ${extensionId} did not wrap: ${summary}`);
+    this.name = 'EntrySourceError';
+    this.extensionId = extensionId;
+    this.entryPath = entryPath;
+    this.validationErrors = errors;
+  }
+}
+
 export class ExtensionRuntime {
   private active = new Map<string, ActivationRecord>();
   private readonly factory: RuntimeSandboxFactory;
+  private readonly sdk: unknown;
   private readonly now: () => Date;
   private readonly defaultLimits: RuntimeSandboxCreateOptions['limits'];
 
   constructor(opts: ExtensionRuntimeOptions) {
     this.factory = opts.factory;
+    this.sdk = opts.sdk;
     this.now = opts.now ?? (() => new Date());
     this.defaultLimits = opts.defaultLimits;
   }
 
   /**
-   * Activate an extension. Creates a sandbox with permissions derived
-   * from the granted capabilities. Idempotent — if the extension is
-   * already active, returns the existing record.
+   * Activate an extension. Creates a sandbox, derives permissions from
+   * the granted capabilities, installs the `__ifclite_ctx__` global,
+   * and runs `entry.activate` if the bundle declares one. Idempotent —
+   * if the extension is already active, returns the existing record.
    *
-   * Note: this does NOT yet evaluate the extension's `entry.activate`
-   * script. That requires a calling-convention design that is its own
-   * piece of work; this runtime exposes the sandbox handle so callers
-   * can drive script evaluation when ready.
+   * The activate call is fire-and-forget for async returns: the
+   * activation record's `activateResult.value` may be a Promise the
+   * sandbox is still resolving. The runtime never awaits async user
+   * work because long-running activation would block the host.
    */
   async activate(
     extensionId: string,
     grants: readonly Capability[],
+    bundle?: Bundle,
   ): Promise<ActivationRecord> {
     const existing = this.active.get(extensionId);
     if (existing) return existing;
@@ -115,15 +201,71 @@ export class ExtensionRuntime {
       limits: this.defaultLimits,
     });
 
+    let activateResult: RuntimeRunResult | undefined;
+    if (bundle?.manifest.entry.activate) {
+      const entryPath = bundle.manifest.entry.activate;
+      const file = bundle.files.get(entryPath);
+      if (!file) {
+        await sandbox.dispose();
+        throw new Error(
+          `Extension ${extensionId}: entry.activate "${entryPath}" not found in bundle.`,
+        );
+      }
+      const source = file.text ?? new TextDecoder().decode(file.bytes);
+      const wrapped = wrapEntrySource(source, { entryFnName: 'activate', filename: entryPath });
+      if (!wrapped.ok) {
+        await sandbox.dispose();
+        throw new EntrySourceError(extensionId, entryPath, wrapped.errors);
+      }
+      const ctx: ExtensionContextV1 = { bim: this.sdk };
+      await sandbox.setGlobal('__ifclite_ctx__', ctx);
+      try {
+        activateResult = await sandbox.run(wrapped.value, { filename: entryPath });
+      } catch (err) {
+        await sandbox.dispose();
+        throw err;
+      }
+    }
+
     const record: ActivationRecord = {
       extensionId,
       activatedAt: this.now().toISOString(),
       permissions,
       grants,
       sandbox,
+      activateResult,
     };
     this.active.set(extensionId, record);
     return record;
+  }
+
+  /**
+   * Run the extension's `entry.deactivate` script (if any) and dispose
+   * the sandbox. No-op for unknown ids.
+   */
+  async deactivateWithBundle(extensionId: string, bundle: Bundle): Promise<void> {
+    const record = this.active.get(extensionId);
+    if (!record) return;
+
+    const entryPath = bundle.manifest.entry.deactivate;
+    if (entryPath) {
+      const file = bundle.files.get(entryPath);
+      if (file) {
+        const source = file.text ?? new TextDecoder().decode(file.bytes);
+        const wrapped = wrapEntrySource(source, { entryFnName: 'deactivate', filename: entryPath });
+        if (wrapped.ok) {
+          const ctx: ExtensionContextV1 = { bim: this.sdk };
+          await record.sandbox.setGlobal('__ifclite_ctx__', ctx);
+          try {
+            await record.sandbox.run(wrapped.value, { filename: entryPath });
+          } catch {
+            // We swallow deactivate errors so a misbehaving deactivate
+            // cannot block unload. The sandbox dispose still runs.
+          }
+        }
+      }
+    }
+    await this.deactivate(extensionId);
   }
 
   /**

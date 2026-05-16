@@ -15,12 +15,22 @@ export {
 } from './permissions.js';
 export {
   ExtensionRuntime,
+  EntrySourceError,
   type ExtensionRuntimeOptions,
   type RuntimeSandboxHandle,
   type RuntimeSandboxFactory,
   type RuntimeSandboxCreateOptions,
+  type RuntimeRunOptions,
+  type RuntimeRunResult,
+  type RuntimeLogEntry,
   type ActivationRecord,
+  type ExtensionContextV1,
 } from './runtime.js';
+export { wrapEntrySource, type SourceWrapOptions } from './source-wrap.js';
+export {
+  createMemorySandboxFactory,
+  type MemorySandboxFactoryOptions,
+} from './memory-factory.js';
 export {
   checkMethodCall,
   assertMethodCall,

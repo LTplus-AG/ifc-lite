@@ -29,6 +29,8 @@ function stubFactory(): {
     async create(opts) {
       creates.push(opts);
       const handle: RuntimeSandboxHandle = {
+        setGlobal: () => {},
+        run: async () => ({ value: undefined, logs: [], durationMs: 0 }),
         dispose: () => {
           disposes.push(opts.extensionId);
         },

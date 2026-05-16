@@ -61,7 +61,7 @@ thiserror = "2.0"
 anyhow = "1.0"
 
 # Fast hashing (for style index) - must match ifc-lite-geometry version
-rustc-hash = "1.1"
+rustc-hash = "2.1"
 
 # CPU count
 num_cpus = "1.16"

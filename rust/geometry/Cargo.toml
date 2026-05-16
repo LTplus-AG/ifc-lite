@@ -51,7 +51,7 @@ nalgebra = { version = "0.33", default-features = false, features = ["std"] }
 rayon = "1.10"
 
 # Fast hashing
-rustc-hash = "1.1"
+rustc-hash = "2.1"
 
 # Small vector optimization for frequently allocated small collections
 smallvec = "1.13"

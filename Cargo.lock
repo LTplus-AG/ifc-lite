@@ -2349,7 +2349,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-core"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -2358,7 +2358,7 @@ dependencies = [
  "lexical-core",
  "memchr",
  "nom",
- "rustc-hash 1.1.0",
+ "rustc-hash",
  "serde",
  "smallvec",
  "thiserror 1.0.69",
@@ -2373,7 +2373,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "rayon",
- "rustc-hash 1.1.0",
+ "rustc-hash",
  "serde",
  "serde_json",
  "tauri",
@@ -2388,7 +2388,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-engine"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "ifc-lite-processing",
  "memmap2 0.9.10",
@@ -2397,7 +2397,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "approx",
  "earcutr",
@@ -2406,19 +2406,19 @@ dependencies = [
  "manifold-csg",
  "nalgebra",
  "rayon",
- "rustc-hash 1.1.0",
+ "rustc-hash",
  "smallvec",
  "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "ifc-lite-processing"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "rayon",
- "rustc-hash 1.1.0",
+ "rustc-hash",
  "serde",
  "serde_json",
  "tracing",
@@ -2426,7 +2426,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2445,7 +2445,7 @@ dependencies = [
  "num_cpus",
  "parquet",
  "rayon",
- "rustc-hash 1.1.0",
+ "rustc-hash",
  "serde",
  "serde_json",
  "sha2",
@@ -2460,7 +2460,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",
@@ -2469,7 +2469,7 @@ dependencies = [
  "js-sys",
  "rayon",
  "rayon-core",
- "rustc-hash 1.1.0",
+ "rustc-hash",
  "serde",
  "serde-wasm-bindgen",
  "thiserror 1.0.69",
@@ -4057,12 +4057,6 @@ dependencies = [
 
 [[package]]
 name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
-name = "rustc-hash"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94300abf3f1ae2e2b8ffb7b58043de3d399c73fa6f4b73826402a5c457614dbe"
@@ -4196,7 +4190,7 @@ dependencies = [
  "phf",
  "phf_codegen",
  "precomputed-hash",
- "rustc-hash 2.1.2",
+ "rustc-hash",
  "servo_arc",
  "smallvec",
 ]

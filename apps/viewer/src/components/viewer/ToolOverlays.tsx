@@ -12,6 +12,7 @@ import { SectionOverlay } from './tools/SectionPanel';
 import { AddElementOverlay } from './tools/AddElementOverlay';
 import { GizmoOverlay } from './tools/GizmoOverlay';
 import { WallEndpointOverlay } from './tools/WallEndpointOverlay';
+import { SplitOverlay } from './tools/SplitOverlay';
 
 export function ToolOverlays() {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -26,6 +27,10 @@ export function ToolOverlays() {
 
   if (activeTool === 'addElement') {
     return <AddElementOverlay />;
+  }
+
+  if (activeTool === 'split') {
+    return <SplitOverlay />;
   }
 
   // Select tool: surface the move gizmo + wall-endpoint handles when

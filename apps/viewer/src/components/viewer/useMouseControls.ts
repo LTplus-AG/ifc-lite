@@ -30,7 +30,7 @@ import {
   handleMeasureUp,
   updateMeasureScreenCoords,
 } from './measureHandlers.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover } from './selectionHandlers.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -598,6 +598,13 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // track the cursor; magnetic snap is layered on when enabled.
       if (tool === 'addElement' && !mouseState.isDragging) {
         if (handleAddElementHover(ctx, x, y)) return;
+      }
+
+      // Split-tool hover preview — projects the cursor onto the
+      // hovered wall's axis and pushes the cut distance into the
+      // store so SplitOverlay renders the perpendicular guide.
+      if (tool === 'split' && !mouseState.isDragging) {
+        if (handleSplitHover(ctx, x, y)) return;
       }
 
       // Section tool face-pick: dwell-aware hover preview (issue #243

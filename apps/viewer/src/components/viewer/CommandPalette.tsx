@@ -59,6 +59,7 @@ import {
   Eraser,
   MapPin,
   PenLine,
+  Slice,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -339,6 +340,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
       { id: 'tool:edit-mode', label: 'Toggle Edit Mode', keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools', icon: PenLine, shortcut: 'E',
         action: () => { useViewerStore.getState().toggleEditEnabled(); } },
+      { id: 'tool:split', label: 'Split Wall', keywords: 'split cut knife slice divide segment break wall', category: 'Tools', icon: Slice, shortcut: 'K',
+        action: () => { useViewerStore.getState().setActiveTool('split'); } },
       // Direct draw-tool shortcuts — each one selects an element type
       // AND enters the addElement tool. The setActiveTool side effect
       // auto-enables edit mode, so these work from a cold start with

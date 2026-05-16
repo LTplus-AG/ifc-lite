@@ -53,7 +53,10 @@ import {
   rotateProductYaw,
   resolveWallEditChain,
   resizeRectangleWall,
+  computeWallSplitGeometry,
+  projectOntoWallAxis,
 } from '@/lib/placement-edit.js';
+import { cloneElementMetadata } from '@/lib/metadata-clone.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -368,6 +371,41 @@ export interface MutationSlice {
     modelId: string,
     expressId: number,
   ) => { start: [number, number, number]; end: [number, number, number]; thickness: number } | null;
+  /**
+   * Split a rectangle-profile wall into two walls at `distance`
+   * metres along its axis (measured from the wall's start). Produces
+   * two new walls inheriting the source's Pset / Qto / classification
+   * / material / type relationships, then tombstones the source.
+   *
+   * Returns the two new walls' express ids and federation global
+   * ids on success. On failure (non-rectangle wall, distance too
+   * close to an end, missing storey, etc.) returns a descriptive
+   * reason for the UI to surface.
+   *
+   * Undo posture: the action lands as three primitive mutations on
+   * the model's undo stack (one per new wall create, one for the
+   * source delete), so a full revert needs three Ctrl+Z presses
+   * today. A batched-mutation primitive that collapses this to one
+   * step is on the follow-up list from PR #723.
+   */
+  splitWallAtDistance: (
+    modelId: string,
+    expressId: number,
+    distanceFromStart: number,
+  ) => { ok: true; left: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
+  /**
+   * Read-only helper for the Split-tool live preview: projects an
+   * arbitrary storey-local 3D cursor onto the wall axis and returns
+   * how far along the wall (in metres from start) it lands, plus
+   * the wall's total length so the UI can show "1.42 m / 3.50 m".
+   *
+   * Returns null when the entity isn't a resizable wall.
+   */
+  readWallSplitProjection: (
+    modelId: string,
+    expressId: number,
+    cursorStoreyLocal: [number, number, number],
+  ) => { distance: number; length: number; cutPoint: [number, number, number] } | null;
   /**
    * Add a fully-anchored IfcColumn (and its sub-graph) to a parsed model.
    * Returns the new column's expressId, or null if the model can't be
@@ -1200,6 +1238,131 @@ export const createMutationSlice: StateCreator<
       sz + dz * chain.wallLength,
     ];
     return { start: [sx, sy, sz], end, thickness: chain.thickness };
+  },
+
+  readWallSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    if (!chain) return null;
+    const distance = projectOntoWallAxis(chain, cursorStoreyLocal);
+    const [sx, sy, sz] = chain.startCoordinates;
+    const [dx, dy, dz] = chain.refDirection;
+    const cutPoint: [number, number, number] = [
+      sx + dx * distance,
+      sy + dy * distance,
+      sz + dz * distance,
+    ];
+    return { distance, length: chain.wallLength, cutPoint };
+  },
+
+  splitWallAtDistance: (modelId, expressId, distanceFromStart) => {
+    const state = get();
+    const view = state.mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const model = state.models.get(modelId);
+    const dataStore = model?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation. Split supports walls built by addWallToStore.',
+      };
+    }
+    if (!Number.isFinite(chain.height) || chain.height <= 0) {
+      return {
+        ok: false,
+        reason: 'Wall has no readable extrusion height',
+      };
+    }
+
+    const geo = computeWallSplitGeometry(chain, distanceFromStart, chain.height);
+    if (!geo.ok) return geo;
+
+    // Resolve the wall's storey so the two new walls land in the
+    // same spatial container. Federated-aware via the model's own
+    // spatialHierarchy.
+    const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+    if (storeyExpressId === undefined) {
+      return {
+        ok: false,
+        reason: 'Wall is not contained in a building storey',
+      };
+    }
+
+    // Build the two halves. Each `addWall` call already pushes a
+    // CREATE_ENTITY mutation onto the undo stack AND emits a fresh
+    // mesh via appendGeometryBatch, so the new walls appear in 3D
+    // immediately. The source's mesh stays in the geometry result
+    // but is tombstoned in the IFC overlay — for v1 we mark it
+    // hidden via the existing hiddenEntities mechanism so the user
+    // sees the split take effect.
+    const left = state.addWall(modelId, storeyExpressId, {
+      Start: geo.geometry.left.Start,
+      End: geo.geometry.left.End,
+      Thickness: geo.geometry.left.Thickness,
+      Height: geo.geometry.left.Height,
+      Name: 'Wall (split L)',
+    });
+    if ('error' in left) {
+      return { ok: false, reason: `Couldn't build left half: ${left.error}` };
+    }
+    const right = state.addWall(modelId, storeyExpressId, {
+      Start: geo.geometry.right.Start,
+      End: geo.geometry.right.End,
+      Thickness: geo.geometry.right.Thickness,
+      Height: geo.geometry.right.Height,
+      Name: 'Wall (split R)',
+    });
+    if ('error' in right) {
+      // Best-effort rollback of the left half — its create-entity
+      // mutation is still on the undo stack, so the user can
+      // recover with Ctrl+Z if we ship a partial state.
+      return { ok: false, reason: `Couldn't build right half: ${right.error}` };
+    }
+
+    // Carry Pset / Qto / classification / material / type rels
+    // from the source onto both new walls. Done AFTER the new walls
+    // exist so the rels' RelatedObjects lists can include them.
+    cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
+
+    // Tombstone the source. `removeEntity` returns false if the
+    // entity wasn't known — shouldn't happen here (we just
+    // resolved its chain), but defend anyway.
+    const removed = state.removeEntity(modelId, expressId);
+    if (!removed) {
+      return {
+        ok: false,
+        reason: 'Wall was unexpectedly removed before split completed',
+      };
+    }
+
+    // Hide the source's mesh from the rendered geometry. The
+    // entity is tombstoned in the IFC overlay so it won't export,
+    // but the mesh data lingers in geometryResult until the next
+    // full reload — hide it so the user sees the split immediately.
+    // The two new walls already have their meshes in the geometry
+    // (addWall emits them via appendGeometryBatch).
+    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
+    state.hideEntities([sourceGlobalId]);
+
+    const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
+    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
+
+    return {
+      ok: true,
+      left: { expressId: left.expressId, globalId: leftGlobalId },
+      right: { expressId: right.expressId, globalId: rightGlobalId },
+    };
   },
 
   removeEntity: (modelId, expressId) => {

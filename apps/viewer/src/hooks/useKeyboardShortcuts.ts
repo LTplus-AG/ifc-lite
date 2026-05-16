@@ -116,6 +116,14 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       }
     }
 
+    // K = knife / Split tool. Same edit-mode gate; setActiveTool
+    // auto-enables edit mode if needed (Split requires it).
+    if (key === 'k' && !ctrl && !shift) {
+      e.preventDefault();
+      const state = useViewerStore.getState();
+      state.setActiveTool(state.activeTool === 'split' ? 'select' : 'split');
+    }
+
     // R / Shift+R = rotate selected entity ±15° about the storey-up
     // Z axis. Only fires while edit mode is on and a single entity
     // is selected. The rotateEntity action handles the placement
@@ -200,6 +208,18 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     if (key === 'a' && !ctrl && !shift) {
       e.preventDefault();
       resetVisibilityForHomeFromStore();
+    }
+
+    // Split tool — Esc exits Split and returns to Select. We catch
+    // it here before the global Esc handler so the user gets a
+    // gentle exit (clear hover, swap tool) rather than the global
+    // "clear all selection + visibility" cascade.
+    if (activeTool === 'split' && key === 'escape') {
+      e.preventDefault();
+      const state = useViewerStore.getState();
+      state.clearSplitHover();
+      state.setActiveTool('select');
+      return;
     }
 
     // Add-element tool shortcuts — Enter commits an in-progress slab
@@ -320,6 +340,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'X', description: 'Section tool', category: 'Tools' },
   { key: 'E', description: 'Toggle edit mode (unlocks property + geometry edits)', category: 'Tools' },
   { key: 'W', description: 'Draw Wall (requires edit mode)', category: 'Tools' },
+  { key: 'K', description: 'Split tool — click a wall to cut it (requires edit mode)', category: 'Tools' },
   { key: 'R / Shift+R', description: 'Rotate selected entity ±15° about Z (requires edit mode)', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },

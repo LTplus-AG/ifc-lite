@@ -37,6 +37,11 @@ export {
 export {
   resolveWallEditChain,
   resizeRectangleWall,
+  computeWallSplitGeometry,
+  projectOntoWallAxis,
+  MIN_WALL_SEGMENT_LENGTH,
   type WallEditChain,
   type WallResizeResult,
+  type WallSplitGeometry,
+  type WallSplitResult,
 } from './wall-edit.js';

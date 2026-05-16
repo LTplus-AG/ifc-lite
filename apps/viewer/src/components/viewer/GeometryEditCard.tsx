@@ -29,7 +29,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Move as MoveIcon, RotateCw, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Copy, Move as MoveIcon, RotateCw, Slice as KnifeIcon, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -151,6 +151,25 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     },
     [modelId, entityId, rotateEntity],
   );
+
+  // Resolve whether the selected entity has a resizable wall chain
+  // (rectangle profile, explicit RefDirection, etc.). When true,
+  // the Split action surfaces in the actions row — keeps clutter
+  // out of the panel for unrelated selections.
+  const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
+  const splittable = useMemo(() => {
+    return readWallEndpoints(modelId, entityId) !== null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, entityId, mutationVersion, readWallEndpoints]);
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
+  const setSplitTarget = useViewerStore((s) => s.setSplitTarget);
+  const onSplit = useCallback(() => {
+    // Arm the tool with this entity pre-targeted so the user's next
+    // cursor move lights up the guide. setActiveTool('split')
+    // auto-enables edit mode if needed.
+    setSplitTarget(modelId, entityId);
+    setActiveTool('split');
+  }, [modelId, entityId, setActiveTool, setSplitTarget]);
 
   const onDuplicate = useCallback(() => {
     const result = duplicateEntity(modelId, entityId);
@@ -301,8 +320,26 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
             </div>
           )}
 
-          {/* Actions — duplicate + delete. Available even when Move isn't. */}
+          {/* Actions — split (when applicable) + duplicate + delete.
+              Available even when Move isn't. Split surfaces only
+              for resizable walls so the panel stays uncluttered
+              for selections where the action doesn't apply. */}
           <div className="flex items-center gap-1 pt-1 border-t border-purple-200/60 dark:border-purple-900/40">
+            {splittable && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 flex-1 text-xs"
+                    onClick={onSplit}
+                  >
+                    <KnifeIcon className="h-3 w-3 mr-1" /> Split
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Click on this wall to split it (K)</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

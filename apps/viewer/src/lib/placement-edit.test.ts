@@ -12,6 +12,9 @@ import {
   rotateProductYaw,
   resolveWallEditChain,
   resizeRectangleWall,
+  computeWallSplitGeometry,
+  projectOntoWallAxis,
+  MIN_WALL_SEGMENT_LENGTH,
 } from './placement-edit.js';
 
 /**
@@ -437,6 +440,63 @@ describe('placement-edit', () => {
     const view = new StubView() as unknown as Parameters<typeof resizeRectangleWall>[1];
     const result = resizeRectangleWall(dataStoreStub, view, editor, fx.ids.wall, [0, 0, 0], [0, 0, 0]);
     assert.strictEqual(result.ok, false);
+  });
+
+  it('computeWallSplitGeometry produces two coherent halves', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resolveWallEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveWallEditChain>[1];
+    const chain = resolveWallEditChain(dataStoreStub, view, editor, fx.ids.wall);
+    assert.ok(chain);
+    const result = computeWallSplitGeometry(chain, 2, 3); // height = 3
+    assert.ok(result.ok);
+    // Source: start (0,0,0) → (5,0,0); split at 2.
+    assert.deepStrictEqual(result.geometry.left.Start, [0, 0, 0]);
+    assert.deepStrictEqual(result.geometry.left.End, [2, 0, 0]);
+    assert.deepStrictEqual(result.geometry.right.Start, [2, 0, 0]);
+    assert.deepStrictEqual(result.geometry.right.End, [5, 0, 0]);
+    assert.strictEqual(result.geometry.left.Thickness, 0.2);
+    assert.strictEqual(result.geometry.right.Thickness, 0.2);
+    assert.strictEqual(result.geometry.left.Height, 3);
+    assert.strictEqual(result.geometry.right.Height, 3);
+    assert.deepStrictEqual(result.geometry.cutPoint, [2, 0, 0]);
+    assert.strictEqual(result.geometry.sourceLength, 5);
+  });
+
+  it('computeWallSplitGeometry rejects splits too close to the start', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resolveWallEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveWallEditChain>[1];
+    const chain = resolveWallEditChain(dataStoreStub, view, editor, fx.ids.wall);
+    assert.ok(chain);
+    const result = computeWallSplitGeometry(chain, MIN_WALL_SEGMENT_LENGTH / 2, 3);
+    assert.strictEqual(result.ok, false);
+  });
+
+  it('computeWallSplitGeometry rejects splits too close to the end', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resolveWallEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveWallEditChain>[1];
+    const chain = resolveWallEditChain(dataStoreStub, view, editor, fx.ids.wall);
+    assert.ok(chain);
+    const result = computeWallSplitGeometry(chain, chain.wallLength - MIN_WALL_SEGMENT_LENGTH / 2, 3);
+    assert.strictEqual(result.ok, false);
+  });
+
+  it('projectOntoWallAxis clamps to wall length and reports midpoint correctly', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resolveWallEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveWallEditChain>[1];
+    const chain = resolveWallEditChain(dataStoreStub, view, editor, fx.ids.wall);
+    assert.ok(chain);
+    // Cursor directly on the midpoint.
+    assert.strictEqual(projectOntoWallAxis(chain, [2.5, 0, 0]), 2.5);
+    // Cursor off-axis but in front of midpoint — projects to 2.5.
+    assert.strictEqual(projectOntoWallAxis(chain, [2.5, 1, 0]), 2.5);
+    // Cursor past the end — clamps.
+    assert.strictEqual(projectOntoWallAxis(chain, [10, 0, 0]), chain.wallLength);
+    // Cursor before the start — clamps.
+    assert.strictEqual(projectOntoWallAxis(chain, [-3, 0, 0]), 0);
   });
 
   it('treats 2D coordinates as having Z=0', () => {

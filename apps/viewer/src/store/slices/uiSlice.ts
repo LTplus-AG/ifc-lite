@@ -148,7 +148,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // the global toggle on so the rest of the UI (Properties panel,
     // future manipulators) stays in sync. Read-only tools leave the
     // flag alone.
-    const requiresEdit = activeTool === 'addElement' || activeTool === 'cesium-placement';
+    const requiresEdit =
+      activeTool === 'addElement' ||
+      activeTool === 'cesium-placement' ||
+      activeTool === 'split';
     set(requiresEdit ? { activeTool, editEnabled: true } : { activeTool });
   },
   setEditEnabled: (editEnabled) => {
@@ -161,7 +164,9 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       set((s) => ({
         editEnabled: false,
         activeTool:
-          s.activeTool === 'addElement' || s.activeTool === 'cesium-placement'
+          s.activeTool === 'addElement' ||
+          s.activeTool === 'cesium-placement' ||
+          s.activeTool === 'split'
             ? 'select'
             : s.activeTool,
         cesiumPlacementEditMode: false,

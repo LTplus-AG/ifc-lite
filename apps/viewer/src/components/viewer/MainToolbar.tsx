@@ -50,6 +50,7 @@ import {
   Columns3,
   DoorClosed,
   AppWindow,
+  Slice,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -200,6 +201,43 @@ function DrawToolButton({ type, icon: Icon, label, shortcut }: DrawToolButtonPro
       </TooltipTrigger>
       <TooltipContent>
         Draw {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * Toolbar pill for the Split tool. Pinned at the end of the draw
+ * row when edit mode is on. Press K (registered in
+ * useKeyboardShortcuts) or click this button to toggle.
+ *
+ * Self-contained so MainToolbar's render path stays tight — the
+ * subscription set is small (activeTool + setActiveTool only) and
+ * Esc handling in the keyboard hook reverts to 'select'.
+ */
+function SplitToolButton() {
+  const activeTool = useViewerStore((s) => s.activeTool);
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
+  const isActive = activeTool === 'split';
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant={isActive ? 'default' : 'ghost'}
+          size="icon-sm"
+          aria-label="Split tool"
+          aria-pressed={isActive}
+          onClick={(e) => {
+            (e.currentTarget as HTMLButtonElement).blur();
+            setActiveTool(isActive ? 'select' : 'split');
+          }}
+          className={cn(isActive && 'bg-purple-600 text-white hover:bg-purple-700')}
+        >
+          <Slice className="h-4 w-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        Split wall <span className="ml-2 text-xs opacity-60">(K)</span>
       </TooltipContent>
     </Tooltip>
   );
@@ -1204,6 +1242,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             icon={AppWindow}
             label="Window"
           />
+          {/* Split tool — single button at the end of the draw row.
+              It's a modify gesture (not creation), but lives next
+              to the draw tools because the user flow "draw → edit →
+              split" reads top-to-bottom. The icon uses Slice rather
+              than Scissors (which is already claimed by Section). */}
+          <SplitToolButton />
+          {/* Subtle separator before the "+ more" menu so the eye
+              groups [create tools] | [modify tools] without an extra
+              chrome border. */}
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>

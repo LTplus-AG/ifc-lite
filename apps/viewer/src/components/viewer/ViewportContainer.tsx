@@ -76,8 +76,10 @@ export function ViewportContainer() {
     models,
     boundedGeometryMode,
     geometryUpdateTick,
+    geometryContentVersion,
   } = viewportStoreState;
   const storeModels = models;
+  const mergedContentVersionRef = useRef(geometryContentVersion);
 
   // Check if we have models loaded (for determining add vs replace behavior)
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
@@ -119,6 +121,15 @@ export function ViewportContainer() {
 
       if (mergedLengthsRef.current.size !== storeModels.size) {
         shouldRebuild = true;
+      }
+
+      // An external content version bump (e.g. realignFederation re-baked
+      // vertices in place) requires a full cache rebuild — length/visibility
+      // triggers above can't detect in-place mutation. Compare against the
+      // last version we honoured; rebuild when it bumps.
+      if (mergedContentVersionRef.current !== geometryContentVersion) {
+        shouldRebuild = true;
+        mergedContentVersionRef.current = geometryContentVersion;
       }
 
       for (const [modelId, model] of storeModels) {
@@ -181,7 +192,7 @@ export function ViewportContainer() {
 
     // Legacy mode (no federation): use original geometryResult
     return geometryResult;
-  }, [storeModels, geometryResult, modelIdToIndex]);
+  }, [storeModels, geometryResult, modelIdToIndex, geometryContentVersion]);
 
   /**
    * Aggregate point clouds across visible models.
@@ -1019,6 +1030,7 @@ export function ViewportContainer() {
       <Viewport
         geometry={filteredGeometry}
         geometryVersion={geometryVersion}
+        geometryContentVersion={geometryContentVersion}
         pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}
         computedIsolatedIds={computedIsolatedIds}

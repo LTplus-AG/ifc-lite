@@ -46,6 +46,9 @@ interface ViewportProps {
   /** Monotonic counter that increments when geometry changes — used to trigger
    *  streaming effects even when the geometry array reference is stable. */
   geometryVersion?: number;
+  /** Bumps when existing mesh vertex/normal data has been mutated in place
+   *  (e.g. realignFederation). Forces the streaming hook to re-upload buffers. */
+  geometryContentVersion?: number;
   /** Point cloud assets aggregated across visible federated models. */
   pointClouds?: ReadonlyArray<PointCloudAsset> | null;
   coordinateInfo?: CoordinateInfo;
@@ -61,6 +64,7 @@ interface ViewportProps {
 export function Viewport({
   geometry,
   geometryVersion,
+  geometryContentVersion,
   pointClouds,
   coordinateInfo,
   computedIsolatedIds,
@@ -896,6 +900,7 @@ export function Viewport({
     isInitialized,
     geometry,
     geometryVersion,
+    geometryContentVersion,
     coordinateInfo,
     isStreaming,
     geometryBoundsRef,

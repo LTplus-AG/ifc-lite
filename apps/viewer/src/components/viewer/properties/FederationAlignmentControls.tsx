@@ -14,6 +14,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { Anchor, RefreshCw, AlertTriangle, Check } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
+import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types';
 
 export interface FederationAlignmentControlsProps {
@@ -53,26 +55,43 @@ export function FederationAlignmentControls({ modelId }: FederationAlignmentCont
   const models = useViewerStore((s) => s.models);
   const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
   const setAnchorModelIdOverride = useViewerStore((s) => s.setAnchorModelIdOverride);
+  const georefMutations = useViewerStore((s) => s.georefMutations);
+  useViewerStore((s) => s.mutationVersion);
   const { realignFederation } = useIfc();
   const [busy, setBusy] = useState(false);
 
-  // The "effective anchor" matches findReferenceGeorefModel: the override if
-  // it points to a loaded georeferenced model, otherwise the earliest-loaded
-  // model with a georef. Re-derived here so the badge reflects truth without
-  // adding another selector to the store.
-  const effectiveAnchorId = useMemo(() => {
-    if (anchorModelIdOverride && models.has(anchorModelIdOverride)) {
-      const anchor = models.get(anchorModelIdOverride);
-      if (anchor?.federationAlignmentStatus !== undefined) return anchorModelIdOverride;
+  // The "effective anchor" matches findReferenceGeorefModel in useIfcFederation:
+  // honour the override if it points to a model with a valid (non-site) georef,
+  // otherwise pick the earliest-loaded model with one. Federation status alone
+  // is not enough — a model can be loaded standalone with status='none' and
+  // would otherwise show up as a fake anchor in the badge.
+  const hasValidGeoref = useCallback(
+    (model: FederatedModel | undefined): boolean => {
+      if (!model?.ifcDataStore) return false;
+      const eff = getEffectiveGeoreference(
+        model.ifcDataStore as IfcDataStore,
+        model.geometryResult?.coordinateInfo,
+        georefMutations.get(model.id),
+      );
+      return Boolean(
+        eff?.projectedCRS?.name && eff.mapConversion && eff.source !== 'siteLocation',
+      );
+    },
+    [georefMutations],
+  );
+
+  const effectiveAnchorId = useMemo<string | null>(() => {
+    if (anchorModelIdOverride && hasValidGeoref(models.get(anchorModelIdOverride))) {
+      return anchorModelIdOverride;
     }
     const sorted = Array.from(models.entries()).sort(
       ([, a], [, b]) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0),
     );
     for (const [id, model] of sorted) {
-      if (model.federationAlignmentStatus) return id;
+      if (hasValidGeoref(model)) return id;
     }
-    return sorted[0]?.[0] ?? null;
-  }, [models, anchorModelIdOverride]);
+    return null;
+  }, [models, anchorModelIdOverride, hasValidGeoref]);
 
   const thisModel = models.get(modelId);
   if (!thisModel) return null;

@@ -30,6 +30,14 @@ export interface DataSlice {
   ifcDataStore: IfcDataStore | null;
   geometryResult: GeometryResult | null;
   geometryUpdateTick: number;
+  /**
+   * Monotonic counter bumped whenever existing mesh vertex/normal data has
+   * been mutated in-place (e.g. by `realignFederation`). Length/visibility
+   * triggers don't catch in-place mutation, so this is a separate signal that
+   * the merged-geometry cache and the renderer's GPU buffers both subscribe
+   * to in order to force a re-process.
+   */
+  geometryContentVersion: number;
   boundedGeometryMode: boolean;
   /** Transient overlay colors (lens/IDS/sdk overlays). */
   pendingColorUpdates: Map<number, [number, number, number, number]> | null;
@@ -41,6 +49,9 @@ export interface DataSlice {
   setGeometryResult: (result: GeometryResult | null) => void;
   setBoundedGeometryMode: (enabled: boolean) => void;
   appendGeometryBatch: (meshes: GeometryResult['meshes'], coordinateInfo?: CoordinateInfo) => void;
+  /** Signal that mesh positions/normals have been mutated in place — see
+   *  `geometryContentVersion` for why this is separate from setGeometryResult. */
+  bumpGeometryContentVersion: () => void;
   releaseGeometryMemory: () => void;
   /** Persist mesh color changes in geometryResult (used for IFC style/material updates). */
   updateMeshColors: (updates: Map<number, [number, number, number, number]>) => void;
@@ -76,6 +87,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   ifcDataStore: null,
   geometryResult: null,
   geometryUpdateTick: 0,
+  geometryContentVersion: 0,
   boundedGeometryMode: false,
   pendingColorUpdates: null,
   pendingMeshColorUpdates: null,
@@ -114,6 +126,10 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   }),
 
   setBoundedGeometryMode: (boundedGeometryMode) => set({ boundedGeometryMode }),
+
+  bumpGeometryContentVersion: () => set((state) => ({
+    geometryContentVersion: state.geometryContentVersion + 1,
+  })),
 
   appendGeometryBatch: (meshes, coordinateInfo) => set((state) => {
     // Incremental totals: O(batch_size) instead of O(total_accumulated) .reduce()

@@ -99,7 +99,11 @@ export async function computeIfcOriginViewerPosition(
       const result = proj4(srcDef, refDef, [eM, nM]);
       eA = result[0];
       nA = result[1];
-    } catch {
+    } catch (error) {
+      console.warn(
+        `[ifc-origin] proj4 reprojection failed (${model.projectedCRS.name} → ${anchor.projectedCRS.name}) for [${eM}, ${nM}]:`,
+        error,
+      );
       return null;
     }
   }

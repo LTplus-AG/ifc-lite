@@ -17,10 +17,13 @@
     "test": "vitest run",
     "generate:epsg-index": "tsx ../../scripts/generate-epsg-index.ts",
     "augment:epsg-proj4": "tsx ../../scripts/augment-epsg-proj4.ts",
+    "verify:epsg": "tsx scripts/verify-epsg-roundtrip.ts",
     "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts"
   },
   "devDependencies": {
     "@types/node": "^25.8.0",
+    "@types/proj4": "^2.19.0",
+    "proj4": "^2.20.4",
     "typescript": "^6.0.3",
     "vitest": "^1.6.0"
   },

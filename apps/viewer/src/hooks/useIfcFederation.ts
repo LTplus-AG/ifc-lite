@@ -339,6 +339,8 @@ async function alignGeometryAcrossCrs(
   const bounds = emptyBounds();
   let found = false;
   let projFailures = 0;
+  let attempts = 0;
+  let firstProjError: unknown = null;
 
   for (const mesh of geometry.meshes) {
     const positions = mesh.positions;
@@ -364,14 +366,16 @@ async function alignGeometryAcrossCrs(
       const hS = sourceConv.orthogonalHeight * sourceMapUnitScale + ifcZs;
 
       // source projected → reference projected via proj4
+      attempts += 1;
       let eR: number;
       let nR: number;
       try {
         const projected = proj4(sourceProjDef, refProjDef, [eS, nS]);
         eR = projected[0];
         nR = projected[1];
-      } catch {
+      } catch (error) {
         projFailures += 1;
+        if (firstProjError == null) firstProjError = error;
         continue;
       }
       if (!Number.isFinite(eR) || !Number.isFinite(nR)) {
@@ -403,10 +407,20 @@ async function alignGeometryAcrossCrs(
     }
   }
 
+  if (!found) {
+    console.warn(
+      `[ifc-lite] Cross-CRS alignment failed: ${projFailures}/${attempts} `
+      + `vertex transforms failed for ${source.projectedCRS.name} → ${reference.projectedCRS.name}; `
+      + 'no vertices were successfully reprojected. Leaving geometry untouched.',
+      firstProjError,
+    );
+    return false;
+  }
+
   geometry.coordinateInfo = {
     originShift: reference.coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 },
-    originalBounds: found ? bounds : zeroBounds(),
-    shiftedBounds: found ? bounds : zeroBounds(),
+    originalBounds: bounds,
+    shiftedBounds: bounds,
     hasLargeCoordinates: reference.coordinateInfo?.hasLargeCoordinates ?? false,
     wasmRtcOffset: reference.coordinateInfo?.wasmRtcOffset,
     buildingRotation: reference.coordinateInfo?.buildingRotation,
@@ -414,9 +428,10 @@ async function alignGeometryAcrossCrs(
 
   if (projFailures > 0) {
     console.warn(
-      `[ifc-lite] Cross-CRS alignment: ${projFailures} vertices failed proj4 transform `
-      + `from ${source.projectedCRS.name} to ${reference.projectedCRS.name}. `
-      + 'These vertices are left at their original positions.',
+      `[ifc-lite] Cross-CRS alignment: ${projFailures}/${attempts} vertex transforms `
+      + `failed from ${source.projectedCRS.name} to ${reference.projectedCRS.name}. `
+      + 'Those vertices are left at their original positions.',
+      firstProjError,
     );
   }
   return true;
@@ -770,10 +785,11 @@ export function useIfcFederation() {
         parsedGeometry.coordinateInfo,
         parsedGeorefMutations,
       );
-      // Cache of pre-alignment vertex positions for realignFederation(). Only
-      // populated when alignment actually runs, so single-model loads pay no
-      // memory cost. See FederatedModel.preAlignmentPositions for rationale.
+      // Cache of pre-alignment vertex positions/normals for realignFederation().
+      // Only populated when alignment actually runs, so single-model loads pay
+      // no memory cost. See FederatedModel.preAlignmentPositions for rationale.
       let preAlignmentPositions: Float32Array[] | undefined;
+      let preAlignmentNormals: (Float32Array | undefined)[] | undefined;
       let preAlignmentCoordinateInfo: CoordinateInfo | undefined;
       let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
 
@@ -782,6 +798,9 @@ export function useIfcFederation() {
         // already in the store before this addModel call.
         setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
         preAlignmentPositions = parsedGeometry.meshes.map((mesh) => new Float32Array(mesh.positions));
+        preAlignmentNormals = parsedGeometry.meshes.map((mesh) =>
+          mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined,
+        );
         preAlignmentCoordinateInfo = parsedGeometry.coordinateInfo;
         const status = await alignGeometryToReference(parsedGeometry, parsedGeoref, referenceGeoref);
         federationAlignmentStatus = status;
@@ -875,6 +894,7 @@ export function useIfcFederation() {
         maxExpressId,
         pointCloudHandleId,
         preAlignmentPositions,
+        preAlignmentNormals,
         preAlignmentCoordinateInfo,
         federationAlignmentStatus,
       };
@@ -973,17 +993,30 @@ export function useIfcFederation() {
       // its current vertices ARE its pre-alignment positions. Take a snapshot
       // before we mutate them so subsequent re-aligns can restore.
       let snapshots = model.preAlignmentPositions;
+      let normalSnapshots = model.preAlignmentNormals;
       let snapshotInfo = model.preAlignmentCoordinateInfo;
       if (!snapshots || !snapshotInfo) {
         snapshots = model.geometryResult.meshes.map((m) => new Float32Array(m.positions));
+        normalSnapshots = model.geometryResult.meshes.map((m) =>
+          m.normals && m.normals.length > 0 ? new Float32Array(m.normals) : undefined,
+        );
         snapshotInfo = model.geometryResult.coordinateInfo;
       }
 
-      // Restore vertices to pre-alignment state.
+      // Restore vertices and normals to pre-alignment state. Normals must be
+      // restored too because applyAlignmentTransformAndUpdateBounds rotates
+      // them in place — without restoring, repeated re-aligns would compound
+      // rotations and drift lighting/shading.
       const meshes = model.geometryResult.meshes;
       const restoreCount = Math.min(meshes.length, snapshots.length);
       for (let i = 0; i < restoreCount; i += 1) {
         meshes[i].positions = new Float32Array(snapshots[i]);
+        if (normalSnapshots) {
+          const snap = normalSnapshots[i];
+          if (snap) {
+            meshes[i].normals = new Float32Array(snap);
+          }
+        }
       }
       model.geometryResult.coordinateInfo = {
         ...snapshotInfo,
@@ -999,6 +1032,7 @@ export function useIfcFederation() {
       if (!parsedGeoref) {
         updateModel(modelId, {
           preAlignmentPositions: snapshots,
+          preAlignmentNormals: normalSnapshots,
           preAlignmentCoordinateInfo: snapshotInfo,
           federationAlignmentStatus: 'none',
         });
@@ -1009,12 +1043,22 @@ export function useIfcFederation() {
       const status = await alignGeometryToReference(model.geometryResult, parsedGeoref, anchorGeoref);
       updateModel(modelId, {
         preAlignmentPositions: snapshots,
+        preAlignmentNormals: normalSnapshots,
         preAlignmentCoordinateInfo: snapshotInfo,
         federationAlignmentStatus: status,
       });
       if (status === 'reprojected') reprojected += 1;
       else if (status === 'failed') failed += 1;
       else aligned += 1;
+    }
+
+    // Signal that mesh content was mutated in place — forces the merged-mesh
+    // cache in ViewportContainer to rebuild AND the streaming hook to clear
+    // the WebGPU scene and re-upload buffers. Without this, the success toast
+    // fires but the visible model doesn't move because the GPU still has the
+    // old vertex positions cached.
+    if (aligned + reprojected > 0) {
+      useViewerStore.getState().bumpGeometryContentVersion();
     }
 
     const messageParts: string[] = [];

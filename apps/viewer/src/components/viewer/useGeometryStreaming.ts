@@ -30,6 +30,13 @@ export interface UseGeometryStreamingParams {
   /** Monotonic counter — triggers the streaming effect even when the geometry
    *  array reference is stable (incremental filtering reuses the same array). */
   geometryVersion?: number;
+  /**
+   * Monotonic counter that bumps whenever existing mesh data has been mutated
+   * in place (e.g. realignFederation rewrote vertex positions). Length-based
+   * triggers can't detect in-place mutation, so when this bumps we treat the
+   * incoming `geometry` as a fresh replacement and re-upload it to the GPU.
+   */
+  geometryContentVersion?: number;
   coordinateInfo?: CoordinateInfo;
   isStreaming: boolean;
   geometryBoundsRef: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }>;
@@ -61,6 +68,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     isInitialized,
     geometry,
     geometryVersion,
+    geometryContentVersion,
     coordinateInfo,
     isStreaming,
     geometryBoundsRef,
@@ -81,6 +89,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const finalBoundsRefittedRef = useRef(false);
   const cameraSnapshotRef = useRef<{ px: number; py: number; pz: number; tx: number; ty: number; tz: number } | null>(null);
   const prevIsStreamingRef = useRef(isStreaming);
+  const lastContentVersionRef = useRef(geometryContentVersion ?? 0);
   const queuePumpTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
   // Only activate the timer-based queue pump when the tab is background-throttled
@@ -142,6 +151,26 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     const scene = renderer.getScene();
     const currentLength = geometry.length;
+
+    // In-place mutation detection: when geometryContentVersion bumps, mesh
+    // positions/normals were rewritten in place (e.g. realignFederation).
+    // Length-based classification can't catch this, so force a full reset and
+    // re-process the geometry from scratch so the GPU re-uploads buffers.
+    const contentVersion = geometryContentVersion ?? 0;
+    if (contentVersion !== lastContentVersionRef.current) {
+      lastContentVersionRef.current = contentVersion;
+      if (lastGeometryLengthRef.current > 0) {
+        traceGeometrySync(`geometry content version bumped → ${contentVersion}; re-uploading buffers`);
+        scene.clear();
+        processedMeshIdsRef.current.clear();
+        lastGeometryLengthRef.current = 0;
+        lastGeometryRef.current = null;
+      }
+    }
+
+    // Read AFTER the optional reset above so the classification below reflects
+    // the post-reset state (otherwise an in-place update gets misclassified as
+    // "no change" and returns early at currentLength === lastLength).
     const lastLength = lastGeometryLengthRef.current;
 
     // ── Classify the change ──
@@ -276,7 +305,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
 
     renderer.requestRender();
-  }, [geometry, geometryVersion, coordinateInfo, isInitialized, isStreaming]);
+  }, [geometry, geometryVersion, geometryContentVersion, coordinateInfo, isInitialized, isStreaming]);
 
   useEffect(() => {
     return () => {

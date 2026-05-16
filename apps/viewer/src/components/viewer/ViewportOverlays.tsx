@@ -253,6 +253,7 @@ function BasepointToggleButton() {
         <button
           type="button"
           onClick={toggleShowModelBasepoints}
+          aria-label={showModelBasepoints ? 'Hide model basepoints' : 'Show model basepoints'}
           className={cn(
             'h-6 w-6 inline-flex items-center justify-center border transition-colors',
             showModelBasepoints

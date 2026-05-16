@@ -26,10 +26,11 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import proj4 from 'proj4';
 // Import the TypeScript source directly so this script runs without a build
 // step. The `.js` suffix in the source matches NodeNext ESM resolution.
-import { lookupEpsgByCode, loadEpsgIndexDatasetVersion } from '../packages/data/src/epsg-index.js';
+import { lookupEpsgByCode, loadEpsgIndexDatasetVersion } from '../src/epsg-index.js';
 
 /**
  * Mirror the datum-shift fallback the viewer applies at runtime in
@@ -85,7 +86,10 @@ interface FixturesFile {
   fixtures: ControlPointFixture[];
 }
 
-const FIXTURES_PATH = path.resolve('scripts/fixtures/epsg-control-points.json');
+const FIXTURES_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'fixtures/epsg-control-points.json',
+);
 
 function loadFixtures(): ControlPointFixture[] {
   const raw = fs.readFileSync(FIXTURES_PATH, 'utf8');
@@ -225,7 +229,10 @@ function formatRow(result: FixtureResult): string {
 
 async function main(): Promise<number> {
   const fixtures = loadFixtures();
-  const datasetVersion = await loadEpsgIndexDatasetVersion().catch(() => 'unknown');
+  const datasetVersion = await loadEpsgIndexDatasetVersion().catch((error) => {
+    console.warn('[verify:epsg] failed to read EPSG index dataset version:', error);
+    return 'unknown';
+  });
   console.log(`Verifying ${fixtures.length} EPSG control points against bundled index v${datasetVersion}`);
   console.log('');
 

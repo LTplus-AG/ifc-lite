@@ -38,21 +38,12 @@ importers:
       '@changesets/cli':
         specifier: ^2.31.0
         version: 2.31.0(@types/node@25.8.0)
-      '@ifc-lite/data':
-        specifier: workspace:^
-        version: link:packages/data
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
       '@types/node':
         specifier: ^25.8.0
         version: 25.8.0
-      '@types/proj4':
-        specifier: ^2.19.0
-        version: 2.19.0
-      proj4:
-        specifier: ^2.20.4
-        version: 2.20.4
       tsx:
         specifier: ^4.22.1
         version: 4.22.3
@@ -853,6 +844,12 @@ importers:
       '@types/node':
         specifier: ^25.8.0
         version: 25.8.0
+      '@types/proj4':
+        specifier: ^2.19.0
+        version: 2.19.0
+      proj4:
+        specifier: ^2.20.4
+        version: 2.20.4
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2646,9 +2643,6 @@ packages:
 
   '@tanstack/virtual-core@3.14.0':
     resolution: {integrity: sha512-JLANqGy/D6k4Ujmh8Tr25lGimuOXNiaVyXaCAZS0W+1390sADdGnyUdSWNIfd49gebtIxGMij4IktRVzrdr12Q==}
-
-  '@tauri-apps/api@2.10.1':
-    resolution: {integrity: sha512-hKL/jWf293UDSUN09rR69hrToyIXBb8CjGaWC7gfinvnQrBVvnLr08FeFi38gxtugAVyVcTa5/FD/Xnkb1siBw==}
 
   '@tauri-apps/api@2.11.0':
     resolution: {integrity: sha512-7CinYODhky9lmO23xHnUFv0Xt43fbtWMyxZcLcRBlFkcgXKuEirBvHpmtJ89YMhyeGcq20Wuc47Fa4XjyniywA==}
@@ -5026,7 +5020,7 @@ snapshots:
       '@ifc-lite/data': 1.11.5
       '@ifc-lite/wasm': 1.11.5
     optionalDependencies:
-      '@tauri-apps/api': 2.10.1
+      '@tauri-apps/api': 2.11.0
 
   '@ifc-lite/ifcx@1.11.0':
     dependencies:
@@ -5909,9 +5903,6 @@ snapshots:
 
   '@tanstack/virtual-core@3.14.0': {}
 
-  '@tauri-apps/api@2.10.1':
-    optional: true
-
   '@tauri-apps/api@2.11.0': {}
 
   '@tauri-apps/cli-darwin-arm64@2.11.2':
@@ -6073,7 +6064,7 @@ snapshots:
 
   '@types/proj4@2.19.0':
     dependencies:
-      proj4: 2.20.4
+      proj4: 2.20.8
 
   '@types/react-dom@19.2.3(@types/react@19.2.14)':
     dependencies:

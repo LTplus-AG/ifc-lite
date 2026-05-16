@@ -401,6 +401,13 @@ export interface FederatedModel {
    */
   preAlignmentPositions?: Float32Array[];
   /**
+   * Snapshot of mesh normals before federation alignment ran (one Float32Array
+   * per mesh, sparse — empty slot when a mesh had no normals). Restored
+   * alongside `preAlignmentPositions` on re-alignment so repeated re-bakes
+   * don't accumulate rotation drift on the normals (lighting/shading bug).
+   */
+  preAlignmentNormals?: (Float32Array | undefined)[];
+  /**
    * CoordinateInfo at the time `preAlignmentPositions` was taken. Restored
    * together with the positions on re-alignment so the source's RTC/shift
    * frame is recovered before applying the new alignment.

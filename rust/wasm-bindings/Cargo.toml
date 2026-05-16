@@ -55,7 +55,7 @@ rayon-core = { version = "1", features = ["web_spin_lock"] }
 rustc-hash = "1.1"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "=0.6.5"
-thiserror = "1.0"
+thiserror = "2.0"
 wasm-bindgen = "=0.2.106"
 wasm-bindgen-futures = "=0.4.56"
 # Optional. Enabled only by `--features threading` (set by

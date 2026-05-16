@@ -2349,7 +2349,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-core"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -2361,7 +2361,7 @@ dependencies = [
  "rustc-hash 1.1.0",
  "serde",
  "smallvec",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
 ]
 
@@ -2381,14 +2381,14 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-shell",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "xxhash-rust",
 ]
 
 [[package]]
 name = "ifc-lite-engine"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "ifc-lite-processing",
  "memmap2 0.9.10",
@@ -2397,7 +2397,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "approx",
  "earcutr",
@@ -2408,12 +2408,12 @@ dependencies = [
  "rayon",
  "rustc-hash 1.1.0",
  "smallvec",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "ifc-lite-processing"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -2426,7 +2426,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2460,7 +2460,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",
@@ -2472,7 +2472,7 @@ dependencies = [
  "rustc-hash 1.1.0",
  "serde",
  "serde-wasm-bindgen",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-rayon",

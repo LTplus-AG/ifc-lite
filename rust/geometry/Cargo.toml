@@ -57,7 +57,7 @@ rustc-hash = "1.1"
 smallvec = "1.13"
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 
 # Optional Manifold CSG kernel (T1.1). Off by default; see the
 # `manifold-csg` feature above for the activation contract.

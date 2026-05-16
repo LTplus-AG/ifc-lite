@@ -9,6 +9,7 @@ import { formatNumber, formatBytes } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
+import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 
 export function StatusBar() {
   const { loading, geometryResult, ifcDataStore } = useIfc();
@@ -172,6 +173,10 @@ export function StatusBar() {
             {webgpu.checking ? 'Checking...' : webgpu.supported ? 'WebGPU' : 'No WebGPU'}
           </span>
         </div>
+
+        <Separator orientation="vertical" className="h-3.5" />
+
+        <FlavorIndicator />
 
         <Separator orientation="vertical" className="h-3.5" />
 

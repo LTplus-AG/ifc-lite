@@ -28,16 +28,19 @@ import type {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { useViewerStore } from '@/store';
 import { PlanCard } from './PlanCard';
 import { toast } from '@/components/ui/toast';
 
 interface IdeasPanelProps {
-  /** Called when the user approves a plan — usually routes to chat. */
+  /** Optional override for the approve action. Defaults to seeding the chat panel. */
   onApprovePlan?: (plan: AuthoringPlan) => void;
 }
 
 export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
   const host = useExtensionHost();
+  const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
+  const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
   const [event, setEvent] = useState<MineEvent | undefined>(() => host.getSuggestions());
   const [draft, setDraft] = useState<AuthoringPlan | undefined>();
 
@@ -55,11 +58,14 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
     setDraft(undefined);
     if (onApprovePlan) {
       onApprovePlan(plan);
-    } else {
-      // Fallback: at minimum confirm the plan was captured. The chat-
-      // panel hookup lands in the routing pass.
-      toast.success(`Plan ready: ${plan.summary}`);
+      return;
     }
+    // Default routing: open chat and seed it with a prompt that
+    // describes the approved plan. The chat panel picks up the
+    // pending prompt and starts an authoring turn.
+    queueChatPrompt(buildAuthoringPrompt(plan));
+    setChatPanelVisible(true);
+    toast.success(`Routing "${plan.summary}" to the AI assistant…`);
   };
 
   if (draft) {
@@ -160,4 +166,22 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
       </ScrollArea>
     </div>
   );
+}
+
+function buildAuthoringPrompt(plan: AuthoringPlan): string {
+  const contributions = plan.contributions
+    .map((c) => `- ${c.kind}: ${c.label}${c.slot ? ` (slot: ${c.slot})` : ''}`)
+    .join('\n');
+  const caps = plan.capabilities.map((c) => `\`${c}\``).join(', ') || '(none)';
+  return [
+    `Author an extension for me: ${plan.summary}`,
+    '',
+    `Rationale: ${plan.rationale}`,
+    '',
+    `Contributions:\n${contributions || '- (to be designed)'}`,
+    '',
+    `Capabilities requested: ${caps}`,
+    `Triggers: ${plan.triggers.join(', ') || '(to be designed)'}`,
+    plan.notes ? `\nNotes: ${plan.notes}` : '',
+  ].filter(Boolean).join('\n');
 }

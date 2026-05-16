@@ -54,21 +54,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          # Node 24 ships npm ≥ 11.5.1 out of the box, which is what npm
+          # trusted publishing (OIDC handshake) needs. We tried staying on
+          # Node 22 and self-upgrading npm at runtime in Release #426/#427,
+          # but `npm install -g npm@latest` (with and without --force)
+          # leaves the live npm process unable to resolve its own bundled
+          # deps mid-install — `Cannot find module 'promise-retry'` from
+          # @npmcli/arborist/lib/arborist/rebuild.js. Node 24 sidesteps
+          # the self-upgrade entirely.
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
-
-      # npm trusted publishing needs CLI ≥ 11.5.1; Node 22 still ships
-      # npm 10.x. Upgrade explicitly so `changeset publish` (which
-      # invokes pnpm/npm under the hood) can complete the OIDC handshake.
-      #
-      # `--force` is required because npm 10.x rewrites its own files
-      # mid-install when upgrading itself and ends up unable to resolve
-      # its bundled deps (MODULE_NOT_FOUND: promise-retry). See npm/cli#1633.
-      # Verify the version landed so a silent regression to 10.x fails loud.
-      - name: Upgrade npm to a trusted-publishing-capable version
-        run: |
-          npm install -g npm@latest --force
-          npm --version
 
       # rust-toolchain.toml pins nightly-2025-11-15 + wasm32-unknown-unknown.
       # `rustup show` installs that exact toolchain on GHA runners; matches

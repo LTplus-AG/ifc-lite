@@ -67,8 +67,11 @@ jobs:
           persist-credentials: false
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable (snapshot pinned 2026-05)
+        # Pin to a master-branch SHA + explicit `toolchain: stable`;
+        # see docs.yml note for rationale.
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master 2026-05
         with:
+          toolchain: stable
           targets: ${{ matrix.rust-target }}
 
       - name: Install cross
@@ -181,8 +184,11 @@ jobs:
           persist-credentials: false
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable (snapshot pinned 2026-05)
+        # Pin to a master-branch SHA + explicit `toolchain: stable`;
+        # see docs.yml note for rationale.
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master 2026-05
         with:
+          toolchain: stable
           targets: ${{ matrix.rust-target }}
 
       - name: Install cross

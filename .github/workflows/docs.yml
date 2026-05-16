@@ -37,7 +37,15 @@ jobs:
           python-version: '3.12'
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable (snapshot pinned 2026-05)
+        # Pin to a commit on the action's `master` branch and pass
+        # `toolchain: stable` explicitly. The `stable`/`nightly`/`beta`
+        # branches force-push snapshot commits that get garbage-collected
+        # when the toolchain advances — pinning to a `stable`-branch SHA
+        # would silently break the build the next time stable ships.
+        # See dtolnay/rust-toolchain README and PR #692 Codex review.
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master 2026-05
+        with:
+          toolchain: stable
 
       - name: Cache pip dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0

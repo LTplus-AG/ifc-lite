@@ -16,3 +16,24 @@ export {
   type Classification,
 } from './classify.js';
 export { buildAuthoringContract } from './prompt.js';
+export {
+  extractBundlePieces,
+  parseBundleOutput,
+  type ExtractedBundlePiece,
+  type ParsedBundleOutput,
+} from './synthesize.js';
+export {
+  runRepairLoop,
+  validateBundleResponse,
+  type RepairControllerOptions,
+  type AuthoringStep,
+  type AuthoringMessage,
+  type AuthoringTurn,
+  type RepairResult,
+} from './repair.js';
+export {
+  renderDiagnostics,
+  groupDiagnostics,
+  summariseDiagnostics,
+  type DiagnosticGroup,
+} from './diagnostics.js';

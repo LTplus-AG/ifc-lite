@@ -673,7 +673,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.C — Bundle synthesis
 
-- [ ] **P2.T8** — Plan → manifest generation prompt + parser.
+- [x] **P2.T8** — Plan → manifest generation prompt + parser.
   **Where:** `apps/viewer/src/lib/llm/authoring/manifest-step.ts`.
   **Depends on:** P2.T6.
   **Acceptance:** model emits JSON; parser tolerates code fences and
@@ -681,7 +681,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   Returns structured failure to repair loop.
   **Effort:** M.
 
-- [ ] **P2.T9** — Plan → code generation prompt + parser.
+- [x] **P2.T9** — Plan → code generation prompt + parser.
   **Where:** `apps/viewer/src/lib/llm/authoring/code-step.ts`.
   **Depends on:** P2.T6.
   **Acceptance:** generates one module per entry-point declared in the
@@ -689,7 +689,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   pass before handing to dry-run.
   **Effort:** M.
 
-- [ ] **P2.T10** — Plan → widget generation prompt + parser.
+- [x] **P2.T10** — Plan → widget generation prompt + parser.
   **Where:** `apps/viewer/src/lib/llm/authoring/widget-step.ts`.
   **Depends on:** P2.T6.
   **Acceptance:** generates widget JSON validating against widget DSL
@@ -742,14 +742,14 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.F — Repair loop
 
-- [ ] **P2.T16** — Repair controller (orchestrates attempts, budgets).
+- [x] **P2.T16** — Repair controller (orchestrates attempts, budgets).
   **Where:** `apps/viewer/src/lib/llm/authoring/repair-controller.ts`.
   **Depends on:** P2.T11, P2.T12, P2.T14.
   **Acceptance:** drives the validate → dry-run → repair cycle;
   enforces token / time / iteration budgets; structured outcome.
   **Effort:** L.
 
-- [ ] **P2.T17** — Diagnostic shape for the LLM (extends existing
+- [x] **P2.T17** — Diagnostic shape for the LLM (extends existing
   `script-diagnostics.ts`).
   **Where:** `apps/viewer/src/lib/llm/extension-diagnostics.ts`.
   **Depends on:** P2.T16.

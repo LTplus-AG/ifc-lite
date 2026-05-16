@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.minimal",
+  "name": "Minimal",
+  "description": "A minimal extension used for tests.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0 <3.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onStartup"],
+  "entry": {
+    "activate": "src/activate.js"
+  }
+}

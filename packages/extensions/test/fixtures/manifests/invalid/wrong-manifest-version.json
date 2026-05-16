@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 99,
+  "id": "com.example.bad",
+  "name": "Wrong Version",
+  "description": "...",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onStartup"],
+  "entry": {}
+}

@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1,
+  "id": "BAD ID WITH SPACES",
+  "name": "Bad Id",
+  "description": "...",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onStartup"],
+  "entry": {}
+}

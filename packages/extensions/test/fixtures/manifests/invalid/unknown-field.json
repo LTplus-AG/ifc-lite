@@ -1,0 +1,12 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.bad",
+  "name": "Unknown Field",
+  "description": "Has an unknown top-level field.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onStartup"],
+  "entry": {},
+  "unexpectedField": "should be flagged"
+}

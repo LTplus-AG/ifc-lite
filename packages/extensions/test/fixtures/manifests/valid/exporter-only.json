@@ -1,0 +1,22 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.exporter",
+  "name": "Custom CSV Exporter",
+  "description": "Adds a custom CSV exporter.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read", "export.create:csv"],
+  "activation": ["onExporter:ext.example.csv"],
+  "contributes": {
+    "exporters": [
+      {
+        "id": "ext.example.csv",
+        "name": "Custom CSV",
+        "mimeType": "text/csv",
+        "extension": ".csv",
+        "handler": "src/exporters/csv.js"
+      }
+    ]
+  },
+  "entry": {}
+}

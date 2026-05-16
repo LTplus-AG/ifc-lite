@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.bad",
+  "name": "Bad When",
+  "description": "Has a malformed when clause.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onCommand:ext.example.cmd"],
+  "contributes": {
+    "commands": [{ "id": "ext.example.cmd", "title": "X" }],
+    "toolbar": [
+      {
+        "command": "ext.example.cmd",
+        "slot": "toolbar.right",
+        "when": "model.loaded &&"
+      }
+    ]
+  },
+  "entry": { "commands": { "ext.example.cmd": "src/x.js" } }
+}

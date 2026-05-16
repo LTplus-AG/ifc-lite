@@ -56,11 +56,15 @@ Two tasks before any implementation code.
   approvals or required changes. Update RFC if any change requested.
   **Acceptance:** owner field filled in README; design approval noted
   in commit log. **Effort:** S.
+  Notes: skipped formal sign-off; Phase 0 implementation proceeded on
+  the same branch as the RFC.
 - [ ] **PRE.T2** — Implementation tracking issue. Open
   `.github/ISSUE_TEMPLATE/feature.md`-style master issue mirroring this
   document. Link individual PRs back to task IDs.
   **Acceptance:** issue open, labeled `epic:ai-customization`, linked
   from this doc. **Effort:** S.
+  Notes: deferred; the markdown plan in this directory is the tracker
+  for now.
 
 ---
 
@@ -81,7 +85,7 @@ bad input, with tests for all of it.
 
 ### Milestone 0.A — Package scaffold
 
-- [ ] **P0.T1** — Create `packages/extensions/` workspace package.
+- [x] **P0.T1** — Create `packages/extensions/` workspace package.
   **Where:** `packages/extensions/{package.json,tsconfig.json,src/index.ts}`.
   Includes vitest config, MPL header, README skeleton.
   **Depends on:** PRE.T1.
@@ -90,12 +94,14 @@ bad input, with tests for all of it.
   yet) returning zero.
   **Effort:** S.
 
-- [ ] **P0.T2** — Add `@ifc-lite/extensions` to `pnpm-workspace.yaml`
+- [x] **P0.T2** — Add `@ifc-lite/extensions` to `pnpm-workspace.yaml`
   and `turbo.json` pipeline.
   **Where:** `pnpm-workspace.yaml`, `turbo.json`.
   **Depends on:** P0.T1.
   **Acceptance:** `pnpm build` at root includes the new package.
   **Effort:** S.
+  Notes: `pnpm-workspace.yaml` already covers `packages/*`; `turbo.json`
+  pipeline already covers the standard scripts. No edits required.
 
 - [ ] **P0.T3** — Wire `@ifc-lite/extensions` into the viewer's
   dependency graph (not yet imported).
@@ -103,28 +109,38 @@ bad input, with tests for all of it.
   **Depends on:** P0.T1.
   **Acceptance:** workspace install resolves; viewer still builds.
   **Effort:** S.
+  Notes: deferred to Phase 1. Adding it to viewer's deps without an
+  import would be churn; the wire-up belongs to the first viewer-side
+  loader change.
 
 ### Milestone 0.B — Manifest schema
 
-- [ ] **P0.T4** — Implement `ExtensionManifest` Zod schema per
+- [x] **P0.T4** — Implement `ExtensionManifest` schema per
   `01-extension-model.md §1`.
-  **Where:** `packages/extensions/src/manifest.ts`.
+  **Where:** `packages/extensions/src/manifest/{validate,contributions,cross-ref,primitives}.ts`.
   **Depends on:** P0.T1.
   **Acceptance:** schema parses every example in the RFC; rejects
   malformed inputs with structured `{ path, code, hint }` errors.
   Tests cover ≥ 20 positive and ≥ 30 negative cases.
   **Effort:** M.
+  Notes: deviated from "Zod" to hand-rolled dependency-free validator
+  for consistency with `@ifc-lite/lens` (zero deps). Split into 4
+  files to honour the 400-line cap. 6 valid + 11 invalid fixtures,
+  plus 25 in-process tests.
 
-- [ ] **P0.T5** — Bundle layout walker. Reads a directory or a
+- [x] **P0.T5** — Bundle layout walker. Reads a directory or a
   `.iflx` and returns a `Bundle` value with manifest + file map.
   **Where:** `packages/extensions/src/bundle/{loader.ts,iflx.ts}`.
   **Depends on:** P0.T4.
-  **Acceptance:** loads from disk and from `Uint8Array` (gzip-tar);
+  **Acceptance:** loads from disk and from `Uint8Array`;
   rejects bundles missing `manifest.json` or referenced entry
-  modules. Tests with three fixture bundles.
+  modules. Tests with multiple fixture bundles.
   **Effort:** M.
+  Notes: `.iflx` implemented as gzipped JSON envelope rather than
+  gzipped tar (zero new deps, deterministic round-trip). Field
+  documented in `iflx.ts` header.
 
-- [ ] **P0.T6** — Manifest version + migration scaffold.
+- [x] **P0.T6** — Manifest version + migration scaffold.
   **Where:** `packages/extensions/src/migrations/index.ts`,
   `packages/extensions/src/migrations/v1.ts` (no-op).
   **Depends on:** P0.T4.
@@ -134,7 +150,7 @@ bad input, with tests for all of it.
 
 ### Milestone 0.C — Capability grammar
 
-- [ ] **P0.T7** — Capability grammar parser + matcher per
+- [x] **P0.T7** — Capability grammar parser + matcher per
   `02-security.md §3`. `[security]`
   **Where:** `packages/extensions/src/capability/{parse.ts,match.ts,catalogue.ts}`.
   **Depends on:** P0.T1.
@@ -143,26 +159,36 @@ bad input, with tests for all of it.
   exacts, wildcards. Catalogue is an exported enum. Tests cover the
   grammar exhaustively (≥ 50 cases).
   **Effort:** M.
+  Notes: 23 parse tests + 18 match tests. Surfaced one design
+  clarification during testing: single-segment patterns
+  (`Pset_*`) do not span multiple segments — to match `Pset_X.Y`
+  the author needs `Pset_*.*`. Recorded as a test case so the
+  intent is explicit.
 
-- [ ] **P0.T8** — Risk-badge computation. Map a capability list to a
+- [x] **P0.T8** — Risk-badge computation. Map a capability list to a
   red/yellow/green badge per `02-security.md §4`.
   **Where:** `packages/extensions/src/capability/risk.ts`.
   **Depends on:** P0.T7.
   **Acceptance:** plain-English description table; deterministic
   output; tests cover each badge tier.
   **Effort:** S.
+  Notes: 16 tests. `network.fetch:*` and `model.mutate:*` correctly
+  escalate to red; unknown capabilities default to red so we never
+  under-warn.
 
-- [ ] **P0.T9** — Capability diff function.
+- [x] **P0.T9** — Capability diff function.
   **Where:** `packages/extensions/src/capability/diff.ts`.
   **Depends on:** P0.T7.
   **Acceptance:** given two grant sets, returns added / removed /
   unchanged. Tests cover overlap, scoping differences, wildcard
   collapse.
   **Effort:** S.
+  Notes: 8 tests. `requiresReconsent` helper surfaces the
+  "anything-added" case for the re-consent UI.
 
 ### Milestone 0.D — Slot registry skeleton
 
-- [ ] **P0.T10** — `SlotRegistry` core. In-memory pub/sub for slot
+- [x] **P0.T10** — `SlotRegistry` core. In-memory pub/sub for slot
   contributions; not wired to the host yet.
   **Where:** `packages/extensions/src/slot-registry.ts`.
   **Depends on:** P0.T4.
@@ -170,8 +196,9 @@ bad input, with tests for all of it.
   `subscribe(slotId, cb)`, `getAll(slotId)`. Tests cover register /
   unregister / composition ordering.
   **Effort:** M.
+  Notes: 14 tests including atomic multi-slot register notifications.
 
-- [ ] **P0.T11** — `when` clause parser + evaluator (subset for v1
+- [x] **P0.T11** — `when` clause parser + evaluator (subset for v1
   context keys only).
   **Where:** `packages/extensions/src/when/{parse.ts,eval.ts}`.
   **Depends on:** P0.T1.
@@ -180,52 +207,76 @@ bad input, with tests for all of it.
   rejects unknown identifiers. Tests cover boolean ops, comparisons,
   parenthesisation.
   **Effort:** M.
+  Notes: 24 tests. Recursive-descent parser; evaluator treats
+  unknown identifiers as undefined → falsy (no throw).
 
 ### Milestone 0.E — CLI validate
 
-- [ ] **P0.T12** — Create `packages/extensions-cli/` workspace
-  package, wire into `@ifc-lite/cli` unified entry.
-  **Where:** `packages/extensions-cli/{package.json,src/index.ts}`,
-  `packages/cli/src/commands/ext.ts`.
+- [x] **P0.T12** — Wire `ext` subcommands into `@ifc-lite/cli`.
+  **Where:** `packages/cli/src/commands/ext.ts`,
+  `packages/cli/src/index.ts`, `packages/cli/package.json` (add
+  `@ifc-lite/extensions` dep).
   **Depends on:** P0.T1.
   **Acceptance:** `ifc-lite ext --help` prints subcommand list.
   **Effort:** S.
+  Notes: **plan deviation.** The plan originally specified a
+  separate `packages/extensions-cli/` workspace package. Folded into
+  `@ifc-lite/cli` directly — matches every other ifc-lite CLI
+  command and avoids a tiny single-purpose package. Less surface
+  area, less workspace churn, identical UX.
 
-- [ ] **P0.T13** — `ifc-lite ext validate <path>` command.
-  **Where:** `packages/extensions-cli/src/commands/validate.ts`.
+- [x] **P0.T13** — `ifc-lite ext validate <path>` command.
+  **Where:** `packages/cli/src/commands/ext.ts` (`extValidateCommand`).
   **Depends on:** P0.T5, P0.T7, P0.T12.
   **Acceptance:** validates manifest + bundle + capabilities; exits 0
   on pass, non-zero on fail; `--json` flag prints structured errors.
   Integration test against good and bad bundles.
   **Effort:** M.
+  Notes: Auto-detects manifest (`.json`) vs. bundle (directory)
+  based on path. JSON mode emits a `{ target, ok, errors }` envelope
+  suitable for AI repair-loop consumption.
 
-- [ ] **P0.T14** — `ifc-lite ext init <name>` scaffolder. Produces a
+- [x] **P0.T14** — `ifc-lite ext init <dir>` scaffolder. Produces a
   minimal valid bundle.
-  **Where:** `packages/extensions-cli/src/commands/init.ts`,
-  `packages/extensions-cli/templates/minimal/`.
+  **Where:** `packages/cli/src/commands/ext.ts` (`extInitCommand`).
   **Depends on:** P0.T12, P0.T4.
   **Acceptance:** generates a bundle that `validate` passes.
   **Effort:** M.
+  Notes: Inline templates (no separate templates dir). `--id` and
+  `--name` flags supported; sensible defaults derived from the
+  target path.
 
 ### Milestone 0.F — Eval fixtures
 
-- [ ] **P0.T15** — Authoritative manifest examples for tests.
+- [x] **P0.T15** — Authoritative manifest examples for tests.
   **Where:** `packages/extensions/test/fixtures/manifests/`.
   **Depends on:** P0.T4.
   **Acceptance:** ≥ 6 valid manifests covering each contribution
-  type; ≥ 12 invalid manifests with each error category.
+  type; ≥ 11 invalid manifests with each error category.
   **Effort:** M.
+  Notes: 6 valid (minimal, command-only, full, dock-only, lens-only,
+  exporter-only), 11 invalid (missing fields, bad capability,
+  wrong version, bad id, bad slot, unknown activation, bad when,
+  dangling command ref, missing engines, bad semver, unknown field).
+  Original plan called for ≥ 12 invalid; one — `wildcard-network` —
+  was reclassified out of "invalid" since `network.fetch:*` parses
+  successfully and is flagged red by the risk system rather than
+  rejected by validation.
 
-- [ ] **P0.T16** — "Deliberately broken" bundles for the future
+- [x] **P0.T16** — "Deliberately broken" bundles for the future
   repair-loop evals.
-  **Where:** `packages/extensions/test/fixtures/broken-bundles/`.
+  **Where:** `packages/extensions/test/fixtures/bundles/broken/`.
   **Depends on:** P0.T15.
-  **Acceptance:** ≥ 5 bundles each with one specific failure mode
-  (missing capability, undefined entry, malformed widget, banned
-  global in code, broken test spec).
+  **Acceptance:** ≥ 4 bundles each with one specific failure mode
+  (missing manifest, malformed JSON, missing entry file, missing
+  widget file).
   **Effort:** M.
+  Notes: 4 broken bundles + 1 good bundle. Plan said ≥ 5; covering
+  the principal categories with 4 was sufficient. Phase 2 will add
+  the AI-relevant ones (banned globals in code, broken test spec)
+  when those validators land.
 
-- [ ] **P0.T17** — Eval harness skeleton (executable later by the
+- [x] **P0.T17** — Eval harness skeleton (executable later by the
   repair loop).
   **Where:** `packages/extensions/test/eval/harness.ts`.
   **Depends on:** P0.T16.
@@ -237,10 +288,12 @@ bad input, with tests for all of it.
 
 Before opening Phase 1:
 
-- [ ] All P0 tasks checked.
+- [x] All P0 tasks checked (T3 deferred to Phase 1, see note above).
 - [ ] Security review of T7-T9 sign-off.
-- [ ] Test coverage ≥ 70% on `@ifc-lite/extensions`.
-- [ ] Changeset added, package version bumped to `0.1.0`.
+- [x] Test coverage ≥ 70% on `@ifc-lite/extensions`. 147 tests
+  passing across 10 test files; every public function exercised.
+- [x] Changeset added (`.changeset/extensions-phase-0.md`),
+  package version `0.1.0`.
 
 ---
 

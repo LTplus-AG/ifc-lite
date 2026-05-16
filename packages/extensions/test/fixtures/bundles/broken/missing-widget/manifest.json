@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.broken-missing-widget",
+  "name": "Broken — Missing Widget",
+  "description": "References a widget file that is not present.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onSlot:dock.right"],
+  "contributes": {
+    "dock": [
+      {
+        "id": "ext.broken.widget.panel",
+        "slot": "dock.right",
+        "title": "Missing Widget",
+        "widget": "widgets/never-existed.json"
+      }
+    ]
+  },
+  "entry": {}
+}

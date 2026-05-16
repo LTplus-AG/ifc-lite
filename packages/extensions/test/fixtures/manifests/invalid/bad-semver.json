@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.bad",
+  "name": "Bad Semver",
+  "description": "...",
+  "version": "not-a-semver",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onStartup"],
+  "entry": {}
+}

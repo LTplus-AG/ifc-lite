@@ -32,6 +32,7 @@ import { viewCommand } from './commands/view.js';
 import { analyzeCommand } from './commands/analyze.js';
 import { lodCommand } from './commands/lod.js';
 import { mcpCommand } from './commands/mcp.js';
+import { extCommand } from './commands/ext.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -80,6 +81,7 @@ const HELP = `
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
     lod       <file.ifc> --level 0|1            Generate lightweight LOD artifacts
     mcp       <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files
+    ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
 
   Options:
     --help, -h       Show help
@@ -238,6 +240,9 @@ async function main(): Promise<void> {
       break;
     case 'mcp':
       await mcpCommand(commandArgs);
+      break;
+    case 'ext':
+      await extCommand(commandArgs);
       break;
     default:
       process.stderr.write(`Unknown command: ${command}\n`);

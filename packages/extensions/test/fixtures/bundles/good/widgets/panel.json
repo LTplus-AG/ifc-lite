@@ -1,0 +1,7 @@
+{
+  "type": "Stack",
+  "direction": "vertical",
+  "children": [
+    { "type": "Text", "variant": "heading", "text": "Good Bundle" }
+  ]
+}

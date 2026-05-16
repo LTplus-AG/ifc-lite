@@ -1,0 +1,63 @@
+{
+  "name": "@ifc-lite/extensions",
+  "version": "0.1.0",
+  "description": "Extension manifest, capability grammar, and slot registry for ifc-lite user customization",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./capability": {
+      "import": "./dist/capability/index.js",
+      "types": "./dist/capability/index.d.ts"
+    },
+    "./when": {
+      "import": "./dist/when/index.js",
+      "types": "./dist/when/index.d.ts"
+    },
+    "./bundle": {
+      "import": "./dist/bundle/index.js",
+      "types": "./dist/bundle/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^1.6.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/louistrue/ifc-lite.git",
+    "directory": "packages/extensions"
+  },
+  "homepage": "https://louistrue.github.io/ifc-lite/",
+  "bugs": "https://github.com/louistrue/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "extensions",
+    "manifest",
+    "capability",
+    "sandbox",
+    "ai"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

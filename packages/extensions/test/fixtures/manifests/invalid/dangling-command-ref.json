@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.bad",
+  "name": "Dangling Command Ref",
+  "description": "Toolbar references a command that isn't declared.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onStartup"],
+  "contributes": {
+    "toolbar": [
+      { "command": "ext.example.never-declared", "slot": "toolbar.right" }
+    ]
+  },
+  "entry": {}
+}

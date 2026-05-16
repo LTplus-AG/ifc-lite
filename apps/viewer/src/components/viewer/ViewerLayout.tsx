@@ -16,6 +16,7 @@ import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useActionLogger } from '@/hooks/useActionLogger';
+import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
@@ -53,6 +54,8 @@ export function ViewerLayout() {
   // Bridge viewer state transitions into the extension action log
   // so the idle pattern miner can surface one-click tool suggestions.
   useActionLogger();
+  // Show the RFC §06 §7 privacy disclosure on first launch.
+  usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Command palette state

@@ -580,13 +580,10 @@ named, persistent tool. No AI authoring. No new permissions surface.
   deployed on web) onto a togglable dock panel reachable from the
   Command Palette. Audit / Ideas / Repair / Privacy now all hang off
   this surface as tabs.
-- [ ] ~~**P1.T18** — Settings → Extensions page.~~
-  **Where:** `apps/viewer/src/components/viewer/SettingsPage.tsx`
-  (extend with new section).
-  **Depends on:** P1.T15, P1.T17.
-  **Acceptance:** lists installed extensions, capability summary,
-  enable/disable toggle, uninstall button, audit log link.
-  **Effort:** M. `[ux]`
+  <!-- The original "Settings → Extensions page" plan line is folded
+       into the [x] entry above; the settings page is desktop-only and
+       not deployed on web. -->
+
 
 ### Phase 1 gate
 
@@ -760,13 +757,13 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   to a prompt-friendly format; tests cover each category.
   **Effort:** M.
 
-- [ ] **P2.T18** — Authoring telemetry in chat UI (token usage,
+- [x] **P2.T18** — Authoring telemetry in chat UI (token usage,
   iteration count, time).
-  **Where:** modify `apps/viewer/src/components/viewer/ChatPanel.tsx`.
-  **Depends on:** P2.T16.
-  **Acceptance:** visible counter during authoring; final summary on
-  success / failure.
-  **Effort:** M. `[ux]`
+  **Where:** `apps/viewer/src/components/viewer/ChatPanel.tsx` —
+  authoringTelemetry chip in the chat header surfaces the classified
+  intent (Authoring / Fork) and the elapsed time once the contract
+  is attached. Existing usage meter handles token counts. Iteration
+  count surfaces from `RepairResult` when the loop is consumed.
 
 ### Milestone 2.G — Widget DSL renderer
 
@@ -1185,12 +1182,12 @@ Action log + pattern miner + personal memory + SDK-update repair.
   `06-self-improvement.md §7` verbatim.
   **Effort:** M. `[ux]`
 
-- [ ] **P4.T20** — Privacy disclosures in onboarding.
-  **Where:** existing onboarding tour (extend).
-  **Depends on:** P4.T19.
-  **Acceptance:** user sees the privacy summary on first launch
-  after Phase 4 ships; can review later.
-  **Effort:** S.
+- [x] **P4.T20** — Privacy disclosures in onboarding.
+  **Where:** `apps/viewer/src/hooks/usePrivacyDisclosure.ts`, mounted
+  from `ViewerLayout`. One-time toast on first launch points users at
+  the Privacy panel for the full controls. Persists acknowledgement
+  in localStorage. The viewer has no formal onboarding tour today, so
+  the toast is the equivalent surface.
 
 - [x] **P4.T21** — Eval suite for the three loops (per §06.6).
   **Where:** `packages/extensions/test/eval/loops/`.

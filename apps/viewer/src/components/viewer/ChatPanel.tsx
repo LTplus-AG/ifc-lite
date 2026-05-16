@@ -206,6 +206,11 @@ interface ChatPanelProps {
 
 export function ChatPanel({ onClose }: ChatPanelProps) {
   const extensionHost = useOptionalExtensionHost();
+  /** Most recent chat classification; surfaced in the status bar as authoring telemetry. */
+  const [authoringTelemetry, setAuthoringTelemetry] = useState<{
+    intent: 'authoring' | 'fork';
+    startedAt: number;
+  } | null>(null);
   const messages = useViewerStore((s) => s.chatMessages);
   const status = useViewerStore((s) => s.chatStatus);
   const streamingContent = useViewerStore((s) => s.chatStreamingContent);
@@ -469,6 +474,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           ? 'Heads up: that reads like a fork. Use the Extensions → Ideas panel for diff-based authoring.'
           : 'Heads up: that reads like an authoring request. The Extensions → Ideas panel offers plan-first authoring.',
       );
+      setAuthoringTelemetry({ intent: classified.intent, startedAt: Date.now() });
+    } else if (classified.intent !== 'authoring' && classified.intent !== 'fork') {
+      setAuthoringTelemetry(null);
     }
 
     // Resolve the stream route BEFORE any user-visible side effects (adding
@@ -1297,6 +1305,16 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
         <ModelSelector />
         <ByokStreamingPill modelId={activeModel} className="ml-1" />
+        {authoringTelemetry && (
+          <span
+            className="ml-1 text-[10px] uppercase tracking-wide font-semibold bg-primary/15 text-primary rounded px-1.5 py-0.5"
+            title={`Authoring contract attached (${authoringTelemetry.intent})`}
+          >
+            {authoringTelemetry.intent === 'fork' ? 'Fork' : 'Authoring'}
+            {' · '}
+            {Math.round((Date.now() - authoringTelemetry.startedAt) / 1000)}s
+          </span>
+        )}
         <div className="flex-1" />
 
         <Tooltip>

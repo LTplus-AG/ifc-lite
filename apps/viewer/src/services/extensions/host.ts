@@ -34,6 +34,7 @@ import {
   ActionLog,
   ActivationDispatcher,
   AuditLog,
+  CANONICAL_FIXTURES,
   ExtensionLoader,
   ExtensionRuntime,
   IdleMineScheduler,
@@ -44,6 +45,7 @@ import {
   revalidateAgainstSdk,
   runBundleTests,
   sha256Hex,
+  syntheticFixtureLoader,
   unpackBundle,
   wrapEntrySource,
   type ActionIntent,
@@ -371,6 +373,12 @@ export class ExtensionHostService {
       }
       const activation = await this.runtime.activate(record.id, grants.value, bundle);
 
+      // Fire the matching `onCommand:<id>` activation event so any
+      // listener the extension declared for the command's lifecycle
+      // gets the activate hook. Idempotent — the dispatcher already
+      // dedupes per session.
+      await this.dispatcher.fire(`onCommand:${commandId}` as const);
+
       const file = bundle.files.get(entry);
       if (!file) {
         throw new Error(`Command handler "${entry}" missing from bundle ${record.id}.`);
@@ -470,6 +478,11 @@ export class ExtensionHostService {
       runtime: this.runtime,
       bundle,
       grants: grants.value,
+      // Plug the canonical synthetic fixtures so tests declaring
+      // `fixture: "residential-small"` get a working ctx.bim. Hosts
+      // that ship their own fixture loader can override via a
+      // custom factory.
+      loadFixture: syntheticFixtureLoader(CANONICAL_FIXTURES),
     });
   }
 

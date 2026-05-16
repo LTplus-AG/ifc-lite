@@ -24,12 +24,15 @@
  * coarse permission flags act as the outer ring.
  */
 
-import type {
-  RuntimeRunOptions,
-  RuntimeRunResult,
-  RuntimeSandboxCreateOptions,
-  RuntimeSandboxFactory,
-  RuntimeSandboxHandle,
+import {
+  assertMethodCall,
+  CapabilityDeniedError,
+  type Capability,
+  type RuntimeRunOptions,
+  type RuntimeRunResult,
+  type RuntimeSandboxCreateOptions,
+  type RuntimeSandboxFactory,
+  type RuntimeSandboxHandle,
 } from '@ifc-lite/extensions';
 import { createSandbox, type Sandbox } from '@ifc-lite/sandbox';
 import type { BimContext } from '@ifc-lite/sdk';
@@ -41,13 +44,68 @@ export interface SandboxFactoryOptions {
 export function createBimSandboxFactory(opts: SandboxFactoryOptions): RuntimeSandboxFactory {
   return {
     async create(createOpts: RuntimeSandboxCreateOptions): Promise<RuntimeSandboxHandle> {
-      const sandbox = await createSandbox(opts.sdk, {
+      // Wrap the SDK with a per-method capability gate using the
+      // create-time grants. The outer-ring permission flags already
+      // gate at namespace level (model/viewer/etc.); this Proxy is
+      // the inner ring that flags fine-grained denials like
+      // "granted viewer.colorize but called viewer.fly".
+      const gatedSdk = createOpts.grants
+        ? wrapWithCapabilityGate(opts.sdk, createOpts.grants, createOpts.extensionId)
+        : opts.sdk;
+      const sandbox = await createSandbox(gatedSdk, {
         permissions: createOpts.permissions,
         limits: createOpts.limits,
       });
       return new BimSandboxHandle(sandbox);
     },
   };
+}
+
+/**
+ * Wrap each namespace of the BimContext with a Proxy that runs
+ * `assertMethodCall(grants, namespace, method)` before forwarding.
+ * Denied calls throw `CapabilityDeniedError` which surfaces inside
+ * the sandbox as a regular exception the extension can catch (or
+ * propagate to fail the activation cleanly).
+ *
+ * Only namespace-level wrapping is needed — methods themselves don't
+ * have sub-namespaces. We Proxy at depth-2 so any callable on
+ * `bim.<namespace>.<method>` is intercepted.
+ */
+function wrapWithCapabilityGate(
+  sdk: BimContext,
+  grants: readonly Capability[],
+  extensionId: string,
+): BimContext {
+  const wrappedNamespaces: Record<string, unknown> = {};
+  for (const namespace of Object.keys(sdk) as (keyof BimContext)[]) {
+    const ns = sdk[namespace];
+    if (ns === null || typeof ns !== 'object') {
+      wrappedNamespaces[namespace as string] = ns;
+      continue;
+    }
+    wrappedNamespaces[namespace as string] = new Proxy(ns as object, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== 'function' || typeof prop !== 'string') {
+          return value;
+        }
+        // Intercept the method call — assert capability, then forward.
+        return function gated(this: unknown, ...args: unknown[]) {
+          try {
+            assertMethodCall(namespace as string, prop, grants);
+          } catch (err) {
+            if (err instanceof CapabilityDeniedError) {
+              console.warn(`[ext:${extensionId}] denied ${namespace as string}.${prop}: ${err.message}`);
+            }
+            throw err;
+          }
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+  }
+  return wrappedNamespaces as unknown as BimContext;
 }
 
 class BimSandboxHandle implements RuntimeSandboxHandle {

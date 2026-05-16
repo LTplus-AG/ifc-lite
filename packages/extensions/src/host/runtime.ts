@@ -82,6 +82,12 @@ export interface RuntimeSandboxFactory {
 export interface RuntimeSandboxCreateOptions {
   extensionId: string;
   permissions: SandboxPermissionsLike;
+  /**
+   * Granted capabilities for the extension. Factories use these to
+   * wrap the SDK with a per-method capability gate (the inner ring of
+   * the security model — namespace-level gating sits on `permissions`).
+   */
+  grants?: readonly Capability[];
   /** Resource limits — passed verbatim to the underlying sandbox. */
   limits?: {
     memoryBytes?: number;
@@ -216,6 +222,7 @@ export class ExtensionRuntime {
     const sandbox = await this.factory.create({
       extensionId,
       permissions,
+      grants,
       limits: this.defaultLimits,
     });
 

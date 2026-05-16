@@ -101,6 +101,16 @@ class MemorySandboxHandle implements RuntimeSandboxHandle {
         if (typeof prop !== 'string') return undefined;
         return env[prop];
       },
+      set(_t, prop, value) {
+        if (typeof prop !== 'string') return false;
+        // Writes from the sandbox-realm preamble (e.g. test-runner's
+        // synthetic-bim builder) need to be visible to the subsequent
+        // read on the next line. Without this trap the assignment
+        // lands in the proxy target while the read goes through `env`
+        // and sees stale state.
+        env[prop] = value;
+        return true;
+      },
       has(_t, prop) {
         return typeof prop === 'string' && prop in env;
       },

@@ -75,6 +75,44 @@ const DECODER = new TextDecoder();
 const MAX_REGEX_PATTERN_LENGTH = 256;
 
 /**
+ * Preamble inlined into the wrapper IIFE when the fixture is a
+ * synthetic spec. We can't ship a bim object with methods via
+ * `setGlobal` because production sandbox factories JSON-serialise
+ * the value (functions don't cross realms). The runner sets the
+ * spec data via `setGlobal('__ifclite_synthetic_spec__', spec)` —
+ * plain arrays + primitives that survive the round-trip — and the
+ * preamble runs INSIDE the wrapped IIFE to construct a `bim` object
+ * with sandbox-realm methods that the user code can call.
+ */
+const SYNTHETIC_PREAMBLE = `
+var __synth_spec = globalThis.__ifclite_synthetic_spec__ || { entities: [], schema: 'IFC4' };
+var __synth_entities = __synth_spec.entities || [];
+globalThis.__ifclite_ctx__ = {
+  bim: {
+    schema: __synth_spec.schema || 'IFC4',
+    isSynthetic: true,
+    entities: __synth_entities,
+    query: {
+      byType: function (t) {
+        var out = [];
+        for (var i = 0; i < __synth_entities.length; i++) {
+          if (__synth_entities[i].type === t) out.push(__synth_entities[i]);
+        }
+        return out;
+      },
+      count: function (t) {
+        if (!t) return __synth_entities.length;
+        var n = 0;
+        for (var i = 0; i < __synth_entities.length; i++) {
+          if (__synth_entities[i].type === t) n++;
+        }
+        return n;
+      },
+    },
+  },
+};`;
+
+/**
  * Run every test declared in `bundle.manifest.tests` against the
  * supplied runtime + bundle. Bundles with no tests return a summary
  * with zero results — callers can treat that as "manifest opted out
@@ -141,18 +179,28 @@ async function runSingleTest(
     return { passed: false, error: `Entry "${entry}" missing from bundle files.` };
   }
   const source = file.text ?? DECODER.decode(file.bytes);
-  const wrapped = wrapEntrySource(source, { entryFnName: 'run', filename: entry });
-  if (!wrapped.ok) {
-    return {
-      passed: false,
-      error: `Entry did not wrap: ${wrapped.errors[0]?.message ?? 'unknown error'}`,
-    };
-  }
 
   let bim: unknown = {};
+  let syntheticSpec: { schema?: string; entities?: unknown[] } | undefined;
   if (loadFixture) {
     try {
-      bim = await loadFixture(test.fixture);
+      const loaded = await loadFixture(test.fixture);
+      if (
+        loaded
+        && typeof loaded === 'object'
+        && (loaded as { isSynthetic?: boolean }).isSynthetic === true
+      ) {
+        // Synthetic fixture — ship spec data into the sandbox; the
+        // preamble reconstructs the bim object with sandbox-realm
+        // methods (production factories JSON-serialise globals, so a
+        // function-bearing object can't cross the boundary).
+        syntheticSpec = {
+          schema: (loaded as { schema?: string }).schema,
+          entities: (loaded as { entities?: unknown[] }).entities ?? [],
+        };
+      } else {
+        bim = loaded;
+      }
     } catch (err) {
       return {
         passed: false,
@@ -161,11 +209,29 @@ async function runSingleTest(
     }
   }
 
+  // Wrap with the synthetic preamble when needed so the in-sandbox
+  // bim object lives in the same realm as the user code.
+  const wrapped = wrapEntrySource(source, {
+    entryFnName: 'run',
+    filename: entry,
+    preamble: syntheticSpec ? SYNTHETIC_PREAMBLE : undefined,
+  });
+  if (!wrapped.ok) {
+    return {
+      passed: false,
+      error: `Entry did not wrap: ${wrapped.errors[0]?.message ?? 'unknown error'}`,
+    };
+  }
+
   try {
-    // The wrapper reads `globalThis.__ifclite_ctx__.bim`. Tests don't
-    // need a real BIM — install a stub so the access doesn't throw.
-    // Hosts (the viewer) inject the real ctx before each command run.
-    await record.sandbox.setGlobal('__ifclite_ctx__', { bim });
+    if (syntheticSpec) {
+      await record.sandbox.setGlobal('__ifclite_synthetic_spec__', syntheticSpec);
+    } else {
+      // The wrapper reads `globalThis.__ifclite_ctx__.bim`. Tests
+      // without a fixture loader get a minimal stub so the property
+      // access in the wrapper doesn't throw.
+      await record.sandbox.setGlobal('__ifclite_ctx__', { bim });
+    }
     await record.sandbox.setGlobal('__ifclite_test_args__', test.args ?? {});
   } catch (err) {
     return {

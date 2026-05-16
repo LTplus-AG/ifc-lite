@@ -47,6 +47,15 @@ export interface SourceWrapOptions {
   entryFnName: string;
   /** Optional source identifier for error reporting. */
   filename?: string;
+  /**
+   * Optional sandbox-realm JS to run before the user source. The
+   * preamble executes inside the same IIFE as the user code, so any
+   * globalThis assignments persist for the read of `__ifclite_ctx__`
+   * on the next line. Used by the test runner to inject synthetic
+   * fixtures whose methods can't cross the realm boundary via
+   * `setGlobal`.
+   */
+  preamble?: string;
 }
 
 /**
@@ -97,16 +106,17 @@ export function wrapEntrySource(
   const errors = checkBannedConstructs(ast);
   if (errors.length > 0) return { ok: false, errors };
 
-  const wrapped = buildWrap(source, opts.entryFnName);
+  const wrapped = buildWrap(source, opts.entryFnName, opts.preamble);
   return { ok: true, value: wrapped };
 }
 
-function buildWrap(userSource: string, entryFn: string): string {
+function buildWrap(userSource: string, entryFn: string, preamble?: string): string {
   // Newlines between sections keep source-mapped line numbers usable
   // when looking at error stacks — user source begins at a predictable
   // offset.
+  const preambleSection = preamble ? `${preamble}\n` : '';
   return `;(() => {
-const __ifclite_ctx__ = globalThis.__ifclite_ctx__;
+${preambleSection}const __ifclite_ctx__ = globalThis.__ifclite_ctx__;
 const bim = __ifclite_ctx__.bim;
 ${userSource}
 if (typeof ${entryFn} === 'function') {

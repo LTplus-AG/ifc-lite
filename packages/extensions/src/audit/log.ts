@@ -59,11 +59,33 @@ export class AuditLog {
   private readonly maxEvents: number;
   private readonly maxBytes: number;
   private readonly now: () => Date;
+  private listeners = new Set<(event: AuditEvent) => void>();
 
   constructor(opts: AuditLogOptions = {}) {
     this.maxEvents = opts.maxEvents ?? DEFAULT_MAX_EVENTS;
     this.maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
     this.now = opts.now ?? (() => new Date());
+  }
+
+  /**
+   * Hydrate the log from a prior snapshot (typically from IDB). Used
+   * when the viewer's host service restores state on app boot. The
+   * eviction policy still runs after hydration so an over-cap import
+   * gets trimmed.
+   */
+  hydrate(events: readonly AuditEvent[]): void {
+    this.events = [];
+    this.sizes = [];
+    this.totalBytes = 0;
+    for (const event of events) {
+      const frozen = deepFreeze({ ...event } as AuditEvent);
+      const byteSize = textByteSize(JSON.stringify(frozen));
+      this.events.push(frozen);
+      this.sizes.push(byteSize);
+      this.totalBytes += byteSize;
+      if (event.seq >= this.nextSeq) this.nextSeq = event.seq + 1;
+    }
+    this.evict();
   }
 
   /**
@@ -92,7 +114,16 @@ export class AuditLog {
     this.sizes.push(byteSize);
     this.totalBytes += byteSize;
     this.evict();
+    for (const listener of this.listeners) {
+      try { listener(frozen); } catch (err) { /* listener faults must not bubble */ }
+    }
     return frozen;
+  }
+
+  /** Subscribe to new audit events; returns an unsubscribe. */
+  subscribe(listener: (event: AuditEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
   /** List events matching the filter, oldest first. */

@@ -89,6 +89,11 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
   const handleClearLog = () => {
     if (!confirm('Clear the local action log? Suggestions reset until you build up new patterns.')) return;
     host.actionLog.clear();
+    // Wipe the IDB mirror too — otherwise reload would resurrect the
+    // events the user just asked to forget.
+    void host.clearPersistedActionLog().catch((err) => {
+      console.warn('[PrivacyPanel] clear persisted action log failed:', err);
+    });
     setLogSize({ events: 0, bytes: 0 });
     toast.success('Action log cleared.');
   };

@@ -18,8 +18,84 @@
  */
 
 import { useEffect } from 'react';
+import type { ActionIntent, ActionParams } from '@ifc-lite/extensions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
+
+/**
+ * Shape we read from the viewer store. Narrowed to just the fields
+ * `detectActions` consumes so the function is unit-testable without
+ * importing the full store type.
+ */
+export interface ActionLoggerStateShape {
+  models: ReadonlyMap<string, { schemaVersion: string; ifcDataStore: { entityCount?: number } | null; fileSize: number }>;
+  activeLensId: string | null;
+  selectedEntities: readonly unknown[];
+  sectionPlane?: { enabled?: boolean };
+  drawing2DPanelVisible?: boolean;
+}
+
+export type EmittedAction = {
+  [K in ActionIntent]: { intent: K; params: ActionParams[K] };
+}[ActionIntent];
+
+/**
+ * Pure transition detector. Given the prior and next store states,
+ * returns the list of action events to emit. Extracted so the
+ * transition logic can be tested without a React renderer.
+ */
+export function detectActions(
+  prev: ActionLoggerStateShape,
+  state: ActionLoggerStateShape,
+): EmittedAction[] {
+  const out: EmittedAction[] = [];
+  // model.load / model.unload — compare by id so a swap (same size)
+  // still emits both events.
+  for (const [id, model] of state.models) {
+    if (!prev.models.has(id)) {
+      out.push({
+        intent: 'model.load',
+        params: {
+          schema: model.schemaVersion,
+          entityCount: model.ifcDataStore?.entityCount,
+          sizeBytes: model.fileSize,
+        },
+      });
+    }
+  }
+  for (const id of prev.models.keys()) {
+    if (!state.models.has(id)) {
+      out.push({ intent: 'model.unload', params: {} });
+    }
+  }
+  // lens.apply / lens.clear — hashed id only.
+  if (state.activeLensId !== prev.activeLensId) {
+    if (state.activeLensId) {
+      out.push({ intent: 'lens.apply', params: { id: hashLensId(state.activeLensId) } });
+    } else {
+      out.push({ intent: 'lens.clear', params: {} });
+    }
+  }
+  // selection.change — count delta only.
+  const prevCount = prev.selectedEntities?.length ?? 0;
+  const nextCount = state.selectedEntities?.length ?? 0;
+  if (prevCount !== nextCount) {
+    out.push({ intent: 'selection.change', params: { count: nextCount } });
+  }
+  // section.apply — enable transition only.
+  const prevSection = prev.sectionPlane?.enabled ?? false;
+  const nextSection = state.sectionPlane?.enabled ?? false;
+  if (!prevSection && nextSection) {
+    out.push({ intent: 'section.apply', params: {} });
+  }
+  // view.change — 2d/3d mode flip (proxied via drawing2D panel).
+  const prevMode = prev.drawing2DPanelVisible ? '2d' : '3d';
+  const nextMode = state.drawing2DPanelVisible ? '2d' : '3d';
+  if (prevMode !== nextMode) {
+    out.push({ intent: 'view.change', params: { mode: nextMode } });
+  }
+  return out;
+}
 
 export function useActionLogger(): void {
   const host = useOptionalExtensionHost();
@@ -30,47 +106,17 @@ export function useActionLogger(): void {
     // Snapshot the prior state per field so we can detect transitions
     // rather than emit on every render. We use the public subscribe
     // method since the store is a vanilla zustand instance.
-    let prev = useViewerStore.getState();
+    let prev = useViewerStore.getState() as unknown as ActionLoggerStateShape;
 
     const unsubscribe = useViewerStore.subscribe((state) => {
-      // model.load / model.unload — compare by id, not by size, so a
-      // simultaneous add+remove transition still emits the right events.
-      for (const [id, model] of state.models) {
-        if (!prev.models.has(id)) {
-          host.emitAction('model.load', {
-            schema: model.schemaVersion,
-            entityCount: model.ifcDataStore?.entityCount,
-            sizeBytes: model.fileSize,
-          });
-        }
+      const next = state as unknown as ActionLoggerStateShape;
+      for (const event of detectActions(prev, next)) {
+        // Type system can't infer the discriminated union →
+        // emitAction's generic together; cast is safe because
+        // EmittedAction is built from ActionIntent + ActionParams.
+        host.emitAction(event.intent, event.params as never);
       }
-      for (const id of prev.models.keys()) {
-        if (!state.models.has(id)) {
-          host.emitAction('model.unload', {});
-        }
-      }
-
-      // lens.apply / lens.clear — track active lens transitions.
-      // Project the lens id through a short hash so a user-named lens
-      // (e.g. "John's basement check") doesn't leak into the action
-      // log. The pattern miner only needs identity for matching, not
-      // the original string.
-      if (state.activeLensId !== prev.activeLensId) {
-        if (state.activeLensId) {
-          host.emitAction('lens.apply', { id: hashLensId(state.activeLensId) });
-        } else {
-          host.emitAction('lens.clear', {});
-        }
-      }
-
-      // selection.change — track selection count transitions.
-      const prevCount = prev.selectedEntities?.length ?? 0;
-      const nextCount = state.selectedEntities?.length ?? 0;
-      if (prevCount !== nextCount) {
-        host.emitAction('selection.change', { count: nextCount });
-      }
-
-      prev = state;
+      prev = next;
     });
 
     return unsubscribe;
@@ -82,7 +128,7 @@ export function useActionLogger(): void {
  * carries the original string. We only need identity for the miner;
  * djb2 is plenty for 30-50 distinct lenses per user.
  */
-function hashLensId(id: string): string {
+export function hashLensId(id: string): string {
   let hash = 5381;
   for (let i = 0; i < id.length; i++) {
     hash = ((hash << 5) + hash + id.charCodeAt(i)) | 0;

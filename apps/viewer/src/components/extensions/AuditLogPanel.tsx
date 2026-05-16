@@ -71,16 +71,27 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
   const host = useExtensionHost();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [filter, setFilter] = useState<AuditEventKind | 'all'>('all');
+  // Per-extension filter applied on top of the props-level filter.
+  // The prop scopes the panel; this state is the user's runtime
+  // narrow-down ("show only events for this extension").
+  const [extensionFilter, setExtensionFilter] = useState<string | undefined>(extensionId);
 
   useEffect(() => {
-    setEvents(host.audit.list(extensionId ? { extensionId } : {}));
+    const scope = extensionFilter ?? extensionId;
+    setEvents(host.audit.list(scope ? { extensionId: scope } : {}));
     const off = host.onChange(() => {
-      setEvents(host.audit.list(extensionId ? { extensionId } : {}));
+      setEvents(host.audit.list(scope ? { extensionId: scope } : {}));
     });
     return off;
-  }, [host, extensionId]);
+  }, [host, extensionId, extensionFilter]);
 
   const filtered = filter === 'all' ? events : events.filter((e) => e.kind === filter);
+
+  // Build the list of distinct extension ids present in the (unfiltered)
+  // events for the per-extension chip row.
+  const distinctExtensionIds = Array.from(
+    new Set(host.audit.list().map((e) => e.extensionId)),
+  ).sort();
 
   const handleExport = () => {
     const json = host.audit.exportJson();
@@ -96,10 +107,12 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
 
   const handleClear = () => {
     if (!confirm('Clear the audit log? This cannot be undone.')) return;
-    // AuditLog.clear() is on the in-memory writer. The future IDB
-    // persistence layer (next batch) reflows this; for now we just
-    // call through and refresh.
     host.audit.clear();
+    // Wipe the IDB mirror too — otherwise reload resurrects what the
+    // user just asked to forget.
+    void host.clearPersistedAuditLog().catch((err) => {
+      console.warn('[AuditLogPanel] clear persisted audit failed:', err);
+    });
     setEvents([]);
     toast.success('Audit log cleared.');
   };
@@ -143,6 +156,28 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
           />
         ))}
       </div>
+
+      {/* Extension scope row — appears only when the panel was opened
+          un-scoped AND there's more than one extension in the log.
+          Lets the user narrow "show only events for this extension". */}
+      {!extensionId && distinctExtensionIds.length > 1 && (
+        <div className="flex items-center gap-1 border-b px-4 py-2 overflow-x-auto">
+          <span className="text-[10px] text-muted-foreground shrink-0">Extension:</span>
+          <FilterChip
+            label="All"
+            active={extensionFilter === undefined}
+            onClick={() => setExtensionFilter(undefined)}
+          />
+          {distinctExtensionIds.map((id) => (
+            <FilterChip
+              key={id}
+              label={id}
+              active={extensionFilter === id}
+              onClick={() => setExtensionFilter(id)}
+            />
+          ))}
+        </div>
+      )}
 
       <ScrollArea className="flex-1">
         {filtered.length === 0 ? (

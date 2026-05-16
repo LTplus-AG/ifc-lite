@@ -59,7 +59,11 @@ import { ByokStreamingPill } from './chat/ByokStreamingPill';
 import type { BYOKProvider } from '@/lib/llm/clipboard-detect';
 import { useSandbox } from '@/hooks/useSandbox';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
-import { classifyIntent } from '@ifc-lite/extensions';
+import {
+  classifyIntent,
+  packBundle,
+  validateBundleResponse,
+} from '@ifc-lite/extensions';
 
 // Environment variable for the proxy URL
 const PROXY_URL = import.meta.env.VITE_LLM_PROXY_URL as string || '/api/chat';
@@ -211,6 +215,45 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     intent: 'authoring' | 'fork';
     startedAt: number;
   } | null>(null);
+  const setPendingAuthoredBundle = useViewerStore((s) => s.setPendingAuthoredBundle);
+  const setExtensionsPanelVisible = useViewerStore((s) => s.setExtensionsPanelVisible);
+
+  /**
+   * Try to parse an authoring response as an extension bundle. If it
+   * validates, pack it and surface a toast linking to the Extensions
+   * panel for the user to review and install. Failures stay silent —
+   * the regular chat flow already showed the response.
+   */
+  const handleAuthoringResponse = useCallback(
+    async (fullText: string) => {
+      try {
+        const result = validateBundleResponse(fullText);
+        if (!result.ok || !result.manifest || !result.parsed) return;
+        // Assemble a Bundle from the parsed pieces, pack it, hand it
+        // to the Extensions panel.
+        const files = new Map<string, { path: string; bytes: Uint8Array; text?: string }>();
+        const encoder = new TextEncoder();
+        const manifestText = JSON.stringify(result.manifest, null, 2);
+        files.set('manifest.json', {
+          path: 'manifest.json',
+          bytes: encoder.encode(manifestText),
+          text: manifestText,
+        });
+        for (const [path, text] of Object.entries(result.parsed.files)) {
+          files.set(path, { path, bytes: encoder.encode(text), text });
+        }
+        const bytes = packBundle({ manifest: result.manifest, files });
+        setPendingAuthoredBundle(bytes);
+        setExtensionsPanelVisible(true);
+        toast.success(
+          `Authored bundle ready — review ${result.manifest.id} v${result.manifest.version} in Extensions.`,
+        );
+      } catch (err) {
+        console.warn('[ChatPanel] authoring response parse failed:', err);
+      }
+    },
+    [setPendingAuthoredBundle, setExtensionsPanelVisible],
+  );
   const messages = useViewerStore((s) => s.chatMessages);
   const status = useViewerStore((s) => s.chatStatus);
   const streamingContent = useViewerStore((s) => s.chatStreamingContent);
@@ -858,6 +901,18 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               reason: 'patch-apply',
             });
           }
+        }
+
+        // Authoring loop: when the classifier flagged this turn as
+        // 'authoring' or 'fork', the response may contain a bundle in
+        // the ifc-extension-* fenced format. Try to validate + offer
+        // to install. Failures stay silent — the existing chat flow
+        // already surfaced the response; this is opt-in.
+        if (
+          (classified.intent === 'authoring' || classified.intent === 'fork')
+          && !options?.intent
+        ) {
+          void handleAuthoringResponse(fullText);
         }
 
         commitAssistantTurn();

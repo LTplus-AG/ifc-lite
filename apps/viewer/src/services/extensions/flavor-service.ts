@@ -29,14 +29,23 @@ import { IdbFlavorStorage } from './idb-flavor-storage.js';
 
 export interface FlavorServiceOptions {
   storage?: FlavorStorage;
+  /**
+   * Optional callback the service fires on every lifecycle event
+   * (activate, export, import) so the host can mirror them into the
+   * action log for the pattern miner. Content-free: the callback
+   * only sees the flavor id, never any flavor data.
+   */
+  onLifecycle?: (event: 'activate' | 'export' | 'import', id?: string) => void;
 }
 
 export class FlavorService {
   private readonly storage: FlavorStorage;
+  private readonly onLifecycle?: FlavorServiceOptions['onLifecycle'];
   private listeners = new Set<() => void>();
 
   constructor(opts: FlavorServiceOptions = {}) {
     this.storage = opts.storage ?? new IdbFlavorStorage();
+    this.onLifecycle = opts.onLifecycle;
   }
 
   async list(): Promise<Flavor[]> {
@@ -60,6 +69,7 @@ export class FlavorService {
 
   async activate(id: string | undefined): Promise<void> {
     await this.storage.setActiveId(id);
+    if (id) this.onLifecycle?.('activate', id);
     this.emit();
   }
 
@@ -92,7 +102,9 @@ export class FlavorService {
     if (!flavorId) throw new Error('No active flavor to export.');
     const flavor = await this.storage.getFlavor(flavorId);
     if (!flavor) throw new Error(`Unknown flavor: ${flavorId}`);
-    return packFlavor(flavor, { summary });
+    const bytes = packFlavor(flavor, { summary });
+    this.onLifecycle?.('export', flavorId);
+    return bytes;
   }
 
   /** Parse + validate a `.iflv` byte array. Does NOT install. */
@@ -126,6 +138,7 @@ export class FlavorService {
       };
     }
     await this.storage.putFlavor(flavor, 'imported');
+    this.onLifecycle?.('import', flavor.id);
     this.emit();
     return flavor;
   }

@@ -6,6 +6,15 @@
  * IndexedDB-backed implementation of the `FlavorStorage` interface
  * from `@ifc-lite/extensions`.
  *
+ * No dedicated unit test ships with this file — the viewer's
+ * `node:test` runner doesn't have IndexedDB. The behaviour is covered
+ * by the integration tests in the library (`FlavorStorage` interface
+ * contract via `InMemoryFlavorStorage`) plus manual Vercel preview
+ * verification. Adding `fake-indexeddb` as a dev dep would close that
+ * gap; deferred until persistence behaviour drifts from the in-memory
+ * impl.
+ *
+ *
  * Three object stores:
  *   - `flavors`       keyed by flavor id        → Flavor
  *   - `flavor-active` single-row key 'active'   → { id }

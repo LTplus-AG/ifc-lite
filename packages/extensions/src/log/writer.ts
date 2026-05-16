@@ -56,6 +56,27 @@ export class ActionLog {
   }
 
   /**
+   * Hydrate the log from a prior snapshot (typically from IDB). Useful
+   * when the viewer's host service restores state on app boot. Does
+   * NOT re-emit subscribe listeners — the caller is already
+   * acknowledging the persisted state.
+   */
+  hydrate(events: readonly ActionEvent[]): void {
+    this.events = [];
+    this.sizes = [];
+    this.totalBytes = 0;
+    for (const event of events) {
+      const frozen = deepFreeze({ ...event });
+      const byteSize = ENCODER.encode(JSON.stringify(frozen)).byteLength;
+      this.events.push(frozen);
+      this.sizes.push(byteSize);
+      this.totalBytes += byteSize;
+      if (event.seq >= this.nextSeq) this.nextSeq = event.seq + 1;
+    }
+    this.evict();
+  }
+
+  /**
    * Append an action event. `seq` and `ts` are assigned by the log.
    * `success` defaults to true. The generic preserves discriminated-
    * union narrowing on `params`.

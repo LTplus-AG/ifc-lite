@@ -67,6 +67,7 @@ import {
 } from '@ifc-lite/extensions';
 import type { BimContext } from '@ifc-lite/sdk';
 import { IdbExtensionStorage } from './idb-storage.js';
+import { IdbLogStorage } from './idb-log-storage.js';
 import { createBimSandboxFactory } from './sandbox-factory.js';
 import { FlavorService } from './flavor-service.js';
 
@@ -87,8 +88,17 @@ export class ExtensionHostService {
   readonly slotRegistry = new SlotRegistry();
   readonly dispatcher = new ActivationDispatcher();
   readonly audit = new AuditLog();
-  readonly flavors = new FlavorService();
+  readonly flavors = new FlavorService({
+    // Mirror flavor lifecycle into the action log so the miner sees
+    // activate/export/import patterns. Content-free — only the id.
+    onLifecycle: (event, id) => {
+      if (event === 'activate') this.emitAction('flavor.activate', { id: id ?? '' });
+      else if (event === 'export') this.emitAction('flavor.export', {});
+      else if (event === 'import') this.emitAction('flavor.import', {});
+    },
+  });
   readonly actionLog = new ActionLog();
+  private readonly logStorage = new IdbLogStorage();
   readonly miner: IdleMineScheduler;
   readonly runtime: ExtensionRuntime;
   readonly loader: ExtensionLoader;
@@ -123,9 +133,16 @@ export class ExtensionHostService {
 
     this.miner = new IdleMineScheduler();
     // Pipe every logged action into the miner so the idle timer
-    // re-arms as the user works.
+    // re-arms as the user works. Also queue for IDB persistence so
+    // the log survives reload.
     this.actionLog.subscribe((event) => {
       this.miner.push(event);
+      this.logStorage.appendAction(event);
+    });
+    // Mirror audit events to IDB so the audit history survives a
+    // reload too — otherwise "Audit log" misleads users.
+    this.audit.subscribe((event) => {
+      this.logStorage.appendAudit(event);
     });
     // When the miner fires, filter against currently-installed tools
     // and notify listeners. The filter call is async (it reads
@@ -169,6 +186,20 @@ export class ExtensionHostService {
     // loadAll() / fire() leaves the service stuck and later init()
     // calls return [] without actually loading anything.
     try {
+      // Hydrate logs from IDB before any new events fire so the
+      // resumed seq counters start where we left off. Errors here are
+      // non-fatal — we just continue with empty in-memory logs.
+      try {
+        const [priorActions, priorAudit] = await Promise.all([
+          this.logStorage.loadActions(),
+          this.logStorage.loadAudit(),
+        ]);
+        this.actionLog.hydrate(priorActions);
+        this.audit.hydrate(priorAudit);
+      } catch (err) {
+        console.warn('[ext-host] log hydration failed; starting empty:', err);
+      }
+
       const statuses = await this.loader.loadAll();
       await this.dispatcher.fire('onStartup');
       this.initialized = true;
@@ -286,6 +317,8 @@ export class ExtensionHostService {
       previousVersion: previous?.version,
       grantedCapabilities,
     });
+    // Mirror to the action log so the miner can see install activity.
+    this.emitAction('extension.install', { id });
 
     // Re-fire onStartup so the freshly-loaded extension activates if it
     // declared the event. Other startup-subscribed extensions are
@@ -311,6 +344,7 @@ export class ExtensionHostService {
       extensionId: id,
       version: record.version,
     });
+    this.emitAction('extension.uninstall', { id });
     this.emit();
   }
 
@@ -344,6 +378,7 @@ export class ExtensionHostService {
       extensionId: id,
       version: record.version,
     });
+    this.emitAction(enabled ? 'extension.enable' : 'extension.disable', { id });
     this.emit();
   }
 
@@ -451,6 +486,16 @@ export class ExtensionHostService {
   /** Read the last mine result, if any. */
   getSuggestions(): MineEvent | undefined {
     return this.suggestions;
+  }
+
+  /** Wipe the IDB-persisted action log. Pairs with `actionLog.clear()`. */
+  async clearPersistedActionLog(): Promise<void> {
+    await this.logStorage.clearActions();
+  }
+
+  /** Wipe the IDB-persisted audit log. Pairs with `audit.clear()`. */
+  async clearPersistedAuditLog(): Promise<void> {
+    await this.logStorage.clearAudit();
   }
 
   /**

@@ -18,7 +18,7 @@
  * separate components landing later.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Shield, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
@@ -49,6 +49,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const installed = useInstalledExtensions();
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
+  const pendingAuthoredBundle = useViewerStore((s) => s.pendingAuthoredBundle);
+  const setPendingAuthoredBundle = useViewerStore((s) => s.setPendingAuthoredBundle);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFork = useCallback(
@@ -150,6 +152,37 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
     },
     [host],
   );
+
+  // Authoring loop hand-off: when the chat panel produces a clean
+  // bundle, it stashes the bytes in `pendingAuthoredBundle` and opens
+  // the Extensions panel. Pick them up on mount, route through the
+  // standard preview → Capability Review flow.
+  useEffect(() => {
+    if (!pendingAuthoredBundle) return;
+    const bytes = pendingAuthoredBundle;
+    void (async () => {
+      try {
+        const preview = await host.previewBundle(bytes);
+        if (!preview.ok) {
+          toast.error(`Authored bundle didn't unpack: ${preview.errors[0]?.message ?? 'unknown'}`);
+          setPendingAuthoredBundle(null);
+          return;
+        }
+        const records = await host.listInstalled();
+        const existing = records.find((r) => r.id === preview.value.id);
+        setPending({
+          bytes,
+          summary: preview.value,
+          previousGrants: existing?.grantedCapabilities,
+          previousVersion: existing ? `v${existing.version}` : undefined,
+        });
+        setPendingAuthoredBundle(null);
+      } catch (err) {
+        toast.error(`Authored bundle preview failed: ${err instanceof Error ? err.message : String(err)}`);
+        setPendingAuthoredBundle(null);
+      }
+    })();
+  }, [pendingAuthoredBundle, host, setPendingAuthoredBundle]);
 
   const handleApprove = useCallback(
     async (grants: string[]) => {

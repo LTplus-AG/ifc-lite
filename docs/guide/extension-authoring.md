@@ -336,6 +336,30 @@ When the AI authors an extension, the pipeline is:
 
 When the chat detects an authoring intent (you said something like "make a button that ...", "always color walls red"), it shows an **Authoring** chip in the header and attaches the full authoring contract (manifest schema + widget DSL + capability catalogue + style rules) to the system prompt. The contract is cached via Anthropic prompt caching, so subsequent authoring turns in the same session are cheap.
 
+## Environment requirements
+
+The Repair queue needs to know the current SDK version to evaluate
+extension `engines.ifcLiteSdk` ranges against it. The viewer reads this
+from a Vite-injected `__APP_VERSION__` define:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import pkg from './package.json' with { type: 'json' };
+
+export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
+});
+```
+
+If you fork the viewer or build it outside this repo's `vite.config.ts`,
+add the same define — without it, the Repair tab shows
+"SDK version unknown — cannot revalidate" instead of running the
+compatibility check (a deliberate no-op rather than a false-positive
+flood of "outdated" verdicts).
+
 ## Signing bundles (Phase 5 preview)
 
 For shared / hosted distribution, bundles can be Ed25519-signed.

@@ -18,6 +18,14 @@ export interface ExtensionsSlice {
   extensionsPanelVisible: boolean;
   setExtensionsPanelVisible: (visible: boolean) => void;
   toggleExtensionsPanel: () => void;
+  /**
+   * Bytes of an authored bundle waiting for the user to review. The
+   * chat-side authoring loop sets this on success; the Extensions
+   * panel picks it up on mount, routes through CapabilityReview, and
+   * clears the slot after install or cancel.
+   */
+  pendingAuthoredBundle: Uint8Array | null;
+  setPendingAuthoredBundle: (bytes: Uint8Array | null) => void;
 }
 
 export const createExtensionsSlice: StateCreator<
@@ -30,4 +38,6 @@ export const createExtensionsSlice: StateCreator<
   setExtensionsPanelVisible: (extensionsPanelVisible) => set({ extensionsPanelVisible }),
   toggleExtensionsPanel: () =>
     set((state) => ({ extensionsPanelVisible: !state.extensionsPanelVisible })),
+  pendingAuthoredBundle: null,
+  setPendingAuthoredBundle: (pendingAuthoredBundle) => set({ pendingAuthoredBundle }),
 });

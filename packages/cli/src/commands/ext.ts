@@ -21,7 +21,10 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   ExtensionRuntime,
+  computeRisks,
   createMemorySandboxFactory,
+  listCapabilityCatalogue,
+  parseCapability,
   parseCapabilities,
   runBundleTests,
   validateManifest,
@@ -65,6 +68,9 @@ export async function extCommand(args: string[]): Promise<void> {
     case 'test':
       await extTestCommand(rest);
       return;
+    case 'capabilities':
+      await extCapabilitiesCommand(rest);
+      return;
     default:
       process.stderr.write(`Unknown ext subcommand: ${sub}\n`);
       printUsage();
@@ -93,6 +99,9 @@ Commands:
                            an in-process sandbox factory; exits non-zero
                            on any failure.
                            Flags: --bail, --json
+  capabilities             List every capability in the catalogue with
+                           its risk tier and plain-English description.
+                           Flags: --json
 
 Run 'ifc-lite ext <command> --help' for command-specific options.
 `);
@@ -267,6 +276,39 @@ async function extTestCommand(args: string[]): Promise<void> {
     }
   }
   process.exit(summary.failed === 0 ? 0 : 1);
+}
+
+// ---------------------------------------------------------------------------
+// capabilities
+// ---------------------------------------------------------------------------
+
+async function extCapabilitiesCommand(args: string[]): Promise<void> {
+  const json = hasFlag(args, '--json');
+  const catalogue = listCapabilityCatalogue();
+  // Compute the risk tier per entry using a representative parse of
+  // the capability shape — most catalogue rows are namespace-level
+  // patterns like `model.read` which compute as their declared tier.
+  const rows = catalogue.map((entry) => {
+    const parsed = parseCapability(entry.raw);
+    const risk = parsed.ok ? computeRisks([parsed.value])[0] : undefined;
+    return {
+      raw: entry.raw,
+      description: entry.description,
+      risk: risk?.tier ?? 'red',
+    };
+  });
+
+  if (json) {
+    process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
+    return;
+  }
+
+  process.stderr.write(`Capabilities (${rows.length} total):\n\n`);
+  for (const row of rows) {
+    const tag = row.risk.toUpperCase().padEnd(6);
+    process.stderr.write(`  [${tag}] ${row.raw}\n`);
+    process.stderr.write(`           ${row.description}\n\n`);
+  }
 }
 
 function getArg(args: string[], flag: string): string | undefined {

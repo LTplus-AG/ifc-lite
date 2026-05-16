@@ -274,8 +274,13 @@ export function ViewerLayout() {
                     if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
                   }}
                 >
-                  <div className="h-full w-full overflow-hidden panel-container">
-                    <HierarchyPanel />
+                  <div className="h-full w-full overflow-hidden panel-container flex flex-col">
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <HierarchyPanel />
+                    </div>
+                    {/* Extension dock.left — collapses when no extension
+                        contributes. Sits beneath the hierarchy panel. */}
+                    <ExtensionDockHost slot="dock.left" className="max-h-[40%] border-t" />
                   </div>
                 </Panel>
 
@@ -317,7 +322,13 @@ export function ViewerLayout() {
                     ) : extensionsPanelVisible ? (
                       <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
                     ) : (
-                      <PropertiesPanel />
+                      <div className="h-full flex flex-col">
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                          <PropertiesPanel />
+                        </div>
+                        {/* Extension dock.right — collapses when empty. */}
+                        <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
+                      </div>
                     )}
                   </div>
                 </Panel>

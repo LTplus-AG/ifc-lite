@@ -17,13 +17,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Download, FilePlus, Palette, RefreshCcw, Upload, X } from 'lucide-react';
+import { Download, FilePlus, GitMerge, Palette, RefreshCcw, Upload, X } from 'lucide-react';
 import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { FlavorMergeDialog } from './FlavorMergeDialog';
 
 interface FlavorDialogProps {
   open: boolean;
@@ -36,6 +36,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   const [activeId, setActiveId] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<{ bytes: Uint8Array; unpacked: UnpackedFlavor } | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<Flavor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -189,6 +190,19 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
                 Cancel
               </Button>
               <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (!preview) return;
+                  setMergeTarget(preview.unpacked.flavor);
+                  setPreview(null);
+                }}
+                disabled={busy}
+              >
+                <GitMerge className="mr-1 h-3.5 w-3.5" />
+                Merge…
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => void handleConfirmImport('save-as-new')}
@@ -316,6 +330,13 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
             )}
           </div>
         )}
+
+        <FlavorMergeDialog
+          open={!!mergeTarget}
+          theirs={mergeTarget}
+          onClose={() => setMergeTarget(null)}
+          onMerged={() => void refresh()}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -145,8 +145,15 @@ fn derived(input: &str) -> IResult<&str, Token<'_>> {
     map(char('*'), |_| Token::Derived)(input)
 }
 
+/// Maximum nesting depth for token recursion (list and typed-value bodies).
+///
+/// Each `(` in the input bumps depth by one. Real-world IFC entities rarely
+/// nest beyond 5-10 levels; 256 leaves comfortable headroom while keeping
+/// the stack bounded against pathological inputs.
+const MAX_NESTING_DEPTH: u32 = 256;
+
 /// Parse typed value: IFCPARAMETERVALUE(0.), IFCBOOLEAN(.T.)
-fn typed_value(input: &str) -> IResult<&str, Token<'_>> {
+fn typed_value_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
     map(
         pair(
             // Type name (all caps with optional numbers/underscores)
@@ -154,7 +161,9 @@ fn typed_value(input: &str) -> IResult<&str, Token<'_>> {
             // Arguments
             delimited(
                 char('('),
-                separated_list0(delimited(ws, char(','), ws), token),
+                separated_list0(delimited(ws, char(','), ws), move |i| {
+                    token_at_depth(i, depth)
+                }),
                 char(')'),
             ),
         ),
@@ -170,6 +179,16 @@ fn ws(input: &str) -> IResult<&str, ()> {
 /// Parse a token with optional surrounding whitespace
 /// Optimized ordering: test cheapest patterns first (single-char markers)
 fn token(input: &str) -> IResult<&str, Token<'_>> {
+    token_at_depth(input, 0)
+}
+
+fn token_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
+    if depth > MAX_NESTING_DEPTH {
+        return Err(nom::Err::Failure(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::TooLarge,
+        )));
+    }
     delimited(
         ws,
         alt((
@@ -180,22 +199,31 @@ fn token(input: &str) -> IResult<&str, Token<'_>> {
             // Then by complexity
             enum_value,     // .XXX.
             string_literal, // 'xxx'
-            list,           // (...)
+            move |i| list_at_depth(i, depth + 1), // (...)
             // Numbers: float before integer since float includes '.'
             float,
             integer,
-            typed_value, // IFCPARAMETERVALUE(0.) - most expensive, last
+            // IFCPARAMETERVALUE(0.) - most expensive, last
+            move |i| typed_value_at_depth(i, depth + 1),
         )),
         ws,
     )(input)
 }
 
 /// Parse list: (1, 2, 3) or nested lists
+/// Test-only wrapper for the depth-0 entry into list.
+#[cfg(test)]
 fn list(input: &str) -> IResult<&str, Token<'_>> {
+    list_at_depth(input, 0)
+}
+
+fn list_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
     map(
         delimited(
             char('('),
-            separated_list0(delimited(ws, char(','), ws), token),
+            separated_list0(delimited(ws, char(','), ws), move |i| {
+                token_at_depth(i, depth)
+            }),
             char(')'),
         ),
         Token::List,
@@ -822,5 +850,39 @@ ENDSEC;\n";
         let mut scanner = EntityScanner::new(content);
         let counts = scanner.count_by_type();
         assert_eq!(counts.get("IFCDOOR"), Some(&1));
+    }
+
+    /// Deeply nested list arguments must return an error rather than
+    /// recursing through the stack until it overflows.
+    #[test]
+    fn test_parse_entity_rejects_excessive_nesting() {
+        let n = (MAX_NESTING_DEPTH as usize) + 64;
+        let mut s = String::from("#1=IFCWALL(");
+        for _ in 0..n {
+            s.push('(');
+        }
+        s.push('1');
+        for _ in 0..n {
+            s.push(')');
+        }
+        s.push_str(");");
+        // Must not panic / overflow; must return Err.
+        assert!(parse_entity(&s).is_err());
+    }
+
+    /// Moderate nesting still parses successfully.
+    #[test]
+    fn test_parse_entity_accepts_moderate_nesting() {
+        let n = 32;
+        let mut s = String::from("#1=IFCWALL(");
+        for _ in 0..n {
+            s.push('(');
+        }
+        s.push('1');
+        for _ in 0..n {
+            s.push(')');
+        }
+        s.push_str(");");
+        assert!(parse_entity(&s).is_ok());
     }
 }

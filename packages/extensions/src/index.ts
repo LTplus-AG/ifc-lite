@@ -84,3 +84,6 @@ export * from './audit/index.js';
 
 // ---------- Capability inference (for promote-to-tool UX)
 export * from './inference/index.js';
+
+// ---------- Signing (Phase 5 prototype)
+export * from './signing/index.js';

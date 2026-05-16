@@ -3,4 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export { loadBundleFromDirectory, buildBundleFromFiles } from './loader.js';
-export { packBundle, unpackBundle } from './iflx.js';
+export {
+  packBundle,
+  unpackBundle,
+  unpackBundleWithSignature,
+  type UnpackResult,
+} from './iflx.js';

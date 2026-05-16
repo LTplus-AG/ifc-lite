@@ -47,6 +47,10 @@ the LLM already wired into the app.
     task tracker: phases, milestones, numbered tasks (`P<n>.T<n>`),
     file paths, acceptance criteria, effort estimates. Check boxes
     as work lands.
+11. [`10-registry-and-signing.md`](./10-registry-and-signing.md) —
+    Phase 5 design: Ed25519 signing scheme, key management, signed
+    `.iflx` envelope, registry architecture sketch, trust UX, and
+    the cryptographic prototype shipped today.
 
 ## Non-goals
 

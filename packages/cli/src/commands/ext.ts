@@ -25,6 +25,12 @@ import {
   type ValidationError,
 } from '@ifc-lite/extensions';
 import { hasFlag, fatal } from '../output.js';
+import {
+  extKeygenCommand,
+  extPackCommand,
+  extSignCommand,
+  extVerifyCommand,
+} from './ext-signing.js';
 
 export async function extCommand(args: string[]): Promise<void> {
   const sub = args[0];
@@ -40,6 +46,18 @@ export async function extCommand(args: string[]): Promise<void> {
     case 'init':
       await extInitCommand(rest);
       return;
+    case 'keygen':
+      await extKeygenCommand(rest);
+      return;
+    case 'pack':
+      await extPackCommand(rest);
+      return;
+    case 'sign':
+      await extSignCommand(rest);
+      return;
+    case 'verify':
+      await extVerifyCommand(rest);
+      return;
     default:
       process.stderr.write(`Unknown ext subcommand: ${sub}\n`);
       printUsage();
@@ -53,8 +71,17 @@ function printUsage(): void {
 Commands:
   validate <path>          Validate a manifest.json or a bundle directory.
                            Flags: --json (machine-readable output)
-  init <directory> [--id <id>] [--name <name>]
-                           Scaffold a minimal extension bundle.
+  init <directory>         Scaffold a minimal extension bundle.
+                           Flags: --id <id>, --name <name>
+  keygen --out <prefix>    Generate an Ed25519 keypair for signing.
+                           Flags: --label <name>
+  pack <bundle-dir>        Pack a bundle directory into a .iflx file.
+                           Flags: --out <bundle.iflx>, --sign --key <private.iflk>
+  sign <bundle>            Sign a bundle directory or unsigned .iflx.
+                           Flags: --key <private.iflk>, --out <bundle.iflx>
+  verify <bundle.iflx>     Inspect a .iflx file. With --key, verify the
+                           signature matches an expected public key.
+                           Flags: --key <public.iflk>, --json
 
 Run 'ifc-lite ext <command> --help' for command-specific options.
 `);

@@ -29,6 +29,7 @@ import type {
   ValidationResult,
 } from '../types.js';
 import { buildBundleFromFiles } from './loader.js';
+import type { SignatureBlock } from '../signing/types.js';
 
 const IFLX_MAGIC = 'iflx';
 const IFLX_VERSION = 1;
@@ -40,13 +41,26 @@ interface IflxEnvelope {
   format: string;
   version: number;
   files: Record<string, string>;
+  /** Optional signature block — present iff the bundle was signed. */
+  signature?: SignatureBlock;
+}
+
+/** Result of `unpackBundleWithSignature`. */
+export interface UnpackResult {
+  bundle: Bundle;
+  /** Raw signature block from the envelope, if present. */
+  signature?: SignatureBlock;
 }
 
 /**
  * Pack a Bundle into a .iflx byte string (gzipped JSON envelope).
  * The resulting bytes are deterministic for a given input.
+ *
+ * Pass `signature` to produce a signed bundle. The signature is
+ * authored by the caller via `signBundle` from `../signing` and
+ * commits to the bundle's canonical content hash.
  */
-export function packBundle(bundle: Bundle): Uint8Array {
+export function packBundle(bundle: Bundle, signature?: SignatureBlock): Uint8Array {
   const files: Record<string, string> = {};
   // Sort for deterministic output.
   const keys = [...bundle.files.keys()].sort();
@@ -59,6 +73,7 @@ export function packBundle(bundle: Bundle): Uint8Array {
     format: IFLX_MAGIC,
     version: IFLX_VERSION,
     files,
+    ...(signature ? { signature } : {}),
   };
   const json = JSON.stringify(envelope);
   return gzipSync(new TextEncoder().encode(json));
@@ -135,6 +150,50 @@ export function unpackBundle(bytes: Uint8Array): ValidationResult<Bundle> {
   return buildBundleFromFiles(files, manifestFile, {
     kind: 'iflx',
   });
+}
+
+/**
+ * Unpack a .iflx byte string and return both the bundle and any
+ * embedded signature block. The signature block is returned RAW —
+ * verification (canonical hash recomputation, key import, crypto
+ * verify) lives in `signing/verify.ts` and is the caller's
+ * responsibility.
+ */
+export function unpackBundleWithSignature(
+  bytes: Uint8Array,
+): ValidationResult<UnpackResult> {
+  // Re-parse the envelope to pull the signature out. We could refactor
+  // unpackBundle to share this path; in practice the dup is small and
+  // keeping unpackBundle's signature stable matters more.
+  let json: string | undefined;
+  try {
+    const unzipped = gunzipSync(bytes);
+    json = new TextDecoder('utf-8', { fatal: true }).decode(unzipped);
+  } catch {
+    // Fall through; the regular unpackBundle returns the structured error.
+  }
+
+  const bundleResult = unpackBundle(bytes);
+  if (!bundleResult.ok) return bundleResult;
+
+  let signature: SignatureBlock | undefined;
+  if (json !== undefined) {
+    try {
+      const env = JSON.parse(json) as IflxEnvelope;
+      if (env.signature) signature = env.signature;
+    } catch {
+      // The bundle unpacks but the envelope re-parse failed; signature
+      // remains undefined. Treat as unsigned rather than fail-closed.
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      bundle: bundleResult.value,
+      signature,
+    },
+  };
 }
 
 function toBase64(bytes: Uint8Array): string {

@@ -1213,11 +1213,48 @@ Hosted URLs, signing, registry. Decision gate: ≥ 50 flavors exported
 in the wild and ≥ 10 distinct authors before starting.
 
 Sketches only; we will write a dedicated implementation plan when this
-phase opens.
+phase opens. The full design lives in
+[`10-registry-and-signing.md`](./10-registry-and-signing.md). Ed25519
+signing primitives + CLI are prototyped today; the hosted registry
+and the trust UX wait for the decision gate.
 
 - [ ] **P5.T1** — Hosted flavor URL service (server endpoint).
   `[upstream]`
-- [ ] **P5.T2** — Ed25519 signing for bundles. `[security]`
+- [x] **P5.T2** — Ed25519 signing for bundles. `[security]`
+  **Where:** `packages/extensions/src/signing/{keys,sign,verify,canonical,types,errors,base64,index}.ts`,
+  envelope extension in `packages/extensions/src/bundle/iflx.ts`
+  (signature field on pack / unpack), CLI in
+  `packages/cli/src/commands/{ext.ts,ext-signing.ts}`.
+  **Acceptance:**
+  - Ed25519 keypair generation, export to/import from `.iflk` JSON
+    files (public and private kinds), fingerprint as colon-hex SHA-256
+    of the 32-byte public key.
+  - `canonicalContentHash` — deterministic SHA-256 over the bundle's
+    file map, insertion-order-independent, with explicit ASCII
+    separators between path/bytes/record so segment boundaries are
+    unambiguous.
+  - `signBundle` produces a `SignatureBlock` committed to the canonical
+    hash. `verifyBundle` recomputes, validates format, imports public
+    key, runs `crypto.subtle.verify`. Throws `SignatureMismatchError`
+    on any failure; `SignatureFormatError` for envelope-shape problems.
+  - `.iflx` envelope grows an optional `signature` field. `packBundle`
+    accepts a signature argument; `unpackBundleWithSignature` returns
+    `{ bundle, signature? }`. Existing `unpackBundle` callers keep
+    working (signature silently ignored).
+  - CLI: `ifc-lite ext keygen --out <prefix>`, `ext pack <dir>`
+    (with optional `--sign --key`), `ext sign <bundle>`,
+    `ext verify <bundle.iflx>` (with optional `--key` for expected
+    fingerprint match).
+  - 26 new tests across keys, canonical hashing, sign+verify happy
+    path, tamper detection, format errors, signed-bundle envelope
+    round-trip. Plus an end-to-end smoke test against the canonical
+    `good` bundle fixture.
+  **Effort:** L. `[security]`
+  Notes: ships as the Phase 5 *prototype* per RFC §10. Trust UX (TOFU
+  history, signers UI), revocation list integration, and the
+  registry service itself remain for the Phase 5 build. Algorithm
+  identifier is in the envelope so we can roll forward without
+  breaking older signed bundles.
 - [ ] **P5.T3** — Registry CI suite (validate, capability hygiene,
   test pass, lint, license check).
 - [ ] **P5.T4** — Public listing UI.
@@ -1225,6 +1262,7 @@ phase opens.
 - [ ] **P5.T6** — Kill-switch list integration.
 - [ ] **P5.T7** — Aggregate-stats pipeline (install count, weekly
   active; no per-user data).
+- [ ] **P5.T8** — TOFU `signer-history` IndexedDB store + viewer UI.
 
 Bump `@ifc-lite/extensions` to `1.0.0` when this phase ships.
 

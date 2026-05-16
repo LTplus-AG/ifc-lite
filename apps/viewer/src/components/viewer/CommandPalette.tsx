@@ -60,6 +60,9 @@ import {
   MapPin,
   PenLine,
   Slice,
+  Layers3,
+  SquareStack,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -308,6 +311,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); } },
       { id: 'view:frame', label: 'Frame Selection', keywords: 'zoom focus selected', category: 'View', icon: Crosshair, shortcut: 'F',
         action: () => { useViewerStore.getState().cameraCallbacks.frameSelection?.(); } },
+      { id: 'view:stacked', label: 'Level — Stacked', keywords: 'level display mode stacked default storey storeys', category: 'View', icon: Layers3,
+        action: () => { useViewerStore.getState().setLevelDisplayMode('stacked'); } },
+      { id: 'view:exploded', label: 'Level — Exploded', keywords: 'level display mode exploded explode lift storey storeys gap', category: 'View', icon: ChevronsUpDown,
+        action: () => { useViewerStore.getState().setLevelDisplayMode('exploded'); } },
+      { id: 'view:solo', label: 'Level — Solo', keywords: 'level display mode solo isolate storey single only', category: 'View', icon: SquareStack,
+        action: () => { useViewerStore.getState().setLevelDisplayMode('solo'); } },
       { id: 'view:projection', label: 'Projection', keywords: 'perspective orthographic ortho toggle switch', category: 'View', icon: Orbit,
         action: () => { useViewerStore.getState().toggleProjectionMode(); } },
       { id: 'view:top', label: 'Top View', keywords: 'camera plan', category: 'View', icon: ArrowUp, shortcut: '1',

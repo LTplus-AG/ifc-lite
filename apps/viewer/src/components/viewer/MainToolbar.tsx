@@ -51,6 +51,9 @@ import {
   DoorClosed,
   AppWindow,
   Slice,
+  Layers3,
+  SquareStack,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -203,6 +206,119 @@ function DrawToolButton({ type, icon: Icon, label, shortcut }: DrawToolButtonPro
         Draw {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * Stacked / Exploded / Solo level display dropdown. Pinned next
+ * to the Quick Floorplan dropdown so storey-related controls
+ * cluster visually. Shows a small purple dot on the trigger when
+ * mode is not Stacked, so the user can tell at a glance that an
+ * Exploded / Solo view is active.
+ *
+ * Gating: parent renders this only when there are ≥ 2 storeys
+ * — single-storey models have no use for level display modes.
+ */
+interface LevelDisplayDropdownProps {
+  availableStoreys: Array<{ modelId: string; expressId: number; name: string; elevation: number }>;
+}
+
+function LevelDisplayDropdown({ availableStoreys }: LevelDisplayDropdownProps) {
+  const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
+  const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
+  const explodedGap = useViewerStore((s) => s.explodedGap);
+  const setExplodedGap = useViewerStore((s) => s.setExplodedGap);
+  const soloStoreyExpressId = useViewerStore((s) => s.soloStoreyExpressId);
+  const setSoloStoreyExpressId = useViewerStore((s) => s.setSoloStoreyExpressId);
+
+  const dirty = levelDisplayMode !== 'stacked';
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Level display mode"
+              className="relative"
+            >
+              {levelDisplayMode === 'exploded' ? (
+                <ChevronsUpDown className="h-4 w-4" />
+              ) : levelDisplayMode === 'solo' ? (
+                <SquareStack className="h-4 w-4" />
+              ) : (
+                <Layers3 className="h-4 w-4" />
+              )}
+              {dirty && (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-purple-500 ring-1 ring-background"
+                />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Level display ({levelDisplayMode})</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent className="w-72">
+        <DropdownMenuLabel>Level display</DropdownMenuLabel>
+        <DropdownMenuCheckboxItem
+          checked={levelDisplayMode === 'stacked'}
+          onCheckedChange={() => setLevelDisplayMode('stacked')}
+        >
+          <Layers3 className="h-4 w-4 mr-2" /> Stacked
+          <span className="ml-auto text-[10px] opacity-50">default</span>
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={levelDisplayMode === 'exploded'}
+          onCheckedChange={() => setLevelDisplayMode('exploded')}
+        >
+          <ChevronsUpDown className="h-4 w-4 mr-2" /> Exploded
+        </DropdownMenuCheckboxItem>
+        {levelDisplayMode === 'exploded' && (
+          <div className="px-2 pb-1.5 pt-1 flex items-center gap-2 text-xs">
+            <span className="text-zinc-500">Gap (m)</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={explodedGap}
+              onChange={(e) => setExplodedGap(parseFloat(e.target.value))}
+              className="w-16 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700
+                bg-white dark:bg-zinc-950 text-xs font-mono rounded
+                focus:outline-none focus:ring-1 focus:ring-purple-500"
+            />
+          </div>
+        )}
+        <DropdownMenuCheckboxItem
+          checked={levelDisplayMode === 'solo'}
+          onCheckedChange={() => setLevelDisplayMode('solo')}
+        >
+          <SquareStack className="h-4 w-4 mr-2" /> Solo
+        </DropdownMenuCheckboxItem>
+        {levelDisplayMode === 'solo' && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-wide">Storey</DropdownMenuLabel>
+            {availableStoreys.map((storey) => (
+              <DropdownMenuItem
+                key={`${storey.modelId}-${storey.expressId}`}
+                onClick={() => setSoloStoreyExpressId(storey.expressId)}
+                className={cn(
+                  soloStoreyExpressId === storey.expressId && 'bg-purple-100 dark:bg-purple-950/40',
+                )}
+              >
+                <Building2 className="h-4 w-4 mr-2" />
+                {storey.name}
+                <span className="ml-auto text-[10px] opacity-60">{storey.elevation.toFixed(1)}m</span>
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1342,6 +1458,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      {/* Level display mode (Stacked / Exploded / Solo). Only
+          surfaces when the active model has at least 2 storeys —
+          single-storey models have nothing useful to show. */}
+      {availableStoreys.length >= 2 && <LevelDisplayDropdown availableStoreys={availableStoreys} />}
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 

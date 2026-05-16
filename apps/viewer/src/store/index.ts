@@ -43,6 +43,7 @@ import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
 import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotationsSlice.js';
 import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
 import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
+import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
 import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
@@ -138,6 +139,7 @@ export type ViewerState = LoadingSlice &
   AnnotationsSlice &
   AddElementSlice &
   SplitToolSlice &
+  LevelDisplaySlice &
   PointCloudSlice & {
     resetViewerState: () => void;
   };
@@ -176,6 +178,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createAnnotationsSlice(...args),
   ...createAddElementSlice(...args),
   ...createSplitToolSlice(...args),
+  ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
 
   // Reset all viewer state when loading new file

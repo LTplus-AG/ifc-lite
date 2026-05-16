@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { Viewport } from './Viewport';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MergeLayersBanner } from './MergeLayersBanner';
@@ -38,6 +39,10 @@ const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
 };
 
 export function ViewportContainer() {
+  // Drive Stacked / Solo / Exploded level display from the slice.
+  // Mount-once hook — it self-gates on mode + gap + model changes.
+  useLevelDisplayEffect();
+
   const { loadFile, loading, clearAllModels, loadFilesSequentially } = useIfc();
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);

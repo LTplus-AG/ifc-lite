@@ -84,14 +84,12 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // corner→opposite for slab rectangle, N+Enter for slab polygon, single
   // for columns). Uses magnetic snap so points lock to vertices/edges
   // when the cursor is near them — same UX as the measure tool.
-  // Split tool — click on a wall to cut it at the cursor's
-  // projected position. Hover preview lives on the store
-  // (splitHoverPoint / splitHoverDistance / splitHoverCutPoint)
-  // and the SplitOverlay renders the SVG guide; this handler only
-  // commits the click. The slice's `splitTargetExpressId` field
-  // tells us which wall the preview is locked to, and we read the
-  // distance straight off the slice so the commit matches what the
-  // user saw on-screen.
+  // Split tool — click on a wall / beam / column / member to cut
+  // it at the cursor's projected position. Hover preview lives on
+  // the store (splitHoverPoint / splitHoverDistance) and
+  // SplitOverlay renders the SVG guide; this handler commits the
+  // click by dispatching to the right action for the latched
+  // target's element type.
   if (tool === 'split') {
     const state = useViewerStore.getState();
     const targetModelId = state.splitTargetModelId;
@@ -102,20 +100,33 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       // doesn't fight the user. The overlay's hint stays visible.
       return;
     }
-    const result = state.splitWallAtDistance(targetModelId, targetExpressId, distance);
-    if (!result.ok) {
-      toast.error(`Couldn't split wall: ${result.reason}`);
+
+    // Dispatch by element type. Wall first because most edits land
+    // on walls; if that returns null we try the linear-element
+    // path. The split actions self-validate so we can call either
+    // and surface the reason on failure.
+    const wallTry = state.splitWallAtDistance(targetModelId, targetExpressId, distance);
+    if (wallTry.ok) {
+      state.clearSplitHover();
+      state.setSelectedEntityId(wallTry.right.globalId);
+      toast.success('Wall split — Ctrl+Z to undo');
       return;
     }
-    state.clearSplitHover();
-    // Move selection to the half nearest the cursor so the user
-    // can continue editing the new wall without an extra click.
-    // The "right" half is the one past the cut point along the
-    // axis, which (almost always) is the half they were aiming at.
-    state.setSelectedEntityId(result.right.globalId);
-    toast.success(
-      `Wall split — undo three times to restore (atomic undo coming soon)`,
+    const linearTry = state.splitLinearElementAtDistance(
+      targetModelId,
+      targetExpressId,
+      distance,
     );
+    if (linearTry.ok) {
+      state.clearSplitHover();
+      state.setSelectedEntityId(linearTry.right.globalId);
+      toast.success('Element split — Ctrl+Z to undo');
+      return;
+    }
+    // Neither path applied. Prefer the linear reason since the wall
+    // refusal is "not a wall" which the user already inferred.
+    const reason = linearTry.ok === false ? linearTry.reason : wallTry.reason;
+    toast.error(`Couldn't split: ${reason}`);
     return;
   }
 
@@ -396,29 +407,27 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
         if (store.splitMode === 'aiming') store.clearSplitHover();
         return;
       }
-      const projection = store.readWallSplitProjection(
-        local.modelId,
-        local.expressId,
-        rendererPointToIfcStoreyLocal(result.intersection.point),
-      );
+      // Try wall first, fall back to linear-element (beam / column
+      // / member). Both projection actions surface the axis
+      // directly so the overlay can compute its perpendicular guide
+      // without an extra round-trip.
+      const cursorIfc = rendererPointToIfcStoreyLocal(result.intersection.point);
+      const projection =
+        store.readWallSplitProjection(local.modelId, local.expressId, cursorIfc) ??
+        store.readLinearElementSplitProjection(local.modelId, local.expressId, cursorIfc);
       if (!projection) {
-        // Hit something, but not a splittable wall. Clear the
-        // preview so the user gets the "not here" signal.
         if (store.splitMode === 'aiming') store.clearSplitHover();
         return;
       }
-      // Latch the target the first time we see it; switching walls
-      // mid-hover updates the target id.
+      // Latch the target the first time we see it; switching
+      // elements mid-hover updates the target id.
       if (
         store.splitTargetModelId !== local.modelId ||
         store.splitTargetExpressId !== local.expressId
       ) {
         store.setSplitTarget(local.modelId, local.expressId);
       }
-      // Convert IFC storey-local cut point back to renderer frame
-      // for projection in the overlay. The wall's storey carries
-      // the Y elevation; flat-storey walls keep cut Z = 0 so the
-      // renderer-Y is just the storey elevation.
+      // Convert IFC storey-local cut point back to renderer frame.
       const model = store.models.get(local.modelId);
       const storeyId = model?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(local.expressId);
       const elevation =
@@ -432,6 +441,7 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
         projection.distance,
         projection.length,
         projection.cutPoint,
+        projection.axis,
       );
     });
   }

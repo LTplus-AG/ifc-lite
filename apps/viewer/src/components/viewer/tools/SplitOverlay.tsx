@@ -40,9 +40,9 @@ export function SplitOverlay() {
   const splitHoverPoint = useViewerStore((s) => s.splitHoverPoint);
   const splitHoverDistance = useViewerStore((s) => s.splitHoverDistance);
   const splitHoverLength = useViewerStore((s) => s.splitHoverLength);
+  const splitHoverCutPoint = useViewerStore((s) => s.splitHoverCutPoint);
+  const splitHoverAxisDirection = useViewerStore((s) => s.splitHoverAxisDirection);
   const splitTargetModelId = useViewerStore((s) => s.splitTargetModelId);
-  const splitTargetExpressId = useViewerStore((s) => s.splitTargetExpressId);
-  const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
   const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
 
@@ -94,7 +94,7 @@ export function SplitOverlay() {
         role="status"
       >
         <KnifeIcon className="h-3.5 w-3.5" />
-        <span>Hover over a wall to split — Esc to exit</span>
+        <span>Hover over a wall, beam, column, or member — Esc to exit</span>
       </div>
     );
   }
@@ -108,30 +108,38 @@ export function SplitOverlay() {
   const cutScreen = project(cutWorld);
   if (!cutScreen) return null;
 
-  // Build the perpendicular guide. We project two points along the
-  // wall axis (start + end) to find the screen-space wall direction,
-  // then rotate 90° to draw a perpendicular through the cut point.
-  // Pulling the endpoints from `readWallEndpoints` keeps the
-  // overlay free of math the slice already knows how to do.
+  // Build the perpendicular guide from the slice-provided IFC
+  // axis. Convert the unit-length axis from IFC Z-up to the
+  // renderer's Y-up frame (renderer = (ifc.x, ifc.z, -ifc.y)),
+  // project two world points 1 m apart along it, and rotate 90° in
+  // screen space to draw the perpendicular through the cut point.
+  // Storey elevation cancels out in the screen delta so we don't
+  // need to fetch it here — both projected points share the same
+  // additive offset.
   let guideDx = 0;
   let guideDy = -1;
-  if (splitTargetModelId !== null && splitTargetExpressId !== null) {
-    const eps = readWallEndpoints(splitTargetModelId, splitTargetExpressId);
-    if (eps) {
-      const startScreen = project({ x: eps.start[0], y: eps.start[2], z: -eps.start[1] });
-      const endScreen = project({ x: eps.end[0], y: eps.end[2], z: -eps.end[1] });
-      if (startScreen && endScreen) {
-        const axisDx = endScreen.x - startScreen.x;
-        const axisDy = endScreen.y - startScreen.y;
-        const len = Math.hypot(axisDx, axisDy);
-        if (len > 1e-3) {
-          // Perpendicular in screen space is (-dy, dx).
-          guideDx = -axisDy / len;
-          guideDy = axisDx / len;
-        }
+  if (splitTargetModelId !== null && splitHoverAxisDirection) {
+    const [ax, ay, az] = splitHoverAxisDirection;
+    const farScreen = project({
+      x: cutWorld.x + ax,
+      y: cutWorld.y + az,
+      z: cutWorld.z - ay,
+    });
+    if (farScreen) {
+      const axisDx = farScreen.x - cutScreen.x;
+      const axisDy = farScreen.y - cutScreen.y;
+      const len = Math.hypot(axisDx, axisDy);
+      if (len > 1e-3) {
+        // Perpendicular in screen space is (-dy, dx).
+        guideDx = -axisDy / len;
+        guideDy = axisDx / len;
       }
     }
   }
+  // Suppress unused-import warning — `splitHoverCutPoint` is read
+  // from the store so the overlay re-renders on cut-point changes,
+  // even though the perpendicular math uses cutWorld directly.
+  void splitHoverCutPoint;
 
   const gx1 = cutScreen.x - guideDx * GUIDE_HALF_LENGTH_PX;
   const gy1 = cutScreen.y - guideDy * GUIDE_HALF_LENGTH_PX;

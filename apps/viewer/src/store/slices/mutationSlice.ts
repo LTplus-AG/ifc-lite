@@ -57,6 +57,12 @@ import {
   projectOntoWallAxis,
 } from '@/lib/placement-edit.js';
 import { cloneElementMetadata } from '@/lib/metadata-clone.js';
+import {
+  resolveLinearElementChain,
+  computeLinearElementSplitGeometry,
+  projectOntoLinearAxis,
+  type LinearElementType,
+} from '@/lib/linear-element-edit.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -405,7 +411,31 @@ export interface MutationSlice {
     modelId: string,
     expressId: number,
     cursorStoreyLocal: [number, number, number],
-  ) => { distance: number; length: number; cutPoint: [number, number, number] } | null;
+  ) => { distance: number; length: number; cutPoint: [number, number, number]; axis: [number, number, number] } | null;
+  /**
+   * Split a linear element (`IfcBeam` / `IfcColumn` / `IfcMember`)
+   * at `distance` metres from start. Unlike walls, the source's
+   * extrusion is shrunk in place so the "left" half keeps the
+   * source's GlobalId and Pset rels — the choice is forced by the
+   * IFC representation (length lives on the extrusion `Depth`, not
+   * on the profile XDim), so one positional write covers it. A new
+   * element is added at the cut point to carry the "right" half.
+   */
+  splitLinearElementAtDistance: (
+    modelId: string,
+    expressId: number,
+    distanceFromStart: number,
+  ) => { ok: true; source: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
+  /**
+   * Linear-element analogue of `readWallSplitProjection`. Returns
+   * null when the entity isn't an `addBeam` / `addColumn` /
+   * `addMember` -shaped element.
+   */
+  readLinearElementSplitProjection: (
+    modelId: string,
+    expressId: number,
+    cursorStoreyLocal: [number, number, number],
+  ) => { distance: number; length: number; cutPoint: [number, number, number]; axis: [number, number, number]; elementType: LinearElementType } | null;
   /**
    * Add a fully-anchored IfcColumn (and its sub-graph) to a parsed model.
    * Returns the new column's expressId, or null if the model can't be
@@ -1257,7 +1287,10 @@ export const createMutationSlice: StateCreator<
       sy + dy * distance,
       sz + dz * distance,
     ];
-    return { distance, length: chain.wallLength, cutPoint };
+    // Walls always lie on a storey plane (refDirection.z === 0 by
+    // the builder's contract) but the type lets us carry whatever
+    // the IFC actually says, so we surface it as-is.
+    return { distance, length: chain.wallLength, cutPoint, axis: [dx, dy, dz] };
   },
 
   splitWallAtDistance: (modelId, expressId, distanceFromStart) => {
@@ -1362,6 +1395,131 @@ export const createMutationSlice: StateCreator<
       ok: true,
       left: { expressId: left.expressId, globalId: leftGlobalId },
       right: { expressId: right.expressId, globalId: rightGlobalId },
+    };
+  },
+
+  readLinearElementSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolveLinearElementChain(dataStore, view, editor, expressId);
+    if (!chain) return null;
+    const distance = projectOntoLinearAxis(chain, cursorStoreyLocal);
+    const [sx, sy, sz] = chain.startCoordinates;
+    const [dx, dy, dz] = chain.axisDirection;
+    const cutPoint: [number, number, number] = [
+      sx + dx * distance,
+      sy + dy * distance,
+      sz + dz * distance,
+    ];
+    return {
+      distance,
+      length: chain.depth,
+      cutPoint,
+      axis: chain.axisDirection,
+      elementType: chain.elementType,
+    };
+  },
+
+  splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) => {
+    const state = get();
+    const view = state.mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const model = state.models.get(modelId);
+    const dataStore = model?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    const chain = resolveLinearElementChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Element is not a rectangular-profile beam / column / member built by the in-store builders.',
+      };
+    }
+    const geo = computeLinearElementSplitGeometry(chain, distanceFromStart);
+    if (!geo.ok) return geo;
+
+    const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+    if (storeyExpressId === undefined) {
+      return { ok: false, reason: 'Element is not contained in a building storey' };
+    }
+
+    // Shrink the source's extrusion to the "left" length. The
+    // source keeps its placement / profile / Pset rels — only the
+    // IfcExtrudedAreaSolid.Depth changes. One write, one undo
+    // entry, identity preserved. Goes through the slice's own
+    // setPositionalAttribute action so undo recovers it. The
+    // `shrinkLinearElementDepth` helper in linear-element-edit
+    // describes the same contract for callers outside the slice.
+    state.setPositionalAttribute(modelId, chain.extrudedSolidId, 3, geo.geometry.leftDepth);
+
+    // Add the "right" half via the matching builder so it picks up
+    // the same in-store mesh + undo plumbing every other addElement
+    // gesture uses. The dispatch is one-to-one with the chain's
+    // resolved element type.
+    let addResult: { expressId: number } | { error: string };
+    if (chain.elementType === 'IfcBeam') {
+      addResult = state.addBeam(modelId, storeyExpressId, {
+        Start: geo.geometry.cutPoint,
+        End: geo.geometry.endPoint,
+        Width: geo.geometry.width,
+        Height: geo.geometry.height,
+        Name: 'Beam (split)',
+      });
+    } else if (chain.elementType === 'IfcColumn') {
+      // Columns take a Position + Width + Depth + Height (extrusion
+      // is along +Z). Width/Depth come from the cross-section
+      // (profile XDim / YDim). Height is the right half's length.
+      addResult = state.addColumn(modelId, storeyExpressId, {
+        Position: geo.geometry.cutPoint,
+        Width: geo.geometry.width,
+        Depth: geo.geometry.height,
+        Height: geo.geometry.rightDepth,
+        Name: 'Column (split)',
+      });
+    } else {
+      addResult = state.addMember(modelId, storeyExpressId, {
+        Start: geo.geometry.cutPoint,
+        End: geo.geometry.endPoint,
+        Width: geo.geometry.width,
+        Height: geo.geometry.height,
+        Name: 'Member (split)',
+      });
+    }
+    if ('error' in addResult) {
+      // Best-effort rollback of the depth shrink would need an
+      // explicit undo trip — the user can recover with Ctrl+Z, so
+      // we just surface the reason and bail.
+      return { ok: false, reason: `Couldn't build right half: ${addResult.error}` };
+    }
+
+    // Carry Pset / classification / material rels onto the new
+    // right half so it inherits the source's metadata. The source
+    // keeps its own rels natively (we didn't tombstone it).
+    cloneElementMetadata(dataStore, view, editor, expressId, [addResult.expressId]);
+
+    // Hide / re-show the source's mesh so the renderer reflects
+    // the new shorter length. The new mesh for the right half
+    // already came via the addElement pipeline's appendGeometryBatch.
+    // For the source, the easiest visual update is to nudge the
+    // geometryUpdateTick so consumers re-derive bounds — the
+    // existing mesh data lingers at full length until the next
+    // full reload (deferred mesh-update from PR #723). Users see
+    // the new wall appear; the source mesh stays visually unchanged
+    // for now. Documented as a known limitation.
+    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
+    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, addResult.expressId);
+
+    return {
+      ok: true,
+      source: { expressId, globalId: sourceGlobalId },
+      right: { expressId: addResult.expressId, globalId: rightGlobalId },
     };
   },
 

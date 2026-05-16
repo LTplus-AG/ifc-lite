@@ -152,15 +152,20 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     [modelId, entityId, rotateEntity],
   );
 
-  // Resolve whether the selected entity has a resizable wall chain
-  // (rectangle profile, explicit RefDirection, etc.). When true,
-  // the Split action surfaces in the actions row — keeps clutter
-  // out of the panel for unrelated selections.
+  // Resolve whether the selected entity can be split. Two paths:
+  // walls (rectangle profile chain) and linear elements (beam /
+  // column / member). The Split action surfaces only when the
+  // entity matches one of them — keeps panel chrome out of the
+  // user's way for unrelated selections.
   const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
+  const readLinearElementSplitProjection = useViewerStore((s) => s.readLinearElementSplitProjection);
   const splittable = useMemo(() => {
-    return readWallEndpoints(modelId, entityId) !== null;
+    if (readWallEndpoints(modelId, entityId) !== null) return true;
+    // Use [0,0,0] as a probe — we only care whether the chain
+    // resolves, not the projection value.
+    return readLinearElementSplitProjection(modelId, entityId, [0, 0, 0]) !== null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, entityId, mutationVersion, readWallEndpoints]);
+  }, [modelId, entityId, mutationVersion, readWallEndpoints, readLinearElementSplitProjection]);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const setSplitTarget = useViewerStore((s) => s.setSplitTarget);
   const onSplit = useCallback(() => {

@@ -44,6 +44,14 @@ export interface SplitToolSlice {
   splitHoverLength: number | null;
   /** Cut point in storey-local space, derived from distance + wall axis. */
   splitHoverCutPoint: [number, number, number] | null;
+  /**
+   * Unit-length axis direction in storey-local IFC space (Z-up).
+   * Used by the overlay to compute the perpendicular guide line
+   * without re-walking the IFC chain. Element-type-agnostic — wall
+   * axis lies on the storey plane, beam/member axis can have a Z
+   * component, column axis is `[0, 0, 1]`.
+   */
+  splitHoverAxisDirection: [number, number, number] | null;
 
   setSplitTarget: (modelId: string | null, expressId: number | null) => void;
   setSplitHover: (
@@ -51,6 +59,7 @@ export interface SplitToolSlice {
     distance: number | null,
     length: number | null,
     cutPoint: [number, number, number] | null,
+    axisDirection: [number, number, number] | null,
   ) => void;
   clearSplitHover: () => void;
 }
@@ -63,6 +72,7 @@ export const createSplitToolSlice: StateCreator<SplitToolSlice, [], [], SplitToo
   splitHoverDistance: null,
   splitHoverLength: null,
   splitHoverCutPoint: null,
+  splitHoverAxisDirection: null,
 
   setSplitTarget: (modelId, expressId) =>
     set({
@@ -76,13 +86,15 @@ export const createSplitToolSlice: StateCreator<SplitToolSlice, [], [], SplitToo
       splitHoverDistance: null,
       splitHoverLength: null,
       splitHoverCutPoint: null,
+      splitHoverAxisDirection: null,
     }),
-  setSplitHover: (hoverPoint, distance, length, cutPoint) =>
+  setSplitHover: (hoverPoint, distance, length, cutPoint, axisDirection) =>
     set({
       splitHoverPoint: hoverPoint,
       splitHoverDistance: distance,
       splitHoverLength: length,
       splitHoverCutPoint: cutPoint,
+      splitHoverAxisDirection: axisDirection,
       splitMode: hoverPoint !== null ? 'aiming' : 'idle',
     }),
   clearSplitHover: () =>
@@ -94,5 +106,6 @@ export const createSplitToolSlice: StateCreator<SplitToolSlice, [], [], SplitToo
       splitHoverDistance: null,
       splitHoverLength: null,
       splitHoverCutPoint: null,
+      splitHoverAxisDirection: null,
     }),
 });

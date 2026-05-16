@@ -20,6 +20,7 @@ import {
 import type { Tool } from './types.js';
 import { resolveModel, okResult } from './util.js';
 import { loadIfcModel } from '../loader.js';
+import { resolveSafePath } from '../safe-path.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 export const modelInfo: Tool = {
@@ -106,11 +107,16 @@ export const modelLoad: Tool = {
     additionalProperties: false,
   },
   async handler(input, ctx) {
-    const filePath = input.file_path as string;
+    // Resolve the LLM-supplied path through the safe-path policy first.
+    // The resulting absolute path is symlink-canonicalised and bounds-checked
+    // before we touch the filesystem in `loadIfcModel`.
+    const filePath = await resolveSafePath(input.file_path, ctx, 'read');
     try {
       const loaded = await loadIfcModel(filePath, {
         modelId: input.model_id as string | undefined,
-        allowedPaths: ctx.config.allowedPaths,
+        // Path was already validated; loader's secondary check would be a
+        // tautology, so pass a single-entry allowlist matching the file.
+        allowedPaths: [filePath],
       });
       ctx.registry.add(loaded);
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
@@ -119,6 +125,7 @@ export const modelLoad: Tool = {
         { id: loaded.id, name: loaded.name, schema: loaded.store.schemaVersion, entityCount: loaded.store.entityCount },
       );
     } catch (err) {
+      if (err instanceof ToolExecutionError) throw err;
       throw new ToolExecutionError({
         code: ToolErrorCode.PARSE_FAILED,
         message: `Failed to load '${filePath}': ${(err as Error).message}`,

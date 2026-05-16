@@ -103,15 +103,14 @@ bad input, with tests for all of it.
   Notes: `pnpm-workspace.yaml` already covers `packages/*`; `turbo.json`
   pipeline already covers the standard scripts. No edits required.
 
-- [ ] **P0.T3** — Wire `@ifc-lite/extensions` into the viewer's
-  dependency graph (not yet imported).
+- [x] **P0.T3** — Wire `@ifc-lite/extensions` into the viewer's
+  dependency graph.
   **Where:** `apps/viewer/package.json`.
   **Depends on:** P0.T1.
   **Acceptance:** workspace install resolves; viewer still builds.
   **Effort:** S.
-  Notes: deferred to Phase 1. Adding it to viewer's deps without an
-  import would be churn; the wire-up belongs to the first viewer-side
-  loader change.
+  Notes: shipped with the P1 UI batch alongside the first imports
+  (originally deferred from P0 to avoid an import-less dep entry).
 
 ### Milestone 0.B — Manifest schema
 

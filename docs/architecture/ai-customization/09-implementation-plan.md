@@ -378,18 +378,32 @@ named, persistent tool. No AI authoring. No new permissions surface.
   `onModelLoad`) — Phase 1.B's host integration narrows initial usage
   to `onStartup` + `onCommand:<id>` but the dispatcher is full-fat.
 
-- [ ] **P1.T6** — Sandbox wiring. Per-extension QuickJS context with
-  capability-scoped `ctx`.
-  **Where:** `packages/extensions/src/host/runtime.ts`,
-  extends `packages/sandbox/src/bridge.ts`.
+- [~] **P1.T6** — Sandbox wiring. Per-extension sandbox handle with
+  capability-derived permissions and per-method capability checking.
+  **Where:** `packages/extensions/src/host/{permissions,runtime,check}.ts`.
   **Depends on:** P0.T7, P1.T5.
-  **Acceptance:** activation creates a context, calls `entry.activate(ctx)`
-  if present; `ctx` exposes only fields whose capabilities are
-  granted. Tests assert grant ↔ ctx-field equivalence.
+  **Acceptance:**
+  - `capabilitiesToPermissions` maps the granted capability set to the
+    existing `SandboxPermissions` (model/query/viewer/mutate/store/
+    export/files/lens). Outer-ring whole-namespace gate.
+  - `ExtensionRuntime` manages one sandbox per active extension via a
+    pluggable `RuntimeSandboxFactory` (viewer plugs `@ifc-lite/sandbox`
+    in; tests use a stub). Idempotent activate / deactivate /
+    disposeAll. Tracks `activatedAt`, granted capabilities, and
+    derived permissions per active record.
+  - `checkMethodCall` / `assertMethodCall` / `CapabilityDeniedError` —
+    inner-ring per-method check used by the future bridge wrapper.
+  - 38 new tests covering permission derivation across every capability
+    scope, activation lifecycle, idempotence, factory error
+    propagation, and both pass and deny paths for the method check.
   **Effort:** L. `[security]`
-  Notes: deferred — requires extending the existing sandbox bridge
-  with per-capability gating. Substantial security-sensitive work
-  best tackled in a focused review-friendly diff.
+  Notes: **Scoped deviation.** The original P1.T6 also called for
+  evaluating `entry.activate(ctx)` at activation time. That requires
+  settling a cross-realm `ctx` calling convention for QuickJS (the
+  existing sandbox uses globals, not parameters). That convention
+  design is its own focused diff and lands with the viewer-side UI
+  wiring; the runtime here exposes the sandbox handle so the host can
+  drive script evaluation when ready.
 
 ### Milestone 1.C — Host integration
 

@@ -9,3 +9,20 @@ export {
   type LoadedExtensionStatus,
 } from './loader.js';
 export { ActivationDispatcher, type ActivationListener } from './activation.js';
+export {
+  capabilitiesToPermissions,
+  type SandboxPermissionsLike,
+} from './permissions.js';
+export {
+  ExtensionRuntime,
+  type ExtensionRuntimeOptions,
+  type RuntimeSandboxHandle,
+  type RuntimeSandboxFactory,
+  type RuntimeSandboxCreateOptions,
+  type ActivationRecord,
+} from './runtime.js';
+export {
+  checkMethodCall,
+  assertMethodCall,
+  CapabilityDeniedError,
+} from './check.js';

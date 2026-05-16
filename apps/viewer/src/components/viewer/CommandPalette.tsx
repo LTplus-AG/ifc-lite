@@ -339,6 +339,58 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
       { id: 'tool:edit-mode', label: 'Toggle Edit Mode', keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools', icon: PenLine, shortcut: 'E',
         action: () => { useViewerStore.getState().toggleEditEnabled(); } },
+      // Direct draw-tool shortcuts — each one selects an element type
+      // AND enters the addElement tool. The setActiveTool side effect
+      // auto-enables edit mode, so these work from a cold start with
+      // no extra clicks. See `addElementSlice`.
+      { id: 'tool:draw-wall', label: 'Draw Wall', keywords: 'wall partition draw place add ifcwall', category: 'Tools', icon: Box, shortcut: 'W',
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAddElementType('wall');
+          s.setActiveTool('addElement');
+        } },
+      { id: 'tool:draw-slab', label: 'Draw Slab', keywords: 'slab floor ceiling draw place add ifcslab', category: 'Tools', icon: Box,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAddElementType('slab');
+          s.setActiveTool('addElement');
+        } },
+      { id: 'tool:draw-column', label: 'Draw Column', keywords: 'column post pillar draw place add ifccolumn', category: 'Tools', icon: Box,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAddElementType('column');
+          s.setActiveTool('addElement');
+        } },
+      { id: 'tool:draw-beam', label: 'Draw Beam', keywords: 'beam joist draw place add ifcbeam structural', category: 'Tools', icon: Box,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAddElementType('beam');
+          s.setActiveTool('addElement');
+        } },
+      { id: 'tool:draw-door', label: 'Place Door', keywords: 'door opening draw place add ifcdoor', category: 'Tools', icon: Box,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAddElementType('door');
+          s.setActiveTool('addElement');
+        } },
+      { id: 'tool:draw-window', label: 'Place Window', keywords: 'window opening draw place add ifcwindow glazing', category: 'Tools', icon: Box,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAddElementType('window');
+          s.setActiveTool('addElement');
+        } },
+      { id: 'tool:draw-space', label: 'Draw Space (Room)', keywords: 'space room zone draw place add ifcspace', category: 'Tools', icon: Box,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAddElementType('space');
+          s.setActiveTool('addElement');
+        } },
+      { id: 'tool:draw-roof', label: 'Draw Roof', keywords: 'roof draw place add ifcroof', category: 'Tools', icon: Box,
+        action: () => {
+          const s = useViewerStore.getState();
+          s.setAddElementType('roof');
+          s.setActiveTool('addElement');
+        } },
     );
 
     // ── Visibility ──

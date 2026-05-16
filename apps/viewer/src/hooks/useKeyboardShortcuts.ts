@@ -103,6 +103,19 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       toggleEditEnabled();
     }
 
+    // W = wall draw tool. Only fires while edit mode is on so casual
+    // viewers never accidentally enter an authoring tool. The
+    // implementation reuses the existing addElement state machine
+    // (see `addElementSlice` and `AddElementOverlay`).
+    if (key === 'w' && !ctrl && !shift) {
+      const state = useViewerStore.getState();
+      if (state.editEnabled) {
+        e.preventDefault();
+        state.setAddElementType('wall');
+        state.setActiveTool('addElement');
+      }
+    }
+
     // Basket controls (automatic context source)
     // I = Isolate from current context
     if (key === 'i' && !ctrl && !shift) {
@@ -281,6 +294,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'P', description: 'Annotate tool — drop a pin with a note', category: 'Tools' },
   { key: 'X', description: 'Section tool', category: 'Tools' },
   { key: 'E', description: 'Toggle edit mode (unlocks property + geometry edits)', category: 'Tools' },
+  { key: 'W', description: 'Draw Wall (requires edit mode)', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },
   { key: 'Ctrl+C', description: 'Clear measurements (Measure tool)', category: 'Tools' },

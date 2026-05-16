@@ -5,18 +5,9 @@
 name: Server Binaries
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/server-binaries.yml'
-      - '.github/workflows/release.yml'
-      - '.cargo/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'apps/server/**'
-      - 'rust/**'
-      - 'rust-toolchain.toml'
+  # push:main intentionally dropped — branch-protected PR runs already
+  # validate the same SHA, and the release event re-validates before
+  # uploading binaries. See PR that introduced this change.
   pull_request:
     paths:
       - '.github/workflows/server-binaries.yml'
@@ -32,7 +23,12 @@ on:
       - published
   workflow_dispatch:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel obsolete runs on force-push; release/workflow_dispatch
+  # runs share the workflow group too, but those are gated by
+  # event_name so they won't trample real releases.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

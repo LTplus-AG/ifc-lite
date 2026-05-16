@@ -1,13 +1,15 @@
 name: Test Templates
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/create-ifc-lite/**'
+  # push:main intentionally dropped — branch-protected PR runs validate
+  # the same SHA before merge.
   pull_request:
     paths:
       - 'packages/create-ifc-lite/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

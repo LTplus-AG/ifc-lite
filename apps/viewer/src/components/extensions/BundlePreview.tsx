@@ -45,12 +45,17 @@ export function BundlePreview({ bundle }: BundlePreviewProps) {
   return (
     <div className="flex h-[420px] gap-3">
       {/* File list */}
-      <ul className="w-48 shrink-0 overflow-y-auto rounded border bg-muted/30 text-[11px]">
+      <ul
+        className="w-48 shrink-0 overflow-y-auto rounded border bg-muted/30 text-[11px]"
+        role="listbox"
+        aria-label="Bundle files"
+      >
         {paths.map((path) => (
-          <li key={path}>
+          <li key={path} role="option" aria-selected={selected === path}>
             <button
               type="button"
               onClick={() => setSelected(path)}
+              aria-label={`View ${path}`}
               className={cn(
                 'w-full text-left px-2 py-1 font-mono break-all transition-colors',
                 selected === path ? 'bg-primary/15 text-primary' : 'hover:bg-muted',

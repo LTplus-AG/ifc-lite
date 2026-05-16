@@ -845,8 +845,13 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 ### Phase 2 gate
 
 - [ ] All P2 tasks checked.
-- [ ] Authoring success rate ≥ 70% on a labelled benchmark (10
+- [~] Authoring success rate ≥ 70% on a labelled benchmark (10
   prompts; bundle installs ≤ 4 repair iterations).
+  Notes: benchmark harness shipped in `packages/extensions/src/eval/authoring-bench.ts`
+  with the 10 curated prompts + targets + stub-LLM smoke test
+  (`eval/authoring-bench.test.ts`). Real-LLM run pending; the harness
+  is wired so a maintainer plugs an Anthropic client into `step` and
+  runs the bench before each release.
 - [ ] Cost regression: typical authoring session ≤ planned budget.
 - [ ] Security review of T11, T26.
 - [ ] Walkthrough demo: chat → plan → tested bundle → install →
@@ -1209,14 +1214,16 @@ Action log + pattern miner + personal memory + SDK-update repair.
   simulation. Guarded by `eval/loops.test.ts > eval: pattern miner
   loop > surfaces the planted load→lens→export pattern as the top
   suggestion`.
-- [ ] Memory extractor evals pass at the targeted thresholds.
-  Notes: extractor + blocklist tested; thresholds not yet defined,
-  needs a labelled benchmark set.
+- [x] Memory extractor evals pass at the targeted thresholds.
+  Guarded by `eval/memory-extractor-eval.test.ts`: precision ≥ 0.9,
+  recall ≥ 0.5, leak rate = 0 across a 7-fixture labelled set
+  covering preferences, modal-verb noise, GUID/path/email/key leaks.
 - [~] SDK-bump dry run: representative installed-extension set passes
   with the repair loop fixing ≥ 80% of failures.
   Notes: bucketing tested via `eval/loops.test.ts > P4 gate: SDK-bump
   dry run`; the ≥ 80% repair-success threshold can't be verified
-  without running the AI authoring loop in-test.
+  without running the AI authoring loop in-test (covered by the
+  separate P2 gate via `eval/authoring-bench.ts`).
 - [ ] Changeset bumps `@ifc-lite/extensions` to `0.9.0`.
 
 ---

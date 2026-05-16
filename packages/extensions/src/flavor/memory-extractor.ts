@@ -68,8 +68,10 @@ const DEFAULT_BLOCKLIST: readonly RegExp[] = [
   /#\d{2,}/,
   // File paths / extensions
   /[a-zA-Z]:\\[^\s]+|\/[^\s]*\/[^\s]*|[\w-]+\.(ifc|csv|json|glb|gltf|pdf|png|jpg|step|stp|sat|dwg|dxf)/i,
-  // Email-like
-  /\b\S+@\S+\.\S+\b/,
+  // Email-like — accept truncated forms (e.g. "ops@example.") that
+  // get cut by the sentence-boundary capture, not just full RFC
+  // addresses. Any `@` with surrounding non-whitespace is suspect.
+  /\b\S+@\S+\b/,
   // API key fragments
   /\bsk-[A-Za-z0-9]{16,}\b/,
   /\bsk-ant-[A-Za-z0-9-]+/,

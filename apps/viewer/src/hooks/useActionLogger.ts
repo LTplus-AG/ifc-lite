@@ -111,9 +111,12 @@ export function useActionLogger(): void {
     const unsubscribe = useViewerStore.subscribe((state) => {
       const next = state as unknown as ActionLoggerStateShape;
       for (const event of detectActions(prev, next)) {
-        // Type system can't infer the discriminated union →
-        // emitAction's generic together; cast is safe because
-        // EmittedAction is built from ActionIntent + ActionParams.
+        // TypeScript can't pair `event.intent` (discriminated union)
+        // with emitAction's `<K extends ActionIntent>` generic across
+        // an iterator. The pairing is provably correct — every
+        // EmittedAction is built from a matching `(intent, params)`
+        // pair in detectActions — so the runtime call is type-safe
+        // even though the inferencer can't see it.
         host.emitAction(event.intent, event.params as never);
       }
       prev = next;

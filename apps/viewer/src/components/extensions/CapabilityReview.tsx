@@ -175,10 +175,12 @@ export function CapabilityReview({
           </div>
         )}
 
-        <div className="flex items-center gap-1 border-b">
+        <div className="flex items-center gap-1 border-b" role="tablist" aria-label="Bundle inspection mode">
           <button
             type="button"
             onClick={() => setTab('capabilities')}
+            role="tab"
+            aria-selected={tab === 'capabilities'}
             className={cn(
               'flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
               tab === 'capabilities'
@@ -192,6 +194,8 @@ export function CapabilityReview({
           <button
             type="button"
             onClick={() => setTab('source')}
+            role="tab"
+            aria-selected={tab === 'source'}
             className={cn(
               'flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
               tab === 'source'

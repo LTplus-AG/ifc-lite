@@ -178,6 +178,8 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
                     </div>
                     <div
                       className={`grid gap-2 text-[11px] ${hasBase ? 'grid-cols-3' : 'grid-cols-2'}`}
+                      role="radiogroup"
+                      aria-label={`Resolve ${conflict.kind} conflict on ${conflict.key}`}
                     >
                       <ResolutionChip
                         label="Theirs"
@@ -237,6 +239,9 @@ function ResolutionChip({
     <button
       type="button"
       onClick={onClick}
+      role="radio"
+      aria-checked={active}
+      aria-label={`Pick ${label}`}
       className={`text-left rounded border px-2 py-1.5 transition-colors ${
         active
           ? 'border-primary bg-primary/10'

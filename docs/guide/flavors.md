@@ -29,7 +29,10 @@ If any step fails the host rolls back: the previously-active flavor's state is r
 
 The status bar at the bottom of the viewer shows a small palette icon with the active flavor's name (or **Default** when none is active). Click it to open the **Flavors dialog**.
 
-![Status bar chip](TODO: screenshot — status bar with palette icon)
+!!! info "Visual reference"
+    The chip appears in the status bar at the bottom-right of the viewer
+    window, between the WebGPU indicator and the version label. A
+    palette icon precedes the active flavor name.
 
 ## The Flavors dialog
 

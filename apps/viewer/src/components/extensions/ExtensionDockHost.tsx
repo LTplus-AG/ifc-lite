@@ -64,8 +64,8 @@ export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
   const active = visible.find((v) => v.payload.id === activeId) ?? visible[0];
 
   return (
-    <div className={cn('flex flex-col h-full border-t bg-background', className)}>
-      <div className="flex items-center gap-0 border-b overflow-x-auto">
+    <div className={cn('flex flex-col h-full border-t bg-background', className)} role="region" aria-label={`Extension dock (${slot})`}>
+      <div className="flex items-center gap-0 border-b overflow-x-auto" role="tablist">
         {visible.map((c) => {
           const isActive = c.payload.id === active.payload.id;
           return (
@@ -73,6 +73,9 @@ export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
               key={`${c.extensionId}:${c.payload.id}`}
               type="button"
               onClick={() => setActiveId(c.payload.id)}
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`dock-panel-${c.payload.id}`}
               className={cn(
                 'shrink-0 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
                 isActive

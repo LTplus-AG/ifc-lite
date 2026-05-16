@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo, type ReactElement } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Search,
@@ -599,7 +599,7 @@ export function HierarchyPanel() {
         elementCount?: number;
       },
       depth: number,
-    ): JSX.Element => {
+    ): ReactElement => {
       const expanded = nativeExpanded.has(summary.expressId);
       return (
         <div key={`${summary.kind}-${summary.expressId}`}>

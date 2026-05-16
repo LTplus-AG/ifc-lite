@@ -64,13 +64,13 @@ interface UseBCFResult {
 // Canvas Reference Store (module-level for cross-component access)
 // ============================================================================
 
-let globalCanvasRef: React.RefObject<HTMLCanvasElement> | null = null;
+let globalCanvasRef: React.RefObject<HTMLCanvasElement | null> | null = null;
 let globalRendererRef: React.RefObject<Renderer | null> | null = null;
 
 /**
  * Set the global canvas reference (called by ViewportContainer)
  */
-export function setGlobalCanvasRef(ref: React.RefObject<HTMLCanvasElement>): void {
+export function setGlobalCanvasRef(ref: React.RefObject<HTMLCanvasElement | null>): void {
   globalCanvasRef = ref;
 }
 

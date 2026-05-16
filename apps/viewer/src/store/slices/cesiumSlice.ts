@@ -57,6 +57,14 @@ export interface CesiumSlice {
    * Setting an override fires a `RECOMPUTE_FEDERATION_ALIGNMENT` re-bake.
    */
   anchorModelIdOverride: string | null;
+  /**
+   * When true, the viewport renders a small XYZ triad + label at each loaded
+   * model's true IFC (0,0,0) point — useful for debugging federation
+   * alignment. Origin positions are derived from each model's IfcMapConversion
+   * and the anchor's MapConversion, so the markers stay correct after re-aligns
+   * and across cross-CRS reprojections.
+   */
+  showModelBasepoints: boolean;
   /** Terrain clip Y position in viewer space. When set, fragments below this Y are discarded. */
   cesiumTerrainClipY: number | null;
   /** Whether the GLB model has been loaded into Cesium (hides WebGPU overlay). */
@@ -79,6 +87,8 @@ export interface CesiumSlice {
   setCesiumTerrainSource: (source: string | null) => void;
   setCesiumSourceModelId: (modelId: string | null) => void;
   setAnchorModelIdOverride: (modelId: string | null) => void;
+  setShowModelBasepoints: (show: boolean) => void;
+  toggleShowModelBasepoints: () => void;
   setCesiumTerrainClipY: (y: number | null) => void;
   setCesiumGlbLoaded: (loaded: boolean) => void;
   setCesiumPlacementEditMode: (enabled: boolean) => void;
@@ -136,6 +146,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> =
   cesiumTerrainSource: null,
   cesiumSourceModelId: null,
   anchorModelIdOverride: null,
+  showModelBasepoints: false,
   cesiumTerrainClipY: null,
   cesiumGlbLoaded: false,
   cesiumPlacementEditMode: false,
@@ -187,6 +198,8 @@ export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> =
   setCesiumTerrainSource: (source) => set({ cesiumTerrainSource: source }),
   setCesiumSourceModelId: (modelId) => set({ cesiumSourceModelId: modelId }),
   setAnchorModelIdOverride: (modelId) => set({ anchorModelIdOverride: modelId }),
+  setShowModelBasepoints: (show) => set({ showModelBasepoints: show }),
+  toggleShowModelBasepoints: () => set((s) => ({ showModelBasepoints: !s.showModelBasepoints })),
   setCesiumTerrainClipY: (y) => set({ cesiumTerrainClipY: y }),
   setCesiumGlbLoaded: (loaded) => set({ cesiumGlbLoaded: loaded }),
   setCesiumPlacementEditMode: (enabled) => set({ cesiumPlacementEditMode: enabled }),

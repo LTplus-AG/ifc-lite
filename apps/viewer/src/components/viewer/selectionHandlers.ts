@@ -11,6 +11,7 @@
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
+import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
 
 /**
@@ -94,39 +95,87 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     const state = useViewerStore.getState();
     const targetModelId = state.splitTargetModelId;
     const targetExpressId = state.splitTargetExpressId;
-    const distance = state.splitHoverDistance;
-    if (targetModelId === null || targetExpressId === null || distance === null) {
+    if (targetModelId === null || targetExpressId === null) {
       // Click missed any splittable element — no-op so the cursor
       // doesn't fight the user. The overlay's hint stays visible.
       return;
     }
 
-    // Dispatch by element type. Wall first because most edits land
-    // on walls; if that returns null we try the linear-element
-    // path. The split actions self-validate so we can call either
-    // and surface the reason on failure.
-    const wallTry = state.splitWallAtDistance(targetModelId, targetExpressId, distance);
-    if (wallTry.ok) {
+    // Slab two-click flow takes precedence when we're mid-anchor.
+    // The second click commits the cut line from anchor → cursor.
+    if (state.splitMode === 'first-anchor' && state.slabCutAnchor) {
+      const cutPoint = raycastStoreyFloor(ctx, x, y);
+      if (!cutPoint) {
+        toast.error("Couldn't read cut point");
+        return;
+      }
+      const cursorIfc = rendererPointToIfcStoreyLocal(cutPoint);
+      const result = state.splitSlabByLine(
+        targetModelId,
+        targetExpressId,
+        state.slabCutAnchor,
+        [cursorIfc[0], cursorIfc[1]],
+      );
+      if (!result.ok) {
+        toast.error(`Couldn't split slab: ${result.reason}`);
+        return;
+      }
       state.clearSplitHover();
-      state.setSelectedEntityId(wallTry.right.globalId);
-      toast.success('Wall split — Ctrl+Z to undo');
+      // Move selection to whichever half contains the click. Both
+      // halves are valid polygons; the click landed at `cursorIfc`.
+      const rightFp = state.readSlabFootprint(targetModelId, result.right.expressId);
+      const inRight = rightFp
+        ? pointInPolygon(rightFp.footprint, [cursorIfc[0], cursorIfc[1]])
+        : false;
+      state.setSelectedEntityId(inRight ? result.right.globalId : result.left.globalId);
+      toast.success('Slab split — Ctrl+Z to undo');
       return;
     }
-    const linearTry = state.splitLinearElementAtDistance(
-      targetModelId,
-      targetExpressId,
-      distance,
-    );
-    if (linearTry.ok) {
-      state.clearSplitHover();
-      state.setSelectedEntityId(linearTry.right.globalId);
-      toast.success('Element split — Ctrl+Z to undo');
+
+    // Single-click element split (wall / beam / column / member).
+    // Wall first because most edits land on walls; if that returns
+    // null we try the linear-element path.
+    const distance = state.splitHoverDistance;
+    if (distance !== null && distance > 0) {
+      const wallTry = state.splitWallAtDistance(targetModelId, targetExpressId, distance);
+      if (wallTry.ok) {
+        state.clearSplitHover();
+        state.setSelectedEntityId(wallTry.right.globalId);
+        toast.success('Wall split — Ctrl+Z to undo');
+        return;
+      }
+      const linearTry = state.splitLinearElementAtDistance(
+        targetModelId,
+        targetExpressId,
+        distance,
+      );
+      if (linearTry.ok) {
+        state.clearSplitHover();
+        state.setSelectedEntityId(linearTry.right.globalId);
+        toast.success('Element split — Ctrl+Z to undo');
+        return;
+      }
+    }
+
+    // Fall through to the slab path: first click latches the
+    // anchor, second click (handled above) commits.
+    const slabFootprint = state.readSlabFootprint(targetModelId, targetExpressId);
+    if (slabFootprint) {
+      const anchorPoint = raycastStoreyFloor(ctx, x, y);
+      if (!anchorPoint) {
+        toast.error("Couldn't read anchor point");
+        return;
+      }
+      const anchorIfc = rendererPointToIfcStoreyLocal(anchorPoint);
+      state.setSlabCutAnchor(
+        [anchorIfc[0], anchorIfc[1]],
+        slabFootprint.footprint,
+        slabFootprint.storeyElevation,
+      );
       return;
     }
-    // Neither path applied. Prefer the linear reason since the wall
-    // refusal is "not a wall" which the user already inferred.
-    const reason = linearTry.ok === false ? linearTry.reason : wallTry.reason;
-    toast.error(`Couldn't split: ${reason}`);
+
+    toast.error("Couldn't split: not a splittable element");
     return;
   }
 
@@ -408,14 +457,36 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
         return;
       }
       // Try wall first, fall back to linear-element (beam / column
-      // / member). Both projection actions surface the axis
-      // directly so the overlay can compute its perpendicular guide
-      // without an extra round-trip.
+      // / member). Slab hits don't get a 1D projection — they're
+      // handled by the two-click slab flow below, which kicks in
+      // once the user lands the first click.
       const cursorIfc = rendererPointToIfcStoreyLocal(result.intersection.point);
       const projection =
         store.readWallSplitProjection(local.modelId, local.expressId, cursorIfc) ??
         store.readLinearElementSplitProjection(local.modelId, local.expressId, cursorIfc);
       if (!projection) {
+        // Slab hover: surface the target so the overlay can outline
+        // the polygon, but no per-frame projection work — the
+        // cursor's storey-local XY is just `cursorIfc[0]`, `[1]`.
+        const slabFootprint = store.readSlabFootprint(local.modelId, local.expressId);
+        if (slabFootprint) {
+          if (
+            store.splitTargetModelId !== local.modelId ||
+            store.splitTargetExpressId !== local.expressId
+          ) {
+            store.setSplitTarget(local.modelId, local.expressId);
+          }
+          // We push a hover point (renderer-frame) so the overlay
+          // wakes; the axis is unused for slabs.
+          const [cx, cy] = cursorIfc;
+          const cursorRendererFrame: [number, number, number] = [
+            cx,
+            slabFootprint.storeyElevation,
+            -cy,
+          ];
+          store.setSplitHover(cursorRendererFrame, 0, 0, [cx, cy, 0], null);
+          return;
+        }
         if (store.splitMode === 'aiming') store.clearSplitHover();
         return;
       }

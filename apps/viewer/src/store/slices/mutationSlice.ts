@@ -63,6 +63,12 @@ import {
   projectOntoLinearAxis,
   type LinearElementType,
 } from '@/lib/linear-element-edit.js';
+import {
+  resolveSlabEditChain,
+  computeSlabSplitGeometry,
+  type SlabLikeType,
+} from '@/lib/slab-edit.js';
+import type { Point2D } from '@/lib/polygon-clip.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -436,6 +442,36 @@ export interface MutationSlice {
     expressId: number,
     cursorStoreyLocal: [number, number, number],
   ) => { distance: number; length: number; cutPoint: [number, number, number]; axis: [number, number, number]; elementType: LinearElementType } | null;
+  /**
+   * Read a slab-like element's storey-local footprint polygon so
+   * the Split overlay can render the live cut-line preview. The
+   * footprint comes back in storey-local 2D (XY) with the
+   * placement origin already added. Returns null for non-slab
+   * selections or representations the chain resolver doesn't
+   * support (mapped shapes, tessellated faces, etc).
+   */
+  readSlabFootprint: (
+    modelId: string,
+    expressId: number,
+  ) => { footprint: Point2D[]; elementType: SlabLikeType; storeyElevation: number; thickness: number } | null;
+  /**
+   * Split a slab-like element (IfcSlab / IfcRoof / IfcPlate /
+   * IfcSpace) along a cut line defined by two storey-local 2D
+   * points. Builds two fresh elements with the clipped footprints
+   * (polygon-mode `IfcArbitraryClosedProfileDef` even when the
+   * source was a rectangle — most cuts produce non-rectangular
+   * halves), clones metadata onto both, then tombstones the
+   * source.
+   *
+   * Selection moves to whichever half contains the second click,
+   * so the user can keep editing the new piece immediately.
+   */
+  splitSlabByLine: (
+    modelId: string,
+    expressId: number,
+    cutA: [number, number],
+    cutB: [number, number],
+  ) => { ok: true; left: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
   /**
    * Add a fully-anchored IfcColumn (and its sub-graph) to a parsed model.
    * Returns the new column's expressId, or null if the model can't be
@@ -1520,6 +1556,118 @@ export const createMutationSlice: StateCreator<
       ok: true,
       source: { expressId, globalId: sourceGlobalId },
       right: { expressId: addResult.expressId, globalId: rightGlobalId },
+    };
+  },
+
+  readSlabFootprint: (modelId, expressId) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
+    if (!chain) return null;
+    const storeyId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+    const storeyElevation =
+      (storeyId !== undefined
+        ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId)
+        : undefined) ?? 0;
+    return {
+      footprint: chain.footprint,
+      elementType: chain.elementType,
+      storeyElevation,
+      thickness: chain.thickness,
+    };
+  },
+
+  splitSlabByLine: (modelId, expressId, cutA, cutB) => {
+    const state = get();
+    const view = state.mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const model = state.models.get(modelId);
+    const dataStore = model?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Element representation is not a rectangle / polygon profile extruded along Z. Split supports slab-like elements built by addSlab / addRoof / addPlate / addSpace.',
+      };
+    }
+    const geo = computeSlabSplitGeometry(chain, cutA, cutB);
+    if (!geo.ok) return geo;
+
+    const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+    if (storeyExpressId === undefined) {
+      return { ok: false, reason: 'Slab is not contained in a building storey' };
+    }
+
+    // For now only IfcSlab gets a proper add-action follow-up; the
+    // chain's elementType is reported back to the caller for
+    // diagnostics, and other slab-like types refuse cleanly until
+    // their split phases land. Each half rebuilds as a polygon-
+    // profile slab regardless of the source's profile kind — the
+    // cut almost always produces a non-rectangle half.
+    if (chain.elementType !== 'IfcSlab') {
+      return {
+        ok: false,
+        reason: `Split for ${chain.elementType} not yet implemented (slabs only in v1).`,
+      };
+    }
+
+    // The clipped footprints are in storey-local XY (placement
+    // origin already added). `addSlab` expects an `OuterCurve` in
+    // *profile-local* 2D + a `Position` in storey-local 3D. The
+    // easiest mapping: keep `Position` at `[0, 0, 0]` and pass the
+    // clipped polygon verbatim — the addSlab builder folds the
+    // profile-origin and placement-origin into one identity.
+    const buildHalf = (outline: Point2D[], label: string) => {
+      return state.addSlab(modelId, storeyExpressId, {
+        Profile: 'polygon',
+        Position: [0, 0, 0],
+        OuterCurve: outline,
+        Thickness: geo.thickness,
+        Name: `Slab (split ${label})`,
+      });
+    };
+
+    const left = buildHalf(geo.leftFootprint, 'L');
+    if ('error' in left) {
+      return { ok: false, reason: `Couldn't build left half: ${left.error}` };
+    }
+    const right = buildHalf(geo.rightFootprint, 'R');
+    if ('error' in right) {
+      return { ok: false, reason: `Couldn't build right half: ${right.error}` };
+    }
+
+    cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
+
+    const removed = state.removeEntity(modelId, expressId);
+    if (!removed) {
+      return {
+        ok: false,
+        reason: 'Slab was unexpectedly removed before split completed',
+      };
+    }
+
+    // Hide source mesh so the user sees the cut take effect; the
+    // two new halves already have meshes via addSlab's
+    // appendGeometryBatch. (Deferred mesh-removal from PR #723
+    // would be cleaner; hide is the right v1 stand-in.)
+    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
+    state.hideEntities([sourceGlobalId]);
+
+    const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
+    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
+    return {
+      ok: true,
+      left: { expressId: left.expressId, globalId: leftGlobalId },
+      right: { expressId: right.expressId, globalId: rightGlobalId },
     };
   },
 

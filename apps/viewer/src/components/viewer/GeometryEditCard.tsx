@@ -152,20 +152,31 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     [modelId, entityId, rotateEntity],
   );
 
-  // Resolve whether the selected entity can be split. Two paths:
-  // walls (rectangle profile chain) and linear elements (beam /
-  // column / member). The Split action surfaces only when the
-  // entity matches one of them — keeps panel chrome out of the
-  // user's way for unrelated selections.
+  // Resolve whether the selected entity can be split. Three paths:
+  // walls, linear elements (beam / column / member), and slab-like
+  // (slab / roof / plate / space — only slab supports split in v1
+  // but the chain resolver accepts all four). The Split action
+  // surfaces only when the entity matches one of them — keeps
+  // panel chrome out of the user's way for unrelated selections.
   const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
   const readLinearElementSplitProjection = useViewerStore((s) => s.readLinearElementSplitProjection);
+  const readSlabFootprint = useViewerStore((s) => s.readSlabFootprint);
   const splittable = useMemo(() => {
     if (readWallEndpoints(modelId, entityId) !== null) return true;
-    // Use [0,0,0] as a probe — we only care whether the chain
-    // resolves, not the projection value.
-    return readLinearElementSplitProjection(modelId, entityId, [0, 0, 0]) !== null;
+    // Probe with [0,0,0] — we only care whether the chain resolves,
+    // not the projection value.
+    if (readLinearElementSplitProjection(modelId, entityId, [0, 0, 0]) !== null) return true;
+    const slab = readSlabFootprint(modelId, entityId);
+    return slab !== null && slab.elementType === 'IfcSlab';
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, entityId, mutationVersion, readWallEndpoints, readLinearElementSplitProjection]);
+  }, [
+    modelId,
+    entityId,
+    mutationVersion,
+    readWallEndpoints,
+    readLinearElementSplitProjection,
+    readSlabFootprint,
+  ]);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const setSplitTarget = useViewerStore((s) => s.setSplitTarget);
   const onSplit = useCallback(() => {

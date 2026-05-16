@@ -18,7 +18,16 @@
 
 import type { StateCreator } from 'zustand';
 
-export type SplitMode = 'idle' | 'aiming';
+/**
+ * Split-tool state machine:
+ *   - `'idle'` — cursor isn't over a splittable element
+ *   - `'aiming'` — preview cut is live for a single-click element
+ *     (wall / beam / column / member)
+ *   - `'first-anchor'` — slab two-click flow: user clicked once,
+ *     the anchor is latched, the cursor's second click commits
+ *     the cut line. Esc clears back to `'idle'`.
+ */
+export type SplitMode = 'idle' | 'aiming' | 'first-anchor';
 
 export interface SplitToolSlice {
   /** Tool state machine. `'idle'` while the cursor isn't over a
@@ -52,6 +61,20 @@ export interface SplitToolSlice {
    * component, column axis is `[0, 0, 1]`.
    */
   splitHoverAxisDirection: [number, number, number] | null;
+  /**
+   * Slab two-click flow: storey-local XY of the first click. When
+   * set, the tool is in `'first-anchor'` state and the next click
+   * commits a cut line from the anchor to the cursor.
+   */
+  slabCutAnchor: [number, number] | null;
+  /**
+   * Slab cached footprint polygon (storey-local 2D) — read once on
+   * first-anchor latch so the overlay can render the polygon
+   * outline and clip the ghost cut line against it without
+   * re-walking the IFC chain per frame.
+   */
+  slabCutFootprint: [number, number][] | null;
+  slabCutStoreyElevation: number | null;
 
   setSplitTarget: (modelId: string | null, expressId: number | null) => void;
   setSplitHover: (
@@ -60,6 +83,16 @@ export interface SplitToolSlice {
     length: number | null,
     cutPoint: [number, number, number] | null,
     axisDirection: [number, number, number] | null,
+  ) => void;
+  /**
+   * Slab flow: latch the first click + cache the footprint so the
+   * overlay's per-frame work stays cheap. Promotes the tool to
+   * `'first-anchor'`.
+   */
+  setSlabCutAnchor: (
+    anchor: [number, number] | null,
+    footprint: [number, number][] | null,
+    storeyElevation: number | null,
   ) => void;
   clearSplitHover: () => void;
 }
@@ -73,29 +106,47 @@ export const createSplitToolSlice: StateCreator<SplitToolSlice, [], [], SplitToo
   splitHoverLength: null,
   splitHoverCutPoint: null,
   splitHoverAxisDirection: null,
+  slabCutAnchor: null,
+  slabCutFootprint: null,
+  slabCutStoreyElevation: null,
 
   setSplitTarget: (modelId, expressId) =>
-    set({
+    set((s) => ({
       splitTargetModelId: modelId,
       splitTargetExpressId: expressId,
       // Entering / leaving a target without a hover yet means we're
-      // back to 'idle'. The setSplitHover call below promotes us to
-      // 'aiming' once a preview lands.
-      splitMode: 'idle',
+      // back to 'idle' (unless we're mid-slab-cut, in which case
+      // we preserve the latched anchor — the user might re-enter
+      // the slab from outside).
+      splitMode: s.splitMode === 'first-anchor' ? 'first-anchor' : 'idle',
       splitHoverPoint: null,
       splitHoverDistance: null,
       splitHoverLength: null,
       splitHoverCutPoint: null,
       splitHoverAxisDirection: null,
-    }),
+    })),
   setSplitHover: (hoverPoint, distance, length, cutPoint, axisDirection) =>
-    set({
+    set((s) => ({
       splitHoverPoint: hoverPoint,
       splitHoverDistance: distance,
       splitHoverLength: length,
       splitHoverCutPoint: cutPoint,
       splitHoverAxisDirection: axisDirection,
-      splitMode: hoverPoint !== null ? 'aiming' : 'idle',
+      // Promote to 'aiming' on first hover; don't downgrade the
+      // slab two-click state when hover ends mid-flow.
+      splitMode:
+        s.splitMode === 'first-anchor'
+          ? 'first-anchor'
+          : hoverPoint !== null
+          ? 'aiming'
+          : 'idle',
+    })),
+  setSlabCutAnchor: (anchor, footprint, storeyElevation) =>
+    set({
+      slabCutAnchor: anchor,
+      slabCutFootprint: footprint,
+      slabCutStoreyElevation: storeyElevation,
+      splitMode: anchor === null ? 'idle' : 'first-anchor',
     }),
   clearSplitHover: () =>
     set({
@@ -107,5 +158,8 @@ export const createSplitToolSlice: StateCreator<SplitToolSlice, [], [], SplitToo
       splitHoverLength: null,
       splitHoverCutPoint: null,
       splitHoverAxisDirection: null,
+      slabCutAnchor: null,
+      slabCutFootprint: null,
+      slabCutStoreyElevation: null,
     }),
 });

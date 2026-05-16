@@ -4,23 +4,24 @@
 
 /**
  * Live SVG preview for the Split tool. Mounted by `ToolOverlays`
- * while `activeTool === 'split'`.
+ * while `activeTool === 'split'`. Branches by element type:
  *
- * Reads the live hover state from `splitToolSlice` — populated by
- * `handleSplitHover` in `selectionHandlers` — and draws:
+ *   Wall / beam / column / member  (single-click):
+ *     Perpendicular guide line through the projected cut point,
+ *     "distance / length" readout. State driven by
+ *     `splitHoverPoint` / `splitHoverAxisDirection` /
+ *     `splitHoverDistance` / `splitHoverLength`.
  *
- *   - a small filled circle at the projected cut point (renderer-
- *     frame world coords → projected to screen via the existing
- *     `cameraCallbacks.projectToScreen`)
- *   - a perpendicular guide line across the wall axis at the cut
- *     point (orthogonal to wall direction in the storey plane)
- *   - a label showing "distance / length" (e.g. "1.42 / 3.50 m")
- *   - a faint hint at the bottom of the screen while idle so the
- *     user knows the tool is armed
+ *   Slab / roof / plate / space  (two-click):
+ *     Outline the polygon footprint with a faint purple stroke.
+ *     Before the first click: hint chip says "click to start cut".
+ *     After the first click: ghost line from anchor → cursor,
+ *     drawn straight through the polygon (the actual extent is
+ *     clamped by polygon-clip at commit).
  *
  * Same camera-tracking RAF trick the GizmoOverlay uses, so the
- * preview stays glued to the wall when the user orbits / zooms
- * without re-rendering on every camera frame.
+ * preview tracks the element through orbit / zoom without
+ * re-rendering on every camera frame.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -34,6 +35,11 @@ type Project = (worldPos: Vec3) => Vec2 | null;
 const GUIDE_COLOR = '#a855f7'; // purple-500 — matches edit-mode pill
 const GUIDE_HALF_LENGTH_PX = 30;
 
+/** Storey-local 2D → renderer Y-up world point at the storey floor. */
+function ifc2dToRendererWorld(p: [number, number], storeyElevation: number): Vec3 {
+  return { x: p[0], y: storeyElevation, z: -p[1] };
+}
+
 export function SplitOverlay() {
   const activeTool = useViewerStore((s) => s.activeTool);
   const splitMode = useViewerStore((s) => s.splitMode);
@@ -43,6 +49,11 @@ export function SplitOverlay() {
   const splitHoverCutPoint = useViewerStore((s) => s.splitHoverCutPoint);
   const splitHoverAxisDirection = useViewerStore((s) => s.splitHoverAxisDirection);
   const splitTargetModelId = useViewerStore((s) => s.splitTargetModelId);
+  const splitTargetExpressId = useViewerStore((s) => s.splitTargetExpressId);
+  const slabCutAnchor = useViewerStore((s) => s.slabCutAnchor);
+  const slabCutFootprint = useViewerStore((s) => s.slabCutFootprint);
+  const slabCutStoreyElevation = useViewerStore((s) => s.slabCutStoreyElevation);
+  const readSlabFootprint = useViewerStore((s) => s.readSlabFootprint);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
   const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
 
@@ -50,11 +61,14 @@ export function SplitOverlay() {
   const lastViewpointRef = useRef<string>('');
   const rafRef = useRef<number | null>(null);
 
-  // RAF tick — wake the overlay when the camera moves so the guide
-  // tracks the wall through orbit / zoom. Skipped when nothing is
-  // hovered, so an idle Split tool with no cursor over a wall is
-  // free.
-  const active = activeTool === 'split' && splitMode === 'aiming' && splitHoverPoint !== null;
+  // RAF tick — wake the overlay when the camera moves so the
+  // preview tracks the element through orbit / zoom. Skipped when
+  // nothing is hovered (idle Split tool with no cursor over an
+  // element is free of per-frame work).
+  const active =
+    activeTool === 'split' &&
+    (splitMode === 'aiming' || splitMode === 'first-anchor') &&
+    splitHoverPoint !== null;
   useEffect(() => {
     if (!active) return;
     let mounted = true;
@@ -76,15 +90,9 @@ export function SplitOverlay() {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, [active, getViewpoint]);
-
-  // Read frameTick so this component re-renders on camera changes
-  // even when nothing else in our state changes. The variable is
-  // intentionally consumed for its side effect of subscribing.
   void frameTick;
 
-  // While idle (tool armed, no hover) — show a small hint chip at
-  // the bottom of the canvas so users know they're in Split mode
-  // and what to do.
+  // Hint chip when idle (tool armed, nothing under cursor).
   if (activeTool === 'split' && !active) {
     return (
       <div
@@ -94,28 +102,101 @@ export function SplitOverlay() {
         role="status"
       >
         <KnifeIcon className="h-3.5 w-3.5" />
-        <span>Hover over a wall, beam, column, or member — Esc to exit</span>
+        <span>Hover over a wall, beam, column, member, or slab — Esc to exit</span>
       </div>
     );
   }
-
-  if (!active || !projectToScreen || !splitHoverPoint || splitHoverDistance === null || splitHoverLength === null) {
-    return null;
-  }
+  if (!active || !projectToScreen) return null;
 
   const project = projectToScreen as Project;
+
+  // Branch: slab two-click flow vs single-click linear/wall flow.
+  // The discriminator is whether we have a slab footprint cached
+  // (first-anchor or fresh hover); if not, fall through to the
+  // single-click rendering.
+  const slabFootprint = slabCutFootprint
+    ?? (splitTargetModelId !== null && splitTargetExpressId !== null
+        ? readSlabFootprint(splitTargetModelId, splitTargetExpressId)?.footprint ?? null
+        : null);
+  const storeyElevation = slabCutStoreyElevation
+    ?? (splitTargetModelId !== null && splitTargetExpressId !== null
+        ? readSlabFootprint(splitTargetModelId, splitTargetExpressId)?.storeyElevation ?? 0
+        : 0);
+
+  if (slabFootprint) {
+    // Slab path. Project every footprint vertex; build a polygon.
+    const screenVerts = slabFootprint
+      .map((p) => project(ifc2dToRendererWorld(p, storeyElevation)))
+      .filter((v): v is Vec2 => v !== null);
+    if (screenVerts.length < 3) return null;
+    const path = screenVerts.map((v, i) => `${i === 0 ? 'M' : 'L'}${v.x} ${v.y}`).join(' ') + ' Z';
+
+    // Cursor as storey-local 2D — splitHoverCutPoint is the 3D
+    // form; we want X/Y for the ghost line endpoint.
+    const cursorXy: [number, number] | null = splitHoverCutPoint
+      ? [splitHoverCutPoint[0], splitHoverCutPoint[1]]
+      : null;
+    const anchorScreen = slabCutAnchor
+      ? project(ifc2dToRendererWorld(slabCutAnchor, storeyElevation))
+      : null;
+    const cursorScreen = cursorXy
+      ? project(ifc2dToRendererWorld(cursorXy, storeyElevation))
+      : null;
+
+    return (
+      <svg className="absolute inset-0 pointer-events-none z-30" style={{ overflow: 'visible' }}>
+        <path
+          d={path}
+          fill={GUIDE_COLOR}
+          fillOpacity={0.08}
+          stroke={GUIDE_COLOR}
+          strokeWidth={1.5}
+          strokeDasharray="4 4"
+        />
+        {anchorScreen && (
+          <circle
+            cx={anchorScreen.x}
+            cy={anchorScreen.y}
+            r={5}
+            fill="#fff"
+            stroke={GUIDE_COLOR}
+            strokeWidth={2.5}
+          />
+        )}
+        {anchorScreen && cursorScreen && (
+          <line
+            x1={anchorScreen.x}
+            y1={anchorScreen.y}
+            x2={cursorScreen.x}
+            y2={cursorScreen.y}
+            stroke={GUIDE_COLOR}
+            strokeWidth={3}
+            strokeLinecap="round"
+          />
+        )}
+        {cursorScreen && (
+          <circle
+            cx={cursorScreen.x}
+            cy={cursorScreen.y}
+            r={4}
+            fill="#fff"
+            stroke={GUIDE_COLOR}
+            strokeWidth={2}
+          />
+        )}
+      </svg>
+    );
+  }
+
+  // Single-click element split (wall / beam / column / member).
+  if (!splitHoverPoint || splitHoverDistance === null || splitHoverLength === null) {
+    return null;
+  }
   const cutWorld: Vec3 = { x: splitHoverPoint[0], y: splitHoverPoint[1], z: splitHoverPoint[2] };
   const cutScreen = project(cutWorld);
   if (!cutScreen) return null;
 
-  // Build the perpendicular guide from the slice-provided IFC
-  // axis. Convert the unit-length axis from IFC Z-up to the
-  // renderer's Y-up frame (renderer = (ifc.x, ifc.z, -ifc.y)),
-  // project two world points 1 m apart along it, and rotate 90° in
-  // screen space to draw the perpendicular through the cut point.
-  // Storey elevation cancels out in the screen delta so we don't
-  // need to fetch it here — both projected points share the same
-  // additive offset.
+  // Build the perpendicular guide from the slice-provided IFC axis.
   let guideDx = 0;
   let guideDy = -1;
   if (splitTargetModelId !== null && splitHoverAxisDirection) {
@@ -136,16 +217,11 @@ export function SplitOverlay() {
       }
     }
   }
-  // Suppress unused-import warning — `splitHoverCutPoint` is read
-  // from the store so the overlay re-renders on cut-point changes,
-  // even though the perpendicular math uses cutWorld directly.
-  void splitHoverCutPoint;
 
   const gx1 = cutScreen.x - guideDx * GUIDE_HALF_LENGTH_PX;
   const gy1 = cutScreen.y - guideDy * GUIDE_HALF_LENGTH_PX;
   const gx2 = cutScreen.x + guideDx * GUIDE_HALF_LENGTH_PX;
   const gy2 = cutScreen.y + guideDy * GUIDE_HALF_LENGTH_PX;
-
   const labelText = `${splitHoverDistance.toFixed(2)} / ${splitHoverLength.toFixed(2)} m`;
 
   return (

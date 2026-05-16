@@ -35,8 +35,25 @@ export interface UseGeometryStreamingParams {
   geometryBoundsRef: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }>;
   pendingMeshColorUpdates: Map<number, [number, number, number, number]> | null;
   pendingColorUpdates: Map<number, [number, number, number, number]> | null;
+  /**
+   * Authoring actions (split, delete) push globalIds here; the
+   * streaming loop drains them via `scene.removeMeshesForEntities`
+   * so tombstoned IFC entities disappear from the rendered scene
+   * (rather than just being hidden via `hiddenIds`). Cleared by
+   * the hook after the drain.
+   */
+  pendingMeshRemovals: Set<number> | null;
+  /**
+   * Per-entity translations queued by authoring actions (gizmo
+   * drag, numeric move). Drained by the streaming hook into
+   * `scene.translateMeshesForEntities` so the visible mesh
+   * follows the IFC coordinate mutation on the next frame.
+   */
+  pendingMeshTranslations: Map<number, [number, number, number]> | null;
   clearPendingMeshColorUpdates: () => void;
   clearPendingColorUpdates: () => void;
+  clearPendingMeshRemovals: () => void;
+  clearPendingMeshTranslations: () => void;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   releaseGeometryAfterFinalize?: boolean;
   onGeometryReleased?: () => void;
@@ -66,8 +83,12 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     geometryBoundsRef,
     pendingMeshColorUpdates,
     pendingColorUpdates,
+    pendingMeshRemovals,
+    pendingMeshTranslations,
     clearPendingMeshColorUpdates,
     clearPendingColorUpdates,
+    clearPendingMeshRemovals,
+    clearPendingMeshTranslations,
     clearColorRef,
     releaseGeometryAfterFinalize = false,
     onGeometryReleased,
@@ -393,6 +414,55 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       clearPendingMeshColorUpdates();
     }
   }, [pendingMeshColorUpdates, isInitialized, clearPendingMeshColorUpdates]);
+
+  // ─── Mesh removals (split / delete) ───────────────────────────────────
+  // Authoring actions push globalIds into pendingMeshRemovals; drain
+  // here so the renderer actually drops them rather than leaving the
+  // mesh hidden via the visibility set. The bucket rebuild rides
+  // along on the existing rebuildPendingBatches path the streaming
+  // queue already exercises every frame.
+  useEffect(() => {
+    if (pendingMeshRemovals === null || !isInitialized) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const device = renderer.getGPUDevice();
+    const pipeline = renderer.getPipeline();
+    const scene = renderer.getScene();
+    if (!device || !pipeline) return;
+
+    if (pendingMeshRemovals.size > 0) {
+      scene.removeMeshesForEntities(pendingMeshRemovals);
+      if (scene.hasPendingBatches()) {
+        scene.rebuildPendingBatches(device, pipeline);
+      }
+      renderer.requestRender();
+    }
+    clearPendingMeshRemovals();
+  }, [pendingMeshRemovals, isInitialized, clearPendingMeshRemovals]);
+
+  // ─── Mesh translations (move / gizmo drag / numeric move) ────────────
+  // Drain the pending-translation map onto the renderer. Same
+  // rebuildPendingBatches ride-along; the in-place vertex update
+  // means a translate frame is one batch rebuild per affected
+  // bucket (typically one per entity).
+  useEffect(() => {
+    if (pendingMeshTranslations === null || !isInitialized) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const device = renderer.getGPUDevice();
+    const pipeline = renderer.getPipeline();
+    const scene = renderer.getScene();
+    if (!device || !pipeline) return;
+
+    if (pendingMeshTranslations.size > 0) {
+      scene.translateMeshesForEntities(pendingMeshTranslations);
+      if (scene.hasPendingBatches()) {
+        scene.rebuildPendingBatches(device, pipeline);
+      }
+      renderer.requestRender();
+    }
+    clearPendingMeshTranslations();
+  }, [pendingMeshTranslations, isInitialized, clearPendingMeshTranslations]);
 
   // ─── Lens color overlays ─────────────────────────────────────────────
   useEffect(() => {

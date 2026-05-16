@@ -44,6 +44,34 @@ export interface DataSlice {
   releaseGeometryMemory: () => void;
   /** Persist mesh color changes in geometryResult (used for IFC style/material updates). */
   updateMeshColors: (updates: Map<number, [number, number, number, number]>) => void;
+  /**
+   * Pending mesh removals for the renderer. Authoring actions
+   * (split, delete) push globalIds here; `useGeometryStreaming`
+   * flushes them on the next frame via
+   * `scene.removeMeshesForEntities` and then prunes the matching
+   * meshes out of `geometryResult.meshes` so picking + bounds
+   * recomputation stay consistent.
+   *
+   * Stored as a Set on the slice rather than a transient ref so
+   * tests + headless workflows can observe it directly.
+   */
+  pendingMeshRemovals: Set<number> | null;
+  setPendingMeshRemovals: (ids: Set<number>) => void;
+  clearPendingMeshRemovals: () => void;
+  /**
+   * Pending per-entity translations for the renderer. Authoring
+   * actions (translateEntity, setEntityPosition, gizmo drag) push
+   * `globalId → [dx, dy, dz]` in *renderer* frame (Y-up). The
+   * streaming hook drains via `scene.translateMeshesForEntities`
+   * on the next frame, which mutates vertex positions in place
+   * and marks the affected buckets for re-batch.
+   *
+   * The delta is renderer-frame; the IFC → renderer conversion
+   * lives in the action that produces the entry.
+   */
+  pendingMeshTranslations: Map<number, [number, number, number]> | null;
+  setPendingMeshTranslations: (updates: Map<number, [number, number, number]>) => void;
+  clearPendingMeshTranslations: () => void;
   /** Set pending color updates for the renderer without cloning mesh data.
    *  Use this for transient overlays (lens, IDS) where the source-of-truth
    *  mesh colors should remain unchanged. */
@@ -79,6 +107,8 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   boundedGeometryMode: false,
   pendingColorUpdates: null,
   pendingMeshColorUpdates: null,
+  pendingMeshRemovals: null,
+  pendingMeshTranslations: null,
 
   // Actions
   setIfcDataStore: (ifcDataStore) => set((state) => {
@@ -235,6 +265,40 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   clearPendingColorUpdates: () => set({ pendingColorUpdates: null }),
 
   clearPendingMeshColorUpdates: () => set({ pendingMeshColorUpdates: null }),
+
+  setPendingMeshRemovals: (ids) => set((state) => {
+    // Accumulate across calls — the streaming loop drains in one
+    // pass per frame, but split / delete actions may fire several
+    // times between frames.
+    const merged = new Set<number>(state.pendingMeshRemovals ?? []);
+    for (const id of ids) merged.add(id);
+    return { pendingMeshRemovals: merged };
+  }),
+
+  clearPendingMeshRemovals: () => set({ pendingMeshRemovals: null }),
+
+  setPendingMeshTranslations: (updates) => set((state) => {
+    // Accumulate deltas across calls — a single drag-frame may
+    // bump translateEntity many times before the streaming hook
+    // drains. Existing entries get their delta summed; the
+    // renderer sees one combined translation per entity.
+    const merged = new Map<number, [number, number, number]>(state.pendingMeshTranslations ?? []);
+    for (const [id, delta] of updates) {
+      const existing = merged.get(id);
+      if (existing) {
+        merged.set(id, [
+          existing[0] + delta[0],
+          existing[1] + delta[1],
+          existing[2] + delta[2],
+        ]);
+      } else {
+        merged.set(id, [delta[0], delta[1], delta[2]]);
+      }
+    }
+    return { pendingMeshTranslations: merged };
+  }),
+
+  clearPendingMeshTranslations: () => set({ pendingMeshTranslations: null }),
 
   updateCoordinateInfo: (coordinateInfo) => set((state) => {
     if (!state.geometryResult) return {};

@@ -267,8 +267,12 @@ export function Viewport({
   const {
     pendingColorUpdates,
     pendingMeshColorUpdates,
+    pendingMeshRemovals,
+    pendingMeshTranslations,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
+    clearPendingMeshRemovals,
+    clearPendingMeshTranslations,
   } = useColorUpdateState();
 
   // IFC data state
@@ -928,8 +932,12 @@ export function Viewport({
     geometryBoundsRef,
     pendingColorUpdates,
     pendingMeshColorUpdates,
+    pendingMeshRemovals,
+    pendingMeshTranslations,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
+    clearPendingMeshRemovals,
+    clearPendingMeshTranslations,
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,

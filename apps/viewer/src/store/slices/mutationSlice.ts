@@ -1141,6 +1141,16 @@ export const createMutationSlice: StateCreator<
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
     get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, next);
+
+    // Push the renderer-frame delta so the visible mesh follows
+    // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
+    //   renderer.x =  ifc.x
+    //   renderer.y =  ifc.z
+    //   renderer.z = -ifc.y
+    const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+    const rendererDelta: [number, number, number] = [delta[0], delta[2], -delta[1]];
+    get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
+
     return { ok: true, newCoordinates: next };
   },
 
@@ -1160,7 +1170,17 @@ export const createMutationSlice: StateCreator<
           'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
       };
     }
+    // Push the IFC → renderer delta for the rendered mesh. Same
+    // Z-up → Y-up conversion as `translateEntity` above.
+    const [oldX, oldY, oldZ] = chain.coordinates;
+    const dx = position[0] - oldX;
+    const dy = position[1] - oldY;
+    const dz = position[2] - oldZ;
     get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, position);
+    if (dx !== 0 || dy !== 0 || dz !== 0) {
+      const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+      get().setPendingMeshTranslations(new Map([[globalId, [dx, dz, -dy]]]));
+    }
     return { ok: true, newCoordinates: position };
   },
 
@@ -1448,14 +1468,14 @@ export const createMutationSlice: StateCreator<
       };
     }
 
-    // Hide the source's mesh from the rendered geometry. The
-    // entity is tombstoned in the IFC overlay so it won't export,
-    // but the mesh data lingers in geometryResult until the next
-    // full reload — hide it so the user sees the split immediately.
-    // The two new walls already have their meshes in the geometry
-    // (addWall emits them via appendGeometryBatch).
+    // Drop the source's mesh from the rendered scene. The entity
+    // is tombstoned in the IFC overlay so it won't export; this
+    // also clears its GPU buffers and bounding-box entry so picks
+    // / bounds stop finding it. The two new walls already have
+    // their meshes in the geometry (addWall emits them via
+    // appendGeometryBatch).
     const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
-    state.hideEntities([sourceGlobalId]);
+    state.setPendingMeshRemovals(new Set([sourceGlobalId]));
 
     const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
     const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
@@ -1718,10 +1738,11 @@ export const createMutationSlice: StateCreator<
 
     // Hide source mesh so the user sees the cut take effect; the
     // two new halves already have meshes via addSlab's
-    // appendGeometryBatch. (Deferred mesh-removal from PR #723
-    // would be cleaner; hide is the right v1 stand-in.)
+    // appendGeometryBatch. The source's mesh is dropped from GPU
+    // buffers + bbox map via setPendingMeshRemovals — the
+    // streaming hook drains it on the next frame.
     const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
-    state.hideEntities([sourceGlobalId]);
+    state.setPendingMeshRemovals(new Set([sourceGlobalId]));
 
     const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
     const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
@@ -1744,6 +1765,15 @@ export const createMutationSlice: StateCreator<
     const overlayRecord = view.getNewEntity(expressId);
     const removed = editor.removeEntity(expressId);
     if (!removed) return false;
+
+    // Drop the entity's mesh from the renderer. The IFC tombstone
+    // takes care of export correctness; this takes care of the
+    // visual side so the user actually sees the delete take
+    // effect. Goes through pendingMeshRemovals so the streaming
+    // hook flushes it on the next frame with the right device /
+    // pipeline handles in hand.
+    const globalIdForMesh = toGlobalIdFromModels(get().models, modelId, expressId);
+    get().setPendingMeshRemovals(new Set([globalIdForMesh]));
 
     set((state) => {
       const newRemoved = new Map(state.removedNewEntities);

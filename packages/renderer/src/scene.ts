@@ -507,6 +507,140 @@ export class Scene {
     return this.pendingBatchKeys.size > 0;
   }
 
+  /**
+   * Remove every mesh registered for `expressId` from the scene.
+   * Affected buckets are marked for rebuild on the next call to
+   * `rebuildPendingBatches`, so the GPU drops them on the next
+   * frame. Returns `true` when at least one mesh was removed.
+   *
+   * Used by the viewer's authoring actions (split, delete) to
+   * make tombstoned IFC entities disappear from the rendered
+   * scene — the previous v1 workaround was to hide them via
+   * `hiddenIds`, but that left the mesh in GPU memory and inside
+   * raycast bounds. This is the proper removal path.
+   *
+   * Notes:
+   *   - For color-merged meshes (the `entityIds` per-vertex case)
+   *     a single MeshData often hosts many entities. We do NOT
+   *     drop the whole mesh in that case — that would also remove
+   *     the other entities — but we DO clear the bbox + meshDataMap
+   *     for the requested expressId, so picking and selection stop
+   *     finding the removed entity. Re-rendering the merged mesh
+   *     unchanged is the right behaviour because color-merged
+   *     batches are an optimisation: the geometry is still real;
+   *     the IFC tombstone just means we ignore it for queries.
+   */
+  removeMeshesForEntity(expressId: number): boolean {
+    const meshDataList = this.meshDataMap.get(expressId);
+    if (!meshDataList || meshDataList.length === 0) {
+      this.boundingBoxes.delete(expressId);
+      return false;
+    }
+
+    // Track which buckets need re-batching so we don't repeatedly
+    // mark the same key.
+    const affectedKeys = new Set<string>();
+
+    for (const meshData of meshDataList) {
+      // Color-merged path: shared mesh, keep it but drop our entry.
+      if (meshData.entityIds && meshData.entityIds.length > 0) {
+        continue;
+      }
+
+      // Dedicated mesh — drop from its bucket.
+      const bucket = this.meshDataBucket.get(meshData);
+      if (bucket) {
+        const idx = bucket.meshData.indexOf(meshData);
+        if (idx >= 0) bucket.meshData.splice(idx, 1);
+        affectedKeys.add(bucket.key);
+      }
+      this.meshDataBucket.delete(meshData);
+    }
+
+    this.meshDataMap.delete(expressId);
+    this.boundingBoxes.delete(expressId);
+
+    for (const key of affectedKeys) {
+      this.pendingBatchKeys.add(key);
+    }
+    return affectedKeys.size > 0;
+  }
+
+  /**
+   * Bulk variant of `removeMeshesForEntity`. Avoids re-marking the
+   * same bucket key once per entity in the common "split N walls"
+   * batch. Returns the number of entities that had at least one
+   * dedicated mesh removed.
+   */
+  removeMeshesForEntities(expressIds: Iterable<number>): number {
+    let count = 0;
+    for (const id of expressIds) {
+      if (this.removeMeshesForEntity(id)) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Translate every mesh for `expressId` by `delta` in renderer
+   * world frame (Y-up). Modifies `positions` in place and marks
+   * the affected bucket(s) for re-batch on the next call to
+   * `rebuildPendingBatches`.
+   *
+   * Bounding boxes are cleared for the entity so the next bounds
+   * query recomputes from the new positions; raycast bounds will
+   * therefore lag by exactly one query, which is acceptable for
+   * the drag-end → fresh-pick interaction the gizmo drives.
+   *
+   * Returns `true` when at least one mesh was modified. Used by
+   * the viewer's `translateEntity` action to keep the rendered
+   * mesh in sync with the IFC coords mutation.
+   *
+   * Color-merged meshes (shared by many entities via per-vertex
+   * `entityIds`) cannot be translated for a single entity without
+   * walking the entityIds array vertex by vertex; this helper
+   * skips them and returns `false` so the caller can fall back
+   * to a full reload if needed.
+   */
+  translateMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+    const meshDataList = this.meshDataMap.get(expressId);
+    if (!meshDataList || meshDataList.length === 0) return false;
+    const [dx, dy, dz] = delta;
+    if (dx === 0 && dy === 0 && dz === 0) return false;
+
+    const affectedKeys = new Set<string>();
+    let anyMoved = false;
+    for (const meshData of meshDataList) {
+      // Skip shared color-merged meshes — translating their
+      // positions would move every entity in the merge.
+      if (meshData.entityIds && meshData.entityIds.length > 0) continue;
+      const pos = meshData.positions;
+      for (let i = 0; i < pos.length; i += 3) {
+        pos[i] += dx;
+        pos[i + 1] += dy;
+        pos[i + 2] += dz;
+      }
+      const bucket = this.meshDataBucket.get(meshData);
+      if (bucket) affectedKeys.add(bucket.key);
+      anyMoved = true;
+    }
+    if (!anyMoved) return false;
+
+    this.boundingBoxes.delete(expressId);
+    for (const key of affectedKeys) {
+      this.pendingBatchKeys.add(key);
+    }
+    return true;
+  }
+
+  /** Bulk variant of `translateMeshesForEntity`. */
+  translateMeshesForEntities(updates: Map<number, [number, number, number]>): number {
+    let count = 0;
+    for (const [id, delta] of updates) {
+      if (this.translateMeshesForEntity(id, delta)) count++;
+    }
+    return count;
+  }
+
   // ─── Mesh command queue ──────────────────────────────────────────────
 
   /**

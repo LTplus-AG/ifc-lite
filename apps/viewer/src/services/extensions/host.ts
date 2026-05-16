@@ -41,6 +41,7 @@ import {
   filterAgainstInstalled,
   parseCapabilities,
   planFromPattern,
+  runBundleTests,
   sha256Hex,
   unpackBundle,
   wrapEntrySource,
@@ -56,6 +57,7 @@ import {
   type RuntimeRunResult,
   type SlotContribution,
   type SlotListener,
+  type TestRunSummary,
   type ValidationError,
   type ValidationResult,
 } from '@ifc-lite/extensions';
@@ -437,6 +439,26 @@ export class ExtensionHostService {
    */
   acceptSuggestion(pattern: MinedPattern): AuthoringPlan {
     return planFromPattern(pattern);
+  }
+
+  /**
+   * Run an installed extension's declared tests against its bundle.
+   * Throws if the extension is not installed or its bundle is missing.
+   */
+  async runTests(id: string): Promise<TestRunSummary> {
+    const record = await this.storage.getExtension(id);
+    if (!record) throw new Error(`No installed extension with id "${id}".`);
+    const bundle = this.loader.getBundle(id);
+    if (!bundle) throw new Error(`Bundle for ${id} not loaded.`);
+    const grants = parseCapabilities(record.grantedCapabilities);
+    if (!grants.ok) {
+      throw new Error(`Stored capabilities for ${id} are invalid.`);
+    }
+    return runBundleTests({
+      runtime: this.runtime,
+      bundle,
+      grants: grants.value,
+    });
   }
 
   /** Tear down everything. Called on flavor switch / sign-out. */

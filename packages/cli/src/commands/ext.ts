@@ -20,6 +20,10 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
+  ExtensionRuntime,
+  createMemorySandboxFactory,
+  parseCapabilities,
+  runBundleTests,
   validateManifest,
   type ValidationError,
 } from '@ifc-lite/extensions';
@@ -58,6 +62,9 @@ export async function extCommand(args: string[]): Promise<void> {
     case 'verify':
       await extVerifyCommand(rest);
       return;
+    case 'test':
+      await extTestCommand(rest);
+      return;
     default:
       process.stderr.write(`Unknown ext subcommand: ${sub}\n`);
       printUsage();
@@ -82,6 +89,10 @@ Commands:
   verify <bundle.iflx>     Inspect a .iflx file. With --key, verify the
                            signature matches an expected public key.
                            Flags: --key <public.iflk>, --json
+  test <bundle-dir>        Run the manifest.tests against a bundle. Uses
+                           an in-process sandbox factory; exits non-zero
+                           on any failure.
+                           Flags: --bail, --json
 
 Run 'ifc-lite ext <command> --help' for command-specific options.
 `);
@@ -199,6 +210,63 @@ async function extInitCommand(args: string[]): Promise<void> {
   process.stderr.write(`  id:   ${id}\n`);
   process.stderr.write(`  name: ${name}\n`);
   process.stderr.write(`Run 'ifc-lite ext validate ${target}' to verify.\n`);
+}
+
+// ---------------------------------------------------------------------------
+// test
+// ---------------------------------------------------------------------------
+
+async function extTestCommand(args: string[]): Promise<void> {
+  const json = hasFlag(args, '--json');
+  const bail = hasFlag(args, '--bail');
+  const target = args.find((a) => !a.startsWith('-'));
+  if (!target) fatal('Usage: ifc-lite ext test <bundle-dir> [--bail] [--json]');
+  const path = resolve(target);
+  if (!existsSync(path)) fatal(`No bundle at ${path}`);
+
+  const bundle = await loadBundleFromDirectory(path);
+  if (!bundle.ok) {
+    if (json) {
+      process.stdout.write(`${JSON.stringify({ ok: false, errors: bundle.errors }, null, 2)}\n`);
+    } else {
+      process.stderr.write(`✗ ${path} failed to load:\n`);
+      for (const err of bundle.errors) {
+        process.stderr.write(`  ${err.path || '<root>'}: [${err.code}] ${err.message}\n`);
+      }
+    }
+    process.exit(1);
+  }
+
+  const grants = parseCapabilities(bundle.value.manifest.capabilities);
+  if (!grants.ok) {
+    fatal(`Manifest capabilities did not parse: ${grants.errors[0]?.message ?? 'unknown'}`);
+  }
+
+  const runtime = new ExtensionRuntime({ factory: createMemorySandboxFactory() });
+  const summary = await runBundleTests({
+    runtime,
+    bundle: bundle.value,
+    grants: grants.value,
+    bail,
+  });
+
+  if (json) {
+    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  } else {
+    if (summary.results.length === 0) {
+      process.stderr.write(`No tests declared in manifest.\n`);
+    } else {
+      for (const r of summary.results) {
+        const mark = r.passed ? '✓' : '✗';
+        process.stderr.write(`${mark} ${r.name} (${r.durationMs.toFixed(0)}ms)\n`);
+        if (!r.passed && r.error) {
+          process.stderr.write(`  ${r.error}\n`);
+        }
+      }
+      process.stderr.write(`\n${summary.passed} passed, ${summary.failed} failed (${summary.totalDurationMs.toFixed(0)}ms total)\n`);
+    }
+  }
+  process.exit(summary.failed === 0 ? 0 : 1);
 }
 
 function getArg(args: string[], flag: string): string | undefined {

@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { FilePlus, FileText, Lightbulb, Puzzle, Trash2, Upload, X } from 'lucide-react';
+import { Beaker, FilePlus, FileText, Lightbulb, Puzzle, Trash2, Upload, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -207,6 +207,34 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        toast.info(`Running tests for ${record.id}…`);
+                        host.runTests(record.id)
+                          .then((summary) => {
+                            if (summary.results.length === 0) {
+                              toast.info(`${record.id}: no tests declared.`);
+                            } else if (summary.failed === 0) {
+                              toast.success(`${record.id}: ${summary.passed}/${summary.results.length} passed`);
+                            } else {
+                              toast.error(
+                                `${record.id}: ${summary.failed} failed — ${summary.results.find((r) => !r.passed)?.error ?? 'see console'}`,
+                              );
+                              console.warn('[ext-host] test failures:', summary);
+                            }
+                          })
+                          .catch((err) => {
+                            toast.error(
+                              `Tests failed to run: ${err instanceof Error ? err.message : String(err)}`,
+                            );
+                          });
+                      }}
+                      aria-label={`Run tests for ${record.id}`}
+                    >
+                      <Beaker className="h-3.5 w-3.5" />
+                    </Button>
                     <Switch
                       checked={record.enabled}
                       onCheckedChange={(checked) => {

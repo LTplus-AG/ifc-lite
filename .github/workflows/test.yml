@@ -33,22 +33,23 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           # Fixtures live in a GitHub Release (see tests/models/manifest.json
           # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
           # disable the smudge filter so a stray .gitattributes can't
           # reintroduce it on a contributor branch.
           lfs: false
+          persist-credentials: false
 
       - name: Setup pnpm
         # v4 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -60,10 +61,12 @@ jobs:
         run: rustup show
 
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: ci
 
       - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
         with:
           version: latest
 
@@ -80,10 +83,13 @@ jobs:
       # be on disk by the time `pnpm build` reaches that package.
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: tests/models
-          key: fixtures-${{ hashFiles('tests/models/manifest.json') }}
+          # Namespace cache key separately from `release.yml` (`release-fixtures-…`).
+          # Phase A hardening — keeps the privileged release runner from ever
+          # reading a cache writeable by a fork-triggered job.
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
 
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'

@@ -50,7 +50,7 @@
     "react-resizable-panels": "^4.4.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
-    "zustand": "^4.4.0"
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",

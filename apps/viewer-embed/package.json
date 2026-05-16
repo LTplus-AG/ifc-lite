@@ -35,7 +35,7 @@
     "@ifc-lite/wasm": "workspace:^",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "zustand": "^4.4.0"
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

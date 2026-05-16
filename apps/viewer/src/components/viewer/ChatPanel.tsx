@@ -566,6 +566,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     }, {
       userPrompt: text.trim(),
       diagnostics: effectiveDiagnostics,
+      // Include the extension-authoring contract when the classifier
+      // flagged the turn as authoring/fork — the LLM gets the manifest
+      // schema, widget DSL, and capability catalogue in context so it
+      // can emit a valid bundle.
+      includeAuthoringContract:
+        classified.intent === 'authoring' || classified.intent === 'fork',
     });
     const contextWindow = activeModelInfo?.contextWindow ?? 128_000;
     const inputBudget = Math.max(

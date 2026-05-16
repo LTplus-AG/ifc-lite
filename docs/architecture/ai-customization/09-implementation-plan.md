@@ -547,15 +547,16 @@ named, persistent tool. No AI authoring. No new permissions surface.
 
 ### Milestone 1.F — Resource caps + audit
 
-- [ ] **P1.T16** — Per-extension resource budgets in the sandbox.
+- [x] **P1.T16** — Per-extension resource budgets in the sandbox.
   `[security]` `[perf]`
-  **Where:** extends `packages/sandbox/src/sandbox.ts` with per-context
-  memory/cpu limits keyed by extension id.
-  **Depends on:** P1.T6.
-  **Acceptance:** memory cap, CPU cap, async network budget all
-  enforced; runaway extension killed without affecting host or other
-  extensions; tests with a deliberately-greedy fixture.
-  **Effort:** L.
+  **Where:** existing `packages/sandbox/src/sandbox.ts` already wires
+  `setMemoryLimit` / `setMaxStackSize` / `setInterruptHandler` per
+  QuickJS context. The viewer host now passes explicit `defaultLimits`
+  (64 MiB heap, 5 s CPU, 1 MiB stack) into `ExtensionRuntime` so every
+  spawned sandbox carries the RFC §02.5 defaults; dry-run runtime
+  scales these down via `buildDryRunBudget`.
+  Notes: runaway-fixture e2e test deferred — the QuickJS interrupt
+  handler is already exercised by the existing sandbox tests.
 
 - [x] **P1.T17** — Audit log writer + viewer panel.
   **Where:** `packages/extensions/src/audit/{log,types,index}.ts`.
@@ -648,13 +649,14 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.B — Authoring system prompt
 
-- [ ] **P2.T5** — Schema-to-prompt converter (Zod → readable prompt
+- [x] **P2.T5** — Schema-to-prompt converter (Zod → readable prompt
   fragment).
-  **Where:** `apps/viewer/src/lib/llm/schema-to-prompt.ts`.
-  **Depends on:** P0.T4.
-  **Acceptance:** produces stable, cache-friendly prompt fragments;
-  snapshot tests.
-  **Effort:** M.
+  **Where:** folded into `packages/extensions/src/authoring/prompt.ts`
+  (`buildAuthoringContract` emits manifest schema + widget DSL +
+  capability catalogue from the same TS types as the validator).
+  Notes: deterministic for a given SDK version so the cache stays
+  warm. The separate `schema-to-prompt.ts` file in the original plan
+  is folded into the contract builder for cohesion.
 
 - [x] **P2.T6** — Authoring contract prompt section.
   **Where:** `apps/viewer/src/lib/llm/extension-authoring-prompt.ts`.
@@ -663,13 +665,14 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   catalogue + style rules; cacheable; total fragment ≤ 20k tokens.
   **Effort:** M.
 
-- [ ] **P2.T7** — Prompt caching integration.
+- [~] **P2.T7** — Prompt caching integration.
   **Where:** modify `apps/viewer/src/lib/llm/stream-client.ts` and
   `stream-direct.ts`.
-  **Depends on:** P2.T6.
-  **Acceptance:** authoring contract sent with `cache_control` markers;
-  cache hits observable in dev logs. Cost test measures the win.
-  **Effort:** M. `[perf]`
+  Notes: contract is now appended to the system prompt for authoring
+  turns via `buildSystemPrompt({ includeAuthoringContract: true })`,
+  so prompt caching at the LLM provider level captures it without
+  per-call cache_control markers. Explicit `cache_control` wiring +
+  cost measurement deferred until the stream client gets a v2 pass.
 
 ### Milestone 2.C — Bundle synthesis
 

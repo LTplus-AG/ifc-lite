@@ -102,6 +102,16 @@ export class ExtensionHostService {
     this.runtime = new ExtensionRuntime({
       factory: createBimSandboxFactory({ sdk: opts.sdk }),
       sdk: opts.sdk,
+      // Spec defaults per RFC §02.5: 64 MiB heap, 5 s sync CPU, 1 MiB
+      // stack. The sandbox enforces these via QuickJS setMemoryLimit /
+      // setMaxStackSize / setInterruptHandler. Tighter dry-run budgets
+      // come from `buildDryRunBudget` when the authoring loop spins up
+      // a transient runtime.
+      defaultLimits: {
+        memoryBytes: 64 * 1024 * 1024,
+        timeoutMs: 5_000,
+        maxStackBytes: 1 * 1024 * 1024,
+      },
     });
     this.loader = new ExtensionLoader({
       storage: this.storage,

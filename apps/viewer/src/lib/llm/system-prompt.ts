@@ -19,6 +19,7 @@ import {
 import type { FileAttachment } from './types.js';
 import type { ScriptEditorSelection } from './types.js';
 import { formatDiagnosticsForPrompt, type ScriptDiagnostic } from './script-diagnostics.js';
+import { buildAuthoringContract } from '@ifc-lite/extensions';
 
 const MAX_ATTACHMENT_ROWS_IN_PROMPT = 5;
 const MAX_ATTACHMENT_TEXT_PREVIEW_CHARS = 1200;
@@ -61,6 +62,14 @@ export interface PromptTaskContext {
    * else portion across users and only invalidate the tail.
    */
   personalOverlay?: string;
+  /**
+   * When set, append the AI authoring contract from
+   * `@ifc-lite/extensions` (manifest schema + widget DSL + capability
+   * catalogue + style rules). Used when the chat classifier flags an
+   * authoring intent. Cached separately so non-authoring turns don't
+   * pay for the extra tokens.
+   */
+  includeAuthoringContract?: boolean;
 }
 
 interface NamespacedMethod {
@@ -767,6 +776,12 @@ if (!rows) {
   if (task?.diagnostics && task.diagnostics.length > 0) {
     prompt += `\n\n## ACTIVE DIAGNOSTICS`;
     prompt += `\n${formatDiagnosticsForPrompt(task.diagnostics)}`;
+  }
+
+  if (task?.includeAuthoringContract) {
+    // AI extension authoring contract (RFC §04.5/§11). Deterministic
+    // for a given SDK version so a hosted cache layer hits cleanly.
+    prompt += `\n\n${buildAuthoringContract()}`;
   }
 
   if (task?.personalOverlay && task.personalOverlay.trim().length > 0) {

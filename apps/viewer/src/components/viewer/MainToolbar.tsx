@@ -44,6 +44,7 @@ import {
   Globe2,
   Move,
   Settings,
+  PenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -301,6 +302,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
+  const editEnabled = useViewerStore((state) => state.editEnabled);
+  const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
@@ -1077,6 +1080,34 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       {/* ── Navigation Tools ── */}
       <ToolButton tool="select" icon={MousePointer2} label="Select" shortcut="V" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton tool="walk" icon={PersonStanding} label="Walk Mode" shortcut="C" activeTool={activeTool} onToolChange={setActiveTool} />
+
+      {/* ── Edit Mode pill ──
+          Single global switch that unlocks every authoring affordance
+          (inline property/attribute editors in the Properties panel,
+          the add-element draw tools, georeference placement, and
+          future geometry manipulators). Off by default — viewer-only
+          users never see edit chrome. Press E to toggle.
+          See `uiSlice.editEnabled`. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={editEnabled ? 'default' : 'ghost'}
+            size="icon-sm"
+            aria-label={editEnabled ? 'Exit edit mode' : 'Enter edit mode'}
+            aria-pressed={editEnabled}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              toggleEditEnabled();
+            }}
+            className={cn(editEnabled && 'bg-purple-600 text-white hover:bg-purple-700')}
+          >
+            <PenLine className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {editEnabled ? 'Exit Edit Mode' : 'Edit Mode'} <span className="opacity-50">E</span>
+        </TooltipContent>
+      </Tooltip>
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 

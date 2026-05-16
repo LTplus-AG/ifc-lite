@@ -48,6 +48,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const hideEntities = useViewerStore((s) => s.hideEntities);
   const toggleTheme = useViewerStore((s) => s.toggleTheme);
   const toggleBasketPresentationVisible = useViewerStore((s) => s.toggleBasketPresentationVisible);
+  const toggleEditEnabled = useViewerStore((s) => s.toggleEditEnabled);
 
   // Measure tool specific actions
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
@@ -91,6 +92,15 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     if (key === 'p' && !ctrl && !shift) {
       e.preventDefault();
       setActiveTool('annotate');
+    }
+
+    // Global edit-mode pill — unlocks inline property/attribute
+    // editors, add-element draw tools, georeference placement, and
+    // future geometry manipulators. Toggle from anywhere outside an
+    // input field.
+    if (key === 'e' && !ctrl && !shift) {
+      e.preventDefault();
+      toggleEditEnabled();
     }
 
     // Basket controls (automatic context source)
@@ -250,6 +260,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     cancelMeasurement,
     clearMeasurements,
     toggleSnap,
+    toggleEditEnabled,
   ]);
 
   useEffect(() => {
@@ -269,6 +280,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'M', description: 'Measure tool', category: 'Tools' },
   { key: 'P', description: 'Annotate tool — drop a pin with a note', category: 'Tools' },
   { key: 'X', description: 'Section tool', category: 'Tools' },
+  { key: 'E', description: 'Toggle edit mode (unlocks property + geometry edits)', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },
   { key: 'Ctrl+C', description: 'Clear measurements (Measure tool)', category: 'Tools' },

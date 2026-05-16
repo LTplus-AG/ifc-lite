@@ -11,6 +11,7 @@ import { MERGE_LAYERS_STORAGE_KEY, UI_DEFAULTS } from '../constants.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
+import type { CesiumPlacementDraft } from './cesiumSlice.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 
@@ -22,6 +23,15 @@ export type ThemeMode = 'light' | 'dark' | 'colorful';
 export interface UICrossSliceState {
   models: Map<string, FederatedModel>;
   geometryResult: GeometryResult | null;
+  /**
+   * Cesium placement draft state owned by `CesiumSlice`. UISlice
+   * reaches in to clear it when global edit mode flips off, so that
+   * "exit edit" really exits everything (the placement editor, the
+   * draft values, the active tool) in a single atomic update.
+   */
+  cesiumPlacementEditMode: boolean;
+  cesiumPlacementDraftModelId: string | null;
+  cesiumPlacementDraft: CesiumPlacementDraft | null;
 }
 
 export interface UISlice {
@@ -29,6 +39,16 @@ export interface UISlice {
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
   activeTool: string;
+  /**
+   * Global edit mode. When `true`, all in-place editing affordances
+   * (inline property/attribute editors, future geometry manipulators,
+   * georeference placement, the add-element draw tools) are unlocked.
+   * When `false` the viewer is strictly read-only — this is the
+   * default. The toggle is surfaced as a single pill in the main
+   * toolbar so the user has one switch for "am I editing anything?"
+   * rather than per-panel toggles.
+   */
+  editEnabled: boolean;
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
@@ -56,6 +76,8 @@ export interface UISlice {
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
   setActiveTool: (tool: string) => void;
+  setEditEnabled: (enabled: boolean) => void;
+  toggleEditEnabled: () => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
@@ -101,6 +123,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
+  editEnabled: false,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
@@ -120,7 +143,38 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
   setRightPanelCollapsed: (rightPanelCollapsed) => set({ rightPanelCollapsed }),
-  setActiveTool: (activeTool) => set({ activeTool }),
+  setActiveTool: (activeTool) => {
+    // Authoring tools require edit mode. Entering one of them flips
+    // the global toggle on so the rest of the UI (Properties panel,
+    // future manipulators) stays in sync. Read-only tools leave the
+    // flag alone.
+    const requiresEdit = activeTool === 'addElement' || activeTool === 'cesium-placement';
+    set(requiresEdit ? { activeTool, editEnabled: true } : { activeTool });
+  },
+  setEditEnabled: (editEnabled) => {
+    if (!editEnabled) {
+      // Flipping edit mode off must clear every authoring sub-state
+      // that depends on it — otherwise the viewer ends up "not in
+      // edit mode" but still carrying a georef draft or a half-drawn
+      // slab polygon. Cross-slice reset lives here so callers don't
+      // have to remember to mop up.
+      set((s) => ({
+        editEnabled: false,
+        activeTool:
+          s.activeTool === 'addElement' || s.activeTool === 'cesium-placement'
+            ? 'select'
+            : s.activeTool,
+        cesiumPlacementEditMode: false,
+        cesiumPlacementDraftModelId: null,
+        cesiumPlacementDraft: null,
+      }));
+      return;
+    }
+    set({ editEnabled: true });
+  },
+  toggleEditEnabled: () => {
+    get().setEditEnabled(!get().editEnabled);
+  },
 
   setTheme: (theme) => {
     applyThemeClasses(theme);

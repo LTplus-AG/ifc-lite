@@ -256,6 +256,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
 
       // UI
       activeTool: UI_DEFAULTS.ACTIVE_TOOL,
+      editEnabled: false,
       visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
       edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
       edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,

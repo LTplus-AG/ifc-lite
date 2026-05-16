@@ -58,6 +58,7 @@ import {
   Sparkles,
   Eraser,
   MapPin,
+  PenLine,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -336,6 +337,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('annotate'); } },
       { id: 'tool:add-element', label: 'Add Element', keywords: 'wall slab beam column place drop new add element generic', category: 'Tools', icon: Box,
         action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
+      { id: 'tool:edit-mode', label: 'Toggle Edit Mode', keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools', icon: PenLine, shortcut: 'E',
+        action: () => { useViewerStore.getState().toggleEditEnabled(); } },
     );
 
     // ── Visibility ──

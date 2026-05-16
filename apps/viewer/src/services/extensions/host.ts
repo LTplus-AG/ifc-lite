@@ -41,6 +41,7 @@ import {
   filterAgainstInstalled,
   parseCapabilities,
   planFromPattern,
+  revalidateAgainstSdk,
   runBundleTests,
   sha256Hex,
   unpackBundle,
@@ -54,6 +55,7 @@ import {
   type LoadedExtensionStatus,
   type MinedPattern,
   type MineEvent,
+  type RevalidationSummary,
   type RuntimeRunResult,
   type SlotContribution,
   type SlotListener,
@@ -458,6 +460,30 @@ export class ExtensionHostService {
       runtime: this.runtime,
       bundle,
       grants: grants.value,
+    });
+  }
+
+  /**
+   * Re-run every installed extension's tests against the supplied SDK
+   * version. The result feeds the repair queue UI: outdated or
+   * permissive ranges with failing tests land in `needsRepair`.
+   */
+  async revalidateForSdk(sdkVersion: string): Promise<RevalidationSummary> {
+    const records = await this.storage.listExtensions();
+    const installed = records.map((rec) => {
+      const grants = parseCapabilities(rec.grantedCapabilities);
+      const bundle = this.loader.getBundle(rec.id);
+      return {
+        id: rec.id,
+        engines: { ifcLiteSdk: bundle?.manifest.engines.ifcLiteSdk ?? '*' },
+        grants: grants.ok ? grants.value : [],
+      };
+    });
+    return revalidateAgainstSdk({
+      sdk: sdkVersion,
+      installed,
+      resolveBundle: (id) => this.loader.getBundle(id),
+      runtime: this.runtime,
     });
   }
 

@@ -16,6 +16,8 @@ import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useActionLogger } from '@/hooks/useActionLogger';
+import { isSafeMode } from '@/lib/safe-mode';
+import { ShieldAlert } from 'lucide-react';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
@@ -221,9 +223,21 @@ export function ViewerLayout() {
   }, [theme]);
 
 
+  const safeMode = isSafeMode();
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
+        {safeMode && (
+          <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300">
+            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              Safe mode: extensions and the active flavor are not loaded for this
+              session. Append <code className="font-mono">?safe=0</code> or reload
+              without the flag to resume.
+            </span>
+          </div>
+        )}
         {/* Keyboard Shortcuts Dialog */}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} />
 

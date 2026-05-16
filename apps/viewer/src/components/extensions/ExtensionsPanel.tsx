@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { Beaker, FilePlus, FileText, Lightbulb, Puzzle, Trash2, Upload, X } from 'lucide-react';
+import { Beaker, FilePlus, FileText, Lightbulb, Puzzle, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -28,6 +28,7 @@ import { useInstalledExtensions } from '@/hooks/useInstalledExtensions';
 import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
+import { RepairQueuePanel } from './RepairQueuePanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 
@@ -45,7 +46,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [view, setView] = useState<'installed' | 'ideas' | 'audit'>('installed');
+  const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -115,6 +116,16 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           </Button>
           <Button
             size="sm"
+            variant={view === 'repair' ? 'secondary' : 'ghost'}
+            onClick={() => setView((v) => (v === 'repair' ? 'installed' : 'repair'))}
+            aria-label="Toggle repair queue"
+            aria-pressed={view === 'repair'}
+          >
+            <Wrench className="mr-1 h-3.5 w-3.5" />
+            Repair
+          </Button>
+          <Button
+            size="sm"
             variant={view === 'audit' ? 'secondary' : 'ghost'}
             onClick={() => setView((v) => (v === 'audit' ? 'installed' : 'audit'))}
             aria-label="Toggle audit log"
@@ -164,6 +175,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <AuditLogPanel />
       ) : view === 'ideas' ? (
         <IdeasPanel />
+      ) : view === 'repair' ? (
+        <RepairQueuePanel />
       ) : (
       <div
         className={`flex-1 overflow-auto transition-colors ${

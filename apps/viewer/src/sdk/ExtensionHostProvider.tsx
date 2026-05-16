@@ -21,6 +21,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useBim } from './BimProvider.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
+import { isSafeMode } from '@/lib/safe-mode';
 
 const ExtensionHostContext = createContext<ExtensionHostService | null>(null);
 
@@ -36,6 +37,13 @@ export function ExtensionHostProvider({ children }: ExtensionHostProviderProps) 
 
   const [, forceRender] = useState(0);
   useEffect(() => {
+    if (isSafeMode()) {
+      // Safe mode: skip auto-activation. Service still constructs so
+      // the user can run uninstall / disable / repair from the UI; we
+      // just don't fire onStartup or load extension code.
+      console.info('[ExtensionHostProvider] safe mode — skipping init().');
+      return service.onChange(() => forceRender((n) => n + 1));
+    }
     service.init().catch((err) => {
       console.error('[ExtensionHostProvider] init failed:', err);
     });

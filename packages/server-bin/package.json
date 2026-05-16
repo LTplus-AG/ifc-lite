@@ -28,7 +28,7 @@
     "tar": "^7.5.11"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^25.8.0",
     "typescript": "^5.3.0"
   },
   "engines": {

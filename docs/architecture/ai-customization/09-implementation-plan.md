@@ -530,7 +530,7 @@ named, persistent tool. No AI authoring. No new permissions surface.
   keyboard escape on red-tier. Visual regression + a11y tests.
   **Effort:** L. `[security]` `[ux]`
 
-- [ ] **P1.T14** — Source preview pane (read-only Monaco-ish view).
+- [x] **P1.T14** — Source preview pane (read-only Monaco-ish view).
   **Where:** `apps/viewer/src/components/extensions/BundlePreview.tsx`.
   **Depends on:** P1.T13.
   **Acceptance:** tabbed view of bundle files; syntax highlighting;
@@ -571,14 +571,14 @@ named, persistent tool. No AI authoring. No new permissions surface.
   the UI batch** — needs React + browser to verify accessibility and
   storage persistence. The headless writer is complete and tested.
 
-- [~] **P1.T18** — ~~Settings → Extensions page~~ → Extensions dock
+- [x] **P1.T18** — ~~Settings → Extensions page~~ → Extensions dock
   panel. **Where:** `apps/viewer/src/components/extensions/ExtensionsPanel.tsx`,
   `apps/viewer/src/store/slices/extensionsSlice.ts`,
   `ViewerLayout.tsx`, `CommandPalette.tsx`.
   Notes: see P1.T7 — the surface moved off the settings page (not
   deployed on web) onto a togglable dock panel reachable from the
-  Command Palette. Item kept open at `[~]` because it still doesn't
-  expose the audit log view; that lands with P1.T17 UI.
+  Command Palette. Audit / Ideas / Repair / Privacy now all hang off
+  this surface as tabs.
 - [ ] ~~**P1.T18** — Settings → Extensions page.~~
   **Where:** `apps/viewer/src/components/viewer/SettingsPage.tsx`
   (extend with new section).
@@ -639,7 +639,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   inline edit for each row; emits updated plan on change. A11y tested.
   **Effort:** L. `[ux]`
 
-- [ ] **P2.T4** — Chat routing: intent → plan generation → plan card.
+- [x] **P2.T4** — Chat routing: intent → plan generation → plan card.
   **Where:** `apps/viewer/src/components/viewer/ChatPanel.tsx` (modify).
   **Depends on:** P2.T1, P2.T3.
   **Acceptance:** authoring intents render a plan card; user can
@@ -717,7 +717,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.E — Isolated dry-run
 
-- [ ] **P2.T13** — Sandbox profile: tightened limits for dry-run.
+- [x] **P2.T13** — Sandbox profile: tightened limits for dry-run.
   **Where:** `packages/extensions/src/dryrun/profile.ts`.
   **Depends on:** P1.T16.
   **Acceptance:** 25% mem, 50% cpu of production; configurable; tests
@@ -732,7 +732,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   Surfaces structured pass/fail.
   **Effort:** L.
 
-- [ ] **P2.T15** — Synthetic fixture support via `bim.create.*`.
+- [x] **P2.T15** — Synthetic fixture support via `bim.create.*`.
   **Where:** `packages/extensions/src/test-runner/synthetic.ts`.
   **Depends on:** P2.T14.
   **Acceptance:** test spec can declare a synthetic-build step; runner
@@ -798,7 +798,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.H — Dock slots
 
-- [ ] **P2.T23** — `dock.left` `dock.right` `dock.bottom` slot
+- [x] **P2.T23** — `dock.left` `dock.right` `dock.bottom` slot
   containers in viewer layout.
   **Where:** `apps/viewer/src/components/viewer/DockContainer.tsx`
   (new), modify `App.tsx`.
@@ -807,7 +807,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   layout state persists per flavor (placeholder until Phase 3).
   **Effort:** L. `[ux]`
 
-- [ ] **P2.T24** — `contextMenu.entity` + `contextMenu.canvas` slots.
+- [x] **P2.T24** — `contextMenu.entity` + `contextMenu.canvas` slots.
   **Where:** modify `apps/viewer/src/components/viewer/EntityContextMenu.tsx`.
   **Depends on:** P1.T8.
   **Acceptance:** right-click on entity surfaces contributed items
@@ -816,14 +816,14 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.I — Mode C fork + capability diff
 
-- [ ] **P2.T25** — Fork-and-modify flow in chat.
+- [x] **P2.T25** — Fork-and-modify flow in chat.
   **Where:** `apps/viewer/src/lib/llm/authoring/fork.ts`.
   **Depends on:** P2.T16.
   **Acceptance:** loads existing bundle as context; produces a diff
   plan; routes through standard authoring pipeline.
   **Effort:** M.
 
-- [ ] **P2.T26** — Capability diff UI in review screen.
+- [x] **P2.T26** — Capability diff UI in review screen.
   **Where:** modify `apps/viewer/src/components/extensions/CapabilityReview.tsx`.
   **Depends on:** P0.T9, P1.T13.
   **Acceptance:** "since v1.2 this extension wants" diff list; typed
@@ -831,7 +831,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   category combinations.
   **Effort:** M. `[security]`
 
-- [ ] **P2.T27** — Update flow: install new version, archive old,
+- [x] **P2.T27** — Update flow: install new version, archive old,
   preserve user config.
   **Where:** `apps/viewer/src/services/extension-installer.ts` (extend).
   **Depends on:** P2.T26.
@@ -890,7 +890,7 @@ mergeable.
 
 ### Milestone 3.B — Activation / switching
 
-- [ ] **P3.T4** — Flavor switcher (deactivate current, activate new).
+- [x] **P3.T4** — Flavor switcher (deactivate current, activate new).
   **Where:** `packages/extensions/src/flavor/switcher.ts`.
   **Depends on:** P3.T2, P1.T4.
   **Acceptance:** clean activation/deactivation; UI re-renders;
@@ -904,12 +904,15 @@ mergeable.
   **Acceptance:** shows active flavor name; click opens flavor picker.
   **Effort:** S.
 
-- [ ] **P3.T6** — Settings → Flavors page.
-  **Where:** modify `apps/viewer/src/components/viewer/SettingsPage.tsx`.
-  **Depends on:** P3.T4.
-  **Acceptance:** list flavors, create/rename/duplicate/delete, set
-  active. Tests cover each operation.
-  **Effort:** M. `[ux]`
+- [x] **P3.T6** — ~~Settings → Flavors page~~ → FlavorDialog (status-bar
+  click target).
+  **Where:** `apps/viewer/src/components/extensions/FlavorDialog.tsx`,
+  `apps/viewer/src/components/extensions/FlavorMergeDialog.tsx`,
+  `apps/viewer/src/components/extensions/FlavorIndicator.tsx`.
+  Notes: settings page is desktop-only and not deployed on web (same
+  constraint as P1.T18). Surface moved to a status-bar chip that opens
+  a dialog with list / activate / duplicate / delete / export / import
+  / reset / merge. Reachable everywhere the StatusBar renders.
 
 ### Milestone 3.C — Export
 
@@ -995,7 +998,7 @@ mergeable.
   surfaces in onboarding tour.
   **Effort:** S.
 
-- [ ] **P3.T17** — Safe-mode launch (`?safe=1`, shift-launch on desktop).
+- [x] **P3.T17** — Safe-mode launch (`?safe=1`, shift-launch on desktop).
   **Where:** modify `apps/viewer/src/main.tsx`,
   `apps/desktop/src-tauri/src/main.rs`.
   **Depends on:** P3.T4.
@@ -1119,7 +1122,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   survive overlay edits.
   **Effort:** M.
 
-- [ ] **P4.T13** — Memory extractor (post-session chat → proposed
+- [x] **P4.T13** — Memory extractor (post-session chat → proposed
   overlay delta). `[security]`
   **Where:** `apps/viewer/src/lib/llm/memory-extractor.ts`.
   **Depends on:** P4.T12.
@@ -1129,7 +1132,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   planted-content cases.
   **Effort:** L.
 
-- [ ] **P4.T14** — Overlay edit UI.
+- [x] **P4.T14** — Overlay edit UI.
   **Where:** `apps/viewer/src/components/extensions/PromptOverlayEditor.tsx`.
   **Depends on:** P4.T13.
   **Acceptance:** Markdown editor; diff view for proposed deltas;
@@ -1138,21 +1141,21 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 ### Milestone 4.E — SDK-update repair
 
-- [ ] **P4.T15** — SDK-update detector.
+- [x] **P4.T15** — SDK-update detector.
   **Where:** `packages/extensions/src/host/sdk-version.ts`.
   **Depends on:** P1.T4.
   **Acceptance:** compares installed extension `engines.ifcLiteSdk`
   against current; produces a list of extensions to re-evaluate.
   **Effort:** S.
 
-- [ ] **P4.T16** — Auto re-run extension tests on update.
+- [x] **P4.T16** — Auto re-run extension tests on update.
   **Where:** `packages/extensions/src/host/sdk-revalidate.ts`.
   **Depends on:** P2.T14, P4.T15.
   **Acceptance:** runs each affected extension's tests; structured
   pass / fail; quiet on pass; queues on fail.
   **Effort:** M.
 
-- [ ] **P4.T17** — Repair-task UI (batch notification + per-extension
+- [x] **P4.T17** — Repair-task UI (batch notification + per-extension
   review).
   **Where:** `apps/viewer/src/components/extensions/RepairQueuePanel.tsx`.
   **Depends on:** P4.T16, P2.T16.
@@ -1160,7 +1163,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   + approve; rollback on repair-failure.
   **Effort:** L. `[ux]`
 
-- [ ] **P4.T18** — CI canary against registry extensions before SDK
+- [x] **P4.T18** — CI canary against registry extensions before SDK
   release.
   **Where:** `.github/workflows/sdk-canary.yml`.
   **Depends on:** P4.T16.
@@ -1171,8 +1174,8 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 ### Milestone 4.F — Privacy controls
 
-- [ ] **P4.T19** — Settings → Privacy section with action-log
-  toggle, export, delete.
+- [x] **P4.T19** — ~~Settings → Privacy section~~ → PrivacyPanel tab
+  with action-log toggle, export, delete.
   **Where:** modify `SettingsPage.tsx`.
   **Depends on:** P4.T2.
   **Acceptance:** all three actions work; explanatory copy from
@@ -1186,7 +1189,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   after Phase 4 ships; can review later.
   **Effort:** S.
 
-- [ ] **P4.T21** — Eval suite for the three loops (per §06.6).
+- [x] **P4.T21** — Eval suite for the three loops (per §06.6).
   **Where:** `packages/extensions/test/eval/loops/`.
   **Depends on:** P4.T7, P4.T13, P4.T16.
   **Acceptance:** synthetic logs / transcripts; metrics tracked; CI

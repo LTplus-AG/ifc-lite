@@ -53,6 +53,10 @@ import type { ExtensionInstallSummary } from '@/services/extensions/host.js';
 interface CapabilityReviewProps {
   open: boolean;
   summary: ExtensionInstallSummary;
+  /** When supplied, render the capability diff vs the previously-granted set. */
+  previousGrants?: readonly string[];
+  /** Optional previous version label (e.g. "v1.2.0") for the diff banner. */
+  previousVersion?: string;
   onApprove(grants: string[]): void;
   onCancel(): void;
 }
@@ -65,7 +69,14 @@ interface CapabilityRow {
 
 const APPROVE_PHRASE = 'approve';
 
-export function CapabilityReview({ open, summary, onApprove, onCancel }: CapabilityReviewProps) {
+export function CapabilityReview({
+  open,
+  summary,
+  previousGrants,
+  previousVersion,
+  onApprove,
+  onCancel,
+}: CapabilityReviewProps) {
   const rows = useMemo<CapabilityRow[]>(() => {
     return summary.capabilities.map((raw) => {
       const parsed = parseCapability(raw);
@@ -78,6 +89,20 @@ export function CapabilityReview({ open, summary, onApprove, onCancel }: Capabil
   const overall = useMemo<RiskTier>(() => {
     return overallTier(rows.map((r) => r.risk).filter((r): r is CapabilityRisk => !!r));
   }, [rows]);
+
+  /** Capability strings introduced since the previous install, if any. */
+  const newSinceUpgrade = useMemo<Set<string>>(() => {
+    if (!previousGrants) return new Set();
+    const prior = new Set(previousGrants);
+    return new Set(summary.capabilities.filter((c) => !prior.has(c)));
+  }, [previousGrants, summary.capabilities]);
+
+  /** Capability strings the new bundle no longer requests. */
+  const droppedSinceUpgrade = useMemo<string[]>(() => {
+    if (!previousGrants) return [];
+    const next = new Set(summary.capabilities);
+    return previousGrants.filter((c) => !next.has(c));
+  }, [previousGrants, summary.capabilities]);
 
   const [granted, setGranted] = useState<Set<string>>(
     () => new Set(summary.capabilities),
@@ -121,6 +146,34 @@ export function CapabilityReview({ open, summary, onApprove, onCancel }: Capabil
             silently with broader scope.
           </DialogDescription>
         </DialogHeader>
+
+        {previousGrants && (newSinceUpgrade.size > 0 || droppedSinceUpgrade.length > 0) && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+            <div className="font-medium text-amber-700 dark:text-amber-400">
+              Capability changes since {previousVersion ?? 'the previous version'}
+            </div>
+            {newSinceUpgrade.size > 0 && (
+              <div className="mt-1">
+                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">New:</span>{' '}
+                {[...newSinceUpgrade].map((c) => (
+                  <code key={c} className="font-mono text-[10px] mr-1 bg-amber-500/20 rounded px-1 py-0.5">
+                    {c}
+                  </code>
+                ))}
+              </div>
+            )}
+            {droppedSinceUpgrade.length > 0 && (
+              <div className="mt-1">
+                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">Dropped:</span>{' '}
+                {droppedSinceUpgrade.map((c) => (
+                  <code key={c} className="font-mono text-[10px] mr-1 line-through opacity-70">
+                    {c}
+                  </code>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-1 border-b">
           <button

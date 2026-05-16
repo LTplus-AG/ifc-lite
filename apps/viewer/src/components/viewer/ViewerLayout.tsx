@@ -18,6 +18,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { isSafeMode } from '@/lib/safe-mode';
 import { ShieldAlert } from 'lucide-react';
+import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
@@ -451,6 +452,14 @@ export function ViewerLayout() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Extension dock.bottom slot — collapses to nothing when no
+            extension contributes here. */}
+        {!isMobile && (
+          <div className="max-h-[40vh]">
+            <ExtensionDockHost slot="dock.bottom" />
           </div>
         )}
 

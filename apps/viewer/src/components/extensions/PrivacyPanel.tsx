@@ -19,11 +19,16 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Download, Eraser, ScrollText, Save, Shield, X } from 'lucide-react';
+import { Brain, Download, Eraser, ScrollText, Save, Shield, X } from 'lucide-react';
 import {
   clampOverlay,
+  extractMemoryProposals,
+  mergeIntoOverlay,
   type Flavor,
+  type MemoryProposal,
+  type TranscriptTurn,
 } from '@ifc-lite/extensions';
+import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -40,6 +45,8 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
   const [overlayDraft, setOverlayDraft] = useState('');
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [proposals, setProposals] = useState<MemoryProposal[]>([]);
+  const chatMessages = useViewerStore((s) => s.chatMessages);
 
   const refresh = async () => {
     setLogSize({ events: host.actionLog.size(), bytes: host.actionLog.byteSize() });
@@ -80,6 +87,28 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
     host.actionLog.clear();
     setLogSize({ events: 0, bytes: 0 });
     toast.success('Action log cleared.');
+  };
+
+  const handleExtractMemory = () => {
+    const transcript: TranscriptTurn[] = chatMessages.map((m) => ({
+      role: m.role === 'system' ? 'system' : (m.role as 'user' | 'assistant'),
+      content: m.content,
+    }));
+    const next = extractMemoryProposals(transcript);
+    setProposals(next);
+    if (next.length === 0) {
+      toast.info('No stable preferences detected in this session yet.');
+    } else {
+      toast.success(`Found ${next.length} candidate preference${next.length === 1 ? '' : 's'}.`);
+    }
+  };
+
+  const handleAcceptProposals = () => {
+    const next = mergeIntoOverlay(overlayDraft, proposals);
+    setOverlayDraft(next);
+    setDirty(true);
+    setProposals([]);
+    toast.success(`Added ${proposals.length} preference${proposals.length === 1 ? '' : 's'} to the overlay. Save to keep them.`);
   };
 
   const handleSaveOverlay = async () => {
@@ -194,15 +223,48 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
                   }}
                   placeholder="e.g. Always export CSV with semicolon separators. Default lens for IfcWall: by-fire-rating."
                 />
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-[10px] text-muted-foreground">
                     {Math.ceil(overlayDraft.length / 4)} approx tokens
                   </span>
-                  <Button size="sm" onClick={() => void handleSaveOverlay()} disabled={busy || !dirty}>
-                    <Save className="mr-1 h-3.5 w-3.5" />
-                    Save overlay
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="outline" onClick={handleExtractMemory} disabled={chatMessages.length === 0}>
+                      <Brain className="mr-1 h-3.5 w-3.5" />
+                      Extract from chat
+                    </Button>
+                    <Button size="sm" onClick={() => void handleSaveOverlay()} disabled={busy || !dirty}>
+                      <Save className="mr-1 h-3.5 w-3.5" />
+                      Save overlay
+                    </Button>
+                  </div>
                 </div>
+
+                {proposals.length > 0 && (
+                  <div className="rounded border bg-muted/30 px-3 py-2 space-y-2">
+                    <div className="text-[11px] font-medium">
+                      {proposals.length} candidate preference{proposals.length === 1 ? '' : 's'}
+                    </div>
+                    <ul className="space-y-1 text-[11px]">
+                      {proposals.map((p, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-muted-foreground">·</span>
+                          <span className="flex-1">{p.phrasing}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {Math.round(p.confidence * 100)}%
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => setProposals([])}>
+                        Discard
+                      </Button>
+                      <Button size="sm" onClick={handleAcceptProposals}>
+                        Add to overlay
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </section>

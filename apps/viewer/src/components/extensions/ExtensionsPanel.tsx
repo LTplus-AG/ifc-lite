@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { Beaker, FilePlus, FileText, Lightbulb, Puzzle, Shield, Trash2, Upload, Wrench, X } from 'lucide-react';
+import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Shield, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -32,6 +32,7 @@ import { RepairQueuePanel } from './RepairQueuePanel';
 import { PrivacyPanel } from './PrivacyPanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
+import { useViewerStore } from '@/store';
 
 interface ExtensionsPanelProps {
   onClose?: () => void;
@@ -40,10 +41,59 @@ interface ExtensionsPanelProps {
 export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const host = useExtensionHost();
   const installed = useInstalledExtensions();
+  const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
+  const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFork = useCallback(
+    async (id: string) => {
+      try {
+        const bundle = host.loader.getBundle(id);
+        if (!bundle) {
+          toast.error(`Bundle for ${id} not loaded.`);
+          return;
+        }
+        const manifestText = JSON.stringify(bundle.manifest, null, 2);
+        const fileList = Array.from(bundle.files.keys()).filter((p) => p !== 'manifest.json');
+        const fileSummaries = fileList
+          .slice(0, 6)
+          .map((path) => {
+            const f = bundle.files.get(path);
+            if (!f) return '';
+            const text = f.text ?? new TextDecoder().decode(f.bytes);
+            return ['```ifc-extension-' + (path.endsWith('.json') ? 'widget' : 'code') + ' path="' + path + '"', text, '```'].join('\n');
+          })
+          .filter(Boolean)
+          .join('\n\n');
+        const prompt = [
+          `Fork the installed extension ${bundle.manifest.id} (v${bundle.manifest.version}).`,
+          '',
+          'Current manifest:',
+          '```ifc-extension-manifest',
+          manifestText,
+          '```',
+          '',
+          fileSummaries
+            ? `Current bundle files:\n\n${fileSummaries}`
+            : '(no other files in bundle)',
+          fileList.length > 6 ? `\n…plus ${fileList.length - 6} more files not shown.` : '',
+          '',
+          'What would you like to change?',
+        ].filter(Boolean).join('\n');
+        queueChatPrompt(prompt);
+        setChatPanelVisible(true);
+        toast.success(`Routed ${bundle.manifest.id} to chat for editing.`);
+      } catch (err) {
+        toast.error(`Fork failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [host, queueChatPrompt, setChatPanelVisible],
+  );
   const [pending, setPending] = useState<{
     bytes: Uint8Array;
     summary: ExtensionInstallSummary;
+    previousGrants?: readonly string[];
+    previousVersion?: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -64,7 +114,16 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           toast.error(`Bundle did not unpack: ${preview.errors[0]?.message ?? 'unknown error'}`);
           return;
         }
-        setPending({ bytes, summary: preview.value });
+        // Detect upgrade: same id already installed → pass the previous
+        // grants into the review screen so it can surface a diff.
+        const records = await host.listInstalled();
+        const existing = records.find((r) => r.id === preview.value.id);
+        setPending({
+          bytes,
+          summary: preview.value,
+          previousGrants: existing?.grantedCapabilities,
+          previousVersion: existing ? `v${existing.version}` : undefined,
+        });
       } catch (err) {
         toast.error(`Failed to read file: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -236,6 +295,15 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     <Button
                       size="icon"
                       variant="ghost"
+                      onClick={() => void handleFork(record.id)}
+                      aria-label={`Fork ${record.id}`}
+                      title="Fork: edit this extension in the chat"
+                    >
+                      <GitFork className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       onClick={() => {
                         toast.info(`Running tests for ${record.id}…`);
                         host.runTests(record.id)
@@ -317,6 +385,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <CapabilityReview
           open
           summary={pending.summary}
+          previousGrants={pending.previousGrants}
+          previousVersion={pending.previousVersion}
           onApprove={handleApprove}
           onCancel={() => setPending(null)}
         />

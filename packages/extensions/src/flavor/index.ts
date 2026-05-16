@@ -57,3 +57,10 @@ export {
   type FlavorSwitchOptions,
   type FlavorSwitchResult,
 } from './switcher.js';
+export {
+  extractMemoryProposals,
+  mergeIntoOverlay,
+  type MemoryProposal,
+  type TranscriptTurn,
+  type ExtractMemoryOptions,
+} from './memory-extractor.js';

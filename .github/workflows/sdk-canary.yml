@@ -1,0 +1,86 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# SDK canary — runs the bundled `tests/extensions/canaries/` set against the
+# current `@ifc-lite/extensions` library on every PR. The goal is to catch
+# SDK-shape regressions early: if a canary bundle's manifest.tests no longer
+# pass against the candidate SDK, the PR is flagged before merge.
+#
+# This is the Phase 4 / RFC §06 §5 canary loop. The hosted registry version
+# (T18 full) substitutes the canary set with extensions pulled from the
+# registry; for v1 we use a curated fixture set checked into the repo.
+
+name: SDK canary
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/extensions/**'
+      - 'packages/cli/**'
+      - 'tests/extensions/canaries/**'
+      - '.github/workflows/sdk-canary.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  canary:
+    name: Run canary bundles
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          lfs: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build extensions + CLI
+        run: pnpm -F @ifc-lite/extensions build && pnpm -F @ifc-lite/cli build
+
+      # Canaries are a curated fixture set. Each subdirectory under
+      # tests/extensions/canaries/ is a bundle. We run the CLI's
+      # `ext test` against every one; non-zero exit fails the job.
+      - name: Run canary bundles
+        run: |
+          set -e
+          if [ ! -d tests/extensions/canaries ]; then
+            echo "No canary bundles in tests/extensions/canaries/; skipping."
+            exit 0
+          fi
+          failures=0
+          for dir in tests/extensions/canaries/*/; do
+            name=$(basename "$dir")
+            echo "::group::canary: $name"
+            if ! node packages/cli/dist/index.js ext test "$dir" --json; then
+              echo "::error::canary $name failed"
+              failures=$((failures+1))
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$failures" -gt 0 ]; then
+            echo "$failures canary bundle(s) failed."
+            exit 1
+          fi
+          echo "All canary bundles passed."

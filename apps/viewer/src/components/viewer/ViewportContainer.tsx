@@ -51,6 +51,7 @@ export function ViewportContainer() {
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
   const cesiumPlacementDraft = useViewerStore((s) => s.cesiumPlacementDraft);
   const cesiumPlacementDraftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
+  const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const setCesiumSourceModelId = useViewerStore((s) => s.setCesiumSourceModelId);
   const setCesiumAvailable = useViewerStore((s) => s.setCesiumAvailable);
@@ -232,8 +233,18 @@ export function ViewportContainer() {
       };
     };
 
-    // Check federated models first
-    for (const [modelId, model] of storeModels) {
+    // Check federated models, preferring the user-pinned anchor when present.
+    // Matches findReferenceGeorefModel() in useIfcFederation so the Cesium bridge
+    // and the parse-time alignment agree on which model drives the world frame.
+    const orderedModels = (() => {
+      if (!anchorModelIdOverride) return Array.from(storeModels);
+      const entries = Array.from(storeModels);
+      const anchorIdx = entries.findIndex(([id]) => id === anchorModelIdOverride);
+      if (anchorIdx <= 0) return entries;
+      const reordered = [entries[anchorIdx], ...entries.slice(0, anchorIdx), ...entries.slice(anchorIdx + 1)];
+      return reordered;
+    })();
+    for (const [modelId, model] of orderedModels) {
       const ds = model.ifcDataStore;
       if (!ds) continue;
       const effective = getEffectiveGeoreference(
@@ -286,6 +297,7 @@ export function ViewportContainer() {
     mergedGeometryResult,
     cesiumPlacementDraft,
     cesiumPlacementDraftModelId,
+    anchorModelIdOverride,
   ]);
 
   // Determine whether Cesium button should be visible (model has georef or user added it via mutations).

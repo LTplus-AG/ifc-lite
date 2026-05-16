@@ -45,6 +45,18 @@ export interface CesiumSlice {
   cesiumTerrainSource: string | null;
   /** Model ID that the Cesium overlay is currently displaying. */
   cesiumSourceModelId: string | null;
+  /**
+   * User-selected federation anchor model.
+   *
+   * When multiple georeferenced models are loaded, federation alignment rebakes
+   * every other model's geometry into this model's viewer-space frame so they
+   * land in the right relative real-world positions. The Cesium bridge also
+   * uses this model's IfcMapConversion to anchor the viewer→ECEF transform.
+   *
+   * `null` selects the default anchor (earliest `loadedAt` with a valid georef).
+   * Setting an override fires a `RECOMPUTE_FEDERATION_ALIGNMENT` re-bake.
+   */
+  anchorModelIdOverride: string | null;
   /** Terrain clip Y position in viewer space. When set, fragments below this Y are discarded. */
   cesiumTerrainClipY: number | null;
   /** Whether the GLB model has been loaded into Cesium (hides WebGPU overlay). */
@@ -66,6 +78,7 @@ export interface CesiumSlice {
   setCesiumTerrainHeight: (height: number | null) => void;
   setCesiumTerrainSource: (source: string | null) => void;
   setCesiumSourceModelId: (modelId: string | null) => void;
+  setAnchorModelIdOverride: (modelId: string | null) => void;
   setCesiumTerrainClipY: (y: number | null) => void;
   setCesiumGlbLoaded: (loaded: boolean) => void;
   setCesiumPlacementEditMode: (enabled: boolean) => void;
@@ -122,6 +135,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> =
   cesiumTerrainHeight: null,
   cesiumTerrainSource: null,
   cesiumSourceModelId: null,
+  anchorModelIdOverride: null,
   cesiumTerrainClipY: null,
   cesiumGlbLoaded: false,
   cesiumPlacementEditMode: false,
@@ -172,6 +186,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> =
   setCesiumTerrainHeight: (height) => set({ cesiumTerrainHeight: height }),
   setCesiumTerrainSource: (source) => set({ cesiumTerrainSource: source }),
   setCesiumSourceModelId: (modelId) => set({ cesiumSourceModelId: modelId }),
+  setAnchorModelIdOverride: (modelId) => set({ anchorModelIdOverride: modelId }),
   setCesiumTerrainClipY: (y) => set({ cesiumTerrainClipY: y }),
   setCesiumGlbLoaded: (loaded) => set({ cesiumGlbLoaded: loaded }),
   setCesiumPlacementEditMode: (enabled) => set({ cesiumPlacementEditMode: enabled }),

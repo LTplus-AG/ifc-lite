@@ -15,6 +15,7 @@ import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, typ
 import { useViewerStore } from '@/store';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
+import { FederationAlignmentControls } from './FederationAlignmentControls';
 import { LocationMap, type PickedPosition } from './LocationMap';
 import { computeOrthogonalHeightForBaseAltitude } from '@/lib/geo/cesium-placement';
 import {
@@ -612,6 +613,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           </span>
         </div>
       )}
+      {/* Federation alignment badge + anchor / re-align controls.
+          Hidden when only one model is loaded — alignment is a federation concept. */}
+      {modelId && models.size > 1 && <FederationAlignmentControls modelId={modelId} />}
       {/* CRS summary — always visible */}
       <div className="px-2 py-1.5 flex items-center gap-2">
         <Globe className="h-3 w-3 text-teal-500 shrink-0" />

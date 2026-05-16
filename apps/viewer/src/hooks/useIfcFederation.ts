@@ -41,6 +41,9 @@ import {
 import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
 import { getEffectiveGeoreference, getEffectiveHorizontalScale, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
+import { resolveProjection } from '../lib/geo/reproject.js';
+import { toast } from '../components/ui/toast.js';
+import proj4 from 'proj4';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 import { acquireFileBuffer } from '../utils/acquireFileBuffer.js';
 
@@ -288,28 +291,187 @@ function applyAlignmentTransformAndUpdateBounds(
   };
 }
 
-function alignGeometryToReferenceGeoref(
+/**
+ * Reproject every vertex from a source model's georeference into the reference
+ * model's viewer-space frame using proj4 between the two projected CRSs.
+ *
+ * Used for federated loads where models declare different IfcProjectedCRSs
+ * (e.g. EPSG:28992 + EPSG:7415 mixed RD/NAP Dutch sets, or EPSG:25831 UTM +
+ * EPSG:28992 mixed). The pipeline per vertex:
+ *
+ *   viewer(Yup)  ──(source RTC/shift, axis swap)──▶  IFC(Zup, source)
+ *   IFC(source)  ──(source MapConversion)──────────▶  source projected (eS,nS,hS)
+ *   projected    ──(proj4: srcDef → refDef)────────▶  reference projected (eR,nR)
+ *   projected    ──(reference MapConversion inverse)▶  IFC(Zup, reference)
+ *   IFC(ref)     ──(axis swap, reference RTC/shift)─▶  viewer(Yup, reference frame)
+ *
+ * Vertical: height passes through unchanged. Browser-side proj4 has no vertical
+ * datum transforms (no NTv2/gtx grids), so cross-CRS vertical mismatches are
+ * left for the user to resolve via the per-model orthogonalHeight editor.
+ *
+ * Normals are NOT rotated. Cross-CRS rotations between projected systems in the
+ * same locality are sub-degree, and recomputing per-vertex would require a
+ * Jacobian per mesh — acceptable trade-off for now, document if it bites.
+ */
+async function alignGeometryAcrossCrs(
   geometry: FederatedGeometryResult,
   source: ModelGeoref,
   reference: ModelGeoref,
-): boolean {
-  if (!canAlignInSameProjectedCrs(source, reference)) {
-    return false;
+): Promise<boolean> {
+  const sourceProjDef = await resolveProjection(source.projectedCRS);
+  const refProjDef = await resolveProjection(reference.projectedCRS);
+  if (!sourceProjDef || !refProjDef) return false;
+
+  const sourceMapUnitScale = getMapUnitScale(source);
+  const refMapUnitScale = getMapUnitScale(reference);
+  const sourceAxis = getAxis(source);
+  const refAxis = getAxis(reference);
+  const sourceOffset = totalYupOffset(source.coordinateInfo);
+  const refOffset = totalYupOffset(reference.coordinateInfo);
+
+  const refDenom = refAxis.scale * refAxis.denom;
+  if (Math.abs(refDenom) < 1e-12) return false;
+  const invRefDenom = 1 / refDenom;
+
+  const sourceConv = source.mapConversion;
+  const refConv = reference.mapConversion;
+
+  const bounds = emptyBounds();
+  let found = false;
+  let projFailures = 0;
+
+  for (const mesh of geometry.meshes) {
+    const positions = mesh.positions;
+    for (let i = 0; i < positions.length; i += 3) {
+      const vx = positions[i];
+      const vy = positions[i + 1];
+      const vz = positions[i + 2];
+      if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) continue;
+
+      // viewer(Y-up, source-local) → world(Y-up) → IFC(Z-up, source)
+      const wx = vx + sourceOffset.x;
+      const wy = vy + sourceOffset.y;
+      const wz = vz + sourceOffset.z;
+      const ifcXs = wx;
+      const ifcYs = -wz;
+      const ifcZs = wy;
+
+      // IFC(source) → source projected (apply source MapConversion)
+      const eS = sourceConv.eastings * sourceMapUnitScale
+        + sourceAxis.scale * (sourceAxis.a * ifcXs - sourceAxis.o * ifcYs);
+      const nS = sourceConv.northings * sourceMapUnitScale
+        + sourceAxis.scale * (sourceAxis.o * ifcXs + sourceAxis.a * ifcYs);
+      const hS = sourceConv.orthogonalHeight * sourceMapUnitScale + ifcZs;
+
+      // source projected → reference projected via proj4
+      let eR: number;
+      let nR: number;
+      try {
+        const projected = proj4(sourceProjDef, refProjDef, [eS, nS]);
+        eR = projected[0];
+        nR = projected[1];
+      } catch {
+        projFailures += 1;
+        continue;
+      }
+      if (!Number.isFinite(eR) || !Number.isFinite(nR)) {
+        projFailures += 1;
+        continue;
+      }
+      // Height transformed under identity (no vertical datum hop in browser).
+      const hR = hS;
+
+      // reference projected → IFC(reference): invert reference MapConversion
+      const dE = eR - refConv.eastings * refMapUnitScale;
+      const dN = nR - refConv.northings * refMapUnitScale;
+      const ifcXr = invRefDenom * (refAxis.a * dE + refAxis.o * dN);
+      const ifcYr = invRefDenom * (-refAxis.o * dE + refAxis.a * dN);
+      const ifcZr = hR - refConv.orthogonalHeight * refMapUnitScale;
+
+      // IFC(Z-up, reference) → world(Y-up) → viewer(Y-up, reference-local)
+      const refWorldX = ifcXr;
+      const refWorldY = ifcZr;
+      const refWorldZ = -ifcYr;
+      const alignedX = refWorldX - refOffset.x;
+      const alignedY = refWorldY - refOffset.y;
+      const alignedZ = refWorldZ - refOffset.z;
+
+      positions[i] = alignedX;
+      positions[i + 1] = alignedY;
+      positions[i + 2] = alignedZ;
+      found = updateBounds(bounds, alignedX, alignedY, alignedZ) || found;
+    }
   }
 
-  const transform = buildGeorefAlignmentTransform(source, reference);
-  if (!transform) {
-    return false;
-  }
+  geometry.coordinateInfo = {
+    originShift: reference.coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 },
+    originalBounds: found ? bounds : zeroBounds(),
+    shiftedBounds: found ? bounds : zeroBounds(),
+    hasLargeCoordinates: reference.coordinateInfo?.hasLargeCoordinates ?? false,
+    wasmRtcOffset: reference.coordinateInfo?.wasmRtcOffset,
+    buildingRotation: reference.coordinateInfo?.buildingRotation,
+  };
 
-  if (!isIdentityTransform(transform)) {
-    applyAlignmentTransformAndUpdateBounds(geometry, transform, reference.coordinateInfo);
+  if (projFailures > 0) {
+    console.warn(
+      `[ifc-lite] Cross-CRS alignment: ${projFailures} vertices failed proj4 transform `
+      + `from ${source.projectedCRS.name} to ${reference.projectedCRS.name}. `
+      + 'These vertices are left at their original positions.',
+    );
   }
   return true;
 }
 
-function findReferenceGeorefModel(): ModelGeoref | null {
+export type FederationAlignmentStatus = 'same-crs' | 'reprojected' | 'identity' | 'failed';
+
+/**
+ * Route alignment to the right strategy based on whether the source and
+ * reference share a projected CRS. Returns a status describing how the model
+ * was placed in the federation, suitable for surfacing in the UI.
+ */
+async function alignGeometryToReference(
+  geometry: FederatedGeometryResult,
+  source: ModelGeoref,
+  reference: ModelGeoref,
+): Promise<FederationAlignmentStatus> {
+  if (canAlignInSameProjectedCrs(source, reference)) {
+    const transform = buildGeorefAlignmentTransform(source, reference);
+    if (!transform) return 'failed';
+    if (isIdentityTransform(transform)) return 'identity';
+    applyAlignmentTransformAndUpdateBounds(geometry, transform, reference.coordinateInfo);
+    return 'same-crs';
+  }
+  const ok = await alignGeometryAcrossCrs(geometry, source, reference);
+  return ok ? 'reprojected' : 'failed';
+}
+
+/**
+ * Select the federation anchor model.
+ *
+ * Resolution order:
+ *   1. `anchorModelIdOverride` from the store, if it points to a loaded model
+ *      with a valid georeference.
+ *   2. Earliest `loadedAt` model with a valid georeference (the default — gives
+ *      a stable anchor across loads while letting the user override when they
+ *      want a different model to drive the world frame).
+ */
+function findReferenceGeorefModel(): { modelId: string; georef: ModelGeoref } | null {
   const state = useViewerStore.getState();
+  const override = state.anchorModelIdOverride;
+  if (override) {
+    const model = state.models.get(override) as FederatedModel | undefined;
+    if (model?.ifcDataStore && model.geometryResult) {
+      const georef = extractModelGeoref(
+        model.ifcDataStore,
+        model.geometryResult.coordinateInfo,
+        state.georefMutations.get(override),
+      );
+      if (georef) return { modelId: override, georef };
+    }
+    // Fall through if the override no longer resolves — keeps loads
+    // recoverable even if the user removed the anchor they had pinned.
+  }
+
   const modelEntries = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
   const sorted = [...modelEntries].sort(([, a], [, b]) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
   for (const [modelId, model] of sorted) {
@@ -319,7 +481,7 @@ function findReferenceGeorefModel(): ModelGeoref | null {
       model.geometryResult.coordinateInfo,
       state.georefMutations.get(modelId),
     );
-    if (georef) return georef;
+    if (georef) return { modelId, georef };
   }
   return null;
 }
@@ -596,7 +758,8 @@ export function useIfcFederation() {
         throw new Error('Failed to parse file');
       }
 
-      const referenceGeoref = findReferenceGeorefModel();
+      const referenceSelection = findReferenceGeorefModel();
+      const referenceGeoref = referenceSelection?.georef ?? null;
       // Include any georef edits the user has already saved for this model so
       // that a reload after editing reflects the new placement. Without this,
       // extractModelGeoref reads only the raw parsed metadata and mutations
@@ -607,14 +770,38 @@ export function useIfcFederation() {
         parsedGeometry.coordinateInfo,
         parsedGeorefMutations,
       );
+      // Cache of pre-alignment vertex positions for realignFederation(). Only
+      // populated when alignment actually runs, so single-model loads pay no
+      // memory cost. See FederatedModel.preAlignmentPositions for rationale.
+      let preAlignmentPositions: Float32Array[] | undefined;
+      let preAlignmentCoordinateInfo: CoordinateInfo | undefined;
+      let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
+
       if (referenceGeoref && parsedGeoref) {
+        // referenceSelection.modelId !== modelId always holds — the anchor was
+        // already in the store before this addModel call.
         setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
-        const aligned = alignGeometryToReferenceGeoref(parsedGeometry, parsedGeoref, referenceGeoref);
-        if (!aligned) {
-          console.warn(
-            `[ifc-lite] Skipped georeferenced federation alignment for "${file.name}" because CRS differs from the reference model.`,
+        preAlignmentPositions = parsedGeometry.meshes.map((mesh) => new Float32Array(mesh.positions));
+        preAlignmentCoordinateInfo = parsedGeometry.coordinateInfo;
+        const status = await alignGeometryToReference(parsedGeometry, parsedGeoref, referenceGeoref);
+        federationAlignmentStatus = status;
+        if (status === 'reprojected') {
+          toast.info(
+            `Reprojected "${file.name}" from ${parsedGeoref.projectedCRS.name} `
+            + `to ${referenceGeoref.projectedCRS.name} for federation alignment.`,
+          );
+        } else if (status === 'failed') {
+          toast.error(
+            `Could not align "${file.name}" with the federation anchor — `
+            + `${parsedGeoref.projectedCRS.name} → ${referenceGeoref.projectedCRS.name} `
+            + 'reprojection failed. The model is shown in its own local frame and may '
+            + 'appear at the wrong real-world position.',
           );
         }
+      } else if (parsedGeoref) {
+        // This load is itself the federation anchor (first georeferenced model
+        // in the federation, or the only one). Surface that to the UI.
+        federationAlignmentStatus = 'anchor';
       }
 
       // =========================================================================
@@ -687,6 +874,9 @@ export function useIfcFederation() {
         idOffset,
         maxExpressId,
         pointCloudHandleId,
+        preAlignmentPositions,
+        preAlignmentCoordinateInfo,
+        federationAlignmentStatus,
       };
 
       // Add to store
@@ -730,6 +920,115 @@ export function useIfcFederation() {
       releaseFederationLoadSlot(gateSlot);
     }
   }, [setLoading, setError, setProgress, setIfcDataStore, setGeometryResult, storeAddModel, hasModels, registerModelOffset]);
+
+  /**
+   * Re-apply federation alignment using the currently selected anchor
+   * (`anchorModelIdOverride` from the store, falling back to earliest-loaded).
+   *
+   * Restores each non-anchor model's geometry from its `preAlignmentPositions`
+   * snapshot, then re-runs alignment against the new anchor. Skips models that
+   * have no snapshot — those were loaded standalone and would need a reload to
+   * participate in re-alignment. Updates `federationAlignmentStatus` on every
+   * touched model so the UI badges reflect the new state.
+   *
+   * Per user preference: this is an explicit operation, not auto-triggered by
+   * remove/reorder/anchor-change. Wire it to a "Re-align federation" button.
+   */
+  const realignFederation = useCallback(async (): Promise<void> => {
+    const state = useViewerStore.getState();
+    const allModels = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
+    if (allModels.length === 0) {
+      toast.info('No models loaded — nothing to re-align.');
+      return;
+    }
+
+    const referenceSelection = findReferenceGeorefModel();
+    if (!referenceSelection) {
+      toast.error('Cannot re-align: no model with valid georeferencing.');
+      return;
+    }
+    const { modelId: anchorModelId, georef: anchorGeoref } = referenceSelection;
+
+    let aligned = 0;
+    let reprojected = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    const updateModel = state.updateModel;
+
+    for (const [modelId, model] of allModels) {
+      if (modelId === anchorModelId) {
+        if (model.federationAlignmentStatus !== 'anchor') {
+          updateModel(modelId, { federationAlignmentStatus: 'anchor' });
+        }
+        continue;
+      }
+      if (!model.geometryResult || !model.ifcDataStore) {
+        skipped += 1;
+        continue;
+      }
+
+      // Lazy-snapshot: a model that joined before federation existed (or as
+      // the original anchor of a previous federation) was never re-baked, so
+      // its current vertices ARE its pre-alignment positions. Take a snapshot
+      // before we mutate them so subsequent re-aligns can restore.
+      let snapshots = model.preAlignmentPositions;
+      let snapshotInfo = model.preAlignmentCoordinateInfo;
+      if (!snapshots || !snapshotInfo) {
+        snapshots = model.geometryResult.meshes.map((m) => new Float32Array(m.positions));
+        snapshotInfo = model.geometryResult.coordinateInfo;
+      }
+
+      // Restore vertices to pre-alignment state.
+      const meshes = model.geometryResult.meshes;
+      const restoreCount = Math.min(meshes.length, snapshots.length);
+      for (let i = 0; i < restoreCount; i += 1) {
+        meshes[i].positions = new Float32Array(snapshots[i]);
+      }
+      model.geometryResult.coordinateInfo = {
+        ...snapshotInfo,
+        originalBounds: { ...snapshotInfo.originalBounds },
+        shiftedBounds: { ...snapshotInfo.shiftedBounds },
+      };
+
+      const parsedGeoref = extractModelGeoref(
+        model.ifcDataStore,
+        model.geometryResult.coordinateInfo,
+        state.georefMutations.get(modelId),
+      );
+      if (!parsedGeoref) {
+        updateModel(modelId, {
+          preAlignmentPositions: snapshots,
+          preAlignmentCoordinateInfo: snapshotInfo,
+          federationAlignmentStatus: 'none',
+        });
+        skipped += 1;
+        continue;
+      }
+
+      const status = await alignGeometryToReference(model.geometryResult, parsedGeoref, anchorGeoref);
+      updateModel(modelId, {
+        preAlignmentPositions: snapshots,
+        preAlignmentCoordinateInfo: snapshotInfo,
+        federationAlignmentStatus: status,
+      });
+      if (status === 'reprojected') reprojected += 1;
+      else if (status === 'failed') failed += 1;
+      else aligned += 1;
+    }
+
+    const messageParts: string[] = [];
+    if (aligned > 0) messageParts.push(`${aligned} aligned`);
+    if (reprojected > 0) messageParts.push(`${reprojected} reprojected`);
+    if (skipped > 0) messageParts.push(`${skipped} skipped`);
+    if (failed > 0) messageParts.push(`${failed} failed`);
+    const summary = messageParts.length > 0 ? messageParts.join(', ') : 'no changes needed';
+    if (failed > 0) {
+      toast.error(`Federation re-aligned against "${anchorGeoref.projectedCRS.name}": ${summary}.`);
+    } else {
+      toast.success(`Federation re-aligned against "${anchorGeoref.projectedCRS.name}": ${summary}.`);
+    }
+  }, []);
 
   /**
    * Remove a model from the federation
@@ -1040,6 +1339,7 @@ export function useIfcFederation() {
     addIfcxOverlays,
     findModelForEntity,
     resolveGlobalId,
+    realignFederation,
   };
 }
 

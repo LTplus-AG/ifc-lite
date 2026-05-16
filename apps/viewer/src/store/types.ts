@@ -240,7 +240,7 @@ export interface CameraCallbacks {
 // ============================================================================
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 
 /** Compound identifier for entities across multiple models */
 export interface EntityRef {
@@ -389,6 +389,35 @@ export interface FederatedModel {
    * when the model is dropped from the store.
    */
   pointCloudHandleId?: number;
+  /**
+   * Snapshot of mesh positions before federation alignment ran (one Float32Array
+   * per mesh, indexed in `geometryResult.meshes` order). Populated when this
+   * model joined an existing federation and its geometry was re-baked into the
+   * anchor's viewer frame. Used by `realignFederation()` to re-apply alignment
+   * against a different anchor without re-parsing the source file.
+   *
+   * Stays `undefined` for single-model loads and the federation anchor itself
+   * (which has no alignment applied).
+   */
+  preAlignmentPositions?: Float32Array[];
+  /**
+   * CoordinateInfo at the time `preAlignmentPositions` was taken. Restored
+   * together with the positions on re-alignment so the source's RTC/shift
+   * frame is recovered before applying the new alignment.
+   */
+  preAlignmentCoordinateInfo?: CoordinateInfo;
+  /**
+   * How this model was placed in the current federation:
+   *   - `'anchor'`       — this model drives the world frame, no alignment
+   *   - `'same-crs'`     — vertex transform applied (shared projected CRS)
+   *   - `'reprojected'`  — per-vertex proj4 hop into the anchor's CRS
+   *   - `'identity'`     — same CRS and same MapConversion → no change needed
+   *   - `'failed'`       — alignment could not be computed; model rendered in
+   *                        its own local frame and likely at the wrong real
+   *                        world position
+   *   - `'none'`         — single-model load or first georeferenced model
+   */
+  federationAlignmentStatus?: 'anchor' | 'same-crs' | 'reprojected' | 'identity' | 'failed' | 'none';
 }
 
 /** Convert EntityRef to string for use as Map/Set key */

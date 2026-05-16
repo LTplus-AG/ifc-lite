@@ -10,6 +10,7 @@ import { useViewerStore } from '@/store';
 import { MeasureOverlay } from './tools/MeasurePanel';
 import { SectionOverlay } from './tools/SectionPanel';
 import { AddElementOverlay } from './tools/AddElementOverlay';
+import { GizmoOverlay } from './tools/GizmoOverlay';
 
 export function ToolOverlays() {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -24,6 +25,14 @@ export function ToolOverlays() {
 
   if (activeTool === 'addElement') {
     return <AddElementOverlay />;
+  }
+
+  // Select tool: surface the move gizmo when edit mode is on and a
+  // single translatable entity is selected. GizmoOverlay self-gates;
+  // returns null otherwise so this branch is safe to always render
+  // for the select tool.
+  if (activeTool === 'select') {
+    return <GizmoOverlay />;
   }
 
   return null;

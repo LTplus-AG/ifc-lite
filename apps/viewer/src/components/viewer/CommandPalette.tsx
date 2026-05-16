@@ -44,6 +44,7 @@ import {
   ClipboardCheck,
   FileSpreadsheet,
   Palette,
+  Puzzle,
   Camera,
   Download,
   FileJson,
@@ -185,14 +186,15 @@ function downloadBlob(data: BlobPart, name: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Exclusively activate a right-panel content panel (BCF / IDS / Lens).
+/** Exclusively activate a right-panel content panel (BCF / IDS / Lens / Extensions).
  *  Closes all others first so the if-else chain in ViewerLayout renders it.
  *  If the target is already active, closes it (back to Properties). */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'extensions') {
   const s = useViewerStore.getState();
   const isActive =
     panel === 'bcf' ? s.bcfPanelVisible :
     panel === 'ids' ? s.idsPanelVisible :
+    panel === 'extensions' ? s.extensionsPanelVisible :
     s.lensPanelVisible;
 
   closeActiveAnalysisExtension();
@@ -201,12 +203,14 @@ function activateRightPanel(panel: 'bcf' | 'ids' | 'lens') {
   s.setBcfPanelVisible(false);
   s.setIdsPanelVisible(false);
   s.setLensPanelVisible(false);
+  s.setExtensionsPanelVisible(false);
 
   if (!isActive) {
     // Open the target, expand right panel
     s.setRightPanelCollapsed(false);
     if (panel === 'bcf') s.setBcfPanelVisible(true);
     else if (panel === 'ids') s.setIdsPanelVisible(true);
+    else if (panel === 'extensions') s.setExtensionsPanelVisible(true);
     else s.setLensPanelVisible(true);
   }
   // If was active → all closed → falls back to Properties
@@ -392,6 +396,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
+      { id: 'panel:extensions', label: 'Extensions', keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
+        action: () => { activateRightPanel('extensions'); } },
     );
 
     // ── Schedule / 4D (Tools) ─────────────────────────────

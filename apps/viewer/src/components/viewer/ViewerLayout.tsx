@@ -26,6 +26,7 @@ import { LensPanel } from './LensPanel';
 import { ListPanel } from './lists/ListPanel';
 import { ScriptPanel } from './ScriptPanel';
 import { GanttPanel } from './schedule/GanttPanel';
+import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
 import { DesktopEntitlementBanner } from './DesktopEntitlementBanner';
@@ -88,6 +89,8 @@ export function ViewerLayout() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const idsPanelVisible = useViewerStore((s) => s.idsPanelVisible);
   const setIdsPanelVisible = useViewerStore((s) => s.setIdsPanelVisible);
+  const extensionsPanelVisible = useViewerStore((s) => s.extensionsPanelVisible);
+  const setExtensionsPanelVisible = useViewerStore((s) => s.setExtensionsPanelVisible);
   const listPanelVisible = useViewerStore((s) => s.listPanelVisible);
   const setListPanelVisible = useViewerStore((s) => s.setListPanelVisible);
   const lensPanelVisible = useViewerStore((s) => s.lensPanelVisible);
@@ -289,6 +292,8 @@ export function ViewerLayout() {
                       <IDSPanel onClose={() => setIdsPanelVisible(false)} />
                     ) : bcfPanelVisible ? (
                       <BCFPanel onClose={() => setBcfPanelVisible(false)} />
+                    ) : extensionsPanelVisible ? (
+                      <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
                     ) : (
                       <PropertiesPanel />
                     )}
@@ -386,6 +391,8 @@ export function ViewerLayout() {
                   <IDSPanel onClose={() => setIdsPanelVisible(false)} />
                 ) : bcfPanelVisible ? (
                   <BCFPanel onClose={() => setBcfPanelVisible(false)} />
+                ) : extensionsPanelVisible ? (
+                  <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
                 ) : (
                   <PropertiesPanel />
                 )}

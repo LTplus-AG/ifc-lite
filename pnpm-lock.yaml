@@ -231,6 +231,9 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../../packages/export
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../../packages/extensions
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry

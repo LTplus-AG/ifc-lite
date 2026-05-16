@@ -20,6 +20,24 @@
 
 import type { AuditEvent, AuditFilter, AuditEventKind } from './types.js';
 
+/**
+ * Distributive Omit — preserves discriminated-union narrowing across
+ * `Omit`. `Omit<A | B, 'k'>` collapses to `Omit<A | B, 'k'>` (no
+ * distribution); `DistributiveOmit<A | B, 'k'>` yields
+ * `Omit<A, 'k'> | Omit<B, 'k'>` which keeps each branch's unique
+ * fields visible.
+ */
+type DistributiveOmit<T, K extends keyof T | string> = T extends unknown
+  ? Omit<T, K & keyof T>
+  : never;
+
+/** Shape callers pass to `append()`. The seq is always assigned by the
+ * log; `ts` may be supplied for tests and is otherwise stamped from
+ * the configured clock. */
+export type AuditEventInput = DistributiveOmit<AuditEvent, 'seq' | 'ts'> & {
+  ts?: string;
+};
+
 export interface AuditLogOptions {
   /** Maximum number of events retained. Default 10,000. */
   maxEvents?: number;
@@ -49,10 +67,12 @@ export class AuditLog {
   }
 
   /**
-   * Append an event. `seq` and `ts` are assigned by the log and any
-   * caller-supplied values are overwritten.
+   * Append an event. `seq` and `ts` are assigned by the log; any
+   * caller-supplied values are overwritten. The input type uses
+   * distributive Omit so each event-kind's unique fields stay visible
+   * to TypeScript (no need for `as` casts at call sites).
    */
-  append(event: Omit<AuditEvent, 'seq' | 'ts'> & Partial<Pick<AuditEvent, 'ts'>>): AuditEvent {
+  append(event: AuditEventInput): AuditEvent {
     const stamped = {
       ...event,
       seq: this.nextSeq,

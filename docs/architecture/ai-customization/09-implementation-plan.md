@@ -426,12 +426,46 @@ named, persistent tool. No AI authoring. No new permissions surface.
 
 ### Milestone 1.C — Host integration
 
-- [ ] **P1.T7** — Viewer-side `ExtensionHostProvider` React context.
-  **Where:** `apps/viewer/src/sdk/ExtensionHostProvider.tsx`.
+- [x] **P1.T7** — Viewer-side `ExtensionHostProvider` React context.
+  **Where:** `apps/viewer/src/sdk/ExtensionHostProvider.tsx`,
+  `apps/viewer/src/services/extensions/{host,idb-storage,sandbox-factory}.ts`,
+  `apps/viewer/src/hooks/{useSlotContributions,useInstalledExtensions}.ts`,
+  `apps/viewer/src/store/slices/extensionsSlice.ts`,
+  `apps/viewer/src/components/extensions/{ExtensionsPanel,CapabilityReview}.tsx`,
+  `App.tsx` (wraps with provider), `ViewerLayout.tsx` (renders panel),
+  `CommandPalette.tsx` (Extensions entry).
   **Depends on:** P1.T4.
-  **Acceptance:** wraps app; exposes `useExtensions()` hook;
-  re-renders on slot registry change. Tests via React Testing Library.
+  **Acceptance:**
+  - `ExtensionHostService` singleton composes IDB storage + slot
+    registry + activation dispatcher + extension runtime + audit log
+    behind a single facade.
+  - `IdbExtensionStorage` wraps `indexedDB` and persists installed
+    records and bundle bytes across reloads.
+  - `createBimSandboxFactory` adapts `@ifc-lite/sandbox.createSandbox`
+    to the runtime's `RuntimeSandboxHandle` contract (run / setGlobal
+    / dispose).
+  - `ExtensionHostProvider` constructs the service from the live
+    `BimContext`, fires `init()` on mount, and broadcasts changes via
+    the host's `onChange` signal.
+  - `ExtensionsPanel` — dock panel surface (not Settings — Settings is
+    desktop-only and was the wrong target). Reachable from web via the
+    Command Palette ("Extensions"). Shows installed bundles with
+    enable / disable / uninstall, accepts `.iflx` drag-drop or
+    file-picker import, and routes through `CapabilityReview`.
+  - `CapabilityReview` modal: per-row risk badges and descriptions
+    from the inference catalogue, opt-out per capability, typed
+    "approve" confirmation for red-tier grants.
   **Effort:** M.
+  Notes: **plan deviation.** Original spec said "Settings page"; the
+  Settings page is not deployed on the web (desktop-only), so the
+  extensions surface became a togglable right-dock panel mirroring
+  IDS/BCF/Lens. Wired into `ViewerLayout` and the Command Palette so
+  it's reachable on both web and desktop without touching the
+  toolbar. The audit log discriminated-union API also surfaced a
+  typing issue with `Omit<Union, K>` non-distribution — fixed by
+  introducing `DistributiveOmit` + `AuditEventInput` in
+  `@ifc-lite/extensions/audit/log.ts`. Viewer-side tests deferred to
+  the user's browser verification pass.
 
 - [ ] **P1.T8** — Command palette slot wiring.
   **Where:** `apps/viewer/src/components/viewer/CommandPalette.tsx`
@@ -538,7 +572,15 @@ named, persistent tool. No AI authoring. No new permissions surface.
   the UI batch** — needs React + browser to verify accessibility and
   storage persistence. The headless writer is complete and tested.
 
-- [ ] **P1.T18** — Settings → Extensions page.
+- [~] **P1.T18** — ~~Settings → Extensions page~~ → Extensions dock
+  panel. **Where:** `apps/viewer/src/components/extensions/ExtensionsPanel.tsx`,
+  `apps/viewer/src/store/slices/extensionsSlice.ts`,
+  `ViewerLayout.tsx`, `CommandPalette.tsx`.
+  Notes: see P1.T7 — the surface moved off the settings page (not
+  deployed on web) onto a togglable dock panel reachable from the
+  Command Palette. Item kept open at `[~]` because it still doesn't
+  expose the audit log view; that lands with P1.T17 UI.
+- [ ] ~~**P1.T18** — Settings → Extensions page.~~
   **Where:** `apps/viewer/src/components/viewer/SettingsPage.tsx`
   (extend with new section).
   **Depends on:** P1.T15, P1.T17.

@@ -32,6 +32,7 @@
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
+    "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
     "@ifc-lite/mcp": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",

@@ -60,8 +60,15 @@ jobs:
       # npm trusted publishing needs CLI ≥ 11.5.1; Node 22 still ships
       # npm 10.x. Upgrade explicitly so `changeset publish` (which
       # invokes pnpm/npm under the hood) can complete the OIDC handshake.
+      #
+      # `--force` is required because npm 10.x rewrites its own files
+      # mid-install when upgrading itself and ends up unable to resolve
+      # its bundled deps (MODULE_NOT_FOUND: promise-retry). See npm/cli#1633.
+      # Verify the version landed so a silent regression to 10.x fails loud.
       - name: Upgrade npm to a trusted-publishing-capable version
-        run: npm install -g npm@latest
+        run: |
+          npm install -g npm@latest --force
+          npm --version
 
       # rust-toolchain.toml pins nightly-2025-11-15 + wasm32-unknown-unknown.
       # `rustup show` installs that exact toolchain on GHA runners; matches

@@ -58,6 +58,17 @@ export interface RunBundleTestsOptions {
    * the user a fuller picture.
    */
   bail?: boolean;
+  /**
+   * Resolve the named fixture into a ctx the wrapped entry sees as
+   * `__ifclite_ctx__`. Called once per test. If omitted the runner
+   * falls back to an empty `{ bim: {} }` stub so library tests can
+   * exercise the runner without spinning up a real IfcDataStore.
+   *
+   * Hosts wire this to whichever fixture loader they ship — the CLI
+   * may stream a tests/models/<name>.ifc off disk; the viewer may
+   * resolve it from an in-memory fixture map shipped with the app.
+   */
+  loadFixture?: (name: string) => Promise<unknown>;
 }
 
 const DECODER = new TextDecoder();
@@ -79,7 +90,7 @@ export async function runBundleTests(
     const startedAt = performance.now();
     try {
       await opts.runtime.activate(opts.bundle.manifest.id, opts.grants, opts.bundle);
-      const result = await runSingleTest(opts.runtime, opts.bundle, test);
+      const result = await runSingleTest(opts.runtime, opts.bundle, test, opts.loadFixture);
       results.push({
         name: test.name,
         passed: result.passed,
@@ -117,6 +128,7 @@ async function runSingleTest(
   runtime: ExtensionRuntime,
   bundle: Bundle,
   test: ManifestTest,
+  loadFixture?: (name: string) => Promise<unknown>,
 ): Promise<SingleResult> {
   const entry = bundle.manifest.entry.commands?.[test.command];
   const declared = bundle.manifest.contributes?.commands?.some((c) => c.id === test.command);
@@ -143,11 +155,23 @@ async function runSingleTest(
     return { passed: false, error: 'Runtime did not produce an activation record.' };
   }
 
+  let bim: unknown = {};
+  if (loadFixture) {
+    try {
+      bim = await loadFixture(test.fixture);
+    } catch (err) {
+      return {
+        passed: false,
+        error: `Fixture "${test.fixture}" failed to load: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
   try {
     // The wrapper reads `globalThis.__ifclite_ctx__.bim`. Tests don't
     // need a real BIM — install a stub so the access doesn't throw.
     // Hosts (the viewer) inject the real ctx before each command run.
-    await record.sandbox.setGlobal('__ifclite_ctx__', { bim: {} });
+    await record.sandbox.setGlobal('__ifclite_ctx__', { bim });
     await record.sandbox.setGlobal('__ifclite_test_args__', test.args ?? {});
   } catch (err) {
     return {

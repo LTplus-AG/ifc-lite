@@ -189,6 +189,48 @@ describe('runBundleTests', () => {
     expect(summary.failed).toBe(1);
   });
 
+  it('passes the resolved fixture through to ctx.bim', async () => {
+    const bundle = makeBundle({
+      source: `function run(ctx) {
+        return { tag: ctx && ctx.bim && ctx.bim.tag };
+      }`,
+      tests: [{
+        name: 'fixture round-trip',
+        command: 'ext.runnertest.run',
+        fixture: 'residential-small',
+        expect: { jsonShape: { tag: 'fx-residential-small' } },
+      }],
+    });
+    const summary = await runBundleTests({
+      runtime: RUNTIME,
+      bundle,
+      grants: [],
+      loadFixture: async (name) => ({ tag: `fx-${name}` }),
+    });
+    expect(summary.passed).toBe(1);
+  });
+
+  it('reports fixture loader failures cleanly', async () => {
+    const bundle = makeBundle({
+      source: `function run() { return 'x'; }`,
+      tests: [{
+        name: 'fixture failure',
+        command: 'ext.runnertest.run',
+        fixture: 'broken',
+        expect: { regex: '.*' },
+      }],
+    });
+    const summary = await runBundleTests({
+      runtime: RUNTIME,
+      bundle,
+      grants: [],
+      loadFixture: async () => { throw new Error('disk gone'); },
+    });
+    expect(summary.failed).toBe(1);
+    expect(summary.results[0].error).toMatch(/Fixture "broken"/);
+    expect(summary.results[0].error).toMatch(/disk gone/);
+  });
+
   it('returns an empty summary when manifest declares no tests', async () => {
     const bundle = makeBundle({
       source: `function run() { return 'x'; }`,

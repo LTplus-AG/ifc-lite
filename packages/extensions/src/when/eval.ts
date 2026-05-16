@@ -37,6 +37,8 @@ export const WHEN_CONTEXT_KEYS = [
 
 export type WhenContextKey = (typeof WHEN_CONTEXT_KEYS)[number];
 
+const WHEN_CONTEXT_KEY_SET: ReadonlySet<string> = new Set(WHEN_CONTEXT_KEYS);
+
 /** Default context — everything falsy. Useful for tests. */
 export const EMPTY_WHEN_CONTEXT: WhenContext = Object.freeze({
   'model.loaded': false,
@@ -58,6 +60,13 @@ function evaluate(expr: WhenExpression, ctx: WhenContext): WhenValue {
     case 'literal':
       return expr.value;
     case 'identifier':
+      // Enforce the v1 allow-list at lookup time. Unknown keys evaluate
+      // to undefined regardless of what the context object contains, so
+      // a typo or a host that accidentally exposes extra state cannot
+      // leak through. Own-property check guards against prototype
+      // pollution (e.g. "toString").
+      if (!WHEN_CONTEXT_KEY_SET.has(expr.name)) return undefined;
+      if (!Object.prototype.hasOwnProperty.call(ctx, expr.name)) return undefined;
       return ctx[expr.name];
     case 'not':
       return !toBool(evaluate(expr.operand, ctx));

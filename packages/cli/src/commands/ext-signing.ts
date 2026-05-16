@@ -62,8 +62,13 @@ export async function extKeygenCommand(args: string[]): Promise<void> {
   // Best-effort POSIX permissions for the private file.
   try {
     await chmod(privatePath, 0o600);
-  } catch {
-    /* non-POSIX or permission denied — non-fatal */
+  } catch (err) {
+    // Non-fatal (non-POSIX FS, no permission to chmod), but still log
+    // so users on systems where this matters know the file isn't 0600.
+    process.stderr.write(
+      `Warning: could not chmod 0600 on ${privatePath}: ${err instanceof Error ? err.message : err}\n`,
+    );
+    process.stderr.write(`Verify the file's permissions manually before sharing this machine.\n`);
   }
 
   process.stderr.write(`Generated Ed25519 keypair.\n`);
@@ -162,6 +167,26 @@ export async function extVerifyCommand(args: string[]): Promise<void> {
   const { bundle, signature } = unpacked.value;
 
   if (!signature) {
+    // If the caller passed --key, they're asserting an expected signer
+    // — an unsigned bundle never matches that. Fail with a non-zero
+    // exit so CI pipelines that gate on signer identity refuse the
+    // bundle instead of letting it pass silently.
+    if (keyPath) {
+      if (json) {
+        process.stdout.write(`${JSON.stringify({
+          ok: false,
+          id: bundle.manifest.id,
+          version: bundle.manifest.version,
+          signed: false,
+          error: 'unsigned_with_expected_key',
+          message: 'Bundle is unsigned but --key was provided.',
+        }, null, 2)}\n`);
+      } else {
+        process.stderr.write(`✗ Bundle is unsigned but --key was provided.\n`);
+        process.stderr.write(`   Re-run without --key to inspect, or sign the bundle first.\n`);
+      }
+      process.exit(2);
+    }
     if (json) {
       process.stdout.write(`${JSON.stringify({
         ok: true,

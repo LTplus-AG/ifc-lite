@@ -32,6 +32,7 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 const MAX_DIRECTORY_FILES = 1024;
 const MAX_FILE_BYTES = 4 * 1024 * 1024; // 4 MiB per file.
+const MAX_BUNDLE_BYTES = 16 * 1024 * 1024; // 16 MiB aggregate.
 
 /**
  * Load a bundle from a filesystem directory. Returns a fully-validated
@@ -172,6 +173,7 @@ async function collectFiles(
   rootDir: string,
   current: string,
   out: Map<string, BundleFile>,
+  state: { totalBytes: number } = { totalBytes: 0 },
 ): Promise<void> {
   const entries = await fs.readdir(current, { withFileTypes: true });
   for (const e of entries) {
@@ -181,13 +183,19 @@ async function collectFiles(
     if (e.name.startsWith('.')) continue; // skip dotfiles (.DS_Store etc.)
     const full = join(current, e.name);
     if (e.isDirectory()) {
-      await collectFiles(rootDir, full, out);
+      await collectFiles(rootDir, full, out, state);
       continue;
     }
     if (!e.isFile()) continue;
     const bytes = await fs.readFile(full);
     if (bytes.byteLength > MAX_FILE_BYTES) {
       throw new Error(`File ${full} exceeds max bundle file size of ${MAX_FILE_BYTES} bytes.`);
+    }
+    state.totalBytes += bytes.byteLength;
+    if (state.totalBytes > MAX_BUNDLE_BYTES) {
+      throw new Error(
+        `Bundle aggregate size exceeds ${MAX_BUNDLE_BYTES} bytes (already ${state.totalBytes}).`,
+      );
     }
     const rel = relative(rootDir, full).split(sep).join(posix.sep);
     const file: BundleFile = {

@@ -23,6 +23,7 @@ import { fromBase64 } from './base64.js';
 import { canonicalContentHash } from './canonical.js';
 import { SignatureFormatError, SignatureMismatchError } from './errors.js';
 import { fingerprintFromBytes } from './keys.js';
+import { buildSigningMessage } from './sign.js';
 import type { Bundle } from '../types.js';
 import type { SignatureBlock, SignatureInfo } from './types.js';
 
@@ -63,13 +64,17 @@ export async function verifyBundle(
     true,
     ['verify'],
   );
-  const encoder = new TextEncoder();
-  const message = encoder.encode(block.contentHash);
+  // Re-derive the exact byte string the signer committed to. Includes
+  // signedAt so post-sign tampering of that field is detected.
+  const message = buildSigningMessage(block.contentHash, block.signedAt);
   const sigBuf = signatureBytes.buffer.slice(
     signatureBytes.byteOffset,
     signatureBytes.byteOffset + signatureBytes.byteLength,
   ) as ArrayBuffer;
-  const msgBuf = message.buffer.slice(0, message.byteLength) as ArrayBuffer;
+  const msgBuf = message.buffer.slice(
+    message.byteOffset,
+    message.byteOffset + message.byteLength,
+  ) as ArrayBuffer;
   const ok = await crypto.subtle.verify(ED25519_PARAMS, publicKey, sigBuf, msgBuf);
   if (!ok) {
     throw new SignatureMismatchError(

@@ -359,7 +359,7 @@ export function ViewerLayout() {
             {/* Mobile Bottom Sheet - Properties, BCF, IDS, or Lists */}
             {!rightPanelCollapsed && (
               <MobileBottomSheet
-                title={activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : activeTool === 'addElement' ? 'Add element' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
+                title={activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : activeTool === 'addElement' ? 'Add element' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : extensionsPanelVisible ? 'Extensions' : 'Properties'}
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
@@ -369,6 +369,7 @@ export function ViewerLayout() {
                   if (bcfPanelVisible) setBcfPanelVisible(false);
                   if (lensPanelVisible) setLensPanelVisible(false);
                   if (idsPanelVisible) setIdsPanelVisible(false);
+                  if (extensionsPanelVisible) setExtensionsPanelVisible(false);
                   if (activeAnalysisExtension) closeActiveAnalysisExtension();
                   if (activeTool === 'addElement') setActiveTool('select');
                 }}

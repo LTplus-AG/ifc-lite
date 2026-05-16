@@ -47,14 +47,17 @@ export function matchCapability(grant: Capability, requested: Capability): boole
     return !requested.target;
   }
 
-  if (grant.target.isUniversalWildcard) return true;
-
   if (!requested.target) {
-    // Requested has no target but the grant does: a target-less request is
-    // narrower than any target pattern, so it cannot satisfy a grant that
-    // requires a specific target. We treat this as a non-match.
+    // Requested has no target but the grant does. A target-less request
+    // is structurally different from a targeted one — the universal
+    // wildcard must NOT short-circuit this check, otherwise
+    // `model.mutate:*` would cover `model.mutate` (no target). Both
+    // sides are "narrower than wildcard" in different dimensions; we
+    // treat that as non-matching for safety.
     return false;
   }
+
+  if (grant.target.isUniversalWildcard) return true;
 
   return matchTarget(grant.target, requested.target);
 }

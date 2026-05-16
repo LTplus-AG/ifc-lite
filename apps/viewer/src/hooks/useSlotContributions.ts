@@ -25,6 +25,10 @@ export function useSlotContributions<T = unknown>(slot: string): SlotContributio
       setItems([]);
       return;
     }
+    // Refresh snapshot synchronously before subscribing — otherwise
+    // switching slots can leave old contributions visible until the
+    // next registry event arrives.
+    setItems(host.getSlotContributions<T>(slot));
     return host.subscribeSlot<T>(slot, (next) => {
       setItems(next);
     });

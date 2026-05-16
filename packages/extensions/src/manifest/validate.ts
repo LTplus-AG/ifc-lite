@@ -34,7 +34,10 @@ import {
   requireString,
 } from './primitives.js';
 
-const ID_RE = /^[a-z0-9]+([._-][a-z0-9]+)*$/i;
+// Lowercase-only. The validator message and the RFC's reverse-DNS
+// guidance both promise lowercase canonical IDs; the prior `/i` flag
+// silently accepted uppercase, breaking the canonical-id guarantee.
+const ID_RE = /^[a-z0-9]+([._-][a-z0-9]+)*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 // Permissive engine-range matcher (operators + numbers). The host loader
 // performs the actual SemVer-range comparison.

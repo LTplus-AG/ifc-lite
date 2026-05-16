@@ -47,8 +47,12 @@ export class IdbExtensionStorage implements ExtensionStorage {
   async deleteExtension(id: string): Promise<void> {
     const db = await openDatabase();
     await runStore(db, STORE_EXT, 'readwrite', (store) => store.delete(id));
-    // Cascade: drop bundles for this extension.
-    await runStore(db, STORE_BUNDLES, 'readwrite', (store) => {
+    // Cascade: drop bundles for this extension. We can't use runStore
+    // here — it overwrites req.onsuccess to capture the result, which
+    // clobbers the cursor-iteration handler. Roll our own transaction.
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_BUNDLES, 'readwrite');
+      const store = tx.objectStore(STORE_BUNDLES);
       const req = store.openCursor();
       req.onsuccess = () => {
         const cursor = req.result;
@@ -57,7 +61,10 @@ export class IdbExtensionStorage implements ExtensionStorage {
         if (key.startsWith(`${id}@`)) cursor.delete();
         cursor.continue();
       };
-      return req;
+      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
   }
 
@@ -124,6 +131,12 @@ function openDatabase(): Promise<IDBDatabase> {
         const del = indexedDB.deleteDatabase(DB_NAME);
         del.onsuccess = () => openDatabase().then(resolve).catch(reject);
         del.onerror = () => reject(new Error('Failed to recreate extensions database.'));
+        // Without onblocked, another tab holding a connection makes the
+        // delete request hang indefinitely and openDatabase() never
+        // resolves. Reject explicitly so the caller can surface the issue.
+        del.onblocked = () => reject(new Error(
+          'Extensions database recreation is blocked by another open tab. Close other tabs and reload.',
+        ));
         return;
       }
       resolve(db);

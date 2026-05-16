@@ -80,11 +80,19 @@ export class AuditLog {
     } as AuditEvent;
     this.nextSeq += 1;
     const encoded = JSON.stringify(stamped);
-    this.events.push(stamped);
-    this.sizes.push(encoded.length);
-    this.totalBytes += encoded.length;
+    // UTF-8 byte count, not UTF-16 code-unit count. encoded.length
+    // undercounts emoji and non-ASCII text, which would let maxBytes be
+    // breached without eviction firing.
+    const byteSize = textByteSize(encoded);
+    // Defensive copy so callers cannot mutate the stored event after the
+    // fact (would invalidate the recorded byteSize and break list()
+    // determinism).
+    const frozen = deepFreeze(stamped);
+    this.events.push(frozen);
+    this.sizes.push(byteSize);
+    this.totalBytes += byteSize;
     this.evict();
-    return stamped;
+    return frozen;
   }
 
   /** List events matching the filter, oldest first. */
@@ -145,4 +153,19 @@ export class AuditLog {
       this.totalBytes -= size;
     }
   }
+}
+
+const TEXT_ENCODER = new TextEncoder();
+
+function textByteSize(s: string): number {
+  return TEXT_ENCODER.encode(s).byteLength;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value;
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    const v = (value as Record<string, unknown>)[key];
+    if (v && typeof v === 'object') deepFreeze(v);
+  }
+  return Object.freeze(value);
 }

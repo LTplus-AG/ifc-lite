@@ -163,6 +163,8 @@ export class EntrySourceError extends Error {
 
 export class ExtensionRuntime {
   private active = new Map<string, ActivationRecord>();
+  /** In-flight activations keyed by id. Coalesces concurrent activate() calls. */
+  private inFlight = new Map<string, Promise<ActivationRecord>>();
   private readonly factory: RuntimeSandboxFactory;
   private readonly sdk: unknown;
   private readonly now: () => Date;
@@ -193,7 +195,23 @@ export class ExtensionRuntime {
   ): Promise<ActivationRecord> {
     const existing = this.active.get(extensionId);
     if (existing) return existing;
+    // Coalesce concurrent activate() calls for the same id. Without
+    // this, two overlapping callers both miss `active`, both build a
+    // sandbox, and the second leaks because only one wins the put.
+    const pending = this.inFlight.get(extensionId);
+    if (pending) return pending;
+    const promise = this.doActivate(extensionId, grants, bundle).finally(() => {
+      this.inFlight.delete(extensionId);
+    });
+    this.inFlight.set(extensionId, promise);
+    return promise;
+  }
 
+  private async doActivate(
+    extensionId: string,
+    grants: readonly Capability[],
+    bundle?: Bundle,
+  ): Promise<ActivationRecord> {
     const permissions = capabilitiesToPermissions(grants);
     const sandbox = await this.factory.create({
       extensionId,

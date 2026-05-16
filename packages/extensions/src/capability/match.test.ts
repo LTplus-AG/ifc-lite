@@ -56,6 +56,14 @@ describe('matchCapability — wildcards', () => {
     expect(matchCapability(parse('model.mutate:*'), parse('model.read'))).toBe(false);
   });
 
+  it('universal target does NOT cover a target-less request of the same scope+action', () => {
+    // Regression: model.mutate:* must not bypass the required-target
+    // check on a model.mutate (no target) request. The "*" is broad,
+    // but it commits to "some target"; a target-less request is a
+    // different shape entirely.
+    expect(matchCapability(parse('model.mutate:*'), parse('model.mutate'))).toBe(false);
+  });
+
   it('prefix glob within segment matches', () => {
     expect(
       matchCapability(parse('model.mutate:Pset_*'), parse('model.mutate:Pset_WallCommon')),

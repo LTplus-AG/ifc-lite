@@ -99,14 +99,19 @@ export function lookupNamespaceMethod(
   namespace: string,
   method: string,
 ): readonly string[] {
+  if (!Object.prototype.hasOwnProperty.call(INFERENCE_CATALOGUE, namespace)) {
+    return [];
+  }
   const entry = INFERENCE_CATALOGUE[namespace];
-  if (!entry) return [];
-  const specific = entry.methods?.[method];
+  const specific = entry.methods
+    && Object.prototype.hasOwnProperty.call(entry.methods, method)
+    ? entry.methods[method]
+    : undefined;
   if (specific) return specific;
   return entry.defaultCapabilities;
 }
 
 /** True iff the namespace is recognised. */
 export function isKnownNamespace(namespace: string): boolean {
-  return namespace in INFERENCE_CATALOGUE;
+  return Object.prototype.hasOwnProperty.call(INFERENCE_CATALOGUE, namespace);
 }

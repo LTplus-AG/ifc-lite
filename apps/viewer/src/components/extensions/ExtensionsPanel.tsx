@@ -69,7 +69,10 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
 
   const handleApprove = useCallback(
     async (grants: string[]) => {
-      if (!pending) return;
+      // Two guards: pending may have been cleared by a parallel cancel,
+      // and busy stops a double-click from kicking off two installs of
+      // the same bytes.
+      if (!pending || busy) return;
       setBusy(true);
       try {
         const status = await host.installFromBytes(pending.bytes, grants);
@@ -85,7 +88,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         setBusy(false);
       }
     },
-    [host, pending],
+    [host, pending, busy],
   );
 
   return (
@@ -180,7 +183,11 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     <Switch
                       checked={record.enabled}
                       onCheckedChange={(checked) => {
-                        void host.setEnabled(record.id, checked);
+                        host.setEnabled(record.id, checked).catch((err) => {
+                          toast.error(
+                            `Failed to ${checked ? 'enable' : 'disable'} ${record.id}: ${err instanceof Error ? err.message : String(err)}`,
+                          );
+                        });
                       }}
                       aria-label={record.enabled ? 'Disable extension' : 'Enable extension'}
                     />
@@ -189,7 +196,11 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                       variant="ghost"
                       onClick={() => {
                         if (!confirm(`Uninstall ${record.id}?`)) return;
-                        void host.uninstall(record.id);
+                        host.uninstall(record.id).catch((err) => {
+                          toast.error(
+                            `Failed to uninstall ${record.id}: ${err instanceof Error ? err.message : String(err)}`,
+                          );
+                        });
                       }}
                       aria-label={`Uninstall ${record.id}`}
                     >

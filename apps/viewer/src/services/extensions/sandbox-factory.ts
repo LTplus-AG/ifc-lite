@@ -103,7 +103,10 @@ function stringifyArg(arg: unknown): string {
   if (typeof arg === 'string') return arg;
   try {
     return JSON.stringify(arg);
-  } catch {
+  } catch (err) {
+    // JSON.stringify throws on cycles / BigInt — fall back to String()
+    // but log so we can spot pathological logging in dev.
+    console.warn('[sandbox-factory] non-stringifiable log arg:', err);
     return String(arg);
   }
 }

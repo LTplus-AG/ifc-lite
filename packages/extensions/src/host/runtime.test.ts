@@ -148,6 +148,21 @@ describe('ExtensionRuntime — get / list', () => {
   });
 });
 
+describe('ExtensionRuntime — concurrent activate dedup', () => {
+  it('coalesces concurrent activate() calls for the same id', async () => {
+    const { factory, creates } = stubFactory();
+    const runtime = new ExtensionRuntime({ factory });
+    const [a, b, c] = await Promise.all([
+      runtime.activate('ext-a', []),
+      runtime.activate('ext-a', []),
+      runtime.activate('ext-a', []),
+    ]);
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+    expect(creates).toHaveLength(1);
+  });
+});
+
 describe('ExtensionRuntime — factory errors', () => {
   it('propagates factory errors', async () => {
     const factory: RuntimeSandboxFactory = {

@@ -36,13 +36,17 @@ export function ExtensionHostProvider({ children }: ExtensionHostProviderProps) 
 
   const [, forceRender] = useState(0);
   useEffect(() => {
-    void service.init();
+    service.init().catch((err) => {
+      console.error('[ExtensionHostProvider] init failed:', err);
+    });
     return service.onChange(() => forceRender((n) => n + 1));
   }, [service]);
 
   useEffect(() => {
     return () => {
-      void service.dispose();
+      service.dispose().catch((err) => {
+        console.error('[ExtensionHostProvider] dispose failed:', err);
+      });
     };
   }, [service]);
 

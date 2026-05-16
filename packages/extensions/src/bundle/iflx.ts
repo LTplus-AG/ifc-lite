@@ -165,12 +165,20 @@ export function unpackBundleWithSignature(
   // Re-parse the envelope to pull the signature out. We could refactor
   // unpackBundle to share this path; in practice the dup is small and
   // keeping unpackBundle's signature stable matters more.
+  //
+  // Both catch blocks below intentionally fall through to the regular
+  // unpackBundle for structured error reporting OR to "unsigned"
+  // treatment when the bundle is otherwise sound. We DO log warnings
+  // so a malformed signature envelope is at least visible in dev
+  // tools / CI rather than vanishing.
   let json: string | undefined;
   try {
     const unzipped = gunzipSync(bytes);
     json = new TextDecoder('utf-8', { fatal: true }).decode(unzipped);
-  } catch {
-    // Fall through; the regular unpackBundle returns the structured error.
+  } catch (err) {
+    // The shared unpackBundle below will return the structured error.
+    // We don't log here — that path will surface the same diagnostic.
+    void err;
   }
 
   const bundleResult = unpackBundle(bytes);
@@ -181,9 +189,17 @@ export function unpackBundleWithSignature(
     try {
       const env = JSON.parse(json) as IflxEnvelope;
       if (env.signature) signature = env.signature;
-    } catch {
-      // The bundle unpacks but the envelope re-parse failed; signature
-      // remains undefined. Treat as unsigned rather than fail-closed.
+    } catch (err) {
+      // The bundle unpacks but the envelope re-parse failed —
+      // contradictory, since we just successfully parsed via the
+      // shared path. Log to help diagnose corrupted envelopes; treat
+      // as unsigned rather than fail-closed (the user explicitly
+      // opted into reading an unsigned bundle if they end up here).
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[iflx] Signature envelope re-parse failed; treating bundle as unsigned.',
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 
@@ -208,7 +224,19 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// Strict base64 — Node's Buffer.from silently ignores invalid chars,
+// while browsers' atob throws. We validate first so behaviour is
+// consistent across runtimes and corrupted files don't decode
+// quietly into garbage.
+const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+
 function fromBase64(b64: string): Uint8Array {
+  if (typeof b64 !== 'string') {
+    throw new Error('base64 payload must be a string');
+  }
+  if (b64.length % 4 !== 0 || !BASE64_RE.test(b64)) {
+    throw new Error('Invalid base64 payload');
+  }
   if (typeof Buffer !== 'undefined') {
     return new Uint8Array(Buffer.from(b64, 'base64'));
   }

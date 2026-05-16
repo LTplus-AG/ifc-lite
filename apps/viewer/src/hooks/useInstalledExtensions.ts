@@ -22,8 +22,12 @@ export function useInstalledExtensions(): InstalledExtensionRecord[] {
     }
     let cancelled = false;
     const refresh = async () => {
-      const next = await host.listInstalled();
-      if (!cancelled) setRecords(next);
+      try {
+        const next = await host.listInstalled();
+        if (!cancelled) setRecords(next);
+      } catch (err) {
+        console.error('[useInstalledExtensions] listInstalled failed:', err);
+      }
     };
     void refresh();
     const off = host.onChange(() => {

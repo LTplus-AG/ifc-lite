@@ -137,18 +137,43 @@ export async function importPublicKey(serialised: SerialisedPublicKey): Promise<
 /** Import a private-key file. Returns a full KeyPair. */
 export async function importPrivateKey(serialised: SerialisedPrivateKey): Promise<KeyPair> {
   validateKeyFile(serialised);
-  const pkcs8 = fromBase64(serialised.privateKey);
+  if (serialised.kind !== 'private') {
+    throw new KeyFormatError(
+      `Expected a private key file (kind: "private"), got "${(serialised as { kind?: string }).kind}".`,
+      'kind',
+    );
+  }
+  if (typeof serialised.privateKey !== 'string') {
+    throw new KeyFormatError('Field "privateKey" must be a base64 string.', 'privateKey');
+  }
+  let pkcs8: Uint8Array;
+  try {
+    pkcs8 = fromBase64(serialised.privateKey);
+  } catch (err) {
+    throw new KeyFormatError(
+      `Field "privateKey" is not valid base64: ${err instanceof Error ? err.message : err}`,
+      'privateKey',
+    );
+  }
   const pkcsBuffer = pkcs8.buffer.slice(
     pkcs8.byteOffset,
     pkcs8.byteOffset + pkcs8.byteLength,
   ) as ArrayBuffer;
-  const privateKey = await crypto.subtle.importKey(
-    'pkcs8',
-    pkcsBuffer,
-    ED25519_PARAMS,
-    true,
-    ['sign'],
-  );
+  let privateKey: CryptoKey;
+  try {
+    privateKey = await crypto.subtle.importKey(
+      'pkcs8',
+      pkcsBuffer,
+      ED25519_PARAMS,
+      true,
+      ['sign'],
+    );
+  } catch (err) {
+    throw new KeyFormatError(
+      `Failed to import private key as PKCS#8: ${err instanceof Error ? err.message : err}`,
+      'privateKey',
+    );
+  }
   const publicKeyBytes = decodeRaw(serialised.publicKey, 32, 'publicKey');
   const pubBuffer = publicKeyBytes.buffer.slice(
     publicKeyBytes.byteOffset,

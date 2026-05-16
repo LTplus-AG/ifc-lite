@@ -237,6 +237,19 @@ describe('verify — tamper detection', () => {
   });
 });
 
+describe('verify — signedAt is bound to the signature', () => {
+  it('detects post-sign tampering of signedAt', async () => {
+    const pair = await generateKeyPair();
+    const bundle = makeBundle({ 'manifest.json': '{}' });
+    const sig = await signBundle(bundle, pair, { signedAt: '2026-01-01T00:00:00.000Z' });
+    // Attacker rewrites signedAt but keeps everything else.
+    const tampered: SignatureBlock = { ...sig, signedAt: '2030-12-31T00:00:00.000Z' };
+    await expect(verifyBundle(bundle, tampered)).rejects.toBeInstanceOf(
+      SignatureMismatchError,
+    );
+  });
+});
+
 describe('verify — format errors', () => {
   it('rejects unknown algorithm', async () => {
     const pair = await generateKeyPair();

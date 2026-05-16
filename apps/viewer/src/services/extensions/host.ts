@@ -117,11 +117,19 @@ export class ExtensionHostService {
 
   async init(): Promise<LoadedExtensionStatus[]> {
     if (this.initialized) return [];
-    this.initialized = true;
-    const statuses = await this.loader.loadAll();
-    await this.dispatcher.fire('onStartup');
-    this.emit();
-    return statuses;
+    // Only set initialized after startup succeeds — otherwise a failed
+    // loadAll() / fire() leaves the service stuck and later init()
+    // calls return [] without actually loading anything.
+    try {
+      const statuses = await this.loader.loadAll();
+      await this.dispatcher.fire('onStartup');
+      this.initialized = true;
+      this.emit();
+      return statuses;
+    } catch (err) {
+      this.initialized = false;
+      throw err;
+    }
   }
 
   /** Inspect a `.iflx` byte string without installing it. */
@@ -156,9 +164,30 @@ export class ExtensionHostService {
     }
     const { bundle, bundleHash, id, version } = preview.value;
 
+    // Validate: callers can only grant capabilities the manifest
+    // actually declares. Drops accidental grant escalation if the
+    // review screen pre-filled state from an earlier version of the
+    // bundle.
+    const declaredCaps = new Set(bundle.manifest.capabilities);
+    const unexpected = grantedCapabilities.filter((cap) => !declaredCaps.has(cap));
+    if (unexpected.length > 0) {
+      throw new ExtensionInstallError(
+        `Unexpected capability grants not declared by manifest: ${unexpected.join(', ')}`,
+        unexpected.map((cap) => ({
+          path: 'grantedCapabilities',
+          code: 'invalid_capability' as const,
+          message: `Capability "${cap}" was not requested by the bundle manifest.`,
+        })),
+      );
+    }
+
+    // Snapshot the previous install so we can restore it if the new
+    // bundle fails to load. Without this, a bad update wipes the
+    // user's previously-working install entirely.
     const previous = await this.storage.getExtension(id);
+    let previousBundleBytes: Uint8Array | undefined;
     if (previous && previous.version !== version) {
-      // Update path: deactivate the previous bundle before swapping.
+      previousBundleBytes = await this.storage.getBundle(id, previous.version);
       await this.runtime.deactivate(id);
       await this.loader.unload(id);
     }
@@ -176,14 +205,30 @@ export class ExtensionHostService {
     await this.storage.putExtension(record);
 
     const status = await this.loader.load(id);
-    if (!status) {
-      throw new ExtensionInstallError('Loader returned no status for newly-installed extension', []);
-    }
-    if (!status.ok) {
-      // Roll back if the loader rejected our freshly-written record.
-      await this.storage.deleteExtension(id);
+    if (!status || !status.ok) {
+      // Roll back. Delete the new bundle + record we just wrote.
       await this.storage.deleteBundle(id, version);
-      throw new ExtensionInstallError('Loader rejected the new bundle', status.errors);
+      await this.storage.deleteExtension(id);
+
+      // Restore the previous install if we had one — re-write its
+      // record and bundle bytes, then re-load. Best effort: log if
+      // restore itself fails, don't mask the original error.
+      if (previous && previousBundleBytes) {
+        try {
+          await this.storage.putBundle(id, previous.version, previousBundleBytes);
+          await this.storage.putExtension(previous);
+          await this.loader.load(id);
+        } catch (restoreErr) {
+          console.error(
+            `[ext-host] Failed to restore previous install of ${id}:`,
+            restoreErr,
+          );
+        }
+      }
+      throw new ExtensionInstallError(
+        'Loader rejected the new bundle',
+        status?.errors ?? [],
+      );
     }
 
     this.audit.append({
@@ -199,9 +244,6 @@ export class ExtensionHostService {
     // unaffected (the dispatcher dedupes activations per session).
     await this.dispatcher.fire('onStartup');
     this.emit();
-    // Use the bundle from the install summary to ensure the in-memory
-    // structure is the one the caller can reference for a review pane.
-    void bundle;
     return status;
   }
 
@@ -211,6 +253,10 @@ export class ExtensionHostService {
     if (!record) return;
     await this.runtime.deactivate(id);
     await this.loader.unload(id);
+    // Delete bundle bytes too — the storage's cascade already handles
+    // this on deleteExtension, but call it explicitly so the contract
+    // is clear at this layer and a future storage impl can't drift.
+    await this.storage.deleteBundle(id, record.version);
     await this.storage.deleteExtension(id);
     this.audit.append({
       kind: 'uninstall',
@@ -225,12 +271,25 @@ export class ExtensionHostService {
     const record = await this.storage.getExtension(id);
     if (!record) return;
     if (record.enabled === enabled) return;
-    await this.storage.putExtension({ ...record, enabled });
+
     if (enabled) {
-      await this.loader.load(id);
+      // Persist enabled=true only after the loader confirms it can
+      // bring the extension up. Without this, a failed load leaves the
+      // persisted state lying about runtime reality.
+      const tentative = { ...record, enabled: true };
+      await this.storage.putExtension(tentative);
+      const status = await this.loader.load(id);
+      if (!status?.ok) {
+        await this.storage.putExtension(record);
+        throw new ExtensionInstallError(
+          `Failed to enable extension ${id}`,
+          status?.errors ?? [],
+        );
+      }
     } else {
       await this.runtime.deactivate(id);
       await this.loader.unload(id);
+      await this.storage.putExtension({ ...record, enabled: false });
     }
     this.audit.append({
       kind: enabled ? 'enable' : 'disable',

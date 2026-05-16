@@ -11,7 +11,7 @@
  *
  * Verification lives in `./verify.ts` so the two paths can be reasoned
  * about independently. Both share the canonicalization in
- * `./canonical.ts`.
+ * `./canonical.ts` and the message construction below.
  *
  * Spec: docs/architecture/ai-customization/10-registry-and-signing.md.
  */
@@ -22,6 +22,20 @@ import type { Bundle } from '../types.js';
 import type { KeyPair, SignatureBlock } from './types.js';
 
 const ED25519_PARAMS = { name: 'Ed25519' } as const;
+
+/**
+ * Build the byte string the signer commits to.
+ *
+ * Includes both `contentHash` and `signedAt` so neither can be tampered
+ * after signing. Format is `iflx-sig\x1f v1 \x1f <contentHash> \x1f <signedAt>`
+ * — fixed prefix + version + ASCII unit separator (`0x1f`) between
+ * fields. The prefix isolates this scheme from any other Ed25519
+ * signing convention that might reuse the same key in the wild.
+ */
+export function buildSigningMessage(contentHash: string, signedAt: string): Uint8Array {
+  const encoder = new TextEncoder();
+  return encoder.encode(`iflx-sig\x1fv1\x1f${contentHash}\x1f${signedAt}`);
+}
 
 /**
  * Sign the bundle's canonical content with the keypair's private key.
@@ -36,16 +50,20 @@ export async function signBundle(
   opts: { signedAt?: string } = {},
 ): Promise<SignatureBlock> {
   const contentHash = await canonicalContentHash(bundle.files);
-  const encoder = new TextEncoder();
-  const message = encoder.encode(contentHash);
+  const signedAt = opts.signedAt ?? new Date().toISOString();
+  const message = buildSigningMessage(contentHash, signedAt);
   const signature = new Uint8Array(
-    await crypto.subtle.sign(ED25519_PARAMS, pair.privateKey, message.buffer.slice(0, message.byteLength) as ArrayBuffer),
+    await crypto.subtle.sign(
+      ED25519_PARAMS,
+      pair.privateKey,
+      message.buffer.slice(message.byteOffset, message.byteOffset + message.byteLength) as ArrayBuffer,
+    ),
   );
   return {
     algorithm: 'ed25519',
     contentHash,
     publicKey: toBase64(pair.publicKeyBytes),
     signature: toBase64(signature),
-    signedAt: opts.signedAt ?? new Date().toISOString(),
+    signedAt,
   };
 }

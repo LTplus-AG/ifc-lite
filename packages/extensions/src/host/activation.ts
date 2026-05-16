@@ -31,6 +31,8 @@ interface ExtensionEntry {
   events: Set<ActivationEvent>;
   /** Has the extension been activated at least once in this session? */
   activated: boolean;
+  /** Set while a fire() is currently activating this extension — guards against re-entrant dispatch. */
+  activating: boolean;
 }
 
 export class ActivationDispatcher {
@@ -45,7 +47,11 @@ export class ActivationDispatcher {
   register(extensionId: string, events: readonly ActivationEvent[]): void {
     this.unregister(extensionId);
     if (events.length === 0) return;
-    const entry: ExtensionEntry = { events: new Set(events), activated: false };
+    const entry: ExtensionEntry = {
+      events: new Set(events),
+      activated: false,
+      activating: false,
+    };
     this.byExtension.set(extensionId, entry);
     for (const event of events) {
       let set = this.byEvent.get(event);
@@ -96,11 +102,20 @@ export class ActivationDispatcher {
     const ids = Array.from(subscribed).sort();
     for (const id of ids) {
       const entry = this.byExtension.get(id);
-      if (!entry || entry.activated) continue;
-      entry.activated = true;
-      activatedNow.push(id);
-      for (const listener of this.listeners) {
-        await listener(id, event);
+      if (!entry || entry.activated || entry.activating) continue;
+      // Mark activating BEFORE the await so concurrent fire() calls for
+      // overlapping events can't double-dispatch. Mark activated only
+      // AFTER listeners succeed — if any listener throws, the extension
+      // remains eligible for re-activation on a later fire().
+      entry.activating = true;
+      try {
+        for (const listener of this.listeners) {
+          await listener(id, event);
+        }
+        entry.activated = true;
+        activatedNow.push(id);
+      } finally {
+        entry.activating = false;
       }
     }
     return activatedNow;

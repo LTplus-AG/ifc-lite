@@ -98,6 +98,24 @@ describe('ActivationDispatcher — fire', () => {
   });
 });
 
+describe('ActivationDispatcher — listener failure does not mark activated', () => {
+  it('keeps the extension activatable when a listener throws', async () => {
+    const d = new ActivationDispatcher();
+    let attempts = 0;
+    d.onActivate(async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('first attempt fails');
+    });
+    d.register('ext-a', ['onStartup']);
+    await expect(d.fire('onStartup')).rejects.toThrow('first attempt fails');
+    expect(d.isActivated('ext-a')).toBe(false);
+    // Second fire should succeed because activated wasn't marked.
+    const result = await d.fire('onStartup');
+    expect(result).toEqual(['ext-a']);
+    expect(d.isActivated('ext-a')).toBe(true);
+  });
+});
+
 describe('ActivationDispatcher — reset', () => {
   it('resetActivation allows re-firing per-extension', async () => {
     const d = new ActivationDispatcher();

@@ -45,13 +45,18 @@ export function migrateManifest(
   input: Record<string, unknown>,
 ): ValidationResult<Record<string, unknown>> {
   const rawVersion = input.manifestVersion;
-  if (typeof rawVersion !== 'number') {
+  if (
+    typeof rawVersion !== 'number'
+    || !Number.isFinite(rawVersion)
+    || !Number.isInteger(rawVersion)
+    || rawVersion < 1
+  ) {
     return {
       ok: false,
       errors: [{
         path: 'manifestVersion',
         code: 'invalid_manifest_version',
-        message: 'manifestVersion is required and must be a number.',
+        message: 'manifestVersion is required and must be a positive integer.',
       }],
     };
   }

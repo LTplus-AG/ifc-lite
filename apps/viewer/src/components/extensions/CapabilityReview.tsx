@@ -26,7 +26,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ShieldAlert, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileCode2, ShieldAlert, ShieldCheck, X } from 'lucide-react';
+import { BundlePreview } from './BundlePreview';
 import {
   computeRisks,
   overallTier,
@@ -82,6 +83,7 @@ export function CapabilityReview({ open, summary, onApprove, onCancel }: Capabil
     () => new Set(summary.capabilities),
   );
   const [confirmText, setConfirmText] = useState('');
+  const [tab, setTab] = useState<'capabilities' | 'source'>('capabilities');
 
   const needsConfirm = useMemo(() => {
     for (const row of rows) {
@@ -120,6 +122,38 @@ export function CapabilityReview({ open, summary, onApprove, onCancel }: Capabil
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex items-center gap-1 border-b">
+          <button
+            type="button"
+            onClick={() => setTab('capabilities')}
+            className={cn(
+              'flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
+              tab === 'capabilities'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Capabilities
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('source')}
+            className={cn(
+              'flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
+              tab === 'source'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <FileCode2 className="h-3.5 w-3.5" />
+            Source
+          </button>
+        </div>
+
+        {tab === 'source' ? (
+          <BundlePreview bundle={summary.bundle} />
+        ) : (
         <ScrollArea className="max-h-72 rounded-md border">
           <ul className="divide-y">
             {rows.length === 0 && (
@@ -149,8 +183,9 @@ export function CapabilityReview({ open, summary, onApprove, onCancel }: Capabil
             ))}
           </ul>
         </ScrollArea>
+        )}
 
-        {needsConfirm && (
+        {needsConfirm && tab === 'capabilities' && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">
             <div className="font-medium text-destructive flex items-center gap-2">
               <ShieldAlert className="h-4 w-4" />

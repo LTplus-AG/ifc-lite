@@ -521,7 +521,7 @@ named, persistent tool. No AI authoring. No new permissions surface.
 
 ### Milestone 1.E — Review screen
 
-- [ ] **P1.T13** — Capability review screen component.
+- [x] **P1.T13** — Capability review screen component.
   **Where:** `apps/viewer/src/components/extensions/CapabilityReview.tsx`.
   **Depends on:** P0.T8.
   **Acceptance:** renders capabilities with risk badges and plain
@@ -537,7 +537,7 @@ named, persistent tool. No AI authoring. No new permissions surface.
   copy-to-clipboard. Tests cover render.
   **Effort:** M.
 
-- [ ] **P1.T15** — Install / uninstall actions wired to storage.
+- [x] **P1.T15** — Install / uninstall actions wired to storage.
   **Where:** `apps/viewer/src/services/extension-installer.ts`.
   **Depends on:** P1.T2, P1.T13.
   **Acceptance:** end-to-end install from review screen; uninstall
@@ -557,7 +557,7 @@ named, persistent tool. No AI authoring. No new permissions surface.
   extensions; tests with a deliberately-greedy fixture.
   **Effort:** L.
 
-- [~] **P1.T17** — Audit log writer.
+- [x] **P1.T17** — Audit log writer + viewer panel.
   **Where:** `packages/extensions/src/audit/{log,types,index}.ts`.
   **Depends on:** P1.T2.
   **Acceptance:** append-only ring buffer with byte + count caps,
@@ -724,7 +724,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   verify limits propagate to QuickJS runtime.
   **Effort:** S.
 
-- [ ] **P2.T14** — Test runner against canonical fixtures.
+- [x] **P2.T14** — Test runner against canonical fixtures.
   **Where:** `packages/extensions/src/test-runner/index.ts`.
   **Depends on:** P0.T17, P2.T13.
   **Acceptance:** executes manifest-declared tests; checks
@@ -898,7 +898,7 @@ mergeable.
   partial-failure paths.
   **Effort:** L.
 
-- [ ] **P3.T5** — Flavor status indicator in status bar.
+- [x] **P3.T5** — Flavor status indicator in status bar.
   **Where:** modify `apps/viewer/src/components/viewer/StatusBar.tsx`.
   **Depends on:** P3.T4.
   **Acceptance:** shows active flavor name; click opens flavor picker.
@@ -922,7 +922,7 @@ mergeable.
   inlining (registry resolution stubbed for Phase 5).
   **Effort:** M.
 
-- [ ] **P3.T8** — Export UI + summary view.
+- [x] **P3.T8** — Export UI + summary view.
   **Where:** `apps/viewer/src/components/extensions/FlavorExport.tsx`.
   **Depends on:** P3.T7.
   **Acceptance:** shows summary before download; supports stripped
@@ -947,7 +947,7 @@ mergeable.
   scenarios.
   **Effort:** M.
 
-- [ ] **P3.T11** — Import review screen.
+- [x] **P3.T11** — Import review screen.
   **Where:** `apps/viewer/src/components/extensions/FlavorImport.tsx`.
   **Depends on:** P3.T10, P1.T13.
   **Acceptance:** renders diff with per-extension capability badges;
@@ -964,14 +964,14 @@ mergeable.
   Tests cover all rule branches.
   **Effort:** L.
 
-- [ ] **P3.T13** — Merge UI (side-by-side diff with per-row checkbox).
+- [x] **P3.T13** — Merge UI (side-by-side diff with per-row checkbox).
   **Where:** `apps/viewer/src/components/extensions/FlavorMergeUI.tsx`.
   **Depends on:** P3.T12.
   **Acceptance:** users can accept / reject each row; result preview
   updates live; tests cover navigate + accept-all + reject-all.
   **Effort:** L. `[ux]`
 
-- [ ] **P3.T14** — Merge commit (write merged flavor; archive prior).
+- [x] **P3.T14** — Merge commit (write merged flavor; archive prior).
   **Where:** `packages/extensions/src/flavor/merge-commit.ts`.
   **Depends on:** P3.T12.
   **Acceptance:** atomic write; snapshot retains prior; tests cover
@@ -988,7 +988,7 @@ mergeable.
   the conversion.
   **Effort:** M. `[ux]`
 
-- [ ] **P3.T16** — Reset-to-defaults panic button.
+- [x] **P3.T16** — Reset-to-defaults panic button.
   **Where:** modify `apps/viewer/src/components/viewer/SettingsPage.tsx`.
   **Depends on:** P3.T4.
   **Acceptance:** restores baseline flavor; archives the previous;
@@ -1042,7 +1042,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   delete. Tests cover overflow.
   **Effort:** M.
 
-- [ ] **P4.T3** — Wire log calls at intent boundaries.
+- [x] **P4.T3** — Wire log calls at intent boundaries.
   **Where:** edits across viewer slices (`modelSlice`, `lensSlice`,
   `dataSlice`, `chatSlice`, etc.).
   **Depends on:** P4.T2.
@@ -1089,7 +1089,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   battery hints when available.
   **Effort:** M.
 
-- [ ] **P4.T9** — "Ideas" status bar indicator + panel.
+- [x] **P4.T9** — "Ideas" status bar indicator + panel.
   **Where:** modify `StatusBar.tsx`; new
   `apps/viewer/src/components/extensions/IdeasPanel.tsx`.
   **Depends on:** P4.T8, P4.T7.
@@ -1097,7 +1097,7 @@ Action log + pattern miner + personal memory + SDK-update repair.
   "Not now" / "Don't suggest again" honoured. Tests cover lifecycle.
   **Effort:** M. `[ux]`
 
-- [ ] **P4.T10** — Accept-flow: suggestion → authoring pipeline.
+- [x] **P4.T10** — Accept-flow: suggestion → authoring pipeline.
   **Where:** `apps/viewer/src/services/suggestion-acceptor.ts`.
   **Depends on:** P4.T7, P2.T16.
   **Acceptance:** seeds the plan card with the stub; user can edit;

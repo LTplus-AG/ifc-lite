@@ -36,3 +36,16 @@ export {
   assertMethodCall,
   CapabilityDeniedError,
 } from './check.js';
+export {
+  evaluateCompatibility,
+  findAffected,
+  type Compatibility,
+  type CompatibilityResult,
+  type InstalledForCompatCheck,
+} from './sdk-version.js';
+export {
+  revalidateAgainstSdk,
+  type RevalidationItem,
+  type RevalidationSummary,
+  type RevalidateOptions,
+} from './sdk-revalidate.js';

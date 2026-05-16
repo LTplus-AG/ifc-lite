@@ -100,3 +100,4 @@ export * from './authoring/index.js';
 export * from './widget/index.js';
 export * from './validate/index.js';
 export * from './testing/index.js';
+export * from './dryrun/index.js';

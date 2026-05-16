@@ -59,6 +59,7 @@ import { ByokStreamingPill } from './chat/ByokStreamingPill';
 import type { BYOKProvider } from '@/lib/llm/clipboard-detect';
 import { useSandbox } from '@/hooks/useSandbox';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { classifyIntent } from '@ifc-lite/extensions';
 
 // Environment variable for the proxy URL
 const PROXY_URL = import.meta.env.VITE_LLM_PROXY_URL as string || '/api/chat';
@@ -442,11 +443,33 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       return;
     }
 
-    // Action log: record the user sent a chat message. Content-free —
-    // we only log the coarse intent, never the prompt text.
+    // Classify the prompt for the action log and to nudge the user
+    // toward plan-first authoring when appropriate. The classifier is
+    // rule-based and content-free metadata only — we record the coarse
+    // intent the message looks like, never the prompt text itself.
+    const classified = options?.intent === 'repair'
+      ? { intent: 'one-shot' as const, confidence: 1, reason: 'repair turn' }
+      : classifyIntent(text, {
+          hasExistingExtension: false,
+          hasLoadedModel: useViewerStore.getState().models.size > 0,
+        });
     extensionHost?.emitAction('chat.message', {
-      intent: options?.intent === 'repair' ? 'one-shot' : 'query',
+      intent: classified.intent === 'out-of-scope' ? 'one-shot' : classified.intent,
     });
+    // For high-confidence authoring/fork intents, suggest the
+    // plan-first path. Non-blocking — we still send through the
+    // existing chat pipeline so the user always gets a response.
+    if (
+      (classified.intent === 'authoring' || classified.intent === 'fork')
+      && classified.confidence >= 0.75
+      && !options?.intent
+    ) {
+      toast.info(
+        classified.intent === 'fork'
+          ? 'Heads up: that reads like a fork. Use the Extensions → Ideas panel for diff-based authoring.'
+          : 'Heads up: that reads like an authoring request. The Extensions → Ideas panel offers plan-first authoring.',
+      );
+    }
 
     // Resolve the stream route BEFORE any user-visible side effects (adding
     // the user message, clearing attachments, setting sending state). If the

@@ -9,6 +9,7 @@ import { computeCesiumModelOrigin } from './cesium-bridge.js';
 import {
   computeFootprintGeoJSON,
   computeModelCenterInIfcMeters,
+  inspectProjectionDef,
   reprojectFromLatLon,
   reprojectToLatLon,
   resolveProjection,
@@ -103,6 +104,39 @@ describe('reproject helpers', () => {
     assert.ok(roundTrip);
     assert.ok(Math.abs(roundTrip!.easting - conversion.eastings) < 0.01);
     assert.ok(Math.abs(roundTrip!.northing - conversion.northings) < 0.01);
+  });
+
+  it('resolves Dutch RD New from a non-EPSG name via WELL_KNOWN_CRS', async () => {
+    // Some authoring tools emit the human-readable CRS name instead of "EPSG:28992".
+    // Without an alias entry, resolveProjection would fall through to the network
+    // fetch and break offline. Verify the alias path lands on the same definition.
+    const aliasCrs: ProjectedCRS = {
+      id: 1,
+      name: 'Amersfoort / RD New',
+      mapUnit: 'METRE',
+      mapUnitScale: 1,
+    };
+    const def = await resolveProjection(aliasCrs);
+    assert.ok(def, 'alias should resolve via WELL_KNOWN_CRS');
+    assert.ok(def!.includes('+proj=sterea'), 'should be RD oblique stereographic');
+    assert.ok(def!.includes('+towgs84='), 'should carry datum-shift parameters');
+  });
+
+  it('exposes projection diagnostics for the GeoreferencingPanel', async () => {
+    const crs: ProjectedCRS = { id: 1, name: 'EPSG:28992', mapUnit: 'METRE' };
+    const def = await resolveProjection(crs);
+    const diag = inspectProjectionDef(def, 'Amersfoort');
+    assert.strictEqual(diag.hasTowgs84, true);
+    assert.strictEqual(diag.hasNadgrids, false);
+    assert.strictEqual(diag.ellipsoid, 'bessel');
+    assert.strictEqual(diag.datumKnown, true);
+  });
+
+  it('reports an unknown datum when no fallback is registered', () => {
+    const fakeDef = '+proj=utm +zone=11 +ellps=clrk80 +units=m +no_defs';
+    const diag = inspectProjectionDef(fakeDef, 'Some Obscure Datum');
+    assert.strictEqual(diag.datumKnown, false);
+    assert.strictEqual(diag.hasTowgs84, false);
   });
 
   it('builds a closed footprint polygon and preserves corner count', async () => {

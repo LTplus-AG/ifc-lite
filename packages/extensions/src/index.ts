@@ -87,3 +87,15 @@ export * from './inference/index.js';
 
 // ---------- Signing (Phase 5 prototype)
 export * from './signing/index.js';
+
+// ---------- Flavors (Phase 3 library)
+export * from './flavor/index.js';
+
+// ---------- Action log + miner (Phase 4 library)
+export * from './log/index.js';
+export * from './miner/index.js';
+
+// ---------- Authoring plan + widget DSL + code validation (Phase 2 library)
+export * from './authoring/index.js';
+export * from './widget/index.js';
+export * from './validate/index.js';

@@ -624,7 +624,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   out-of-scope with ≥ 90% precision on a labelled test set.
   **Effort:** M.
 
-- [ ] **P2.T2** — `AuthoringPlan` data model + Zod schema.
+- [x] **P2.T2** — `AuthoringPlan` data model + Zod schema.
   **Where:** `packages/extensions/src/authoring/plan.ts`.
   **Depends on:** P0.T4.
   **Acceptance:** matches RFC §04.4 shape; plan ↔ JSON round-trip
@@ -698,7 +698,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.D — Static validation
 
-- [ ] **P2.T11** — AST walker for banned globals + capability
+- [x] **P2.T11** — AST walker for banned globals + capability
   construction taint. `[security]`
   **Where:** `packages/extensions/src/validate/code.ts`.
   **Depends on:** P0.T7.
@@ -707,7 +707,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
   concatenation that ends up in capability strings. Tests ≥ 25 cases.
   **Effort:** L.
 
-- [ ] **P2.T12** — Cross-reference validator (commands, widgets,
+- [x] **P2.T12** — Cross-reference validator (commands, widgets,
   entry paths, fixtures).
   **Where:** `packages/extensions/src/validate/cross-ref.ts`.
   **Depends on:** P0.T5.
@@ -767,7 +767,7 @@ dry-run, and the repair loop. Adds the widget DSL renderer.
 
 ### Milestone 2.G — Widget DSL renderer
 
-- [ ] **P2.T19** — Widget DSL Zod schema (15 node types per §03).
+- [x] **P2.T19** — Widget DSL Zod schema (15 node types per §03).
   **Where:** `packages/extensions/src/widgets/schema.ts`.
   **Depends on:** P0.T1.
   **Acceptance:** schema matches RFC §03.3.1; tests cover each node
@@ -869,20 +869,20 @@ mergeable.
 
 ### Milestone 3.A — Flavor data model
 
-- [ ] **P3.T1** — `Flavor` Zod schema + types per §05.1.
+- [x] **P3.T1** — `Flavor` Zod schema + types per §05.1.
   **Where:** `packages/extensions/src/flavor/schema.ts`.
   **Depends on:** P1.T2.
   **Acceptance:** schema validates; tests for all sub-types.
   **Effort:** M.
 
-- [ ] **P3.T2** — Flavor storage (IndexedDB).
+- [x] **P3.T2** — Flavor storage (IndexedDB).
   **Where:** `packages/extensions/src/flavor/storage.ts`.
   **Depends on:** P1.T1, P3.T1.
   **Acceptance:** CRUD; active-flavor pointer; auto-snapshot on change
   (last 10). Tests cover snapshots.
   **Effort:** M.
 
-- [ ] **P3.T3** — Flavor migration scaffold.
+- [x] **P3.T3** — Flavor migration scaffold.
   **Where:** `packages/extensions/src/flavor/migrations/`.
   **Depends on:** P3.T1.
   **Acceptance:** v1 no-op migration; tests cover migration chain.
@@ -939,7 +939,7 @@ mergeable.
   / malicious inputs.
   **Effort:** M.
 
-- [ ] **P3.T10** — Diff computer (active flavor vs. incoming).
+- [x] **P3.T10** — Diff computer (active flavor vs. incoming).
   **Where:** `packages/extensions/src/flavor/diff.ts`.
   **Depends on:** P3.T9.
   **Acceptance:** structured diff (extensions added / removed /
@@ -956,7 +956,7 @@ mergeable.
 
 ### Milestone 3.E — Three-way merge
 
-- [ ] **P3.T12** — Three-way merger.
+- [x] **P3.T12** — Three-way merger.
   **Where:** `packages/extensions/src/flavor/merge.ts`.
   **Depends on:** P3.T10.
   **Acceptance:** resolves extensions / capabilities / lenses /
@@ -1028,14 +1028,14 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 ### Milestone 4.A — Action log
 
-- [ ] **P4.T1** — Action log schema + projection vocabulary.
+- [x] **P4.T1** — Action log schema + projection vocabulary.
   **Where:** `packages/extensions/src/log/schema.ts`.
   **Depends on:** none.
   **Acceptance:** intent vocabulary defined; payload schemas exclude
   raw content; tests enforce the no-content rule via static checks.
   **Effort:** M. `[security]`
 
-- [ ] **P4.T2** — Action log writer (append-only ring with byte cap).
+- [x] **P4.T2** — Action log writer (append-only ring with byte cap).
   **Where:** `packages/extensions/src/log/writer.ts`.
   **Depends on:** P4.T1.
   **Acceptance:** writes intents; enforces rolling window; export /
@@ -1052,14 +1052,14 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 ### Milestone 4.B — Pattern miner
 
-- [ ] **P4.T4** — Sequence miner (PrefixSpan-like, length ≤ 5).
+- [x] **P4.T4** — Sequence miner (PrefixSpan-like, length ≤ 5).
   **Where:** `packages/extensions/src/miner/sequence.ts`.
   **Depends on:** P4.T2.
   **Acceptance:** finds frequent ordered patterns; configurable
   threshold; tests with planted patterns.
   **Effort:** L.
 
-- [ ] **P4.T5** — Scoring function (frequency × recency × diversity).
+- [x] **P4.T5** — Scoring function (frequency × recency × diversity).
   **Where:** `packages/extensions/src/miner/score.ts`.
   **Depends on:** P4.T4.
   **Acceptance:** deterministic; ranks expected pattern first on

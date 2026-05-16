@@ -11,6 +11,19 @@
  */
 
 // ============================================================================
+// Primitive helpers
+// ============================================================================
+
+/** JSON-serialisable value. Substrate for stored configuration. */
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+// ============================================================================
 // Result type — used everywhere validation can fail.
 // ============================================================================
 

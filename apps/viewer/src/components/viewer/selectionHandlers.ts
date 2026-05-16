@@ -141,7 +141,15 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       if (wallTry.ok) {
         state.clearSplitHover();
         state.setSelectedEntityId(wallTry.right.globalId);
-        toast.success('Wall split — Ctrl+Z to undo');
+        // Mention opening reassignment in the toast only when it
+        // happened — silence is preferable to "0 openings moved"
+        // for a wall with no doors / windows.
+        const op = wallTry.openings;
+        const opSummary =
+          op.toLeft + op.toRight > 0
+            ? ` (${op.toLeft + op.toRight} opening${op.toLeft + op.toRight === 1 ? '' : 's'} reassigned)`
+            : '';
+        toast.success(`Wall split${opSummary} — Ctrl+Z to undo`);
         return;
       }
       const linearTry = state.splitLinearElementAtDistance(

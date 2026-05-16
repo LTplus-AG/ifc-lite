@@ -13,6 +13,7 @@ import { AddElementOverlay } from './tools/AddElementOverlay';
 import { GizmoOverlay } from './tools/GizmoOverlay';
 import { WallEndpointOverlay } from './tools/WallEndpointOverlay';
 import { SplitOverlay } from './tools/SplitOverlay';
+import { SplitNumericInput } from './tools/SplitNumericInput';
 
 export function ToolOverlays() {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -30,7 +31,19 @@ export function ToolOverlays() {
   }
 
   if (activeTool === 'split') {
-    return <SplitOverlay />;
+    // SplitOverlay renders the SVG preview (perpendicular guide /
+    // slab outline / ghost cut line). SplitNumericInput renders
+    // the floating numeric panel next to the cursor for precise
+    // single-click element splits (wall / beam / column / member).
+    // The two are siblings rather than nested so the SVG layer
+    // stays pointer-events-none while the numeric input is
+    // interactive.
+    return (
+      <>
+        <SplitOverlay />
+        <SplitNumericInput />
+      </>
+    );
   }
 
   // Select tool: surface the move gizmo + wall-endpoint handles when

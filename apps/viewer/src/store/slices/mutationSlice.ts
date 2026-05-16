@@ -63,6 +63,7 @@ import {
   projectOntoLinearAxis,
   type LinearElementType,
 } from '@/lib/linear-element-edit.js';
+import { reassignWallOpenings } from '@/lib/wall-opening-reassign.js';
 import {
   resolveSlabEditChain,
   computeSlabSplitGeometry,
@@ -404,7 +405,7 @@ export interface MutationSlice {
     modelId: string,
     expressId: number,
     distanceFromStart: number,
-  ) => { ok: true; left: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
+  ) => { ok: true; left: { expressId: number; globalId: number }; right: { expressId: number; globalId: number }; openings: { toLeft: number; toRight: number; skipped: number } } | { ok: false; reason: string };
   /**
    * Read-only helper for the Split-tool live preview: projects an
    * arbitrary storey-local 3D cursor onto the wall axis and returns
@@ -1404,6 +1405,38 @@ export const createMutationSlice: StateCreator<
     // exist so the rels' RelatedObjects lists can include them.
     cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
 
+    // Reassign hosted openings (doors / windows / generic voids)
+    // to whichever new half they geometrically belong to. The
+    // canonical IFC convention places the opening's
+    // ObjectPlacement relative to the wall's placement, with
+    // local-X = distance along the wall axis — so we read each
+    // opening's local-X to decide left vs right, and offset
+    // right-half openings by -splitDistance so their world
+    // positions stay fixed across the reparent.
+    //
+    // We resolve each new half's IfcLocalPlacement id by
+    // re-walking the placement chain (it's the entity addWall
+    // created internally; the action's return value only carries
+    // the wall id).
+    const leftChain = resolvePlacementChain(dataStore, view, editor, left.expressId);
+    const rightChain = resolvePlacementChain(dataStore, view, editor, right.expressId);
+    let openingSummary: { toLeft: number; toRight: number; skipped: number } = { toLeft: 0, toRight: 0, skipped: 0 };
+    if (leftChain && rightChain) {
+      const s = reassignWallOpenings(
+        dataStore,
+        view,
+        editor,
+        expressId,
+        left.expressId,
+        right.expressId,
+        distanceFromStart,
+        leftChain.localPlacementId,
+        rightChain.localPlacementId,
+      );
+      openingSummary = { toLeft: s.toLeft, toRight: s.toRight, skipped: s.skipped };
+    }
+    void openingSummary; // surfaced as a toast hint by the caller (selectionHandlers)
+
     // Tombstone the source. `removeEntity` returns false if the
     // entity wasn't known — shouldn't happen here (we just
     // resolved its chain), but defend anyway.
@@ -1431,6 +1464,7 @@ export const createMutationSlice: StateCreator<
       ok: true,
       left: { expressId: left.expressId, globalId: leftGlobalId },
       right: { expressId: right.expressId, globalId: rightGlobalId },
+      openings: openingSummary,
     };
   },
 
@@ -1607,33 +1641,60 @@ export const createMutationSlice: StateCreator<
       return { ok: false, reason: 'Slab is not contained in a building storey' };
     }
 
-    // For now only IfcSlab gets a proper add-action follow-up; the
-    // chain's elementType is reported back to the caller for
-    // diagnostics, and other slab-like types refuse cleanly until
-    // their split phases land. Each half rebuilds as a polygon-
-    // profile slab regardless of the source's profile kind — the
-    // cut almost always produces a non-rectangle half.
-    if (chain.elementType !== 'IfcSlab') {
-      return {
-        ok: false,
-        reason: `Split for ${chain.elementType} not yet implemented (slabs only in v1).`,
-      };
-    }
-
     // The clipped footprints are in storey-local XY (placement
-    // origin already added). `addSlab` expects an `OuterCurve` in
-    // *profile-local* 2D + a `Position` in storey-local 3D. The
-    // easiest mapping: keep `Position` at `[0, 0, 0]` and pass the
-    // clipped polygon verbatim — the addSlab builder folds the
-    // profile-origin and placement-origin into one identity.
+    // origin already added). The builders expect an `OuterCurve`
+    // in *profile-local* 2D + a `Position` in storey-local 3D.
+    // Easiest mapping: keep `Position` at `[0, 0, 0]` and pass the
+    // clipped polygon verbatim — the builders fold profile-origin
+    // and placement-origin into one identity.
+    //
+    // IfcSlab / IfcRoof / IfcPlate carry their extrusion depth on
+    // a `Thickness` param; IfcSpace uses `Height`. Same chain
+    // resolver feeds both because the underlying STEP shape is
+    // identical (IfcExtrudedAreaSolid.Depth) — the divergence is
+    // only in the in-store builder's parameter naming.
     const buildHalf = (outline: Point2D[], label: string) => {
-      return state.addSlab(modelId, storeyExpressId, {
-        Profile: 'polygon',
-        Position: [0, 0, 0],
-        OuterCurve: outline,
-        Thickness: geo.thickness,
-        Name: `Slab (split ${label})`,
-      });
+      const name = `${chain.elementType.replace(/^Ifc/, '')} (split ${label})`;
+      switch (chain.elementType) {
+        case 'IfcSlab':
+          return state.addSlab(modelId, storeyExpressId, {
+            Profile: 'polygon',
+            Position: [0, 0, 0],
+            OuterCurve: outline,
+            Thickness: geo.thickness,
+            Name: name,
+          });
+        case 'IfcRoof':
+          return state.addRoof(modelId, storeyExpressId, {
+            Profile: 'polygon',
+            Position: [0, 0, 0],
+            OuterCurve: outline,
+            Thickness: geo.thickness,
+            Name: name,
+          });
+        case 'IfcPlate':
+          return state.addPlate(modelId, storeyExpressId, {
+            Profile: 'polygon',
+            Position: [0, 0, 0],
+            OuterCurve: outline,
+            Thickness: geo.thickness,
+            Name: name,
+          });
+        case 'IfcSpace':
+          return state.addSpace(modelId, storeyExpressId, {
+            Profile: 'polygon',
+            Position: [0, 0, 0],
+            OuterCurve: outline,
+            Height: geo.thickness,
+            Name: name,
+          });
+        default: {
+          // Exhaustive switch — compile error here if a new
+          // SlabLikeType lands without a builder dispatch.
+          const exhaust: never = chain.elementType;
+          throw new Error(`Unhandled slab-like type: ${String(exhaust)}`);
+        }
+      }
     };
 
     const left = buildHalf(geo.leftFootprint, 'L');

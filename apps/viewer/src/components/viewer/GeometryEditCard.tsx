@@ -166,8 +166,9 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     // Probe with [0,0,0] — we only care whether the chain resolves,
     // not the projection value.
     if (readLinearElementSplitProjection(modelId, entityId, [0, 0, 0]) !== null) return true;
-    const slab = readSlabFootprint(modelId, entityId);
-    return slab !== null && slab.elementType === 'IfcSlab';
+    // Slab-like types (IfcSlab / IfcRoof / IfcPlate / IfcSpace)
+    // all share the same chain shape; any of them is splittable.
+    return readSlabFootprint(modelId, entityId) !== null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     modelId,

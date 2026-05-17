@@ -20,6 +20,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { lookupEpsgByCode, lookupProj4 } from '@ifc-lite/data';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { resolvePrecisionDef } from './precision-grids';
 
 export interface LatLon {
   lat: number;
@@ -265,10 +266,13 @@ async function fetchProj4Def(epsgCode: string): Promise<string | null> {
  *
  * Resolution order:
  *   1. Cache hit
- *   2. Bundled EPSG index (7000+ codes with proj4 strings)
- *   3. Well-known CRS name lookup (e.g. "WGS 84" → EPSG:4326)
- *   4. UTM zone heuristic (from CRS metadata — mapZone, name, description, mapProjection)
- *   5. Fetch from epsg.io (network fallback)
+ *   2. Precision grid (NTv2/GeoTIFF) for codes where +towgs84 is too coarse
+ *      (RD/NL, OSGB/UK, BD72/BE) — fetched once from cdn.proj.org, gives
+ *      sub-decimeter accuracy. Falls through to (3) if the fetch fails.
+ *   3. Bundled EPSG index (7000+ codes with proj4 strings)
+ *   4. Well-known CRS name lookup (e.g. "WGS 84" → EPSG:4326)
+ *   5. UTM zone heuristic (from CRS metadata — mapZone, name, description, mapProjection)
+ *   6. Fetch from epsg.io (network fallback)
  */
 export async function resolveProjection(crs: ProjectedCRS): Promise<string | null> {
   let code = extractEpsgCode(crs);
@@ -278,7 +282,24 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     return projDefCache.get(code) ?? null;
   }
 
-  // 2. Bundled EPSG index (primary source — all 7000+ codes)
+  // 2. Precision grid (NTv2/GeoTIFF). For Bessel-based national grids
+  // (RD/NL, BD72/BE, OSGB/UK), the +towgs84 approximation that the bundled
+  // entries carry is off by 80-200 m. proj4js can consume PROJ's GeoTIFF
+  // datum-shift grids — load and register, then use a +nadgrids-based
+  // proj4 string for sub-decimeter accuracy.
+  if (code) {
+    try {
+      const precisionDef = await resolvePrecisionDef(code);
+      if (precisionDef) {
+        projDefCache.set(code, precisionDef);
+        return precisionDef;
+      }
+    } catch (error) {
+      console.warn(`[reproject] precision grid resolution failed for EPSG:${code}, falling back`, error);
+    }
+  }
+
+  // 3. Bundled EPSG index (primary source — all 7000+ codes)
   if (code) {
     try {
       const entry = await lookupEpsgByCode(code);

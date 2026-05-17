@@ -1,0 +1,111 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Small badge in the GeoreferencingPanel header that tells the user
+ * whether their CRS is using a precision NTv2/GeoTIFF datum-shift grid
+ * (sub-decimeter accuracy) or the +towgs84 fallback (up to ~120 m error
+ * for Bessel-based national grids like RD/NL, OSGB/UK, MGI/AT).
+ *
+ * Re-checks on a short interval so it flips from "loading" → "loaded"
+ * after the grid finishes downloading without forcing the parent to
+ * re-render.
+ */
+
+import { useEffect, useState } from 'react';
+import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { PRECISION_GRIDS, hasLoadedPrecisionGrid } from '@/lib/geo/precision-grids';
+
+interface PrecisionGridBadgeProps {
+  crsName: string | undefined;
+}
+
+function extractEpsgCode(crsName: string | undefined): string | null {
+  if (!crsName) return null;
+  const match = crsName.match(/EPSG[:\s]*(\d+)/i);
+  return match ? match[1] : null;
+}
+
+export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
+  const code = extractEpsgCode(crsName);
+  const spec = code ? PRECISION_GRIDS[code] : undefined;
+  const [loaded, setLoaded] = useState(() => (spec ? hasLoadedPrecisionGrid(code!) : false));
+
+  useEffect(() => {
+    if (!spec || loaded) return;
+    // Poll every 250ms until the grid loader signals success. Cheap —
+    // PRECISION_GRIDS lookup is O(1) and most CRSs never trigger this
+    // path. Stops as soon as the grid is loaded or the component unmounts.
+    const id = setInterval(() => {
+      if (hasLoadedPrecisionGrid(code!)) {
+        setLoaded(true);
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [spec, loaded, code]);
+
+  // CRS without a registered precision grid — accuracy depends entirely on
+  // whether its +towgs84 is good (ETRS89/WGS84-aligned CRSs: yes; old
+  // Bessel/Airy national grids: no). Don't show a badge for these — we'd
+  // be lying either direction.
+  if (!spec) return null;
+
+  if (loaded) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-emerald-300/60 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shrink-0">
+            <CheckCircle2 className="h-2.5 w-2.5" />
+            grid
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-xs max-w-xs">
+          <div>Precision NTv2/GeoTIFF grid loaded for {spec.region}.</div>
+          <div className="mt-1 text-[10px] opacity-80">
+            Sub-decimeter datum-shift accuracy via{' '}
+            <code className="font-mono">{spec.filename}</code>.
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-amber-300/60 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 shrink-0">
+          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+          loading grid
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs max-w-xs">
+        <div>Fetching precision grid for {spec.region}…</div>
+        <div className="mt-1 text-[10px] opacity-80">
+          Until it arrives, placement uses the +towgs84 approximation (off by
+          up to ~120 m for this CRS).
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * Sibling export used in compact panels (no tooltip, just the icon/text).
+ * Falls back to a neutral "approx" badge when no precision grid is
+ * registered for the CRS.
+ */
+export function PrecisionGridStaticBadge({ crsName }: PrecisionGridBadgeProps) {
+  const code = extractEpsgCode(crsName);
+  const spec = code ? PRECISION_GRIDS[code] : undefined;
+  if (!spec) {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-zinc-300/60 dark:border-zinc-700/60 bg-zinc-50 dark:bg-zinc-900/50 text-zinc-500 dark:text-zinc-400 shrink-0">
+        <AlertTriangle className="h-2.5 w-2.5" />
+        +towgs84
+      </span>
+    );
+  }
+  return null;
+}

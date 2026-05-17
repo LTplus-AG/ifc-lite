@@ -38,7 +38,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue, MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { asExpressIdRef, asCoordinateTriple, readAttributes } from './placement-core.js';
+import { asExpressIdRef, asCoordinateTriple, readAttributes, resolvePlacementChain } from './placement-core.js';
 
 export interface OpeningReassignSummary {
   /** Openings successfully moved onto the left half. */
@@ -113,6 +113,19 @@ export function reassignWallOpenings(
     skipReasons: new Map(),
   };
 
+  // Resolve the source wall's IfcLocalPlacement so we can verify
+  // each opening was actually placed relative to it. Openings with
+  // world-absolute placements (PlacementRelTo = null) or placements
+  // relative to some other entity must NOT be reassigned — silently
+  // rewriting their PlacementRelTo would teleport them.
+  const sourceChain = resolvePlacementChain(dataStore, view, editor, sourceWallId);
+  if (!sourceChain) {
+    summary.skipped++;
+    bumpReason(summary.skipReasons, 'source wall placement unresolvable');
+    return summary;
+  }
+  const sourceWallPlacementId = sourceChain.localPlacementId;
+
   const relIds = dataStore.entityIndex.byType.get('IFCRELVOIDSELEMENT') ?? [];
   for (const relId of relIds) {
     const relAttrs = readAttributes(dataStore, view, editor, relId);
@@ -149,6 +162,16 @@ export function reassignWallOpenings(
     if (!localPlacementAttrs) {
       summary.skipped++;
       bumpReason(summary.skipReasons, 'unreadable IfcLocalPlacement');
+      continue;
+    }
+    // Verify the opening's PlacementRelTo points at THIS source
+    // wall. Openings placed absolutely (PlacementRelTo === null)
+    // or relative to some other entity must be left alone —
+    // rewriting their parent placement would teleport them.
+    const placementRelTo = asExpressIdRef(localPlacementAttrs[0]);
+    if (placementRelTo !== sourceWallPlacementId) {
+      summary.skipped++;
+      bumpReason(summary.skipReasons, 'opening not placed relative to source wall');
       continue;
     }
     const relativePlacementId = asExpressIdRef(localPlacementAttrs[1]);

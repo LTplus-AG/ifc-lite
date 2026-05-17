@@ -99,8 +99,33 @@ function makeFixture() {
     attributes: ['gid4', null, null, null, 100, 211],
   };
 
+  // Source wall + its placement chain — the reassign helper now
+  // requires this to verify each opening's PlacementRelTo
+  // actually points at THIS wall before rewriting it.
+  const wallPoint: OverlayEntity = {
+    expressId: 140,
+    type: 'IFCCARTESIANPOINT',
+    attributes: [[0, 0, 0]],
+  };
+  const wallAxis: OverlayEntity = {
+    expressId: 141,
+    type: 'IFCAXIS2PLACEMENT3D',
+    attributes: [140, null, null],
+  };
+  const wallPlacement: OverlayEntity = {
+    expressId: 150,
+    type: 'IFCLOCALPLACEMENT',
+    attributes: [null, 141],
+  };
+  const wall: OverlayEntity = {
+    expressId: 100,
+    type: 'IFCWALL',
+    attributes: ['gid-wall', null, 'Wall', null, null, 150, null, null],
+  };
+
   return {
     entities: [
+      wallPoint, wallAxis, wallPlacement, wall,
       opening1Point, opening1Axis, opening1Placement, opening1, rel1,
       opening2Point, opening2Axis, opening2Placement, opening2, rel2,
     ],
@@ -132,8 +157,11 @@ describe('reassignWallOpenings', () => {
     const fx = makeFixture();
     // Only opening 1 (X=1) — drop opening 2 from the fixture so we
     // assert one move at a time.
+    // Keep the source-wall chain entities (100/150/141/140) so the
+    // helper's "verify PlacementRelTo points at source wall" guard
+    // passes. Drop opening 2's payload so we exercise one move at a time.
     const entities = fx.entities.filter((e) =>
-      [fx.ids.rel1, fx.ids.opening1Placement, fx.ids.opening1Point, 201, 240].includes(e.expressId),
+      [100, 140, 141, 150, fx.ids.rel1, fx.ids.opening1Placement, fx.ids.opening1Point, 201, 240].includes(e.expressId),
     );
     const editor = new StubStoreEditor(entities);
     const view = new StubView() as unknown as Parameters<typeof reassignWallOpenings>[1];
@@ -162,7 +190,7 @@ describe('reassignWallOpenings', () => {
   it('moves a past-distance opening to the right half AND offsets local X', () => {
     const fx = makeFixture();
     const entities = fx.entities.filter((e) =>
-      [fx.ids.rel2, fx.ids.opening2Placement, fx.ids.opening2Point, 211, 241].includes(e.expressId),
+      [100, 140, 141, 150, fx.ids.rel2, fx.ids.opening2Placement, fx.ids.opening2Point, 211, 241].includes(e.expressId),
     );
     const editor = new StubStoreEditor(entities);
     const view = new StubView() as unknown as Parameters<typeof reassignWallOpenings>[1];
@@ -258,5 +286,33 @@ describe('reassignWallOpenings', () => {
     );
     // Output preserves the string form.
     assert.strictEqual(editor.getNewEntity(fx.ids.rel1)?.attributes[4], `#${fx.ids.leftWall}`);
+  });
+
+  it('skips openings whose PlacementRelTo does not point at the source wall', () => {
+    // World-absolute opening: PlacementRelTo === null. Reassigning
+    // would teleport it because the new wall's local frame is
+    // different from the world frame.
+    const fx = makeFixture();
+    const opening1Placement = fx.entities.find((e) => e.expressId === fx.ids.opening1Placement)!;
+    opening1Placement.attributes = [null, 240]; // PlacementRelTo null
+    const editor = new StubStoreEditor(fx.entities);
+    const view = new StubView() as unknown as Parameters<typeof reassignWallOpenings>[1];
+    const store = makeStore(new Map([['IFCRELVOIDSELEMENT', [fx.ids.rel1]]]));
+    const summary = reassignWallOpenings(
+      store,
+      view,
+      editor as unknown as Parameters<typeof reassignWallOpenings>[2],
+      fx.ids.sourceWall,
+      fx.ids.leftWall,
+      fx.ids.rightWall,
+      2.5,
+      fx.ids.leftPlacement,
+      fx.ids.rightPlacement,
+    );
+    assert.strictEqual(summary.toLeft, 0);
+    assert.strictEqual(summary.toRight, 0);
+    assert.strictEqual(summary.skipped, 1);
+    // Rel untouched.
+    assert.strictEqual(editor.getNewEntity(fx.ids.rel1)?.attributes[4], fx.ids.sourceWall);
   });
 });

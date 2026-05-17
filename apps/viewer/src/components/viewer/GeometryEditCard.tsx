@@ -32,7 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Move as MoveIcon, RotateCw, Slice as KnifeIcon, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { GeometryAxisRow } from './GeometryAxisRow';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
@@ -250,21 +250,21 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
               </p>
             ) : (
               <>
-                <AxisRow
+                <GeometryAxisRow
                   label="X"
                   value={x}
                   onChange={setX}
                   onNudgeMinus={() => nudge(0, -1)}
                   onNudgePlus={() => nudge(0, 1)}
                 />
-                <AxisRow
+                <GeometryAxisRow
                   label="Y"
                   value={y}
                   onChange={setY}
                   onNudgeMinus={() => nudge(1, -1)}
                   onNudgePlus={() => nudge(1, 1)}
                 />
-                <AxisRow
+                <GeometryAxisRow
                   label="Z"
                   value={z}
                   onChange={setZ}
@@ -390,43 +390,3 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
   );
 }
 
-interface AxisRowProps {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  onNudgeMinus: () => void;
-  onNudgePlus: () => void;
-}
-
-function AxisRow({ label, value, onChange, onNudgeMinus, onNudgePlus }: AxisRowProps) {
-  return (
-    <div className="flex items-center gap-1">
-      <span className="w-4 text-[11px] font-mono text-purple-700 dark:text-purple-400">{label}</span>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="h-6 w-6 text-purple-600"
-        onClick={onNudgeMinus}
-        aria-label={`Decrease ${label}`}
-      >
-        −
-      </Button>
-      <Input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-6 text-xs font-mono px-1 flex-1 border-purple-200 dark:border-purple-800/60 bg-white dark:bg-zinc-950"
-        step="any"
-      />
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="h-6 w-6 text-purple-600"
-        onClick={onNudgePlus}
-        aria-label={`Increase ${label}`}
-      >
-        +
-      </Button>
-    </div>
-  );
-}

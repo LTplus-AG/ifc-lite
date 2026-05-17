@@ -120,6 +120,13 @@ export function SplitNumericInput() {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       (e.target as HTMLInputElement).blur();
+      // Move focus back to the viewport canvas so keyboard
+      // shortcuts (K, R, V, …) keep working — without this, the
+      // input field still has focus from the browser's
+      // perspective and global keyboard listeners ignore the
+      // event because it's targeted at the input.
+      const canvas = document.querySelector<HTMLElement>('[data-viewport="main"]');
+      canvas?.focus();
     }
   };
 

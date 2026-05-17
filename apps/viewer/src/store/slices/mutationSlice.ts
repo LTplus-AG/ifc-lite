@@ -328,10 +328,17 @@ export interface MutationSlice {
   ) => { ok: true; newCoordinates: [number, number, number] } | { ok: false; reason: string };
   /**
    * Rotate an IfcProduct about the storey-up Z axis by `deltaYaw`
-   * radians. Updates RefDirection on the placement's IfcAxis2Placement3D.
-   * If no explicit RefDirection exists (rare — most builders emit one),
-   * a fresh `IfcDirection` is materialised and the axis placement is
-   * re-pointed at it.
+   * radians. Updates RefDirection on the placement's
+   * IfcAxis2Placement3D when one already exists.
+   *
+   * Refuses with `{ ok: false }` when the entity's placement has
+   * no explicit RefDirection (the implicit `[1, 0, 0]` STEP
+   * default). Materialising a fresh IfcDirection there would
+   * require a multi-mutation atomic undo entry to avoid orphans
+   * on undo, which the store doesn't have yet. Every entity
+   * emitted by `@ifc-lite/create`'s in-store builders carries an
+   * explicit RefDirection, so the refusal only trips on
+   * hand-rolled source-buffer entities.
    */
   rotateEntity: (
     modelId: string,
@@ -1311,13 +1318,12 @@ export const createMutationSlice: StateCreator<
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
 
-    // resolveRotationState gives us both the current angle and whether
-    // RefDirection is materialised. When it's null we delegate to
-    // rotateProductYaw which materialises a fresh IfcDirection — that
-    // create lives outside the undo stack (acceptable; undo of the
-    // axis-placement reference rewrite restores the null pointer and
-    // leaves an orphan direction in the overlay). The rewrite itself
-    // goes through `setPositionalAttribute` so it IS on the undo stack.
+    // resolveRotationState gives us both the current angle and
+    // whether RefDirection is explicit. When it's null we refuse
+    // — see the interface comment above for why; materialising
+    // would require multi-mutation atomic undo to avoid orphans.
+    // Every in-store builder emits an explicit RefDirection, so
+    // this only trips on hand-rolled source-buffer entities.
     const state = resolveRotationState(dataStore, view, editor, expressId);
     if (!state) {
       return {

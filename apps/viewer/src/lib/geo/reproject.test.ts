@@ -139,6 +139,45 @@ describe('reproject helpers', () => {
     assert.strictEqual(diag.hasTowgs84, false);
   });
 
+  it('handles Bonsai files with explicit MapUnit=m + mm project + unset MapConversion.Scale', async () => {
+    // Regression for Hans's IXAS_KW 018_georeffed.ifc — the file is spec-broken
+    // in the same way most Bonsai/IfcOpenShell exports are:
+    //
+    //   IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)     ← project unit mm
+    //   IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)            ← MapUnit explicitly m
+    //   IFCMAPCONVERSION(#ctx,#crs,126500,480000,…,$) ← Scale UNSET
+    //
+    // Per the IFC schema the unset Scale defaults to 1.0; combined with the
+    // mm-vs-m unit gap, our spec-strict effective scale becomes (1*1)/0.001
+    // = 1000, inflating every viewer-space metre 1000× when added to the
+    // map offsets. A 12 km infrastructure model becomes 12 000 km long,
+    // which proj4's sterea extrapolates to the projection's antipode in the
+    // South Pacific. The heuristic in getEffectiveHorizontalScale honours
+    // the author's intent: Scale unset + units don't match → effective 1.
+    const crs: ProjectedCRS = {
+      id: 1,
+      name: 'EPSG:28992',
+      mapUnit: 'METRE',
+      mapUnitScale: 1, // explicit IfcProjectedCRS.MapUnit=METRE
+    };
+    const conversion: MapConversion = {
+      id: 2,
+      sourceCRS: 10,
+      targetCRS: 1,
+      eastings: 126500,
+      northings: 480000,
+      orthogonalHeight: 0,
+      xAxisAbscissa: 1,
+      xAxisOrdinate: 0,
+      scale: undefined, // ← the bug: Bonsai leaves Scale unset
+    };
+    // Project length unit = mm (0.001), as in Hans's file.
+    const latLon = await reprojectToLatLon(conversion, crs, undefined, 0.001);
+    assert.ok(latLon, 'should resolve');
+    assert.ok(latLon!.lat > 51 && latLon!.lat < 54, `lat = ${latLon!.lat} (expected ~52°N for NL)`);
+    assert.ok(latLon!.lon > 3 && latLon!.lon < 8, `lon = ${latLon!.lon} (expected ~5°E for NL)`);
+  });
+
   it('treats unset MapUnit as METRES, not project length unit (Bonsai/IfcOpenShell convention)', async () => {
     // Regression for the antipode bug: a file with LengthUnit=mm and
     // MapConversion eastings/northings authored in METRES (typical surveyor

@@ -20,9 +20,19 @@ import {
 } from './cesium-placement.js';
 
 describe('cesium placement helpers', () => {
-  it('falls back to the project length unit when mapUnitScale is absent', () => {
-    assert.strictEqual(getMapUnitScale(undefined, 0.001), 0.001);
+  it('defaults to METRES when MapUnit is absent (overrides project length unit)', () => {
+    // Per IFC4 spec, missing MapUnit falls back to the project's length unit.
+    // In practice (Bonsai/IfcOpenShell/Revit), MapConversion offsets are
+    // authored in METRES regardless of project unit. Honouring the spec
+    // pushes offsets thousands of km out of the CRS's valid range and lands
+    // models at the projection's antipode (Hans's IXAS_KW 018 file: mm
+    // project + MapConversion (126500, 480000) → South Pacific instead of
+    // Netherlands). See `resolveMapUnitToMetreScale` rationale.
+    assert.strictEqual(getMapUnitScale(undefined, 0.001), 1);
     assert.strictEqual(getMapUnitScale({ mapUnitScale: 1 }, 0.001), 1);
+    // Explicit non-metre MapUnit still wins — the heuristic only fires when
+    // MapUnit is unset.
+    assert.strictEqual(getMapUnitScale({ mapUnitScale: 0.3048006096 }, 1), 0.3048006096);
   });
 
   it('converts between metres and map units using ProjectedCRS.mapUnitScale', () => {

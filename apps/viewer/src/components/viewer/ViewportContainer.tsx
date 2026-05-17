@@ -432,15 +432,14 @@ export function ViewportContainer() {
     e.target.value = '';
   }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported]);
 
-  const handleStartBlank = useCallback(() => {
+  const handleStartBlank = useCallback(async () => {
     if (!webgpu.supported) return;
     void logToDesktopTerminal('info', '[ViewportContainer] Start blank IFC clicked');
     const file = createBlankIfcFile();
-    // Auto-arm Add Element so the user lands directly in authoring.
-    // setActiveTool is a no-op when the model isn't ready yet, but the
-    // empty-storey scaffold is parsed synchronously enough that the
-    // panel mounts on the first render after addModel.
-    loadFile(file);
+    // Must await: loadFile() calls resetViewerState() internally which
+    // resets activeTool back to 'select'. Setting addElement before that
+    // races and leaves the user in select mode despite the click.
+    await loadFile(file);
     setActiveTool('addElement');
   }, [webgpu.supported, loadFile, setActiveTool]);
 
@@ -866,7 +865,7 @@ export function ViewportContainer() {
             <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
-                onClick={handleStartBlank}
+                onClick={() => { void handleStartBlank(); }}
                 disabled={!webgpu.supported || webgpu.checking}
                 className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed transition-all ${
                   !webgpu.supported || webgpu.checking

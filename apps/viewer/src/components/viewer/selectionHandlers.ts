@@ -103,8 +103,12 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
 
     // Slab two-click flow takes precedence when we're mid-anchor.
     // The second click commits the cut line from anchor → cursor.
+    // Raycast onto the SOURCE SLAB'S floor (not the global active
+    // storey) so federated / non-active-storey splits land at the
+    // right elevation.
     if (state.splitMode === 'first-anchor' && state.slabCutAnchor) {
-      const cutPoint = raycastStoreyFloor(ctx, x, y);
+      const slabFloorY = resolveSlabFloorY(targetModelId, targetExpressId);
+      const cutPoint = raycastStoreyFloor(ctx, x, y, slabFloorY ?? undefined);
       if (!cutPoint) {
         toast.error("Couldn't read cut point");
         return;
@@ -166,10 +170,13 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     }
 
     // Fall through to the slab path: first click latches the
-    // anchor, second click (handled above) commits.
+    // anchor, second click (handled above) commits. Anchor lands
+    // on the source slab's storey floor (not the global active
+    // storey) — `slabFootprint.storeyElevation` is already the
+    // exact value we need, so pass it through directly.
     const slabFootprint = state.readSlabFootprint(targetModelId, targetExpressId);
     if (slabFootprint) {
-      const anchorPoint = raycastStoreyFloor(ctx, x, y);
+      const anchorPoint = raycastStoreyFloor(ctx, x, y, slabFootprint.storeyElevation);
       if (!anchorPoint) {
         toast.error("Couldn't read anchor point");
         return;
@@ -313,13 +320,19 @@ export function rendererPointToIfcStoreyLocal(point: { x: number; y: number; z: 
  * Storey-floor ray-plane intersection — used as a fallback when the
  * scene raycast misses every mesh (so the user can place new elements
  * in empty space, not just on existing surfaces). The floor sits at
- * renderer Y = storey elevation; if no storey is selected we use 0
- * (the renderer's default ground plane).
+ * renderer Y = storey elevation.
+ *
+ * `storeyOverride` lets the caller supply an explicit floor Y
+ * (renderer frame). Used by the Split tool so a slab on storey 3
+ * doesn't accidentally project clicks onto storey 0's floor when
+ * the addElement / active-model state points elsewhere. Falls back
+ * to `resolveStoreyFloorY()` (active-model lookup) when omitted.
  */
 function raycastStoreyFloor(
   ctx: MouseHandlerContext,
   x: number,
   y: number,
+  storeyOverride?: number,
 ): { x: number; y: number; z: number } | null {
   const camera = ctx.renderer.getCamera();
   const canvas = ctx.renderer.getCanvas();
@@ -334,7 +347,7 @@ function raycastStoreyFloor(
   const sy = rect.height > 0 ? (y / rect.height) * canvas.height : y;
   const ray = camera.unprojectToRay(sx, sy, canvas.width, canvas.height);
   if (!ray) return null;
-  const planeY = resolveStoreyFloorY();
+  const planeY = storeyOverride ?? resolveStoreyFloorY();
   // Looking down typically means D.y < 0; reject parallel / near-parallel
   // cases so we don't hand back a wildly extrapolated intersection.
   const dy = ray.direction.y;
@@ -346,6 +359,23 @@ function raycastStoreyFloor(
     y: planeY,
     z: ray.origin.z + ray.direction.z * t,
   };
+}
+
+/**
+ * Helper: resolve a slab's storey elevation in renderer-frame Y so
+ * callers can pass it to `raycastStoreyFloor`. Read from the
+ * model's spatialHierarchy (matches the rest of the split flow's
+ * elevation lookups). Returns null when the slab isn't contained
+ * in a storey we can resolve.
+ */
+function resolveSlabFloorY(modelId: string, expressId: number): number | null {
+  const state = useViewerStore.getState();
+  const ds = state.models.get(modelId)?.ifcDataStore;
+  if (!ds) return null;
+  const storeyId = ds.spatialHierarchy?.elementToStorey.get(expressId);
+  if (storeyId === undefined) return null;
+  const elev = ds.spatialHierarchy?.storeyElevations?.get(storeyId);
+  return typeof elev === 'number' ? elev : null;
 }
 
 /**
@@ -472,8 +502,12 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
         hiddenIds: ctx.hiddenEntitiesRef.current,
         isolatedIds: ctx.isolatedEntitiesRef.current,
       });
+      // Fallback raycast uses the TARGET's storey floor (not the
+      // global active storey) so the cursor projection stays in
+      // the same Y plane as the element being split.
+      const targetFloorY = resolveSlabFloorY(targetModelId, targetExpressId) ?? undefined;
       const worldPoint = result?.intersection?.point
-        ?? raycastStoreyFloor(ctx, x, y);
+        ?? raycastStoreyFloor(ctx, x, y, targetFloorY);
       if (!worldPoint) {
         if (store.splitMode === 'aiming') store.clearSplitHover();
         return;

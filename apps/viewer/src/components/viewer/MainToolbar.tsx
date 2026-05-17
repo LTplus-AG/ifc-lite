@@ -173,8 +173,8 @@ function LevelDisplayDropdown({ availableStoreys }: LevelDisplayDropdownProps) {
   const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
   const setExplodedGap = useViewerStore((s) => s.setExplodedGap);
-  const soloStoreyExpressId = useViewerStore((s) => s.soloStoreyExpressId);
-  const setSoloStoreyExpressId = useViewerStore((s) => s.setSoloStoreyExpressId);
+  const soloStorey = useViewerStore((s) => s.soloStorey);
+  const setSoloStorey = useViewerStore((s) => s.setSoloStorey);
 
   const dirty = levelDisplayMode !== 'stacked';
   return (
@@ -230,7 +230,14 @@ function LevelDisplayDropdown({ availableStoreys }: LevelDisplayDropdownProps) {
               max={100}
               step={0.5}
               value={explodedGap}
-              onChange={(e) => setExplodedGap(parseFloat(e.target.value))}
+              onChange={(e) => {
+                // Guard non-finite — clearing the field or typing
+                // a stray "e" would yield NaN, which the offset
+                // math would silently propagate. The slice setter
+                // also clamps to [0, 100] for the range guard.
+                const next = e.currentTarget.valueAsNumber;
+                if (Number.isFinite(next)) setExplodedGap(next);
+              }}
               className="w-16 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700
                 bg-white dark:bg-zinc-950 text-xs font-mono rounded
                 focus:outline-none focus:ring-1 focus:ring-purple-500"
@@ -250,9 +257,11 @@ function LevelDisplayDropdown({ availableStoreys }: LevelDisplayDropdownProps) {
             {availableStoreys.map((storey) => (
               <DropdownMenuItem
                 key={`${storey.modelId}-${storey.expressId}`}
-                onClick={() => setSoloStoreyExpressId(storey.expressId)}
+                onClick={() => setSoloStorey({ modelId: storey.modelId, expressId: storey.expressId })}
                 className={cn(
-                  soloStoreyExpressId === storey.expressId && 'bg-purple-100 dark:bg-purple-950/40',
+                  soloStorey?.modelId === storey.modelId &&
+                    soloStorey?.expressId === storey.expressId &&
+                    'bg-purple-100 dark:bg-purple-950/40',
                 )}
               >
                 <Building2 className="h-4 w-4 mr-2" />

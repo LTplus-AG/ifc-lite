@@ -638,6 +638,67 @@ function getOrCreateStoreEditor(
 }
 
 /**
+ * Rollback helper for failed atomic operations (e.g. split where
+ * the left half was created but the right half's builder threw).
+ *
+ * Pops the most recent CREATE_ENTITY mutation for `expressId` off
+ * the model's undo stack, removes the overlay record via
+ * `view.deleteEntity`, and queues the renderer mesh for removal.
+ * No DELETE_ENTITY mutation is recorded — the operation never
+ * happened from the user's perspective, so the undo history is
+ * left clean (Ctrl+Z after a failed split shouldn't bring back
+ * the orphan half).
+ *
+ * Returns true when at least one undo entry was popped.
+ */
+function rollbackOverlayCreate(
+  get: () => ViewerState,
+  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
+  modelId: string,
+  expressId: number,
+): boolean {
+  const state = get();
+  const view = state.mutationViews.get(modelId);
+  const editor = state.storeEditors.get(modelId);
+  if (!view || !editor) return false;
+
+  // Drop the entity from the overlay. The view.deleteEntity call
+  // is silent for already-gone entities — safe even if the caller
+  // gets the rollback path wrong.
+  editor.removeEntity(expressId);
+
+  // Walk the undo stack newest-first; remove the first matching
+  // CREATE_ENTITY entry for this entity. Subsequent mutations on
+  // the same entity (unlikely between create and rollback in the
+  // split flow, but defended against) stay where they are.
+  set((s) => {
+    const stacks = new Map(s.undoStacks);
+    const stack = stacks.get(modelId);
+    if (!stack) return {};
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const m = stack[i];
+      if (m.type === 'CREATE_ENTITY' && m.entityId === expressId) {
+        const next = stack.slice();
+        next.splice(i, 1);
+        stacks.set(modelId, next);
+        return {
+          undoStacks: stacks,
+          mutationVersion: s.mutationVersion + 1,
+        };
+      }
+    }
+    return {};
+  });
+
+  // Drop the entity's mesh from the renderer so the user doesn't
+  // see a phantom half-element after the failed split. Uses the
+  // existing pendingMeshRemovals channel (same as Phase A).
+  const globalId = toGlobalIdFromModels(state.models, modelId, expressId);
+  state.setPendingMeshRemovals(new Set([globalId]));
+  return true;
+}
+
+/**
  * Shared dispatcher for the wall/slab/beam in-store builders. Mirrors the
  * structure of `addColumn` (resolve store/view/editor/anchor → run the
  * builder → push a CREATE_ENTITY undo entry → mark dirty + bump version)
@@ -1414,12 +1475,12 @@ export const createMutationSlice: StateCreator<
       Name: 'Wall (split R)',
     });
     if ('error' in right) {
-      // Roll back the left half so the action is atomic from the
-      // caller's perspective — without this the model is left in
-      // a partial state (one orphaned half-wall) on the
-      // exceedingly rare path where addWall succeeds for the left
-      // but fails for the right.
-      state.removeEntity(modelId, left.expressId);
+      // Roll back the left half via the no-history helper so the
+      // failed split doesn't leave a phantom CREATE+DELETE pair on
+      // the undo stack. `rollbackOverlayCreate` pops the orphan
+      // CREATE_ENTITY entry, drops the overlay record, and removes
+      // the renderer mesh.
+      rollbackOverlayCreate(get, set, modelId, left.expressId);
       return { ok: false, reason: `Couldn't build right half: ${right.error}` };
     }
 
@@ -1721,9 +1782,9 @@ export const createMutationSlice: StateCreator<
     }
     const right = buildHalf(geo.rightFootprint, 'R');
     if ('error' in right) {
-      // Roll back the left half so we don't leave a partial state
-      // (orphaned half-slab) on a right-half build failure.
-      state.removeEntity(modelId, left.expressId);
+      // Roll back the left half via the no-history helper — same
+      // reasoning as the wall-split rollback above.
+      rollbackOverlayCreate(get, set, modelId, left.expressId);
       return { ok: false, reason: `Couldn't build right half: ${right.error}` };
     }
 
@@ -1767,14 +1828,18 @@ export const createMutationSlice: StateCreator<
     const removed = editor.removeEntity(expressId);
     if (!removed) return false;
 
-    // Drop the entity's mesh from the renderer. The IFC tombstone
-    // takes care of export correctness; this takes care of the
-    // visual side so the user actually sees the delete take
-    // effect. Goes through pendingMeshRemovals so the streaming
-    // hook flushes it on the next frame with the right device /
-    // pipeline handles in hand.
+    // Hide the entity's mesh — the IFC tombstone is what governs
+    // exports; the renderer just needs the visual gone. We use
+    // hideEntities (visibility set) rather than the harder
+    // pendingMeshRemovals path so the undo handler can flip
+    // visibility back without needing to re-materialise GPU
+    // buffers (the mesh data stays in memory + buckets).
+    //
+    // The split-source removal path also flows through here; on
+    // undo of a split, the source's mesh comes back via
+    // `showEntities` in the DELETE_ENTITY undo branch.
     const globalIdForMesh = toGlobalIdFromModels(get().models, modelId, expressId);
-    get().setPendingMeshRemovals(new Set([globalIdForMesh]));
+    get().hideEntities([globalIdForMesh]);
 
     set((state) => {
       const newRemoved = new Map(state.removedNewEntities);

@@ -13,7 +13,7 @@
  *                           ascending. Index 0 stays at its
  *                           native Y; subsequent storeys move up
  *                           by `gap`.
- *   - Solo                : only entities in `soloStoreyExpressId`
+ *   - Solo                : only entities in the chosen `soloStorey`
  *                           render. Driven by the existing
  *                           visibilitySlice.setIsolatedEntities so
  *                           we don't ship a second isolation
@@ -44,11 +44,23 @@ export type AppliedStoreyOffsets = Map<
   Map<number /* storey express id */, number /* applied Y offset (m, renderer frame) */>
 >;
 
+/**
+ * Solo target — must carry both modelId and expressId because
+ * express ids are scoped per model. In a federated session two
+ * different models often have storeys with overlapping ids, so a
+ * bare expressId would silently pick the wrong storey on the
+ * wrong model.
+ */
+export interface SoloStoreyRef {
+  modelId: string;
+  expressId: number;
+}
+
 export interface LevelDisplaySlice {
   levelDisplayMode: LevelDisplayMode;
-  /** Storey for Solo. Null = first storey of activeModel; the
-   * effect picks the first one on activation if this is null. */
-  soloStoreyExpressId: number | null;
+  /** Storey for Solo. Null = effect picks the lowest storey on
+   * the active model on activation. */
+  soloStorey: SoloStoreyRef | null;
   /** Per-storey gap in metres for Exploded. Default 4 m. */
   explodedGap: number;
   /**
@@ -60,7 +72,7 @@ export interface LevelDisplaySlice {
   appliedStoreyOffsets: AppliedStoreyOffsets;
 
   setLevelDisplayMode: (mode: LevelDisplayMode) => void;
-  setSoloStoreyExpressId: (id: number | null) => void;
+  setSoloStorey: (ref: SoloStoreyRef | null) => void;
   setExplodedGap: (metres: number) => void;
   /** Effect-only: record the offsets that were just flushed to
    * the renderer so the next toggle knows what to subtract. */
@@ -70,17 +82,17 @@ export interface LevelDisplaySlice {
 const LEVEL_DISPLAY_DEFAULTS = {
   mode: 'stacked' as LevelDisplayMode,
   gap: 4,
-  soloStoreyExpressId: null as number | null,
+  soloStorey: null as SoloStoreyRef | null,
 };
 
 export const createLevelDisplaySlice: StateCreator<LevelDisplaySlice, [], [], LevelDisplaySlice> = (set) => ({
   levelDisplayMode: LEVEL_DISPLAY_DEFAULTS.mode,
-  soloStoreyExpressId: LEVEL_DISPLAY_DEFAULTS.soloStoreyExpressId,
+  soloStorey: LEVEL_DISPLAY_DEFAULTS.soloStorey,
   explodedGap: LEVEL_DISPLAY_DEFAULTS.gap,
   appliedStoreyOffsets: new Map(),
 
   setLevelDisplayMode: (levelDisplayMode) => set({ levelDisplayMode }),
-  setSoloStoreyExpressId: (soloStoreyExpressId) => set({ soloStoreyExpressId }),
+  setSoloStorey: (soloStorey) => set({ soloStorey }),
   setExplodedGap: (metres) => {
     // Guard against non-finite / non-positive — UI lets the user
     // type, but a 0 gap means "Exploded = Stacked" and a negative

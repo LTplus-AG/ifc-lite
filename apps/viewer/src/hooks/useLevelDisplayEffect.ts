@@ -43,7 +43,7 @@ import {
 export function useLevelDisplayEffect(): void {
   const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
-  const soloStoreyExpressId = useViewerStore((s) => s.soloStoreyExpressId);
+  const soloStorey = useViewerStore((s) => s.soloStorey);
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const appliedStoreyOffsets = useViewerStore((s) => s.appliedStoreyOffsets);
@@ -104,27 +104,33 @@ export function useLevelDisplayEffect(): void {
     }
     setAppliedStoreyOffsets(target);
 
-    // Solo isolation. The previous-mode tracking keeps Solo →
-    // Solo (storey change) from re-touching isolation when
-    // nothing actually changed.
+    // Solo isolation. Resolve against the (modelId, expressId)
+    // pair the slice stores so federated scenes with overlapping
+    // storey express-ids isolate the right one. Slice default is
+    // null → pick the lowest-elevation storey of the active model.
     if (levelDisplayMode === 'solo') {
-      // Resolve which storey we're isolating. Slice default is
-      // null → pick the first storey of the active model.
-      let storeyId = soloStoreyExpressId;
-      const fallbackModelId = activeModelId ?? models.keys().next().value ?? null;
-      const fallbackStore = fallbackModelId ? models.get(fallbackModelId)?.ifcDataStore : undefined;
-      if (storeyId === null && fallbackStore) {
-        const elevations = fallbackStore.spatialHierarchy?.storeyElevations;
-        if (elevations && elevations.size > 0) {
-          // Lowest-elevation storey by default — predictable
-          // behaviour vs map-iteration order.
-          storeyId = [...elevations.entries()].sort((a, b) => a[1] - b[1])[0][0];
+      let targetModelId: string | null = soloStorey?.modelId ?? null;
+      let storeyId: number | null = soloStorey?.expressId ?? null;
+      if (targetModelId === null || storeyId === null) {
+        // Cold-start default — fall back to the active model's
+        // lowest storey ONLY when the slice has no explicit pick.
+        const fallbackModelId = activeModelId ?? models.keys().next().value ?? null;
+        const fallbackStore = fallbackModelId ? models.get(fallbackModelId)?.ifcDataStore : undefined;
+        if (fallbackModelId && fallbackStore) {
+          const elevations = fallbackStore.spatialHierarchy?.storeyElevations;
+          if (elevations && elevations.size > 0) {
+            const lowest = [...elevations.entries()].sort((a, b) => a[1] - b[1])[0][0];
+            targetModelId = fallbackModelId;
+            storeyId = lowest;
+          }
         }
       }
-      if (storeyId !== null && fallbackModelId) {
+      const targetStore = targetModelId ? models.get(targetModelId)?.ifcDataStore : undefined;
+      if (targetModelId !== null && storeyId !== null && targetStore) {
+        const resolvedModelId = targetModelId;
         const toGlobalId = (localExpressId: number): number =>
-          toGlobalIdFromModels(models, fallbackModelId, localExpressId);
-        const ids = entitiesInStorey(fallbackStore ?? undefined, storeyId, toGlobalId);
+          toGlobalIdFromModels(models, resolvedModelId, localExpressId);
+        const ids = entitiesInStorey(targetStore, storeyId, toGlobalId);
         setIsolatedEntities(new Set(ids));
       } else {
         setIsolatedEntities(null);
@@ -144,7 +150,7 @@ export function useLevelDisplayEffect(): void {
   }, [
     levelDisplayMode,
     explodedGap,
-    soloStoreyExpressId,
+    soloStorey,
     models,
     activeModelId,
     setPendingMeshTranslations,

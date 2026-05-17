@@ -8,8 +8,8 @@
  * (rendered when `activeTool === 'addElement'`); the actual drop
  * happens on a 3D click handled in `selectionHandlers.ts`.
  *
- * Activation only via the command palette — no menubar button. The
- * tool stays active across drops so the user can place several
+ * Activated via the Panels menu in the toolbar or the command palette.
+ * The tool stays active across drops so the user can place several
  * elements in a row; Esc returns to the select tool.
  */
 

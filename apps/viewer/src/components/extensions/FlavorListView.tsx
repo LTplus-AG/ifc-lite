@@ -43,6 +43,9 @@ export function FlavorListView({
   const activeFlavor = flavors.find((f) => f.id === activeId);
   const activeLensCount = activeFlavor?.lenses.length ?? 0;
   const hasUncaptured = activeFlavor != null && liveLensCount > activeLensCount;
+  // No active flavor but the user already has lenses — show a primary
+  // "Save as flavor" affordance so the path forward is obvious.
+  const noActiveButHasLenses = !activeFlavor && liveLensCount > 0;
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -64,37 +67,40 @@ export function FlavorListView({
 
       {/* Capture-current affordance — closes the discoverability gap
           for the lens→flavor connection. When the user has saved
-          lenses that aren't in the active flavor yet, the banner
-          turns amber so the action stands out; otherwise it's a quiet
-          secondary action. */}
-      {activeFlavor && (
+          lenses that aren't in the active flavor yet (or there's no
+          active flavor at all), the banner turns amber so the action
+          stands out; otherwise it's a quiet secondary action. */}
+      {(activeFlavor || noActiveButHasLenses) && (
         <div
           className={
-            hasUncaptured
+            hasUncaptured || noActiveButHasLenses
               ? 'flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs'
               : 'flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-xs'
           }
         >
           <div className="flex-1 min-w-0">
             <div className="font-medium">
-              {hasUncaptured
-                ? `${liveLensCount - activeLensCount} new lens${liveLensCount - activeLensCount === 1 ? '' : 'es'} not yet in ${activeFlavor.name}`
-                : `${activeFlavor.name} has ${activeLensCount} lens${activeLensCount === 1 ? '' : 'es'} captured`}
+              {noActiveButHasLenses
+                ? `You have ${liveLensCount} lens${liveLensCount === 1 ? '' : 'es'} not saved to any flavor`
+                : hasUncaptured
+                ? `${liveLensCount - activeLensCount} new lens${liveLensCount - activeLensCount === 1 ? '' : 'es'} not yet in ${activeFlavor!.name}`
+                : `${activeFlavor!.name} has ${activeLensCount} lens${activeLensCount === 1 ? '' : 'es'} captured`}
             </div>
             <div className="text-[11px] text-muted-foreground mt-0.5">
-              Capture saves the current saved-lenses set into the active flavor.
-              {hasUncaptured ? ' Then re-export the flavor to share it.' : ''}
+              {noActiveButHasLenses
+                ? 'Capture creates a new "My setup" flavor with your current lenses. You can then export to share or switch between flavors.'
+                : `Capture saves the current saved-lenses set into the active flavor.${hasUncaptured ? ' Then re-export the flavor to share it.' : ''}`}
             </div>
           </div>
           <Button
             size="sm"
-            variant={hasUncaptured ? 'default' : 'outline'}
+            variant={hasUncaptured || noActiveButHasLenses ? 'default' : 'outline'}
             onClick={onCaptureCurrent}
             disabled={busy}
-            aria-label="Capture current saved lenses into the active flavor"
+            aria-label={noActiveButHasLenses ? 'Save current lenses as a new flavor' : 'Capture current saved lenses into the active flavor'}
           >
             <Camera className="mr-1 h-3.5 w-3.5" />
-            Capture
+            {noActiveButHasLenses ? 'Save as flavor' : 'Capture'}
           </Button>
         </div>
       )}

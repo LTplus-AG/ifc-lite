@@ -31,10 +31,22 @@ import { listCapabilityCatalogue } from '../capability/catalogue.js';
  * version, so callers should memoise or send it through prompt
  * caching rather than rebuilding per turn.
  */
-export function buildAuthoringContract(): string {
+export interface AuthoringContractOptions {
+  /**
+   * The currently-running SDK version. When provided, the manifest
+   * schema example switches from a static placeholder to a concrete
+   * recommendation like `">=1.15.0 <2.0.0"` so the AI emits a
+   * compatible `engines.ifcLiteSdk` instead of guessing a future
+   * major. Without this, the AI commonly emits `>=2.0.0` against a
+   * 1.x SDK and the loader marks the bundle as outdated.
+   */
+  currentSdkVersion?: string;
+}
+
+export function buildAuthoringContract(opts: AuthoringContractOptions = {}): string {
   return [
     AUTHORING_PREAMBLE,
-    buildManifestSchema(),
+    buildManifestSchema(opts.currentSdkVersion),
     buildWidgetDsl(),
     buildCapabilityCatalogue(),
     buildStyleRules(),
@@ -67,8 +79,14 @@ bundle is a JSON object with the following keys:
 }
 \`\`\``;
 
-function buildManifestSchema(): string {
-  return `### MANIFEST SCHEMA (v1)
+function buildManifestSchema(currentSdkVersion?: string): string {
+  const engineExample = currentSdkVersion
+    ? `">=${currentSdkVersion}"`
+    : '">=1.0.0"';
+  const versionHint = currentSdkVersion
+    ? `\n\n**CURRENT SDK: ${currentSdkVersion}.** Set \`engines.ifcLiteSdk\` to \`${engineExample}\` (or a tighter range that still matches ${currentSdkVersion}). NEVER emit a range like \`">=2.0.0"\` that the running SDK can't satisfy — the loader will skip the bundle.`
+    : '';
+  return `### MANIFEST SCHEMA (v1)${versionHint}
 
 \`\`\`ts
 interface ExtensionManifest {
@@ -77,7 +95,7 @@ interface ExtensionManifest {
   name: string;
   description: string;
   version: string;     // SemVer
-  engines: { ifcLiteSdk: string };   // e.g. ">=2.4.0 <3.0.0"
+  engines: { ifcLiteSdk: string };   // e.g. ${engineExample}
   capabilities: string[];           // see catalogue below
   activation: Array<
     | 'onStartup'

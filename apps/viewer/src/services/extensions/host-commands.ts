@@ -51,40 +51,55 @@ export async function runExtensionCommand(
     const declared = bundle.manifest.contributes?.commands?.some((c) => c.id === commandId);
     if (!entry || !declared) continue;
 
-    const grants = parseCapabilities(record.grantedCapabilities);
-    if (!grants.ok) {
+    const grantsResult = parseCapabilities(record.grantedCapabilities);
+    if (!grantsResult.ok) {
       throw new Error(`Cannot run ${commandId}: stored capabilities for ${record.id} are invalid.`);
     }
-    const activation = await deps.runtime.activate(record.id, grants.value, bundle);
-
-    // Fire the matching `onCommand:<id>` activation event so any
-    // listener the extension declared for the command's lifecycle
-    // gets the activate hook. Idempotent — the dispatcher dedupes
-    // per session.
-    await deps.dispatcher.fire(`onCommand:${commandId}` as const);
+    const grants = grantsResult.value;
 
     const file = bundle.files.get(entry);
     if (!file) {
       throw new Error(`Command handler "${entry}" missing from bundle ${record.id}.`);
     }
     const source = file.text ?? new TextDecoder().decode(file.bytes);
-    const wrapped = wrapEntrySource(source, {
+    const wrapResult = wrapEntrySource(source, {
       entryFnName: 'run',
       filename: entry,
     });
-    if (!wrapped.ok) {
+    if (!wrapResult.ok) {
       throw new Error(
-        `Failed to prepare command "${commandId}": ${wrapped.errors[0]?.message ?? 'wrap error'}`,
+        `Failed to prepare command "${commandId}": ${wrapResult.errors[0]?.message ?? 'wrap error'}`,
       );
     }
-    // Set ctx via setGlobal. The BimSandboxHandle special-cases
-    // `__ifclite_ctx__` to synthesize from the bridge-installed
-    // `globalThis.bim` (the wrapped SDK is cyclic and would crash
-    // JSON.stringify). The wrap also falls back to globalThis.bim
-    // if ctx is somehow unset.
-    const ctx: ExtensionContextV1 = { bim: deps.sdk };
-    await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
-    return activation.sandbox.run(wrapped.value, { filename: entry });
+    const wrappedSource = wrapResult.value;
+
+    // Run the command, transparently reactivating once if the sandbox
+    // died between turns (QuickJS "Lifetime not alive"). Without this
+    // retry the user sees a cryptic crash and has to manually disable
+    // → enable the extension to recover.
+    const runOnce = async (isRetry: boolean): Promise<RuntimeRunResult> => {
+      const activation = await deps.runtime.activate(record.id, grants, bundle);
+      await deps.dispatcher.fire(`onCommand:${commandId}` as const);
+      // Set ctx via setGlobal. The BimSandboxHandle special-cases
+      // `__ifclite_ctx__` to synthesize from the bridge-installed
+      // `globalThis.bim` (the wrapped SDK is cyclic and would crash
+      // JSON.stringify). The wrap also falls back to globalThis.bim
+      // if ctx is somehow unset.
+      const ctx: ExtensionContextV1 = { bim: deps.sdk };
+      await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
+      try {
+        return await activation.sandbox.run(wrappedSource, { filename: entry });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isLifetimeError = /Lifetime not alive|QuickJSUseAfterFree|Sandbox was torn down/i.test(msg);
+        if (isLifetimeError && !isRetry) {
+          await deps.runtime.deactivate(record.id);
+          return runOnce(true);
+        }
+        throw err;
+      }
+    };
+    return runOnce(false);
   }
   throw new Error(`No installed, enabled extension owns command "${commandId}".`);
 }

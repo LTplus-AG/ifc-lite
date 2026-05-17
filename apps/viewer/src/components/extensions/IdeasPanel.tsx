@@ -44,6 +44,8 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
   const host = useExtensionHost();
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
+  const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
+  const setScriptEditorContent = useViewerStore((s) => s.setScriptEditorContent);
   /** Deep-link from Command Palette → "Author from scratch". */
   const ideasOpenEmptyPlan = useViewerStore((s) => s.ideasOpenEmptyPlan);
   const setIdeasOpenEmptyPlan = useViewerStore((s) => s.setIdeasOpenEmptyPlan);
@@ -72,16 +74,27 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
 
   /**
    * Starter "Try it" routes directly to chat with the plan baked into
-   * the prompt — no intermediate Plan Card. Users overwhelmingly
-   * expected an immediate "thing happens" response when they clicked
-   * Try it; the plan-edit step felt like dead-end indirection. Users
-   * who DO want to edit the plan first click the inline "Customize
-   * plan…" link, which falls back to the old PlanCard flow.
+   * the prompt AND opens the Script Editor as the "viewport" where
+   * the assistant's generated handler code shows up. Users on the
+   * Vercel preview expected to see *something* land in code — opening
+   * just chat without surfacing the editor read as "nothing happened".
+   *
+   * The editor gets a brief placeholder explaining what's coming so
+   * the panel isn't blank while the model is still streaming.
    */
   const handleAcceptStarter = (idea: StarterIdea) => {
     const prompt = buildAuthoringPrompt(idea.plan);
     queueChatPrompt(prompt);
     setChatPanelVisible(true);
+    setScriptPanelVisible(true);
+    setScriptEditorContent(
+      `// Authoring: ${idea.plan.summary}\n` +
+        `//\n` +
+        `// The AI assistant is reading the plan in the chat panel.\n` +
+        `// After you approve follow-up questions, the generated handler\n` +
+        `// code lands here. You can then Run it directly, or install it\n` +
+        `// as an extension from the Extensions panel.\n`,
+    );
     toast.success(`Sent "${idea.plan.summary}" to chat — answer follow-ups to refine.`);
   };
 

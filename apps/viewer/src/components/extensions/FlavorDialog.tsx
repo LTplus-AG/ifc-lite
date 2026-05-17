@@ -130,39 +130,61 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   };
 
   /**
-   * Capture the user's current viewer state into the active flavor.
+   * Capture the user's current viewer state into the active flavor —
+   * or auto-create a fresh "My setup" flavor if none is active yet.
+   * Auto-creation closes the chicken-and-egg loop where a fresh user
+   * has lenses but no flavor to put them in.
+   *
    * v1 scope: saved lenses. The flavor schema has slots for
    * savedQueries / keybindings / layout / settings — those land as
    * the viewer surfaces them in stores we can read deterministically.
    */
   const handleCaptureCurrent = async () => {
-    if (!activeId) {
-      toast.error('No active flavor — switch to one first.');
-      return;
-    }
     setBusy(true);
     try {
-      const flavor = await host.flavors.list().then((list) => list.find((f) => f.id === activeId));
-      if (!flavor) {
-        toast.error(`Active flavor "${activeId}" not found.`);
-        return;
-      }
-      // Map the viewer's saved lenses (lens engine's native shape)
-      // into the flavor SavedLens shape — { id, name, definition }
-      // where definition is opaque JSON.
       const savedLenses = useViewerStore.getState().savedLenses;
       const lenses = savedLenses.map((lens) => ({
         id: lens.id,
         name: lens.name ?? lens.id,
         definition: lens as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
       }));
+
+      let target: Flavor | undefined;
+      if (activeId) {
+        target = await host.flavors.list().then((list) => list.find((f) => f.id === activeId));
+      }
+
+      if (!target) {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const id = `local.my-setup.${stamp}`;
+        const now = new Date().toISOString();
+        target = {
+          schemaVersion: 1,
+          id,
+          name: 'My setup',
+          description: 'Captured from current viewer state.',
+          createdAt: now,
+          updatedAt: now,
+          extensions: [],
+          lenses,
+          savedQueries: [],
+          keybindings: [],
+          layout: { state: {} },
+          settings: {},
+        };
+        await host.flavors.put(target, 'capture (auto-created)');
+        await host.flavors.activate(id);
+        toast.success(`Created "My setup" with ${lenses.length} lens${lenses.length === 1 ? '' : 'es'}.`);
+        return;
+      }
+
       const next = {
-        ...flavor,
+        ...target,
         lenses,
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current setup');
-      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} into ${flavor.name}`);
+      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} into ${target.name}`);
     } catch (err) {
       toast.error(toastText.failed('Capture', err));
     } finally {

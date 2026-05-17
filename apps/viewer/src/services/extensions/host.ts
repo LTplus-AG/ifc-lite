@@ -199,6 +199,22 @@ export class ExtensionHostService {
       }
 
       const statuses = await this.loader.loadAll();
+      // Seed a baseline flavor on first run so the Flavors dialog
+      // never opens to an empty state. Existing users keep whatever
+      // they had — we only create the Default if the library is empty.
+      try {
+        const existing = await this.flavors.list();
+        if (existing.length === 0) {
+          await this.flavors.resetToDefaults();
+        } else {
+          // Make sure SOMETHING is active so Capture / activate UI has
+          // a target. Falls back to the first flavor if no pointer.
+          const active = await this.flavors.getActive();
+          if (!active) await this.flavors.activate(existing[0].id);
+        }
+      } catch (err) {
+        console.warn('[ext-host] baseline flavor seed failed:', err);
+      }
       await this.dispatcher.fire('onStartup');
       this.initialized = true;
       this.emit();

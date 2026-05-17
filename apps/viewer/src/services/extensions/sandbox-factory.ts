@@ -149,7 +149,26 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
     const wrapped = this.globalsScript
       ? `${this.globalsScript}${source}`
       : source;
-    const result = await this.sandbox.eval(wrapped, { typescript: false });
+    let result;
+    try {
+      result = await this.sandbox.eval(wrapped, { typescript: false });
+    } catch (err) {
+      // QuickJS throws "Lifetime not alive" (QuickJSUseAfterFree) when
+      // a handle is touched after its underlying realm was disposed —
+      // typically because a prior run / flavor switch tore down this
+      // sandbox while the host still held the activation record. Mark
+      // ourselves disposed so the runtime knows to reactivate on the
+      // next call, and surface a clear retry-friendly message.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/Lifetime not alive|QuickJSUseAfterFree/i.test(msg)) {
+        this.disposed = true;
+        try { this.sandbox.dispose(); } catch { /* already torn down */ }
+        throw new Error(
+          'Sandbox was torn down between activate and run. Click Run again — the runtime will reactivate.',
+        );
+      }
+      throw err;
+    }
     return {
       value: result.value,
       logs: result.logs.map((log) => ({
@@ -159,6 +178,11 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
       })),
       durationMs: result.durationMs,
     };
+  }
+
+  /** True iff the sandbox has been torn down (host-disposed or auto-disposed on a Lifetime crash). */
+  get isDisposed(): boolean {
+    return this.disposed;
   }
 
   dispose(): void {

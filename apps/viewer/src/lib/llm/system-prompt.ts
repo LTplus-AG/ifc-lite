@@ -788,7 +788,12 @@ if (!rows) {
   if (task?.includeAuthoringContract) {
     // AI extension authoring contract (RFC §04.5/§11). Deterministic
     // for a given SDK version so a hosted cache layer hits cleanly.
-    prompt += `\n\n${buildAuthoringContract()}`;
+    // Inject the live SDK version so the AI emits a compatible
+    // `engines.ifcLiteSdk` range instead of guessing a future major.
+    const sdkVersion = typeof __APP_VERSION__ === 'string' && __APP_VERSION__.length > 0
+      ? __APP_VERSION__
+      : undefined;
+    prompt += `\n\n${buildAuthoringContract({ currentSdkVersion: sdkVersion })}`;
   }
 
   if (task?.personalOverlay && task.personalOverlay.trim().length > 0) {

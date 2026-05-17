@@ -19,7 +19,7 @@ import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { lookupEpsgByCode, lookupProj4 } from '@ifc-lite/data';
-import { getEffectiveHorizontalScale } from './geo-scale';
+import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
 
 export interface LatLon {
   lat: number;
@@ -431,7 +431,7 @@ export async function reprojectToLatLon(
 
   // MapConversion values use the unit from IfcProjectedCRS.MapUnit. If MapUnit
   // is not specified, the IFC spec defaults to the project's length unit.
-  const mapScale = crs.mapUnitScale ?? lengthUnitScale;
+  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
   const { easting, northing } = computeProjectedCenter(conversion, coordinateInfo, mapScale, lengthUnitScale);
 
   try {
@@ -505,7 +505,7 @@ export async function reprojectFromLatLon(
 
     // Convert projected metres back to MapConversion's unit.
     // Geometry offsets (ifcX/Y) are already in metres.
-    const mapScale = crs.mapUnitScale ?? lengthUnitScale;
+    const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
     const invScale = mapScale !== 0 ? 1 / mapScale : 1;
     const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
     // Effective horizontal scale for metre-converted geometry — see issue #595.
@@ -555,7 +555,7 @@ export async function computeFootprintGeoJSON(
   }
 
   // Effective horizontal scale for metre-converted geometry — see issue #595.
-  const mapScale = crs.mapUnitScale ?? lengthUnitScale;
+  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
   const scale = getEffectiveHorizontalScale(conversion.scale, mapScale, lengthUnitScale);
   const abscissa = conversion.xAxisAbscissa ?? 1.0;
   const ordinate = conversion.xAxisOrdinate ?? 0.0;

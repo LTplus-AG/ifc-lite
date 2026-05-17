@@ -139,6 +139,39 @@ describe('reproject helpers', () => {
     assert.strictEqual(diag.hasTowgs84, false);
   });
 
+  it('treats unset MapUnit as METRES, not project length unit (Bonsai/IfcOpenShell convention)', async () => {
+    // Regression for the antipode bug: a file with LengthUnit=mm and
+    // MapConversion eastings/northings authored in METRES (typical surveyor
+    // workflow) was being interpreted per the IFC spec letter — multiplied
+    // by 0.001 to "convert mm → metres" — pushing the projected coords
+    // outside RD New's valid range. proj4's sterea projection then
+    // extrapolated to the projection's antipode, landing the model in the
+    // South Pacific instead of the Netherlands.
+    const crs: ProjectedCRS = {
+      id: 1,
+      name: 'EPSG:28992',
+      // mapUnit deliberately unset — triggers the heuristic.
+    };
+    const conversion: MapConversion = {
+      id: 2,
+      sourceCRS: 10,
+      targetCRS: 1,
+      eastings: 126500,   // metres, as the file author intended
+      northings: 480000,
+      orthogonalHeight: 0,
+      xAxisAbscissa: 1,
+      xAxisOrdinate: 0,
+      scale: 1,
+    };
+    // Project unit = millimetres (lengthUnitScale=0.001).
+    const latLon = await reprojectToLatLon(conversion, crs, undefined, 0.001);
+    assert.ok(latLon, 'should resolve');
+    // Should land in the Netherlands (~52°N, ~5°E) — NOT at the antipode
+    // (~−52°S, ~−175°W) which the spec-strict interpretation produces.
+    assert.ok(latLon!.lat > 51 && latLon!.lat < 54, `lat = ${latLon!.lat} (expected ~52°N for NL)`);
+    assert.ok(latLon!.lon > 3 && latLon!.lon < 8, `lon = ${latLon!.lon} (expected ~5°E for NL)`);
+  });
+
   it('builds a closed footprint polygon and preserves corner count', async () => {
     const crs: ProjectedCRS = {
       id: 114,

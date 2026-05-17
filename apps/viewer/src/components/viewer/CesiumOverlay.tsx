@@ -29,7 +29,7 @@ import {
   computeCesiumPlacement,
   shouldPreferOrthometricTerrain,
 } from '@/lib/geo/cesium-placement';
-import { getEffectiveHorizontalScale } from '@/lib/geo/geo-scale';
+import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
 
 // Lazy-loaded Cesium module and CSS
 let cesiumPromise: Promise<typeof import('cesium')> | null = null;
@@ -179,7 +179,7 @@ function buildModelMatrix(
   // extraction). IfcMapConversion.Scale is defined per IFC spec relative to
   // the project length unit, so applying it raw to metre-converted geometry
   // double-scales the model — see issue #595. Use the effective scale.
-  const mapUnitScale = projectedCRS?.mapUnitScale ?? lengthUnitScale;
+  const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS?.mapUnitScale, lengthUnitScale);
   const hScale = getEffectiveHorizontalScale(mapConversion?.scale, mapUnitScale, lengthUnitScale);
   const absc = mapConversion?.xAxisAbscissa ?? 1.0;
   const ordi = mapConversion?.xAxisOrdinate ?? 0.0;
@@ -479,7 +479,7 @@ export function CesiumOverlay({
           })
         : placement;
       if (usesSeparateCameraBridge) {
-        const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
+        const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
         const deltaHeightMeters = (
           mapConversion.orthogonalHeight - cameraConversion.orthogonalHeight
         ) * mapScale;

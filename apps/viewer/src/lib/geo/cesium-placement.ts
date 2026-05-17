@@ -7,15 +7,13 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
-import { getEffectiveHorizontalScale } from './geo-scale';
+import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   lengthUnitScale: number,
 ): number {
-  const mapUnitScale = projectedCRS?.mapUnitScale;
-  if (typeof mapUnitScale === 'number' && mapUnitScale > 0) return mapUnitScale;
-  return lengthUnitScale > 0 ? lengthUnitScale : 1;
+  return resolveMapUnitToMetreScale(projectedCRS?.mapUnitScale, lengthUnitScale);
 }
 
 export function mapUnitsToMeters(

@@ -28,7 +28,7 @@ import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { resolveProjection } from './reproject';
-import { getEffectiveHorizontalScale } from './geo-scale';
+import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
 
 export interface IfcOriginPlacement {
   /** Viewer-local position (Y-up) where this model's IFC (0,0,0) currently sits. */
@@ -81,7 +81,7 @@ export async function computeIfcOriginViewerPosition(
   // Step 1: model IFC (0,0,0) → model projected. At the pivot, rotation+scale
   // multiply zero — only the eastings/northings/orthogonalHeight remain.
   const modelLengthScale = model.lengthUnitScale ?? 1;
-  const modelMapUnitScale = model.projectedCRS.mapUnitScale ?? modelLengthScale;
+  const modelMapUnitScale = resolveMapUnitToMetreScale(model.projectedCRS.mapUnitScale, modelLengthScale);
   const eM = model.mapConversion.eastings * modelMapUnitScale;
   const nM = model.mapConversion.northings * modelMapUnitScale;
   const hM = model.mapConversion.orthogonalHeight * modelMapUnitScale;
@@ -111,7 +111,7 @@ export async function computeIfcOriginViewerPosition(
 
   // Step 3: anchor projected → anchor IFC (invert anchor's MapConversion).
   const anchorLengthScale = anchor.lengthUnitScale ?? 1;
-  const anchorMapUnitScale = anchor.projectedCRS.mapUnitScale ?? anchorLengthScale;
+  const anchorMapUnitScale = resolveMapUnitToMetreScale(anchor.projectedCRS.mapUnitScale, anchorLengthScale);
   const eAnchor = anchor.mapConversion.eastings * anchorMapUnitScale;
   const nAnchor = anchor.mapConversion.northings * anchorMapUnitScale;
   const hAnchor = anchor.mapConversion.orthogonalHeight * anchorMapUnitScale;

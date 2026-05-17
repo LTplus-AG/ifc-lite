@@ -52,6 +52,23 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   /** Empty-state "describe in chat" CTA + Sparkles button. */
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
+  /** Active-flavor name surfaced in the panel header to give the concept impressions. */
+  const setFlavorDialogRequested = useViewerStore((s) => s.setFlavorDialogRequested);
+  const [activeFlavorName, setActiveFlavorName] = useState<string | undefined>();
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const flavor = await host.flavors.getActive();
+        if (!cancelled) setActiveFlavorName(flavor?.name);
+      } catch {
+        // Best-effort: header chip just goes blank if read fails.
+      }
+    };
+    void refresh();
+    const off = host.flavors.onChange(() => void refresh());
+    return () => { cancelled = true; off(); };
+  }, [host]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{
     bytes: Uint8Array;
@@ -167,6 +184,17 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <div className="flex items-center gap-2">
           <Puzzle className="h-4 w-4" />
           <h2 className="text-sm font-semibold">Extensions</h2>
+          {activeFlavorName && (
+            <button
+              type="button"
+              onClick={() => setFlavorDialogRequested(true)}
+              className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary hover:bg-primary/20 rounded px-1.5 py-0.5 font-semibold transition-colors"
+              title={`Active flavor: ${activeFlavorName}. Click to manage.`}
+              aria-label={`Active flavor: ${activeFlavorName}. Click to open the flavor dialog.`}
+            >
+              {activeFlavorName}
+            </button>
+          )}
           <HelpHint label="Extensions">
             <p>
               <strong>Extensions</strong> are sandboxed bundles of

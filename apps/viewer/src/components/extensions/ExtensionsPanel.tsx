@@ -179,16 +179,18 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Puzzle className="h-4 w-4" />
-          <h2 className="text-sm font-semibold">Extensions</h2>
+      {/* Title row — always fits regardless of panel width. The tab
+          strip moves to its own row below so it can scroll
+          horizontally without crowding the title. */}
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Puzzle className="h-4 w-4 shrink-0" />
+          <h2 className="text-sm font-semibold shrink-0">Extensions</h2>
           {activeFlavorName && (
             <button
               type="button"
               onClick={() => setFlavorDialogRequested(true)}
-              className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary hover:bg-primary/20 rounded px-1.5 py-0.5 font-semibold transition-colors"
+              className="shrink-0 text-[10px] uppercase tracking-wide bg-primary/10 text-primary hover:bg-primary/20 rounded px-1.5 py-0.5 font-semibold transition-colors max-w-[110px] truncate"
               title={`Active flavor: ${activeFlavorName}. Click to manage.`}
               aria-label={`Active flavor: ${activeFlavorName}. Click to open the flavor dialog.`}
             >
@@ -202,61 +204,20 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
               to the viewer.
             </p>
             <p>
-              Three tabs in the header above let you jump to:{' '}
-              <strong>Ideas</strong> (mined patterns + starter
-              suggestions), <strong>Repair</strong> (SDK-update
-              compatibility check), <strong>Audit</strong> (lifecycle
-              ledger), <strong>Privacy</strong> (action-log controls +
-              prompt overlay).
+              The tab strip below jumps to: <strong>Ideas</strong>{' '}
+              (mined patterns + starter suggestions),{' '}
+              <strong>Repair</strong> (SDK-update compatibility check),
+              <strong> Audit</strong> (lifecycle ledger),{' '}
+              <strong>Privacy</strong> (action-log controls + prompt
+              overlay).
             </p>
             <p>
               Get started by describing one in chat, browsing starter
-              ideas, or importing a <code>.iflx</code> bundle someone
-              shared.
+              ideas, or importing a <code>.iflx</code> bundle.
             </p>
           </HelpHint>
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant={view === 'ideas' ? 'secondary' : 'ghost'}
-            onClick={() => setView((v) => (v === 'ideas' ? 'installed' : 'ideas'))}
-            aria-label="Toggle ideas panel"
-            aria-pressed={view === 'ideas'}
-          >
-            <Lightbulb className="mr-1 h-3.5 w-3.5" />
-            Ideas
-          </Button>
-          <Button
-            size="sm"
-            variant={view === 'repair' ? 'secondary' : 'ghost'}
-            onClick={() => setView((v) => (v === 'repair' ? 'installed' : 'repair'))}
-            aria-label="Toggle repair queue"
-            aria-pressed={view === 'repair'}
-          >
-            <Wrench className="mr-1 h-3.5 w-3.5" />
-            Repair
-          </Button>
-          <Button
-            size="sm"
-            variant={view === 'audit' ? 'secondary' : 'ghost'}
-            onClick={() => setView((v) => (v === 'audit' ? 'installed' : 'audit'))}
-            aria-label="Toggle audit log"
-            aria-pressed={view === 'audit'}
-          >
-            <FileText className="mr-1 h-3.5 w-3.5" />
-            Audit
-          </Button>
-          <Button
-            size="sm"
-            variant={view === 'privacy' ? 'secondary' : 'ghost'}
-            onClick={() => setView((v) => (v === 'privacy' ? 'installed' : 'privacy'))}
-            aria-label="Toggle privacy panel"
-            aria-pressed={view === 'privacy'}
-          >
-            <Shield className="mr-1 h-3.5 w-3.5" />
-            Privacy
-          </Button>
+        <div className="flex items-center gap-1 shrink-0">
           <Button
             size="sm"
             variant="outline"
@@ -289,11 +250,47 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         />
       </div>
 
-      {/* Description */}
-      <div className="border-b px-4 py-2 text-xs text-muted-foreground">
-        Bundles run in a sandboxed QuickJS runtime with explicit capability grants.
+      {/* Tab strip — its own row so the title row never crowds it.
+          Horizontally scrollable when the panel narrows. */}
+      <div
+        className="flex items-center gap-0 border-b overflow-x-auto px-1"
+        role="tablist"
+        aria-label="Extension surfaces"
+      >
+        {(
+          [
+            { id: 'installed', label: 'Installed', Icon: Puzzle },
+            { id: 'ideas', label: 'Ideas', Icon: Lightbulb },
+            { id: 'repair', label: 'Repair', Icon: Wrench },
+            { id: 'audit', label: 'Audit', Icon: FileText },
+            { id: 'privacy', label: 'Privacy', Icon: Shield },
+          ] as const
+        ).map(({ id, label, Icon }) => {
+          const active = view === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setView(id)}
+              className={`shrink-0 flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                active
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          );
+        })}
       </div>
 
+      {/* Body — every sub-view fills the remaining height and owns its
+          own scroll. `min-h-0` lets flex children actually shrink so
+          inner ScrollArea / overflow-auto kicks in at narrow heights. */}
+      <div className="flex-1 min-h-0 flex flex-col">
       {view === 'audit' ? (
         <AuditLogPanel />
       ) : view === 'ideas' ? (
@@ -304,7 +301,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <PrivacyPanel />
       ) : (
       <div
-        className={`flex-1 overflow-auto transition-colors ${
+        className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors ${
           dragOver ? 'bg-primary/5' : ''
         }`}
         onDragOver={(e) => {
@@ -450,6 +447,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         )}
       </div>
       )}
+      </div>
 
       {pending && (
         <CapabilityReview

@@ -69,18 +69,31 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
 
   const patterns = event?.patterns ?? [];
 
-  const handleAccept = (pattern: MinedPattern) => {
-    setDraft(host.acceptSuggestion(pattern));
-  };
 
   /**
-   * Open the Plan Card with one of the curated starter plans
-   * pre-filled. The user can prune capabilities, adjust the summary,
-   * or remove contributions before approving — same flow as a mined
-   * suggestion.
+   * Starter "Try it" routes directly to chat with the plan baked into
+   * the prompt — no intermediate Plan Card. Users overwhelmingly
+   * expected an immediate "thing happens" response when they clicked
+   * Try it; the plan-edit step felt like dead-end indirection. Users
+   * who DO want to edit the plan first click the inline "Customize
+   * plan…" link, which falls back to the old PlanCard flow.
    */
   const handleAcceptStarter = (idea: StarterIdea) => {
+    const prompt = buildAuthoringPrompt(idea.plan);
+    queueChatPrompt(prompt);
+    setChatPanelVisible(true);
+    toast.success(`Sent "${idea.plan.summary}" to chat — answer follow-ups to refine.`);
+  };
+
+  /** Power-user path: open the PlanCard with the starter pre-filled. */
+  const handleCustomizeStarter = (idea: StarterIdea) => {
     setDraft({ ...idea.plan });
+  };
+
+  /** Mined-pattern accept — always uses the PlanCard since the
+   *  generated plan is rougher and benefits from review. */
+  const handleAcceptMined = (pattern: MinedPattern) => {
+    setDraft(host.acceptSuggestion(pattern));
   };
 
   /**
@@ -152,10 +165,13 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
               tightens as data accumulates.
             </p>
             <p>
-              Click <strong>Try it</strong> to open a plan you can edit
-              before chat AI assembles the bundle. Nothing here leaves
-              your device.
+              Click <strong>Try it</strong> to send the idea to the AI
+              chat assistant — chat opens and you answer follow-ups.
+              Click <strong>Customize plan first…</strong> if you want
+              to prune capabilities or rename the command before chat
+              sees it.
             </p>
+            <p>The action log is local. Nothing here leaves your device.</p>
           </HelpHint>
         </div>
         <Button
@@ -212,7 +228,7 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleAccept(pattern)}
+                      onClick={() => handleAcceptMined(pattern)}
                       aria-label="Author one-click tool from pattern"
                     >
                       <Wrench className="mr-1 h-3.5 w-3.5" />
@@ -240,22 +256,30 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 text-xs font-medium">
                       <span aria-hidden>{idea.icon}</span>
-                      <span>{idea.plan.summary}</span>
-                      <span className="text-[10px] uppercase tracking-wide bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-semibold">
+                      <span className="truncate">{idea.plan.summary}</span>
+                      <span className="text-[10px] uppercase tracking-wide bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-semibold shrink-0">
                         {idea.category}
                       </span>
                     </div>
                     <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
                       {idea.plan.rationale}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => handleCustomizeStarter(idea)}
+                      className="mt-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                    >
+                      Customize plan first…
+                    </button>
                   </div>
                   <Button
                     size="sm"
-                    variant="outline"
                     onClick={() => handleAcceptStarter(idea)}
-                    aria-label={`Try starter idea: ${idea.plan.summary}`}
+                    aria-label={`Send "${idea.plan.summary}" to chat`}
+                    title="Sends a plan-based prompt to the AI chat assistant. Opens the chat panel."
+                    className="shrink-0"
                   >
-                    <Wrench className="mr-1 h-3.5 w-3.5" />
+                    <MessageSquarePlus className="mr-1 h-3.5 w-3.5" />
                     Try it
                   </Button>
                 </div>

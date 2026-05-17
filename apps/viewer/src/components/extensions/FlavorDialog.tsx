@@ -27,6 +27,7 @@ import { FlavorListView } from './FlavorListView';
 import { FlavorImportPreview } from './FlavorImportPreview';
 import * as toastText from './toast-helpers';
 import { HelpHint } from './HelpHint';
+import { useViewerStore } from '@/store';
 
 interface FlavorDialogProps {
   open: boolean;
@@ -40,6 +41,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<{ bytes: Uint8Array; unpacked: UnpackedFlavor } | null>(null);
   const [mergeTarget, setMergeTarget] = useState<Flavor | null>(null);
+  /** Live lens count from the viewer store — drives the "N new lenses
+   *  not yet in active flavor" banner. */
+  const liveLensCount = useViewerStore((s) => s.savedLenses.length);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -125,6 +129,47 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     }
   };
 
+  /**
+   * Capture the user's current viewer state into the active flavor.
+   * v1 scope: saved lenses. The flavor schema has slots for
+   * savedQueries / keybindings / layout / settings — those land as
+   * the viewer surfaces them in stores we can read deterministically.
+   */
+  const handleCaptureCurrent = async () => {
+    if (!activeId) {
+      toast.error('No active flavor — switch to one first.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const flavor = await host.flavors.list().then((list) => list.find((f) => f.id === activeId));
+      if (!flavor) {
+        toast.error(`Active flavor "${activeId}" not found.`);
+        return;
+      }
+      // Map the viewer's saved lenses (lens engine's native shape)
+      // into the flavor SavedLens shape — { id, name, definition }
+      // where definition is opaque JSON.
+      const savedLenses = useViewerStore.getState().savedLenses;
+      const lenses = savedLenses.map((lens) => ({
+        id: lens.id,
+        name: lens.name ?? lens.id,
+        definition: lens as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
+      }));
+      const next = {
+        ...flavor,
+        lenses,
+        updatedAt: new Date().toISOString(),
+      };
+      await host.flavors.put(next, 'capture current setup');
+      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} into ${flavor.name}`);
+    } catch (err) {
+      toast.error(toastText.failed('Capture', err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleReset = async () => {
     if (!confirm('Reset to baseline flavor? Other flavors are preserved.')) return;
     setBusy(true);
@@ -175,7 +220,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
           <DialogTitle className="flex items-center gap-2">
             <Palette className="h-4 w-4" />
             Flavors
-            <HelpHint label="Flavors" popoverClass="left-0">
+            <HelpHint label="Flavors" side="bottom-start">
               <p>
                 A <strong>flavor</strong> bundles your installed
                 extensions, lenses, saved queries, layout, settings,
@@ -215,11 +260,13 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
               flavors={flavors}
               activeId={activeId}
               busy={busy}
+              liveLensCount={liveLensCount}
               onActivate={(id) => void handleActivate(id)}
               onExport={(id) => void handleExport(id)}
               onDelete={(id) => void handleDelete(id)}
               onImportClick={() => fileInputRef.current?.click()}
               onReset={() => void handleReset()}
+              onCaptureCurrent={() => void handleCaptureCurrent()}
             />
             <input
               ref={fileInputRef}

@@ -24,7 +24,8 @@ import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRe
 import { isTauri } from '@/lib/platform';
 import { toast } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight } from 'lucide-react';
+import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
+import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
@@ -39,6 +40,7 @@ const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
 
 export function ViewportContainer() {
   const { loadFile, loading, clearAllModels, loadFilesSequentially } = useIfc();
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
@@ -429,6 +431,18 @@ export function ViewportContainer() {
     // Reset input so same file can be selected again
     e.target.value = '';
   }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported]);
+
+  const handleStartBlank = useCallback(() => {
+    if (!webgpu.supported) return;
+    void logToDesktopTerminal('info', '[ViewportContainer] Start blank IFC clicked');
+    const file = createBlankIfcFile();
+    // Auto-arm Add Element so the user lands directly in authoring.
+    // setActiveTool is a no-op when the model isn't ready yet, but the
+    // empty-storey scaffold is parsed synchronously enough that the
+    // panel mounts on the first render after addModel.
+    loadFile(file);
+    setActiveTool('addElement');
+  }, [webgpu.supported, loadFile, setActiveTool]);
 
   const hasGeometry = mergedGeometryResult?.meshes && mergedGeometryResult.meshes.length > 0;
 
@@ -844,20 +858,37 @@ export function ViewportContainer() {
               <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
             </div>
 
-            {/* Track 2 — agent / MCP. Compact inline pill, self-centred so
-                it reads as a meta-link sibling to the primary file-open
-                CTA, not a competing full-width button. */}
-            <a
-              href="/mcp"
-              className="group inline-flex self-center items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary transition-all cursor-pointer"
-            >
-              <Sparkles className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
-              <span>Drive with any LLM</span>
-              <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </a>
+            {/* Track 2 — two peer pills that both answer "I don't have a
+                file to open": start a fresh project, or hand the wheel to
+                an LLM via MCP. Both share the same dashed-pill silhouette
+                so they read as siblings, with the file-open CTA above
+                staying visually dominant. */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={handleStartBlank}
+                disabled={!webgpu.supported || webgpu.checking}
+                className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed transition-all ${
+                  !webgpu.supported || webgpu.checking
+                    ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
+                    : 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer'
+                }`}
+              >
+                <PackagePlus className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
+                <span>Start blank</span>
+              </button>
+              <a
+                href="/mcp"
+                className="group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary transition-all cursor-pointer"
+              >
+                <Sparkles className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
+                <span>Drive with any LLM</span>
+                <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+              </a>
+            </div>
 
             <p className="mt-1.5 text-[10px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
-              via MCP · install or try the playground
+              new untitled project · or LLM via MCP
             </p>
 
             {recentFiles.length > 0 && (

@@ -74,6 +74,7 @@ import {
 import { useSandbox } from '@/hooks/useSandbox';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import type { CommandContribution } from '@ifc-lite/extensions';
 import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
@@ -539,7 +540,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         label: payload.title,
         keywords: `${payload.id} ${payload.paletteCategory ?? ''} extension`,
         category: 'Extensions',
-        icon: lookupIcon(payload.icon) ?? Sparkles,
+        // Picker uses lowercase-hyphenated keys (`wrench`, `flame`,
+        // etc.) — `lookupIcon` only knows the legacy capitalized set.
+        // `resolveExtensionIcon` is the shared registry the picker
+        // writes against, so the icon the user chose is the icon
+        // shown in the palette.
+        icon: resolveExtensionIcon(payload.icon),
         detail: payload.paletteCategory,
         action: () => {
           if (!extensionHost) return;

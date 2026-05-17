@@ -245,17 +245,36 @@ export function manifestToContributions(
   if (!contributes) return [];
   const out: SlotContribution[] = [];
 
+  // Index commands by id so toolbar / contextMenu / keybinding payloads
+  // can inherit the linked command's icon + title. Without this the
+  // toolbar renderer never sees the icon the user picked — it lives on
+  // CommandContribution, not on ToolbarContribution, and the slot
+  // registry only ships the latter.
+  const commandIndex = new Map(
+    (contributes.commands ?? []).map((c) => [c.id, c]),
+  );
+
   for (const c of contributes.commands ?? []) {
     out.push({ extensionId, slot: 'commandPalette', payload: c });
   }
   for (const t of contributes.toolbar ?? []) {
-    out.push({ extensionId, slot: t.slot, payload: t });
+    const cmd = commandIndex.get(t.command);
+    out.push({
+      extensionId,
+      slot: t.slot,
+      payload: { ...t, icon: cmd?.icon, title: cmd?.title },
+    });
   }
   for (const d of contributes.dock ?? []) {
     out.push({ extensionId, slot: d.slot, payload: d });
   }
   for (const m of contributes.contextMenu ?? []) {
-    out.push({ extensionId, slot: m.slot, payload: m });
+    const cmd = commandIndex.get(m.command);
+    out.push({
+      extensionId,
+      slot: m.slot,
+      payload: { ...m, icon: cmd?.icon, title: cmd?.title },
+    });
   }
   for (const k of contributes.keybindings ?? []) {
     out.push({ extensionId, slot: 'keybindings', payload: k });

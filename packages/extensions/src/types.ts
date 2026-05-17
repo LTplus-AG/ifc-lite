@@ -213,6 +213,21 @@ export interface ToolbarContribution {
   order?: number;
 }
 
+/**
+ * Runtime shape published into the slot registry for toolbar slots.
+ * Extends the manifest `ToolbarContribution` with the linked
+ * command's `icon` and `title` so the host renderer can show the
+ * authored icon + a meaningful tooltip without re-querying the
+ * manifest. The loader populates these from `contributes.commands`
+ * at manifest-to-slot translation time.
+ */
+export interface ResolvedToolbarContribution extends ToolbarContribution {
+  /** Icon key from the command (see icon registry in the host). */
+  icon?: string;
+  /** Human-readable command title — shown as tooltip / aria-label. */
+  title?: string;
+}
+
 export type DockSlot = 'dock.left' | 'dock.right' | 'dock.bottom';
 
 export interface DockContribution {
@@ -234,6 +249,17 @@ export interface ContextMenuContribution {
   slot: ContextMenuSlot;
   when?: string;
   group?: string;
+}
+
+/**
+ * Runtime context-menu payload — same enrichment story as
+ * `ResolvedToolbarContribution`. Loader fills `icon` + `title` from
+ * the linked command so the menu can render the authored icon and
+ * meaningful label.
+ */
+export interface ResolvedContextMenuContribution extends ContextMenuContribution {
+  icon?: string;
+  title?: string;
 }
 
 export interface KeybindingContribution {

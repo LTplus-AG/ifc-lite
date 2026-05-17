@@ -15,39 +15,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import {
-  AlertTriangle,
-  Beaker,
-  Box,
-  Brain,
-  Calculator,
-  Camera,
-  CheckCircle2,
-  ChevronRight,
-  ClipboardList,
-  Download,
-  Eye,
-  FileBarChart,
-  FileText,
-  Filter,
-  Flame,
-  Gauge,
-  Hammer,
-  Layers,
-  Lightbulb,
-  Maximize2,
-  Palette,
-  Ruler,
-  ScanSearch,
-  Scissors,
-  Settings,
-  Shield,
-  Sparkles,
-  Tag,
-  Target,
-  Wrench,
-  X,
-} from 'lucide-react';
+import { ChevronRight, Sparkles, X } from 'lucide-react';
 import {
   inferCapabilities,
   packBundle,
@@ -55,6 +23,7 @@ import {
   type Bundle,
   type ExtensionManifest,
 } from '@ifc-lite/extensions';
+import { ICON_CHOICES } from './icon-registry';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -82,43 +51,9 @@ interface PromoteToolDialogProps {
   onClose(): void;
 }
 
-/**
- * Curated lucide icon set for the picker. Limited to a small,
- * semantically-distinct subset (~24) so the user can find one fast.
- * Keys match lucide icon names — the runtime renders them via the
- * imported component, manifests record the string key for portability.
- */
-const ICON_CHOICES: { key: string; Icon: React.ComponentType<{ className?: string }>; label: string }[] = [
-  { key: 'sparkles', Icon: Sparkles, label: 'AI / magic' },
-  { key: 'wrench', Icon: Wrench, label: 'Tool' },
-  { key: 'hammer', Icon: Hammer, label: 'Build' },
-  { key: 'palette', Icon: Palette, label: 'Color' },
-  { key: 'eye', Icon: Eye, label: 'View' },
-  { key: 'filter', Icon: Filter, label: 'Filter' },
-  { key: 'shield', Icon: Shield, label: 'Compliance' },
-  { key: 'flame', Icon: Flame, label: 'Fire rating' },
-  { key: 'ruler', Icon: Ruler, label: 'Measure' },
-  { key: 'calculator', Icon: Calculator, label: 'Quantity' },
-  { key: 'box', Icon: Box, label: 'Element' },
-  { key: 'layers', Icon: Layers, label: 'Storey' },
-  { key: 'tag', Icon: Tag, label: 'Classification' },
-  { key: 'target', Icon: Target, label: 'Isolate' },
-  { key: 'scan-search', Icon: ScanSearch, label: 'Audit' },
-  { key: 'clipboard-list', Icon: ClipboardList, label: 'Schedule' },
-  { key: 'file-text', Icon: FileText, label: 'Report' },
-  { key: 'file-bar-chart', Icon: FileBarChart, label: 'Chart' },
-  { key: 'download', Icon: Download, label: 'Export' },
-  { key: 'camera', Icon: Camera, label: 'Snapshot' },
-  { key: 'scissors', Icon: Scissors, label: 'Section' },
-  { key: 'maximize-2', Icon: Maximize2, label: 'Fly to' },
-  { key: 'gauge', Icon: Gauge, label: 'Performance' },
-  { key: 'lightbulb', Icon: Lightbulb, label: 'Idea' },
-  { key: 'alert-triangle', Icon: AlertTriangle, label: 'Warning' },
-  { key: 'beaker', Icon: Beaker, label: 'Test' },
-  { key: 'brain', Icon: Brain, label: 'Memory' },
-  { key: 'check-circle-2', Icon: CheckCircle2, label: 'Validate' },
-  { key: 'settings', Icon: Settings, label: 'Setting' },
-];
+// Icon choices live in ./icon-registry — a single source of truth
+// shared with ExtensionToolbarSlot so the icon the user picks here
+// is the icon that lands in the menubar.
 
 export function PromoteToolDialog({ open, source, initialName, onClose }: PromoteToolDialogProps) {
   const host = useExtensionHost();

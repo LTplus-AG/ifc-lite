@@ -108,7 +108,25 @@ interface ExtensionManifest {
     | \`onSlot:\${string}\`
   >;
   contributes?: {
-    commands?: { id: string; title: string; icon?: string }[];
+    commands?: {
+      id: string;
+      title: string;
+      /**
+       * Icon key. MUST be one of the registry keys below — anything
+       * else falls back to the default sparkle in the toolbar /
+       * palette / context menu.
+       *
+       * Valid keys: sparkles, wrench, hammer, palette, eye, filter,
+       * shield, flame, ruler, calculator, box, layers, tag, target,
+       * scan-search, clipboard-list, file-text, file-bar-chart,
+       * download, camera, scissors, maximize-2, gauge, lightbulb,
+       * alert-triangle, beaker, brain, check-circle-2, settings.
+       *
+       * Pick the closest match for the tool's purpose — e.g. flame
+       * for fire-rating audits, calculator for quantity takeoffs.
+       */
+      icon?: string;
+    }[];
     toolbar?: { command: string; slot: 'toolbar.left'|'toolbar.right'|'toolbar.center'; order?: number; when?: string }[];
     dock?:    { id: string; slot: 'dock.left'|'dock.right'|'dock.bottom'; title: string; widget: string; when?: string }[];
     contextMenu?: { command: string; slot: 'contextMenu.entity'|'contextMenu.canvas'|'contextMenu.tree'; when?: string }[];

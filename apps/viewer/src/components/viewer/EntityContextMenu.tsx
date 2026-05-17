@@ -34,7 +34,8 @@ import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
-import { evaluateWhen, parseWhen, type CommandContribution, type ContextMenuContribution } from '@ifc-lite/extensions';
+import { evaluateWhen, parseWhen, type CommandContribution, type ResolvedContextMenuContribution } from '@ifc-lite/extensions';
+import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 
 export function EntityContextMenu() {
   const contextMenu = useViewerStore((s) => s.contextMenu);
@@ -428,7 +429,10 @@ function ExtensionContextItems({
   slot: 'contextMenu.entity' | 'contextMenu.canvas';
   hasEntity: boolean;
 }) {
-  const contributions = useSlotContributions<ContextMenuContribution>(slot);
+  // Loader enriches the contextMenu payload with icon + title from
+  // the linked command (see manifestToContributions). Fall back to
+  // the commandPalette lookup for title if a manifest somehow omits it.
+  const contributions = useSlotContributions<ResolvedContextMenuContribution>(slot);
   const commandPalette = useSlotContributions<CommandContribution>('commandPalette');
   const host = useOptionalExtensionHost();
   const closeContextMenu = useViewerStore((s) => s.closeContextMenu);
@@ -437,9 +441,10 @@ function ExtensionContextItems({
     'selection.count': hasEntity ? 1 : 0,
     'model.loaded': true,
   };
-  const titleFor = (commandId: string): string => {
-    const found = commandPalette.find((c) => c.payload.id === commandId);
-    return found?.payload.title ?? commandId;
+  const titleFor = (c: ResolvedContextMenuContribution): string => {
+    if (c.title) return c.title;
+    const found = commandPalette.find((cp) => cp.payload.id === c.command);
+    return found?.payload.title ?? c.command;
   };
   const visible = contributions.filter((c) => {
     const when = c.payload.when;
@@ -452,19 +457,22 @@ function ExtensionContextItems({
   return (
     <>
       <div className="h-px bg-border my-1" />
-      {visible.map((c) => (
-        <MenuItem
-          key={`${c.extensionId}:${c.payload.command}`}
-          icon={Copy}
-          label={titleFor(c.payload.command)}
-          onClick={() => {
-            closeContextMenu();
-            host?.runCommand(c.payload.command).catch((err) => {
-              toast.error(`Command failed: ${err instanceof Error ? err.message : String(err)}`);
-            });
-          }}
-        />
-      ))}
+      {visible.map((c) => {
+        const Icon = resolveExtensionIcon(c.payload.icon);
+        return (
+          <MenuItem
+            key={`${c.extensionId}:${c.payload.command}`}
+            icon={Icon}
+            label={titleFor(c.payload)}
+            onClick={() => {
+              closeContextMenu();
+              host?.runCommand(c.payload.command).catch((err) => {
+                toast.error(`Command failed: ${err instanceof Error ? err.message : String(err)}`);
+              });
+            }}
+          />
+        );
+      })}
     </>
   );
 }

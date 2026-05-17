@@ -16,15 +16,15 @@
  */
 
 import { useMemo } from 'react';
-import type { ToolbarContribution } from '@ifc-lite/extensions';
+import type { ResolvedToolbarContribution } from '@ifc-lite/extensions';
 import { evaluateWhen, parseWhen } from '@ifc-lite/extensions';
-import { Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
+import { resolveExtensionIcon } from './icon-registry';
 
 interface ExtensionToolbarSlotProps {
   slot: 'toolbar.left' | 'toolbar.right' | 'toolbar.center';
@@ -32,7 +32,9 @@ interface ExtensionToolbarSlotProps {
 
 export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
   const host = useOptionalExtensionHost();
-  const contributions = useSlotContributions<ToolbarContribution>(slot);
+  // Loader enriches the toolbar payload with the linked command's
+  // `icon` + `title` — see manifestToContributions in loader.ts.
+  const contributions = useSlotContributions<ResolvedToolbarContribution>(slot);
 
   const models = useViewerStore((s) => s.models);
   const selectedCount = useViewerStore((s) => s.selectedEntityIds.size);
@@ -80,6 +82,8 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
     <div className="flex items-center gap-1">
       {visible.map((c) => {
         const cmd = c.payload.command;
+        const title = c.payload.title ?? cmd;
+        const Icon = resolveExtensionIcon(c.payload.icon);
         return (
           <Tooltip key={`${c.extensionId}:${cmd}`}>
             <TooltipTrigger asChild>
@@ -87,12 +91,12 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
                 size="icon"
                 variant="ghost"
                 onClick={() => handleClick(cmd)}
-                aria-label={`Run extension command ${cmd}`}
+                aria-label={`Run ${title}`}
               >
-                <Sparkles className="h-4 w-4" />
+                <Icon className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{cmd}</TooltipContent>
+            <TooltipContent>{title}</TooltipContent>
           </Tooltip>
         );
       })}

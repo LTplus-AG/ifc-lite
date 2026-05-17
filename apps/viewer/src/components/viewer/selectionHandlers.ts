@@ -219,7 +219,20 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       ?? result.intersection?.point
       ?? raycastStoreyFloor(ctx, x, y);
     if (!point) return;
-    await handleAddElementDrop(point);
+    // Smart-placement: if the click landed on (or snapped to) an
+    // existing entity, infer the target storey from THAT entity's
+    // spatial-hierarchy entry rather than the AddElement panel's
+    // dropdown. Lets the user click on a wall on storey 3 to add
+    // a beam there without first changing the storey selector.
+    // Only kicks in when we actually have an entity under the
+    // cursor — empty-space clicks fall back to the panel value.
+    const hitExpressId = result.snapTarget?.expressId
+      ?? result.intersection?.expressId
+      ?? null;
+    const inferredStorey = hitExpressId !== null
+      ? inferStoreyForGlobalId(hitExpressId)
+      : null;
+    await handleAddElementDrop(point, inferredStorey ?? undefined);
     return;
   }
 
@@ -280,6 +293,27 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     ctx.lastClickTimeRef.current = now;
     ctx.lastClickPosRef.current = clickPos;
   }
+}
+
+/**
+ * Resolve the storey + model for a hit globalId so the AddElement
+ * click handler can place the new entity in the SAME storey as the
+ * existing element under the cursor. Returns null when the hit
+ * doesn't resolve to any model's spatial-hierarchy entry — caller
+ * falls back to the AddElement panel's storey selector.
+ *
+ * Federation-aware via `fromGlobalIdFromModels`.
+ */
+function inferStoreyForGlobalId(
+  globalId: number,
+): { modelId: string; storeyId: number } | null {
+  const state = useViewerStore.getState();
+  const local = fromGlobalIdFromModels(state.models, globalId);
+  if (!local) return null;
+  const ds = state.models.get(local.modelId)?.ifcDataStore;
+  const storeyId = ds?.spatialHierarchy?.elementToStorey.get(local.expressId);
+  if (storeyId === undefined) return null;
+  return { modelId: local.modelId, storeyId };
 }
 
 /**
@@ -560,10 +594,20 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
 }
 
 /**
- * Resolve the active model + storey + a snap-aware world point. Surfaces
- * the same toast errors all add-element entry points share.
+ * Resolve the active model + storey + a snap-aware world point.
+ * Surfaces the same toast errors all add-element entry points share.
+ *
+ * `override` lets the caller force a specific (model, storey) pair —
+ * used by smart placement so clicking on an existing element places
+ * the new entity in that element's storey/model rather than the
+ * AddElement panel's currently-selected one. Falls back through the
+ * panel's selector (`addElementStoreyId`) and then the first storey
+ * of the active model when no override is supplied.
  */
-function resolveAddElementContext(): { modelId: string; storeyId: number } | null {
+function resolveAddElementContext(
+  override?: { modelId: string; storeyId: number },
+): { modelId: string; storeyId: number } | null {
+  if (override) return override;
   const state = useViewerStore.getState();
   const modelId = state.addElementModelId ?? resolveActiveModelId();
   if (!modelId) {
@@ -605,8 +649,11 @@ function finishAddElement(
  *   - slab (polygon): N clicks accumulate; Enter / double-click closes
  *     (handled in the keyboard layer; this function only appends)
  */
-async function handleAddElementDrop(point: { x: number; y: number; z: number }): Promise<void> {
-  const ctx = resolveAddElementContext();
+async function handleAddElementDrop(
+  point: { x: number; y: number; z: number },
+  storeyOverride?: { modelId: string; storeyId: number },
+): Promise<void> {
+  const ctx = resolveAddElementContext(storeyOverride);
   if (!ctx) return;
   const { modelId, storeyId } = ctx;
 

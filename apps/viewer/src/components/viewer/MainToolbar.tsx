@@ -48,6 +48,8 @@ import {
   Layers3,
   SquareStack,
   ChevronsUpDown,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -273,6 +275,69 @@ function LevelDisplayDropdown({ availableStoreys }: LevelDisplayDropdownProps) {
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * Toolbar pair for Undo / Redo. Drives `MutationSlice.undo` /
+ * `redo` for the active model (the active model is the only one
+ * the user is actively editing; multi-model undo would need a
+ * separate UX). Disabled when the active model's stack is empty.
+ *
+ * Keyboard shortcuts (Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z) are wired
+ * in `useKeyboardShortcuts`.
+ */
+function UndoRedoButtons() {
+  const activeModelId = useViewerStore((s) => s.activeModelId);
+  const undoStacks = useViewerStore((s) => s.undoStacks);
+  const redoStacks = useViewerStore((s) => s.redoStacks);
+  const undo = useViewerStore((s) => s.undo);
+  const redo = useViewerStore((s) => s.redo);
+
+  const canUndo = activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const canRedo = activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={!canUndo}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              if (activeModelId) undo(activeModelId);
+            }}
+            aria-label="Undo"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Undo <span className="ml-2 text-xs opacity-60">⌘Z</span>
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={!canRedo}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              if (activeModelId) redo(activeModelId);
+            }}
+            aria-label="Redo"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Redo <span className="ml-2 text-xs opacity-60">⌘⇧Z</span>
+        </TooltipContent>
+      </Tooltip>
+    </>
   );
 }
 
@@ -1233,6 +1298,12 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           {editEnabled ? 'Exit Edit Mode' : 'Edit Mode'} <span className="opacity-50">E</span>
         </TooltipContent>
       </Tooltip>
+
+      {/* Undo / Redo — always visible (any authoring op pushes a
+          mutation; the buttons read disabled when the active
+          model's undo stack is empty). Pinned next to Edit so the
+          user has a one-click recovery for any change. */}
+      <UndoRedoButtons />
 
       {/* Draw / modify gestures live in the existing Add Element
           panel (right-side `AddElementPanel`, opened via the Add

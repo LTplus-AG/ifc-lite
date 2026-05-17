@@ -175,7 +175,20 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       }));
       return;
     }
-    set({ editEnabled: true });
+    // Turning edit mode ON with nothing selected auto-opens the
+    // AddElement panel — most "I want to edit" sessions start
+    // with adding something, and forcing the user to click an
+    // extra button to reach the panel adds friction. When a
+    // selection already exists, leave activeTool alone so the
+    // Properties panel + Geometry edit card stay primary.
+    set((s) => {
+      const next: Partial<UISlice & UICrossSliceState> = { editEnabled: true };
+      const slice = s as unknown as { selectedEntity?: unknown };
+      if (s.activeTool === 'select' && !slice.selectedEntity) {
+        next.activeTool = 'addElement';
+      }
+      return next;
+    });
   },
   toggleEditEnabled: () => {
     get().setEditEnabled(!get().editEnabled);

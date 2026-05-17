@@ -41,7 +41,7 @@ import {
   type WallInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
-import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { EntityExtractor, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -638,6 +638,55 @@ function getOrCreateStoreEditor(
 }
 
 /**
+ * IfcBuildingStorey.ObjectPlacement is optional in the schema —
+ * some authoring tools leave it null when the file was never
+ * meant to host geometry. Authoring actions need a placement to
+ * anchor their new entities against, so we materialise a default
+ * IfcLocalPlacement at the storey's elevation when one's missing
+ * and patch the storey's attribute via the overlay.
+ *
+ * Idempotent: if the storey already has a placement (number or
+ * `#X` string ref), this is a no-op. Returns true when a
+ * placement was created.
+ */
+function ensureStoreyPlacement(
+  dataStore: import('@ifc-lite/parser').IfcDataStore,
+  editor: StoreEditor,
+  storeyExpressId: number,
+): boolean {
+  // Pull the storey's current attributes (overlay overrides + source).
+  const overlay = editor.getNewEntity(storeyExpressId);
+  let attrs: unknown[];
+  if (overlay) {
+    attrs = overlay.attributes.slice();
+  } else {
+    const ref = dataStore.entityIndex.byId.get(storeyExpressId);
+    if (!ref) return false;
+    const extractor = new EntityExtractor(dataStore.source);
+    const entity = extractor.extractEntity(ref);
+    if (!entity) return false;
+    attrs = entity.attributes.slice();
+  }
+
+  // IfcProduct.ObjectPlacement is at index 5 across IFC2X3 / IFC4.
+  // Accept both number refs and `#X` strings as "already present".
+  const existing = attrs[5];
+  if (typeof existing === 'number' && Number.isFinite(existing)) return false;
+  if (typeof existing === 'string' && existing.startsWith('#')) return false;
+
+  // Build a fresh placement at world origin. The storey's elevation
+  // (if any) carries through the geometry pipeline elsewhere; this
+  // placement gives the IFC graph what resolveSpatialAnchor needs.
+  const elevation = dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
+  const originPt = editor.addEntity('IfcCartesianPoint', [[0, 0, elevation]]).expressId;
+  const axisPlacement = editor.addEntity('IfcAxis2Placement3D', [`#${originPt}`, null, null]).expressId;
+  const localPlacement = editor.addEntity('IfcLocalPlacement', [null, `#${axisPlacement}`]).expressId;
+
+  editor.setPositionalAttribute(storeyExpressId, 5, `#${localPlacement}`);
+  return true;
+}
+
+/**
  * Rollback helper for failed atomic operations (e.g. split where
  * the left half was created but the right half's builder threw).
  *
@@ -724,6 +773,15 @@ function runInStoreElementBuilder(
 
   const editor = getOrCreateStoreEditor(get, set, modelId);
   if (!editor) return { error: 'Failed to create store editor' };
+
+  // Some source IFC files leave IfcBuildingStorey.ObjectPlacement
+  // null (it's optional in the schema). Without a placement,
+  // resolveSpatialAnchor throws "storey #N has no resolvable
+  // IfcLocalPlacement" — but a fresh IfcLocalPlacement at the
+  // origin is a valid default. Materialise one before the anchor
+  // walk so the user's authoring action doesn't get blocked by
+  // missing-but-recoverable IFC structure.
+  ensureStoreyPlacement(dataStore, editor, storeyExpressId);
 
   let entityId: number;
   try {

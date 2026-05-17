@@ -103,25 +103,24 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       toggleEditEnabled();
     }
 
-    // W = wall draw tool. Only fires while edit mode is on so casual
-    // viewers never accidentally enter an authoring tool. The
-    // implementation reuses the existing addElement state machine
-    // (see `addElementSlice` and `AddElementOverlay`).
-    if (key === 'w' && !ctrl && !shift) {
-      const state = useViewerStore.getState();
-      if (state.editEnabled) {
-        e.preventDefault();
-        state.setAddElementType('wall');
-        state.setActiveTool('addElement');
-      }
-    }
-
-    // K = knife / Split tool. Same edit-mode gate; setActiveTool
-    // auto-enables edit mode if needed (Split requires it).
+    // K = knife / Split. Operates only on the currently selected
+    // entity — there's no free-roam "hover anything and split" mode
+    // any more. If there's no selection, the keypress is a no-op
+    // (a toast would be noisy; the user can see no entity is
+    // selected). The action also pre-arms the splitTarget so the
+    // overlay knows what to draw the moment Split engages.
     if (key === 'k' && !ctrl && !shift) {
       e.preventDefault();
       const state = useViewerStore.getState();
-      state.setActiveTool(state.activeTool === 'split' ? 'select' : 'split');
+      if (state.activeTool === 'split') {
+        state.clearSplitHover();
+        state.setActiveTool('select');
+        return;
+      }
+      const sel = state.selectedEntity;
+      if (!sel) return;
+      state.setSplitTarget(sel.modelId, sel.expressId);
+      state.setActiveTool('split');
     }
 
     // R / Shift+R = rotate selected entity ±15° about the storey-up
@@ -339,8 +338,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'P', description: 'Annotate tool — drop a pin with a note', category: 'Tools' },
   { key: 'X', description: 'Section tool', category: 'Tools' },
   { key: 'E', description: 'Toggle edit mode (unlocks property + geometry edits)', category: 'Tools' },
-  { key: 'W', description: 'Draw Wall (requires edit mode)', category: 'Tools' },
-  { key: 'K', description: 'Toggle Split tool — click a wall to cut it (auto-enables edit mode)', category: 'Tools' },
+  { key: 'K', description: 'Split the selected entity (requires a selection)', category: 'Tools' },
   { key: 'R / Shift+R', description: 'Rotate selected entity ±15° about Z (requires edit mode)', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },

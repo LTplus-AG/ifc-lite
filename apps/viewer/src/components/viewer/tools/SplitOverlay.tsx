@@ -102,7 +102,7 @@ export function SplitOverlay() {
         role="status"
       >
         <KnifeIcon className="h-3.5 w-3.5" />
-        <span>Hover over a wall, beam, column, member, or slab — Esc to exit</span>
+        <span>Move the cursor to set the cut point on the selected element — Esc to exit</span>
       </div>
     );
   }

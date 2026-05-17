@@ -427,16 +427,24 @@ export function handleAddElementHover(ctx: MouseHandlerContext, x: number, y: nu
 }
 
 /**
- * Live hover preview for the Split tool. Casts a ray under the
- * cursor; if it hits a wall whose chain resolves, projects the hit
- * onto the wall axis and pushes the resulting distance / cut point
- * into the slice so `SplitOverlay` can render the perpendicular
- * guide. When the cursor leaves all walls, clears the preview so
- * the SVG goes away.
+ * Live hover preview for the Split tool. SCOPED TO THE CURRENT
+ * SPLIT TARGET — the slice's `splitTargetModelId` /
+ * `splitTargetExpressId` are set when the user enters Split mode
+ * (via Geometry-card Split button or K shortcut), and they never
+ * change as the cursor moves over other elements. Hovering over a
+ * different wall does NOT switch target; the user must exit Split
+ * (Esc), re-select, and re-enter.
  *
- * Same RAF throttle as `handleAddElementHover` — the slice writes
- * cost a re-render and we don't want to do it 60+ times per second
- * for nothing.
+ * This is the v2 model — the previous "free-roam, hover anything,
+ * latch new target each frame" approach surfaced way too many
+ * actionable elements at once and made it unclear what would be
+ * cut. Selection-bound matches the rest of the edit-mode UX
+ * (gizmo, geometry card, etc.).
+ *
+ * The cursor still drives the cut POINT — we ray-cast to get a
+ * world point, project that onto the target's axis (linear) or
+ * use cursor XY (slab), and push the result into the slice for
+ * the SplitOverlay to render.
  */
 export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number): boolean {
   const { renderer } = ctx;
@@ -446,82 +454,72 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
 
+      const store = useViewerStore.getState();
+      const targetModelId = store.splitTargetModelId;
+      const targetExpressId = store.splitTargetExpressId;
+      if (targetModelId === null || targetExpressId === null) {
+        // Split engaged with no target — clear any stale hover.
+        if (store.splitMode === 'aiming') store.clearSplitHover();
+        return;
+      }
+
+      // Ray-cast to get a world point under the cursor. We don't
+      // care which entity it hit — we use the world point and
+      // project it onto the TARGET's axis. Falls back to the
+      // storey floor so the user can aim at empty space and still
+      // get a sensible cut.
       const result = renderer.raycastScene(x, y, {
         hiddenIds: ctx.hiddenEntitiesRef.current,
         isolatedIds: ctx.isolatedEntitiesRef.current,
       });
-      const store = useViewerStore.getState();
-      if (!result || !result.intersection) {
+      const worldPoint = result?.intersection?.point
+        ?? raycastStoreyFloor(ctx, x, y);
+      if (!worldPoint) {
         if (store.splitMode === 'aiming') store.clearSplitHover();
         return;
       }
-      // The hit `expressId` is a federated globalId — split needs
-      // the entity's owning model + local id. Resolve via the
-      // existing globalId helpers.
-      const globalId = result.intersection.expressId;
-      const local = fromGlobalIdFromModels(store.models, globalId);
-      if (!local) {
-        if (store.splitMode === 'aiming') store.clearSplitHover();
-        return;
-      }
-      // Try wall first, fall back to linear-element (beam / column
-      // / member). Slab hits don't get a 1D projection — they're
-      // handled by the two-click slab flow below, which kicks in
-      // once the user lands the first click.
-      const cursorIfc = rendererPointToIfcStoreyLocal(result.intersection.point);
+      const cursorIfc = rendererPointToIfcStoreyLocal(worldPoint);
+
+      // Project onto the target. Try wall (1D), then linear (1D),
+      // then slab (2D — uses the cursor XY directly as a candidate
+      // cut endpoint).
       const projection =
-        store.readWallSplitProjection(local.modelId, local.expressId, cursorIfc) ??
-        store.readLinearElementSplitProjection(local.modelId, local.expressId, cursorIfc);
-      if (!projection) {
-        // Slab hover: surface the target so the overlay can outline
-        // the polygon, but no per-frame projection work — the
-        // cursor's storey-local XY is just `cursorIfc[0]`, `[1]`.
-        const slabFootprint = store.readSlabFootprint(local.modelId, local.expressId);
-        if (slabFootprint) {
-          if (
-            store.splitTargetModelId !== local.modelId ||
-            store.splitTargetExpressId !== local.expressId
-          ) {
-            store.setSplitTarget(local.modelId, local.expressId);
-          }
-          // We push a hover point (renderer-frame) so the overlay
-          // wakes; the axis is unused for slabs.
-          const [cx, cy] = cursorIfc;
-          const cursorRendererFrame: [number, number, number] = [
-            cx,
-            slabFootprint.storeyElevation,
-            -cy,
-          ];
-          store.setSplitHover(cursorRendererFrame, 0, 0, [cx, cy, 0], null);
-          return;
-        }
-        if (store.splitMode === 'aiming') store.clearSplitHover();
+        store.readWallSplitProjection(targetModelId, targetExpressId, cursorIfc) ??
+        store.readLinearElementSplitProjection(targetModelId, targetExpressId, cursorIfc);
+      if (projection) {
+        const model = store.models.get(targetModelId);
+        const storeyId = model?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(targetExpressId);
+        const elevation =
+          (storeyId !== undefined
+            ? model?.ifcDataStore?.spatialHierarchy?.storeyElevations?.get(storeyId)
+            : undefined) ?? 0;
+        const [px, py, pz] = projection.cutPoint;
+        const cutRendererFrame: [number, number, number] = [px, pz + elevation, -py];
+        store.setSplitHover(
+          cutRendererFrame,
+          projection.distance,
+          projection.length,
+          projection.cutPoint,
+          projection.axis,
+        );
         return;
       }
-      // Latch the target the first time we see it; switching
-      // elements mid-hover updates the target id.
-      if (
-        store.splitTargetModelId !== local.modelId ||
-        store.splitTargetExpressId !== local.expressId
-      ) {
-        store.setSplitTarget(local.modelId, local.expressId);
+      // Slab path — the overlay outlines the polygon + ghost cut
+      // line; the cursor's IFC XY is the candidate endpoint.
+      const slabFootprint = store.readSlabFootprint(targetModelId, targetExpressId);
+      if (slabFootprint) {
+        const [cx, cy] = cursorIfc;
+        const cursorRendererFrame: [number, number, number] = [
+          cx,
+          slabFootprint.storeyElevation,
+          -cy,
+        ];
+        store.setSplitHover(cursorRendererFrame, 0, 0, [cx, cy, 0], null);
+        return;
       }
-      // Convert IFC storey-local cut point back to renderer frame.
-      const model = store.models.get(local.modelId);
-      const storeyId = model?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(local.expressId);
-      const elevation =
-        (storeyId !== undefined
-          ? model?.ifcDataStore?.spatialHierarchy?.storeyElevations?.get(storeyId)
-          : undefined) ?? 0;
-      const [cx, cy, cz] = projection.cutPoint;
-      const cutRendererFrame: [number, number, number] = [cx, cz + elevation, -cy];
-      store.setSplitHover(
-        cutRendererFrame,
-        projection.distance,
-        projection.length,
-        projection.cutPoint,
-        projection.axis,
-      );
+      // Target isn't a splittable shape (rare — gets latched by
+      // the K shortcut / Split button which already checks). Clear.
+      if (store.splitMode === 'aiming') store.clearSplitHover();
     });
   }
   return true;

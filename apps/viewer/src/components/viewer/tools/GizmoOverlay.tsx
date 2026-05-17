@@ -161,29 +161,60 @@ export function GizmoOverlay() {
   const originScreen = project(ready.origin);
   if (!originScreen) return null;
 
-  // Axis tip screen positions. Length is fixed at 0.75m world units
-  // — short enough not to overwhelm a small element, long enough to
-  // be grab-friendly on a large one. We do NOT scale by camera
-  // distance because projectToScreen already does perspective foreshortening.
-  const ARROW_WORLD_LENGTH = 0.75;
+  // Axis tip screen positions. Each axis is scaled so its
+  // projected arrow lands at a constant target length in pixels,
+  // regardless of camera distance — fixed-world-length arrows
+  // shrink to invisibility from far away. The per-axis scale
+  // also handles the foreshortening case (an axis pointing
+  // straight at the camera projects to ~0 px; we cap the world
+  // length so the math doesn't blow up).
+  //
+  // For drag math we still want a "screen pixels per metre" basis
+  // along each axis. We compute that with a probe at 1 m world
+  // length, THEN re-project at the final scaled length so the
+  // visible arrow matches the cursor mapping.
+  const TARGET_SCREEN_PX = 80;
+  const MAX_WORLD_LENGTH = 1_000; // cap for near-parallel axes
 
   const axisTips: Partial<Record<Axis, Vec2>> = {};
   const axisPerMeter: Partial<Record<Axis, Vec2>> = {};
+  const axisWorldLengths: Partial<Record<Axis, number>> = {};
   for (const axis of ['x', 'y', 'z'] as const) {
     const off = AXIS_RENDERER_OFFSET[axis];
+    // Probe at 1 metre to measure pixels-per-metre along this
+    // axis. If the axis is nearly parallel to the camera view
+    // direction the projected length is tiny — we clamp the
+    // resulting world length so the arrow stays bounded.
+    const probeTip: Vec3 = {
+      x: ready.origin.x + off.x,
+      y: ready.origin.y + off.y,
+      z: ready.origin.z + off.z,
+    };
+    const probeScreen = project(probeTip);
+    if (!probeScreen) continue;
+    const probeDx = probeScreen.x - originScreen.x;
+    const probeDy = probeScreen.y - originScreen.y;
+    const probePx = Math.hypot(probeDx, probeDy);
+    if (probePx < 1e-3) {
+      // Axis is parallel to view direction — skip arrow; the
+      // user can rotate to grab it.
+      continue;
+    }
+    const worldLength = Math.min(MAX_WORLD_LENGTH, TARGET_SCREEN_PX / probePx);
+    axisWorldLengths[axis] = worldLength;
     const tipWorld: Vec3 = {
-      x: ready.origin.x + off.x * ARROW_WORLD_LENGTH,
-      y: ready.origin.y + off.y * ARROW_WORLD_LENGTH,
-      z: ready.origin.z + off.z * ARROW_WORLD_LENGTH,
+      x: ready.origin.x + off.x * worldLength,
+      y: ready.origin.y + off.y * worldLength,
+      z: ready.origin.z + off.z * worldLength,
     };
     const tipScreen = project(tipWorld);
     if (!tipScreen) continue;
     axisTips[axis] = tipScreen;
-    axisPerMeter[axis] = {
-      x: (tipScreen.x - originScreen.x) / ARROW_WORLD_LENGTH,
-      y: (tipScreen.y - originScreen.y) / ARROW_WORLD_LENGTH,
-    };
+    // Pixels per metre along this axis = probe pixels (probe was
+    // exactly 1 metre, so the ratio is the probe length itself).
+    axisPerMeter[axis] = { x: probeDx, y: probeDy };
   }
+  void axisWorldLengths; // surfaced for future use (e.g. rotate-ring radius)
 
   const startDrag = (axis: Axis, e: React.PointerEvent<SVGElement>) => {
     e.stopPropagation();

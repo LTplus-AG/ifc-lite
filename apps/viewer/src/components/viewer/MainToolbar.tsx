@@ -45,12 +45,6 @@ import {
   Move,
   Settings,
   PenLine,
-  RectangleHorizontal,
-  RectangleVertical,
-  Columns3,
-  DoorClosed,
-  AppWindow,
-  Slice,
   Layers3,
   SquareStack,
   ChevronsUpDown,
@@ -155,55 +149,6 @@ function ToolButton({
       </TooltipTrigger>
       <TooltipContent>
         {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-/**
- * Toolbar pill that selects an `addElement` type and immediately
- * arms the addElement tool. Active when both conditions hold:
- *  - viewer's `activeTool === 'addElement'`
- *  - slice's `addElementType === type`
- * Mirrors `ToolButton`'s shape so the toolbar rhythm stays uniform.
- * When `slabModeAware` is set the button is highlighted regardless of
- * footprint mode (rectangle vs polygon), since both share the same
- * element type.
- */
-interface DrawToolButtonProps {
-  type: import('@/store/slices/addElementSlice').AddElementType;
-  icon: React.ElementType;
-  label: string;
-  shortcut?: string;
-  slabModeAware?: boolean;
-}
-
-function DrawToolButton({ type, icon: Icon, label, shortcut }: DrawToolButtonProps) {
-  const activeTool = useViewerStore((s) => s.activeTool);
-  const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const currentType = useViewerStore((s) => s.addElementType);
-  const setAddElementType = useViewerStore((s) => s.setAddElementType);
-  const isActive = activeTool === 'addElement' && currentType === type;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant={isActive ? 'default' : 'ghost'}
-          size="icon-sm"
-          aria-label={`Draw ${label.toLowerCase()}`}
-          aria-pressed={isActive}
-          onClick={(e) => {
-            (e.currentTarget as HTMLButtonElement).blur();
-            setAddElementType(type);
-            setActiveTool('addElement');
-          }}
-          className={cn(isActive && 'bg-emerald-600 text-white hover:bg-emerald-700')}
-        >
-          <Icon className="h-4 w-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        Draw {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
       </TooltipContent>
     </Tooltip>
   );
@@ -319,43 +264,6 @@ function LevelDisplayDropdown({ availableStoreys }: LevelDisplayDropdownProps) {
         )}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-/**
- * Toolbar pill for the Split tool. Pinned at the end of the draw
- * row when edit mode is on. Press K (registered in
- * useKeyboardShortcuts) or click this button to toggle.
- *
- * Self-contained so MainToolbar's render path stays tight — the
- * subscription set is small (activeTool + setActiveTool only) and
- * Esc handling in the keyboard hook reverts to 'select'.
- */
-function SplitToolButton() {
-  const activeTool = useViewerStore((s) => s.activeTool);
-  const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const isActive = activeTool === 'split';
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant={isActive ? 'default' : 'ghost'}
-          size="icon-sm"
-          aria-label="Split tool"
-          aria-pressed={isActive}
-          onClick={(e) => {
-            (e.currentTarget as HTMLButtonElement).blur();
-            setActiveTool(isActive ? 'select' : 'split');
-          }}
-          className={cn(isActive && 'bg-purple-600 text-white hover:bg-purple-700')}
-        >
-          <Slice className="h-4 w-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        Split wall <span className="ml-2 text-xs opacity-60">(K)</span>
-      </TooltipContent>
-    </Tooltip>
   );
 }
 
@@ -512,10 +420,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const editEnabled = useViewerStore((state) => state.editEnabled);
   const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
-  const setAddElementType = useViewerStore((state) => state.setAddElementType);
-  const addElementType = useViewerStore((state) => state.addElementType);
-  const setAddElementSlabMode = useViewerStore((state) => state.setAddElementSlabMode);
-  const addElementSlabMode = useViewerStore((state) => state.addElementSlabMode);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
@@ -1321,100 +1225,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </TooltipContent>
       </Tooltip>
 
-      {/* Draw-tool quick picks — only render while edit mode is on so
-          read-only sessions stay uncluttered. Each button selects an
-          element type AND switches the viewer to `addElement` (which
-          implies edit mode). For slab-like footprints (slab, roof,
-          plate, space) the dropdown additionally toggles between
-          rectangle and polygon footprint modes.
-          See `addElementSlice` and `AddElementOverlay` for the live
-          preview that activates while drawing. */}
-      {editEnabled && (
-        <>
-          <DrawToolButton
-            type="wall"
-            icon={RectangleVertical}
-            label="Wall"
-            shortcut="W"
-          />
-          <DrawToolButton
-            type="slab"
-            icon={RectangleHorizontal}
-            label="Slab"
-            slabModeAware
-          />
-          <DrawToolButton
-            type="column"
-            icon={Columns3}
-            label="Column"
-          />
-          <DrawToolButton
-            type="door"
-            icon={DoorClosed}
-            label="Door"
-          />
-          <DrawToolButton
-            type="window"
-            icon={AppWindow}
-            label="Window"
-          />
-          {/* Split tool — single button at the end of the draw row.
-              It's a modify gesture (not creation), but lives next
-              to the draw tools because the user flow "draw → edit →
-              split" reads top-to-bottom. The icon uses Slice rather
-              than Scissors (which is already claimed by Section). */}
-          <SplitToolButton />
-          {/* Subtle separator before the "+ more" menu so the eye
-              groups [create tools] | [modify tools] without an extra
-              chrome border. */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="More draw tools">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>More draw tools…</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent>
-              <DropdownMenuLabel>Structural</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => { setAddElementType('beam'); setActiveTool('addElement'); }}>
-                Beam
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setAddElementType('member'); setActiveTool('addElement'); }}>
-                Member
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setAddElementType('plate'); setActiveTool('addElement'); }}>
-                Plate
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Architectural</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => { setAddElementType('space'); setActiveTool('addElement'); }}>
-                Space (Room)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setAddElementType('roof'); setActiveTool('addElement'); }}>
-                Roof
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Footprint mode</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem
-                checked={addElementSlabMode === 'rectangle'}
-                onCheckedChange={() => setAddElementSlabMode('rectangle')}
-              >
-                Rectangle (2 clicks)
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={addElementSlabMode === 'polygon'}
-                onCheckedChange={() => setAddElementSlabMode('polygon')}
-              >
-                Polygon (N clicks + Enter)
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
-      )}
+      {/* Draw / modify gestures live in the existing Add Element
+          panel (right-side `AddElementPanel`, opened via the Add
+          Element button) and in the contextual Geometry edit card
+          inside the Properties panel — splitting a selected wall,
+          duplicating, rotating, etc. all happen there. Keeping the
+          toolbar minimal: just the Edit mode switch + the
+          navigation tools. Per-element-type draw pills duplicated
+          the AddElement panel and added clutter. */}
+      {/* (no draw pills here — by design) */}
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 

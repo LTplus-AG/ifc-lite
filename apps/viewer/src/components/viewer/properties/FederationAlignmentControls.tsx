@@ -14,6 +14,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Anchor, RefreshCw, AlertTriangle, Check } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
+import { toast } from '@/components/ui/toast';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types';
@@ -116,6 +117,18 @@ export function FederationAlignmentControls({ modelId }: FederationAlignmentCont
     setBusy(true);
     try {
       await realignFederation();
+    } catch (error) {
+      // realignFederation's happy path uses toast for per-model status; if
+      // the orchestrator itself throws (e.g. proj4 grid loader rejects), the
+      // async click handler would otherwise surface an unhandled rejection
+      // with no user feedback. Catch + log + toast so the failure mode is
+      // visible and the spinner clears.
+      console.error('[FederationAlignmentControls] re-align failed:', error);
+      toast.error(
+        error instanceof Error
+          ? `Re-align failed: ${error.message}`
+          : 'Re-align failed.',
+      );
     } finally {
       setBusy(false);
     }

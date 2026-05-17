@@ -333,7 +333,11 @@ export async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolea
   const promise = (async (): Promise<boolean> => {
     try {
       const url = `${CDN_BASE}/${spec.filename}`;
-      const response = await fetch(url);
+      // 15s timeout — cdn.proj.org is usually a few hundred ms, but corporate
+      // proxies and the occasional CDN hiccup can hang a fetch indefinitely
+      // without a signal. Falling back to +towgs84 after 15s is far better
+      // than a perpetual "loading grid" badge.
+      const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
       if (!response.ok) {
         console.warn(`[precision-grid] ${spec.key}: fetch failed (HTTP ${response.status})`);
         return false;

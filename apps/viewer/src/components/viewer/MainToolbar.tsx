@@ -33,6 +33,7 @@ import {
   SquareX,
   Building2,
   Plus,
+  PackagePlus,
   MessageSquare,
   ClipboardCheck,
   Palette,
@@ -96,8 +97,8 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement';
-type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | string;
+type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split';
+type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
   return typeof (file as NativeFileHandle).path === 'string';
@@ -763,7 +764,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'addElement') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -777,20 +778,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
     const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
     const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
+    const isAddElementActive = activeTool === 'addElement';
+    const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
 
     setBcfPanelVisible(nextBcfVisible);
     setIdsPanelVisible(nextIdsVisible);
     setLensPanelVisible(nextLensVisible);
 
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible) {
+    if (panel === 'addElement') {
+      setActiveTool(nextAddElementActive ? 'addElement' : 'select');
+    } else if (isAddElementActive) {
+      setActiveTool('select');
+    }
+
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextAddElementActive) {
       setRightPanelCollapsed(false);
     }
   }, [
     activeAnalysisExtension?.placement,
+    activeTool,
     bcfPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
     requireDesktopFeature,
+    setActiveTool,
     setBcfPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
@@ -845,9 +856,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
+    if (activeTool === 'addElement') panels.add('addElement');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [
+    activeTool,
     analysisExtensionState.activeId,
     bcfPanelVisible,
     ganttPanelVisible,
@@ -866,6 +879,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
+    if (activeWorkspacePanels.has('addElement')) return 'Add Element';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 
@@ -1220,6 +1234,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <Palette className="h-4 w-4 mr-2" />
             Lens Rules
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('addElement')}
+            onCheckedChange={() => handleToggleRightPanel('addElement')}
+          >
+            <PackagePlus className="h-4 w-4 mr-2" />
+            Add Element
           </DropdownMenuCheckboxItem>
           {rightAnalysisExtensions.length > 0 && (
             <>

@@ -74,27 +74,26 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
 
   /**
    * Starter "Try it" routes directly to chat with the plan baked into
-   * the prompt AND opens the Script Editor as the "viewport" where
-   * the assistant's generated handler code shows up. Users on the
-   * Vercel preview expected to see *something* land in code — opening
-   * just chat without surfacing the editor read as "nothing happened".
-   *
-   * The editor gets a brief placeholder explaining what's coming so
-   * the panel isn't blank while the model is still streaming.
+   * the prompt AND opens the Script Editor so the user sees where
+   * generated code will land. We only seed the editor with a
+   * placeholder when it's empty / on the default boilerplate —
+   * clobbering a user's in-progress code would be hostile.
    */
   const handleAcceptStarter = (idea: StarterIdea) => {
     const prompt = buildAuthoringPrompt(idea.plan);
     queueChatPrompt(prompt);
     setChatPanelVisible(true);
     setScriptPanelVisible(true);
-    setScriptEditorContent(
-      `// Authoring: ${idea.plan.summary}\n` +
-        `//\n` +
-        `// The AI assistant is reading the plan in the chat panel.\n` +
-        `// After you approve follow-up questions, the generated handler\n` +
-        `// code lands here. You can then Run it directly, or install it\n` +
-        `// as an extension from the Extensions panel.\n`,
-    );
+    const current = useViewerStore.getState().scriptEditorContent ?? '';
+    const isPristine = current.trim().length === 0 || /Write your BIM script here/.test(current);
+    if (isPristine) {
+      setScriptEditorContent(
+        `// Authoring: ${idea.plan.summary}\n` +
+          `//\n` +
+          `// The AI is reading the plan in the chat panel.\n` +
+          `// Answer the follow-ups and the generated handler will land here.\n`,
+      );
+    }
     toast.success(`Sent "${idea.plan.summary}" to chat — answer follow-ups to refine.`);
   };
 

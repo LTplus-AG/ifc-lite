@@ -418,6 +418,25 @@ export class ExtensionHostService {
         `Flavor switch failed for: ${result.failures.join(', ')}`,
       );
     }
+    // Roundtrip viewer-store state from the flavor snapshot. Without
+    // this, activating a flavor only toggles extensions — saved lenses
+    // stay whatever the previous flavor left behind, so switching feels
+    // like a no-op. The lens definition was stored opaquely on capture;
+    // we cast it back to the viewer's Lens shape since both ends agree
+    // on the schema (FlavorDialog.handleCaptureCurrent put it in).
+    try {
+      const lenses = target.lenses
+        .map((entry) => entry.definition as unknown)
+        .filter((d): d is import('@ifc-lite/lens').Lens =>
+          !!d && typeof d === 'object' && 'id' in d && 'rules' in d,
+        );
+      // Late import keeps the host service free of UI store deps for
+      // headless test environments — only the browser viewer wires it.
+      const { useViewerStore } = await import('@/store');
+      useViewerStore.getState().setSavedLenses(lenses);
+    } catch (err) {
+      console.warn('[ext-host] lens restore on switch failed:', err);
+    }
     this.emit();
   }
 

@@ -130,63 +130,131 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   };
 
   /**
-   * Capture the user's current viewer state into the active flavor —
-   * or auto-create a fresh "My setup" flavor if none is active yet.
-   * Auto-creation closes the chicken-and-egg loop where a fresh user
-   * has lenses but no flavor to put them in.
+   * Snapshot the current viewer state into a SPECIFIC flavor (not
+   * just the active one). Powers the per-row Capture button, so a
+   * user can keep two flavors side-by-side and update each from the
+   * same viewer session without switching first.
    *
-   * v1 scope: saved lenses. The flavor schema has slots for
-   * savedQueries / keybindings / layout / settings — those land as
-   * the viewer surfaces them in stores we can read deterministically.
+   * v1 scope: saved lenses. The flavor schema also reserves slots
+   * for savedQueries / keybindings / layout / settings — those land
+   * as the viewer surfaces them in stores we can read deterministically.
    */
-  const handleCaptureCurrent = async () => {
+  const handleCaptureInto = async (flavorId: string) => {
     setBusy(true);
     try {
+      const target = await host.flavors.list().then((list) => list.find((f) => f.id === flavorId));
+      if (!target) {
+        toast.error(`Flavor "${flavorId}" not found.`);
+        return;
+      }
       const savedLenses = useViewerStore.getState().savedLenses;
       const lenses = savedLenses.map((lens) => ({
         id: lens.id,
         name: lens.name ?? lens.id,
         definition: lens as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
       }));
-
-      let target: Flavor | undefined;
-      if (activeId) {
-        target = await host.flavors.list().then((list) => list.find((f) => f.id === activeId));
-      }
-
-      if (!target) {
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const id = `local.my-setup.${stamp}`;
-        const now = new Date().toISOString();
-        target = {
-          schemaVersion: 1,
-          id,
-          name: 'My setup',
-          description: 'Captured from current viewer state.',
-          createdAt: now,
-          updatedAt: now,
-          extensions: [],
-          lenses,
-          savedQueries: [],
-          keybindings: [],
-          layout: { state: {} },
-          settings: {},
-        };
-        await host.flavors.put(target, 'capture (auto-created)');
-        await host.flavors.activate(id);
-        toast.success(`Created "My setup" with ${lenses.length} lens${lenses.length === 1 ? '' : 'es'}.`);
-        return;
-      }
-
       const next = {
         ...target,
         lenses,
         updatedAt: new Date().toISOString(),
       };
-      await host.flavors.put(next, 'capture current setup');
+      await host.flavors.put(next, 'capture current state');
       toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} into ${target.name}`);
     } catch (err) {
       toast.error(toastText.failed('Capture', err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Create a brand-new flavor. `snapshot=true` seeds it with the
+   * current viewer lenses; otherwise it starts empty. The new flavor
+   * is activated so the user can immediately start working in it.
+   */
+  const handleCreate = async (opts: { name: string; snapshot: boolean }) => {
+    setBusy(true);
+    try {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      // Slugify the name for a stable id; fall back to a timestamp.
+      const slug = opts.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+      const id = `local.${slug || 'flavor'}.${stamp}`;
+      const now = new Date().toISOString();
+      const lenses = opts.snapshot
+        ? useViewerStore.getState().savedLenses.map((lens) => ({
+            id: lens.id,
+            name: lens.name ?? lens.id,
+            definition: lens as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
+          }))
+        : [];
+      const flavor: Flavor = {
+        schemaVersion: 1,
+        id,
+        name: opts.name,
+        description: opts.snapshot
+          ? 'Captured from current viewer state.'
+          : 'New empty flavor.',
+        createdAt: now,
+        updatedAt: now,
+        extensions: [],
+        lenses,
+        savedQueries: [],
+        keybindings: [],
+        layout: { state: {} },
+        settings: {},
+      };
+      await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');
+      await host.flavors.activate(id);
+      toast.success(`Created "${opts.name}"${opts.snapshot ? ` with ${lenses.length} lens${lenses.length === 1 ? '' : 'es'}` : ''}.`);
+    } catch (err) {
+      toast.error(toastText.failed('Create', err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Rename a flavor in place. Keeps the id stable — only `name` changes. */
+  const handleRename = async (id: string, name: string) => {
+    setBusy(true);
+    try {
+      const target = await host.flavors.list().then((list) => list.find((f) => f.id === id));
+      if (!target) {
+        toast.error(`Flavor "${id}" not found.`);
+        return;
+      }
+      if (target.name === name) return;
+      await host.flavors.put({ ...target, name, updatedAt: new Date().toISOString() }, `renamed to "${name}"`);
+      toast.success(`Renamed to "${name}".`);
+    } catch (err) {
+      toast.error(toastText.failed('Rename', err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Duplicate a flavor with a fresh id and "(copy)" suffix. */
+  const handleDuplicate = async (id: string) => {
+    setBusy(true);
+    try {
+      const target = await host.flavors.list().then((list) => list.find((f) => f.id === id));
+      if (!target) {
+        toast.error(`Flavor "${id}" not found.`);
+        return;
+      }
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const newId = `${target.id}.copy.${stamp}`;
+      const now = new Date().toISOString();
+      const clone: Flavor = {
+        ...target,
+        id: newId,
+        name: `${target.name} (copy)`,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await host.flavors.put(clone, `duplicated from ${target.id}`);
+      toast.success(`Duplicated as "${clone.name}".`);
+    } catch (err) {
+      toast.error(toastText.failed('Duplicate', err));
     } finally {
       setBusy(false);
     }
@@ -249,16 +317,22 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
                 and prompt overlay into a switchable profile.
               </p>
               <p>
-                One flavor for cost estimating, another for design
-                review. <strong>Switch</strong> deactivates the old
-                set and activates the new one.{' '}
-                <strong>Export</strong> writes a <code>.iflv</code>{' '}
-                you can share. <strong>Import</strong> previews,
-                then offers replace / save-as-new / three-way merge.
+                <strong>New flavor</strong> / <strong>Save current as
+                flavor</strong> creates one (empty or snapshotted from
+                your current viewer state).
               </p>
               <p>
-                <strong>Reset</strong> restores the empty baseline
-                flavor (your other flavors are preserved).
+                Per-row: <strong>Activate</strong> switches to it
+                (lenses restore). <strong>Camera</strong> captures the
+                current viewer state into THAT flavor (not just the
+                active one). Click the name to rename.{' '}
+                <strong>Copy</strong> duplicates,{' '}
+                <strong>Download</strong> exports a <code>.iflv</code>.
+              </p>
+              <p>
+                <strong>Import</strong> previews a <code>.iflv</code>{' '}
+                then offers replace / save-as-new / three-way merge.{' '}
+                <strong>Reset</strong> restores the empty baseline.
               </p>
             </HelpHint>
           </DialogTitle>
@@ -288,7 +362,10 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
               onDelete={(id) => void handleDelete(id)}
               onImportClick={() => fileInputRef.current?.click()}
               onReset={() => void handleReset()}
-              onCaptureCurrent={() => void handleCaptureCurrent()}
+              onCaptureInto={(id) => void handleCaptureInto(id)}
+              onRename={(id, name) => void handleRename(id, name)}
+              onDuplicate={(id) => void handleDuplicate(id)}
+              onCreate={(opts) => void handleCreate(opts)}
             />
             <input
               ref={fileInputRef}

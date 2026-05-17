@@ -114,9 +114,23 @@ function buildWrap(userSource: string, entryFn: string, preamble?: string): stri
   // Newlines between sections keep source-mapped line numbers usable
   // when looking at error stacks — user source begins at a predictable
   // offset.
+  //
+  // ctx resolution order:
+  //   1. `globalThis.__ifclite_ctx__` if a preamble or test runner set it.
+  //   2. Otherwise construct `{ bim: globalThis.bim }` from the bim
+  //      object the host's bridge installed. Production runs reach this
+  //      branch — the host can't ship the BimContext via setGlobal
+  //      because the wrapped SDK is full of cyclic Proxies that
+  //      JSON.stringify can't serialise. The bridge wires bim into the
+  //      sandbox-realm globalThis as a native QuickJS object; we
+  //      capture it here.
   const preambleSection = preamble ? `${preamble}\n` : '';
   return `;(() => {
-${preambleSection}const __ifclite_ctx__ = globalThis.__ifclite_ctx__;
+${preambleSection}const __ifclite_ctx__ = globalThis.__ifclite_ctx__
+  || (typeof globalThis.bim !== 'undefined' ? { bim: globalThis.bim } : undefined);
+if (!__ifclite_ctx__) {
+  throw new Error('Extension sandbox: no bim ctx available (host bridge missing).');
+}
 const bim = __ifclite_ctx__.bim;
 ${userSource}
 if (typeof ${entryFn} === 'function') {

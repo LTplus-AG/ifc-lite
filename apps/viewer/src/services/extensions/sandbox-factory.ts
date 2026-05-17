@@ -120,7 +120,18 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
     if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
       throw new Error(`Invalid global name: ${name}`);
     }
-    // Serialise to JSON; cycle / function values are rejected here.
+    // Special-case `__ifclite_ctx__` — the runtime calls
+    // `setGlobal('__ifclite_ctx__', { bim: <host SDK> })` for every
+    // activate / command-run. The host SDK is the wrapped BimContext
+    // (cyclic Proxies for the inner-ring capability gate) so JSON
+    // serialisation crashes. The bridge has already installed `bim`
+    // inside the QuickJS realm — synthesize ctx from that instead.
+    if (name === '__ifclite_ctx__') {
+      this.globalsScript += `globalThis.__ifclite_ctx__ = { bim: globalThis.bim };\n`;
+      return;
+    }
+    // Other globals (test args, synthetic-spec data) are JSON-safe;
+    // serialise so the value crosses the realm boundary intact.
     let serialised: string;
     try {
       serialised = JSON.stringify(value ?? null);

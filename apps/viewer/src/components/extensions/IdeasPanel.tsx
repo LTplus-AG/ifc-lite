@@ -19,11 +19,13 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ArrowRight, Lightbulb, Sparkles, Wrench } from 'lucide-react';
-import type {
-  AuthoringPlan,
-  MinedPattern,
-  MineEvent,
+import { ArrowRight, Lightbulb, MessageSquarePlus, Sparkles, Wrench } from 'lucide-react';
+import {
+  STARTER_IDEAS,
+  type AuthoringPlan,
+  type MinedPattern,
+  type MineEvent,
+  type StarterIdea,
 } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -52,6 +54,33 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
 
   const handleAccept = (pattern: MinedPattern) => {
     setDraft(host.acceptSuggestion(pattern));
+  };
+
+  /**
+   * Open the Plan Card with one of the curated starter plans
+   * pre-filled. The user can prune capabilities, adjust the summary,
+   * or remove contributions before approving — same flow as a mined
+   * suggestion.
+   */
+  const handleAcceptStarter = (idea: StarterIdea) => {
+    setDraft({ ...idea.plan });
+  };
+
+  /**
+   * Open the Plan Card with an empty plan. The user describes the
+   * extension in the plan fields before approval kicks off chat —
+   * plan-before-code without needing a mined pattern or a starter.
+   */
+  const handleAuthorFromScratch = () => {
+    setDraft({
+      summary: '',
+      rationale: '',
+      contributions: [],
+      capabilities: [],
+      triggers: [],
+      widgets: [],
+      tests: [],
+    });
   };
 
   const handleApprove = (plan: AuthoringPlan) => {
@@ -113,56 +142,111 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
       </div>
 
       <ScrollArea className="flex-1">
-        {patterns.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-            <Lightbulb className="h-8 w-8 text-muted-foreground" />
-            <div className="text-sm font-medium">No suggestions yet</div>
-            <div className="text-xs text-muted-foreground max-w-xs">
-              Keep working — once a workflow repeats a few times across
-              sessions, it will appear here as a candidate one-click tool.
+        {/* Recurring (mined) patterns. Tightens as the log grows. */}
+        {patterns.length > 0 && (
+          <div>
+            <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
+              Recurring in your activity
             </div>
+            <ul className="divide-y">
+              {patterns.map((pattern, i) => (
+                <li key={`${pattern.sequence.join('>')}:${i}`} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1 text-xs">
+                        {pattern.sequence.map((intent, idx) => (
+                          <span key={`${intent}:${idx}`} className="flex items-center gap-1">
+                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                              {intent}
+                            </code>
+                            {idx < pattern.sequence.length - 1 && (
+                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">
+                        {pattern.occurrences}× across {pattern.sessionsTouched}{' '}
+                        {pattern.sessionsTouched === 1 ? 'session' : 'sessions'}
+                        {' · last '}
+                        {new Date(pattern.lastSeenAt).toLocaleString()}
+                        {' · score '}
+                        {pattern.score.toFixed(2)}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleAccept(pattern)}
+                      aria-label="Author one-click tool from pattern"
+                    >
+                      <Wrench className="mr-1 h-3.5 w-3.5" />
+                      Author it
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
-        ) : (
+        )}
+
+        {/* Always-on starter ideas. Hand-curated IFC/AEC workflows the
+            user can author without waiting for the miner to learn from
+            their activity. Tagged "Example" so they don't masquerade
+            as personalised suggestions. */}
+        <div>
+          <div className="px-4 pt-4 pb-1 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
+            {patterns.length === 0 ? 'Try one of these to get started' : 'Examples — common AEC tools'}
+          </div>
           <ul className="divide-y">
-            {patterns.map((pattern, i) => (
-              <li key={`${pattern.sequence.join('>')}:${i}`} className="px-4 py-3">
+            {STARTER_IDEAS.map((idea) => (
+              <li key={idea.id} className="px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-1 text-xs">
-                      {pattern.sequence.map((intent, idx) => (
-                        <span key={`${intent}:${idx}`} className="flex items-center gap-1">
-                          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-                            {intent}
-                          </code>
-                          {idx < pattern.sequence.length - 1 && (
-                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                          )}
-                        </span>
-                      ))}
+                    <div className="flex items-center gap-2 text-xs font-medium">
+                      <span aria-hidden>{idea.icon}</span>
+                      <span>{idea.plan.summary}</span>
+                      <span className="text-[10px] uppercase tracking-wide bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-semibold">
+                        {idea.category}
+                      </span>
                     </div>
-                    <div className="mt-1 text-[11px] text-muted-foreground">
-                      {pattern.occurrences}× across {pattern.sessionsTouched}{' '}
-                      {pattern.sessionsTouched === 1 ? 'session' : 'sessions'}
-                      {' · last '}
-                      {new Date(pattern.lastSeenAt).toLocaleString()}
-                      {' · score '}
-                      {pattern.score.toFixed(2)}
-                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
+                      {idea.plan.rationale}
+                    </p>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleAccept(pattern)}
-                    aria-label="Author one-click tool from pattern"
+                    onClick={() => handleAcceptStarter(idea)}
+                    aria-label={`Try starter idea: ${idea.plan.summary}`}
                   >
                     <Wrench className="mr-1 h-3.5 w-3.5" />
-                    Author it
+                    Try it
                   </Button>
                 </div>
               </li>
             ))}
           </ul>
-        )}
+        </div>
+
+        {/* "Author from scratch" CTA — opens the Plan Card with an
+            empty plan so the user can describe whatever they want
+            before chat takes over. */}
+        <div className="px-4 py-4 border-t mt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start"
+            onClick={handleAuthorFromScratch}
+          >
+            <MessageSquarePlus className="mr-2 h-3.5 w-3.5" />
+            Author an extension from scratch
+          </Button>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Open an empty plan. Fill in what you want, then approve →
+            chat AI assembles the bundle.
+          </p>
+        </div>
       </ScrollArea>
     </div>
   );

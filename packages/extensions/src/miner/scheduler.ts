@@ -35,6 +35,21 @@ export interface IdleSchedulerOptions {
   /** Scoring options. */
   scoring?: ScoringOptions;
   /**
+   * Auto-relax thresholds when the action log is sparse so users
+   * see suggestions before they've built up weeks of activity.
+   *
+   * When fewer than `adaptiveSparseThreshold` events have been logged,
+   * the scheduler overrides `miner.minOccurrences` to 2 and
+   * `miner.minSessions` to 1, so a single-session repeat fires. Once
+   * the log grows past the threshold, the configured (or default)
+   * options apply — suggestions tighten as data gets real.
+   *
+   * Disable by passing `adaptive: false`. Default `true`.
+   */
+  adaptive?: boolean;
+  /** Event count below which adaptive relaxation kicks in. Default 100. */
+  adaptiveSparseThreshold?: number;
+  /**
    * Optional schedule function — replaces setTimeout. Tests pass a
    * fake. Returns a cancel function.
    */
@@ -61,7 +76,7 @@ export class IdleMineScheduler {
   private cancel?: () => void;
   private lastFireAt = 0;
   private listeners = new Set<(event: MineEvent) => void>();
-  private readonly opts: Required<Pick<IdleSchedulerOptions, 'idleAfterMs' | 'minIntervalMs' | 'topN'>>;
+  private readonly opts: Required<Pick<IdleSchedulerOptions, 'idleAfterMs' | 'minIntervalMs' | 'topN' | 'adaptive' | 'adaptiveSparseThreshold'>>;
   private readonly miner: SequenceMinerOptions;
   private readonly scoring: ScoringOptions;
   private readonly setTimer: NonNullable<IdleSchedulerOptions['setTimer']>;
@@ -72,11 +87,30 @@ export class IdleMineScheduler {
       idleAfterMs: opts.idleAfterMs ?? 60_000,
       minIntervalMs: opts.minIntervalMs ?? 5 * 60_000,
       topN: opts.topN ?? 5,
+      adaptive: opts.adaptive ?? true,
+      adaptiveSparseThreshold: opts.adaptiveSparseThreshold ?? 100,
     };
     this.miner = opts.miner ?? {};
     this.scoring = opts.scoring ?? {};
     this.setTimer = opts.setTimer ?? defaultSetTimer;
     this.now = opts.now ?? defaultNow;
+  }
+
+  /**
+   * Effective miner options for the current log size. When adaptive
+   * is on and the log is sparse, relax `minOccurrences` to 2 and
+   * `minSessions` to 1 so a single-session repeat surfaces.
+   * Exposed for tests + the scheduler's own internal use.
+   */
+  private getEffectiveMinerOptions(): SequenceMinerOptions {
+    if (!this.opts.adaptive) return this.miner;
+    if (this.events.length >= this.opts.adaptiveSparseThreshold) return this.miner;
+    return {
+      ...this.miner,
+      minOccurrences: this.miner.minOccurrences ?? 2,
+      minSessions: this.miner.minSessions ?? 1,
+      sessionGapMs: this.miner.sessionGapMs ?? 10 * 60_000,
+    };
   }
 
   /** Push a new event onto the buffer and (re)arm the idle timer. */
@@ -130,7 +164,7 @@ export class IdleMineScheduler {
   }
 
   private runMine(): MineEvent {
-    const patterns = mineSequences(this.events, this.miner);
+    const patterns = mineSequences(this.events, this.getEffectiveMinerOptions());
     const scored = scorePatterns(patterns, this.scoring).slice(0, this.opts.topN);
     const event: MineEvent = {
       patterns: scored,

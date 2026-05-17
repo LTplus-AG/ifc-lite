@@ -20,3 +20,7 @@ export {
   filterAgainstInstalled,
   type InstalledExtensionSummary,
 } from './filter.js';
+export {
+  STARTER_IDEAS,
+  type StarterIdea,
+} from './starter-ideas.js';

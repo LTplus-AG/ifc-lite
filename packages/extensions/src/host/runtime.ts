@@ -242,6 +242,14 @@ export class ExtensionRuntime {
         await sandbox.dispose();
         throw new EntrySourceError(extensionId, entryPath, wrapped.errors);
       }
+      // Sandbox factories that JSON-serialise globals (production
+      // QuickJS factory) MUST special-case `__ifclite_ctx__` to
+      // synthesize the ctx from the bridge-installed `globalThis.bim`
+      // — the host SDK contains cyclic Proxies that can't survive
+      // JSON.stringify. Factories without that cap (memory factory)
+      // store the value directly; wrap reads it via __ifclite_ctx__.
+      // The source wrap also falls back to `{ bim: globalThis.bim }`
+      // when __ifclite_ctx__ isn't set, so either channel works.
       const ctx: ExtensionContextV1 = { bim: this.sdk };
       await sandbox.setGlobal('__ifclite_ctx__', ctx);
       try {

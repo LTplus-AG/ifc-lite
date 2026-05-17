@@ -93,4 +93,48 @@ describe('IdleMineScheduler', () => {
     scheduler.dispose();
     expect(timer.pending()).toBeNull();
   });
+
+  it('adaptive thresholds surface single-session repeats when log is sparse', () => {
+    // Default config requires 3 occurrences across 2 sessions. With
+    // adaptive on (default), a sparse log relaxes to 2 occurrences
+    // in 1 session — the same intent twice in one sitting fires.
+    const scheduler = new IdleMineScheduler({
+      minIntervalMs: 0,
+      setTimer: () => () => {},
+      // No explicit miner options → adaptive defaults kick in.
+    });
+    scheduler.push(event('model.load', '2026-01-01T10:00:00.000Z'));
+    scheduler.push(event('lens.apply', '2026-01-01T10:00:30.000Z'));
+    scheduler.push(event('model.load', '2026-01-01T10:01:00.000Z'));
+    scheduler.push(event('lens.apply', '2026-01-01T10:01:30.000Z'));
+    const result = scheduler.fireNow();
+    expect(result.patterns.length).toBeGreaterThan(0);
+  });
+
+  it('adaptive: false uses the full default thresholds (sparse → empty)', () => {
+    const scheduler = new IdleMineScheduler({
+      minIntervalMs: 0,
+      setTimer: () => () => {},
+      adaptive: false,
+    });
+    scheduler.push(event('model.load', '2026-01-01T10:00:00.000Z'));
+    scheduler.push(event('lens.apply', '2026-01-01T10:00:30.000Z'));
+    scheduler.push(event('model.load', '2026-01-01T10:01:00.000Z'));
+    scheduler.push(event('lens.apply', '2026-01-01T10:01:30.000Z'));
+    const result = scheduler.fireNow();
+    // Default minSessions: 2 — single-session repeats are culled.
+    expect(result.patterns).toHaveLength(0);
+  });
+
+  it('starter ideas exist and have valid plan shapes', async () => {
+    const { STARTER_IDEAS } = await import('./starter-ideas.js');
+    expect(STARTER_IDEAS.length).toBeGreaterThanOrEqual(5);
+    for (const idea of STARTER_IDEAS) {
+      expect(idea.id).toMatch(/^starter\./);
+      expect(idea.plan.summary).toBeTruthy();
+      expect(idea.plan.rationale.length).toBeGreaterThan(20);
+      expect(idea.plan.contributions.length).toBeGreaterThan(0);
+      expect(idea.plan.capabilities.length).toBeGreaterThan(0);
+    }
+  });
 });

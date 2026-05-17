@@ -77,6 +77,11 @@ export async function runExtensionCommand(
         `Failed to prepare command "${commandId}": ${wrapped.errors[0]?.message ?? 'wrap error'}`,
       );
     }
+    // Set ctx via setGlobal. The BimSandboxHandle special-cases
+    // `__ifclite_ctx__` to synthesize from the bridge-installed
+    // `globalThis.bim` (the wrapped SDK is cyclic and would crash
+    // JSON.stringify). The wrap also falls back to globalThis.bim
+    // if ctx is somehow unset.
     const ctx: ExtensionContextV1 = { bim: deps.sdk };
     await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
     return activation.sandbox.run(wrapped.value, { filename: entry });

@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Shield, Trash2, Upload, Wrench, X } from 'lucide-react';
+import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Shield, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -36,6 +36,7 @@ import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 import { useViewerStore } from '@/store';
 import * as toastText from './toast-helpers';
+import { HelpHint } from './HelpHint';
 
 interface ExtensionsPanelProps {
   onClose?: () => void;
@@ -48,6 +49,9 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const { runTests, isRunning } = useRunExtensionTests();
   const pendingAuthoredBundle = useViewerStore((s) => s.pendingAuthoredBundle);
   const setPendingAuthoredBundle = useViewerStore((s) => s.setPendingAuthoredBundle);
+  /** Empty-state "describe in chat" CTA + Sparkles button. */
+  const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
+  const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{
     bytes: Uint8Array;
@@ -58,6 +62,16 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair' | 'privacy'>('installed');
+  /** Deep-link entry point (Command Palette "Author an extension…"). */
+  const extensionsRequestedView = useViewerStore((s) => s.extensionsRequestedView);
+  const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);
+
+  useEffect(() => {
+    if (extensionsRequestedView) {
+      setView(extensionsRequestedView);
+      setExtensionsRequestedView(null);
+    }
+  }, [extensionsRequestedView, setExtensionsRequestedView]);
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -153,6 +167,26 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <div className="flex items-center gap-2">
           <Puzzle className="h-4 w-4" />
           <h2 className="text-sm font-semibold">Extensions</h2>
+          <HelpHint label="Extensions">
+            <p>
+              <strong>Extensions</strong> are sandboxed bundles of
+              JavaScript that add buttons, panels, lenses, or exporters
+              to the viewer.
+            </p>
+            <p>
+              Three tabs in the header above let you jump to:{' '}
+              <strong>Ideas</strong> (mined patterns + starter
+              suggestions), <strong>Repair</strong> (SDK-update
+              compatibility check), <strong>Audit</strong> (lifecycle
+              ledger), <strong>Privacy</strong> (action-log controls +
+              prompt overlay).
+            </p>
+            <p>
+              Get started by describing one in chat, browsing starter
+              ideas, or importing a <code>.iflx</code> bundle someone
+              shared.
+            </p>
+          </HelpHint>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -257,16 +291,56 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         }}
       >
         {installed.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-            <FilePlus className="h-8 w-8 text-muted-foreground" />
-            <div className="text-sm font-medium">No extensions installed</div>
-            <div className="text-xs text-muted-foreground max-w-xs">
-              Drop a <code className="font-mono">.iflx</code> bundle here, or
-              click <span className="font-medium">Import</span> above.
+          <div className="flex flex-col items-center gap-3 px-6 py-8">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <FilePlus className="h-8 w-8 text-muted-foreground" />
+              <div className="text-sm font-medium">No extensions installed</div>
+              <div className="text-xs text-muted-foreground max-w-xs">
+                Extensions are sandboxed bundles that add commands,
+                lenses, panels, or exporters. You can install one three
+                ways:
+              </div>
             </div>
-            <div className="mt-3 text-[11px] text-muted-foreground">
-              Build a starter bundle with{' '}
-              <code className="font-mono">ifc-lite ext init my-tool</code>.
+
+            <div className="flex flex-col gap-2 w-full max-w-sm mt-2">
+              {/* 1. Author via chat — most discoverable for new users. */}
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => {
+                  queueChatPrompt('I want to make a new extension. Help me describe it: what should it do?');
+                  setChatPanelVisible(true);
+                }}
+              >
+                <Sparkles className="mr-2 h-3.5 w-3.5" />
+                Describe one in chat (AI authors it)
+              </Button>
+
+              {/* 2. Browse curated starter ideas. */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setView('ideas')}
+              >
+                <Lightbulb className="mr-2 h-3.5 w-3.5" />
+                Browse starter ideas
+              </Button>
+
+              {/* 3. Drop / import an .iflx file from elsewhere. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="mr-2 h-3.5 w-3.5" />
+                Import a .iflx file
+              </Button>
+            </div>
+
+            <div className="mt-2 text-[10px] text-muted-foreground text-center">
+              All extensions run in a sandbox with explicit capability
+              grants. Build one from the CLI with{' '}
+              <code className="font-mono">ifc-lite ext init</code>.
             </div>
           </div>
         ) : (

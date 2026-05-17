@@ -23,6 +23,15 @@ export function StatusBar() {
   const [fps, setFps] = useState(60);
   const [memory, setMemory] = useState(0);
   const [flavorDialogOpen, setFlavorDialogOpen] = useState(false);
+  /** Deep-link from Command Palette → "Manage flavors…". */
+  const flavorDialogRequested = useViewerStore((s) => s.flavorDialogRequested);
+  const setFlavorDialogRequested = useViewerStore((s) => s.setFlavorDialogRequested);
+  useEffect(() => {
+    if (flavorDialogRequested) {
+      setFlavorDialogOpen(true);
+      setFlavorDialogRequested(false);
+    }
+  }, [flavorDialogRequested, setFlavorDialogRequested]);
 
   // FPS counter (simplified)
   useEffect(() => {

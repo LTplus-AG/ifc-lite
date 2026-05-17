@@ -14,6 +14,8 @@
 
 import type { StateCreator } from 'zustand';
 
+export type ExtensionsTabView = 'installed' | 'ideas' | 'audit' | 'repair' | 'privacy';
+
 export interface ExtensionsSlice {
   extensionsPanelVisible: boolean;
   setExtensionsPanelVisible: (visible: boolean) => void;
@@ -26,6 +28,26 @@ export interface ExtensionsSlice {
    */
   pendingAuthoredBundle: Uint8Array | null;
   setPendingAuthoredBundle: (bytes: Uint8Array | null) => void;
+  /**
+   * Which tab the Extensions panel should show. Set by deep-link
+   * entry points (Command Palette "Author an extension…", chat
+   * routing after a successful authoring loop) so the panel mounts
+   * straight into the right surface.
+   */
+  extensionsRequestedView: ExtensionsTabView | null;
+  setExtensionsRequestedView: (view: ExtensionsTabView | null) => void;
+  /**
+   * When true, the IdeasPanel should open the Plan Card in
+   * empty-plan mode on mount. Consumed once then cleared.
+   */
+  ideasOpenEmptyPlan: boolean;
+  setIdeasOpenEmptyPlan: (open: boolean) => void;
+  /**
+   * When true, the FlavorDialog should auto-open. Consumed once
+   * then cleared by the dialog wrapper.
+   */
+  flavorDialogRequested: boolean;
+  setFlavorDialogRequested: (open: boolean) => void;
 }
 
 export const createExtensionsSlice: StateCreator<
@@ -40,4 +62,10 @@ export const createExtensionsSlice: StateCreator<
     set((state) => ({ extensionsPanelVisible: !state.extensionsPanelVisible })),
   pendingAuthoredBundle: null,
   setPendingAuthoredBundle: (pendingAuthoredBundle) => set({ pendingAuthoredBundle }),
+  extensionsRequestedView: null,
+  setExtensionsRequestedView: (extensionsRequestedView) => set({ extensionsRequestedView }),
+  ideasOpenEmptyPlan: false,
+  setIdeasOpenEmptyPlan: (ideasOpenEmptyPlan) => set({ ideasOpenEmptyPlan }),
+  flavorDialogRequested: false,
+  setFlavorDialogRequested: (flavorDialogRequested) => set({ flavorDialogRequested }),
 });

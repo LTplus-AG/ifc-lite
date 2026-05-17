@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { HelpHint } from './HelpHint';
 
 const KIND_LABELS: Record<AuditEventKind, string> = {
   install: 'Install',
@@ -126,6 +127,19 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
           <span className="text-[11px] text-muted-foreground">
             {filtered.length} of {events.length} events
           </span>
+          <HelpHint label="Audit log">
+            <p>
+              Append-only ledger of every extension lifecycle event:
+              install, update, enable, disable, activate, capability
+              grant/revoke, runtime failures.
+            </p>
+            <p>
+              Persists in IndexedDB across reloads. Filter by event
+              kind via the chips below; when multiple extensions are
+              installed, a second chip row scopes by extension id.
+            </p>
+            <p><strong>Export</strong> downloads a JSON snapshot.</p>
+          </HelpHint>
         </div>
         <div className="flex items-center gap-1">
           <Button size="sm" variant="ghost" onClick={handleExport} aria-label="Export audit log">

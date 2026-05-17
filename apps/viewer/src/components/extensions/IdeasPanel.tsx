@@ -33,6 +33,7 @@ import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
 import { PlanCard } from './PlanCard';
 import { toast } from '@/components/ui/toast';
+import { HelpHint } from './HelpHint';
 
 interface IdeasPanelProps {
   /** Optional override for the approve action. Defaults to seeding the chat panel. */
@@ -43,12 +44,28 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
   const host = useExtensionHost();
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
+  /** Deep-link from Command Palette → "Author from scratch". */
+  const ideasOpenEmptyPlan = useViewerStore((s) => s.ideasOpenEmptyPlan);
+  const setIdeasOpenEmptyPlan = useViewerStore((s) => s.setIdeasOpenEmptyPlan);
   const [event, setEvent] = useState<MineEvent | undefined>(() => host.getSuggestions());
   const [draft, setDraft] = useState<AuthoringPlan | undefined>();
 
   useEffect(() => {
     return host.onSuggestions((e) => setEvent(e));
   }, [host]);
+
+  // Honour a deep-link request to open the empty-plan flow. The
+  // flag is one-shot — clear it once we've opened the draft so a
+  // tab switch doesn't reopen it.
+  useEffect(() => {
+    if (ideasOpenEmptyPlan) {
+      handleAuthorFromScratch();
+      setIdeasOpenEmptyPlan(false);
+    }
+    // handleAuthorFromScratch is defined below in this component and
+    // stable across renders (no deps), so referencing it here is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ideasOpenEmptyPlan]);
 
   const patterns = event?.patterns ?? [];
 
@@ -122,6 +139,24 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
               {event.eventCount} events
             </span>
           )}
+          <HelpHint label="Ideas">
+            <p>
+              <strong>Curated starter ideas</strong> show what
+              one-click tools you can build today.
+            </p>
+            <p>
+              <strong>Recurring suggestions</strong> appear once a
+              workflow shows up repeatedly in your local activity log
+              (model loads, lens applies, exports). Thresholds relax
+              while the log is sparse so something appears early;
+              tightens as data accumulates.
+            </p>
+            <p>
+              Click <strong>Try it</strong> to open a plan you can edit
+              before chat AI assembles the bundle. Nothing here leaves
+              your device.
+            </p>
+          </HelpHint>
         </div>
         <Button
           size="sm"

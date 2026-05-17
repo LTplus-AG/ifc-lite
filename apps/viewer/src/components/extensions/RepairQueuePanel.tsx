@@ -22,6 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { HelpHint } from './HelpHint';
 
 interface RepairQueuePanelProps {
   /** SDK version to revalidate against. Defaults to APP_VERSION. */
@@ -78,6 +79,23 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
               SDK {summary.sdk} · {summary.needsRepair.length} need fixing
             </span>
           )}
+          <HelpHint label="Repair queue">
+            <p>
+              When the viewer SDK bumps, extensions whose declared
+              <code> engines.ifcLiteSdk</code> range no longer matches
+              are flagged here.
+            </p>
+            <p>
+              <strong>Run check</strong> spins up a sandbox for each
+              outdated extension and runs its manifest tests against
+              the new SDK. Failing tests get a <strong>Repair</strong>
+              button that seeds chat with a fix prompt — the AI
+              authoring loop produces the patched bundle.
+            </p>
+            <p>
+              Doesn't run automatically (each check spawns sandboxes).
+            </p>
+          </HelpHint>
         </div>
         <div className="flex items-center gap-1">
           <Button size="sm" variant="ghost" onClick={() => void run()} disabled={busy || !version}>

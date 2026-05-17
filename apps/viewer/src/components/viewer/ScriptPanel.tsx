@@ -506,6 +506,16 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                     <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
                     <div className="min-w-0">
                       <span className="whitespace-pre-wrap break-all">{lastError}</span>
+                      {/* Sandbox-globals hint — when the error names a
+                          browser-context API the sandbox doesn't expose,
+                          surface a one-line cue so the user understands
+                          why the rewrite is needed before clicking Fix. */}
+                      {/(document|window|navigator|location|fetch|XMLHttpRequest|localStorage|indexedDB|setTimeout|setInterval) is not defined/.test(lastError) && (
+                        <div className="mt-1 text-[11px] text-muted-foreground font-sans">
+                          Scripts run in a QuickJS sandbox — no DOM, no <code className="font-mono">fetch</code>, no browser globals.
+                          Use <code className="font-mono">bim.*</code> APIs for viewer / data / export side-effects.
+                        </div>
+                      )}
                       <div className="mt-1">
                         <Button
                           variant="outline"

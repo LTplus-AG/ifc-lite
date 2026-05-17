@@ -26,6 +26,7 @@ import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
 import { FlavorImportPreview } from './FlavorImportPreview';
 import * as toastText from './toast-helpers';
+import { HelpHint } from './HelpHint';
 
 interface FlavorDialogProps {
   open: boolean;
@@ -174,6 +175,25 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
           <DialogTitle className="flex items-center gap-2">
             <Palette className="h-4 w-4" />
             Flavors
+            <HelpHint label="Flavors" popoverClass="left-0">
+              <p>
+                A <strong>flavor</strong> bundles your installed
+                extensions, lenses, saved queries, layout, settings,
+                and prompt overlay into a switchable profile.
+              </p>
+              <p>
+                One flavor for cost estimating, another for design
+                review. <strong>Switch</strong> deactivates the old
+                set and activates the new one.{' '}
+                <strong>Export</strong> writes a <code>.iflv</code>{' '}
+                you can share. <strong>Import</strong> previews,
+                then offers replace / save-as-new / three-way merge.
+              </p>
+              <p>
+                <strong>Reset</strong> restores the empty baseline
+                flavor (your other flavors are preserved).
+              </p>
+            </HelpHint>
           </DialogTitle>
         </DialogHeader>
 

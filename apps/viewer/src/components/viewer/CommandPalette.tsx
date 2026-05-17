@@ -422,6 +422,25 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('lens'); } },
       { id: 'panel:extensions', label: 'Extensions', keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
         action: () => { activateRightPanel('extensions'); } },
+      // ── Customization entry points — first-class discoverability
+      // for new users who don't know extensions/flavors exist. Each
+      // routes to the right surface and pre-seeds context where
+      // helpful (e.g. open Ideas tab with the empty-plan flow).
+      { id: 'extensions:author', label: 'Author an extension…',
+        keywords: 'create new build plan chat ai extension generate',
+        category: 'Tools', icon: Sparkles,
+        action: () => {
+          const s = useViewerStore.getState();
+          activateRightPanel('extensions');
+          s.setExtensionsRequestedView('ideas');
+          s.setIdeasOpenEmptyPlan(true);
+        } },
+      { id: 'extensions:flavors', label: 'Manage flavors…',
+        keywords: 'flavor profile switch export import merge customization',
+        category: 'Panels', icon: Palette,
+        action: () => {
+          useViewerStore.getState().setFlavorDialogRequested(true);
+        } },
     );
 
     // ── Schedule / 4D (Tools) ─────────────────────────────

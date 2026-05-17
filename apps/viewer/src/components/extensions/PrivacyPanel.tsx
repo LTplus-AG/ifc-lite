@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { HelpHint } from './HelpHint';
 
 interface PrivacyPanelProps {
   onClose?: () => void;
@@ -152,6 +153,22 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4" />
           <h2 className="text-sm font-semibold">Privacy</h2>
+          <HelpHint label="Privacy">
+            <p>
+              IFClite keeps a <strong>content-free action log</strong>{' '}
+              of intents you perform (model loads, lens applies,
+              exports) — used by the pattern miner to suggest one-click
+              tools. The log never records model content, chat content,
+              file names, or API keys.
+            </p>
+            <p>
+              The <strong>prompt overlay</strong> on the active flavor
+              is appended to every chat system prompt — use it for
+              stable preferences. <strong>Extract from chat</strong>{' '}
+              scans the current session for explicit preferences and
+              proposes them.
+            </p>
+          </HelpHint>
         </div>
         {onClose && (
           <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close">

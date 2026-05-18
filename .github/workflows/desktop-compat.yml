@@ -33,7 +33,7 @@ permissions:
 jobs:
   desktop-frontend-build:
     name: Desktop frontend build
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 10
 
     steps:
@@ -84,7 +84,7 @@ jobs:
 
   desktop-override-audit:
     name: Desktop override audit
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 5
 
     steps:

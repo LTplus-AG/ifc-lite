@@ -17,7 +17,7 @@ permissions:
 jobs:
   test-templates:
     name: Scaffold & verify (${{ matrix.template }})
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-4
     strategy:
       fail-fast: false
       matrix:

@@ -727,6 +727,41 @@ function ensureStoreyPlacement(
 }
 
 /**
+ * Resolve the (view, editor, dataStore, storey) tuple that every
+ * splitWall / splitLinearElement / splitSlab action needs. Returns
+ * an error result with a stable message when any piece is missing
+ * so each action's preamble collapses to a single early-return.
+ *
+ * Pass `requireStorey: false` when the caller resolves storey from
+ * a different source (none currently — but the flag keeps the
+ * helper reusable for non-storey-bound split-like flows).
+ */
+type SplitContext = {
+  view: MutablePropertyView;
+  editor: StoreEditor;
+  dataStore: import('@ifc-lite/parser').IfcDataStore;
+  storeyExpressId: number;
+};
+function resolveSplitContext(
+  get: () => ViewerState,
+  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
+  modelId: string,
+  expressId: number,
+  notInStoreyMessage: string,
+): SplitContext | { ok: false; reason: string } {
+  const state = get();
+  const view = state.mutationViews.get(modelId);
+  if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+  const editor = getOrCreateStoreEditor(get, set, modelId);
+  if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+  const dataStore = state.models.get(modelId)?.ifcDataStore;
+  if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+  const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+  if (storeyExpressId === undefined) return { ok: false, reason: notInStoreyMessage };
+  return { view, editor, dataStore, storeyExpressId };
+}
+
+/**
  * Rollback helper for failed atomic operations (e.g. split where
  * the left half was created but the right half's builder threw).
  *
@@ -1538,14 +1573,10 @@ export const createMutationSlice: StateCreator<
   },
 
   splitWallAtDistance: (modelId, expressId, distanceFromStart) => {
+    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Wall is not contained in a building storey');
+    if ('ok' in ctx) return ctx;
+    const { view, editor, dataStore, storeyExpressId } = ctx;
     const state = get();
-    const view = state.mutationViews.get(modelId);
-    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
-    const model = state.models.get(modelId);
-    const dataStore = model?.ifcDataStore;
-    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
 
     const chain = resolveWallEditChain(dataStore, view, editor, expressId);
     if (!chain) {
@@ -1564,17 +1595,6 @@ export const createMutationSlice: StateCreator<
 
     const geo = computeWallSplitGeometry(chain, distanceFromStart, chain.height);
     if (!geo.ok) return geo;
-
-    // Resolve the wall's storey so the two new walls land in the
-    // same spatial container. Federated-aware via the model's own
-    // spatialHierarchy.
-    const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
-    if (storeyExpressId === undefined) {
-      return {
-        ok: false,
-        reason: 'Wall is not contained in a building storey',
-      };
-    }
 
     // Build the two halves. Each `addWall` call already pushes a
     // CREATE_ENTITY mutation onto the undo stack AND emits a fresh
@@ -1705,14 +1725,10 @@ export const createMutationSlice: StateCreator<
   },
 
   splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) => {
+    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Element is not contained in a building storey');
+    if ('ok' in ctx) return ctx;
+    const { view, editor, dataStore, storeyExpressId } = ctx;
     const state = get();
-    const view = state.mutationViews.get(modelId);
-    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
-    const model = state.models.get(modelId);
-    const dataStore = model?.ifcDataStore;
-    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
 
     const chain = resolveLinearElementChain(dataStore, view, editor, expressId);
     if (!chain) {
@@ -1724,11 +1740,6 @@ export const createMutationSlice: StateCreator<
     }
     const geo = computeLinearElementSplitGeometry(chain, distanceFromStart);
     if (!geo.ok) return geo;
-
-    const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
-    if (storeyExpressId === undefined) {
-      return { ok: false, reason: 'Element is not contained in a building storey' };
-    }
 
     // Add the "right" half FIRST so a builder failure leaves the
     // source untouched (no partial-commit state). The source's
@@ -1821,14 +1832,10 @@ export const createMutationSlice: StateCreator<
   },
 
   splitSlabByLine: (modelId, expressId, cutA, cutB) => {
+    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Slab is not contained in a building storey');
+    if ('ok' in ctx) return ctx;
+    const { view, editor, dataStore, storeyExpressId } = ctx;
     const state = get();
-    const view = state.mutationViews.get(modelId);
-    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
-    const model = state.models.get(modelId);
-    const dataStore = model?.ifcDataStore;
-    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
 
     const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
     if (!chain) {
@@ -1840,11 +1847,6 @@ export const createMutationSlice: StateCreator<
     }
     const geo = computeSlabSplitGeometry(chain, cutA, cutB);
     if (!geo.ok) return geo;
-
-    const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
-    if (storeyExpressId === undefined) {
-      return { ok: false, reason: 'Slab is not contained in a building storey' };
-    }
 
     // The clipped footprints are in storey-local XY (placement
     // origin already added). The builders expect an `OuterCurve`

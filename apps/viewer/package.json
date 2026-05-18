@@ -67,7 +67,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "fflate": "^0.8.3",
-    "lucide-react": "^0.562.0",
+    "lucide-react": "^1.16.0",
     "maplibre-gl": "^5.24.0",
     "parquet-wasm": "^0.7.1",
     "postcss": "^8.5.10",

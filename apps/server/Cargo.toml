@@ -67,7 +67,7 @@ rustc-hash = "2.1"
 num_cpus = "1.16"
 
 # Parquet/Arrow for efficient binary serialization
-arrow = { version = "54", default-features = false, features = ["ipc"] }
+arrow = { version = "58", default-features = false, features = ["ipc"] }
 parquet = { version = "54", default-features = false, features = ["arrow", "snap", "zstd", "lz4"] }
 bytes = "1.5"
 

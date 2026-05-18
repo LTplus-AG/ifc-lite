@@ -27,6 +27,25 @@ interface BatchBucket {
   vertexBytes: number;              // accumulated vertex buffer bytes
 }
 
+/**
+ * Release the GPU resources owned by a batch / mesh. Every
+ * BatchedMesh and Mesh shares the same {vertex, index, optional
+ * uniform} buffer layout, and forgetting any one of the three is a
+ * GPU memory leak that won't surface until the user spends ten
+ * minutes inside the viewer. Centralised here so callers don't
+ * have to remember the cleanup sequence.
+ *
+ * Accepts the structural shape so it works for both BatchedMesh and
+ * Mesh — they each carry the same buffer trio.
+ */
+function destroyGpuResources(
+  m: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; uniformBuffer?: GPUBuffer },
+): void {
+  m.vertexBuffer.destroy();
+  m.indexBuffer.destroy();
+  if (m.uniformBuffer) m.uniformBuffer.destroy();
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private instancedMeshes: InstancedMesh[] = [];
@@ -469,11 +488,7 @@ export class Scene {
 
       // Destroy old GPU batch if it exists
       if (bucket?.batchedMesh) {
-        bucket.batchedMesh.vertexBuffer.destroy();
-        bucket.batchedMesh.indexBuffer.destroy();
-        if (bucket.batchedMesh.uniformBuffer) {
-          bucket.batchedMesh.uniformBuffer.destroy();
-        }
+        destroyGpuResources(bucket.batchedMesh);
         bucket.batchedMesh = null;
       }
 
@@ -854,13 +869,7 @@ export class Scene {
     this.activeBucketKey.clear();
     this.pendingBatchKeys.clear();
     // Destroy cached partial batches — their colorKeys are now stale
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) {
-        batch.uniformBuffer.destroy();
-      }
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
 
@@ -886,21 +895,9 @@ export class Scene {
     this.rebuildPendingBatches(device, pipeline);
 
     // 5. NOW destroy old fragment/batch GPU resources (new batches are live)
-    for (const fragment of oldFragments) {
-      fragment.vertexBuffer.destroy();
-      fragment.indexBuffer.destroy();
-      if (fragment.uniformBuffer) {
-        fragment.uniformBuffer.destroy();
-      }
-    }
+    for (const fragment of oldFragments) destroyGpuResources(fragment);
     for (const batch of oldBatches) {
-      if (!fragmentSet.has(batch)) {
-        batch.vertexBuffer.destroy();
-        batch.indexBuffer.destroy();
-        if (batch.uniformBuffer) {
-          batch.uniformBuffer.destroy();
-        }
-      }
+      if (!fragmentSet.has(batch)) destroyGpuResources(batch);
     }
   }
 
@@ -944,11 +941,7 @@ export class Scene {
     this.meshDataBucket = new Map();
     this.activeBucketKey.clear();
     this.pendingBatchKeys.clear();
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) batch.uniformBuffer.destroy();
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
 
@@ -1003,17 +996,9 @@ export class Scene {
         scene.batchedMeshes = newBatches;
 
         // Destroy old fragment/batch GPU resources
-        for (const fragment of oldFragments) {
-          fragment.vertexBuffer.destroy();
-          fragment.indexBuffer.destroy();
-          if (fragment.uniformBuffer) fragment.uniformBuffer.destroy();
-        }
+        for (const fragment of oldFragments) destroyGpuResources(fragment);
         for (const batch of oldBatches) {
-          if (!fragmentSet.has(batch)) {
-            batch.vertexBuffer.destroy();
-            batch.indexBuffer.destroy();
-            if (batch.uniformBuffer) batch.uniformBuffer.destroy();
-          }
+          if (!fragmentSet.has(batch)) destroyGpuResources(batch);
         }
         resolve();
       }
@@ -1063,11 +1048,7 @@ export class Scene {
     this.meshDataMap.clear();
     this.activeBucketKey.clear();
     this.pendingBatchKeys.clear();
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) batch.uniformBuffer.destroy();
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
     this.geometryReleased = true;
@@ -1141,11 +1122,7 @@ export class Scene {
     this.activeBucketKey.clear();
 
     // 3. Clear partial batch cache (would need mesh data to rebuild)
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) batch.uniformBuffer.destroy();
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
 
@@ -1448,11 +1425,7 @@ export class Scene {
     if (currentCacheKey && currentCacheKey !== cacheKey) {
       const oldBatch = this.partialBatchCache.get(currentCacheKey);
       if (oldBatch) {
-        oldBatch.vertexBuffer.destroy();
-        oldBatch.indexBuffer.destroy();
-        if (oldBatch.uniformBuffer) {
-          oldBatch.uniformBuffer.destroy();
-        }
+        destroyGpuResources(oldBatch);
         this.partialBatchCache.delete(currentCacheKey);
       }
     }
@@ -1597,13 +1570,7 @@ export class Scene {
 
   /** Destroy GPU resources for overlay batches */
   private destroyOverrideBatches(): void {
-    for (const batch of this.overrideBatches) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) {
-        batch.uniformBuffer.destroy();
-      }
-    }
+    for (const batch of this.overrideBatches) destroyGpuResources(batch);
     this.overrideBatches = [];
   }
 
@@ -1611,14 +1578,7 @@ export class Scene {
    * Clear regular meshes only (used when converting to instanced rendering)
    */
   clearRegularMeshes(): void {
-    for (const mesh of this.meshes) {
-      mesh.vertexBuffer.destroy();
-      mesh.indexBuffer.destroy();
-      // Destroy per-mesh uniform buffer if it exists
-      if (mesh.uniformBuffer) {
-        mesh.uniformBuffer.destroy();
-      }
-    }
+    for (const mesh of this.meshes) destroyGpuResources(mesh);
     this.meshes = [];
   }
 
@@ -1626,34 +1586,15 @@ export class Scene {
    * Clear scene
    */
   clear(): void {
-    for (const mesh of this.meshes) {
-      mesh.vertexBuffer.destroy();
-      mesh.indexBuffer.destroy();
-      // Destroy per-mesh uniform buffer if it exists
-      if (mesh.uniformBuffer) {
-        mesh.uniformBuffer.destroy();
-      }
-    }
+    for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const mesh of this.instancedMeshes) {
       mesh.vertexBuffer.destroy();
       mesh.indexBuffer.destroy();
       mesh.instanceBuffer.destroy();
     }
-    for (const batch of this.batchedMeshes) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) {
-        batch.uniformBuffer.destroy();
-      }
-    }
+    for (const batch of this.batchedMeshes) destroyGpuResources(batch);
     // Clear partial batch cache
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) {
-        batch.uniformBuffer.destroy();
-      }
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)
     this.streamingFragments = [];
     this.destroyOverrideBatches();

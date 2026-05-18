@@ -14,6 +14,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 # Force JavaScript actions onto Node 24. GitHub deprecated Node 20 for
 # actions in late 2025 and will flip the default in June 2026. Setting
@@ -24,14 +25,64 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  test:
-    name: Build + WASM + Rust + Node
+  # Path filter — emits booleans the downstream jobs use as `if:` gates.
+  # Doc-only and non-test changes skip every expensive job below.
+  changes:
+    name: Detect changes
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      geometry: ${{ steps.filter.outputs.geometry }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'rust/**'
+              - 'apps/server/**'
+              - 'apps/desktop/src-tauri/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'scripts/build-wasm.sh'
+              - 'tests/models/manifest.json'
+              - '.github/workflows/test.yml'
+            frontend:
+              - 'apps/viewer/**'
+              - 'apps/desktop/**'
+              - 'apps/viewer-embed/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+              - 'scripts/**'
+              - 'tests/models/manifest.json'
+              - '.github/workflows/test.yml'
+            geometry:
+              - 'rust/geometry/**'
+              - 'rust/processing/**'
+              - 'apps/server/Cargo.toml'
+              - 'Cargo.lock'
+              - '.github/workflows/test.yml'
+
+  # Shared install + WASM + workspace build. Uploads built dist/ for the
+  # downstream JS jobs; Rust jobs do their own checkout + cargo cache
+  # restore (Swatinem) and don't need this artifact.
+  build:
+    name: Build packages + WASM
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           # Fixtures live in a GitHub Release (see tests/models/manifest.json
           # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
@@ -41,7 +92,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup pnpm
-        # v4 reads the version from the `packageManager` field in
+        # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
@@ -53,15 +104,14 @@ jobs:
           cache: pnpm
 
       # rust-toolchain.toml pins nightly-2025-11-15 with wasm32-unknown-unknown
-      # + rust-src. `rustup show` triggers install of exactly that toolchain,
-      # so cargo and wasm-pack both see the same channel as local devs.
+      # + rust-src. `rustup show` triggers install of exactly that toolchain.
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
-          prefix-key: ci
+          prefix-key: ci-build
 
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
@@ -74,11 +124,6 @@ jobs:
       # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
       # Cache hit = no network. Cache miss (manifest changed) = one cold pull
       # from the GitHub Release CDN. Pattern documented in AGENTS.md §9.
-      #
-      # Fetch BEFORE build: @ifc-lite/ifcx's build runs
-      # scripts/verify-dist-hello-wall.mjs which loads
-      # tests/models/ifc5/Hello_Wall_hello-wall.ifcx, so the fixtures must
-      # be on disk by the time `pnpm build` reaches that package.
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -104,18 +149,127 @@ jobs:
         run: bash scripts/build-wasm.sh
 
       # Build all workspace packages so their dist/ artifacts exist for
-      # downstream consumers — turbo handles the dep graph. Required for
-      # `pnpm -r lint` and any test that crosses package boundaries via
-      # the published entry point.
+      # downstream consumers — turbo handles the dep graph.
       - name: Build packages
         run: pnpm build
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-output
+          path: |
+            packages/*/dist
+            packages/*/wasm
+            packages/wasm/pkg
+          retention-days: 1
+          if-no-files-found: error
 
-      - name: Lint
-        run: pnpm lint
+  typecheck:
+    name: Typecheck
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: build-output
+          path: packages
+      - run: pnpm typecheck
 
+  lint:
+    name: Lint
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # lint runs against source; doesn't need built dist.
+      - run: pnpm lint
+
+  node-tests:
+    name: Node tests
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      - run: pnpm test
+
+  rust-tests:
+    name: Rust tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: ci-rust
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        # `pnpm fixtures` needs pnpm + node; install just enough to run it.
+        run: |
+          npm i -g pnpm@10.8.1
+          pnpm fixtures
       # Workspace exclusions:
       #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
       #   - ifc-lite-desktop: Tauri crate needs gtk/webkit2gtk system libs;
@@ -123,27 +277,81 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --exclude ifc-lite-wasm --exclude ifc-lite-desktop
 
-      # Validates the Manifold CSG kernel path (T1.1 +). The first run on
-      # this job compiles `manifold-csg-sys` (Manifold + Clipper2 via
-      # cmake) which adds ~60 s to the wall clock; subsequent runs hit
-      # the rust-cache. Sprint 2 acceptance gates
-      # (`issue_582_fzk_haus_no_csg_failures_after_manifold` and
-      # `issue_583_institute_var2_no_csg_failures_after_manifold`) only
-      # exist under this feature and assert `total_failures == 0` on the
-      # ara3d AC20-FZK-Haus.ifc and C20-Institute-Var-2.ifc fixtures.
-      #
-      # `wasm32-unknown-unknown` builds intentionally don't enable
-      # `manifold-csg`: the upstream `manifold-csg-sys` wasm-cxx-shim is
-      # currently incompatible with libc++-{18,20} (see
-      # docs/architecture/geometry-pipeline.md "WASM status"). Until that
-      # is resolved upstream, the WASM bundle continues to use the
-      # legacy BSP CSG path.
-      #
-      # ubuntu-latest ships cmake ≥ 3.28 and g++ ≥ 13 by default, which
-      # cover Manifold's build requirements. If a future runner image
-      # drops either, prepend `apt-get install -y cmake g++` here.
-      - name: Rust tests (Manifold CSG kernel)
+  # Validates the Manifold CSG kernel path (T1.1 +). Only runs when files
+  # that affect the kernel actually changed — first run on a runner
+  # compiles `manifold-csg-sys` (Manifold + Clipper2 via cmake) which adds
+  # ~60 s; subsequent runs hit the rust-cache.
+  #
+  # Sprint 2 acceptance gates
+  # (`issue_582_fzk_haus_no_csg_failures_after_manifold` and
+  # `issue_583_institute_var2_no_csg_failures_after_manifold`) only exist
+  # under this feature and assert `total_failures == 0` on the
+  # ara3d AC20-FZK-Haus.ifc and C20-Institute-Var-2.ifc fixtures.
+  #
+  # `wasm32-unknown-unknown` builds intentionally don't enable
+  # `manifold-csg`: the upstream `manifold-csg-sys` wasm-cxx-shim is
+  # currently incompatible with libc++-{18,20} (see
+  # docs/architecture/geometry-pipeline.md "WASM status"). Until that
+  # is resolved upstream, the WASM bundle continues to use the
+  # legacy BSP CSG path.
+  manifold-tests:
+    name: Rust tests (Manifold CSG kernel)
+    needs: changes
+    if: needs.changes.outputs.geometry == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: ci-manifold
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: |
+          npm i -g pnpm@10.8.1
+          pnpm fixtures
+      - name: Manifold CSG tests
         run: cargo test -p ifc-lite-geometry --features manifold-csg
 
-      - name: Node tests
-        run: pnpm test
+  # Aggregate gate. Keeps the existing required status check name green
+  # for the branch protection rule so we don't have to retouch settings.
+  # Succeeds if every dependency succeeded or was skipped (path-filtered
+  # out); fails the moment any dependency fails or is cancelled.
+  test:
+    name: Build + WASM + Rust + Node
+    needs: [changes, build, typecheck, lint, node-tests, rust-tests, manifold-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate on dependencies
+        run: |
+          declare -A results=(
+            [build]="${{ needs.build.result }}"
+            [typecheck]="${{ needs.typecheck.result }}"
+            [lint]="${{ needs.lint.result }}"
+            [node-tests]="${{ needs.node-tests.result }}"
+            [rust-tests]="${{ needs.rust-tests.result }}"
+            [manifold-tests]="${{ needs.manifold-tests.result }}"
+          )
+          fail=0
+          for j in "${!results[@]}"; do
+            r="${results[$j]}"
+            echo "  $j: $r"
+            case "$r" in
+              success|skipped) ;;
+              *) fail=1 ;;
+            esac
+          done
+          exit $fail

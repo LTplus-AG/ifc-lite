@@ -1,10 +1,14 @@
-name: Desktop Compatibility
+# Depot CI Migration
+# Source: .github/workflows/desktop-compat.yml
+#
+# Changes made:
+# - Changed GitHub runs-on labels to their Depot equivalents
 
+name: Desktop Compatibility
 # Validates that ifc-lite changes don't break the desktop shell's frontend build.
 # This catches Tauri stub regressions, store type mismatches, and missing
 # override points BEFORE merging to main — preventing the silent breakage
 # that occurred during the desktop branch merge (#503).
-
 on:
   pull_request:
     paths:
@@ -22,77 +26,61 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - 'scripts/build-wasm.sh'
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 permissions:
   contents: read
-
 jobs:
   desktop-frontend-build:
     name: Desktop frontend build
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-4 # was: ubuntu-latest. 4vCPU/16GB — viewer build OOMs at 2vCPU/8GB.
     timeout-minutes: 10
-
     steps:
       - name: Checkout ifc-lite (PR branch)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-
       - name: Setup pnpm
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
-
       # WASM bundles are no longer committed (see #654); turbo's wasm
       # packages rebuild from source via scripts/build-wasm.sh, which
       # needs a Rust toolchain matching rust-toolchain.toml + wasm-pack.
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
-
       - name: Cargo cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           prefix-key: ci
-
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
         with:
           version: latest
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Build shared packages
         run: pnpm build
-
       - name: Build desktop frontend (Vite only, no Tauri)
         run: pnpm build:desktop
-
       - name: Verify desktop contract version
         run: node scripts/check-desktop-contract.mjs
-
   desktop-override-audit:
     name: Desktop override audit
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-4 # was: ubuntu-latest. 4vCPU/16GB — viewer build OOMs at 2vCPU/8GB.
     timeout-minutes: 5
-
     steps:
       - name: Checkout ifc-lite (PR branch)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-
       - name: Check override surface integrity
         run: |
           # Every service module that the desktop repo overrides must exist in

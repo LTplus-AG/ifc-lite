@@ -1,23 +1,25 @@
-name: Test Templates
+# Depot CI Migration
+# Source: .github/workflows/test-templates.yml
+#
+# Changes made:
+# - Changed GitHub runs-on labels to their Depot equivalents
 
+name: Test Templates
 on:
   # push:main intentionally dropped — branch-protected PR runs validate
   # the same SHA before merge.
   pull_request:
     paths:
       - 'packages/create-ifc-lite/**'
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 permissions:
   contents: read
-
 jobs:
   test-templates:
     name: Scaffold & verify (${{ matrix.template }})
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-4 # was: ubuntu-latest. 4vCPU/16GB — scaffolds each template, needs build RAM.
     strategy:
       fail-fast: false
       matrix:
@@ -40,47 +42,38 @@ jobs:
           - template: server-native
             check_command: npm run typecheck
             build_command: npm run build
-
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           lfs: false
           persist-credentials: false
-
       - name: Setup pnpm
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: pnpm
-
       - name: Install monorepo deps
         run: pnpm install --frozen-lockfile
-
       - name: Build create-ifc-lite
         run: pnpm --filter create-ifc-lite build
-
       - name: Scaffold ${{ matrix.template }} template
         run: |
           mkdir -p /tmp/scaffold
           cd /tmp/scaffold
           node $GITHUB_WORKSPACE/packages/create-ifc-lite/dist/index.js \
             test-${{ matrix.template }} --template ${{ matrix.template }}
-
       - name: Install template deps (npm, as a real user would)
         run: npm install --prefer-offline
         working-directory: /tmp/scaffold/test-${{ matrix.template }}
-
       - name: Type-check template
         run: ${{ matrix.check_command }}
         working-directory: /tmp/scaffold/test-${{ matrix.template }}
-
       - name: Build template
         run: ${{ matrix.build_command }}
         working-directory: /tmp/scaffold/test-${{ matrix.template }}

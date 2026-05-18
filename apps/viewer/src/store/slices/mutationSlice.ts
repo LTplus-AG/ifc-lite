@@ -190,6 +190,21 @@ export interface MutationSlice {
   undoStacks: Map<string, Mutation[]>;
   /** Redo stack per model */
   redoStacks: Map<string, Mutation[]>;
+  /**
+   * Maps mutationId → batchId. Mutations created via
+   * `setPositionalAttributesBatch` share a single batchId so the
+   * undo / redo handlers can pop / push them as one atomic
+   * step — important for compound operations like `resizeWall`
+   * (4 positional writes) where the user expects one Ctrl+Z to
+   * undo the whole resize, not unwind through inconsistent
+   * intermediate states.
+   *
+   * Stored as a side-channel on the slice (vs an extra field on
+   * the published `Mutation` interface) so the batching is a
+   * viewer-local concern and doesn't ripple through @ifc-lite/
+   * mutations consumers.
+   */
+  mutationBatchTags: Map<string, string>;
   /** Models with unsaved changes */
   dirtyModels: Set<string>;
   /** Version counter to trigger re-renders when mutations change */
@@ -295,6 +310,24 @@ export interface MutationSlice {
     index: number,
     value: IfcAttributeValue
   ) => Mutation | null;
+  /**
+   * Atomic batch of positional writes — undo / redo treat the
+   * whole list as one operation. Each entry produces a primitive
+   * `UPDATE_POSITIONAL_ATTRIBUTE` mutation under the hood (same
+   * shape as `setPositionalAttribute` so the undo handler stays
+   * uniform), but all entries share a batchId via
+   * `mutationBatchTags` so a single Ctrl+Z reverts the entire
+   * batch.
+   *
+   * Used by compound operations like `resizeWall` (4 coordinated
+   * positional writes) so the user doesn't have to press Ctrl+Z
+   * four times to undo one resize. Returns the batchId so callers
+   * can correlate; empty input is a no-op (returns null).
+   */
+  setPositionalAttributesBatch: (
+    modelId: string,
+    updates: Array<{ entityId: number; index: number; value: IfcAttributeValue }>,
+  ) => string | null;
   /**
    * Tombstone an entity (existing source entity) or forget it (overlay-only).
    * Returns true if the entity was known to the store or overlay.
@@ -897,6 +930,7 @@ export const createMutationSlice: StateCreator<
   activeChangeSetId: null,
   undoStacks: new Map(),
   redoStacks: new Map(),
+  mutationBatchTags: new Map(),
   dirtyModels: new Set(),
   mutationVersion: 0,
   georefMutations: new Map(),
@@ -1243,6 +1277,23 @@ export const createMutationSlice: StateCreator<
     return stack ? stack[stack.length - 1] : null;
   },
 
+  setPositionalAttributesBatch: (modelId, updates) => {
+    if (updates.length === 0) return null;
+    // Generate the batch id once; every mutation created below
+    // gets tagged with it so the undo / redo handlers can group
+    // them. `crypto.randomUUID` is available in every browser the
+    // viewer supports and avoids the collision risk of
+    // Date.now() + Math.random concatenation.
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const tags = new Map(get().mutationBatchTags);
+    for (const { entityId, index, value } of updates) {
+      const mutation = get().setPositionalAttribute(modelId, entityId, index, value);
+      if (mutation) tags.set(mutation.id, batchId);
+    }
+    set({ mutationBatchTags: tags });
+    return batchId;
+  },
+
   translateEntity: (modelId, expressId, delta) => {
     // Read the existing placement chain WITHOUT committing the edit
     // yet — we'll route the actual write through `setPositionalAttribute`
@@ -1398,11 +1449,11 @@ export const createMutationSlice: StateCreator<
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
 
-    // resolveWallEditChain reads all four ids without mutating. We
-    // then write each via the slice's setPositionalAttribute so the
-    // four writes land as four separate mutations on the undo stack
-    // — coarse, but matches how the gizmo's translateEntity works.
-    // A future pass can introduce a batched-mutation primitive.
+    // resolveWallEditChain reads all four ids without mutating.
+    // The four writes are then committed as a single atomic batch
+    // via setPositionalAttributesBatch — one Ctrl+Z reverts the
+    // whole resize, no walking through inconsistent intermediate
+    // wall states.
     const chain = resolveWallEditChain(dataStore, view, editor, expressId);
     if (!chain) {
       return {
@@ -1421,10 +1472,12 @@ export const createMutationSlice: StateCreator<
     }
     const dir: [number, number, number] = [dx / length, dy / length, 0];
 
-    get().setPositionalAttribute(modelId, chain.startPointId, 0, newStart);
-    get().setPositionalAttribute(modelId, chain.refDirectionId, 0, dir);
-    get().setPositionalAttribute(modelId, chain.profileId, 3, length);
-    get().setPositionalAttribute(modelId, chain.profileOriginPointId, 0, [length / 2, 0]);
+    get().setPositionalAttributesBatch(modelId, [
+      { entityId: chain.startPointId, index: 0, value: newStart },
+      { entityId: chain.refDirectionId, index: 0, value: dir },
+      { entityId: chain.profileId, index: 3, value: length },
+      { entityId: chain.profileOriginPointId, index: 0, value: [length / 2, 0] },
+    ]);
 
     return { ok: true, newLength: length };
   },
@@ -2246,6 +2299,13 @@ export const createMutationSlice: StateCreator<
     if (undoStack.length === 0) return;
 
     const mutation = undoStack[undoStack.length - 1];
+    // Batch awareness: if the mutation we're about to undo was
+    // tagged as part of a batch (via setPositionalAttributesBatch),
+    // we want one Ctrl+Z to undo every mutation in that batch.
+    // The tail-recurse at the end of this action handles that —
+    // capture the batchId here, undo this single mutation, then
+    // if the next top still shares the batchId, recurse.
+    const batchId = state.mutationBatchTags.get(mutation.id);
 
     // Handle georef mutations directly on georefMutations map
     if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName?.startsWith('georef.')) {
@@ -2404,6 +2464,20 @@ export const createMutationSlice: StateCreator<
         mutationVersion: s.mutationVersion + 1,
       };
     });
+
+    // Tail-recurse for the rest of the batch (if any). Reading
+    // the stack via get() picks up the just-set state. Stops as
+    // soon as the next top mutation either doesn't exist or
+    // belongs to a different batch.
+    if (batchId !== undefined) {
+      const nextStack = get().undoStacks.get(modelId) || [];
+      if (nextStack.length > 0) {
+        const nextBatchId = get().mutationBatchTags.get(nextStack[nextStack.length - 1].id);
+        if (nextBatchId === batchId) {
+          get().undo(modelId);
+        }
+      }
+    }
   },
 
   redo: (modelId) => {
@@ -2412,6 +2486,7 @@ export const createMutationSlice: StateCreator<
     if (redoStack.length === 0) return;
 
     const mutation = redoStack[redoStack.length - 1];
+    const batchId = state.mutationBatchTags.get(mutation.id);
 
     // Handle georef mutations directly
     if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName?.startsWith('georef.')) {
@@ -2548,6 +2623,20 @@ export const createMutationSlice: StateCreator<
         mutationVersion: s.mutationVersion + 1,
       };
     });
+
+    // Tail-recurse for the rest of the batch — mirror of the
+    // undo handler's batch tail. Stops as soon as the next top
+    // of the redo stack either doesn't exist or belongs to a
+    // different batch.
+    if (batchId !== undefined) {
+      const nextStack = get().redoStacks.get(modelId) || [];
+      if (nextStack.length > 0) {
+        const nextBatchId = get().mutationBatchTags.get(nextStack[nextStack.length - 1].id);
+        if (nextBatchId === batchId) {
+          get().redo(modelId);
+        }
+      }
+    }
   },
 
   canUndo: (modelId) => {

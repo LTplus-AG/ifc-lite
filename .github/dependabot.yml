@@ -24,24 +24,20 @@ updates:
         update-types:
           - minor
           - patch
-    # Ecosystems with known runtime breakage on recent majors.
-    # Lift each entry once we've validated the next major locally.
+    # NOTE: `ignore` blocks BOTH version-update PRs and Dependabot
+    # security-update PRs for the matched scope. Only ignore here when
+    # the CVE-coverage cost is worth the noise reduction.
+    # Runtime deps (apache-arrow, @anthropic-ai/sdk) intentionally stay
+    # unignored so security PRs continue to flow; we'll close noisy
+    # major bumps manually if they reappear.
     ignore:
-      # vite 8 switched the prod build to Rolldown and shipped a broken
-      # `selectionHandlers` chunk to ifc-lite-ltplus.vercel.app (see #741, #746).
+      # vite is devDependency-only — CVE risk is mostly build-time.
+      # Vite 8 switched the prod build to Rolldown and shipped a broken
+      # `selectionHandlers` chunk to ifc-lite-ltplus.vercel.app
+      # (see #741 / #746). Block the next semver-major until Rolldown
+      # output is verified stable for this repo.
       - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
-      # arrow + parquet must bump in lockstep on the Rust side; the npm
-      # apache-arrow major jumps tend to land at the same time and need
-      # coordinated review (see #738, #745).
-      - dependency-name: "apache-arrow"
-        update-types: ["version-update:semver-major"]
-      # Pre-1.0 SDK — Dependabot's "minor-and-patch" group treated a
-      # 0.39 → 0.96 jump as minor. Hold all non-patch bumps for manual review.
-      - dependency-name: "@anthropic-ai/sdk"
-        update-types:
-          - "version-update:semver-major"
-          - "version-update:semver-minor"
 
   - package-ecosystem: cargo
     directory: /

@@ -107,7 +107,7 @@ works.
 
 ## API
 
-See the [Geometry Guide](https://louistrue.github.io/ifc-lite/guide/geometry/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litegeometry).
+See the [Geometry Guide](https://ltplus-ag.github.io/ifc-lite/guide/geometry/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litegeometry).
 
 ## License
 

@@ -20,7 +20,7 @@ import { getPlatformInfo, getPlatformDescription, type PlatformInfo } from './pl
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // GitHub release URL pattern
-const GITHUB_REPO = 'louistrue/ifc-lite';
+const GITHUB_REPO = 'LTplus-AG/ifc-lite';
 const RELEASE_BASE_URL = `https://github.com/${GITHUB_REPO}/releases/download`;
 
 // Cache directory (inside the package for portability)

@@ -4,7 +4,7 @@ version = "1.1.7"
 description = "IFC-Lite Desktop Application - Native high-performance IFC viewer"
 authors = ["IFC-Lite Contributors"]
 license = "MPL-2.0"
-repository = "https://github.com/louistrue/ifc-lite"
+repository = "https://github.com/LTplus-AG/ifc-lite"
 edition = "2021"
 
 [lib]

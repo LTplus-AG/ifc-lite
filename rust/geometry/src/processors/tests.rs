@@ -436,7 +436,7 @@ fn test_wall_with_opening_file() {
 /// cylindrical surfaces). This test verifies the processor handles that correctly
 /// instead of silently skipping the faces.
 ///
-/// Addresses: https://github.com/louistrue/ifc-lite/issues/472
+/// Addresses: https://github.com/LTplus-AG/ifc-lite/issues/472
 #[test]
 fn test_shell_based_surface_model_with_advanced_faces() {
     // Minimal IFC snippet: ShellBasedSurfaceModel -> OpenShell -> AdvancedFace (planar)

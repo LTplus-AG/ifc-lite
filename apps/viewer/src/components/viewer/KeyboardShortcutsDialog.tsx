@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
 
-const GITHUB_URL = 'https://github.com/louistrue/ifc-lite';
+const GITHUB_URL = 'https://github.com/LTplus-AG/ifc-lite';
 
 interface InfoDialogProps {
   open: boolean;

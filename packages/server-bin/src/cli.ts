@@ -14,7 +14,7 @@
  *   npx ifc-lite-server [options]
  *
  * Environment variables are passed through to the server.
- * See: https://github.com/louistrue/ifc-lite/tree/main/apps/server
+ * See: https://github.com/LTplus-AG/ifc-lite/tree/main/apps/server
  */
 
 import { runBinary, ensureBinary, getBinaryInfo, downloadBinary } from './binary.js';
@@ -58,7 +58,7 @@ Examples:
   npx @ifc-lite/server-bin info
 
 Documentation:
-  https://github.com/louistrue/ifc-lite
+  https://github.com/LTplus-AG/ifc-lite
 
 Alternatives:
   - Docker: npx create-ifc-lite my-app --template server

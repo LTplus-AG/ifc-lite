@@ -11,43 +11,9 @@ import {
   MIN_LINEAR_SEGMENT_LENGTH,
 } from './linear-element-edit.js';
 
-interface OverlayEntity {
-  expressId: number;
-  type: string;
-  attributes: unknown[];
-}
+import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
 
-class StubStoreEditor {
-  private overlay = new Map<number, OverlayEntity>();
-  private positional = new Map<number, Map<number, unknown>>();
-  constructor(initial: OverlayEntity[]) {
-    for (const e of initial) this.overlay.set(e.expressId, e);
-  }
-  getNewEntity(id: number): OverlayEntity | null {
-    return this.overlay.get(id) ?? null;
-  }
-  setPositionalAttribute(id: number, index: number, value: unknown): void {
-    let entry = this.positional.get(id);
-    if (!entry) {
-      entry = new Map();
-      this.positional.set(id, entry);
-    }
-    entry.set(index, value);
-    const ent = this.overlay.get(id);
-    if (ent) ent.attributes[index] = value;
-  }
-}
-
-class StubView {
-  getPositionalMutationsForEntity(): null {
-    return null;
-  }
-}
-
-const dataStoreStub = {
-  source: new Uint8Array(),
-  entityIndex: { byId: new Map(), byType: new Map() },
-} as unknown as Parameters<typeof resolveLinearElementChain>[0];
+const dataStoreStub = makeStubDataStore() as unknown as Parameters<typeof resolveLinearElementChain>[0];
 
 /**
  * Beam fixture mirroring `addBeamToStore` output:

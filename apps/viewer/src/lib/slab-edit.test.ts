@@ -9,36 +9,9 @@ import {
   computeSlabSplitGeometry,
 } from './slab-edit.js';
 
-interface OverlayEntity {
-  expressId: number;
-  type: string;
-  attributes: unknown[];
-}
+import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
 
-class StubStoreEditor {
-  private overlay = new Map<number, OverlayEntity>();
-  constructor(initial: OverlayEntity[]) {
-    for (const e of initial) this.overlay.set(e.expressId, e);
-  }
-  getNewEntity(id: number): OverlayEntity | null {
-    return this.overlay.get(id) ?? null;
-  }
-  setPositionalAttribute(id: number, index: number, value: unknown): void {
-    const ent = this.overlay.get(id);
-    if (ent) ent.attributes[index] = value;
-  }
-}
-
-class StubView {
-  getPositionalMutationsForEntity(): null {
-    return null;
-  }
-}
-
-const dataStoreStub = {
-  source: new Uint8Array(),
-  entityIndex: { byId: new Map(), byType: new Map() },
-} as unknown as Parameters<typeof resolveSlabEditChain>[0];
+const dataStoreStub = makeStubDataStore() as unknown as Parameters<typeof resolveSlabEditChain>[0];
 
 /**
  * Rectangle-profile slab fixture mirroring `addSlabToStore`:

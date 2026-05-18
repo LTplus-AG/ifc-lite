@@ -6,31 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { reassignWallOpenings } from './wall-opening-reassign.js';
 
-interface OverlayEntity {
-  expressId: number;
-  type: string;
-  attributes: unknown[];
-}
-
-class StubStoreEditor {
-  private overlay = new Map<number, OverlayEntity>();
-  constructor(initial: OverlayEntity[]) {
-    for (const e of initial) this.overlay.set(e.expressId, e);
-  }
-  getNewEntity(id: number): OverlayEntity | null {
-    return this.overlay.get(id) ?? null;
-  }
-  setPositionalAttribute(id: number, index: number, value: unknown): void {
-    const ent = this.overlay.get(id);
-    if (ent) ent.attributes[index] = value;
-  }
-}
-
-class StubView {
-  getPositionalMutationsForEntity(): null {
-    return null;
-  }
-}
+import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
 
 /**
  * Build a fixture with a source wall + two openings.
@@ -146,10 +122,7 @@ function makeFixture() {
 }
 
 function makeStore(byType: Map<string, number[]>) {
-  return {
-    source: new Uint8Array(),
-    entityIndex: { byId: new Map(), byType },
-  } as unknown as Parameters<typeof reassignWallOpenings>[0];
+  return makeStubDataStore(byType) as unknown as Parameters<typeof reassignWallOpenings>[0];
 }
 
 describe('reassignWallOpenings', () => {

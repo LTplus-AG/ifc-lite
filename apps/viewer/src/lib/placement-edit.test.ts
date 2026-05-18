@@ -18,79 +18,17 @@ import {
 } from './placement-edit.js';
 
 /**
- * The placement-edit helpers walk overlay-first via
- * `editor.getNewEntity`, then fall back to the source buffer. We
- * exercise the overlay path here without needing a real parsed IFC
- * file: a stub `StoreEditor` returns hand-crafted overlay entities,
- * a stub `MutablePropertyView` tracks positional overrides, and the
- * `IfcDataStore` shim's `entityIndex.byId` stays empty so the source
- * branch is never hit.
- *
- * The fixture mirrors what `@ifc-lite/create`'s `addColumnToStore`
+ * Fixture mirrors what `@ifc-lite/create`'s `addColumnToStore`
  * produces — an IfcColumn with placement chain
  *   #100 IfcColumn ─► #99 IfcLocalPlacement
  *                       └─► #98 IfcAxis2Placement3D
  *                              └─► #97 IfcCartesianPoint([1, 2, 3])
+ *
+ * Stubs live in `__test__/stubs.ts` — shared with the other
+ * lib/ helper tests.
  */
 
-type AttrList = unknown[];
-interface OverlayEntity {
-  expressId: number;
-  type: string;
-  attributes: AttrList;
-}
-
-class StubStoreEditor {
-  private overlay = new Map<number, OverlayEntity>();
-  private positional = new Map<number, Map<number, unknown>>();
-  private nextId: number;
-  constructor(initial: OverlayEntity[]) {
-    for (const e of initial) this.overlay.set(e.expressId, e);
-    this.nextId = Math.max(0, ...initial.map((e) => e.expressId)) + 1;
-  }
-  getNewEntity(id: number): OverlayEntity | null {
-    return this.overlay.get(id) ?? null;
-  }
-  setPositionalAttribute(id: number, index: number, value: unknown): void {
-    let entry = this.positional.get(id);
-    if (!entry) {
-      entry = new Map();
-      this.positional.set(id, entry);
-    }
-    entry.set(index, value);
-    // Mirror onto the overlay entity so subsequent reads via
-    // `getNewEntity` reflect the write (the real StoreEditor does the
-    // same through the MutablePropertyView).
-    const ent = this.overlay.get(id);
-    if (ent) ent.attributes[index] = value;
-  }
-  /**
-   * Mirror StoreEditor.addEntity well enough for rotateProductYaw's
-   * IfcDirection materialisation path. Returns an EntityRef-shaped
-   * record with just the express id (the only field the SUT reads).
-   */
-  addEntity(type: string, attributes: unknown[]): { expressId: number } {
-    const id = this.nextId++;
-    this.overlay.set(id, { expressId: id, type, attributes: attributes.slice() });
-    return { expressId: id };
-  }
-}
-
-class StubView {
-  private positional = new Map<number, Map<number, unknown>>();
-  getPositionalMutationsForEntity(id: number): Map<number, unknown> | null {
-    return this.positional.get(id) ?? null;
-  }
-  /** Helper for the "previously-mutated coords read back" case. */
-  setPositionalForTest(id: number, index: number, value: unknown): void {
-    let entry = this.positional.get(id);
-    if (!entry) {
-      entry = new Map();
-      this.positional.set(id, entry);
-    }
-    entry.set(index, value);
-  }
-}
+import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
 
 function makeFixture() {
   // IfcCartesianPoint at #97 with Coordinates = [1, 2, 3]
@@ -121,10 +59,7 @@ function makeFixture() {
   return { point, axis, local, column };
 }
 
-const dataStoreStub = {
-  source: new Uint8Array(),
-  entityIndex: { byId: new Map() },
-} as unknown as Parameters<typeof resolvePlacementChain>[0];
+const dataStoreStub = makeStubDataStore() as unknown as Parameters<typeof resolvePlacementChain>[0];
 
 describe('placement-edit', () => {
   it('resolves the full chain for an overlay column', () => {

@@ -6,52 +6,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { cloneElementMetadata } from './metadata-clone.js';
 
-/**
- * Stubs mirror the ones in placement-edit.test.ts. The metadata
- * clone walks `dataStore.entityIndex.byType` to find relationships,
- * so the stub data store carries that index. The store editor
- * surfaces overlay entities + accepts positional writes; the
- * mutable property view returns no extra positional overrides.
- */
-
-interface OverlayEntity {
-  expressId: number;
-  type: string;
-  attributes: unknown[];
-}
-
-class StubStoreEditor {
-  private overlay = new Map<number, OverlayEntity>();
-  private positional = new Map<number, Map<number, unknown>>();
-  constructor(initial: OverlayEntity[]) {
-    for (const e of initial) this.overlay.set(e.expressId, e);
-  }
-  getNewEntity(id: number): OverlayEntity | null {
-    return this.overlay.get(id) ?? null;
-  }
-  setPositionalAttribute(id: number, index: number, value: unknown): void {
-    let entry = this.positional.get(id);
-    if (!entry) {
-      entry = new Map();
-      this.positional.set(id, entry);
-    }
-    entry.set(index, value);
-    const ent = this.overlay.get(id);
-    if (ent) ent.attributes[index] = value;
-  }
-}
-
-class StubView {
-  getPositionalMutationsForEntity(): null {
-    return null;
-  }
-}
+import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
 
 function makeStore(byType: Map<string, number[]>) {
-  return {
-    source: new Uint8Array(),
-    entityIndex: { byId: new Map(), byType },
-  } as unknown as Parameters<typeof cloneElementMetadata>[0];
+  return makeStubDataStore(byType) as unknown as Parameters<typeof cloneElementMetadata>[0];
 }
 
 describe('metadata-clone', () => {

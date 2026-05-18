@@ -2331,9 +2331,9 @@ checksum = "d73d122b937fca067feb0ad74f62388920272b27c356d4df2d0cfdd59e044cf0"
 
 [[package]]
 name = "i_overlay"
-version = "6.0.0"
+version = "6.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0f8ed01b5f7de7c2e5661d9ac807aacb33ad76f591f973d89b58e998f552c34"
+checksum = "ef7df1a4c1801ec972584acab91071a22ebe745fa4d9594980258ca4497c4d40"
 dependencies = [
  "i_float",
  "i_key_sort",

@@ -31,9 +31,10 @@
  * can collapse runs in a later pass.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
+import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { getEntityCenter } from '@/utils/viewportUtils';
 
 type Vec2 = { x: number; y: number };
@@ -72,14 +73,6 @@ export function GizmoOverlay() {
   const readEntityPosition = useViewerStore((s) => s.readEntityPosition);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models, geometryResult } = useIfc();
-
-  // Force a re-render on camera moves so the gizmo tracks the
-  // viewport (the camera tick bypasses React renders for perf — see
-  // `Viewport.tsx` `updateCameraRotationRealtime`). Same RAF pattern
-  // as AddElementOverlay, gated on actual viewpoint deltas.
-  const [frameTick, setFrameTick] = useState(0);
-  const lastViewpointRef = useRef<string>('');
-  const rafRef = useRef<number | null>(null);
 
   // Drag state — refs instead of state to avoid re-render thrashing.
   const dragRef = useRef<{
@@ -124,36 +117,13 @@ export function GizmoOverlay() {
     projectToScreen,
     readEntityPosition,
     mutationVersion,
-    frameTick,
   ]);
 
-  // RAF loop — tracks the camera so screen-space coords stay aligned.
-  useEffect(() => {
-    if (!ready) return;
-    let mounted = true;
-    const tick = () => {
-      if (!mounted) return;
-      const vp = getViewpoint?.();
-      if (vp) {
-        // Include projectionMode + orthoSize so ortho-zoom-only
-        // changes (which leave position / target / fov untouched)
-        // still wake the overlay. Without these the gizmo lags
-        // ortho zoom; the perspective path was already covered by
-        // fov in the signature.
-        const sig = `${vp.position.x},${vp.position.y},${vp.position.z},${vp.target.x},${vp.target.y},${vp.target.z},${vp.fov},${vp.projectionMode},${vp.orthoSize ?? ''}`;
-        if (sig !== lastViewpointRef.current) {
-          lastViewpointRef.current = sig;
-          setFrameTick((n) => (n + 1) % 1_000_000);
-        }
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      mounted = false;
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, [ready, getViewpoint]);
+  // Camera-tick subscription — wakes the gizmo on real viewport
+  // motion (camera tick bypasses React renders for perf, see
+  // `Viewport.tsx` `updateCameraRotationRealtime`). Skipped when
+  // the gizmo isn't visible.
+  void useCameraTickSubscription(getViewpoint, ready !== null);
 
   if (!ready) return null;
 

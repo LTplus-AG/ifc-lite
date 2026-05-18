@@ -35,9 +35,10 @@
  * folds the four into one undo entry.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
+import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { rendererPointToIfcStoreyLocal } from '../selectionHandlers';
 
 type Vec2 = { x: number; y: number };
@@ -83,9 +84,6 @@ export function WallEndpointOverlay() {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models } = useIfc();
 
-  const [frameTick, setFrameTick] = useState(0);
-  const lastViewpointRef = useRef<string>('');
-  const rafRef = useRef<number | null>(null);
   const dragRef = useRef<ActiveDrag | null>(null);
 
   // Discover the wall's endpoints + storey elevation. Re-resolves on
@@ -112,9 +110,10 @@ export function WallEndpointOverlay() {
       end: wall.end,
       storeyElevation,
     };
-    // mutationVersion + frameTick force re-resolution after any edit
-    // or camera move so handles track live.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // mutationVersion forces re-resolution after any edit so handles
+    // track live. Camera moves don't change endpoints — the
+    // `useCameraTickSubscription` below re-renders the host so the
+    // JSX projection refreshes without re-running this memo.
   }, [
     editEnabled,
     activeTool,
@@ -122,35 +121,12 @@ export function WallEndpointOverlay() {
     models,
     readWallEndpoints,
     mutationVersion,
-    frameTick,
   ]);
 
-  // RAF tick — same camera-tracking trick as the gizmo. Skipped when
-  // the overlay isn't visible.
-  useEffect(() => {
-    if (!endpoints) return;
-    let mounted = true;
-    const tick = () => {
-      if (!mounted) return;
-      const vp = getViewpoint?.();
-      if (vp) {
-        // projectionMode + orthoSize matter for ortho-zoom-only
-        // moves that leave position / target / fov untouched — see
-        // the matching note in GizmoOverlay.
-        const sig = `${vp.position.x},${vp.position.y},${vp.position.z},${vp.target.x},${vp.target.y},${vp.target.z},${vp.fov},${vp.projectionMode},${vp.orthoSize ?? ''}`;
-        if (sig !== lastViewpointRef.current) {
-          lastViewpointRef.current = sig;
-          setFrameTick((n) => (n + 1) % 1_000_000);
-        }
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      mounted = false;
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, [endpoints, getViewpoint]);
+  // Camera-tick subscription — wakes the overlay on real viewpoint
+  // motion so the projection stays aligned. Skipped when the overlay
+  // isn't visible.
+  void useCameraTickSubscription(getViewpoint, endpoints !== null);
 
   if (!endpoints || !projectToScreen) return null;
   const project = projectToScreen as Project;

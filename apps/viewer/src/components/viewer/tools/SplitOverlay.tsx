@@ -24,8 +24,8 @@
  * re-rendering on every camera frame.
  */
 
-import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { Slice as KnifeIcon } from 'lucide-react';
 
 type Vec2 = { x: number; y: number };
@@ -57,40 +57,15 @@ export function SplitOverlay() {
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
   const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
 
-  const [frameTick, setFrameTick] = useState(0);
-  const lastViewpointRef = useRef<string>('');
-  const rafRef = useRef<number | null>(null);
-
-  // RAF tick — wake the overlay when the camera moves so the
-  // preview tracks the element through orbit / zoom. Skipped when
-  // nothing is hovered (idle Split tool with no cursor over an
-  // element is free of per-frame work).
+  // Camera-tick subscription — wakes the overlay when the camera
+  // moves so the preview tracks the element through orbit / zoom.
+  // Skipped when nothing is hovered (idle Split tool with no cursor
+  // over an element is free of per-frame work).
   const active =
     activeTool === 'split' &&
     (splitMode === 'aiming' || splitMode === 'first-anchor') &&
     splitHoverPoint !== null;
-  useEffect(() => {
-    if (!active) return;
-    let mounted = true;
-    const tick = () => {
-      if (!mounted) return;
-      const vp = getViewpoint?.();
-      if (vp) {
-        const sig = `${vp.position.x},${vp.position.y},${vp.position.z},${vp.target.x},${vp.target.y},${vp.target.z},${vp.fov},${vp.projectionMode},${vp.orthoSize ?? ''}`;
-        if (sig !== lastViewpointRef.current) {
-          lastViewpointRef.current = sig;
-          setFrameTick((n) => (n + 1) % 1_000_000);
-        }
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      mounted = false;
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, [active, getViewpoint]);
-  void frameTick;
+  void useCameraTickSubscription(getViewpoint, active);
 
   // Hint chip when idle (tool armed, nothing under cursor).
   if (activeTool === 'split' && !active) {

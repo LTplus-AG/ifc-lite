@@ -756,15 +756,24 @@ function rollbackOverlayCreate(
   // gets the rollback path wrong.
   editor.removeEntity(expressId);
 
-  // Walk the undo stack newest-first; remove the first matching
-  // CREATE_ENTITY entry for this entity. Subsequent mutations on
-  // the same entity (unlikely between create and rollback in the
-  // split flow, but defended against) stay where they are.
+  // Pop the matching CREATE_ENTITY entry off the undo stack. The
+  // split flow always rolls back immediately after the failed
+  // create, so the entry is at top-of-stack — fast-path that case
+  // with a single `pop()`-style slice and only fall back to the
+  // linear scan if a follow-up mutation slipped in between.
   set((s) => {
     const stacks = new Map(s.undoStacks);
     const stack = stacks.get(modelId);
-    if (!stack) return {};
-    for (let i = stack.length - 1; i >= 0; i--) {
+    if (!stack || stack.length === 0) return {};
+    const top = stack[stack.length - 1];
+    if (top.type === 'CREATE_ENTITY' && top.entityId === expressId) {
+      stacks.set(modelId, stack.slice(0, -1));
+      return {
+        undoStacks: stacks,
+        mutationVersion: s.mutationVersion + 1,
+      };
+    }
+    for (let i = stack.length - 2; i >= 0; i--) {
       const m = stack[i];
       if (m.type === 'CREATE_ENTITY' && m.entityId === expressId) {
         const next = stack.slice();

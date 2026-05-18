@@ -534,8 +534,8 @@ importers:
   examples/babylonjs-viewer:
     dependencies:
       '@babylonjs/core':
-        specifier: ^7.0.0
-        version: 7.54.3
+        specifier: ^9.7.0
+        version: 9.7.0
       '@ifc-lite/data':
         specifier: ^1.11.5
         version: 1.11.5
@@ -1369,8 +1369,8 @@ packages:
     resolution: {integrity: sha512-qQ5m48eI/MFLQ5PxQj4PFaprjyCTLI37ElWMmNs0K8Lk3dVeOdNpB3ks8jc7yM5CDmVC73eMVk/trk3fgmrUpA==}
     engines: {node: '>=6.9.0'}
 
-  '@babylonjs/core@7.54.3':
-    resolution: {integrity: sha512-P5ncXVd8GEUJLhwloP9V0oVwQYIrvZztguVeLlvd5Rx+9aQnenKjpV8auJ6SRsUlAmNZU4pFTKzwF6o2EUfhAw==}
+  '@babylonjs/core@9.7.0':
+    resolution: {integrity: sha512-Mulaumz9LnrlqBmiQtntNCwqBBNqPnNX3hziPPkKXvtCxrAnUNtz+RfT6LYW3f/OM+YN92FPRNO/ktHNBfjX6g==}
 
   '@cesium/engine@24.0.0':
     resolution: {integrity: sha512-zJ2gl0tyw/FFhBtvp6UYw+0JQJb2J9EiTJYvVSndc6+6qPR5GHLFzFjA1msLLxucfcpc7uI9R2pXNEPluheR/g==}
@@ -4720,7 +4720,7 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
-  '@babylonjs/core@7.54.3': {}
+  '@babylonjs/core@9.7.0': {}
 
   '@cesium/engine@24.0.0':
     dependencies:

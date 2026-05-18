@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
-    "react-markdown": "^9.0.1",
+    "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.0",
     "three": "^0.184.0",
     "@codemirror/autocomplete": "^6.20.2",

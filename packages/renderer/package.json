@@ -21,7 +21,7 @@
     "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
-    "@webgpu/types": "^0.1.69",
+    "@webgpu/types": "^0.1.70",
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",

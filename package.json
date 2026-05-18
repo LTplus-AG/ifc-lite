@@ -62,12 +62,12 @@
     "check:templates": "pnpm --filter viewer check:templates"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^0.5.2",
-    "@changesets/cli": "^2.29.8",
-    "@playwright/test": "^1.40.0",
+    "@changesets/changelog-github": "^0.7.0",
+    "@changesets/cli": "^2.31.0",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^25.8.0",
-    "tsx": "^4.21.0",
-    "turbo": "^2.5.0",
+    "tsx": "^4.22.1",
+    "turbo": "^2.9.14",
     "typescript": "^6.0.3"
   },
   "engines": {
@@ -75,7 +75,7 @@
     "pnpm": ">=8.0.0"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2"
+    "@neondatabase/serverless": "^1.1.0"
   },
   "pnpm": {
     "overrides": {

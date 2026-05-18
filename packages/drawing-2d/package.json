@@ -20,7 +20,7 @@
     "@ifc-lite/geometry": "workspace:^"
   },
   "devDependencies": {
-    "@webgpu/types": "^0.1.69",
+    "@webgpu/types": "^0.1.70",
     "typescript": "^6.0.3",
     "vitest": "^1.6.0"
   },

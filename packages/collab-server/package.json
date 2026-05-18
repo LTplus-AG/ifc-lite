@@ -27,7 +27,7 @@
   "dependencies": {
     "@ifc-lite/collab": "workspace:^",
     "lib0": "^0.2.99",
-    "ws": "^8.18.0",
+    "ws": "^8.20.1",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.20"
   },

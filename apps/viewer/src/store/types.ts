@@ -250,11 +250,17 @@ export interface CameraCallbacks {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 
-/** Compound identifier for entities across multiple models */
-export interface EntityRef {
-  modelId: string;
-  expressId: number;
-}
+/**
+ * Compound identifier for entities across multiple models.
+ *
+ * Re-exported from `@ifc-lite/sdk` so federation-facing code in the
+ * viewer and SDK share one type. The viewer keeps its own
+ * `entityRefToString` / `stringToEntityRef` / `entityRefEquals`
+ * helpers below because their error semantics (sentinel `-1` for
+ * malformed strings) differ from the SDK's throwing variant.
+ */
+import type { EntityRef } from '@ifc-lite/sdk';
+export type { EntityRef };
 
 /** IFC schema version enum for type safety */
 export type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';

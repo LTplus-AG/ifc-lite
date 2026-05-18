@@ -16,6 +16,20 @@ import type { CesiumPlacementDraft } from './cesiumSlice.js';
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 
 /**
+ * Tools that require edit mode to function. Entering one of them
+ * flips `editEnabled` on; leaving edit mode forces these tools
+ * back to `'select'`. Keep the list in sync — duplicating the
+ * authoring-tool check between `setActiveTool` and
+ * `setEditEnabled` is how the two states drift apart in the
+ * "enter edit, switch tool, exit edit" flow.
+ */
+const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
+  'addElement',
+  'cesium-placement',
+  'split',
+]);
+
+/**
  * Cross-slice surface UISlice reaches into via the combined Zustand
  * `get()` to decide whether toggling a load-time setting needs a
  * reload (only meaningful while a model is in scope).
@@ -148,11 +162,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // the global toggle on so the rest of the UI (Properties panel,
     // future manipulators) stays in sync. Read-only tools leave the
     // flag alone.
-    const requiresEdit =
-      activeTool === 'addElement' ||
-      activeTool === 'cesium-placement' ||
-      activeTool === 'split';
-    set(requiresEdit ? { activeTool, editEnabled: true } : { activeTool });
+    set(AUTHORING_TOOLS.has(activeTool) ? { activeTool, editEnabled: true } : { activeTool });
   },
   setEditEnabled: (editEnabled) => {
     if (!editEnabled) {
@@ -163,12 +173,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       // have to remember to mop up.
       set((s) => ({
         editEnabled: false,
-        activeTool:
-          s.activeTool === 'addElement' ||
-          s.activeTool === 'cesium-placement' ||
-          s.activeTool === 'split'
-            ? 'select'
-            : s.activeTool,
+        activeTool: AUTHORING_TOOLS.has(s.activeTool) ? 'select' : s.activeTool,
         cesiumPlacementEditMode: false,
         cesiumPlacementDraftModelId: null,
         cesiumPlacementDraft: null,

@@ -90,7 +90,7 @@
     "jszip": "^3.10.0",
     "tsx": "^4.22.1",
     "typescript": "^6.0.3",
-    "vite": "^7.3.2",
+    "vite": "^8.0.13",
     "vite-plugin-static-copy": "^4.1.0",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0"

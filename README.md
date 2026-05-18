@@ -1,16 +1,19 @@
-<table align="center">
-<tr>
-<td valign="top">
-<h1>
-<img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=700&size=48&duration=2000&pause=5000&color=6366F1&vCenter=true&width=300&height=55&lines=IFClite" alt="IFClite">
+<h1 align="center">
+  <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=700&size=48&duration=2000&pause=5000&color=6366F1&vCenter=true&width=300&height=55&lines=IFClite" alt="IFClite">
 </h1>
-Open, view, and work with IFC files. Right in the browser.
-</td>
-<td width="120" align="center" valign="middle">
-<img src="docs/assets/logo.png" alt="" width="100">
-</td>
-</tr>
-</table>
+
+<p align="center">
+  <img src="docs/assets/logo.png" alt="" width="100">
+</p>
+
+<p align="center">
+  Parse, view, query, edit, and export IFC files in the browser.<br>
+  Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option.
+</p>
+
+<p align="center">
+  Works with <b>IFC2X3</b>, <b>IFC4 / IFC4X3</b> and <b>IFC5 (IFCX)</b>. Live demo at <a href="https://www.ifclite.com/">ifclite.com</a>.
+</p>
 
 <p align="center">
   <a href="https://www.ifclite.com/"><img src="https://img.shields.io/badge/🚀_Try_it_Live-ifclite.com-ff6b6b?style=for-the-badge&labelColor=1a1a2e" alt="Try it Live"></a>
@@ -24,12 +27,6 @@ Open, view, and work with IFC files. Right in the browser.
 </p>
 
 ---
-
-# IFClite
-
-Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option.
-
-Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/).
 
 ## Get Started
 

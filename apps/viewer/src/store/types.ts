@@ -253,14 +253,19 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 /**
  * Compound identifier for entities across multiple models.
  *
- * Re-exported from `@ifc-lite/sdk` so federation-facing code in the
- * viewer and SDK share one type. The viewer keeps its own
- * `entityRefToString` / `stringToEntityRef` / `entityRefEquals`
- * helpers below because their error semantics (sentinel `-1` for
- * malformed strings) differ from the SDK's throwing variant.
+ * Structurally identical to `@ifc-lite/sdk`'s EntityRef, but
+ * defined locally because the desktop app bundles viewer source
+ * via tsconfig path aliases and does not declare `@ifc-lite/sdk`
+ * as a workspace dep — re-exporting from the SDK breaks the
+ * desktop Vite build with an unresolvable module. Keep the
+ * shapes in sync manually; both packages exhaustively test
+ * EntityRef-shaped values, so drift will surface at the
+ * federation boundary.
  */
-import type { EntityRef } from '@ifc-lite/sdk';
-export type { EntityRef };
+export interface EntityRef {
+  modelId: string;
+  expressId: number;
+}
 
 /** IFC schema version enum for type safety */
 export type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';

@@ -60,7 +60,7 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-virtual": "^3.13.24",
-    "apache-arrow": "^14.0.2",
+    "apache-arrow": "^21.1.0",
     "autoprefixer": "^10.5.0",
     "beautiful-theme-toggle": "^1.0.1",
     "cesium": "^1.141.0",

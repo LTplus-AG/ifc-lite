@@ -266,10 +266,9 @@ jobs:
           key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        # `pnpm fixtures` needs pnpm + node; install just enough to run it.
-        run: |
-          npm i -g pnpm@10.8.1
-          pnpm fixtures
+        # The fixtures script is pure Node (no npm deps) so we skip the
+        # pnpm install dance Rust-only jobs don't need.
+        run: node scripts/fixtures/fetch-fixtures.mjs
       # Workspace exclusions:
       #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
       #   - ifc-lite-desktop: Tauri crate needs gtk/webkit2gtk system libs;

@@ -73,45 +73,30 @@ export async function runExtensionCommand(
     }
     const wrappedSource = wrapResult.value;
 
-    // Pure command tools (promoted scripts) have no `entry.activate`,
-    // so there is no per-extension state worth preserving across runs.
-    // Give each run a brand-new sandbox: nothing carried over from a
-    // prior run, a flavor switch, a model reload, or an authoring
-    // dry-run can leave a half-disposed QuickJS realm behind.
-    const hasActivateEntry = !!bundle.manifest.entry.activate;
-
+    // Reuse the cached activation across runs — that is the behaviour
+    // command tools shipped with originally and it works. Forcing a
+    // brand-new sandbox per run (an earlier experiment) regressed it:
+    // the dispose→recreate cycle is what surfaced "Lifetime not alive".
+    // The single retry below is kept purely as a safety net for a
+    // genuinely dead sandbox; it does NOT pre-emptively tear anything
+    // down.
     const runOnce = async (isRetry: boolean): Promise<RuntimeRunResult> => {
       try {
-        // Force a fresh sandbox for command-only tools (always), and
-        // for anything on a retry. The runtime's activate() then
-        // rebuilds from scratch instead of handing back a cached —
-        // possibly dead — record.
-        if (!hasActivateEntry || isRetry) {
-          await deps.runtime.deactivate(record.id);
-        }
         const activation = await deps.runtime.activate(record.id, grants, bundle);
+        await deps.dispatcher.fire(`onCommand:${commandId}` as const);
         // Set ctx via setGlobal. The BimSandboxHandle special-cases
         // `__ifclite_ctx__` to synthesize from the bridge-installed
         // `globalThis.bim` (the wrapped SDK is cyclic and would crash
         // JSON.stringify). The wrap also falls back to globalThis.bim
-        // if ctx is somehow unset.
+        // if ctx is somehow unset. setGlobal is inside the try so a
+        // "Sandbox disposed" on a dead handle also triggers the retry.
         const ctx: ExtensionContextV1 = { bim: deps.sdk };
         await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
-        // Nothing runs between activate and run except setGlobal — so
-        // no listener can dispose the sandbox mid-flight. The
-        // `onCommand:` activation event fires AFTER the handler (it
-        // only wakes other listeners; the command itself already ran)
-        // and is non-fatal so a listener failure can't fail the run.
-        const result = await activation.sandbox.run(wrappedSource, { filename: entry });
-        deps.dispatcher.fire(`onCommand:${commandId}` as const).catch((err) => {
-          console.warn(`[ext-host] onCommand:${commandId} listeners failed:`, err);
-        });
-        return result;
+        return await activation.sandbox.run(wrappedSource, { filename: entry });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Any signal that the sandbox realm died — QuickJS use-after-
-        // free, our own teardown guard, or a setGlobal on a disposed
-        // handle. One retry rebuilds a genuinely fresh sandbox.
+        // Only on an actual failure that looks like a dead realm do we
+        // tear down and retry once — never pre-emptively.
         const isDeadSandbox =
           /Lifetime not alive|QuickJSUseAfterFree|Sandbox was torn down|Sandbox disposed|not initialized/i.test(msg);
         if (isDeadSandbox && !isRetry) {

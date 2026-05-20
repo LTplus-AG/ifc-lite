@@ -351,34 +351,42 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
 
         {/* Post-authoring "install as tool" banner — surfaces right
             where the AI-written code lands so the user never has to
-            hunt for the Promote button. Driven by the same chat
-            authoring signal as the chat-panel CTA. */}
+            hunt for the Promote button. Highlighted (accent fill +
+            ring) so the install step reads as the obvious next move,
+            not a faint afterthought. */}
         {chatToolReady?.kind === 'script' && (
-          <div className="flex items-center gap-2 px-3 py-2 border-b bg-primary/10 shrink-0">
-            <Wrench className="h-4 w-4 text-primary shrink-0" />
-            <span className="text-xs font-medium flex-1 min-w-0">
-              AI wrote this script — install it as a one-click tool?
-            </span>
-            <Button
-              size="sm"
-              onClick={() => {
-                setPromoteOpen(true);
-                setChatToolReady(null);
-              }}
-              className="shrink-0"
-            >
-              <Wrench className="mr-1 h-3.5 w-3.5" />
-              Install as tool
-            </Button>
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              onClick={() => setChatToolReady(null)}
-              aria-label="Dismiss"
-              className="shrink-0"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
+          <div className="shrink-0 border-b bg-primary/15 px-3 py-2.5 ring-1 ring-inset ring-primary/40">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Wrench className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold">This script is ready</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Install it as a one-click button in your toolbar.
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setPromoteOpen(true);
+                  setChatToolReady(null);
+                }}
+                className="shrink-0"
+              >
+                <Wrench className="mr-1 h-3.5 w-3.5" />
+                Install as tool
+              </Button>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => setChatToolReady(null)}
+                aria-label="Dismiss"
+                className="shrink-0"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
         )}
 

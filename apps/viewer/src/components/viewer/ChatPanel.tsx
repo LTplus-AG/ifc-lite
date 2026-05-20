@@ -1537,6 +1537,53 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             <span className="text-xs">Thinking...</span>
           </div>
         )}
+
+        {/* Post-authoring install CTA — rendered INLINE at the end of
+            the conversation, directly under the generated code, so the
+            "now install it" step is impossible to miss. Highlighted
+            (ring + accent) the moment a workflow is authored. */}
+        {chatToolReady && status === 'idle' && (
+          <div className="mx-3 my-3 rounded-lg border-2 border-primary bg-primary/10 p-3 shadow-sm ring-2 ring-primary/30">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Wrench className="h-4 w-4" />
+              </div>
+              <div className="text-sm font-semibold">
+                {chatToolReady.kind === 'bundle'
+                  ? `"${chatToolReady.name || 'Your extension'}" is ready`
+                  : 'Your tool is ready'}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mb-2.5 pl-9">
+              Last step — turn this into a permanent{' '}
+              <span className="font-medium text-foreground">one-click button in your toolbar</span>.
+            </p>
+            <div className="flex items-center gap-2 pl-9">
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (chatToolReady.kind === 'bundle') {
+                    setExtensionsRequestedView('installed');
+                    setExtensionsPanelVisible(true);
+                  } else {
+                    setPromoteFromChatOpen(true);
+                  }
+                  setChatToolReady(null);
+                }}
+              >
+                <Wrench className="mr-1 h-3.5 w-3.5" />
+                {chatToolReady.kind === 'bundle' ? 'Review & install' : 'Install as tool'}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setChatToolReady(null)}
+              >
+                Not now
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Scroll to bottom button */}
@@ -1728,57 +1775,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           <span className="text-[10px] text-muted-foreground/30">⌘L</span>
         </div>
       </div>
-
-      {/* Post-authoring "install" CTA — pinned at the very bottom so
-          it's never hidden behind the message list. The seam between
-          "AI wrote the tool" and "tool is usable" — without it the
-          user has to hunt for the Promote button in another panel. */}
-      {chatToolReady && (
-        <div className="shrink-0 border-t bg-primary/10 px-3 py-2.5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/20 text-primary">
-              <Wrench className="h-4 w-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium">
-                {chatToolReady.kind === 'bundle'
-                  ? `Tool ready: ${chatToolReady.name || 'your extension'}`
-                  : 'Your tool code is ready'}
-              </div>
-              <div className="text-[11px] text-muted-foreground">
-                {chatToolReady.kind === 'bundle'
-                  ? 'Review the capabilities it needs, then install as a one-click tool.'
-                  : 'Install it as a persistent one-click tool — name, icon, hotkey.'}
-              </div>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => {
-                if (chatToolReady.kind === 'bundle') {
-                  setExtensionsRequestedView('installed');
-                  setExtensionsPanelVisible(true);
-                } else {
-                  setPromoteFromChatOpen(true);
-                }
-                setChatToolReady(null);
-              }}
-              className="shrink-0"
-            >
-              <Wrench className="mr-1 h-3.5 w-3.5" />
-              {chatToolReady.kind === 'bundle' ? 'Review & install' : 'Install as tool'}
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setChatToolReady(null)}
-              aria-label="Dismiss"
-              className="shrink-0"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      )}
 
       <ByokKeyModal
         open={byokModal.open}

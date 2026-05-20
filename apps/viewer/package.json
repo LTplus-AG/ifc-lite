@@ -12,7 +12,7 @@
     "check:templates": "tsc -p src/lib/scripts/templates/tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.97.1",
+    "@anthropic-ai/sdk": "^0.96.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.0",
     "three": "^0.184.0",

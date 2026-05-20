@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/embed-sdk",
-  "version": "1.14.3",
+  "version": "1.14.4",
   "description": "SDK for embedding the IFC-Lite 3D viewer in any web page via iframe",
   "type": "module",
   "main": "./dist/index.js",

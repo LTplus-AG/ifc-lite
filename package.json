@@ -65,8 +65,8 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "^1.60.0",
-    "@types/node": "^25.8.0",
-    "tsx": "^4.22.1",
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
     "turbo": "^2.9.14",
     "typescript": "^6.0.3"
   },

@@ -40,11 +40,29 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       version: ${{ steps.get-version.outputs.version }}
     steps:
+      # Mint a short-lived installation token for the `ifc-lite-release-bot-org`
+      # GitHub App. The changesets PR (`chore: version packages`) must be
+      # authored by a real identity, NOT the default GITHUB_TOKEN: GitHub
+      # suppresses pull_request/push workflow triggers for GITHUB_TOKEN-authored
+      # events (recursion guard), so the required `Build + WASM + Rust + Node`
+      # check never ran on a version PR and sat permanently "Expected" (#766).
+      # App ID + private key live as `release-publish` environment secrets.
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout Repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           lfs: false
+          # Persist the App token so the version-packages branch push made by
+          # changesets/action is App-authored too — not just the PR API call.
+          # Both must be App-authored for the pull_request event to fire.
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup pnpm
         # v6 reads the version from the `packageManager` field in
@@ -135,7 +153,9 @@ jobs:
           commit: 'chore: version packages'
           title: 'chore: version packages'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # App token (not GITHUB_TOKEN) so the version PR + its commits are
+          # authored by ifc-lite-release-bot-org and CI triggers on them.
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           # npm publishes use OIDC trusted publishing — no NPM_TOKEN.
           # `id-token: write` (set at job level) + npm CLI ≥ 11.5.1 +
           # NPM_CONFIG_PROVENANCE complete the handshake automatically

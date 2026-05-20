@@ -412,8 +412,8 @@ npx create-ifc-lite my-app --template server
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://louistrue.github.io/ifc-lite/)
-- [GitHub Repository](https://github.com/louistrue/ifc-lite)
+- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
+- [GitHub Repository](https://github.com/LTplus-AG/ifc-lite)
 `);
 
   console.log('  Created package.json');

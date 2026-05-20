@@ -22,6 +22,7 @@
  */
 
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
+import { safeUtf8Decode } from '@ifc-lite/data';
 
 /**
  * Tokenize the inside of a STEP entity body (`,`-separated arguments)
@@ -86,9 +87,10 @@ export function extractRawStepTokens(
   byteLength: number,
 ): string[] | null {
   if (byteLength <= 0) return null;
-  const text = new TextDecoder().decode(
-    buffer.subarray(byteOffset, byteOffset + byteLength),
-  );
+  // safeUtf8Decode handles SAB-backed source buffers (the parser
+  // keeps `dataStore.source` SAB-backed for zero-copy worker sharing,
+  // and Firefox/Chrome reject `TextDecoder.decode()` on SAB views).
+  const text = safeUtf8Decode(buffer, byteOffset, byteOffset + byteLength);
   // Match #N=TYPE( ... ) — the trailing `;` is optional in case the
   // ref slice doesn't include it.
   const match = text.match(/^#\d+\s*=\s*[A-Z0-9_]+\(([\s\S]*)\)\s*;?\s*$/i);

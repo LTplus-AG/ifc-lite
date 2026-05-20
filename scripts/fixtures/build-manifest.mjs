@@ -86,7 +86,7 @@ files.sort((a, b) => a.path.localeCompare(b.path));
 let header = {
   version: 1,
   release_tag: 'fixtures-v1',
-  base_url: 'https://github.com/louistrue/ifc-lite/releases/download/fixtures-v1',
+  base_url: 'https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1',
 };
 try {
   const existing = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));

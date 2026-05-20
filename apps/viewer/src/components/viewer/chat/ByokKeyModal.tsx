@@ -49,7 +49,7 @@ import {
   type BYOKProvider,
 } from '@/lib/llm/clipboard-detect';
 
-const REPO_BLOB = 'https://github.com/louistrue/ifc-lite/blob/main';
+const REPO_BLOB = 'https://github.com/LTplus-AG/ifc-lite/blob/main';
 
 const PROVIDER_META: Record<BYOKProvider, {
   label: string;

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/export",
-  "version": "1.18.0",
+  "version": "1.18.1",
   "description": "Export formats for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,8 +22,8 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
-    "parquet-wasm": "^0.5.0",
-    "apache-arrow": "^14.0.0",
+    "parquet-wasm": "^0.7.1",
+    "apache-arrow": "^21.1.0",
     "jszip": "^3.10.0"
   },
   "devDependencies": {
@@ -34,11 +34,11 @@
   "author": "Louis True",
   "repository": {
     "type": "git",
-    "url": "https://github.com/louistrue/ifc-lite.git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/export"
   },
-  "homepage": "https://louistrue.github.io/ifc-lite/",
-  "bugs": "https://github.com/louistrue/ifc-lite/issues",
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",

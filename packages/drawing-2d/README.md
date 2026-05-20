@@ -124,11 +124,11 @@ import {
 } from '@ifc-lite/drawing-2d';
 ```
 
-Each renderer returns SVG fragments that you wrap in your own `<svg>` document — see the [2D Drawings Guide](https://louistrue.github.io/ifc-lite/guide/drawing-2d/) for a worked sheet-composition example.
+Each renderer returns SVG fragments that you wrap in your own `<svg>` document — see the [2D Drawings Guide](https://ltplus-ag.github.io/ifc-lite/guide/drawing-2d/) for a worked sheet-composition example.
 
 ## API
 
-See the [2D Drawings Guide](https://louistrue.github.io/ifc-lite/guide/drawing-2d/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litedrawing-2d).
+See the [2D Drawings Guide](https://ltplus-ag.github.io/ifc-lite/guide/drawing-2d/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litedrawing-2d).
 
 ## License
 

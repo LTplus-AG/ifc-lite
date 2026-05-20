@@ -17,8 +17,8 @@ Open, view, and work with IFC files. Right in the browser.
 </p>
 
 <p align="center">
-  <a href="https://github.com/louistrue/ifc-lite/actions"><img src="https://img.shields.io/github/actions/workflow/status/louistrue/ifc-lite/release.yml?branch=main&style=flat-square&logo=github" alt="Build Status"></a>
-  <a href="https://github.com/louistrue/ifc-lite/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MPL--2.0-blue?style=flat-square" alt="License"></a>
+  <a href="https://github.com/LTplus-AG/ifc-lite/actions"><img src="https://img.shields.io/github/actions/workflow/status/LTplus-AG/ifc-lite/release.yml?branch=main&style=flat-square&logo=github" alt="Build Status"></a>
+  <a href="https://github.com/LTplus-AG/ifc-lite/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MPL--2.0-blue?style=flat-square" alt="License"></a>
   <a href="https://www.npmjs.com/package/@ifc-lite/parser"><img src="https://img.shields.io/npm/v/@ifc-lite/parser?style=flat-square&logo=npm&label=parser" alt="npm parser"></a>
   <a href="https://crates.io/crates/ifc-lite-core"><img src="https://img.shields.io/crates/v/ifc-lite-core?style=flat-square&logo=rust&label=core" alt="crates.io"></a>
 </p>
@@ -93,7 +93,7 @@ const hit = await renderer.pick(120, 240);
 if (hit) console.log(`Picked expressId ${hit.expressId}`);
 ```
 
-For Three.js or Babylon.js, parse + extract geometry the same way and feed `meshes` to your engine. See [Three.js integration](https://louistrue.github.io/ifc-lite/tutorials/threejs-integration/) and [Babylon.js integration](https://louistrue.github.io/ifc-lite/tutorials/babylonjs-integration/).
+For Three.js or Babylon.js, parse + extract geometry the same way and feed `meshes` to your engine. See [Three.js integration](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) and [Babylon.js integration](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/).
 
 ## Query entities
 
@@ -180,10 +180,10 @@ const ifcx = new Ifc5Exporter(store, meshes).export({ includeGeometry: true });
 
 | Setup | Best for | You get |
 |-------|----------|---------|
-| [**Browser (WebGPU)**](https://louistrue.github.io/ifc-lite/guide/quickstart/) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
-| [**Three.js / Babylon.js**](https://louistrue.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
-| [**Server**](https://louistrue.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
-| [**Desktop (Tauri)**](https://louistrue.github.io/ifc-lite/guide/desktop/) | Offline use, very large files (500 MB+) | Native app with multi-threading and direct filesystem access |
+| [**Browser (WebGPU)**](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
+| [**Three.js / Babylon.js**](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
+| [**Server**](https://ltplus-ag.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
+| [**Desktop (Tauri)**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Offline use, very large files (500 MB+) | Native app with multi-threading and direct filesystem access |
 
 Not sure? Start with the browser setup. You can add a server or switch engines later.
 
@@ -203,7 +203,7 @@ Not sure? Start with the browser setup. You can add a server or switch engines l
 | Connect to a server backend | + `@ifc-lite/server-client` |
 | BCF issue tracking | + `@ifc-lite/bcf` |
 
-Full list: [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/) (25 TypeScript packages, 4 Rust crates).
+Full list: [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/) (25 TypeScript packages, 4 Rust crates).
 
 ## Performance
 
@@ -213,7 +213,7 @@ Full list: [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/)
 - **Schema coverage:** 100% of IFC4 (776 entities) and IFC4X3 (876 entities).
 - **Parse throughput:** ~1,259 MB/s tokenization on a typical M1 / M2 laptop.
 
-See [benchmarks](https://louistrue.github.io/ifc-lite/guide/performance/) for full numbers across model sizes and hardware.
+See [benchmarks](https://ltplus-ag.github.io/ifc-lite/guide/performance/) for full numbers across model sizes and hardware.
 
 ## Examples
 
@@ -226,12 +226,12 @@ Ready-to-run projects in [`examples/`](examples/):
 
 | | |
 |---|---|
-| **Start here** | [Quick Start](https://louistrue.github.io/ifc-lite/guide/quickstart/) · [Installation](https://louistrue.github.io/ifc-lite/guide/installation/) · [Browser Requirements](https://louistrue.github.io/ifc-lite/guide/browser-requirements/) |
-| **Guides** | [Parsing](https://louistrue.github.io/ifc-lite/guide/parsing/) · [Geometry](https://louistrue.github.io/ifc-lite/guide/geometry/) · [Rendering](https://louistrue.github.io/ifc-lite/guide/rendering/) · [Querying](https://louistrue.github.io/ifc-lite/guide/querying/) · [Exporting](https://louistrue.github.io/ifc-lite/guide/exporting/) |
-| **BIM features** | [Federation](https://louistrue.github.io/ifc-lite/guide/federation/) · [BCF](https://louistrue.github.io/ifc-lite/guide/bcf/) · [IDS Validation](https://louistrue.github.io/ifc-lite/guide/ids/) · [2D Drawings](https://louistrue.github.io/ifc-lite/guide/drawing-2d/) · [Property Editing](https://louistrue.github.io/ifc-lite/guide/mutations/) |
-| **Tutorials** | [Build a Viewer](https://louistrue.github.io/ifc-lite/tutorials/building-viewer/) · [Three.js](https://louistrue.github.io/ifc-lite/tutorials/threejs-integration/) · [Babylon.js](https://louistrue.github.io/ifc-lite/tutorials/babylonjs-integration/) · [Custom Queries](https://louistrue.github.io/ifc-lite/tutorials/custom-queries/) |
-| **Deep dives** | [Architecture](https://louistrue.github.io/ifc-lite/architecture/overview/) · [Data Flow](https://louistrue.github.io/ifc-lite/architecture/data-flow/) · [Performance](https://louistrue.github.io/ifc-lite/guide/performance/) |
-| **API** | [TypeScript](https://louistrue.github.io/ifc-lite/api/typescript/) · [Rust](https://louistrue.github.io/ifc-lite/api/rust/) · [WASM](https://louistrue.github.io/ifc-lite/api/wasm/) |
+| **Start here** | [Quick Start](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) · [Installation](https://ltplus-ag.github.io/ifc-lite/guide/installation/) · [Browser Requirements](https://ltplus-ag.github.io/ifc-lite/guide/browser-requirements/) |
+| **Guides** | [Parsing](https://ltplus-ag.github.io/ifc-lite/guide/parsing/) · [Geometry](https://ltplus-ag.github.io/ifc-lite/guide/geometry/) · [Rendering](https://ltplus-ag.github.io/ifc-lite/guide/rendering/) · [Querying](https://ltplus-ag.github.io/ifc-lite/guide/querying/) · [Exporting](https://ltplus-ag.github.io/ifc-lite/guide/exporting/) |
+| **BIM features** | [Federation](https://ltplus-ag.github.io/ifc-lite/guide/federation/) · [BCF](https://ltplus-ag.github.io/ifc-lite/guide/bcf/) · [IDS Validation](https://ltplus-ag.github.io/ifc-lite/guide/ids/) · [2D Drawings](https://ltplus-ag.github.io/ifc-lite/guide/drawing-2d/) · [Property Editing](https://ltplus-ag.github.io/ifc-lite/guide/mutations/) |
+| **Tutorials** | [Build a Viewer](https://ltplus-ag.github.io/ifc-lite/tutorials/building-viewer/) · [Three.js](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) · [Babylon.js](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/) · [Custom Queries](https://ltplus-ag.github.io/ifc-lite/tutorials/custom-queries/) |
+| **Deep dives** | [Architecture](https://ltplus-ag.github.io/ifc-lite/architecture/overview/) · [Data Flow](https://ltplus-ag.github.io/ifc-lite/architecture/data-flow/) · [Performance](https://ltplus-ag.github.io/ifc-lite/guide/performance/) |
+| **API** | [TypeScript](https://ltplus-ag.github.io/ifc-lite/api/typescript/) · [Rust](https://ltplus-ag.github.io/ifc-lite/api/rust/) · [WASM](https://ltplus-ag.github.io/ifc-lite/api/wasm/) |
 
 ## Contributing
 
@@ -246,7 +246,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 cargo install wasm-pack   # or: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 # 2. Clone and build
-git clone https://github.com/louistrue/ifc-lite.git
+git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
 pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:5173
 ```
@@ -263,13 +263,13 @@ The fixtures are stored on a GitHub Release and catalogued in
 [`tests/models/README.md`](tests/models/README.md) for the full design and
 maintainer workflow.
 
-See the [Contributing Guide](https://louistrue.github.io/ifc-lite/contributing/setup/) and [Release Process](RELEASE.md).
+See the [Contributing Guide](https://ltplus-ag.github.io/ifc-lite/contributing/setup/) and [Release Process](RELEASE.md).
 
 ## Community
 
-- [GitHub Discussions](https://github.com/louistrue/ifc-lite/discussions) — questions, ideas, show-and-tell
-- [Issues](https://github.com/louistrue/ifc-lite/issues) — bug reports and feature requests
-- [Releases](https://github.com/louistrue/ifc-lite/releases) — changelog and version notes
+- [GitHub Discussions](https://github.com/LTplus-AG/ifc-lite/discussions) — questions, ideas, show-and-tell
+- [Issues](https://github.com/LTplus-AG/ifc-lite/issues) — bug reports and feature requests
+- [Releases](https://github.com/LTplus-AG/ifc-lite/releases) — changelog and version notes
 
 ## License
 

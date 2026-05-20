@@ -493,7 +493,7 @@ Use a tiered fixture approach so release pipelines stay reliable when Git LFS qu
 ### Recommended Clone Flow
 
 ```bash
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/louistrue/ifc-lite.git
+GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
 pnpm install
 ```

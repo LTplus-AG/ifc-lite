@@ -99,7 +99,7 @@ npx create-ifc-lite my-server --template server
 cd my-server && docker compose up -d
 
 # Build from source
-git clone https://github.com/louistrue/ifc-lite
+git clone https://github.com/LTplus-AG/ifc-lite
 cd ifc-lite/apps/server
 cargo build --release
 ```

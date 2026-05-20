@@ -67,7 +67,7 @@ Use SHA-256 (the default) for any cache that survives a process restart. Use xxh
 
 ## API
 
-See the [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litecache).
+See the [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litecache).
 
 ## License
 

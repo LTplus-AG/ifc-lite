@@ -378,7 +378,7 @@ function FooterLinks(): ReactNode {
   return (
     <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/10 pt-3 text-[10.5px]" style={{ ...mono, color: PAPER_DIM }}>
       <a href="/mcp" className="hover:text-white">tools</a>
-      <a href="https://github.com/louistrue/ifc-lite" className="hover:text-white">github</a>
+      <a href="https://github.com/LTplus-AG/ifc-lite" className="hover:text-white">github</a>
       <a href="https://www.npmjs.com/package/@ifc-lite/mcp" className="hover:text-white">npm</a>
       <a href="/" className="hover:text-white">viewer</a>
     </div>

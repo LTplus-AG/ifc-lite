@@ -26,7 +26,7 @@
     "@xmldom/xmldom": "^0.9.10"
   },
   "devDependencies": {
-    "happy-dom": "^20.8.9",
+    "happy-dom": "^20.9.0",
     "typescript": "^6.0.3",
     "vitest": "^1.6.0"
   },
@@ -34,11 +34,11 @@
   "author": "Louis True",
   "repository": {
     "type": "git",
-    "url": "https://github.com/louistrue/ifc-lite.git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/ids"
   },
-  "homepage": "https://louistrue.github.io/ifc-lite/",
-  "bugs": "https://github.com/louistrue/ifc-lite/issues",
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",

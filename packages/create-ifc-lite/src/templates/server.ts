@@ -18,7 +18,7 @@ export function createServerTemplate(targetDir: string, projectName: string) {
 
 services:
   ifc-server:
-    image: ghcr.io/louistrue/ifc-lite-server:latest
+    image: ghcr.io/LTplus-AG/ifc-lite-server:latest
     container_name: ${projectName}-server
     ports:
       - "\${PORT:-3001}:8080"
@@ -51,7 +51,7 @@ volumes:
 
 services:
   ifc-server:
-    image: ghcr.io/louistrue/ifc-lite-server:latest
+    image: ghcr.io/LTplus-AG/ifc-lite-server:latest
     container_name: ${projectName}-server-dev
     ports:
       - "\${PORT:-3001}:8080"
@@ -489,7 +489,7 @@ export function createLocalClient(options?: { timeout?: number }) {
   // README.md
   writeFileSync(join(targetDir, 'README.md'), `# ${projectName}
 
-IFC processing server using [IFC-Lite](https://github.com/louistrue/ifc-lite).
+IFC processing server using [IFC-Lite](https://github.com/LTplus-AG/ifc-lite).
 
 ## Quick Start
 
@@ -600,8 +600,8 @@ The Docker image works on any container platform:
 
 \`\`\`bash
 # Pull and run
-docker pull ghcr.io/louistrue/ifc-lite-server:latest
-docker run -p 8080:8080 -v ifc-cache:/app/cache ghcr.io/louistrue/ifc-lite-server
+docker pull ghcr.io/LTplus-AG/ifc-lite-server:latest
+docker run -p 8080:8080 -v ifc-cache:/app/cache ghcr.io/LTplus-AG/ifc-lite-server
 \`\`\`
 
 ### Environment Variables
@@ -618,9 +618,9 @@ RUST_LOG=info
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://louistrue.github.io/ifc-lite/)
-- [Server API Reference](https://louistrue.github.io/ifc-lite/api/server/)
-- [GitHub Repository](https://github.com/louistrue/ifc-lite)
+- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
+- [Server API Reference](https://ltplus-ag.github.io/ifc-lite/api/server/)
+- [GitHub Repository](https://github.com/LTplus-AG/ifc-lite)
 `);
 
   console.log('  Created docker-compose.yml');

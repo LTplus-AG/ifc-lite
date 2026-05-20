@@ -835,10 +835,18 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setBcfPanelVisible(false);
     setIdsPanelVisible(false);
     setLensPanelVisible(false);
+    // The right slot is single-tenant: when an analysis extension takes
+    // it over, the AddElement tool must release it too, otherwise its 3D
+    // click handler keeps placing elements behind the extension panel.
+    if (activeTool === 'addElement') {
+      setActiveTool('select');
+    }
     setRightPanelCollapsed(false);
   }, [
+    activeTool,
     analysisExtensionState.activeId,
     analysisExtensionState.extensions,
+    setActiveTool,
     setBcfPanelVisible,
     setGanttPanelVisible,
     setIdsPanelVisible,

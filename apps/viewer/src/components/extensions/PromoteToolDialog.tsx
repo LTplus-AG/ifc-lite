@@ -88,7 +88,14 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
     if (!pending) return;
     try {
       const status = await host.installFromBytes(pending.bytes, grants);
-      toast.success(`Installed "${name}" — find it in the command palette.`);
+      // Point the user at the payoff — the actual button. The
+      // synthesised manifest puts the command on `toolbar.right`,
+      // so it shows up as an icon button at the top-right of the
+      // toolbar. Mention the hotkey too if they set one.
+      const where = hotkey.trim()
+        ? `It's now a button in the toolbar (top-right) — or press ${hotkey.trim()}.`
+        : `It's now a button in the toolbar (top-right).`;
+      toast.success(`Installed "${name}". ${where}`);
       setPending(null);
       onClose();
       void status;
@@ -239,13 +246,21 @@ async function synthesiseBundle(
   const id = `com.local.tools.${slug}`;
   const commandId = `${id}.run`;
   const caps = args.capabilities.length > 0 ? args.capabilities : ['model.read'];
+  // Engine range MUST match the running SDK or the loader skips the
+  // bundle on install — the tool then never appears as a toolbar
+  // button. Pin to ">=<currentSdk>" using the live app version
+  // instead of a hardcoded guess.
+  const sdkVersion =
+    typeof __APP_VERSION__ === 'string' && __APP_VERSION__.length > 0
+      ? __APP_VERSION__
+      : '1.0.0';
   const manifest: ExtensionManifest = {
     manifestVersion: 1,
     id,
     name: args.name,
     description: `Promoted from a saved script.`,
     version: '0.1.0',
-    engines: { ifcLiteSdk: '>=2.0.0' },
+    engines: { ifcLiteSdk: `>=${sdkVersion}` },
     capabilities: caps,
     activation: [`onCommand:${commandId}`],
     contributes: {

@@ -30,6 +30,7 @@ import {
   Undo2,
   Redo2,
   Sparkles,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -90,6 +91,8 @@ function useScriptState() {
   const undoScriptEditor = useViewerStore((s) => s.undoScriptEditor);
   const redoScriptEditor = useViewerStore((s) => s.redoScriptEditor);
   const queueChatRepairRequest = useViewerStore((s) => s.queueChatRepairRequest);
+  const chatToolReady = useViewerStore((s) => s.chatToolReady);
+  const setChatToolReady = useViewerStore((s) => s.setChatToolReady);
 
   return {
     editorContent,
@@ -114,6 +117,8 @@ function useScriptState() {
     undoScriptEditor,
     redoScriptEditor,
     queueChatRepairRequest,
+    chatToolReady,
+    setChatToolReady,
   };
 }
 
@@ -141,6 +146,8 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
     undoScriptEditor,
     redoScriptEditor,
     queueChatRepairRequest,
+    chatToolReady,
+    setChatToolReady,
   } = useScriptState();
 
   const { execute, reset } = useSandbox();
@@ -341,6 +348,39 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
             </Button>
           )}
         </div>
+
+        {/* Post-authoring "install as tool" banner — surfaces right
+            where the AI-written code lands so the user never has to
+            hunt for the Promote button. Driven by the same chat
+            authoring signal as the chat-panel CTA. */}
+        {chatToolReady?.kind === 'script' && (
+          <div className="flex items-center gap-2 px-3 py-2 border-b bg-primary/10 shrink-0">
+            <Wrench className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-xs font-medium flex-1 min-w-0">
+              AI wrote this script — install it as a one-click tool?
+            </span>
+            <Button
+              size="sm"
+              onClick={() => {
+                setPromoteOpen(true);
+                setChatToolReady(null);
+              }}
+              className="shrink-0"
+            >
+              <Wrench className="mr-1 h-3.5 w-3.5" />
+              Install as tool
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              onClick={() => setChatToolReady(null)}
+              aria-label="Dismiss"
+              className="shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="flex items-center gap-1 px-2 py-1 border-b shrink-0">

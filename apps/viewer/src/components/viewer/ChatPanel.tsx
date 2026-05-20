@@ -534,6 +534,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       setAuthoringTelemetry(null);
     }
 
+    // Authoring turns write code into the Script Editor — open it so
+    // the user watches the tool take shape instead of only seeing
+    // chat text. Chat is *part* of the authoring surface, not a
+    // detour away from it.
+    if (classified.intent === 'authoring' || classified.intent === 'fork') {
+      setScriptPanelVisible(true);
+    }
+
     // Resolve the stream route BEFORE any user-visible side effects (adding
     // the user message, clearing attachments, setting sending state). If the
     // selected BYOK model has no key, bail out now so the chat transcript
@@ -1006,7 +1014,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     addMessage, setChatStatus, updateStreaming, finalizeAssistant,
     setChatError, setChatAbortController, clearAttachments, setChatUsage, resizeInput,
     buildRepairPromptFromLiveState, triggerAutoRepair, execute, extensionHost,
-    setChatToolReady, handleAuthoringResponse,
+    setChatToolReady, handleAuthoringResponse, setScriptPanelVisible,
   ]);
 
   const handleSend = useCallback(() => {
@@ -1603,59 +1611,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         </div>
       )}
 
-      {/* Post-authoring "install" CTA — the seam between "AI wrote the
-          tool" and "tool is usable". Without this the user has to hunt
-          for the Promote button in another panel. */}
-      {chatToolReady && (
-        <div className="shrink-0 border-t bg-primary/5 px-3 py-2.5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-              <Wrench className="h-4 w-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium">
-                {chatToolReady.kind === 'bundle'
-                  ? `Tool ready: ${chatToolReady.name || 'your extension'}`
-                  : 'Your tool code is ready'}
-              </div>
-              <div className="text-[11px] text-muted-foreground">
-                {chatToolReady.kind === 'bundle'
-                  ? 'Review the capabilities it needs, then install it as a one-click tool.'
-                  : 'Install it as a persistent one-click tool — pick a name, icon, and hotkey.'}
-              </div>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => {
-                if (chatToolReady.kind === 'bundle') {
-                  // pendingAuthoredBundle is already set — the Extensions
-                  // panel routes it straight into CapabilityReview.
-                  setExtensionsRequestedView('installed');
-                  setExtensionsPanelVisible(true);
-                } else {
-                  setPromoteFromChatOpen(true);
-                }
-                setChatToolReady(null);
-              }}
-              className="shrink-0"
-            >
-              <Wrench className="mr-1 h-3.5 w-3.5" />
-              {chatToolReady.kind === 'bundle' ? 'Review & install' : 'Install as tool'}
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setChatToolReady(null)}
-              aria-label="Dismiss"
-              className="shrink-0"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Promote-to-tool dialog, opened from the script-path CTA above.
+      {/* Promote-to-tool dialog, opened from the post-authoring CTA.
           Reads the live script editor content as the tool source. */}
       <PromoteToolDialog
         open={promoteFromChatOpen}
@@ -1772,6 +1728,57 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           <span className="text-[10px] text-muted-foreground/30">⌘L</span>
         </div>
       </div>
+
+      {/* Post-authoring "install" CTA — pinned at the very bottom so
+          it's never hidden behind the message list. The seam between
+          "AI wrote the tool" and "tool is usable" — without it the
+          user has to hunt for the Promote button in another panel. */}
+      {chatToolReady && (
+        <div className="shrink-0 border-t bg-primary/10 px-3 py-2.5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/20 text-primary">
+              <Wrench className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium">
+                {chatToolReady.kind === 'bundle'
+                  ? `Tool ready: ${chatToolReady.name || 'your extension'}`
+                  : 'Your tool code is ready'}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {chatToolReady.kind === 'bundle'
+                  ? 'Review the capabilities it needs, then install as a one-click tool.'
+                  : 'Install it as a persistent one-click tool — name, icon, hotkey.'}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (chatToolReady.kind === 'bundle') {
+                  setExtensionsRequestedView('installed');
+                  setExtensionsPanelVisible(true);
+                } else {
+                  setPromoteFromChatOpen(true);
+                }
+                setChatToolReady(null);
+              }}
+              className="shrink-0"
+            >
+              <Wrench className="mr-1 h-3.5 w-3.5" />
+              {chatToolReady.kind === 'bundle' ? 'Review & install' : 'Install as tool'}
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setChatToolReady(null)}
+              aria-label="Dismiss"
+              className="shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <ByokKeyModal
         open={byokModal.open}

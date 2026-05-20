@@ -529,6 +529,14 @@ declare const GPUShaderStage: {
   readonly COMPUTE: number;
 };
 
+declare const GPUColorWrite: {
+  readonly RED: number;
+  readonly GREEN: number;
+  readonly BLUE: number;
+  readonly ALPHA: number;
+  readonly ALL: number;
+};
+
 interface GPUBindGroup {
   readonly label?: string;
 }

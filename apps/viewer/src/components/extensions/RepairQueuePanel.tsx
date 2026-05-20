@@ -34,6 +34,7 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
   const host = useExtensionHost();
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
+  const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const [summary, setSummary] = useState<RevalidationSummary | undefined>();
   const [busy, setBusy] = useState(false);
   // SDK version comes from the Vite-injected __APP_VERSION__ define.
@@ -65,6 +66,7 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
     if (!version) return;
     queueChatPrompt(buildRepairPrompt(item, version));
     setChatPanelVisible(true);
+    setScriptPanelVisible(true);
     toast.success(`Routing repair for ${item.extensionId}…`);
   };
 

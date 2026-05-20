@@ -52,6 +52,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   /** Empty-state "describe in chat" CTA + Sparkles button. */
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
+  const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   /** Active-flavor name surfaced in the panel header to give the concept impressions. */
   const setFlavorDialogRequested = useViewerStore((s) => s.setFlavorDialogRequested);
   const [activeFlavorName, setActiveFlavorName] = useState<string | undefined>();
@@ -333,8 +334,9 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                 variant="default"
                 size="sm"
                 onClick={() => {
-                  queueChatPrompt('I want to make a new extension. Help me describe it: what should it do?');
+                  queueChatPrompt('Author an extension for me. Help me describe it: what should it do?');
                   setChatPanelVisible(true);
+                  setScriptPanelVisible(true);
                 }}
               >
                 <Sparkles className="mr-2 h-3.5 w-3.5" />

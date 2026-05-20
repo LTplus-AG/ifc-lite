@@ -131,11 +131,13 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
       onApprovePlan(plan);
       return;
     }
-    // Default routing: open chat and seed it with a prompt that
-    // describes the approved plan. The chat panel picks up the
-    // pending prompt and starts an authoring turn.
+    // Default routing: open chat AND the script editor, then seed
+    // chat with a prompt describing the approved plan. The script
+    // panel is where the generated code lands — opening both keeps
+    // this consistent with the "Try it" flow.
     queueChatPrompt(buildAuthoringPrompt(plan));
     setChatPanelVisible(true);
+    setScriptPanelVisible(true);
     toast.success(`Routing "${plan.summary}" to the AI assistant…`);
   };
 

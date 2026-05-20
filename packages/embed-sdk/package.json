@@ -3,16 +3,23 @@
   "version": "1.14.3",
   "description": "SDK for embedding the IFC-Lite 3D viewer in any web page via iframe",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
-  "files": [
-    "src"
-  ],
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "dev": "pnpm exec tsc --watch"
+  },
   "dependencies": {
     "@ifc-lite/embed-protocol": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",
   "keywords": [
@@ -24,5 +31,8 @@
     "power-bi",
     "superset",
     "grafana"
+  ],
+  "files": [
+    "dist"
   ]
 }

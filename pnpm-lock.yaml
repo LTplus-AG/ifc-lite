@@ -864,13 +864,21 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@edge-runtime/vm@3.2.0)(@types/debug@4.1.13)(@types/node@25.8.0)(happy-dom@20.9.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.1)
 
-  packages/embed-protocol: {}
+  packages/embed-protocol:
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/embed-sdk:
     dependencies:
       '@ifc-lite/embed-protocol':
         specifier: workspace:^
         version: link:../embed-protocol
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/encoding:
     devDependencies:

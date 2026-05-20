@@ -252,6 +252,12 @@ export function CesiumOverlay({
   const setCesiumTerrainSource = useViewerStore((s) => s.setCesiumTerrainSource);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
   const setCesiumGlbLoaded = useViewerStore((s) => s.setCesiumGlbLoaded);
+  // While the user is editing placement (gizmo / OrthogonalHeight field), the
+  // automatic "don't sink below terrain" floor must be bypassed so the
+  // vertical drag has full range. See computeCesiumPlacement.bypassTerrainClamp.
+  const cesiumPlacementEditMode = useViewerStore((s) => s.cesiumPlacementEditMode);
+  const cesiumPlacementDraft = useViewerStore((s) => s.cesiumPlacementDraft);
+  const placementEditActive = cesiumPlacementEditMode || cesiumPlacementDraft !== null;
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; destroy?: () => void } | null>(null);
@@ -468,6 +474,7 @@ export function CesiumOverlay({
         ifcOriginHeight: modelTentative.modelOrigin.height,
         terrainHeight: terrainH,
         storeyElevations,
+        bypassTerrainClamp: placementEditActive,
       });
       const cameraPlacement = usesSeparateCameraBridge
         ? computeCesiumPlacement({
@@ -476,6 +483,7 @@ export function CesiumOverlay({
             ifcOriginHeight: cameraTentative.modelOrigin.height,
             terrainHeight: terrainH,
             storeyElevations,
+            bypassTerrainClamp: placementEditActive,
           })
         : placement;
       if (usesSeparateCameraBridge) {
@@ -483,7 +491,10 @@ export function CesiumOverlay({
         const deltaHeightMeters = (
           mapConversion.orthogonalHeight - cameraConversion.orthogonalHeight
         ) * mapScale;
-        const floorPlacementHeight = terrainH !== null
+        // The terrain floor here mirrors computeCesiumPlacement's Math.max —
+        // bypass it during placement editing so the gizmo can lower the model
+        // below terrain (e.g. basements, sub-grade structures).
+        const floorPlacementHeight = (terrainH !== null && !placementEditActive)
           ? terrainH + cameraPlacement.anchorOffset
           : Number.NEGATIVE_INFINITY;
         placement = {
@@ -597,6 +608,7 @@ export function CesiumOverlay({
     terrainEnabled,
     dataSource,
     storeyElevations,
+    placementEditActive,
     setCesiumTerrainHeight,
     setCesiumTerrainSource,
     setCesiumTerrainClipY,

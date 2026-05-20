@@ -45,6 +45,14 @@ export interface CesiumPlacementInput {
   ifcOriginHeight: number;
   terrainHeight: number | null;
   storeyElevations?: Map<number, number>;
+  /**
+   * When true, the automatic "don't sink below terrain" floor is bypassed and
+   * `placementHeight` follows `ifcOriginHeight` exactly. Set this while the
+   * user is editing placement via the gizmo / OrthogonalHeight field —
+   * otherwise `Math.max(ifcOriginHeight, terrainPlacementHeight)` silently
+   * pins the model to terrain and the vertical drag appears frozen.
+   */
+  bypassTerrainClamp?: boolean;
 }
 
 export interface CesiumPlacementResult {
@@ -64,6 +72,7 @@ export function computeCesiumPlacement({
   ifcOriginHeight,
   terrainHeight,
   storeyElevations,
+  bypassTerrainClamp = false,
 }: CesiumPlacementInput): CesiumPlacementResult {
   const bounds = coordinateInfo?.originalBounds;
   const modelCenterY = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
@@ -73,7 +82,10 @@ export function computeCesiumPlacement({
   const terrainPlacementHeight = terrainHeight !== null
     ? terrainHeight + anchorOffset
     : null;
-  const placementHeight = terrainPlacementHeight !== null
+  // Default: never let the model sink below terrain (Math.max floor). During
+  // placement editing the user's OrthogonalHeight IS the intent — honour it
+  // verbatim, including below-terrain values, so the vertical gizmo works.
+  const placementHeight = (terrainPlacementHeight !== null && !bypassTerrainClamp)
     ? Math.max(ifcOriginHeight, terrainPlacementHeight)
     : ifcOriginHeight;
 

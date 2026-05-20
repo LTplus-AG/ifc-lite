@@ -88,6 +88,35 @@ describe('cesium placement helpers', () => {
     assert.strictEqual(placement.terrainClipY, -48.599999999999994);
   });
 
+  it('clamps to terrain when the authored height is below it (default)', () => {
+    // ifcOriginHeight below terrain → Math.max floor lifts the model to terrain.
+    const placement = computeCesiumPlacement({
+      ifcOriginHeight: -20,
+      terrainHeight: 70.61,
+    });
+    assert.strictEqual(placement.placementHeight, 70.61);
+  });
+
+  it('bypasses the terrain floor during placement editing (vertical gizmo)', () => {
+    // Regression: with the Math.max floor always on, dragging the Z gizmo
+    // below terrain did nothing — placementHeight stayed pinned to terrain.
+    // bypassTerrainClamp lets OrthogonalHeight drive placement verbatim,
+    // including sub-grade values.
+    const below = computeCesiumPlacement({
+      ifcOriginHeight: -20,
+      terrainHeight: 70.61,
+      bypassTerrainClamp: true,
+    });
+    assert.strictEqual(below.placementHeight, -20);
+
+    const above = computeCesiumPlacement({
+      ifcOriginHeight: 120,
+      terrainHeight: 70.61,
+      bypassTerrainClamp: true,
+    });
+    assert.strictEqual(above.placementHeight, 120);
+  });
+
   it('computes OrthogonalHeight from target base altitude with shift and RTC', () => {
     const orthogonalHeight = computeOrthogonalHeightForBaseAltitude({
       coordinateInfo: {

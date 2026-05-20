@@ -252,12 +252,6 @@ export function CesiumOverlay({
   const setCesiumTerrainSource = useViewerStore((s) => s.setCesiumTerrainSource);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
   const setCesiumGlbLoaded = useViewerStore((s) => s.setCesiumGlbLoaded);
-  // While the user is editing placement (gizmo / OrthogonalHeight field), the
-  // automatic "don't sink below terrain" floor must be bypassed so the
-  // vertical drag has full range. See computeCesiumPlacement.bypassTerrainClamp.
-  const cesiumPlacementEditMode = useViewerStore((s) => s.cesiumPlacementEditMode);
-  const cesiumPlacementDraft = useViewerStore((s) => s.cesiumPlacementDraft);
-  const placementEditActive = cesiumPlacementEditMode || cesiumPlacementDraft !== null;
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; destroy?: () => void } | null>(null);
@@ -468,13 +462,17 @@ export function CesiumOverlay({
         bridgeRef.current = null;
         return;
       }
-      let placement = computeCesiumPlacement({
+      // Placement is purely IFC-authored — no terrain/storey clamp. The
+      // tentative bridges already carry the model's authored altitude
+      // (IfcMapConversion.OrthogonalHeight + geometry origin), so they ARE
+      // the final bridges. computeCesiumPlacement is still called for the
+      // clip-plane Y and diagnostics; placementHeight == ifcOriginHeight.
+      const placement = computeCesiumPlacement({
         coordinateInfo,
         projectedCRS,
         ifcOriginHeight: modelTentative.modelOrigin.height,
         terrainHeight: terrainH,
         storeyElevations,
-        bypassTerrainClamp: placementEditActive,
       });
       const cameraPlacement = usesSeparateCameraBridge
         ? computeCesiumPlacement({
@@ -483,55 +481,20 @@ export function CesiumOverlay({
             ifcOriginHeight: cameraTentative.modelOrigin.height,
             terrainHeight: terrainH,
             storeyElevations,
-            bypassTerrainClamp: placementEditActive,
           })
         : placement;
-      if (usesSeparateCameraBridge) {
-        const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
-        const deltaHeightMeters = (
-          mapConversion.orthogonalHeight - cameraConversion.orthogonalHeight
-        ) * mapScale;
-        // The terrain floor here mirrors computeCesiumPlacement's Math.max —
-        // bypass it during placement editing so the gizmo can lower the model
-        // below terrain (e.g. basements, sub-grade structures).
-        const floorPlacementHeight = (terrainH !== null && !placementEditActive)
-          ? terrainH + cameraPlacement.anchorOffset
-          : Number.NEGATIVE_INFINITY;
-        placement = {
-          ...placement,
-          placementHeight: Math.max(
-            cameraPlacement.placementHeight + deltaHeightMeters,
-            floorPlacementHeight,
-          ),
-        };
-      }
 
       console.debug(
         `[CesiumOverlay] placement decision: terrain=${terrainH?.toFixed(2) ?? 'null'}m`
         + ` source=${terrainSample?.source ?? 'none'}`
         + ` ref=${terrainSample?.reference ?? 'none'}`
         + ` ifcOHeight=${placement.ifcOriginHeight.toFixed(2)}m`
-        + ` anchorY=${placement.clampAnchorY.toFixed(2)}m`
-        + ` (minY=${placement.minY.toFixed(2)}m, ${storeyElevations?.size ?? 0} storeys)`
-        + ` placement=${placement.placementHeight.toFixed(2)}m`
+        + ` placement=${placement.placementHeight.toFixed(2)}m (= authored, no clamp)`
         + ` (terrain query: ${terrainMs.toFixed(0)}ms)`
       );
 
-      // Build the final bridge with the placement baked in (or reuse the
-      // tentative one when the placement matches its IFC-derived origin).
-      let bridge = modelTentative;
-      if (Math.abs(placement.placementHeight - placement.ifcOriginHeight) > 1e-6) {
-        const final = await createCesiumBridge(
-          mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
-          placement.placementHeight,
-        );
-        if (cancelled) return;
-        if (!final) {
-          bridgeRef.current = null;
-          return;
-        }
-        bridge = final;
-      }
+      // The model bridge is the tentative one — placement == authored origin.
+      const bridge = modelTentative;
 
       if (terrainSample) {
         setCesiumTerrainHeight(terrainH);
@@ -578,15 +541,11 @@ export function CesiumOverlay({
         }
       }
 
-      let cameraBridge = usesSeparateCameraBridge ? cameraTentative : bridge;
-      if (usesSeparateCameraBridge && Math.abs(cameraPlacement.placementHeight - cameraPlacement.ifcOriginHeight) > 1e-6) {
-        const finalCamera = await createCesiumBridge(
-          cameraConversion, projectedCRS, coordinateInfo, lengthUnitScale,
-          cameraPlacement.placementHeight,
-        );
-        if (cancelled) return;
-        cameraBridge = finalCamera ?? cameraTentative;
-      }
+      // Camera bridge: the separate camera-tentative when a placement draft
+      // is previewing (camera holds the base frame while the model moves),
+      // otherwise the model bridge itself. Both are already at their
+      // authored altitude — no placement-override rebuild.
+      const cameraBridge = usesSeparateCameraBridge ? cameraTentative : bridge;
 
       bridgeRef.current = bridge;
       cameraBridgeRef.current = cameraBridge;
@@ -608,7 +567,6 @@ export function CesiumOverlay({
     terrainEnabled,
     dataSource,
     storeyElevations,
-    placementEditActive,
     setCesiumTerrainHeight,
     setCesiumTerrainSource,
     setCesiumTerrainClipY,

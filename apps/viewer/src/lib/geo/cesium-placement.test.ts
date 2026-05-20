@@ -51,7 +51,9 @@ describe('cesium placement helpers', () => {
     assert.strictEqual(shouldPreferOrthometricTerrain(undefined), false);
   });
 
-  it('computes terrain-clamped placement and clip plane from storey anchor', () => {
+  it('places the model at its authored IFC height — no terrain/storey clamp', () => {
+    // Model placement is purely IfcMapConversion.OrthogonalHeight + the
+    // geometry origin. Terrain and storey data never move the model.
     const placement = computeCesiumPlacement({
       coordinateInfo: {
         originShift: { x: 0, y: 0, z: 0 },
@@ -71,50 +73,25 @@ describe('cesium placement helpers', () => {
       storeyElevations: new Map([[1, -3], [2, 0], [3, 3]]),
     });
 
+    // placementHeight == authored ifcOriginHeight, NOT terrain+anchorOffset.
+    assert.strictEqual(placement.placementHeight, 244);
+    // clampAnchorY / anchorOffset are still derived (gizmo + clip math use
+    // them) but no longer feed placementHeight.
     assert.strictEqual(placement.clampAnchorY, 0);
     assert.strictEqual(placement.anchorOffset, 3);
-    assert.strictEqual(placement.placementHeight, 248);
-    assert.strictEqual(placement.terrainClipY, 0);
     assert.strictEqual(placement.preferOrthometricTerrain, true);
   });
 
-  it('preserves authored OrthogonalHeight when it is already above terrain', () => {
-    const placement = computeCesiumPlacement({
-      ifcOriginHeight: 244,
-      terrainHeight: 195.4,
-    });
+  it('keeps the authored height whether it is above OR below terrain', () => {
+    // Above terrain — unchanged.
+    const above = computeCesiumPlacement({ ifcOriginHeight: 244, terrainHeight: 195.4 });
+    assert.strictEqual(above.placementHeight, 244);
 
-    assert.strictEqual(placement.placementHeight, 244);
-    assert.strictEqual(placement.terrainClipY, -48.599999999999994);
-  });
-
-  it('clamps to terrain when the authored height is below it (default)', () => {
-    // ifcOriginHeight below terrain → Math.max floor lifts the model to terrain.
-    const placement = computeCesiumPlacement({
-      ifcOriginHeight: -20,
-      terrainHeight: 70.61,
-    });
-    assert.strictEqual(placement.placementHeight, 70.61);
-  });
-
-  it('bypasses the terrain floor during placement editing (vertical gizmo)', () => {
-    // Regression: with the Math.max floor always on, dragging the Z gizmo
-    // below terrain did nothing — placementHeight stayed pinned to terrain.
-    // bypassTerrainClamp lets OrthogonalHeight drive placement verbatim,
-    // including sub-grade values.
-    const below = computeCesiumPlacement({
-      ifcOriginHeight: -20,
-      terrainHeight: 70.61,
-      bypassTerrainClamp: true,
-    });
+    // Below terrain — the model stays sub-grade, NOT lifted to terrain.
+    // (Regression: the old Math.max floor pinned it to terrain, which froze
+    //  the vertical placement gizmo and lifted basements above ground.)
+    const below = computeCesiumPlacement({ ifcOriginHeight: -20, terrainHeight: 70.61 });
     assert.strictEqual(below.placementHeight, -20);
-
-    const above = computeCesiumPlacement({
-      ifcOriginHeight: 120,
-      terrainHeight: 70.61,
-      bypassTerrainClamp: true,
-    });
-    assert.strictEqual(above.placementHeight, 120);
   });
 
   it('computes OrthogonalHeight from target base altitude with shift and RTC', () => {

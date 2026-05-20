@@ -45,14 +45,6 @@ export interface CesiumPlacementInput {
   ifcOriginHeight: number;
   terrainHeight: number | null;
   storeyElevations?: Map<number, number>;
-  /**
-   * When true, the automatic "don't sink below terrain" floor is bypassed and
-   * `placementHeight` follows `ifcOriginHeight` exactly. Set this while the
-   * user is editing placement via the gizmo / OrthogonalHeight field —
-   * otherwise `Math.max(ifcOriginHeight, terrainPlacementHeight)` silently
-   * pins the model to terrain and the vertical drag appears frozen.
-   */
-  bypassTerrainClamp?: boolean;
 }
 
 export interface CesiumPlacementResult {
@@ -66,28 +58,32 @@ export interface CesiumPlacementResult {
   preferOrthometricTerrain: boolean;
 }
 
+/**
+ * Resolve where the model sits in Cesium.
+ *
+ * Placement is PURELY the IFC's authored altitude — `ifcOriginHeight`
+ * (IfcMapConversion.OrthogonalHeight + the geometry origin). There is NO
+ * automatic terrain or storey clamp: the model goes exactly where the file
+ * says, full stop. Terrain is queried only to inform the camera and the
+ * optional below-terrain clip plane; it never moves the model.
+ *
+ * `clampAnchorY` / `anchorOffset` are still derived (the placement gizmo and
+ * the clip-plane math consume them) but they no longer feed `placementHeight`.
+ */
 export function computeCesiumPlacement({
   coordinateInfo,
   projectedCRS,
   ifcOriginHeight,
   terrainHeight,
   storeyElevations,
-  bypassTerrainClamp = false,
 }: CesiumPlacementInput): CesiumPlacementResult {
   const bounds = coordinateInfo?.originalBounds;
   const modelCenterY = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
   const minY = bounds?.min.y ?? 0;
   const clampAnchorY = findClampAnchorY(bounds, storeyElevations);
   const anchorOffset = modelCenterY - clampAnchorY;
-  const terrainPlacementHeight = terrainHeight !== null
-    ? terrainHeight + anchorOffset
-    : null;
-  // Default: never let the model sink below terrain (Math.max floor). During
-  // placement editing the user's OrthogonalHeight IS the intent — honour it
-  // verbatim, including below-terrain values, so the vertical gizmo works.
-  const placementHeight = (terrainPlacementHeight !== null && !bypassTerrainClamp)
-    ? Math.max(ifcOriginHeight, terrainPlacementHeight)
-    : ifcOriginHeight;
+  // Model placement = authored IFC altitude. No clamp. No auto-adjust.
+  const placementHeight = ifcOriginHeight;
 
   return {
     clampAnchorY,

@@ -29,7 +29,6 @@ import {
   PanelRightOpen,
   Undo2,
   Redo2,
-  Sparkles,
   Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -417,19 +416,27 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
             <TooltipContent>Save (Ctrl+S)</TooltipContent>
           </Tooltip>
 
+          {/* Save-as-tool — the explicit, always-visible bridge from a
+              one-shot script to a persistent toolbar button. A labelled
+              outline button (not a buried icon) so the "keep this"
+              step is discoverable without nagging. */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant="ghost"
-                size="icon-xs"
+                variant="outline"
+                size="sm"
                 onClick={() => setPromoteOpen(true)}
                 disabled={!canPromote}
-                aria-label="Promote script to a persistent tool"
+                aria-label="Save this script as a persistent tool"
+                className="gap-1"
               >
-                <Sparkles className="h-3.5 w-3.5" />
+                <Wrench className="h-3.5 w-3.5" />
+                Save as tool
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Promote to a persistent tool</TooltipContent>
+            <TooltipContent>
+              Turn this script into a permanent one-click button in your toolbar
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>

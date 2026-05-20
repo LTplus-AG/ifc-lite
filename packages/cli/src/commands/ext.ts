@@ -289,10 +289,13 @@ async function extCapabilitiesCommand(args: string[]): Promise<void> {
   // the capability shape — most catalogue rows are namespace-level
   // patterns like `model.read` which compute as their declared tier.
   const rows = catalogue.map((entry) => {
-    const parsed = parseCapability(entry.raw);
+    // Catalogue entries store scope + action separately; the capability
+    // string parsers/printers expect the joined `scope.action` form.
+    const raw = `${entry.scope}.${entry.action}`;
+    const parsed = parseCapability(raw);
     const risk = parsed.ok ? computeRisks([parsed.value])[0] : undefined;
     return {
-      raw: entry.raw,
+      raw,
       description: entry.description,
       risk: risk?.tier ?? 'red',
     };

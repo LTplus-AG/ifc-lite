@@ -18,7 +18,7 @@
 import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { lookupEpsgByCode, lookupProj4 } from '@ifc-lite/data';
+import { lookupEpsgByCode } from '@ifc-lite/data';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
 import { resolvePrecisionDef } from './precision-grids';
 
@@ -217,31 +217,6 @@ function sanitizeProj4(def: string, code?: string | null, datumName?: string | n
   }
 
   return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim() + ' ' + towgs84;
-}
-
-/**
- * Inspect a resolved projection string for diagnostics.
- * Returns properties the GeoreferencingPanel surfaces to users.
- */
-export interface ProjectionDefDiagnostics {
-  hasTowgs84: boolean;
-  hasNadgrids: boolean;
-  ellipsoid: string | null;
-  datumKnown: boolean;
-}
-
-export function inspectProjectionDef(def: string | null, datumName?: string | null): ProjectionDefDiagnostics {
-  if (!def) {
-    return { hasTowgs84: false, hasNadgrids: false, ellipsoid: null, datumKnown: false };
-  }
-  const ellpsMatch = def.match(/\+ellps=(\S+)/);
-  const datumKey = datumName?.trim().toLowerCase() ?? '';
-  return {
-    hasTowgs84: /\+towgs84=/.test(def),
-    hasNadgrids: /\+nadgrids=/.test(def) && !def.includes('+nadgrids=@null'),
-    ellipsoid: ellpsMatch?.[1] ?? null,
-    datumKnown: datumKey ? Object.prototype.hasOwnProperty.call(DATUM_TOWGS84, datumKey) : false,
-  };
 }
 
 /**

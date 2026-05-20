@@ -398,7 +398,6 @@ export async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolea
         await ready;
       }
       loadedGrids.add(spec.key);
-      console.info(`[precision-grid] loaded ${spec.key} (${spec.region})`);
       return true;
     } catch (error) {
       console.warn(`[precision-grid] ${spec.key}: load failed, falling back to +towgs84`, error);

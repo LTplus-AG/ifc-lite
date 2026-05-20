@@ -123,22 +123,3 @@ export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
     </Tooltip>
   );
 }
-
-/**
- * Sibling export used in compact panels (no tooltip, just the icon/text).
- * Falls back to a neutral "approx" badge when no precision grid is
- * registered for the CRS.
- */
-export function PrecisionGridStaticBadge({ crsName }: PrecisionGridBadgeProps) {
-  const code = extractEpsgCode(crsName);
-  const spec = code ? PRECISION_GRIDS[code] : undefined;
-  if (!spec) {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-zinc-300/60 dark:border-zinc-700/60 bg-zinc-50 dark:bg-zinc-900/50 text-zinc-500 dark:text-zinc-400 shrink-0">
-        <AlertTriangle className="h-2.5 w-2.5" />
-        +towgs84
-      </span>
-    );
-  }
-  return null;
-}

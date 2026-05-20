@@ -9,7 +9,6 @@ import { computeCesiumModelOrigin } from './cesium-bridge.js';
 import {
   computeFootprintGeoJSON,
   computeModelCenterInIfcMeters,
-  inspectProjectionDef,
   reprojectFromLatLon,
   reprojectToLatLon,
   resolveProjection,
@@ -120,23 +119,6 @@ describe('reproject helpers', () => {
     assert.ok(def, 'alias should resolve via WELL_KNOWN_CRS');
     assert.ok(def!.includes('+proj=sterea'), 'should be RD oblique stereographic');
     assert.ok(def!.includes('+towgs84='), 'should carry datum-shift parameters');
-  });
-
-  it('exposes projection diagnostics for the GeoreferencingPanel', async () => {
-    const crs: ProjectedCRS = { id: 1, name: 'EPSG:28992', mapUnit: 'METRE' };
-    const def = await resolveProjection(crs);
-    const diag = inspectProjectionDef(def, 'Amersfoort');
-    assert.strictEqual(diag.hasTowgs84, true);
-    assert.strictEqual(diag.hasNadgrids, false);
-    assert.strictEqual(diag.ellipsoid, 'bessel');
-    assert.strictEqual(diag.datumKnown, true);
-  });
-
-  it('reports an unknown datum when no fallback is registered', () => {
-    const fakeDef = '+proj=utm +zone=11 +ellps=clrk80 +units=m +no_defs';
-    const diag = inspectProjectionDef(fakeDef, 'Some Obscure Datum');
-    assert.strictEqual(diag.datumKnown, false);
-    assert.strictEqual(diag.hasTowgs84, false);
   });
 
   it('handles Bonsai files with explicit MapUnit=m + mm project + unset MapConversion.Scale', async () => {

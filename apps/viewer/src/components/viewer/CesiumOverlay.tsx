@@ -437,7 +437,6 @@ export function CesiumOverlay({
       // then Open-Meteo as a fast network fallback that works even with
       // Google Photorealistic 3D Tiles (where there's no Cesium terrain
       // provider for getHeight to read). Cached per-session.
-      const t0 = performance.now();
       const preferOrthometricTerrain = shouldPreferOrthometricTerrain(projectedCRS);
       let terrainSample = null;
       try {
@@ -452,7 +451,6 @@ export function CesiumOverlay({
       }
       catch (err) { console.warn('[CesiumOverlay] terrain query failed:', err); }
       if (cancelled) return;
-      const terrainMs = performance.now() - t0;
       const terrainH = terrainSample?.height ?? null;
       const modelTentative = usesSeparateCameraBridge
         ? await createCesiumBridge(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale)
@@ -466,7 +464,7 @@ export function CesiumOverlay({
       // tentative bridges already carry the model's authored altitude
       // (IfcMapConversion.OrthogonalHeight + geometry origin), so they ARE
       // the final bridges. computeCesiumPlacement is still called for the
-      // clip-plane Y and diagnostics; placementHeight == ifcOriginHeight.
+      // clip-plane Y; placementHeight == ifcOriginHeight.
       const placement = computeCesiumPlacement({
         coordinateInfo,
         projectedCRS,
@@ -483,15 +481,6 @@ export function CesiumOverlay({
             storeyElevations,
           })
         : placement;
-
-      console.debug(
-        `[CesiumOverlay] placement decision: terrain=${terrainH?.toFixed(2) ?? 'null'}m`
-        + ` source=${terrainSample?.source ?? 'none'}`
-        + ` ref=${terrainSample?.reference ?? 'none'}`
-        + ` ifcOHeight=${placement.ifcOriginHeight.toFixed(2)}m`
-        + ` placement=${placement.placementHeight.toFixed(2)}m (= authored, no clamp)`
-        + ` (terrain query: ${terrainMs.toFixed(0)}ms)`
-      );
 
       // The model bridge is the tentative one — placement == authored origin.
       const bridge = modelTentative;
@@ -534,9 +523,6 @@ export function CesiumOverlay({
             const cam = renderer.getCamera();
             const pos = cam.getPosition();
             cam.setPosition(pos.x, pos.y - dh, pos.z);
-            console.debug(
-              `[CesiumOverlay] placement Δh=${dh.toFixed(2)}m → shifted IFC camera Y by ${(-dh).toFixed(2)}m to hold world camera`,
-            );
           }
         }
       }

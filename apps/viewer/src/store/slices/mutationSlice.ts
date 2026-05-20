@@ -205,6 +205,20 @@ export interface MutationSlice {
    * mutations consumers.
    */
   mutationBatchTags: Map<string, string>;
+  /**
+   * Maps mutationId → the renderer-frame mesh translation that
+   * accompanied a placement-move mutation (`translateEntity` /
+   * `setEntityPosition`). The mutation itself only records the
+   * IfcCartesianPoint coordinate change; the rendered mesh moves
+   * via a separate `setPendingMeshTranslations` call. Undo / redo
+   * of the IFC value alone would leave the 3D mesh stranded at the
+   * moved position, so the handlers replay (redo) or negate (undo)
+   * the translation recorded here.
+   *
+   * Side-channel for the same reason as `mutationBatchTags`: keeps
+   * the renderer coupling out of the published Mutation interface.
+   */
+  mutationMeshTranslations: Map<string, { globalId: number; rendererDelta: [number, number, number] }>;
   /** Models with unsaved changes */
   dirtyModels: Set<string>;
   /** Version counter to trigger re-renders when mutations change */
@@ -343,11 +357,17 @@ export interface MutationSlice {
    * simple `IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint`
    * chain (mapped representations, 2D placements, non-product
    * entities). The viewer surfaces the reason as a toast.
+   *
+   * `batchId` (optional) tags the mutation so a drag that emits
+   * many per-frame `translateEntity` calls collapses to one undo
+   * step. The gizmo passes one id per drag; omit it for a
+   * standalone move (e.g. a single numeric-input commit).
    */
   translateEntity: (
     modelId: string,
     expressId: number,
     deltaIfc: [number, number, number],
+    batchId?: string,
   ) => { ok: true; newCoordinates: [number, number, number] } | { ok: false; reason: string };
   /**
    * Absolute version of `translateEntity` — replaces the entity's
@@ -975,6 +995,7 @@ export const createMutationSlice: StateCreator<
   undoStacks: new Map(),
   redoStacks: new Map(),
   mutationBatchTags: new Map(),
+  mutationMeshTranslations: new Map(),
   dirtyModels: new Set(),
   mutationVersion: 0,
   georefMutations: new Map(),
@@ -1338,7 +1359,7 @@ export const createMutationSlice: StateCreator<
     return batchId;
   },
 
-  translateEntity: (modelId, expressId, delta) => {
+  translateEntity: (modelId, expressId, delta, batchId) => {
     // Read the existing placement chain WITHOUT committing the edit
     // yet — we'll route the actual write through `setPositionalAttribute`
     // below so undo/redo + dirty-tracking come for free.
@@ -1361,7 +1382,7 @@ export const createMutationSlice: StateCreator<
     const next: [number, number, number] = [x + delta[0], y + delta[1], z + delta[2]];
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
-    get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, next);
+    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, next);
 
     // Push the renderer-frame delta so the visible mesh follows
     // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
@@ -1371,6 +1392,23 @@ export const createMutationSlice: StateCreator<
     const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
     const rendererDelta: [number, number, number] = [delta[0], delta[2], -delta[1]];
     get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
+
+    // Record the mesh translation against the mutation id so undo /
+    // redo can move the rendered mesh back / forward — the mutation
+    // alone only carries the IfcCartesianPoint coordinate change.
+    // When a `batchId` is supplied (gizmo drag), tag the mutation so
+    // all the drag's per-frame translates collapse to one undo step.
+    if (mutation) {
+      const meshTags = new Map(get().mutationMeshTranslations);
+      meshTags.set(mutation.id, { globalId, rendererDelta });
+      if (batchId) {
+        const batchTags = new Map(get().mutationBatchTags);
+        batchTags.set(mutation.id, batchId);
+        set({ mutationMeshTranslations: meshTags, mutationBatchTags: batchTags });
+      } else {
+        set({ mutationMeshTranslations: meshTags });
+      }
+    }
 
     return { ok: true, newCoordinates: next };
   },
@@ -1397,10 +1435,18 @@ export const createMutationSlice: StateCreator<
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;
     const dz = position[2] - oldZ;
-    get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, position);
+    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, position);
     if (dx !== 0 || dy !== 0 || dz !== 0) {
       const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-      get().setPendingMeshTranslations(new Map([[globalId, [dx, dz, -dy]]]));
+      const rendererDelta: [number, number, number] = [dx, dz, -dy];
+      get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
+      // Record so undo / redo can move the rendered mesh — see the
+      // matching note in `translateEntity`.
+      if (mutation) {
+        const tags = new Map(get().mutationMeshTranslations);
+        tags.set(mutation.id, { globalId, rendererDelta });
+        set({ mutationMeshTranslations: tags });
+      }
     }
     return { ok: true, newCoordinates: position };
   },
@@ -2423,6 +2469,18 @@ export const createMutationSlice: StateCreator<
           view.setPositionalAttribute(mutation.entityId, index, mutation.oldValue as IfcAttributeValue, true);
         }
       }
+      // If this mutation carried a mesh translation (gizmo / numeric
+      // move), reverse it so the rendered mesh follows the undo.
+      const meshMove = get().mutationMeshTranslations.get(mutation.id);
+      if (meshMove) {
+        get().setPendingMeshTranslations(
+          new Map([[meshMove.globalId, [
+            -meshMove.rendererDelta[0],
+            -meshMove.rendererDelta[1],
+            -meshMove.rendererDelta[2],
+          ]]]),
+        );
+      }
     } else if (mutation.type === 'CREATE_ENTITY') {
       // Undo of a create: stash the NewEntity payload so a subsequent redo
       // can restore it. Without this, redo finds an empty stash and becomes
@@ -2580,6 +2638,14 @@ export const createMutationSlice: StateCreator<
       const index = positionalIndex(mutation.attributeName);
       if (index !== null && mutation.newValue !== undefined) {
         view.setPositionalAttribute(mutation.entityId, index, mutation.newValue as IfcAttributeValue, true);
+      }
+      // Replay the mesh translation forward so the rendered mesh
+      // follows the redo — mirror of the undo reversal above.
+      const meshMove = get().mutationMeshTranslations.get(mutation.id);
+      if (meshMove) {
+        get().setPendingMeshTranslations(
+          new Map([[meshMove.globalId, meshMove.rendererDelta]]),
+        );
       }
     } else if (mutation.type === 'CREATE_ENTITY') {
       // Redo of a create: replay from the stashed NewEntity. Symmetrical to

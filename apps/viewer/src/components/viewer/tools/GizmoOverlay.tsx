@@ -81,6 +81,7 @@ export function GizmoOverlay() {
     axisScreenPerMeter: Vec2; // dx/dy in pixels for a +1m world move
     accumulatedDelta: Vec3; // IFC-frame delta applied so far this drag
     cursorStart: Vec2;
+    batchId: string; // shared by every per-frame translate so one Ctrl+Z reverts the whole drag
   } | null>(null);
 
   // Decide whether the gizmo is renderable at all this frame. The
@@ -198,6 +199,7 @@ export function GizmoOverlay() {
       axisScreenPerMeter: perMetre,
       accumulatedDelta: { x: 0, y: 0, z: 0 },
       cursorStart: { x: e.clientX, y: e.clientY },
+      batchId: `gizmo_drag_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     };
   };
 
@@ -228,7 +230,7 @@ export function GizmoOverlay() {
     // change, so leaving the accumulator at its previous value means
     // the next pointer-move frame retries the full delta instead of
     // silently dropping it. Keeps drag state and model state in sync.
-    const result = translateEntity(ready.modelId, ready.expressId, delta);
+    const result = translateEntity(ready.modelId, ready.expressId, delta, drag.batchId);
     if (!result.ok) return;
     if (drag.axis === 'x') previous.x = metres;
     else if (drag.axis === 'y') previous.y = metres;

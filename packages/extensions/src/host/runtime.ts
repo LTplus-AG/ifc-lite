@@ -49,6 +49,16 @@ export interface RuntimeSandboxHandle {
 
   /** Dispose the underlying sandbox and free its resources. */
   dispose(): Promise<void> | void;
+
+  /**
+   * Optional liveness flag. When the host's sandbox implementation can
+   * detect that its underlying realm was torn down (QuickJS context
+   * disposed, WASM aborted), it exposes `true` here so the runtime can
+   * drop a stale activation record and rebuild instead of handing back
+   * a dead handle. Implementations that can't tell may omit it — the
+   * runtime treats `undefined` as "assume alive".
+   */
+  readonly isDisposed?: boolean;
 }
 
 export interface RuntimeRunOptions {
@@ -200,7 +210,13 @@ export class ExtensionRuntime {
     bundle?: Bundle,
   ): Promise<ActivationRecord> {
     const existing = this.active.get(extensionId);
-    if (existing) return existing;
+    // Return the cached activation only if its sandbox is still alive.
+    // A stale record — sandbox disposed by a flavor switch, a prior
+    // run's QuickJS crash, or self-heal teardown — would otherwise be
+    // handed back and the next setGlobal/run would fail with
+    // "Lifetime not alive". Drop it so doActivate rebuilds fresh.
+    if (existing && !existing.sandbox.isDisposed) return existing;
+    if (existing) this.active.delete(extensionId);
     // Coalesce concurrent activate() calls for the same id. Without
     // this, two overlapping callers both miss `active`, both build a
     // sandbox, and the second leaks because only one wins the put.

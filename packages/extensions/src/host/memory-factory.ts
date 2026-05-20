@@ -130,6 +130,10 @@ class MemorySandboxHandle implements RuntimeSandboxHandle {
     this.disposed = true;
     this.globals = {};
   }
+
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
 }
 
 /**

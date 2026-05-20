@@ -78,21 +78,27 @@ export async function runExtensionCommand(
     // retry the user sees a cryptic crash and has to manually disable
     // → enable the extension to recover.
     const runOnce = async (isRetry: boolean): Promise<RuntimeRunResult> => {
-      const activation = await deps.runtime.activate(record.id, grants, bundle);
-      await deps.dispatcher.fire(`onCommand:${commandId}` as const);
-      // Set ctx via setGlobal. The BimSandboxHandle special-cases
-      // `__ifclite_ctx__` to synthesize from the bridge-installed
-      // `globalThis.bim` (the wrapped SDK is cyclic and would crash
-      // JSON.stringify). The wrap also falls back to globalThis.bim
-      // if ctx is somehow unset.
-      const ctx: ExtensionContextV1 = { bim: deps.sdk };
-      await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
       try {
+        const activation = await deps.runtime.activate(record.id, grants, bundle);
+        await deps.dispatcher.fire(`onCommand:${commandId}` as const);
+        // Set ctx via setGlobal. The BimSandboxHandle special-cases
+        // `__ifclite_ctx__` to synthesize from the bridge-installed
+        // `globalThis.bim` (the wrapped SDK is cyclic and would crash
+        // JSON.stringify). The wrap also falls back to globalThis.bim
+        // if ctx is somehow unset. setGlobal is inside the try so a
+        // "Sandbox disposed" on a dead handle also triggers the retry.
+        const ctx: ExtensionContextV1 = { bim: deps.sdk };
+        await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
         return await activation.sandbox.run(wrappedSource, { filename: entry });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isLifetimeError = /Lifetime not alive|QuickJSUseAfterFree|Sandbox was torn down/i.test(msg);
-        if (isLifetimeError && !isRetry) {
+        // Any signal that the sandbox realm died — QuickJS use-after-
+        // free, our own teardown guard, or a setGlobal on a disposed
+        // handle. The runtime's activate() now drops dead records, so
+        // a single retry gets a genuinely fresh sandbox.
+        const isDeadSandbox =
+          /Lifetime not alive|QuickJSUseAfterFree|Sandbox was torn down|Sandbox disposed|not initialized/i.test(msg);
+        if (isDeadSandbox && !isRetry) {
           await deps.runtime.deactivate(record.id);
           return runOnce(true);
         }

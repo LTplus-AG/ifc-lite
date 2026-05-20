@@ -28,7 +28,9 @@ import {
   Loader2,
   ArrowDown,
   Zap,
+  Wrench,
 } from 'lucide-react';
+import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -217,6 +219,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   } | null>(null);
   const setPendingAuthoredBundle = useViewerStore((s) => s.setPendingAuthoredBundle);
   const setExtensionsPanelVisible = useViewerStore((s) => s.setExtensionsPanelVisible);
+  const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);
+  const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
+  const chatToolReady = useViewerStore((s) => s.chatToolReady);
+  const setChatToolReady = useViewerStore((s) => s.setChatToolReady);
+  /** Local: open state for the inline Promote-to-tool dialog (script path). */
+  const [promoteFromChatOpen, setPromoteFromChatOpen] = useState(false);
 
   /**
    * Try to parse an authoring response as an extension bundle. If it
@@ -225,10 +233,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
    * the regular chat flow already showed the response.
    */
   const handleAuthoringResponse = useCallback(
-    async (fullText: string) => {
+    async (fullText: string): Promise<boolean> => {
       try {
         const result = validateBundleResponse(fullText);
-        if (!result.ok || !result.manifest || !result.parsed) return;
+        if (!result.ok || !result.manifest || !result.parsed) return false;
         // Assemble a Bundle from the parsed pieces, pack it, hand it
         // to the Extensions panel.
         const files = new Map<string, { path: string; bytes: Uint8Array; text?: string }>();
@@ -244,15 +252,16 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         }
         const bytes = packBundle({ manifest: result.manifest, files });
         setPendingAuthoredBundle(bytes);
-        setExtensionsPanelVisible(true);
-        toast.success(
-          `Authored bundle ready — review ${result.manifest.id} v${result.manifest.version} in Extensions.`,
-        );
+        // Drive the inline CTA card instead of relying on a toast the
+        // user scrolls past — the bundle is one click from installed.
+        setChatToolReady({ kind: 'bundle', name: result.manifest.name });
+        return true;
       } catch (err) {
         console.warn('[ChatPanel] authoring response parse failed:', err);
+        return false;
       }
     },
-    [setPendingAuthoredBundle, setExtensionsPanelVisible],
+    [setPendingAuthoredBundle, setChatToolReady],
   );
   const messages = useViewerStore((s) => s.chatMessages);
   const status = useViewerStore((s) => s.chatStatus);
@@ -490,6 +499,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       setChatError('AI assistant is available with Desktop Pro.');
       return;
     }
+    // Clear any stale post-authoring CTA — this turn re-establishes it
+    // on completion if it's another authoring turn.
+    setChatToolReady(null);
 
     // Classify the prompt for the action log and to nudge the user
     // toward plan-first authoring when appropriate. The classifier is
@@ -905,14 +917,23 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
         // Authoring loop: when the classifier flagged this turn as
         // 'authoring' or 'fork', the response may contain a bundle in
-        // the ifc-extension-* fenced format. Try to validate + offer
-        // to install. Failures stay silent — the existing chat flow
-        // already surfaced the response; this is opt-in.
+        // the ifc-extension-* fenced format. If it does, surface the
+        // bundle CTA. If it doesn't but code landed in the editor,
+        // surface the script CTA so "promote to tool" is one click
+        // away — the user never has to hunt for the Promote button.
         if (
           (classified.intent === 'authoring' || classified.intent === 'fork')
           && !options?.intent
         ) {
-          void handleAuthoringResponse(fullText);
+          void handleAuthoringResponse(fullText).then((bundleFound) => {
+            if (bundleFound) return;
+            const code = useViewerStore.getState().scriptEditorContent;
+            const hasRealCode =
+              code.trim().length > 0 && !/Write your BIM script here/.test(code);
+            if (hasRealCode) {
+              setChatToolReady({ kind: 'script', name: '' });
+            }
+          });
         }
 
         commitAssistantTurn();
@@ -985,6 +1006,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     addMessage, setChatStatus, updateStreaming, finalizeAssistant,
     setChatError, setChatAbortController, clearAttachments, setChatUsage, resizeInput,
     buildRepairPromptFromLiveState, triggerAutoRepair, execute, extensionHost,
+    setChatToolReady, handleAuthoringResponse,
   ]);
 
   const handleSend = useCallback(() => {
@@ -1094,20 +1116,22 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     if (messages.length <= 2) {
       resetScriptEditorForNewChat();
       clearMessages();
+      setChatToolReady(null);
       setInputText('');
       setLastFinishReason(null);
     } else {
       setShowClearConfirm(true);
     }
-  }, [messages.length, clearMessages, resetScriptEditorForNewChat]);
+  }, [messages.length, clearMessages, resetScriptEditorForNewChat, setChatToolReady]);
 
   const confirmClear = useCallback(() => {
     resetScriptEditorForNewChat();
     clearMessages();
+    setChatToolReady(null);
     setInputText('');
     setLastFinishReason(null);
     setShowClearConfirm(false);
-  }, [clearMessages, resetScriptEditorForNewChat]);
+  }, [clearMessages, resetScriptEditorForNewChat, setChatToolReady]);
 
   // ── File upload (button + drag-drop + paste) ──
   const processFiles = useCallback(async (files: FileList | File[]) => {
@@ -1578,6 +1602,66 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           ))}
         </div>
       )}
+
+      {/* Post-authoring "install" CTA — the seam between "AI wrote the
+          tool" and "tool is usable". Without this the user has to hunt
+          for the Promote button in another panel. */}
+      {chatToolReady && (
+        <div className="shrink-0 border-t bg-primary/5 px-3 py-2.5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+              <Wrench className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium">
+                {chatToolReady.kind === 'bundle'
+                  ? `Tool ready: ${chatToolReady.name || 'your extension'}`
+                  : 'Your tool code is ready'}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {chatToolReady.kind === 'bundle'
+                  ? 'Review the capabilities it needs, then install it as a one-click tool.'
+                  : 'Install it as a persistent one-click tool — pick a name, icon, and hotkey.'}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (chatToolReady.kind === 'bundle') {
+                  // pendingAuthoredBundle is already set — the Extensions
+                  // panel routes it straight into CapabilityReview.
+                  setExtensionsRequestedView('installed');
+                  setExtensionsPanelVisible(true);
+                } else {
+                  setPromoteFromChatOpen(true);
+                }
+                setChatToolReady(null);
+              }}
+              className="shrink-0"
+            >
+              <Wrench className="mr-1 h-3.5 w-3.5" />
+              {chatToolReady.kind === 'bundle' ? 'Review & install' : 'Install as tool'}
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setChatToolReady(null)}
+              aria-label="Dismiss"
+              className="shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Promote-to-tool dialog, opened from the script-path CTA above.
+          Reads the live script editor content as the tool source. */}
+      <PromoteToolDialog
+        open={promoteFromChatOpen}
+        source={useViewerStore.getState().scriptEditorContent}
+        onClose={() => setPromoteFromChatOpen(false)}
+      />
 
       {/* Input area */}
       <div className="shrink-0 border-t p-2">

@@ -48,6 +48,23 @@ export interface ExtensionsSlice {
    */
   flavorDialogRequested: boolean;
   setFlavorDialogRequested: (open: boolean) => void;
+  /**
+   * Post-authoring "install" handoff. After the chat finishes an
+   * authoring turn, it sets this so the chat panel can render a
+   * prominent inline CTA — the user no longer has to hunt for a
+   * Promote button in another panel.
+   *
+   *   kind 'bundle' — a full `.iflx` bundle was synthesised and is
+   *                   waiting in `pendingAuthoredBundle`; the CTA
+   *                   routes to the Extensions panel review.
+   *   kind 'script' — the assistant wrote a one-shot script into the
+   *                   editor; the CTA opens PromoteToolDialog.
+   *
+   * Cleared when the user acts on it, dismisses it, or starts a new
+   * chat.
+   */
+  chatToolReady: { kind: 'bundle' | 'script'; name: string } | null;
+  setChatToolReady: (v: { kind: 'bundle' | 'script'; name: string } | null) => void;
 }
 
 export const createExtensionsSlice: StateCreator<
@@ -68,4 +85,6 @@ export const createExtensionsSlice: StateCreator<
   setIdeasOpenEmptyPlan: (ideasOpenEmptyPlan) => set({ ideasOpenEmptyPlan }),
   flavorDialogRequested: false,
   setFlavorDialogRequested: (flavorDialogRequested) => set({ flavorDialogRequested }),
+  chatToolReady: null,
+  setChatToolReady: (chatToolReady) => set({ chatToolReady }),
 });

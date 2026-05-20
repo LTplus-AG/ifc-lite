@@ -62,6 +62,7 @@ export class Sandbox {
   async init(): Promise<void> {
     const module = await getModule();
     this.runtime = module.newRuntime();
+    console.log(`[ext-diag] Sandbox ${this.sessionId} init — new QuickJS runtime + context`);
 
     // Apply resource limits
     this.runtime.setMemoryLimit(this.config.limits.memoryBytes ?? DEFAULT_LIMITS.memoryBytes);
@@ -93,8 +94,10 @@ export class Sandbox {
    */
   async eval(code: string, options?: { filename?: string; typescript?: boolean }): Promise<ScriptResult> {
     if (!this.vm) {
+      console.warn(`[ext-diag] Sandbox ${this.sessionId} eval — vm is NULL (disposed or never init)`);
       throw new Error('Sandbox not initialized. Call init() first.');
     }
+    console.log(`[ext-diag] Sandbox ${this.sessionId} eval — runtime.alive=${this.runtime?.alive ?? 'n/a'}, vm.alive=${this.vm.alive}`);
 
     // Clear previous logs
     this.logs.length = 0;
@@ -137,6 +140,9 @@ export class Sandbox {
 
   /** Dispose the sandbox and free WASM memory */
   dispose(): void {
+    // The stack trace names exactly who tore this sandbox down — the
+    // key clue when a sandbox dies between activate and run.
+    console.warn(`[ext-diag] Sandbox ${this.sessionId} dispose() — caller:\n${new Error().stack}`);
     if (this.bridgeDispose) {
       this.bridgeDispose();
       this.bridgeDispose = null;

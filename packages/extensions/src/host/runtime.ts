@@ -215,8 +215,16 @@ export class ExtensionRuntime {
     // run's QuickJS crash, or self-heal teardown — would otherwise be
     // handed back and the next setGlobal/run would fail with
     // "Lifetime not alive". Drop it so doActivate rebuilds fresh.
-    if (existing && !existing.sandbox.isDisposed) return existing;
-    if (existing) this.active.delete(extensionId);
+    if (existing && !existing.sandbox.isDisposed) {
+      console.log(`[ext-diag] runtime.activate("${extensionId}") — reusing cached activation (sandbox alive)`);
+      return existing;
+    }
+    if (existing) {
+      console.warn(`[ext-diag] runtime.activate("${extensionId}") — cached activation DEAD, rebuilding`);
+      this.active.delete(extensionId);
+    } else {
+      console.log(`[ext-diag] runtime.activate("${extensionId}") — no cached activation, building fresh`);
+    }
     // Coalesce concurrent activate() calls for the same id. Without
     // this, two overlapping callers both miss `active`, both build a
     // sandbox, and the second leaks because only one wins the put.
@@ -241,6 +249,10 @@ export class ExtensionRuntime {
       grants,
       limits: this.defaultLimits,
     });
+    console.log(
+      `[ext-diag] runtime.doActivate("${extensionId}") — sandbox built, ` +
+      `has entry.activate=${!!bundle?.manifest.entry.activate}`,
+    );
 
     let activateResult: RuntimeRunResult | undefined;
     if (bundle?.manifest.entry.activate) {
@@ -323,7 +335,13 @@ export class ExtensionRuntime {
    */
   async deactivate(extensionId: string): Promise<void> {
     const record = this.active.get(extensionId);
-    if (!record) return;
+    if (!record) {
+      console.log(`[ext-diag] runtime.deactivate("${extensionId}") — no active record (no-op)`);
+      return;
+    }
+    console.warn(
+      `[ext-diag] runtime.deactivate("${extensionId}") — disposing sandbox. caller:\n${new Error().stack}`,
+    );
     this.active.delete(extensionId);
     await record.sandbox.dispose();
   }
@@ -346,6 +364,9 @@ export class ExtensionRuntime {
   /** Dispose every active extension. Used on flavor switch / shutdown. */
   async disposeAll(): Promise<void> {
     const ids = Array.from(this.active.keys());
+    console.warn(
+      `[ext-diag] runtime.disposeAll() — disposing [${ids.join(', ')}]. caller:\n${new Error().stack}`,
+    );
     for (const id of ids) {
       await this.deactivate(id);
     }

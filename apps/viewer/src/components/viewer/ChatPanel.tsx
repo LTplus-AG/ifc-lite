@@ -929,15 +929,24 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         // bundle CTA. If it doesn't but code landed in the editor,
         // surface the script CTA so "promote to tool" is one click
         // away — the user never has to hunt for the Promote button.
+        console.log(
+          `[ext-diag] chat handleComplete — classified.intent=${classified.intent}, ` +
+          `options.intent=${options?.intent ?? 'none'}`,
+        );
         if (
           (classified.intent === 'authoring' || classified.intent === 'fork')
           && !options?.intent
         ) {
           void handleAuthoringResponse(fullText).then((bundleFound) => {
+            console.log(`[ext-diag] chat authoring — bundleFound=${bundleFound}`);
             if (bundleFound) return;
             const code = useViewerStore.getState().scriptEditorContent;
             const hasRealCode =
               code.trim().length > 0 && !/Write your BIM script here/.test(code);
+            console.log(
+              `[ext-diag] chat authoring — script path: editorChars=${code.trim().length}, ` +
+              `hasRealCode=${hasRealCode} → ${hasRealCode ? 'setting chatToolReady(script)' : 'CTA NOT shown'}`,
+            );
             if (hasRealCode) {
               setChatToolReady({ kind: 'script', name: '' });
             }

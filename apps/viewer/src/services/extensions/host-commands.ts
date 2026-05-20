@@ -81,9 +81,12 @@ export async function runExtensionCommand(
     // genuinely dead sandbox; it does NOT pre-emptively tear anything
     // down.
     const runOnce = async (isRetry: boolean): Promise<RuntimeRunResult> => {
+      console.log(`[ext-diag] runExtensionCommand("${commandId}") — runOnce(isRetry=${isRetry}) START`);
       try {
         const activation = await deps.runtime.activate(record.id, grants, bundle);
+        console.log(`[ext-diag] runExtensionCommand("${commandId}") — activated, firing onCommand event`);
         await deps.dispatcher.fire(`onCommand:${commandId}` as const);
+        console.log(`[ext-diag] runExtensionCommand("${commandId}") — dispatcher.fire done, setting ctx`);
         // Set ctx via setGlobal. The BimSandboxHandle special-cases
         // `__ifclite_ctx__` to synthesize from the bridge-installed
         // `globalThis.bim` (the wrapped SDK is cyclic and would crash
@@ -92,8 +95,10 @@ export async function runExtensionCommand(
         // "Sandbox disposed" on a dead handle also triggers the retry.
         const ctx: ExtensionContextV1 = { bim: deps.sdk };
         await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
+        console.log(`[ext-diag] runExtensionCommand("${commandId}") — ctx set, calling sandbox.run`);
         return await activation.sandbox.run(wrappedSource, { filename: entry });
       } catch (err) {
+        console.error(`[ext-diag] runExtensionCommand("${commandId}") — runOnce(isRetry=${isRetry}) caught:`, err);
         const msg = err instanceof Error ? err.message : String(err);
         // Only on an actual failure that looks like a dead realm do we
         // tear down and retry once — never pre-emptively.

@@ -145,8 +145,15 @@ fn derived(input: &str) -> IResult<&str, Token<'_>> {
     map(char('*'), |_| Token::Derived)(input)
 }
 
+/// Maximum nesting depth for token recursion (list and typed-value bodies).
+///
+/// Each `(` in the input bumps depth by one. Real-world IFC entities rarely
+/// nest beyond 5-10 levels; 256 leaves comfortable headroom while keeping
+/// the stack bounded against pathological inputs.
+const MAX_NESTING_DEPTH: u32 = 256;
+
 /// Parse typed value: IFCPARAMETERVALUE(0.), IFCBOOLEAN(.T.)
-fn typed_value(input: &str) -> IResult<&str, Token<'_>> {
+fn typed_value_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
     map(
         pair(
             // Type name (all caps with optional numbers/underscores)
@@ -154,7 +161,9 @@ fn typed_value(input: &str) -> IResult<&str, Token<'_>> {
             // Arguments
             delimited(
                 char('('),
-                separated_list0(delimited(ws, char(','), ws), token),
+                separated_list0(delimited(ws, char(','), ws), move |i| {
+                    token_at_depth(i, depth)
+                }),
                 char(')'),
             ),
         ),
@@ -170,6 +179,16 @@ fn ws(input: &str) -> IResult<&str, ()> {
 /// Parse a token with optional surrounding whitespace
 /// Optimized ordering: test cheapest patterns first (single-char markers)
 fn token(input: &str) -> IResult<&str, Token<'_>> {
+    token_at_depth(input, 0)
+}
+
+fn token_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
+    if depth > MAX_NESTING_DEPTH {
+        return Err(nom::Err::Failure(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::TooLarge,
+        )));
+    }
     delimited(
         ws,
         alt((
@@ -180,22 +199,31 @@ fn token(input: &str) -> IResult<&str, Token<'_>> {
             // Then by complexity
             enum_value,     // .XXX.
             string_literal, // 'xxx'
-            list,           // (...)
+            move |i| list_at_depth(i, depth + 1), // (...)
             // Numbers: float before integer since float includes '.'
             float,
             integer,
-            typed_value, // IFCPARAMETERVALUE(0.) - most expensive, last
+            // IFCPARAMETERVALUE(0.) - most expensive, last
+            move |i| typed_value_at_depth(i, depth + 1),
         )),
         ws,
     )(input)
 }
 
 /// Parse list: (1, 2, 3) or nested lists
+/// Test-only wrapper for the depth-0 entry into list.
+#[cfg(test)]
 fn list(input: &str) -> IResult<&str, Token<'_>> {
+    list_at_depth(input, 0)
+}
+
+fn list_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
     map(
         delimited(
             char('('),
-            separated_list0(delimited(ws, char(','), ws), token),
+            separated_list0(delimited(ws, char(','), ws), move |i| {
+                token_at_depth(i, depth)
+            }),
             char(')'),
         ),
         Token::List,
@@ -250,12 +278,18 @@ pub struct EntityScanner<'a> {
 }
 
 impl<'a> EntityScanner<'a> {
-    /// Create a new scanner
+    /// Create a new scanner.
+    ///
+    /// Positions past the STEP HEADER section when one is present so that a
+    /// stray `#` inside a header string (e.g. a CATIA `FILE_NAME` like
+    /// `'…\X0\2#.ifc'`) can't be mistaken for an entity start and corrupt
+    /// quote-parity for the rest of the file (issue #654).
     pub fn new(content: &'a str) -> Self {
+        let bytes = content.as_bytes();
         Self {
             content,
-            bytes: content.as_bytes(),
-            position: 0,
+            bytes,
+            position: data_section_start(bytes),
         }
     }
 
@@ -266,6 +300,9 @@ impl<'a> EntityScanner<'a> {
     /// range) but starts walking at its assigned start offset. Callers are
     /// expected to rewind `position` to a known entity boundary (typically
     /// the byte after a `;\n` terminator) before calling `next_entity`.
+    ///
+    /// Does NOT auto-skip the HEADER section — that's the caller's
+    /// responsibility, since shards expect the exact offset they were given.
     pub fn new_at(content: &'a str, position: usize) -> Self {
         let bytes = content.as_bytes();
         let clamped = position.min(bytes.len());
@@ -281,15 +318,30 @@ impl<'a> EntityScanner<'a> {
     /// Returns (entity_id, type_name, line_start, line_end)
     #[inline]
     pub fn next_entity(&mut self) -> Option<(u32, &'a str, usize, usize)> {
-        let remaining = &self.bytes[self.position..];
-
-        // Find next '#' that starts an entity using SIMD-accelerated search
-        let start_offset = memchr::memchr(b'#', remaining)?;
-        let line_start = self.position + start_offset;
+        // Find a '#' that actually starts an entity. A `#` is legal inside
+        // STEP-encoded quoted strings (e.g. CATIA writes filenames like
+        // `'…\X0\2#.ifc'` into the HEADER's FILE_NAME), so we validate that
+        // the `#` is followed by at least one ASCII digit before treating it
+        // as an entity anchor. Without this check, an in-string `#` would
+        // misalign `find_entity_end`'s quote parity and silently drop every
+        // remaining entity in the file. See issue #654.
+        let bytes = self.bytes;
+        let len = bytes.len();
+        let line_start = loop {
+            let remaining = &bytes[self.position..];
+            let start_offset = memchr::memchr(b'#', remaining)?;
+            let candidate = self.position + start_offset;
+            let after = candidate + 1;
+            if after < len && bytes[after].is_ascii_digit() {
+                break candidate;
+            }
+            // Not a valid entity start — advance past this '#' and retry.
+            self.position = after;
+        };
 
         // Find the end of the entity (semicolon) while respecting quoted strings
         // IFC strings use single quotes and can contain semicolons
-        let line_content = &self.bytes[line_start..];
+        let line_content = &bytes[line_start..];
         let end_offset = self.find_entity_end(line_content)?;
         let line_end = line_start + end_offset + 1;
 
@@ -414,9 +466,9 @@ impl<'a> EntityScanner<'a> {
         counts
     }
 
-    /// Reset scanner to beginning
+    /// Reset scanner to beginning (re-applies the HEADER skip).
     pub fn reset(&mut self) {
-        self.position = 0;
+        self.position = data_section_start(self.bytes);
     }
 
     /// Fast check if attribute at given index is non-null (not '$')
@@ -514,6 +566,62 @@ impl<'a> EntityScanner<'a> {
 
         false
     }
+}
+
+/// Locate the byte offset of the first character after `DATA;` (skipping the
+/// STEP HEADER section). Returns 0 if the marker isn't found — partial files
+/// without a HEADER still scan from the top.
+///
+/// Scanning the HEADER for entities is unsafe: the HEADER is a free-form
+/// STEP record that legally contains arbitrary characters inside quoted
+/// strings (filenames, descriptions). CATIA emits `FILE_NAME('…\X0\2#.ifc'…)`,
+/// and a tokenizer that anchors on `#` will latch onto the in-string `#`,
+/// flip `find_entity_end`'s quote parity, and drop the rest of the file.
+/// See issue #654.
+///
+/// Quote-aware: the marker is only matched outside `'…'` strings, since a
+/// HEADER field could legally contain the literal text `DATA;` in a
+/// description or filename. Escaped single quotes (`''`) are treated as a
+/// pair of in-string characters per ISO 10303-21.
+fn data_section_start(bytes: &[u8]) -> usize {
+    const MARKER: &[u8] = b"DATA;";
+    let len = bytes.len();
+    if len < MARKER.len() {
+        return 0;
+    }
+    // Cap the header scan. Real-world headers are <2 KB; an unbounded scan
+    // here would defeat the point of an O(1)-up-front fix on giant files
+    // that legitimately lack a HEADER section.
+    let limit = len.min(1 << 18); // 256 KB
+    let mut pos = 0;
+    let mut in_string = false;
+    while pos < limit {
+        let b = bytes[pos];
+        if in_string {
+            if b == b'\'' {
+                if pos + 1 < limit && bytes[pos + 1] == b'\'' {
+                    pos += 2; // escaped quote
+                    continue;
+                }
+                in_string = false;
+            }
+            pos += 1;
+            continue;
+        }
+        if b == b'\'' {
+            in_string = true;
+            pos += 1;
+            continue;
+        }
+        if b == b'D'
+            && pos + MARKER.len() <= len
+            && &bytes[pos..pos + MARKER.len()] == MARKER
+        {
+            return pos + MARKER.len();
+        }
+        pos += 1;
+    }
+    0
 }
 
 #[cfg(test)]
@@ -671,5 +779,135 @@ mod tests {
         assert_eq!(counts.get("IFCPROJECT"), Some(&1));
         assert_eq!(counts.get("IFCWALL"), Some(&2));
         assert_eq!(counts.get("IFCDOOR"), Some(&1));
+    }
+
+    /// Regression for issue #654: CATIA exports a FILE_NAME whose first
+    /// argument contains a literal `#` inside the quoted string (the encoded
+    /// filename `'…\X0\2#.ifc'`). The scanner used to latch onto that `#`,
+    /// flip `find_entity_end`'s quote parity at the closing `'`, and silently
+    /// drop every entity in the file.
+    #[test]
+    fn test_entity_scanner_hash_in_header_filename() {
+        let content = "ISO-10303-21;\nHEADER;\n\
+FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');\n\
+FILE_NAME('26-IFC\\X2\\00B1\\X0\\2#.ifc','2026-04-29T18:21:27',$,$,'CATIA','CATIA',$);\n\
+FILE_SCHEMA(('IFC4'));\nENDSEC;\n\
+DATA;\n\
+#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('guid2',$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+        let mut scanner = EntityScanner::new(content);
+        let counts = scanner.count_by_type();
+        assert_eq!(counts.get("IFCPROJECT"), Some(&1));
+        assert_eq!(counts.get("IFCWALL"), Some(&1));
+    }
+
+    /// Files without a DATA; marker (partial fragments, test fixtures) must
+    /// still scan from offset 0 — the HEADER-skip is best-effort.
+    #[test]
+    fn test_entity_scanner_no_header() {
+        let content = "#1=IFCWALL('guid',$,$,$,$,$,$,$);\n";
+        let mut scanner = EntityScanner::new(content);
+        let (id, type_name, _, _) = scanner.next_entity().unwrap();
+        assert_eq!(id, 1);
+        assert_eq!(type_name, "IFCWALL");
+    }
+
+    /// HEADER fields are free-form strings — a description, comment, or
+    /// embedded filename could legally contain the literal text `DATA;`.
+    /// The seek must ignore matches inside quoted strings and land on the
+    /// real section marker.
+    #[test]
+    fn test_entity_scanner_data_marker_inside_header_string() {
+        let content = "ISO-10303-21;\nHEADER;\n\
+FILE_DESCRIPTION(('section DATA; in description'),'2;1');\n\
+FILE_NAME('weird DATA; name.ifc','2026-04-29T18:21:27',$,$,'a','b',$);\n\
+FILE_SCHEMA(('IFC4'));\nENDSEC;\n\
+DATA;\n\
+#1=IFCWALL('guid',$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+        let mut scanner = EntityScanner::new(content);
+        let counts = scanner.count_by_type();
+        assert_eq!(counts.get("IFCWALL"), Some(&1));
+        // Confirm we landed at the real DATA;, not the one in the description.
+        let pos = scanner.position();
+        assert!(pos == content.len() || pos > content.find("ENDSEC;").unwrap());
+    }
+
+    /// Escaped single quotes (`''`) keep the string open per ISO 10303-21.
+    #[test]
+    fn test_entity_scanner_escaped_quote_in_header() {
+        let content = "ISO-10303-21;\nHEADER;\n\
+FILE_DESCRIPTION(('it''s fine: DATA; inside'),'2;1');\n\
+FILE_NAME('a','b',$,$,'c','d',$);\n\
+FILE_SCHEMA(('IFC4'));\nENDSEC;\n\
+DATA;\n\
+#7=IFCDOOR('guid',$,$,$,$,$,$,$);\n\
+ENDSEC;\n";
+
+        let mut scanner = EntityScanner::new(content);
+        let counts = scanner.count_by_type();
+        assert_eq!(counts.get("IFCDOOR"), Some(&1));
+    }
+
+    /// Deeply nested list arguments must return an error rather than
+    /// recursing through the stack until it overflows.
+    #[test]
+    fn test_parse_entity_rejects_excessive_nesting() {
+        let n = (MAX_NESTING_DEPTH as usize) + 64;
+        let mut s = String::from("#1=IFCWALL(");
+        for _ in 0..n {
+            s.push('(');
+        }
+        s.push('1');
+        for _ in 0..n {
+            s.push(')');
+        }
+        s.push_str(");");
+        // Must not panic / overflow; must return Err.
+        assert!(parse_entity(&s).is_err());
+    }
+
+    /// Moderate nesting still parses successfully.
+    #[test]
+    fn test_parse_entity_accepts_moderate_nesting() {
+        let n = 32;
+        let mut s = String::from("#1=IFCWALL(");
+        for _ in 0..n {
+            s.push('(');
+        }
+        s.push('1');
+        for _ in 0..n {
+            s.push(')');
+        }
+        s.push_str(");");
+        assert!(parse_entity(&s).is_ok());
+    }
+
+    fn nested(n: usize) -> String {
+        let mut s = String::from("#1=IFCWALL(");
+        for _ in 0..n {
+            s.push('(');
+        }
+        s.push('1');
+        for _ in 0..n {
+            s.push(')');
+        }
+        s.push_str(");");
+        s
+    }
+
+    /// Boundary: parsing succeeds exactly at MAX_NESTING_DEPTH.
+    #[test]
+    fn test_parse_entity_accepts_exactly_max_nesting() {
+        assert!(parse_entity(&nested(MAX_NESTING_DEPTH as usize)).is_ok());
+    }
+
+    /// Boundary: parsing fails at MAX_NESTING_DEPTH + 1.
+    #[test]
+    fn test_parse_entity_rejects_one_over_max_nesting() {
+        assert!(parse_entity(&nested(MAX_NESTING_DEPTH as usize + 1)).is_err());
     }
 }

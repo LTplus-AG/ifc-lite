@@ -4,7 +4,7 @@ version = "1.1.7"
 description = "IFC-Lite Desktop Application - Native high-performance IFC viewer"
 authors = ["IFC-Lite Contributors"]
 license = "MPL-2.0"
-repository = "https://github.com/louistrue/ifc-lite"
+repository = "https://github.com/LTplus-AG/ifc-lite"
 edition = "2021"
 
 [lib]
@@ -33,7 +33,7 @@ serde_json = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 
 # Parallel processing
@@ -43,7 +43,7 @@ rayon = "1.10"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 # Fast hashing for style indexes
-rustc-hash = "1.1"
+rustc-hash = "2.1"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-dialog = "2"

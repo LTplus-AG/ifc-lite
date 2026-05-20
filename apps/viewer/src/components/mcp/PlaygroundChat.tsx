@@ -32,9 +32,16 @@ import {
 import Anthropic from '@anthropic-ai/sdk';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, Check, ChevronDown, ChevronRight, Download, Key, Loader2, RefreshCcw, Wrench } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, Loader2, RefreshCcw, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getApiKeys, subscribeApiKeys, updateApiKeys, type ApiKeyConfig } from '@/services/api-keys';
+import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
+import {
+  getPlaygroundModel,
+  setPlaygroundModel,
+  subscribePlaygroundModel,
+} from '@/services/playground-model';
+import { getByokModelsForSource } from '@/lib/llm/models';
+import { ByokKeyModal } from '@/components/viewer/chat/ByokKeyModal';
 import {
   anthropicToolDefinitions,
   dispatch,
@@ -47,9 +54,6 @@ import { playgroundFiles, formatBytes as formatFileBytes } from './playground-fi
 import { playgroundUploads, usePlaygroundUploads, type UploadedFile } from './playground-uploads';
 import { Paperclip, X } from 'lucide-react';
 
-// Default Claude model. Stays within the safe BYOK price band; users with a
-// big key can swap via localStorage / a future picker.
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const MAX_TOOL_CALLS = 25;
 const MAX_TOKENS = 4096;
 const SYSTEM_PROMPT = `You are a BIM/IFC analyst driving @ifc-lite/mcp tools against a pre-loaded model. Be terse — the user is technical and time-pressed.
@@ -113,6 +117,17 @@ export function PlaygroundChat({
   const [keys, setKeys] = useState<ApiKeyConfig>(() => getApiKeys());
   useEffect(() => subscribeApiKeys(() => setKeys(getApiKeys())), []);
 
+  // Selected Claude model (Anthropic only — the playground driver uses
+  // Anthropic's native tools API). Persisted to localStorage separately
+  // from the viewer's chatActiveModel so the two pages can default
+  // differently.
+  const [selectedModel, setSelectedModel] = useState<string>(() => getPlaygroundModel());
+  useEffect(() => subscribePlaygroundModel(() => setSelectedModel(getPlaygroundModel())), []);
+  const anthropicModels = useMemo(() => getByokModelsForSource('anthropic'), []);
+
+  // Shared BYOK key entry modal — same component the viewer chat uses.
+  const [keyModalOpen, setKeyModalOpen] = useState(false);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setStreaming] = useState(false);
@@ -169,6 +184,7 @@ export function PlaygroundChat({
       try {
         await runConversation({
           apiKey: keys.anthropicKey,
+          modelId: selectedModel,
           tools,
           history: [...messages, userMessage],
           model,
@@ -193,7 +209,7 @@ export function PlaygroundChat({
         setStreaming(false);
       }
     },
-    [keys.anthropicKey, model, tools, messages, dispatchContext],
+    [keys.anthropicKey, selectedModel, model, tools, messages, dispatchContext],
   );
 
   const onSubmit = (e: React.FormEvent) => {
@@ -260,7 +276,19 @@ export function PlaygroundChat({
   // ── render ──────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0f0f12] text-[#ede4d3]">
-      <KeyHeader keys={keys} onSave={(next) => updateApiKeys(next)} />
+      <PlaygroundHeader
+        hasKey={Boolean(keys.anthropicKey)}
+        maskedKey={
+          keys.anthropicKey
+            ? `${keys.anthropicKey.slice(0, 7)}…${keys.anthropicKey.slice(-4)}`
+            : ''
+        }
+        onOpenKeyModal={() => setKeyModalOpen(true)}
+        selectedModel={selectedModel}
+        anthropicModels={anthropicModels}
+        onChangeModel={setPlaygroundModel}
+      />
+      <ByokKeyModal open={keyModalOpen} onOpenChange={setKeyModalOpen} initialProvider="anthropic" />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">
         {messages.length === 0 ? (
@@ -392,21 +420,23 @@ export function PlaygroundChat({
   );
 }
 
-// ── header / key entry ─────────────────────────────────────────────────────
+// ── header / key entry + model picker ─────────────────────────────────────
 
-function KeyHeader({
-  keys,
-  onSave,
+function PlaygroundHeader({
+  hasKey,
+  maskedKey,
+  onOpenKeyModal,
+  selectedModel,
+  anthropicModels,
+  onChangeModel,
 }: {
-  keys: ApiKeyConfig;
-  onSave: (next: Partial<ApiKeyConfig>) => void;
+  hasKey: boolean;
+  maskedKey: string;
+  onOpenKeyModal: () => void;
+  selectedModel: string;
+  anthropicModels: ReturnType<typeof getByokModelsForSource>;
+  onChangeModel: (modelId: string) => void;
 }): ReactNode {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(keys.anthropicKey);
-  useEffect(() => setDraft(keys.anthropicKey), [keys.anthropicKey]);
-  const masked = keys.anthropicKey
-    ? `${keys.anthropicKey.slice(0, 7)}…${keys.anthropicKey.slice(-4)}`
-    : '';
   return (
     <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2.5">
       <div className="flex items-center gap-2">
@@ -414,50 +444,56 @@ function KeyHeader({
           className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#d6ff3f]"
           aria-hidden
         />
-        <span className="text-[10px] uppercase tracking-[0.22em] text-white/60" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+        <span
+          className="text-[10px] uppercase tracking-[0.22em] text-white/60"
+          style={{ fontFamily: '"JetBrains Mono", monospace' }}
+        >
           ifc-lite/mcp · agent
         </span>
       </div>
-      {editing ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSave({ anthropicKey: draft.trim() });
-            setEditing(false);
-          }}
-          className="flex items-center gap-1.5"
+
+      <div className="flex items-center gap-2">
+        {/* Model picker — Anthropic-only because the playground driver uses
+            Anthropic's native tools API. The dropdown's styling mirrors the
+            key-status pill so the two affordances read as a single cluster. */}
+        <label
+          className="inline-flex items-center gap-1 rounded border border-white/15 bg-white/[0.03] px-1.5 py-1 text-[10.5px] text-white/70"
+          style={{ fontFamily: '"JetBrains Mono", monospace' }}
+          title="Anthropic model used for tool-calling agent loops"
         >
-          <input
-            type="password"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="sk-ant-…"
-            className="w-56 rounded border border-white/20 bg-white/5 px-2 py-1 text-[11px] outline-none placeholder:text-white/30"
+          <span className="text-white/40">model</span>
+          <select
+            value={selectedModel}
+            onChange={(e) => onChangeModel(e.target.value)}
+            className="bg-transparent text-[10.5px] outline-none [&>option]:bg-[#0a0a0c] [&>option]:text-white"
             style={{ fontFamily: '"JetBrains Mono", monospace' }}
-            autoFocus
-          />
-          <button type="submit" className="rounded bg-[#d6ff3f] px-2 py-1 text-[10px] font-semibold text-[#0a0a0c]">
-            save
-          </button>
-          <button type="button" onClick={() => setEditing(false)} className="text-[10px] text-white/50">
-            cancel
-          </button>
-        </form>
-      ) : (
+            aria-label="Select Claude model"
+          >
+            {anthropicModels.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* Key-status pill — opens the shared BYOK modal so the playground
+            and the viewer chat share one trust-focused entry surface. */}
         <button
-          onClick={() => setEditing(true)}
+          onClick={onOpenKeyModal}
           className={cn(
             'inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[10.5px]',
-            keys.anthropicKey
-              ? 'border-[#d6ff3f]/40 text-[#d6ff3f]'
-              : 'border-orange-400/40 text-orange-300',
+            hasKey
+              ? 'border-[#d6ff3f]/40 text-[#d6ff3f] hover:bg-[#d6ff3f]/5'
+              : 'border-orange-400/40 text-orange-300 hover:bg-orange-400/5',
           )}
           style={{ fontFamily: '"JetBrains Mono", monospace' }}
+          aria-label={hasKey ? 'Manage Anthropic API key' : 'Add Anthropic API key'}
         >
-          <Key size={11} />
-          {keys.anthropicKey ? `key set · ${masked}` : 'set Anthropic key'}
+          <KeyRound size={11} />
+          {hasKey ? `key set · ${maskedKey}` : 'set Anthropic key'}
         </button>
-      )}
+      </div>
     </div>
   );
 }
@@ -677,6 +713,8 @@ interface AnthropicToolResultBlock {
 
 interface RunOpts {
   apiKey: string;
+  /** Anthropic model id (e.g. `claude-sonnet-4-6`, `claude-opus-4-7`). */
+  modelId: string;
   tools: AnthropicToolDef[];
   history: ChatMessage[];
   model: LoadedPlaygroundModel;
@@ -847,7 +885,7 @@ async function runConversation(opts: RunOpts): Promise<void> {
   // assistant finishes without requesting more tools, or when we hit the cap.
   while (true) {
     const res = await client.messages.create({
-      model: DEFAULT_MODEL,
+      model: opts.modelId,
       max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       tools: opts.tools as unknown as Parameters<typeof client.messages.create>[0]['tools'],

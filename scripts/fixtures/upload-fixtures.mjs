@@ -51,7 +51,7 @@ if (!Array.isArray(manifest.files)) {
   process.exit(2);
 }
 const TAG = manifest.release_tag;
-const REPO = process.env.IFC_LITE_FIXTURE_REPO || 'louistrue/ifc-lite';
+const REPO = process.env.IFC_LITE_FIXTURE_REPO || 'LTplus-AG/ifc-lite';
 
 /** Resolve a manifest-relative path, refusing anything that would escape
  *  `tests/models/`. Defends against a tampered manifest causing the upload

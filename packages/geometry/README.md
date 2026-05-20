@@ -53,6 +53,51 @@ if (result.coordinateInfo?.hasLargeCoordinates) {
 }
 ```
 
+## Vite setup
+
+The geometry workers ship as ESM and use the standard
+`new Worker(new URL('./geometry.worker.js', import.meta.url), { type: 'module' })`
+spawn pattern. Vite's default `worker.format: 'iife'` setting can't host
+ESM workers, so consumers need one config line:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  worker: { format: 'es' },
+});
+```
+
+This is the same contract that Mapbox-GL, Three.js, Cesium, and Monaco
+require — ESM workers are not the Vite default, but they are the modern
+standard and the pattern wasm-bindgen produces by default.
+
+If your bundler can't transform
+`new URL('ifc-lite_bg.wasm', import.meta.url)` inside the worker bundle
+(or you serve the wasm from a CDN at a separate origin), pass explicit
+wasm URLs through the `processAdaptive` / `processParallel` `wasmUrls`
+option:
+
+```ts
+// Vite's `?url` suffix yields a fully-resolved URL string at build time.
+// `@ifc-lite/wasm` and `@ifc-lite/wasm-threaded` both expose the binary
+// at the `./ifc-lite_bg.wasm` subpath so this resolves cleanly through
+// the package's `exports` map.
+import wasmUrl from '@ifc-lite/wasm/ifc-lite_bg.wasm?url';
+
+for await (const event of processor.processAdaptive(buffer, {
+  wasmUrls: { wasm: wasmUrl },
+})) { /* ... */ }
+```
+
+The worker forwards the URL to wasm-bindgen's documented `init(url)`
+parameter, bypassing the default `new URL(..., import.meta.url)`
+resolution inside the worker entirely. For webpack 5 use
+`new URL('@ifc-lite/wasm/ifc-lite_bg.wasm', import.meta.url).href`;
+for other bundlers, any string the runtime can resolve to the binary
+works.
+
 ## Performance
 
 - **First triangles:** 300–500ms (streaming path)
@@ -62,7 +107,7 @@ if (result.coordinateInfo?.hasLargeCoordinates) {
 
 ## API
 
-See the [Geometry Guide](https://louistrue.github.io/ifc-lite/guide/geometry/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litegeometry).
+See the [Geometry Guide](https://ltplus-ag.github.io/ifc-lite/guide/geometry/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litegeometry).
 
 ## License
 

@@ -21,6 +21,7 @@ import {
 } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
+import { safeUtf8Decode } from '@ifc-lite/data';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
@@ -492,7 +493,6 @@ export class StepExporter {
 
     // Export original entities from source buffer, SKIPPING modified property sets
     if (!options.deltaOnly && this.dataStore.source) {
-      const decoder = new TextDecoder();
       const source = this.dataStore.source;
 
       // Extract existing entities from source
@@ -531,9 +531,14 @@ export class StepExporter {
           continue;
         }
 
-        // Get original entity text
-        const entityText = decoder.decode(
-          source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+        // Get original entity text — safeUtf8Decode handles SAB-backed
+        // sources (Firefox/Chrome reject `TextDecoder.decode()` on a
+        // SharedArrayBuffer-backed view; the parser deliberately keeps
+        // `source` zero-copy SAB-backed for worker sharing).
+        const entityText = safeUtf8Decode(
+          source,
+          entityRef.byteOffset,
+          entityRef.byteOffset + entityRef.byteLength
         );
         let nextEntityText = modifiedAttributes.has(expressId)
           ? this.applyAttributeMutations(entityText, entityType, modifiedAttributes.get(expressId)!)
@@ -1077,9 +1082,10 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(relId);
     if (!entityRef || !this.dataStore.source) return [];
 
-    const decoder = new TextDecoder();
-    const entityText = decoder.decode(
-      this.dataStore.source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+    const entityText = safeUtf8Decode(
+      this.dataStore.source,
+      entityRef.byteOffset,
+      entityRef.byteOffset + entityRef.byteLength
     );
 
     // Parse IfcRelDefinesByProperties: #ID=IFCRELDEFINESBYPROPERTIES('guid',$,$,$,(#objects),#pset);
@@ -1103,9 +1109,10 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(relId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const decoder = new TextDecoder();
-    const entityText = decoder.decode(
-      this.dataStore.source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+    const entityText = safeUtf8Decode(
+      this.dataStore.source,
+      entityRef.byteOffset,
+      entityRef.byteOffset + entityRef.byteLength
     );
 
     // Last #ID before the closing );
@@ -1121,9 +1128,10 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const decoder = new TextDecoder();
-    const entityText = decoder.decode(
-      this.dataStore.source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+    const entityText = safeUtf8Decode(
+      this.dataStore.source,
+      entityRef.byteOffset,
+      entityRef.byteOffset + entityRef.byteLength
     );
 
     // Parse: IFCPROPERTYSET('guid',$,'Name',$,...) - Name is 3rd argument
@@ -1139,9 +1147,10 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const decoder = new TextDecoder();
-    const entityText = decoder.decode(
-      this.dataStore.source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+    const entityText = safeUtf8Decode(
+      this.dataStore.source,
+      entityRef.byteOffset,
+      entityRef.byteOffset + entityRef.byteLength
     );
 
     // Parse: IFCELEMENTQUANTITY('guid',$,'Name',...) - Name is 3rd argument
@@ -1157,9 +1166,10 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return [];
 
-    const decoder = new TextDecoder();
-    const entityText = decoder.decode(
-      this.dataStore.source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+    const entityText = safeUtf8Decode(
+      this.dataStore.source,
+      entityRef.byteOffset,
+      entityRef.byteOffset + entityRef.byteLength
     );
 
     // Parse: IFCPROPERTYSET(...,(#prop1,#prop2,...)); - Last argument is properties list
@@ -1244,9 +1254,10 @@ export class StepExporter {
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
     if (!entityRef || !this.dataStore.source) return null;
 
-    const decoder = new TextDecoder();
-    const entityText = decoder.decode(
-      this.dataStore.source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength)
+    const entityText = safeUtf8Decode(
+      this.dataStore.source,
+      entityRef.byteOffset,
+      entityRef.byteOffset + entityRef.byteLength
     );
 
     const match = entityText.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);

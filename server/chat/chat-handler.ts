@@ -37,6 +37,8 @@ export interface ChatHandlerDeps {
   fetchImpl: typeof fetch;
   usageStore: ChatUsageStore;
   now: () => number;
+  usageStoreTimeoutMs?: number;
+  providerFetchTimeoutMs?: number;
 }
 
 export type HeaderBag = Headers | Record<string, string | string[] | undefined> | undefined;
@@ -49,7 +51,7 @@ export type HandlerRequest = Request | {
   body?: unknown;
 };
 
-const USAGE_STORE_TIMEOUT_MS = 8_000;
+const USAGE_STORE_TIMEOUT_MS = 15_000;
 const PROVIDER_FETCH_TIMEOUT_MS = 20_000;
 
 class ChatHandlerTimeoutError extends Error {
@@ -299,6 +301,8 @@ export async function getAnonymousUserId(req: HandlerRequest): Promise<string> {
 }
 
 export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
+  const usageStoreTimeoutMs = deps.usageStoreTimeoutMs ?? USAGE_STORE_TIMEOUT_MS;
+  const providerFetchTimeoutMs = deps.providerFetchTimeoutMs ?? PROVIDER_FETCH_TIMEOUT_MS;
   return async function handler(req: HandlerRequest): Promise<Response> {
     const supportEmail = 'louis@ltplus.com';
     const url = getRequestUrl(req, config);
@@ -329,7 +333,7 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
       try {
         const snapshot = await withTimeout(
           deps.usageStore.getUsageSnapshot(userId, 'free'),
-          USAGE_STORE_TIMEOUT_MS,
+          usageStoreTimeoutMs,
           'Usage store timed out while loading usage.',
         );
         return corsResponse(
@@ -383,13 +387,13 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
     try {
       usageSnapshot = await withTimeout(
         deps.usageStore.getUsageSnapshot(userId, 'free'),
-        USAGE_STORE_TIMEOUT_MS,
+        usageStoreTimeoutMs,
         'Usage store timed out while loading usage.',
       );
 
       const consumed = await withTimeout(
         deps.usageStore.consumeFreeRequest(userId),
-        USAGE_STORE_TIMEOUT_MS,
+        usageStoreTimeoutMs,
         'Usage store timed out while reserving a free request.',
       );
       usageSnapshot = consumed.snapshot;
@@ -448,7 +452,7 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
           }),
           signal: controller.signal,
         }),
-        PROVIDER_FETCH_TIMEOUT_MS,
+        providerFetchTimeoutMs,
         'Provider request timed out before a response was received.',
         () => controller.abort(),
       );

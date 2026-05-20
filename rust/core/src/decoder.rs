@@ -913,7 +913,7 @@ fn parse_float_inline(bytes: &[u8], offset: &mut usize) -> Option<f64> {
     }
 
     // Parse float using fast_float
-    match fast_float::parse_partial::<f64, _>(&bytes[i..]) {
+    match fast_float2::parse_partial::<f64, _>(&bytes[i..]) {
         Ok((value, consumed)) if consumed > 0 => {
             *offset += i + consumed;
             Some(value)
@@ -940,7 +940,7 @@ fn parse_next_float(bytes: &[u8], offset: &mut usize) -> Option<f64> {
     }
 
     // Parse float using fast_float
-    match fast_float::parse_partial::<f64, _>(&bytes[i..]) {
+    match fast_float2::parse_partial::<f64, _>(&bytes[i..]) {
         Ok((value, consumed)) if consumed > 0 => {
             *offset += i + consumed;
             Some(value)

@@ -22,7 +22,6 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { EntityNode } from '@ifc-lite/query';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { Mutation } from '@ifc-lite/mutations';
@@ -30,6 +29,7 @@ import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { resolveSafePath } from '../safe-path.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -330,16 +330,7 @@ const modelSave: Tool = {
   },
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const filePath = resolve(input.file_path as string);
-    if (ctx.config.allowedPaths && ctx.config.allowedPaths.length > 0) {
-      const ok = ctx.config.allowedPaths.some((p) => filePath === p || filePath.startsWith(p + '/'));
-      if (!ok) {
-        throw new ToolExecutionError({
-          code: ToolErrorCode.PERMISSION_DENIED,
-          message: `Path '${filePath}' outside allowed roots`,
-        });
-      }
-    }
+    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const schema = (input.schema as string | undefined) ?? m.store.schemaVersion;
     const content = m.bim.export.ifc([], { schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' });
     const text = typeof content === 'string' ? content : new TextDecoder().decode(content);

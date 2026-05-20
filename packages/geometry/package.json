@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "1.18.1",
+  "version": "1.18.5",
   "description": "Geometry processing bridge for IFC-Lite - 1.9x faster than web-ifc",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,32 +12,40 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc && node -e \"const fs=require('fs');for(const f of fs.readdirSync('dist'))if(f.endsWith('.js')){const p='dist/'+f;fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace(/\\.worker\\.ts/g,'.worker.js'))}\"",
+    "build": "pnpm exec tsc && node -e \"const fs=require('fs');for(const f of ['dist/index.js','dist/geometry-parallel.js']){if(!fs.existsSync(f))continue;fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/geometry\\.worker\\.ts/g,'geometry.worker.js').replace(/geometry-controller\\.worker\\.ts/g,'geometry-controller.worker.js'))}\" && node scripts/transform-controller-worker-dist.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^",
-    "@ifc-lite/wasm-threaded": "workspace:*"
+    "@ifc-lite/wasm": "workspace:^"
   },
   "optionalDependencies": {
-    "@tauri-apps/api": "^2.0.0"
+    "@tauri-apps/api": "^2.11.0"
   },
   "devDependencies": {
-    "@tauri-apps/api": "^2.0.0",
-    "typescript": "^5.3.0",
+    "@ifc-lite/wasm-threaded": "workspace:*",
+    "@tauri-apps/api": "^2.11.0",
+    "typescript": "^6.0.3",
     "vitest": "^1.6.0"
+  },
+  "peerDependencies": {
+    "@ifc-lite/wasm-threaded": "*"
+  },
+  "peerDependenciesMeta": {
+    "@ifc-lite/wasm-threaded": {
+      "optional": true
+    }
   },
   "license": "MPL-2.0",
   "author": "Louis True",
   "repository": {
     "type": "git",
-    "url": "https://github.com/louistrue/ifc-lite.git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/geometry"
   },
-  "homepage": "https://louistrue.github.io/ifc-lite/",
-  "bugs": "https://github.com/louistrue/ifc-lite/issues",
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",

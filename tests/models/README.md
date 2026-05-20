@@ -41,7 +41,7 @@ in plain git.
 ## Where the bytes live
 
 By default the fetcher reads from
-`https://github.com/louistrue/ifc-lite/releases/download/<release_tag>`,
+`https://github.com/LTplus-AG/ifc-lite/releases/download/<release_tag>`,
 where `<release_tag>` is taken from `manifest.json` (currently
 `fixtures-v1`). Each asset on the release is named by its SHA-256 hash with
 no extension, so the URL pattern is `<base_url>/<sha256>`.
@@ -60,7 +60,7 @@ IFC_LITE_FIXTURE_BASE_URL=https://my-mirror.example/path pnpm fixtures
    pnpm fixtures:manifest
    ```
 3. Upload the new asset to the release (requires the `gh` CLI logged in
-   with write access to `louistrue/ifc-lite`):
+   with write access to `LTplus-AG/ifc-lite`):
    ```sh
    pnpm fixtures:upload
    ```

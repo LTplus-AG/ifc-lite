@@ -17,16 +17,39 @@ echo "🦀 Building IFC-Lite WASM..."
 # Build with wasm-pack
 echo "📦 Running wasm-pack..."
 
-# Find wasm-pack - check PATH first, then cargo bin directory
+# Find wasm-pack - check PATH first, then cargo bin directory.
+#
+# Soft-skip path (issue #654 follow-up): the wasm artifacts are checked
+# into git as the canonical published bundle. Environments without a Rust
+# toolchain — most CI runners, Vercel build hosts, contributors who don't
+# touch Rust — should rebuild from source when possible but fall back to
+# the committed artifact when not. Hard-failing here would break every
+# `turbo build` on those hosts even though the .wasm they need is already
+# present in the repo.
 WASM_PACK="wasm-pack"
 if ! command -v wasm-pack &> /dev/null; then
-  # Try cargo's bin directory (common location for cargo-installed binaries)
   CARGO_BIN="$HOME/.cargo/bin/wasm-pack"
-  if [ -f "$CARGO_BIN" ]; then
+  # `-x` (executable) not `-f` (exists): a non-exec leftover at this path
+  # would otherwise pass the guard and then fail on invocation
+  # (CodeRabbit #657).
+  if [ -x "$CARGO_BIN" ]; then
     WASM_PACK="$CARGO_BIN"
     echo "   Using wasm-pack from cargo bin: $WASM_PACK"
   else
-    echo "❌ Error: wasm-pack not found in PATH or ~/.cargo/bin/"
+    # Determine which pre-built artifact this invocation would have
+    # produced and treat its presence as a successful build.
+    if [ "${THREADED:-0}" = "1" ]; then
+      EXPECTED_WASM="packages/wasm-threaded/pkg/ifc-lite_bg.wasm"
+    else
+      EXPECTED_WASM="packages/wasm/pkg/ifc-lite_bg.wasm"
+    fi
+    if [ -f "$EXPECTED_WASM" ]; then
+      echo "⚠️  wasm-pack not found — using committed artifact at $EXPECTED_WASM"
+      echo "   (To rebuild from Rust sources, install Rust + wasm-pack:"
+      echo "    https://rustwasm.github.io/wasm-pack/installer/)"
+      exit 0
+    fi
+    echo "❌ Error: wasm-pack not found in PATH or ~/.cargo/bin/ and no pre-built artifact at $EXPECTED_WASM"
     echo "   Install with: cargo install wasm-pack"
     exit 1
   fi

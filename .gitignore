@@ -45,6 +45,21 @@ test_*.sh
 # WASM files - use packages/wasm/pkg/ as canonical source
 apps/viewer/public/ifc-lite_bg.wasm
 
+# WASM build outputs — not committed; produced from rust/** by
+# scripts/build-wasm.sh on every fresh build. CI and Vercel install the
+# Rust toolchain and rebuild from source so a stale binary can never
+# ship (issue #654 root cause was a stale committed .wasm bundle).
+# The README.md and package.json in these dirs stay tracked.
+packages/wasm/pkg/ifc-lite_bg.wasm
+packages/wasm/pkg/ifc-lite_bg.wasm.d.ts
+packages/wasm/pkg/ifc-lite.js
+packages/wasm/pkg/ifc-lite.d.ts
+packages/wasm-threaded/pkg/ifc-lite_bg.wasm
+packages/wasm-threaded/pkg/ifc-lite_bg.wasm.d.ts
+packages/wasm-threaded/pkg/ifc-lite.js
+packages/wasm-threaded/pkg/ifc-lite.d.ts
+packages/wasm-threaded/pkg/snippets/
+
 # Tauri/Claude temp files
 tmpclaude*
 nul

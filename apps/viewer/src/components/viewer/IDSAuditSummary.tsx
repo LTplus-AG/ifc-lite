@@ -111,7 +111,7 @@ export function IDSAuditSummary({
   report,
   auditing = false,
   className,
-}: IDSAuditSummaryProps): JSX.Element | null {
+}: IDSAuditSummaryProps): React.ReactElement | null {
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState<SeverityFilter>('all');
 
@@ -299,7 +299,7 @@ interface IssueRowProps {
   index: number;
 }
 
-function IssueRow({ issue, index }: IssueRowProps): JSX.Element {
+function IssueRow({ issue, index }: IssueRowProps): React.ReactElement {
   const [open, setOpen] = useState(false);
   const t = SEVERITY_TOKENS[issue.severity];
   const hasDetail =

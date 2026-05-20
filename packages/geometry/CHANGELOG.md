@@ -1,5 +1,81 @@
 # @ifc-lite/geometry
 
+## 1.18.5
+
+### Patch Changes
+
+- [#679](https://github.com/louistrue/ifc-lite/pull/679) [`a376179`](https://github.com/louistrue/ifc-lite/commit/a376179aa40e3f8f8550cd449fd114d5f4939217) Thanks [@louistrue](https://github.com/louistrue)! - Fix consumer build failure when bundling `@ifc-lite/geometry` without
+  `@ifc-lite/wasm-threaded` installed (issue #676). The published
+  `dist/geometry-controller.worker.js` used to carry a static
+  `import init, { initSync, IfcAPI, initThreadPool } from '@ifc-lite/wasm-threaded'`
+  which Turbopack / webpack / Vite all follow during worker chunking —
+  the optional peer-dep flag added in #665 only suppresses `pnpm install`
+  warnings, not bundler resolution. Consumers on Next 16 + Turbopack hit
+  `Module not found: Can't resolve '@ifc-lite/wasm-threaded'`.
+
+  The threaded bundle is intentionally workspace-only (see
+  `packages/wasm-threaded/package.json` `_intent`; the production path
+  uses the single-threaded `@ifc-lite/wasm` and the controller is kept as
+  latent infrastructure per
+  `docs/architecture/single-controller-rayon-design.md` §12). Resolution
+  splits across build steps:
+
+  - **Source** keeps the static `import … from '@ifc-lite/wasm-threaded'`
+    so the workspace build (Vite alias →
+    `packages/wasm-threaded/pkg/ifc-lite.js`) still resolves the
+    controller-path opt-in correctly. Vite only honors aliases for
+    statically-analyzable specifiers, and the viewer toggles the
+    controller path via `localStorage['ifc-lite:single-controller']='1'`.
+  - **Published dist** is post-processed by
+    `scripts/transform-controller-worker-dist.mjs` after `tsc`. The
+    transform replaces the static line with module-level `let` bindings
+    plus a lazy `await import(<runtime-built-specifier>)` loader, and
+    injects an `await __loadThreadedModule()` at the top of the `init`
+    handler. Consumer bundlers no longer see `@ifc-lite/wasm-threaded` as
+    a build-time dependency.
+
+  A new `geometry-controller-dist.test.ts` regression test pins both
+  halves of the contract — no static import in dist, and the lazy loader
+  is present.
+
+## 1.18.4
+
+### Patch Changes
+
+- [#672](https://github.com/louistrue/ifc-lite/pull/672) [`d24466f`](https://github.com/louistrue/ifc-lite/commit/d24466fb7d2ab754ae105981113fe3d5bb67c9e8) Thanks [@louistrue](https://github.com/louistrue)! - Document the Vite `worker.format: 'es'` config requirement (the actual
+  root cause of #666 for geometry consumers — ESM workers are not Vite's
+  default and the package can't ship around that) and add an optional
+  `ProcessParallelOptions.wasmUrls` escape hatch so consumers whose
+  bundler doesn't transform `new URL('ifc-lite_bg.wasm', import.meta.url)`
+  inside the worker — or who serve the wasm from a different origin
+  (CDN, Tauri custom protocol, etc.) — can pass an explicit URL. The
+  workers forward it to wasm-bindgen's documented `init(url)` parameter.
+  Default behaviour is unchanged: Vite + webpack 5 consumers who already
+  worked continue to work without setting `wasmUrls`.
+
+## 1.18.3
+
+### Patch Changes
+
+- [#667](https://github.com/louistrue/ifc-lite/pull/667) [`8048ee4`](https://github.com/louistrue/ifc-lite/commit/8048ee411d770255c3e6fcf6a5d9f0369dc16b2f) Thanks [@louistrue](https://github.com/louistrue)! - Drop runtime dependency on the private `@ifc-lite/wasm-threaded` workspace package. Previously published `@ifc-lite/geometry` manifests pointed at `@ifc-lite/wasm-threaded@0.1.0`, which is intentionally non-publishable, causing `npm install @ifc-lite/geometry` to fail. The threaded bundle is only imported by the single-controller worker behind a feature flag and is always supplied via a host bundler alias, so it now lives in `devDependencies` with an optional `peerDependency` documenting the alias contract.
+
+## 1.18.2
+
+### Patch Changes
+
+- [#656](https://github.com/louistrue/ifc-lite/pull/656) [`384efaa`](https://github.com/louistrue/ifc-lite/commit/384efaaaee45cd6f36d3a107899b3b4106143c9a) Thanks [@maxkrut](https://github.com/maxkrut)! - Reject overlapping WASM streaming geometry runs with a controlled JavaScript error before re-entering the processor.
+
+- [#633](https://github.com/louistrue/ifc-lite/pull/633) [`7b70805`](https://github.com/louistrue/ifc-lite/commit/7b70805632627a6e4351b1735479be18390c8b21) Thanks [@maxkrut](https://github.com/maxkrut)! - Fix published worker URLs to reference the emitted JavaScript file.
+
+  `@ifc-lite/geometry` starts parallel geometry processing by constructing
+  module workers from `geometry-parallel`. The published npm package includes
+  `dist/geometry.worker.js`, but `dist/geometry-parallel.js` still points at
+  `./geometry.worker.ts`, so consumers can fail to load the worker at runtime.
+
+  Keep source worker URLs pointing at TypeScript files for in-repo Vite builds,
+  and extend the post-build rewrite so published `dist/index.js` and
+  `dist/geometry-parallel.js` point at the emitted JavaScript worker files.
+
 ## 1.18.1
 
 ### Patch Changes

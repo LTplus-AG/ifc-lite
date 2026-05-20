@@ -21,5 +21,5 @@ ifc-lite-geometry = { path = "../geometry", default-features = false }
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rustc-hash = "1.1"
+rustc-hash = "2.1"
 tracing = "0.1"

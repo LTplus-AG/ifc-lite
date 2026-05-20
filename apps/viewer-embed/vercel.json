@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && npx turbo build --filter=@ifc-lite/viewer-embed...",
-  "installCommand": "echo 'handled by buildCommand'",
+  "installCommand": "cd ../.. && bash scripts/vercel-install.sh",
+  "buildCommand": "cd ../.. && bash scripts/vercel-build.sh '@ifc-lite/viewer-embed...'",
   "outputDirectory": "dist",
   "framework": "vite",
   "headers": [

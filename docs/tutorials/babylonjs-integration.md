@@ -447,7 +447,7 @@ export default defineConfig({
 
 ## Full Example
 
-See [`examples/babylonjs-viewer/`](https://github.com/louistrue/ifc-lite/tree/main/examples/babylonjs-viewer) for a complete, runnable example with streaming geometry, vertex-color batching, entity picking, property panel, and spatial tree navigation.
+See [`examples/babylonjs-viewer/`](https://github.com/LTplus-AG/ifc-lite/tree/main/examples/babylonjs-viewer) for a complete, runnable example with streaming geometry, vertex-color batching, entity picking, property panel, and spatial tree navigation.
 
 ## Comparison: Three.js vs Babylon.js Bridge
 

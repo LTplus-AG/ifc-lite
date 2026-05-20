@@ -1,5 +1,23 @@
 # @ifc-lite/pointcloud
 
+## 0.3.1
+
+### Patch Changes
+
+- [#671](https://github.com/louistrue/ifc-lite/pull/671) [`115e735`](https://github.com/louistrue/ifc-lite/commit/115e7350c3b807cc31ace4b80b24abed7395c2b1) Thanks [@louistrue](https://github.com/louistrue)! - Inline the streaming decode worker as a `Blob`-URL bundle so consumers no
+  longer hit Vite's IIFE/ES format conflict (issue #666). The published
+  `dist/streaming/inline-worker.js` now ships the worker shell + all six
+  format sources (LAS / LAZ-loader / PLY / PCD / E57 / ASCII) as a single
+  ~225 KB IIFE string; `worker-client` lazy-imports it on first
+  `createDecodeWorkerSource()` call and spawns the worker via
+  `URL.createObjectURL(new Blob([code]))`. Workspace dev keeps the
+  `new Worker(new URL('./decode-worker.ts', import.meta.url))` fallback
+  path for HMR + source maps. LAZ's `laz-perf` wasm asset is still fetched
+  at runtime via `import.meta.url`, which doesn't resolve from a `Blob`
+  worker — LAZ-from-the-inline-path users need to pass a custom `spawn`
+  callback that yields a worker capable of fetching the wasm (documented
+  in the README).
+
 ## 0.3.0
 
 ### Minor Changes

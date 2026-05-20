@@ -14,6 +14,8 @@ import type { LensDataProvider, PropertySetInfo, ClassificationInfo } from '@ifc
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   extractEntityAttributesOnDemand,
+  extractPropertiesOnDemand,
+  extractTypePropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
@@ -105,17 +107,61 @@ export function createLensDataProvider(
     ): unknown {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return undefined;
-      return resolved.entry.ifcDataStore.properties?.getPropertyValue?.(
-        resolved.expressId,
-        propertySetName,
-        propertyName,
-      );
+      const store = resolved.entry.ifcDataStore;
+      const id = resolved.expressId;
+
+      // On-demand extraction path: pre-built table is empty for client-parsed
+      // stores, so iterate the same psets we expose via getPropertySets.
+      if (store.onDemandPropertyMap && store.source?.length > 0) {
+        const instancePsets = extractPropertiesOnDemand(store, id);
+        for (const pset of instancePsets) {
+          if (pset.name !== propertySetName) continue;
+          for (const prop of pset.properties) {
+            if (prop.name === propertyName) return prop.value;
+          }
+        }
+        // Fall through to type-inherited psets (Pset_*Common is typically
+        // attached to IfcSpaceType / IfcWallType, not the instance).
+        const typeProps = extractTypePropertiesOnDemand(store, id);
+        if (typeProps) {
+          for (const pset of typeProps.properties) {
+            if (pset.name !== propertySetName) continue;
+            for (const prop of pset.properties) {
+              if (prop.name === propertyName) return prop.value;
+            }
+          }
+        }
+        return undefined;
+      }
+
+      return store.properties?.getPropertyValue?.(id, propertySetName, propertyName);
     },
 
     getPropertySets(globalId: number): PropertySetInfo[] {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return [];
-      const psets = resolved.entry.ifcDataStore.properties?.getForEntity?.(resolved.expressId);
+      const store = resolved.entry.ifcDataStore;
+      const id = resolved.expressId;
+
+      // Properties are extracted lazily — the pre-built table is empty unless
+      // server-parsed. Mirror the quantity path and use the on-demand extractor,
+      // which itself falls back to the eager table when no on-demand map exists.
+      if (store.onDemandPropertyMap && store.source?.length > 0) {
+        const instancePsets = extractPropertiesOnDemand(store, id) as PropertySetInfo[];
+        // Merge type-inherited psets (Pset_*Common lives on the type entity
+        // for occurrences). Instance psets take precedence on name conflict.
+        const typeProps = extractTypePropertiesOnDemand(store, id);
+        if (!typeProps || typeProps.properties.length === 0) return instancePsets;
+
+        const seen = new Set(instancePsets.map((p) => p.name));
+        const merged = instancePsets.slice();
+        for (const pset of typeProps.properties) {
+          if (!seen.has(pset.name)) merged.push(pset as PropertySetInfo);
+        }
+        return merged;
+      }
+
+      const psets = store.properties?.getForEntity?.(id);
       if (!psets) return [];
       return psets as PropertySetInfo[];
     },

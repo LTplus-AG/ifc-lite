@@ -262,6 +262,7 @@ test('chat handler returns a timeout when usage snapshot loading hangs', async (
     fetchImpl: async () => createSseResponse(),
     usageStore: new HangingUsageStore(),
     now: () => Date.now(),
+    usageStoreTimeoutMs: 50,
   });
 
   const response = await handler({
@@ -280,6 +281,7 @@ test('chat handler returns a timeout when the provider never responds', async ()
     fetchImpl: async () => await new Promise<Response>(() => {}),
     usageStore: new MemoryUsageStore(),
     now: () => Date.now(),
+    providerFetchTimeoutMs: 50,
   });
 
   const response = await handler(new Request('https://app.example/api/chat', {

@@ -73,6 +73,28 @@ export interface ProcessParallelOptions {
    * Rust layer. Default `false` keeps existing behaviour.
    */
   mergeLayers?: boolean;
+  /**
+   * Explicit URLs for the wasm-bindgen `.wasm` binaries. When provided,
+   * forwarded to the geometry workers' init messages so they call
+   * `init(wasmUrl)` instead of relying on wasm-bindgen's default
+   * `import.meta.url`-based resolution.
+   *
+   * Vite + webpack 5 consumers don't need to set these — the bundler
+   * rewrites the `new URL('ifc-lite_bg.wasm', import.meta.url)` literal
+   * inside the wasm-bindgen glue at build time. These options exist
+   * for consumers whose bundler doesn't transform that pattern, or who
+   * serve the wasm from a CDN at a different origin (e.g., self-hosted
+   * deployments, Tauri custom protocols, embedded usage).
+   *
+   * `wasm` covers the legacy single-thread worker bundle
+   * (`@ifc-lite/wasm`); `wasmThreaded` covers the rayon controller
+   * bundle (`@ifc-lite/wasm-threaded`). Pass both if both code paths
+   * may run.
+   */
+  wasmUrls?: {
+    wasm?: string;
+    wasmThreaded?: string;
+  };
 }
 
 export async function* processParallel(
@@ -281,7 +303,18 @@ export async function* processParallel(
     // Kick off WASM compile concurrently with the pre-pass scan. The
     // worker's tail-promise serialiser guarantees this `init` completes
     // before any subsequent `stream-start`/`stream-chunk` runs.
-    worker.postMessage({ type: 'init' });
+    //
+    // `wasmUrl` is forwarded only when the consumer explicitly provided
+    // one — undefined leaves the worker on wasm-bindgen's default
+    // `import.meta.url`-based resolution, which is what Vite + webpack
+    // already handle.
+    const wasmUrlForWorker = useController
+      ? options?.wasmUrls?.wasmThreaded
+      : options?.wasmUrls?.wasm;
+    worker.postMessage({
+      type: 'init',
+      ...(wasmUrlForWorker ? { wasmUrl: wasmUrlForWorker } : {}),
+    });
     // Issue #540: forward the user's "Merge Multilayer Walls" toggle
     // BEFORE any stream-start so the worker's IfcAPI has the flag set
     // before its first parse call. The tail-promise serialiser inside
@@ -400,6 +433,15 @@ export async function* processParallel(
   console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}`);
 
   const prepassWorker = makePrepassWorker();
+  // Forward the consumer-supplied wasm URL to the pre-pass worker so it
+  // doesn't fall back to wasm-bindgen's `import.meta.url` default. The
+  // pre-pass worker uses the same `geometry.worker.ts` bundle and the
+  // legacy (non-threaded) wasm, so `wasmUrls.wasm` is the right key.
+  // Skipped entirely when no URL was provided — keeps Vite/webpack
+  // consumers on the bundler-native resolution path.
+  if (options?.wasmUrls?.wasm) {
+    prepassWorker.postMessage({ type: 'init', wasmUrl: options.wasmUrls.wasm });
+  }
   let chunkArrivals = 0;
   let totalDispatchedJobs = 0;
   let firstChunkAt = -1;

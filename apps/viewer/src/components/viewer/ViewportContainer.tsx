@@ -12,6 +12,7 @@ import { Section2DPanel } from './Section2DPanel';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
+import { CesiumPlacementEditor } from './CesiumPlacementEditor';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
@@ -23,9 +24,10 @@ import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRe
 import { isTauri } from '@/lib/platform';
 import { toast } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight } from 'lucide-react';
+import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
+import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
-import { type IfcDataStore } from '@ifc-lite/parser';
+import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
@@ -38,6 +40,7 @@ const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
 
 export function ViewportContainer() {
   const { loadFile, loading, clearAllModels, loadFilesSequentially } = useIfc();
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
@@ -46,6 +49,8 @@ export function ViewportContainer() {
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
   const bcfOverlayVisible = useViewerStore((s) => s.bcfOverlayVisible);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
+  const cesiumPlacementDraft = useViewerStore((s) => s.cesiumPlacementDraft);
+  const cesiumPlacementDraftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const setCesiumSourceModelId = useViewerStore((s) => s.setCesiumSourceModelId);
   const setCesiumAvailable = useViewerStore((s) => s.setCesiumAvailable);
@@ -206,6 +211,27 @@ export function ViewportContainer() {
   const georef = useMemo(() => {
     if (!cesiumEnabled) return null;
 
+    const applyPlacementDraft = <T extends { mapConversion?: MapConversion }>(
+      modelId: string,
+      effective: T,
+    ): T & { baseMapConversion?: T['mapConversion'] } => {
+      const preview = cesiumPlacementDraftModelId === modelId ? cesiumPlacementDraft : null;
+      if (!preview || !effective.mapConversion) {
+        return {
+          ...effective,
+          baseMapConversion: effective.mapConversion,
+        };
+      }
+      return {
+        ...effective,
+        baseMapConversion: effective.mapConversion,
+        mapConversion: {
+          ...effective.mapConversion,
+          ...preview,
+        },
+      };
+    };
+
     // Check federated models first
     for (const [modelId, model] of storeModels) {
       const ds = model.ifcDataStore;
@@ -215,9 +241,14 @@ export function ViewportContainer() {
         model.geometryResult?.coordinateInfo,
         georefMutations.get(modelId),
       );
-      if (effective?.projectedCRS?.name && effective.mapConversion) {
+      if (
+        effective?.projectedCRS?.name
+        && effective.mapConversion
+        && effective.source !== 'siteLocation'
+      ) {
+        const previewed = applyPlacementDraft(modelId, effective);
         return {
-          ...effective,
+          ...previewed,
           sourceModelId: modelId,
           storeyElevations: ds.spatialHierarchy?.storeyElevations,
         };
@@ -231,9 +262,14 @@ export function ViewportContainer() {
         mergedGeometryResult?.coordinateInfo,
         georefMutations.get('__legacy__'),
       );
-      if (effective?.projectedCRS?.name && effective.mapConversion) {
+      if (
+        effective?.projectedCRS?.name
+        && effective.mapConversion
+        && effective.source !== 'siteLocation'
+      ) {
+        const previewed = applyPlacementDraft('__legacy__', effective);
         return {
-          ...effective,
+          ...previewed,
           sourceModelId: '__legacy__',
           storeyElevations: ifcDataStore.spatialHierarchy?.storeyElevations,
         };
@@ -241,7 +277,16 @@ export function ViewportContainer() {
     }
 
     return null;
-  }, [cesiumEnabled, storeModels, ifcDataStore, georefMutations, mutationVersion, mergedGeometryResult]);
+  }, [
+    cesiumEnabled,
+    storeModels,
+    ifcDataStore,
+    georefMutations,
+    mutationVersion,
+    mergedGeometryResult,
+    cesiumPlacementDraft,
+    cesiumPlacementDraftModelId,
+  ]);
 
   // Determine whether Cesium button should be visible (model has georef or user added it via mutations).
   // Runs independently of cesiumEnabled so the button appears/disappears reactively.
@@ -256,7 +301,7 @@ export function ViewportContainer() {
           model.geometryResult?.coordinateInfo,
           georefMutations.get(modelId),
         );
-        if (effective?.projectedCRS?.name) return true;
+        if (effective?.projectedCRS?.name && effective.source !== 'siteLocation') return true;
       }
       // Fallback to legacy single-model
       if (ifcDataStore) {
@@ -265,7 +310,7 @@ export function ViewportContainer() {
           mergedGeometryResult?.coordinateInfo,
           georefMutations.get('__legacy__'),
         );
-        if (effective?.projectedCRS?.name) return true;
+        if (effective?.projectedCRS?.name && effective.source !== 'siteLocation') return true;
       }
       return false;
     }
@@ -387,6 +432,17 @@ export function ViewportContainer() {
     e.target.value = '';
   }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported]);
 
+  const handleStartBlank = useCallback(async () => {
+    if (!webgpu.supported) return;
+    void logToDesktopTerminal('info', '[ViewportContainer] Start blank IFC clicked');
+    const file = createBlankIfcFile();
+    // Must await: loadFile() calls resetViewerState() internally which
+    // resets activeTool back to 'select'. Setting addElement before that
+    // races and leaves the user in select mode despite the click.
+    await loadFile(file);
+    setActiveTool('addElement');
+  }, [webgpu.supported, loadFile, setActiveTool]);
+
   const hasGeometry = mergedGeometryResult?.meshes && mergedGeometryResult.meshes.length > 0;
 
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
@@ -442,14 +498,13 @@ export function ViewportContainer() {
         if (ifcType === 'IfcSite' && !typeVisibility.site) continue;
       }
 
-      if (ifcType === 'IfcSpace' || ifcType === 'IfcOpeningElement') {
-        cache.push({
-          ...mesh,
-          color: [mesh.color[0], mesh.color[1], mesh.color[2], Math.min(mesh.color[3] * 0.3, 0.3)],
-        });
-      } else {
-        cache.push(mesh);
-      }
+      // Mesh alpha flows through unchanged. The previous code re-multiplied
+      // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
+      // lens / Pset colour rules even when the user explicitly chose alpha 1.0.
+      // Defaults still come from styling.rs / default-materials.ts; the
+      // renderer promotes overridden entities to the opaque pipeline so the
+      // overlay paint pass finds matching depth. See issue #677.
+      cache.push(mesh);
     }
 
     filteredSourceLenRef.current = allMeshes.length;
@@ -802,20 +857,37 @@ export function ViewportContainer() {
               <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
             </div>
 
-            {/* Track 2 — agent / MCP. Compact inline pill, self-centred so
-                it reads as a meta-link sibling to the primary file-open
-                CTA, not a competing full-width button. */}
-            <a
-              href="/mcp"
-              className="group inline-flex self-center items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary transition-all cursor-pointer"
-            >
-              <Sparkles className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
-              <span>Drive with any LLM</span>
-              <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </a>
+            {/* Track 2 — two peer pills that both answer "I don't have a
+                file to open": start a fresh project, or hand the wheel to
+                an LLM via MCP. Both share the same dashed-pill silhouette
+                so they read as siblings, with the file-open CTA above
+                staying visually dominant. */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => { void handleStartBlank(); }}
+                disabled={!webgpu.supported || webgpu.checking}
+                className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed transition-all ${
+                  !webgpu.supported || webgpu.checking
+                    ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
+                    : 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer'
+                }`}
+              >
+                <PackagePlus className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
+                <span>Start blank</span>
+              </button>
+              <a
+                href="/mcp"
+                className="group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary transition-all cursor-pointer"
+              >
+                <Sparkles className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
+                <span>Drive with any LLM</span>
+                <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+              </a>
+            </div>
 
             <p className="mt-1.5 text-[10px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
-              via MCP · install or try the playground
+              new untitled project · or LLM via MCP
             </p>
 
             {recentFiles.length > 0 && (
@@ -913,9 +985,21 @@ export function ViewportContainer() {
       {cesiumEnabled && georef && !isTauri() && (
         <CesiumOverlay
           mapConversion={georef.mapConversion}
+          cameraMapConversion={georef.baseMapConversion}
           projectedCRS={georef.projectedCRS}
           coordinateInfo={georef.coordinateInfo}
           geometryResult={mergedGeometryResult}
+          lengthUnitScale={georef.lengthUnitScale}
+          storeyElevations={georef.storeyElevations}
+        />
+      )}
+      {cesiumEnabled && georef?.mapConversion && !isTauri() && georef.baseMapConversion && (
+        <CesiumPlacementEditor
+          modelId={georef.sourceModelId}
+          mapConversion={georef.mapConversion}
+          baseMapConversion={georef.baseMapConversion}
+          projectedCRS={georef.projectedCRS}
+          coordinateInfo={georef.coordinateInfo}
           lengthUnitScale={georef.lengthUnitScale}
           storeyElevations={georef.storeyElevations}
         />

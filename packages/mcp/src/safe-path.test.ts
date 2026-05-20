@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdir, mkdtemp, symlink, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, symlink, writeFile, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -25,7 +25,11 @@ describe('resolveSafePath', () => {
   let scratch: string;
 
   beforeEach(async () => {
-    scratch = await mkdtemp(join(tmpdir(), 'mcp-safe-path-'));
+    // realpath() so the root is canonical: on macOS tmpdir() lives under
+    // /var, a symlink to /private/var. resolveSafePath always returns
+    // realpath-canonicalized paths, so the test's expected values must be
+    // canonical too — otherwise every `toBe(resolve(...))` assertion fails.
+    scratch = await realpath(await mkdtemp(join(tmpdir(), 'mcp-safe-path-')));
   });
 
   afterEach(async () => {
@@ -105,7 +109,7 @@ describe('resolveSafePath', () => {
       // Operator passes --allow <link>; the link points at the real workspace
       // dir. Files inside should be accepted even though their realpath lives
       // under the link's target rather than the configured root.
-      const realWorkspace = await mkdtemp(join(tmpdir(), 'mcp-realws-'));
+      const realWorkspace = await realpath(await mkdtemp(join(tmpdir(), 'mcp-realws-')));
       const linkedRoot = join(scratch, 'linked-root');
       try {
         await symlink(realWorkspace, linkedRoot);
@@ -164,7 +168,7 @@ describe('resolveSafePath', () => {
     });
 
     it('uses the loaded models directory as a default root', async () => {
-      const modelDir = await mkdtemp(join(tmpdir(), 'mcp-model-'));
+      const modelDir = await realpath(await mkdtemp(join(tmpdir(), 'mcp-model-')));
       const sibling = join(modelDir, 'export.csv');
       try {
         const out = await resolveSafePath(

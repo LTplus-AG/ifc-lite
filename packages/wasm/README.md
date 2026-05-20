@@ -131,11 +131,11 @@ All classes implement `free()` and `[Symbol.dispose]()` — call `free()` (or us
 
 ## Rust source
 
-This package ships the bindings only. The Rust source lives in [`rust/wasm-bindings/`](https://github.com/louistrue/ifc-lite/tree/main/rust/wasm-bindings) and the core in [`rust/core/`](https://github.com/louistrue/ifc-lite/tree/main/rust/core). Available on crates.io as `ifc-lite-core`.
+This package ships the bindings only. The Rust source lives in [`rust/wasm-bindings/`](https://github.com/LTplus-AG/ifc-lite/tree/main/rust/wasm-bindings) and the core in [`rust/core/`](https://github.com/LTplus-AG/ifc-lite/tree/main/rust/core). Available on crates.io as `ifc-lite-core`.
 
 ## API
 
-See the [WASM API Reference](https://louistrue.github.io/ifc-lite/api/wasm/).
+See the [WASM API Reference](https://ltplus-ag.github.io/ifc-lite/api/wasm/).
 
 ## License
 

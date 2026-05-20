@@ -269,7 +269,7 @@ fileInput.addEventListener('change', async () => {
   // README
   writeFileSync(join(targetDir, 'README.md'), `# ${projectName}
 
-Three.js IFC viewer using [IFC-Lite](https://github.com/louistrue/ifc-lite).
+Three.js IFC viewer using [IFC-Lite](https://github.com/LTplus-AG/ifc-lite).
 
 ## Quick Start
 
@@ -282,7 +282,7 @@ Open http://localhost:5173 and drop an IFC file.
 
 ## Learn More
 
-- [Three.js Integration Guide](https://louistrue.github.io/ifc-lite/tutorials/threejs-integration/)
-- [IFC-Lite Documentation](https://louistrue.github.io/ifc-lite/)
+- [Three.js Integration Guide](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/)
+- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
 `);
 }

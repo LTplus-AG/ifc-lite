@@ -166,7 +166,7 @@ Pair this with `exportToStep(store, { applyMutations: true })` from `@ifc-lite/e
 
 ## API
 
-See the [Property Editing Guide](https://louistrue.github.io/ifc-lite/guide/mutations/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litemutations).
+See the [Property Editing Guide](https://ltplus-ag.github.io/ifc-lite/guide/mutations/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litemutations).
 
 ## License
 

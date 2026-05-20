@@ -261,7 +261,7 @@ fileInput.addEventListener('change', async () => {
   // README
   writeFileSync(join(targetDir, 'README.md'), `# ${projectName}
 
-Babylon.js IFC viewer using [IFC-Lite](https://github.com/louistrue/ifc-lite).
+Babylon.js IFC viewer using [IFC-Lite](https://github.com/LTplus-AG/ifc-lite).
 
 ## Quick Start
 
@@ -274,6 +274,6 @@ Open http://localhost:5173 and drop an IFC file.
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://louistrue.github.io/ifc-lite/)
+- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
 `);
 }

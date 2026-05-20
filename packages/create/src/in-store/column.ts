@@ -11,7 +11,7 @@
  * (anchored to a storey + the model's owner history + its 'Body'
  * representation context). This is the in-place equivalent of
  * `IfcCreator.addIfcColumn()` and closes the merge-roundtrip gap from
- * louistrue/ifc-lite#592.
+ * LTplus-AG/ifc-lite#592.
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */

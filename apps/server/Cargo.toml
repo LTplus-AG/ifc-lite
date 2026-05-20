@@ -15,7 +15,7 @@ categories = ["web-programming", "parsing"]
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["multipart", "tokio"] }
+axum = { version = "0.8", features = ["multipart", "tokio"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "timeout", "limit", "compression-gzip", "decompression-gzip"] }
 
@@ -49,7 +49,7 @@ async-stream = "0.3"
 cacache = "13"
 
 # Hashing
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 
 # Logging
@@ -61,14 +61,14 @@ thiserror = "2.0"
 anyhow = "1.0"
 
 # Fast hashing (for style index) - must match ifc-lite-geometry version
-rustc-hash = "1.1"
+rustc-hash = "2.1"
 
 # CPU count
 num_cpus = "1.16"
 
 # Parquet/Arrow for efficient binary serialization
-arrow = { version = "53", default-features = false, features = ["ipc"] }
-parquet = { version = "53", default-features = false, features = ["arrow", "snap", "zstd", "lz4"] }
+arrow = { version = "58", default-features = false, features = ["ipc"] }
+parquet = { version = "58", default-features = false, features = ["arrow", "snap", "zstd", "lz4"] }
 bytes = "1.5"
 
 # Compression/decompression
@@ -78,7 +78,7 @@ flate2 = "1.0"
 base64 = "0.22"
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "serialization"

@@ -640,7 +640,7 @@ mod wall_profile_research {
 /// (e.g. GDA2020 MGA56: X ~280 000, Y ~6 214 000) directly in Brep geometry
 /// vertices while keeping IfcLocalPlacement at origin (0, 0, 0).
 ///
-/// Regression test for <https://github.com/louistrue/ifc-lite/issues/335>.
+/// Regression test for <https://github.com/LTplus-AG/ifc-lite/issues/335>.
 mod infra_rtc_detection {
     use super::*;
 

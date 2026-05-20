@@ -7,7 +7,7 @@ version = "2.4.1"
 edition = "2021"
 authors = ["IFC-Lite Contributors"]
 license = "MPL-2.0"
-repository = "https://github.com/louistrue/ifc-lite"
+repository = "https://github.com/LTplus-AG/ifc-lite"
 
 [workspace.dependencies]
 ifc-lite-core = { version = "2.4.1", path = "rust/core" }

@@ -34,7 +34,7 @@ memchr = "2.7"
 nom = "7.1"
 
 # Fast hashing
-rustc-hash = "1.1"
+rustc-hash = "2.1"
 
 # Optional: serialization
 serde = { version = "1.0", features = ["derive"], optional = true }
@@ -43,7 +43,7 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 smallvec = "1.13"
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 
 [dev-dependencies]
 ifc-lite-geometry = { path = "../geometry" }

@@ -1,9 +1,9 @@
 site_name: IFC-Lite Documentation
-site_url: https://louistrue.github.io/ifc-lite
+site_url: https://ltplus-ag.github.io/ifc-lite
 site_description: High-performance browser-native IFC platform documentation
 site_author: IFC-Lite Contributors
-repo_url: https://github.com/louistrue/ifc-lite
-repo_name: louistrue/ifc-lite
+repo_url: https://github.com/LTplus-AG/ifc-lite
+repo_name: LTplus-AG/ifc-lite
 edit_uri: edit/main/docs/
 use_directory_urls: true
 
@@ -94,7 +94,7 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/louistrue/ifc-lite
+      link: https://github.com/LTplus-AG/ifc-lite
     - icon: fontawesome/brands/npm
       link: https://www.npmjs.com/org/ifc-lite
   generator: false

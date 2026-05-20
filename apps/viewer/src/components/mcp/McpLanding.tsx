@@ -1239,7 +1239,7 @@ function Footer(): ReactNode {
           </div>
           <nav className="col-span-12 grid grid-cols-3 gap-6 md:col-span-6 text-[13px]">
             <FooterCol heading="Source" links={[
-              { href: 'https://github.com/louistrue/ifc-lite', label: 'GitHub' },
+              { href: 'https://github.com/LTplus-AG/ifc-lite', label: 'GitHub' },
               { href: 'https://www.npmjs.com/package/@ifc-lite/mcp', label: 'npm' },
             ]} />
             <FooterCol heading="Docs" links={[

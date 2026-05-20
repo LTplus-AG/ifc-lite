@@ -33,7 +33,7 @@ import {
 
 interface UseBCFOptions {
   /** Ref to the WebGPU canvas for snapshot capture */
-  canvasRef?: React.RefObject<HTMLCanvasElement>;
+  canvasRef?: React.RefObject<HTMLCanvasElement | null>;
   /** Ref to the renderer for camera access */
   rendererRef?: React.RefObject<Renderer | null>;
 }
@@ -55,7 +55,7 @@ interface UseBCFResult {
   /** Capture a snapshot from the canvas */
   captureSnapshot: () => Promise<string | null>;
   /** Set the canvas ref for snapshot capture */
-  setCanvasRef: (ref: React.RefObject<HTMLCanvasElement>) => void;
+  setCanvasRef: (ref: React.RefObject<HTMLCanvasElement | null>) => void;
   /** Set the renderer ref for camera access */
   setRendererRef: (ref: React.RefObject<Renderer | null>) => void;
 }
@@ -64,13 +64,13 @@ interface UseBCFResult {
 // Canvas Reference Store (module-level for cross-component access)
 // ============================================================================
 
-let globalCanvasRef: React.RefObject<HTMLCanvasElement> | null = null;
+let globalCanvasRef: React.RefObject<HTMLCanvasElement | null> | null = null;
 let globalRendererRef: React.RefObject<Renderer | null> | null = null;
 
 /**
  * Set the global canvas reference (called by ViewportContainer)
  */
-export function setGlobalCanvasRef(ref: React.RefObject<HTMLCanvasElement>): void {
+export function setGlobalCanvasRef(ref: React.RefObject<HTMLCanvasElement | null>): void {
   globalCanvasRef = ref;
 }
 
@@ -101,7 +101,7 @@ export function clearGlobalRefs(): void {
 // ============================================================================
 
 export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
-  const localCanvasRef = useRef<React.RefObject<HTMLCanvasElement> | null>(
+  const localCanvasRef = useRef<React.RefObject<HTMLCanvasElement | null> | null>(
     options.canvasRef ?? null
   );
   const localRendererRef = useRef<React.RefObject<Renderer | null> | null>(
@@ -146,7 +146,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
   /**
    * Set the canvas ref for snapshot capture
    */
-  const setCanvasRef = useCallback((ref: React.RefObject<HTMLCanvasElement>) => {
+  const setCanvasRef = useCallback((ref: React.RefObject<HTMLCanvasElement | null>) => {
     localCanvasRef.current = ref;
   }, []);
 

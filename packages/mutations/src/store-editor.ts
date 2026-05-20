@@ -7,7 +7,7 @@
  * `MutablePropertyView` overlay.
  *
  * Implements the `store.addEntity()` / `store.removeEntity()` /
- * `store.setPositionalAttribute()` API requested in louistrue/ifc-lite#592.
+ * `store.setPositionalAttribute()` API requested in LTplus-AG/ifc-lite#592.
  *
  * The underlying store buffer and entity index are never mutated. Changes
  * accumulate in the overlay and materialise during

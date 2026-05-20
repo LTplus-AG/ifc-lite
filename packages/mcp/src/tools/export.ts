@@ -11,22 +11,11 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import type { EntityRef } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
-
-function checkPath(filePath: string, allowed?: string[]): void {
-  if (!allowed || allowed.length === 0) return;
-  const ok = allowed.some((p) => filePath === p || filePath.startsWith(p + '/'));
-  if (!ok) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.PERMISSION_DENIED,
-      message: `Path '${filePath}' outside allowed roots`,
-    });
-  }
-}
+import { resolveSafePath } from '../safe-path.js';
 
 const exportIfc: Tool = {
   name: 'export_ifc',
@@ -45,8 +34,7 @@ const exportIfc: Tool = {
   },
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const filePath = resolve(input.file_path as string);
-    checkPath(filePath, ctx.config.allowedPaths);
+    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? m.store.schemaVersion;
     let refs: EntityRef[] = [];
     if (Array.isArray(input.global_ids)) {
@@ -86,8 +74,7 @@ const exportCsv: Tool = {
     const refs = (filterType ? m.bim.query().byType(filterType).toArray() : m.bim.query().toArray()).map((e) => e.ref);
     const csv = m.bim.export.csv(refs, { columns: cols, separator: sep });
     if (typeof input.file_path === 'string') {
-      const filePath = resolve(input.file_path);
-      checkPath(filePath, ctx.config.allowedPaths);
+      const filePath = await resolveSafePath(input.file_path, ctx, 'write');
       await writeFile(filePath, csv, 'utf-8');
       return okResult(`Wrote ${csv.length.toLocaleString()} bytes to ${filePath}.`, { filePath, rows: refs.length });
     }
@@ -116,8 +103,7 @@ const exportJson: Tool = {
     const refs = (filterType ? m.bim.query().byType(filterType).toArray() : m.bim.query().toArray()).map((e) => e.ref);
     const rows = m.bim.export.json(refs, cols);
     if (typeof input.file_path === 'string') {
-      const filePath = resolve(input.file_path);
-      checkPath(filePath, ctx.config.allowedPaths);
+      const filePath = await resolveSafePath(input.file_path, ctx, 'write');
       const text = JSON.stringify(rows, null, 2);
       await writeFile(filePath, text, 'utf-8');
       return okResult(`Wrote ${rows.length} rows to ${filePath}.`, { filePath, rows: rows.length });

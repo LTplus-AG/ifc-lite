@@ -7,6 +7,19 @@ import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 export interface GeometryWorkerInitMessage {
   type: 'init';
   wasmModule?: WebAssembly.Module;
+  /**
+   * Explicit URL to the wasm-bindgen `.wasm` binary. When provided,
+   * `init(wasmUrl)` is called instead of relying on wasm-bindgen's
+   * default `import.meta.url`-based resolution.
+   *
+   * Why: consumers whose bundler doesn't transform
+   * `new URL('ifc-lite_bg.wasm', import.meta.url)` inside the worker's
+   * dist (or who serve the wasm from a CDN at a different origin than
+   * the worker) need to resolve the URL on the main thread and pass it
+   * in. Default-undefined preserves the wasm-bindgen built-in path so
+   * Vite/webpack/Rollup consumers that already work keep working.
+   */
+  wasmUrl?: string;
 }
 
 export interface GeometryWorkerProcessMessage {
@@ -159,6 +172,33 @@ export type GeometryWorkerResponse =
   | GeometryWorkerMemoryMessage;
 
 let api: IfcAPI | null = null;
+
+/**
+ * Captured at the explicit `init` message and used for every subsequent
+ * lazy `await init(...)` call in this worker. When undefined, wasm-bindgen
+ * falls back to its built-in `new URL('ifc-lite_bg.wasm', import.meta.url)`
+ * resolution — which works in Vite + webpack 5 today but breaks for
+ * consumers shipping the worker from a separate origin / Blob URL.
+ * See `GeometryWorkerInitMessage.wasmUrl` for the rationale.
+ */
+let cachedWasmUrl: string | undefined = undefined;
+
+/**
+ * Idempotent wasm + IfcAPI initializer. Centralises the
+ * `if (!api) { await init(); api = new IfcAPI(); ... }` boilerplate that
+ * every message handler used to repeat. Honours `cachedWasmUrl` so the
+ * explicit-URL plumbing only has to set state in one place. Returns the
+ * `IfcAPI` so call sites can use the value directly without a non-null
+ * assertion on the module-level `api`.
+ */
+async function ensureInit(): Promise<IfcAPI> {
+  if (api) return api;
+  await init(cachedWasmUrl);
+  api = new IfcAPI();
+  mergeLayersApplied = false;
+  applyMergeLayersToApi();
+  return api;
+}
 
 /**
  * Cached merge-layers flag for this worker. The host may post
@@ -325,13 +365,8 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
   if (numJobs === 0) return;
 
   try {
-    if (!api) {
-      await init();
-      api = new IfcAPI();
-      mergeLayersApplied = false;
-      applyMergeLayersToApi();
-    }
-    const collection = api.processGeometryBatch(
+    const ifcApi = await ensureInit();
+    const collection = ifcApi.processGeometryBatch(
       session.localBytes, jobs, session.unitScale,
       session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
       session.voidKeys, session.voidCounts, session.voidValues,
@@ -411,12 +446,7 @@ self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
 async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<void> {
   try {
     if (e.data.type === 'prepass-streaming') {
-      if (!api) {
-        await init();
-        api = new IfcAPI();
-        mergeLayersApplied = false;
-        applyMergeLayersToApi();
-      }
+      const ifcApi = await ensureInit();
       // Heartbeat: lets the host watchdog know the worker is alive even
       // before the first chunk lands.
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
@@ -433,14 +463,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
       try {
-        api.buildPrePassStreaming(view, onEvent, chunkSize);
+        ifcApi.buildPrePassStreaming(view, onEvent, chunkSize);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (!triedFallback) {
           triedFallback = true;
           console.warn(`[Worker] Streaming prepass with SAB view failed (${msg}), retrying with copy`);
           view = materialiseSharedBytes(sharedBuffer);
-          api.buildPrePassStreaming(view, onEvent, chunkSize);
+          ifcApi.buildPrePassStreaming(view, onEvent, chunkSize);
         } else {
           throw err;
         }
@@ -449,12 +479,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     }
 
     if (e.data.type === 'prepass' || e.data.type === 'prepass-fast') {
-      if (!api) {
-        await init();
-        api = new IfcAPI();
-        mergeLayersApplied = false;
-        applyMergeLayersToApi();
-      }
+      const ifcApi = await ensureInit();
       // Heartbeat: signals "worker alive, parser running" so the host watchdog
       // can distinguish a stuck pre-pass from one that's still working on a
       // multi-GB file.
@@ -466,7 +491,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       let result: ReturnType<IfcAPI['buildPrePassOnce']>;
       try {
         const view = viewSharedBytes(sharedBuffer);
-        result = isFast ? api.buildPrePassFast(view) : api.buildPrePassOnce(view);
+        result = isFast ? ifcApi.buildPrePassFast(view) : ifcApi.buildPrePassOnce(view);
       } catch (err) {
         // wasm-bindgen on some runtimes rejects SAB-backed views with a
         // TypeError. Retry once with a materialised copy so we never regress
@@ -474,32 +499,28 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[Worker] Prepass with SAB view failed (${msg}), retrying with copy`);
         const copy = materialiseSharedBytes(sharedBuffer);
-        result = isFast ? api.buildPrePassFast(copy) : api.buildPrePassOnce(copy);
+        result = isFast ? ifcApi.buildPrePassFast(copy) : ifcApi.buildPrePassOnce(copy);
       }
       (self as unknown as Worker).postMessage({ type: 'prepass-result', result });
       return;
     }
 
     if (e.data.type === 'init') {
+      if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
       if (e.data.wasmModule) {
         initSync({ module_or_path: e.data.wasmModule });
+        api = new IfcAPI();
+        mergeLayersApplied = false;
+        applyMergeLayersToApi();
       } else {
-        await init();
+        await ensureInit();
       }
-      api = new IfcAPI();
-      mergeLayersApplied = false;
-      applyMergeLayersToApi();
       (self as unknown as Worker).postMessage({ type: 'ready' });
       return;
     }
 
     if (e.data.type === 'process') {
-      if (!api) {
-        await init();
-        api = new IfcAPI();
-        mergeLayersApplied = false;
-        applyMergeLayersToApi();
-      }
+      await ensureInit();
       const { sharedBuffer, jobsFlat, unitScale, rtcX, rtcY, rtcZ, needsShift,
               voidKeys, voidCounts, voidValues, styleIds, styleColors } = e.data;
       const session = startSession({
@@ -514,12 +535,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     }
 
     if (e.data.type === 'stream-start') {
-      if (!api) {
-        await init();
-        api = new IfcAPI();
-        mergeLayersApplied = false;
-        applyMergeLayersToApi();
-      }
+      await ensureInit();
       activeSession = startSession({
         sharedBuffer: e.data.sharedBuffer,
         unitScale: e.data.unitScale,
@@ -564,13 +580,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // (~5 s on a 1 GB IFC) — the dominant TTFG bottleneck before this
       // change. Now the only cost is FxHashMap construction from the
       // input slices (~1 s for 14 M entries).
-      if (!api) {
-        await init();
-        api = new IfcAPI();
-        mergeLayersApplied = false;
-        applyMergeLayersToApi();
-      }
-      api.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
+      const ifcApi = await ensureInit();
+      ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
       return;
     }
 

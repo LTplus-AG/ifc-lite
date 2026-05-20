@@ -77,7 +77,7 @@ flowchart TB
     ```bash
     docker run -p 3001:8080 \
       -v ifc-cache:/app/cache \
-      ghcr.io/louistrue/ifc-lite-server
+      ghcr.io/LTplus-AG/ifc-lite-server
     ```
 
 === "Native Binary"
@@ -476,7 +476,7 @@ version: '3.8'
 
 services:
   ifc-lite-server:
-    image: ghcr.io/louistrue/ifc-lite-server:latest
+    image: ghcr.io/LTplus-AG/ifc-lite-server:latest
     ports:
       - "3001:8080"
     environment:

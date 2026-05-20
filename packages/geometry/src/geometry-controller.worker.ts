@@ -26,8 +26,18 @@
  */
 
 // Import the THREADED bundle. The viewer's vite.config.ts maps
-// `@ifc-lite/wasm-threaded` to `packages/wasm-threaded/pkg/ifc-lite.js`.
-// (See vite.config.ts alias added by Phase 2 wiring.)
+// `@ifc-lite/wasm-threaded` to `packages/wasm-threaded/pkg/ifc-lite.js`
+// (see vite.config.ts alias added by Phase 2 wiring), so this static
+// specifier resolves naturally for the workspace source-alias build.
+//
+// Published-package contract (issue #676): `scripts/transform-controller-worker-dist.mjs`
+// runs after `tsc` and rewrites this single line in `dist/geometry-controller.worker.js`
+// into a lazy `await import(<runtime-built-specifier>)` so consumer bundlers
+// (Turbopack, webpack, esbuild) don't try to resolve `@ifc-lite/wasm-threaded`
+// at their build step — that package is workspace-only per
+// `packages/wasm-threaded/package.json` `_intent`. The
+// `geometry-controller-dist.test.ts` regression pins both halves of this
+// contract (no static import in dist, dynamic loader present).
 import init, { initSync, IfcAPI, initThreadPool } from '@ifc-lite/wasm-threaded';
 
 // Optional: import the bench function (only present in threaded build)
@@ -71,6 +81,14 @@ export type GeometryControllerResponse =
 
 let api: IfcAPI | null = null;
 let threadPoolReady = false;
+
+/**
+ * Captured at the explicit `init` message and forwarded to wasm-bindgen's
+ * `init(url)` call. Mirrors `geometry.worker.ts`'s `cachedWasmUrl` — see
+ * that file for the rationale. Defaults to undefined so wasm-bindgen
+ * falls back to its `import.meta.url`-relative default resolution.
+ */
+let cachedWasmUrl: string | undefined = undefined;
 
 /**
  * Cached merge-layers flag (issue #540). The host may post
@@ -294,10 +312,11 @@ self.onmessage = (rawEvent: MessageEvent<GeometryControllerRequest>) => {
   messageTail = messageTail.then(async () => {
     try {
       if (e.data.type === 'init') {
+        if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
         if (e.data.wasmModule) {
           initSync({ module_or_path: e.data.wasmModule });
         } else {
-          await init();
+          await init(cachedWasmUrl);
         }
         api = new IfcAPI();
         mergeLayersApplied = false;

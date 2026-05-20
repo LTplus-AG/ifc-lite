@@ -33,6 +33,7 @@ import {
   SquareX,
   Building2,
   Plus,
+  PackagePlus,
   MessageSquare,
   ClipboardCheck,
   Palette,
@@ -42,6 +43,7 @@ import {
   FileCode2,
   CalendarClock,
   Globe2,
+  Move,
   Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -72,7 +74,6 @@ import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
 import { SearchInline } from './SearchInline';
-// CesiumSettingsDialog removed — settings now shown as overlay on Cesium viewer
 import { useFloorplanView } from '@/hooks/useFloorplanView';
 import { buildDesktopUpgradeUrl, hasDesktopFeatureAccess, type DesktopFeature } from '@/lib/desktop-product';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
@@ -91,7 +92,7 @@ import {
 } from '@/services/analysis-extensions';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate';
-type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | string;
+type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
   return typeof (file as NativeFileHandle).path === 'string';
@@ -341,6 +342,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);
   const toggleCesium = useViewerStore((state) => state.toggleCesium);
+  const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
+  const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
   const storeModels = useViewerStore((state) => state.models);
   const desktopEntitlement = useViewerStore((state) => state.desktopEntitlement);
   const analysisExtensionState = useSyncExternalStore(
@@ -584,7 +587,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'addElement') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -598,20 +601,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
     const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
     const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
+    const isAddElementActive = activeTool === 'addElement';
+    const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
 
     setBcfPanelVisible(nextBcfVisible);
     setIdsPanelVisible(nextIdsVisible);
     setLensPanelVisible(nextLensVisible);
 
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible) {
+    if (panel === 'addElement') {
+      setActiveTool(nextAddElementActive ? 'addElement' : 'select');
+    } else if (isAddElementActive) {
+      setActiveTool('select');
+    }
+
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextAddElementActive) {
       setRightPanelCollapsed(false);
     }
   }, [
     activeAnalysisExtension?.placement,
+    activeTool,
     bcfPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
     requireDesktopFeature,
+    setActiveTool,
     setBcfPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
@@ -645,10 +658,18 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setBcfPanelVisible(false);
     setIdsPanelVisible(false);
     setLensPanelVisible(false);
+    // The right slot is single-tenant: when an analysis extension takes
+    // it over, the AddElement tool must release it too, otherwise its 3D
+    // click handler keeps placing elements behind the extension panel.
+    if (activeTool === 'addElement') {
+      setActiveTool('select');
+    }
     setRightPanelCollapsed(false);
   }, [
+    activeTool,
     analysisExtensionState.activeId,
     analysisExtensionState.extensions,
+    setActiveTool,
     setBcfPanelVisible,
     setGanttPanelVisible,
     setIdsPanelVisible,
@@ -666,9 +687,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
+    if (activeTool === 'addElement') panels.add('addElement');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [
+    activeTool,
     analysisExtensionState.activeId,
     bcfPanelVisible,
     ganttPanelVisible,
@@ -687,6 +710,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
+    if (activeWorkspacePanels.has('addElement')) return 'Add Element';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 
@@ -1042,6 +1066,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Palette className="h-4 w-4 mr-2" />
             Lens Rules
           </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('addElement')}
+            onCheckedChange={() => handleToggleRightPanel('addElement')}
+          >
+            <PackagePlus className="h-4 w-4 mr-2" />
+            Add Element
+          </DropdownMenuCheckboxItem>
           {rightAnalysisExtensions.length > 0 && (
             <>
               <DropdownMenuSeparator />
@@ -1298,9 +1329,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </TooltipContent>
       </Tooltip>
 
-      {/* Cesium 3D Context toggle + settings — web only, only when model has georeferencing */}
+      {/* Cesium 3D Context toggle — web only, only when model has georeferencing */}
       {cesiumAvailable && !desktopShell && (
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -1311,6 +1342,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 onClick={(e) => {
                   (e.currentTarget as HTMLButtonElement).blur();
                   toggleCesium();
+                  if (cesiumEnabled) {
+                    setCesiumPlacementEditMode(false);
+                    if (activeTool === 'cesium-placement') setActiveTool('select');
+                  }
                 }}
                 className={cn(cesiumEnabled && 'bg-teal-600 text-white hover:bg-teal-700')}
               >
@@ -1321,6 +1356,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               {cesiumEnabled ? 'Hide' : 'Show'} 3D World Context (Cesium)
             </TooltipContent>
           </Tooltip>
+          {cesiumEnabled && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={cesiumPlacementEditMode ? 'default' : 'ghost'}
+                  size="icon-sm"
+                  aria-label={cesiumPlacementEditMode ? 'Stop moving georeference' : 'Move georeference in Cesium'}
+                  aria-pressed={cesiumPlacementEditMode}
+                  onClick={(e) => {
+                    (e.currentTarget as HTMLButtonElement).blur();
+                    const next = !cesiumPlacementEditMode;
+                    setCesiumPlacementEditMode(next);
+                    setActiveTool(next ? 'cesium-placement' : 'select');
+                  }}
+                  className={cn(cesiumPlacementEditMode && 'bg-amber-500 text-zinc-950 hover:bg-amber-400')}
+                >
+                  <Move className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {cesiumPlacementEditMode ? 'Stop moving georeference' : 'Move georeference'}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       )}
 

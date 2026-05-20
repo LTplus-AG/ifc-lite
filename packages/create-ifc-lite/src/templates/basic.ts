@@ -93,7 +93,7 @@ parser.parse(buffer).then(result => {
   // README
   writeFileSync(join(targetDir, 'README.md'), `# ${projectName}
 
-IFC parser project using [IFC-Lite](https://github.com/louistrue/ifc-lite).
+IFC parser project using [IFC-Lite](https://github.com/LTplus-AG/ifc-lite).
 
 ## Quick Start
 
@@ -104,7 +104,7 @@ npm run parse ./your-model.ifc
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://louistrue.github.io/ifc-lite/)
-- [API Reference](https://louistrue.github.io/ifc-lite/api/)
+- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
+- [API Reference](https://ltplus-ag.github.io/ifc-lite/api/)
 `);
 }

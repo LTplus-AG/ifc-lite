@@ -4,8 +4,25 @@
 
 //! Styling, color extraction, and building rotation for IFC-Lite API
 
-/// Build style index: maps geometry express IDs to RGBA colors
-/// Follows the chain: IfcStyledItem → IfcSurfaceStyle → IfcSurfaceStyleRendering → IfcColourRgb
+/// Build style index: maps geometry express IDs to RGBA colors.
+///
+/// IFC4 defines two parallel mechanisms for coloring a geometric
+/// representation item. This walker handles both:
+///
+/// 1. `IfcStyledItem` chain — the traditional approach. `Item` points at a
+///    geometry item, `Styles` chains through IfcSurfaceStyle →
+///    IfcSurfaceStyleRendering → IfcColourRgb to a colour.
+///
+/// 2. `IfcIndexedColourMap` — the tessellated-face-set approach used by
+///    CATIA / 3DEXPERIENCE exports (see #663). `MappedTo` points at an
+///    IfcTessellatedFaceSet, `Colours` is an IfcColourRgbList, and `ColourIndex`
+///    is a per-face index into that list. For our purposes we pick the most
+///    common colour and assign it as the geometry's solid colour; true
+///    per-face colour rendering would need a richer mesh-data contract.
+///
+/// IfcIndexedColourMap entries shadow IfcStyledItem entries when both target
+/// the same geometry (rare, but CATIA never emits styled items so the two
+/// paths almost never collide in practice).
 pub(crate) fn build_geometry_style_index(
     content: &str,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -14,45 +31,129 @@ pub(crate) fn build_geometry_style_index(
     use rustc_hash::FxHashMap;
 
     let mut style_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    // Stash IfcIndexedColourMap results separately so the merge below can
+    // give IfcStyledItem unconditional precedence regardless of scan order
+    // — files where an IFCINDEXEDCOLOURMAP appears before its matching
+    // IFCSTYLEDITEM otherwise let the colour-map shadow the authored intent
+    // (CodeRabbit feedback on #669).
+    let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);
 
-    // First pass: find all IfcStyledItem entities
+    // One pass over all entities — branch on the relevant type names. Doing
+    // both walks in a single pass keeps the file scan cost the same as the
+    // pre-#663 single-mechanism implementation.
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCSTYLEDITEM" {
-            continue;
-        }
+        match type_name {
+            "IFCSTYLEDITEM" => {
+                let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) else { continue };
 
-        // Decode the IfcStyledItem
-        let styled_item = match decoder.decode_at_with_id(id, start, end) {
-            Ok(entity) => entity,
-            Err(_) => continue,
-        };
+                // IfcStyledItem: Item (ref to geometry), Styles (list of style refs), Name
+                let Some(geometry_id) = styled_item.get_ref(0) else { continue };
 
-        // IfcStyledItem: Item (ref to geometry), Styles (list of style refs), Name
-        // Attribute 0: Item (geometry reference)
-        let geometry_id = match styled_item.get_ref(0) {
-            Some(id) => id,
-            None => continue,
-        };
+                // Skip if we already have a styled-item color for this geometry
+                // (an earlier IfcStyledItem already won). IfcIndexedColourMap
+                // entries are kept in the side map and merged below with lower
+                // precedence than anything we put into `style_index` here.
+                if style_index.contains_key(&geometry_id) {
+                    continue;
+                }
 
-        // Skip if we already have a color for this geometry
-        if style_index.contains_key(&geometry_id) {
-            continue;
-        }
-
-        // Attribute 1: Styles (list of style assignment refs)
-        let styles_attr = match styled_item.get(1) {
-            Some(attr) => attr,
-            None => continue,
-        };
-
-        // Extract color from styles list
-        if let Some(color) = extract_color_from_styles(styles_attr, decoder) {
-            style_index.insert(geometry_id, color);
+                let Some(styles_attr) = styled_item.get(1) else { continue };
+                if let Some(color) = extract_color_from_styles(styles_attr, decoder) {
+                    style_index.insert(geometry_id, color);
+                }
+            }
+            "IFCINDEXEDCOLOURMAP" => {
+                if let Some((geometry_id, color)) =
+                    extract_color_from_indexed_colour_map(id, start, end, decoder)
+                {
+                    colour_map_styles.entry(geometry_id).or_insert(color);
+                }
+            }
+            _ => {}
         }
     }
 
+    // Merge: IfcStyledItem (in `style_index`) wins unconditionally. Only
+    // geometries WITHOUT a styled-item entry pick up their colour-map colour.
+    for (geometry_id, color) in colour_map_styles {
+        style_index.entry(geometry_id).or_insert(color);
+    }
+
     style_index
+}
+
+/// Resolve the geometry ID + dominant colour from an `IfcIndexedColourMap`.
+///
+/// Schema (IFC4):
+/// - attr 0: `MappedTo` → IfcTessellatedFaceSet (target geometry)
+/// - attr 1: `Opacity` (optional REAL, 0..1 — 1.0 when omitted)
+/// - attr 2: `Colours` → IfcColourRgbList
+/// - attr 3: `ColourIndex` → list of 1-based indices into `Colours`
+///
+/// CATIA exports almost always reference a single colour, so picking
+/// `colour[ColourIndex[0]]` is the right call. For multi-colour maps we
+/// pick the most-frequent index — captures the dominant tone, leaves the
+/// per-face variation for a future mesh-data upgrade.
+///
+/// Used by the streaming pre-pass in `gpu_meshes.rs` which has already
+/// collected entity spans during its scan — hence the span-based signature
+/// rather than entity-id-only.
+pub(crate) fn extract_color_from_indexed_colour_map_span(
+    id: u32,
+    start: usize,
+    end: usize,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<(u32, [f32; 4])> {
+    extract_color_from_indexed_colour_map(id, start, end, decoder)
+}
+
+fn extract_color_from_indexed_colour_map(
+    id: u32,
+    start: usize,
+    end: usize,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<(u32, [f32; 4])> {
+    let entity = decoder.decode_at_with_id(id, start, end).ok()?;
+    let geometry_id = entity.get_ref(0)?;
+    let opacity = entity
+        .get(1)
+        .and_then(|a| a.as_float())
+        .map(|v| v as f32)
+        .unwrap_or(1.0);
+    let colours_id = entity.get_ref(2)?;
+    let index_attr = entity.get(3)?;
+    let index_list = index_attr.as_list()?;
+
+    // Pick the dominant colour index. Single-colour maps (the common case)
+    // skip the histogram entirely.
+    let dominant_index: usize = if index_list.is_empty() {
+        return None;
+    } else if index_list.len() == 1 {
+        index_list[0].as_int()? as usize
+    } else {
+        let mut counts: rustc_hash::FxHashMap<i64, u32> = rustc_hash::FxHashMap::default();
+        for v in index_list {
+            if let Some(i) = v.as_int() {
+                *counts.entry(i).or_insert(0) += 1;
+            }
+        }
+        let dominant = counts.iter().max_by_key(|(_, c)| *c)?;
+        *dominant.0 as usize
+    };
+
+    // Resolve IfcColourRgbList.ColourList[dominant_index]. Index is 1-based
+    // per ISO 10303-21 LIST conventions.
+    let colours = decoder.decode_by_id(colours_id).ok()?;
+    let colour_list = colours.get(0)?.as_list()?;
+    let colour_idx_zero_based = dominant_index.checked_sub(1).unwrap_or(0);
+    let rgb_tuple = colour_list.get(colour_idx_zero_based)?.as_list()?;
+
+    let r = rgb_tuple.first().and_then(|v| v.as_float())? as f32;
+    let g = rgb_tuple.get(1).and_then(|v| v.as_float())? as f32;
+    let b = rgb_tuple.get(2).and_then(|v| v.as_float())? as f32;
+
+    Some((geometry_id, [r, g, b, opacity.clamp(0.0, 1.0)]))
 }
 
 /// Build element style index: maps building element IDs to RGBA colors
@@ -413,6 +514,9 @@ pub(crate) fn combined_pre_pass(
     let estimated_elements = content.len() / 2000;
 
     let mut geometry_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    // IfcIndexedColourMap side-map (#663). Merged into `geometry_styles` after
+    // the scan so IfcStyledItem keeps precedence regardless of scan order.
+    let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut faceted_brep_ids: Vec<u32> = Vec::with_capacity(estimated_elements / 10);
     let mut project_id: Option<u32> = None;
@@ -452,6 +556,16 @@ pub(crate) fn combined_pre_pass(
                             }
                         }
                     }
+                }
+            }
+            "IFCINDEXEDCOLOURMAP" => {
+                // IFC4 per-face-set colour mechanism used by CATIA /
+                // 3DEXPERIENCE exports (#663). Held in a side map and merged
+                // below with lower precedence than IfcStyledItem.
+                if let Some((geometry_id, color)) =
+                    extract_color_from_indexed_colour_map(id, start, end, decoder)
+                {
+                    colour_map_styles.entry(geometry_id).or_insert(color);
                 }
             }
             "IFCMATERIALDEFINITIONREPRESENTATION" | "IFCRELASSOCIATESMATERIAL" => {
@@ -501,6 +615,13 @@ pub(crate) fn combined_pre_pass(
                 }
             }
         }
+    }
+
+    // IfcStyledItem wins; only geometries WITHOUT a styled-item entry pick up
+    // their IfcIndexedColourMap colour (#663). Done after the scan so scan
+    // order doesn't decide precedence.
+    for (geometry_id, color) in colour_map_styles {
+        geometry_styles.entry(geometry_id).or_insert(color);
     }
 
     // Build material style index: material_id → [color, ...]

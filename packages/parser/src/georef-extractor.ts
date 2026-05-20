@@ -20,6 +20,7 @@
 
 import type { IfcEntity } from './entity-extractor.js';
 import { getString, getNumber, getReference } from './attribute-helpers.js';
+import { getAttributeNames } from './ifc-schema.js';
 
 export interface MapConversion {
   id: number;
@@ -70,6 +71,7 @@ export interface GeoreferenceInfo {
   hasGeoreference: boolean;
   mapConversion?: MapConversion;
   projectedCRS?: ProjectedCRS;
+  source?: 'mapConversion' | 'siteLocation';
   // Computed transformation matrix (4x4) from local to world coordinates
   transformMatrix?: number[];
 }
@@ -107,10 +109,87 @@ export function extractGeoreferencing(
 
   // Compute transformation matrix if we have map conversion
   if (info.mapConversion) {
+    info.source = 'mapConversion';
     info.transformMatrix = computeTransformMatrix(info.mapConversion);
   }
 
+  if (!info.hasGeoreference) {
+    const legacySite = extractLegacySiteGeoreference(entities, entitiesByType);
+    if (legacySite) {
+      return legacySite;
+    }
+  }
+
   return info;
+}
+
+function getAttributeValueByName(entity: IfcEntity, attributeName: string): unknown {
+  const attributeNames = getAttributeNames(entity.type);
+  const index = attributeNames.indexOf(attributeName);
+  if (index < 0) return undefined;
+  return entity.attributes[index];
+}
+
+function compoundPlaneAngleToDecimalDegrees(value: unknown): number | undefined {
+  if (!Array.isArray(value) || value.length < 3) return undefined;
+  const numbers = value
+    .map((entry) => getNumber(entry))
+    .filter((entry): entry is number => entry !== undefined);
+  if (numbers.length < 3) return undefined;
+
+  const [degreesRaw, minutesRaw, secondsRaw, millionthsRaw = 0] = numbers;
+  const sign = degreesRaw < 0 || minutesRaw < 0 || secondsRaw < 0 || millionthsRaw < 0 ? -1 : 1;
+  const degrees = Math.abs(degreesRaw);
+  const minutes = Math.abs(minutesRaw);
+  const seconds = Math.abs(secondsRaw);
+  const millionths = Math.abs(millionthsRaw);
+
+  return sign * (degrees + (minutes / 60) + ((seconds + (millionths / 1_000_000)) / 3600));
+}
+
+function extractLegacySiteGeoreference(
+  entities: Map<number, IfcEntity>,
+  entitiesByType: Map<string, number[]>,
+): GeoreferenceInfo | null {
+  const siteIds = entitiesByType.get('IfcSite') || [];
+  for (const siteId of siteIds) {
+    const site = entities.get(siteId);
+    if (!site) continue;
+
+    const latitude = compoundPlaneAngleToDecimalDegrees(
+      getAttributeValueByName(site, 'RefLatitude'),
+    );
+    const longitude = compoundPlaneAngleToDecimalDegrees(
+      getAttributeValueByName(site, 'RefLongitude'),
+    );
+    const elevation = getNumber(getAttributeValueByName(site, 'RefElevation')) ?? 0;
+
+    if (latitude === undefined || longitude === undefined) continue;
+
+    return {
+      hasGeoreference: true,
+      source: 'siteLocation',
+      projectedCRS: {
+        id: site.expressId,
+        name: 'EPSG:4326',
+        description: 'Legacy IfcSite geolocation',
+        geodeticDatum: 'WGS84',
+        mapProjection: 'Geographic',
+        mapUnit: 'DEGREE',
+      },
+      mapConversion: {
+        id: site.expressId,
+        sourceCRS: 0,
+        targetCRS: site.expressId,
+        eastings: longitude,
+        northings: latitude,
+        orthogonalHeight: elevation,
+        scale: 1,
+      },
+    };
+  }
+
+  return null;
 }
 
 function extractMapConversion(entity: IfcEntity): MapConversion {
@@ -306,7 +385,8 @@ export function getCoordinateSystemDescription(georef: GeoreferenceInfo): string
 
   if (georef.mapConversion) {
     const { eastings, northings, orthogonalHeight } = georef.mapConversion;
-    parts.push(`Origin: (${eastings.toFixed(2)}, ${northings.toFixed(2)}, ${orthogonalHeight.toFixed(2)})`);
+    const originLabel = georef.source === 'siteLocation' ? 'Site' : 'Origin';
+    parts.push(`${originLabel}: (${eastings.toFixed(2)}, ${northings.toFixed(2)}, ${orthogonalHeight.toFixed(2)})`);
   }
 
   return parts.join(' ');

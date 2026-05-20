@@ -15,11 +15,19 @@
  */
 
 import type { StateCreator } from 'zustand';
+import type { MapConversion } from '@ifc-lite/parser';
 
-export type CesiumDataSource =
-  | 'osm-buildings'        // Cesium OSM Buildings (free via Cesium ion)
-  | 'bing-aerial'          // Bing Maps aerial imagery draped on terrain
-  | 'google-photorealistic'; // Google Photorealistic 3D Tiles (requires API key)
+import { clearTerrainElevationCache } from '@/lib/geo/terrain-elevation';
+
+export type CesiumDataSource = 'google-photorealistic';
+
+export interface CesiumPlacementDraft {
+  eastings: number;
+  northings: number;
+  orthogonalHeight: number;
+  xAxisAbscissa: number;
+  xAxisOrdinate: number;
+}
 
 export interface CesiumSlice {
   // State
@@ -31,16 +39,22 @@ export interface CesiumSlice {
   cesiumIonToken: string;
   /** Terrain enabled (Cesium World Terrain). */
   cesiumTerrainEnabled: boolean;
-  /** Clamp model to terrain height at its geodetic position. */
-  cesiumTerrainClamp: boolean;
   /** Terrain height at model position (queried from Cesium, meters). null = not yet queried. */
   cesiumTerrainHeight: number | null;
+  /** Human-readable source label for the sampled terrain height. */
+  cesiumTerrainSource: string | null;
   /** Model ID that the Cesium overlay is currently displaying. */
   cesiumSourceModelId: string | null;
   /** Terrain clip Y position in viewer space. When set, fragments below this Y are discarded. */
   cesiumTerrainClipY: number | null;
   /** Whether the GLB model has been loaded into Cesium (hides WebGPU overlay). */
   cesiumGlbLoaded: boolean;
+  /** Whether the direct placement editor is active. */
+  cesiumPlacementEditMode: boolean;
+  /** Source model currently associated with the placement draft. */
+  cesiumPlacementDraftModelId: string | null;
+  /** Preview placement values shown in Cesium before applying to IFC georeference. */
+  cesiumPlacementDraft: CesiumPlacementDraft | null;
 
   // Actions
   setCesiumAvailable: (available: boolean) => void;
@@ -49,11 +63,19 @@ export interface CesiumSlice {
   setCesiumDataSource: (source: CesiumDataSource) => void;
   setCesiumIonToken: (token: string) => void;
   setCesiumTerrainEnabled: (enabled: boolean) => void;
-  setCesiumTerrainClamp: (clamp: boolean) => void;
   setCesiumTerrainHeight: (height: number | null) => void;
+  setCesiumTerrainSource: (source: string | null) => void;
   setCesiumSourceModelId: (modelId: string | null) => void;
   setCesiumTerrainClipY: (y: number | null) => void;
   setCesiumGlbLoaded: (loaded: boolean) => void;
+  setCesiumPlacementEditMode: (enabled: boolean) => void;
+  toggleCesiumPlacementEditMode: () => void;
+  beginCesiumPlacementDraft: (
+    modelId: string,
+    conversion: Pick<MapConversion, 'eastings' | 'northings' | 'orthogonalHeight' | 'xAxisAbscissa' | 'xAxisOrdinate'>,
+  ) => void;
+  updateCesiumPlacementDraft: (values: Partial<CesiumPlacementDraft>) => void;
+  resetCesiumPlacementDraft: () => void;
 }
 
 const STORAGE_KEY_ION_TOKEN = 'ifc-lite:cesium-ion-token';
@@ -80,13 +102,9 @@ function saveToStorage(key: string, value: string): void {
   } catch { /* storage unavailable */ }
 }
 
-const VALID_DATA_SOURCES = new Set<CesiumDataSource>(['osm-buildings', 'bing-aerial', 'google-photorealistic']);
-
 function loadDataSource(): CesiumDataSource {
-  const stored = loadFromStorage(STORAGE_KEY_DATA_SOURCE, '');
-  return VALID_DATA_SOURCES.has(stored as CesiumDataSource)
-    ? (stored as CesiumDataSource)
-    : 'google-photorealistic';
+  // Only Google Photorealistic is supported; upgrade any stale stored value.
+  return 'google-photorealistic';
 }
 
 /** Resolve the Cesium ion token: user override > build-time default */
@@ -101,27 +119,90 @@ export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> =
   cesiumDataSource: loadDataSource(),
   cesiumIonToken: resolveIonToken(),
   cesiumTerrainEnabled: true,
-  cesiumTerrainClamp: true,
   cesiumTerrainHeight: null,
+  cesiumTerrainSource: null,
   cesiumSourceModelId: null,
   cesiumTerrainClipY: null,
   cesiumGlbLoaded: false,
+  cesiumPlacementEditMode: false,
+  cesiumPlacementDraftModelId: null,
+  cesiumPlacementDraft: null,
 
   setCesiumAvailable: (available) => set({ cesiumAvailable: available }),
   setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled }),
-  toggleCesium: () => set((s) => ({ cesiumEnabled: !s.cesiumEnabled })),
+  toggleCesium: () => set((s) => ({
+    cesiumEnabled: !s.cesiumEnabled,
+    ...(s.cesiumEnabled
+      ? {
+          cesiumPlacementEditMode: false,
+          cesiumPlacementDraftModelId: null,
+          cesiumPlacementDraft: null,
+        }
+      : {}),
+  })),
   setCesiumDataSource: (source) => {
+    clearTerrainElevationCache();
     saveToStorage(STORAGE_KEY_DATA_SOURCE, source);
-    set({ cesiumDataSource: source });
+    set({
+      cesiumDataSource: source,
+      cesiumTerrainHeight: null,
+      cesiumTerrainSource: null,
+      cesiumTerrainClipY: null,
+    });
   },
   setCesiumIonToken: (token) => {
+    clearTerrainElevationCache();
     saveToStorage(STORAGE_KEY_ION_TOKEN, token);
-    set({ cesiumIonToken: token || DEFAULT_ION_TOKEN });
+    set({
+      cesiumIonToken: token || DEFAULT_ION_TOKEN,
+      cesiumTerrainHeight: null,
+      cesiumTerrainSource: null,
+      cesiumTerrainClipY: null,
+    });
   },
-  setCesiumTerrainEnabled: (enabled) => set({ cesiumTerrainEnabled: enabled }),
-  setCesiumTerrainClamp: (clamp) => set({ cesiumTerrainClamp: clamp }),
+  setCesiumTerrainEnabled: (enabled) => {
+    clearTerrainElevationCache();
+    set({
+      cesiumTerrainEnabled: enabled,
+      cesiumTerrainHeight: null,
+      cesiumTerrainSource: null,
+      cesiumTerrainClipY: null,
+    });
+  },
   setCesiumTerrainHeight: (height) => set({ cesiumTerrainHeight: height }),
+  setCesiumTerrainSource: (source) => set({ cesiumTerrainSource: source }),
   setCesiumSourceModelId: (modelId) => set({ cesiumSourceModelId: modelId }),
   setCesiumTerrainClipY: (y) => set({ cesiumTerrainClipY: y }),
   setCesiumGlbLoaded: (loaded) => set({ cesiumGlbLoaded: loaded }),
+  setCesiumPlacementEditMode: (enabled) => set({ cesiumPlacementEditMode: enabled }),
+  toggleCesiumPlacementEditMode: () => set((s) => ({
+    cesiumPlacementEditMode: !s.cesiumPlacementEditMode,
+    ...(!s.cesiumPlacementEditMode
+      ? {}
+      : {
+          cesiumPlacementDraftModelId: null,
+          cesiumPlacementDraft: null,
+        }),
+  })),
+  beginCesiumPlacementDraft: (modelId, conversion) => set({
+    cesiumPlacementDraftModelId: modelId,
+    cesiumPlacementDraft: {
+      eastings: conversion.eastings,
+      northings: conversion.northings,
+      orthogonalHeight: conversion.orthogonalHeight,
+      // IFC MapConversion's x-axis cos/sin pair is optional in the schema.
+      // When absent, the convention is "no rotation": cos=1, sin=0.
+      xAxisAbscissa: conversion.xAxisAbscissa ?? 1,
+      xAxisOrdinate: conversion.xAxisOrdinate ?? 0,
+    },
+  }),
+  updateCesiumPlacementDraft: (values) => set((state) => ({
+    cesiumPlacementDraft: state.cesiumPlacementDraft
+      ? { ...state.cesiumPlacementDraft, ...values }
+      : null,
+  })),
+  resetCesiumPlacementDraft: () => set({
+    cesiumPlacementDraftModelId: null,
+    cesiumPlacementDraft: null,
+  }),
 });

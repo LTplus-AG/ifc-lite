@@ -18,7 +18,8 @@ serde = ["dep:serde"]
 [dependencies]
 
 # Even faster float parsing (2-3x faster than lexical-core)
-fast-float = "0.2"
+# fast-float2 is the maintained fork of unmaintained fast-float (GHSA-x8jh-xj3x-gx3c, GHSA-8655-xgh5-5vvq)
+fast-float2 = "0.2"
 
 # Async streaming
 futures-core = "0.3"
@@ -33,7 +34,7 @@ memchr = "2.7"
 nom = "7.1"
 
 # Fast hashing
-rustc-hash = "1.1"
+rustc-hash = "2.1"
 
 # Optional: serialization
 serde = { version = "1.0", features = ["derive"], optional = true }
@@ -42,7 +43,7 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 smallvec = "1.13"
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 
 [dev-dependencies]
 ifc-lite-geometry = { path = "../geometry" }

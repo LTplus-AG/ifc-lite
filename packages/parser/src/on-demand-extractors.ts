@@ -654,12 +654,16 @@ export function extractGeoreferencingOnDemand(store: IfcDataStore): Georeference
     const entityMap = new Map<number, { expressId: number; attributes: unknown[] }>();
     const typeMap = new Map<string, number[]>();
 
-    for (const typeName of ['IFCMAPCONVERSION', 'IFCPROJECTEDCRS']) {
+    for (const typeName of ['IFCMAPCONVERSION', 'IFCPROJECTEDCRS', 'IFCSITE']) {
         const ids = byType.get(typeName);
         if (!ids?.length) continue;
 
         // Use mixed-case for the georef extractor's type lookup
-        const displayName = typeName === 'IFCMAPCONVERSION' ? 'IfcMapConversion' : 'IfcProjectedCRS';
+        const displayName = typeName === 'IFCMAPCONVERSION'
+            ? 'IfcMapConversion'
+            : typeName === 'IFCPROJECTEDCRS'
+                ? 'IfcProjectedCRS'
+                : 'IfcSite';
         typeMap.set(displayName, ids);
 
         for (const id of ids) {

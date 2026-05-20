@@ -86,7 +86,7 @@ VIEWER_BENCHMARK_FILES="tests/models/ara3d/AC20-FZK-Haus.ifc" pnpm test:benchmar
 
 For large stress fixtures such as `BWK-BIM` and `Holter Tower`, fetch those files explicitly with `git lfs pull --include=...` before running the benchmark suite.
 
-Results are saved to `tests/benchmark/benchmark-results/` with automatic regression detection. See the [benchmark README](https://github.com/louistrue/ifc-lite/tree/main/tests/benchmark) for details on test models, metrics, and CI integration.
+Results are saved to `tests/benchmark/benchmark-results/` with automatic regression detection. See the [benchmark README](https://github.com/LTplus-AG/ifc-lite/tree/main/tests/benchmark) for details on test models, metrics, and CI integration.
 
 ## Further Reading
 

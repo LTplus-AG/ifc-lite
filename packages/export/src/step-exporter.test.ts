@@ -469,4 +469,40 @@ describe('StepExporter', () => {
     expect(content).not.toContain('IFCDIRECTION');
     expect(result.stats.newEntityCount).toBe(0);
   });
+
+  it('exports from a SharedArrayBuffer-backed source without TextDecoder/SAB error', async () => {
+    if (typeof SharedArrayBuffer === 'undefined') {
+      console.warn('skip: SharedArrayBuffer unavailable in this runtime');
+      return;
+    }
+    // Copy the fixture bytes into a SAB so the parser produces a
+    // dataStore.source that is SAB-backed — the same shape the in-browser
+    // parser worker hands the main thread. Firefox (and Chrome with the
+    // SAB-decode mitigation enabled) rejects `TextDecoder.decode()` on
+    // SAB-backed views, which used to break STEP export with:
+    //   "TextDecoder.decode: ArrayBufferView branch ... can't be a
+    //    SharedArrayBuffer or an ArrayBufferView backed by a
+    //    SharedArrayBuffer"
+    const encoded = new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC);
+    const sab = new SharedArrayBuffer(encoded.byteLength);
+    new Uint8Array(sab).set(encoded);
+
+    const parser = new IfcParser();
+    const store = await parser.parseColumnar(sab as unknown as ArrayBuffer, {
+      disableWorkerScan: true,
+    });
+
+    // Apply a positional override so we also exercise the mutation paths
+    // that decode source subarrays via the helper methods.
+    const view = new LiveMutablePropertyView(null, 'sab-model');
+    view.setAttribute(74, 'Name', 'SAB-Safe Wall');
+
+    const exporter = new StepExporter(store, view);
+    const result = exporter.export({ schema: 'IFC4', applyMutations: true });
+
+    const content = decode(result.content);
+    expect(content).toContain('IFCWALL');
+    expect(content).toContain("'SAB-Safe Wall'");
+    expect(result.stats.entityCount).toBeGreaterThan(0);
+  });
 });

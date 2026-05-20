@@ -64,6 +64,9 @@ export { customPlaneCenter } from './store/slices/sectionSlice.js';
 export { loadLastSectionMode } from './store/slices/sectionSlice.js';
 export type { LastSectionMode } from './store/slices/sectionSlice.js';
 
+// Re-export Cesium placement types for backwards-compatible '@/store' imports.
+export type { CesiumPlacementDraft } from './store/slices/cesiumSlice.js';
+
 // Re-export Schedule (4D) types + helpers
 export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './store/slices/scheduleSlice.js';
 export {

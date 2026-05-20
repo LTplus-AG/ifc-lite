@@ -90,7 +90,7 @@ export type { ChatSlice } from './slices/chatSlice.js';
 export type { DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.js';
 
 // Re-export Cesium types
-export type { CesiumSlice, CesiumDataSource } from './slices/cesiumSlice.js';
+export type { CesiumSlice, CesiumDataSource, CesiumPlacementDraft } from './slices/cesiumSlice.js';
 
 // Re-export Schedule (4D) types + selectors
 export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './slices/scheduleSlice.js';
@@ -272,13 +272,12 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       cesiumAvailable: false,
       cesiumEnabled: false,
       cesiumTerrainHeight: null,
-      // Default the clamp toggle ON so models authored at sea-level
-      // OrthogonalHeight don't load buried below the 3D-tiles terrain on
-      // first activation. Users can still uncheck it manually.
-      cesiumTerrainClamp: true,
       cesiumSourceModelId: null,
       cesiumTerrainClipY: null,
       cesiumGlbLoaded: false,
+      cesiumPlacementEditMode: false,
+      cesiumPlacementDraftModelId: null,
+      cesiumPlacementDraft: null,
 
       // Drawing 2D
       drawing2D: null,

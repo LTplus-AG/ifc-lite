@@ -919,6 +919,15 @@ export class GeometryProcessor {
     ) => void,
     /** Phase 2 flag — use the single-controller worker (rayon-internal). */
     useSingleController?: boolean,
+    /**
+     * Explicit wasm asset URLs forwarded to the worker pool. See
+     * `ProcessParallelOptions.wasmUrls` in `geometry-parallel.ts` for
+     * the full rationale — needed only for bundlers that can't transform
+     * `new URL('ifc-lite_bg.wasm', import.meta.url)` inside the worker
+     * dist (or deployments that serve wasm from a separate origin).
+     * Vite + webpack 5 consumers leave this undefined.
+     */
+    wasmUrls?: { wasm?: string; wasmThreaded?: string },
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -932,6 +941,7 @@ export class GeometryProcessor {
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
       mergeLayers: this.mergeLayers,
+      wasmUrls,
     });
   }
 
@@ -968,6 +978,11 @@ export class GeometryProcessor {
       ) => void;
       /** Phase 2 — opt-in to the single-controller (rayon) worker. */
       useSingleController?: boolean;
+      /**
+       * Explicit wasm asset URLs forwarded to the worker pool.
+       * See `processParallel(...).wasmUrls` for rationale.
+       */
+      wasmUrls?: { wasm?: string; wasmThreaded?: string };
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -1037,6 +1052,7 @@ export class GeometryProcessor {
           options.existingSab,
           options.onEntityIndex,
           options.useSingleController,
+          options.wasmUrls,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

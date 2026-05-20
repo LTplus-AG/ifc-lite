@@ -21,12 +21,11 @@ import {
   type WorkerRequest,
   type WorkerResponse,
 } from './protocol.js';
-import { LasStreamingSource } from './las-source.js';
-import { LazStreamingSource } from './laz-source.js';
-import { PlyStreamingSource } from './ply-source.js';
-import { PcdStreamingSource } from './pcd-source.js';
-import { E57StreamingSource } from './e57-source.js';
-import { AsciiPointsStreamingSource } from './ascii-points-source.js';
+// Format-specific decoders are lazy-imported in `createSource` below. That
+// keeps the IIFE bundle this worker ships in (see scripts/build-worker-bundle.mjs)
+// small — only the format the consumer actually opens gets pulled into the
+// worker scope. Most importantly, the LAZ decoder (laz-perf, ~1 MB) doesn't
+// get inlined into every consumer's bundle unless they actually decode .laz.
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -58,7 +57,7 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
 
 async function handleOpen(msg: Extract<WorkerRequest, { kind: 'open' }>): Promise<void> {
   try {
-    const source = createSource(msg.format, msg.blob, {
+    const source = await createSource(msg.format, msg.blob, {
       label: msg.label,
       downsample: { stride: Math.max(1, msg.stride | 0) },
     });
@@ -139,19 +138,50 @@ function handleAbort(sourceId: number): void {
   open.abort.abort();
 }
 
-function createSource(
+/**
+ * Dispatch to the format-specific streaming source. Each format is dynamically
+ * imported so the worker's IIFE bundle (see scripts/build-worker-bundle.mjs)
+ * stays small — the published `worker-client.js` only inlines the worker shell
+ * + protocol code. The LAZ branch (`laz-perf` ~1 MB) only loads when a .laz
+ * file is opened. Format ↔ chunk module is a one-time cost per session.
+ */
+async function createSource(
   format: 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz',
   blob: Blob,
   opts: { label?: string; downsample: { stride: number } },
-): StreamingPointSource {
-  if (format === 'las') return new LasStreamingSource(blob, opts);
-  if (format === 'laz') return new LazStreamingSource(blob, opts);
-  if (format === 'ply') return new PlyStreamingSource(blob, opts);
-  if (format === 'pcd') return new PcdStreamingSource(blob, opts);
-  if (format === 'e57') return new E57StreamingSource(blob, opts);
-  if (format === 'pts') return new AsciiPointsStreamingSource(blob, 'pts', opts);
-  if (format === 'xyz') return new AsciiPointsStreamingSource(blob, 'xyz', opts);
-  throw new Error(`decode-worker: unknown format "${format}"`);
+): Promise<StreamingPointSource> {
+  switch (format) {
+    case 'las': {
+      const { LasStreamingSource } = await import('./las-source.js');
+      return new LasStreamingSource(blob, opts);
+    }
+    case 'laz': {
+      const { LazStreamingSource } = await import('./laz-source.js');
+      return new LazStreamingSource(blob, opts);
+    }
+    case 'ply': {
+      const { PlyStreamingSource } = await import('./ply-source.js');
+      return new PlyStreamingSource(blob, opts);
+    }
+    case 'pcd': {
+      const { PcdStreamingSource } = await import('./pcd-source.js');
+      return new PcdStreamingSource(blob, opts);
+    }
+    case 'e57': {
+      const { E57StreamingSource } = await import('./e57-source.js');
+      return new E57StreamingSource(blob, opts);
+    }
+    case 'pts': {
+      const { AsciiPointsStreamingSource } = await import('./ascii-points-source.js');
+      return new AsciiPointsStreamingSource(blob, 'pts', opts);
+    }
+    case 'xyz': {
+      const { AsciiPointsStreamingSource } = await import('./ascii-points-source.js');
+      return new AsciiPointsStreamingSource(blob, 'xyz', opts);
+    }
+    default:
+      throw new Error(`decode-worker: unknown format "${format}"`);
+  }
 }
 
 function post(msg: WorkerResponse, transfer: Transferable[] = []): void {

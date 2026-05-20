@@ -1,0 +1,51 @@
+# Dependabot tracks third-party updates so SHA-pinned actions in
+# .github/workflows/ don't rot, and npm/cargo deps get security PRs
+# without manual auditing. Phase A hardening — see AGENTS.md.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    # NOTE: `ignore` blocks BOTH version-update PRs and Dependabot
+    # security-update PRs for the matched scope. Only ignore here when
+    # the CVE-coverage cost is worth the noise reduction.
+    # Runtime deps (apache-arrow, @anthropic-ai/sdk) intentionally stay
+    # unignored so security PRs continue to flow; we'll close noisy
+    # major bumps manually if they reappear.
+    ignore:
+      # vite is devDependency-only — CVE risk is mostly build-time.
+      # Vite 8 switched the prod build to Rolldown and shipped a broken
+      # `selectionHandlers` chunk to ifc-lite-ltplus.vercel.app
+      # (see #741 / #746). Block the next semver-major until Rolldown
+      # output is verified stable for this repo.
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch

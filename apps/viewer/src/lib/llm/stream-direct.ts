@@ -15,6 +15,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
+import { getModelById } from './models.js';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 
@@ -71,12 +72,19 @@ export async function streamAnthropicChat(
     dangerouslyAllowBrowser: true,
   });
 
+  // Opus 4.7+ returns 400 if `temperature` (or `top_p`/`top_k`) is present.
+  // We gate on the per-model `acceptsSamplingParams` flag in models.ts so
+  // future Claude models that adopt the same policy only need a flag bump,
+  // and Opus 4.6 / Sonnet 4.6 / Haiku 4.5 keep their tuned temperature.
+  const modelDef = getModelById(model);
+  const sendSamplingParams = modelDef?.acceptsSamplingParams !== false;
+
   let fullText = '';
   try {
     const stream = client.messages.stream({
       model,
       max_tokens: 8192,
-      temperature: 0.3,
+      ...(sendSamplingParams ? { temperature: 0.3 } : {}),
       system: system || undefined,
       messages: toAnthropicMessages(messages),
     });
@@ -118,8 +126,6 @@ export async function streamAnthropicChat(
 
 // ── OpenAI ─────────────────────────────────────────────────────────────────
 
-import { getModelById } from './models.js';
-
 /**
  * Stream an OpenAI model. Automatically picks the right API:
  * - Chat Completions (`/v1/chat/completions`) for standard chat models
@@ -147,13 +153,19 @@ async function streamOpenAiChatCompletions(
     ? [{ role: 'system', content: system }, ...messages]
     : [...messages];
 
+  // GPT-5 reasoning models (gpt-5.5, gpt-5.5-pro) only accept the default
+  // temperature; sending any other value returns 400. Mirror the Anthropic
+  // path: when the model is flagged `acceptsSamplingParams: false`, omit.
+  const modelDef = getModelById(model);
+  const sendSamplingParams = modelDef?.acceptsSamplingParams !== false;
+
   const { response, cleanup } = await openAiFetch(
     'https://api.openai.com/v1/chat/completions',
     {
       model,
       messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
       stream: true,
-      temperature: 0.3,
+      ...(sendSamplingParams ? { temperature: 0.3 } : {}),
       max_completion_tokens: 8192,
     },
     apiKey,

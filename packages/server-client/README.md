@@ -70,7 +70,7 @@ const meshes = await decodeParquetResponse(arrayBuffer);
 
 ## API
 
-See the [Server Guide](https://louistrue.github.io/ifc-lite/guide/server/) and [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-liteserver-client).
+See the [Server Guide](https://ltplus-ag.github.io/ifc-lite/guide/server/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-liteserver-client).
 
 ## License
 

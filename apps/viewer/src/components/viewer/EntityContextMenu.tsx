@@ -6,7 +6,7 @@
  * Context menu for entity interactions
  */
 
-import { useCallback, useEffect, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useMemo, useState } from 'react';
 import {
   Equal,
   Plus,
@@ -73,18 +73,30 @@ export function EntityContextMenu() {
     };
   }, [contextMenu.entityId, models, ifcDataStore]);
 
-  // Close menu when clicking outside
+  // Close menu when clicking/tapping outside.
+  //
+  // Listen on `pointerdown` (with capture) rather than `mousedown`:
+  // the canvas calls `e.preventDefault()` on its own pointerdown
+  // handler, which in some browsers suppresses the compatibility
+  // `mousedown` event — so a plain `mousedown` listener never fires
+  // when the user clicks the 3D viewport to dismiss the menu.
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    if (!contextMenu.isOpen) return;
+    const handlePointerOutside = (e: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         closeContextMenu();
       }
     };
-
-    if (contextMenu.isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
+    // Also close on scroll/resize — the anchor coords go stale.
+    const handleDismiss = () => closeContextMenu();
+    document.addEventListener('pointerdown', handlePointerOutside, true);
+    window.addEventListener('resize', handleDismiss);
+    window.addEventListener('wheel', handleDismiss, { passive: true });
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerOutside, true);
+      window.removeEventListener('resize', handleDismiss);
+      window.removeEventListener('wheel', handleDismiss);
+    };
   }, [contextMenu.isOpen, closeContextMenu]);
 
   // Close on escape
@@ -271,6 +283,48 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [contextEntityRef, canEdit, contextEntityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
 
+  // Viewport-constrained placement (mirrors OS context-menu behaviour):
+  // flip up/left when the menu would overflow the bottom/right edges,
+  // then clamp against the opposite edge so it never crosses any side
+  // of the viewport. Two-pass render: invisible first, then measure and
+  // reposition before the browser paints (useLayoutEffect is sync).
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!contextMenu.isOpen) {
+      setPosition(null);
+      return;
+    }
+    const node = menuRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    const margin = 4;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const anchorX = contextMenu.screenX;
+    const anchorY = contextMenu.screenY;
+
+    // Horizontal: prefer right of cursor, flip to left if it would
+    // overflow the right edge, then clamp.
+    let left = anchorX;
+    if (left + rect.width + margin > vw) {
+      const flipped = anchorX - rect.width;
+      left = flipped >= margin ? flipped : Math.max(margin, vw - rect.width - margin);
+    }
+    if (left < margin) left = margin;
+
+    // Vertical: prefer below cursor, flip above if it would overflow
+    // the bottom edge, then clamp.
+    let top = anchorY;
+    if (top + rect.height + margin > vh) {
+      const flipped = anchorY - rect.height;
+      top = flipped >= margin ? flipped : Math.max(margin, vh - rect.height - margin);
+    }
+    if (top < margin) top = margin;
+
+    setPosition({ left, top });
+  }, [contextMenu.isOpen, contextMenu.screenX, contextMenu.screenY, contextMenu.entityId]);
+
   if (!contextMenu.isOpen) {
     return null;
   }
@@ -289,8 +343,12 @@ export function EntityContextMenu() {
       ref={menuRef}
       className="fixed z-50 bg-popover border rounded-lg shadow-lg py-1 min-w-48"
       style={{
-        left: contextMenu.screenX,
-        top: contextMenu.screenY,
+        left: position?.left ?? contextMenu.screenX,
+        top: position?.top ?? contextMenu.screenY,
+        // Hide the first render: we need a measured rect to compute the
+        // constrained position. `useLayoutEffect` resolves this before
+        // paint, so the user never sees the unclamped flash.
+        visibility: position ? 'visible' : 'hidden',
       }}
     >
       {contextMenu.entityId && (

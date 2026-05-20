@@ -2930,6 +2930,10 @@ impl IfcAPI {
         // would need `entity_index` populated for any references it follows.
         // Stash the spans here and process them after the scan in one pass.
         let mut styled_item_spans: Vec<(u32, usize, usize)> = Vec::new();
+        // IfcIndexedColourMap entries — the second IFC4 colouring mechanism
+        // used by CATIA / 3DEXPERIENCE exports (#663). Resolved in the same
+        // post-scan pass as IfcStyledItem.
+        let mut indexed_colour_map_spans: Vec<(u32, usize, usize)> = Vec::new();
         let mut material_entity_spans: Vec<(u32, &'static str, usize, usize)> = Vec::new();
         let mut void_rel_spans: Vec<(u32, usize, usize)> = Vec::new();
 
@@ -2953,6 +2957,9 @@ impl IfcAPI {
                 }
                 "IFCSTYLEDITEM" => {
                     styled_item_spans.push((id, start, end));
+                }
+                "IFCINDEXEDCOLOURMAP" => {
+                    indexed_colour_map_spans.push((id, start, end));
                 }
                 "IFCMATERIALDEFINITIONREPRESENTATION" => {
                     material_entity_spans.push((id, "IFCMATERIALDEFINITIONREPRESENTATION", start, end));
@@ -3138,6 +3145,18 @@ impl IfcAPI {
                         }
                     }
                 }
+            }
+        }
+
+        // Resolve IfcIndexedColourMap entries — IFC4's per-tessellated-face-set
+        // colouring mechanism used by CATIA / 3DEXPERIENCE exports (#663).
+        // IfcStyledItem entries above win when both target the same geometry,
+        // so `entry().or_insert` preserves the authored-intent path.
+        for &(id, start, end) in &indexed_colour_map_spans {
+            if let Some((geometry_id, color)) =
+                super::styling::extract_color_from_indexed_colour_map_span(id, start, end, &mut decoder)
+            {
+                geometry_styles.entry(geometry_id).or_insert(color);
             }
         }
 

@@ -116,20 +116,44 @@ export class Sandbox {
     const durationMs = Date.now() - this.evalStartTime;
     this.evalStartTime = 0;
 
+    // Disposing an eval-result handle must never crash the run. If the
+    // realm became invalid mid-eval, `.dispose()` throws "Lifetime not
+    // alive" — swallow that so the real error (or value) still gets
+    // through instead of being masked by a teardown failure.
+    const safeDispose = (h: { dispose(): void } | undefined): void => {
+      if (!h) return;
+      try { h.dispose(); } catch { /* handle already dead — nothing to free */ }
+    };
+
     if (result.error) {
-      const errorData = this.vm.dump(result.error);
-      result.error.dispose();
+      let errorData: unknown;
+      try {
+        errorData = this.vm.dump(result.error);
+      } catch (dumpErr) {
+        errorData = { message: dumpErr instanceof Error ? dumpErr.message : String(dumpErr) };
+      }
+      safeDispose(result.error);
       throw new ScriptError(
         typeof errorData === 'object' && errorData !== null && 'message' in errorData
-          ? String(errorData.message)
+          ? String((errorData as { message: unknown }).message)
           : String(errorData),
         this.logs,
         durationMs,
       );
     }
 
-    const value = this.vm.dump(result.value);
-    result.value.dispose();
+    let value: unknown;
+    try {
+      value = this.vm.dump(result.value);
+    } catch (dumpErr) {
+      safeDispose(result.value);
+      throw new ScriptError(
+        `Sandbox realm became invalid during execution: ${dumpErr instanceof Error ? dumpErr.message : String(dumpErr)}`,
+        this.logs,
+        durationMs,
+      );
+    }
+    safeDispose(result.value);
 
     return {
       value,

@@ -8,16 +8,10 @@ import {
   ZoomIn,
   ZoomOut,
   Layers,
-  Globe2,
-  Mountain,
-  Building2,
-  Satellite,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
-import type { CesiumDataSource } from '@/store/slices/cesiumSlice';
 import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
@@ -41,11 +35,6 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
   // Cesium state
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
-  const cesiumDataSource = useViewerStore((s) => s.cesiumDataSource);
-  const setCesiumDataSource = useViewerStore((s) => s.setCesiumDataSource);
-  const cesiumTerrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
-  const setCesiumTerrainEnabled = useViewerStore((s) => s.setCesiumTerrainEnabled);
-  const toggleCesium = useViewerStore((s) => s.toggleCesium);
 
   // Use refs for rotation to avoid re-renders - ViewCube updates itself directly
   const cameraRotationRef = useRef({ azimuth: 45, elevation: 25 });
@@ -152,16 +141,8 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   return (
     <>
       <PointCloudPanelMount />
-      {/* Bottom-right: Cesium settings overlay OR Navigation controls (Cesium is web-only) */}
-      {cesiumEnabled && !isDesktop ? (
-        <CesiumSettingsOverlay
-          dataSource={cesiumDataSource}
-          onDataSourceChange={setCesiumDataSource}
-          terrainEnabled={cesiumTerrainEnabled}
-          onTerrainChange={setCesiumTerrainEnabled}
-          onClose={toggleCesium}
-        />
-      ) : (
+      {/* Bottom-right: Navigation controls (hidden when Cesium active — Cesium is web-only) */}
+      {!(cesiumEnabled && !isDesktop) && (
         <div
           className={cn(
             'absolute flex flex-col gap-1 bg-background/90 backdrop-blur-sm border p-1',
@@ -250,83 +231,6 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Cesium Settings Overlay — replaces nav controls when Cesium is on  */
-/* ------------------------------------------------------------------ */
-
-const DATA_SOURCES: { value: CesiumDataSource; label: string; icon: typeof Globe2 }[] = [
-  { value: 'google-photorealistic', label: 'Google 3D', icon: Globe2 },
-  { value: 'osm-buildings', label: 'OSM', icon: Building2 },
-  { value: 'bing-aerial', label: 'Aerial', icon: Satellite },
-];
-
-function CesiumSettingsOverlay({
-  dataSource,
-  onDataSourceChange,
-  terrainEnabled,
-  onTerrainChange,
-  onClose,
-}: {
-  dataSource: CesiumDataSource;
-  onDataSourceChange: (ds: CesiumDataSource) => void;
-  terrainEnabled: boolean;
-  onTerrainChange: (enabled: boolean) => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="absolute bottom-4 right-4 z-10 pointer-events-auto bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 min-w-[160px]">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          3D World
-        </span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="h-5 w-5" onClick={onClose}>
-              <X className="h-3 w-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="left">Disable Cesium overlay</TooltipContent>
-        </Tooltip>
-      </div>
-
-      {/* Data Source Buttons */}
-      <div className="flex flex-col gap-0.5">
-        {DATA_SOURCES.map((ds) => {
-          const Icon = ds.icon;
-          const active = dataSource === ds.value;
-          return (
-            <button
-              key={ds.value}
-              onClick={() => onDataSourceChange(ds.value)}
-              className={cn(
-                'flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors text-left',
-                active
-                  ? 'bg-teal-600 text-white'
-                  : 'hover:bg-muted text-foreground/80',
-              )}
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              {ds.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Terrain Toggle */}
-      <label className="flex items-center gap-2 px-2 py-1 cursor-pointer border-t border-border pt-2">
-        <Mountain className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs text-foreground/80">Terrain</span>
-        <input
-          type="checkbox"
-          checked={terrainEnabled}
-          onChange={(e) => onTerrainChange(e.target.checked)}
-          className="ml-auto accent-teal-500"
-        />
-      </label>
-    </div>
-  );
-}
 
 /**
  * Tiny indirection so the panel can subscribe to its own slice without

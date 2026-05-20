@@ -3,7 +3,7 @@ name = "ifc-lite-wasm"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-license.workspace = true
+license = "MPL-2.0"
 repository.workspace = true
 description = "WebAssembly bindings for IFC-Lite"
 keywords = ["ifc", "bim", "wasm", "webassembly", "aec"]
@@ -52,10 +52,10 @@ rayon = "1.10"
 # par_iter silently runs serial. (Empirically observed: 4.2× SLOWER
 # than N-worker baseline before this fix.)
 rayon-core = { version = "1", features = ["web_spin_lock"] }
-rustc-hash = "1.1"
+rustc-hash = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "=0.6.5"
-thiserror = "1.0"
+thiserror = "2.0"
 wasm-bindgen = "=0.2.106"
 wasm-bindgen-futures = "=0.4.56"
 # Optional. Enabled only by `--features threading` (set by
@@ -65,4 +65,4 @@ wasm-bindgen-rayon = { version = "1.3", optional = true }
 web-sys = { version = "=0.3.83", features = ["console", "Performance", "Window"] }
 
 [dev-dependencies]
-wasm-bindgen-test = "=0.3.43"
+wasm-bindgen-test = "=0.3.56"

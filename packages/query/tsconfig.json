@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.packages.json",
   "compilerOptions": {
     "outDir": "./dist",
+    "rootDir": "./src",
     "paths": {
       "@ifc-lite/parser": ["../parser/src"]
     }

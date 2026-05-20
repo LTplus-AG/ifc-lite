@@ -22,18 +22,18 @@
     "@ifc-lite/parser": "workspace:^"
   },
   "devDependencies": {
-    "typescript": "^5.3.0",
+    "typescript": "^6.0.3",
     "vitest": "^1.6.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
   "repository": {
     "type": "git",
-    "url": "https://github.com/louistrue/ifc-lite.git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/create"
   },
-  "homepage": "https://louistrue.github.io/ifc-lite/",
-  "bugs": "https://github.com/louistrue/ifc-lite/issues",
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",

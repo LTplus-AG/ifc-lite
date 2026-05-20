@@ -70,7 +70,7 @@ The renderer (`@ifc-lite/renderer`) ships its own GPU-side picking and culling â
 
 ## API
 
-See the [API Reference](https://louistrue.github.io/ifc-lite/api/typescript/#ifc-litespatial).
+See the [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litespatial).
 
 ## License
 

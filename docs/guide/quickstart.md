@@ -212,7 +212,7 @@ Process IFC files on a high-performance Rust server with intelligent caching.
 
 ```bash
 # Using Docker
-docker run -p 3001:8080 ghcr.io/louistrue/ifc-lite-server
+docker run -p 3001:8080 ghcr.io/LTplus-AG/ifc-lite-server
 
 # Or using native binary
 npx @ifc-lite/server-bin

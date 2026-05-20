@@ -61,6 +61,12 @@ interface GPUAdapterInfo {
   readonly description: string;
 }
 
+interface GPUUncapturedErrorEvent extends Event {
+  readonly error: { readonly message: string };
+}
+
+type GPUErrorFilter = 'validation' | 'out-of-memory' | 'internal';
+
 interface GPUDevice extends EventTarget {
   readonly queue: GPUQueue;
   createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule;
@@ -72,6 +78,9 @@ interface GPUDevice extends EventTarget {
   createTexture(descriptor: GPUTextureDescriptor): GPUTexture;
   createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup;
   createBindGroupLayout(descriptor: GPUBindGroupLayoutDescriptor): GPUBindGroupLayout;
+  pushErrorScope(filter: GPUErrorFilter): void;
+  popErrorScope(): Promise<{ readonly message: string } | null>;
+  onuncapturederror: ((this: GPUDevice, event: GPUUncapturedErrorEvent) => void) | null;
 }
 
 interface GPUTextureDescriptor {

@@ -12,7 +12,6 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import {
   addCommentToTopic,
   addTopicToProject,
@@ -28,6 +27,7 @@ import {
 import type { Tool } from './types.js';
 import { okResult } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { resolveSafePath } from '../safe-path.js';
 
 // One project per server instance. We keep it on a module-level Map keyed by
 // session — for stdio that's exactly one entry; for HTTP each session gets
@@ -200,16 +200,7 @@ const bcfExport: Tool = {
   },
   async handler(input, ctx) {
     const project = getProject(ctx.registry);
-    const filePath = resolve(input.file_path as string);
-    if (ctx.config.allowedPaths && ctx.config.allowedPaths.length > 0) {
-      const ok = ctx.config.allowedPaths.some((p) => filePath === p || filePath.startsWith(p + '/'));
-      if (!ok) {
-        throw new ToolExecutionError({
-          code: ToolErrorCode.PERMISSION_DENIED,
-          message: `Path '${filePath}' outside allowed roots`,
-        });
-      }
-    }
+    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const blob = (await writeBCF(project)) as unknown as Blob;
     const buffer = Buffer.from(await blob.arrayBuffer());
     await writeFile(filePath, buffer);

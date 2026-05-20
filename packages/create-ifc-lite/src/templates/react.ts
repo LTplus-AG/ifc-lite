@@ -565,7 +565,7 @@ body {
 
   writeFileSync(join(targetDir, 'README.md'), `# ${projectName}
 
-React + Vite IFC viewer using [IFC-Lite](https://github.com/louistrue/ifc-lite).
+React + Vite IFC viewer using [IFC-Lite](https://github.com/LTplus-AG/ifc-lite).
 
 ## Quick Start
 
@@ -586,8 +586,8 @@ Open the app in your browser and drop an IFC file onto the viewport.
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://louistrue.github.io/ifc-lite/)
-- [Rendering Guide](https://louistrue.github.io/ifc-lite/guide/rendering/)
-- [Geometry Guide](https://louistrue.github.io/ifc-lite/guide/geometry/)
+- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
+- [Rendering Guide](https://ltplus-ag.github.io/ifc-lite/guide/rendering/)
+- [Geometry Guide](https://ltplus-ag.github.io/ifc-lite/guide/geometry/)
 `);
 }

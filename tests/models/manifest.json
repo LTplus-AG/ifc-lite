@@ -1,7 +1,7 @@
 {
   "version": 1,
   "release_tag": "fixtures-v1",
-  "base_url": "https://github.com/louistrue/ifc-lite/releases/download/fixtures-v1",
+  "base_url": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1",
   "files": [
     {
       "path": "ara3d/AC20-FZK-Haus.ifc",

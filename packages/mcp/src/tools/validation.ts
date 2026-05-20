@@ -12,13 +12,14 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { parseIDS, validateIDS, type IFCDataAccessor } from '@ifc-lite/ids';
 import { getInheritanceChainForEntity } from '@ifc-lite/parser';
 import { EntityNode } from '@ifc-lite/query';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { resolveSafePath } from '../safe-path.js';
+import type { ToolContext } from '../context.js';
 import { buildIdsAccessor } from './ids-accessor.js';
 
 const idsValidate: Tool = {
@@ -37,7 +38,7 @@ const idsValidate: Tool = {
   },
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const xml = await loadIdsXml(input, ctx.config.allowedPaths);
+    const xml = await loadIdsXml(input, ctx);
 
     const idsDoc = parseIDS(xml);
     const accessor = buildIdsAccessor(m.store) as IFCDataAccessor;
@@ -70,20 +71,11 @@ const idsValidate: Tool = {
  */
 async function loadIdsXml(
   input: Record<string, unknown>,
-  allowedPaths?: string[],
+  ctx: ToolContext,
 ): Promise<string> {
   if (typeof input.ids_xml === 'string') return input.ids_xml;
   if (typeof input.ids_path === 'string') {
-    const abs = resolve(input.ids_path);
-    if (allowedPaths && allowedPaths.length > 0) {
-      const ok = allowedPaths.some((p) => abs === p || abs.startsWith(p + '/'));
-      if (!ok) {
-        throw new ToolExecutionError({
-          code: ToolErrorCode.PERMISSION_DENIED,
-          message: `Path '${abs}' outside allowed roots`,
-        });
-      }
-    }
+    const abs = await resolveSafePath(input.ids_path, ctx, 'read');
     return readFile(abs, 'utf-8');
   }
   throw new ToolExecutionError({
@@ -139,7 +131,7 @@ const idsExplain: Tool = {
     additionalProperties: false,
   },
   async handler(input, ctx) {
-    const xml = await loadIdsXml(input, ctx.config.allowedPaths);
+    const xml = await loadIdsXml(input, ctx);
 
     const doc = parseIDS(xml) as { specifications?: Array<{ name?: string; applicability?: unknown; requirements?: unknown[] }> };
     const target = input.spec_name as string | undefined;

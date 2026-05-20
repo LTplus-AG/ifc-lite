@@ -14,7 +14,7 @@
   "license": "MPL-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/louistrue/ifc-lite"
+    "url": "https://github.com/LTplus-AG/ifc-lite"
   },
   "files": [
     "pkg/ifc-lite_bg.wasm",

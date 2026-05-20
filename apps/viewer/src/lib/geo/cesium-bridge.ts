@@ -28,9 +28,13 @@
 import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { resolveProjection } from './reproject';
-import { resolveTerrainElevation } from './terrain-elevation';
-import { getEffectiveHorizontalScale } from './effective-georef';
+import { computeModelCenterInIfcMeters, resolveProjection } from './reproject';
+import {
+  resolveTerrainElevationDetailed,
+  type ResolveTerrainElevationOptions,
+  type TerrainElevationSample,
+} from './terrain-elevation';
+import { getEffectiveHorizontalScale } from './geo-scale';
 
 export interface GeodesicPosition {
   longitude: number;
@@ -61,9 +65,63 @@ export interface CesiumBridge {
   queryTerrainHeight(
     Cesium: typeof import('cesium'),
     viewer: InstanceType<typeof import('cesium').Viewer>,
-  ): Promise<number | null>;
+    options?: ResolveTerrainElevationOptions,
+  ): Promise<TerrainElevationSample | null>;
 
   viewerToGeodetic(vx: number, vy: number, vz: number): GeodesicPosition | null;
+}
+
+export interface CesiumModelOriginInfo extends GeodesicPosition {
+  longitude: number;
+  latitude: number;
+  height: number;
+  ifcOriginHeight: number;
+  easting: number;
+  northing: number;
+  horizontalScale: number;
+}
+
+export async function computeCesiumModelOrigin(
+  mapConversion: MapConversion,
+  projectedCRS: ProjectedCRS,
+  coordinateInfo?: CoordinateInfo,
+  lengthUnitScale = 1,
+  placementHeightOverride?: number,
+): Promise<CesiumModelOriginInfo | null> {
+  const projDef = await resolveProjection(projectedCRS);
+  if (!projDef) return null;
+
+  const absc = mapConversion.xAxisAbscissa ?? 1.0;
+  const ordi = mapConversion.xAxisOrdinate ?? 0.0;
+  const center = computeModelCenterInIfcMeters(coordinateInfo);
+  const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
+  const horizontalScale = getEffectiveHorizontalScale(
+    mapConversion.scale,
+    mapScale,
+    lengthUnitScale,
+  );
+  const easting = mapConversion.eastings * mapScale
+    + horizontalScale * (absc * center.ifcX - ordi * center.ifcY);
+  const northing = mapConversion.northings * mapScale
+    + horizontalScale * (ordi * center.ifcX + absc * center.ifcY);
+  const ifcOriginHeight = mapConversion.orthogonalHeight * mapScale + center.ifcZ;
+  const height = placementHeightOverride ?? ifcOriginHeight;
+
+  try {
+    const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    return {
+      longitude: lon,
+      latitude: lat,
+      height,
+      ifcOriginHeight,
+      easting,
+      northing,
+      horizontalScale,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function createCesiumBridge(
@@ -87,57 +145,34 @@ export async function createCesiumBridge(
   const ordi = mapConversion.xAxisOrdinate ?? 0.0;
   const rotAngle = Math.atan2(ordi, absc);
 
-  const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
-  const rtc = coordinateInfo?.wasmRtcOffset;
-  const rtcYup = rtc
-    ? { x: rtc.x, y: rtc.z, z: -rtc.y }
-    : { x: 0, y: 0, z: 0 };
-
   const bounds = coordinateInfo?.originalBounds;
   const modelVX = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
   const modelVY = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
   const modelVZ = bounds ? (bounds.min.z + bounds.max.z) / 2 : 0;
 
-  // ── Compute model origin in WGS84 ──
-  const owx = modelVX + shift.x + rtcYup.x;
-  const owy = modelVY + shift.y + rtcYup.y;
-  const owz = modelVZ + shift.z + rtcYup.z;
-  // Viewer Y-up → IFC Z-up
-  const oIfcX = owx;
-  const oIfcY = -owz;
-  const oIfcZ = owy;
-  // Geometry coordinates (oIfcX/Y/Z) are already in metres (the geometry engine
-  // converts from the IFC file's native unit during extraction). MapConversion
-  // values use the unit from IfcProjectedCRS.MapUnit; fall back to project unit.
-  const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
-  // IfcMapConversion.Scale bridges project length unit → map unit (e.g. 0.001
-  // for mm→m). Geometry is already in metres, so the effective horizontal
-  // scale is (Scale * mapUnitScale) / lengthUnitScale — see issue #595.
-  const hScale = getEffectiveHorizontalScale(mapConversion.scale, mapScale, lengthUnitScale);
-  const oEasting = mapConversion.eastings * mapScale + hScale * (absc * oIfcX - ordi * oIfcY);
-  const oNorthing = mapConversion.northings * mapScale + hScale * (ordi * oIfcX + absc * oIfcY);
-  const ifcOHeight = mapConversion.orthogonalHeight * mapScale + oIfcZ;
-  // The actual altitude used for the enuToEcef origin. When the caller
-  // pre-computes a terrain-clamped placement, we honour it so the bridge,
-  // model matrix, and camera frame are all built around the SAME altitude
-  // from the start — no post-load shifting required.
-  const oHeight = placementHeightOverride ?? ifcOHeight;
-
-  let originLon: number, originLat: number;
-  try {
-    const [lon, lat] = proj4(projDef, 'WGS84', [oEasting, oNorthing]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    originLon = lon;
-    originLat = lat;
-  } catch {
-    return null;
-  }
-
+  const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
+  const rtc = coordinateInfo?.wasmRtcOffset;
+  const rtcYup = rtc
+    ? { x: rtc.x, y: rtc.z, z: -rtc.y }
+    : { x: 0, y: 0, z: 0 };
+  const origin = await computeCesiumModelOrigin(
+    mapConversion,
+    projectedCRS,
+    coordinateInfo,
+    lengthUnitScale,
+    placementHeightOverride,
+  );
+  if (!origin) return null;
   const modelOrigin: GeodesicPosition = {
-    longitude: originLon,
-    latitude: originLat,
-    height: oHeight,
+    longitude: origin.longitude,
+    latitude: origin.latitude,
+    height: origin.height,
   };
+  const hScale = origin.horizontalScale;
+  const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
+  const oHeight = origin.height;
+  const originLon = origin.longitude;
+  const originLat = origin.latitude;
 
   // ── Build the viewer→ENU 3x3 rotation matrix ──
   // This converts a DELTA vector from viewer space to ENU.
@@ -301,8 +336,9 @@ export async function createCesiumBridge(
   function queryTerrainHeight(
     Cesium: typeof import('cesium'),
     viewer: InstanceType<typeof import('cesium').Viewer>,
-  ): Promise<number | null> {
-    return resolveTerrainElevation(Cesium, viewer, originLat, originLon);
+    options: ResolveTerrainElevationOptions = {},
+  ): Promise<TerrainElevationSample | null> {
+    return resolveTerrainElevationDetailed(Cesium, viewer, originLat, originLon, options);
   }
 
   function viewerToGeodetic(vx: number, vy: number, vz: number): GeodesicPosition | null {

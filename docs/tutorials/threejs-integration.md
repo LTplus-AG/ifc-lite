@@ -572,7 +572,7 @@ function onTreeElementClicked(expressId: number) {
 }
 ```
 
-For a full implementation of the spatial tree UI (grouping elements by IFC type, search/filter, expand/collapse), see [`examples/threejs-viewer/src/ifc-data.ts`](https://github.com/louistrue/ifc-lite/tree/main/examples/threejs-viewer/src/ifc-data.ts) and the `renderSpatialPanel()` function in [`src/main.ts`](https://github.com/louistrue/ifc-lite/tree/main/examples/threejs-viewer/src/main.ts).
+For a full implementation of the spatial tree UI (grouping elements by IFC type, search/filter, expand/collapse), see [`examples/threejs-viewer/src/ifc-data.ts`](https://github.com/LTplus-AG/ifc-lite/tree/main/examples/threejs-viewer/src/ifc-data.ts) and the `renderSpatialPanel()` function in [`src/main.ts`](https://github.com/LTplus-AG/ifc-lite/tree/main/examples/threejs-viewer/src/main.ts).
 
 ## Complete Data Flow
 
@@ -624,7 +624,7 @@ export default defineConfig({
 
 ## Full Example
 
-See [`examples/threejs-viewer/`](https://github.com/louistrue/ifc-lite/tree/main/examples/threejs-viewer) for a complete, runnable example with geometry streaming, object picking, a properties panel, and a spatial tree — all wired together.
+See [`examples/threejs-viewer/`](https://github.com/LTplus-AG/ifc-lite/tree/main/examples/threejs-viewer) for a complete, runnable example with geometry streaming, object picking, a properties panel, and a spatial tree — all wired together.
 
 ## Next Steps
 

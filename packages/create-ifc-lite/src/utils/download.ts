@@ -6,7 +6,7 @@ import { rmSync } from 'fs';
 import { join, dirname } from 'path';
 import { execSync } from 'child_process';
 
-const REPO_URL = 'https://github.com/louistrue/ifc-lite';
+const REPO_URL = 'https://github.com/LTplus-AG/ifc-lite';
 const VIEWER_PATH = 'apps/viewer';
 
 /**

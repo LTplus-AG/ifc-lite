@@ -66,8 +66,14 @@ fn parquet_metadata_cache_key(hash: &str, opening_filter: OpeningFilterMode) -> 
 }
 
 /// Extract file data from multipart request.
-/// Automatically decompresses gzip-compressed files.
-async fn extract_file(multipart: &mut Multipart) -> Result<Vec<u8>, ApiError> {
+/// Automatically decompresses gzip-compressed files, refusing inputs whose
+/// decompressed size would exceed `max_file_size_mb`.
+async fn extract_file(
+    multipart: &mut Multipart,
+    max_file_size_mb: usize,
+) -> Result<Vec<u8>, ApiError> {
+    let max_bytes = max_file_size_mb.saturating_mul(1024 * 1024);
+
     while let Some(field) = multipart.next_field().await? {
         let field_name = field.name().unwrap_or_default();
         tracing::debug!(field_name = %field_name, "Processing multipart field");
@@ -82,11 +88,19 @@ async fn extract_file(multipart: &mut Multipart) -> Result<Vec<u8>, ApiError> {
 
             if is_gzipped {
                 tracing::debug!("Detected gzip compression, decompressing...");
-                let mut decoder = GzDecoder::new(bytes.as_ref());
+                // Bound the decompressed stream: read at most max_bytes + 1.
+                // If the cap is hit, treat as oversized rather than allocating
+                // unbounded output for a small compressed input.
+                let mut decoder = GzDecoder::new(bytes.as_ref()).take(max_bytes as u64 + 1);
                 let mut decompressed = Vec::new();
                 decoder
                     .read_to_end(&mut decompressed)
                     .map_err(|e| ApiError::Internal(format!("Failed to decompress gzip: {}", e)))?;
+                if decompressed.len() > max_bytes {
+                    return Err(ApiError::FileTooLarge {
+                        max_mb: max_file_size_mb,
+                    });
+                }
                 tracing::info!(
                     original_size = original_size,
                     decompressed_size = decompressed.len(),
@@ -96,6 +110,11 @@ async fn extract_file(multipart: &mut Multipart) -> Result<Vec<u8>, ApiError> {
                 );
                 return Ok(decompressed);
             } else {
+                if bytes.len() > max_bytes {
+                    return Err(ApiError::FileTooLarge {
+                        max_mb: max_file_size_mb,
+                    });
+                }
                 return Ok(bytes.to_vec());
             }
         }
@@ -112,14 +131,7 @@ pub async fn parse_full(
     mut multipart: Multipart,
 ) -> Result<Json<ParseResponse>, ApiError> {
     // Extract file from multipart
-    let data = extract_file(&mut multipart).await?;
-
-    // Check file size
-    if data.len() > state.config.max_file_size_mb * 1024 * 1024 {
-        return Err(ApiError::FileTooLarge {
-            max_mb: state.config.max_file_size_mb,
-        });
-    }
+    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
     let cache_key = format!(
@@ -173,18 +185,12 @@ pub async fn parse_stream(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
     mut multipart: Multipart,
-) -> Result<Sse<impl futures::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
     reject_unsupported_streaming_opening_filter(&query)?;
 
     // Extract file
-    let data = extract_file(&mut multipart).await?;
-
-    // Check file size
-    if data.len() > state.config.max_file_size_mb * 1024 * 1024 {
-        return Err(ApiError::FileTooLarge {
-            max_mb: state.config.max_file_size_mb,
-        });
-    }
+    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     let content = String::from_utf8(data)?;
     let initial_batch_size = state.config.initial_batch_size;
@@ -199,10 +205,12 @@ pub async fn parse_stream(
                 })
                 .unwrap()
             });
-            Ok(Event::default().data(json))
+            Ok::<_, Infallible>(Event::default().data(json))
         });
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
 }
 
 /// SSE event types for Parquet streaming.
@@ -251,10 +259,8 @@ pub async fn parse_parquet_stream(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
     mut multipart: Multipart,
-) -> Result<
-    Sse<std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>>>,
-    ApiError,
-> {
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
     use crate::services::serialize_to_parquet;
     use crate::types::MeshData;
     use base64::{engine::general_purpose::STANDARD, Engine};
@@ -264,14 +270,7 @@ pub async fn parse_parquet_stream(
     reject_unsupported_streaming_opening_filter(&query)?;
 
     // Extract file
-    let data = extract_file(&mut multipart).await?;
-
-    // Check file size
-    if data.len() > state.config.max_file_size_mb * 1024 * 1024 {
-        return Err(ApiError::FileTooLarge {
-            max_mb: state.config.max_file_size_mb,
-        });
-    }
+    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key before processing (include opening filter)
     let cache_key = format!(
@@ -338,7 +337,9 @@ pub async fn parse_parquet_stream(
             )),
         ]));
 
-        return Ok(Sse::new(fast_stream).keep_alive(KeepAlive::default()));
+        return Ok(Sse::new(fast_stream)
+            .keep_alive(KeepAlive::default())
+            .into_response());
     }
 
     tracing::info!(
@@ -521,7 +522,9 @@ pub async fn parse_parquet_stream(
     let boxed_stream: std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,
     > = Box::pin(stream);
-    Ok(Sse::new(boxed_stream).keep_alive(KeepAlive::default()))
+    Ok(Sse::new(boxed_stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
 }
 
 /// POST /api/v1/parse/metadata - Quick metadata only (no geometry).
@@ -530,14 +533,7 @@ pub async fn parse_metadata(
     mut multipart: Multipart,
 ) -> Result<Json<MetadataResponse>, ApiError> {
     // Extract file
-    let data = extract_file(&mut multipart).await?;
-
-    // Check file size
-    if data.len() > state.config.max_file_size_mb * 1024 * 1024 {
-        return Err(ApiError::FileTooLarge {
-            max_mb: state.config.max_file_size_mb,
-        });
-    }
+    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     let file_size = data.len();
     let content = String::from_utf8(data)?;
@@ -615,14 +611,7 @@ pub async fn parse_parquet(
     mut multipart: Multipart,
 ) -> Result<Response, ApiError> {
     // Extract file from multipart
-    let data = extract_file(&mut multipart).await?;
-
-    // Check file size
-    if data.len() > state.config.max_file_size_mb * 1024 * 1024 {
-        return Err(ApiError::FileTooLarge {
-            max_mb: state.config.max_file_size_mb,
-        });
-    }
+    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
     let cache_key = format!(
@@ -823,14 +812,7 @@ pub async fn parse_parquet_optimized(
     mut multipart: Multipart,
 ) -> Result<Response, ApiError> {
     // Extract file from multipart
-    let data = extract_file(&mut multipart).await?;
-
-    // Check file size
-    if data.len() > state.config.max_file_size_mb * 1024 * 1024 {
-        return Err(ApiError::FileTooLarge {
-            max_mb: state.config.max_file_size_mb,
-        });
-    }
+    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
     let cache_key = format!(

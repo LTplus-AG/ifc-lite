@@ -13,6 +13,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { generateHeader } from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
+import { safeUtf8Decode } from '@ifc-lite/data';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 
@@ -153,7 +154,6 @@ export class MergedExporter {
     });
 
     const allEntityLines: string[] = [];
-    const decoder = new TextDecoder();
 
     // Track ID offsets per model
     let nextAvailableId = 1;
@@ -176,7 +176,7 @@ export class MergedExporter {
     const firstProjectIds = this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT');
 
     // Build spatial lookup from first model for Site/Building/Storey unification
-    const spatialLookup = this.buildSpatialLookup(firstModel.dataStore, decoder);
+    const spatialLookup = this.buildSpatialLookup(firstModel.dataStore);
 
     // Process each model
     let isFirstModel = true;
@@ -229,7 +229,7 @@ export class MergedExporter {
 
         // Unify spatial hierarchy: match Site, Building, Storey to first model
         this.unifySpatialEntities(
-          model.dataStore, decoder, spatialLookup, firstModelOffset,
+          model.dataStore, spatialLookup, firstModelOffset,
           sharedRemap, skipEntityIds,
         );
 
@@ -237,7 +237,7 @@ export class MergedExporter {
         // e.g. Model2's Project→Site becomes FirstProject→FirstSite which
         // already exists from Model1, causing duplicate tree nodes.
         this.skipRedundantRelAggregates(
-          model.dataStore, decoder, sharedRemap, skipEntityIds,
+          model.dataStore, sharedRemap, skipEntityIds,
         );
       }
 
@@ -253,9 +253,9 @@ export class MergedExporter {
           continue;
         }
 
-        // Get original entity text
-        const entityText = decoder.decode(
-          source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength),
+        // Get original entity text — safeUtf8Decode handles SAB-backed sources
+        const entityText = safeUtf8Decode(
+          source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength,
         );
 
         // Remap IDs if this is not the first model or if offset is non-zero
@@ -314,7 +314,6 @@ export class MergedExporter {
     });
 
     const allEntityLines: string[] = [];
-    const decoder = new TextDecoder();
 
     // First pass: count total entities for progress
     let totalEntities = 0;
@@ -338,7 +337,7 @@ export class MergedExporter {
     const firstModelOffset = modelOffsets.get(firstModel.id)!;
     const firstModelInfraMap = this.findInfrastructureEntities(firstModel.dataStore);
     const firstProjectIds = this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT');
-    const spatialLookup = this.buildSpatialLookup(firstModel.dataStore, decoder);
+    const spatialLookup = this.buildSpatialLookup(firstModel.dataStore);
 
     let isFirstModel = true;
     let entitiesProcessed = 0;
@@ -393,8 +392,8 @@ export class MergedExporter {
           }
         }
 
-        this.unifySpatialEntities(model.dataStore, decoder, spatialLookup, firstModelOffset, sharedRemap, skipEntityIds);
-        this.skipRedundantRelAggregates(model.dataStore, decoder, sharedRemap, skipEntityIds);
+        this.unifySpatialEntities(model.dataStore, spatialLookup, firstModelOffset, sharedRemap, skipEntityIds);
+        this.skipRedundantRelAggregates(model.dataStore, sharedRemap, skipEntityIds);
       }
 
       let entityCount = 0;
@@ -402,8 +401,8 @@ export class MergedExporter {
         if (includedEntityIds !== null && !includedEntityIds.has(expressId)) continue;
         if (skipEntityIds.has(expressId)) continue;
 
-        const entityText = decoder.decode(
-          source.subarray(entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength),
+        const entityText = safeUtf8Decode(
+          source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength,
         );
 
         let finalText: string;
@@ -517,7 +516,7 @@ export class MergedExporter {
    * Build lookup tables from the first model's spatial entities for
    * matching against subsequent models during merge.
    */
-  private buildSpatialLookup(dataStore: IfcDataStore, decoder: TextDecoder): SpatialLookup {
+  private buildSpatialLookup(dataStore: IfcDataStore): SpatialLookup {
     const lookup: SpatialLookup = {
       sitesByName: new Map(),
       buildingsByName: new Map(),
@@ -529,20 +528,20 @@ export class MergedExporter {
 
     for (const id of this.findEntitiesByType(dataStore, 'IFCSITE')) {
       lookup.siteIds.push(id);
-      const name = this.extractEntityName(id, dataStore, decoder);
+      const name = this.extractEntityName(id, dataStore);
       if (name) lookup.sitesByName.set(name.toLowerCase(), id);
     }
 
     for (const id of this.findEntitiesByType(dataStore, 'IFCBUILDING')) {
       lookup.buildingIds.push(id);
-      const name = this.extractEntityName(id, dataStore, decoder);
+      const name = this.extractEntityName(id, dataStore);
       if (name) lookup.buildingsByName.set(name.toLowerCase(), id);
     }
 
     for (const id of this.findEntitiesByType(dataStore, 'IFCBUILDINGSTOREY')) {
-      const name = this.extractEntityName(id, dataStore, decoder);
+      const name = this.extractEntityName(id, dataStore);
       if (name) lookup.storeysByName.set(name.toLowerCase(), id);
-      const elevation = this.extractStoreyElevation(id, dataStore, decoder);
+      const elevation = this.extractStoreyElevation(id, dataStore);
       if (elevation !== undefined) {
         lookup.storeysByElevation.push({ expressId: id, elevation });
       }
@@ -562,7 +561,6 @@ export class MergedExporter {
    */
   private unifySpatialEntities(
     dataStore: IfcDataStore,
-    decoder: TextDecoder,
     lookup: SpatialLookup,
     firstModelOffset: number,
     sharedRemap: Map<number, number>,
@@ -571,7 +569,7 @@ export class MergedExporter {
     // Unify IfcSite
     const sites = this.findEntitiesByType(dataStore, 'IFCSITE');
     for (const id of sites) {
-      const name = this.extractEntityName(id, dataStore, decoder);
+      const name = this.extractEntityName(id, dataStore);
       let match: number | undefined;
       if (name) match = lookup.sitesByName.get(name.toLowerCase());
       // If single site in both models, unify regardless of name
@@ -587,7 +585,7 @@ export class MergedExporter {
     // Unify IfcBuilding
     const buildings = this.findEntitiesByType(dataStore, 'IFCBUILDING');
     for (const id of buildings) {
-      const name = this.extractEntityName(id, dataStore, decoder);
+      const name = this.extractEntityName(id, dataStore);
       let match: number | undefined;
       if (name) match = lookup.buildingsByName.get(name.toLowerCase());
       if (match === undefined && buildings.length === 1 && lookup.buildingIds.length === 1) {
@@ -602,7 +600,7 @@ export class MergedExporter {
     // Unify IfcBuildingStorey — name match first, then elevation fallback
     const matchedFirstStoreys = new Set<number>();
     for (const id of this.findEntitiesByType(dataStore, 'IFCBUILDINGSTOREY')) {
-      const name = this.extractEntityName(id, dataStore, decoder);
+      const name = this.extractEntityName(id, dataStore);
       let match: number | undefined;
 
       // Try name match
@@ -615,7 +613,7 @@ export class MergedExporter {
 
       // Fallback: match by elevation
       if (match === undefined) {
-        const elevation = this.extractStoreyElevation(id, dataStore, decoder);
+        const elevation = this.extractStoreyElevation(id, dataStore);
         if (elevation !== undefined) {
           for (const entry of lookup.storeysByElevation) {
             if (matchedFirstStoreys.has(entry.expressId)) continue;
@@ -648,19 +646,18 @@ export class MergedExporter {
    */
   private skipRedundantRelAggregates(
     dataStore: IfcDataStore,
-    decoder: TextDecoder,
     sharedRemap: Map<number, number>,
     skipEntityIds: Set<number>,
   ): void {
     for (const relId of this.findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
       // RelatingObject is attr 4 — single #ref
-      const relatingAttr = this.extractStepAttribute(relId, dataStore, decoder, 4);
+      const relatingAttr = this.extractStepAttribute(relId, dataStore, 4);
       if (!relatingAttr) continue;
       const relatingRef = relatingAttr.match(/^#(\d+)$/);
       if (!relatingRef || !sharedRemap.has(parseInt(relatingRef[1], 10))) continue;
 
       // RelatedObjects is attr 5 — list of #refs like (#2,#3)
-      const relatedAttr = this.extractStepAttribute(relId, dataStore, decoder, 5);
+      const relatedAttr = this.extractStepAttribute(relId, dataStore, 5);
       if (!relatedAttr) continue;
       const refs: number[] = [];
       const refRegex = /#(\d+)/g;
@@ -683,9 +680,8 @@ export class MergedExporter {
   private extractEntityName(
     expressId: number,
     dataStore: IfcDataStore,
-    decoder: TextDecoder,
   ): string | null {
-    const attr = this.extractStepAttribute(expressId, dataStore, decoder, 2);
+    const attr = this.extractStepAttribute(expressId, dataStore, 2);
     if (!attr || attr === '$') return null;
     if (attr.startsWith("'") && attr.endsWith("'")) {
       const raw = attr.slice(1, -1).replace(/''/g, "'");
@@ -700,9 +696,8 @@ export class MergedExporter {
   private extractStoreyElevation(
     expressId: number,
     dataStore: IfcDataStore,
-    decoder: TextDecoder,
   ): number | undefined {
-    const attr = this.extractStepAttribute(expressId, dataStore, decoder, 9);
+    const attr = this.extractStepAttribute(expressId, dataStore, 9);
     if (!attr || attr === '$') return undefined;
     // Handle typed value like IFCLENGTHMEASURE(3000.)
     const typedMatch = attr.match(/^[A-Z_]+\(([^)]+)\)$/i);
@@ -718,7 +713,6 @@ export class MergedExporter {
   private extractStepAttribute(
     expressId: number,
     dataStore: IfcDataStore,
-    decoder: TextDecoder,
     attrIndex: number,
   ): string | null {
     const source = dataStore.source;
@@ -726,8 +720,8 @@ export class MergedExporter {
     const ref = dataStore.entityIndex.byId.get(expressId);
     if (!ref) return null;
 
-    const entityText = decoder.decode(
-      source.subarray(ref.byteOffset, ref.byteOffset + ref.byteLength),
+    const entityText = safeUtf8Decode(
+      source, ref.byteOffset, ref.byteOffset + ref.byteLength,
     );
 
     // Find opening paren after type name

@@ -157,17 +157,17 @@ The fastest way to get started is using the `create-ifc-lite` CLI:
 
 ```bash
 # Run the official container
-docker run -p 3001:8080 ghcr.io/louistrue/ifc-lite-server
+docker run -p 3001:8080 ghcr.io/LTplus-AG/ifc-lite-server
 
 # With persistent cache
-docker run -p 3001:8080 -v ifc-cache:/app/cache ghcr.io/louistrue/ifc-lite-server
+docker run -p 3001:8080 -v ifc-cache:/app/cache ghcr.io/LTplus-AG/ifc-lite-server
 
 # With environment configuration
 docker run -p 3001:8080 \
   -e RUST_LOG=info \
   -e MAX_FILE_SIZE_MB=500 \
   -e WORKER_THREADS=8 \
-  ghcr.io/louistrue/ifc-lite-server
+  ghcr.io/LTplus-AG/ifc-lite-server
 ```
 
 ### Option 2: Native Binary
@@ -227,7 +227,7 @@ Build and run the native desktop application:
 
 ```bash
 # Clone the repository
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/louistrue/ifc-lite.git
+GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
 
 # Install dependencies
@@ -277,7 +277,7 @@ git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 
 ```bash
 # Clone the repository
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/louistrue/ifc-lite.git
+GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
 
 # Install dependencies

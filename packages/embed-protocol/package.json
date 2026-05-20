@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/embed-protocol",
-  "version": "1.14.3",
+  "version": "1.14.4",
   "description": "Shared postMessage protocol types for ifc-lite embed viewer and SDK",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,6 +19,11 @@
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/embed-protocol"
+  },
   "files": [
     "dist"
   ]

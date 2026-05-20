@@ -1,5 +1,16 @@
 # @ifc-lite/export
 
+## 1.18.1
+
+### Patch Changes
+
+- [#726](https://github.com/LTplus-AG/ifc-lite/pull/726) [`58e2e9e`](https://github.com/LTplus-AG/ifc-lite/commit/58e2e9ed3e3f17b6d2fc73ae320ec95be5b17e36) Thanks [@louistrue](https://github.com/louistrue)! - Fix STEP/IFC export failing with `TextDecoder.decode: ArrayBufferView ... can't
+be a SharedArrayBuffer` when the data store's source buffer is SAB-backed.
+  Both `StepExporter` and `MergedExporter` now route all source-byte decodes
+  through `safeUtf8Decode` from `@ifc-lite/data`, which transparently copies
+  into a scratch buffer on the (Firefox / Chrome-with-mitigation) runtimes
+  that reject `TextDecoder.decode()` on `SharedArrayBuffer` views.
+
 ## 1.18.0
 
 ### Minor Changes

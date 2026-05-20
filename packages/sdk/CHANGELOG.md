@@ -1,5 +1,30 @@
 # @ifc-lite/sdk
 
+## 1.16.0
+
+### Minor Changes
+
+- [#759](https://github.com/LTplus-AG/ifc-lite/pull/759) [`d356a46`](https://github.com/LTplus-AG/ifc-lite/commit/d356a46c632d36c361250c891f8054de655bdd11) Thanks [@louistrue](https://github.com/louistrue)! - Publish the bSDD namespace and the IDS/performance work that landed in the SDK
+  since 1.15.0 but was never released.
+
+  The published `@ifc-lite/sdk@1.15.0` build predates three source changes
+  ([#607](https://github.com/LTplus-AG/ifc-lite/issues/607) hot-path memoization, [#615](https://github.com/LTplus-AG/ifc-lite/issues/615) the bSDD namespace, [#623](https://github.com/LTplus-AG/ifc-lite/issues/623) IDS document auditing
+  and schema validation) because none of those PRs included a changeset bumping
+  `@ifc-lite/sdk`. As a result the registry build is missing the `BsddNamespace`
+  and `BsddHttpError` exports.
+
+  `@ifc-lite/mcp` imports `BsddHttpError` from `@ifc-lite/sdk`, so a fresh
+  `npx @ifc-lite/cli` (which depends on `@ifc-lite/mcp`) crashed at module load
+  with `does not provide an export named 'BsddHttpError'`. Releasing `@ifc-lite/sdk@1.16.0`
+  makes the existing `^1.15.0` ranges in the already-published `@ifc-lite/mcp` and
+  `@ifc-lite/cli` resolve to a build that has the export — no republish of those
+  two packages is required.
+
+### Patch Changes
+
+- Updated dependencies [[`58e2e9e`](https://github.com/LTplus-AG/ifc-lite/commit/58e2e9ed3e3f17b6d2fc73ae320ec95be5b17e36)]:
+  - @ifc-lite/export@1.18.1
+
 ## 1.15.0
 
 ### Minor Changes

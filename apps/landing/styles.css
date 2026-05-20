@@ -246,7 +246,7 @@ html[data-theme="dusk"] .theme-toggle .icon-sun { display: block; }
 .support-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
 @media (max-width: 760px) { .support-grid { grid-template-columns: 1fr; } }
 .support-block { background: var(--bg-card); padding: 28px 24px; }
-.support-block h4 { margin: 0 0 16px; font-size: 14px; font-weight: 500; letter-spacing: 0; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.support-block h4 { margin: 0 0 16px; font-size: 14px; font-weight: 500; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
 .schema-rows { display: flex; flex-direction: column; gap: 10px; }
 .schema-row { display: grid; grid-template-columns: 110px 1fr 90px; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
 .schema-row:last-child { border-bottom: 0; }

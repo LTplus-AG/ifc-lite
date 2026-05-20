@@ -55,11 +55,36 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # @ifc-lite/cli transitively type-depends on @ifc-lite/wasm (its deps'
+      # .d.ts files reference it), and @ifc-lite/wasm's build is wasm-pack.
+      # Mirror test.yml's toolchain so the dependency-ordered build below
+      # can produce every .d.ts the cli tsc build needs.
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: sdk-canary
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
+        with:
+          version: latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build WASM
+        run: bash scripts/build-wasm.sh
+
+      # `turbo build` honours `^build`, so this builds every workspace
+      # dependency of cli/extensions in topological order. The previous
+      # `pnpm -F @ifc-lite/cli build` built cli alone and failed because
+      # @ifc-lite/create, query, data, parser, export, sdk and viewer-core
+      # had no dist/ to resolve against.
       - name: Build extensions + CLI
-        run: pnpm -F @ifc-lite/extensions build && pnpm -F @ifc-lite/cli build
+        run: pnpm turbo build --filter=@ifc-lite/extensions --filter=@ifc-lite/cli
 
       # Canaries are a curated fixture set. Each subdirectory under
       # tests/extensions/canaries/ is a bundle. We run the CLI's

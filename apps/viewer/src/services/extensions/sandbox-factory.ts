@@ -68,50 +68,59 @@ export function createBimSandboxFactory(opts: SandboxFactoryOptions): RuntimeSan
 }
 
 /**
- * Wrap each namespace of the BimContext with a Proxy that runs
- * `assertMethodCall(grants, namespace, method)` before forwarding.
- * Denied calls throw `CapabilityDeniedError` which surfaces inside
- * the sandbox as a regular exception the extension can catch (or
- * propagate to fail the activation cleanly).
+ * Wrap the BimContext so each object-namespace method runs
+ * `assertMethodCall(namespace, method, grants)` before forwarding.
  *
- * Only namespace-level wrapping is needed — methods themselves don't
- * have sub-namespaces. We Proxy at depth-2 so any callable on
- * `bim.<namespace>.<method>` is intercepted.
+ * Implemented as a Proxy on the SDK ROOT — not by enumerating
+ * `Object.keys(sdk)`. The BimContext is a class instance: its
+ * namespaces and top-level methods (`query`, `entity`, `viewer`, …)
+ * live on the prototype, so `Object.keys` returns none of them and a
+ * key-enumerated copy comes out empty — every `bim.*` call then fails
+ * with "<x> is not a function". The root Proxy resolves members via
+ * the prototype chain, so nothing is dropped.
+ *
+ * Top-level functions (e.g. `sdk.query()`, `sdk.entity()`) pass
+ * through ungated — the coarse permission ring already gates whole
+ * namespaces; this inner ring only wraps object-namespace methods
+ * (`sdk.viewer.colorize`, etc.).
  */
 function wrapWithCapabilityGate(
   sdk: BimContext,
   grants: readonly Capability[],
   extensionId: string,
 ): BimContext {
-  const wrappedNamespaces: Record<string, unknown> = {};
-  for (const namespace of Object.keys(sdk) as (keyof BimContext)[]) {
-    const ns = sdk[namespace];
-    if (ns === null || typeof ns !== 'object') {
-      wrappedNamespaces[namespace as string] = ns;
-      continue;
-    }
-    wrappedNamespaces[namespace as string] = new Proxy(ns as object, {
-      get(target, prop, receiver) {
-        const value = Reflect.get(target, prop, receiver);
-        if (typeof value !== 'function' || typeof prop !== 'string') {
-          return value;
-        }
-        // Intercept the method call — assert capability, then forward.
-        return function gated(this: unknown, ...args: unknown[]) {
-          try {
-            assertMethodCall(namespace as string, prop, grants);
-          } catch (err) {
-            if (err instanceof CapabilityDeniedError) {
-              console.warn(`[ext:${extensionId}] denied ${namespace as string}.${prop}: ${err.message}`);
-            }
-            throw err;
-          }
-          return (value as (...a: unknown[]) => unknown).apply(target, args);
-        };
-      },
-    });
-  }
-  return wrappedNamespaces as unknown as BimContext;
+  const nsCache = new Map<string, unknown>();
+  return new Proxy(sdk as object, {
+    get(target, prop) {
+      const value = (target as Record<string | symbol, unknown>)[prop];
+      if (typeof prop !== 'string') return value;
+      // Functions / primitives pass through; only object namespaces
+      // get the per-method capability gate.
+      if (value === null || typeof value !== 'object') return value;
+      let wrapped = nsCache.get(prop);
+      if (!wrapped) {
+        wrapped = new Proxy(value as object, {
+          get(nsTarget, method) {
+            const m = (nsTarget as Record<string | symbol, unknown>)[method];
+            if (typeof m !== 'function' || typeof method !== 'string') return m;
+            return function gated(this: unknown, ...args: unknown[]) {
+              try {
+                assertMethodCall(prop, method, grants);
+              } catch (err) {
+                if (err instanceof CapabilityDeniedError) {
+                  console.warn(`[ext:${extensionId}] denied ${prop}.${method}: ${err.message}`);
+                }
+                throw err;
+              }
+              return (m as (...a: unknown[]) => unknown).apply(nsTarget, args);
+            };
+          },
+        });
+        nsCache.set(prop, wrapped);
+      }
+      return wrapped;
+    },
+  }) as unknown as BimContext;
 }
 
 let nextDiagId = 1;

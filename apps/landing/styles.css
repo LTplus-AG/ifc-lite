@@ -1,25 +1,29 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /* IFClite landing. paper (light) + dusk (dark) themes, toggled via <html data-theme> */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 :root {
-  --bg: #F2EFE6;
-  --bg-2: #ECE7DA;
-  --bg-card: #F8F5EC;
-  --ink: #16181C;
-  --ink-2: #3E434B;
-  --ink-3: #6B7280;
-  --line: #D8D1BE;
-  --line-2: #C5BCA3;
-  --indigo: #4F46E5;
-  --indigo-hover: #4338CA;
-  --indigo-tint: #ECE9FE;
-  --accent: #4F46E5;
-  --warn: #B4530A;
-  --ok: #2E7D4F;
-  --rust: #C56A2B;
+  --bg: #f2efe6;
+  --bg-2: #ece7da;
+  --bg-card: #f8f5ec;
+  --ink: #16181c;
+  --ink-2: #3e434b;
+  --ink-3: #6b7280;
+  --line: #d8d1be;
+  --line-2: #c5bca3;
+  --indigo: #4f46e5;
+  --indigo-hover: #4338ca;
+  --indigo-tint: #ece9fe;
+  --accent: #4f46e5;
+  --warn: #b4530a;
+  --ok: #2e7d4f;
+  --rust: #c56a2b;
   /* always-dark surfaces (CTA card, core layer) — inverted in light, kept dark in dark */
-  --invert-surface: #16181C;
-  --invert-ink: #F2EFE6;
+  --invert-surface: #16181c;
+  --invert-ink: #f2efe6;
   --serif: "IBM Plex Serif", "Times New Roman", serif;
   --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -29,25 +33,25 @@ html, body { margin: 0; padding: 0; }
   --gutter: clamp(20px, 4vw, 56px);
 }
 html[data-theme="dusk"] {
-  --bg: #14161B;
-  --bg-2: #1A1D24;
-  --bg-card: #1E2229;
-  --ink: #ECE7DA;
-  --ink-2: #B8B5AC;
-  --ink-3: #7E8089;
-  --line: #2B2F38;
-  --line-2: #3A3F4A;
+  --bg: #14161b;
+  --bg-2: #1a1d24;
+  --bg-card: #1e2229;
+  --ink: #ece7da;
+  --ink-2: #b8b5ac;
+  --ink-3: #7e8089;
+  --line: #2b2f38;
+  --line-2: #3a3f4a;
   /* accent + status colours brightened so they read on dark surfaces */
-  --indigo: #8983F4;
-  --indigo-hover: #A29DF7;
-  --indigo-tint: #2A2A55;
-  --accent: #8983F4;
-  --warn: #DB8A3A;
-  --ok: #5BB585;
-  --rust: #DC8A52;
+  --indigo: #8983f4;
+  --indigo-hover: #a29df7;
+  --indigo-tint: #2a2a55;
+  --accent: #8983f4;
+  --warn: #db8a3a;
+  --ok: #5bb585;
+  --rust: #dc8a52;
   /* CTA card / core layer stay a deep panel in dark mode */
-  --invert-surface: #0F1115;
-  --invert-ink: #ECE7DA;
+  --invert-surface: #0f1115;
+  --invert-ink: #ece7da;
 }
 
 body {
@@ -61,7 +65,7 @@ body {
   overflow-x: hidden;
 }
 a { color: inherit; text-decoration: none; }
-button { font: inherit; color: inherit; cursor: default; }
+button { font: inherit; color: inherit; cursor: pointer; }
 ::selection { background: var(--indigo); color: white; }
 
 /* Reusable */

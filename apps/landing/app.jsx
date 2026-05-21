@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // app.jsx · IFClite landing interactive bits
 // Code tabs, package picker, bench explorer, stack builder.
 
@@ -216,7 +220,9 @@ function PackagePicker() {
       await navigator.clipboard.writeText(cmd);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {}
+    } catch (err) {
+      console.error("Clipboard copy failed:", err);
+    }
   };
 
   // detect which preset matches
@@ -645,7 +651,13 @@ function StackBuilder() {
 
   const [copied, setCopied] = useState(false);
   const copy = async () => {
-    try { await navigator.clipboard.writeText(cmd); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
+    try {
+      await navigator.clipboard.writeText(cmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error("Clipboard copy failed:", err);
+    }
   };
 
   return (

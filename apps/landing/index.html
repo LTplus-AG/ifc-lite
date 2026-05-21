@@ -5,6 +5,51 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>IFClite. Open, view, and work with IFC files. Right in the browser.</title>
 <meta name="description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option." />
+<meta name="keywords" content="IFC viewer, IFC file, BIM, openBIM, buildingSMART, IFC parser, web IFC, WebGPU, WASM, IFC.js alternative, BIM in browser" />
+<meta name="author" content="LTplus AG" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#0b0b0c" />
+<link rel="canonical" href="https://www.ifclite.com/" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="IFClite" />
+<meta property="og:title" content="IFClite — Open, view, and work with IFC files in the browser" />
+<meta property="og:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option." />
+<meta property="og:url" content="https://www.ifclite.com/" />
+<meta property="og:image" content="https://www.ifclite.com/assets/logo.png" />
+<meta property="og:image:alt" content="IFClite logo" />
+<meta property="og:locale" content="en_US" />
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="IFClite — Open, view, and work with IFC files in the browser" />
+<meta name="twitter:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry." />
+<meta name="twitter:image" content="https://www.ifclite.com/assets/logo.png" />
+
+<!-- Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "IFClite",
+  "description": "Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option.",
+  "url": "https://www.ifclite.com/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web",
+  "softwareRequirements": "Modern web browser with WebGPU support",
+  "author": {
+    "@type": "Organization",
+    "name": "LTplus AG",
+    "url": "https://lt.plus/"
+  },
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+}
+</script>
 <script>
   // Set theme before first paint to avoid a flash.
   (function () {
@@ -17,6 +62,7 @@
   })();
 </script>
 <link rel="icon" type="image/png" href="assets/logo.png" />
+<link rel="apple-touch-icon" href="assets/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -600,8 +646,8 @@
 </script>
 
 <!-- React + Babel + app -->
-<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 <script type="text/babel" src="app.jsx"></script>
 

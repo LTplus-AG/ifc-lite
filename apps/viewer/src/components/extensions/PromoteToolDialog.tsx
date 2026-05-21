@@ -295,8 +295,14 @@ function slugFromName(name: string): string {
 }
 
 function wrapScriptAsCommand(source: string): string {
+  // `run` is intentionally NOT async. The bim.* SDK is fully
+  // synchronous, and a promoted script is plain top-level code. An
+  // `async` wrapper would return a pending promise whose body only
+  // runs once the QuickJS job queue is drained — so the tool would
+  // silently do nothing (0 logs, instant "success"). A sync function
+  // runs to completion inside evalCode, exactly like the one-shot.
   return `/* Promoted from a saved script. */
-async function run(ctx) {
+function run(ctx) {
   const bim = ctx.bim;
 ${source.trim().split('\n').map((line) => `  ${line}`).join('\n')}
 }

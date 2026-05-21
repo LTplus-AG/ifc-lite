@@ -113,6 +113,20 @@ export class Sandbox {
     this.evalStartTime = Date.now();
 
     const result = this.vm.evalCode(jsCode, options?.filename ?? 'script.js');
+
+    // Drain the QuickJS job queue. Promise callbacks and `async`
+    // function bodies are scheduled as jobs — without this, an entry
+    // wrapped as `async function run()` returns a pending promise and
+    // its body never executes (the tool "succeeds" in 1ms doing
+    // nothing). executePendingJobs runs them to completion.
+    if (this.runtime) {
+      try {
+        this.runtime.executePendingJobs();
+      } catch (jobErr) {
+        console.warn('[ext-diag] executePendingJobs threw:', jobErr);
+      }
+    }
+
     const durationMs = Date.now() - this.evalStartTime;
     this.evalStartTime = 0;
 

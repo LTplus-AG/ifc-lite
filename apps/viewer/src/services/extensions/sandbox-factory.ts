@@ -117,8 +117,13 @@ function wrapWithCapabilityGate(
 let nextDiagId = 1;
 
 class BimSandboxHandle implements RuntimeSandboxHandle {
-  /** Globals pre-defined for the next `run`. Re-applied per call so the realm always sees the latest value. */
-  private globalsScript = '';
+  /**
+   * Globals pre-defined for the next `run`, keyed by name so re-setting
+   * a global REPLACES its assignment instead of appending a duplicate.
+   * (A plain accumulating string grew the wrapped source ~54 chars on
+   * every run as `__ifclite_ctx__` was re-set.)
+   */
+  private globals = new Map<string, string>();
   private disposed = false;
   /** Stable id for cross-call diagnostics — correlates create/run/dispose log lines. */
   readonly diagId: string;
@@ -144,7 +149,7 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
     // serialisation crashes. The bridge has already installed `bim`
     // inside the QuickJS realm — synthesize ctx from that instead.
     if (name === '__ifclite_ctx__') {
-      this.globalsScript += `globalThis.__ifclite_ctx__ = { bim: globalThis.bim };\n`;
+      this.globals.set(name, `globalThis.__ifclite_ctx__ = { bim: globalThis.bim };`);
       return;
     }
     // Other globals (test args, synthetic-spec data) are JSON-safe;
@@ -157,8 +162,7 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
         `setGlobal("${name}"): value is not JSON-serialisable (${err instanceof Error ? err.message : err}).`,
       );
     }
-    // Each call appends a fresh assignment; later setGlobal calls win.
-    this.globalsScript += `globalThis.${name} = ${serialised};\n`;
+    this.globals.set(name, `globalThis.${name} = ${serialised};`);
   }
 
   async run(source: string, _opts?: RuntimeRunOptions): Promise<RuntimeRunResult> {
@@ -168,9 +172,8 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
       console.warn(`[ext-diag] ${this.diagId} run #${runN} on a DISPOSED sandbox (ext=${this.extensionId})`);
       throw new Error('Sandbox disposed.');
     }
-    const wrapped = this.globalsScript
-      ? `${this.globalsScript}${source}`
-      : source;
+    const prelude = [...this.globals.values()].join('\n');
+    const wrapped = prelude ? `${prelude}\n${source}` : source;
     console.log(`[ext-diag] ${this.diagId} run #${runN} START ext=${this.extensionId} — wrapped ${wrapped.length} chars`);
     let result;
     try {

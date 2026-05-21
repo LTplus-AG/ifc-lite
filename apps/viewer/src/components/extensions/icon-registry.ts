@@ -90,6 +90,3 @@ export function resolveExtensionIcon(key: string | undefined | null): LucideIcon
     .trim();
   return ICON_LOOKUP.get(normalised) ?? Sparkles;
 }
-
-/** Comma-separated catalogue for prompts / docs. */
-export const ICON_KEYS_CATALOGUE = ICON_CHOICES.map((c) => c.key).join(', ');

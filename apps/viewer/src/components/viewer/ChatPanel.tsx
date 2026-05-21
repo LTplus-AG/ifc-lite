@@ -929,12 +929,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         // bundle CTA. If it doesn't but code landed in the editor,
         // surface the script CTA so "promote to tool" is one click
         // away — the user never has to hunt for the Promote button.
-        console.log(
-          `[ext-diag] chat handleComplete — classified.intent=${classified.intent}, ` +
-          `options.intent=${options?.intent ?? 'none'}, ` +
-          `appliedAny=${responseEditState.appliedAny}, fallbackApplied=${responseEditState.fallbackApplied}`,
-        );
-
+        //
         // Offer the script-path install CTA whenever the assistant
         // produced runnable code this turn — NOT only on authoring-
         // classified turns. The classifier tags follow-up messages
@@ -947,9 +942,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           const code = useViewerStore.getState().scriptEditorContent;
           const hasRealCode =
             code.trim().length > 0 && !/Write your BIM script here/.test(code);
-          console.log(
-            `[ext-diag] chat offerScriptInstall — wroteCode=${wroteCode}, hasRealCode=${hasRealCode}`,
-          );
           if (wroteCode && hasRealCode) {
             setChatToolReady({ kind: 'script', name: '' });
           }
@@ -962,7 +954,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           // Authoring-classified turn — try the bundle path first; if
           // no bundle was emitted, fall back to the script CTA.
           void handleAuthoringResponse(fullText).then((bundleFound) => {
-            console.log(`[ext-diag] chat authoring — bundleFound=${bundleFound}`);
             if (!bundleFound) offerScriptInstall();
           });
         } else {

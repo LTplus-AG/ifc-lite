@@ -151,7 +151,6 @@ export class ExtensionHostService {
     });
 
     this.dispatcher.onActivate(async (id) => {
-      console.log(`[ext-diag] dispatcher.onActivate fired for "${id}"`);
       const record = await this.storage.getExtension(id);
       if (!record) return;
       const grants = parseCapabilities(record.grantedCapabilities);
@@ -467,7 +466,6 @@ export class ExtensionHostService {
 
   /** Tear down everything. Called on flavor switch / sign-out. */
   async dispose(): Promise<void> {
-    console.warn(`[ext-diag] ExtensionHostService.dispose() — caller:\n${new Error().stack}`);
     this.miner.dispose();
     this.suggestionListeners.clear();
     this.suggestions = undefined;

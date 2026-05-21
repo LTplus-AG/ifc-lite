@@ -195,22 +195,6 @@ function downloadBlob(data: BlobPart, name: string, mime: string) {
 /** Exclusively activate a right-panel content panel (BCF / IDS / Lens / Extensions).
  *  Closes all others first so the if-else chain in ViewerLayout renders it.
  *  If the target is already active, closes it (back to Properties). */
-/**
- * Resolve a lucide icon name (as declared in an extension manifest)
- * to a React component. We keep a small whitelist rather than
- * importing the entire icon set; unknown names fall back to the
- * caller's default.
- */
-function lookupIcon(name: string | undefined): React.ElementType | undefined {
-  if (!name) return undefined;
-  const map: Record<string, React.ElementType> = {
-    Sparkles, Puzzle, Palette, Camera, Download, FileJson, Sun, Home,
-    Maximize2, Crosshair, Orbit, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
-    Layout, TreeDeciduous, FileCode2, MessageSquare, ClipboardCheck,
-    FileSpreadsheet, CalendarClock, Info, Clock, FolderOpen,
-  };
-  return map[name];
-}
 
 function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'extensions') {
   const s = useViewerStore.getState();
@@ -540,11 +524,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         label: payload.title,
         keywords: `${payload.id} ${payload.paletteCategory ?? ''} extension`,
         category: 'Extensions',
-        // Picker uses lowercase-hyphenated keys (`wrench`, `flame`,
-        // etc.) — `lookupIcon` only knows the legacy capitalized set.
-        // `resolveExtensionIcon` is the shared registry the picker
-        // writes against, so the icon the user chose is the icon
-        // shown in the palette.
+        // `resolveExtensionIcon` is the shared icon registry the
+        // picker writes against, so the icon the user chose is the
+        // icon shown in the palette.
         icon: resolveExtensionIcon(payload.icon),
         detail: payload.paletteCategory,
         action: () => {

@@ -52,17 +52,11 @@ export function createBimSandboxFactory(opts: SandboxFactoryOptions): RuntimeSan
       const gatedSdk = createOpts.grants
         ? wrapWithCapabilityGate(opts.sdk, createOpts.grants, createOpts.extensionId)
         : opts.sdk;
-      console.log(`[ext-diag] factory.create — building sandbox for "${createOpts.extensionId}"`, {
-        permissions: createOpts.permissions,
-        grants: createOpts.grants,
-      });
       const sandbox = await createSandbox(gatedSdk, {
         permissions: createOpts.permissions,
         limits: createOpts.limits,
       });
-      const handle = new BimSandboxHandle(sandbox, createOpts.extensionId);
-      console.log(`[ext-diag] factory.create — sandbox ${handle.diagId} ready for "${createOpts.extensionId}"`);
-      return handle;
+      return new BimSandboxHandle(sandbox);
     },
   };
 }
@@ -123,8 +117,6 @@ function wrapWithCapabilityGate(
   }) as unknown as BimContext;
 }
 
-let nextDiagId = 1;
-
 class BimSandboxHandle implements RuntimeSandboxHandle {
   /**
    * Globals pre-defined for the next `run`, keyed by name so re-setting
@@ -134,20 +126,11 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
    */
   private globals = new Map<string, string>();
   private disposed = false;
-  /** Stable id for cross-call diagnostics — correlates create/run/dispose log lines. */
-  readonly diagId: string;
-  private runCount = 0;
 
-  constructor(private sandbox: Sandbox, private extensionId = '<unknown>') {
-    this.diagId = `sbx#${nextDiagId++}`;
-  }
+  constructor(private sandbox: Sandbox) {}
 
   setGlobal(name: string, value: unknown): void {
-    if (this.disposed) {
-      console.warn(`[ext-diag] ${this.diagId} setGlobal("${name}") on a DISPOSED sandbox (ext=${this.extensionId})`);
-      throw new Error('Sandbox disposed.');
-    }
-    console.log(`[ext-diag] ${this.diagId} setGlobal("${name}") ext=${this.extensionId}`);
+    if (this.disposed) throw new Error('Sandbox disposed.');
     if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
       throw new Error(`Invalid global name: ${name}`);
     }
@@ -175,15 +158,9 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
   }
 
   async run(source: string, _opts?: RuntimeRunOptions): Promise<RuntimeRunResult> {
-    this.runCount += 1;
-    const runN = this.runCount;
-    if (this.disposed) {
-      console.warn(`[ext-diag] ${this.diagId} run #${runN} on a DISPOSED sandbox (ext=${this.extensionId})`);
-      throw new Error('Sandbox disposed.');
-    }
+    if (this.disposed) throw new Error('Sandbox disposed.');
     const prelude = [...this.globals.values()].join('\n');
     const wrapped = prelude ? `${prelude}\n${source}` : source;
-    console.log(`[ext-diag] ${this.diagId} run #${runN} START ext=${this.extensionId} — wrapped ${wrapped.length} chars`);
     let result;
     try {
       result = await this.sandbox.eval(wrapped, { typescript: false });
@@ -195,7 +172,6 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
       // ourselves disposed so the runtime knows to reactivate on the
       // next call, and surface a clear retry-friendly message.
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[ext-diag] ${this.diagId} run #${runN} FAILED ext=${this.extensionId} — ${msg}`, err);
       if (/Lifetime not alive|QuickJSUseAfterFree/i.test(msg)) {
         this.disposed = true;
         try { this.sandbox.dispose(); } catch { /* already torn down */ }
@@ -205,7 +181,6 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
       }
       throw err;
     }
-    console.log(`[ext-diag] ${this.diagId} run #${runN} OK ext=${this.extensionId} — ${result.durationMs}ms, ${result.logs.length} log lines`);
     return {
       value: result.value,
       logs: result.logs.map((log) => ({
@@ -223,16 +198,7 @@ class BimSandboxHandle implements RuntimeSandboxHandle {
   }
 
   dispose(): void {
-    if (this.disposed) {
-      console.log(`[ext-diag] ${this.diagId} dispose() — already disposed (ext=${this.extensionId})`);
-      return;
-    }
-    // Stack trace is the whole point: it names WHO disposed the
-    // sandbox. If a dispose lands between an activate and the next
-    // run, this trace is the smoking gun.
-    console.warn(
-      `[ext-diag] ${this.diagId} dispose() ext=${this.extensionId} — caller:\n${new Error().stack}`,
-    );
+    if (this.disposed) return;
     this.disposed = true;
     this.sandbox.dispose();
   }

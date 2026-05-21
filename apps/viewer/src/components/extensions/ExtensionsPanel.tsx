@@ -129,6 +129,10 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   // standard preview → Capability Review flow.
   useEffect(() => {
     if (!pendingAuthoredBundle) return;
+    // Don't clobber a capability review already on screen (e.g. from a
+    // file import). Leave the authored bundle queued — the effect
+    // re-runs once `pending` clears.
+    if (pending) return;
     const bytes = pendingAuthoredBundle;
     void (async () => {
       try {
@@ -152,7 +156,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         setPendingAuthoredBundle(null);
       }
     })();
-  }, [pendingAuthoredBundle, host, setPendingAuthoredBundle]);
+  }, [pendingAuthoredBundle, pending, host, setPendingAuthoredBundle]);
 
   const handleApprove = useCallback(
     async (grants: string[]) => {

@@ -3,34 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Centralised toast phrasing for the extensions / flavors / privacy
- * surfaces. Keeps tone, capitalisation, and trailing-punctuation
- * consistent across call sites.
- *
- * Convention:
- *   - Sentence-cased subject.
- *   - Trailing period only when the message contains multiple clauses.
- *   - Failures show the operation + a short cause.
+ * Centralised toast phrasing for the extensions / flavors surfaces.
+ * Keeps tone, capitalisation, and trailing-punctuation consistent
+ * across call sites.
  *
  * Callers pass the result to `toast.success` / `toast.info` /
  * `toast.error` so the colour mapping stays at the call site.
  */
-
-export function installed(id: string, version: string): string {
-  return `${id} v${version} installed`;
-}
-
-export function uninstalled(id: string): string {
-  return `${id} uninstalled`;
-}
-
-export function enabled(id: string): string {
-  return `${id} enabled`;
-}
-
-export function disabled(id: string): string {
-  return `${id} disabled`;
-}
 
 export function flavorSwitched(name: string): string {
   return `Switched to ${name}`;
@@ -62,30 +41,6 @@ export function testsNotDeclared(id: string): string {
 
 export function testsFailed(id: string, failed: number, firstError: string): string {
   return `${id}: ${failed} test${failed === 1 ? '' : 's'} failed — ${firstError}`;
-}
-
-export function actionLogExported(): string {
-  return 'Action log exported';
-}
-
-export function actionLogCleared(): string {
-  return 'Action log cleared';
-}
-
-export function auditLogExported(): string {
-  return 'Audit log exported';
-}
-
-export function auditLogCleared(): string {
-  return 'Audit log cleared';
-}
-
-export function overlaySaved(estimatedTokens: number): string {
-  return `Overlay saved (~${estimatedTokens} tokens)`;
-}
-
-export function overlayClamped(estimatedTokens: number): string {
-  return `Overlay clamped to ~${estimatedTokens} tokens`;
 }
 
 export function failed(operation: string, err: unknown): string {

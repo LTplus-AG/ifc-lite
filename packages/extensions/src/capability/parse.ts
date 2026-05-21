@@ -168,9 +168,10 @@ function parseTarget(raw: string): ValidationResult<CapabilityTarget> {
     }
     if (seg === '*') {
       segments.push({ kind: 'glob' });
-    } else if (seg.endsWith('*')) {
-      segments.push({ kind: 'literal', value: seg });
     } else {
+      // A trailing-`*` segment stays a literal here — the `*` is kept
+      // in `value` and the glob-suffix prefix match is applied by
+      // `matchSegment` in match.ts.
       segments.push({ kind: 'literal', value: seg });
     }
   }

@@ -85,7 +85,8 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
   };
 
   const handleApprove = async (grants: string[]) => {
-    if (!pending) return;
+    if (!pending || busy) return;
+    setBusy(true);
     try {
       const status = await host.installFromBytes(pending.bytes, grants);
       // Point the user at the payoff — the actual button. The
@@ -105,6 +106,8 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
       } else {
         toast.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`);
       }
+    } finally {
+      setBusy(false);
     }
   };
 

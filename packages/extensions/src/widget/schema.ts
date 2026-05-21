@@ -160,18 +160,34 @@ const NODE_TYPES = new Set([
 ]);
 
 /**
+ * Maximum widget tree nesting depth. A bundle's byte size is capped
+ * but its nesting is not — without this guard a deeply-nested
+ * (AI-authored or imported) widget JSON would blow the call stack in
+ * `walkValidate` / the renderer.
+ */
+const MAX_WIDGET_DEPTH = 64;
+
+/**
  * Validate a widget tree. Returns the typed widget on success or
  * structured errors on failure. Walks the tree recursively so all
  * errors surface in one pass.
  */
 export function validateWidget(input: unknown, path = ''): ValidationResult<WidgetNode> {
   const errors: ValidationError[] = [];
-  walkValidate(input, path, errors);
+  walkValidate(input, path, errors, 0);
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, value: input as WidgetNode };
 }
 
-function walkValidate(node: unknown, path: string, errors: ValidationError[]): void {
+function walkValidate(node: unknown, path: string, errors: ValidationError[], depth: number): void {
+  if (depth > MAX_WIDGET_DEPTH) {
+    errors.push({
+      path,
+      code: 'invalid_widget',
+      message: `Widget tree exceeds maximum nesting depth (${MAX_WIDGET_DEPTH}).`,
+    });
+    return;
+  }
   if (!isPlainObject(node)) {
     errors.push({ path, code: 'type_mismatch', message: 'Widget node must be an object.' });
     return;
@@ -181,7 +197,7 @@ function walkValidate(node: unknown, path: string, errors: ValidationError[]): v
     errors.push({ path: `${path}.type`, code: 'invalid_widget', message: `Unknown widget node type: ${JSON.stringify(type)}.` });
     return;
   }
-  validateNodeShape(type, node, path, errors);
+  validateNodeShape(type, node, path, errors, depth);
 }
 
 // eslint-disable-next-line max-lines-per-function
@@ -190,19 +206,20 @@ function validateNodeShape(
   node: Record<string, unknown>,
   path: string,
   errors: ValidationError[],
+  depth: number,
 ): void {
   switch (type) {
     case 'Stack':
       if (node.direction !== 'vertical' && node.direction !== 'horizontal') {
         errors.push({ path: `${path}.direction`, code: 'invalid_value', message: 'Stack.direction must be vertical or horizontal.' });
       }
-      validateChildren(node.children, `${path}.children`, errors);
+      validateChildren(node.children, `${path}.children`, errors, depth);
       break;
     case 'Group':
       if (node.title !== undefined && typeof node.title !== 'string') {
         errors.push({ path: `${path}.title`, code: 'type_mismatch', message: 'Group.title must be a string.' });
       }
-      validateChildren(node.children, `${path}.children`, errors);
+      validateChildren(node.children, `${path}.children`, errors, depth);
       break;
     case 'Text':
       if (typeof node.text !== 'string') {
@@ -250,7 +267,7 @@ function validateNodeShape(
       }
       break;
     case 'Tabs':
-      validateTabs(node.tabs, `${path}.tabs`, errors);
+      validateTabs(node.tabs, `${path}.tabs`, errors, depth);
       break;
     case 'EmptyState':
       if (typeof node.heading !== 'string') {
@@ -281,15 +298,25 @@ function validateNodeShape(
   }
 }
 
-function validateChildren(children: unknown, path: string, errors: ValidationError[]): void {
+function validateChildren(
+  children: unknown,
+  path: string,
+  errors: ValidationError[],
+  depth: number,
+): void {
   if (!Array.isArray(children)) {
     errors.push({ path, code: 'required', message: `${path} must be an array of widgets.` });
     return;
   }
-  children.forEach((child, i) => walkValidate(child, `${path}[${i}]`, errors));
+  children.forEach((child, i) => walkValidate(child, `${path}[${i}]`, errors, depth + 1));
 }
 
-function validateTabs(tabs: unknown, path: string, errors: ValidationError[]): void {
+function validateTabs(
+  tabs: unknown,
+  path: string,
+  errors: ValidationError[],
+  depth: number,
+): void {
   if (!Array.isArray(tabs) || tabs.length === 0) {
     errors.push({ path, code: 'required', message: `${path} must be a non-empty array.` });
     return;
@@ -302,7 +329,7 @@ function validateTabs(tabs: unknown, path: string, errors: ValidationError[]): v
     if (typeof tab.id !== 'string' || typeof tab.label !== 'string') {
       errors.push({ path: `${path}[${i}]`, code: 'required', message: 'tab requires id + label strings.' });
     }
-    validateChildren(tab.children, `${path}[${i}].children`, errors);
+    validateChildren(tab.children, `${path}[${i}].children`, errors, depth + 1);
   });
 }
 

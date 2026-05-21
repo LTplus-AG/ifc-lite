@@ -18,7 +18,7 @@
  * Spec: docs/architecture/ai-customization/06-self-improvement.md §7.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Brain, Download, Eraser, ScrollText, Save, Shield, X } from 'lucide-react';
 import {
   clampOverlay,
@@ -48,13 +48,19 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
   const [busy, setBusy] = useState(false);
   const [proposals, setProposals] = useState<MemoryProposal[]>([]);
   const chatMessages = useViewerStore((s) => s.chatMessages);
+  // `refresh` is captured once by the long-lived `flavors.onChange`
+  // listener, so it must read `dirty` through a ref — a closed-over
+  // `dirty` would freeze at `false` and clobber the user's edits when
+  // a later flavor change fires.
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
 
   const refresh = async () => {
     try {
       setLogSize({ events: host.actionLog.size(), bytes: host.actionLog.byteSize() });
       const flavor = await host.flavors.getActive();
       setActiveFlavor(flavor);
-      if (flavor && !dirty) {
+      if (flavor && !dirtyRef.current) {
         setOverlayDraft(flavor.promptOverlay?.content ?? '');
       }
     } catch (err) {

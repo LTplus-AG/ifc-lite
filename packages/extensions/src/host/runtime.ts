@@ -320,8 +320,21 @@ export class ExtensionRuntime {
   /**
    * Deactivate an extension. Disposes the underlying sandbox. No-op
    * for unknown ids.
+   *
+   * If an `activate()` for the same id is still in flight, we await it
+   * first — otherwise the activation would resolve *after* this call,
+   * `active.set` a fresh record, and leak an untracked QuickJS context
+   * the host believes is gone.
    */
   async deactivate(extensionId: string): Promise<void> {
+    const pending = this.inFlight.get(extensionId);
+    if (pending) {
+      try {
+        await pending;
+      } catch {
+        // Activation failed — no record was registered, nothing to dispose.
+      }
+    }
     const record = this.active.get(extensionId);
     if (!record) return;
     this.active.delete(extensionId);
@@ -345,6 +358,13 @@ export class ExtensionRuntime {
 
   /** Dispose every active extension. Used on flavor switch / shutdown. */
   async disposeAll(): Promise<void> {
+    // Drain in-flight activations first so their sandboxes land in
+    // `active` and get disposed too — otherwise an activation racing
+    // this teardown leaks its context.
+    const pendings = Array.from(this.inFlight.values());
+    if (pendings.length > 0) {
+      await Promise.allSettled(pendings);
+    }
     const ids = Array.from(this.active.keys());
     for (const id of ids) {
       await this.deactivate(id);

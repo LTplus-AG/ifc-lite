@@ -113,8 +113,7 @@ export async function installFromBytes(
   let previousBundleBytes: Uint8Array | undefined;
   if (previous && previous.version !== version) {
     previousBundleBytes = await deps.storage.getBundle(id, previous.version);
-    await deps.runtime.deactivate(id);
-    await deps.loader.unload(id);
+    await teardownExtension(deps, id);
   }
 
   const record: InstalledExtensionRecord = {
@@ -177,8 +176,7 @@ export async function installFromBytes(
 export async function uninstall(deps: InstallerDeps, id: string): Promise<void> {
   const record = await deps.storage.getExtension(id);
   if (!record) return;
-  await deps.runtime.deactivate(id);
-  await deps.loader.unload(id);
+  await teardownExtension(deps, id);
   // Delete bundle bytes too — the storage's cascade already handles
   // this on deleteExtension, but call it explicitly so the contract
   // is clear at this layer and a future storage impl can't drift.
@@ -218,8 +216,7 @@ export async function setEnabled(
       );
     }
   } else {
-    await deps.runtime.deactivate(id);
-    await deps.loader.unload(id);
+    await teardownExtension(deps, id);
     await deps.storage.putExtension({ ...record, enabled: false });
   }
   deps.audit.append({
@@ -229,4 +226,21 @@ export async function setEnabled(
   });
   deps.emitAction(enabled ? 'extension.enable' : 'extension.disable', { id });
   deps.emit();
+}
+
+/**
+ * Tear an extension down: run its `entry.deactivate` hook (via the
+ * loaded bundle), unload it, and clear the dispatcher's
+ * "already activated" flag so a later enable / event re-fire genuinely
+ * re-activates it. Used by update / uninstall / disable.
+ */
+async function teardownExtension(deps: InstallerDeps, id: string): Promise<void> {
+  const bundle = deps.loader.getBundle(id);
+  if (bundle) {
+    await deps.runtime.deactivateWithBundle(id, bundle);
+  } else {
+    await deps.runtime.deactivate(id);
+  }
+  await deps.loader.unload(id);
+  deps.dispatcher.resetActivation(id);
 }

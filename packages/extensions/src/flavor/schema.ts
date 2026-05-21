@@ -72,7 +72,24 @@ export function validateFlavor(input: unknown): ValidationResult<Flavor> {
   }
 
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, value: obj as unknown as Flavor };
+  // Normalise: the optional-on-the-wire collections (`lenses`,
+  // `savedQueries`, `keybindings`, `layout`, `settings`) are REQUIRED
+  // on the `Flavor` type. Default them here so every validated flavor
+  // satisfies the type contract — `mergeFlavors` / `diffFlavors`
+  // dereference these fields directly and would otherwise crash on a
+  // schema-valid flavor that simply omitted them.
+  const flavor = obj as unknown as Flavor;
+  return {
+    ok: true,
+    value: {
+      ...flavor,
+      lenses: flavor.lenses ?? [],
+      savedQueries: flavor.savedQueries ?? [],
+      keybindings: flavor.keybindings ?? [],
+      layout: flavor.layout ?? { state: {} },
+      settings: flavor.settings ?? {},
+    },
+  };
 }
 
 function validateExtensions(errors: ValidationError[], raw: unknown): void {

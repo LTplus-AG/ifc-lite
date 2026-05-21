@@ -223,8 +223,18 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const chatToolReady = useViewerStore((s) => s.chatToolReady);
   const setChatToolReady = useViewerStore((s) => s.setChatToolReady);
-  /** Local: open state for the inline Promote-to-tool dialog (script path). */
-  const [promoteFromChatOpen, setPromoteFromChatOpen] = useState(false);
+  /**
+   * Local: the inline Promote-to-tool dialog (script path). `source`
+   * is snapshotted from the live editor when the dialog opens — the
+   * dialog is modal so the script can't change underneath it, and
+   * snapshotting avoids re-rendering ChatPanel on every keystroke.
+   */
+  const [promoteFromChat, setPromoteFromChat] = useState<{ open: boolean; source: string }>({
+    open: false,
+    source: '',
+  });
+  /** One-shot guard for the "use the Ideas panel" authoring hint toast. */
+  const authoringHintShownRef = useRef(false);
 
   /**
    * Try to parse an authoring response as an extension bundle. If it
@@ -524,11 +534,17 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       && classified.confidence >= 0.75
       && !options?.intent
     ) {
-      toast.info(
-        classified.intent === 'fork'
-          ? 'Heads up: that reads like a fork. Use the Extensions → Ideas panel for diff-based authoring.'
-          : 'Heads up: that reads like an authoring request. The Extensions → Ideas panel offers plan-first authoring.',
-      );
+      // Show the "use the Ideas panel" hint at most once per chat
+      // session — a multi-turn authoring conversation shouldn't
+      // re-toast it on every message.
+      if (!authoringHintShownRef.current) {
+        authoringHintShownRef.current = true;
+        toast.info(
+          classified.intent === 'fork'
+            ? 'Heads up: that reads like a fork. Use the Extensions → Ideas panel for diff-based authoring.'
+            : 'Heads up: that reads like an authoring request. The Extensions → Ideas panel offers plan-first authoring.',
+        );
+      }
       setAuthoringTelemetry({ intent: classified.intent, startedAt: Date.now() });
     } else if (classified.intent !== 'authoring' && classified.intent !== 'fork') {
       setAuthoringTelemetry(null);
@@ -630,6 +646,19 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     const fileAttachments = supportsFileAttachments
       ? collectActiveFileAttachments(allMessages, filtered.accepted)
       : [];
+    // Personal prompt overlay from the active flavor (RFC §06.4) —
+    // durable user preferences appended to the system prompt. Best
+    // effort: a missing host / flavor / overlay just omits it.
+    let personalOverlay: string | undefined;
+    if (extensionHost) {
+      try {
+        const activeFlavor = await extensionHost.flavors.getActive();
+        const content = activeFlavor?.promptOverlay?.content?.trim();
+        if (content) personalOverlay = content;
+      } catch {
+        // Overlay is non-essential — never block a chat turn on it.
+      }
+    }
     const systemPrompt = buildSystemPrompt(modelContext, fileAttachments, {
       content: liveScriptContext.content,
       revision: liveScriptContext.revision,
@@ -643,6 +672,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       // can emit a valid bundle.
       includeAuthoringContract:
         classified.intent === 'authoring' || classified.intent === 'fork',
+      personalOverlay,
     });
     const contextWindow = activeModelInfo?.contextWindow ?? 128_000;
     const inputBudget = Math.max(
@@ -1141,6 +1171,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       resetScriptEditorForNewChat();
       clearMessages();
       setChatToolReady(null);
+      authoringHintShownRef.current = false;
       setInputText('');
       setLastFinishReason(null);
     } else {
@@ -1152,6 +1183,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     resetScriptEditorForNewChat();
     clearMessages();
     setChatToolReady(null);
+    authoringHintShownRef.current = false;
     setInputText('');
     setLastFinishReason(null);
     setShowClearConfirm(false);
@@ -1582,7 +1614,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                     setExtensionsRequestedView('installed');
                     setExtensionsPanelVisible(true);
                   } else {
-                    setPromoteFromChatOpen(true);
+                    setPromoteFromChat({
+                      open: true,
+                      source: useViewerStore.getState().scriptEditorContent,
+                    });
                   }
                   setChatToolReady(null);
                 }}
@@ -1675,11 +1710,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       )}
 
       {/* Promote-to-tool dialog, opened from the post-authoring CTA.
-          Reads the live script editor content as the tool source. */}
+          `source` was snapshotted from the editor at open time. */}
       <PromoteToolDialog
-        open={promoteFromChatOpen}
-        source={useViewerStore.getState().scriptEditorContent}
-        onClose={() => setPromoteFromChatOpen(false)}
+        open={promoteFromChat.open}
+        source={promoteFromChat.source}
+        onClose={() => setPromoteFromChat((p) => ({ ...p, open: false }))}
       />
 
       {/* Input area */}

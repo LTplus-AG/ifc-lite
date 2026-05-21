@@ -226,7 +226,6 @@ export class ExtensionHostService {
   }
 
   /** Inspect a `.iflx` byte string without installing it. */
-  /** Inspect a `.iflx` byte string without installing it. */
   previewBundle(bytes: Uint8Array): Promise<ValidationResult<ExtensionInstallSummary>> {
     return previewBundleBytes(bytes);
   }
@@ -469,6 +468,9 @@ export class ExtensionHostService {
     this.miner.dispose();
     this.suggestionListeners.clear();
     this.suggestions = undefined;
+    // Flush debounced log writes before teardown so events from the
+    // last ~250 ms aren't lost and the debounce timers don't leak.
+    await this.logStorage.flush();
     await this.runtime.disposeAll();
     for (const id of this.dispatcher.listExtensions()) {
       this.dispatcher.unregister(id);

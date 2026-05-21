@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Download, Trash2, FileText, Filter } from 'lucide-react';
+import { Download, Trash2, FileText, Filter, X } from 'lucide-react';
 import type { AuditEvent, AuditEventKind } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -152,7 +152,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
           </Button>
           {onClose && (
             <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close audit log">
-              ×
+              <X className="h-3.5 w-3.5" />
             </Button>
           )}
         </div>

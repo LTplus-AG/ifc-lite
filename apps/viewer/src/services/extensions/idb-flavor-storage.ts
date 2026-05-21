@@ -34,21 +34,30 @@ interface SnapshotRow extends FlavorSnapshot {
   flavorId: string;
 }
 
-export class IdbFlavorStorage implements FlavorStorage {
-  private nextSeq = 1;
+/**
+ * Resolve once a readwrite transaction commits. Rejects on both
+ * `error` AND `abort` — an aborted transaction fires neither
+ * `oncomplete` nor `onerror`, so without the `onabort` branch the
+ * returned promise would hang forever.
+ */
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('Flavor IDB transaction failed.'));
+    tx.onabort = () => reject(tx.error ?? new Error('Flavor IDB transaction aborted.'));
+  });
+}
 
+export class IdbFlavorStorage implements FlavorStorage {
   async putFlavor(flavor: Flavor, reason?: string): Promise<void> {
     const db = await openDatabase();
     const previous = await this.getFlavor(flavor.id);
     if (previous) {
       await this.recordSnapshot(db, previous, reason);
     }
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_FLAVORS, 'readwrite');
-      tx.objectStore(STORE_FLAVORS).put(flavor);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    const tx = db.transaction(STORE_FLAVORS, 'readwrite');
+    tx.objectStore(STORE_FLAVORS).put(flavor);
+    await txDone(tx);
   }
 
   async getFlavor(id: string): Promise<Flavor | undefined> {
@@ -74,21 +83,18 @@ export class IdbFlavorStorage implements FlavorStorage {
   async deleteFlavor(id: string): Promise<void> {
     const db = await openDatabase();
     // Drop the flavor itself + cascade its snapshots.
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction([STORE_FLAVORS, STORE_SNAPS], 'readwrite');
-      tx.objectStore(STORE_FLAVORS).delete(id);
-      const snaps = tx.objectStore(STORE_SNAPS);
-      const cursorReq = snaps.openCursor();
-      cursorReq.onsuccess = () => {
-        const cursor = cursorReq.result;
-        if (!cursor) return;
-        const row = cursor.value as SnapshotRow;
-        if (row.flavorId === id) cursor.delete();
-        cursor.continue();
-      };
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    const tx = db.transaction([STORE_FLAVORS, STORE_SNAPS], 'readwrite');
+    tx.objectStore(STORE_FLAVORS).delete(id);
+    const snaps = tx.objectStore(STORE_SNAPS);
+    const cursorReq = snaps.openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) return;
+      const row = cursor.value as SnapshotRow;
+      if (row.flavorId === id) cursor.delete();
+      cursor.continue();
+    };
+    await txDone(tx);
     // If we deleted the active flavor, clear the pointer.
     const activeId = await this.getActiveId();
     if (activeId === id) await this.setActiveId(undefined);
@@ -106,30 +112,18 @@ export class IdbFlavorStorage implements FlavorStorage {
 
   async setActiveId(id: string | undefined): Promise<void> {
     const db = await openDatabase();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_ACTIVE, 'readwrite');
-      const store = tx.objectStore(STORE_ACTIVE);
-      if (id === undefined) {
-        store.delete(ACTIVE_KEY);
-      } else {
-        store.put({ key: ACTIVE_KEY, id });
-      }
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    const tx = db.transaction(STORE_ACTIVE, 'readwrite');
+    const store = tx.objectStore(STORE_ACTIVE);
+    if (id === undefined) {
+      store.delete(ACTIVE_KEY);
+    } else {
+      store.put({ key: ACTIVE_KEY, id });
+    }
+    await txDone(tx);
   }
 
   async listSnapshots(flavorId: string): Promise<FlavorSnapshot[]> {
-    const db = await openDatabase();
-    const all = await new Promise<SnapshotRow[]>((resolve, reject) => {
-      const tx = db.transaction(STORE_SNAPS, 'readonly');
-      const req = tx.objectStore(STORE_SNAPS).getAll();
-      req.onsuccess = () => resolve(((req.result as SnapshotRow[] | undefined) ?? []));
-      req.onerror = () => reject(req.error);
-    });
-    return all
-      .filter((s) => s.flavorId === flavorId)
-      .sort((a, b) => b.seq - a.seq)
+    return (await this.listSnapshotRows(flavorId))
       .map(({ key, flavorId: _id, ...rest }) => rest as FlavorSnapshot);
   }
 
@@ -148,14 +142,25 @@ export class IdbFlavorStorage implements FlavorStorage {
 
   async clear(): Promise<void> {
     const db = await openDatabase();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction([STORE_FLAVORS, STORE_ACTIVE, STORE_SNAPS], 'readwrite');
-      tx.objectStore(STORE_FLAVORS).clear();
-      tx.objectStore(STORE_ACTIVE).clear();
-      tx.objectStore(STORE_SNAPS).clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+    const tx = db.transaction([STORE_FLAVORS, STORE_ACTIVE, STORE_SNAPS], 'readwrite');
+    tx.objectStore(STORE_FLAVORS).clear();
+    tx.objectStore(STORE_ACTIVE).clear();
+    tx.objectStore(STORE_SNAPS).clear();
+    await txDone(tx);
+  }
+
+  /** Raw snapshot rows for a flavor, newest seq first. */
+  private async listSnapshotRows(flavorId: string): Promise<SnapshotRow[]> {
+    const db = await openDatabase();
+    const all = await new Promise<SnapshotRow[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_SNAPS, 'readonly');
+      const req = tx.objectStore(STORE_SNAPS).getAll();
+      req.onsuccess = () => resolve((req.result as SnapshotRow[] | undefined) ?? []);
+      req.onerror = () => reject(req.error);
     });
+    return all
+      .filter((s) => s.flavorId === flavorId)
+      .sort((a, b) => b.seq - a.seq);
   }
 
   private async recordSnapshot(
@@ -163,7 +168,11 @@ export class IdbFlavorStorage implements FlavorStorage {
     flavor: Flavor,
     reason: string | undefined,
   ): Promise<void> {
-    const seq = this.nextSeq++;
+    // Derive the next seq from the snapshots already persisted for
+    // this flavor. A reload-resettable in-memory counter would restart
+    // at 1 and overwrite existing `<flavorId>@1`, `@2`, … rows.
+    const existing = await this.listSnapshotRows(flavor.id);
+    const seq = existing.reduce((max, s) => Math.max(max, s.seq), 0) + 1;
     const row: SnapshotRow = {
       key: `${flavor.id}@${seq}`,
       flavorId: flavor.id,
@@ -172,23 +181,17 @@ export class IdbFlavorStorage implements FlavorStorage {
       flavor,
       reason,
     };
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_SNAPS, 'readwrite');
-      tx.objectStore(STORE_SNAPS).put(row);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    const putTx = db.transaction(STORE_SNAPS, 'readwrite');
+    putTx.objectStore(STORE_SNAPS).put(row);
+    await txDone(putTx);
     // Enforce cap: keep newest SNAPSHOT_CAP rows per flavor.
-    const all = await this.listSnapshots(flavor.id);
+    const all = [row, ...existing];
     if (all.length > SNAPSHOT_CAP) {
       const toDrop = all.slice(SNAPSHOT_CAP);
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE_SNAPS, 'readwrite');
-        const store = tx.objectStore(STORE_SNAPS);
-        for (const s of toDrop) store.delete(`${flavor.id}@${s.seq}`);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
+      const dropTx = db.transaction(STORE_SNAPS, 'readwrite');
+      const store = dropTx.objectStore(STORE_SNAPS);
+      for (const s of toDrop) store.delete(`${flavor.id}@${s.seq}`);
+      await txDone(dropTx);
     }
   }
 }

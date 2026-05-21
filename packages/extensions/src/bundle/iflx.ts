@@ -127,6 +127,13 @@ export function unpackBundle(bytes: Uint8Array): ValidationResult<Bundle> {
 
   const files = new Map<string, BundleFile>();
   for (const [path, b64] of entries) {
+    // Reject path-traversal / absolute keys from an untrusted bundle
+    // before they ever reach a host adapter that might write the file
+    // map to disk. Keys must be plain relative paths inside the bundle.
+    if (!isSafeBundlePath(path)) {
+      return fail(`files.${path}`, 'invalid_format',
+        `Unsafe bundle file path "${path}" — paths must be relative and contain no ".." segments.`);
+    }
     if (typeof b64 !== 'string') {
       return fail(`files.${path}`, 'type_mismatch',
         'Each file entry must be a base64 string.');
@@ -229,6 +236,20 @@ function toBase64(bytes: Uint8Array): string {
 // consistent across runtimes and corrupted files don't decode
 // quietly into garbage.
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/**
+ * A bundle file key must be a plain relative path contained inside the
+ * bundle root. Rejects absolute paths (POSIX `/…` and Windows `C:\…`),
+ * any `..` segment, and empty/dot segments — so unpacking can never
+ * escape the bundle root if a host adapter writes the file map to disk.
+ */
+function isSafeBundlePath(path: string): boolean {
+  if (typeof path !== 'string' || path.length === 0) return false;
+  if (path.startsWith('/') || path.startsWith('\\')) return false;
+  if (/^[A-Za-z]:/.test(path)) return false;
+  const segments = path.replace(/\\/g, '/').split('/');
+  return segments.every((seg) => seg.length > 0 && seg !== '.' && seg !== '..');
+}
 
 function fromBase64(b64: string): Uint8Array {
   if (typeof b64 !== 'string') {

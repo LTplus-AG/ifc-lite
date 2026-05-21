@@ -67,8 +67,7 @@ export class IdbLogStorage {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_ACTION, 'readwrite');
       tx.objectStore(STORE_ACTION).clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      bindTx(tx, resolve, reject);
     });
     this.actionPending = [];
   }
@@ -78,10 +77,21 @@ export class IdbLogStorage {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_AUDIT, 'readwrite');
       tx.objectStore(STORE_AUDIT).clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      bindTx(tx, resolve, reject);
     });
     this.auditPending = [];
+  }
+
+  /**
+   * Flush both pending batches immediately and cancel the debounce
+   * timers. Call on host teardown / before reload so events appended
+   * within the last DEBOUNCE_MS window aren't lost and the timers
+   * don't leak.
+   */
+  async flush(): Promise<void> {
+    if (this.actionTimer) { clearTimeout(this.actionTimer); this.actionTimer = null; }
+    if (this.auditTimer) { clearTimeout(this.auditTimer); this.auditTimer = null; }
+    await Promise.all([this.flushActions(), this.flushAudit()]);
   }
 
   private async flushActions(): Promise<void> {
@@ -94,8 +104,7 @@ export class IdbLogStorage {
         const tx = db.transaction(STORE_ACTION, 'readwrite');
         const store = tx.objectStore(STORE_ACTION);
         for (const event of batch) store.put(event);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        bindTx(tx, resolve, reject);
       });
     } catch (err) {
       console.warn('[IdbLogStorage] action flush failed:', err);
@@ -112,13 +121,23 @@ export class IdbLogStorage {
         const tx = db.transaction(STORE_AUDIT, 'readwrite');
         const store = tx.objectStore(STORE_AUDIT);
         for (const event of batch) store.put(event);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        bindTx(tx, resolve, reject);
       });
     } catch (err) {
       console.warn('[IdbLogStorage] audit flush failed:', err);
     }
   }
+}
+
+/**
+ * Settle a readwrite transaction. The `abort` branch matters: an
+ * aborted transaction fires neither `complete` nor `error`, so the
+ * promise would otherwise hang forever.
+ */
+function bindTx(tx: IDBTransaction, resolve: () => void, reject: (e: unknown) => void): void {
+  tx.oncomplete = () => resolve();
+  tx.onerror = () => reject(tx.error ?? new Error('Log IDB transaction failed.'));
+  tx.onabort = () => reject(tx.error ?? new Error('Log IDB transaction aborted.'));
 }
 
 async function loadAll<T>(store: string): Promise<T[]> {

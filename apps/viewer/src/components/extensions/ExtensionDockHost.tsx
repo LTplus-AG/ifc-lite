@@ -45,7 +45,10 @@ export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
   // contributions can key on selection / model presence. Future
   // additions (schema, viewer.open, embed flag) thread through here.
   const modelLoaded = useViewerStore((s) => s.models.size > 0);
-  const selectionCount = useViewerStore((s) => s.selectedEntities.length);
+  // `selectedEntityIds` is the primary selection set — same source
+  // `ExtensionToolbarSlot` reads, so `selection.count` evaluates
+  // consistently across every extension surface.
+  const selectionCount = useViewerStore((s) => s.selectedEntityIds.size);
   const whenContext = useMemo<WhenContext>(
     () => ({ 'model.loaded': modelLoaded, 'selection.count': selectionCount }),
     [modelLoaded, selectionCount],

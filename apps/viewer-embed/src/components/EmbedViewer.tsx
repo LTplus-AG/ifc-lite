@@ -137,21 +137,47 @@ export function EmbedViewer() {
     });
 
     if (autoFittedRef.current) return;
+
+    // Viewport registers cameraCallbacks AFTER renderer.init() resolves (async).
+    // On a fast network + small model, geometry can land before that happens.
+    // Poll for up to ~2 s, checking each frame, then bail out so we never leak.
     autoFittedRef.current = true;
-    // Defer to next frame so the renderer has applied the new meshes and
-    // geometryBoundsRef inside Viewport is up to date before zoomToFit reads it.
-    const id = requestAnimationFrame(() => {
+    const deadline = performance.now() + 2000;
+    let rafId = 0;
+    const tryFit = () => {
       const cbs = useViewerStore.getState().cameraCallbacks;
+      const ready = Boolean(cbs.home || cbs.fitAll || cbs.setPresetView);
+      console.log('[embed] auto-fit tick', {
+        ready,
+        cbs: Object.keys(cbs),
+        view: urlParams.view,
+        camera: urlParams.camera,
+        meshes: meshes.length,
+      });
+      if (!ready) {
+        if (performance.now() < deadline) {
+          rafId = requestAnimationFrame(tryFit);
+        } else {
+          console.warn('[embed] auto-fit gave up — cameraCallbacks never registered');
+        }
+        return;
+      }
       // Honour ?view= / ?camera= URL params first; only auto-fit if neither was set.
       if (urlParams.view) {
+        console.log('[embed] auto-fit: setPresetView', urlParams.view);
         cbs.setPresetView?.(urlParams.view);
       } else if (urlParams.camera) {
-        // Camera URL param is handled elsewhere; skip auto-fit.
-      } else {
-        cbs.home?.();
+        console.log('[embed] auto-fit: skipped (?camera= handled elsewhere)');
+      } else if (cbs.home) {
+        console.log('[embed] auto-fit: home()');
+        cbs.home();
+      } else if (cbs.fitAll) {
+        console.log('[embed] auto-fit: fitAll() fallback');
+        cbs.fitAll();
       }
-    });
-    return () => cancelAnimationFrame(id);
+    };
+    rafId = requestAnimationFrame(tryFit);
+    return () => cancelAnimationFrame(rafId);
   }, [loading, geometryResult, ifcDataStore, urlParams.view, urlParams.camera]);
 
   // Emit selection events to parent

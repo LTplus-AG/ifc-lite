@@ -38,9 +38,11 @@ export function EmbedViewer() {
   const bridgeInitialized = useRef(false);
   const autoLoadAttempted = useRef(false);
 
-  // Apply URL params on mount
+  // Apply URL params on mount. Embeds default to light unless ?theme=dark
+  // (the surrounding viewer-core store may bootstrap to dark based on system
+  // preference, which is wrong for a third-party iframe with no chrome).
   useEffect(() => {
-    if (urlParams.theme) setTheme(urlParams.theme);
+    setTheme(urlParams.theme === 'dark' ? 'dark' : 'light');
   }, [urlParams.theme, setTheme]);
 
   // Initialize the postMessage bridge

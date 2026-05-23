@@ -575,12 +575,17 @@ export function Viewport({
       return Math.max(64, Math.floor(size / 64) * 64);
     };
 
+    // Cap at the conservative WebGPU floor; the renderer re-clamps using the actual
+    // adapter limit once the device is initialized. Without this, tall iframe layouts
+    // can ask for canvas dimensions that exceed 8192 and every texture creation fails.
+    const MAX_CANVAS_DIM = 8192;
+
     // Use CSS pixel dimensions for canvas. The Renderer.render() method manages
     // its own dimension alignment via getBoundingClientRect() — do NOT apply DPR
     // here as it creates a mismatch that causes constant context reconfiguration.
     const rect = canvas.getBoundingClientRect();
-    const width = alignToWebGPU(Math.max(1, Math.floor(rect.width)));
-    const height = Math.max(1, Math.floor(rect.height));
+    const width = Math.min(MAX_CANVAS_DIM, alignToWebGPU(Math.max(1, Math.floor(rect.width))));
+    const height = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.floor(rect.height)));
     canvas.width = width;
     canvas.height = height;
 
@@ -735,8 +740,8 @@ export function Viewport({
       resizeObserver = new ResizeObserver(() => {
         if (aborted) return;
         const rect = canvas.getBoundingClientRect();
-        const w = alignToWebGPU(Math.max(1, Math.floor(rect.width)));
-        const h = Math.max(1, Math.floor(rect.height));
+        const w = Math.min(MAX_CANVAS_DIM, alignToWebGPU(Math.max(1, Math.floor(rect.width))));
+        const h = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.floor(rect.height)));
         renderer.resize(w, h);
         renderCurrent();
       });

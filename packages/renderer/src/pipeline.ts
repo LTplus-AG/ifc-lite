@@ -390,6 +390,12 @@ export class RenderPipeline {
     resize(width: number, height: number): void {
         if (width <= 0 || height <= 0) return;
 
+        // Belt-and-suspenders clamp: callers are expected to clamp upstream, but
+        // texture creation must never exceed maxTextureDimension2D or every frame fails.
+        const maxDim = this.device.limits.maxTextureDimension2D;
+        width = Math.min(width, maxDim);
+        height = Math.min(height, maxDim);
+
         this.currentWidth = width;
         this.currentHeight = height;
 
@@ -834,6 +840,12 @@ export class InstancedRenderPipeline {
      * Resize depth texture
      */
     resize(width: number, height: number): void {
+        // Match the primary RenderPipeline.resize() clamp so the InstancedRenderPipeline
+        // can't blow past maxTextureDimension2D either.
+        const maxDim = this.device.limits.maxTextureDimension2D;
+        width = Math.min(width, maxDim);
+        height = Math.min(height, maxDim);
+
         if (this.currentHeight === height && this.depthTexture.width === width) {
             return;
         }

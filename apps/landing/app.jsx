@@ -274,6 +274,26 @@ function ConveyorPipeline() {
     setMountedSet((s) => (s.has(active) ? s : new Set([...s, active])));
   }, [active]);
 
+  // Pre-mount the View stage on idle so the embed iframe (~5 MB of WASM + the
+  // demo model) loads in the background; by the time the user clicks View, the
+  // model is already parsed, the camera has auto-fitted, and the panel becomes
+  // visible instantly. The panel stays display:none until activated — modern
+  // browsers still load DOM-mounted iframes inside hidden parents.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    const preload = () => {
+      if (cancelled) return;
+      setMountedSet((s) => (s.has("view") ? s : new Set([...s, "view"])));
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(preload, { timeout: 2500 });
+      return () => { cancelled = true; window.cancelIdleCallback?.(id); };
+    }
+    const id = window.setTimeout(preload, 1500);
+    return () => { cancelled = true; window.clearTimeout(id); };
+  }, []);
+
   const activeIndex = STAGES.findIndex((s) => s.id === active);
   const move = (delta) => {
     const next = Math.max(0, Math.min(STAGES.length - 1, activeIndex + delta));
@@ -426,15 +446,32 @@ function ParseDemo({ ifcText, entities }) {
   );
 }
 
-function ViewDemo({ active }) {
-  // Lazy-mount the iframe only after the user first visits this stage; keep it loaded after.
-  const [iframeMounted, setIframeMounted] = useState(false);
-  useEffect(() => { if (active) setIframeMounted(true); }, [active]);
+function ViewDemo() {
+  // The iframe mounts as soon as this component renders. ConveyorPipeline
+  // pre-mounts the View panel on idle (in a display:none parent) so the embed
+  // boots + auto-loads the model before the user clicks the View tab — making
+  // the switch feel instant. Modern browsers still fetch and run scripts in
+  // iframes inside hidden ancestors.
+
+  // Mirror the landing's theme into the embed so a light-mode visitor doesn't get a
+  // black iframe popping out of the page. The embed treats anything other than
+  // 'dark' as light, so we only forward when we're definitely in dusk.
+  const [embedTheme, setEmbedTheme] = useState(() =>
+    typeof document !== "undefined" && document.documentElement.dataset.theme === "dusk" ? "dark" : "light"
+  );
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const sync = () => setEmbedTheme(document.documentElement.dataset.theme === "dusk" ? "dark" : "light");
+    sync();
+    const mo = new MutationObserver(sync);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => mo.disconnect();
+  }, []);
 
   // embed.ifclite.com/v1 is the trimmed viewer with built-in URL-param model autoload.
   // hello-wall.ifc is hosted on www.ifclite.com with CORS open.
   const modelUrl = "https://www.ifclite.com/samples/hello-wall.ifc";
-  const iframeSrc = `https://embed.ifclite.com/v1?modelUrl=${encodeURIComponent(modelUrl)}&theme=dark&autoLoad=true`;
+  const iframeSrc = `https://embed.ifclite.com/v1?modelUrl=${encodeURIComponent(modelUrl)}&theme=${embedTheme}&autoLoad=true`;
 
   return (
     <div className="demo demo-view">
@@ -450,17 +487,13 @@ function ViewDemo({ active }) {
         </div>
       </div>
       <div className="demo-iframe-wrap">
-        {iframeMounted ? (
-          <iframe
-            src={iframeSrc}
-            className="demo-iframe"
-            title="IFClite viewer"
-            loading="lazy"
-            allow="cross-origin-isolated; clipboard-write; fullscreen"
-          />
-        ) : (
-          <div className="demo-empty demo-iframe-placeholder">Loading viewer…</div>
-        )}
+        <iframe
+          src={iframeSrc}
+          className="demo-iframe"
+          title="IFClite viewer"
+          loading="eager"
+          allow="cross-origin-isolated; clipboard-write; fullscreen"
+        />
       </div>
     </div>
   );

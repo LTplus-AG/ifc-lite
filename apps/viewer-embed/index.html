@@ -17,6 +17,24 @@
     html.dark body { background: #1a1b26; color: #a9b1d6; }
     /* Ensure the 3D canvas fills the viewport (Tailwind utilities may not be generated for embed build) */
     #root canvas { width: 100% !important; height: 100% !important; display: block !important; }
+
+    /* Tailwind utility fallbacks — the embed bundle doesn't include Tailwind, so
+     * the shared Viewport's `className="relative w-full h-full"` wrapper resolves
+     * to NO styling. Without these, the wrapper has no height constraint, the
+     * canvas's intrinsic size (driven by its attribute pixels) blows the layout
+     * out to ~8000+ px tall, and the model lands off-frame. These rules cover
+     * exactly the utilities the Viewport DOM tree uses — keep narrow. */
+    .relative { position: relative; }
+    .absolute { position: absolute; }
+    .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+    .w-full { width: 100%; }
+    .h-full { height: 100%; }
+    .block { display: block; }
+    .hidden { display: none; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .justify-center { justify-content: center; }
+    .overflow-hidden { overflow: hidden; }
   </style>
   <!-- Pre-React theme bootstrap. External script so the deployed CSP
        (script-src 'self' 'wasm-unsafe-eval' blob:) allows it — inline scripts

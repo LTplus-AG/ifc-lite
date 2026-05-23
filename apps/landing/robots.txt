@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.ifclite.com/sitemap.xml
+Sitemap: https://ifclite.dev/sitemap.xml

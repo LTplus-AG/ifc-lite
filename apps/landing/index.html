@@ -9,15 +9,15 @@
 <meta name="author" content="LTplus AG" />
 <meta name="robots" content="index, follow, max-image-preview:large" />
 <meta name="theme-color" content="#0b0b0c" />
-<link rel="canonical" href="https://www.ifclite.com/" />
+<link rel="canonical" href="https://ifclite.dev/" />
 
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="IFClite" />
 <meta property="og:title" content="IFClite. Open, view, and work with IFC files in the browser" />
 <meta property="og:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option." />
-<meta property="og:url" content="https://www.ifclite.com/" />
-<meta property="og:image" content="https://www.ifclite.com/assets/logo.png" />
+<meta property="og:url" content="https://ifclite.dev/" />
+<meta property="og:image" content="https://ifclite.dev/assets/logo.png" />
 <meta property="og:image:alt" content="IFClite logo" />
 <meta property="og:locale" content="en_US" />
 
@@ -25,16 +25,23 @@
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="IFClite. Open, view, and work with IFC files in the browser" />
 <meta name="twitter:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry." />
-<meta name="twitter:image" content="https://www.ifclite.com/assets/logo.png" />
+<meta name="twitter:image" content="https://ifclite.dev/assets/logo.png" />
 
-<!-- Structured data -->
+<!-- Structured data. `url` points at this marketing site (ifclite.dev); the
+     live web app lives at https://www.ifclite.com/ and is referenced via
+     sameAs so search engines can link the two surfaces. -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "IFClite",
   "description": "Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option.",
-  "url": "https://www.ifclite.com/",
+  "url": "https://ifclite.dev/",
+  "sameAs": [
+    "https://www.ifclite.com/",
+    "https://github.com/LTplus-AG/ifc-lite",
+    "https://www.npmjs.com/package/@ifc-lite/parser"
+  ],
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Web",
   "softwareRequirements": "Modern web browser with WebGPU support",

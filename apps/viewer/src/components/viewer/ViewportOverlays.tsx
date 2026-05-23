@@ -213,22 +213,20 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
         </div>
       )}
 
-      {/* Axis Helper + Scale Bar — desktop only; mobile keeps the viewport unobstructed */}
+      {/* Basepoint toggle + Axis Helper + Scale Bar — desktop only; mobile keeps the viewport unobstructed */}
       {!isMobile && (
-        <>
-          <div className="absolute bottom-16 left-4 flex items-end gap-2">
-            <AxisHelper
-              ref={axisHelperRef}
-              rotationX={initialRotationX}
-              rotationY={initialRotationY}
-            />
-            <BasepointToggleButton />
-          </div>
-          <div className="absolute bottom-4 left-4 flex flex-col items-start gap-1">
+        <div className="absolute bottom-4 left-4 flex flex-col-reverse items-start gap-3">
+          <div className="flex flex-col items-start gap-1">
             <div className="h-1 w-24 bg-foreground/80 rounded-full" />
             <span className="text-xs text-foreground/80">{formatScale(scale)}</span>
           </div>
-        </>
+          <AxisHelper
+            ref={axisHelperRef}
+            rotationX={initialRotationX}
+            rotationY={initialRotationY}
+          />
+          <BasepointToggleButton />
+        </div>
       )}
 
       {/* Per-model IFC (0,0,0) markers — toggled via BasepointToggleButton.

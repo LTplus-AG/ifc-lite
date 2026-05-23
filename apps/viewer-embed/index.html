@@ -18,25 +18,10 @@
     /* Ensure the 3D canvas fills the viewport (Tailwind utilities may not be generated for embed build) */
     #root canvas { width: 100% !important; height: 100% !important; display: block !important; }
   </style>
-  <script>
-    // Apply ?theme= before React boots so there's no dark flash. Default: light.
-    // Wrapped in try/catch because this runs before any error boundary exists and
-    // we must never block React mount. On failure we log to console and fall back
-    // to the .light class already on <html> (set in markup above).
-    (function () {
-      try {
-        var p = new URLSearchParams(location.search);
-        var t = p.get('theme');
-        var root = document.documentElement;
-        root.classList.remove('dark', 'light');
-        root.classList.add(t === 'dark' ? 'dark' : 'light');
-      } catch (e) {
-        if (typeof console !== 'undefined' && console.warn) {
-          console.warn('[ifc-lite-embed] theme bootstrap failed; falling back to light:', e);
-        }
-      }
-    })();
-  </script>
+  <!-- Pre-React theme bootstrap. External script so the deployed CSP
+       (script-src 'self' 'wasm-unsafe-eval' blob:) allows it — inline scripts
+       would need 'unsafe-inline' or a nonce. -->
+  <script src="/theme-bootstrap.js"></script>
 </head>
 <body>
   <div id="root"></div>

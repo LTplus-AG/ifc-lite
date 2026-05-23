@@ -118,16 +118,41 @@ export function EmbedViewer() {
     }
   }, [progress]);
 
-  // Emit model loaded event
+  // Emit model loaded event + auto-fit camera on the first model that lands.
+  // Unlike the full viewer (which has toolbar buttons for fit-all and a default
+  // load flow that fits), the embed has no chrome — so without an explicit fit
+  // call the camera stays at its initial position and the model renders off-frame.
+  // We only fit on the *first* successful load so host-driven SET_CAMERA / view
+  // params via the bridge aren't immediately overridden.
+  const autoFittedRef = useRef(false);
   useEffect(() => {
-    if (!loading && geometryResult?.meshes?.length) {
-      emitEvent('MODEL_LOADED', {
-        entities: ifcDataStore?.entities?.count ?? 0,
-        triangles: geometryResult.totalTriangles,
-        vertices: geometryResult.totalVertices,
-      });
-    }
-  }, [loading, geometryResult, ifcDataStore]);
+    if (loading) return;
+    const meshes = geometryResult?.meshes;
+    if (!meshes || meshes.length === 0) return;
+
+    emitEvent('MODEL_LOADED', {
+      entities: ifcDataStore?.entities?.count ?? 0,
+      triangles: geometryResult.totalTriangles,
+      vertices: geometryResult.totalVertices,
+    });
+
+    if (autoFittedRef.current) return;
+    autoFittedRef.current = true;
+    // Defer to next frame so the renderer has applied the new meshes and
+    // geometryBoundsRef inside Viewport is up to date before zoomToFit reads it.
+    const id = requestAnimationFrame(() => {
+      const cbs = useViewerStore.getState().cameraCallbacks;
+      // Honour ?view= / ?camera= URL params first; only auto-fit if neither was set.
+      if (urlParams.view) {
+        cbs.setPresetView?.(urlParams.view);
+      } else if (urlParams.camera) {
+        // Camera URL param is handled elsewhere; skip auto-fit.
+      } else {
+        cbs.home?.();
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [loading, geometryResult, ifcDataStore, urlParams.view, urlParams.camera]);
 
   // Emit selection events to parent
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);

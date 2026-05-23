@@ -1,0 +1,51 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "ifc-lite/export · landing demo · source: hello-wall.ifc"
+  },
+  "scene": 0,
+  "scenes": [
+    { "name": "HelloWall", "nodes": [0] }
+  ],
+  "nodes": [
+    { "name": "DemoBuilding", "mesh": 0 }
+  ],
+  "meshes": [
+    {
+      "name": "BuildingBox",
+      "primitives": [
+        {
+          "attributes": { "POSITION": 0 },
+          "indices": 1,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC3",
+      "min": [0, 0, 0],
+      "max": [10, 5, 3]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5125,
+      "count": 36,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    { "buffer": 0, "byteOffset": 0,  "byteLength": 96,  "target": 34962 },
+    { "buffer": 0, "byteOffset": 96, "byteLength": 144, "target": 34963 }
+  ],
+  "buffers": [
+    {
+      "byteLength": 240,
+      "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAAAgQQAAAAAAAAAAAAAAAAAAoEAAAAAAAAAgQQAAoEAAAAAAAAAAAAAAAAAAAEBAAAAgQQAAAAAAAEBAAAAAAAAAoEAAAEBAAAAgQQAAoEAAAEBAAAAAAAIAAAABAAAAAQAAAAIAAAADAAAABAAAAAUAAAAGAAAABQAAAAcAAAAGAAAAAAAAAAQAAAACAAAAAgAAAAQAAAAGAAAAAQAAAAMAAAAFAAAAAwAAAAcAAAAFAAAAAAAAAAEAAAAEAAAAAQAAAAUAAAAEAAAAAgAAAAYAAAADAAAAAwAAAAYAAAAHAAAA"
+    }
+  ]
+}

@@ -14,7 +14,7 @@
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="IFClite" />
-<meta property="og:title" content="IFClite — Open, view, and work with IFC files in the browser" />
+<meta property="og:title" content="IFClite. Open, view, and work with IFC files in the browser" />
 <meta property="og:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option." />
 <meta property="og:url" content="https://www.ifclite.com/" />
 <meta property="og:image" content="https://www.ifclite.com/assets/logo.png" />
@@ -23,7 +23,7 @@
 
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="IFClite — Open, view, and work with IFC files in the browser" />
+<meta name="twitter:title" content="IFClite. Open, view, and work with IFC files in the browser" />
 <meta name="twitter:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry." />
 <meta name="twitter:image" content="https://www.ifclite.com/assets/logo.png" />
 
@@ -177,7 +177,7 @@
 </section>
 
 <!-- ─────────────────────────── STATS ─────────────────────────── -->
-<section class="stats wrap" data-screen-label="02 Stats">
+<section class="stats" data-screen-label="02 Stats">
   <div class="stats-grid">
     <div class="stat">
       <div class="v">2.72<span class="u">seconds</span></div>
@@ -203,89 +203,17 @@
 </section>
 
 <!-- ─────────────────────────── WHAT IT DOES ─────────────────────────── -->
-<section id="what" class="section" data-screen-label="03 Capabilities">
+<section id="what" class="section" data-screen-label="03 Pipeline">
   <div class="wrap">
     <div class="section-head">
       <div class="label">
-        <span class="eyebrow">§01 Features</span>
-        <h2>Parse, view, query, edit, <em>validate</em>, export.</h2>
+        <span class="eyebrow">§01 Pipeline</span>
+        <h2>One file. <em>Seven moves.</em></h2>
       </div>
-      <p>Most browser IFC libraries stop at parsing or rendering. IFClite covers the whole pipeline, from reading a STEP file to writing one back out. Inspect, federate, validate, edit, and ship.</p>
+      <p>Most browser IFC libraries stop at parsing or rendering. IFClite covers the whole pipeline. Read a STEP file, look at it, query it, edit it, federate it, validate it, automate it with an agent, and write it back out. Click a stage to try it.</p>
     </div>
 
-    <div class="caps">
-      <div class="cap">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-          <div class="cap-glyph" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
-          </div>
-          <span class="cap-num">01</span>
-        </div>
-        <h3>Parse</h3>
-        <p>Schema-aware reader for IFC2X3 through IFC5. Columnar TypedArray store, query-friendly, streamable. Returns properties, quantities, relationships, and spatial structure.</p>
-        <div class="cap-meta"><span>STEP · IFCX</span><span class="pill">parser</span></div>
-      </div>
-
-      <div class="cap">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-          <div class="cap-glyph" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L3 8l9 5 9-5-9-5z"/><path d="M3 13l9 5 9-5"/><path d="M3 18l9 5 9-5"/></svg>
-          </div>
-          <span class="cap-num">02</span>
-        </div>
-        <h3>View</h3>
-        <p>WebGPU renderer with instancing, picking, fit-to-view, and section planes. Bring your own canvas, or hand geometry off to Three.js / Babylon.js if you've already got an engine.</p>
-        <div class="cap-meta"><span>WebGPU · WebGL</span><span class="pill">renderer</span></div>
-      </div>
-
-      <div class="cap">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-          <div class="cap-glyph" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
-          </div>
-          <span class="cap-num">03</span>
-        </div>
-        <h3>Query</h3>
-        <p>Fluent type and property filters for common cases. DuckDB-WASM for the rest. Write SQL against the columnar store when the builder runs out.</p>
-        <div class="cap-meta"><span>Fluent · SQL</span><span class="pill">query</span></div>
-      </div>
-
-      <div class="cap">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-          <div class="cap-glyph" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2l8 8-12 12H2v-8L14 2z"/><path d="M12 4l8 8"/></svg>
-          </div>
-          <span class="cap-num">04</span>
-        </div>
-        <h3>Edit</h3>
-        <p>Mutation layer with undo, replay, and diffs. Modify properties or geometry, export back to STEP with the edits applied.</p>
-        <div class="cap-meta"><span>Undo · Replay</span><span class="pill">mutations</span></div>
-      </div>
-
-      <div class="cap">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-          <div class="cap-glyph" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
-          </div>
-          <span class="cap-num">05</span>
-        </div>
-        <h3>Validate</h3>
-        <p>Run IDS specifications against a model. Structured pass/fail report, translated failure messages, BCF handoff.</p>
-        <div class="cap-meta"><span>IDS · BCF</span><span class="pill">ids</span></div>
-      </div>
-
-      <div class="cap">
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-          <div class="cap-glyph" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
-          </div>
-          <span class="cap-num">06</span>
-        </div>
-        <h3>Export</h3>
-        <p>STEP for round-trips, glTF for the web, Parquet for analytics (~20× smaller than JSON), and IFC5 / IFCX JSON.</p>
-        <div class="cap-meta"><span>STEP · glTF · Parquet · IFCX</span><span class="pill">export</span></div>
-      </div>
-    </div>
+    <div id="pipeline-root"></div>
   </div>
 </section>
 
@@ -376,7 +304,7 @@
         <span class="eyebrow">§04 Packages</span>
         <h2>Pick what you <em>need</em>.</h2>
       </div>
-      <p>25 TypeScript packages and 4 Rust crates. You rarely need all of them. Pick a preset, or tick the bits you want. The bundle estimate updates as you go.</p>
+      <p>30+ TypeScript packages and 5 Rust crates. You rarely need all of them. Pick a preset, or tick the bits you want. The bundle estimate updates as you go.</p>
     </div>
     <div id="picker-root"></div>
   </div>
@@ -503,7 +431,7 @@
         <span class="cap-num">→ reference</span>
         <h3>API reference</h3>
         <p>Every type, every method, every default. TypeScript and Rust both covered.</p>
-        <div class="cap-meta"><span>25 packages · 4 crates</span><span class="pill">reference</span></div>
+        <div class="cap-meta"><span>30+ packages · 5 crates</span><span class="pill">reference</span></div>
       </a>
     </div>
   </div>

@@ -1865,6 +1865,190 @@ function StackBuilder() {
 }
 
 
+// ─────────────────────────── browser test ───────────────────────────
+const STATIC_BROWSERS = [
+  { name: "Chrome",  ver: "113+" },
+  { name: "Edge",    ver: "113+" },
+  { name: "Firefox", ver: "127+" },
+  { name: "Safari",  ver: "18+"  },
+  { name: "Arc",     ver: "stable" },
+  { name: "Brave",   ver: "1.65+" },
+];
+
+// 30-byte WASM module that uses v128 SIMD opcodes. Validating == SIMD supported.
+const WASM_SIMD_PROBE = new Uint8Array([
+  0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123,
+  3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11,
+]);
+
+async function runBrowserTests() {
+  const results = [];
+
+  // WebGPU
+  let webgpuOk = false;
+  let webgpuNote = "not detected";
+  try {
+    if ("gpu" in navigator) {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (adapter) {
+        webgpuOk = true;
+        let info = "adapter ready";
+        try {
+          const ai = typeof adapter.requestAdapterInfo === "function"
+            ? await adapter.requestAdapterInfo()
+            : adapter.info;
+          if (ai) {
+            const parts = [ai.vendor, ai.architecture, ai.description].filter(Boolean);
+            if (parts.length) info = parts.slice(0, 2).join(" · ");
+          }
+        } catch (_) { /* requestAdapterInfo not always exposed */ }
+        webgpuNote = info;
+      } else {
+        webgpuNote = "no adapter (driver or flag missing)";
+      }
+    }
+  } catch (_) { /* swallow */ }
+  results.push({ id: "webgpu", label: "WebGPU", ok: webgpuOk, note: webgpuNote });
+
+  // WebAssembly + SIMD
+  const wasmOk = typeof WebAssembly === "object" && typeof WebAssembly.validate === "function";
+  let simdOk = false;
+  if (wasmOk) {
+    try { simdOk = WebAssembly.validate(WASM_SIMD_PROBE); } catch (_) {}
+  }
+  results.push({
+    id: "wasm",
+    label: "WebAssembly · SIMD",
+    ok: wasmOk && simdOk,
+    warn: wasmOk && !simdOk,
+    note: simdOk ? "full speed Rust core" : wasmOk ? "available, no SIMD (slower core)" : "not available",
+  });
+
+  // SharedArrayBuffer is Spectre-gated: Chrome 91+, Firefox 79+, Safari 15.2+ hide
+  // the global from any page that isn't cross-origin isolated (COOP + COEP headers).
+  // So an "undefined" result here doesn't mean the browser lacks support — it
+  // usually means this specific page didn't enable cross-origin isolation.
+  // Distinguish the two cases so visitors don't blame their browser.
+  const sabAvailable = typeof SharedArrayBuffer !== "undefined";
+  const coiKnown    = typeof crossOriginIsolated !== "undefined";
+  const coiOk       = coiKnown && crossOriginIsolated;
+  let sabState;
+  if (sabAvailable && coiOk) {
+    sabState = { ok: true,  warn: false, note: "threaded WASM enabled" };
+  } else if (sabAvailable && !coiOk) {
+    sabState = { ok: false, warn: true,  note: "browser ready, this page not cross-origin isolated" };
+  } else if (coiKnown) {
+    // Browser knows the COI concept but withheld SAB → it's a page-header issue.
+    sabState = { ok: false, warn: true,  note: "gated by cross-origin isolation (page needs COOP+COEP)" };
+  } else {
+    sabState = { ok: false, warn: false, note: "not available in this browser" };
+  }
+  results.push(Object.assign({ id: "sab", label: "SharedArrayBuffer" }, sabState));
+
+  // Origin Private File System (OPFS)
+  const opfsOk = typeof navigator !== "undefined"
+    && "storage" in navigator
+    && navigator.storage
+    && typeof navigator.storage.getDirectory === "function";
+  results.push({
+    id: "opfs",
+    label: "OPFS",
+    ok: opfsOk,
+    note: opfsOk ? "fast cached reloads" : "cache falls back to IndexedDB",
+  });
+
+  // Worker + ResizeObserver
+  const workerOk = typeof Worker !== "undefined";
+  const roOk = typeof ResizeObserver !== "undefined";
+  results.push({
+    id: "worker",
+    label: "Worker · ResizeObserver",
+    ok: workerOk && roOk,
+    note: workerOk && roOk
+      ? "parser off main thread"
+      : !workerOk ? "no Worker" : "no ResizeObserver",
+  });
+
+  return results;
+}
+
+function detectBrowserLabel() {
+  if (typeof navigator === "undefined") return "unknown";
+  const ua = navigator.userAgent || "";
+  let name = "unknown";
+  let pat = null;
+  if (/Edg\//.test(ua))                       { name = "Edge";    pat = /Edg\/(\d+)/;     }
+  else if (/Firefox\//.test(ua))              { name = "Firefox"; pat = /Firefox\/(\d+)/; }
+  else if (/Chrome\//.test(ua))               { name = "Chrome";  pat = /Chrome\/(\d+)/;  }
+  else if (/Version\/[\d.]+ Safari/.test(ua)) { name = "Safari";  pat = /Version\/(\d+)/; }
+  const m = pat ? ua.match(pat) : null;
+  return name + (m ? " " + m[1] : "");
+}
+
+function BrowserTest() {
+  const [phase, setPhase] = useState("idle"); // idle | running | done
+  const [results, setResults] = useState(null);
+
+  const run = async () => {
+    setPhase("running");
+    try {
+      const r = await runBrowserTests();
+      setResults(r);
+      setPhase("done");
+    } catch (err) {
+      console.error("Browser test failed:", err);
+      setPhase("idle");
+    }
+  };
+
+  const reset = () => { setPhase("idle"); setResults(null); };
+
+  if (phase === "done" && results) {
+    const passCount = results.filter((r) => r.ok).length;
+    return (
+      <div className="br-test br-test-done">
+        <div className="br-test-head">
+          <span className="br-test-source mono">{detectBrowserLabel()}</span>
+          <span className="br-test-counts mono">{passCount}/{results.length} ✓</span>
+          <button className="copy-btn br-test-reset" onClick={reset}>↻ reset</button>
+        </div>
+        <ul className="br-test-list">
+          {results.map((r) => (
+            <li key={r.id} className="br-test-row" data-state={r.ok ? "pass" : r.warn ? "warn" : "fail"}>
+              <span className="br-test-mark">{r.ok ? "✓" : r.warn ? "⚠" : "✗"}</span>
+              <div className="br-test-body">
+                <span className="br-test-label mono">{r.label}</span>
+                <span className="br-test-note">{r.note}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <div className="br-test">
+      <div className="browsers">
+        {STATIC_BROWSERS.map((b) => (
+          <div className="browser" key={b.name}>
+            <span className="nm">{b.name}</span>
+            <span className="ver">{b.ver}</span>
+          </div>
+        ))}
+      </div>
+      <button
+        className="btn btn-primary br-test-btn"
+        onClick={run}
+        disabled={phase === "running"}
+      >
+        {phase === "running" ? "Testing…" : "▶ Test my browser"}
+      </button>
+    </div>
+  );
+}
+
+
 // ─────────────────────────── mount ───────────────────────────
 const pipelineRoot = document.getElementById("pipeline-root");
 if (pipelineRoot) ReactDOM.createRoot(pipelineRoot).render(<ConveyorPipeline />);
@@ -1880,3 +2064,6 @@ if (benchRoot) ReactDOM.createRoot(benchRoot).render(<BenchExplorer />);
 
 const stackRoot = document.getElementById("stack-root");
 if (stackRoot) ReactDOM.createRoot(stackRoot).render(<StackBuilder />);
+
+const browserTestRoot = document.getElementById("browser-test-root");
+if (browserTestRoot) ReactDOM.createRoot(browserTestRoot).render(<BrowserTest />);

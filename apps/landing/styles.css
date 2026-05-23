@@ -112,8 +112,26 @@ html[data-theme="dusk"] .theme-toggle .icon-sun { display: block; }
 
 /* Hero */
 .hero { padding: clamp(48px, 7vw, 96px) 0 clamp(40px, 5vw, 64px); position: relative; overflow: hidden; }
-.hero-grid { position: absolute; inset: 0; pointer-events: none; opacity: 0.42; mask-image: radial-gradient(ellipse 70% 80% at 78% 35%, black 0%, black 30%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse 70% 80% at 78% 35%, black 0%, black 30%, transparent 75%); }
-.hero-grid svg { width: 100%; height: 100%; }
+/* 3D rectangular grid: rotated paper viewed from above. Two stacked SVG layers
+ *  share the same rotation. The base is the always-visible grey grid; the accent
+ *  is a violet grid kept hidden by an empty mask, and revealed in ring-shaped
+ *  reveals at cursor pulses (driven by JS, dark theme only). The parent owns the
+ *  outer fade mask so both layers clip identically at the edges. */
+.hero-grid { position: absolute; inset: 0; pointer-events: none; overflow: hidden; perspective: 1600px; perspective-origin: 50% -10%;
+  -webkit-mask-image: radial-gradient(ellipse 62% 75% at 50% 8%, black 0%, black 32%, transparent 88%);
+  mask-image: radial-gradient(ellipse 62% 75% at 50% 8%, black 0%, black 32%, transparent 88%); }
+.hero-grid-svg { position: absolute; left: -8%; top: -12%; width: 116%; height: 165%;
+  transform-origin: 50% 0%;
+  transform: rotateX(56deg) translateY(var(--parallax-y, 0px)); }
+.hero-grid-base { color: var(--line-2); opacity: 0.85; }
+[data-theme="paper"] .hero-grid-base { color: var(--line-2); opacity: 1; }
+[data-theme="dusk"]  .hero-grid-base { color: #4a4d6b; opacity: 0.55; }
+.hero-grid-accent { color: var(--accent); opacity: 1;
+  /* Default: fully masked out (transparent). JS replaces this with ring gradients on pulse. */
+  -webkit-mask-image: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0));
+  mask-image: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0)); }
+/* Light theme: no pulse — keep the accent layer entirely off. */
+[data-theme="paper"] .hero-grid-accent { display: none; }
 .hero-inner { display: grid; grid-template-columns: 1.15fr 1fr; gap: clamp(32px, 6vw, 80px); align-items: end; position: relative; }
 @media (max-width: 960px) { .hero-inner { grid-template-columns: 1fr; align-items: start; } }
 .hero h1 { font-family: var(--sans); font-size: clamp(40px, 6.4vw, 84px); line-height: 1.08; letter-spacing: -0.035em; font-weight: 500; margin: 18px 0 40px; text-wrap: balance; }
@@ -144,8 +162,8 @@ html[data-theme="dusk"] .theme-toggle .icon-sun { display: block; }
 .hero-code-body .prompt { color: var(--indigo); }
 
 /* Stats strip */
-.stats { padding: clamp(28px, 4vw, 48px) 0; position: relative; max-width: min(1480px, 100% - clamp(20px, 4vw, 56px)); margin-inline: auto; }
-.stats::before, .stats::after { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: var(--line); pointer-events: none; -webkit-mask-image: linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%); mask-image: linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%); }
+.stats { padding: clamp(28px, 4vw, 48px) clamp(32px, 5vw, 64px); position: relative; max-width: min(1480px, 100% - clamp(20px, 4vw, 56px)); margin-inline: auto; }
+.stats::before, .stats::after { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: var(--line); pointer-events: none; -webkit-mask-image: linear-gradient(to right, transparent 0, black 72px, black calc(100% - 72px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, black 72px, black calc(100% - 72px), transparent 100%); }
 .stats::before { top: clamp(28px, 4vw, 48px); }
 .stats::after  { bottom: clamp(28px, 4vw, 48px); }
 .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); position: relative; }
@@ -323,10 +341,19 @@ html[data-theme="dusk"] .theme-toggle .icon-sun { display: block; }
 /* CTA */
 .cta { padding: clamp(56px, 8vw, 96px) 0; }
 .cta-card { background: var(--invert-surface); color: var(--invert-ink); border-radius: var(--radius-lg); padding: clamp(40px, 6vw, 72px); position: relative; overflow: hidden; }
-.cta-grid { position: absolute; inset: 0; pointer-events: none; color: var(--invert-ink); opacity: 0.13;
-  -webkit-mask-image: radial-gradient(ellipse 70% 92% at 82% 28%, black 0%, black 32%, transparent 78%);
-  mask-image: radial-gradient(ellipse 70% 92% at 82% 28%, black 0%, black 32%, transparent 78%); }
-.cta-grid svg { display: block; width: 100%; height: 100%; }
+/* CTA: same two-layer rotated grid. Surface is always dark, so the base line colour
+ *  uses the inverted ink. The accent pulse only fires in dark theme. */
+.cta-grid { position: absolute; inset: 0; pointer-events: none; overflow: hidden; perspective: 1600px; perspective-origin: 50% -10%;
+  -webkit-mask-image: radial-gradient(ellipse 68% 80% at 50% 8%, black 0%, black 32%, transparent 90%);
+  mask-image: radial-gradient(ellipse 68% 80% at 50% 8%, black 0%, black 32%, transparent 90%); }
+.cta-grid-svg { position: absolute; left: -8%; top: -12%; width: 116%; height: 165%;
+  transform-origin: 50% 0%;
+  transform: rotateX(56deg); }
+.cta-grid-base { color: var(--invert-ink); opacity: 0.28; }
+.cta-grid-accent { color: var(--accent); opacity: 1;
+  -webkit-mask-image: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0));
+  mask-image: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0)); }
+[data-theme="paper"] .cta-grid-accent { display: none; }
 .cta-content { position: relative; z-index: 1; }
 .cta-card h2 { font-family: var(--sans); font-size: clamp(28px, 4vw, 52px); letter-spacing: -0.03em; font-weight: 500; margin: 0; line-height: 1.05; max-width: 16ch; text-wrap: balance; }
 .cta-card h2 em { font-family: var(--serif); font-style: italic; color: color-mix(in srgb, var(--indigo) 75%, white); font-weight: 400; }
@@ -661,3 +688,30 @@ html[data-theme="dusk"] .theme-toggle .icon-sun { display: block; }
 .demo-mcp-tool-grid { display: flex; flex-direction: column; gap: 4px; max-width: 580px; }
 .demo-mcp-args, .demo-mcp-result { margin: 0; padding: 8px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); font-size: 11.5px; color: var(--ink-2); overflow-x: auto; white-space: pre-wrap; }
 .demo-mcp-result { color: var(--indigo); }
+
+/* ─────────────────────────── browser test (§06) ─────────────────────────── */
+.br-test { display: flex; flex-direction: column; gap: 14px; }
+.br-test-btn { align-self: flex-start; height: 36px; padding: 0 16px; font-size: 13px; }
+
+.br-test-done { gap: 10px; }
+.br-test-head { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 12px; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
+.br-test-source { font-size: 12.5px; color: var(--ink); }
+.br-test-counts { font-size: 12px; color: var(--ink-2); }
+.br-test-reset { font-size: 10.5px; padding: 3px 8px; }
+
+.br-test-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.br-test-row { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-card); transition: background 200ms ease-out; }
+.br-test-row[data-state="pass"] { border-color: color-mix(in srgb, #2f9e6d 55%, var(--line)); background: color-mix(in srgb, #2f9e6d 7%, var(--bg-card)); }
+.br-test-row[data-state="warn"] { border-color: color-mix(in srgb, #c9a227 55%, var(--line)); background: color-mix(in srgb, #c9a227 7%, var(--bg-card)); }
+.br-test-row[data-state="fail"] { border-color: color-mix(in srgb, #c14b4b 55%, var(--line)); background: color-mix(in srgb, #c14b4b 7%, var(--bg-card)); }
+.br-test-mark { font-family: var(--mono); font-size: 14px; text-align: center; line-height: 1; }
+.br-test-row[data-state="pass"] .br-test-mark { color: #2f9e6d; }
+.br-test-row[data-state="warn"] .br-test-mark { color: #c9a227; }
+.br-test-row[data-state="fail"] .br-test-mark { color: #c14b4b; }
+.br-test-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.br-test-label { font-size: 12.5px; color: var(--ink); }
+.br-test-note { font-size: 11.5px; color: var(--ink-3); line-height: 1.4; word-break: break-word; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-grid-accent, .cta-grid-accent { display: none; }
+}

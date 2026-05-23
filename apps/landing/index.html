@@ -105,21 +105,21 @@
 <!-- ─────────────────────────── HERO ─────────────────────────── -->
 <section class="hero" data-screen-label="01 Hero">
   <div class="hero-grid" aria-hidden="true">
-    <svg width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style="color: var(--line-2);">
+    <svg class="hero-grid-svg hero-grid-base" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
       <defs>
-        <pattern id="iso-v" width="54" height="54" patternUnits="userSpaceOnUse">
-          <line x1="0" y1="0" x2="0" y2="54" stroke="currentColor" stroke-width="0.5"/>
-        </pattern>
-        <pattern id="iso-r" width="54" height="54" patternUnits="userSpaceOnUse" patternTransform="rotate(60)">
-          <line x1="0" y1="0" x2="0" y2="54" stroke="currentColor" stroke-width="0.5"/>
-        </pattern>
-        <pattern id="iso-l" width="54" height="54" patternUnits="userSpaceOnUse" patternTransform="rotate(-60)">
-          <line x1="0" y1="0" x2="0" y2="54" stroke="currentColor" stroke-width="0.5"/>
+        <pattern id="grid-rect" width="64" height="64" patternUnits="userSpaceOnUse">
+          <path d="M 64 0 L 64 64 M 0 64 L 64 64" stroke="currentColor" stroke-width="1" fill="none"/>
         </pattern>
       </defs>
-      <rect width="100%" height="100%" fill="url(#iso-v)"/>
-      <rect width="100%" height="100%" fill="url(#iso-r)"/>
-      <rect width="100%" height="100%" fill="url(#iso-l)"/>
+      <rect width="100%" height="100%" fill="url(#grid-rect)"/>
+    </svg>
+    <svg class="hero-grid-svg hero-grid-accent" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
+      <defs>
+        <pattern id="grid-rect-accent" width="64" height="64" patternUnits="userSpaceOnUse">
+          <path d="M 64 0 L 64 64 M 0 64 L 64 64" stroke="currentColor" stroke-width="1.4" fill="none"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid-rect-accent)"/>
     </svg>
   </div>
 
@@ -193,7 +193,7 @@
     </div>
     <div class="stat">
       <div class="v">876<span class="u">entities</span></div>
-      <div class="k">Full IFC4X3 schema coverage, plus IFC5 (IFCX)</div>
+      <div class="k">IFC2X3 through IFC4X3, plus IFC5 (IFCX)</div>
     </div>
     <div class="stat">
       <div class="v">21<span class="u">models</span></div>
@@ -254,7 +254,7 @@
           <li>Runs from a CDN</li>
           <li>Chrome / Edge / Firefox / Safari 18</li>
         </ul>
-        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/quickstart/">→ Quick start</a>
+        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/quickstart/" target="_blank" rel="noopener">→ Quick start</a>
       </div>
       <div class="setup">
         <span class="setup-tag">02 · Engine integration</span>
@@ -266,7 +266,7 @@
           <li>Instancing-friendly buffers</li>
           <li>Both engines, ready-made templates</li>
         </ul>
-        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/">→ Three.js tutorial</a>
+        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/" target="_blank" rel="noopener">→ Three.js tutorial</a>
       </div>
       <div class="setup">
         <span class="setup-tag">03 · Server</span>
@@ -278,7 +278,7 @@
           <li>Content-addressed cache</li>
           <li>Docker, Fly, Render-ready</li>
         </ul>
-        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/server/">→ Server guide</a>
+        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/server/" target="_blank" rel="noopener">→ Server guide</a>
       </div>
       <div class="setup">
         <span class="setup-tag">04 · Desktop</span>
@@ -290,7 +290,7 @@
           <li>Offline, air-gapped friendly</li>
           <li>macOS · Windows · Linux</li>
         </ul>
-        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/desktop/">→ Desktop guide</a>
+        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/desktop/" target="_blank" rel="noopener">→ Desktop guide</a>
       </div>
     </div>
   </div>
@@ -369,14 +369,7 @@
 
       <div class="support-block">
         <h4>Browser support</h4>
-        <div class="browsers">
-          <div class="browser"><span class="nm">Chrome</span><span class="ver">113+</span></div>
-          <div class="browser"><span class="nm">Edge</span><span class="ver">113+</span></div>
-          <div class="browser"><span class="nm">Firefox</span><span class="ver">127+</span></div>
-          <div class="browser"><span class="nm">Safari</span><span class="ver">18+</span></div>
-          <div class="browser"><span class="nm">Arc</span><span class="ver">stable</span></div>
-          <div class="browser"><span class="nm">Brave</span><span class="ver">1.65+</span></div>
-        </div>
+        <div id="browser-test-root"></div>
         <p style="font-size: 12.5px; color: var(--ink-3); margin-top: 16px; line-height: 1.5;">
           WebGPU is required for the built-in renderer. The Three.js and Babylon.js integrations fall back to WebGL and work everywhere those engines do.
         </p>
@@ -442,21 +435,21 @@
   <div class="wrap">
     <div class="cta-card">
       <div class="cta-grid" aria-hidden="true">
-        <svg width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+        <svg class="cta-grid-svg cta-grid-base" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
           <defs>
-            <pattern id="cta-iso-v" width="54" height="54" patternUnits="userSpaceOnUse">
-              <line x1="0" y1="0" x2="0" y2="54" stroke="currentColor" stroke-width="0.5"/>
-            </pattern>
-            <pattern id="cta-iso-r" width="54" height="54" patternUnits="userSpaceOnUse" patternTransform="rotate(60)">
-              <line x1="0" y1="0" x2="0" y2="54" stroke="currentColor" stroke-width="0.5"/>
-            </pattern>
-            <pattern id="cta-iso-l" width="54" height="54" patternUnits="userSpaceOnUse" patternTransform="rotate(-60)">
-              <line x1="0" y1="0" x2="0" y2="54" stroke="currentColor" stroke-width="0.5"/>
+            <pattern id="cta-grid-rect" width="64" height="64" patternUnits="userSpaceOnUse">
+              <path d="M 64 0 L 64 64 M 0 64 L 64 64" stroke="currentColor" stroke-width="1" fill="none"/>
             </pattern>
           </defs>
-          <rect width="100%" height="100%" fill="url(#cta-iso-v)"/>
-          <rect width="100%" height="100%" fill="url(#cta-iso-r)"/>
-          <rect width="100%" height="100%" fill="url(#cta-iso-l)"/>
+          <rect width="100%" height="100%" fill="url(#cta-grid-rect)"/>
+        </svg>
+        <svg class="cta-grid-svg cta-grid-accent" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
+          <defs>
+            <pattern id="cta-grid-rect-accent" width="64" height="64" patternUnits="userSpaceOnUse">
+              <path d="M 64 0 L 64 64 M 0 64 L 64 64" stroke="currentColor" stroke-width="1.4" fill="none"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#cta-grid-rect-accent)"/>
         </svg>
       </div>
       <div class="cta-content">
@@ -489,48 +482,38 @@
           <span>IFClite</span>
         </div>
         <p style="color: var(--ink-3); font-size: 13px; line-height: 1.5; max-width: 36ch; margin: 0;">
-          Open-source IFC toolkit. Built by <a href="https://lt.plus" target="_blank" rel="noopener" style="color: var(--ink); border-bottom: 1px solid var(--line-2);">LTplus AG</a>.
+          Open-source IFC toolkit. By <a href="https://lt.plus" target="_blank" rel="noopener" style="color: var(--ink); border-bottom: 1px solid var(--line-2);">Louis Trümpler</a> &amp; <a href="https://github.com/LTplus-AG/ifc-lite/graphs/contributors" target="_blank" rel="noopener" style="color: var(--ink); border-bottom: 1px solid var(--line-2);">contributors</a>.
         </p>
       </div>
       <div class="foot-col">
         <h5>Product</h5>
-        <a href="https://www.ifclite.com/">Live demo</a>
+        <a href="https://www.ifclite.com/" target="_blank" rel="noopener">Live demo</a>
         <a href="#packages">Packages</a>
         <a href="#perf">Benchmarks</a>
-        <a href="https://github.com/LTplus-AG/ifc-lite/releases">Changelog</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/releases" target="_blank" rel="noopener">Changelog</a>
       </div>
       <div class="foot-col">
         <h5>Docs</h5>
-        <a href="https://ltplus-ag.github.io/ifc-lite/guide/quickstart/">Quick start</a>
-        <a href="https://ltplus-ag.github.io/ifc-lite/guide/installation/">Installation</a>
-        <a href="https://ltplus-ag.github.io/ifc-lite/api/typescript/">TypeScript API</a>
-        <a href="https://ltplus-ag.github.io/ifc-lite/api/rust/">Rust API</a>
+        <a href="https://ltplus-ag.github.io/ifc-lite/guide/quickstart/" target="_blank" rel="noopener">Quick start</a>
+        <a href="https://ltplus-ag.github.io/ifc-lite/guide/installation/" target="_blank" rel="noopener">Installation</a>
+        <a href="https://ltplus-ag.github.io/ifc-lite/api/typescript/" target="_blank" rel="noopener">TypeScript API</a>
+        <a href="https://ltplus-ag.github.io/ifc-lite/api/rust/" target="_blank" rel="noopener">Rust API</a>
       </div>
       <div class="foot-col">
         <h5>Community</h5>
-        <a href="https://github.com/LTplus-AG/ifc-lite/discussions">Discussions</a>
-        <a href="https://github.com/LTplus-AG/ifc-lite/issues">Issues</a>
-        <a href="https://github.com/LTplus-AG/ifc-lite/blob/main/CONTRIBUTORS.md">Contributors</a>
-        <a href="https://github.com/LTplus-AG/ifc-lite/blob/main/LICENSE">License (MPL-2.0)</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/blob/main/CONTRIBUTORS.md" target="_blank" rel="noopener">Contributors</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/blob/main/LICENSE" target="_blank" rel="noopener">License (MPL-2.0)</a>
       </div>
       <div class="foot-col">
         <h5>Source</h5>
         <a href="https://github.com/LTplus-AG/ifc-lite" target="_blank" rel="noopener">github.com/LTplus-AG/ifc-lite</a>
         <a href="https://www.npmjs.com/package/@ifc-lite/parser" target="_blank" rel="noopener">npm @ifc-lite</a>
-        <a href="https://crates.io/crates/ifc-lite-core">crates.io</a>
+        <a href="https://crates.io/crates/ifc-lite-core" target="_blank" rel="noopener">crates.io</a>
       </div>
     </div>
 
-    <div class="foot-meta">
-      <div>© 2025 LTplus AG · MPL-2.0</div>
-      <div style="display:flex; gap: 16px;">
-        <a href="https://github.com/LTplus-AG/ifc-lite">github</a>
-        <span>·</span>
-        <a href="https://www.npmjs.com/package/@ifc-lite/parser" target="_blank" rel="noopener">npm</a>
-        <span>·</span>
-        <a href="https://crates.io/crates/ifc-lite-core">crates.io</a>
-      </div>
-    </div>
   </div>
 </footer>
 
@@ -547,29 +530,147 @@
 })();
 </script>
 
-<!-- iso grid scroll parallax: subtle drift + fade across the hero only -->
+<!-- Hero grid: subtle scroll-tied drift + opacity fade. The drift is applied as a CSS
+     variable so it composes with the perspective transform on the SVG layer. -->
 <script>
 (function () {
   const grid = document.querySelector('.hero-grid');
   const hero = document.querySelector('.hero');
   if (!grid || !hero) return;
-  grid.style.willChange = 'transform, opacity';
+  grid.style.willChange = 'opacity';
   let raf = 0;
   function tick() {
     raf = 0;
     const y = window.scrollY || 0;
     const range = hero.offsetHeight;
-    if (y > range + 200) return; // stop touching styles once we're past the hero
+    if (y > range + 200) return;
     const t = Math.min(1, y / range);
-    // gentle downward drift so the grid appears to lag the page scroll
-    grid.style.transform = `translate3d(0, ${y * 0.22}px, 0)`;
-    // soft fade-out so it doesn't fight with the next sections
-    grid.style.opacity = (0.42 * (1 - t * 0.95)).toFixed(3);
+    grid.style.setProperty('--parallax-y', (y * 0.22).toFixed(1) + 'px');
+    grid.style.opacity = (1 - t * 0.85).toFixed(3);
   }
   tick();
   window.addEventListener('scroll', () => {
     if (!raf) raf = requestAnimationFrame(tick);
   }, { passive: true });
+})();
+</script>
+
+<!-- Cursor pulse: every PULSE_INTERVAL ms we emit a new ring centred on the cursor's
+     current position. The cursor is only the ORIGIN — movement doesn't trigger
+     pulses. Each ring expands and fades; the violet grid layer's mask is rebuilt
+     each frame as the union of all live rings, so the grid LINES themselves switch
+     to violet as the wavefront crosses them. Dark theme only. -->
+<script>
+(function () {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var isDark = function () { return document.documentElement.dataset.theme !== 'paper'; };
+
+  // rotateX(56deg) foreshortens y in screen space by cos(56°). Inverse that so
+  // ring centres land on the tilted plane roughly where the cursor visually is.
+  var COS_TILT = Math.cos(56 * Math.PI / 180);
+  var TILT_OFFSET_TOP = 0.12;  // matches CSS .hero-grid-svg { top: -12% }
+  var TILT_OFFSET_LEFT = 0.08; // matches CSS .hero-grid-svg { left: -8% }
+
+  var PULSE_INTERVAL = 1800;  // ms between emissions — slow cadence, not nervous
+  var PULSE_DURATION = 3200;  // ms per ring lifetime — slow expansion
+  var RING_THICKNESS = 30;
+  var RING_MAX_RADIUS = 620;
+  var EMPTY_MASK = 'linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0))';
+
+  function attach(hostSel, accentSel) {
+    var host = document.querySelector(hostSel);
+    var accent = document.querySelector(accentSel);
+    if (!host || !accent) return;
+
+    var pulses = [];
+    var raf = 0;
+    var inside = false;
+    var cursorLX = 0, cursorLY = 0;  // accent-layer-local
+    var nextEmit = 0;
+
+    function tick(now) {
+      raf = 0;
+      // Emit new pulse on the steady cadence (only while cursor is inside + dark).
+      if (inside && isDark() && now >= nextEmit) {
+        pulses.push({ lx: cursorLX, ly: cursorLY, start: now });
+        nextEmit = now + PULSE_INTERVAL;
+        if (pulses.length > 6) pulses.shift();
+      }
+
+      var alive = [];
+      var parts = [];
+      for (var i = 0; i < pulses.length; i++) {
+        var p = pulses[i];
+        var t = (now - p.start) / PULSE_DURATION;
+        if (t >= 1) continue;
+        alive.push(p);
+        var ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+        var radius = ease * RING_MAX_RADIUS;
+        var thick = RING_THICKNESS * (1 - t * 0.35);
+        // Soft attack + long fade so the ring feels like a wave, not a strobe.
+        var alpha = (t < 0.12 ? t / 0.12 : 1 - (t - 0.12) / 0.88) * 0.85;
+        var inner = Math.max(0, radius - thick);
+        var outer = radius + thick;
+        parts.push(
+          'radial-gradient(circle ' + outer.toFixed(1) + 'px at ' +
+          p.lx.toFixed(1) + 'px ' + p.ly.toFixed(1) + 'px,' +
+          ' rgba(0,0,0,0) ' + inner.toFixed(1) + 'px,' +
+          ' rgba(0,0,0,' + alpha.toFixed(3) + ') ' + radius.toFixed(1) + 'px,' +
+          ' rgba(0,0,0,0) ' + outer.toFixed(1) + 'px)'
+        );
+      }
+      pulses = alive;
+
+      if (parts.length) {
+        var m = parts.join(',');
+        accent.style.webkitMaskImage = m;
+        accent.style.maskImage = m;
+      } else if (accent.style.maskImage !== EMPTY_MASK) {
+        accent.style.webkitMaskImage = EMPTY_MASK;
+        accent.style.maskImage = EMPTY_MASK;
+      }
+
+      // Keep ticking while cursor is inside (steady cadence) OR rings are still alive.
+      if (inside || pulses.length > 0) raf = requestAnimationFrame(tick);
+    }
+
+    function updateCursor(ev) {
+      var rect = host.getBoundingClientRect();
+      var x = ev.clientX - rect.left;
+      var y = ev.clientY - rect.top;
+      var nowInside = x >= 0 && y >= 0 && x <= rect.width && y <= rect.height;
+      if (nowInside) {
+        var elemLeftPx = -TILT_OFFSET_LEFT * rect.width;
+        var elemTopPx  = -TILT_OFFSET_TOP  * rect.height;
+        cursorLX = x - elemLeftPx;
+        cursorLY = (y - elemTopPx) / COS_TILT;
+        if (!inside) {
+          inside = true;
+          // Fire the first ring immediately on entry so the effect picks up at once.
+          nextEmit = performance.now();
+          if (!raf) raf = requestAnimationFrame(tick);
+        }
+      } else if (inside) {
+        inside = false;
+      }
+    }
+
+    host.addEventListener('mousemove', updateCursor, { passive: true });
+    host.addEventListener('mouseleave', function () { inside = false; }, { passive: true });
+
+    // Reset on theme change to paper.
+    var mo = new MutationObserver(function () {
+      if (!isDark()) {
+        pulses = [];
+        accent.style.webkitMaskImage = EMPTY_MASK;
+        accent.style.maskImage = EMPTY_MASK;
+      }
+    });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  attach('.hero',     '.hero-grid-accent');
+  attach('.cta-card', '.cta-grid-accent');
 })();
 </script>
 

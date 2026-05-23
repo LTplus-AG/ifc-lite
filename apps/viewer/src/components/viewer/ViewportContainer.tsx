@@ -972,7 +972,19 @@ export function ViewportContainer() {
             ))}
           </div>
 
-          {/* Footer */}
+          {/* Footer chips — left: discovery link to the marketing site for first-time
+              visitors, right: shortcuts cue for power users. Both desktop-only. */}
+          <div className="absolute bottom-8 left-8 hidden md:block">
+            <a
+              href="https://ifclite.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89] hover:border-primary hover:text-primary transition-colors"
+            >
+              <span>New here?</span>
+              <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">ifclite.dev →</span>
+            </a>
+          </div>
           <div className="absolute bottom-8 right-8 hidden md:block">
             <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89]">
               <Command className="h-3 w-3" />

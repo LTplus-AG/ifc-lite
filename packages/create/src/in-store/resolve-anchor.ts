@@ -25,13 +25,19 @@ export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: numbe
     throw new Error('resolveSpatialAnchor: no IfcGeometricRepresentationContext (or Body subcontext) found in store');
   }
 
+  const axisContextId = findAxisContextId(store);
+  if (axisContextId === null) {
+    throw new Error('resolveSpatialAnchor: no IfcGeometricRepresentationContext (or Axis subcontext) found in store');
+  }
+
+
   const storeyPlacementId = findStoreyPlacementId(store, storeyExpressId);
   if (storeyPlacementId === null) {
     throw new Error(`resolveSpatialAnchor: storey #${storeyExpressId} has no resolvable IfcLocalPlacement`);
   }
 
   const schema = (store.schemaVersion ?? 'IFC4') as SpatialAnchorSchema;
-  return { ownerHistoryId, bodyContextId, storeyId: storeyExpressId, storeyPlacementId, schema };
+  return { ownerHistoryId, bodyContextId, axisContextId, storeyId: storeyExpressId, storeyPlacementId, schema };
 }
 
 function findOwnerHistoryId(store: IfcDataStore): number | null {
@@ -46,14 +52,46 @@ function findOwnerHistoryId(store: IfcDataStore): number | null {
 function findBodyContextId(store: IfcDataStore): number | null {
   if (!store.source) return null;
   const extractor = new EntityExtractor(store.source);
+  const subIds = store.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [];
+  for (const id of subIds) {
+    const ref = store.entityIndex.byId.get(id);
+    if (!ref) continue;
+    const entity = extractor.extractEntity(ref);
+    const identifier = entity?.attributes?.[1];
+    if (typeof identifier === 'string' && identifier.toLowerCase() === 'body') {
+      return id;
+    }
+  }
+
+  const ctxIds = store.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
+  for (const id of ctxIds) {
+    const ref = store.entityIndex.byId.get(id);
+    if (!ref) continue;
+    const entity = extractor.extractEntity(ref);
+    const dimension = entity?.attributes?.[2];
+    if (typeof dimension === 'number' && dimension === 3) {
+      return id;
+    }
+  }
+
+  return ctxIds[0] ?? null;
+}
+
+/**
+ * Prefer an IfcGeometricRepresentationSubContext with ContextIdentifier='Axis';
+ * otherwise fall back to the first 3D IfcGeometricRepresentationContext.
+ */
+function findAxisContextId(store: IfcDataStore): number | null {
+  if (!store.source) return null;
+  const extractor = new EntityExtractor(store.source);
 
   const subIds = store.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [];
   for (const id of subIds) {
     const ref = store.entityIndex.byId.get(id);
     if (!ref) continue;
     const entity = extractor.extractEntity(ref);
-    const identifier = entity?.attributes?.[0];
-    if (typeof identifier === 'string' && identifier.toLowerCase() === 'body') {
+    const identifier = entity?.attributes?.[1];
+    if (typeof identifier === 'string' && identifier.toLowerCase() === 'axis') {
       return id;
     }
   }
@@ -70,6 +108,7 @@ function findBodyContextId(store: IfcDataStore): number | null {
   }
   return ctxIds[0] ?? null;
 }
+
 
 /**
  * Resolve the target storey's `ObjectPlacement` (an IfcLocalPlacement).

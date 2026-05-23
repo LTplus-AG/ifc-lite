@@ -20,6 +20,9 @@
   </style>
   <script>
     // Apply ?theme= before React boots so there's no dark flash. Default: light.
+    // Wrapped in try/catch because this runs before any error boundary exists and
+    // we must never block React mount. On failure we log to console and fall back
+    // to the .light class already on <html> (set in markup above).
     (function () {
       try {
         var p = new URLSearchParams(location.search);
@@ -27,7 +30,11 @@
         var root = document.documentElement;
         root.classList.remove('dark', 'light');
         root.classList.add(t === 'dark' ? 'dark' : 'light');
-      } catch (e) {}
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('[ifc-lite-embed] theme bootstrap failed; falling back to light:', e);
+        }
+      }
     })();
   </script>
 </head>

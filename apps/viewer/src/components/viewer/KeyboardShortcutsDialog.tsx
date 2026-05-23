@@ -101,7 +101,25 @@ function AboutTab() {
       </div>
 
       {/* Links */}
-      <div className="flex items-center justify-center gap-4 text-xs">
+      <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-1.5 text-xs">
+        <a
+          href="https://ifclite.dev"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ifclite.dev
+          <ExternalLink className="h-3 w-3" />
+        </a>
+        <a
+          href="https://ltplus-ag.github.io/ifc-lite/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Docs
+          <ExternalLink className="h-3 w-3" />
+        </a>
         <a
           href={GITHUB_URL}
           target="_blank"

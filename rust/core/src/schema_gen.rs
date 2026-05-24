@@ -325,6 +325,10 @@ impl IfcSchema {
 
         // Profile types - Parametric
         profile_types.insert(IfcType::IfcRectangleProfileDef, ProfileCategory::Parametric);
+        profile_types.insert(
+            IfcType::IfcRoundedRectangleProfileDef,
+            ProfileCategory::Parametric,
+        );
         profile_types.insert(IfcType::IfcCircleProfileDef, ProfileCategory::Parametric);
         profile_types.insert(
             IfcType::IfcCircleHollowProfileDef,

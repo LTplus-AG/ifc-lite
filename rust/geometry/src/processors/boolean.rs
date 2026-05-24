@@ -15,6 +15,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use std::cell::RefCell;
 
 use super::brep::FacetedBrepProcessor;
+use super::csg_primitive::{BlockProcessor, CsgSolidProcessor};
 use super::extrusion::ExtrudedAreaSolidProcessor;
 use super::helpers::parse_axis2_placement_3d;
 use super::swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
@@ -102,6 +103,10 @@ impl BooleanClippingProcessor {
             IfcType::IfcRevolvedAreaSolid => {
                 let processor = RevolvedAreaSolidProcessor::new(self.schema.clone());
                 processor.process(operand, decoder, &self.schema)
+            }
+            IfcType::IfcBlock => BlockProcessor::new().process(operand, decoder, &self.schema),
+            IfcType::IfcCsgSolid => {
+                CsgSolidProcessor::new().process(operand, decoder, &self.schema)
             }
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 // Recursive case with depth tracking
@@ -687,31 +692,26 @@ impl BooleanClippingProcessor {
                 return self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement);
             }
 
-            // Solid-solid difference. Under `manifold-csg` we route through
-            // the Manifold kernel; without the feature the legacy BSP path
-            // can stack-overflow on arbitrary solid combinations so we
-            // continue to skip and record `SolidSolidDifferenceSkipped`.
-            #[cfg(feature = "manifold-csg")]
-            {
-                let second_mesh =
-                    self.process_operand_with_depth(&second_operand, decoder, depth)?;
-                if second_mesh.is_empty() {
-                    self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
-                    return Ok(mesh);
-                }
-                let clipper = ClippingProcessor::new();
-                let result = clipper.subtract_mesh(&mesh, &second_mesh);
-                self.drain_clipper_failures(&clipper);
-                return result;
-            }
-            #[cfg(not(feature = "manifold-csg"))]
-            {
-                self.record_failure(
-                    BoolOp::Difference,
-                    BoolFailureReason::SolidSolidDifferenceSkipped,
-                );
+            // Solid-solid difference. Under `manifold-csg` Manifold handles
+            // arbitrary operand sizes; without the feature we fall back to
+            // the legacy BSP path in `ClippingProcessor::subtract_mesh`,
+            // which has its own `can_run_csg_operation` polygon cap and
+            // records `OperandTooLarge` (returning the un-cut host) when an
+            // operand exceeds it. That's the correct guardrail — the old
+            // unconditional `SolidSolidDifferenceSkipped` short-circuit
+            // here meant every CSG primitive cut (issue #780 bath, any
+            // `IfcCsgSolid` with a solid cutter) silently rendered as the
+            // uncut host even when the operands were trivially small.
+            let second_mesh =
+                self.process_operand_with_depth(&second_operand, decoder, depth)?;
+            if second_mesh.is_empty() {
+                self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
             }
+            let clipper = ClippingProcessor::new();
+            let result = clipper.subtract_mesh(&mesh, &second_mesh);
+            self.drain_clipper_failures(&clipper);
+            return result;
         }
 
         // Handle UNION operation. Under `manifold-csg` this is a real CSG

@@ -440,6 +440,7 @@ impl ProfileProcessor {
         // First create the base profile shape
         let mut base_profile = match profile.ifc_type {
             IfcType::IfcRectangleProfileDef => self.process_rectangle(profile),
+            IfcType::IfcRoundedRectangleProfileDef => self.process_rounded_rectangle(profile),
             IfcType::IfcCircleProfileDef => self.process_circle(profile),
             IfcType::IfcCircleHollowProfileDef => self.process_circle_hollow(profile),
             IfcType::IfcRectangleHollowProfileDef => self.process_rectangle_hollow(profile),
@@ -721,6 +722,59 @@ impl ProfileProcessor {
             Point2::new(half_x, half_y),
             Point2::new(-half_x, half_y),
         ];
+
+        Ok(Profile2D::new(points))
+    }
+
+    /// Process rounded rectangle profile.
+    ///
+    /// IfcRoundedRectangleProfileDef: ProfileType, ProfileName, Position,
+    /// XDim, YDim, RoundingRadius. Inherits from IfcRectangleProfileDef.
+    /// Centered at origin; corners are arcs of `radius`, clamped to
+    /// `min(XDim, YDim) / 2`. Eight segments per quadrant keeps the
+    /// triangulated cap cheap while still reading as round.
+    fn process_rounded_rectangle(&self, profile: &DecodedEntity) -> Result<Profile2D> {
+        let x_dim = profile
+            .get_float(3)
+            .ok_or_else(|| Error::geometry("RoundedRectangle missing XDim".to_string()))?;
+        let y_dim = profile
+            .get_float(4)
+            .ok_or_else(|| Error::geometry("RoundedRectangle missing YDim".to_string()))?;
+        let radius = profile
+            .get_float(5)
+            .ok_or_else(|| Error::geometry("RoundedRectangle missing RoundingRadius".to_string()))?;
+
+        let half_x = x_dim / 2.0;
+        let half_y = y_dim / 2.0;
+        let r = radius.max(0.0).min(half_x).min(half_y);
+        if r < 1.0e-9 {
+            return self.process_rectangle(profile);
+        }
+
+        // 6 segments × 4 corners = 24 outline vertices on a fillet; the
+        // earcutr cap then runs ~22 triangles per face, side walls another
+        // 48, so the whole prism stays under the 128-poly per-mesh cap the
+        // legacy BSP CSG kernel imposes when `manifold-csg` is off (the
+        // WASM build path — see `ClippingProcessor::subtract_mesh`).
+        const SEGMENTS_PER_CORNER: usize = 6;
+        let half_pi = PI / 2.0;
+        let corners = [
+            // (cx, cy, start_angle, end_angle) — CCW outline starting at the
+            // bottom-right arc and walking counter-clockwise around the profile.
+            (half_x - r, -half_y + r, -half_pi, 0.0),
+            (half_x - r, half_y - r, 0.0, half_pi),
+            (-half_x + r, half_y - r, half_pi, PI),
+            (-half_x + r, -half_y + r, PI, PI + half_pi),
+        ];
+
+        let mut points = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
+        for (cx, cy, a0, a1) in corners {
+            for i in 0..=SEGMENTS_PER_CORNER {
+                let t = i as f64 / SEGMENTS_PER_CORNER as f64;
+                let a = a0 + (a1 - a0) * t;
+                points.push(Point2::new(cx + r * a.cos(), cy + r * a.sin()));
+            }
+        }
 
         Ok(Profile2D::new(points))
     }

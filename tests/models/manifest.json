@@ -9,44 +9,14 @@
       "size": 2526544
     },
     {
-      "path": "ara3d/advanced_model.ifc",
-      "sha256": "3c822eed72ab588697f3f4d4c2b074d1bb888802f877218c769845180f2b7ad2",
-      "size": 35309937
-    },
-    {
       "path": "ara3d/C20-Institute-Var-2.ifc",
       "sha256": "a06b9cf1922cc0a1e200719189054510dd3e1d188292325f66614f7c1fdb37b4",
       "size": 10786515
     },
     {
-      "path": "ara3d/dental_clinic.ifc",
-      "sha256": "2ac970ce065ecac4e0c9e5f453a257169e90d0067f419b7e33533a64ef837880",
-      "size": 13003205
-    },
-    {
-      "path": "ara3d/duplex.ifc",
-      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
-      "size": 2380763
-    },
-    {
-      "path": "ara3d/example.ifc",
-      "sha256": "a493f3919d1e0ff5ab2a3a392829f47daf6314fa773815f1247475a11fff2e44",
-      "size": 413749
-    },
-    {
       "path": "ara3d/FM_ARC_DigitalHub.ifc",
       "sha256": "7c4479096feaf8adebb3049dedf5bb126964baea76f9619236a410ad8f2e5b0f",
       "size": 14056204
-    },
-    {
-      "path": "ara3d/ifcbridge-model01.ifc",
-      "sha256": "09e76df5ab48b726c0d21786f2b4c3417a7600251c99f40eb883718a1e0d2c57",
-      "size": 15171642
-    },
-    {
-      "path": "ara3d/IfcOpenHouse_IFC4.ifc",
-      "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
-      "size": 113264
     },
     {
       "path": "ara3d/ISSUE_005_haus.ifc",
@@ -114,6 +84,11 @@
       "size": 253284
     },
     {
+      "path": "ara3d/IfcOpenHouse_IFC4.ifc",
+      "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+      "size": 113264
+    },
+    {
       "path": "ara3d/KIT-Simple-Road-Test-Web-IFC4x3_RC2.ifc",
       "sha256": "bf285110d47d69834ad529c172f4f7fdde772b75a1c339e03a1e609ce01d1a3c",
       "size": 388157
@@ -134,6 +109,31 @@
       "size": 28760
     },
     {
+      "path": "ara3d/advanced_model.ifc",
+      "sha256": "3c822eed72ab588697f3f4d4c2b074d1bb888802f877218c769845180f2b7ad2",
+      "size": 35309937
+    },
+    {
+      "path": "ara3d/dental_clinic.ifc",
+      "sha256": "2ac970ce065ecac4e0c9e5f453a257169e90d0067f419b7e33533a64ef837880",
+      "size": 13003205
+    },
+    {
+      "path": "ara3d/duplex.ifc",
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "size": 2380763
+    },
+    {
+      "path": "ara3d/example.ifc",
+      "sha256": "a493f3919d1e0ff5ab2a3a392829f47daf6314fa773815f1247475a11fff2e44",
+      "size": 413749
+    },
+    {
+      "path": "ara3d/ifcbridge-model01.ifc",
+      "sha256": "09e76df5ab48b726c0d21786f2b4c3417a7600251c99f40eb883718a1e0d2c57",
+      "size": 15171642
+    },
+    {
       "path": "ara3d/schependomlaan.ifc",
       "sha256": "2c3565ca1904f2aa61adab92024cf3755b2c5b21a498144d3094d7cb58cebec7",
       "size": 49286967
@@ -142,11 +142,6 @@
       "path": "ara3d/tested_sample_project.ifc",
       "sha256": "1e6a7c10fb2ce79f28d9bef7e4cd4e2529ad6fc625c0807281eac18f03dbf710",
       "size": 710108
-    },
-    {
-      "path": "buildingsmart/basin-tessellation.ifc",
-      "sha256": "7278769ec5ef35d388819d2f197519061c7f0f68dd43a733f333ddeb74578121",
-      "size": 12131
     },
     {
       "path": "buildingsmart/Building-Architecture.ifc",
@@ -167,11 +162,6 @@
       "path": "buildingsmart/Building-Structural.ifc",
       "sha256": "68be722391e7aaa53bb9278645a02aa4b6382f13cc07548a1612e9b1dc3def67",
       "size": 296640
-    },
-    {
-      "path": "buildingsmart/column-straight-rectangle-tessellation.ifc",
-      "sha256": "58bb9b2cae96edf2c368de95f526650f3f282e4e7fc37c0065c501bdbeed00a1",
-      "size": 4594
     },
     {
       "path": "buildingsmart/Infra-Bridge.ifc",
@@ -197,6 +187,126 @@
       "path": "buildingsmart/Infra-Road.ifc",
       "sha256": "b0f842b07a41490274f3d8485dd59b9818941b804d1b85f8afd0bb7969a66502",
       "size": 438949
+    },
+    {
+      "path": "buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc",
+      "sha256": "e947de66cadaefe167e77da75eaaeca864cfcc47f7d1ed197b760b466ae081a9",
+      "size": 10073
+    },
+    {
+      "path": "buildingsmart/annex_e/advanced-geometric-shape/basin-faceted-brep.ifc",
+      "sha256": "d2bdf9d5f485ff77ce9723a24ceb75a5532b51d1788b9a5f3f5145944d32065f",
+      "size": 32713
+    },
+    {
+      "path": "buildingsmart/annex_e/advanced-geometric-shape/basin-tessellation.ifc",
+      "sha256": "466944a98ab0208bd4266d096678233007520915b80bcc14532e64345a1968ef",
+      "size": 11877
+    },
+    {
+      "path": "buildingsmart/annex_e/advanced-geometric-shape/bath-csg-solid.ifc",
+      "sha256": "4592f3029faa12625494ada734fcfe46e4fc91a33d001198e9e3144721870b95",
+      "size": 3313
+    },
+    {
+      "path": "buildingsmart/annex_e/advanced-geometric-shape/cube-advanced-brep.ifc",
+      "sha256": "40b50cd0dada3fc1032a9d78741df36a65bbe0f8c000c2c4e21de6f59a577dc1",
+      "size": 10729
+    },
+    {
+      "path": "buildingsmart/annex_e/basic-geometric-shape/brep-model.ifc",
+      "sha256": "b247026e85ef163acd5a165177d8293e606e7b8f83348a9897a3a04967fe4fc1",
+      "size": 6186
+    },
+    {
+      "path": "buildingsmart/annex_e/basic-geometric-shape/csg-primitive.ifc",
+      "sha256": "5f366df723fba68cb5d0ecac4efb549912f4107e292c7323a1cd100b3e8032eb",
+      "size": 5101
+    },
+    {
+      "path": "buildingsmart/annex_e/basic-geometric-shape/extruded-solid.ifc",
+      "sha256": "c488f0367106a17289468409531b1b687f72c25cea8e1b46924f59972ad7a8e9",
+      "size": 5428
+    },
+    {
+      "path": "buildingsmart/annex_e/basic-geometric-shape/surface-model.ifc",
+      "sha256": "2b53f45bca8b2f98b624afbe74da16590076a902a64d54574fce11bfbda3f942",
+      "size": 6221
+    },
+    {
+      "path": "buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc",
+      "sha256": "935acf08d1f1c93035c9f2454928f8ff7ba89378f60e6560fcc07c82f7eb8fd1",
+      "size": 5295
+    },
+    {
+      "path": "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-multiple-items.ifc",
+      "sha256": "83fc89342d05dc9682f661f4ae6f0053b0832c830ba71da34c70191f04ca6ad7",
+      "size": 7906
+    },
+    {
+      "path": "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-transformation.ifc",
+      "sha256": "92b95e00e087b6a5ff5d3662a20861874f47932aa5d816ac1e558730b98099f9",
+      "size": 6748
+    },
+    {
+      "path": "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-without-transformation.ifc",
+      "sha256": "2f5b3eb441d06d11e9465d6f5be865765c6086de2c0230a8359f99486c259bec",
+      "size": 6676
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
+      "sha256": "a9984558b52629d8507f01a23aba1d62a84cc7257f8159ac4ae4ac06f71b20fd",
+      "size": 23562
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
+      "sha256": "eeec637c7c870c289460c5eec18995ec2c2d41af0c26382f32e453a58773c0a6",
+      "size": 10337
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc",
+      "sha256": "49a003e142dce4b047f6c420a804aad68e30c7e4f5af3f7e2db2f9f32560e8a5",
+      "size": 2657
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
+      "sha256": "522788afc44ba467730e2b8b521d4baa334df299598a6595ffd430c16a0f7e5e",
+      "size": 796767
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape/beam-curved-i-shape-tessellated.ifc",
+      "sha256": "aaf49fa0c33cb7d19d53b9d5f6e8a3f2d7c79356238eff3b973a10f2cfff0fd7",
+      "size": 356818
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape/beam-straight-i-shape-tessellated.ifc",
+      "sha256": "14cfed0af4bf0aa84901552311738c545079b3a827a1e94f45cb13f0da3fcc27",
+      "size": 5438
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape/column-straight-rectangle-tessellation.ifc",
+      "sha256": "c65f0a5e7339ff654b39e63349ed4cdff22b15a7ff25c2fef4e896385dd1f310",
+      "size": 4417
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape/polygonal-face-tessellation.ifc",
+      "sha256": "b6ef01ef5c35a1da1955ab2c41191c5baf9f78e334f9d70e38d675fc49dad0cb",
+      "size": 4176
+    },
+    {
+      "path": "buildingsmart/annex_e/tessellated-shape/slab-tessellated-unique-vertices.ifc",
+      "sha256": "b1611154ea511526e5de5a58ea90e6cfb5abb2d8a6294d8c5f63cd6e297e912b",
+      "size": 5060
+    },
+    {
+      "path": "buildingsmart/basin-tessellation.ifc",
+      "sha256": "7278769ec5ef35d388819d2f197519061c7f0f68dd43a733f333ddeb74578121",
+      "size": 12131
+    },
+    {
+      "path": "buildingsmart/column-straight-rectangle-tessellation.ifc",
+      "sha256": "58bb9b2cae96edf2c368de95f526650f3f282e4e7fc37c0065c501bdbeed00a1",
+      "size": 4594
     },
     {
       "path": "buildingsmart/tessellated-item.ifc",
@@ -244,14 +354,14 @@
       "size": 11584
     },
     {
-      "path": "ifc5/Geotech_WekaHills_GeologyModel.ifcx",
-      "sha256": "ae287d58f9c21b1b36423fdc6cfdf640573bddc24de2cb653212ae170e247ed7",
-      "size": 1860954
-    },
-    {
       "path": "ifc5/Geotech_WekaHills_GI.ifcx",
       "sha256": "579fccb5ce8676f9262e71d5c26b15c951855f8a95482d9a47e9e7405a0f6ee3",
       "size": 9023
+    },
+    {
+      "path": "ifc5/Geotech_WekaHills_GeologyModel.ifcx",
+      "sha256": "ae287d58f9c21b1b36423fdc6cfdf640573bddc24de2cb653212ae170e247ed7",
+      "size": 1860954
     },
     {
       "path": "ifc5/Geotech_WekaHills_Site.ifcx",
@@ -339,16 +449,6 @@
       "size": 122671
     },
     {
-      "path": "ifc5/PCERT-Sample-Scene_cci_v1.ifcx",
-      "sha256": "bd701fd56cbe1ae9c8826c650638ff1f88081fc73a77e9455a27937a4cec4c5b",
-      "size": 3261
-    },
-    {
-      "path": "ifc5/PCERT-Sample-Scene_fruitvegs_v1.6.ifcx",
-      "sha256": "37984210c7db0601826c363171abab5a0c1ff4cfaf1fad8e893ffccb62c527a5",
-      "size": 851
-    },
-    {
       "path": "ifc5/PCERT-Sample-Scene_Georeference.ifcx",
       "sha256": "5f3f069d83b1463eb70741a1677f2160c1414466f759e9c8e0b466d73d09ed89",
       "size": 2719
@@ -384,9 +484,14 @@
       "size": 233721
     },
     {
-      "path": "ifc5/Point_Cloud_point-cloud.ifcx",
-      "sha256": "edd2c096371af0af6f9a4b521c582c737f47f47480e9de3e184da3ef19b38977",
-      "size": 54502
+      "path": "ifc5/PCERT-Sample-Scene_cci_v1.ifcx",
+      "sha256": "bd701fd56cbe1ae9c8826c650638ff1f88081fc73a77e9455a27937a4cec4c5b",
+      "size": 3261
+    },
+    {
+      "path": "ifc5/PCERT-Sample-Scene_fruitvegs_v1.6.ifcx",
+      "sha256": "37984210c7db0601826c363171abab5a0c1ff4cfaf1fad8e893ffccb62c527a5",
+      "size": 851
     },
     {
       "path": "ifc5/Point_Cloud_S1-pointcloud.ifcx",
@@ -397,6 +502,11 @@
       "path": "ifc5/Point_Cloud_S1-prefab-facade.ifcx",
       "sha256": "763b09eb66351e534417f176443305746425e67b54e34c9b9c398e83b9caa8af",
       "size": 2002313
+    },
+    {
+      "path": "ifc5/Point_Cloud_point-cloud.ifcx",
+      "sha256": "edd2c096371af0af6f9a4b521c582c737f47f47480e9de3e184da3ef19b38977",
+      "size": 54502
     },
     {
       "path": "ifc5/Railway_Railway_project_IFC5.ifcx",
@@ -529,14 +639,14 @@
       "size": 4178
     },
     {
-      "path": "ifcopenshell/faceted_brep_csg.ifc",
-      "sha256": "64a86e3637cf92960329ac268812c839958a9da620d1a3d1f2fb49a95b4dc08f",
-      "size": 7639
-    },
-    {
       "path": "ifcopenshell/faceted_brep.ifc",
       "sha256": "956cf7338f65a352c584678a8c800637be7e9265923403799793e4156444fed7",
       "size": 14810
+    },
+    {
+      "path": "ifcopenshell/faceted_brep_csg.ifc",
+      "sha256": "64a86e3637cf92960329ac268812c839958a9da620d1a3d1f2fb49a95b4dc08f",
+      "size": 7639
     },
     {
       "path": "ifcopenshell/single-circle-compcurve.ifc",
@@ -547,6 +657,21 @@
       "path": "ifcopenshell/structural_analysis_curve.ifc",
       "sha256": "aeb03f9a49a1d019f4de5c85064c426e1dc481f19ceb335a1f0079d1d791f36e",
       "size": 14951
+    },
+    {
+      "path": "issues/218_IFC-test-lite.ifc",
+      "sha256": "b0930f29bb27ecbee346d47b5cd6dae227735de452a49aab277696b1e4792964",
+      "size": 257513
+    },
+    {
+      "path": "issues/424_frame.ifc",
+      "sha256": "aba6c898b1a6aedc83bd34a23b65dd34c8262cf29fa647bf2ca1a6bbd277c2e8",
+      "size": 12318
+    },
+    {
+      "path": "issues/472_2222.ifc",
+      "sha256": "e9445d6c74f8cb593386c7cbc2e6cd206d7835e54999ca2c5a16d67364374eb2",
+      "size": 6324151
     },
     {
       "path": "various/01_BIMcollab_Example_ARC.ifc",

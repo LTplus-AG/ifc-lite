@@ -359,8 +359,28 @@ impl BooleanClippingProcessor {
             }
         }
 
-        // Compute prism depth: enough to cover the host mesh fully along the
-        // material-side direction.
+        // Per IFC 4.3 IfcPolygonalBoundedHalfSpace spec
+        // (https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcPolygonalBoundedHalfSpace.htm):
+        //
+        //   "[The polygonal boundary is] extruded perpendicular to the XY
+        //    plane of the position coordinate system, that is, into the
+        //    direction of the positive Z axis defined by the Position
+        //    attribute."
+        //
+        // We must extrude along the Position Z-axis (`z_axis`), NOT along
+        // `material_side_dir`. When the slope plane is tilted (e.g. the
+        // ~22°-tilted chained cutters on AC20-Institute-Var-2 walls,
+        // issue #583), extruding along material_side_dir produces a
+        // sheared prism whose XY footprint at the host's level no longer
+        // covers the wall's full thickness. Walls' back faces project
+        // outside the polygon and stay un-clipped — confirmed by the
+        // /Users/louistrue/Development/profiling correctness harness:
+        // Wand-010 (#228278) currently emits 65 tris with z=[9.0, 11.7]
+        // while IfcOpenShell emits 28 tris with z=[9.0, 10.33].
+        //
+        // Depth covers the host along Position.Z (with a host-diagonal
+        // floor so a small host with a large polygon still produces a
+        // prism that fully contains the host).
         let (host_min, host_max) = host_mesh.bounds();
         let host_corners = [
             Point3::new(host_min.x as f64, host_min.y as f64, host_min.z as f64),
@@ -375,26 +395,43 @@ impl BooleanClippingProcessor {
         let host_diag = ((host_max.x - host_min.x) as f64)
             .hypot((host_max.y - host_min.y) as f64)
             .hypot((host_max.z - host_min.z) as f64);
-        let max_projection = host_corners
+        let base_centroid: Point3<f64> = if base_world.is_empty() {
+            origin
+        } else {
+            let sum = base_world
+                .iter()
+                .fold(Vector3::zeros(), |acc, p| acc + p.coords);
+            Point3::from(sum / base_world.len() as f64)
+        };
+        let max_projection_z = host_corners
             .iter()
-            .map(|corner| (corner - plane_point).dot(&material_side_dir))
+            .map(|corner| (corner - base_centroid).dot(&z_axis))
             .fold(0.0_f64, f64::max);
-        let depth = max_projection.max(host_diag) + 1.0;
+        let depth = max_projection_z.max(host_diag) + 1.0;
 
-        // Top cap = base cap translated along material_side_dir by `depth`.
+        // Top cap = base cap translated along POSITION.Z by `depth`.
         let top_world: Vec<Point3<f64>> =
-            base_world.iter().map(|p| *p + material_side_dir * depth).collect();
+            base_world.iter().map(|p| *p + z_axis * depth).collect();
 
-        // Ensure the polygon winding is consistent with the extrusion
-        // direction so triangulation outputs front-facing caps.
+        // Winding: build_tilted_prism_mesh REVERSES the bottom cap
+        // (triangles emitted in reverse order) and KEEPS the top cap.
+        // For a closed solid with outward-facing caps:
+        //   - Bottom cap outward normal: -z_axis (pointing DOWN, OUT of
+        //     prism whose interior is ABOVE the slope plane)
+        //   - Top cap outward normal: +z_axis (pointing UP, OUT)
+        // After the in-builder reversal, the bottom cap inherits the
+        // polygon's REVERSED normal. We need REVERSED == -z_axis, so the
+        // polygon's natural normal must be +z_axis. Reverse the polygon
+        // ONLY if its natural normal currently points in -z_axis.
         let mut base = base_world;
         let mut top = top_world;
         let mut contour_2d = contour_2d;
-        if Self::polygon_normal(&base).dot(&material_side_dir) < 0.0 {
+        if Self::polygon_normal(&base).dot(&z_axis) < 0.0 {
             base.reverse();
             top.reverse();
             contour_2d.reverse();
         }
+        let _ = material_side_dir; // retained for clarity / future use
 
         self.build_tilted_prism_mesh(&contour_2d, &base, &top)
     }
@@ -491,15 +528,19 @@ impl BooleanClippingProcessor {
     /// `IfcBooleanClippingResult(.DIFFERENCE., x, polygonalBoundedHalfSpace)`
     /// pattern (typical for gable walls clipped by both roof slopes) and
     /// collect every consecutive `IfcPolygonalBoundedHalfSpace` cutter.
-    /// Returns the deepest non-`IfcBooleanClippingResult` base operand and
-    /// the chain of half-spaces in their IFC application order
-    /// (innermost-first, i.e. the order the spec would have applied them).
     ///
-    /// Used by `process_with_depth` to BATCH chained polygonal clips into
-    /// a single CSG operation; sequentially subtracting each cutter blows
-    /// past the per-mesh polygon limit and silently drops later clips,
-    /// leaving a flat horizontal cap at the gable apex (issue #635 follow-
-    /// up).
+    /// **Currently unused.** The batched-CSG path that this fed (combine
+    /// all cutter prisms into one mesh, run one CSG subtract) was incorrect
+    /// when chained cutters overlapped or duplicated — mesh-merging two
+    /// closed solids occupying the same volume produces a non-manifold
+    /// cutter and CSG sliver artefacts. See `docs/research/csg-clipping-
+    /// fidelity.md` for the comparison with ifcopenshell/web-ifc, and
+    /// `process_with_depth` for the new sequential path.
+    ///
+    /// Kept here `#[allow(dead_code)]` because a future cap-aware
+    /// optimisation might re-batch ONLY chains whose cutters are
+    /// coplanar AND non-overlapping (where the mesh-merge IS manifold).
+    #[allow(dead_code)]
     fn collect_polygonal_chain(
         &self,
         entity: DecodedEntity,
@@ -570,61 +611,37 @@ impl BooleanClippingProcessor {
             })
             .unwrap_or(".DIFFERENCE.");
 
-        // Fast path for chained polygonal-bounded half-space clips
-        // (e.g. gable walls clipped by both roof slopes — AC20-FZK-Haus
-        // walls #60012, #67828). Sequentially subtracting each cutter
-        // pushes the host polygon count past `MAX_CSG_POLYGONS_PER_MESH`,
-        // silently dropping later clips and leaving a flat horizontal
-        // cap at the apex. Combine all cutter prisms into a single
-        // mesh and run ONE BSP CSG op so the clips compose correctly.
-        if (operator == ".DIFFERENCE." || operator == "DIFFERENCE") && depth == 0 {
-            if let Ok((base, chain)) = self.collect_polygonal_chain(entity.clone(), decoder) {
-                if chain.len() >= 2 {
-                    let mesh = self.process_operand_with_depth(&base, decoder, depth)?;
-                    if mesh.is_empty() {
-                        return Ok(mesh);
-                    }
-                    let mut combined = Mesh::new();
-                    let mut planes: Vec<(Point3<f64>, Vector3<f64>, bool)> =
-                        Vec::with_capacity(chain.len());
-                    let mut all_built = true;
-                    for hs in &chain {
-                        let (pp, pn, ag) = self.parse_half_space_solid(hs, decoder)?;
-                        planes.push((pp, pn, ag));
-                        match self.build_polygonal_bounded_half_space_mesh(
-                            hs, decoder, &mesh, pp, pn, ag,
-                        ) {
-                            Ok(prism) => combined.merge(&prism),
-                            Err(_) => {
-                                all_built = false;
-                                break;
-                            }
-                        }
-                    }
-                    if all_built && !combined.is_empty() {
-                        let clipper = ClippingProcessor::new();
-                        let subtract_result = clipper.subtract_mesh(&mesh, &combined);
-                        self.drain_clipper_failures(&clipper);
-                        if let Ok(clipped) = subtract_result {
-                            if !clipped.is_empty() {
-                                return Ok(clipped);
-                            }
-                        }
-                    }
-                    // Fallback: chain plane clips so the silhouette is at
-                    // least correct (loses the polygon bound).
-                    self.record_failure(
-                        BoolOp::Difference,
-                        BoolFailureReason::PolygonalBoundedHalfSpaceFallback,
-                    );
-                    let mut current = mesh;
-                    for (pp, pn, ag) in planes {
-                        current = self.clip_mesh_with_half_space(&current, pp, pn, ag)?;
-                    }
-                    return Ok(current);
-                }
-            }
-        }
+        // NOTE: a previous version had a "fast path for chained polygonal-
+        // bounded half-space clips" here that mesh-merged every cutter in
+        // the chain into one combined mesh and ran a single BSP CSG op.
+        // That batching is incorrect when chained cutter polygons OVERLAP
+        // or DUPLICATE — the mesh-merge of two closed solids occupying
+        // the same volume is non-manifold by construction, and BSP CSG on
+        // a non-manifold cutter produces sliver artefacts (issue #583
+        // AC20-Institute-Var-2 Wand-010, which has 4 chained cutters
+        // including an exact duplicate at x=[17,25]).
+        //
+        // The reference implementations both handle this differently:
+        //   - web-ifc:      strictly sequential. One CSG per IfcBooleanResult
+        //                   node, recursing first-operand bottom-up.
+        //   - ifcopenshell: batches via OCCT's topological CSG (handles
+        //                   overlap natively) up to 8 operands, then falls
+        //                   back to sequential past that.
+        //
+        // We can't do OCCT-style topological CSG in our BSP/Manifold
+        // mesh-CSG kernel, so we follow web-ifc: SEQUENTIAL through the
+        // standard recursive path below. The per-step cutter is always a
+        // single closed manifold prism, so the non-manifold-cutter root
+        // cause is structurally eliminated.
+        //
+        // Performance: N CSG ops instead of 1 for chains of length N, but
+        // each op runs on a SMALL single-cutter mesh (one polygon prism =
+        // ~10-20 tris) rather than the combined N-cutter mesh, so wall-
+        // clock cost is comparable. CSG cost scales with operand polygon
+        // count, not operation count.
+        //
+        // See docs/research/csg-clipping-fidelity.md for the full
+        // side-by-side comparison with the reference implementations.
 
         // Get first operand (base geometry)
         let first_operand_attr = entity

@@ -51,10 +51,18 @@ fn unit_box_at(origin: Point3<f64>) -> Mesh {
 /// Build a 36-triangle mesh by merging three unit boxes that all overlap
 /// `unit_box_at(origin)` on every axis. Used to bust the
 /// `MAX_CSG_POLYGONS_PER_MESH = 24` cap without losing bounds-overlap.
-fn three_overlapping_boxes() -> Mesh {
-    let mut m = unit_box_at(Point3::new(0.0, 0.0, 0.0));
-    m.merge(&unit_box_at(Point3::new(0.5, 0.0, 0.0)));
-    m.merge(&unit_box_at(Point3::new(0.0, 0.5, 0.0)));
+/// 30 axis-offset boxes — distinct positions so the coplanar pre-merge in
+/// `ClippingProcessor::mesh_to_polygons` keeps each face as its own
+/// polygon (180 polygons total, comfortably above the BSP
+/// MAX_CSG_POLYGONS_PER_MESH = 128 cap). The first box sits at the origin
+/// so a unit-box cutter at (0,0,0) overlaps it and bounds_overlap passes,
+/// letting can_run_csg_operation fire OperandTooLarge.
+fn many_boxes_above_cap() -> Mesh {
+    let mut m = Mesh::new();
+    for i in 0..30 {
+        let off = i as f64 * 2.0;
+        m.merge(&unit_box_at(Point3::new(off, off, off)));
+    }
     m
 }
 
@@ -99,14 +107,14 @@ fn subtract_records_empty_operand() {
 #[test]
 #[cfg(not(feature = "manifold-csg"))]
 fn subtract_records_operand_too_large() {
-    // Host with 36 triangles overlapping a unit box trips the legacy
-    // MAX_CSG_POLYGONS_PER_MESH = 24 cap.
-    let host = three_overlapping_boxes();
+    // 30 distinct-position boxes (180 face quads after the coplanar merge)
+    // trip the BSP MAX_CSG_POLYGONS_PER_MESH = 128 cap. Cap path returns
+    // host un-cut and logs OperandTooLarge.
+    let host = many_boxes_above_cap();
     let void = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
 
     let result = p.subtract_mesh(&host, &void).expect("subtract_mesh ok");
-    // Cap path returns host un-cut.
     assert_eq!(result.triangle_count(), host.triangle_count());
 
     let failures = p.take_failures();
@@ -114,8 +122,14 @@ fn subtract_records_operand_too_large() {
     assert_eq!(failures[0].op, BoolOp::Difference);
     match &failures[0].reason {
         BoolFailureReason::OperandTooLarge { polys_a, polys_b } => {
-            assert!(*polys_a > 24, "host polys must exceed cap (got {polys_a})");
-            assert_eq!(*polys_b, 12, "void polys");
+            assert!(
+                *polys_a > 128,
+                "host polys must exceed cap (got {polys_a})"
+            );
+            assert!(
+                *polys_b <= 128,
+                "void polys should fit (got {polys_b})"
+            );
         }
         other => panic!("expected OperandTooLarge, got {other:?}"),
     }
@@ -124,10 +138,10 @@ fn subtract_records_operand_too_large() {
 #[test]
 #[cfg(feature = "manifold-csg")]
 fn subtract_past_legacy_cap_succeeds_under_manifold() {
-    // Same operands as the legacy cap test: 36-triangle host vs unit-box
-    // cutter. With Manifold there is no cap, so the operation must
-    // succeed and record no failure.
-    let host = three_overlapping_boxes();
+    // Same operands as the legacy cap test — 180 polygons of host vs a
+    // unit-box cutter. With Manifold there is no cap, so the operation
+    // must succeed and record no failure.
+    let host = many_boxes_above_cap();
     let void = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
 
@@ -139,7 +153,7 @@ fn subtract_past_legacy_cap_succeeds_under_manifold() {
 #[test]
 #[cfg(not(feature = "manifold-csg"))]
 fn union_records_operand_too_large() {
-    let a = three_overlapping_boxes();
+    let a = many_boxes_above_cap();
     let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
 
@@ -156,7 +170,7 @@ fn union_records_operand_too_large() {
 #[test]
 #[cfg(feature = "manifold-csg")]
 fn union_past_legacy_cap_succeeds_under_manifold() {
-    let a = three_overlapping_boxes();
+    let a = many_boxes_above_cap();
     let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
 
@@ -168,7 +182,7 @@ fn union_past_legacy_cap_succeeds_under_manifold() {
 #[test]
 #[cfg(not(feature = "manifold-csg"))]
 fn intersection_records_operand_too_large() {
-    let a = three_overlapping_boxes();
+    let a = many_boxes_above_cap();
     let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
 
@@ -185,7 +199,7 @@ fn intersection_records_operand_too_large() {
 #[test]
 #[cfg(feature = "manifold-csg")]
 fn intersection_past_legacy_cap_succeeds_under_manifold() {
-    let a = three_overlapping_boxes();
+    let a = many_boxes_above_cap();
     let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
 

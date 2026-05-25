@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { GLTFExporter } from './gltf-exporter.js';
+import { parseGLBToMeshData } from './glb.js';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 
 // Helper to create a minimal mesh for testing
@@ -334,6 +335,47 @@ describe('GLTFExporter', () => {
 
       // Should throw with clear error message
       expect(() => exporter.exportGLTF()).toThrow(/no valid geometry/i);
+    });
+  });
+
+  // Regression for the GLB import-loses-colours report. The exporter writes
+  // each mesh colour into materials[*].pbrMetallicRoughness.baseColorFactor,
+  // and parseGLBToMeshData must read those back instead of defaulting to grey.
+  describe('GLB colour round-trip', () => {
+    it('preserves per-mesh colours through export → parseGLBToMeshData', () => {
+      const colours: Array<[number, number, number, number]> = [
+        [0.8, 0.2, 0.2, 1.0],
+        [0.1, 0.6, 0.3, 1.0],
+        [0.0, 0.0, 1.0, 0.5],
+      ];
+      const meshes: MeshData[] = colours.map((c, i) => ({
+        ...createTestMesh(i + 1),
+        color: c,
+      }));
+      const geometryResult: GeometryResult = {
+        meshes,
+        totalVertices: 9,
+        totalTriangles: 3,
+        coordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 },
+          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          hasLargeCoordinates: false,
+        },
+      };
+
+      const glb = new GLTFExporter(geometryResult).exportGLB();
+      const parsed = parseGLBToMeshData(glb);
+
+      expect(parsed).toHaveLength(3);
+      for (let i = 0; i < colours.length; i++) {
+        const expected = colours[i];
+        const actual = parsed[i].color;
+        expect(actual[0]).toBeCloseTo(expected[0]);
+        expect(actual[1]).toBeCloseTo(expected[1]);
+        expect(actual[2]).toBeCloseTo(expected[2]);
+        expect(actual[3]).toBeCloseTo(expected[3]);
+      }
     });
   });
 });

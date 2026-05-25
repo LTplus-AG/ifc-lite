@@ -81,6 +81,20 @@ export function parseGLBToMeshData(glb: Uint8Array): MeshData[] {
   const meshes: any[] = Array.isArray(json?.meshes) ? json.meshes : [];
   const accessors: any[] = Array.isArray(json?.accessors) ? json.accessors : [];
   const bufferViews: any[] = Array.isArray(json?.bufferViews) ? json.bufferViews : [];
+  const materials: any[] = Array.isArray(json?.materials) ? json.materials : [];
+
+  const DEFAULT_COLOR: [number, number, number, number] = [0.8, 0.8, 0.8, 1];
+  const resolveMaterialColor = (materialIdx: unknown): [number, number, number, number] => {
+    if (typeof materialIdx !== 'number') return DEFAULT_COLOR;
+    const factor = materials[materialIdx]?.pbrMetallicRoughness?.baseColorFactor;
+    if (!Array.isArray(factor) || factor.length < 3) return DEFAULT_COLOR;
+    return [
+      Number(factor[0]),
+      Number(factor[1]),
+      Number(factor[2]),
+      factor.length >= 4 ? Number(factor[3]) : 1,
+    ];
+  };
 
   const readAccessor = (accessorIndex: number): { array: Float32Array | Uint32Array; count: number; components: number } => {
     const acc = accessors[accessorIndex];
@@ -130,7 +144,7 @@ export function parseGLBToMeshData(glb: Uint8Array): MeshData[] {
       positions: new Float32Array(pos),
       normals: new Float32Array(nor),
       indices: new Uint32Array(ind),
-      color: [0.8, 0.8, 0.8, 1],
+      color: resolveMaterialColor(prim.material),
       ifcType: 'IfcElement',
     });
   }

@@ -57,27 +57,69 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@ifc-lite/bcf':
+        specifier: workspace:^
+        version: link:../../packages/bcf
       '@ifc-lite/cache':
         specifier: workspace:^
         version: link:../../packages/cache
+      '@ifc-lite/create':
+        specifier: workspace:^
+        version: link:../../packages/create
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../../packages/data
+      '@ifc-lite/drawing-2d':
+        specifier: workspace:^
+        version: link:../../packages/drawing-2d
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../../packages/encoding
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../../packages/export
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../../packages/extensions
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
+      '@ifc-lite/ids':
+        specifier: workspace:^
+        version: link:../../packages/ids
+      '@ifc-lite/lens':
+        specifier: workspace:^
+        version: link:../../packages/lens
+      '@ifc-lite/lists':
+        specifier: workspace:^
+        version: link:../../packages/lists
+      '@ifc-lite/mcp':
+        specifier: workspace:^
+        version: link:../../packages/mcp
+      '@ifc-lite/mutations':
+        specifier: workspace:^
+        version: link:../../packages/mutations
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../../packages/parser
+      '@ifc-lite/pointcloud':
+        specifier: workspace:^
+        version: link:../../packages/pointcloud
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../../packages/query
       '@ifc-lite/renderer':
         specifier: workspace:^
         version: link:../../packages/renderer
+      '@ifc-lite/sandbox':
+        specifier: workspace:^
+        version: link:../../packages/sandbox
+      '@ifc-lite/sdk':
+        specifier: workspace:^
+        version: link:../../packages/sdk
+      '@ifc-lite/server-client':
+        specifier: workspace:^
+        version: link:../../packages/server-client
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial
@@ -235,6 +277,9 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../../packages/export
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../../packages/extensions
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -416,6 +461,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.2.0
         version: 4.7.0(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3))
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       jszip:
         specifier: ^3.10.0
         version: 3.10.1
@@ -684,6 +732,9 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../extensions
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
@@ -929,6 +980,28 @@ importers:
         specifier: ^0.7.1
         version: 0.7.1
     devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@edge-runtime/vm@3.2.0)(@types/debug@4.1.13)(@types/node@25.9.1)(happy-dom@20.9.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)
+
+  packages/extensions:
+    dependencies:
+      acorn:
+        specifier: ^8.12.0
+        version: 8.16.0
+      acorn-walk:
+        specifier: ^8.3.0
+        version: 8.3.5
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
+    devDependencies:
+      '@types/node':
+        specifier: ^25.8.0
+        version: 25.9.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2931,6 +3004,15 @@ packages:
     resolution: {integrity: sha512-RQ4h9F6DOiHxpdocUDrOl6xBM+yOtz+LkUol47AVWcfebGBDpZ7w7Xvz9PS24JgXvLGiXXzSAfdCdVy1tPlaFA==}
     engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
+  acorn-walk@8.3.5:
+    resolution: {integrity: sha512-HEHNfbars9v4pgpW6SO1KSPkfoS0xVOM/9UzkJltjlsHZmJasxg8aXkuZa7SMf8vKGIBhpUsPluQSqhJFCqebw==}
+    engines: {node: '>=0.4.0'}
+
+  acorn@8.16.0:
+    resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
+    engines: {node: '>=0.4.0'}
+    hasBin: true
+
   ansi-colors@4.1.3:
     resolution: {integrity: sha512-/6w/C21Pm1A7aZitlI5Ni/2J6FFQN8i1Cvz3kHABAAbw93v/NlvKdVOqz7CCWz/3iv/JplRSEEZ83XION15ovw==}
     engines: {node: '>=6'}
@@ -3252,6 +3334,10 @@ packages:
 
   extendable-error@0.1.7:
     resolution: {integrity: sha512-UOiS2in6/Q0FK0R0q6UY9vYpQ21mr/Qn1KOnte7vsACuNJf514WvCCUHSRCPcgjPT2bAhNIJdlE6bVap1GKmeg==}
+
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
 
   fast-glob@3.3.3:
     resolution: {integrity: sha512-7MptL8U0cqcFdzIzwOTHoilX9x5BrNqye7Z/LuC7kCMRio1EMSyqRK3BEAUD7sXRq4iT4AzTVuZdhgQ2TCvYLg==}
@@ -6187,6 +6273,12 @@ snapshots:
 
   '@zip.js/zip.js@2.8.26': {}
 
+  acorn-walk@8.3.5:
+    dependencies:
+      acorn: 8.16.0
+
+  acorn@8.16.0: {}
+
   ansi-colors@4.1.3: {}
 
   ansi-regex@5.0.1: {}
@@ -6502,6 +6594,8 @@ snapshots:
   extend@3.0.2: {}
 
   extendable-error@0.1.7: {}
+
+  fake-indexeddb@6.2.5: {}
 
   fast-glob@3.3.3:
     dependencies:

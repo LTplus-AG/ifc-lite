@@ -12,7 +12,8 @@ export type DesktopFeature =
   | 'exports'
   | 'ids_validation'
   | 'bcf_issue_management'
-  | 'ai_assistant';
+  | 'ai_assistant'
+  | 'extensions';
 
 export interface DesktopEntitlement {
   tier: DesktopPlanTier;
@@ -67,6 +68,11 @@ const DESKTOP_FEATURES: Record<DesktopFeature, DesktopFeatureDefinition> = {
   ai_assistant: {
     label: 'Host AI assistant',
     description: 'Optional host-provided AI integrations.',
+    free: true,
+  },
+  extensions: {
+    label: 'Extensions & flavors',
+    description: 'Install user-authored extensions, manage flavors, and access the authoring loop.',
     free: true,
   },
 };

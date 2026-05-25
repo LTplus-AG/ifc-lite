@@ -1,0 +1,103 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `ExtensionHostProvider` — React context for the viewer's extension
+ * host service.
+ *
+ * Sits inside `<BimProvider>` so it can pull the live `BimContext`
+ * out of the existing SDK plumbing. The service is constructed once
+ * on mount, initialised lazily (we kick `init()` on the first commit
+ * and surface the loaded statuses to listeners), and disposed on
+ * unmount — though in practice the viewer lives for the whole tab
+ * session so unmount is rare.
+ *
+ * Components consume the service via `useExtensionHost()` (everything
+ * the user can do) or the specialised hooks
+ * `useSlotContributions(slot)` and `useInstalledExtensions()`.
+ */
+
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useBim } from './BimProvider.js';
+import { ExtensionHostService } from '@/services/extensions/host.js';
+import { isSafeMode } from '@/lib/safe-mode';
+import { toast } from '@/components/ui/toast';
+
+const ExtensionHostContext = createContext<ExtensionHostService | null>(null);
+
+interface ExtensionHostProviderProps {
+  children: ReactNode;
+}
+
+export function ExtensionHostProvider({ children }: ExtensionHostProviderProps) {
+  const bim = useBim();
+  // Service identity must be stable across renders so subscribers don't
+  // tear themselves down on every commit.
+  const service = useMemo(() => new ExtensionHostService({ sdk: bim }), [bim]);
+
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    if (isSafeMode()) {
+      // Safe mode: skip auto-activation. Service still constructs so
+      // the user can run uninstall / disable / repair from the UI; we
+      // just don't fire onStartup or load extension code.
+      console.info('[ExtensionHostProvider] safe mode — skipping init().');
+      return service.onChange(() => forceRender((n) => n + 1));
+    }
+    service.init()
+      .then((statuses) => {
+        // Partial-failure path: init() succeeded overall but one or
+        // more extensions failed to load. Surface a single toast that
+        // points at the Repair queue — repeated per-extension toasts
+        // would be noisy on a cold boot with many extensions.
+        const failed = statuses.filter((s) => !s.ok);
+        if (failed.length > 0) {
+          const label = failed.length === 1
+            ? `Extension "${failed[0].id}" failed to load.`
+            : `${failed.length} extensions failed to load.`;
+          toast.error(`${label} Open the Extensions panel → Repair queue to retry.`);
+        }
+      })
+      .catch((err) => {
+        console.error('[ExtensionHostProvider] init failed:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(
+          `Extension system failed to start: ${message}. Installed extensions ` +
+          `may be unavailable — open the Extensions panel to recover.`,
+        );
+      });
+    return service.onChange(() => forceRender((n) => n + 1));
+  }, [service]);
+
+  useEffect(() => {
+    return () => {
+      service.dispose().catch((err) => {
+        console.error('[ExtensionHostProvider] dispose failed:', err);
+      });
+    };
+  }, [service]);
+
+  return (
+    <ExtensionHostContext.Provider value={service}>
+      {children}
+    </ExtensionHostContext.Provider>
+  );
+}
+
+/**
+ * Access the extension host service. Throws if used outside
+ * `<ExtensionHostProvider>`.
+ */
+export function useExtensionHost(): ExtensionHostService {
+  const ctx = useContext(ExtensionHostContext);
+  if (!ctx) {
+    throw new Error('useExtensionHost() must be used within an <ExtensionHostProvider>');
+  }
+  return ctx;
+}
+
+/** Same as useExtensionHost but returns null instead of throwing. Useful for code paths that may or may not be inside the provider. */
+export function useOptionalExtensionHost(): ExtensionHostService | null {
+  return useContext(ExtensionHostContext);
+}

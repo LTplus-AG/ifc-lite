@@ -34,6 +34,14 @@
 
     [:octicons-arrow-right-24: Desktop Guide](guide/desktop.md)
 
+-   :material-puzzle-outline:{ .lg .middle } __Extensions & Flavors__
+
+    ---
+
+    Install sandboxed extensions, bundle them into switchable flavors, or have the AI author one for you.
+
+    [:octicons-arrow-right-24: Extensions](guide/extensions.md) · [:octicons-arrow-right-24: Flavors](guide/flavors.md) · [:octicons-arrow-right-24: Privacy](guide/privacy.md)
+
 </div>
 
 ## What is IFClite?

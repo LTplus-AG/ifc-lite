@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore } from '@/store';
+import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
@@ -85,6 +86,9 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
+  // Optional extension host — emits the export.run action when present
+  // so the local pattern miner can spot load → export workflows.
+  const extensionHost = useOptionalExtensionHost();
 
   const [open, setOpen] = useState(false);
   const [schema, setSchema] = useState<SchemaVersion | ''>('');
@@ -314,6 +318,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const handleExport = useCallback(async () => {
     if (!schema) return;
     if (exportScope === 'single' && !selectedModel) return;
+
+    // Action log: content-free emit so the miner can spot
+    // "load → export" patterns. Format label only — no path / data.
+    extensionHost?.emitAction('export.run', { format: outputInfo.ext.replace(/^\./, '') });
 
     setIsExporting(true);
     setExportResult(null);
@@ -556,7 +564,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

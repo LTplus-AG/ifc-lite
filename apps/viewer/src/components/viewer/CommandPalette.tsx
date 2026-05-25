@@ -44,6 +44,7 @@ import {
   ClipboardCheck,
   FileSpreadsheet,
   Palette,
+  Puzzle,
   Camera,
   Download,
   FileJson,
@@ -77,11 +78,17 @@ import {
   executeBasketClear,
 } from '@/store/basket/basketCommands';
 import { useSandbox } from '@/hooks/useSandbox';
+import { useSlotContributions } from '@/hooks/useSlotContributions';
+import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
+import type { CommandContribution } from '@ifc-lite/extensions';
+import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { GLTFExporter, CSVExporter } from '@ifc-lite/export';
 import { getRecentFiles, formatFileSize, getCachedFile } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
+import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -94,7 +101,8 @@ type Category =
   | 'Panels'
   | 'Export'
   | 'Automation'
-  | 'Preferences';
+  | 'Preferences'
+  | 'Extensions';
 
 interface Command {
   id: string;
@@ -191,14 +199,16 @@ function downloadBlob(data: BlobPart, name: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Exclusively activate a right-panel content panel (BCF / IDS / Lens).
+/** Exclusively activate a right-panel content panel (BCF / IDS / Lens / Extensions).
  *  Closes all others first so the if-else chain in ViewerLayout renders it.
  *  If the target is already active, closes it (back to Properties). */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens') {
+
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'extensions') {
   const s = useViewerStore.getState();
   const isActive =
     panel === 'bcf' ? s.bcfPanelVisible :
     panel === 'ids' ? s.idsPanelVisible :
+    panel === 'extensions' ? s.extensionsPanelVisible :
     s.lensPanelVisible;
 
   closeActiveAnalysisExtension();
@@ -207,12 +217,14 @@ function activateRightPanel(panel: 'bcf' | 'ids' | 'lens') {
   s.setBcfPanelVisible(false);
   s.setIdsPanelVisible(false);
   s.setLensPanelVisible(false);
+  s.setExtensionsPanelVisible(false);
 
   if (!isActive) {
     // Open the target, expand right panel
     s.setRightPanelCollapsed(false);
     if (panel === 'bcf') s.setBcfPanelVisible(true);
     else if (panel === 'ids') s.setIdsPanelVisible(true);
+    else if (panel === 'extensions') s.setExtensionsPanelVisible(true);
     else s.setLensPanelVisible(true);
   }
   // If was active → all closed → falls back to Properties
@@ -260,6 +272,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigatedByKeyboard = useRef(false);
 
   const { execute } = useSandbox();
+  const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
+  const extensionHost = useOptionalExtensionHost();
 
   useEffect(() => {
     if (open) {
@@ -420,6 +434,27 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
+      { id: 'panel:extensions', label: 'Extensions', keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
+        action: () => { activateRightPanel('extensions'); } },
+      // ── Customization entry points — first-class discoverability
+      // for new users who don't know extensions/flavors exist. Each
+      // routes to the right surface and pre-seeds context where
+      // helpful (e.g. open Ideas tab with the empty-plan flow).
+      { id: 'extensions:author', label: 'Author an extension…',
+        keywords: 'create new build plan chat ai extension generate',
+        category: 'Tools', icon: Sparkles,
+        action: () => {
+          const s = useViewerStore.getState();
+          activateRightPanel('extensions');
+          s.setExtensionsRequestedView('ideas');
+          s.setIdeasOpenEmptyPlan(true);
+        } },
+      { id: 'extensions:flavors', label: 'Manage flavors…',
+        keywords: 'flavor profile switch export import merge customization',
+        category: 'Panels', icon: Palette,
+        action: () => {
+          useViewerStore.getState().setFlavorDialogRequested(true);
+        } },
     );
 
     // ── Schedule / 4D (Tools) ─────────────────────────────
@@ -506,8 +541,40 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().toggleHoverTooltips(); } },
     );
 
+    // ── Extension contributions ──
+    // Surfaced under the "Extensions" category. Clicking dispatches
+    // through the activation event so the runtime executes the
+    // bundle's command handler (or surfaces the failure clearly).
+    for (const contribution of extensionCommands) {
+      const payload = contribution.payload;
+      if (!payload?.id || !payload.title) continue;
+      c.push({
+        id: `ext:${payload.id}`,
+        label: payload.title,
+        keywords: `${payload.id} ${payload.paletteCategory ?? ''} extension`,
+        category: 'Extensions',
+        // `resolveExtensionIcon` is the shared icon registry the
+        // picker writes against, so the icon the user chose is the
+        // icon shown in the palette.
+        icon: resolveExtensionIcon(payload.icon),
+        detail: payload.paletteCategory,
+        action: () => {
+          if (!extensionHost) return;
+          // Fire the activation event first so onCommand:<id>-subscribed
+          // extensions wake up, then invoke the command handler. The
+          // runtime dedupes activations.
+          void extensionHost.dispatcher
+            .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
+            .then(() => extensionHost.runCommand(payload.id))
+            .catch((err) => {
+              paletteToast.error(describeRunCommandError(payload.id, err));
+            });
+        },
+      });
+    }
+
     return c;
-  }, [execute, recentFiles]);
+  }, [execute, recentFiles, extensionCommands, extensionHost]);
 
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.

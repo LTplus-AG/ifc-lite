@@ -20,6 +20,7 @@ function GithubIcon({ className }: { className?: string }) {
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
+import { navigateToPath } from '@/services/app-navigation';
 
 const GITHUB_URL = 'https://github.com/LTplus-AG/ifc-lite';
 
@@ -431,12 +432,26 @@ export function KeyboardShortcutsDialog({ open, onClose }: InfoDialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-card border rounded-lg shadow-xl w-full max-w-md m-4">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">Info</h2>
-          <Button variant="ghost" size="icon-sm" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+        {/* Header — the MCP CTA lives here, in line with the title, so
+            it's a discoverable "what else can this do?" affordance
+            without crowding the modeling toolbar. */}
+        <div className="flex items-center justify-between gap-2 p-4 border-b">
+          <h2 className="text-lg font-semibold shrink-0">Info</h2>
+          <div className="flex items-center gap-1 min-w-0">
+            <button
+              type="button"
+              onClick={() => { onClose(); navigateToPath('/mcp'); }}
+              className="group inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-colors px-3 py-1.5 text-xs font-medium text-primary"
+              aria-label="Open ifc-lite MCP — drive ifc-lite from any LLM"
+            >
+              <Sparkles className="h-3.5 w-3.5 group-hover:rotate-12 transition-transform" />
+              <span className="whitespace-nowrap">Drive from any LLM</span>
+              <ExternalLink className="h-3 w-3 opacity-60" />
+            </button>
+            <Button variant="ghost" size="icon-sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Tabbed Content */}

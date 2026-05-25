@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.lens",
+  "name": "Lens Provider",
+  "description": "Extension providing a custom lens.",
+  "version": "0.1.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read", "viewer.colorize"],
+  "activation": ["onLens:ext.example.lens.fire"],
+  "contributes": {
+    "lenses": [
+      {
+        "id": "ext.example.lens.fire",
+        "name": "Fire Rating",
+        "evaluator": "src/lenses/fire.js"
+      }
+    ]
+  },
+  "entry": {}
+}

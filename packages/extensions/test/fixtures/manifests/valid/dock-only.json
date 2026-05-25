@@ -1,0 +1,23 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.dock",
+  "name": "Dock Panel",
+  "description": "Extension that contributes a dock panel.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read", "viewer.read"],
+  "activation": ["onSlot:dock.right"],
+  "contributes": {
+    "dock": [
+      {
+        "id": "ext.example.dock.panel",
+        "slot": "dock.right",
+        "title": "Dock Panel",
+        "widget": "widgets/main.json"
+      }
+    ]
+  },
+  "entry": {
+    "activate": "src/activate.js"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.bad",
+  "name": "Bad Slot",
+  "description": "Uses a slot identifier that does not exist.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onCommand:ext.example.cmd"],
+  "contributes": {
+    "commands": [{ "id": "ext.example.cmd", "title": "X" }],
+    "toolbar": [{ "command": "ext.example.cmd", "slot": "toolbar.nonexistent" }]
+  },
+  "entry": { "commands": { "ext.example.cmd": "src/x.js" } }
+}

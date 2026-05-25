@@ -1,0 +1,18 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.broken-missing-entry",
+  "name": "Broken — Missing Entry File",
+  "description": "References src/commands/missing.js which is not present.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read"],
+  "activation": ["onCommand:ext.broken.missing.run"],
+  "contributes": {
+    "commands": [{ "id": "ext.broken.missing.run", "title": "Run" }]
+  },
+  "entry": {
+    "commands": {
+      "ext.broken.missing.run": "src/commands/missing.js"
+    }
+  }
+}

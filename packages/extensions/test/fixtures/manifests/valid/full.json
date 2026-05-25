@@ -1,0 +1,120 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.full",
+  "name": "Full Surface",
+  "description": "Exercises every contribution type.",
+  "version": "1.2.3",
+  "author": { "name": "Example Author", "url": "https://example.com" },
+  "license": "MIT",
+  "engines": { "ifcLiteSdk": ">=2.4.0 <3.0.0" },
+  "capabilities": [
+    "model.read",
+    "model.mutate:Pset_WallCommon.*",
+    "viewer.colorize",
+    "viewer.isolate",
+    "export.create:csv",
+    "storage.local",
+    "network.fetch:bsdd.example.com"
+  ],
+  "activation": [
+    "onStartup",
+    "onModelLoad",
+    "onCommand:ext.example.full.run",
+    "onExporter:ext.example.full.csv",
+    "onLens:ext.example.full.fire",
+    "onIdsValidator:ext.example.full.check",
+    "onSchema:IFC4",
+    "onSlot:dock.right"
+  ],
+  "contributes": {
+    "commands": [
+      { "id": "ext.example.full.run", "title": "Run Full Demo" },
+      { "id": "ext.example.full.export", "title": "Export Full Demo" }
+    ],
+    "toolbar": [
+      {
+        "command": "ext.example.full.run",
+        "slot": "toolbar.right",
+        "order": 10,
+        "when": "model.loaded"
+      }
+    ],
+    "dock": [
+      {
+        "id": "ext.example.full.panel",
+        "slot": "dock.right",
+        "title": "Full Demo",
+        "icon": "Sparkles",
+        "widget": "widgets/panel.json",
+        "when": "selection.count > 0"
+      }
+    ],
+    "contextMenu": [
+      {
+        "command": "ext.example.full.export",
+        "slot": "contextMenu.entity",
+        "group": "demo",
+        "when": "selection.type == 'IfcWall'"
+      }
+    ],
+    "keybindings": [
+      { "command": "ext.example.full.run", "key": "Ctrl+Alt+F" }
+    ],
+    "lenses": [
+      {
+        "id": "ext.example.full.fire",
+        "name": "Fire Rating",
+        "evaluator": "src/lenses/fire.js"
+      }
+    ],
+    "exporters": [
+      {
+        "id": "ext.example.full.csv",
+        "name": "Full Demo CSV",
+        "mimeType": "text/csv",
+        "extension": ".csv",
+        "handler": "src/exporters/csv.js"
+      }
+    ],
+    "idsValidators": [
+      {
+        "id": "ext.example.full.check",
+        "name": "Full Demo Validator",
+        "handler": "src/ids/check.js"
+      }
+    ],
+    "statusBar": [
+      {
+        "id": "ext.example.full.status",
+        "slot": "statusBar.right",
+        "text": "Demo Ready",
+        "command": "ext.example.full.run",
+        "order": 100
+      }
+    ]
+  },
+  "entry": {
+    "activate": "src/activate.js",
+    "deactivate": "src/deactivate.js",
+    "commands": {
+      "ext.example.full.run": "src/commands/run.js",
+      "ext.example.full.export": "src/commands/export.js"
+    },
+    "triggers": {
+      "onSelectionChange": "src/triggers/on-select.js"
+    }
+  },
+  "tests": [
+    {
+      "name": "Run produces expected output",
+      "command": "ext.example.full.run",
+      "fixture": "small-residential",
+      "expect": { "mimeType": "application/json" }
+    }
+  ],
+  "l10n": {
+    "en": { "command.run": "Run", "command.export": "Export" },
+    "de": { "command.run": "Ausführen", "command.export": "Exportieren" }
+  },
+  "readme": "## Full Demo\n\nDemonstrates every contribution type."
+}

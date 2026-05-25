@@ -218,14 +218,21 @@ function buildNamespace(
 
   for (const method of schema.methods) {
     const fn = vm.newFunction(method.name, (...handles: QuickJSHandle[]) => {
-      // Unmarshal arguments
-      const nativeArgs = unmarshalArgs(vm, handles, method.args);
-
-      // Call the SDK
-      const result = method.call(sdk, nativeArgs, context);
-
-      // Marshal return value
-      return marshalReturn(vm, result, method.returns);
+      // Host-side errors (capability denials, SDK exceptions, type
+      // errors) MUST be re-thrown as a plain `Error` with a string
+      // message. Throwing a custom Error subclass — or any non-plain
+      // object — across the QuickJS native-callback boundary leaves
+      // the realm in a corrupt state: a subsequent handle access
+      // throws "Lifetime not alive". Normalising to a plain Error
+      // here keeps the failure a clean, catchable script exception.
+      try {
+        const nativeArgs = unmarshalArgs(vm, handles, method.args);
+        const result = method.call(sdk, nativeArgs, context);
+        return marshalReturn(vm, result, method.returns);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`bim.${schema.name}.${method.name}: ${msg}`);
+      }
     });
     vm.setProp(nsHandle, method.name, fn);
     fn.dispose();

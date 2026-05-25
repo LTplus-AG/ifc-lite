@@ -9,6 +9,8 @@ import { formatNumber, formatBytes } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
+import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
+import { FlavorDialog } from '@/components/extensions/FlavorDialog';
 
 export function StatusBar() {
   const { loading, geometryResult, ifcDataStore } = useIfc();
@@ -20,6 +22,16 @@ export function StatusBar() {
 
   const [fps, setFps] = useState(60);
   const [memory, setMemory] = useState(0);
+  const [flavorDialogOpen, setFlavorDialogOpen] = useState(false);
+  /** Deep-link from Command Palette → "Manage flavors…". */
+  const flavorDialogRequested = useViewerStore((s) => s.flavorDialogRequested);
+  const setFlavorDialogRequested = useViewerStore((s) => s.setFlavorDialogRequested);
+  useEffect(() => {
+    if (flavorDialogRequested) {
+      setFlavorDialogOpen(true);
+      setFlavorDialogRequested(false);
+    }
+  }, [flavorDialogRequested, setFlavorDialogRequested]);
 
   // FPS counter (simplified)
   useEffect(() => {
@@ -175,6 +187,10 @@ export function StatusBar() {
 
         <Separator orientation="vertical" className="h-3.5" />
 
+        <FlavorIndicator onClick={() => setFlavorDialogOpen(true)} />
+
+        <Separator orientation="vertical" className="h-3.5" />
+
         <span className="opacity-60">v{__APP_VERSION__}</span>
 
         <Separator orientation="vertical" className="h-3.5" />
@@ -189,6 +205,8 @@ export function StatusBar() {
           ifclite.dev →
         </a>
       </div>
+
+      <FlavorDialog open={flavorDialogOpen} onClose={() => setFlavorDialogOpen(false)} />
     </div>
   );
 }

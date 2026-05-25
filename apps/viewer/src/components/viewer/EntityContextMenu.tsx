@@ -32,6 +32,11 @@ import {
 } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
+import { useSlotContributions } from '@/hooks/useSlotContributions';
+import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { evaluateWhen, parseWhen, type CommandContribution, type ResolvedContextMenuContribution } from '@ifc-lite/extensions';
+import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
+import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 
 export function EntityContextMenu() {
   const contextMenu = useViewerStore((s) => s.contextMenu);
@@ -404,7 +409,72 @@ export function EntityContextMenu() {
           <MenuItem icon={Eye} label="Show all" onClick={handleShowAll} />
         </>
       )}
+
+      <ExtensionContextItems
+        slot={contextMenu.entityId != null ? 'contextMenu.entity' : 'contextMenu.canvas'}
+        hasEntity={contextMenu.entityId != null}
+      />
     </div>
+  );
+}
+
+/**
+ * Renders extension-contributed entries for the entity or canvas
+ * context-menu slot. Each contribution is `when`-filtered; clicking
+ * dispatches the contributed command through the extension host.
+ */
+function ExtensionContextItems({
+  slot,
+  hasEntity,
+}: {
+  slot: 'contextMenu.entity' | 'contextMenu.canvas';
+  hasEntity: boolean;
+}) {
+  // Loader enriches the contextMenu payload with icon + title from
+  // the linked command (see manifestToContributions). Fall back to
+  // the commandPalette lookup for title if a manifest somehow omits it.
+  const contributions = useSlotContributions<ResolvedContextMenuContribution>(slot);
+  const commandPalette = useSlotContributions<CommandContribution>('commandPalette');
+  const host = useOptionalExtensionHost();
+  const closeContextMenu = useViewerStore((s) => s.closeContextMenu);
+  if (contributions.length === 0) return null;
+  const whenContext = {
+    'selection.count': hasEntity ? 1 : 0,
+    'model.loaded': true,
+  };
+  const titleFor = (c: ResolvedContextMenuContribution): string => {
+    if (c.title) return c.title;
+    const found = commandPalette.find((cp) => cp.payload.id === c.command);
+    return found?.payload.title ?? c.command;
+  };
+  const visible = contributions.filter((c) => {
+    const when = c.payload.when;
+    if (!when) return true;
+    const parsed = parseWhen(when);
+    if (!parsed.ok) return false;
+    return evaluateWhen(parsed.value, whenContext);
+  });
+  if (visible.length === 0) return null;
+  return (
+    <>
+      <div className="h-px bg-border my-1" />
+      {visible.map((c) => {
+        const Icon = resolveExtensionIcon(c.payload.icon);
+        return (
+          <MenuItem
+            key={`${c.extensionId}:${c.payload.command}`}
+            icon={Icon}
+            label={titleFor(c.payload)}
+            onClick={() => {
+              closeContextMenu();
+              host?.runCommand(c.payload.command).catch((err) => {
+                toast.error(describeRunCommandError(c.payload.command, err));
+              });
+            }}
+          />
+        );
+      })}
+    </>
   );
 }
 

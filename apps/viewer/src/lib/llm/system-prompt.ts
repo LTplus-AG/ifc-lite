@@ -19,6 +19,7 @@ import {
 import type { FileAttachment } from './types.js';
 import type { ScriptEditorSelection } from './types.js';
 import { formatDiagnosticsForPrompt, type ScriptDiagnostic } from './script-diagnostics.js';
+import { buildAuthoringContract } from '@ifc-lite/extensions';
 
 const MAX_ATTACHMENT_ROWS_IN_PROMPT = 5;
 const MAX_ATTACHMENT_TEXT_PREVIEW_CHARS = 1200;
@@ -54,6 +55,21 @@ export interface ScriptEditorPromptContext {
 export interface PromptTaskContext {
   userPrompt?: string;
   diagnostics?: ScriptDiagnostic[];
+  /**
+   * Personal prompt overlay from the active flavor (RFC §06.4). When
+   * present, it's appended at the very end of the system prompt
+   * inside a clearly-delimited block so we can cache the everything-
+   * else portion across users and only invalidate the tail.
+   */
+  personalOverlay?: string;
+  /**
+   * When set, append the AI authoring contract from
+   * `@ifc-lite/extensions` (manifest schema + widget DSL + capability
+   * catalogue + style rules). Used when the chat classifier flags an
+   * authoring intent. Cached separately so non-authoring turns don't
+   * pay for the extra tokens.
+   */
+  includeAuthoringContract?: boolean;
 }
 
 interface NamespacedMethod {
@@ -349,6 +365,13 @@ export function buildSystemPrompt(
 
   let prompt = `You are an IFC/BIM scripting assistant embedded in ifc-lite, a web-based IFC viewer with a live 3D viewport.
 You write JavaScript code that executes in a sandboxed environment with a global \`bim\` object.
+
+## SANDBOX CONSTRAINTS (read first)
+Scripts run inside a QuickJS-WASM sandbox, NOT in a browser context.
+You DO have: \`bim\`, \`console\` (log/info/warn/error).
+You do NOT have: \`document\`, \`window\`, \`navigator\`, \`location\`, \`globalThis.*\`, \`fetch\`, \`XMLHttpRequest\`, \`localStorage\`, \`indexedDB\`, \`setTimeout\`/\`setInterval\`, \`eval\`, \`Function(...)\`, dynamic \`import()\`, ES module \`import\`/\`export\`, or any DOM API.
+For UI side-effects use \`bim.viewer.*\` (colorize, isolate, fly, section). For data use \`bim.query\`, \`bim.properties\`, \`bim.export\`. For chat-attached files use \`bim.files.*\`.
+If a previous attempt referenced \`document\`, \`window\`, or \`fetch\`, rewrite using the sandbox APIs above. The sandbox will reject those globals at runtime with a "not defined" error.
 
 ## YOUR CAPABILITIES
 - Create complete IFC buildings from scratch (walls, slabs, columns, beams, stairs, roofs)
@@ -760,6 +783,25 @@ if (!rows) {
   if (task?.diagnostics && task.diagnostics.length > 0) {
     prompt += `\n\n## ACTIVE DIAGNOSTICS`;
     prompt += `\n${formatDiagnosticsForPrompt(task.diagnostics)}`;
+  }
+
+  if (task?.includeAuthoringContract) {
+    // AI extension authoring contract (RFC §04.5/§11). Deterministic
+    // for a given SDK version so a hosted cache layer hits cleanly.
+    // Inject the live SDK version so the AI emits a compatible
+    // `engines.ifcLiteSdk` range instead of guessing a future major.
+    const sdkVersion = typeof __APP_VERSION__ === 'string' && __APP_VERSION__.length > 0
+      ? __APP_VERSION__
+      : undefined;
+    prompt += `\n\n${buildAuthoringContract({ currentSdkVersion: sdkVersion })}`;
+  }
+
+  if (task?.personalOverlay && task.personalOverlay.trim().length > 0) {
+    // Personal prompt overlay — durable user preferences captured by
+    // the memory loop (RFC §06.4). Cached separately so the rest of
+    // the prompt stays cacheable across users.
+    prompt += `\n\n## PERSONAL CONTEXT (from the user's flavor)`;
+    prompt += `\n${task.personalOverlay.trim()}`;
   }
 
   return prompt;

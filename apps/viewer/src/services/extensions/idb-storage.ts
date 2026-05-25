@@ -1,0 +1,228 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * IndexedDB-backed implementation of @ifc-lite/extensions' `ExtensionStorage`
+ * interface.
+ *
+ * Two object stores:
+ *   - `extensions`         keyed by extension id           → InstalledExtensionRecord
+ *   - `extension-bundles`  keyed by `<id>@<version>` tuple → Uint8Array
+ *
+ * On startup, we open the database, verify both stores exist, and recreate
+ * the database from scratch if anything is missing (mirrors the recovery
+ * pattern used by `services/ifc-cache.ts`).
+ */
+
+import type {
+  ExtensionStorage,
+  InstalledExtensionRecord,
+} from '@ifc-lite/extensions';
+
+const DB_NAME = 'ifc-lite-extensions';
+/**
+ * Bump this when adding/removing/renaming object stores or indexes.
+ * Every new version MUST extend the `onupgradeneeded` switch below
+ * with an idempotent migration step from `event.oldVersion`.
+ */
+const DB_VERSION = 1;
+const STORE_EXT = 'extensions';
+const STORE_BUNDLES = 'extension-bundles';
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+/**
+ * Thrown from any IDB write path when the browser refuses the
+ * operation because the origin's storage quota is exhausted.
+ * Callers (host-installer, host) should catch this specifically and
+ * surface a "free up space / uninstall something" toast — bubbling
+ * the raw `QuotaExceededError` produces a generic console error and
+ * a silent UI.
+ */
+export class ExtensionStorageQuotaError extends Error {
+  readonly cause?: unknown;
+  constructor(operation: string, cause?: unknown) {
+    super(`Browser storage quota exceeded while ${operation}.`);
+    this.name = 'ExtensionStorageQuotaError';
+    this.cause = cause;
+  }
+}
+
+function isQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED';
+}
+
+export class IdbExtensionStorage implements ExtensionStorage {
+  async putExtension(record: InstalledExtensionRecord): Promise<void> {
+    const db = await openDatabase();
+    try {
+      await runStore(db, STORE_EXT, 'readwrite', (store) => store.put(record));
+    } catch (err) {
+      if (isQuotaError(err)) {
+        throw new ExtensionStorageQuotaError(
+          `saving extension record "${record.id}"`,
+          err,
+        );
+      }
+      throw err;
+    }
+  }
+
+  async getExtension(id: string): Promise<InstalledExtensionRecord | undefined> {
+    const db = await openDatabase();
+    return runStore(db, STORE_EXT, 'readonly', (store) => store.get(id))
+      .then((v) => (v ? (v as InstalledExtensionRecord) : undefined));
+  }
+
+  async listExtensions(): Promise<InstalledExtensionRecord[]> {
+    const db = await openDatabase();
+    return runStore<InstalledExtensionRecord[]>(db, STORE_EXT, 'readonly', (store) => store.getAll());
+  }
+
+  async deleteExtension(id: string): Promise<void> {
+    const db = await openDatabase();
+    await runStore(db, STORE_EXT, 'readwrite', (store) => store.delete(id));
+    // Cascade: drop bundles for this extension. We can't use runStore
+    // here — it overwrites req.onsuccess to capture the result, which
+    // clobbers the cursor-iteration handler. Roll our own transaction.
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_BUNDLES, 'readwrite');
+      const store = tx.objectStore(STORE_BUNDLES);
+      const req = store.openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return;
+        const key = String(cursor.key);
+        if (key.startsWith(`${id}@`)) cursor.delete();
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+
+  async putBundle(id: string, version: string, bytes: Uint8Array): Promise<void> {
+    const db = await openDatabase();
+    try {
+      await runStore(db, STORE_BUNDLES, 'readwrite', (store) =>
+        store.put(new Uint8Array(bytes), bundleKey(id, version)),
+      );
+    } catch (err) {
+      if (isQuotaError(err)) {
+        throw new ExtensionStorageQuotaError(
+          `saving bundle bytes for "${id}@${version}" (${bytes.byteLength} bytes)`,
+          err,
+        );
+      }
+      throw err;
+    }
+  }
+
+  async getBundle(id: string, version: string): Promise<Uint8Array | undefined> {
+    const db = await openDatabase();
+    const value = await runStore<Uint8Array | undefined>(
+      db,
+      STORE_BUNDLES,
+      'readonly',
+      (store) => store.get(bundleKey(id, version)),
+    );
+    return value ? new Uint8Array(value) : undefined;
+  }
+
+  async deleteBundle(id: string, version: string): Promise<void> {
+    const db = await openDatabase();
+    await runStore(db, STORE_BUNDLES, 'readwrite', (store) =>
+      store.delete(bundleKey(id, version)),
+    );
+  }
+
+  async clear(): Promise<void> {
+    const db = await openDatabase();
+    await runStore(db, STORE_EXT, 'readwrite', (store) => store.clear());
+    await runStore(db, STORE_BUNDLES, 'readwrite', (store) => store.clear());
+  }
+}
+
+function bundleKey(id: string, version: string): string {
+  return `${id}@${version}`;
+}
+
+function openDatabase(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => {
+      console.error('[extensions/idb] Failed to open database:', request.error);
+      dbPromise = null;
+      reject(request.error);
+    };
+    request.onupgradeneeded = (event) => {
+      const db = request.result;
+      // Migrations are append-only. When DB_VERSION bumps:
+      //   case 1: ... // run v1→v2 migration here (e.g. add an index)
+      //   case 2: ... // run v2→v3 here
+      // The createObjectStore calls below seed a fresh database (when
+      // event.oldVersion is 0) and remain idempotent for users who land
+      // here because recovery deleted the database below.
+      switch (event.oldVersion) {
+        case 0:
+          db.createObjectStore(STORE_EXT, { keyPath: 'id' });
+          db.createObjectStore(STORE_BUNDLES);
+          break;
+        default:
+          // No-op until a v2+ migration exists. Leaving the switch
+          // explicit keeps the contract visible: every future bump
+          // adds its own case.
+          break;
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_EXT) || !db.objectStoreNames.contains(STORE_BUNDLES)) {
+        // Recovery: delete and recreate.
+        db.close();
+        dbPromise = null;
+        const del = indexedDB.deleteDatabase(DB_NAME);
+        del.onsuccess = () => openDatabase().then(resolve).catch(reject);
+        del.onerror = () => reject(new Error('Failed to recreate extensions database.'));
+        // Without onblocked, another tab holding a connection makes the
+        // delete request hang indefinitely and openDatabase() never
+        // resolves. Reject explicitly so the caller can surface the issue.
+        del.onblocked = () => reject(new Error(
+          'Extensions database recreation is blocked by another open tab. Close other tabs and reload.',
+        ));
+        return;
+      }
+      resolve(db);
+    };
+  });
+  return dbPromise;
+}
+
+function runStore<T = unknown>(
+  db: IDBDatabase,
+  storeName: string,
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore) => IDBRequest | void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const tx = db.transaction(storeName, mode);
+    const store = tx.objectStore(storeName);
+    let value: unknown;
+    const req = fn(store);
+    if (req instanceof IDBRequest) {
+      req.onsuccess = () => {
+        value = req.result;
+      };
+      req.onerror = () => reject(req.error);
+    }
+    tx.oncomplete = () => resolve(value as T);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}

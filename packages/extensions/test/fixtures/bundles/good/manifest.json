@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.good-bundle",
+  "name": "Good Bundle",
+  "description": "A complete bundle used for loader tests.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["model.read", "viewer.read"],
+  "activation": ["onCommand:ext.example.good.run"],
+  "contributes": {
+    "commands": [
+      { "id": "ext.example.good.run", "title": "Run" }
+    ],
+    "dock": [
+      {
+        "id": "ext.example.good.panel",
+        "slot": "dock.right",
+        "title": "Good Panel",
+        "widget": "widgets/panel.json"
+      }
+    ],
+    "toolbar": [
+      { "command": "ext.example.good.run", "slot": "toolbar.right" }
+    ]
+  },
+  "entry": {
+    "activate": "src/activate.js",
+    "commands": {
+      "ext.example.good.run": "src/commands/run.js"
+    }
+  }
+}

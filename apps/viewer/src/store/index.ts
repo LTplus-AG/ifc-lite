@@ -29,6 +29,7 @@ import { createDrawing2DSlice, type Drawing2DSlice } from './slices/drawing2DSli
 import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
+import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
@@ -140,7 +141,8 @@ export type ViewerState = LoadingSlice &
   AddElementSlice &
   SplitToolSlice &
   LevelDisplaySlice &
-  PointCloudSlice & {
+  PointCloudSlice &
+  ExtensionsSlice & {
     resetViewerState: () => void;
   };
 
@@ -180,6 +182,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createSplitToolSlice(...args),
   ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
+  ...createExtensionsSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that

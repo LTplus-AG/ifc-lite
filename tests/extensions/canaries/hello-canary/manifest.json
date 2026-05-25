@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 1,
+  "id": "com.ifclite.canary.hello",
+  "name": "Hello Canary",
+  "description": "Smallest possible canary bundle. Verifies the test runner + extension contract still works.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=0.1.0" },
+  "capabilities": [],
+  "activation": ["onCommand:ext.canary.hello.run"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "ext.canary.hello.run",
+        "title": "Canary hello"
+      }
+    ]
+  },
+  "entry": {
+    "commands": {
+      "ext.canary.hello.run": "src/run.js"
+    }
+  },
+  "tests": [
+    {
+      "name": "returns a fixed greeting",
+      "command": "ext.canary.hello.run",
+      "fixture": "empty-model",
+      "expect": {
+        "regex": "^hello-canary$"
+      }
+    }
+  ]
+}

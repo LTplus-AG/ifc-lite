@@ -15,6 +15,11 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useActionLogger } from '@/hooks/useActionLogger';
+import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
+import { isSafeMode } from '@/lib/safe-mode';
+import { ShieldAlert } from 'lucide-react';
+import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
@@ -26,6 +31,7 @@ import { LensPanel } from './LensPanel';
 import { ListPanel } from './lists/ListPanel';
 import { ScriptPanel } from './ScriptPanel';
 import { GanttPanel } from './schedule/GanttPanel';
+import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
 import { DesktopEntitlementBanner } from './DesktopEntitlementBanner';
@@ -45,6 +51,11 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
+  // Bridge viewer state transitions into the extension action log
+  // so the idle pattern miner can surface one-click tool suggestions.
+  useActionLogger();
+  // Show the RFC §06 §7 privacy disclosure on first launch.
+  usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop a
@@ -115,6 +126,8 @@ export function ViewerLayout() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const idsPanelVisible = useViewerStore((s) => s.idsPanelVisible);
   const setIdsPanelVisible = useViewerStore((s) => s.setIdsPanelVisible);
+  const extensionsPanelVisible = useViewerStore((s) => s.extensionsPanelVisible);
+  const setExtensionsPanelVisible = useViewerStore((s) => s.setExtensionsPanelVisible);
   const listPanelVisible = useViewerStore((s) => s.listPanelVisible);
   const setListPanelVisible = useViewerStore((s) => s.setListPanelVisible);
   const lensPanelVisible = useViewerStore((s) => s.lensPanelVisible);
@@ -241,9 +254,21 @@ export function ViewerLayout() {
   }, [theme]);
 
 
+  const safeMode = isSafeMode();
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
+        {safeMode && (
+          <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300">
+            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              Safe mode: extensions and the active flavor are not loaded for this
+              session. Append <code className="font-mono">?safe=0</code> or reload
+              without the flag to resume.
+            </span>
+          </div>
+        )}
         {/* Keyboard Shortcuts Dialog */}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} />
 
@@ -276,8 +301,13 @@ export function ViewerLayout() {
                     if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
                   }}
                 >
-                  <div className="h-full w-full overflow-hidden panel-container">
-                    <HierarchyPanel />
+                  <div className="h-full w-full overflow-hidden panel-container flex flex-col">
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <HierarchyPanel />
+                    </div>
+                    {/* Extension dock.left — collapses when no extension
+                        contributes. Sits beneath the hierarchy panel. */}
+                    <ExtensionDockHost slot="dock.left" className="max-h-[40%] border-t" />
                   </div>
                 </Panel>
 
@@ -316,8 +346,16 @@ export function ViewerLayout() {
                       <IDSPanel onClose={() => setIdsPanelVisible(false)} />
                     ) : bcfPanelVisible ? (
                       <BCFPanel onClose={() => setBcfPanelVisible(false)} />
+                    ) : extensionsPanelVisible ? (
+                      <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
                     ) : (
-                      <PropertiesPanel />
+                      <div className="h-full flex flex-col">
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                          <PropertiesPanel />
+                        </div>
+                        {/* Extension dock.right — collapses when empty. */}
+                        <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
+                      </div>
                     )}
                   </div>
                 </Panel>
@@ -381,7 +419,7 @@ export function ViewerLayout() {
             {/* Mobile Bottom Sheet - Properties, BCF, IDS, or Lists */}
             {!rightPanelCollapsed && (
               <MobileBottomSheet
-                title={activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : activeTool === 'addElement' ? 'Add element' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : 'Properties'}
+                title={activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : activeTool === 'addElement' ? 'Add element' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : extensionsPanelVisible ? 'Extensions' : 'Properties'}
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
@@ -391,6 +429,7 @@ export function ViewerLayout() {
                   if (bcfPanelVisible) setBcfPanelVisible(false);
                   if (lensPanelVisible) setLensPanelVisible(false);
                   if (idsPanelVisible) setIdsPanelVisible(false);
+                  if (extensionsPanelVisible) setExtensionsPanelVisible(false);
                   if (activeAnalysisExtension) closeActiveAnalysisExtension();
                   if (activeTool === 'addElement') setActiveTool('select');
                 }}
@@ -413,6 +452,8 @@ export function ViewerLayout() {
                   <IDSPanel onClose={() => setIdsPanelVisible(false)} />
                 ) : bcfPanelVisible ? (
                   <BCFPanel onClose={() => setBcfPanelVisible(false)} />
+                ) : extensionsPanelVisible ? (
+                  <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
                 ) : (
                   <PropertiesPanel />
                 )}
@@ -452,6 +493,14 @@ export function ViewerLayout() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Extension dock.bottom slot — collapses to nothing when no
+            extension contributes here. */}
+        {!isMobile && (
+          <div className="max-h-[40vh]">
+            <ExtensionDockHost slot="dock.bottom" />
           </div>
         )}
 

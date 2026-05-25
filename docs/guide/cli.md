@@ -590,6 +590,65 @@ ifc-lite bsdd qsets IfcSlab
 
 ---
 
+### `ext` — Extension Toolkit
+
+Author, validate, sign, and run tests against IFClite extensions. The `ext` subcommands are the hand-authoring side of the [Extensions](extensions.md) feature.
+
+```bash
+# Scaffold a starter bundle
+ifc-lite ext init my-tool
+ifc-lite ext init my-tool --id com.example.my-tool --name "My Tool"
+
+# Validate a bundle directory or manifest.json
+ifc-lite ext validate ./my-tool
+ifc-lite ext validate ./my-tool --json
+
+# Pack a directory into a .iflx
+ifc-lite ext pack ./my-tool --out my-tool.iflx
+
+# Run manifest.tests against a bundle
+ifc-lite ext test ./my-tool
+ifc-lite ext test ./my-tool --bail --json
+
+# Generate an Ed25519 keypair for signing
+ifc-lite ext keygen --out ~/.config/ifclite/key --label "Alice"
+
+# Sign a bundle (or pack + sign in one step)
+ifc-lite ext sign ./my-tool --key ~/.config/ifclite/key.private.iflk --out my-tool.iflx
+ifc-lite ext pack ./my-tool --sign --key ~/.config/ifclite/key.private.iflk --out my-tool.iflx
+
+# Verify a .iflx (with optional public-key fingerprint check)
+ifc-lite ext verify my-tool.iflx
+ifc-lite ext verify my-tool.iflx --key ~/.config/ifclite/key.public.iflk --json
+```
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `init <dir>` | Scaffold a minimal valid bundle (manifest, README, one command). |
+| `validate <path>` | Validate a manifest or a bundle directory. |
+| `pack <dir>` | Pack a directory into a `.iflx`, optionally signed. |
+| `test <dir>` | Run `manifest.tests` against an in-process sandbox. Exits non-zero on any failure. |
+| `keygen` | Generate an Ed25519 keypair and write `<prefix>.public.iflk` + `<prefix>.private.iflk` (private file is `0600`). |
+| `sign <bundle>` | Sign a directory or unsigned `.iflx`. |
+| `verify <bundle>` | Inspect a `.iflx` — manifest, files, capabilities, signature. With `--key`, verify the embedded signature matches the expected public key fingerprint. |
+
+**Common flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Machine-readable output (validate / test / verify) |
+| `--bail` | Stop on first test failure (`ext test`) |
+| `--out <file>` | Output path (pack / sign / keygen) |
+| `--key <file>` | Key file path (sign / verify) |
+| `--id <id>` | Override the manifest id during `ext init` |
+| `--name <name>` | Override the manifest name during `ext init` |
+
+The full design lives in [Authoring Extensions](extension-authoring.md). For the security model — capability grammar, sandbox limits, signing semantics — see [the threat-model RFC](../architecture/ai-customization/02-security.md).
+
+---
+
 ### `eval` — Evaluate Expressions
 
 Evaluate JavaScript expressions against the BIM SDK. The `bim` object provides the full `@ifc-lite/sdk` API.
@@ -775,3 +834,4 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `eval` | Evaluate SDK expressions |
 | `run` | Execute scripts against model |
 | `schema` | Dump SDK API schema |
+| `ext` | Author / validate / pack / test / sign IFClite extensions |

@@ -28,7 +28,9 @@ import {
   Loader2,
   ArrowDown,
   Zap,
+  Wrench,
 } from 'lucide-react';
+import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -58,6 +60,12 @@ import { ByokKeyModal } from './chat/ByokKeyModal';
 import { ByokStreamingPill } from './chat/ByokStreamingPill';
 import type { BYOKProvider } from '@/lib/llm/clipboard-detect';
 import { useSandbox } from '@/hooks/useSandbox';
+import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import {
+  classifyIntent,
+  packBundle,
+  validateBundleResponse,
+} from '@ifc-lite/extensions';
 
 // Environment variable for the proxy URL
 const PROXY_URL = import.meta.env.VITE_LLM_PROXY_URL as string || '/api/chat';
@@ -203,6 +211,68 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ onClose }: ChatPanelProps) {
+  const extensionHost = useOptionalExtensionHost();
+  /** Most recent chat classification; surfaced in the status bar as authoring telemetry. */
+  const [authoringTelemetry, setAuthoringTelemetry] = useState<{
+    intent: 'authoring' | 'fork';
+    startedAt: number;
+  } | null>(null);
+  const setPendingAuthoredBundle = useViewerStore((s) => s.setPendingAuthoredBundle);
+  const setExtensionsPanelVisible = useViewerStore((s) => s.setExtensionsPanelVisible);
+  const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);
+  const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
+  const chatToolReady = useViewerStore((s) => s.chatToolReady);
+  const setChatToolReady = useViewerStore((s) => s.setChatToolReady);
+  /**
+   * Local: the inline Promote-to-tool dialog (script path). `source`
+   * is snapshotted from the live editor when the dialog opens — the
+   * dialog is modal so the script can't change underneath it, and
+   * snapshotting avoids re-rendering ChatPanel on every keystroke.
+   */
+  const [promoteFromChat, setPromoteFromChat] = useState<{ open: boolean; source: string }>({
+    open: false,
+    source: '',
+  });
+  /** One-shot guard for the "use the Ideas panel" authoring hint toast. */
+  const authoringHintShownRef = useRef(false);
+
+  /**
+   * Try to parse an authoring response as an extension bundle. If it
+   * validates, pack it and surface a toast linking to the Extensions
+   * panel for the user to review and install. Failures stay silent —
+   * the regular chat flow already showed the response.
+   */
+  const handleAuthoringResponse = useCallback(
+    async (fullText: string): Promise<boolean> => {
+      try {
+        const result = validateBundleResponse(fullText);
+        if (!result.ok || !result.manifest || !result.parsed) return false;
+        // Assemble a Bundle from the parsed pieces, pack it, hand it
+        // to the Extensions panel.
+        const files = new Map<string, { path: string; bytes: Uint8Array; text?: string }>();
+        const encoder = new TextEncoder();
+        const manifestText = JSON.stringify(result.manifest, null, 2);
+        files.set('manifest.json', {
+          path: 'manifest.json',
+          bytes: encoder.encode(manifestText),
+          text: manifestText,
+        });
+        for (const [path, text] of Object.entries(result.parsed.files)) {
+          files.set(path, { path, bytes: encoder.encode(text), text });
+        }
+        const bytes = packBundle({ manifest: result.manifest, files });
+        setPendingAuthoredBundle(bytes);
+        // Drive the inline CTA card instead of relying on a toast the
+        // user scrolls past — the bundle is one click from installed.
+        setChatToolReady({ kind: 'bundle', name: result.manifest.name });
+        return true;
+      } catch (err) {
+        console.warn('[ChatPanel] authoring response parse failed:', err);
+        return false;
+      }
+    },
+    [setPendingAuthoredBundle, setChatToolReady],
+  );
   const messages = useViewerStore((s) => s.chatMessages);
   const status = useViewerStore((s) => s.chatStatus);
   const streamingContent = useViewerStore((s) => s.chatStreamingContent);
@@ -439,6 +509,54 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       setChatError('AI assistant is available with Desktop Pro.');
       return;
     }
+    // Clear any stale post-authoring CTA — this turn re-establishes it
+    // on completion if it's another authoring turn.
+    setChatToolReady(null);
+
+    // Classify the prompt for the action log and to nudge the user
+    // toward plan-first authoring when appropriate. The classifier is
+    // rule-based and content-free metadata only — we record the coarse
+    // intent the message looks like, never the prompt text itself.
+    const classified = options?.intent === 'repair'
+      ? { intent: 'one-shot' as const, confidence: 1, reason: 'repair turn' }
+      : classifyIntent(text, {
+          hasExistingExtension: false,
+          hasLoadedModel: useViewerStore.getState().models.size > 0,
+        });
+    extensionHost?.emitAction('chat.message', {
+      intent: classified.intent === 'out-of-scope' ? 'one-shot' : classified.intent,
+    });
+    // For high-confidence authoring/fork intents, suggest the
+    // plan-first path. Non-blocking — we still send through the
+    // existing chat pipeline so the user always gets a response.
+    if (
+      (classified.intent === 'authoring' || classified.intent === 'fork')
+      && classified.confidence >= 0.75
+      && !options?.intent
+    ) {
+      // Show the "use the Ideas panel" hint at most once per chat
+      // session — a multi-turn authoring conversation shouldn't
+      // re-toast it on every message.
+      if (!authoringHintShownRef.current) {
+        authoringHintShownRef.current = true;
+        toast.info(
+          classified.intent === 'fork'
+            ? 'Heads up: that reads like a fork. Use the Extensions → Ideas panel for diff-based authoring.'
+            : 'Heads up: that reads like an authoring request. The Extensions → Ideas panel offers plan-first authoring.',
+        );
+      }
+      setAuthoringTelemetry({ intent: classified.intent, startedAt: Date.now() });
+    } else if (classified.intent !== 'authoring' && classified.intent !== 'fork') {
+      setAuthoringTelemetry(null);
+    }
+
+    // Authoring turns write code into the Script Editor — open it so
+    // the user watches the tool take shape instead of only seeing
+    // chat text. Chat is *part* of the authoring surface, not a
+    // detour away from it.
+    if (classified.intent === 'authoring' || classified.intent === 'fork') {
+      setScriptPanelVisible(true);
+    }
 
     // Resolve the stream route BEFORE any user-visible side effects (adding
     // the user message, clearing attachments, setting sending state). If the
@@ -528,6 +646,19 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     const fileAttachments = supportsFileAttachments
       ? collectActiveFileAttachments(allMessages, filtered.accepted)
       : [];
+    // Personal prompt overlay from the active flavor (RFC §06.4) —
+    // durable user preferences appended to the system prompt. Best
+    // effort: a missing host / flavor / overlay just omits it.
+    let personalOverlay: string | undefined;
+    if (extensionHost) {
+      try {
+        const activeFlavor = await extensionHost.flavors.getActive();
+        const content = activeFlavor?.promptOverlay?.content?.trim();
+        if (content) personalOverlay = content;
+      } catch {
+        // Overlay is non-essential — never block a chat turn on it.
+      }
+    }
     const systemPrompt = buildSystemPrompt(modelContext, fileAttachments, {
       content: liveScriptContext.content,
       revision: liveScriptContext.revision,
@@ -535,6 +666,13 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     }, {
       userPrompt: text.trim(),
       diagnostics: effectiveDiagnostics,
+      // Include the extension-authoring contract when the classifier
+      // flagged the turn as authoring/fork — the LLM gets the manifest
+      // schema, widget DSL, and capability catalogue in context so it
+      // can emit a valid bundle.
+      includeAuthoringContract:
+        classified.intent === 'authoring' || classified.intent === 'fork',
+      personalOverlay,
     });
     const contextWindow = activeModelInfo?.contextWindow ?? 128_000;
     const inputBudget = Math.max(
@@ -815,6 +953,43 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           }
         }
 
+        // Authoring loop: when the classifier flagged this turn as
+        // 'authoring' or 'fork', the response may contain a bundle in
+        // the ifc-extension-* fenced format. If it does, surface the
+        // bundle CTA. If it doesn't but code landed in the editor,
+        // surface the script CTA so "promote to tool" is one click
+        // away — the user never has to hunt for the Promote button.
+        //
+        // Offer the script-path install CTA whenever the assistant
+        // produced runnable code this turn — NOT only on authoring-
+        // classified turns. The classifier tags follow-up messages
+        // ("yes, use Pset_DoorCommon") as one-shot, but that's often
+        // the turn where the final code lands. A one-shot script is
+        // just as promotable as an "authored" one.
+        const offerScriptInstall = () => {
+          if (options?.intent === 'repair') return;
+          const wroteCode = responseEditState.appliedAny || responseEditState.fallbackApplied;
+          const code = useViewerStore.getState().scriptEditorContent;
+          const hasRealCode =
+            code.trim().length > 0 && !/Write your BIM script here/.test(code);
+          if (wroteCode && hasRealCode) {
+            setChatToolReady({ kind: 'script', name: '' });
+          }
+        };
+
+        if (
+          (classified.intent === 'authoring' || classified.intent === 'fork')
+          && !options?.intent
+        ) {
+          // Authoring-classified turn — try the bundle path first; if
+          // no bundle was emitted, fall back to the script CTA.
+          void handleAuthoringResponse(fullText).then((bundleFound) => {
+            if (!bundleFound) offerScriptInstall();
+          });
+        } else {
+          offerScriptInstall();
+        }
+
         commitAssistantTurn();
     };
     const handleUsageInfo = (info: UsageInfo) => {
@@ -884,7 +1059,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     canUseAiAssistant, status, activeModel, attachments,
     addMessage, setChatStatus, updateStreaming, finalizeAssistant,
     setChatError, setChatAbortController, clearAttachments, setChatUsage, resizeInput,
-    buildRepairPromptFromLiveState, triggerAutoRepair, execute,
+    buildRepairPromptFromLiveState, triggerAutoRepair, execute, extensionHost,
+    setChatToolReady, handleAuthoringResponse, setScriptPanelVisible,
   ]);
 
   const handleSend = useCallback(() => {
@@ -994,20 +1170,24 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     if (messages.length <= 2) {
       resetScriptEditorForNewChat();
       clearMessages();
+      setChatToolReady(null);
+      authoringHintShownRef.current = false;
       setInputText('');
       setLastFinishReason(null);
     } else {
       setShowClearConfirm(true);
     }
-  }, [messages.length, clearMessages, resetScriptEditorForNewChat]);
+  }, [messages.length, clearMessages, resetScriptEditorForNewChat, setChatToolReady]);
 
   const confirmClear = useCallback(() => {
     resetScriptEditorForNewChat();
     clearMessages();
+    setChatToolReady(null);
+    authoringHintShownRef.current = false;
     setInputText('');
     setLastFinishReason(null);
     setShowClearConfirm(false);
-  }, [clearMessages, resetScriptEditorForNewChat]);
+  }, [clearMessages, resetScriptEditorForNewChat, setChatToolReady]);
 
   // ── File upload (button + drag-drop + paste) ──
   const processFiles = useCallback(async (files: FileList | File[]) => {
@@ -1260,6 +1440,16 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
         <ModelSelector />
         <ByokStreamingPill modelId={activeModel} className="ml-1" />
+        {authoringTelemetry && (
+          <span
+            className="ml-1 text-[10px] uppercase tracking-wide font-semibold bg-primary/15 text-primary rounded px-1.5 py-0.5"
+            title={`Authoring contract attached (${authoringTelemetry.intent})`}
+          >
+            {authoringTelemetry.intent === 'fork' ? 'Fork' : 'Authoring'}
+            {' · '}
+            {Math.round((Date.now() - authoringTelemetry.startedAt) / 1000)}s
+          </span>
+        )}
         <div className="flex-1" />
 
         <Tooltip>
@@ -1395,6 +1585,56 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             <span className="text-xs">Thinking...</span>
           </div>
         )}
+
+        {/* Post-authoring install CTA — rendered INLINE at the end of
+            the conversation, directly under the generated code, so the
+            "now install it" step is impossible to miss. Highlighted
+            (ring + accent) the moment a workflow is authored. */}
+        {chatToolReady && status === 'idle' && (
+          <div className="mx-3 my-3 rounded-lg border-2 border-primary bg-primary/10 p-3 shadow-sm ring-2 ring-primary/30">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Wrench className="h-4 w-4" />
+              </div>
+              <div className="text-sm font-semibold">
+                {chatToolReady.kind === 'bundle'
+                  ? `"${chatToolReady.name || 'Your extension'}" is ready`
+                  : 'Your tool is ready'}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mb-2.5 pl-9">
+              Last step — turn this into a permanent{' '}
+              <span className="font-medium text-foreground">one-click button in your toolbar</span>.
+            </p>
+            <div className="flex items-center gap-2 pl-9">
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (chatToolReady.kind === 'bundle') {
+                    setExtensionsRequestedView('installed');
+                    setExtensionsPanelVisible(true);
+                  } else {
+                    setPromoteFromChat({
+                      open: true,
+                      source: useViewerStore.getState().scriptEditorContent,
+                    });
+                  }
+                  setChatToolReady(null);
+                }}
+              >
+                <Wrench className="mr-1 h-3.5 w-3.5" />
+                {chatToolReady.kind === 'bundle' ? 'Review & install' : 'Install as tool'}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setChatToolReady(null)}
+              >
+                Not now
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Scroll to bottom button */}
@@ -1468,6 +1708,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           ))}
         </div>
       )}
+
+      {/* Promote-to-tool dialog, opened from the post-authoring CTA.
+          `source` was snapshotted from the editor at open time. */}
+      <PromoteToolDialog
+        open={promoteFromChat.open}
+        source={promoteFromChat.source}
+        onClose={() => setPromoteFromChat((p) => ({ ...p, open: false }))}
+      />
 
       {/* Input area */}
       <div className="shrink-0 border-t p-2">

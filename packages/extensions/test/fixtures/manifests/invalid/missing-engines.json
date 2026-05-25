@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.bad",
+  "name": "Missing Engines",
+  "description": "...",
+  "version": "1.0.0",
+  "capabilities": ["model.read"],
+  "activation": ["onStartup"],
+  "entry": {}
+}

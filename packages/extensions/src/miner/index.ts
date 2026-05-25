@@ -1,0 +1,26 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+export type {
+  IntentSequence,
+  MinedPattern,
+  SequenceMinerOptions,
+  ScoringOptions,
+} from './types.js';
+export { mineSequences, splitSessions } from './sequence.js';
+export { scorePattern, scorePatterns, topPatterns } from './score.js';
+export { planFromPattern } from './plan-stub.js';
+export {
+  IdleMineScheduler,
+  type IdleSchedulerOptions,
+  type MineEvent,
+} from './scheduler.js';
+export {
+  filterAgainstInstalled,
+  type InstalledExtensionSummary,
+} from './filter.js';
+export {
+  STARTER_IDEAS,
+  type StarterIdea,
+} from './starter-ideas.js';

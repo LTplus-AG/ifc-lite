@@ -130,6 +130,11 @@ nav:
     - 2D Drawings: guide/drawing-2d.md
     - Property Editing: guide/mutations.md
     - Performance: guide/performance.md
+  - Customization:
+    - Extensions: guide/extensions.md
+    - Authoring Extensions: guide/extension-authoring.md
+    - Flavors: guide/flavors.md
+    - Privacy: guide/privacy.md
   - Architecture:
     - Overview: architecture/overview.md
     - Data Flow: architecture/data-flow.md

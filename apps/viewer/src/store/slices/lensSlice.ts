@@ -128,6 +128,13 @@ export interface LensSlice {
   getActiveLens: () => Lens | null;
   /** Import lenses from parsed JSON array */
   importLenses: (lenses: Lens[]) => void;
+  /**
+   * Replace the entire saved-lens set (custom + builtin overrides). Used
+   * when activating a flavor: the flavor's stored lens snapshot becomes
+   * the new viewer state. Builtins missing from `lenses` are restored
+   * from defaults so the user never ends up with an empty lens panel.
+   */
+  setSavedLenses: (lenses: Lens[]) => void;
   /** Export all lenses (builtins + custom) as serializable array */
   exportLenses: () => Lens[];
   /** Create and activate an auto-color lens from a data column spec */
@@ -209,6 +216,27 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
       return out;
     });
   },
+
+  setSavedLenses: (lenses) => set((state) => {
+    // Keep builtins available even if the incoming snapshot dropped
+    // them — otherwise switching flavors could leave the user with no
+    // BY IFC CLASS / STRUCTURAL / etc. The incoming list takes
+    // precedence (it may carry user overrides).
+    const incomingIds = new Set(lenses.map((l) => l.id));
+    const builtinsToKeep = BUILTIN_LENSES
+      .filter((b) => !incomingIds.has(b.id))
+      .map((b) => ({ ...b }));
+    const next = [...builtinsToKeep, ...lenses];
+    saveLenses(next);
+    // If the previously active lens id is gone, clear the pointer so
+    // the viewer doesn't try to render a missing rule set.
+    const activeStillThere = state.activeLensId !== null
+      && next.some((l) => l.id === state.activeLensId);
+    return {
+      savedLenses: next,
+      activeLensId: activeStillThere ? state.activeLensId : null,
+    };
+  }),
 
   activateAutoColorFromColumn: (spec, label) => set((state) => {
     const lensId = AUTO_COLOR_FROM_LIST_ID;

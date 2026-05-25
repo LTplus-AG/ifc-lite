@@ -16,6 +16,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { getModelById } from './models.js';
+import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 
@@ -85,7 +86,12 @@ export async function streamAnthropicChat(
       model,
       max_tokens: 8192,
       ...(sendSamplingParams ? { temperature: 0.3 } : {}),
-      system: system || undefined,
+      // Wrap the system prompt in an ephemeral cache block when it's
+      // long enough to be worth caching (Anthropic's minimum is ~1024
+      // tokens, ≈ 4 KiB). Authoring turns ship the manifest schema +
+      // widget DSL contract which is well over the threshold; one-shot
+      // turns fall under it and pass through as plain string.
+      system: buildCacheableSystem(system),
       messages: toAnthropicMessages(messages),
     });
 
@@ -104,6 +110,10 @@ export async function streamAnthropicChat(
     const finalMessage = await stream.finalMessage();
 
     if (signal?.aborted) return;
+
+    // Surface cache hit/miss numbers in dev tools so we can see
+    // whether the authoring contract is paying off.
+    logCacheHit(finalMessage.usage as { cache_creation_input_tokens?: number; cache_read_input_tokens?: number });
 
     const stopReason = finalMessage.stop_reason;
     onFinishReason?.(stopReason === 'end_turn' ? 'stop' : stopReason);

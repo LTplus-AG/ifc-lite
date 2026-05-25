@@ -1,0 +1,25 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.command-only",
+  "name": "Command Only",
+  "description": "Extension that contributes a single command.",
+  "version": "0.2.1",
+  "engines": { "ifcLiteSdk": "^2.4.0" },
+  "capabilities": ["model.read", "viewer.read"],
+  "activation": ["onCommand:ext.example.cmd.hello"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "ext.example.cmd.hello",
+        "title": "Say Hello",
+        "icon": "Sparkles",
+        "paletteCategory": "Examples"
+      }
+    ]
+  },
+  "entry": {
+    "commands": {
+      "ext.example.cmd.hello": "src/commands/hello.js"
+    }
+  }
+}

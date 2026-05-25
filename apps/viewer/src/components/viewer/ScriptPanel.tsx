@@ -29,6 +29,7 @@ import {
   PanelRightOpen,
   Undo2,
   Redo2,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -57,6 +58,8 @@ import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { navigateToPath } from '@/services/app-navigation';
 import { CodeEditor } from './CodeEditor';
 import { ChatPanel } from './ChatPanel';
+import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
+import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import type { LogEntry } from '@/store/slices/scriptSlice';
 
 interface ScriptPanelProps {
@@ -87,6 +90,8 @@ function useScriptState() {
   const undoScriptEditor = useViewerStore((s) => s.undoScriptEditor);
   const redoScriptEditor = useViewerStore((s) => s.redoScriptEditor);
   const queueChatRepairRequest = useViewerStore((s) => s.queueChatRepairRequest);
+  const chatToolReady = useViewerStore((s) => s.chatToolReady);
+  const setChatToolReady = useViewerStore((s) => s.setChatToolReady);
 
   return {
     editorContent,
@@ -111,6 +116,8 @@ function useScriptState() {
     undoScriptEditor,
     redoScriptEditor,
     queueChatRepairRequest,
+    chatToolReady,
+    setChatToolReady,
   };
 }
 
@@ -138,9 +145,12 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
     undoScriptEditor,
     redoScriptEditor,
     queueChatRepairRequest,
+    chatToolReady,
+    setChatToolReady,
   } = useScriptState();
 
   const { execute, reset } = useSandbox();
+  const extensionHost = useOptionalExtensionHost();
   const [outputCollapsed, setOutputCollapsed] = useState(false);
   const chatPanelVisible = useViewerStore((s) => s.chatPanelVisible);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
@@ -218,8 +228,13 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
 
   const handleRun = useCallback(async () => {
     if (executionState === 'running') return;
+    const startedAt = performance.now();
     await execute(editorContent);
-  }, [execute, editorContent, executionState]);
+    extensionHost?.emitAction('script.execute', {
+      templateId: activeScriptId ?? undefined,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  }, [execute, editorContent, executionState, extensionHost, activeScriptId]);
 
   const handleSave = useCallback(() => {
     if (activeScriptId) {
@@ -232,6 +247,9 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
   const handleNew = useCallback((name: string, code?: string) => {
     createScript(name, code);
   }, [createScript]);
+
+  const [promoteOpen, setPromoteOpen] = useState(false);
+  const canPromote = !!extensionHost && editorContent.trim().length > 0;
 
   const handleDeleteConfirm = useCallback(() => {
     if (deleteConfirmId) {
@@ -330,6 +348,47 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
           )}
         </div>
 
+        {/* Post-authoring "install as tool" banner — surfaces right
+            where the AI-written code lands so the user never has to
+            hunt for the Promote button. Highlighted (accent fill +
+            ring) so the install step reads as the obvious next move,
+            not a faint afterthought. */}
+        {chatToolReady?.kind === 'script' && (
+          <div className="shrink-0 border-b bg-primary/15 px-3 py-2.5 ring-1 ring-inset ring-primary/40">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Wrench className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold">This script is ready</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Install it as a one-click button in your toolbar.
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setPromoteOpen(true);
+                  setChatToolReady(null);
+                }}
+                className="shrink-0"
+              >
+                <Wrench className="mr-1 h-3.5 w-3.5" />
+                Install as tool
+              </Button>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => setChatToolReady(null)}
+                aria-label="Dismiss"
+                className="shrink-0"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="flex items-center gap-1 px-2 py-1 border-b shrink-0">
           <Tooltip>
@@ -355,6 +414,29 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
               </Button>
             </TooltipTrigger>
             <TooltipContent>Save (Ctrl+S)</TooltipContent>
+          </Tooltip>
+
+          {/* Save-as-tool — the explicit, always-visible bridge from a
+              one-shot script to a persistent toolbar button. A labelled
+              outline button (not a buried icon) so the "keep this"
+              step is discoverable without nagging. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPromoteOpen(true)}
+                disabled={!canPromote}
+                aria-label="Save this script as a persistent tool"
+                className="gap-1"
+              >
+                <Wrench className="h-3.5 w-3.5" />
+                Save as tool
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Turn this script into a permanent one-click button in your toolbar
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -479,6 +561,16 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                     <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
                     <div className="min-w-0">
                       <span className="whitespace-pre-wrap break-all">{lastError}</span>
+                      {/* Sandbox-globals hint — when the error names a
+                          browser-context API the sandbox doesn't expose,
+                          surface a one-line cue so the user understands
+                          why the rewrite is needed before clicking Fix. */}
+                      {/(document|window|navigator|location|fetch|XMLHttpRequest|localStorage|indexedDB|setTimeout|setInterval) is not defined/.test(lastError) && (
+                        <div className="mt-1 text-[11px] text-muted-foreground font-sans">
+                          Scripts run in a QuickJS sandbox — no DOM, no <code className="font-mono">fetch</code>, no browser globals.
+                          Use <code className="font-mono">bim.*</code> APIs for viewer / data / export side-effects.
+                        </div>
+                      )}
                       <div className="mt-1">
                         <Button
                           variant="outline"
@@ -555,6 +647,18 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {promoteOpen && extensionHost && (
+        <PromoteToolDialog
+          open={promoteOpen}
+          source={editorContent}
+          initialName={
+            savedScripts.find((s) => s.id === activeScriptId)?.name
+            ?? 'My tool'
+          }
+          onClose={() => setPromoteOpen(false)}
+        />
+      )}
     </div>
   );
 }

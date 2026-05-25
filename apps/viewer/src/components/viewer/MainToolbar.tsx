@@ -24,11 +24,9 @@ import {
   ArrowRight,
   Box,
   HelpCircle,
-  Sparkles,
   Loader2,
   Camera,
   Info,
-  Layers,
   Layers2,
   SquareX,
   Building2,
@@ -36,6 +34,7 @@ import {
   PackagePlus,
   MessageSquare,
   ClipboardCheck,
+  Puzzle,
   Palette,
   Orbit,
   Layout,
@@ -85,6 +84,7 @@ import { useFloorplanView } from '@/hooks/useFloorplanView';
 import { buildDesktopUpgradeUrl, hasDesktopFeatureAccess, type DesktopFeature } from '@/lib/desktop-product';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { ThemeSwitch } from './ThemeSwitch';
+import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { toast } from '@/components/ui/toast';
 import { navigateToPath } from '@/services/app-navigation';
 import { getStartupHarnessRequest, setActiveHarnessRequest, tryClaimStartupHarnessRequest } from '@/services/desktop-harness';
@@ -497,6 +497,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const editEnabled = useViewerStore((state) => state.editEnabled);
   const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
+  const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
@@ -528,6 +529,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // Lens state
   const lensPanelVisible = useViewerStore((state) => state.lensPanelVisible);
   const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
+  const extensionsPanelVisible = useViewerStore((state) => state.extensionsPanelVisible);
+  const setExtensionsPanelVisible = useViewerStore((state) => state.setExtensionsPanelVisible);
   const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
@@ -723,6 +726,12 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
 
   const hasSelection = selectedEntityId !== null;
+  // Selection chip uses the multi-select size when present; falls back
+  // to the single legacy `selectedEntityId` so the chip still says
+  // "1 selected" for the click-to-pick flow that hasn't migrated.
+  const selectionCount = selectedEntityIds.size > 0
+    ? selectedEntityIds.size
+    : (selectedEntityId !== null ? 1 : 0);
 
   const clearSelection = useViewerStore((state) => state.clearSelection);
 
@@ -789,7 +798,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'addElement') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'addElement' | 'extensions') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -799,16 +808,21 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (panel === 'ids' && !requireDesktopFeature('ids_validation', 'IDS validation')) {
       return;
     }
+    if (panel === 'extensions' && !requireDesktopFeature('extensions', 'Extensions')) {
+      return;
+    }
 
     const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
     const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
     const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
+    const nextExtensionsVisible = panel === 'extensions' ? !extensionsPanelVisible : false;
     const isAddElementActive = activeTool === 'addElement';
     const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
 
     setBcfPanelVisible(nextBcfVisible);
     setIdsPanelVisible(nextIdsVisible);
     setLensPanelVisible(nextLensVisible);
+    setExtensionsPanelVisible(nextExtensionsVisible);
 
     if (panel === 'addElement') {
       setActiveTool(nextAddElementActive ? 'addElement' : 'select');
@@ -816,18 +830,20 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       setActiveTool('select');
     }
 
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextAddElementActive) {
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextExtensionsVisible || nextAddElementActive) {
       setRightPanelCollapsed(false);
     }
   }, [
     activeAnalysisExtension?.placement,
     activeTool,
     bcfPanelVisible,
+    extensionsPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
     requireDesktopFeature,
     setActiveTool,
     setBcfPanelVisible,
+    setExtensionsPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
     setRightPanelCollapsed,
@@ -860,6 +876,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setBcfPanelVisible(false);
     setIdsPanelVisible(false);
     setLensPanelVisible(false);
+    setExtensionsPanelVisible(false);
     // The right slot is single-tenant: when an analysis extension takes
     // it over, the AddElement tool must release it too, otherwise its 3D
     // click handler keeps placing elements behind the extension panel.
@@ -873,6 +890,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     analysisExtensionState.extensions,
     setActiveTool,
     setBcfPanelVisible,
+    setExtensionsPanelVisible,
     setGanttPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
@@ -889,6 +907,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
+    if (extensionsPanelVisible) panels.add('extensions');
     if (activeTool === 'addElement') panels.add('addElement');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
@@ -896,6 +915,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     activeTool,
     analysisExtensionState.activeId,
     bcfPanelVisible,
+    extensionsPanelVisible,
     ganttPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
@@ -912,6 +932,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
+    if (activeWorkspacePanels.has('extensions')) return 'Extensions';
     if (activeWorkspacePanels.has('addElement')) return 'Add Element';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
@@ -1216,6 +1237,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <TooltipContent>{workspacePanelLabel ? `Panels: ${workspacePanelLabel}` : 'Panels'}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Workspace
+          </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('script')}
             onCheckedChange={() => handleToggleBottomPanel('script')}
@@ -1238,6 +1262,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             Schedule (Gantt)
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Inspect & validate
+          </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('bcf')}
             onCheckedChange={() => handleToggleRightPanel('bcf')}
@@ -1259,6 +1286,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Palette className="h-4 w-4 mr-2" />
             Lens Rules
           </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Author
+          </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('addElement')}
             onCheckedChange={() => handleToggleRightPanel('addElement')}
@@ -1266,9 +1297,19 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <PackagePlus className="h-4 w-4 mr-2" />
             Add Element
           </DropdownMenuCheckboxItem>
-          {rightAnalysisExtensions.length > 0 && (
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('extensions')}
+            onCheckedChange={() => handleToggleRightPanel('extensions')}
+          >
+            <Puzzle className="h-4 w-4 mr-2" />
+            Extensions
+          </DropdownMenuCheckboxItem>
+          {(rightAnalysisExtensions.length > 0 || bottomAnalysisExtensions.length > 0) && (
             <>
               <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Analysis extensions
+              </DropdownMenuLabel>
               {rightAnalysisExtensions.map((extension) => {
                 const Icon = extension.icon;
                 return (
@@ -1282,11 +1323,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                   </DropdownMenuCheckboxItem>
                 );
               })}
-            </>
-          )}
-          {bottomAnalysisExtensions.length > 0 && (
-            <>
-              <DropdownMenuSeparator />
               {bottomAnalysisExtensions.map((extension) => {
                 const Icon = extension.icon;
                 return (
@@ -1438,17 +1474,42 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </TooltipContent>
       </Tooltip>
 
-      <ActionButton icon={Equal} label="Isolate (Set Basket)" onClick={handleIsolate} shortcut="I / =" />
-      <ActionButton icon={EyeOff} label="Hide Selection" onClick={handleHide} shortcut="Del / Space" disabled={!hasSelection} />
+      {/*
+        Selection action cluster — Hide / Frame / Isolate only make
+        sense with a selection, so they don't get to live in the
+        toolbar chrome at rest. When a user selects anything, the
+        slot opens with a "N selected" pill + the three actions next
+        to it. Hotkeys (Del / F / I / =) keep working regardless of
+        whether the chip is rendered, so power users feel no change.
+
+        The chip lives in the same separator zone the buttons used to
+        occupy so the spatial location is familiar to muscle memory.
+      */}
+      {selectionCount > 0 && (
+        <div
+          className="flex items-center gap-0.5 pl-1.5 pr-0.5 rounded-md border border-primary/30 bg-primary/5 transition-opacity duration-150"
+          role="group"
+          aria-label={`Selection actions — ${selectionCount} selected`}
+        >
+          <span
+            className="text-[10px] font-semibold tabular-nums text-primary uppercase tracking-wide whitespace-nowrap pr-1.5"
+            aria-hidden="true"
+          >
+            {selectionCount} sel
+          </span>
+          <ActionButton icon={Equal} label="Isolate Selection (Set Basket)" onClick={handleIsolate} shortcut="I / =" />
+          <ActionButton icon={EyeOff} label="Hide Selection" onClick={handleHide} shortcut="Del / Space" />
+          <ActionButton
+            icon={Crosshair}
+            label="Frame Selection"
+            onClick={() => cameraCallbacks.frameSelection?.()}
+            shortcut="F"
+          />
+        </div>
+      )}
+
       <ActionButton icon={Eye} label="Show All (Reset Filters)" onClick={handleShowAll} shortcut="A" />
       <ActionButton icon={Maximize2} label="Fit All" onClick={() => cameraCallbacks.fitAll?.()} shortcut="Z" />
-      <ActionButton
-        icon={Crosshair}
-        label="Frame Selection"
-        onClick={() => cameraCallbacks.frameSelection?.()}
-        shortcut="F"
-        disabled={!hasSelection}
-      />
 
       <DropdownMenu>
         <Tooltip>
@@ -1465,7 +1526,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 aria-label={mergeLayers ? 'Class Visibility (Merge Multilayer Walls is on)' : 'Class Visibility'}
                 className="relative"
               >
-                <Layers className="h-4 w-4" />
+                <Filter className="h-4 w-4" />
                 {mergeLayers && (
                   // Tiny accent dot announcing that a non-default load
                   // setting is active. Decorative — semantics live on
@@ -1551,29 +1612,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       {/* ── Camera & View ── */}
       <ActionButton icon={Home} label="Home (Isometric + Reset Visibility)" onClick={handleHome} shortcut="H" />
 
-      {/* Orthographic / Perspective toggle */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={projectionMode === 'orthographic' ? 'default' : 'ghost'}
-            size="icon-sm"
-            onClick={(e) => {
-              (e.currentTarget as HTMLButtonElement).blur();
-              toggleProjectionMode();
-            }}
-            className={cn(projectionMode === 'orthographic' && 'bg-primary text-primary-foreground')}
-          >
-            <Orbit className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {projectionMode === 'orthographic' ? 'Switch to Perspective' : 'Switch to Orthographic'}
-        </TooltipContent>
-      </Tooltip>
-
-      {/* Cesium 3D Context toggle — web only, only when model has georeferencing */}
+      {/*
+        Cesium 3D World Context — sits next to Home as a raw button so
+        the world-context affordance is one click away when a model has
+        georeferencing. When active, the "Move georeference" sub-toggle
+        appears beside it (its amber tint signals a modal pose whose
+        exit affordance must stay visible).
+      */}
       {cesiumAvailable && !desktopShell && (
-        <div className="flex items-center gap-1">
+        <>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -1622,46 +1669,40 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               </TooltipContent>
             </Tooltip>
           )}
-        </div>
+        </>
       )}
 
-      {/* Hover Tooltips toggle */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={hoverTooltipsEnabled ? 'default' : 'ghost'}
-            size="icon-sm"
-            onClick={(e) => {
-              (e.currentTarget as HTMLButtonElement).blur();
-              toggleHoverTooltips();
-            }}
-            className={cn(hoverTooltipsEnabled && 'bg-primary text-primary-foreground')}
-          >
-            <Info className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {hoverTooltipsEnabled ? 'Disable' : 'Enable'} Hover Tooltips
-        </TooltipContent>
-      </Tooltip>
-
-      {/* Preset Views dropdown */}
+      {/*
+        Consolidated View dropdown — holds projection toggle, preset
+        views, and hover tooltips. These are "view options" the user
+        reaches for occasionally, and rendering each as a raw icon
+        button used to dominate the toolbar's right half. Cesium stayed
+        inline (above) because the world-context overlay is a primary
+        affordance, not a tucked-away view setting.
+      */}
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm">
+              <Button
+                variant={(projectionMode === 'orthographic' || hoverTooltipsEnabled) ? 'default' : 'ghost'}
+                size="icon-sm"
+                aria-label="View options"
+                className={cn((projectionMode === 'orthographic' || hoverTooltipsEnabled) && 'bg-primary text-primary-foreground')}
+              >
                 <Grid3x3 className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>Preset Views</TooltipContent>
+          <TooltipContent>View options</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Preset views
+          </DropdownMenuLabel>
           <DropdownMenuItem onClick={handleHome}>
             <Box className="h-4 w-4 mr-2" /> Isometric <span className="ml-auto text-xs opacity-60">H</span>
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('top')}>
             <ArrowUp className="h-4 w-4 mr-2" /> Top <span className="ml-auto text-xs opacity-60">1</span>
           </DropdownMenuItem>
@@ -1680,11 +1721,36 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <DropdownMenuItem onClick={() => cameraCallbacks.setPresetView?.('right')}>
             <ArrowRight className="h-4 w-4 mr-2" /> Right <span className="ml-auto text-xs opacity-60">6</span>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Projection
+          </DropdownMenuLabel>
+          <DropdownMenuCheckboxItem
+            checked={projectionMode === 'orthographic'}
+            onCheckedChange={() => toggleProjectionMode()}
+          >
+            <Orbit className="h-4 w-4 mr-2" />
+            Orthographic
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Helpers
+          </DropdownMenuLabel>
+          <DropdownMenuCheckboxItem
+            checked={hoverTooltipsEnabled}
+            onCheckedChange={() => toggleHoverTooltips()}
+          >
+            <Info className="h-4 w-4 mr-2" />
+            Hover tooltips
+          </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Extension toolbar contributions (right-aligned) */}
+      <ExtensionToolbarSlot slot="toolbar.right" />
 
       {/* Loading Progress */}
       {loading && (geometryProgress || metadataProgress || progress) && (
@@ -1711,26 +1777,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <span className="text-xs text-destructive mr-4">{error}</span>
       )}
 
-      {/* Right Side Actions */}
+      {/* Right Side Actions — /mcp moved to the Info dialog header so
+          the toolbar's meta cluster stays focused on shell chrome
+          (Settings · Theme · Help). */}
       <div className="flex items-center gap-2 ml-2 pl-2 border-l border-zinc-200 dark:border-zinc-700/60">
-        {/* /mcp cross-link — lives in the meta cluster (Settings / Theme /
-            Help) so it shares space with shell-level navigation rather
-            than competing with the modeling tools to its left. */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full"
-              onClick={() => navigateToPath('/mcp')}
-              aria-label="Open ifc-lite MCP"
-            >
-              <Sparkles className="!h-[20px] !w-[20px]" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Drive ifc-lite from any LLM (MCP)</TooltipContent>
-        </Tooltip>
-
         {desktopShell ? (
           <Tooltip>
             <TooltipTrigger asChild>

@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1,
+  "id": "com.example.bad",
+  "name": "Bad Capability",
+  "description": "Has an unknown scope.",
+  "version": "1.0.0",
+  "engines": { "ifcLiteSdk": ">=2.0.0" },
+  "capabilities": ["foo.bar"],
+  "activation": ["onStartup"],
+  "entry": {}
+}

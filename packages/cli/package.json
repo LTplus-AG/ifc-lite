@@ -38,7 +38,8 @@
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/mcp": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
-    "@ifc-lite/viewer-core": "workspace:^"
+    "@ifc-lite/viewer-core": "workspace:^",
+    "@ifc-lite/extensions": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

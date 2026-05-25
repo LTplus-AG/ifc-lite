@@ -18,6 +18,7 @@ import { SettingsPage } from './components/viewer/SettingsPage';
 import { McpLanding } from './components/mcp/McpLanding';
 import { McpPlayground } from './components/mcp/McpPlayground';
 import { BimProvider } from './sdk/BimProvider';
+import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
 import { Toaster } from './components/ui/toast';
 import { useEffect, useState } from 'react';
 
@@ -61,8 +62,10 @@ export function App() {
 
   return (
     <BimProvider>
-      {pathname === '/settings' ? <SettingsPage /> : <ViewerLayout />}
-      <Toaster />
+      <ExtensionHostProvider>
+        {pathname === '/settings' ? <SettingsPage /> : <ViewerLayout />}
+        <Toaster />
+      </ExtensionHostProvider>
     </BimProvider>
   );
 }

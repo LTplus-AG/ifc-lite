@@ -110,23 +110,61 @@ export class Sandbox {
     this.evalStartTime = Date.now();
 
     const result = this.vm.evalCode(jsCode, options?.filename ?? 'script.js');
+
+    // Drain the QuickJS job queue. Promise callbacks and `async`
+    // function bodies are scheduled as jobs — without this, an entry
+    // wrapped as `async function run()` returns a pending promise and
+    // its body never executes (the tool "succeeds" in 1ms doing
+    // nothing). executePendingJobs runs them to completion.
+    if (this.runtime) {
+      try {
+        this.runtime.executePendingJobs();
+      } catch {
+        // A job that throws must not abort the eval result handling.
+      }
+    }
+
     const durationMs = Date.now() - this.evalStartTime;
     this.evalStartTime = 0;
 
+    // Disposing an eval-result handle must never crash the run. If the
+    // realm became invalid mid-eval, `.dispose()` throws "Lifetime not
+    // alive" — swallow that so the real error (or value) still gets
+    // through instead of being masked by a teardown failure.
+    const safeDispose = (h: { dispose(): void } | undefined): void => {
+      if (!h) return;
+      try { h.dispose(); } catch { /* handle already dead — nothing to free */ }
+    };
+
     if (result.error) {
-      const errorData = this.vm.dump(result.error);
-      result.error.dispose();
+      let errorData: unknown;
+      try {
+        errorData = this.vm.dump(result.error);
+      } catch (dumpErr) {
+        errorData = { message: dumpErr instanceof Error ? dumpErr.message : String(dumpErr) };
+      }
+      safeDispose(result.error);
       throw new ScriptError(
         typeof errorData === 'object' && errorData !== null && 'message' in errorData
-          ? String(errorData.message)
+          ? String((errorData as { message: unknown }).message)
           : String(errorData),
         this.logs,
         durationMs,
       );
     }
 
-    const value = this.vm.dump(result.value);
-    result.value.dispose();
+    let value: unknown;
+    try {
+      value = this.vm.dump(result.value);
+    } catch (dumpErr) {
+      safeDispose(result.value);
+      throw new ScriptError(
+        `Sandbox realm became invalid during execution: ${dumpErr instanceof Error ? dumpErr.message : String(dumpErr)}`,
+        this.logs,
+        durationMs,
+      );
+    }
+    safeDispose(result.value);
 
     return {
       value,

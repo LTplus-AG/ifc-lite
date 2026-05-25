@@ -847,6 +847,20 @@ pub struct SymbolicText {
     /// World-Y elevation captured from the placement chain (see
     /// SymbolicPolyline.world_y for the why).
     world_y: f32,
+    /// sRGB straight-alpha colour (0..1). Defaults to dark-grey when no
+    /// IfcStyledItem chain resolves a colour. The grid-tag emission path
+    /// uses this to render white bubble fills + black outlines + black
+    /// tags out of the existing text pipeline (free billboard +
+    /// screen-pixel scaling).
+    color_r: f32,
+    color_g: f32,
+    color_b: f32,
+    color_a: f32,
+    /// Per-instance target screen-pixel cap height. 0 = fall back to the
+    /// renderer's global default (~14 px for body text). Grid bubble fills
+    /// + outlines emit at a larger value (~30 px) so the bubble stays
+    /// proportional to the inscribed tag at every zoom level.
+    target_px: f32,
     /// "Plan" | "Annotation" | "FootPrint" | "Axis"
     rep_identifier: String,
 }
@@ -873,6 +887,16 @@ impl SymbolicText {
     pub fn alignment(&self) -> String { self.alignment.clone() }
     #[wasm_bindgen(getter, js_name = worldY)]
     pub fn world_y(&self) -> f32 { self.world_y }
+    #[wasm_bindgen(getter, js_name = colorR)]
+    pub fn color_r(&self) -> f32 { self.color_r }
+    #[wasm_bindgen(getter, js_name = colorG)]
+    pub fn color_g(&self) -> f32 { self.color_g }
+    #[wasm_bindgen(getter, js_name = colorB)]
+    pub fn color_b(&self) -> f32 { self.color_b }
+    #[wasm_bindgen(getter, js_name = colorA)]
+    pub fn color_a(&self) -> f32 { self.color_a }
+    #[wasm_bindgen(getter, js_name = targetPx)]
+    pub fn target_px(&self) -> f32 { self.target_px }
     #[wasm_bindgen(getter, js_name = repIdentifier)]
     pub fn rep_identifier(&self) -> String { self.rep_identifier.clone() }
 }
@@ -892,6 +916,34 @@ impl SymbolicText {
         world_y: f32,
         rep_identifier: String,
     ) -> Self {
+        Self::new_styled(
+            express_id, ifc_type, x, y, dir_x, dir_y,
+            height, content, alignment, world_y,
+            [0.05, 0.05, 0.05, 1.0], // default near-black text color
+            0.0,                       // 0 → renderer global default target_px
+            rep_identifier,
+        )
+    }
+
+    /// Full constructor with per-instance colour + screen-pixel target.
+    /// Used by the grid bubble emission (white fill / black outline) and
+    /// by future IfcTextStyle resolution.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_styled(
+        express_id: u32,
+        ifc_type: String,
+        x: f32,
+        y: f32,
+        dir_x: f32,
+        dir_y: f32,
+        height: f32,
+        content: String,
+        alignment: String,
+        world_y: f32,
+        rgba: [f32; 4],
+        target_px: f32,
+        rep_identifier: String,
+    ) -> Self {
         Self {
             express_id,
             ifc_type,
@@ -903,6 +955,11 @@ impl SymbolicText {
             content,
             alignment,
             world_y,
+            color_r: rgba[0],
+            color_g: rgba[1],
+            color_b: rgba[2],
+            color_a: rgba[3],
+            target_px,
             rep_identifier,
         }
     }
@@ -1132,6 +1189,11 @@ impl SymbolicRepresentationCollection {
             content: t.content.clone(),
             alignment: t.alignment.clone(),
             world_y: t.world_y,
+            color_r: t.color_r,
+            color_g: t.color_g,
+            color_b: t.color_b,
+            color_a: t.color_a,
+            target_px: t.target_px,
             rep_identifier: t.rep_identifier.clone(),
         })
     }

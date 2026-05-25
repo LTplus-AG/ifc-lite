@@ -24,13 +24,16 @@ import {
 import { PIPELINE_CONSTANTS } from './constants.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
-const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4) * 4;
+const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1) * 4;
 // origin.xyz + rightAxis.xyz + upAxis.xyz + uvBounds.xyzw + color.rgba
 // + anchor.xyz + capHeight (shared per text label, used by the shader to
 //   compute a single screen-space scale for every glyph in the row)
 // + billboard (1 = use camera-aligned axes, 0 = authored — IfcGridAxis only)
 // + glyphOffsetSize.xyzw (baseline-relative 2D atlas-pixel offset + size
-//   in world units; only consulted on the billboard branch).
+//   in world units; only consulted on the billboard branch)
+// + targetPxOverride (per-instance screen-pixel target cap height; 0 falls
+//   back to the uniform default — grid bubble glyphs use a larger value
+//   than tag text so the bubble stays proportional at all zoom levels).
 
 // Uniform: viewProj (64 B) + viewportAndTarget (16 B) + cameraRight (16 B)
 // + cameraUp (16 B) = 112 B.
@@ -75,6 +78,15 @@ export interface SymbolicTextInput {
    * Defaults to false (authored, in-plane text).
    */
   billboard?: boolean;
+  /**
+   * Per-instance target cap height in screen pixels. 0 / undefined falls
+   * back to the renderer's global default (~14 px). Grid bubble fills +
+   * outlines emit at ~32 px so the bubble stays proportional to the
+   * inscribed tag at every zoom level — without this override they'd
+   * collapse to the same screen size as the tag and the bubble would
+   * disappear behind the character.
+   */
+  targetPx?: number;
 }
 
 // ─── Fill pipeline ──────────────────────────────────────────────────────────
@@ -308,20 +320,21 @@ export class SymbolicTextPipeline {
             attributes: [{ shaderLocation: 0, offset: 0, format: 'uint32' }],
           },
           // Per-instance: origin + rightAxis + upAxis + uvBounds + color
-          // + anchor + capHeight + billboard + glyphOffsetSize.
+          // + anchor + capHeight + billboard + glyphOffsetSize + targetPxOverride.
           {
             arrayStride: TEXT_INSTANCE_STRIDE_BYTES,
             stepMode: 'instance',
             attributes: [
-              { shaderLocation: 1, offset: 0,                                       format: 'float32x3' }, // origin
-              { shaderLocation: 2, offset: 3 * 4,                                   format: 'float32x3' }, // rightAxis
-              { shaderLocation: 3, offset: (3 + 3) * 4,                             format: 'float32x3' }, // upAxis
-              { shaderLocation: 4, offset: (3 + 3 + 3) * 4,                         format: 'float32x4' }, // uvBounds
-              { shaderLocation: 5, offset: (3 + 3 + 3 + 4) * 4,                     format: 'float32x4' }, // color
-              { shaderLocation: 6, offset: (3 + 3 + 3 + 4 + 4) * 4,                 format: 'float32x3' }, // anchor
-              { shaderLocation: 7, offset: (3 + 3 + 3 + 4 + 4 + 3) * 4,             format: 'float32'   }, // capHeight
-              { shaderLocation: 8, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1) * 4,         format: 'float32'   }, // billboard
-              { shaderLocation: 9, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1) * 4,     format: 'float32x4' }, // glyphOffsetSize
+              { shaderLocation: 1,  offset: 0,                                         format: 'float32x3' }, // origin
+              { shaderLocation: 2,  offset: 3 * 4,                                     format: 'float32x3' }, // rightAxis
+              { shaderLocation: 3,  offset: (3 + 3) * 4,                               format: 'float32x3' }, // upAxis
+              { shaderLocation: 4,  offset: (3 + 3 + 3) * 4,                           format: 'float32x4' }, // uvBounds
+              { shaderLocation: 5,  offset: (3 + 3 + 3 + 4) * 4,                       format: 'float32x4' }, // color
+              { shaderLocation: 6,  offset: (3 + 3 + 3 + 4 + 4) * 4,                   format: 'float32x3' }, // anchor
+              { shaderLocation: 7,  offset: (3 + 3 + 3 + 4 + 4 + 3) * 4,               format: 'float32'   }, // capHeight
+              { shaderLocation: 8,  offset: (3 + 3 + 3 + 4 + 4 + 3 + 1) * 4,           format: 'float32'   }, // billboard
+              { shaderLocation: 9,  offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1) * 4,       format: 'float32x4' }, // glyphOffsetSize
+              { shaderLocation: 10, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4) * 4,   format: 'float32'   }, // targetPxOverride
             ],
           },
         ],
@@ -450,6 +463,8 @@ export class SymbolicTextPipeline {
       // (offsetX, offsetY, width, height) in world units — only consumed by
       // the shader on the billboard branch. World units = atlas px × wScale.
       glyphOffsetSize: [number, number, number, number];
+      // 0 → use renderer global default; otherwise override (in screen px).
+      targetPxOverride: number;
     }> = [];
 
     for (const text of texts) {
@@ -540,6 +555,7 @@ export class SymbolicTextPipeline {
             widthAtlas * wScale,  // glyph width
             heightGlyphAtlas * wScale, // glyph height
           ],
+          targetPxOverride: text.targetPx ?? 0,
         });
       }
     }
@@ -563,6 +579,7 @@ export class SymbolicTextPipeline {
       data[off + 21] = l.billboard;
       data[off + 22] = l.glyphOffsetSize[0]; data[off + 23] = l.glyphOffsetSize[1];
       data[off + 24] = l.glyphOffsetSize[2]; data[off + 25] = l.glyphOffsetSize[3];
+      data[off + 26] = l.targetPxOverride;
       off += stride;
     }
 

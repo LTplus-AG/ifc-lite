@@ -66,6 +66,10 @@ export interface AnnotationText2D {
    * dimension/leader annotations that lie flat on the floor).
    */
   billboard?: boolean;
+  /** sRGB straight-alpha tint (0..1). Defaults to renderer near-black. */
+  color?: [number, number, number, number];
+  /** Per-instance target cap height in screen pixels. 0/undef = renderer default. */
+  targetPx?: number;
 }
 
 /**
@@ -339,6 +343,15 @@ async function parseAnnotations(
       // Other annotation text (dimensions, leader labels) keeps authored
       // orientation — those are meant to lie flat in the floor plane.
       const isGridTag = text.ifcType === 'IfcGridAxis';
+      // Read per-instance style metadata. WASM emits these for grid
+      // bubble parts (● fill / ○ outline / tag) and reserves them for
+      // future IfcTextStyle resolution on regular annotation text.
+      const colorA = text.colorA;
+      const hasColor = colorA > 0;
+      const textColor: [number, number, number, number] | undefined = hasColor
+        ? [text.colorR, text.colorG, text.colorB, colorA]
+        : undefined;
+      const targetPx = text.targetPx > 0 ? text.targetPx : undefined;
       for (let li = 0; li < lines.length; li++) {
         const t2d: AnnotationText2D = {
           x: text.x,
@@ -350,6 +363,8 @@ async function parseAnnotations(
           alignment: text.alignment,
           lineYOffset: -li * lineSpacing,
           billboard: isGridTag,
+          color: textColor,
+          targetPx,
         };
         (bucket ? bucket.texts : result.looseTexts).push(t2d);
       }
@@ -566,6 +581,10 @@ export interface AnnotationText3D {
   alignment: string;
   /** True when the glyph quad should rebuild in camera-aligned basis (grid tags). */
   billboard?: boolean;
+  /** sRGB straight-alpha tint, 0..1. */
+  color?: [number, number, number, number];
+  /** Per-instance target cap height in screen pixels. */
+  targetPx?: number;
 }
 
 /**
@@ -625,6 +644,8 @@ export function useSymbolicAnnotationsRichData(params: {
           content: t.content,
           alignment: t.alignment,
           billboard: t.billboard,
+          color: t.color,
+          targetPx: t.targetPx,
         });
       };
       const pushFill = (f: AnnotationFill2D, y: number) => {

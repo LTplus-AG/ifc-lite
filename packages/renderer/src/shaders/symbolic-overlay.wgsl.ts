@@ -97,6 +97,11 @@ struct InstIn {
   //   .xy = (offsetX, offsetY) from anchor to glyph BL
   //   .zw = (width, height) of the glyph quad
   @location(9) glyphOffsetSize: vec4<f32>,
+  // Per-instance target cap height in screen pixels. 0 = fall back to
+  // the renderer global default (viewportAndTarget.z). Grid bubble
+  // glyphs override with a larger value so the bubble stays proportional
+  // to the tag at every zoom level.
+  @location(10) targetPxOverride: f32,
 };
 
 struct VsOut {
@@ -128,10 +133,13 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
 
   let safeCap = max(inst.capHeight, 1e-4);
   let currentPx = safeCap * unitYPx;
+  // Per-instance target overrides the uniform default (used by grid bubble
+  // glyphs to render at a larger on-screen size than the inscribed tag).
+  let targetPx = select(camera.viewportAndTarget.z, inst.targetPxOverride, inst.targetPxOverride > 0.0);
   // Clamp to (0.02, 1.0]: never grow text beyond authored size; never
   // shrink below ~2%.
   let scale = clamp(
-    camera.viewportAndTarget.z / max(currentPx, 1e-2),
+    targetPx / max(currentPx, 1e-2),
     0.02,
     1.0,
   );

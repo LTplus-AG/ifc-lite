@@ -1601,21 +1601,25 @@ fn extract_grid(
     rtc_z: f32,
     collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
 ) {
-    use crate::zero_copy::{SymbolicCircle, SymbolicFillArea, SymbolicPolyline, SymbolicText};
+    use crate::zero_copy::{SymbolicPolyline, SymbolicText};
     use ifc_lite_core::IfcType;
 
-    // Conventional sizing — all values in METERS (world units) to match the
-    // post-transform coordinate frame the rest of the symbolic pipeline uses
-    // (extract_polyline multiplies file-unit coords by unit_scale before
-    // calling transform_point, so the output is already meters).
-    const BUBBLE_RADIUS_M: f32 = 0.4; // 400 mm — typical Revit / ArchiCAD default
-    const BUBBLE_OFFSET_M: f32 = 1.2; // 1.2 m gap from axis end to bubble centre
-    // Tag cap-height ≈ bubble radius (~700 mm). Combined with the renderer's
-    // glyph-to-cap ratio (~0.7) the visible character occupies ~50 % of the
-    // bubble diameter — matches Revit / ArchiCAD / BIMvision proportions.
-    // The screen-space scale clamp keeps the tag from growing past authored
-    // size, and the target_px floor keeps it readable at far zoom.
-    const TAG_HEIGHT_M: f32 = 0.7;
+    // Bubbles are emitted as TEXT glyphs (●  fill + ○ outline) so they reuse
+    // the text pipeline's billboard + screen-pixel scaling — the bubble
+    // diameter stays proportional to the inscribed tag at every zoom level,
+    // which the original SymbolicFillArea + SymbolicCircle pair couldn't
+    // deliver (those were world-scaled and vanished at far zoom while the
+    // tag stayed screen-pixel-scaled).
+    //
+    // Authored world sizes are the UPPER bound — the scale clamp caps them
+    // when the camera is very close (so they don't blow up to room-sized
+    // bubbles when zoomed in tight). target_px sets the LOWER bound on
+    // screen so they stay readable at any far-zoom level.
+    const BUBBLE_OFFSET_M: f32 = 1.2;  // gap from axis end to bubble centre
+    const BUBBLE_CAP_M: f32 = 2.0;     // bubble glyph cap height (world max)
+    const BUBBLE_TARGET_PX: f32 = 32.0;// bubble cap target on-screen (px)
+    const TAG_CAP_M: f32 = 0.7;        // tag cap height (world max)
+    const TAG_TARGET_PX: f32 = 14.0;   // tag cap target on-screen (px)
 
     for axis_attr_idx in [7usize, 8, 9] {
         let Some(axes_attr) = grid.get(axis_attr_idx) else {
@@ -1676,108 +1680,83 @@ fn extract_grid(
             let dy = b.1 - a.1;
             let len = (dx * dx + dy * dy).sqrt();
             if len < 1e-4 {
-                // Degenerate axis (zero-length curve) — skip bubble synthesis.
                 continue;
             }
             let nx = dx / len;
             let ny = dy / len;
 
-            // Bubble + tag at the "start" end (offset opposite the axis direction).
             let cx0 = a.0 - nx * BUBBLE_OFFSET_M;
             let cy0 = a.1 - ny * BUBBLE_OFFSET_M;
-            // White-filled disk under the outline so the bubble reads
-            // against any background (walls, hatches, dark fills). CAD
-            // convention — every viewer paints the bubble interior white.
-            collection.add_fill(make_bubble_disk_fill(axis_id, cx0, cy0, BUBBLE_RADIUS_M, world_y));
-            collection.add_circle(SymbolicCircle::full_circle(
-                axis_id,
-                "IfcGridAxis".to_string(),
-                cx0,
-                cy0,
-                BUBBLE_RADIUS_M,
-                world_y,
-                "Axis".to_string(),
-            ));
-            // Tag text: dir_x=1, dir_y=0 → LTR baseline (the tag should always
-            // read horizontally regardless of the underlying axis orientation);
-            // BoxAlignment "center" centres the glyph on (cx0, cy0).
-            collection.add_text(SymbolicText::new(
-                axis_id,
-                "IfcGridAxis".to_string(),
-                cx0,
-                cy0,
-                1.0,
-                0.0,
-                TAG_HEIGHT_M,
-                tag.clone(),
-                "center".to_string(),
-                world_y,
-                "Axis".to_string(),
-            ));
+            emit_bubble(axis_id, cx0, cy0, world_y, &tag, collection,
+                        BUBBLE_CAP_M, BUBBLE_TARGET_PX, TAG_CAP_M, TAG_TARGET_PX);
 
-            // Bubble + tag at the "end" end (offset along the axis direction).
             let cx1 = b.0 + nx * BUBBLE_OFFSET_M;
             let cy1 = b.1 + ny * BUBBLE_OFFSET_M;
-            collection.add_fill(make_bubble_disk_fill(axis_id, cx1, cy1, BUBBLE_RADIUS_M, world_y));
-            collection.add_circle(SymbolicCircle::full_circle(
-                axis_id,
-                "IfcGridAxis".to_string(),
-                cx1,
-                cy1,
-                BUBBLE_RADIUS_M,
-                world_y,
-                "Axis".to_string(),
-            ));
-            collection.add_text(SymbolicText::new(
-                axis_id,
-                "IfcGridAxis".to_string(),
-                cx1,
-                cy1,
-                1.0,
-                0.0,
-                TAG_HEIGHT_M,
-                tag,
-                "center".to_string(),
-                world_y,
-                "Axis".to_string(),
-            ));
+            emit_bubble(axis_id, cx1, cy1, world_y, &tag, collection,
+                        BUBBLE_CAP_M, BUBBLE_TARGET_PX, TAG_CAP_M, TAG_TARGET_PX);
         }
     }
 
-    // Touch the grid_id so the compiler doesn't warn — it's used as the
-    // express_id for every emitted primitive (matches how individual
-    // annotations carry their parent entity id).
+    // grid_id is the IfcGrid express ID — kept on the parameter list for
+    // future per-grid styling lookups (e.g. IfcStyledItem on the grid as a
+    // whole). Touched so the unused-variable lint stays quiet.
     let _ = grid_id;
 }
 
-/// Build the white-filled disk that sits under a grid bubble outline.
-///
-/// 32-segment tessellation in CCW order so the ear-clip triangulator
-/// produces front-facing triangles. The fill is opaque white (CAD
-/// convention) so axis tags read against any background.
-fn make_bubble_disk_fill(
+/// Emit a bubble (white fill ● + black outline ○ + black tag) as three
+/// stacked text instances at (cx, cy, world_y). All three share the same
+/// anchor + `IfcGridAxis` ifc-type + Axis representation identifier; the
+/// shader's per-instance `targetPx` and `colour` make them render at the
+/// right relative size and tint without needing dedicated pipelines.
+#[allow(clippy::too_many_arguments)]
+fn emit_bubble(
     axis_id: u32,
     cx: f32,
     cy: f32,
-    radius: f32,
     world_y: f32,
-) -> crate::zero_copy::SymbolicFillArea {
-    const SEGMENTS: usize = 32;
-    let mut pts = Vec::with_capacity(SEGMENTS * 2);
-    for i in 0..SEGMENTS {
-        let theta = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
-        pts.push(cx + radius * theta.cos());
-        pts.push(cy + radius * theta.sin());
-    }
-    crate::zero_copy::SymbolicFillArea::new(
-        axis_id,
-        "IfcGridAxis".to_string(),
-        pts,
-        Vec::new(),
-        [1.0, 1.0, 1.0, 1.0],
+    tag: &str,
+    collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
+    bubble_cap_m: f32,
+    bubble_target_px: f32,
+    tag_cap_m: f32,
+    tag_target_px: f32,
+) {
+    use crate::zero_copy::SymbolicText;
+    // 1) White fill — `●` (U+2B24 BLACK LARGE CIRCLE) tinted white.
+    collection.add_text(SymbolicText::new_styled(
+        axis_id, "IfcGridAxis".to_string(),
+        cx, cy, 1.0, 0.0, bubble_cap_m,
+        "\u{2B24}".to_string(),
+        "center".to_string(),
         world_y,
+        [1.0, 1.0, 1.0, 1.0],
+        bubble_target_px,
         "Axis".to_string(),
-    )
+    ));
+    // 2) Black outline — `◯` (U+25EF LARGE CIRCLE) at the same size; its
+    //    stroke renders just outside the fill, giving the canonical
+    //    white-fill-black-stroke bubble look from CAD conventions.
+    collection.add_text(SymbolicText::new_styled(
+        axis_id, "IfcGridAxis".to_string(),
+        cx, cy, 1.0, 0.0, bubble_cap_m,
+        "\u{25EF}".to_string(),
+        "center".to_string(),
+        world_y,
+        [0.0, 0.0, 0.0, 1.0],
+        bubble_target_px,
+        "Axis".to_string(),
+    ));
+    // 3) Tag text — actual axis label (alphanumeric).
+    collection.add_text(SymbolicText::new_styled(
+        axis_id, "IfcGridAxis".to_string(),
+        cx, cy, 1.0, 0.0, tag_cap_m,
+        tag.to_string(),
+        "center".to_string(),
+        world_y,
+        [0.0, 0.0, 0.0, 1.0],
+        tag_target_px,
+        "Axis".to_string(),
+    ));
 }
 
 /// Sample the two endpoints of an IfcGridAxis curve.

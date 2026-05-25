@@ -2797,6 +2797,14 @@ export class Renderer {
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
 
+        // Symbolic annotation overlay pipelines own their own GPU buffers,
+        // sampler, and atlas texture — recreating the viewer without
+        // releasing them leaks resources on every reload.
+        this.symbolicFillPipeline?.destroy();
+        this.symbolicFillPipeline = null;
+        this.symbolicTextPipeline?.destroy();
+        this.symbolicTextPipeline = null;
+
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();
         this.pointCloudRenderer = null;

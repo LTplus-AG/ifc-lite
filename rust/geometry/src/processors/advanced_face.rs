@@ -1385,23 +1385,6 @@ fn process_surface_of_revolution_face(
     let n_angle = ((span / (TAU / 36.0)).ceil() as usize).clamp(4, 48);
     let n_v = profile_pts.len();
 
-    if std::env::var("IFC_LITE_SOR_DEBUG").is_ok() {
-        let p0 = profile_pts.first().map(|p| {
-            let r = p - axis_origin;
-            (r.dot(&axis_x), r.dot(&axis_y), r.dot(&axis_dir))
-        });
-        eprintln!(
-            "[SoR] axis_origin=({:.3},{:.3},{:.3}) axis_dir=({:.3},{:.3},{:.3}) \
-             axis_x=({:.3},{:.3},{:.3}) axis_y=({:.3},{:.3},{:.3}) \
-             a_min={:.3} span={:.3} natural=p0_rxry={:?} n_profile={}",
-            axis_origin.x, axis_origin.y, axis_origin.z,
-            axis_dir.x, axis_dir.y, axis_dir.z,
-            axis_x.x, axis_x.y, axis_x.z,
-            axis_y.x, axis_y.y, axis_y.z,
-            a_min, span, p0, profile_pts.len(),
-        );
-    }
-
     // Preserve the profile's (rx, ry) — issue #674: collapsing to radius
     // mirrored profiles on the −axis_x half to the +axis_x side, drifting
     // door-handle SoR bulbs 180° away from their bar.
@@ -1431,12 +1414,16 @@ fn process_surface_of_revolution_face(
     // with natural_angle. Door-handle bends (a_min = π/2, natural_angle =
     // π) regressed: the bulb pivoted to the opposite quadrant, producing
     // the "stem in wrong direction" defect issue #674 #674 reopened.
-    let natural_angle = profile_pts
-        .first()
-        .map(|p| {
-            let r = p - axis_origin;
-            r.dot(&axis_y).atan2(r.dot(&axis_x))
-        })
+    // Pick the first profile point that's clearly off-axis. atan2(0, 0)
+    // returns 0 even though the natural angle is undefined for a point
+    // sitting on the rotation axis, so a profile that starts on-axis (a
+    // common case for partial SoR faces where the profile touches the
+    // axis at one end) would skew the entire sweep by a wrong constant
+    // offset — Codex P1 on PR #799 follow-up.
+    let natural_angle = local_profile
+        .iter()
+        .find(|&&(rx, ry, _)| rx.hypot(ry) > 1e-9)
+        .map(|&(rx, ry, _)| ry.atan2(rx))
         .unwrap_or(0.0);
 
     let mut positions = Vec::with_capacity((n_angle + 1) * n_v * 3);

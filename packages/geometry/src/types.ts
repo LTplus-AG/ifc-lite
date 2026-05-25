@@ -13,7 +13,15 @@ export interface MeshData {
   positions: Float32Array;  // [x,y,z, x,y,z, ...]
   normals: Float32Array;    // [nx,ny,nz, ...]
   indices: Uint32Array;     // Triangle indices
+  /** Apparent rendering colour: IfcSurfaceStyleRendering.DiffuseColour
+   *  when authored, otherwise the SurfaceColour. Matches what most IFC
+   *  viewers display and what the GLB exporter uses by default. */
   color: [number, number, number, number];
+  /** SurfaceColour, populated by the WASM extractor only when the file
+   *  authored a distinct DiffuseColour (so `shadingColor !== color`).
+   *  Consumed by the GLB exporter's "Shading" colour-source option;
+   *  renderers and other exporters can ignore it. */
+  shadingColor?: [number, number, number, number];
   /** Per-vertex entity IDs for color-merged batches (desktop fast path).
    *  When present the renderer writes these instead of repeating `expressId`
    *  for every vertex, so picking/selection resolves to the correct individual

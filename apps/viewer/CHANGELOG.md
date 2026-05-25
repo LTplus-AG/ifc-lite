@@ -1,5 +1,78 @@
 # @ifc-lite/viewer
 
+## 1.23.0
+
+### Minor Changes
+
+- [#688](https://github.com/LTplus-AG/ifc-lite/pull/688) [`d0ba541`](https://github.com/LTplus-AG/ifc-lite/commit/d0ba541dda3936b985c2189fbca4300cbb89df91) Thanks [@louistrue](https://github.com/louistrue)! - Add GLB export dialog with colour-source selection and visibility
+  filtering (PR [#688](https://github.com/LTplus-AG/ifc-lite/issues/688)).
+
+  The new `GLBExportDialog` in the viewer replaces the inline GLB
+  export handler in `MainToolbar` with a dedicated dialog. Features:
+
+  - **Model picker** for federated multi-model scenes.
+  - **Colour source** selector: "Rendering" (the apparent display
+    colour — `IfcSurfaceStyleRendering.DiffuseColour` if authored,
+    falling back to `IfcSurfaceStyleShading.SurfaceColour`) or
+    "Shading" (the raw `SurfaceColour`, only available when the file
+    authored a distinct `DiffuseColour`).
+  - **Visible-only filter** that respects the viewer's hidden /
+    isolated entity sets. Mesh-vs-set comparison runs in global ID
+    space so federated models with non-zero `idOffset` filter
+    correctly.
+  - **Metadata inclusion** toggle for IFC GlobalId / type / name
+    side-tables.
+
+  Pipeline changes underneath:
+
+  - `MeshData` / `MeshDataJs` carry an optional `shadingColor`
+    alongside `color`. The Rust styling module now extracts both
+    `IfcSurfaceStyleRendering.DiffuseColour` (rendering) and
+    `IfcSurfaceStyleShading.SurfaceColour` (shading) in a single
+    pre-pass and returns them as separate maps; `shadingColor` is
+    only populated when it actually differs from the rendering
+    colour, so memory cost stays sparse on the common case.
+  - The streaming geometry path
+    (`convertMeshCollectionToBatch`) and the worker collector
+    (`IfcLiteMeshCollector`) both copy `shadingColor` end-to-end so
+    the dialog's "Shading" source works on every load path, not just
+    the batch path.
+  - `GLTFExporter` gains `colorSource`, `visibleOnly`,
+    `hiddenEntityIds`, and `isolatedEntityIds` options. Visibility
+    filtering compares mesh `expressId` (global) against the dialog-
+    supplied sets (also global) — no offset arithmetic in the
+    exporter.
+
+### Patch Changes
+
+- Updated dependencies [[`b0b19ad`](https://github.com/LTplus-AG/ifc-lite/commit/b0b19ad2ea205813e599cac02c964ecdb315c6b5), [`b0b19ad`](https://github.com/LTplus-AG/ifc-lite/commit/b0b19ad2ea205813e599cac02c964ecdb315c6b5), [`d0ba541`](https://github.com/LTplus-AG/ifc-lite/commit/d0ba541dda3936b985c2189fbca4300cbb89df91)]:
+  - @ifc-lite/wasm@1.18.0
+  - @ifc-lite/export@1.19.0
+  - @ifc-lite/geometry@1.19.0
+
+## 1.22.1
+
+### Patch Changes
+
+- [#795](https://github.com/LTplus-AG/ifc-lite/pull/795) [`bb3123a`](https://github.com/LTplus-AG/ifc-lite/commit/bb3123adcd751f4c27b4457156e2d0bae3b40e56) Thanks [@louistrue](https://github.com/louistrue)! - Fix "Add Model to Scene" hiding the first model when a second is
+  loaded (issue [#661](https://github.com/LTplus-AG/ifc-lite/issues/661), PR [#792](https://github.com/LTplus-AG/ifc-lite/issues/792)). `useIfcFederation.addModel` always
+  called `setIfcDataStore(parsedDataStore)` and
+  `setGeometryResult(parsedGeometry)` after `storeAddModel`, with the
+  new model's data. `modelSlice.addModel` only flips `activeModelId`
+  for the FIRST model, so on subsequent adds those legacy setters
+  wrote the new model's data into `models.get(activeModelId)` — i.e.
+  into the FIRST model's per-model entry — aliasing both Map entries
+  to the second model's mesh and rendering only one element.
+
+  The fix drops those two redundant calls from `addModel`. For the
+  first model `modelSlice.addModel` already mirrors the data into the
+  top-level fields, and for subsequent models the legacy top-level
+  fields must stay pointing at the active (first) model's data; the
+  existing `setActiveModel` handler updates them on focus change.
+
+- Updated dependencies [[`a6637a4`](https://github.com/LTplus-AG/ifc-lite/commit/a6637a41d948ec17841a0ac62586f627d0bb21fa), [`bb3123a`](https://github.com/LTplus-AG/ifc-lite/commit/bb3123adcd751f4c27b4457156e2d0bae3b40e56), [`bb3123a`](https://github.com/LTplus-AG/ifc-lite/commit/bb3123adcd751f4c27b4457156e2d0bae3b40e56), [`a6637a4`](https://github.com/LTplus-AG/ifc-lite/commit/a6637a41d948ec17841a0ac62586f627d0bb21fa)]:
+  - @ifc-lite/wasm@1.17.0
+
 ## 1.22.0
 
 ### Minor Changes

@@ -192,6 +192,18 @@ export function StatusBar() {
         <Separator orientation="vertical" className="h-3.5" />
 
         <span className="opacity-60">v{__APP_VERSION__}</span>
+
+        <Separator orientation="vertical" className="h-3.5" />
+
+        <a
+          href="https://ifclite.dev"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="opacity-60 hover:opacity-100 hover:text-primary transition-opacity"
+          aria-label="Visit ifclite.dev — about, docs, and packages"
+        >
+          ifclite.dev →
+        </a>
       </div>
 
       <FlavorDialog open={flavorDialogOpen} onClose={() => setFlavorDialogOpen(false)} />

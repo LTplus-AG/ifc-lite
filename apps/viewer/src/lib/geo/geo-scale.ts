@@ -33,10 +33,38 @@ export function getEffectiveHorizontalScale(
   mapUnitScale: number,
   lengthUnitScale: number,
 ): number {
-  const scale = ifcMapConversionScale ?? 1.0;
   const lus = lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale > 0 ? mapUnitScale : 1;
-  return (scale * mus) / lus;
+  const specEffective = ((ifcMapConversionScale ?? 1.0) * mus) / lus;
+
+  // Heuristic for files that don't follow the IFC schema's unit-bridging rule.
+  //
+  // Spec: IfcMapConversion.Scale converts LOCAL ENGINEERING coords (in the
+  // project length unit) to MAP coords (in MapUnit). So a file with mm
+  // project units + m map units MUST set Scale=0.001 to bridge the gap, and
+  // (Scale * mapUnitScale) / lengthUnitScale evaluates to 1 — geometry passes
+  // through unchanged.
+  //
+  // Reality: Bonsai/IfcOpenShell, Revit's IFC exporter, and many CAD tools
+  // either leave Scale unset (default 1.0) or hard-code Scale=1 regardless of
+  // unit pairing. The author's intent in those cases is "geometry and offsets
+  // share the same metric unit", but the spec-strict formula then multiplies
+  // viewer-space metres by 1/lengthUnitScale (e.g. 1000x for mm projects),
+  // inflating the model so far that proj4 extrapolates to the projection's
+  // antipode (Hans's `IXAS_KW 018_georeffed.ifc`: 126500/480000 RD offsets +
+  // mm units + Scale unset → South Pacific instead of the Netherlands).
+  //
+  // When the file's Scale is unset or exactly 1 AND the units don't match,
+  // honour the practical intent: behave as if Scale had been set per spec
+  // (effectiveScale = 1) so the metre-converted geometry passes through.
+  // Files that genuinely use Scale ≠ 1 (e.g. units bridging a foot/metre
+  // gap with Scale=0.3048) are left alone — they followed the spec.
+  const rawScaleProvided = ifcMapConversionScale != null
+    && Math.abs(ifcMapConversionScale - 1) > 1e-9;
+  if (!rawScaleProvided && Math.abs(mus - lus) > 1e-9) {
+    return 1;
+  }
+  return specEffective;
 }
 
 export interface ScaleUnitMismatch {
@@ -101,4 +129,32 @@ export function inferMapUnitScale(
   if (normalized.includes('KILO')) return 1000;
   if (normalized.includes('METRE') || normalized.includes('METER')) return 1;
   return fallback;
+}
+
+/**
+ * Resolve the scale factor converting `IfcMapConversion.eastings/northings/
+ * orthogonalHeight` into metres (the unit proj4 expects).
+ *
+ * IFC4 spec: those offsets are in `IfcProjectedCRS.MapUnit`, falling back to
+ * the project's `IfcUnitAssignment` LengthUnit when MapUnit is absent.
+ *
+ * Real-world practice diverges: Bonsai, IfcOpenShell, and most surveying
+ * pipelines emit metre values regardless of the project's length unit because
+ * survey CRS offsets come in metres. When MapUnit is absent AND the project
+ * unit isn't metres, applying the spec interpretation pushes coords miles
+ * outside the CRS's valid range, and projections like RD New / OSGB / Lambert
+ * extrapolate to the projection's antipode (e.g. an RD easting of `126500`
+ * read as mm = `126.5 m` → South Pacific instead of the Netherlands).
+ *
+ * Heuristic: when no explicit MapUnit is set, treat the offsets as metres.
+ * Files that genuinely use non-metre offsets can set MapUnit explicitly
+ * (e.g. `IfcProjectedCRS.MapUnit = MILLIMETRE`) to opt out.
+ */
+export function resolveMapUnitToMetreScale(
+  mapUnitScaleFromCrs: number | undefined,
+  lengthUnitScale: number,
+): number {
+  if (mapUnitScaleFromCrs && mapUnitScaleFromCrs > 0) return mapUnitScaleFromCrs;
+  void lengthUnitScale; // parameter kept for future spec-strict override
+  return 1;
 }

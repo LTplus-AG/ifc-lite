@@ -45,7 +45,7 @@ i_overlay = "6.0"
 ifc-lite-core.workspace = true
 
 # Math library
-nalgebra = { version = "0.34", default-features = false, features = ["std"] }
+nalgebra = { version = "0.35", default-features = false, features = ["std"] }
 
 # Parallel processing
 rayon = "1.10"
@@ -63,7 +63,7 @@ thiserror = "2.0"
 # `manifold-csg` feature above for the activation contract.
 # `default-features = false` drops TBB-backed parallelism, which doesn't
 # work on WASM anyway and isn't required for correctness on native.
-manifold-csg = { version = "0.1", default-features = false, optional = true }
+manifold-csg = { version = "0.2", default-features = false, optional = true }
 
 [dev-dependencies]
 approx = "0.5"

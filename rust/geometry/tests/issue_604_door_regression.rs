@@ -113,6 +113,67 @@ fn door_handle_and_glass_meshes_are_non_empty() {
     }
 }
 
+/// Regression for issue #674 reopened — the door handle's
+/// `IfcSurfaceOfRevolution` bend was tessellating with `axis_origin = (0,0,0)`
+/// because the processor read `surface.get(1)` (the optional inherited
+/// `Position` slot, null in Revit-exported door handles) instead of
+/// `surface.get(2)` (the actual `AxisPosition`). The angular-extent
+/// calculation then collapsed onto the world origin, the bend swept through
+/// the wrong region of space, and the user saw a "stem in wrong direction"
+/// with the lever bar floating detached from the rosette.
+///
+/// After the fix the lever AABB matches IfcOpenShell within tessellation
+/// noise: x ∈ [115, 245] (vs IOS [120, 250]), y matches the bar's authored
+/// thickness, and the bulb sits where the IFC actually places it — at the
+/// inner end of the bar, 5 mm short of the rosette face at x=92.5 (a
+/// physical air gap, not the cross-rosette mirror PR #793 chased).
+#[test]
+fn door_handle_bulb_connects_to_rosette() {
+    let Some(content) = read_fixture() else {
+        return;
+    };
+
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let router = ifc_lite_geometry::GeometryRouter::new();
+
+    for id in [232u32, 440] {
+        let entity = decoder.decode_by_id(id).expect("decode handle brep");
+        let mesh = router
+            .process_representation_item(&entity, &mut decoder)
+            .expect("handle tessellation must not error");
+
+        let (mn, mx) = mesh_bbox(&mesh.positions);
+
+        // Lever bar tip is at x=245 (raw mm), so x_max is invariant.
+        assert!(mx[0] > 240.0, "lever #{id} x_max regressed: {:.2}", mx[0]);
+
+        // Inner end of the bar is at x≈115 (1 mm tolerance for tessellation
+        // jitter). Pre-fix-#793 this was correct; PR #793 mis-pinned it at
+        // x_min < 100 by chasing an axis-origin-collapse symptom as if it
+        // were the actual SoR bug. IOS reference: x_min ≈ 120; we land at
+        // 115 due to 16-point profile sampling vs IOS's coarser tessellation.
+        assert!(
+            (mn[0] - 115.0).abs() < 2.0,
+            "lever #{id} x_min={:.2} — expected ~115 (was 91 under the \
+             PR #793 over-correction, matches IOS within tessellation \
+             noise post-fix)",
+            mn[0],
+        );
+
+        // Y extent should be the bar's authored thickness (55 mm = bar
+        // radius 10 mm × 2 + bulb extension ~35 mm into the door thickness).
+        // Pre-fix the bulb mis-rotated and inflated this to 63 mm.
+        let y_ext = mx[1] - mn[1];
+        assert!(
+            (y_ext - 55.0).abs() < 1.5,
+            "lever #{id} y extent {:.2} mm — bulb is no longer rotating \
+             into the door panel (issue #674)",
+            y_ext,
+        );
+    }
+}
+
 /// Half (a) of #604 — wall opening cut must be clean when the opening's
 /// extrusion depth exactly equals the host wall's depth (200 mm == 200 mm
 /// in `door.ifc`). Verifies the PR #605 padding fix on a real Revit IFC,

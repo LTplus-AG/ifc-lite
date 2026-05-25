@@ -109,6 +109,14 @@ export class Section2DOverlayRenderer {
   private lineVertexBuffer: GPUBuffer | null = null;
   private lineVertexCount = 0;
 
+  // Standalone 3D annotation line overlay. Same line pipeline as the section
+  // cut, but vertices are already in world space when uploaded so the draw
+  // does not depend on a section plane being active. Used by the
+  // "Show IFC Annotations" toggle so that authored 2D drawing curves
+  // (IfcAnnotation polylines/arcs) are visible in any view.
+  private annotationLineVertexBuffer: GPUBuffer | null = null;
+  private annotationLineVertexCount = 0;
+
   constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount: number = 4) {
     this.device = device;
     this.format = format;
@@ -638,6 +646,71 @@ export class Section2DOverlayRenderer {
   }
 
   /**
+   * Upload a flat Float32Array of 3D line-list vertices for the standalone
+   * annotation overlay. Each segment is `[x1, y1, z1, x2, y2, z2]` in world
+   * space. The buffer is independent of the section cut's line buffer and
+   * is drawn regardless of `sectionPlane.enabled`.
+   *
+   * Pass an empty array (or omit) to clear.
+   */
+  uploadAnnotationLines3D(vertices: Float32Array): void {
+    this.init();
+
+    if (this.annotationLineVertexBuffer) {
+      this.annotationLineVertexBuffer.destroy();
+      this.annotationLineVertexBuffer = null;
+    }
+    this.annotationLineVertexCount = 0;
+
+    if (vertices.length < 6) return;
+
+    this.annotationLineVertexBuffer = this.device.createBuffer({
+      size: vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.annotationLineVertexBuffer, 0, vertices);
+    this.annotationLineVertexCount = vertices.length / 3;
+  }
+
+  clearAnnotationLines3D(): void {
+    if (this.annotationLineVertexBuffer) {
+      this.annotationLineVertexBuffer.destroy();
+      this.annotationLineVertexBuffer = null;
+    }
+    this.annotationLineVertexCount = 0;
+  }
+
+  hasAnnotationLines3D(): boolean {
+    return this.annotationLineVertexCount > 0;
+  }
+
+  /**
+   * Draw the standalone annotation line overlay. Uses the same line pipeline
+   * as the section cut outlines (vertex format: 3 floats per vertex, line-list
+   * topology) but reads from a separate vertex buffer. The pipeline's
+   * `planeOffset` uniform is zeroed so vertices render at their authored
+   * world position.
+   */
+  drawAnnotationLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+    this.init();
+    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
+    if (!this.annotationLineVertexBuffer || this.annotationLineVertexCount === 0) return;
+
+    // Reuse the existing fill uniform buffer slot 0 (viewProj + planeOffset).
+    // The line shader only reads those two fields, so the fill/cap-style
+    // tail of the uniforms is harmless leftover data.
+    const uniforms = new Float32Array(20);
+    uniforms.set(viewProj, 0);
+    // planeOffset = 0 — vertices are already in world space.
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+
+    pass.setPipeline(this.linePipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    pass.setVertexBuffer(0, this.annotationLineVertexBuffer);
+    pass.draw(this.annotationLineVertexCount);
+  }
+
+  /**
    * Check if there is geometry to draw
    */
   hasGeometry(): boolean {
@@ -753,6 +826,7 @@ export class Section2DOverlayRenderer {
    */
   dispose(): void {
     this.clearGeometry();
+    this.clearAnnotationLines3D();
     if (this.uniformBuffer) {
       this.uniformBuffer.destroy();
       this.uniformBuffer = null;

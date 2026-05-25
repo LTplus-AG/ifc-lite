@@ -1,0 +1,55 @@
+{
+  "schema": "ifcx@1.0",
+  "header": {
+    "name": "hello-wall",
+    "source": "hello-wall.ifc",
+    "generator": "ifc-lite/export · landing demo",
+    "created": "2026-05-23T10:00:00Z"
+  },
+  "project": {
+    "id": "0KhR8hr7H8eewFRKm6V1bJ",
+    "name": "Demo House",
+    "site": "Site",
+    "building": "House",
+    "storey": "Level 1"
+  },
+  "entities": [
+    { "id": 1,    "type": "IfcProject",        "name": "Demo House" },
+    { "id": 30,   "type": "IfcSite",           "name": "Site" },
+    { "id": 36,   "type": "IfcBuilding",       "name": "House" },
+    { "id": 42,   "type": "IfcBuildingStorey", "name": "Level 1" },
+
+    { "id": 1222, "type": "IfcWall",   "name": "Wall-North", "props": { "Height": 3.0, "Length": 10.0, "FireRating": null  } },
+    { "id": 2001, "type": "IfcWall",   "name": "Wall-South", "props": { "Height": 3.0, "Length": 10.0, "FireRating": "REI60" } },
+    { "id": 2002, "type": "IfcWall",   "name": "Wall-East",  "props": { "Height": 3.0, "Length":  5.0, "FireRating": "REI60" } },
+    { "id": 2003, "type": "IfcWall",   "name": "Wall-West",  "props": { "Height": 2.2, "Length":  5.0, "FireRating": null  } },
+
+    { "id": 2010, "type": "IfcSlab",   "name": "Floor", "props": { "Area": 50.0 } },
+    { "id": 2011, "type": "IfcSlab",   "name": "Roof",  "props": { "Area": 50.0 } },
+
+    { "id": 1262, "type": "IfcWindow", "name": "Window-S1", "props": { "Height": 1.2, "Width": 0.9 } },
+    { "id": 1407, "type": "IfcWindow", "name": "Window-S2", "props": { "Height": 1.2, "Width": 0.9 } },
+    { "id": 2020, "type": "IfcWindow", "name": "Window-N",  "props": { "Height": 1.4, "Width": 1.5 } },
+
+    { "id": 2030, "type": "IfcDoor",   "name": "Door-Main", "props": { "Height": 2.1, "Width": 0.9 } },
+    { "id": 2031, "type": "IfcDoor",   "name": "Door-Back", "props": { "Height": 2.1, "Width": 0.8 } },
+
+    { "id": 1494, "type": "IfcSpace",  "name": "Living",   "props": { "Area": 22.0 } },
+    { "id": 2040, "type": "IfcSpace",  "name": "Kitchen",  "props": { "Area": 12.0 } },
+    { "id": 2041, "type": "IfcSpace",  "name": "Bathroom", "props": { "Area":  6.0 } },
+
+    { "id": 2050, "type": "IfcColumn", "name": "Column-1", "props": { "Height": 3.0 } },
+    { "id": 2051, "type": "IfcColumn", "name": "Column-2", "props": { "Height": 3.0 } }
+  ],
+  "relations": {
+    "contains": {
+      "42": [1222, 2001, 2002, 2003, 2010, 2011, 1262, 1407, 2020, 2030, 2031, 2050, 2051]
+    },
+    "aggregates": {
+      "1":  [30],
+      "30": [36],
+      "36": [42],
+      "42": [1494, 2040, 2041]
+    }
+  }
+}

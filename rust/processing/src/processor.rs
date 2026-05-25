@@ -235,7 +235,18 @@ fn populate_entity_job_metadata(
 
 #[derive(Debug, Clone)]
 struct GeometryStyleInfo {
+    /// Apparent colour for rendering: IfcSurfaceStyleRendering.DiffuseColour
+    /// when authored, otherwise the SurfaceColour. Matches what most IFC
+    /// viewers display.
     color: [f32; 4],
+    /// SurfaceColour, populated only when the file authored a distinct
+    /// DiffuseColour. Read by the WASM bridge's parallel extractor so the
+    /// GLB exporter can offer "Shading" as a colour source; the
+    /// processing-crate `MeshData` doesn't propagate it (server pipeline
+    /// has no GLB consumer yet), so the field is intentionally read-only
+    /// here.
+    #[allow(dead_code)]
+    shading_color: Option<[f32; 4]>,
     material_name: Option<String>,
 }
 
@@ -1758,6 +1769,17 @@ fn extract_style_info_from_styled_item(
 }
 
 /// Extract color + style name from an IfcSurfaceStyle.
+///
+/// IfcSurfaceStyleRendering carries two related colours:
+///   - `SurfaceColour` (attr 0): the base colour authored on the style.
+///   - `DiffuseColour` (attr 2, optional): the apparent rendered colour.
+///     Either an IfcColourRgb (replaces the colour outright) or an
+///     IfcNormalisedRatioMeasure (a 0..1 factor against SurfaceColour).
+///
+/// We return the DiffuseColour-derived value as the primary `color`
+/// (industry-standard rendered appearance) and keep SurfaceColour in
+/// `shading_color` when the two differ, so downstream consumers (e.g. the
+/// GLB exporter) can offer both choices.
 fn extract_surface_style_info(
     style_id: u32,
     decoder: &mut EntityDecoder,
@@ -1774,15 +1796,55 @@ fn extract_surface_style_info(
             if let Some(color_id) = rendering.get_ref(0) {
                 if let Ok(color) = decoder.decode_by_id(color_id) {
                     // IfcColourRgb: Attr 1 = Red, Attr 2 = Green, Attr 3 = Blue
-                    let r = color.get_float(1).unwrap_or(0.8) as f32;
-                    let g = color.get_float(2).unwrap_or(0.8) as f32;
-                    let b = color.get_float(3).unwrap_or(0.8) as f32;
+                    let sr = color.get_float(1).unwrap_or(0.8) as f32;
+                    let sg = color.get_float(2).unwrap_or(0.8) as f32;
+                    let sb = color.get_float(3).unwrap_or(0.8) as f32;
 
                     // Transparency: 0.0 = opaque, 1.0 = transparent
-                    let alpha: f32 = 1.0 - rendering.get_float(1).unwrap_or(0.0) as f32;
+                    let alpha: f32 = (1.0 - rendering.get_float(1).unwrap_or(0.0) as f32)
+                        .clamp(0.0, 1.0);
+
+                    let surface_rgba = [sr, sg, sb, alpha];
+
+                    // DiffuseColour (attr 2): SELECT(IfcColourRgb,
+                    // IfcNormalisedRatioMeasure). The decoder exposes
+                    // entity references via `get_ref` and inline floats via
+                    // `get_float`; we probe both.
+                    let (rendering_rgba, shading) = if let Some(diffuse_id) =
+                        rendering.get_ref(2)
+                    {
+                        if let Ok(diffuse) = decoder.decode_by_id(diffuse_id) {
+                            let dr = diffuse.get_float(1).unwrap_or(sr as f64) as f32;
+                            let dg = diffuse.get_float(2).unwrap_or(sg as f64) as f32;
+                            let db = diffuse.get_float(3).unwrap_or(sb as f64) as f32;
+                            let rendering_rgba = [dr, dg, db, alpha];
+                            let shading = if rendering_rgba == surface_rgba {
+                                None
+                            } else {
+                                Some(surface_rgba)
+                            };
+                            (rendering_rgba, shading)
+                        } else {
+                            (surface_rgba, None)
+                        }
+                    } else if let Some(factor) = rendering.get_float(2) {
+                        // IfcNormalisedRatioMeasure factor applied against
+                        // SurfaceColour, clamped to the legal 0..1 range.
+                        let f = (factor as f32).clamp(0.0, 1.0);
+                        let rendering_rgba = [sr * f, sg * f, sb * f, alpha];
+                        let shading = if rendering_rgba == surface_rgba {
+                            None
+                        } else {
+                            Some(surface_rgba)
+                        };
+                        (rendering_rgba, shading)
+                    } else {
+                        (surface_rgba, None)
+                    };
 
                     return Some(GeometryStyleInfo {
-                        color: [r, g, b, alpha.clamp(0.0, 1.0)],
+                        color: rendering_rgba,
+                        shading_color: shading,
                         material_name: material_name.clone(),
                     });
                 }

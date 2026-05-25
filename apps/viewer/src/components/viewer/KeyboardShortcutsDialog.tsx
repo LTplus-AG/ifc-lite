@@ -101,7 +101,25 @@ function AboutTab() {
       </div>
 
       {/* Links */}
-      <div className="flex items-center justify-center gap-4 text-xs">
+      <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-1.5 text-xs">
+        <a
+          href="https://ifclite.dev"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ifclite.dev
+          <ExternalLink className="h-3 w-3" />
+        </a>
+        <a
+          href="https://ltplus-ag.github.io/ifc-lite/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Docs
+          <ExternalLink className="h-3 w-3" />
+        </a>
         <a
           href={GITHUB_URL}
           target="_blank"
@@ -349,6 +367,29 @@ function ShortcutsTab() {
 
   return (
     <div className="space-y-4">
+      {/* Learn-more row: drives discovery to the marketing site and the github.io
+          docs. Sits above the shortcut groups so it's the first thing users hunting
+          for help see, without crowding the keyboard reference itself. */}
+      <div className="rounded border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">Learn more:</span>
+        <a
+          href="https://ifclite.dev"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-2 underline-offset-2 hover:underline hover:text-primary transition-colors"
+        >
+          ifclite.dev
+        </a>
+        <span className="mx-1.5 opacity-40">·</span>
+        <a
+          href="https://ltplus-ag.github.io/ifc-lite/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline-offset-2 hover:underline hover:text-primary transition-colors"
+        >
+          docs
+        </a>
+      </div>
       {Object.entries(grouped).map(([category, shortcuts]) => (
         <div key={category}>
           <h3 className="text-sm font-medium text-muted-foreground mb-2">

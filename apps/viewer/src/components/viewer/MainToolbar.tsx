@@ -45,6 +45,12 @@ import {
   Globe2,
   Move,
   Settings,
+  PenLine,
+  Layers3,
+  SquareStack,
+  ChevronsUpDown,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -67,9 +73,10 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { GLTFExporter, CSVExporter } from '@ifc-lite/export';
+import { CSVExporter } from '@ifc-lite/export';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
+import { GLBExportDialog } from './GLBExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -92,7 +99,7 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate';
+type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
 
 function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
@@ -149,6 +156,191 @@ function ToolButton({
         {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * Stacked / Exploded / Solo level display dropdown. Pinned next
+ * to the Quick Floorplan dropdown so storey-related controls
+ * cluster visually. Shows a small purple dot on the trigger when
+ * mode is not Stacked, so the user can tell at a glance that an
+ * Exploded / Solo view is active.
+ *
+ * Gating: parent renders this only when there are ≥ 2 storeys
+ * — single-storey models have no use for level display modes.
+ */
+interface LevelDisplayDropdownProps {
+  availableStoreys: Array<{ modelId: string; expressId: number; name: string; elevation: number }>;
+}
+
+function LevelDisplayDropdown({ availableStoreys }: LevelDisplayDropdownProps) {
+  const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
+  const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
+  const explodedGap = useViewerStore((s) => s.explodedGap);
+  const setExplodedGap = useViewerStore((s) => s.setExplodedGap);
+  const soloStorey = useViewerStore((s) => s.soloStorey);
+  const setSoloStorey = useViewerStore((s) => s.setSoloStorey);
+
+  const dirty = levelDisplayMode !== 'stacked';
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Level display mode"
+              className="relative"
+            >
+              {levelDisplayMode === 'exploded' ? (
+                <ChevronsUpDown className="h-4 w-4" />
+              ) : levelDisplayMode === 'solo' ? (
+                <SquareStack className="h-4 w-4" />
+              ) : (
+                <Layers3 className="h-4 w-4" />
+              )}
+              {dirty && (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-purple-500 ring-1 ring-background"
+                />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Level display ({levelDisplayMode})</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent className="w-72">
+        <DropdownMenuLabel>Level display</DropdownMenuLabel>
+        <DropdownMenuCheckboxItem
+          checked={levelDisplayMode === 'stacked'}
+          onCheckedChange={() => setLevelDisplayMode('stacked')}
+        >
+          <Layers3 className="h-4 w-4 mr-2" /> Stacked
+          <span className="ml-auto text-[10px] opacity-50">default</span>
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={levelDisplayMode === 'exploded'}
+          onCheckedChange={() => setLevelDisplayMode('exploded')}
+        >
+          <ChevronsUpDown className="h-4 w-4 mr-2" /> Exploded
+        </DropdownMenuCheckboxItem>
+        {levelDisplayMode === 'exploded' && (
+          <div className="px-2 pb-1.5 pt-1 flex items-center gap-2 text-xs">
+            <span className="text-zinc-500">Gap (m)</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={explodedGap}
+              onChange={(e) => {
+                // Guard non-finite — clearing the field or typing
+                // a stray "e" would yield NaN, which the offset
+                // math would silently propagate. The slice setter
+                // also clamps to [0, 100] for the range guard.
+                const next = e.currentTarget.valueAsNumber;
+                if (Number.isFinite(next)) setExplodedGap(next);
+              }}
+              className="w-16 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700
+                bg-white dark:bg-zinc-950 text-xs font-mono rounded
+                focus:outline-none focus:ring-1 focus:ring-purple-500"
+            />
+          </div>
+        )}
+        <DropdownMenuCheckboxItem
+          checked={levelDisplayMode === 'solo'}
+          onCheckedChange={() => setLevelDisplayMode('solo')}
+        >
+          <SquareStack className="h-4 w-4 mr-2" /> Solo
+        </DropdownMenuCheckboxItem>
+        {levelDisplayMode === 'solo' && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-wide">Storey</DropdownMenuLabel>
+            {availableStoreys.map((storey) => (
+              <DropdownMenuItem
+                key={`${storey.modelId}-${storey.expressId}`}
+                onClick={() => setSoloStorey({ modelId: storey.modelId, expressId: storey.expressId })}
+                className={cn(
+                  soloStorey?.modelId === storey.modelId &&
+                    soloStorey?.expressId === storey.expressId &&
+                    'bg-purple-100 dark:bg-purple-950/40',
+                )}
+              >
+                <Building2 className="h-4 w-4 mr-2" />
+                {storey.name}
+                <span className="ml-auto text-[10px] opacity-60">{storey.elevation.toFixed(1)}m</span>
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Toolbar pair for Undo / Redo. Drives `MutationSlice.undo` /
+ * `redo` for the active model (the active model is the only one
+ * the user is actively editing; multi-model undo would need a
+ * separate UX). Disabled when the active model's stack is empty.
+ *
+ * Keyboard shortcuts (Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z) are wired
+ * in `useKeyboardShortcuts`.
+ */
+function UndoRedoButtons() {
+  const activeModelId = useViewerStore((s) => s.activeModelId);
+  const undoStacks = useViewerStore((s) => s.undoStacks);
+  const redoStacks = useViewerStore((s) => s.redoStacks);
+  const undo = useViewerStore((s) => s.undo);
+  const redo = useViewerStore((s) => s.redo);
+
+  const canUndo = activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const canRedo = activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={!canUndo}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              if (activeModelId) undo(activeModelId);
+            }}
+            aria-label="Undo"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Undo <span className="ml-2 text-xs opacity-60">⌘Z</span>
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={!canRedo}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              if (activeModelId) redo(activeModelId);
+            }}
+            aria-label="Redo"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Redo <span className="ml-2 text-xs opacity-60">⌘⇧Z</span>
+        </TooltipContent>
+      </Tooltip>
+    </>
   );
 }
 
@@ -303,6 +495,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
+  const editEnabled = useViewerStore((state) => state.editEnabled);
+  const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
@@ -430,6 +624,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     return { spaces: scan.spaces, openings: scan.openings, site: scan.site };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- meshLen is a stable proxy for geometryResult
   }, [models, meshLen]);
+
+  // IfcAnnotation has no body mesh, so it can't be detected via the mesh scan.
+  // Look up the entity table directly. byType keys are uppercase STEP names
+  // ('IFCANNOTATION') but cache loads sometimes preserve PascalCase too.
+  // Symbolic 2D overlays cover BOTH IfcAnnotation (text, dimensions, leader
+  // lines, filled regions) AND IfcGrid (axis lines + synthesized bubble +
+  // tag). Some files ship only grids (Snowdon Towers Structural is the
+  // canonical example — no IfcAnnotation at all), so the toggle must
+  // surface for either entity type or grid-only models get no way to hide
+  // the overlay.
+  const hasIfcAnnotations = useMemo(() => {
+    const has = (store: typeof ifcDataStore | undefined) => {
+      const byType = store?.entityIndex?.byType;
+      if (!byType) return false;
+      return (byType.get('IFCANNOTATION')?.length ?? 0) > 0
+        || (byType.get('IfcAnnotation')?.length ?? 0) > 0
+        || (byType.get('IFCGRID')?.length ?? 0) > 0
+        || (byType.get('IfcGrid')?.length ?? 0) > 0;
+    };
+    if (models.size > 0) {
+      for (const [, m] of models) if (has(m.ifcDataStore)) return true;
+    }
+    return has(ifcDataStore);
+  }, [models, ifcDataStore]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -699,26 +917,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 
-  const handleExportGLB = useCallback(() => {
-    if (!requireDesktopFeature('exports', 'Exports')) return;
-    if (!geometryResult) return;
-    try {
-      const exporter = new GLTFExporter(geometryResult);
-      const glb = exporter.exportGLB({ includeMetadata: true });
-      const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model.glb';
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(`Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`);
-    } catch (err) {
-      console.error('Export failed:', err);
-      toast.error(`GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [geometryResult, requireDesktopFeature]);
-
   const handleScreenshot = useCallback(() => {
     if (!requireDesktopFeature('exports', 'Exports')) return;
     const canvas = document.querySelector('canvas');
@@ -911,10 +1109,21 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleExportGLB}>
-            <Download className="h-4 w-4 mr-2" />
-            Export GLB (3D Model)
-          </DropdownMenuItem>
+          {hasDesktopFeatureAccess(desktopEntitlement, 'exports') ? (
+            <GLBExportDialog
+              trigger={
+                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export GLB (3D Model)
+                </DropdownMenuItem>
+              }
+            />
+          ) : (
+            <DropdownMenuItem onClick={() => promptDesktopUpgrade('Exports')}>
+              <Download className="h-4 w-4 mr-2" />
+              Export GLB (3D Model)
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={!ifcDataStore}>
@@ -1108,6 +1317,50 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <ToolButton tool="select" icon={MousePointer2} label="Select" shortcut="V" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton tool="walk" icon={PersonStanding} label="Walk Mode" shortcut="C" activeTool={activeTool} onToolChange={setActiveTool} />
 
+      {/* ── Edit Mode pill ──
+          Single global switch that unlocks every authoring affordance
+          (inline property/attribute editors in the Properties panel,
+          the add-element draw tools, georeference placement, and
+          future geometry manipulators). Off by default — viewer-only
+          users never see edit chrome. Press E to toggle.
+          See `uiSlice.editEnabled`. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={editEnabled ? 'default' : 'ghost'}
+            size="icon-sm"
+            aria-label={editEnabled ? 'Exit edit mode' : 'Enter edit mode'}
+            aria-pressed={editEnabled}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              toggleEditEnabled();
+            }}
+            className={cn(editEnabled && 'bg-purple-600 text-white hover:bg-purple-700')}
+          >
+            <PenLine className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {editEnabled ? 'Exit Edit Mode' : 'Edit Mode'} <span className="opacity-50">E</span>
+        </TooltipContent>
+      </Tooltip>
+
+      {/* Undo / Redo — always visible (any authoring op pushes a
+          mutation; the buttons read disabled when the active
+          model's undo stack is empty). Pinned next to Edit so the
+          user has a one-click recovery for any change. */}
+      <UndoRedoButtons />
+
+      {/* Draw / modify gestures live in the existing Add Element
+          panel (right-side `AddElementPanel`, opened via the Add
+          Element button) and in the contextual Geometry edit card
+          inside the Properties panel — splitting a selected wall,
+          duplicating, rotating, etc. all happen there. Keeping the
+          toolbar minimal: just the Edit mode switch + the
+          navigation tools. Per-element-type draw pills duplicated
+          the AddElement panel and added clutter. */}
+      {/* (no draw pills here — by design) */}
+
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       {/* ── Measurement & Section ── */}
@@ -1150,6 +1403,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      {/* Level display mode (Stacked / Exploded / Solo). Only
+          surfaces when the active model has at least 2 storeys —
+          single-storey models have nothing useful to show. */}
+      {availableStoreys.length >= 2 && <LevelDisplayDropdown availableStoreys={availableStoreys} />}
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 
@@ -1251,6 +1509,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             >
               <Building2 className="h-4 w-4 mr-2" style={{ color: '#66cc4d' }} />
               Show Site
+            </DropdownMenuCheckboxItem>
+          )}
+          {hasIfcAnnotations && (
+            <DropdownMenuCheckboxItem
+              checked={typeVisibility.ifcAnnotations}
+              onCheckedChange={() => toggleTypeVisibility('ifcAnnotations')}
+            >
+              <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
+              Show Annotations & Grids
             </DropdownMenuCheckboxItem>
           )}
 

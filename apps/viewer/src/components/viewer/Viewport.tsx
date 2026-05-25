@@ -40,12 +40,16 @@ import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
+import { useSymbolicAnnotations, useSymbolicAnnotationsRichData } from '../../hooks/useSymbolicAnnotations.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
   /** Monotonic counter that increments when geometry changes — used to trigger
    *  streaming effects even when the geometry array reference is stable. */
   geometryVersion?: number;
+  /** Bumps when existing mesh vertex/normal data has been mutated in place
+   *  (e.g. realignFederation). Forces the streaming hook to re-upload buffers. */
+  geometryContentVersion?: number;
   /** Point cloud assets aggregated across visible federated models. */
   pointClouds?: ReadonlyArray<PointCloudAsset> | null;
   coordinateInfo?: CoordinateInfo;
@@ -61,6 +65,7 @@ interface ViewportProps {
 export function Viewport({
   geometry,
   geometryVersion,
+  geometryContentVersion,
   pointClouds,
   coordinateInfo,
   computedIsolatedIds,
@@ -267,8 +272,12 @@ export function Viewport({
   const {
     pendingColorUpdates,
     pendingMeshColorUpdates,
+    pendingMeshRemovals,
+    pendingMeshTranslations,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
+    clearPendingMeshRemovals,
+    clearPendingMeshTranslations,
   } = useColorUpdateState();
 
   // IFC data state
@@ -567,12 +576,17 @@ export function Viewport({
       return Math.max(64, Math.floor(size / 64) * 64);
     };
 
+    // Cap at the conservative WebGPU floor; the renderer re-clamps using the actual
+    // adapter limit once the device is initialized. Without this, tall iframe layouts
+    // can ask for canvas dimensions that exceed 8192 and every texture creation fails.
+    const MAX_CANVAS_DIM = 8192;
+
     // Use CSS pixel dimensions for canvas. The Renderer.render() method manages
     // its own dimension alignment via getBoundingClientRect() — do NOT apply DPR
     // here as it creates a mismatch that causes constant context reconfiguration.
     const rect = canvas.getBoundingClientRect();
-    const width = alignToWebGPU(Math.max(1, Math.floor(rect.width)));
-    const height = Math.max(1, Math.floor(rect.height));
+    const width = Math.min(MAX_CANVAS_DIM, alignToWebGPU(Math.max(1, Math.floor(rect.width))));
+    const height = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.floor(rect.height)));
     canvas.width = width;
     canvas.height = height;
 
@@ -651,6 +665,33 @@ export function Viewport({
           if (!c) return null;
           return camera.projectToScreen(worldPos, c.width, c.height);
         },
+        unprojectToFloor: (clientX, clientY, worldY) => {
+          // Inverse of projectToScreen, but only against a horizontal
+          // plane at the given world Y. `unprojectToRay` expects
+          // drawing-buffer coords (c.width / c.height) — same space
+          // `projectToScreen` uses above — so we scale the CSS-space
+          // cursor delta by DPR before handing it over. This matches
+          // what raycastStoreyFloor does for the mouse handlers
+          // (after #723 — see the matching fix there).
+          const c = canvasRef.current;
+          if (!c) return null;
+          const rect = c.getBoundingClientRect();
+          const cssX = clientX - rect.left;
+          const cssY = clientY - rect.top;
+          const x = (cssX / rect.width) * c.width;
+          const y = (cssY / rect.height) * c.height;
+          const ray = camera.unprojectToRay(x, y, c.width, c.height);
+          if (!ray) return null;
+          const dy = ray.direction.y;
+          if (Math.abs(dy) < 1e-6) return null;
+          const t = (worldY - ray.origin.y) / dy;
+          if (!Number.isFinite(t) || t <= 0) return null;
+          return {
+            x: ray.origin.x + ray.direction.x * t,
+            y: worldY,
+            z: ray.origin.z + ray.direction.z * t,
+          };
+        },
         setProjectionMode: (mode) => {
           camera.setProjectionMode(mode);
           renderCurrent();
@@ -700,8 +741,8 @@ export function Viewport({
       resizeObserver = new ResizeObserver(() => {
         if (aborted) return;
         const rect = canvas.getBoundingClientRect();
-        const w = alignToWebGPU(Math.max(1, Math.floor(rect.width)));
-        const h = Math.max(1, Math.floor(rect.height));
+        const w = Math.min(MAX_CANVAS_DIM, alignToWebGPU(Math.max(1, Math.floor(rect.width))));
+        const h = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.floor(rect.height)));
         renderer.resize(w, h);
         renderCurrent();
       });
@@ -738,6 +779,77 @@ export function Viewport({
   const drawing2D = useViewerStore((s) => s.drawing2D);
   const show3DOverlay = useViewerStore((s) => s.drawing2DDisplayOptions.show3DOverlay);
   const showHiddenLines = useViewerStore((s) => s.drawing2DDisplayOptions.showHiddenLines);
+
+  // ===== IfcAnnotation symbolic overlay =====
+  // Renders IfcAnnotation 2D drawing curves as a standalone 3D line overlay
+  // that's visible regardless of whether a section cut is active. Each
+  // segment is lifted to its containing storey's elevation, so a multi-
+  // storey model shows all storeys' annotations layered correctly in 3D
+  // (issue #653). Parsing is lazy and only runs while the toggle is on.
+  const ifcAnnotationsVisible = useViewerStore((s) => s.typeVisibility.ifcAnnotations);
+  // For annotations whose storey can't be resolved (or whose authored
+  // elevation is 0 because the storey Z lives on the placement instead),
+  // lift to the middle of the model's vertical span so they don't end up
+  // buried inside ground-floor geometry.
+  const annotationFallbackY = useMemo(() => {
+    const bounds = coordinateInfo?.shiftedBounds;
+    if (!bounds) return 0;
+    const min = bounds.min.y;
+    const max = bounds.max.y;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return 0;
+    return (min + max) * 0.5;
+  }, [coordinateInfo]);
+  const annotationVertices3D = useSymbolicAnnotations({
+    enabled: ifcAnnotationsVisible,
+    fallbackY: annotationFallbackY,
+  });
+  const { texts: annotationTexts3D, fills: annotationFills3D } = useSymbolicAnnotationsRichData({
+    enabled: ifcAnnotationsVisible,
+    fallbackY: annotationFallbackY,
+  });
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    if (annotationVertices3D.length === 0) {
+      renderer.clearAnnotationLines3D();
+    } else {
+      renderer.uploadAnnotationLines3D(annotationVertices3D);
+    }
+  }, [annotationVertices3D, isInitialized]);
+
+  // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
+  // pipelines. Map the hook's per-annotation records into the SymbolicFillInput
+  // / SymbolicTextInput shape the renderer expects. Empty arrays clear cleanly.
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    renderer.uploadAnnotationFills3D(
+      annotationFills3D.map((f) => ({
+        points: f.points,
+        holesOffsets: f.holesOffsets,
+        worldY: f.worldY,
+        color: f.color,
+      })),
+    );
+  }, [annotationFills3D, isInitialized]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    renderer.uploadAnnotationTexts3D(
+      annotationTexts3D.map((t) => ({
+        worldPos: t.worldPos,
+        dirX: t.dirX,
+        dirZ: t.dirZ,
+        height: t.height,
+        content: t.content,
+        alignment: t.alignment,
+        billboard: t.billboard,
+        color: t.color,
+        targetPx: t.targetPx,
+      })),
+    );
+  }, [annotationTexts3D, isInitialized]);
 
   // ===== Streaming progress =====
   const isStreaming = useViewerStore((state) => state.geometryStreamingActive);
@@ -896,13 +1008,18 @@ export function Viewport({
     isInitialized,
     geometry,
     geometryVersion,
+    geometryContentVersion,
     coordinateInfo,
     isStreaming,
     geometryBoundsRef,
     pendingColorUpdates,
     pendingMeshColorUpdates,
+    pendingMeshRemovals,
+    pendingMeshTranslations,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
+    clearPendingMeshRemovals,
+    clearPendingMeshTranslations,
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,

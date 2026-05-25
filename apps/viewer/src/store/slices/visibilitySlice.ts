@@ -11,7 +11,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { TypeVisibility, EntityRef } from '../types.js';
-import { TYPE_VISIBILITY_DEFAULTS } from '../constants.js';
+import { TYPE_VISIBILITY_DEFAULTS, TYPE_VISIBILITY_STORAGE_KEYS } from '../constants.js';
 
 export interface VisibilitySlice {
   // State (legacy - single model)
@@ -43,7 +43,7 @@ export interface VisibilitySlice {
   clearAllFilters: () => void;
   showAll: () => void;
   isEntityVisible: (id: number) => boolean;
-  toggleTypeVisibility: (type: 'spaces' | 'openings' | 'site') => void;
+  toggleTypeVisibility: (type: 'spaces' | 'openings' | 'site' | 'ifcAnnotations') => void;
   /** Set all hidden entities at once (for BCF viewpoint application) */
   setHiddenEntities: (ids: Set<number>) => void;
   /** Set all isolated entities at once (for BCF viewpoint with defaultVisibility=false) */
@@ -79,6 +79,7 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     spaces: TYPE_VISIBILITY_DEFAULTS.SPACES,
     openings: TYPE_VISIBILITY_DEFAULTS.OPENINGS,
     site: TYPE_VISIBILITY_DEFAULTS.SITE,
+    ifcAnnotations: TYPE_VISIBILITY_DEFAULTS.IFC_ANNOTATIONS,
   },
 
   // Initial state (multi-model)
@@ -194,12 +195,20 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     return true;
   },
 
-  toggleTypeVisibility: (type) => set((state) => ({
-    typeVisibility: {
-      ...state.typeVisibility,
-      [type]: !state.typeVisibility[type],
-    },
-  })),
+  toggleTypeVisibility: (type) => set((state) => {
+    const next = !state.typeVisibility[type];
+    // Persist every type-visibility toggle so user choice survives
+    // reloads. Keyed by type so clearing one preference (e.g. for
+    // testing or to reset to defaults) doesn't nuke the others.
+    if (typeof window !== 'undefined') {
+      const storageKey = TYPE_VISIBILITY_STORAGE_KEYS[type];
+      try { localStorage.setItem(storageKey, String(next)); }
+      catch { /* private-mode storage rejection — non-fatal */ }
+    }
+    return {
+      typeVisibility: { ...state.typeVisibility, [type]: next },
+    };
+  }),
 
   // Actions (multi-model)
   hideEntityInModel: (modelId, expressId) => set((state) => {

@@ -17,7 +17,13 @@ pub struct MeshDataJs {
     positions: Vec<f32>,
     normals: Vec<f32>,
     indices: Vec<u32>,
+    /// Apparent rendering colour: IfcSurfaceStyleRendering.DiffuseColour
+    /// when authored, otherwise the SurfaceColour.
     color: [f32; 4], // RGBA
+    /// SurfaceColour, populated only when the file authored a distinct
+    /// DiffuseColour (so the two would differ). Consumed by the GLB
+    /// exporter's "Shading" colour-source option; renderers ignore it.
+    shading_color: Option<[f32; 4]>,
 }
 
 #[wasm_bindgen]
@@ -56,6 +62,14 @@ impl MeshDataJs {
     #[wasm_bindgen(getter)]
     pub fn color(&self) -> Vec<f32> {
         self.color.to_vec()
+    }
+
+    /// Optional SurfaceColour for the "Shading" GLB-export choice — only
+    /// present when the file authored a distinct DiffuseColour. JS sees
+    /// `undefined` when absent (most files).
+    #[wasm_bindgen(getter, js_name = shadingColor)]
+    pub fn shading_color(&self) -> Option<Vec<f32>> {
+        self.shading_color.map(|c| c.to_vec())
     }
 
     /// Get vertex count
@@ -109,7 +123,15 @@ impl MeshDataJs {
             normals: mesh.normals,
             indices: mesh.indices,
             color,
+            shading_color: None,
         }
+    }
+
+    /// Attach an optional SurfaceColour for the GLB exporter's "Shading"
+    /// colour source. Callers that have a `geometry_shading_styles` entry
+    /// for the mesh's source geometry id should invoke this after `new`.
+    pub fn set_shading_color(&mut self, shading: Option<[f32; 4]>) {
+        self.shading_color = shading;
     }
 }
 
@@ -145,6 +167,7 @@ impl MeshCollection {
             normals: m.normals.clone(),
             indices: m.indices.clone(),
             color: m.color,
+            shading_color: m.shading_color,
         })
     }
 
@@ -298,6 +321,7 @@ impl Clone for MeshCollection {
                     normals: m.normals.clone(),
                     indices: m.indices.clone(),
                     color: m.color,
+                    shading_color: m.shading_color,
                 })
                 .collect(),
             rtc_offset_x: self.rtc_offset_x,
@@ -589,6 +613,13 @@ pub struct SymbolicPolyline {
     points: Vec<f32>,
     /// Whether this is a closed loop
     is_closed: bool,
+    /// World-Y (elevation in world meters) sampled from the placement chain
+    /// or the polyline's own 3D IfcCartesianPoint Z component. Lets the JS
+    /// hook bucket annotations by elevation instead of by storey id —
+    /// important for files like 3DEXPERIENCE's IFC_Annotation.ifc whose
+    /// IfcRelAggregates leaves storeys orphaned but encodes the elevation
+    /// on each item's geometry.
+    world_y: f32,
     /// Representation identifier: "Plan", "Annotation", "FootPrint", "Axis"
     rep_identifier: String,
 }
@@ -630,15 +661,24 @@ impl SymbolicPolyline {
     pub fn rep_identifier(&self) -> String {
         self.rep_identifier.clone()
     }
+
+    /// World-Y elevation captured from the placement chain (or first 3D
+    /// point's Z component). JS uses this as the canonical bucket key.
+    #[wasm_bindgen(getter, js_name = worldY)]
+    pub fn world_y(&self) -> f32 {
+        self.world_y
+    }
 }
 
 impl SymbolicPolyline {
     /// Create a new symbolic polyline
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         express_id: u32,
         ifc_type: String,
         points: Vec<f32>,
         is_closed: bool,
+        world_y: f32,
         rep_identifier: String,
     ) -> Self {
         Self {
@@ -646,6 +686,7 @@ impl SymbolicPolyline {
             ifc_type,
             points,
             is_closed,
+            world_y,
             rep_identifier,
         }
     }
@@ -661,6 +702,8 @@ pub struct SymbolicCircle {
     center_y: f32,
     /// Radius
     radius: f32,
+    /// World-Y elevation (see SymbolicPolyline.world_y).
+    world_y: f32,
     /// Start angle in radians (0 for full circle)
     start_angle: f32,
     /// End angle in radians (2*PI for full circle)
@@ -716,15 +759,23 @@ impl SymbolicCircle {
     pub fn is_full_circle(&self) -> bool {
         (self.end_angle - self.start_angle - std::f32::consts::TAU).abs() < 0.001
     }
+
+    /// World-Y elevation captured from the placement chain.
+    #[wasm_bindgen(getter, js_name = worldY)]
+    pub fn world_y(&self) -> f32 {
+        self.world_y
+    }
 }
 
 impl SymbolicCircle {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         express_id: u32,
         ifc_type: String,
         center_x: f32,
         center_y: f32,
         radius: f32,
+        world_y: f32,
         start_angle: f32,
         end_angle: f32,
         rep_identifier: String,
@@ -735,6 +786,7 @@ impl SymbolicCircle {
             center_x,
             center_y,
             radius,
+            world_y,
             start_angle,
             end_angle,
             rep_identifier,
@@ -748,6 +800,7 @@ impl SymbolicCircle {
         center_x: f32,
         center_y: f32,
         radius: f32,
+        world_y: f32,
         rep_identifier: String,
     ) -> Self {
         Self::new(
@@ -756,10 +809,294 @@ impl SymbolicCircle {
             center_x,
             center_y,
             radius,
+            world_y,
             0.0,
             std::f32::consts::TAU,
             rep_identifier,
         )
+    }
+}
+
+/// A 2D text annotation (IfcTextLiteral / IfcTextLiteralWithExtent).
+///
+/// Position is in the same 2D coordinate space as `SymbolicPolyline` (i.e. the
+/// floor-plan / annotation overlay's local frame after applying placement +
+/// RTC). The text-orientation pair `(cos, sin)` rotates the baseline from the
+/// `+x` axis. Height is the IFC font height in model units, scaled by the
+/// project's length-unit factor so the renderer can convert directly to world
+/// units. Alignment is the IFC `BoxAlignment` string verbatim
+/// (`top-left`, `center`, `bottom-right`, …) — the renderer can interpret it.
+#[wasm_bindgen]
+pub struct SymbolicText {
+    express_id: u32,
+    ifc_type: String,
+    /// Anchor point on the text baseline (model units).
+    x: f32,
+    y: f32,
+    /// Baseline orientation as a (cos, sin) pair. Defaults to (1, 0).
+    dir_x: f32,
+    dir_y: f32,
+    /// Font height in model units (already unit-scaled). Defaults to 1.0 when
+    /// IfcTextStyle isn't resolvable.
+    height: f32,
+    /// UTF-8 text content (decoded from IFC's `\X2\…\X0\` escape sequences).
+    content: String,
+    /// IFC `BoxAlignment` — empty string when absent. Renderer treats absent
+    /// as `"bottom-left"`, matching the IFC default.
+    alignment: String,
+    /// World-Y elevation captured from the placement chain (see
+    /// SymbolicPolyline.world_y for the why).
+    world_y: f32,
+    /// sRGB straight-alpha colour (0..1). Defaults to dark-grey when no
+    /// IfcStyledItem chain resolves a colour. The grid-tag emission path
+    /// uses this to render white bubble fills + black outlines + black
+    /// tags out of the existing text pipeline (free billboard +
+    /// screen-pixel scaling).
+    color_r: f32,
+    color_g: f32,
+    color_b: f32,
+    color_a: f32,
+    /// Per-instance target screen-pixel cap height. 0 = fall back to the
+    /// renderer's global default (~14 px for body text). Grid bubble fills
+    /// + outlines emit at a larger value (~30 px) so the bubble stays
+    /// proportional to the inscribed tag at every zoom level.
+    target_px: f32,
+    /// "Plan" | "Annotation" | "FootPrint" | "Axis"
+    rep_identifier: String,
+}
+
+#[wasm_bindgen]
+impl SymbolicText {
+    #[wasm_bindgen(getter, js_name = expressId)]
+    pub fn express_id(&self) -> u32 { self.express_id }
+    #[wasm_bindgen(getter, js_name = ifcType)]
+    pub fn ifc_type(&self) -> String { self.ifc_type.clone() }
+    #[wasm_bindgen(getter)]
+    pub fn x(&self) -> f32 { self.x }
+    #[wasm_bindgen(getter)]
+    pub fn y(&self) -> f32 { self.y }
+    #[wasm_bindgen(getter, js_name = dirX)]
+    pub fn dir_x(&self) -> f32 { self.dir_x }
+    #[wasm_bindgen(getter, js_name = dirY)]
+    pub fn dir_y(&self) -> f32 { self.dir_y }
+    #[wasm_bindgen(getter)]
+    pub fn height(&self) -> f32 { self.height }
+    #[wasm_bindgen(getter)]
+    pub fn content(&self) -> String { self.content.clone() }
+    #[wasm_bindgen(getter)]
+    pub fn alignment(&self) -> String { self.alignment.clone() }
+    #[wasm_bindgen(getter, js_name = worldY)]
+    pub fn world_y(&self) -> f32 { self.world_y }
+    #[wasm_bindgen(getter, js_name = colorR)]
+    pub fn color_r(&self) -> f32 { self.color_r }
+    #[wasm_bindgen(getter, js_name = colorG)]
+    pub fn color_g(&self) -> f32 { self.color_g }
+    #[wasm_bindgen(getter, js_name = colorB)]
+    pub fn color_b(&self) -> f32 { self.color_b }
+    #[wasm_bindgen(getter, js_name = colorA)]
+    pub fn color_a(&self) -> f32 { self.color_a }
+    #[wasm_bindgen(getter, js_name = targetPx)]
+    pub fn target_px(&self) -> f32 { self.target_px }
+    #[wasm_bindgen(getter, js_name = repIdentifier)]
+    pub fn rep_identifier(&self) -> String { self.rep_identifier.clone() }
+}
+
+impl SymbolicText {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        express_id: u32,
+        ifc_type: String,
+        x: f32,
+        y: f32,
+        dir_x: f32,
+        dir_y: f32,
+        height: f32,
+        content: String,
+        alignment: String,
+        world_y: f32,
+        rep_identifier: String,
+    ) -> Self {
+        Self::new_styled(
+            express_id, ifc_type, x, y, dir_x, dir_y,
+            height, content, alignment, world_y,
+            [0.05, 0.05, 0.05, 1.0], // default near-black text color
+            0.0,                       // 0 → renderer global default target_px
+            rep_identifier,
+        )
+    }
+
+    /// Full constructor with per-instance colour + screen-pixel target.
+    /// Used by the grid bubble emission (white fill / black outline) and
+    /// by future IfcTextStyle resolution.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_styled(
+        express_id: u32,
+        ifc_type: String,
+        x: f32,
+        y: f32,
+        dir_x: f32,
+        dir_y: f32,
+        height: f32,
+        content: String,
+        alignment: String,
+        world_y: f32,
+        rgba: [f32; 4],
+        target_px: f32,
+        rep_identifier: String,
+    ) -> Self {
+        Self {
+            express_id,
+            ifc_type,
+            x,
+            y,
+            dir_x,
+            dir_y,
+            height,
+            content,
+            alignment,
+            world_y,
+            color_r: rgba[0],
+            color_g: rgba[1],
+            color_b: rgba[2],
+            color_a: rgba[3],
+            target_px,
+            rep_identifier,
+        }
+    }
+}
+
+/// A 2D filled region (IfcAnnotationFillArea / IfcAnnotationFillAreaOccurrence).
+///
+/// Stores one outer ring of 2D points plus an offset table indexing inner
+/// rings (holes). Both rings are stored flat in `points` so the JS side can
+/// view the buffer as one Float32Array. The optional `hatch_*` fields encode
+/// IfcFillAreaStyleHatching (line spacing, primary/secondary angles, line
+/// width) when the IfcStyledItem chain resolves to a hatching style; absent
+/// styles render as a solid fill.
+///
+/// `holes_offsets` is an inclusive-prefix array describing where each hole
+/// begins. The outer ring is implicitly at `points[0..holes_offsets[0]]`
+/// (or all points if `holes_offsets` is empty). Each `holes_offsets[i]` is a
+/// vertex index, not a byte offset.
+#[wasm_bindgen]
+pub struct SymbolicFillArea {
+    express_id: u32,
+    ifc_type: String,
+    /// All ring vertices: outer ring, then each hole back-to-back. Format:
+    /// [x1, y1, x2, y2, …]
+    points: Vec<f32>,
+    /// Inclusive prefix of where each hole begins (in vertex indices, not
+    /// floats). Empty array = no holes.
+    holes_offsets: Vec<u32>,
+    /// Fill color (sRGB, 0..1). Defaults to opaque black when no style.
+    fill_r: f32,
+    fill_g: f32,
+    fill_b: f32,
+    fill_a: f32,
+    /// Whether this fill has a hatching style applied.
+    has_hatching: bool,
+    /// Hatching primary line spacing in model units. Only valid when has_hatching.
+    hatch_spacing: f32,
+    /// Hatching primary angle in radians from the +x axis.
+    hatch_angle: f32,
+    /// Optional secondary angle (cross-hatching). NaN if absent.
+    hatch_angle_secondary: f32,
+    /// Hatching line width in model units (0 when unspecified).
+    hatch_line_width: f32,
+    /// World-Y elevation captured from the placement chain or the boundary
+    /// curve's IfcCartesianPoint Z components (see SymbolicPolyline.world_y).
+    world_y: f32,
+    rep_identifier: String,
+}
+
+#[wasm_bindgen]
+impl SymbolicFillArea {
+    #[wasm_bindgen(getter, js_name = expressId)]
+    pub fn express_id(&self) -> u32 { self.express_id }
+    #[wasm_bindgen(getter, js_name = ifcType)]
+    pub fn ifc_type(&self) -> String { self.ifc_type.clone() }
+    /// Flattened ring vertices.
+    #[wasm_bindgen(getter)]
+    pub fn points(&self) -> js_sys::Float32Array {
+        js_sys::Float32Array::from(&self.points[..])
+    }
+    #[wasm_bindgen(getter, js_name = pointCount)]
+    pub fn point_count(&self) -> usize { self.points.len() / 2 }
+    /// Vertex indices marking the start of each hole. Empty = no holes.
+    #[wasm_bindgen(getter, js_name = holesOffsets)]
+    pub fn holes_offsets(&self) -> js_sys::Uint32Array {
+        js_sys::Uint32Array::from(&self.holes_offsets[..])
+    }
+    #[wasm_bindgen(getter, js_name = holeCount)]
+    pub fn hole_count(&self) -> usize { self.holes_offsets.len() }
+    #[wasm_bindgen(getter, js_name = fillR)]
+    pub fn fill_r(&self) -> f32 { self.fill_r }
+    #[wasm_bindgen(getter, js_name = fillG)]
+    pub fn fill_g(&self) -> f32 { self.fill_g }
+    #[wasm_bindgen(getter, js_name = fillB)]
+    pub fn fill_b(&self) -> f32 { self.fill_b }
+    #[wasm_bindgen(getter, js_name = fillA)]
+    pub fn fill_a(&self) -> f32 { self.fill_a }
+    #[wasm_bindgen(getter, js_name = hasHatching)]
+    pub fn has_hatching(&self) -> bool { self.has_hatching }
+    #[wasm_bindgen(getter, js_name = hatchSpacing)]
+    pub fn hatch_spacing(&self) -> f32 { self.hatch_spacing }
+    #[wasm_bindgen(getter, js_name = hatchAngle)]
+    pub fn hatch_angle(&self) -> f32 { self.hatch_angle }
+    #[wasm_bindgen(getter, js_name = hatchAngleSecondary)]
+    pub fn hatch_angle_secondary(&self) -> f32 { self.hatch_angle_secondary }
+    #[wasm_bindgen(getter, js_name = hatchLineWidth)]
+    pub fn hatch_line_width(&self) -> f32 { self.hatch_line_width }
+    #[wasm_bindgen(getter, js_name = worldY)]
+    pub fn world_y(&self) -> f32 { self.world_y }
+    #[wasm_bindgen(getter, js_name = repIdentifier)]
+    pub fn rep_identifier(&self) -> String { self.rep_identifier.clone() }
+}
+
+impl SymbolicFillArea {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        express_id: u32,
+        ifc_type: String,
+        points: Vec<f32>,
+        holes_offsets: Vec<u32>,
+        fill_rgba: [f32; 4],
+        world_y: f32,
+        rep_identifier: String,
+    ) -> Self {
+        Self {
+            express_id,
+            ifc_type,
+            points,
+            holes_offsets,
+            fill_r: fill_rgba[0],
+            fill_g: fill_rgba[1],
+            fill_b: fill_rgba[2],
+            fill_a: fill_rgba[3],
+            has_hatching: false,
+            hatch_spacing: 0.0,
+            hatch_angle: 0.0,
+            hatch_angle_secondary: f32::NAN,
+            hatch_line_width: 0.0,
+            world_y,
+            rep_identifier,
+        }
+    }
+
+    /// Builder method: attach a hatching style to an existing fill area.
+    pub fn with_hatching(
+        mut self,
+        spacing: f32,
+        angle: f32,
+        angle_secondary: Option<f32>,
+        line_width: f32,
+    ) -> Self {
+        self.has_hatching = true;
+        self.hatch_spacing = spacing;
+        self.hatch_angle = angle;
+        self.hatch_angle_secondary = angle_secondary.unwrap_or(f32::NAN);
+        self.hatch_line_width = line_width;
+        self
     }
 }
 
@@ -768,6 +1105,8 @@ impl SymbolicCircle {
 pub struct SymbolicRepresentationCollection {
     polylines: Vec<SymbolicPolyline>,
     circles: Vec<SymbolicCircle>,
+    texts: Vec<SymbolicText>,
+    fills: Vec<SymbolicFillArea>,
 }
 
 #[wasm_bindgen]
@@ -784,16 +1123,27 @@ impl SymbolicRepresentationCollection {
         self.circles.len()
     }
 
+    /// Get number of text annotations
+    #[wasm_bindgen(getter, js_name = textCount)]
+    pub fn text_count(&self) -> usize { self.texts.len() }
+
+    /// Get number of fill areas
+    #[wasm_bindgen(getter, js_name = fillCount)]
+    pub fn fill_count(&self) -> usize { self.fills.len() }
+
     /// Get total count of all symbolic items
     #[wasm_bindgen(getter, js_name = totalCount)]
     pub fn total_count(&self) -> usize {
-        self.polylines.len() + self.circles.len()
+        self.polylines.len() + self.circles.len() + self.texts.len() + self.fills.len()
     }
 
     /// Check if collection is empty
     #[wasm_bindgen(getter, js_name = isEmpty)]
     pub fn is_empty(&self) -> bool {
-        self.polylines.is_empty() && self.circles.is_empty()
+        self.polylines.is_empty()
+            && self.circles.is_empty()
+            && self.texts.is_empty()
+            && self.fills.is_empty()
     }
 
     /// Get polyline at index
@@ -804,6 +1154,7 @@ impl SymbolicRepresentationCollection {
             ifc_type: p.ifc_type.clone(),
             points: p.points.clone(),
             is_closed: p.is_closed,
+            world_y: p.world_y,
             rep_identifier: p.rep_identifier.clone(),
         })
     }
@@ -817,9 +1168,55 @@ impl SymbolicRepresentationCollection {
             center_x: c.center_x,
             center_y: c.center_y,
             radius: c.radius,
+            world_y: c.world_y,
             start_angle: c.start_angle,
             end_angle: c.end_angle,
             rep_identifier: c.rep_identifier.clone(),
+        })
+    }
+
+    /// Get text annotation at index.
+    #[wasm_bindgen(js_name = getText)]
+    pub fn get_text(&self, index: usize) -> Option<SymbolicText> {
+        self.texts.get(index).map(|t| SymbolicText {
+            express_id: t.express_id,
+            ifc_type: t.ifc_type.clone(),
+            x: t.x,
+            y: t.y,
+            dir_x: t.dir_x,
+            dir_y: t.dir_y,
+            height: t.height,
+            content: t.content.clone(),
+            alignment: t.alignment.clone(),
+            world_y: t.world_y,
+            color_r: t.color_r,
+            color_g: t.color_g,
+            color_b: t.color_b,
+            color_a: t.color_a,
+            target_px: t.target_px,
+            rep_identifier: t.rep_identifier.clone(),
+        })
+    }
+
+    /// Get fill area at index.
+    #[wasm_bindgen(js_name = getFill)]
+    pub fn get_fill(&self, index: usize) -> Option<SymbolicFillArea> {
+        self.fills.get(index).map(|f| SymbolicFillArea {
+            express_id: f.express_id,
+            ifc_type: f.ifc_type.clone(),
+            points: f.points.clone(),
+            holes_offsets: f.holes_offsets.clone(),
+            fill_r: f.fill_r,
+            fill_g: f.fill_g,
+            fill_b: f.fill_b,
+            fill_a: f.fill_a,
+            has_hatching: f.has_hatching,
+            hatch_spacing: f.hatch_spacing,
+            hatch_angle: f.hatch_angle,
+            hatch_angle_secondary: f.hatch_angle_secondary,
+            hatch_line_width: f.hatch_line_width,
+            world_y: f.world_y,
+            rep_identifier: f.rep_identifier.clone(),
         })
     }
 
@@ -831,6 +1228,8 @@ impl SymbolicRepresentationCollection {
             .iter()
             .map(|p| p.express_id)
             .chain(self.circles.iter().map(|c| c.express_id))
+            .chain(self.texts.iter().map(|t| t.express_id))
+            .chain(self.fills.iter().map(|f| f.express_id))
             .collect();
         ids.sort_unstable();
         ids.dedup();
@@ -843,6 +1242,8 @@ impl SymbolicRepresentationCollection {
         Self {
             polylines: Vec::new(),
             circles: Vec::new(),
+            texts: Vec::new(),
+            fills: Vec::new(),
         }
     }
 
@@ -850,6 +1251,8 @@ impl SymbolicRepresentationCollection {
         Self {
             polylines: Vec::with_capacity(polyline_capacity),
             circles: Vec::with_capacity(circle_capacity),
+            texts: Vec::new(),
+            fills: Vec::new(),
         }
     }
 
@@ -859,6 +1262,14 @@ impl SymbolicRepresentationCollection {
 
     pub fn add_circle(&mut self, circle: SymbolicCircle) {
         self.circles.push(circle);
+    }
+
+    pub fn add_text(&mut self, text: SymbolicText) {
+        self.texts.push(text);
+    }
+
+    pub fn add_fill(&mut self, fill: SymbolicFillArea) {
+        self.fills.push(fill);
     }
 }
 

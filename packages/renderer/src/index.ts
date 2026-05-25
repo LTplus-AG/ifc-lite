@@ -15,6 +15,18 @@ export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
+
+// IfcAnnotation overlay pipelines (3D world-space). Self-contained — caller
+// passes a GPUDevice + presentation format and invokes `.render(pass, viewProj)`
+// from inside an RGBA-blended pass. See packages/renderer/src/symbolic-overlay-pipelines.ts.
+export {
+  SymbolicFillPipeline,
+  SymbolicTextPipeline,
+  type SymbolicFillInput,
+  type SymbolicTextInput,
+} from './symbolic-overlay-pipelines.js';
+export { SymbolicTextAtlas } from './symbolic-text-atlas.js';
+
 // Section cap styling (hatch pattern ids + default colours). The cap itself
 // is now rendered by Section2DOverlayRenderer's fill pass; this module just
 // holds the styling primitives shared with the store and UI.
@@ -89,6 +101,12 @@ import type {
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
+import {
+  SymbolicFillPipeline,
+  SymbolicTextPipeline,
+  type SymbolicFillInput,
+  type SymbolicTextInput,
+} from './symbolic-overlay-pipelines.js';
 import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
@@ -158,6 +176,10 @@ export class Renderer {
     private canvas: HTMLCanvasElement;
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
+    // IfcAnnotation overlay pipelines (issue #653). Created on `init()` once
+    // the device exists; nulled until then.
+    private symbolicFillPipeline: SymbolicFillPipeline | null = null;
+    private symbolicTextPipeline: SymbolicTextPipeline | null = null;
     private postProcessor: PostProcessor | null = null;
     private edlPass: EdlPass | null = null;
     private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
@@ -232,12 +254,17 @@ export class Renderer {
         await this.device.init(this.canvas);
 
         // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
+        // and clamp to the GPU's max 2D texture dimension so the initial pipeline allocations
+        // can't overflow on tall/wide layouts (see render() for the per-frame clamp).
         const rect = this.canvas.getBoundingClientRect();
-        const width = this.canvas.width || Math.max(1, Math.floor(rect.width));
-        const height = this.canvas.height || Math.max(1, Math.floor(rect.height));
+        const maxDim = this.device.getMaxTextureDimension();
+        const rawWidth = this.canvas.width || Math.max(1, Math.floor(rect.width));
+        const rawHeight = this.canvas.height || Math.max(1, Math.floor(rect.height));
+        const width = Math.min(rawWidth, maxDim);
+        const height = Math.min(rawHeight, maxDim);
 
-        // Set pixel dimensions if not already set
-        if (!this.canvas.width || !this.canvas.height) {
+        // Set pixel dimensions if not already set, or if we clamped them down
+        if (!this.canvas.width || !this.canvas.height || this.canvas.width !== width || this.canvas.height !== height) {
             this.canvas.width = width;
             this.canvas.height = height;
         }
@@ -254,6 +281,20 @@ export class Renderer {
             this.device.getDevice(),
             this.device.getFormat(),
             this.pipeline.getSampleCount()
+        );
+        // IfcAnnotation overlay pipelines (issue #653). Share the device +
+        // presentation format AND the MSAA sample count + objectId attachment
+        // shape with the rest of the renderer so they composite into the same
+        // RGBA pass without WebGPU pass-compatibility validation errors.
+        this.symbolicFillPipeline = new SymbolicFillPipeline(
+            this.device.getDevice(),
+            this.device.getFormat(),
+            this.pipeline.getSampleCount(),
+        );
+        this.symbolicTextPipeline = new SymbolicTextPipeline(
+            this.device.getDevice(),
+            this.device.getFormat(),
+            this.pipeline.getSampleCount(),
         );
         // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
         // depth TEXTURE_BINDING), rendering still works without post-processing.
@@ -1102,10 +1143,16 @@ export class Renderer {
 
         // Validate canvas dimensions
         // Align width to 64 pixels for WebGPU texture row alignment (256 bytes / 4 bytes per pixel)
+        // and clamp both axes to the GPU's max 2D texture dimension. Some hosts (e.g. tall iframes
+        // on high-DPR displays) can produce canvas dimensions that exceed 8192 and would otherwise
+        // make every depth/colour texture allocation a validation error.
         const rect = this.canvas.getBoundingClientRect();
+        const maxDim = this.device.getMaxTextureDimension();
         const rawWidth = Math.max(1, Math.floor(rect.width));
-        const width = Math.max(64, Math.floor(rawWidth / 64) * 64);
-        const height = Math.max(1, Math.floor(rect.height));
+        const widthAligned = Math.max(64, Math.floor(rawWidth / 64) * 64);
+        const width = Math.min(widthAligned, Math.floor(maxDim / 64) * 64);
+        const rawHeight = Math.max(1, Math.floor(rect.height));
+        const height = Math.min(rawHeight, maxDim);
 
         // Skip rendering if canvas is too small
         if (width < 64 || height < 10) { this._renderSkipCount++; return; }
@@ -2183,6 +2230,65 @@ export class Renderer {
                         }
                     );
                 }
+
+            }
+
+            // Standalone IFC annotation overlay (issue #653). The line
+            // vertices were pre-lifted to world space at upload time, so
+            // this draw happens regardless of whether a section plane is
+            // active — annotations are a free-floating "drawing layer"
+            // that sits at each annotation's storey elevation.
+            //
+            // This block was previously nested inside the `if (options.sectionPlane && ...)`
+            // guard above, contradicting its own comment. Loading an
+            // annotation-only model with no section plane meant the entire
+            // overlay was skipped at draw time even though 9000+ vertices
+            // had been uploaded successfully. Pulled out to its own block.
+            //
+            // Order: fills (background) → lines (outlines on top) →
+            // texts (labels above everything).
+            if (this.symbolicFillPipeline?.hasGeometry()) {
+                this.symbolicFillPipeline.render(pass, viewProj);
+            }
+            if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
+                this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
+            }
+            if (this.symbolicTextPipeline?.hasGeometry()) {
+                // Pass viewport pixel dimensions so the shader can scale glyphs
+                // to a constant on-screen size (BIMvision-style annotations)
+                // regardless of camera distance or authored text height.
+                //
+                // Also pass the screen-aligned camera basis (right, up) so
+                // billboarded glyphs (grid bubble tags) can face the camera
+                // in any orientation — top-down, eye-level, oblique alike.
+                const camPos = this.camera.getPosition();
+                const camTgt = this.camera.getTarget();
+                const camUpVec = this.camera.getUp();
+                // Forward = normalize(target - position).
+                let fx = camTgt.x - camPos.x;
+                let fy = camTgt.y - camPos.y;
+                let fz = camTgt.z - camPos.z;
+                let flen = Math.hypot(fx, fy, fz) || 1;
+                fx /= flen; fy /= flen; fz /= flen;
+                // Right = normalize(cross(forward, world-up)).
+                let rx = fy * camUpVec.z - fz * camUpVec.y;
+                let ry = fz * camUpVec.x - fx * camUpVec.z;
+                let rz = fx * camUpVec.y - fy * camUpVec.x;
+                let rlen = Math.hypot(rx, ry, rz) || 1;
+                rx /= rlen; ry /= rlen; rz /= rlen;
+                // True up = normalize(cross(right, forward)) — guaranteed
+                // perpendicular to both, defines screen-space vertical.
+                const ux = ry * fz - rz * fy;
+                const uy = rz * fx - rx * fz;
+                const uz = rx * fy - ry * fx;
+                this.symbolicTextPipeline.render(
+                    pass,
+                    viewProj,
+                    this.canvas.width,
+                    this.canvas.height,
+                    [rx, ry, rz],
+                    [ux, uy, uz],
+                );
             }
 
             pass.end();
@@ -2472,6 +2578,133 @@ export class Renderer {
     }
 
     /**
+     * Upload pre-lifted 3D line-list vertices for the standalone annotation
+     * overlay. Each segment is `[x1, y1, z1, x2, y2, z2]` in world space.
+     * The overlay is drawn regardless of whether a section plane is active.
+     * Pass an empty Float32Array to clear.
+     */
+    uploadAnnotationLines3D(vertices: Float32Array): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.section2DOverlayRenderer.uploadAnnotationLines3D(vertices);
+        // Contribute annotation extents to modelBounds + camera sceneBounds
+        // so an annotation-only model (no IfcProduct meshes — common for
+        // separate "annotation sheets") gets framed by Home / fit-to-view
+        // AND has correct near/far clipping. Without sceneBounds the camera
+        // frustum doesn't include the annotation cluster and they're clipped
+        // away even when the camera is pointed at them. Mirror the
+        // point-cloud upload path (`addPointClouds`, `setPointClouds`) which
+        // does the same thing.
+        this.expandModelBoundsWithFlatVertices(vertices, 3);
+        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /** Walks a flat `[x,y,z,x,y,z,...]` vertex buffer and either initialises
+     *  or expands the cached `modelBounds` AABB. Used by the annotation
+     *  overlay upload paths so symbolic-only models can still be framed.
+     *
+     *  The geometry pipeline pre-seeds a placeholder `[-100, 100]` cube on
+     *  every render when there are 0 meshes (so the section-plane slider
+     *  always has a workable range). For an annotation-only model that
+     *  fallback drowns out the much-smaller annotation cluster and a plain
+     *  "expand" would no-op. We detect the placeholder by its exact symmetric
+     *  signature and replace it with the actual annotation AABB instead. */
+    private expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void {
+        if (positions.length === 0) return;
+        const isPlaceholderCube = (b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): boolean =>
+            b.min.x === -100 && b.min.y === -100 && b.min.z === -100
+                && b.max.x === 100 && b.max.y === 100 && b.max.z === 100;
+        if (!this.modelBounds || isPlaceholderCube(this.modelBounds)) {
+            this.modelBounds = {
+                min: { x: Infinity, y: Infinity, z: Infinity },
+                max: { x: -Infinity, y: -Infinity, z: -Infinity },
+            };
+        }
+        let expanded = false;
+        for (let i = 0; i + 2 < positions.length; i += stride) {
+            const x = positions[i];
+            const y = positions[i + 1];
+            const z = positions[i + 2];
+            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+            if (x < this.modelBounds.min.x) this.modelBounds.min.x = x;
+            if (y < this.modelBounds.min.y) this.modelBounds.min.y = y;
+            if (z < this.modelBounds.min.z) this.modelBounds.min.z = z;
+            if (x > this.modelBounds.max.x) this.modelBounds.max.x = x;
+            if (y > this.modelBounds.max.y) this.modelBounds.max.y = y;
+            if (z > this.modelBounds.max.z) this.modelBounds.max.z = z;
+            expanded = true;
+        }
+        if (!expanded) return;
+        // Guarantee non-degenerate extent on every axis so camera frustums
+        // don't collapse. 0.5 m margin matches what the section-plane fallback
+        // uses elsewhere in this file.
+        for (const axis of ['x', 'y', 'z'] as const) {
+            if (this.modelBounds.max[axis] - this.modelBounds.min[axis] < 1e-3) {
+                this.modelBounds.max[axis] += 0.5;
+                this.modelBounds.min[axis] -= 0.5;
+            }
+        }
+    }
+
+    /**
+     * Clear the standalone annotation line overlay.
+     */
+    clearAnnotationLines3D(): void {
+        if (this.section2DOverlayRenderer) {
+            this.section2DOverlayRenderer.clearAnnotationLines3D();
+            this.requestRender();
+        }
+    }
+
+    /**
+     * Upload filled IfcAnnotation regions for the symbolic overlay
+     * (issue #653). Pass an empty array to clear.
+     */
+    uploadAnnotationFills3D(fills: readonly SymbolicFillInput[]): void {
+        if (!this.symbolicFillPipeline) return;
+        this.symbolicFillPipeline.upload(fills);
+        // Contribute fill extents to modelBounds — see uploadAnnotationLines3D.
+        for (const fill of fills) {
+            const pts = fill.points;
+            if (pts.length === 0) continue;
+            // points are flat [x,z,x,z,...]; lift to (x, fill.worldY, z) per
+            // vertex so we expand bounds in the same world space the renderer draws in.
+            const lifted = new Float32Array((pts.length / 2) * 3);
+            for (let i = 0, j = 0; i < pts.length; i += 2, j += 3) {
+                lifted[j] = pts[i];
+                lifted[j + 1] = fill.worldY;
+                lifted[j + 2] = pts[i + 1];
+            }
+            this.expandModelBoundsWithFlatVertices(lifted, 3);
+        }
+        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /**
+     * Upload IfcAnnotation text labels for the symbolic overlay
+     * (issue #653). Pass an empty array to clear.
+     */
+    uploadAnnotationTexts3D(texts: readonly SymbolicTextInput[]): void {
+        if (!this.symbolicTextPipeline) return;
+        this.symbolicTextPipeline.upload(texts);
+        // Text origins are single points; pack them into a flat buffer and
+        // expand bounds. Glyph extents are small enough that origin-only
+        // suffices for framing.
+        if (texts.length > 0) {
+            const buf = new Float32Array(texts.length * 3);
+            for (let i = 0; i < texts.length; i++) {
+                buf[i * 3 + 0] = texts[i].worldPos[0];
+                buf[i * 3 + 1] = texts[i].worldPos[1];
+                buf[i * 3 + 2] = texts[i].worldPos[2];
+            }
+            this.expandModelBoundsWithFlatVertices(buf, 3);
+            if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
+        }
+        this.requestRender();
+    }
+
+    /**
      * Check if 2D section overlay has geometry to render
      */
     hasSection2DOverlay(): boolean {
@@ -2563,6 +2796,14 @@ export class Renderer {
         this.sectionPlaneRenderer = null;
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
+
+        // Symbolic annotation overlay pipelines own their own GPU buffers,
+        // sampler, and atlas texture — recreating the viewer without
+        // releasing them leaks resources on every reload.
+        this.symbolicFillPipeline?.destroy();
+        this.symbolicFillPipeline = null;
+        this.symbolicTextPipeline?.destroy();
+        this.symbolicTextPipeline = null;
 
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();

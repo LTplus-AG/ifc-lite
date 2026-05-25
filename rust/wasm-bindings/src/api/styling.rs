@@ -27,10 +27,34 @@ pub(crate) fn build_geometry_style_index(
     content: &str,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> rustc_hash::FxHashMap<u32, [f32; 4]> {
+    build_geometry_style_indexes(content, decoder).colors
+}
+
+/// Per-geometry colour maps emitted by the style scan.
+///
+/// `colors` is the apparent rendering colour (DiffuseColour-with-fallback
+/// from IfcSurfaceStyleRendering, or the IfcIndexedColourMap dominant
+/// face colour). `shading_colors` carries the SurfaceColour separately,
+/// keyed by the same geometry id, *only* when it differs from `colors` —
+/// i.e. when the file authored a distinct DiffuseColour. Consumers that
+/// don't care (everything except the GLB exporter's "Shading" mode) can
+/// simply ignore `shading_colors`.
+pub(crate) struct GeometryStyleIndexes {
+    pub colors: rustc_hash::FxHashMap<u32, [f32; 4]>,
+    pub shading_colors: rustc_hash::FxHashMap<u32, [f32; 4]>,
+}
+
+/// Single-pass variant that also returns the per-geometry shading colour
+/// when the IfcSurfaceStyleRendering authored a distinct DiffuseColour.
+pub(crate) fn build_geometry_style_indexes(
+    content: &str,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> GeometryStyleIndexes {
     use ifc_lite_core::EntityScanner;
     use rustc_hash::FxHashMap;
 
     let mut style_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    let mut shading_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     // Stash IfcIndexedColourMap results separately so the merge below can
     // give IfcStyledItem unconditional precedence regardless of scan order
     // — files where an IFCINDEXEDCOLOURMAP appears before its matching
@@ -59,8 +83,13 @@ pub(crate) fn build_geometry_style_index(
                 }
 
                 let Some(styles_attr) = styled_item.get(1) else { continue };
-                if let Some(color) = extract_color_from_styles(styles_attr, decoder) {
+                if let Some((color, shading)) =
+                    extract_color_pair_from_styles(styles_attr, decoder)
+                {
                     style_index.insert(geometry_id, color);
+                    if let Some(s) = shading {
+                        shading_index.insert(geometry_id, s);
+                    }
                 }
             }
             "IFCINDEXEDCOLOURMAP" => {
@@ -76,11 +105,16 @@ pub(crate) fn build_geometry_style_index(
 
     // Merge: IfcStyledItem (in `style_index`) wins unconditionally. Only
     // geometries WITHOUT a styled-item entry pick up their colour-map colour.
+    // IfcIndexedColourMap has no rendering/shading distinction so it
+    // contributes nothing to `shading_index`.
     for (geometry_id, color) in colour_map_styles {
         style_index.entry(geometry_id).or_insert(color);
     }
 
-    style_index
+    GeometryStyleIndexes {
+        colors: style_index,
+        shading_colors: shading_index,
+    }
 }
 
 /// Resolve the geometry ID + dominant colour from an `IfcIndexedColourMap`.
@@ -311,17 +345,18 @@ pub(crate) fn find_color_for_geometry(
     None
 }
 
-/// Extract RGBA color from IfcStyledItem.Styles attribute
-pub(crate) fn extract_color_from_styles(
+/// Extract `(rendering_color, shading_color)` from IfcStyledItem.Styles.
+/// See `extract_color_from_rendering` for the tuple semantics.
+pub(crate) fn extract_color_pair_from_styles(
     styles_attr: &ifc_lite_core::AttributeValue,
     decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
+) -> Option<([f32; 4], Option<[f32; 4]>)> {
     // Styles can be a list or a single reference
     if let Some(list) = styles_attr.as_list() {
         for item in list {
             if let Some(style_id) = item.as_entity_ref() {
-                if let Some(color) = extract_color_from_style_assignment(style_id, decoder) {
-                    return Some(color);
+                if let Some(pair) = extract_color_from_style_assignment(style_id, decoder) {
+                    return Some(pair);
                 }
             }
         }
@@ -332,11 +367,22 @@ pub(crate) fn extract_color_from_styles(
     None
 }
 
-/// Extract color from IfcPresentationStyleAssignment or IfcSurfaceStyle
+/// Convenience wrapper returning only the rendering colour. Most callers
+/// don't need the shading variant — the GLB-export pre-pass is the only
+/// consumer of the pair today.
+pub(crate) fn extract_color_from_styles(
+    styles_attr: &ifc_lite_core::AttributeValue,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    extract_color_pair_from_styles(styles_attr, decoder).map(|(c, _)| c)
+}
+
+/// Extract color from IfcPresentationStyleAssignment or IfcSurfaceStyle.
+/// See `extract_color_from_rendering` for the tuple semantics.
 fn extract_color_from_style_assignment(
     style_id: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
+) -> Option<([f32; 4], Option<[f32; 4]>)> {
     use ifc_lite_core::IfcType;
 
     let style = decoder.decode_by_id(style_id).ok()?;
@@ -348,8 +394,8 @@ fn extract_color_from_style_assignment(
             if let Some(list) = styles_attr.as_list() {
                 for item in list {
                     if let Some(inner_id) = item.as_entity_ref() {
-                        if let Some(color) = extract_color_from_surface_style(inner_id, decoder) {
-                            return Some(color);
+                        if let Some(pair) = extract_color_from_surface_style(inner_id, decoder) {
+                            return Some(pair);
                         }
                     }
                 }
@@ -366,8 +412,8 @@ fn extract_color_from_style_assignment(
             if let Some(list) = styles_attr.as_list() {
                 for item in list {
                     if let Some(inner_id) = item.as_entity_ref() {
-                        if let Some(color) = extract_color_from_surface_style(inner_id, decoder) {
-                            return Some(color);
+                        if let Some(pair) = extract_color_from_surface_style(inner_id, decoder) {
+                            return Some(pair);
                         }
                     }
                 }
@@ -378,11 +424,12 @@ fn extract_color_from_style_assignment(
     None
 }
 
-/// Extract color from IfcSurfaceStyle
+/// Extract color from IfcSurfaceStyle. See `extract_color_from_rendering`
+/// for the meaning of the tuple.
 fn extract_color_from_surface_style(
     style_id: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
+) -> Option<([f32; 4], Option<[f32; 4]>)> {
     use ifc_lite_core::IfcType;
 
     let style = decoder.decode_by_id(style_id).ok()?;
@@ -398,8 +445,8 @@ fn extract_color_from_surface_style(
     if let Some(list) = styles_attr.as_list() {
         for item in list {
             if let Some(element_id) = item.as_entity_ref() {
-                if let Some(color) = extract_color_from_rendering(element_id, decoder) {
-                    return Some(color);
+                if let Some(pair) = extract_color_from_rendering(element_id, decoder) {
+                    return Some(pair);
                 }
             }
         }
@@ -408,11 +455,21 @@ fn extract_color_from_surface_style(
     None
 }
 
-/// Extract color from IfcSurfaceStyleRendering or IfcSurfaceStyleShading
+/// Extract color from IfcSurfaceStyleRendering or IfcSurfaceStyleShading.
+///
+/// Returns `(rendering_color, shading_color)`:
+///   - `rendering_color` is the apparent surface colour. When
+///     IfcSurfaceStyleRendering authored a DiffuseColour (attr 2) it wins;
+///     otherwise we fall back to SurfaceColour (attr 0). Matches how most
+///     IFC viewers display the model and is what the GLB exporter uses by
+///     default.
+///   - `shading_color` is the SurfaceColour, returned only when it differs
+///     from `rendering_color` (i.e. a DiffuseColour was authored). The GLB
+///     exporter's "Shading" colour source picks this up.
 fn extract_color_from_rendering(
     rendering_id: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
+) -> Option<([f32; 4], Option<[f32; 4]>)> {
     use ifc_lite_core::IfcType;
 
     let rendering = decoder.decode_by_id(rendering_id).ok()?;
@@ -421,17 +478,43 @@ fn extract_color_from_rendering(
         IfcType::IfcSurfaceStyleRendering | IfcType::IfcSurfaceStyleShading => {
             // Attr 0: SurfaceColour (inherited from IfcSurfaceStyleShading)
             // Attr 1: Transparency (inherited, 0.0=opaque, 1.0=transparent)
+            // Attr 2: DiffuseColour — SELECT(IfcColourRgb,
+            //         IfcNormalisedRatioMeasure). Only on IfcSurfaceStyleRendering.
             let color_ref = rendering.get_ref(0)?;
-            let [r, g, b, _] = extract_color_rgb(color_ref, decoder)?;
+            let [sr, sg, sb, _] = extract_color_rgb(color_ref, decoder)?;
 
-            // Read transparency and convert to alpha
-            // Transparency: 0.0 = opaque, 1.0 = fully transparent
-            // Alpha: 1.0 = opaque, 0.0 = fully transparent
-            // So: alpha = 1.0 - transparency
             let transparency = rendering.get_float(1).unwrap_or(0.0);
-            let alpha = 1.0 - transparency as f32;
+            let alpha = (1.0 - transparency as f32).clamp(0.0, 1.0);
+            let surface_rgba = [sr, sg, sb, alpha];
 
-            return Some([r, g, b, alpha.max(0.0).min(1.0)]);
+            // Probe DiffuseColour: entity ref first, then inline factor.
+            let rendering_rgba = if rendering.ifc_type
+                == IfcType::IfcSurfaceStyleRendering
+            {
+                if let Some(diffuse_id) = rendering.get_ref(2) {
+                    if let Some([dr, dg, db, _]) = extract_color_rgb(diffuse_id, decoder)
+                    {
+                        [dr, dg, db, alpha]
+                    } else {
+                        surface_rgba
+                    }
+                } else if let Some(factor) = rendering.get_float(2) {
+                    let f = (factor as f32).clamp(0.0, 1.0);
+                    [sr * f, sg * f, sb * f, alpha]
+                } else {
+                    surface_rgba
+                }
+            } else {
+                surface_rgba
+            };
+
+            let shading = if rendering_rgba == surface_rgba {
+                None
+            } else {
+                Some(surface_rgba)
+            };
+
+            return Some((rendering_rgba, shading));
         }
         _ => {}
     }
@@ -469,8 +552,15 @@ fn extract_color_rgb(
 /// Data collected during the combined single-pass scan.
 /// For a 487 MB file this saves ~2-3 s by eliminating redundant full-file scans.
 pub(crate) struct PrePassData {
-    /// Geometry ID → color (from IfcStyledItem → surface style chain)
+    /// Geometry ID → apparent rendering color (IfcStyledItem →
+    /// IfcSurfaceStyleRendering.DiffuseColour with SurfaceColour fallback,
+    /// or IfcIndexedColourMap dominant colour).
     pub geometry_styles: rustc_hash::FxHashMap<u32, [f32; 4]>,
+    /// Geometry ID → SurfaceColour, populated only when the file authored
+    /// a distinct DiffuseColour so it differs from `geometry_styles`.
+    /// Consumed by the GLB exporter's "Shading" colour source; renderers
+    /// and other exporters can ignore it.
+    pub geometry_shading_styles: rustc_hash::FxHashMap<u32, [f32; 4]>,
     /// Host element → opening elements (from IfcRelVoidsElement)
     pub void_index: rustc_hash::FxHashMap<u32, Vec<u32>>,
     /// FacetedBrep entity IDs for batch preprocessing
@@ -514,6 +604,10 @@ pub(crate) fn combined_pre_pass(
     let estimated_elements = content.len() / 2000;
 
     let mut geometry_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    // Sparse side-table populated only when IfcSurfaceStyleRendering
+    // authored a DiffuseColour distinct from SurfaceColour. Consumed by the
+    // GLB exporter's "Shading" colour source.
+    let mut geometry_shading_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     // IfcIndexedColourMap side-map (#663). Merged into `geometry_styles` after
     // the scan so IfcStyledItem keeps precedence regardless of scan order.
     let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
@@ -542,9 +636,13 @@ pub(crate) fn combined_pre_pass(
                         // Normal IfcStyledItem with Item reference → geometry_styles
                         if !geometry_styles.contains_key(&geometry_id) {
                             if let Some(styles_attr) = styled_item.get(1) {
-                                if let Some(color) = extract_color_from_styles(styles_attr, decoder)
+                                if let Some((color, shading)) =
+                                    extract_color_pair_from_styles(styles_attr, decoder)
                                 {
                                     geometry_styles.insert(geometry_id, color);
+                                    if let Some(s) = shading {
+                                        geometry_shading_styles.insert(geometry_id, s);
+                                    }
                                 }
                             }
                         }
@@ -653,6 +751,7 @@ pub(crate) fn combined_pre_pass(
 
     PrePassData {
         geometry_styles,
+        geometry_shading_styles,
         void_index,
         faceted_brep_ids,
         project_id,

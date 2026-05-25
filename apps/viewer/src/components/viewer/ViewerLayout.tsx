@@ -58,6 +58,33 @@ export function ViewerLayout() {
   usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
+  // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop a
+  // sample IFC into the viewer on first mount. Same-origin or CORS-friendly URLs only.
+  const { addModel: autoloadAddModel } = useIfc();
+  const autoloadDoneRef = useRef(false);
+  useEffect(() => {
+    if (autoloadDoneRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const modelUrl = params.get('model');
+    if (!modelUrl) return;
+    autoloadDoneRef.current = true;
+    (async () => {
+      try {
+        const res = await fetch(modelUrl);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const blob = await res.blob();
+        const filename = (() => {
+          try { return new URL(modelUrl, window.location.href).pathname.split('/').pop() || 'model.ifc'; }
+          catch { return 'model.ifc'; }
+        })();
+        const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
+        await autoloadAddModel(file);
+      } catch (err) {
+        console.error('[viewer] autoload from ?model=… failed:', err);
+      }
+    })();
+  }, [autoloadAddModel]);
+
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 

@@ -147,13 +147,55 @@ export const UI_DEFAULTS = {
 // Type Visibility Defaults
 // ============================================================================
 
+/**
+ * localStorage keys for the type-visibility toggles. Each maps to a
+ * single boolean preference; same persistence pattern as
+ * `MERGE_LAYERS_STORAGE_KEY` (`'true'` / `'false'` string, anything
+ * else falls back to the semantic default). One key per toggle so a
+ * user can clear an individual preference without nuking the rest.
+ */
+export const TYPE_VISIBILITY_STORAGE_KEYS = {
+  spaces:         'ifc-lite-ifc-spaces-visible',
+  openings:       'ifc-lite-ifc-openings-visible',
+  site:           'ifc-lite-ifc-site-visible',
+  ifcAnnotations: 'ifc-lite-ifc-annotations-visible',
+} as const;
+
+/** Legacy alias — kept until external callers migrate. */
+export const IFC_ANNOTATIONS_STORAGE_KEY = TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations;
+
+function readPersistedBool(key: string, fallback: boolean): boolean {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// Semantic defaults applied when no localStorage preference is set.
+// IfcSpace / IfcOpeningElement off — they cover walls and confuse novices
+// on first load. IfcSite + IfcAnnotation/IfcGrid on — both convey
+// design intent users expect to see by default.
+const SEMANTIC_DEFAULTS = {
+  spaces: false,
+  openings: false,
+  site: true,
+  ifcAnnotations: true,
+} as const;
+
 export const TYPE_VISIBILITY_DEFAULTS = {
-  /** IfcSpace visibility - off by default */
-  SPACES: false,
-  /** IfcOpeningElement visibility - off by default */
-  OPENINGS: false,
-  /** IfcSite visibility - on by default (when has geometry) */
-  SITE: true,
+  /** IfcSpace visibility — persisted across reloads. */
+  SPACES:          readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spaces, SEMANTIC_DEFAULTS.spaces),
+  /** IfcOpeningElement visibility — persisted across reloads. */
+  OPENINGS:        readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, SEMANTIC_DEFAULTS.openings),
+  /** IfcSite visibility — persisted across reloads. */
+  SITE:            readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, SEMANTIC_DEFAULTS.site),
+  /** IfcAnnotation + IfcGrid visibility — persisted across reloads. */
+  IFC_ANNOTATIONS: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcAnnotations),
 } as const;
 
 // ============================================================================

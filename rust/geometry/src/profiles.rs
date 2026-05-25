@@ -29,6 +29,17 @@ const MAX_CURVE_DEPTH: u32 = 50;
 /// Ramer-Douglas-Peucker so it tessellates into far fewer triangles while
 /// remaining visually circular.
 const SMOOTH_CURVE_SPACING_RATIO: f64 = 1.0 / 16.0;
+/// Max single-edge length as a fraction of the bounding-box diagonal for a
+/// polyline to qualify as an over-tessellated smooth curve. A uniformly
+/// sampled curve has every edge much shorter than the profile diagonal; a
+/// mixed-geometry profile (e.g. Revit I-beam authored as polyline+fillet-arc
+/// composite) has a few flange-top edges that are a large fraction of the
+/// diagonal alongside many short arc-sampling edges, which makes
+/// `mean_edge/diag` alone read as "smooth" while the polygon is anything but.
+/// Reject simplification whenever a single edge exceeds this ratio so RDP
+/// never gets a chance to slice through a sharp polyline corner adjacent to a
+/// fillet arc — that pattern is what produced the +4.31% W410x60 area bug.
+const SMOOTH_CURVE_LONGEST_EDGE_RATIO: f64 = 0.10;
 /// RDP epsilon as fraction of bounding-box diagonal. Larger ⇒ coarser
 /// approximation. For a unit-diameter circle, an N-segment polygon's
 /// max sagitta is `r * (1 - cos(π/N))`; targeting N≈16 (recognizable
@@ -157,18 +168,33 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
         return points.to_vec();
     }
 
-    // Mean edge length / diagonal — small ⇒ over-tessellated curve.
+    // Edge-length statistics. A smooth-curve approximation has every edge
+    // short relative to the diagonal AND uniformly sized; mixed-geometry
+    // profiles (e.g. I-beam authored as polyline + fillet arcs) have a few
+    // long straight edges alongside many short arc-sampling edges and must
+    // not be simplified — RDP would drop the polyline corner vertices that
+    // define the silhouette and slice across the fillet region instead.
     let mut perimeter = 0.0;
+    let mut longest_edge: f64 = 0.0;
     for i in 0..n {
         let a = core[i];
         let b = core[(i + 1) % n];
         let ex = b.x - a.x;
         let ey = b.y - a.y;
-        perimeter += (ex * ex + ey * ey).sqrt();
+        let len = (ex * ex + ey * ey).sqrt();
+        perimeter += len;
+        if len > longest_edge {
+            longest_edge = len;
+        }
     }
     let mean_edge = perimeter / n as f64;
     if mean_edge / diag > SMOOTH_CURVE_SPACING_RATIO {
         // Doesn't look like a smooth curve approximation — leave alone.
+        return points.to_vec();
+    }
+    if longest_edge / diag > SMOOTH_CURVE_LONGEST_EDGE_RATIO {
+        // Mixed-geometry profile: at least one edge is too long to belong to
+        // a uniformly-tessellated smooth curve. Leave the polyline alone.
         return points.to_vec();
     }
 
@@ -414,6 +440,7 @@ impl ProfileProcessor {
         // First create the base profile shape
         let mut base_profile = match profile.ifc_type {
             IfcType::IfcRectangleProfileDef => self.process_rectangle(profile),
+            IfcType::IfcRoundedRectangleProfileDef => self.process_rounded_rectangle(profile),
             IfcType::IfcCircleProfileDef => self.process_circle(profile),
             IfcType::IfcCircleHollowProfileDef => self.process_circle_hollow(profile),
             IfcType::IfcRectangleHollowProfileDef => self.process_rectangle_hollow(profile),
@@ -695,6 +722,59 @@ impl ProfileProcessor {
             Point2::new(half_x, half_y),
             Point2::new(-half_x, half_y),
         ];
+
+        Ok(Profile2D::new(points))
+    }
+
+    /// Process rounded rectangle profile.
+    ///
+    /// IfcRoundedRectangleProfileDef: ProfileType, ProfileName, Position,
+    /// XDim, YDim, RoundingRadius. Inherits from IfcRectangleProfileDef.
+    /// Centered at origin; corners are arcs of `radius`, clamped to
+    /// `min(XDim, YDim) / 2`. Eight segments per quadrant keeps the
+    /// triangulated cap cheap while still reading as round.
+    fn process_rounded_rectangle(&self, profile: &DecodedEntity) -> Result<Profile2D> {
+        let x_dim = profile
+            .get_float(3)
+            .ok_or_else(|| Error::geometry("RoundedRectangle missing XDim".to_string()))?;
+        let y_dim = profile
+            .get_float(4)
+            .ok_or_else(|| Error::geometry("RoundedRectangle missing YDim".to_string()))?;
+        let radius = profile
+            .get_float(5)
+            .ok_or_else(|| Error::geometry("RoundedRectangle missing RoundingRadius".to_string()))?;
+
+        let half_x = x_dim / 2.0;
+        let half_y = y_dim / 2.0;
+        let r = radius.max(0.0).min(half_x).min(half_y);
+        if r < 1.0e-9 {
+            return self.process_rectangle(profile);
+        }
+
+        // 6 segments × 4 corners = 24 outline vertices on a fillet; the
+        // earcutr cap then runs ~22 triangles per face, side walls another
+        // 48, so the whole prism stays under the 128-poly per-mesh cap the
+        // legacy BSP CSG kernel imposes when `manifold-csg` is off (the
+        // WASM build path — see `ClippingProcessor::subtract_mesh`).
+        const SEGMENTS_PER_CORNER: usize = 6;
+        let half_pi = PI / 2.0;
+        let corners = [
+            // (cx, cy, start_angle, end_angle) — CCW outline starting at the
+            // bottom-right arc and walking counter-clockwise around the profile.
+            (half_x - r, -half_y + r, -half_pi, 0.0),
+            (half_x - r, half_y - r, 0.0, half_pi),
+            (-half_x + r, half_y - r, half_pi, PI),
+            (-half_x + r, -half_y + r, PI, PI + half_pi),
+        ];
+
+        let mut points = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
+        for (cx, cy, a0, a1) in corners {
+            for i in 0..=SEGMENTS_PER_CORNER {
+                let t = i as f64 / SEGMENTS_PER_CORNER as f64;
+                let a = a0 + (a1 - a0) * t;
+                points.push(Point2::new(cx + r * a.cos(), cy + r * a.sin()));
+            }
+        }
 
         Ok(Profile2D::new(points))
     }

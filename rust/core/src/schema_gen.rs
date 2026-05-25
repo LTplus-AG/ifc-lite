@@ -325,6 +325,10 @@ impl IfcSchema {
 
         // Profile types - Parametric
         profile_types.insert(IfcType::IfcRectangleProfileDef, ProfileCategory::Parametric);
+        profile_types.insert(
+            IfcType::IfcRoundedRectangleProfileDef,
+            ProfileCategory::Parametric,
+        );
         profile_types.insert(IfcType::IfcCircleProfileDef, ProfileCategory::Parametric);
         profile_types.insert(
             IfcType::IfcCircleHollowProfileDef,
@@ -461,6 +465,11 @@ mod tests {
         assert_eq!(
             schema.geometry_category(&IfcType::IfcTriangulatedFaceSet),
             Some(GeometryCategory::ExplicitMesh)
+        );
+
+        assert_eq!(
+            schema.profile_category(&IfcType::IfcRoundedRectangleProfileDef),
+            Some(ProfileCategory::Parametric)
         );
     }
 

@@ -59,6 +59,12 @@ import {
   Sparkles,
   Eraser,
   MapPin,
+  Pencil,
+  PenLine,
+  Slice,
+  Layers3,
+  SquareStack,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -319,6 +325,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); } },
       { id: 'view:frame', label: 'Frame Selection', keywords: 'zoom focus selected', category: 'View', icon: Crosshair, shortcut: 'F',
         action: () => { useViewerStore.getState().cameraCallbacks.frameSelection?.(); } },
+      { id: 'view:stacked', label: 'Level — Stacked', keywords: 'level display mode stacked default storey storeys', category: 'View', icon: Layers3,
+        action: () => { useViewerStore.getState().setLevelDisplayMode('stacked'); } },
+      { id: 'view:exploded', label: 'Level — Exploded', keywords: 'level display mode exploded explode lift storey storeys gap', category: 'View', icon: ChevronsUpDown,
+        action: () => { useViewerStore.getState().setLevelDisplayMode('exploded'); } },
+      { id: 'view:solo', label: 'Level — Solo', keywords: 'level display mode solo isolate storey single only', category: 'View', icon: SquareStack,
+        action: () => { useViewerStore.getState().setLevelDisplayMode('solo'); } },
       { id: 'view:projection', label: 'Projection', keywords: 'perspective orthographic ortho toggle switch', category: 'View', icon: Orbit,
         action: () => { useViewerStore.getState().toggleProjectionMode(); } },
       { id: 'view:top', label: 'Top View', keywords: 'camera plan', category: 'View', icon: ArrowUp, shortcut: '1',
@@ -349,6 +361,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('annotate'); } },
       { id: 'tool:add-element', label: 'Add Element', keywords: 'wall slab beam column place drop new add element generic', category: 'Tools', icon: Box,
         action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
+      { id: 'tool:edit-mode', label: 'Toggle Edit Mode', keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools', icon: PenLine, shortcut: 'E',
+        action: () => { useViewerStore.getState().toggleEditEnabled(); } },
+      { id: 'tool:split', label: 'Split selected entity', keywords: 'split cut knife slice divide segment break wall beam column slab selected', category: 'Tools', icon: Slice, shortcut: 'K',
+        action: () => {
+          const s = useViewerStore.getState();
+          const sel = s.selectedEntity;
+          if (!sel) return;
+          s.setSplitTarget(sel.modelId, sel.expressId);
+          s.setActiveTool('split');
+        } },
+      // Add-element gestures live entirely in the AddElementPanel
+      // (opened via `setActiveTool('addElement')` — see the
+      // dedicated "Add Element" command below). Per-type shortcuts
+      // duplicated that panel's UI and have been dropped.
     );
 
     // ── Visibility ──
@@ -383,6 +409,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().toggleTypeVisibility('openings'); } },
       { id: 'vis:site', label: 'Site', keywords: 'IfcSite terrain show hide', category: 'Visibility', icon: Building2,
         action: () => { useViewerStore.getState().toggleTypeVisibility('site'); } },
+      { id: 'vis:ifcAnnotations', label: 'Annotations & Grids', keywords: 'IfcAnnotation IfcGrid IfcGridAxis 2d drawing symbols text dimension grid axis bubble tag show hide', category: 'Visibility', icon: Pencil,
+        action: () => { useViewerStore.getState().toggleTypeVisibility('ifcAnnotations'); } },
       { id: 'vis:reset-colors', label: 'Reset Colors', keywords: 'clear color override', category: 'Visibility', icon: Palette,
         action: () => { execute('bim.viewer.resetColors()\nconsole.log("Colors reset")'); } },
     );

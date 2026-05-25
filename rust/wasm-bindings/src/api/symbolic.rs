@@ -49,12 +49,28 @@ impl IfcAPI {
         let rtc_z = if needs_rtc { rtc_offset.2 as f32 } else { 0.0 };
 
         let mut collection = SymbolicRepresentationCollection::new();
+
+        // Pre-pass: build a reverse index from "styled representation-item id"
+        // to "list of style refs". Walked once at parse start (O(n)) so per-
+        // item color lookup is O(1) later. Files without any IfcStyledItem
+        // get an empty map and the resolver falls back to defaults. See
+        // resolve_color_via_styles() for the chain (deprecated
+        // IfcPresentationStyleAssignment unwrap + IfcFillAreaStyle →
+        // IfcColourRgb).
+        let styled_items = build_styled_item_index(&content, &mut decoder);
+
         let mut scanner = EntityScanner::new(&content);
 
-        // Process all building elements that might have symbolic representations
+        // Process all building elements that might have symbolic representations.
+        //
+        // IfcGrid isn't in `has_geometry_by_name` (it's not a building element)
+        // but it carries axis curves that we render as symbolic lines + bubbles
+        // + tag letters. Branch into a dedicated extractor before the standard
+        // representation walk, since IfcGrid's "geometry" lives in UAxes /
+        // VAxes / WAxes attributes (slots 7/8/9) rather than its Representation.
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            // Check if this is a building element type
-            if !ifc_lite_core::has_geometry_by_name(type_name) {
+            let is_grid = type_name == "IFCGRID";
+            if !is_grid && !ifc_lite_core::has_geometry_by_name(type_name) {
                 continue;
             }
 
@@ -63,6 +79,29 @@ impl IfcAPI {
                 Ok(e) => e,
                 Err(_) => continue,
             };
+
+            if is_grid {
+                // IfcGrid placement is via the standard ObjectPlacement chain
+                // (attr 5 on IfcProduct). Reuse the same helper the rep walk
+                // below uses so the axis curves land in the same coord frame.
+                let grid_transform = get_object_placement_for_symbolic_logged(
+                    &entity,
+                    &mut decoder,
+                    unit_scale,
+                    None,
+                );
+                extract_grid(
+                    &entity,
+                    id,
+                    &mut decoder,
+                    unit_scale,
+                    &grid_transform,
+                    rtc_x,
+                    rtc_z,
+                    &mut collection,
+                );
+                continue;
+            }
 
             // Get representation (attribute 6 for most products)
             // Note: placement transform is computed per-representation below
@@ -185,37 +224,10 @@ impl IfcAPI {
                         &combined_transform,
                         rtc_x,
                         rtc_z,
+                        &styled_items,
                         &mut collection,
                     );
                 }
-            }
-        }
-
-        // Log bounding box of all symbolic geometry
-        let mut min_x = f32::MAX;
-        let mut min_y = f32::MAX;
-        let mut max_x = f32::MIN;
-        let mut max_y = f32::MIN;
-        for i in 0..collection.polyline_count() {
-            if let Some(poly) = collection.get_polyline(i) {
-                let points_array = poly.points();
-                let points: Vec<f32> = points_array.to_vec();
-                for chunk in points.chunks(2) {
-                    if chunk.len() == 2 {
-                        min_x = min_x.min(chunk[0]);
-                        max_x = max_x.max(chunk[0]);
-                        min_y = min_y.min(chunk[1]);
-                        max_y = max_y.max(chunk[1]);
-                    }
-                }
-            }
-        }
-        for i in 0..collection.circle_count() {
-            if let Some(circle) = collection.get_circle(i) {
-                min_x = min_x.min(circle.center_x() - circle.radius());
-                max_x = max_x.max(circle.center_x() + circle.radius());
-                min_y = min_y.min(circle.center_y() - circle.radius());
-                max_y = max_y.max(circle.center_y() + circle.radius());
             }
         }
 
@@ -223,11 +235,20 @@ impl IfcAPI {
     }
 }
 
-/// Simple 2D transform for symbolic representations (translation + rotation)
+/// Simple 2D transform for symbolic representations (translation + rotation).
+///
+/// `tz` carries the accumulated world-Z (storey elevation) along the
+/// placement chain — it's strictly additive (no XY rotation affects it for
+/// floor-plan annotations) and lets the extractor emit `world_y` per
+/// primitive. Files whose IfcAnnotation has a null ObjectPlacement (3DEXPERIENCE
+/// pattern — see IFC_Annotation.ifc fixture) STILL get the right elevation
+/// because the text literal's own IfcAxis2Placement3D contributes its Z, and
+/// polyline points are read in 3D so their Z is captured directly.
 #[derive(Clone, Copy, Debug)]
 struct Transform2D {
     tx: f32,
     ty: f32,
+    tz: f32,
     cos_theta: f32,
     sin_theta: f32,
 }
@@ -237,6 +258,7 @@ impl Transform2D {
         Self {
             tx: 0.0,
             ty: 0.0,
+            tz: 0.0,
             cos_theta: 1.0,
             sin_theta: 0.0,
         }
@@ -263,6 +285,9 @@ fn compose_transforms(a: &Transform2D, b: &Transform2D) -> Transform2D {
     Transform2D {
         tx: rtx + a.tx,
         ty: rty + a.ty,
+        // Z stacks additively — no rotation in the XY plane affects it
+        // (annotations always live in a horizontal floor frame).
+        tz: a.tz + b.tz,
         cos_theta: combined_cos,
         sin_theta: combined_sin,
     }
@@ -373,6 +398,9 @@ fn resolve_placement_for_symbolic_with_logging(
     Transform2D {
         tx: composed_tx,
         ty: composed_ty,
+        // Z stacks additively along the placement chain (no XY rotation
+        // affects the vertical axis for floor-plan annotations).
+        tz: parent_transform.tz + local_transform.tz,
         cos_theta: combined_cos,
         sin_theta: combined_sin,
     }
@@ -402,7 +430,7 @@ fn parse_axis2_placement_2d_with_logging(
     // Floor plan coordinates use X-Y plane (Z is up) to match section cut
     let is_3d = placement.ifc_type == IfcType::IfcAxis2Placement3D;
 
-    let (tx, ty, _raw_coords) = if let Some(loc_ref) = placement.get_ref(0) {
+    let (tx, ty, tz) = if let Some(loc_ref) = placement.get_ref(0) {
         if let Ok(loc) = decoder.decode_by_id(loc_ref) {
             if loc.ifc_type == IfcType::IfcCartesianPoint {
                 if let Some(coords_attr) = loc.get(0) {
@@ -412,24 +440,29 @@ fn parse_axis2_placement_2d_with_logging(
                         let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
 
                         // Use X-Y for floor plan (Z is up in most IFC models)
-                        // Keep native IFC coordinates to match section cut
+                        // Keep native IFC coordinates to match section cut.
+                        // Z is captured separately and becomes the primitive's
+                        // world-Y at render time (3DEXPERIENCE files set
+                        // ObjectPlacement to $ and put the elevation here on
+                        // the item's own placement — see fixture #62).
                         let x = raw_x * unit_scale;
                         let y = raw_y * unit_scale;
-                        (x, y, Some((raw_x, raw_y, raw_z)))
+                        let z = raw_z * unit_scale;
+                        (x, y, z)
                     } else {
-                        (0.0, 0.0, None)
+                        (0.0, 0.0, 0.0)
                     }
                 } else {
-                    (0.0, 0.0, None)
+                    (0.0, 0.0, 0.0)
                 }
             } else {
-                (0.0, 0.0, None)
+                (0.0, 0.0, 0.0)
             }
         } else {
-            (0.0, 0.0, None)
+            (0.0, 0.0, 0.0)
         }
     } else {
-        (0.0, 0.0, None)
+        (0.0, 0.0, 0.0)
     };
 
     // Get RefDirection (attribute 2 for 3D, attribute 1 for 2D) to get rotation
@@ -491,6 +524,7 @@ fn parse_axis2_placement_2d_with_logging(
     Transform2D {
         tx,
         ty,
+        tz,
         cos_theta,
         sin_theta,
     }
@@ -508,8 +542,10 @@ fn parse_cartesian_transformation_operator(
     // IfcCartesianTransformationOperator2D: same, but 2D
     // IfcCartesianTransformationOperator3D: Axis1, Axis2, LocalOrigin, Scale, Axis3
 
-    // Get LocalOrigin (attribute 2 for 2D, attribute 2 for 3D)
-    let (tx, ty) = if let Some(origin_ref) = operator.get_ref(2) {
+    // Get LocalOrigin (attribute 2 for 2D, attribute 2 for 3D).
+    // Also capture Z for IfcCartesianTransformationOperator3D so the
+    // placement chain forwards elevation correctly to per-primitive world_y.
+    let (tx, ty, tz) = if let Some(origin_ref) = operator.get_ref(2) {
         if let Ok(origin) = decoder.decode_by_id(origin_ref) {
             if origin.ifc_type == IfcType::IfcCartesianPoint {
                 if let Some(coords_attr) = origin.get(0) {
@@ -518,21 +554,23 @@ fn parse_cartesian_transformation_operator(
                             * unit_scale;
                         let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
                             * unit_scale;
-                        (x, y)
+                        let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                            * unit_scale;
+                        (x, y, z)
                     } else {
-                        (0.0, 0.0)
+                        (0.0, 0.0, 0.0)
                     }
                 } else {
-                    (0.0, 0.0)
+                    (0.0, 0.0, 0.0)
                 }
             } else {
-                (0.0, 0.0)
+                (0.0, 0.0, 0.0)
             }
         } else {
-            (0.0, 0.0)
+            (0.0, 0.0, 0.0)
         }
     } else {
-        (0.0, 0.0)
+        (0.0, 0.0, 0.0)
     };
 
     // Get Axis1 for rotation (attribute 0)
@@ -568,12 +606,14 @@ fn parse_cartesian_transformation_operator(
     Transform2D {
         tx,
         ty,
+        tz,
         cos_theta,
         sin_theta,
     }
 }
 
 /// Extract symbolic geometry from a representation item (recursive for IfcGeometricSet, IfcMappedItem)
+#[allow(clippy::too_many_arguments)]
 fn extract_symbolic_item(
     item: &ifc_lite_core::DecodedEntity,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -584,6 +624,7 @@ fn extract_symbolic_item(
     transform: &Transform2D,
     rtc_x: f32,
     rtc_z: f32,
+    styled_items: &std::collections::HashMap<u32, Vec<u32>>,
     collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
 ) {
     use crate::zero_copy::{SymbolicCircle, SymbolicPolyline};
@@ -605,6 +646,7 @@ fn extract_symbolic_item(
                             transform,
                             rtc_x,
                             rtc_z,
+                            styled_items,
                             collection,
                         );
                     }
@@ -662,6 +704,7 @@ fn extract_symbolic_item(
                                             &composed_transform,
                                             rtc_x,
                                             rtc_z,
+                                            styled_items,
                                             collection,
                                         );
                                     }
@@ -677,6 +720,9 @@ fn extract_symbolic_item(
             if let Some(points_attr) = item.get(0) {
                 if let Ok(point_entities) = decoder.resolve_ref_list(points_attr) {
                     let mut points: Vec<f32> = Vec::with_capacity(point_entities.len() * 2);
+                    // Track the first point's Z so the emission gets a world_y
+                    // even when ObjectPlacement is null (3DEXPERIENCE pattern).
+                    let mut first_z: Option<f32> = None;
 
                     for point_entity in point_entities.iter() {
                         if point_entity.ifc_type != IfcType::IfcCartesianPoint {
@@ -690,6 +736,17 @@ fn extract_symbolic_item(
                                 let local_y =
                                     coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
                                         * unit_scale;
+                                // 3D IfcCartesianPoint encode elevation in the
+                                // third coordinate; capture from the first
+                                // valid point so the JS hook can bucket by Y.
+                                let local_z = coords
+                                    .get(2)
+                                    .and_then(|v| v.as_float())
+                                    .unwrap_or(0.0) as f32
+                                    * unit_scale;
+                                if first_z.is_none() {
+                                    first_z = Some(local_z);
+                                }
 
                                 // Apply full transform (rotation + translation) to orient symbols correctly.
                                 // The placement's rotation is accumulated from hierarchy to orient
@@ -714,11 +771,13 @@ fn extract_symbolic_item(
                             && (points[0] - points[n - 2]).abs() < 0.001
                             && (points[1] - points[n - 1]).abs() < 0.001;
 
+                        let world_y = first_z.unwrap_or(0.0) + transform.tz;
                         collection.add_polyline(SymbolicPolyline::new(
                             express_id,
                             ifc_type.to_string(),
                             points,
                             is_closed,
+                            world_y,
                             rep_identifier.to_string(),
                         ));
                     }
@@ -732,6 +791,7 @@ fn extract_symbolic_item(
                     if let Some(coord_list_attr) = points_list.get(0) {
                         if let Some(coord_list) = coord_list_attr.as_list() {
                             let mut points: Vec<f32> = Vec::with_capacity(coord_list.len() * 2);
+                            let mut first_z: Option<f32> = None;
                             for coord in coord_list {
                                 if let Some(coords) = coord.as_list() {
                                     let local_x =
@@ -742,6 +802,13 @@ fn extract_symbolic_item(
                                         coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0)
                                             as f32
                                             * unit_scale;
+                                    let local_z =
+                                        coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0)
+                                            as f32
+                                            * unit_scale;
+                                    if first_z.is_none() {
+                                        first_z = Some(local_z);
+                                    }
 
                                     // Apply full transform (rotation + translation)
                                     let (wx, wy) = transform.transform_point(local_x, local_y);
@@ -762,11 +829,13 @@ fn extract_symbolic_item(
                                     && (points[0] - points[n - 2]).abs() < 0.001
                                     && (points[1] - points[n - 1]).abs() < 0.001;
 
+                                let world_y = first_z.unwrap_or(0.0) + transform.tz;
                                 collection.add_polyline(SymbolicPolyline::new(
                                     express_id,
                                     ifc_type.to_string(),
                                     points,
                                     is_closed,
+                                    world_y,
                                     rep_identifier.to_string(),
                                 ));
                             }
@@ -779,14 +848,19 @@ fn extract_symbolic_item(
             // IfcCircle: Position (IfcAxis2Placement2D/3D), Radius
             let radius = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
 
-            // Skip invalid, degenerate, or unreasonably large radii
-            // Radius > 1000 units is likely erroneous data
-            if radius <= 0.0 || !radius.is_finite() || radius > 1000.0 {
+            // Skip invalid or degenerate radii only. Earlier code dropped
+            // r > 1000m on the assumption such values were exporter bugs,
+            // but site-plan annotations legitimately have multi-km arcs
+            // (turning circles, contour curves, road centrelines) — clip
+            // those silently and the user sees missing geometry with no
+            // diagnostic. NaN/Inf still hard-fails (downstream tessellation
+            // is undefined for those).
+            if radius <= 0.0 || !radius.is_finite() {
                 return;
             }
 
-            // Get center from Position (attribute 0)
-            let (center_x, center_y) = if let Some(pos_ref) = item.get_ref(0) {
+            // Get center + elevation from Position (attribute 0).
+            let (center_x, center_y, center_z) = if let Some(pos_ref) = item.get_ref(0) {
                 if let Ok(placement) = decoder.decode_by_id(pos_ref) {
                     // IfcAxis2Placement2D/3D: Location
                     if let Some(loc_ref) = placement.get_ref(0) {
@@ -799,24 +873,27 @@ fn extract_symbolic_item(
                                     let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0)
                                         as f32
                                         * unit_scale;
-                                    (x, y)
+                                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0)
+                                        as f32
+                                        * unit_scale;
+                                    (x, y, z)
                                 } else {
-                                    (0.0, 0.0)
+                                    (0.0, 0.0, 0.0)
                                 }
                             } else {
-                                (0.0, 0.0)
+                                (0.0, 0.0, 0.0)
                             }
                         } else {
-                            (0.0, 0.0)
+                            (0.0, 0.0, 0.0)
                         }
                     } else {
-                        (0.0, 0.0)
+                        (0.0, 0.0, 0.0)
                     }
                 } else {
-                    (0.0, 0.0)
+                    (0.0, 0.0, 0.0)
                 }
             } else {
-                (0.0, 0.0)
+                (0.0, 0.0, 0.0)
             };
 
             // Validate center coordinates
@@ -836,8 +913,59 @@ fn extract_symbolic_item(
                 world_cx,
                 world_cy,
                 radius,
+                center_z + transform.tz,
                 rep_identifier.to_string(),
             ));
+        }
+        IfcType::IfcEllipse => {
+            // IfcEllipse: Position (IfcAxis2Placement2D|3D), SemiAxis1, SemiAxis2.
+            // We don't have a SymbolicEllipse primitive (it'd need its own
+            // GPU pipeline), so tessellate to a polyline approximation —
+            // 64 segments matches the IFC_Model.ifc curve-tessellation
+            // budget and is round to ~0.4° per chord on a 1m ellipse.
+            let semi_a = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+            let semi_b = item.get(2).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+            if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {
+                return;
+            }
+            let mut center_local = (0.0f32, 0.0f32, 0.0f32);
+            if let Some(pos_ref) = item.get_ref(0) {
+                if let Ok(placement) = decoder.decode_by_id(pos_ref) {
+                    if let Some(loc_ref) = placement.get_ref(0) {
+                        if let Ok(loc) = decoder.decode_by_id(loc_ref) {
+                            if let Some(coords) = loc.get(0).and_then(|a| a.as_list()) {
+                                center_local.0 = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                                center_local.1 = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                                center_local.2 = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                            }
+                        }
+                    }
+                }
+            }
+            const SEGMENTS: usize = 64;
+            let mut points: Vec<f32> = Vec::with_capacity((SEGMENTS + 1) * 2);
+            for i in 0..=SEGMENTS {
+                let t = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
+                let lx = center_local.0 + semi_a * t.cos();
+                let ly = center_local.1 + semi_b * t.sin();
+                let (wx, wy) = transform.transform_point(lx, ly);
+                let x = wx - rtc_x;
+                let y = -wy + rtc_z;
+                if x.is_finite() && y.is_finite() {
+                    points.push(x);
+                    points.push(y);
+                }
+            }
+            if points.len() >= 4 {
+                collection.add_polyline(SymbolicPolyline::new(
+                    express_id,
+                    ifc_type.to_string(),
+                    points,
+                    true, // closed
+                    center_local.2 + transform.tz,
+                    rep_identifier.to_string(),
+                ));
+            }
         }
         IfcType::IfcTrimmedCurve => {
             // IfcTrimmedCurve: BasisCurve, Trim1, Trim2, SenseAgreement, MasterRepresentation
@@ -856,7 +984,9 @@ fn extract_symbolic_item(
                             return;
                         }
 
-                        let (center_x, center_y) = if let Some(pos_ref) = basis_curve.get_ref(0) {
+                        let (center_x, center_y, center_z) = if let Some(pos_ref) =
+                            basis_curve.get_ref(0)
+                        {
                             if let Ok(placement) = decoder.decode_by_id(pos_ref) {
                                 if let Some(loc_ref) = placement.get_ref(0) {
                                     if let Ok(loc) = decoder.decode_by_id(loc_ref) {
@@ -874,30 +1004,39 @@ fn extract_symbolic_item(
                                                     .unwrap_or(0.0)
                                                     as f32
                                                     * unit_scale;
-                                                (x, y)
+                                                let z = coords
+                                                    .get(2)
+                                                    .and_then(|v| v.as_float())
+                                                    .unwrap_or(0.0)
+                                                    as f32
+                                                    * unit_scale;
+                                                (x, y, z)
                                             } else {
-                                                (0.0, 0.0)
+                                                (0.0, 0.0, 0.0)
                                             }
                                         } else {
-                                            (0.0, 0.0)
+                                            (0.0, 0.0, 0.0)
                                         }
                                     } else {
-                                        (0.0, 0.0)
+                                        (0.0, 0.0, 0.0)
                                     }
                                 } else {
-                                    (0.0, 0.0)
+                                    (0.0, 0.0, 0.0)
                                 }
                             } else {
-                                (0.0, 0.0)
+                                (0.0, 0.0, 0.0)
                             }
                         } else {
-                            (0.0, 0.0)
+                            (0.0, 0.0, 0.0)
                         };
 
                         // Validate center coordinates
                         if !center_x.is_finite() || !center_y.is_finite() {
                             return;
                         }
+                        // Arc/segment polylines emitted below inherit the
+                        // basis circle's elevation.
+                        let world_y = center_z + transform.tz;
 
                         // Get trim parameters (simplified - assume parameter values)
                         let trim1 = item
@@ -971,6 +1110,7 @@ fn extract_symbolic_item(
                                 ifc_type.to_string(),
                                 points,
                                 false,
+                                world_y,
                                 rep_identifier.to_string(),
                             ));
                         } else {
@@ -1006,6 +1146,7 @@ fn extract_symbolic_item(
                                     ifc_type.to_string(),
                                     points,
                                     false, // Arcs are not closed
+                                    world_y,
                                     rep_identifier.to_string(),
                                 ));
                             }
@@ -1032,6 +1173,7 @@ fn extract_symbolic_item(
                                     transform,
                                     rtc_x,
                                     rtc_z,
+                                    styled_items,
                                     collection,
                                 );
                             }
@@ -1045,8 +1187,900 @@ fn extract_symbolic_item(
             // Lines are infinite, so we just skip them (or could extract as a segment)
             // For now, skip - symbolic representations usually use polylines
         }
+        IfcType::IfcTextLiteral | IfcType::IfcTextLiteralWithExtent => {
+            extract_text_literal(
+                item,
+                decoder,
+                express_id,
+                ifc_type,
+                rep_identifier,
+                unit_scale,
+                transform,
+                rtc_x,
+                rtc_z,
+                styled_items,
+                collection,
+            );
+        }
+        IfcType::IfcAnnotationFillArea => {
+            extract_annotation_fill_area(
+                item,
+                decoder,
+                express_id,
+                ifc_type,
+                rep_identifier,
+                unit_scale,
+                transform,
+                rtc_x,
+                rtc_z,
+                styled_items,
+                collection,
+            );
+        }
         _ => {
             // Unknown curve type - skip
         }
     }
+}
+
+/// Parse `IfcTextLiteral` / `IfcTextLiteralWithExtent` into a `SymbolicText`.
+///
+/// Schema (IFC4):
+/// - `IfcTextLiteral`            (Literal, Placement, Path)
+/// - `IfcTextLiteralWithExtent`  + (Extent, BoxAlignment)
+///
+/// The literal string is passed through verbatim — the JS-side `@ifc-lite/encoding`
+/// package decodes STEP escape sequences (`\X2\…\X0\`, `\X\…`). Placement is an
+/// `IfcAxis2Placement2D|3D`; we collapse to 2D and compose with the item's
+/// inherited transform. Font height defaults to `1.0 / unit_scale` (so 1 model
+/// unit) when the IFC text style chain isn't resolved here — the renderer can
+/// override based on its own typography defaults.
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
+fn extract_text_literal(
+    item: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    express_id: u32,
+    ifc_type: &str,
+    rep_identifier: &str,
+    unit_scale: f32,
+    transform: &Transform2D,
+    rtc_x: f32,
+    rtc_z: f32,
+    styled_items: &std::collections::HashMap<u32, Vec<u32>>,
+    collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
+) {
+    use crate::zero_copy::SymbolicText;
+
+    // attr 0: Literal (IfcPresentableText / string). Pass through verbatim;
+    // the JS encoding package decodes STEP escapes on consume.
+    let content = match item.get(0).and_then(|a| a.as_string()) {
+        Some(s) => s.to_string(),
+        None => return, // empty literal — nothing to render
+    };
+
+    // attr 1: Placement (IfcAxis2Placement2D | IfcAxis2Placement3D).
+    let placement_transform = if let Some(p_ref) = item.get_ref(1) {
+        if let Ok(p) = decoder.decode_by_id(p_ref) {
+            parse_axis2_placement_2d(&p, decoder, unit_scale)
+        } else {
+            Transform2D::identity()
+        }
+    } else {
+        Transform2D::identity()
+    };
+    let composed = compose_transforms(transform, &placement_transform);
+
+    // attr 3: Extent (IfcPlanarExtent) → SizeInY is the LAYOUT BOX height of
+    // the typeset string (cap_height × line_height × line_count), NOT the
+    // glyph cap height. Per IFC4 spec IfcTextStyleFontModel.FontSize would
+    // give cap height directly, but this fixture (and most floor-plan
+    // exporters) ship no IfcTextStyle chain — only Extent. So we convert:
+    //
+    //   cap_height ≈ SizeInY × CAP_TO_BOX_RATIO
+    //
+    // 0.7 matches Arial / Helvetica / SimSun (CJK) at line-height 1.0; for
+    // multi-line literals the JS layer splits on `\n` first and renders one
+    // line per text instance, so this single-line ratio is the right unit.
+    //
+    // Fallback when SizeInY is absent OR the text is bare IfcTextLiteral
+    // (no extent at all): 0.18 m world ≈ 7 mm at 1:50 plot scale, the
+    // industry default for annotation text. unit_scale is "meters per file
+    // unit" so dividing it in is wrong (it makes mm-files produce 250 m
+    // text); keep the fallback in meters directly.
+    const CAP_TO_BOX_RATIO: f32 = 0.7;
+    const FALLBACK_CAP_HEIGHT_M: f32 = 0.18;
+    let height_model_units = if item.ifc_type == ifc_lite_core::IfcType::IfcTextLiteralWithExtent {
+        item.get_ref(3)
+            .and_then(|extent_ref| decoder.decode_by_id(extent_ref).ok())
+            .and_then(|extent| extent.get(1).and_then(|a| a.as_float()))
+            .map(|h| (h as f32) * CAP_TO_BOX_RATIO)
+            .unwrap_or(FALLBACK_CAP_HEIGHT_M / unit_scale.max(1e-6))
+    } else {
+        FALLBACK_CAP_HEIGHT_M / unit_scale.max(1e-6)
+    };
+
+    // attr 4: BoxAlignment (string enum). Empty when absent.
+    let alignment = if item.ifc_type == ifc_lite_core::IfcType::IfcTextLiteralWithExtent {
+        item.get(4)
+            .and_then(|a| a.as_string())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        String::new()
+    };
+
+    // Anchor point is the placement origin after transform composition.
+    // Negate Y to match the rest of the section-overlay coordinate system
+    // (see polyline/circle paths above).
+    let (wx, wy) = composed.transform_point(0.0, 0.0);
+
+    // Resolve text colour via the IfcStyledItem chain on the literal
+    // entity (`item.id`). When the file ships an IfcTextStyle on this
+    // literal we honour it; otherwise the text falls back to the
+    // renderer's default tint (near-black). The fixture this PR was built
+    // against doesn't include IfcTextStyle on any annotation literal, so
+    // this path is effectively no-op for it — but it's spec-correct and
+    // a foundation for files that do.
+    let (color_r, color_g, color_b, color_a) =
+        match resolve_color_via_styles(item.id, styled_items, decoder) {
+            Some([r, g, b, a]) => (r, g, b, a),
+            None => (0.05, 0.05, 0.05, 1.0),
+        };
+
+    collection.add_text(SymbolicText::new_styled(
+        express_id,
+        ifc_type.to_string(),
+        wx - rtc_x,
+        -wy + rtc_z,
+        composed.cos_theta,
+        -composed.sin_theta, // mirror to match Y-negated coord system
+        height_model_units * unit_scale,
+        content,
+        alignment,
+        // Elevation captured along the placement chain — the text item's own
+        // IfcAxis2Placement3D is composed with the parent IfcAnnotation's
+        // ObjectPlacement, so this works even when ObjectPlacement is null
+        // (3DEXPERIENCE pattern — see fixture #62).
+        composed.tz,
+        [color_r, color_g, color_b, color_a],
+        0.0, // 0 = use renderer default target_px (14 px body text)
+        rep_identifier.to_string(),
+    ));
+}
+
+/// Parse `IfcAnnotationFillArea` (outer boundary + optional inner holes) into a
+/// `SymbolicFillArea`. The boundary curves are limited to `IfcPolyline` and
+/// `IfcIndexedPolyCurve` — the two forms used in practice for filled regions.
+/// More exotic curves (composite, BSpline) get skipped silently.
+///
+/// Style resolution (IfcStyledItem → IfcPresentationStyleAssignment →
+/// IfcFillAreaStyle → IfcFillAreaStyleHatching) is deferred to a follow-up:
+/// the first pass renders a default opaque black solid fill. The JS layer can
+/// override that based on per-IFC-type defaults in the meantime.
+#[allow(clippy::too_many_arguments)]
+fn extract_annotation_fill_area(
+    item: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    express_id: u32,
+    ifc_type: &str,
+    rep_identifier: &str,
+    unit_scale: f32,
+    transform: &Transform2D,
+    rtc_x: f32,
+    rtc_z: f32,
+    styled_items: &std::collections::HashMap<u32, Vec<u32>>,
+    collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
+) {
+    use crate::zero_copy::SymbolicFillArea;
+
+    // Extract one ring of (x, y) points from any supported IfcCurve. Empty
+    // vec on unsupported types or parse failure.
+    let extract_curve_ring = |curve_id: u32,
+                              decoder: &mut ifc_lite_core::EntityDecoder,
+                              transform: &Transform2D|
+     -> Vec<f32> {
+        let Ok(curve) = decoder.decode_by_id(curve_id) else {
+            return Vec::new();
+        };
+        match curve.ifc_type {
+            ifc_lite_core::IfcType::IfcPolyline => {
+                let Some(points_attr) = curve.get(0) else {
+                    return Vec::new();
+                };
+                let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else {
+                    return Vec::new();
+                };
+                let mut out = Vec::with_capacity(point_entities.len() * 2);
+                for pe in point_entities {
+                    if pe.ifc_type != ifc_lite_core::IfcType::IfcCartesianPoint {
+                        continue;
+                    }
+                    let Some(coords_attr) = pe.get(0) else { continue };
+                    let Some(coords) = coords_attr.as_list() else { continue };
+                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                        * unit_scale;
+                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                        * unit_scale;
+                    let (wx, wy) = transform.transform_point(x, y);
+                    out.push(wx - rtc_x);
+                    out.push(-wy + rtc_z);
+                }
+                out
+            }
+            ifc_lite_core::IfcType::IfcIndexedPolyCurve => {
+                // attr 0: Points (IfcCartesianPointList2D | 3D)
+                let Some(points_ref) = curve.get_ref(0) else {
+                    return Vec::new();
+                };
+                let Ok(points_entity) = decoder.decode_by_id(points_ref) else {
+                    return Vec::new();
+                };
+                // IfcCartesianPointList2D.CoordList is a list-of-list of REALs.
+                let Some(coord_list_attr) = points_entity.get(0) else {
+                    return Vec::new();
+                };
+                let Some(coord_list) = coord_list_attr.as_list() else {
+                    return Vec::new();
+                };
+                let mut out = Vec::with_capacity(coord_list.len() * 2);
+                for tuple in coord_list {
+                    let Some(coords) = tuple.as_list() else { continue };
+                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                        * unit_scale;
+                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                        * unit_scale;
+                    let (wx, wy) = transform.transform_point(x, y);
+                    out.push(wx - rtc_x);
+                    out.push(-wy + rtc_z);
+                }
+                out
+            }
+            ifc_lite_core::IfcType::IfcEllipse => {
+                // IfcAnnotationFillArea with an ellipse boundary — same
+                // tessellation strategy as IfcCircle but with two semi-axes.
+                let semi_a = curve.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                let semi_b = curve.get(2).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {
+                    return Vec::new();
+                }
+                let mut cx_local: f32 = 0.0;
+                let mut cy_local: f32 = 0.0;
+                if let Some(pos_ref) = curve.get_ref(0) {
+                    if let Ok(placement) = decoder.decode_by_id(pos_ref) {
+                        if let Some(loc_ref) = placement.get_ref(0) {
+                            if let Ok(loc) = decoder.decode_by_id(loc_ref) {
+                                if let Some(coords) = loc.get(0).and_then(|a| a.as_list()) {
+                                    cx_local = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                                    cy_local = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                                }
+                            }
+                        }
+                    }
+                }
+                const SEGMENTS: usize = 64;
+                let mut out = Vec::with_capacity(SEGMENTS * 2);
+                for i in 0..SEGMENTS {
+                    let theta = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
+                    let lx = cx_local + semi_a * theta.cos();
+                    let ly = cy_local + semi_b * theta.sin();
+                    let (wx, wy) = transform.transform_point(lx, ly);
+                    out.push(wx - rtc_x);
+                    out.push(-wy + rtc_z);
+                }
+                out
+            }
+            ifc_lite_core::IfcType::IfcCircle => {
+                // IfcAnnotationFillArea with a circle boundary = filled disk.
+                // The IFC_Annotation fixture uses this pattern for every
+                // leader-dot bubble (120 instances, radius 10 mm, black
+                // SolidBlackFill). Tessellate the boundary to a polygon so
+                // the existing ear-clip triangulator can fill it.
+                let radius = curve.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32
+                    * unit_scale;
+                if radius <= 0.0 || !radius.is_finite() {
+                    return Vec::new();
+                }
+                // Center via IfcAxis2Placement.Location (matches the standalone
+                // IfcCircle path at symbolic.rs:789). Walk via mutable bindings
+                // because `Option::cloned()` doesn't work on `Option<&[T]>` and
+                // the decoded entities can't outlive the decoder borrow.
+                let mut cx_local: f32 = 0.0;
+                let mut cy_local: f32 = 0.0;
+                if let Some(pos_ref) = curve.get_ref(0) {
+                    if let Ok(placement) = decoder.decode_by_id(pos_ref) {
+                        if let Some(loc_ref) = placement.get_ref(0) {
+                            if let Ok(loc) = decoder.decode_by_id(loc_ref) {
+                                if let Some(coords) = loc.get(0).and_then(|a| a.as_list()) {
+                                    cx_local = coords.first().and_then(|v| v.as_float())
+                                        .unwrap_or(0.0) as f32
+                                        * unit_scale;
+                                    cy_local = coords.get(1).and_then(|v| v.as_float())
+                                        .unwrap_or(0.0) as f32
+                                        * unit_scale;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Segment count: bigger circles get more segments. Cap at 64
+                // (matches IFC_Model.ifc curve-tessellation budget). For the
+                // 10 mm bubbles in this fixture, 32 segments is more than
+                // enough to look perfectly round at any reasonable zoom.
+                let seg_count = if radius < 0.05 { 32 } else { 64 };
+                let mut out = Vec::with_capacity((seg_count + 1) * 2);
+                // CCW winding so the ear-clip triangulator produces front-
+                // facing fills (the existing IfcPolyline path assumes CCW).
+                let two_pi = std::f32::consts::TAU;
+                for i in 0..seg_count {
+                    let theta = (i as f32) * two_pi / (seg_count as f32);
+                    let lx = cx_local + radius * theta.cos();
+                    let ly = cy_local + radius * theta.sin();
+                    let (wx, wy) = transform.transform_point(lx, ly);
+                    out.push(wx - rtc_x);
+                    out.push(-wy + rtc_z);
+                }
+                out
+            }
+            _ => Vec::new(),
+        }
+    };
+
+    // attr 0: OuterBoundary (IfcCurve, required)
+    let Some(outer_ref) = item.get_ref(0) else { return };
+    let mut points = extract_curve_ring(outer_ref, decoder, transform);
+    if points.len() < 6 {
+        // Need at least 3 vertices to form a fillable polygon.
+        return;
+    }
+
+    // attr 1: InnerBoundaries (SET OF IfcCurve, optional) — holes.
+    let mut holes_offsets: Vec<u32> = Vec::new();
+    if let Some(inners_attr) = item.get(1) {
+        if let Ok(inner_list) = decoder.resolve_ref_list(inners_attr) {
+            for inner in inner_list {
+                let hole = extract_curve_ring(inner.id, decoder, transform);
+                if hole.len() >= 6 {
+                    let vertex_index = (points.len() / 2) as u32;
+                    holes_offsets.push(vertex_index);
+                    points.extend(hole);
+                }
+            }
+        }
+    }
+
+    // Resolve fill color via the IfcStyledItem chain. The styled-item index
+    // is keyed by the styled REPRESENTATION ITEM's express id (here:
+    // `item.id`, the IfcAnnotationFillArea entity), not the parent
+    // IfcAnnotation. When no style is associated, fall back to opaque
+    // black — matches the "SolidBlackFill" convention used by the
+    // 3DEXPERIENCE / IfcPlusPlus exporters that ship hundreds of leader
+    // dots with the implicit assumption of opaque-black rendering.
+    let fill_rgba = resolve_color_via_styles(item.id, styled_items, decoder)
+        .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+
+    // Capture world-Y elevation from the outer boundary's first 3D point or
+    // from the IfcCircle boundary's placement. Plumbed through so the JS
+    // hook can bucket the fill at the right floor when the spatial
+    // hierarchy can't (3DEXPERIENCE orphan-storey pattern).
+    let world_y = sample_curve_world_y(outer_ref, decoder, unit_scale) + transform.tz;
+
+    collection.add_fill(SymbolicFillArea::new(
+        express_id,
+        ifc_type.to_string(),
+        points,
+        holes_offsets,
+        fill_rgba,
+        world_y,
+        rep_identifier.to_string(),
+    ));
+}
+
+/// Peek at an IfcCurve's first defining point Z so a fill / line can carry
+/// its elevation forward to JS. Returns 0.0 when the curve is 2D, or for any
+/// curve type we don't try to interpret here.
+fn sample_curve_world_y(
+    curve_id: u32,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    unit_scale: f32,
+) -> f32 {
+    use ifc_lite_core::IfcType;
+    let Ok(curve) = decoder.decode_by_id(curve_id) else {
+        return 0.0;
+    };
+    match curve.ifc_type {
+        IfcType::IfcPolyline => {
+            let Some(points_attr) = curve.get(0) else { return 0.0 };
+            let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else {
+                return 0.0;
+            };
+            for pe in point_entities {
+                if pe.ifc_type != IfcType::IfcCartesianPoint {
+                    continue;
+                }
+                if let Some(coords) = pe.get(0).and_then(|a| a.as_list()) {
+                    if let Some(z) = coords.get(2).and_then(|v| v.as_float()) {
+                        return z as f32 * unit_scale;
+                    }
+                }
+                return 0.0;
+            }
+            0.0
+        }
+        IfcType::IfcIndexedPolyCurve => {
+            let Some(points_ref) = curve.get_ref(0) else { return 0.0 };
+            let Ok(points_entity) = decoder.decode_by_id(points_ref) else {
+                return 0.0;
+            };
+            // CoordList is a list-of-list of REALs
+            let Some(coord_list) = points_entity.get(0).and_then(|a| a.as_list()) else {
+                return 0.0;
+            };
+            for tuple in coord_list {
+                if let Some(coords) = tuple.as_list() {
+                    if let Some(z) = coords.get(2).and_then(|v| v.as_float()) {
+                        return z as f32 * unit_scale;
+                    }
+                    return 0.0;
+                }
+            }
+            0.0
+        }
+        IfcType::IfcCircle => {
+            // Z comes from placement.Location.z (matches the standalone
+            // IfcCircle item path).
+            if let Some(pos_ref) = curve.get_ref(0) {
+                if let Ok(placement) = decoder.decode_by_id(pos_ref) {
+                    if let Some(loc_ref) = placement.get_ref(0) {
+                        if let Ok(loc) = decoder.decode_by_id(loc_ref) {
+                            if let Some(coords) = loc.get(0).and_then(|a| a.as_list()) {
+                                if let Some(z) = coords.get(2).and_then(|v| v.as_float()) {
+                                    return z as f32 * unit_scale;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            0.0
+        }
+        _ => 0.0,
+    }
+}
+
+// ─── IfcGrid walker ─────────────────────────────────────────────────────────
+//
+// IFC4 IfcGrid attributes (after IfcProduct's first 7):
+//   slot 7: UAxes — LIST OF IfcGridAxis (primary axes, usually horizontal)
+//   slot 8: VAxes — LIST OF IfcGridAxis (cross axes)
+//   slot 9: WAxes — LIST OF IfcGridAxis (optional, triangular grids only)
+//
+// IfcGridAxis attributes:
+//   slot 0: AxisTag   — IfcLabel ("A", "B", "1", "2", "A.1", …)
+//   slot 1: AxisCurve — IfcCurve (almost always IfcPolyline of 2 points)
+//   slot 2: SameSense — BOOLEAN (whether AxisCurve direction == grid direction)
+//
+// Bubble + tag rendering is NOT in the IFC schema — every viewer synthesizes
+// it the same conventional way: at each end of the axis curve, draw a circle
+// of radius ≈ half text-height, offset outward along the axis direction so
+// it doesn't sit on top of the building, with the AxisTag string centered
+// inside. We emit one SymbolicPolyline (the line itself) + two
+// SymbolicCircle (bubble outlines) + two SymbolicText (centered tags) per
+// axis, all tagged ifc_type="IfcGridAxis" + rep_identifier="Axis" so the
+// JS layer can filter / toggle the whole grid as a group.
+#[allow(clippy::too_many_arguments)]
+fn extract_grid(
+    grid: &ifc_lite_core::DecodedEntity,
+    grid_id: u32,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    unit_scale: f32,
+    transform: &Transform2D,
+    rtc_x: f32,
+    rtc_z: f32,
+    collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
+) {
+    use crate::zero_copy::SymbolicPolyline;
+    use ifc_lite_core::IfcType;
+
+    // Bubbles are emitted as TEXT glyphs (●  fill + ○ outline) so they reuse
+    // the text pipeline's billboard + screen-pixel scaling — the bubble
+    // diameter stays proportional to the inscribed tag at every zoom level,
+    // which the original SymbolicFillArea + SymbolicCircle pair couldn't
+    // deliver (those were world-scaled and vanished at far zoom while the
+    // tag stayed screen-pixel-scaled).
+    //
+    // Authored world sizes are the UPPER bound — the scale clamp caps them
+    // when the camera is very close (so they don't blow up to room-sized
+    // bubbles when zoomed in tight). target_px sets the LOWER bound on
+    // screen so they stay readable at any far-zoom level.
+    const BUBBLE_OFFSET_M: f32 = 1.2;  // gap from axis end to bubble centre
+    const BUBBLE_CAP_M: f32 = 2.0;     // bubble glyph cap height (world max)
+    const BUBBLE_TARGET_PX: f32 = 32.0;// bubble cap target on-screen (px)
+    const TAG_CAP_M: f32 = 0.7;        // tag cap height (world max)
+    const TAG_TARGET_PX: f32 = 14.0;   // tag cap target on-screen (px)
+
+    for axis_attr_idx in [7usize, 8, 9] {
+        let Some(axes_attr) = grid.get(axis_attr_idx) else {
+            continue;
+        };
+        let Ok(axes) = decoder.resolve_ref_list(axes_attr) else {
+            continue;
+        };
+
+        for axis in axes {
+            if axis.ifc_type != IfcType::IfcGridAxis {
+                continue;
+            }
+            let axis_id = axis.id;
+            let tag = axis
+                .get(0)
+                .and_then(|a| a.as_string())
+                .unwrap_or("")
+                .to_string();
+
+            // Resolve AxisCurve and sample its endpoints.
+            let Some(curve_ref) = axis.get_ref(1) else {
+                continue;
+            };
+            let Ok(curve) = decoder.decode_by_id(curve_ref) else {
+                continue;
+            };
+            let Some((p0, p1)) = sample_grid_axis_endpoints(&curve, decoder, unit_scale, transform)
+            else {
+                continue;
+            };
+
+            // Apply the same RTC + Y-flip the rest of the symbolic pipeline
+            // uses so the axis lines align with the floor-plan polylines and
+            // circles.
+            let a = (p0.0 - rtc_x, -p0.1 + rtc_z);
+            let b = (p1.0 - rtc_x, -p1.1 + rtc_z);
+
+            // World-Y for every primitive emitted under this axis: the
+            // grid's ObjectPlacement contributes the storey elevation via
+            // `transform.tz`. (Grids rarely have per-axis Z; if they do
+            // it'd be on the axis curve's own points, captured later.)
+            let world_y = transform.tz;
+
+            // Emit the axis line itself.
+            collection.add_polyline(SymbolicPolyline::new(
+                axis_id,
+                "IfcGridAxis".to_string(),
+                vec![a.0, a.1, b.0, b.1],
+                false,
+                world_y,
+                "Axis".to_string(),
+            ));
+
+            // Unit direction along axis a → b. Used to offset bubbles outward
+            // from each endpoint so they don't sit on the building.
+            let dx = b.0 - a.0;
+            let dy = b.1 - a.1;
+            let len = (dx * dx + dy * dy).sqrt();
+            if len < 1e-4 {
+                continue;
+            }
+            let nx = dx / len;
+            let ny = dy / len;
+
+            let cx0 = a.0 - nx * BUBBLE_OFFSET_M;
+            let cy0 = a.1 - ny * BUBBLE_OFFSET_M;
+            emit_bubble(axis_id, cx0, cy0, world_y, &tag, collection,
+                        BUBBLE_CAP_M, BUBBLE_TARGET_PX, TAG_CAP_M, TAG_TARGET_PX);
+
+            let cx1 = b.0 + nx * BUBBLE_OFFSET_M;
+            let cy1 = b.1 + ny * BUBBLE_OFFSET_M;
+            emit_bubble(axis_id, cx1, cy1, world_y, &tag, collection,
+                        BUBBLE_CAP_M, BUBBLE_TARGET_PX, TAG_CAP_M, TAG_TARGET_PX);
+        }
+    }
+
+    // grid_id is the IfcGrid express ID — kept on the parameter list for
+    // future per-grid styling lookups (e.g. IfcStyledItem on the grid as a
+    // whole). Touched so the unused-variable lint stays quiet.
+    let _ = grid_id;
+}
+
+/// Emit a bubble (white fill ● + black outline ○ + black tag) as three
+/// stacked text instances at (cx, cy, world_y). All three share the same
+/// anchor + `IfcGridAxis` ifc-type + Axis representation identifier; the
+/// shader's per-instance `targetPx` and `colour` make them render at the
+/// right relative size and tint without needing dedicated pipelines.
+#[allow(clippy::too_many_arguments)]
+fn emit_bubble(
+    axis_id: u32,
+    cx: f32,
+    cy: f32,
+    world_y: f32,
+    tag: &str,
+    collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
+    bubble_cap_m: f32,
+    bubble_target_px: f32,
+    tag_cap_m: f32,
+    tag_target_px: f32,
+) {
+    use crate::zero_copy::SymbolicText;
+    // 1) White fill — `●` (U+2B24 BLACK LARGE CIRCLE) tinted white.
+    collection.add_text(SymbolicText::new_styled(
+        axis_id, "IfcGridAxis".to_string(),
+        cx, cy, 1.0, 0.0, bubble_cap_m,
+        "\u{2B24}".to_string(),
+        "center".to_string(),
+        world_y,
+        [1.0, 1.0, 1.0, 1.0],
+        bubble_target_px,
+        "Axis".to_string(),
+    ));
+    // 2) Black outline — `◯` (U+25EF LARGE CIRCLE) at the same size; its
+    //    stroke renders just outside the fill, giving the canonical
+    //    white-fill-black-stroke bubble look from CAD conventions.
+    collection.add_text(SymbolicText::new_styled(
+        axis_id, "IfcGridAxis".to_string(),
+        cx, cy, 1.0, 0.0, bubble_cap_m,
+        "\u{25EF}".to_string(),
+        "center".to_string(),
+        world_y,
+        [0.0, 0.0, 0.0, 1.0],
+        bubble_target_px,
+        "Axis".to_string(),
+    ));
+    // 3) Tag text — actual axis label (alphanumeric).
+    collection.add_text(SymbolicText::new_styled(
+        axis_id, "IfcGridAxis".to_string(),
+        cx, cy, 1.0, 0.0, tag_cap_m,
+        tag.to_string(),
+        "center".to_string(),
+        world_y,
+        [0.0, 0.0, 0.0, 1.0],
+        tag_target_px,
+        "Axis".to_string(),
+    ));
+}
+
+/// Sample the two endpoints of an IfcGridAxis curve.
+///
+/// In practice this is always `IfcPolyline` of two `IfcCartesianPoint`s
+/// (every grid file I've inspected does it this way). We accept the general
+/// IfcPolyline shape — first point and last point of the list — so a
+/// theoretical multi-segment axis still produces a sensible bubble pair.
+///
+/// Returns world-space (meters), pre-RTC, pre-Y-flip — the caller applies
+/// those adjustments to match the rest of the symbolic coord system.
+fn sample_grid_axis_endpoints(
+    curve: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    unit_scale: f32,
+    transform: &Transform2D,
+) -> Option<((f32, f32), (f32, f32))> {
+    use ifc_lite_core::IfcType;
+    if curve.ifc_type != IfcType::IfcPolyline {
+        return None;
+    }
+    let points_attr = curve.get(0)?;
+    let point_entities = decoder.resolve_ref_list(points_attr).ok()?;
+    if point_entities.len() < 2 {
+        return None;
+    }
+    let extract = |pe: &ifc_lite_core::DecodedEntity| -> Option<(f32, f32)> {
+        if pe.ifc_type != IfcType::IfcCartesianPoint {
+            return None;
+        }
+        let coords = pe.get(0)?.as_list()?;
+        let x = coords.first()?.as_float()? as f32 * unit_scale;
+        let y = coords.get(1)?.as_float()? as f32 * unit_scale;
+        Some(transform.transform_point(x, y))
+    };
+    let first = extract(&point_entities[0])?;
+    let last = extract(&point_entities[point_entities.len() - 1])?;
+    Some((first, last))
+}
+
+// ─── IfcStyledItem chain ─────────────────────────────────────────────────────
+//
+// IFC4 styling for IfcRepresentationItem flows through IfcStyledItem:
+//
+//   IfcStyledItem.Item   →  the styled IfcRepresentationItem
+//   IfcStyledItem.Styles →  SET OF IfcStyleAssignmentSelect
+//                              │
+//                              ├─ IfcPresentationStyle (IFC4 direct path)
+//                              │     ├─ IfcCurveStyle
+//                              │     ├─ IfcFillAreaStyle
+//                              │     ├─ IfcTextStyle
+//                              │     └─ IfcSurfaceStyle
+//                              │
+//                              └─ IfcPresentationStyleAssignment (DEPRECATED
+//                                    in IFC4 but still produced by major
+//                                    exporters — must be transparently
+//                                    unwrapped to its inner Styles list)
+//
+// For symbolic annotation rendering, we only need fill color today (line
+// weight, dash pattern, and text font live in a follow-up since they require
+// per-primitive color/width plumbing through the renderer pipelines).
+
+/// Scan the file once for every `IfcStyledItem` and return the reverse index
+/// keyed by styled-item's express id. The value is the list of concrete
+/// style entity refs (`IfcCurveStyle | IfcFillAreaStyle | IfcTextStyle |
+/// IfcSurfaceStyle`), with the deprecated `IfcPresentationStyleAssignment`
+/// wrapper transparently unwrapped — so downstream resolvers don't need to
+/// know about it.
+///
+/// Two passes (both O(n)):
+///   1. Scan all `IFCPRESENTATIONSTYLEASSIGNMENT` entities, build a map
+///      `assignment_id → Vec<inner_concrete_style_id>`.
+///   2. Scan all `IFCSTYLEDITEM`, for each style ref look it up in the
+///      assignment map: if present, splice in the unwrapped inner refs;
+///      otherwise pass through.
+///
+/// The crate's `IfcType` enum doesn't carry a variant for
+/// `IfcPresentationStyleAssignment` (deprecated in IFC4, omitted by the
+/// schema generator), which is why the unwrap is keyed by entity-id rather
+/// than by `style.ifc_type` match.
+fn build_styled_item_index(
+    content: &str,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> std::collections::HashMap<u32, Vec<u32>> {
+    use ifc_lite_core::EntityScanner;
+
+    let collect_refs = |attr: &ifc_lite_core::AttributeValue| -> Vec<u32> {
+        if let Some(list) = attr.as_list() {
+            list.iter().filter_map(|v| v.as_entity_ref()).collect()
+        } else if let Some(single) = attr.as_entity_ref() {
+            vec![single]
+        } else {
+            Vec::new()
+        }
+    };
+
+    // Pass 1: build presentation-style-assignment wrapper map.
+    let mut wrappers: std::collections::HashMap<u32, Vec<u32>> =
+        std::collections::HashMap::new();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name != "IFCPRESENTATIONSTYLEASSIGNMENT" {
+            continue;
+        }
+        let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
+            continue;
+        };
+        // attr 0: Styles (SET OF IfcPresentationStyleSelect)
+        let Some(styles_attr) = entity.get(0) else {
+            continue;
+        };
+        let inner_refs = collect_refs(styles_attr);
+        if !inner_refs.is_empty() {
+            wrappers.insert(id, inner_refs);
+        }
+    }
+
+    // Pass 2: build item → style index, unwrapping any references that
+    // resolve to a presentation-style-assignment.
+    let mut out: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name != "IFCSTYLEDITEM" {
+            continue;
+        }
+        let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
+            continue;
+        };
+        let Some(item_ref) = entity.get_ref(0) else {
+            continue;
+        };
+        let Some(styles_attr) = entity.get(1) else {
+            continue;
+        };
+        let mut final_refs: Vec<u32> = Vec::new();
+        for raw_ref in collect_refs(styles_attr) {
+            if let Some(inner) = wrappers.get(&raw_ref) {
+                final_refs.extend(inner.iter().copied());
+            } else {
+                final_refs.push(raw_ref);
+            }
+        }
+        if !final_refs.is_empty() {
+            out.entry(item_ref).or_default().extend(final_refs);
+        }
+    }
+    out
+}
+
+/// Resolve a colour for a styled representation item via its associated
+/// IfcStyledItem chain. Works for any item type — fills walk
+/// IfcFillAreaStyle, text walks IfcTextStyle. Returns `None` when no
+/// usable colour is found; the caller substitutes its own fallback.
+fn resolve_color_via_styles(
+    item_id: u32,
+    styled_items: &std::collections::HashMap<u32, Vec<u32>>,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    let style_refs = styled_items.get(&item_id)?;
+    for style_ref in style_refs {
+        if let Some(color) = extract_color_from_style_ref(*style_ref, decoder) {
+            return Some(color);
+        }
+    }
+    None
+}
+
+/// Walk a single concrete style ref (`IfcCurveStyle | IfcFillAreaStyle |
+/// IfcTextStyle | IfcSurfaceStyle`) and try to pull a colour out.
+/// `IfcPresentationStyleAssignment` wrapping is already unwrapped by
+/// `build_styled_item_index`, so we don't need to handle it here.
+///
+/// IfcCurveStyle / IfcSurfaceStyle aren't consumed yet because the line
+/// pipeline still uses a uniform colour — adding per-primitive line colour
+/// is a renderer pipeline change scheduled as a follow-up. IfcTextStyle is
+/// consumed via the text pipeline's per-instance colour attribute.
+fn extract_color_from_style_ref(
+    style_ref: u32,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    use ifc_lite_core::IfcType;
+
+    let style = decoder.decode_by_id(style_ref).ok()?;
+    match style.ifc_type {
+        IfcType::IfcFillAreaStyle => extract_color_from_fill_area_style(&style, decoder),
+        IfcType::IfcTextStyle => extract_color_from_text_style(&style, decoder),
+        _ => None,
+    }
+}
+
+/// Walk `IfcTextStyle.TextCharacterAppearance` →
+/// `IfcTextStyleForDefinedFont.Colour` → `IfcColourRgb`.
+fn extract_color_from_text_style(
+    style: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    use ifc_lite_core::IfcType;
+    // attr 1: TextCharacterAppearance (IfcTextStyleForDefinedFont)
+    let appearance = decoder.decode_by_id(style.get_ref(1)?).ok()?;
+    if appearance.ifc_type != IfcType::IfcTextStyleForDefinedFont {
+        return None;
+    }
+    // attr 0: Colour (IfcColour) — usually IfcColourRgb.
+    let colour = decoder.decode_by_id(appearance.get_ref(0)?).ok()?;
+    if colour.ifc_type != IfcType::IfcColourRgb {
+        return None;
+    }
+    let r = colour.get(1)?.as_float()? as f32;
+    let g = colour.get(2)?.as_float()? as f32;
+    let b = colour.get(3)?.as_float()? as f32;
+    Some([r, g, b, 1.0])
+}
+
+/// Walk `IfcFillAreaStyle.FillStyles` to find the first `IfcColourRgb` and
+/// convert to `[r, g, b, 1.0]`. Hatching / tile / externally-defined fills
+/// are recognised but skipped here (no color of their own — they layer over
+/// whatever color is found, or default).
+fn extract_color_from_fill_area_style(
+    style: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    use ifc_lite_core::IfcType;
+
+    // attr 1: FillStyles (SET OF IfcFillStyleSelect)
+    let fill_styles_attr = style.get(1)?;
+    let fill_style_refs: Vec<u32> = if let Some(list) = fill_styles_attr.as_list() {
+        list.iter().filter_map(|v| v.as_entity_ref()).collect()
+    } else if let Some(single) = fill_styles_attr.as_entity_ref() {
+        vec![single]
+    } else {
+        return None;
+    };
+    for fs_ref in fill_style_refs {
+        let Ok(fs) = decoder.decode_by_id(fs_ref) else {
+            continue;
+        };
+        if fs.ifc_type == IfcType::IfcColourRgb {
+            // attr 1/2/3: Red, Green, Blue (REALs in [0..1])
+            let r = fs.get(1)?.as_float()? as f32;
+            let g = fs.get(2)?.as_float()? as f32;
+            let b = fs.get(3)?.as_float()? as f32;
+            return Some([r, g, b, 1.0]);
+        }
+        // IfcFillAreaStyleHatching / IfcFillAreaStyleTiles / external
+        // styles: defer (no plain color value to extract here).
+    }
+    None
 }

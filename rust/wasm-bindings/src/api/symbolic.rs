@@ -1610,7 +1610,12 @@ fn extract_grid(
     // calling transform_point, so the output is already meters).
     const BUBBLE_RADIUS_M: f32 = 0.4; // 400 mm — typical Revit / ArchiCAD default
     const BUBBLE_OFFSET_M: f32 = 1.2; // 1.2 m gap from axis end to bubble centre
-    const TAG_HEIGHT_M: f32 = 0.4; // 400 mm cap — slightly smaller than bubble dia
+    // Tag cap-height ≈ bubble radius (~700 mm). Combined with the renderer's
+    // glyph-to-cap ratio (~0.7) the visible character occupies ~50 % of the
+    // bubble diameter — matches Revit / ArchiCAD / BIMvision proportions.
+    // The screen-space scale clamp keeps the tag from growing past authored
+    // size, and the target_px floor keeps it readable at far zoom.
+    const TAG_HEIGHT_M: f32 = 0.7;
 
     for axis_attr_idx in [7usize, 8, 9] {
         let Some(axes_attr) = grid.get(axis_attr_idx) else {

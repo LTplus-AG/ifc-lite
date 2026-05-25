@@ -474,12 +474,37 @@ export class SymbolicTextPipeline {
       const baselineOffset = align.vertical * this.atlas.glyphPx;
       const horizontalOffset = align.horizontal * layout.totalAdvancePx;
 
+      // Detect "true visual center" alignment so a single-line label
+      // anchors the GLYPH's geometric centre on the anchor (rather than
+      // the atlas-slot midline — the canonical `parseBoxAlignment` output
+      // assumes the slot height equals the visual glyph which is rarely
+      // true for sans-serif digits and produces noticeable top-bias on
+      // grid bubble tags).
+      const isCenterH = align.horizontal === -0.5;
+      const isCenterV = align.vertical === -0.5;
+
+      // For horizontal centring across a multi-glyph label, the row's
+      // visual width is (lastXOffset + lastGlyphWidth) - firstXOffset.
+      // For a single-glyph label this collapses to the glyph's widthPx.
+      let visualWidthPx = layout.totalAdvancePx;
+      if (isCenterH && layout.glyphs.length > 0) {
+        const first = layout.glyphs[0];
+        const last = layout.glyphs[layout.glyphs.length - 1];
+        const left = first.xOffsetPx;
+        const right = last.xOffsetPx + last.glyph.widthPx;
+        visualWidthPx = right - left;
+      }
+
       for (const entry of layout.glyphs) {
         const glyph = entry.glyph;
         // Glyph quad's bottom-left in atlas pixels relative to the text
-        // anchor, before alignment.
-        const px0 = entry.xOffsetPx + horizontalOffset;
-        const pyBottom = -baselineOffset - (glyph.heightPx - glyph.baselinePx);
+        // anchor.
+        const px0 = isCenterH
+          ? entry.xOffsetPx - visualWidthPx * 0.5
+          : entry.xOffsetPx + horizontalOffset;
+        const pyBottom = isCenterV
+          ? -glyph.heightPx * 0.5
+          : -baselineOffset - (glyph.heightPx - glyph.baselinePx);
         const widthAtlas = glyph.widthPx;
         const heightGlyphAtlas = glyph.heightPx;
 

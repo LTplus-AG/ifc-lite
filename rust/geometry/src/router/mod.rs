@@ -13,6 +13,7 @@ mod processing;
 mod transforms;
 mod voids;
 mod voids_2d;
+mod zfight;
 
 #[cfg(test)]
 mod tests;

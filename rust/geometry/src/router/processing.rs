@@ -612,6 +612,10 @@ impl GeometryRouter {
             }
         }
 
+        // Break coplanar Z-fight between sub-meshes BEFORE placement so the
+        // local-frame AABB heuristic is valid for any product orientation.
+        super::zfight::dedupe_coplanar_submeshes(&mut sub_meshes);
+
         // Apply placement transformation to all sub-meshes
         // ObjectPlacement translation is in file units (e.g., mm) but geometry is scaled to meters,
         // so we MUST scale the transform to match. Same as apply_placement does.

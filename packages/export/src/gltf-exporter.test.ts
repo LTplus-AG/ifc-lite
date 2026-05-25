@@ -199,6 +199,69 @@ describe('GLTFExporter', () => {
       expect(gltf.nodes.length).toBe(3);
     });
 
+    // Regression for the door-fixture report: IfcOpeningElement was being
+    // exported even with visible-only on because the dialog only passed the
+    // per-entity hidden set, missing the viewer's class-level typeVisibility
+    // (openings/spaces/site are off-by-default but live in a separate flag).
+    it('should drop meshes whose ifcType is in hiddenIfcTypes on visibleOnly export', () => {
+      const wall = { ...createTestMesh(1), ifcType: 'IfcWall' };
+      const door = { ...createTestMesh(2), ifcType: 'IfcDoor' };
+      const opening = { ...createTestMesh(3), ifcType: 'IfcOpeningElement' };
+      const geometryResult: GeometryResult = {
+        meshes: [wall, door, opening],
+        totalVertices: 9,
+        totalTriangles: 3,
+        coordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 },
+          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          hasLargeCoordinates: false,
+        },
+      };
+      const exporter = new GLTFExporter(geometryResult);
+
+      const { json } = exporter.exportGLTF({
+        visibleOnly: true,
+        includeMetadata: true,
+        hiddenIfcTypes: new Set(['IfcOpeningElement', 'IfcSpace']),
+      });
+      const gltf = JSON.parse(json);
+
+      // Wall + door survive; opening dropped.
+      expect(gltf.nodes.length).toBe(2);
+      const exportedIds = (gltf.nodes as Array<{ extras?: { expressId?: number } }>).map(
+        (n) => n.extras?.expressId,
+      );
+      expect(exportedIds).toContain(1);
+      expect(exportedIds).toContain(2);
+      expect(exportedIds).not.toContain(3);
+    });
+
+    it('hiddenIfcTypes only applies when visibleOnly is true', () => {
+      const opening = { ...createTestMesh(1), ifcType: 'IfcOpeningElement' };
+      const geometryResult: GeometryResult = {
+        meshes: [opening],
+        totalVertices: 3,
+        totalTriangles: 1,
+        coordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 },
+          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          hasLargeCoordinates: false,
+        },
+      };
+      const exporter = new GLTFExporter(geometryResult);
+
+      const { json } = exporter.exportGLTF({
+        visibleOnly: false,
+        hiddenIfcTypes: new Set(['IfcOpeningElement']),
+      });
+      const gltf = JSON.parse(json);
+
+      // Full export keeps the opening — class filter is gated on visibleOnly.
+      expect(gltf.nodes.length).toBe(1);
+    });
+
     it('should pick shadingColor when colorSource is "shading"', () => {
       const mesh: MeshData = {
         ...createTestMesh(1),

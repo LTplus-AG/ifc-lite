@@ -45,6 +45,22 @@ import { GLTFExporter } from '@ifc-lite/export';
 
 type ColorSource = 'rendering' | 'shading';
 
+/**
+ * Translate the viewer's `typeVisibility` toggles into the set of IFC class
+ * names the GLB exporter should drop on a visible-only export. Mirrors the
+ * gating in `basketVisibleSet.ts` and `ViewportContainer.tsx` so the export
+ * matches what the user sees in the viewport.
+ */
+function buildHiddenIfcTypes(
+  typeVisibility: { spaces: boolean; openings: boolean; site: boolean },
+): Set<string> {
+  const out = new Set<string>();
+  if (!typeVisibility.spaces) out.add('IfcSpace');
+  if (!typeVisibility.openings) out.add('IfcOpeningElement');
+  if (!typeVisibility.site) out.add('IfcSite');
+  return out;
+}
+
 interface GLBExportDialogProps {
   trigger?: React.ReactNode;
 }
@@ -55,6 +71,12 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
   const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
+  // Class-level visibility (IfcSpace / IfcOpeningElement / IfcSite) — these
+  // are off by default and live OUTSIDE the per-entity hidden set, so a
+  // visible-only export that only checks `hiddenEntities` would still ship
+  // openings the user never rendered (issue surfaced on the Revit door
+  // fixture where IfcOpeningElement #2438 leaked through).
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
   // Legacy single-model fallback so this dialog works before any
   // FederatedModel is registered (the common case for v1 users). Only
   // the geometryResult is needed — GLB export doesn't read the parsed
@@ -182,6 +204,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       const exporter = new GLTFExporter(selectedModel.geometryResult);
       const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
       const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
+      const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
 
       const glb = exporter.exportGLB({
         includeMetadata,
@@ -189,6 +212,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         visibleOnly,
         hiddenEntityIds: globalHidden,
         isolatedEntityIds: globalIsolated,
+        hiddenIfcTypes,
       });
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });

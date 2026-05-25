@@ -107,12 +107,19 @@ export interface GLTFExportOptions {
      * pass the same store-derived sets to either exporter.
      */
     visibleOnly?: boolean;
-    /** Local express IDs explicitly hidden in the viewer. Skipped when
+    /** Global express IDs explicitly hidden in the viewer. Skipped when
      *  `visibleOnly` is true. Ignored otherwise. */
     hiddenEntityIds?: Set<number>;
-    /** Local express IDs in the active isolation set (allowlist). When
+    /** Global express IDs in the active isolation set (allowlist). When
      *  non-null and non-empty, only meshes in this set are emitted. */
     isolatedEntityIds?: Set<number> | null;
+    /** IFC class names whose visibility toggle is currently OFF in the
+     *  viewer (e.g. `"IfcOpeningElement"`, `"IfcSpace"`). Meshes whose
+     *  `ifcType` is in this set are skipped when `visibleOnly` is true,
+     *  matching the viewport's class-level filter — without it,
+     *  visible-only exports would still ship openings the user never
+     *  rendered. */
+    hiddenIfcTypes?: Set<string>;
 }
 
 export class GLTFExporter {
@@ -148,9 +155,11 @@ export class GLTFExporter {
         const hidden = options.hiddenEntityIds ?? null;
         const isolated = options.isolatedEntityIds ?? null;
         const hasIsolation = isolated !== null && isolated.size > 0;
+        const hiddenTypes = options.hiddenIfcTypes ?? null;
 
         const isMeshVisible = (m: MeshData): boolean => {
             if (!visibleOnly) return true;
+            if (hiddenTypes && m.ifcType && hiddenTypes.has(m.ifcType)) return false;
             if (hasIsolation && !isolated!.has(m.expressId)) return false;
             if (hidden && hidden.has(m.expressId)) return false;
             return true;

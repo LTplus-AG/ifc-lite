@@ -38,7 +38,8 @@ const CONCURRENCY = Number.isFinite(parsedConcurrency) && parsedConcurrency > 0 
 // ~7.5s of retries and lost a Release run to a transient 502 burst from the
 // upstream mirror (release #502, run 26371185740). 4xx responses skip retries
 // since they aren't going to recover.
-const RETRIES = Number.parseInt(process.env.FIXTURE_RETRIES || '8', 10);
+const parsedRetries = Number.parseInt(process.env.FIXTURE_RETRIES || '8', 10);
+const RETRIES = Number.isFinite(parsedRetries) && parsedRetries > 0 ? parsedRetries : 8;
 const RETRY_BASE_MS = 500;
 const RETRY_MAX_MS = 15_000;
 

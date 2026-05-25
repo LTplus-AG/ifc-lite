@@ -51,10 +51,16 @@ impl IfcAPI {
         let mut collection = SymbolicRepresentationCollection::new();
         let mut scanner = EntityScanner::new(&content);
 
-        // Process all building elements that might have symbolic representations
+        // Process all building elements that might have symbolic representations.
+        //
+        // IfcGrid isn't in `has_geometry_by_name` (it's not a building element)
+        // but it carries axis curves that we render as symbolic lines + bubbles
+        // + tag letters. Branch into a dedicated extractor before the standard
+        // representation walk, since IfcGrid's "geometry" lives in UAxes /
+        // VAxes / WAxes attributes (slots 7/8/9) rather than its Representation.
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            // Check if this is a building element type
-            if !ifc_lite_core::has_geometry_by_name(type_name) {
+            let is_grid = type_name == "IFCGRID";
+            if !is_grid && !ifc_lite_core::has_geometry_by_name(type_name) {
                 continue;
             }
 
@@ -63,6 +69,29 @@ impl IfcAPI {
                 Ok(e) => e,
                 Err(_) => continue,
             };
+
+            if is_grid {
+                // IfcGrid placement is via the standard ObjectPlacement chain
+                // (attr 5 on IfcProduct). Reuse the same helper the rep walk
+                // below uses so the axis curves land in the same coord frame.
+                let grid_transform = get_object_placement_for_symbolic_logged(
+                    &entity,
+                    &mut decoder,
+                    unit_scale,
+                    None,
+                );
+                extract_grid(
+                    &entity,
+                    id,
+                    &mut decoder,
+                    unit_scale,
+                    &grid_transform,
+                    rtc_x,
+                    rtc_z,
+                    &mut collection,
+                );
+                continue;
+            }
 
             // Get representation (attribute 6 for most products)
             // Note: placement transform is computed per-representation below
@@ -1361,4 +1390,201 @@ fn extract_annotation_fill_area(
         [0.0, 0.0, 0.0, 0.75],
         rep_identifier.to_string(),
     ));
+}
+
+// ─── IfcGrid walker ─────────────────────────────────────────────────────────
+//
+// IFC4 IfcGrid attributes (after IfcProduct's first 7):
+//   slot 7: UAxes — LIST OF IfcGridAxis (primary axes, usually horizontal)
+//   slot 8: VAxes — LIST OF IfcGridAxis (cross axes)
+//   slot 9: WAxes — LIST OF IfcGridAxis (optional, triangular grids only)
+//
+// IfcGridAxis attributes:
+//   slot 0: AxisTag   — IfcLabel ("A", "B", "1", "2", "A.1", …)
+//   slot 1: AxisCurve — IfcCurve (almost always IfcPolyline of 2 points)
+//   slot 2: SameSense — BOOLEAN (whether AxisCurve direction == grid direction)
+//
+// Bubble + tag rendering is NOT in the IFC schema — every viewer synthesizes
+// it the same conventional way: at each end of the axis curve, draw a circle
+// of radius ≈ half text-height, offset outward along the axis direction so
+// it doesn't sit on top of the building, with the AxisTag string centered
+// inside. We emit one SymbolicPolyline (the line itself) + two
+// SymbolicCircle (bubble outlines) + two SymbolicText (centered tags) per
+// axis, all tagged ifc_type="IfcGridAxis" + rep_identifier="Axis" so the
+// JS layer can filter / toggle the whole grid as a group.
+#[allow(clippy::too_many_arguments)]
+fn extract_grid(
+    grid: &ifc_lite_core::DecodedEntity,
+    grid_id: u32,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    unit_scale: f32,
+    transform: &Transform2D,
+    rtc_x: f32,
+    rtc_z: f32,
+    collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
+) {
+    use crate::zero_copy::{SymbolicCircle, SymbolicPolyline, SymbolicText};
+    use ifc_lite_core::IfcType;
+
+    // Conventional sizing — all values in METERS (world units) to match the
+    // post-transform coordinate frame the rest of the symbolic pipeline uses
+    // (extract_polyline multiplies file-unit coords by unit_scale before
+    // calling transform_point, so the output is already meters).
+    const BUBBLE_RADIUS_M: f32 = 0.4; // 400 mm — typical Revit / ArchiCAD default
+    const BUBBLE_OFFSET_M: f32 = 1.2; // 1.2 m gap from axis end to bubble centre
+    const TAG_HEIGHT_M: f32 = 0.4; // 400 mm cap — slightly smaller than bubble dia
+
+    for axis_attr_idx in [7usize, 8, 9] {
+        let Some(axes_attr) = grid.get(axis_attr_idx) else {
+            continue;
+        };
+        let Ok(axes) = decoder.resolve_ref_list(axes_attr) else {
+            continue;
+        };
+
+        for axis in axes {
+            if axis.ifc_type != IfcType::IfcGridAxis {
+                continue;
+            }
+            let axis_id = axis.id;
+            let tag = axis
+                .get(0)
+                .and_then(|a| a.as_string())
+                .unwrap_or("")
+                .to_string();
+
+            // Resolve AxisCurve and sample its endpoints.
+            let Some(curve_ref) = axis.get_ref(1) else {
+                continue;
+            };
+            let Ok(curve) = decoder.decode_by_id(curve_ref) else {
+                continue;
+            };
+            let Some((p0, p1)) = sample_grid_axis_endpoints(&curve, decoder, unit_scale, transform)
+            else {
+                continue;
+            };
+
+            // Apply the same RTC + Y-flip the rest of the symbolic pipeline
+            // uses so the axis lines align with the floor-plan polylines and
+            // circles.
+            let a = (p0.0 - rtc_x, -p0.1 + rtc_z);
+            let b = (p1.0 - rtc_x, -p1.1 + rtc_z);
+
+            // Emit the axis line itself.
+            collection.add_polyline(SymbolicPolyline::new(
+                axis_id,
+                "IfcGridAxis".to_string(),
+                vec![a.0, a.1, b.0, b.1],
+                false,
+                "Axis".to_string(),
+            ));
+
+            // Unit direction along axis a → b. Used to offset bubbles outward
+            // from each endpoint so they don't sit on the building.
+            let dx = b.0 - a.0;
+            let dy = b.1 - a.1;
+            let len = (dx * dx + dy * dy).sqrt();
+            if len < 1e-4 {
+                // Degenerate axis (zero-length curve) — skip bubble synthesis.
+                continue;
+            }
+            let nx = dx / len;
+            let ny = dy / len;
+
+            // Bubble + tag at the "start" end (offset opposite the axis direction).
+            let cx0 = a.0 - nx * BUBBLE_OFFSET_M;
+            let cy0 = a.1 - ny * BUBBLE_OFFSET_M;
+            collection.add_circle(SymbolicCircle::full_circle(
+                axis_id,
+                "IfcGridAxis".to_string(),
+                cx0,
+                cy0,
+                BUBBLE_RADIUS_M,
+                "Axis".to_string(),
+            ));
+            // Tag text: dir_x=1, dir_y=0 → LTR baseline (the tag should always
+            // read horizontally regardless of the underlying axis orientation);
+            // BoxAlignment "center" centres the glyph on (cx0, cy0).
+            collection.add_text(SymbolicText::new(
+                axis_id,
+                "IfcGridAxis".to_string(),
+                cx0,
+                cy0,
+                1.0,
+                0.0,
+                TAG_HEIGHT_M,
+                tag.clone(),
+                "center".to_string(),
+                "Axis".to_string(),
+            ));
+
+            // Bubble + tag at the "end" end (offset along the axis direction).
+            let cx1 = b.0 + nx * BUBBLE_OFFSET_M;
+            let cy1 = b.1 + ny * BUBBLE_OFFSET_M;
+            collection.add_circle(SymbolicCircle::full_circle(
+                axis_id,
+                "IfcGridAxis".to_string(),
+                cx1,
+                cy1,
+                BUBBLE_RADIUS_M,
+                "Axis".to_string(),
+            ));
+            collection.add_text(SymbolicText::new(
+                axis_id,
+                "IfcGridAxis".to_string(),
+                cx1,
+                cy1,
+                1.0,
+                0.0,
+                TAG_HEIGHT_M,
+                tag,
+                "center".to_string(),
+                "Axis".to_string(),
+            ));
+        }
+    }
+
+    // Touch the grid_id so the compiler doesn't warn — it's used as the
+    // express_id for every emitted primitive (matches how individual
+    // annotations carry their parent entity id).
+    let _ = grid_id;
+}
+
+/// Sample the two endpoints of an IfcGridAxis curve.
+///
+/// In practice this is always `IfcPolyline` of two `IfcCartesianPoint`s
+/// (every grid file I've inspected does it this way). We accept the general
+/// IfcPolyline shape — first point and last point of the list — so a
+/// theoretical multi-segment axis still produces a sensible bubble pair.
+///
+/// Returns world-space (meters), pre-RTC, pre-Y-flip — the caller applies
+/// those adjustments to match the rest of the symbolic coord system.
+fn sample_grid_axis_endpoints(
+    curve: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    unit_scale: f32,
+    transform: &Transform2D,
+) -> Option<((f32, f32), (f32, f32))> {
+    use ifc_lite_core::IfcType;
+    if curve.ifc_type != IfcType::IfcPolyline {
+        return None;
+    }
+    let points_attr = curve.get(0)?;
+    let point_entities = decoder.resolve_ref_list(points_attr).ok()?;
+    if point_entities.len() < 2 {
+        return None;
+    }
+    let extract = |pe: &ifc_lite_core::DecodedEntity| -> Option<(f32, f32)> {
+        if pe.ifc_type != IfcType::IfcCartesianPoint {
+            return None;
+        }
+        let coords = pe.get(0)?.as_list()?;
+        let x = coords.first()?.as_float()? as f32 * unit_scale;
+        let y = coords.get(1)?.as_float()? as f32 * unit_scale;
+        Some(transform.transform_point(x, y))
+    };
+    let first = extract(&point_entities[0])?;
+    let last = extract(&point_entities[point_entities.len() - 1])?;
+    Some((first, last))
 }

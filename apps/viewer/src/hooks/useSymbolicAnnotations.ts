@@ -251,7 +251,7 @@ async function parseAnnotations(
     for (let i = 0; i < collection.polylineCount; i++) {
       const poly = collection.getPolyline(i);
       if (!poly) continue;
-      if (poly.ifcType !== 'IfcAnnotation') continue;
+      if (poly.ifcType !== 'IfcAnnotation' && poly.ifcType !== 'IfcGridAxis') continue;
       const bucket = ensureBucket(poly.expressId);
       const out = bucket ? bucket.lines : result.loose;
       polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out);
@@ -260,7 +260,7 @@ async function parseAnnotations(
     for (let i = 0; i < collection.circleCount; i++) {
       const circle = collection.getCircle(i);
       if (!circle) continue;
-      if (circle.ifcType !== 'IfcAnnotation') continue;
+      if (circle.ifcType !== 'IfcAnnotation' && circle.ifcType !== 'IfcGridAxis') continue;
       const bucket = ensureBucket(circle.expressId);
       const out = bucket ? bucket.lines : result.loose;
       circleToSegments(
@@ -277,7 +277,7 @@ async function parseAnnotations(
     for (let i = 0; i < collection.textCount; i++) {
       const text = collection.getText(i);
       if (!text) continue;
-      if (text.ifcType !== 'IfcAnnotation') continue;
+      if (text.ifcType !== 'IfcAnnotation' && text.ifcType !== 'IfcGridAxis') continue;
       // Skip empty literals so the renderer doesn't waste an instance slot.
       // Decode STEP escapes — `\X2\NNNN\X0\` (UTF-16 hex code units) and
       // `\X\NN` (Latin-1 hex byte). The Rust parser intentionally passes

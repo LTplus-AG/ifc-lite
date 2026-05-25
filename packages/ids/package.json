@@ -28,7 +28,7 @@
   "devDependencies": {
     "happy-dom": "^20.9.0",
     "typescript": "^6.0.3",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.7"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

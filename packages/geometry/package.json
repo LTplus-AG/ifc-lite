@@ -27,7 +27,7 @@
     "@ifc-lite/wasm-threaded": "workspace:*",
     "@tauri-apps/api": "^2.11.0",
     "typescript": "^6.0.3",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.7"
   },
   "peerDependencies": {
     "@ifc-lite/wasm-threaded": "*"

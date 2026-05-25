@@ -25,7 +25,7 @@
     "@types/proj4": "^2.19.0",
     "proj4": "^2.20.4",
     "typescript": "^6.0.3",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.7"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

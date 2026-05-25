@@ -3,6 +3,11 @@
   "version": "1.22.1",
   "description": "IFC-Lite viewer application",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "apps/viewer"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

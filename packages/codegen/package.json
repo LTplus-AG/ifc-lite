@@ -3,6 +3,11 @@
   "version": "1.15.2",
   "description": "TypeScript code generator from IFC EXPRESS schemas",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/codegen"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

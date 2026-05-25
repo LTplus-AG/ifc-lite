@@ -1260,8 +1260,15 @@ fn process_surface_of_revolution_face(
     let swept = surface
         .get(0)
         .and_then(|a| decoder.resolve_ref(a).ok().flatten());
+    // IfcSurfaceOfRevolution inherits Position (optional IfcAxis2Placement3D)
+    // at slot 1 from IfcSweptSurface, and AxisPosition (IfcAxis1Placement) is
+    // its own attribute at slot 2. The previous code read slot 1 and got the
+    // (usually null) Position, leaving axis_origin at the (0,0,0) fallback
+    // and collapsing the angular-extent calculation — the real cause of
+    // issue #674's "stem in wrong direction" defect, not the radius/sign
+    // collapse the earlier patch went after.
     let axis_pos = surface
-        .get(1)
+        .get(2)
         .and_then(|a| decoder.resolve_ref(a).ok().flatten());
 
     let (axis_origin, axis_dir) = if let Some(ap) = axis_pos {
@@ -1378,6 +1385,23 @@ fn process_surface_of_revolution_face(
     let n_angle = ((span / (TAU / 36.0)).ceil() as usize).clamp(4, 48);
     let n_v = profile_pts.len();
 
+    if std::env::var("IFC_LITE_SOR_DEBUG").is_ok() {
+        let p0 = profile_pts.first().map(|p| {
+            let r = p - axis_origin;
+            (r.dot(&axis_x), r.dot(&axis_y), r.dot(&axis_dir))
+        });
+        eprintln!(
+            "[SoR] axis_origin=({:.3},{:.3},{:.3}) axis_dir=({:.3},{:.3},{:.3}) \
+             axis_x=({:.3},{:.3},{:.3}) axis_y=({:.3},{:.3},{:.3}) \
+             a_min={:.3} span={:.3} natural=p0_rxry={:?} n_profile={}",
+            axis_origin.x, axis_origin.y, axis_origin.z,
+            axis_dir.x, axis_dir.y, axis_dir.z,
+            axis_x.x, axis_x.y, axis_x.z,
+            axis_y.x, axis_y.y, axis_y.z,
+            a_min, span, p0, profile_pts.len(),
+        );
+    }
+
     // Preserve the profile's (rx, ry) — issue #674: collapsing to radius
     // mirrored profiles on the −axis_x half to the +axis_x side, drifting
     // door-handle SoR bulbs 180° away from their bar.
@@ -1389,16 +1413,41 @@ fn process_surface_of_revolution_face(
         })
         .collect();
 
-    let _ = a_min; // profile is already at a_min in its natural position; only span drives the sweep.
+    // Per IFC 4.3 IfcSurfaceOfRevolution: S(u, v) = R(v) * (SweptCurve(u) -
+    // AxisPosition.Location) + AxisPosition.Location, with v ∈ [0, 2π].
+    // R(0) = identity, so the swept curve is its *natural* position at v=0.
+    //
+    // `(a_min, span)` here is the angular range of the FACE BOUNDARY POINTS
+    // around the axis (computed by largest-gap detection above). For a
+    // planar profile, every profile point shares the same natural angle
+    // (the angle of the profile-plane around the axis), so the boundary
+    // angle of a point at parameter v on the swept curve is
+    //   boundary_angle = natural_angle + v
+    // and the v-range we actually need to sweep is
+    //   v ∈ [a_min − natural_angle, a_min − natural_angle + span].
+    //
+    // The previous fix dropped `a_min` and swept v ∈ [0, span] starting at
+    // the natural position — correct only when a_min happens to coincide
+    // with natural_angle. Door-handle bends (a_min = π/2, natural_angle =
+    // π) regressed: the bulb pivoted to the opposite quadrant, producing
+    // the "stem in wrong direction" defect issue #674 #674 reopened.
+    let natural_angle = profile_pts
+        .first()
+        .map(|p| {
+            let r = p - axis_origin;
+            r.dot(&axis_y).atan2(r.dot(&axis_x))
+        })
+        .unwrap_or(0.0);
 
     let mut positions = Vec::with_capacity((n_angle + 1) * n_v * 3);
     for i in 0..=n_angle {
-        let dtheta = span * (i as f64) / (n_angle as f64);
-        let cos_t = dtheta.cos();
-        let sin_t = dtheta.sin();
+        let boundary_angle = a_min + span * (i as f64) / (n_angle as f64);
+        let v = boundary_angle - natural_angle;
+        let cos_v = v.cos();
+        let sin_v = v.sin();
         for &(rx, ry, z) in &local_profile {
-            let nrx = rx * cos_t - ry * sin_t;
-            let nry = rx * sin_t + ry * cos_t;
+            let nrx = rx * cos_v - ry * sin_v;
+            let nry = rx * sin_v + ry * cos_v;
             let world = axis_origin + axis_x * nrx + axis_y * nry + axis_dir * z;
             positions.push(world.x as f32);
             positions.push(world.y as f32);

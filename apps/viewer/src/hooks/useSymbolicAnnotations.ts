@@ -225,25 +225,48 @@ async function parseAnnotations(
     }
     if (!collection || collection.isEmpty) return result;
 
-    // Get or create the per-storey bucket for an annotation. Storey lookup
-    // can fail (no spatial hierarchy entry), in which case the caller falls
-    // through to the looseLines / looseTexts / looseFills bucket via the
-    // returned `null`. Two-tier API keeps `bucketFor(...).lines.push(...)`
-    // readable at call sites.
-    const ensureBucket = (expressId: number): AnnotationsForStorey | null => {
-      const storeyId = elementToStorey?.get(expressId);
-      if (storeyId === undefined) return null;
-      let bucket = result.byStorey.get(storeyId);
+    // Resolve a bucket by elevation rather than by storey id.
+    //
+    // The legacy path used `elementToStorey` exclusively — which breaks for
+    // 3DEXPERIENCE / IfcPlusPlus exports whose `IfcRelAggregates` leaves
+    // storeys orphaned so `SpatialHierarchyBuilder` reports "No storeys
+    // found". Those files still encode the elevation on each item's
+    // geometry (the IfcCartesianPoint.Z), which the WASM extractor now
+    // surfaces as `primitive.worldY`. Bucketing by Y means every annotation
+    // lands at the right floor regardless of whether the spatial hierarchy
+    // could be built.
+    //
+    // Priority: explicit primitive worldY → fall back to storey-table
+    // elevation → null (loose bucket, renders at fallbackY).
+    //
+    // Bucket keys are millimetre-rounded Y so two storeys 1mm apart still
+    // collapse to one bucket — that's the precision Revit etc. round to.
+    const ensureBucket = (
+      expressId: number,
+      primitiveWorldY: number,
+    ): AnnotationsForStorey | null => {
+      let effectiveY: number | null = null;
+      if (Number.isFinite(primitiveWorldY) && primitiveWorldY !== 0) {
+        effectiveY = primitiveWorldY;
+      } else {
+        const storeyId = elementToStorey?.get(expressId);
+        if (storeyId !== undefined) {
+          const elev = storeyElevations?.get(storeyId);
+          if (typeof elev === 'number' && Number.isFinite(elev)) effectiveY = elev;
+        }
+      }
+      if (effectiveY === null) return null;
+      const key = Math.round(effectiveY * 1000);
+      let bucket = result.byStorey.get(key);
       if (!bucket) {
-        const elev = storeyElevations?.get(storeyId);
         bucket = {
-          storeyId,
-          storeyElevation: typeof elev === 'number' && Number.isFinite(elev) ? elev : null,
+          storeyId: key,
+          storeyElevation: effectiveY,
           lines: [],
           texts: [],
           fills: [],
         };
-        result.byStorey.set(storeyId, bucket);
+        result.byStorey.set(key, bucket);
       }
       return bucket;
     };
@@ -252,7 +275,7 @@ async function parseAnnotations(
       const poly = collection.getPolyline(i);
       if (!poly) continue;
       if (poly.ifcType !== 'IfcAnnotation' && poly.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(poly.expressId);
+      const bucket = ensureBucket(poly.expressId, poly.worldY);
       const out = bucket ? bucket.lines : result.loose;
       polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out);
     }
@@ -261,7 +284,7 @@ async function parseAnnotations(
       const circle = collection.getCircle(i);
       if (!circle) continue;
       if (circle.ifcType !== 'IfcAnnotation' && circle.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(circle.expressId);
+      const bucket = ensureBucket(circle.expressId, circle.worldY);
       const out = bucket ? bucket.lines : result.loose;
       circleToSegments(
         circle.centerX,
@@ -300,7 +323,7 @@ async function parseAnnotations(
       // Industry-standard line-spacing (CSS line-height ≈ 1.2). Picks up
       // a little air between rows so descenders don't kiss the next cap.
       const lineSpacing = perLineHeight * 1.2;
-      const bucket = ensureBucket(text.expressId);
+      const bucket = ensureBucket(text.expressId, text.worldY);
       for (let li = 0; li < lines.length; li++) {
         const t2d: AnnotationText2D = {
           x: text.x,
@@ -335,7 +358,7 @@ async function parseAnnotations(
             }
           : undefined,
       };
-      const bucket = ensureBucket(fill.expressId);
+      const bucket = ensureBucket(fill.expressId, fill.worldY);
       (bucket ? bucket.fills : result.looseFills).push(f2d);
     }
   } finally {

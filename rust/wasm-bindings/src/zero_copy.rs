@@ -613,6 +613,13 @@ pub struct SymbolicPolyline {
     points: Vec<f32>,
     /// Whether this is a closed loop
     is_closed: bool,
+    /// World-Y (elevation in world meters) sampled from the placement chain
+    /// or the polyline's own 3D IfcCartesianPoint Z component. Lets the JS
+    /// hook bucket annotations by elevation instead of by storey id —
+    /// important for files like 3DEXPERIENCE's IFC_Annotation.ifc whose
+    /// IfcRelAggregates leaves storeys orphaned but encodes the elevation
+    /// on each item's geometry.
+    world_y: f32,
     /// Representation identifier: "Plan", "Annotation", "FootPrint", "Axis"
     rep_identifier: String,
 }
@@ -654,15 +661,24 @@ impl SymbolicPolyline {
     pub fn rep_identifier(&self) -> String {
         self.rep_identifier.clone()
     }
+
+    /// World-Y elevation captured from the placement chain (or first 3D
+    /// point's Z component). JS uses this as the canonical bucket key.
+    #[wasm_bindgen(getter, js_name = worldY)]
+    pub fn world_y(&self) -> f32 {
+        self.world_y
+    }
 }
 
 impl SymbolicPolyline {
     /// Create a new symbolic polyline
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         express_id: u32,
         ifc_type: String,
         points: Vec<f32>,
         is_closed: bool,
+        world_y: f32,
         rep_identifier: String,
     ) -> Self {
         Self {
@@ -670,6 +686,7 @@ impl SymbolicPolyline {
             ifc_type,
             points,
             is_closed,
+            world_y,
             rep_identifier,
         }
     }
@@ -685,6 +702,8 @@ pub struct SymbolicCircle {
     center_y: f32,
     /// Radius
     radius: f32,
+    /// World-Y elevation (see SymbolicPolyline.world_y).
+    world_y: f32,
     /// Start angle in radians (0 for full circle)
     start_angle: f32,
     /// End angle in radians (2*PI for full circle)
@@ -740,15 +759,23 @@ impl SymbolicCircle {
     pub fn is_full_circle(&self) -> bool {
         (self.end_angle - self.start_angle - std::f32::consts::TAU).abs() < 0.001
     }
+
+    /// World-Y elevation captured from the placement chain.
+    #[wasm_bindgen(getter, js_name = worldY)]
+    pub fn world_y(&self) -> f32 {
+        self.world_y
+    }
 }
 
 impl SymbolicCircle {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         express_id: u32,
         ifc_type: String,
         center_x: f32,
         center_y: f32,
         radius: f32,
+        world_y: f32,
         start_angle: f32,
         end_angle: f32,
         rep_identifier: String,
@@ -759,6 +786,7 @@ impl SymbolicCircle {
             center_x,
             center_y,
             radius,
+            world_y,
             start_angle,
             end_angle,
             rep_identifier,
@@ -772,6 +800,7 @@ impl SymbolicCircle {
         center_x: f32,
         center_y: f32,
         radius: f32,
+        world_y: f32,
         rep_identifier: String,
     ) -> Self {
         Self::new(
@@ -780,6 +809,7 @@ impl SymbolicCircle {
             center_x,
             center_y,
             radius,
+            world_y,
             0.0,
             std::f32::consts::TAU,
             rep_identifier,
@@ -814,6 +844,9 @@ pub struct SymbolicText {
     /// IFC `BoxAlignment` — empty string when absent. Renderer treats absent
     /// as `"bottom-left"`, matching the IFC default.
     alignment: String,
+    /// World-Y elevation captured from the placement chain (see
+    /// SymbolicPolyline.world_y for the why).
+    world_y: f32,
     /// "Plan" | "Annotation" | "FootPrint" | "Axis"
     rep_identifier: String,
 }
@@ -838,6 +871,8 @@ impl SymbolicText {
     pub fn content(&self) -> String { self.content.clone() }
     #[wasm_bindgen(getter)]
     pub fn alignment(&self) -> String { self.alignment.clone() }
+    #[wasm_bindgen(getter, js_name = worldY)]
+    pub fn world_y(&self) -> f32 { self.world_y }
     #[wasm_bindgen(getter, js_name = repIdentifier)]
     pub fn rep_identifier(&self) -> String { self.rep_identifier.clone() }
 }
@@ -854,6 +889,7 @@ impl SymbolicText {
         height: f32,
         content: String,
         alignment: String,
+        world_y: f32,
         rep_identifier: String,
     ) -> Self {
         Self {
@@ -866,6 +902,7 @@ impl SymbolicText {
             height,
             content,
             alignment,
+            world_y,
             rep_identifier,
         }
     }
@@ -909,6 +946,9 @@ pub struct SymbolicFillArea {
     hatch_angle_secondary: f32,
     /// Hatching line width in model units (0 when unspecified).
     hatch_line_width: f32,
+    /// World-Y elevation captured from the placement chain or the boundary
+    /// curve's IfcCartesianPoint Z components (see SymbolicPolyline.world_y).
+    world_y: f32,
     rep_identifier: String,
 }
 
@@ -950,6 +990,8 @@ impl SymbolicFillArea {
     pub fn hatch_angle_secondary(&self) -> f32 { self.hatch_angle_secondary }
     #[wasm_bindgen(getter, js_name = hatchLineWidth)]
     pub fn hatch_line_width(&self) -> f32 { self.hatch_line_width }
+    #[wasm_bindgen(getter, js_name = worldY)]
+    pub fn world_y(&self) -> f32 { self.world_y }
     #[wasm_bindgen(getter, js_name = repIdentifier)]
     pub fn rep_identifier(&self) -> String { self.rep_identifier.clone() }
 }
@@ -962,6 +1004,7 @@ impl SymbolicFillArea {
         points: Vec<f32>,
         holes_offsets: Vec<u32>,
         fill_rgba: [f32; 4],
+        world_y: f32,
         rep_identifier: String,
     ) -> Self {
         Self {
@@ -978,6 +1021,7 @@ impl SymbolicFillArea {
             hatch_angle: 0.0,
             hatch_angle_secondary: f32::NAN,
             hatch_line_width: 0.0,
+            world_y,
             rep_identifier,
         }
     }
@@ -1053,6 +1097,7 @@ impl SymbolicRepresentationCollection {
             ifc_type: p.ifc_type.clone(),
             points: p.points.clone(),
             is_closed: p.is_closed,
+            world_y: p.world_y,
             rep_identifier: p.rep_identifier.clone(),
         })
     }
@@ -1066,6 +1111,7 @@ impl SymbolicRepresentationCollection {
             center_x: c.center_x,
             center_y: c.center_y,
             radius: c.radius,
+            world_y: c.world_y,
             start_angle: c.start_angle,
             end_angle: c.end_angle,
             rep_identifier: c.rep_identifier.clone(),
@@ -1085,6 +1131,7 @@ impl SymbolicRepresentationCollection {
             height: t.height,
             content: t.content.clone(),
             alignment: t.alignment.clone(),
+            world_y: t.world_y,
             rep_identifier: t.rep_identifier.clone(),
         })
     }
@@ -1106,6 +1153,7 @@ impl SymbolicRepresentationCollection {
             hatch_angle: f.hatch_angle,
             hatch_angle_secondary: f.hatch_angle_secondary,
             hatch_line_width: f.hatch_line_width,
+            world_y: f.world_y,
             rep_identifier: f.rep_identifier.clone(),
         })
     }

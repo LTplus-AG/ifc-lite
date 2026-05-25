@@ -263,11 +263,20 @@ impl IfcAPI {
     }
 }
 
-/// Simple 2D transform for symbolic representations (translation + rotation)
+/// Simple 2D transform for symbolic representations (translation + rotation).
+///
+/// `tz` carries the accumulated world-Z (storey elevation) along the
+/// placement chain — it's strictly additive (no XY rotation affects it for
+/// floor-plan annotations) and lets the extractor emit `world_y` per
+/// primitive. Files whose IfcAnnotation has a null ObjectPlacement (3DEXPERIENCE
+/// pattern — see IFC_Annotation.ifc fixture) STILL get the right elevation
+/// because the text literal's own IfcAxis2Placement3D contributes its Z, and
+/// polyline points are read in 3D so their Z is captured directly.
 #[derive(Clone, Copy, Debug)]
 struct Transform2D {
     tx: f32,
     ty: f32,
+    tz: f32,
     cos_theta: f32,
     sin_theta: f32,
 }
@@ -277,6 +286,7 @@ impl Transform2D {
         Self {
             tx: 0.0,
             ty: 0.0,
+            tz: 0.0,
             cos_theta: 1.0,
             sin_theta: 0.0,
         }
@@ -303,6 +313,9 @@ fn compose_transforms(a: &Transform2D, b: &Transform2D) -> Transform2D {
     Transform2D {
         tx: rtx + a.tx,
         ty: rty + a.ty,
+        // Z stacks additively — no rotation in the XY plane affects it
+        // (annotations always live in a horizontal floor frame).
+        tz: a.tz + b.tz,
         cos_theta: combined_cos,
         sin_theta: combined_sin,
     }
@@ -413,6 +426,9 @@ fn resolve_placement_for_symbolic_with_logging(
     Transform2D {
         tx: composed_tx,
         ty: composed_ty,
+        // Z stacks additively along the placement chain (no XY rotation
+        // affects the vertical axis for floor-plan annotations).
+        tz: parent_transform.tz + local_transform.tz,
         cos_theta: combined_cos,
         sin_theta: combined_sin,
     }
@@ -442,7 +458,7 @@ fn parse_axis2_placement_2d_with_logging(
     // Floor plan coordinates use X-Y plane (Z is up) to match section cut
     let is_3d = placement.ifc_type == IfcType::IfcAxis2Placement3D;
 
-    let (tx, ty, _raw_coords) = if let Some(loc_ref) = placement.get_ref(0) {
+    let (tx, ty, tz) = if let Some(loc_ref) = placement.get_ref(0) {
         if let Ok(loc) = decoder.decode_by_id(loc_ref) {
             if loc.ifc_type == IfcType::IfcCartesianPoint {
                 if let Some(coords_attr) = loc.get(0) {
@@ -452,24 +468,29 @@ fn parse_axis2_placement_2d_with_logging(
                         let raw_z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
 
                         // Use X-Y for floor plan (Z is up in most IFC models)
-                        // Keep native IFC coordinates to match section cut
+                        // Keep native IFC coordinates to match section cut.
+                        // Z is captured separately and becomes the primitive's
+                        // world-Y at render time (3DEXPERIENCE files set
+                        // ObjectPlacement to $ and put the elevation here on
+                        // the item's own placement — see fixture #62).
                         let x = raw_x * unit_scale;
                         let y = raw_y * unit_scale;
-                        (x, y, Some((raw_x, raw_y, raw_z)))
+                        let z = raw_z * unit_scale;
+                        (x, y, z)
                     } else {
-                        (0.0, 0.0, None)
+                        (0.0, 0.0, 0.0)
                     }
                 } else {
-                    (0.0, 0.0, None)
+                    (0.0, 0.0, 0.0)
                 }
             } else {
-                (0.0, 0.0, None)
+                (0.0, 0.0, 0.0)
             }
         } else {
-            (0.0, 0.0, None)
+            (0.0, 0.0, 0.0)
         }
     } else {
-        (0.0, 0.0, None)
+        (0.0, 0.0, 0.0)
     };
 
     // Get RefDirection (attribute 2 for 3D, attribute 1 for 2D) to get rotation
@@ -531,6 +552,7 @@ fn parse_axis2_placement_2d_with_logging(
     Transform2D {
         tx,
         ty,
+        tz,
         cos_theta,
         sin_theta,
     }
@@ -548,8 +570,10 @@ fn parse_cartesian_transformation_operator(
     // IfcCartesianTransformationOperator2D: same, but 2D
     // IfcCartesianTransformationOperator3D: Axis1, Axis2, LocalOrigin, Scale, Axis3
 
-    // Get LocalOrigin (attribute 2 for 2D, attribute 2 for 3D)
-    let (tx, ty) = if let Some(origin_ref) = operator.get_ref(2) {
+    // Get LocalOrigin (attribute 2 for 2D, attribute 2 for 3D).
+    // Also capture Z for IfcCartesianTransformationOperator3D so the
+    // placement chain forwards elevation correctly to per-primitive world_y.
+    let (tx, ty, tz) = if let Some(origin_ref) = operator.get_ref(2) {
         if let Ok(origin) = decoder.decode_by_id(origin_ref) {
             if origin.ifc_type == IfcType::IfcCartesianPoint {
                 if let Some(coords_attr) = origin.get(0) {
@@ -558,21 +582,23 @@ fn parse_cartesian_transformation_operator(
                             * unit_scale;
                         let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
                             * unit_scale;
-                        (x, y)
+                        let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
+                            * unit_scale;
+                        (x, y, z)
                     } else {
-                        (0.0, 0.0)
+                        (0.0, 0.0, 0.0)
                     }
                 } else {
-                    (0.0, 0.0)
+                    (0.0, 0.0, 0.0)
                 }
             } else {
-                (0.0, 0.0)
+                (0.0, 0.0, 0.0)
             }
         } else {
-            (0.0, 0.0)
+            (0.0, 0.0, 0.0)
         }
     } else {
-        (0.0, 0.0)
+        (0.0, 0.0, 0.0)
     };
 
     // Get Axis1 for rotation (attribute 0)
@@ -608,6 +634,7 @@ fn parse_cartesian_transformation_operator(
     Transform2D {
         tx,
         ty,
+        tz,
         cos_theta,
         sin_theta,
     }
@@ -721,6 +748,9 @@ fn extract_symbolic_item(
             if let Some(points_attr) = item.get(0) {
                 if let Ok(point_entities) = decoder.resolve_ref_list(points_attr) {
                     let mut points: Vec<f32> = Vec::with_capacity(point_entities.len() * 2);
+                    // Track the first point's Z so the emission gets a world_y
+                    // even when ObjectPlacement is null (3DEXPERIENCE pattern).
+                    let mut first_z: Option<f32> = None;
 
                     for point_entity in point_entities.iter() {
                         if point_entity.ifc_type != IfcType::IfcCartesianPoint {
@@ -734,6 +764,17 @@ fn extract_symbolic_item(
                                 let local_y =
                                     coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
                                         * unit_scale;
+                                // 3D IfcCartesianPoint encode elevation in the
+                                // third coordinate; capture from the first
+                                // valid point so the JS hook can bucket by Y.
+                                let local_z = coords
+                                    .get(2)
+                                    .and_then(|v| v.as_float())
+                                    .unwrap_or(0.0) as f32
+                                    * unit_scale;
+                                if first_z.is_none() {
+                                    first_z = Some(local_z);
+                                }
 
                                 // Apply full transform (rotation + translation) to orient symbols correctly.
                                 // The placement's rotation is accumulated from hierarchy to orient
@@ -758,11 +799,13 @@ fn extract_symbolic_item(
                             && (points[0] - points[n - 2]).abs() < 0.001
                             && (points[1] - points[n - 1]).abs() < 0.001;
 
+                        let world_y = first_z.unwrap_or(0.0) + transform.tz;
                         collection.add_polyline(SymbolicPolyline::new(
                             express_id,
                             ifc_type.to_string(),
                             points,
                             is_closed,
+                            world_y,
                             rep_identifier.to_string(),
                         ));
                     }
@@ -776,6 +819,7 @@ fn extract_symbolic_item(
                     if let Some(coord_list_attr) = points_list.get(0) {
                         if let Some(coord_list) = coord_list_attr.as_list() {
                             let mut points: Vec<f32> = Vec::with_capacity(coord_list.len() * 2);
+                            let mut first_z: Option<f32> = None;
                             for coord in coord_list {
                                 if let Some(coords) = coord.as_list() {
                                     let local_x =
@@ -786,6 +830,13 @@ fn extract_symbolic_item(
                                         coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0)
                                             as f32
                                             * unit_scale;
+                                    let local_z =
+                                        coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0)
+                                            as f32
+                                            * unit_scale;
+                                    if first_z.is_none() {
+                                        first_z = Some(local_z);
+                                    }
 
                                     // Apply full transform (rotation + translation)
                                     let (wx, wy) = transform.transform_point(local_x, local_y);
@@ -806,11 +857,13 @@ fn extract_symbolic_item(
                                     && (points[0] - points[n - 2]).abs() < 0.001
                                     && (points[1] - points[n - 1]).abs() < 0.001;
 
+                                let world_y = first_z.unwrap_or(0.0) + transform.tz;
                                 collection.add_polyline(SymbolicPolyline::new(
                                     express_id,
                                     ifc_type.to_string(),
                                     points,
                                     is_closed,
+                                    world_y,
                                     rep_identifier.to_string(),
                                 ));
                             }
@@ -829,8 +882,8 @@ fn extract_symbolic_item(
                 return;
             }
 
-            // Get center from Position (attribute 0)
-            let (center_x, center_y) = if let Some(pos_ref) = item.get_ref(0) {
+            // Get center + elevation from Position (attribute 0).
+            let (center_x, center_y, center_z) = if let Some(pos_ref) = item.get_ref(0) {
                 if let Ok(placement) = decoder.decode_by_id(pos_ref) {
                     // IfcAxis2Placement2D/3D: Location
                     if let Some(loc_ref) = placement.get_ref(0) {
@@ -843,24 +896,27 @@ fn extract_symbolic_item(
                                     let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0)
                                         as f32
                                         * unit_scale;
-                                    (x, y)
+                                    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0)
+                                        as f32
+                                        * unit_scale;
+                                    (x, y, z)
                                 } else {
-                                    (0.0, 0.0)
+                                    (0.0, 0.0, 0.0)
                                 }
                             } else {
-                                (0.0, 0.0)
+                                (0.0, 0.0, 0.0)
                             }
                         } else {
-                            (0.0, 0.0)
+                            (0.0, 0.0, 0.0)
                         }
                     } else {
-                        (0.0, 0.0)
+                        (0.0, 0.0, 0.0)
                     }
                 } else {
-                    (0.0, 0.0)
+                    (0.0, 0.0, 0.0)
                 }
             } else {
-                (0.0, 0.0)
+                (0.0, 0.0, 0.0)
             };
 
             // Validate center coordinates
@@ -880,6 +936,7 @@ fn extract_symbolic_item(
                 world_cx,
                 world_cy,
                 radius,
+                center_z + transform.tz,
                 rep_identifier.to_string(),
             ));
         }
@@ -900,7 +957,9 @@ fn extract_symbolic_item(
                             return;
                         }
 
-                        let (center_x, center_y) = if let Some(pos_ref) = basis_curve.get_ref(0) {
+                        let (center_x, center_y, center_z) = if let Some(pos_ref) =
+                            basis_curve.get_ref(0)
+                        {
                             if let Ok(placement) = decoder.decode_by_id(pos_ref) {
                                 if let Some(loc_ref) = placement.get_ref(0) {
                                     if let Ok(loc) = decoder.decode_by_id(loc_ref) {
@@ -918,30 +977,39 @@ fn extract_symbolic_item(
                                                     .unwrap_or(0.0)
                                                     as f32
                                                     * unit_scale;
-                                                (x, y)
+                                                let z = coords
+                                                    .get(2)
+                                                    .and_then(|v| v.as_float())
+                                                    .unwrap_or(0.0)
+                                                    as f32
+                                                    * unit_scale;
+                                                (x, y, z)
                                             } else {
-                                                (0.0, 0.0)
+                                                (0.0, 0.0, 0.0)
                                             }
                                         } else {
-                                            (0.0, 0.0)
+                                            (0.0, 0.0, 0.0)
                                         }
                                     } else {
-                                        (0.0, 0.0)
+                                        (0.0, 0.0, 0.0)
                                     }
                                 } else {
-                                    (0.0, 0.0)
+                                    (0.0, 0.0, 0.0)
                                 }
                             } else {
-                                (0.0, 0.0)
+                                (0.0, 0.0, 0.0)
                             }
                         } else {
-                            (0.0, 0.0)
+                            (0.0, 0.0, 0.0)
                         };
 
                         // Validate center coordinates
                         if !center_x.is_finite() || !center_y.is_finite() {
                             return;
                         }
+                        // Arc/segment polylines emitted below inherit the
+                        // basis circle's elevation.
+                        let world_y = center_z + transform.tz;
 
                         // Get trim parameters (simplified - assume parameter values)
                         let trim1 = item
@@ -1015,6 +1083,7 @@ fn extract_symbolic_item(
                                 ifc_type.to_string(),
                                 points,
                                 false,
+                                world_y,
                                 rep_identifier.to_string(),
                             ));
                         } else {
@@ -1050,6 +1119,7 @@ fn extract_symbolic_item(
                                     ifc_type.to_string(),
                                     points,
                                     false, // Arcs are not closed
+                                    world_y,
                                     rep_identifier.to_string(),
                                 ));
                             }
@@ -1225,6 +1295,11 @@ fn extract_text_literal(
         height_model_units * unit_scale,
         content,
         alignment,
+        // Elevation captured along the placement chain — the text item's own
+        // IfcAxis2Placement3D is composed with the parent IfcAnnotation's
+        // ObjectPlacement, so this works even when ObjectPlacement is null
+        // (3DEXPERIENCE pattern — see fixture #62).
+        composed.tz,
         rep_identifier.to_string(),
     ));
 }
@@ -1406,14 +1481,93 @@ fn extract_annotation_fill_area(
     let fill_rgba = resolve_fill_color(item.id, styled_items, decoder)
         .unwrap_or([0.0, 0.0, 0.0, 1.0]);
 
+    // Capture world-Y elevation from the outer boundary's first 3D point or
+    // from the IfcCircle boundary's placement. Plumbed through so the JS
+    // hook can bucket the fill at the right floor when the spatial
+    // hierarchy can't (3DEXPERIENCE orphan-storey pattern).
+    let world_y = sample_curve_world_y(outer_ref, decoder, unit_scale) + transform.tz;
+
     collection.add_fill(SymbolicFillArea::new(
         express_id,
         ifc_type.to_string(),
         points,
         holes_offsets,
         fill_rgba,
+        world_y,
         rep_identifier.to_string(),
     ));
+}
+
+/// Peek at an IfcCurve's first defining point Z so a fill / line can carry
+/// its elevation forward to JS. Returns 0.0 when the curve is 2D, or for any
+/// curve type we don't try to interpret here.
+fn sample_curve_world_y(
+    curve_id: u32,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    unit_scale: f32,
+) -> f32 {
+    use ifc_lite_core::IfcType;
+    let Ok(curve) = decoder.decode_by_id(curve_id) else {
+        return 0.0;
+    };
+    match curve.ifc_type {
+        IfcType::IfcPolyline => {
+            let Some(points_attr) = curve.get(0) else { return 0.0 };
+            let Ok(point_entities) = decoder.resolve_ref_list(points_attr) else {
+                return 0.0;
+            };
+            for pe in point_entities {
+                if pe.ifc_type != IfcType::IfcCartesianPoint {
+                    continue;
+                }
+                if let Some(coords) = pe.get(0).and_then(|a| a.as_list()) {
+                    if let Some(z) = coords.get(2).and_then(|v| v.as_float()) {
+                        return z as f32 * unit_scale;
+                    }
+                }
+                return 0.0;
+            }
+            0.0
+        }
+        IfcType::IfcIndexedPolyCurve => {
+            let Some(points_ref) = curve.get_ref(0) else { return 0.0 };
+            let Ok(points_entity) = decoder.decode_by_id(points_ref) else {
+                return 0.0;
+            };
+            // CoordList is a list-of-list of REALs
+            let Some(coord_list) = points_entity.get(0).and_then(|a| a.as_list()) else {
+                return 0.0;
+            };
+            for tuple in coord_list {
+                if let Some(coords) = tuple.as_list() {
+                    if let Some(z) = coords.get(2).and_then(|v| v.as_float()) {
+                        return z as f32 * unit_scale;
+                    }
+                    return 0.0;
+                }
+            }
+            0.0
+        }
+        IfcType::IfcCircle => {
+            // Z comes from placement.Location.z (matches the standalone
+            // IfcCircle item path).
+            if let Some(pos_ref) = curve.get_ref(0) {
+                if let Ok(placement) = decoder.decode_by_id(pos_ref) {
+                    if let Some(loc_ref) = placement.get_ref(0) {
+                        if let Ok(loc) = decoder.decode_by_id(loc_ref) {
+                            if let Some(coords) = loc.get(0).and_then(|a| a.as_list()) {
+                                if let Some(z) = coords.get(2).and_then(|v| v.as_float()) {
+                                    return z as f32 * unit_scale;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            0.0
+        }
+        _ => 0.0,
+    }
 }
 
 // ─── IfcGrid walker ─────────────────────────────────────────────────────────
@@ -1495,12 +1649,19 @@ fn extract_grid(
             let a = (p0.0 - rtc_x, -p0.1 + rtc_z);
             let b = (p1.0 - rtc_x, -p1.1 + rtc_z);
 
+            // World-Y for every primitive emitted under this axis: the
+            // grid's ObjectPlacement contributes the storey elevation via
+            // `transform.tz`. (Grids rarely have per-axis Z; if they do
+            // it'd be on the axis curve's own points, captured later.)
+            let world_y = transform.tz;
+
             // Emit the axis line itself.
             collection.add_polyline(SymbolicPolyline::new(
                 axis_id,
                 "IfcGridAxis".to_string(),
                 vec![a.0, a.1, b.0, b.1],
                 false,
+                world_y,
                 "Axis".to_string(),
             ));
 
@@ -1522,13 +1683,14 @@ fn extract_grid(
             // White-filled disk under the outline so the bubble reads
             // against any background (walls, hatches, dark fills). CAD
             // convention — every viewer paints the bubble interior white.
-            collection.add_fill(make_bubble_disk_fill(axis_id, cx0, cy0, BUBBLE_RADIUS_M));
+            collection.add_fill(make_bubble_disk_fill(axis_id, cx0, cy0, BUBBLE_RADIUS_M, world_y));
             collection.add_circle(SymbolicCircle::full_circle(
                 axis_id,
                 "IfcGridAxis".to_string(),
                 cx0,
                 cy0,
                 BUBBLE_RADIUS_M,
+                world_y,
                 "Axis".to_string(),
             ));
             // Tag text: dir_x=1, dir_y=0 → LTR baseline (the tag should always
@@ -1544,19 +1706,21 @@ fn extract_grid(
                 TAG_HEIGHT_M,
                 tag.clone(),
                 "center".to_string(),
+                world_y,
                 "Axis".to_string(),
             ));
 
             // Bubble + tag at the "end" end (offset along the axis direction).
             let cx1 = b.0 + nx * BUBBLE_OFFSET_M;
             let cy1 = b.1 + ny * BUBBLE_OFFSET_M;
-            collection.add_fill(make_bubble_disk_fill(axis_id, cx1, cy1, BUBBLE_RADIUS_M));
+            collection.add_fill(make_bubble_disk_fill(axis_id, cx1, cy1, BUBBLE_RADIUS_M, world_y));
             collection.add_circle(SymbolicCircle::full_circle(
                 axis_id,
                 "IfcGridAxis".to_string(),
                 cx1,
                 cy1,
                 BUBBLE_RADIUS_M,
+                world_y,
                 "Axis".to_string(),
             ));
             collection.add_text(SymbolicText::new(
@@ -1569,6 +1733,7 @@ fn extract_grid(
                 TAG_HEIGHT_M,
                 tag,
                 "center".to_string(),
+                world_y,
                 "Axis".to_string(),
             ));
         }
@@ -1590,6 +1755,7 @@ fn make_bubble_disk_fill(
     cx: f32,
     cy: f32,
     radius: f32,
+    world_y: f32,
 ) -> crate::zero_copy::SymbolicFillArea {
     const SEGMENTS: usize = 32;
     let mut pts = Vec::with_capacity(SEGMENTS * 2);
@@ -1604,6 +1770,7 @@ fn make_bubble_disk_fill(
         pts,
         Vec::new(),
         [1.0, 1.0, 1.0, 1.0],
+        world_y,
         "Axis".to_string(),
     )
 }

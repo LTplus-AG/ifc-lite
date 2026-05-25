@@ -175,14 +175,10 @@ function sourceKey(store: IfcDataStore | null | undefined): string | null {
   return `b${len}-${hashOne(head)}-${hashOne(mid)}-${hashOne(tail)}`;
 }
 
-/** Set `localStorage.IFC_ANNOTATIONS_DEBUG = '1'` in the browser to enable
- *  per-store parse logging — useful when federation cases silently emit
- *  zero lines/texts/fills and we need to know which step dropped the data. */
-const debugEnabled = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  try { return window.localStorage?.getItem('IFC_ANNOTATIONS_DEBUG') === '1'; }
-  catch { return false; }
-};
+/** Per-store annotation parse + lift logs. Always on for the moment so the
+ *  no-annotations-render investigation gets data without users needing to
+ *  set a localStorage flag first. Gate behind the flag once the bug is
+ *  understood. */
 
 async function parseAnnotations(
   store: IfcDataStore,
@@ -195,7 +191,7 @@ async function parseAnnotations(
   };
   const source = store.source;
   if (!source || source.byteLength === 0) {
-    if (debugEnabled()) console.log('[annotations] skip: missing/empty source');
+    console.log('[annotations] skip: missing/empty source');
     return result;
   }
 
@@ -207,14 +203,12 @@ async function parseAnnotations(
   try {
     await processor.init();
     const collection = processor.parseSymbolicRepresentations(source);
-    if (debugEnabled()) {
-      console.log(
-        `[annotations] parsed ${source.byteLength} bytes →`,
-        collection
-          ? `${collection.polylineCount} polylines, ${collection.circleCount} circles, ${collection.textCount} texts, ${collection.fillCount} fills`
-          : 'null',
-      );
-    }
+    console.log(
+      `[annotations] parsed ${source.byteLength} bytes →`,
+      collection
+        ? `${collection.polylineCount} polylines, ${collection.circleCount} circles, ${collection.textCount} texts, ${collection.fillCount} fills`
+        : 'null',
+    );
     if (!collection || collection.isEmpty) return result;
 
     // Get or create the per-storey bucket for an annotation. Storey lookup
@@ -462,15 +456,13 @@ export function useSymbolicAnnotations(params: {
       if (!key) { storeIdx++; continue; }
       const cached = PARSE_CACHE.get(key);
       if (!cached) {
-        if (debugEnabled()) console.log(`[annotations] store ${storeIdx}: parse not yet ready for key=${key}`);
+        console.log(`[annotations] store ${storeIdx}: parse not yet ready for key=${key}`);
         storeIdx++;
         continue;
       }
-      if (debugEnabled()) {
-        const buckets = cached.byStorey.size;
-        const looseLines = cached.loose.length;
-        console.log(`[annotations] store ${storeIdx}: lifting ${buckets} storey buckets + ${looseLines} loose lines (key=${key})`);
-      }
+      const buckets = cached.byStorey.size;
+      const looseLines = cached.loose.length;
+      console.log(`[annotations] store ${storeIdx}: lifting ${buckets} storey buckets + ${looseLines} loose lines (key=${key}, fallbackY=${fallbackY})`);
 
       for (const bucket of cached.byStorey.values()) {
         liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
@@ -479,7 +471,7 @@ export function useSymbolicAnnotations(params: {
       storeIdx++;
     }
 
-    if (debugEnabled()) console.log(`[annotations] total 3D vertices: ${verts.length / 3} from ${stores.length} stores`);
+    console.log(`[annotations] total 3D line vertices: ${verts.length / 3} from ${stores.length} stores`);
     if (verts.length === 0) return EMPTY_F32;
     return new Float32Array(verts);
   }, [enabled, stores, version, fallbackY]);

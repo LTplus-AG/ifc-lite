@@ -21,6 +21,7 @@ import {
   SYMBOLIC_FILL_WGSL,
   SYMBOLIC_TEXT_WGSL,
 } from './shaders/symbolic-overlay.wgsl.js';
+import { PIPELINE_CONSTANTS } from './constants.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
 const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4) * 4;
@@ -131,7 +132,7 @@ export class SymbolicFillPipeline {
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {
-        format: 'depth24plus',
+        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
         // Reverse-Z: the renderer clears depth to 0.0 and uses 'greater' /
         // 'greater-equal' for everything in the main pass. 'less-equal'
@@ -316,7 +317,7 @@ export class SymbolicTextPipeline {
       },
       primitive: { topology: 'triangle-strip', cullMode: 'none' },
       depthStencil: {
-        format: 'depth24plus',
+        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
         // Reverse-Z: see SymbolicFillPipeline.
         depthCompare: 'greater-equal',

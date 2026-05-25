@@ -694,13 +694,6 @@
       "size": 342657851
     },
     {
-      "path": "various/ifc-annotation-single-model.ifc",
-      "sha256": "83782736f614e64b2257f02f7e014b09930dc89e6c3178cf73efec1a96b0a848",
-      "size": 590169,
-      "source": "IFCAnnotationTest from issue #653",
-      "notes": "IFC4, METRE units, 514 IfcAnnotation with TextLiteralWithExtent + AnnotationFillArea. Single-model annotation fixture for issue #659 testing."
-    },
-    {
       "path": "various/issue-604-door.ifc",
       "sha256": "d0a4ea586c2ae1cd247d1026c8967a6a33055df261d71af57be2ed2312a12ad0",
       "size": 116741

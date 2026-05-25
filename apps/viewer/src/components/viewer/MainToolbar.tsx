@@ -497,6 +497,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const editEnabled = useViewerStore((state) => state.editEnabled);
   const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
+  const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
@@ -725,6 +726,12 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
 
   const hasSelection = selectedEntityId !== null;
+  // Selection chip uses the multi-select size when present; falls back
+  // to the single legacy `selectedEntityId` so the chip still says
+  // "1 selected" for the click-to-pick flow that hasn't migrated.
+  const selectionCount = selectedEntityIds.size > 0
+    ? selectedEntityIds.size
+    : (selectedEntityId !== null ? 1 : 0);
 
   const clearSelection = useViewerStore((state) => state.clearSelection);
 
@@ -1467,17 +1474,42 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </TooltipContent>
       </Tooltip>
 
-      <ActionButton icon={Equal} label="Isolate (Set Basket)" onClick={handleIsolate} shortcut="I / =" />
-      <ActionButton icon={EyeOff} label="Hide Selection" onClick={handleHide} shortcut="Del / Space" disabled={!hasSelection} />
+      {/*
+        Selection action cluster — Hide / Frame / Isolate only make
+        sense with a selection, so they don't get to live in the
+        toolbar chrome at rest. When a user selects anything, the
+        slot opens with a "N selected" pill + the three actions next
+        to it. Hotkeys (Del / F / I / =) keep working regardless of
+        whether the chip is rendered, so power users feel no change.
+
+        The chip lives in the same separator zone the buttons used to
+        occupy so the spatial location is familiar to muscle memory.
+      */}
+      {selectionCount > 0 && (
+        <div
+          className="flex items-center gap-0.5 pl-1.5 pr-0.5 rounded-md border border-primary/30 bg-primary/5 transition-opacity duration-150"
+          role="group"
+          aria-label={`Selection actions — ${selectionCount} selected`}
+        >
+          <span
+            className="text-[10px] font-semibold tabular-nums text-primary uppercase tracking-wide whitespace-nowrap pr-1.5"
+            aria-hidden="true"
+          >
+            {selectionCount} sel
+          </span>
+          <ActionButton icon={Equal} label="Isolate Selection (Set Basket)" onClick={handleIsolate} shortcut="I / =" />
+          <ActionButton icon={EyeOff} label="Hide Selection" onClick={handleHide} shortcut="Del / Space" />
+          <ActionButton
+            icon={Crosshair}
+            label="Frame Selection"
+            onClick={() => cameraCallbacks.frameSelection?.()}
+            shortcut="F"
+          />
+        </div>
+      )}
+
       <ActionButton icon={Eye} label="Show All (Reset Filters)" onClick={handleShowAll} shortcut="A" />
       <ActionButton icon={Maximize2} label="Fit All" onClick={() => cameraCallbacks.fitAll?.()} shortcut="Z" />
-      <ActionButton
-        icon={Crosshair}
-        label="Frame Selection"
-        onClick={() => cameraCallbacks.frameSelection?.()}
-        shortcut="F"
-        disabled={!hasSelection}
-      />
 
       <DropdownMenu>
         <Tooltip>

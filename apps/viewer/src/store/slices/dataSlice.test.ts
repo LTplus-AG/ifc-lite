@@ -83,6 +83,22 @@ describe('DataSlice', () => {
       state.setIfcDataStore(null);
       assert.strictEqual(state.ifcDataStore, null);
     });
+
+    // Regression for issue #661: must not overwrite the active model's ifcDataStore.
+    it('must not overwrite the active model entry in the models map', () => {
+      const firstStore = { entityCount: 1, tag: 'first' } as any;
+      const firstGeometry = { meshes: [createMockMesh(1)], totalVertices: 3, totalTriangles: 1 } as any;
+      state.activeModelId = 'model-first';
+      state.models = new Map([
+        ['model-first', { id: 'model-first', ifcDataStore: firstStore, geometryResult: firstGeometry } as any],
+      ]);
+
+      const secondStore = { entityCount: 2, tag: 'second' } as any;
+      state.setIfcDataStore(secondStore);
+
+      assert.strictEqual(state.ifcDataStore, secondStore);
+      assert.strictEqual(state.models.get('model-first')?.ifcDataStore, firstStore);
+    });
   });
 
   describe('setGeometryResult', () => {
@@ -90,6 +106,21 @@ describe('DataSlice', () => {
       const mockResult = { meshes: [], totalTriangles: 0, totalVertices: 0 } as any;
       state.setGeometryResult(mockResult);
       assert.strictEqual(state.geometryResult, mockResult);
+    });
+
+    // Regression for issue #661: must not overwrite the active model's geometryResult.
+    it('must not overwrite the active model entry in the models map', () => {
+      const firstGeometry = { meshes: [createMockMesh(1)], totalVertices: 3, totalTriangles: 1 } as any;
+      state.activeModelId = 'model-first';
+      state.models = new Map([
+        ['model-first', { id: 'model-first', geometryResult: firstGeometry } as any],
+      ]);
+
+      const secondGeometry = { meshes: [createMockMesh(2)], totalVertices: 3, totalTriangles: 1 } as any;
+      state.setGeometryResult(secondGeometry);
+
+      assert.strictEqual(state.geometryResult, secondGeometry);
+      assert.strictEqual(state.models.get('model-first')?.geometryResult, firstGeometry);
     });
   });
 

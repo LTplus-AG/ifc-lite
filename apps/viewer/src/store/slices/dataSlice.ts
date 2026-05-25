@@ -123,37 +123,13 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   pendingMeshTranslations: null,
 
   // Actions
-  setIfcDataStore: (ifcDataStore) => set((state) => {
-    const modelId = state.activeModelId;
-    if (!modelId) {
-      return { ifcDataStore };
-    }
+  // Legacy top-level setters only — per-model writes go through upsertModel/updateModel (issue #661).
+  setIfcDataStore: (ifcDataStore) => set({ ifcDataStore }),
 
-    const model = state.models.get(modelId);
-    if (!model) {
-      return { ifcDataStore };
-    }
-
-    const models = new Map(state.models);
-    models.set(modelId, { ...model, ifcDataStore });
-    return { ifcDataStore, models };
-  }),
-
-  setGeometryResult: (geometryResult) => set((state) => {
-    const modelId = state.activeModelId;
-    if (!modelId) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-
-    const model = state.models.get(modelId);
-    if (!model) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
-    }
-
-    const models = new Map(state.models);
-    models.set(modelId, { ...model, geometryResult });
-    return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1 };
-  }),
+  setGeometryResult: (geometryResult) => set((state) => ({
+    geometryResult,
+    geometryUpdateTick: state.geometryUpdateTick + 1,
+  })),
 
   setBoundedGeometryMode: (boundedGeometryMode) => set({ boundedGeometryMode }),
 

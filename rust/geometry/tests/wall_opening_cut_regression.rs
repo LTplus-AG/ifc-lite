@@ -69,6 +69,13 @@ fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
 
 fn process(host_id: u32) -> Option<Mesh> {
     if !std::path::Path::new(FIXTURE).exists() {
+        // Match the `read_fixture` convention in processors/tests.rs so a
+        // missing fixture surfaces a clear hint instead of silently passing
+        // the test. CI always has the full fixture set.
+        eprintln!(
+            "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+            FIXTURE,
+        );
         return None;
     }
     let content = std::fs::read_to_string(FIXTURE).ok()?;

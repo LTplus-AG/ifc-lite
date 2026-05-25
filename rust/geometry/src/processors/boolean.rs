@@ -373,10 +373,10 @@ impl BooleanClippingProcessor {
         // issue #583), extruding along material_side_dir produces a
         // sheared prism whose XY footprint at the host's level no longer
         // covers the wall's full thickness. Walls' back faces project
-        // outside the polygon and stay un-clipped — confirmed by the
-        // /Users/louistrue/Development/profiling correctness harness:
-        // Wand-010 (#228278) currently emits 65 tris with z=[9.0, 11.7]
-        // while IfcOpenShell emits 28 tris with z=[9.0, 10.33].
+        // outside the polygon and stay un-clipped — confirmed against
+        // IfcOpenShell on AC20-Institute-Var-2 Wand-010 (#228278):
+        // pre-fix we emitted 65 tris with z=[9.0, 11.7] vs IOS's 28
+        // tris with z=[9.0, 10.33]; post-fix the bounds match.
         //
         // Depth covers the host along Position.Z (with a host-diagonal
         // floor so a small host with a large polygon still produces a

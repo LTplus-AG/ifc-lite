@@ -466,6 +466,11 @@ mod tests {
             schema.geometry_category(&IfcType::IfcTriangulatedFaceSet),
             Some(GeometryCategory::ExplicitMesh)
         );
+
+        assert_eq!(
+            schema.profile_category(&IfcType::IfcRoundedRectangleProfileDef),
+            Some(ProfileCategory::Parametric)
+        );
     }
 
     #[test]

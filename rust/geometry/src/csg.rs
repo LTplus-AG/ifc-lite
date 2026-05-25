@@ -1534,7 +1534,6 @@ impl ClippingProcessor {
             return None;
         }
         let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
-        let _ = host_mesh;
         match Self::polygons_to_mesh(&result_polys) {
             Ok(mesh) => {
                 let consolidated = Self::consolidate_coplanar(mesh);

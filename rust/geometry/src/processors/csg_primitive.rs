@@ -61,9 +61,9 @@ impl GeometryProcessor for BlockProcessor {
             .get_float(3)
             .ok_or_else(|| Error::geometry("IfcBlock missing ZLength".to_string()))?;
 
-        if !(x > 0.0 && y > 0.0 && z > 0.0) {
+        if !(x.is_finite() && y.is_finite() && z.is_finite() && x > 0.0 && y > 0.0 && z > 0.0) {
             return Err(Error::geometry(format!(
-                "IfcBlock requires positive lengths, got ({}, {}, {})",
+                "IfcBlock requires finite positive lengths, got ({}, {}, {})",
                 x, y, z
             )));
         }
@@ -123,12 +123,21 @@ impl GeometryProcessor for CsgSolidProcessor {
             Error::geometry("IfcCsgSolid TreeRootExpression unresolved".to_string())
         })?;
 
+        // Per IFC 4.3 (`TreeRootExpression : IfcCsgSelect`), the root must be
+        // an `IfcBooleanResult` or an `IfcCsgPrimitive3D`, NEVER another
+        // `IfcCsgSolid`. Reject that case explicitly so a malformed (or
+        // adversarial) file with a self-reference can't blow the stack on
+        // unbounded recursion.
         match root.ifc_type {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 BooleanClippingProcessor::new().process(&root, decoder, schema)
             }
             IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema),
-            IfcType::IfcCsgSolid => self.process(&root, decoder, schema),
+            IfcType::IfcCsgSolid => Err(Error::geometry(
+                "IfcCsgSolid TreeRootExpression must be IfcBooleanResult or \
+                 IfcCsgPrimitive3D, not another IfcCsgSolid (spec violation)"
+                    .to_string(),
+            )),
             other => Err(Error::geometry(format!(
                 "Unsupported IfcCsgSolid TreeRootExpression: {}",
                 other

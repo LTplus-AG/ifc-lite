@@ -4,7 +4,7 @@
 
 CSG primitive support + BSP CSG quality overhaul (issue #780):
 
-- **Renders the buildingSMART IFC 4.3 bath reference (`bath-csg-solid.ifc`)
+- **Renders the buildingSMART IFC 4.3 bath reference (`bath_csg_solid.ifc`)
   and similar `IfcCsgSolid` geometry.** Three new entity processors:
   - `IfcBlock` — axis-aligned box CSG primitive.
   - `IfcCsgSolid` — pass-through that unwraps `TreeRootExpression` to the

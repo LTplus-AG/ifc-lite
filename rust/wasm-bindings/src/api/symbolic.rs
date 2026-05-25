@@ -231,34 +231,6 @@ impl IfcAPI {
             }
         }
 
-        // Log bounding box of all symbolic geometry
-        let mut min_x = f32::MAX;
-        let mut min_y = f32::MAX;
-        let mut max_x = f32::MIN;
-        let mut max_y = f32::MIN;
-        for i in 0..collection.polyline_count() {
-            if let Some(poly) = collection.get_polyline(i) {
-                let points_array = poly.points();
-                let points: Vec<f32> = points_array.to_vec();
-                for chunk in points.chunks(2) {
-                    if chunk.len() == 2 {
-                        min_x = min_x.min(chunk[0]);
-                        max_x = max_x.max(chunk[0]);
-                        min_y = min_y.min(chunk[1]);
-                        max_y = max_y.max(chunk[1]);
-                    }
-                }
-            }
-        }
-        for i in 0..collection.circle_count() {
-            if let Some(circle) = collection.get_circle(i) {
-                min_x = min_x.min(circle.center_x() - circle.radius());
-                max_x = max_x.max(circle.center_x() + circle.radius());
-                min_y = min_y.min(circle.center_y() - circle.radius());
-                max_y = max_y.max(circle.center_y() + circle.radius());
-            }
-        }
-
         collection
     }
 }
@@ -1601,7 +1573,7 @@ fn extract_grid(
     rtc_z: f32,
     collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
 ) {
-    use crate::zero_copy::{SymbolicPolyline, SymbolicText};
+    use crate::zero_copy::SymbolicPolyline;
     use ifc_lite_core::IfcType;
 
     // Bubbles are emitted as TEXT glyphs (●  fill + ○ outline) so they reuse

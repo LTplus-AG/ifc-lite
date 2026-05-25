@@ -2544,7 +2544,51 @@ export class Renderer {
     uploadAnnotationLines3D(vertices: Float32Array): void {
         if (!this.section2DOverlayRenderer) return;
         this.section2DOverlayRenderer.uploadAnnotationLines3D(vertices);
+        // Contribute annotation extents to modelBounds so an annotation-only
+        // model (no IfcProduct meshes — common for separate "annotation
+        // sheets") still gets framed by Home / initial fit-to-view. Without
+        // this the camera defaults to an empty (0,0,0)..(0,0,0) box and the
+        // 9000+ annotation vertices end up off-screen at the file's authored
+        // metres-scale coordinates.
+        this.expandModelBoundsWithFlatVertices(vertices, 3);
         this.requestRender();
+    }
+
+    /** Walks a flat `[x,y,z,x,y,z,...]` vertex buffer and expands the cached
+     *  `modelBounds` AABB with each finite coordinate. Used by the annotation
+     *  overlay upload paths so symbolic-only models can still be framed. */
+    private expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void {
+        if (positions.length === 0) return;
+        if (!this.modelBounds) {
+            this.modelBounds = {
+                min: { x: Infinity, y: Infinity, z: Infinity },
+                max: { x: -Infinity, y: -Infinity, z: -Infinity },
+            };
+        }
+        let expanded = false;
+        for (let i = 0; i + 2 < positions.length; i += stride) {
+            const x = positions[i];
+            const y = positions[i + 1];
+            const z = positions[i + 2];
+            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+            if (x < this.modelBounds.min.x) this.modelBounds.min.x = x;
+            if (y < this.modelBounds.min.y) this.modelBounds.min.y = y;
+            if (z < this.modelBounds.min.z) this.modelBounds.min.z = z;
+            if (x > this.modelBounds.max.x) this.modelBounds.max.x = x;
+            if (y > this.modelBounds.max.y) this.modelBounds.max.y = y;
+            if (z > this.modelBounds.max.z) this.modelBounds.max.z = z;
+            expanded = true;
+        }
+        if (!expanded) return;
+        // Guarantee non-degenerate extent on every axis so camera frustums
+        // don't collapse. 0.5 m margin matches what the section-plane fallback
+        // uses elsewhere in this file.
+        for (const axis of ['x', 'y', 'z'] as const) {
+            if (this.modelBounds.max[axis] - this.modelBounds.min[axis] < 1e-3) {
+                this.modelBounds.max[axis] += 0.5;
+                this.modelBounds.min[axis] -= 0.5;
+            }
+        }
     }
 
     /**
@@ -2564,6 +2608,20 @@ export class Renderer {
     uploadAnnotationFills3D(fills: readonly SymbolicFillInput[]): void {
         if (!this.symbolicFillPipeline) return;
         this.symbolicFillPipeline.upload(fills);
+        // Contribute fill extents to modelBounds — see uploadAnnotationLines3D.
+        for (const fill of fills) {
+            const pts = fill.points;
+            if (pts.length === 0) continue;
+            // points are flat [x,z,x,z,...]; lift to (x, fill.worldY, z) per
+            // vertex so we expand bounds in the same world space the renderer draws in.
+            const lifted = new Float32Array((pts.length / 2) * 3);
+            for (let i = 0, j = 0; i < pts.length; i += 2, j += 3) {
+                lifted[j] = pts[i];
+                lifted[j + 1] = fill.worldY;
+                lifted[j + 2] = pts[i + 1];
+            }
+            this.expandModelBoundsWithFlatVertices(lifted, 3);
+        }
         this.requestRender();
     }
 
@@ -2574,6 +2632,18 @@ export class Renderer {
     uploadAnnotationTexts3D(texts: readonly SymbolicTextInput[]): void {
         if (!this.symbolicTextPipeline) return;
         this.symbolicTextPipeline.upload(texts);
+        // Text origins are single points; pack them into a flat buffer and
+        // expand bounds. Glyph extents are small enough that origin-only
+        // suffices for framing.
+        if (texts.length > 0) {
+            const buf = new Float32Array(texts.length * 3);
+            for (let i = 0; i < texts.length; i++) {
+                buf[i * 3 + 0] = texts[i].worldPos[0];
+                buf[i * 3 + 1] = texts[i].worldPos[1];
+                buf[i * 3 + 2] = texts[i].worldPos[2];
+            }
+            this.expandModelBoundsWithFlatVertices(buf, 3);
+        }
         this.requestRender();
     }
 

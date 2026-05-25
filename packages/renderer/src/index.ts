@@ -2544,22 +2544,35 @@ export class Renderer {
     uploadAnnotationLines3D(vertices: Float32Array): void {
         if (!this.section2DOverlayRenderer) return;
         this.section2DOverlayRenderer.uploadAnnotationLines3D(vertices);
-        // Contribute annotation extents to modelBounds so an annotation-only
-        // model (no IfcProduct meshes — common for separate "annotation
-        // sheets") still gets framed by Home / initial fit-to-view. Without
-        // this the camera defaults to an empty (0,0,0)..(0,0,0) box and the
-        // 9000+ annotation vertices end up off-screen at the file's authored
-        // metres-scale coordinates.
+        // Contribute annotation extents to modelBounds + camera sceneBounds
+        // so an annotation-only model (no IfcProduct meshes — common for
+        // separate "annotation sheets") gets framed by Home / fit-to-view
+        // AND has correct near/far clipping. Without sceneBounds the camera
+        // frustum doesn't include the annotation cluster and they're clipped
+        // away even when the camera is pointed at them. Mirror the
+        // point-cloud upload path (`addPointClouds`, `setPointClouds`) which
+        // does the same thing.
         this.expandModelBoundsWithFlatVertices(vertices, 3);
+        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
 
-    /** Walks a flat `[x,y,z,x,y,z,...]` vertex buffer and expands the cached
-     *  `modelBounds` AABB with each finite coordinate. Used by the annotation
-     *  overlay upload paths so symbolic-only models can still be framed. */
+    /** Walks a flat `[x,y,z,x,y,z,...]` vertex buffer and either initialises
+     *  or expands the cached `modelBounds` AABB. Used by the annotation
+     *  overlay upload paths so symbolic-only models can still be framed.
+     *
+     *  The geometry pipeline pre-seeds a placeholder `[-100, 100]` cube on
+     *  every render when there are 0 meshes (so the section-plane slider
+     *  always has a workable range). For an annotation-only model that
+     *  fallback drowns out the much-smaller annotation cluster and a plain
+     *  "expand" would no-op. We detect the placeholder by its exact symmetric
+     *  signature and replace it with the actual annotation AABB instead. */
     private expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void {
         if (positions.length === 0) return;
-        if (!this.modelBounds) {
+        const isPlaceholderCube = (b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): boolean =>
+            b.min.x === -100 && b.min.y === -100 && b.min.z === -100
+                && b.max.x === 100 && b.max.y === 100 && b.max.z === 100;
+        if (!this.modelBounds || isPlaceholderCube(this.modelBounds)) {
             this.modelBounds = {
                 min: { x: Infinity, y: Infinity, z: Infinity },
                 max: { x: -Infinity, y: -Infinity, z: -Infinity },
@@ -2622,6 +2635,7 @@ export class Renderer {
             }
             this.expandModelBoundsWithFlatVertices(lifted, 3);
         }
+        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
 
@@ -2643,6 +2657,7 @@ export class Renderer {
                 buf[i * 3 + 2] = texts[i].worldPos[2];
             }
             this.expandModelBoundsWithFlatVertices(buf, 3);
+            if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         }
         this.requestRender();
     }

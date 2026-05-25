@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
+import { GeometryEditCard } from './GeometryEditCard';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -191,8 +192,12 @@ export function PropertiesPanel() {
   const [nativeDetails, setNativeDetails] = useState<import('@/store/types').NativeMetadataEntityDetails | null>(null);
   const [nativeDetailsState, setNativeDetailsState] = useState<'idle' | 'loading' | 'error'>('idle');
 
-  // Edit mode toggle - allows inline property editing
-  const [editMode, setEditMode] = useState(false);
+  // Inline property editing is gated by the global edit-mode pill in
+  // the main toolbar (see `uiSlice.editEnabled`). Reading it from the
+  // store keeps every edit affordance — properties, attributes,
+  // geometry manipulators, georeference placement, add-element draw
+  // tools — behind a single switch.
+  const editMode = useViewerStore((s) => s.editEnabled);
 
   useEffect(() => {
     if (!selectedEntity || !model?.nativeMetadata) {
@@ -922,11 +927,12 @@ export function PropertiesPanel() {
 
   const isNativeLazySelection = Boolean(selectedEntity && model?.nativeMetadata);
 
-  useEffect(() => {
-    if (isNativeLazySelection && editMode) {
-      setEditMode(false);
-    }
-  }, [isNativeLazySelection, editMode]);
+  // Native-lazy entities (server-streamed without full STEP data) can
+  // never be edited; the per-row editors below self-guard via
+  // `enableEditing={editMode && !isNativeLazySelection}`. The old
+  // panel-local `editMode` would flip itself off when a native-lazy
+  // entity was selected; now that the flag is global it stays on, and
+  // the field-level guards do the work.
 
   const nativeSpatialInfo = useMemo(() => {
     if (!nativeDetails?.spatial?.storeyName) return null;
@@ -1191,22 +1197,6 @@ export function PropertiesPanel() {
                 {selectedEntityId && isEntityVisible(selectedEntityId) ? 'Hide' : 'Show'}
               </TooltipContent>
             </Tooltip>
-            {/* Edit mode toggle */}
-            {!isNativeLazySelection && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={editMode ? 'default' : 'ghost'}
-                    size="icon-xs"
-                    className={`rounded-none ${editMode ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
-                    onClick={() => setEditMode(!editMode)}
-                  >
-                    <PenLine className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{editMode ? 'Exit Edit Mode' : 'Edit Properties'}</TooltipContent>
-              </Tooltip>
-            )}
           </div>
         </div>
 
@@ -1465,14 +1455,21 @@ export function PropertiesPanel() {
             )}
             {/* Edit toolbar - only shown when edit mode is active */}
             {editMode && selectedEntity && !isNativeLazySelection && (
-              <EditToolbar
-                modelId={selectedEntity.modelId}
-                entityId={selectedEntity.expressId}
-                entityType={entityType}
-                existingPsets={renderedMergedProperties.map(p => p.name)}
-                existingQtos={renderedQuantities.map(q => q.name)}
-                schemaVersion={activeDataStore?.schemaVersion}
-              />
+              <>
+                <GeometryEditCard
+                  modelId={selectedEntity.modelId}
+                  entityId={selectedEntity.expressId}
+                  entityLabel={entityType ? `${entityType} #${selectedEntity.expressId}` : `#${selectedEntity.expressId}`}
+                />
+                <EditToolbar
+                  modelId={selectedEntity.modelId}
+                  entityId={selectedEntity.expressId}
+                  entityType={entityType}
+                  existingPsets={renderedMergedProperties.map(p => p.name)}
+                  existingQtos={renderedQuantities.map(q => q.name)}
+                  schemaVersion={activeDataStore?.schemaVersion}
+                />
+              </>
             )}
             {renderedMergedProperties.length === 0
               && renderedClassifications.length === 0

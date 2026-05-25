@@ -19,10 +19,11 @@ mod tests;
 
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{
-    AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
-    ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
-    MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
-    ShellBasedSurfaceModelProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    AdvancedBrepProcessor, BlockProcessor, BooleanClippingProcessor, CsgSolidProcessor,
+    ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor,
+    FacetedBrepProcessor, MappedItemProcessor, PolygonalFaceSetProcessor,
+    RevolvedAreaSolidProcessor, ShellBasedSurfaceModelProcessor, SweptDiskSolidProcessor,
+    TriangulatedFaceSetProcessor,
 };
 use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -221,6 +222,8 @@ impl GeometryRouter {
         router.register(Box::new(AdvancedBrepProcessor::new()));
         router.register(Box::new(ShellBasedSurfaceModelProcessor::new()));
         router.register(Box::new(FaceBasedSurfaceModelProcessor::new()));
+        router.register(Box::new(BlockProcessor::new()));
+        router.register(Box::new(CsgSolidProcessor::new()));
 
         router
     }

@@ -1,5 +1,28 @@
 # @ifc-lite/viewer
 
+## 1.22.1
+
+### Patch Changes
+
+- [#795](https://github.com/LTplus-AG/ifc-lite/pull/795) [`bb3123a`](https://github.com/LTplus-AG/ifc-lite/commit/bb3123adcd751f4c27b4457156e2d0bae3b40e56) Thanks [@louistrue](https://github.com/louistrue)! - Fix "Add Model to Scene" hiding the first model when a second is
+  loaded (issue [#661](https://github.com/LTplus-AG/ifc-lite/issues/661), PR [#792](https://github.com/LTplus-AG/ifc-lite/issues/792)). `useIfcFederation.addModel` always
+  called `setIfcDataStore(parsedDataStore)` and
+  `setGeometryResult(parsedGeometry)` after `storeAddModel`, with the
+  new model's data. `modelSlice.addModel` only flips `activeModelId`
+  for the FIRST model, so on subsequent adds those legacy setters
+  wrote the new model's data into `models.get(activeModelId)` — i.e.
+  into the FIRST model's per-model entry — aliasing both Map entries
+  to the second model's mesh and rendering only one element.
+
+  The fix drops those two redundant calls from `addModel`. For the
+  first model `modelSlice.addModel` already mirrors the data into the
+  top-level fields, and for subsequent models the legacy top-level
+  fields must stay pointing at the active (first) model's data; the
+  existing `setActiveModel` handler updates them on focus change.
+
+- Updated dependencies [[`a6637a4`](https://github.com/LTplus-AG/ifc-lite/commit/a6637a41d948ec17841a0ac62586f627d0bb21fa), [`bb3123a`](https://github.com/LTplus-AG/ifc-lite/commit/bb3123adcd751f4c27b4457156e2d0bae3b40e56), [`bb3123a`](https://github.com/LTplus-AG/ifc-lite/commit/bb3123adcd751f4c27b4457156e2d0bae3b40e56), [`a6637a4`](https://github.com/LTplus-AG/ifc-lite/commit/a6637a41d948ec17841a0ac62586f627d0bb21fa)]:
+  - @ifc-lite/wasm@1.17.0
+
 ## 1.22.0
 
 ### Minor Changes

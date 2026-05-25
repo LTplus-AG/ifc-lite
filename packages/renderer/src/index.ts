@@ -232,12 +232,17 @@ export class Renderer {
         await this.device.init(this.canvas);
 
         // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
+        // and clamp to the GPU's max 2D texture dimension so the initial pipeline allocations
+        // can't overflow on tall/wide layouts (see render() for the per-frame clamp).
         const rect = this.canvas.getBoundingClientRect();
-        const width = this.canvas.width || Math.max(1, Math.floor(rect.width));
-        const height = this.canvas.height || Math.max(1, Math.floor(rect.height));
+        const maxDim = this.device.getMaxTextureDimension();
+        const rawWidth = this.canvas.width || Math.max(1, Math.floor(rect.width));
+        const rawHeight = this.canvas.height || Math.max(1, Math.floor(rect.height));
+        const width = Math.min(rawWidth, maxDim);
+        const height = Math.min(rawHeight, maxDim);
 
-        // Set pixel dimensions if not already set
-        if (!this.canvas.width || !this.canvas.height) {
+        // Set pixel dimensions if not already set, or if we clamped them down
+        if (!this.canvas.width || !this.canvas.height || this.canvas.width !== width || this.canvas.height !== height) {
             this.canvas.width = width;
             this.canvas.height = height;
         }
@@ -1102,10 +1107,16 @@ export class Renderer {
 
         // Validate canvas dimensions
         // Align width to 64 pixels for WebGPU texture row alignment (256 bytes / 4 bytes per pixel)
+        // and clamp both axes to the GPU's max 2D texture dimension. Some hosts (e.g. tall iframes
+        // on high-DPR displays) can produce canvas dimensions that exceed 8192 and would otherwise
+        // make every depth/colour texture allocation a validation error.
         const rect = this.canvas.getBoundingClientRect();
+        const maxDim = this.device.getMaxTextureDimension();
         const rawWidth = Math.max(1, Math.floor(rect.width));
-        const width = Math.max(64, Math.floor(rawWidth / 64) * 64);
-        const height = Math.max(1, Math.floor(rect.height));
+        const widthAligned = Math.max(64, Math.floor(rawWidth / 64) * 64);
+        const width = Math.min(widthAligned, Math.floor(maxDim / 64) * 64);
+        const rawHeight = Math.max(1, Math.floor(rect.height));
+        const height = Math.min(rawHeight, maxDim);
 
         // Skip rendering if canvas is too small
         if (width < 64 || height < 10) { this._renderSkipCount++; return; }

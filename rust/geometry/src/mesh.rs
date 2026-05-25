@@ -406,6 +406,49 @@ impl Mesh {
         self.rtc_applied = false;
     }
 
+    /// Weld coincident vertices, preserving per-vertex normals.
+    ///
+    /// Returns a new mesh where vertices whose **position AND normal** both
+    /// quantize to the same bucket are merged. Indices are remapped.
+    /// Triangles that collapse to a degenerate edge or point (any two
+    /// corners welded to the same vertex) are dropped.
+    ///
+    /// **Use this when shading must stay crisp.** A box corner shared by
+    /// three faces has the same position but three different normals, so
+    /// it stays as three vertices — flat shading and per-face colours
+    /// survive the weld.
+    ///
+    /// `position_eps` and `normal_eps` are bucket sizes (in metres and
+    /// normal-vector units respectively). 1 µm position / 1 mrad normal is
+    /// usually right for IFC geometry: well below any meaningful BIM
+    /// tolerance and below f32 precision at typical building scales.
+    ///
+    /// For watertight output that lets you compute volumes or run CSG,
+    /// use [`Mesh::welded_by_position`] instead — it merges all vertices
+    /// at the same position regardless of normal.
+    pub fn welded(&self, position_eps: f32, normal_eps: f32) -> Mesh {
+        weld_impl(self, position_eps, Some(normal_eps), /*average_normals=*/ false)
+    }
+
+    /// Weld vertices that share a position, regardless of normal.
+    ///
+    /// Returns a new mesh where vertices at the same position (within
+    /// `position_eps`) collapse to one canonical vertex; the welded
+    /// vertex's normal is the sum of contributing normals, re-normalized
+    /// (or the first contributing normal if the sum is degenerate).
+    /// Triangles that collapse to a degenerate edge or point are dropped.
+    ///
+    /// **Use this when you need a topologically connected, manifold-
+    /// candidate mesh** — volume queries, CSG operands, watertight
+    /// checks, mesh repair pipelines. Shading at sharp corners gets
+    /// averaged; if you need crisp corners use [`Mesh::welded`] instead.
+    ///
+    /// `position_eps` is the bucket size in metres (1 µm is a safe
+    /// default for IFC).
+    pub fn welded_by_position(&self, position_eps: f32) -> Mesh {
+        weld_impl(self, position_eps, None, /*average_normals=*/ true)
+    }
+
     /// Filter out triangles with edges exceeding the threshold
     /// This removes "stretched" triangles that span unreasonably large distances,
     /// which can occur when disconnected geometry is incorrectly merged.
@@ -486,6 +529,155 @@ impl Mesh {
 impl Default for Mesh {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Shared welding implementation backing `Mesh::welded` and
+/// `Mesh::welded_by_position`.
+///
+/// When `normal_eps` is `Some(eps)`, the dedupe key is
+/// `(quantized_position, quantized_normal)` and `average_normals` is
+/// ignored — the first encountered (position, normal) pair wins. When
+/// `normal_eps` is `None`, the dedupe key is `quantized_position` only;
+/// `average_normals=true` accumulates contributing normals into the
+/// welded vertex and renormalizes at the end.
+fn weld_impl(
+    mesh: &Mesh,
+    position_eps: f32,
+    normal_eps: Option<f32>,
+    average_normals: bool,
+) -> Mesh {
+    use rustc_hash::FxHashMap;
+
+    let n_verts = mesh.positions.len() / 3;
+    if n_verts == 0 {
+        return Mesh::new();
+    }
+
+    let has_normals = mesh.normals.len() == mesh.positions.len();
+    let pos_scale = 1.0 / position_eps.max(f32::MIN_POSITIVE);
+    let q_pos = |v: f32| -> i64 { (v * pos_scale).round() as i64 };
+
+    let nrm_scale = normal_eps.map(|e| 1.0 / e.max(f32::MIN_POSITIVE));
+    let q_nrm = |v: f32| -> i64 {
+        nrm_scale
+            .map(|s| (v * s).round() as i64)
+            .unwrap_or(0)
+    };
+
+    // Dedupe key. Pre-allocate to size 6 (pos + normal) — using a tuple
+    // would require two distinct hash types; a small array keeps a single
+    // hash map specialisation.
+    type Key = [i64; 6];
+    let mut canonical: FxHashMap<Key, u32> = FxHashMap::default();
+    let mut old_to_new: Vec<u32> = Vec::with_capacity(n_verts);
+    let mut new_positions: Vec<f32> = Vec::with_capacity(n_verts * 3);
+    let mut new_normals: Vec<f32> = Vec::with_capacity(n_verts * 3);
+    // For the average-normals path, accumulate the un-normalized sum so
+    // a final pass can normalize. The sum buffer is parallel to
+    // `new_positions` chunks.
+    let mut normal_accum: Vec<(f64, f64, f64)> = Vec::new();
+    if average_normals {
+        normal_accum.reserve(n_verts);
+    }
+
+    for i in 0..n_verts {
+        let px = mesh.positions[i * 3];
+        let py = mesh.positions[i * 3 + 1];
+        let pz = mesh.positions[i * 3 + 2];
+        let (nx, ny, nz) = if has_normals {
+            (
+                mesh.normals[i * 3],
+                mesh.normals[i * 3 + 1],
+                mesh.normals[i * 3 + 2],
+            )
+        } else {
+            (0.0, 0.0, 0.0)
+        };
+        let key: Key = [
+            q_pos(px),
+            q_pos(py),
+            q_pos(pz),
+            q_nrm(nx),
+            q_nrm(ny),
+            q_nrm(nz),
+        ];
+
+        if let Some(&new_idx) = canonical.get(&key) {
+            old_to_new.push(new_idx);
+            if average_normals {
+                let slot = &mut normal_accum[new_idx as usize];
+                slot.0 += nx as f64;
+                slot.1 += ny as f64;
+                slot.2 += nz as f64;
+            }
+        } else {
+            let new_idx = (new_positions.len() / 3) as u32;
+            canonical.insert(key, new_idx);
+            old_to_new.push(new_idx);
+            new_positions.push(px);
+            new_positions.push(py);
+            new_positions.push(pz);
+            if has_normals {
+                new_normals.push(nx);
+                new_normals.push(ny);
+                new_normals.push(nz);
+            }
+            if average_normals {
+                normal_accum.push((nx as f64, ny as f64, nz as f64));
+            }
+        }
+    }
+
+    // For average-normals path: normalize the accumulated sums and
+    // write them back over the first-vertex-wins values stored above.
+    if average_normals && has_normals {
+        new_normals.clear();
+        new_normals.reserve(normal_accum.len() * 3);
+        for (sx, sy, sz) in &normal_accum {
+            let len_sq = sx * sx + sy * sy + sz * sz;
+            if len_sq > 1e-24 {
+                let inv = 1.0 / len_sq.sqrt();
+                new_normals.push((*sx * inv) as f32);
+                new_normals.push((*sy * inv) as f32);
+                new_normals.push((*sz * inv) as f32);
+            } else {
+                // Degenerate accumulation (opposing normals cancelled);
+                // fall back to a neutral up-Z so consumers don't see NaN.
+                new_normals.push(0.0);
+                new_normals.push(0.0);
+                new_normals.push(1.0);
+            }
+        }
+    }
+
+    // Re-index triangles, dropping degenerates and out-of-bound input
+    // triangles the same way `validate_indices` does so a malformed
+    // input mesh weld-then-renders fine instead of panicking later.
+    let mut new_indices: Vec<u32> = Vec::with_capacity(mesh.indices.len());
+    for chunk in mesh.indices.chunks_exact(3) {
+        let i0_raw = chunk[0] as usize;
+        let i1_raw = chunk[1] as usize;
+        let i2_raw = chunk[2] as usize;
+        if i0_raw >= n_verts || i1_raw >= n_verts || i2_raw >= n_verts {
+            continue;
+        }
+        let i0 = old_to_new[i0_raw];
+        let i1 = old_to_new[i1_raw];
+        let i2 = old_to_new[i2_raw];
+        if i0 == i1 || i1 == i2 || i0 == i2 {
+            continue;
+        }
+        new_indices.push(i0);
+        new_indices.push(i1);
+        new_indices.push(i2);
+    }
+
+    Mesh {
+        positions: new_positions,
+        normals: new_normals,
+        indices: new_indices,
+        rtc_applied: mesh.rtc_applied,
     }
 }
 
@@ -689,6 +881,131 @@ mod tests {
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
+    }
+
+    fn make_unwelded_box() -> Mesh {
+        // A 1×1×1 cube emitted as triangle soup: each face has its own 4
+        // vertices (not shared with adjacent faces), so 6 faces × 4 verts
+        // = 24 vertices, 12 triangles. This is what the extrusion path
+        // produces today.
+        let mut m = Mesh::new();
+        let corners = [
+            (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0),
+        ];
+        let faces: [([usize; 4], [f32; 3]); 6] = [
+            ([0, 3, 2, 1], [0.0, 0.0, -1.0]), // bottom
+            ([4, 5, 6, 7], [0.0, 0.0, 1.0]),  // top
+            ([0, 1, 5, 4], [0.0, -1.0, 0.0]), // front
+            ([2, 3, 7, 6], [0.0, 1.0, 0.0]),  // back
+            ([0, 4, 7, 3], [-1.0, 0.0, 0.0]), // left
+            ([1, 2, 6, 5], [1.0, 0.0, 0.0]),  // right
+        ];
+        for (idx, normal) in faces {
+            let base = (m.positions.len() / 3) as u32;
+            for &i in idx.iter() {
+                let (x, y, z) = corners[i];
+                m.positions.extend_from_slice(&[x, y, z]);
+                m.normals.extend_from_slice(&normal);
+            }
+            m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+            m.indices.extend_from_slice(&[base, base + 2, base + 3]);
+        }
+        m
+    }
+
+    #[test]
+    fn welded_preserves_corner_normals() {
+        let m = make_unwelded_box();
+        assert_eq!(m.vertex_count(), 24);
+        assert_eq!(m.triangle_count(), 12);
+        // With normal-preserving weld, each box corner has 3 incident
+        // faces with 3 different normals, so each corner stays as 3
+        // separate vertices. 6 faces × 4 vertices = 24 → 24 (no merge,
+        // because no two of the 24 input vertices share BOTH position
+        // and normal).
+        let welded = m.welded(1e-6, 1e-3);
+        assert_eq!(
+            welded.vertex_count(),
+            24,
+            "normal-preserving weld must keep all per-face corner vertices"
+        );
+        assert_eq!(welded.triangle_count(), 12);
+    }
+
+    #[test]
+    fn welded_by_position_collapses_corner_to_one_vertex() {
+        let m = make_unwelded_box();
+        // Position-only weld: all 24 input vertices map to the 8 box
+        // corners. 8 vertices, 12 triangles (no degenerates since a
+        // 1×1×1 box's corner-only mesh is non-degenerate).
+        let welded = m.welded_by_position(1e-6);
+        assert_eq!(
+            welded.vertex_count(),
+            8,
+            "position-only weld must collapse 24 face-corner duplicates to 8 box corners"
+        );
+        assert_eq!(welded.triangle_count(), 12);
+        // Averaged normal at each corner must be unit length (within f32
+        // precision); we don't pin a specific direction because three
+        // faces' normals sum to a face-diagonal direction.
+        for chunk in welded.normals.chunks_exact(3) {
+            let len_sq = chunk[0] * chunk[0] + chunk[1] * chunk[1] + chunk[2] * chunk[2];
+            assert!(
+                (len_sq - 1.0).abs() < 1e-4,
+                "welded normal must be unit length, got |n|^2 = {}",
+                len_sq
+            );
+        }
+    }
+
+    #[test]
+    fn welded_drops_degenerate_triangles() {
+        // A triangle whose three vertices all quantize to the same
+        // position should be dropped after welding (it collapsed to a
+        // point).
+        let mut m = Mesh::new();
+        m.positions = vec![
+            0.0, 0.0, 0.0,
+            // Two more "vertices" within position_eps of vertex 0:
+            5e-8, 0.0, 0.0,
+            0.0, 5e-8, 0.0,
+            // A real non-degenerate triangle:
+            1.0, 0.0, 0.0,
+            1.0, 1.0, 0.0,
+        ];
+        m.normals = vec![
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+        ];
+        m.indices = vec![
+            0, 1, 2,   // collapses to a point after weld at eps=1e-6
+            0, 3, 4,   // survives
+        ];
+        let welded = m.welded_by_position(1e-6);
+        assert_eq!(welded.triangle_count(), 1);
+    }
+
+    #[test]
+    fn welded_handles_empty_mesh() {
+        let m = Mesh::new();
+        let welded = m.welded(1e-6, 1e-3);
+        assert!(welded.is_empty());
+        let welded_pos = m.welded_by_position(1e-6);
+        assert!(welded_pos.is_empty());
+    }
+
+    #[test]
+    fn welded_strips_out_of_bound_indices() {
+        let mut m = Mesh::new();
+        m.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        m.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        m.indices = vec![0, 1, 2, 0, 1, 99];
+        let welded = m.welded_by_position(1e-6);
+        assert_eq!(welded.triangle_count(), 1);
     }
 
     #[test]

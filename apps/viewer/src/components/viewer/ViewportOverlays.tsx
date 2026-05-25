@@ -18,7 +18,9 @@ import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/platform';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
+import { BasepointOverlay } from './BasepointOverlay';
 import { PointCloudPanel } from './PointCloudPanel';
+import { Crosshair } from 'lucide-react';
 
 const isDesktop = isTauri();
 
@@ -211,23 +213,60 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
         </div>
       )}
 
-      {/* Axis Helper + Scale Bar — desktop only; mobile keeps the viewport unobstructed */}
+      {/* Basepoint toggle + Axis Helper + Scale Bar — desktop only; mobile keeps the viewport unobstructed */}
       {!isMobile && (
-        <>
-          <div className="absolute bottom-16 left-4">
-            <AxisHelper
-              ref={axisHelperRef}
-              rotationX={initialRotationX}
-              rotationY={initialRotationY}
-            />
-          </div>
-          <div className="absolute bottom-4 left-4 flex flex-col items-start gap-1">
+        <div className="absolute bottom-4 left-4 flex flex-col-reverse items-start gap-3">
+          <div className="flex flex-col items-start gap-1">
             <div className="h-1 w-24 bg-foreground/80 rounded-full" />
             <span className="text-xs text-foreground/80">{formatScale(scale)}</span>
           </div>
-        </>
+          <AxisHelper
+            ref={axisHelperRef}
+            rotationX={initialRotationX}
+            rotationY={initialRotationY}
+          />
+          <BasepointToggleButton />
+        </div>
       )}
+
+      {/* Per-model IFC (0,0,0) markers — toggled via BasepointToggleButton.
+          Hidden by default; component returns null when the toggle is off. */}
+      <BasepointOverlay />
     </>
+  );
+}
+
+/**
+ * Toggle for the per-model IFC-origin overlay. Sits next to the AxisHelper so
+ * it's discoverable in the same "scene reference" cluster.
+ */
+function BasepointToggleButton() {
+  const showModelBasepoints = useViewerStore((s) => s.showModelBasepoints);
+  const toggleShowModelBasepoints = useViewerStore((s) => s.toggleShowModelBasepoints);
+  const modelCount = useViewerStore((s) => s.models.size);
+  if (modelCount === 0) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={toggleShowModelBasepoints}
+          aria-label={showModelBasepoints ? 'Hide model basepoints' : 'Show model basepoints'}
+          className={cn(
+            'h-6 w-6 inline-flex items-center justify-center border transition-colors',
+            showModelBasepoints
+              ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
+              : 'border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/80 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800',
+          )}
+          aria-pressed={showModelBasepoints}
+        >
+          <Crosshair className="h-3 w-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        {showModelBasepoints ? 'Hide model basepoints' : 'Show model basepoints (IFC 0,0,0)'}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

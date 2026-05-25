@@ -96,38 +96,11 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Prepare Binary (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p dist
-          cp target/${{ matrix.rust-target }}/release/ifc-lite-server dist/
-          chmod +x dist/ifc-lite-server
-
-      - name: Prepare Binary (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist
-          Copy-Item "target/${{ matrix.rust-target }}/release/ifc-lite-server.exe" -Destination "dist/"
-
-      - name: Create Archive (tar.gz)
-        if: matrix.archive == 'tar.gz'
-        run: |
-          cd dist
-          tar -czf ../ifc-lite-server-${{ matrix.target }}.tar.gz ifc-lite-server
-
-      - name: Create Archive (zip)
-        if: matrix.archive == 'zip'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "dist/ifc-lite-server.exe" -DestinationPath "ifc-lite-server-${{ matrix.target }}.zip"
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ifc-lite-server-${{ matrix.target }}
-          path: ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}
-          if-no-files-found: error
+      # The `cargo build` step above is the validation — it fails the job
+      # if the binary doesn't compile. We deliberately don't archive or
+      # upload the binary here: nothing downloads a PR-run server binary,
+      # and 90-day-retained artifacts on every Rust PR were burning Actions
+      # storage credits for no benefit.
 
   release-server-binaries:
     name: Release Server Binary (${{ matrix.target }})
@@ -246,6 +219,9 @@ jobs:
           name: ifc-lite-server-${{ matrix.target }}
           path: ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}
           if-no-files-found: error
+          # Ad-hoc rebuild artifacts only — keep them briefly so they
+          # don't accumulate against Actions storage.
+          retention-days: 1
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release'

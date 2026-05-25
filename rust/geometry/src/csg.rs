@@ -136,6 +136,310 @@ pub struct ClippingProcessor {
     failures: RefCell<Vec<BoolFailure>>,
 }
 
+/// Coplanar triangle bucket entry used by `mesh_to_polygons` during the
+/// pre-BSP merge pass.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+struct BucketTri {
+    v: [crate::bsp_csg::Vertex; 3],
+    keys: [(i64, i64, i64); 3],
+    normal: [f64; 3],
+}
+
+/// Merge the triangles in one coplanar bucket into the largest convex
+/// boundary polygons the topology supports. Falls back to emitting each
+/// triangle individually if (a) the bucket's boundary walk hits branching
+/// — a single vertex with two outgoing boundary edges — or (b) any walked
+/// ring turns out to be non-convex (BSP's `split_polygon` only behaves on
+/// convex polygons). For the bath block this collapses each 2-tri face
+/// into a 4-vertex quad and each 22-tri cap fan into a 28-vertex rounded
+/// rect outline.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+fn merge_coplanar_bucket(
+    tris: &[BucketTri],
+    indices: &[usize],
+) -> Vec<crate::bsp_csg::Polygon> {
+    use crate::bsp_csg::{Polygon, Vertex};
+    use rustc_hash::{FxHashMap, FxHashSet};
+
+    if indices.is_empty() {
+        return Vec::new();
+    }
+    if indices.len() == 1 {
+        let t = &tris[indices[0]];
+        return vec![Polygon::new(t.v.to_vec())];
+    }
+
+    let fallback_per_triangle = |bucket: &[usize]| -> Vec<Polygon> {
+        bucket
+            .iter()
+            .map(|&i| Polygon::new(tris[i].v.to_vec()))
+            .collect()
+    };
+
+    type Key = (i64, i64, i64);
+
+    // Per-vertex data — first occurrence wins. Within a coplanar bucket the
+    // per-vertex normals are all the face normal anyway, so collisions are
+    // benign.
+    let mut vertex_data: FxHashMap<Key, Vertex> = FxHashMap::default();
+
+    // Directed edge counts. An interior edge appears as both (u,v) and
+    // (v,u); a boundary edge has the forward direction only.
+    let mut edge_count: FxHashMap<(Key, Key), u32> = FxHashMap::default();
+
+    for &i in indices {
+        let t = &tris[i];
+        for k in 0..3 {
+            vertex_data
+                .entry(t.keys[k])
+                .or_insert_with(|| t.v[k].clone());
+        }
+        for (a, b) in [(0, 1), (1, 2), (2, 0)] {
+            *edge_count.entry((t.keys[a], t.keys[b])).or_insert(0) += 1;
+        }
+    }
+
+    // Build the next-edge map across all boundary edges. A vertex with
+    // more than one outgoing boundary edge means the merged shape would
+    // have to fork (think two coplanar faces touching at a single vertex),
+    // which the simple ring walk cannot represent — bail out.
+    let mut next_edge: FxHashMap<Key, Key> = FxHashMap::default();
+    for ((u, v), _) in edge_count
+        .iter()
+        .filter(|((u, v), _)| !edge_count.contains_key(&(*v, *u)))
+    {
+        if next_edge.insert(*u, *v).is_some() {
+            return fallback_per_triangle(indices);
+        }
+    }
+
+    if next_edge.is_empty() {
+        return fallback_per_triangle(indices);
+    }
+
+    let plane_normal = tris[indices[0]].normal;
+    let starts: Vec<Key> = next_edge.keys().copied().collect();
+    let mut visited: FxHashSet<Key> = FxHashSet::default();
+    let mut rings: Vec<Vec<Vertex>> = Vec::new();
+    for start in starts {
+        if visited.contains(&start) {
+            continue;
+        }
+        let mut ring: Vec<Vertex> = Vec::new();
+        let mut current = start;
+        let mut steps = 0;
+        loop {
+            if !visited.insert(current) {
+                break;
+            }
+            if let Some(v) = vertex_data.get(&current) {
+                ring.push(v.clone());
+            } else {
+                return fallback_per_triangle(indices);
+            }
+            let next = match next_edge.get(&current) {
+                Some(&n) => n,
+                None => break,
+            };
+            if next == start {
+                break;
+            }
+            current = next;
+            steps += 1;
+            if steps > vertex_data.len() {
+                // Cycle that did not close on `start` — give up.
+                return fallback_per_triangle(indices);
+            }
+        }
+        if ring.len() >= 3 {
+            if !ring_is_convex(&ring, plane_normal) {
+                return fallback_per_triangle(indices);
+            }
+            rings.push(ring);
+        }
+    }
+
+    if rings.is_empty() {
+        return fallback_per_triangle(indices);
+    }
+    rings
+        .into_iter()
+        .map(|r| simplify_collinear(r))
+        .filter(|r| r.len() >= 3)
+        .map(Polygon::new)
+        .collect()
+}
+
+/// Drop ring vertices that are collinear with both neighbours. BSP
+/// over-fragments host faces by splitting them at every extended cutter
+/// plane, even when the cutter doesn't reach the face in 3D. The
+/// pre/post-merge in `mesh_to_polygons` reassembles those fragments into
+/// a single polygon — but the polygon then carries dozens of collinear
+/// "phantom" vertices along the outer edges (each one introduced when a
+/// cutter wall plane projection crossed the host outline). Without this
+/// pass, earcut emits one sliver triangle per phantom vertex; with it,
+/// the bath bottom face collapses back to the 4 corners it started with
+/// and triangulates as 2 tris (issue #780).
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+fn simplify_collinear(
+    ring: Vec<crate::bsp_csg::Vertex>,
+) -> Vec<crate::bsp_csg::Vertex> {
+    let n = ring.len();
+    if n < 4 {
+        return ring;
+    }
+    let mut keep: Vec<bool> = vec![true; n];
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..n {
+            if !keep[i] {
+                continue;
+            }
+            let prev = (1..n)
+                .map(|k| (i + n - k) % n)
+                .find(|&k| keep[k]);
+            let next = (1..n).map(|k| (i + k) % n).find(|&k| keep[k]);
+            let (prev, next) = match (prev, next) {
+                (Some(p), Some(n)) if p != i && n != i && p != n => (p, n),
+                _ => continue,
+            };
+            let a = ring[prev].pos;
+            let b = ring[i].pos;
+            let c = ring[next].pos;
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+            let cross = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+            let cross_mag =
+                (cross[0].powi(2) + cross[1].powi(2) + cross[2].powi(2)).sqrt();
+            let e1_len = (e1[0].powi(2) + e1[1].powi(2) + e1[2].powi(2)).sqrt();
+            let e2_len = (e2[0].powi(2) + e2[1].powi(2) + e2[2].powi(2)).sqrt();
+            let denom = e1_len * e2_len;
+            if denom < 1.0e-18 || cross_mag / denom < 1.0e-6 {
+                keep[i] = false;
+                changed = true;
+            }
+        }
+    }
+    let kept: Vec<_> = ring
+        .into_iter()
+        .zip(keep.iter())
+        .filter_map(|(v, k)| if *k { Some(v) } else { None })
+        .collect();
+    if kept.len() >= 3 {
+        kept
+    } else {
+        Vec::new()
+    }
+}
+
+/// Push a single triangle (with the supplied face normal applied to all
+/// three vertices) onto `mesh`. Used by `consolidate_coplanar` for plane
+/// buckets that have only one input triangle and don't need the 2D-union
+/// round-trip.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+fn emit_triangle(mesh: &mut Mesh, v: &[Point3<f64>; 3], normal: &Vector3<f64>) {
+    let base = mesh.vertex_count() as u32;
+    mesh.add_vertex(v[0], *normal);
+    mesh.add_vertex(v[1], *normal);
+    mesh.add_vertex(v[2], *normal);
+    mesh.add_triangle(base, base + 1, base + 2);
+}
+
+/// Drop 2D contour vertices that are collinear with both neighbours. The
+/// i_overlay union of many small fragments often leaves "phantom"
+/// vertices on every fragment boundary that crosses the outer outline;
+/// without this pass earcut would emit one sliver triangle per phantom.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2<f64>> {
+    let n = ring.len();
+    if n < 4 {
+        return ring.to_vec();
+    }
+    let mut keep = vec![true; n];
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..n {
+            if !keep[i] {
+                continue;
+            }
+            let prev = (1..n).map(|k| (i + n - k) % n).find(|&k| keep[k]);
+            let next = (1..n).map(|k| (i + k) % n).find(|&k| keep[k]);
+            let (prev, next) = match (prev, next) {
+                (Some(p), Some(n)) if p != i && n != i && p != n => (p, n),
+                _ => continue,
+            };
+            let a = ring[prev];
+            let b = ring[i];
+            let c = ring[next];
+            let e1x = b.x - a.x;
+            let e1y = b.y - a.y;
+            let e2x = c.x - b.x;
+            let e2y = c.y - b.y;
+            let cross = e1x * e2y - e1y * e2x;
+            let len1 = (e1x * e1x + e1y * e1y).sqrt();
+            let len2 = (e2x * e2x + e2y * e2y).sqrt();
+            let denom = len1 * len2;
+            // 1e-4 = sin(0.006°). Real arc samples sit well above this
+            // (cavity 6-seg per quadrant ⇒ 15°/segment ⇒ sin ≈ 0.26); the
+            // i_overlay union of split fragments leaves "phantom" vertices
+            // whose sin(angle) ranges 1e-7..1e-5, all caught here.
+            if denom < 1.0e-18 || (cross.abs() / denom) < 1.0e-4 {
+                keep[i] = false;
+                changed = true;
+            }
+        }
+    }
+    ring.iter()
+        .zip(keep.iter())
+        .filter_map(|(p, k)| if *k { Some(*p) } else { None })
+        .collect()
+}
+
+/// Convexity test for a coplanar ring of vertices. All `(edge_i × edge_{i+1})`
+/// products must have the same sign when projected onto the plane normal.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+fn ring_is_convex(ring: &[crate::bsp_csg::Vertex], normal: [f64; 3]) -> bool {
+    let n = ring.len();
+    if n < 3 {
+        return false;
+    }
+    let mut sign: i32 = 0;
+    for i in 0..n {
+        let a = ring[i].pos;
+        let b = ring[(i + 1) % n].pos;
+        let c = ring[(i + 2) % n].pos;
+        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let e2 = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+        let cross = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+        let dot = cross[0] * normal[0] + cross[1] * normal[1] + cross[2] * normal[2];
+        let s = if dot > 1.0e-12 {
+            1
+        } else if dot < -1.0e-12 {
+            -1
+        } else {
+            0
+        };
+        if s != 0 {
+            if sign == 0 {
+                sign = s;
+            } else if sign != s {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Create a box mesh from AABB min/max bounds
 /// Returns a mesh with 12 triangles (2 per face, 6 faces)
 fn aabb_to_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
@@ -354,234 +658,55 @@ impl ClippingProcessor {
         self.subtract_mesh(mesh, &box_mesh)
     }
 
-    /// Extract opening profile from mesh (find largest face)
-    /// Returns profile points as an ordered contour and the face normal
-    /// Uses boundary extraction via edge counting to produce stable results
-    #[allow(dead_code)]
-    fn extract_opening_profile(
-        &self,
-        opening_mesh: &Mesh,
-    ) -> Option<(Vec<Point3<f64>>, Vector3<f64>)> {
-        if opening_mesh.is_empty() {
-            return None;
-        }
-
-        // Group triangles by normal to find faces
-        let mut face_groups: FxHashMap<u64, Vec<(Point3<f64>, Point3<f64>, Point3<f64>)>> =
-            FxHashMap::default();
-        let normal_epsilon = 0.01; // Tolerance for normal comparison
-
-        let vertex_count = opening_mesh.positions.len() / 3;
-        for i in (0..opening_mesh.indices.len()).step_by(3) {
-            if i + 2 >= opening_mesh.indices.len() {
-                break;
-            }
-            let i0 = opening_mesh.indices[i] as usize;
-            let i1 = opening_mesh.indices[i + 1] as usize;
-            let i2 = opening_mesh.indices[i + 2] as usize;
-
-            // Bounds check vertex indices against positions
-            if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
-                continue;
-            }
-
-            let v0 = Point3::new(
-                opening_mesh.positions[i0 * 3] as f64,
-                opening_mesh.positions[i0 * 3 + 1] as f64,
-                opening_mesh.positions[i0 * 3 + 2] as f64,
-            );
-            let v1 = Point3::new(
-                opening_mesh.positions[i1 * 3] as f64,
-                opening_mesh.positions[i1 * 3 + 1] as f64,
-                opening_mesh.positions[i1 * 3 + 2] as f64,
-            );
-            let v2 = Point3::new(
-                opening_mesh.positions[i2 * 3] as f64,
-                opening_mesh.positions[i2 * 3 + 1] as f64,
-                opening_mesh.positions[i2 * 3 + 2] as f64,
-            );
-
-            let edge1 = v1 - v0;
-            let edge2 = v2 - v0;
-            // Use try_normalize to handle degenerate triangles
-            let normal = match edge1.cross(&edge2).try_normalize(1e-10) {
-                Some(n) => n,
-                None => continue, // Skip degenerate triangles
-            };
-
-            // Quantize normal for grouping (round to nearest 0.01)
-            let nx = (normal.x / normal_epsilon).round() as i32;
-            let ny = (normal.y / normal_epsilon).round() as i32;
-            let nz = (normal.z / normal_epsilon).round() as i32;
-            let key = ((nx as u64) << 32) | ((ny as u32 as u64) << 16) | (nz as u32 as u64);
-
-            face_groups.entry(key).or_default().push((v0, v1, v2));
-        }
-
-        // Find largest face group (most triangles = largest face)
-        let largest_face = face_groups
-            .iter()
-            .max_by_key(|(_, triangles)| triangles.len())?;
-
-        let triangles = largest_face.1;
-        if triangles.is_empty() {
-            return None;
-        }
-
-        // Build edge count map to find boundary edges
-        // An edge is a boundary if it appears exactly once (not shared between triangles)
-        // Use quantized vertex positions as keys
-        let quantize = |p: &Point3<f64>| -> (i64, i64, i64) {
-            let scale = 1e6; // Quantize to micrometer precision
-            (
-                (p.x * scale).round() as i64,
-                (p.y * scale).round() as i64,
-                (p.z * scale).round() as i64,
-            )
-        };
-
-        // Edge key: ordered pair of quantized vertices (smaller first for consistency)
-        let make_edge_key =
-            |a: (i64, i64, i64), b: (i64, i64, i64)| -> ((i64, i64, i64), (i64, i64, i64)) {
-                if a < b {
-                    (a, b)
-                } else {
-                    (b, a)
-                }
-            };
-
-        // Count edges and store original vertices
-        let mut edge_count: FxHashMap<
-            ((i64, i64, i64), (i64, i64, i64)),
-            (usize, Point3<f64>, Point3<f64>),
-        > = FxHashMap::default();
-
-        for (v0, v1, v2) in triangles {
-            let q0 = quantize(v0);
-            let q1 = quantize(v1);
-            let q2 = quantize(v2);
-
-            // Three edges per triangle
-            for (qa, qb, pa, pb) in [(q0, q1, *v0, *v1), (q1, q2, *v1, *v2), (q2, q0, *v2, *v0)] {
-                let key = make_edge_key(qa, qb);
-                edge_count
-                    .entry(key)
-                    .and_modify(|(count, _, _)| *count += 1)
-                    .or_insert((1, pa, pb));
-            }
-        }
-
-        // Collect boundary edges (count == 1)
-        let mut boundary_edges: Vec<(Point3<f64>, Point3<f64>)> = Vec::new();
-        for (_, (count, pa, pb)) in &edge_count {
-            if *count == 1 {
-                boundary_edges.push((*pa, *pb));
-            }
-        }
-
-        if boundary_edges.is_empty() {
-            // No boundary found (closed surface with no edges) - fall back to using centroid
-            return None;
-        }
-
-        // Build vertex adjacency map for boundary traversal
-        let mut adjacency: FxHashMap<(i64, i64, i64), Vec<(i64, i64, i64, Point3<f64>)>> =
-            FxHashMap::default();
-        for (pa, pb) in &boundary_edges {
-            let qa = quantize(pa);
-            let qb = quantize(pb);
-            adjacency
-                .entry(qa)
-                .or_default()
-                .push((qb.0, qb.1, qb.2, *pb));
-            adjacency
-                .entry(qb)
-                .or_default()
-                .push((qa.0, qa.1, qa.2, *pa));
-        }
-
-        // Build ordered contour by walking the boundary
-        let mut contour: Vec<Point3<f64>> = Vec::new();
-        let mut visited: FxHashMap<(i64, i64, i64), bool> = FxHashMap::default();
-
-        // Start from first boundary edge
-        if let Some((start_p, _)) = boundary_edges.first() {
-            let start_q = quantize(start_p);
-            contour.push(*start_p);
-            visited.insert(start_q, true);
-
-            let mut current_q = start_q;
-
-            // Walk around the boundary
-            loop {
-                let neighbors = match adjacency.get(&current_q) {
-                    Some(n) => n,
-                    None => break,
-                };
-
-                // Find unvisited neighbor
-                let mut found_next = false;
-                for (nqx, nqy, nqz, np) in neighbors {
-                    let nq = (*nqx, *nqy, *nqz);
-                    if !visited.get(&nq).unwrap_or(&false) {
-                        contour.push(*np);
-                        visited.insert(nq, true);
-                        current_q = nq;
-                        found_next = true;
-                        break;
-                    }
-                }
-
-                if !found_next {
-                    break; // Closed loop or no more unvisited neighbors
-                }
-            }
-        }
-
-        if contour.len() < 3 {
-            // Not enough points for a valid polygon
-            return None;
-        }
-
-        // Calculate normal from the ordered contour
-        let normal = calculate_polygon_normal(&contour);
-
-        // Normalize the result
-        let normalized_normal = match normal.try_normalize(1e-10) {
-            Some(n) => n,
-            None => return None, // Degenerate polygon
-        };
-
-        Some((contour, normalized_normal))
-    }
-
     /// Convert our Mesh format to BSP polygon list. Used only by the
     /// legacy BSP path; under `manifold-csg` this is dead code.
+    ///
+    /// **Coplanar merge pass.** A naive triangle→polygon conversion forces
+    /// BSP to split every cutter plane against the host's interior diagonal
+    /// edges, producing sliver fans on subtraction (issue #780 bath: each
+    /// of the cutter's 28 wall planes sliced the bath top face along the
+    /// (0,0)→(2,0.8) diagonal, leaving thin "spike" triangles radiating to
+    /// the bath outer edge). The fix is to recover the original N-gon
+    /// faces by bucketing input triangles by plane and walking each
+    /// bucket's boundary edges. BSP then operates on the actual face
+    /// quads / cap polygons and the artifact disappears. Non-convex merge
+    /// results fall back to per-triangle emission (BSP's `split_polygon`
+    /// only behaves on convex input).
     #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
     fn mesh_to_polygons(mesh: &Mesh) -> Vec<crate::bsp_csg::Polygon> {
         use crate::bsp_csg::{Polygon, Vertex};
+        use rustc_hash::FxHashMap;
 
         if mesh.is_empty() || mesh.indices.len() < 3 {
             return Vec::new();
         }
 
         let vertex_count = mesh.positions.len() / 3;
-        let triangle_count = mesh.indices.len() / 3;
-        let mut polygons = Vec::with_capacity(triangle_count);
 
+        // Quantization: 1 µm. With BSP running in file units (mm for the
+        // bath, m for most other models) this is far finer than the
+        // BSP EPSILON (1e-5) and far coarser than f64 noise.
+        const QUANT: f64 = 1.0e6;
+        let quantize = |p: [f64; 3]| -> (i64, i64, i64) {
+            (
+                (p[0] * QUANT).round() as i64,
+                (p[1] * QUANT).round() as i64,
+                (p[2] * QUANT).round() as i64,
+            )
+        };
+
+        // Step 1 — collect valid triangles with plane keys.
+        let mut tris: Vec<BucketTri> = Vec::with_capacity(mesh.indices.len() / 3);
         for chunk in mesh.indices.chunks_exact(3) {
             let i0 = chunk[0] as usize;
             let i1 = chunk[1] as usize;
             let i2 = chunk[2] as usize;
-
             if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
                 continue;
             }
-
             let p0 = i0 * 3;
             let p1 = i1 * 3;
             let p2 = i2 * 3;
-
             let v0 = [
                 mesh.positions[p0] as f64,
                 mesh.positions[p0 + 1] as f64,
@@ -597,34 +722,57 @@ impl ClippingProcessor {
                 mesh.positions[p2 + 1] as f64,
                 mesh.positions[p2 + 2] as f64,
             ];
-
-            if !v0.iter().all(|x| x.is_finite())
-                || !v1.iter().all(|x| x.is_finite())
-                || !v2.iter().all(|x| x.is_finite())
-            {
+            if !v0.iter().chain(&v1).chain(&v2).all(|x| x.is_finite()) {
                 continue;
             }
-
-            let edge1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-            let edge2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+            let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+            let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
             let cross = [
-                edge1[1] * edge2[2] - edge1[2] * edge2[1],
-                edge1[2] * edge2[0] - edge1[0] * edge2[2],
-                edge1[0] * edge2[1] - edge1[1] * edge2[0],
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
             ];
-            let len = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+            let len =
+                (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
             if len < 1e-10 {
                 continue;
             }
             let n = [cross[0] / len, cross[1] / len, cross[2] / len];
-
-            polygons.push(Polygon::new(vec![
-                Vertex::new(v0, n),
-                Vertex::new(v1, n),
-                Vertex::new(v2, n),
-            ]));
+            tris.push(BucketTri {
+                v: [
+                    Vertex::new(v0, n),
+                    Vertex::new(v1, n),
+                    Vertex::new(v2, n),
+                ],
+                keys: [quantize(v0), quantize(v1), quantize(v2)],
+                normal: n,
+            });
         }
 
+        // Step 2 — bucket triangles by plane. Plane key = quantized normal
+        // and quantized offset along that normal. Same-plane same-direction
+        // triangles bucket together; opposite-facing coplanar triangles
+        // stay in separate buckets (they are NOT the same surface — merging
+        // would collapse a back-to-back fold into a degenerate polygon).
+        let plane_key = |n: [f64; 3], anchor: [f64; 3]| -> (i64, i64, i64, i64) {
+            let off = n[0] * anchor[0] + n[1] * anchor[1] + n[2] * anchor[2];
+            let (a, b, c) = quantize(n);
+            (a, b, c, (off * QUANT).round() as i64)
+        };
+        let mut buckets: FxHashMap<(i64, i64, i64, i64), Vec<usize>> = FxHashMap::default();
+        for (i, t) in tris.iter().enumerate() {
+            let key = plane_key(t.normal, t.v[0].pos);
+            buckets.entry(key).or_default().push(i);
+        }
+
+        // Step 3 — for each bucket, walk boundary edges into rings; if any
+        // resulting ring is non-convex or the topology is non-manifold,
+        // fall back to emitting that bucket as individual triangles.
+        let mut polygons: Vec<Polygon> = Vec::with_capacity(tris.len());
+        for indices in buckets.values() {
+            let merged = merge_coplanar_bucket(&tris, indices);
+            polygons.extend(merged);
+        }
         polygons
     }
 
@@ -830,10 +978,7 @@ impl ClippingProcessor {
             let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
 
             match Self::polygons_to_mesh(&result_polys) {
-                Ok(result) => {
-                    let cleaned = Self::remove_degenerate_triangles(&result, host_mesh);
-                    Ok(cleaned)
-                }
+                Ok(result) => Ok(Self::consolidate_coplanar(result)),
                 Err(e) => {
                     self.record_failure(
                         BoolOp::Difference,
@@ -845,249 +990,266 @@ impl ClippingProcessor {
         }
     }
 
-    /// Remove degenerate triangles from CSG result
+    /// Re-merge BSP's per-plane fragments via 2D polygon union, then earcut
+    /// each result back to triangles. BSP CSG over-fragments any host face
+    /// whose plane is crossed by an extended cutter wall — even when the
+    /// cutter doesn't reach that face in 3D — because `split_polygon` is
+    /// plane-based, not solid-aware. A naive edge-walk merge fails on the
+    /// "X" crossings that appear at cutter-outline corners (four fragments
+    /// sharing only a vertex), so we project each plane bucket to 2D, run
+    /// the i_overlay union the rest of the codebase already uses for
+    /// `bool2d::union_contours`, and earcut the resulting (possibly
+    /// annular) shapes. This is what brings the bath from 189 → ~50
+    /// triangles on the BSP path with the cavity outline intact (issue
+    /// #780).
     ///
-    /// CSG operations can create thin "sliver" triangles at intersection boundaries
-    /// due to numerical precision issues. This function removes triangles that:
-    /// 1. Have very small area (thin slivers)
-    /// 2. Are located inside the original host mesh bounds (not on the surface)
-    ///
-    /// Legacy BSP path only — Manifold's output is already manifold so this
-    /// post-pass isn't needed.
+    /// Returns the input mesh unchanged if the consolidate fails or yields
+    /// nothing — never worse than the BSP-direct output.
     #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
-    fn remove_degenerate_triangles(mesh: &Mesh, host_mesh: &Mesh) -> Mesh {
-        let (host_min, host_max) = host_mesh.bounds();
+    fn consolidate_coplanar(mesh: Mesh) -> Mesh {
+        use crate::triangulation::{
+            project_to_2d_with_basis, triangulate_polygon_with_holes,
+        };
+        use i_overlay::core::fill_rule::FillRule;
+        use i_overlay::core::overlay_rule::OverlayRule;
+        use i_overlay::float::single::SingleFloatOverlay;
 
-        // Convert host bounds to f64 for calculations
-        let host_min_x = host_min.x as f64;
-        let host_min_y = host_min.y as f64;
-        let host_min_z = host_min.z as f64;
-        let host_max_x = host_max.x as f64;
-        let host_max_y = host_max.y as f64;
-        let host_max_z = host_max.z as f64;
+        if mesh.indices.len() < 6 {
+            return mesh;
+        }
 
-        // Calculate host dimensions to determine appropriate thresholds
-        let host_size_x = (host_max_x - host_min_x).abs();
-        let host_size_y = (host_max_y - host_min_y).abs();
-        let host_size_z = (host_max_z - host_min_z).abs();
-        let min_dim = host_size_x.min(host_size_y).min(host_size_z);
+        // Quantization for plane bucketing — normals are coarser (1e3) than
+        // positions because cross-product noise on near-coplanar tris can
+        // wobble in the 6th decimal; offsets get the same coarsening so
+        // bucket keys stay aligned with normal direction.
+        const POS_QUANT: f64 = 1.0e6;
+        const NORMAL_QUANT: f64 = 1.0e3;
+        let qpos = |p: f64| (p * POS_QUANT).round() as i64;
+        let qnorm = |n: f64| (n * NORMAL_QUANT).round() as i64;
 
-        // Minimum area threshold - triangles smaller than this are likely artifacts
-        // Use 0.1% of the smallest host dimension squared
-        let min_area = (min_dim * 0.001).powi(2);
-
-        // Distance threshold for "inside" detection
-        let epsilon = min_dim * 0.01;
-
-        let mut cleaned = Mesh::new();
-
-        // Process each triangle
-        let vert_count = mesh.positions.len() / 3;
-        for i in (0..mesh.indices.len()).step_by(3) {
-            if i + 2 >= mesh.indices.len() {
-                break;
-            }
-            let i0 = mesh.indices[i] as usize;
-            let i1 = mesh.indices[i + 1] as usize;
-            let i2 = mesh.indices[i + 2] as usize;
-
-            // Bounds check vertex indices
-            if i0 >= vert_count || i1 >= vert_count || i2 >= vert_count {
+        // Step 1 — group input triangles by plane.
+        struct PlaneTri {
+            v: [Point3<f64>; 3],
+            normal: Vector3<f64>,
+        }
+        let positions = &mesh.positions;
+        let vertex_count = positions.len() / 3;
+        let mut buckets: FxHashMap<(i64, i64, i64, i64), Vec<PlaneTri>> =
+            FxHashMap::default();
+        for chunk in mesh.indices.chunks_exact(3) {
+            let (i0, i1, i2) = (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize);
+            if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
                 continue;
             }
-
-            // Get vertex positions
             let v0 = Point3::new(
-                mesh.positions[i0 * 3] as f64,
-                mesh.positions[i0 * 3 + 1] as f64,
-                mesh.positions[i0 * 3 + 2] as f64,
+                positions[i0 * 3] as f64,
+                positions[i0 * 3 + 1] as f64,
+                positions[i0 * 3 + 2] as f64,
             );
             let v1 = Point3::new(
-                mesh.positions[i1 * 3] as f64,
-                mesh.positions[i1 * 3 + 1] as f64,
-                mesh.positions[i1 * 3 + 2] as f64,
+                positions[i1 * 3] as f64,
+                positions[i1 * 3 + 1] as f64,
+                positions[i1 * 3 + 2] as f64,
             );
             let v2 = Point3::new(
-                mesh.positions[i2 * 3] as f64,
-                mesh.positions[i2 * 3 + 1] as f64,
-                mesh.positions[i2 * 3 + 2] as f64,
+                positions[i2 * 3] as f64,
+                positions[i2 * 3 + 1] as f64,
+                positions[i2 * 3 + 2] as f64,
             );
-
-            // Calculate triangle area using cross product
             let edge1 = v1 - v0;
             let edge2 = v2 - v0;
             let cross = edge1.cross(&edge2);
-            let area = cross.norm() / 2.0;
-
-            // Check if triangle is degenerate (very small area)
-            if area < min_area {
+            let len = cross.norm();
+            if len < 1.0e-10 {
                 continue;
             }
-
-            // Check if any vertex is significantly OUTSIDE the host bounds
-            // This catches CSG artifacts that create long thin triangles extending far from the model
-            let expansion = min_dim.max(1.0); // At least 1 meter expansion allowed
-            let far_outside = v0.x < (host_min_x - expansion)
-                || v0.x > (host_max_x + expansion)
-                || v0.y < (host_min_y - expansion)
-                || v0.y > (host_max_y + expansion)
-                || v0.z < (host_min_z - expansion)
-                || v0.z > (host_max_z + expansion)
-                || v1.x < (host_min_x - expansion)
-                || v1.x > (host_max_x + expansion)
-                || v1.y < (host_min_y - expansion)
-                || v1.y > (host_max_y + expansion)
-                || v1.z < (host_min_z - expansion)
-                || v1.z > (host_max_z + expansion)
-                || v2.x < (host_min_x - expansion)
-                || v2.x > (host_max_x + expansion)
-                || v2.y < (host_min_y - expansion)
-                || v2.y > (host_max_y + expansion)
-                || v2.z < (host_min_z - expansion)
-                || v2.z > (host_max_z + expansion);
-
-            if far_outside {
-                continue;
-            }
-
-            // Check if triangle center is strictly inside the host bounds
-            // (not on the surface) - these are likely CSG artifacts
-            let center = Point3::new(
-                (v0.x + v1.x + v2.x) / 3.0,
-                (v0.y + v1.y + v2.y) / 3.0,
-                (v0.z + v1.z + v2.z) / 3.0,
+            let normal = cross / len;
+            let offset = normal.dot(&v0.coords);
+            let key = (
+                qnorm(normal.x),
+                qnorm(normal.y),
+                qnorm(normal.z),
+                qpos(offset),
             );
-
-            // Check if center is inside host bounds (with epsilon margin)
-            let inside_x = center.x > (host_min_x + epsilon) && center.x < (host_max_x - epsilon);
-            let inside_y = center.y > (host_min_y + epsilon) && center.y < (host_max_y - epsilon);
-            let inside_z = center.z > (host_min_z + epsilon) && center.z < (host_max_z - epsilon);
-
-            // If triangle is strictly inside the host in ALL dimensions, it's likely an artifact
-            // Only remove if it's also relatively small
-            let max_area = min_dim * min_dim * 0.1; // 10% of smallest dimension squared
-            if inside_x && inside_y && inside_z && area < max_area {
-                continue;
-            }
-
-            // Get normals
-            let n0 = Vector3::new(
-                mesh.normals[i0 * 3] as f64,
-                mesh.normals[i0 * 3 + 1] as f64,
-                mesh.normals[i0 * 3 + 2] as f64,
-            );
-            let n1 = Vector3::new(
-                mesh.normals[i1 * 3] as f64,
-                mesh.normals[i1 * 3 + 1] as f64,
-                mesh.normals[i1 * 3 + 2] as f64,
-            );
-            let n2 = Vector3::new(
-                mesh.normals[i2 * 3] as f64,
-                mesh.normals[i2 * 3 + 1] as f64,
-                mesh.normals[i2 * 3 + 2] as f64,
-            );
-
-            // Add valid triangle to cleaned mesh
-            let base_idx = cleaned.vertex_count() as u32;
-            cleaned.add_vertex(v0, n0);
-            cleaned.add_vertex(v1, n1);
-            cleaned.add_vertex(v2, n2);
-            cleaned.add_triangle(base_idx, base_idx + 1, base_idx + 2);
+            buckets.entry(key).or_default().push(PlaneTri {
+                v: [v0, v1, v2],
+                normal,
+            });
         }
 
-        cleaned
-    }
+        let mut output = Mesh::new();
 
-    /// Remove triangles that are completely inside the opening bounds
-    ///
-    /// This removes artifact faces that CSG operations may leave inside circular/curved openings.
-    /// Note: Currently unused because it can incorrectly remove valid triangles for complex
-    /// non-rectangular openings. Kept for potential future use with simple rectangular openings.
-    #[allow(dead_code)]
-    fn remove_triangles_inside_bounds(
-        mesh: &Mesh,
-        open_min: Point3<f64>,
-        open_max: Point3<f64>,
-    ) -> Mesh {
-        let mut cleaned = Mesh::new();
-
-        // Process each triangle
-        let vert_count = mesh.positions.len() / 3;
-        for i in (0..mesh.indices.len()).step_by(3) {
-            if i + 2 >= mesh.indices.len() {
-                break;
+        // Step 2 — per bucket, union triangles in 2D, triangulate result.
+        for tris in buckets.values() {
+            if tris.is_empty() {
+                continue;
             }
-            let i0 = mesh.indices[i] as usize;
-            let i1 = mesh.indices[i + 1] as usize;
-            let i2 = mesh.indices[i + 2] as usize;
+            // Use the FIRST triangle's normal/anchor for a stable 2D basis;
+            // all tris in this bucket share the plane by construction.
+            let normal = tris[0].normal;
+            let origin = tris[0].v[0];
+            let abs = (normal.x.abs(), normal.y.abs(), normal.z.abs());
+            let reference = if abs.0 <= abs.1 && abs.0 <= abs.2 {
+                Vector3::new(1.0, 0.0, 0.0)
+            } else if abs.1 <= abs.2 {
+                Vector3::new(0.0, 1.0, 0.0)
+            } else {
+                Vector3::new(0.0, 0.0, 1.0)
+            };
+            let u_axis = normal.cross(&reference).normalize();
+            let v_axis = normal.cross(&u_axis).normalize();
+            // CCW-in-2D convention: i_overlay's NonZero fill needs each
+            // input triangle wound CCW in (u, v). Our 3D triangles are CCW
+            // looking down `normal`; the (u, v) basis above is right-handed
+            // with `v = normal × u`, so projection preserves winding.
 
-            // Bounds check vertex indices
-            if i0 >= vert_count || i1 >= vert_count || i2 >= vert_count {
+            // Project each triangle to 2D and build i_overlay paths.
+            if tris.len() == 1 {
+                // Single triangle — skip the union round-trip entirely.
+                emit_triangle(&mut output, &tris[0].v, &normal);
+                continue;
+            }
+            let mut subject: Vec<Vec<[f64; 2]>> = Vec::with_capacity(1);
+            let mut clip: Vec<Vec<[f64; 2]>> = Vec::with_capacity(tris.len() - 1);
+            for (idx, tri) in tris.iter().enumerate() {
+                let pts_2d = project_to_2d_with_basis(&tri.v, &u_axis, &v_axis, &origin);
+                // Force CCW for i_overlay's NonZero fill — BSP output can
+                // carry inconsistent winding (an extra `flip()` during the
+                // a_node/b_node invert dance), and mixed-winding subject +
+                // clip cancel out instead of unioning.
+                let signed_area = (pts_2d[1].x - pts_2d[0].x)
+                    * (pts_2d[2].y - pts_2d[0].y)
+                    - (pts_2d[2].x - pts_2d[0].x)
+                        * (pts_2d[1].y - pts_2d[0].y);
+                let path: Vec<[f64; 2]> = if signed_area >= 0.0 {
+                    pts_2d.iter().map(|p| [p.x, p.y]).collect()
+                } else {
+                    pts_2d.iter().rev().map(|p| [p.x, p.y]).collect()
+                };
+                if idx == 0 {
+                    subject.push(path);
+                } else {
+                    clip.push(path);
+                }
+            }
+
+            let shapes = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
+            if shapes.is_empty() {
+                // Union collapsed everything — emit originals to avoid loss.
+                for t in tris {
+                    emit_triangle(&mut output, &t.v, &normal);
+                }
                 continue;
             }
 
-            // Get vertex positions
-            let v0 = Point3::new(
-                mesh.positions[i0 * 3] as f64,
-                mesh.positions[i0 * 3 + 1] as f64,
-                mesh.positions[i0 * 3 + 2] as f64,
-            );
-            let v1 = Point3::new(
-                mesh.positions[i1 * 3] as f64,
-                mesh.positions[i1 * 3 + 1] as f64,
-                mesh.positions[i1 * 3 + 2] as f64,
-            );
-            let v2 = Point3::new(
-                mesh.positions[i2 * 3] as f64,
-                mesh.positions[i2 * 3 + 1] as f64,
-                mesh.positions[i2 * 3 + 2] as f64,
-            );
+            // Total bucket area — used to filter sub-resolution shapes /
+            // holes (BSP's f64 noise leaves tiny spurious cavities after
+            // i_overlay union).
+            let bucket_area: f64 = tris
+                .iter()
+                .map(|t| {
+                    let pts =
+                        project_to_2d_with_basis(&t.v, &u_axis, &v_axis, &origin);
+                    0.5_f64
+                        * ((pts[1].x - pts[0].x) * (pts[2].y - pts[0].y)
+                            - (pts[2].x - pts[0].x) * (pts[1].y - pts[0].y))
+                            .abs()
+                })
+                .sum();
+            let min_significant = (bucket_area * 1.0e-4).max(1.0e-8);
 
-            // Calculate triangle bounding box
-            let tri_min_x = v0.x.min(v1.x).min(v2.x);
-            let tri_max_x = v0.x.max(v1.x).max(v2.x);
-            let tri_min_y = v0.y.min(v1.y).min(v2.y);
-            let tri_max_y = v0.y.max(v1.y).max(v2.y);
-            let tri_min_z = v0.z.min(v1.z).min(v2.z);
-            let tri_max_z = v0.z.max(v1.z).max(v2.z);
+            let signed_area_2d = |ring: &[nalgebra::Point2<f64>]| -> f64 {
+                let n = ring.len();
+                if n < 3 {
+                    return 0.0;
+                }
+                let mut s = 0.0;
+                for i in 0..n {
+                    let j = (i + 1) % n;
+                    s += ring[i].x * ring[j].y - ring[j].x * ring[i].y;
+                }
+                s * 0.5
+            };
 
-            // Check if triangle is completely inside opening bounds (remove it)
-            if tri_min_x >= open_min.x
-                && tri_max_x <= open_max.x
-                && tri_min_y >= open_min.y
-                && tri_max_y <= open_max.y
-                && tri_min_z >= open_min.z
-                && tri_max_z <= open_max.z
-            {
-                // Triangle is inside opening - remove it
-                continue;
+            for shape in shapes {
+                if shape.is_empty() {
+                    continue;
+                }
+                let outer_2d: Vec<nalgebra::Point2<f64>> = shape[0]
+                    .iter()
+                    .map(|p| nalgebra::Point2::new(p[0], p[1]))
+                    .collect();
+                let outer_simplified = simplify_2d_collinear(&outer_2d);
+                if outer_simplified.len() < 3 {
+                    continue;
+                }
+                let outer_area = signed_area_2d(&outer_simplified).abs();
+                if outer_area < min_significant {
+                    continue;
+                }
+                let holes_simplified: Vec<Vec<nalgebra::Point2<f64>>> = shape
+                    .iter()
+                    .skip(1)
+                    .filter_map(|c| {
+                        let pts: Vec<_> = c
+                            .iter()
+                            .map(|p| nalgebra::Point2::new(p[0], p[1]))
+                            .collect();
+                        let simplified = simplify_2d_collinear(&pts);
+                        if simplified.len() < 3 {
+                            return None;
+                        }
+                        let area = signed_area_2d(&simplified).abs();
+                        if area < min_significant {
+                            return None;
+                        }
+                        Some(simplified)
+                    })
+                    .collect();
+
+                let indices = match triangulate_polygon_with_holes(
+                    &outer_simplified,
+                    &holes_simplified,
+                ) {
+                    Ok(idx) => idx,
+                    Err(_) => continue,
+                };
+
+                // Lift 2D points back to 3D.
+                let mut all_2d: Vec<nalgebra::Point2<f64>> =
+                    Vec::with_capacity(outer_simplified.len() + holes_simplified.iter().map(|h| h.len()).sum::<usize>());
+                all_2d.extend(outer_simplified.iter().copied());
+                for h in &holes_simplified {
+                    all_2d.extend(h.iter().copied());
+                }
+
+                let lift = |p: nalgebra::Point2<f64>| -> Point3<f64> {
+                    let off = u_axis * p.x + v_axis * p.y;
+                    origin + off
+                };
+                let mut verts_3d: Vec<Point3<f64>> = Vec::with_capacity(all_2d.len());
+                for p in &all_2d {
+                    verts_3d.push(lift(*p));
+                }
+
+                let base = output.vertex_count() as u32;
+                for vp in &verts_3d {
+                    output.add_vertex(*vp, normal);
+                }
+                for tri in indices.chunks_exact(3) {
+                    output.add_triangle(
+                        base + tri[0] as u32,
+                        base + tri[1] as u32,
+                        base + tri[2] as u32,
+                    );
+                }
             }
-
-            // Triangle is not completely inside - keep it
-            let n0 = Vector3::new(
-                mesh.normals[i0 * 3] as f64,
-                mesh.normals[i0 * 3 + 1] as f64,
-                mesh.normals[i0 * 3 + 2] as f64,
-            );
-            let n1 = Vector3::new(
-                mesh.normals[i1 * 3] as f64,
-                mesh.normals[i1 * 3 + 1] as f64,
-                mesh.normals[i1 * 3 + 2] as f64,
-            );
-            let n2 = Vector3::new(
-                mesh.normals[i2 * 3] as f64,
-                mesh.normals[i2 * 3 + 1] as f64,
-                mesh.normals[i2 * 3 + 2] as f64,
-            );
-
-            let base_idx = cleaned.vertex_count() as u32;
-            cleaned.add_vertex(v0, n0);
-            cleaned.add_vertex(v1, n1);
-            cleaned.add_vertex(v2, n2);
-            cleaned.add_triangle(base_idx, base_idx + 1, base_idx + 2);
         }
 
-        cleaned
+        if output.is_empty() {
+            return mesh;
+        }
+        output
     }
 
     /// Union two meshes together using CSG boolean operations.
@@ -1372,13 +1534,14 @@ impl ClippingProcessor {
             return None;
         }
         let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
+        let _ = host_mesh;
         match Self::polygons_to_mesh(&result_polys) {
             Ok(mesh) => {
-                let cleaned = Self::remove_degenerate_triangles(&mesh, host_mesh);
-                if cleaned.is_empty() {
+                let consolidated = Self::consolidate_coplanar(mesh);
+                if consolidated.is_empty() {
                     None
                 } else {
-                    Some(cleaned)
+                    Some(consolidated)
                 }
             }
             Err(_) => None,
@@ -1406,18 +1569,6 @@ impl ClippingProcessor {
         }
 
         true
-    }
-
-    /// Clip mesh using bounding box (6 planes) - DEPRECATED: use subtract_box() instead
-    /// Subtracts everything inside the box from the mesh
-    #[deprecated(note = "Use subtract_box() for better performance")]
-    pub fn clip_mesh_with_box(
-        &self,
-        mesh: &Mesh,
-        min: Point3<f64>,
-        max: Point3<f64>,
-    ) -> Result<Mesh> {
-        self.subtract_box(mesh, min, max)
     }
 
     /// Clip an entire mesh against a plane
@@ -1590,6 +1741,266 @@ mod tests {
     use super::*;
 
     #[test]
+    fn bsp_difference_preserves_rounded_rect_cap() {
+        // Reproduce the bath case in isolation. Host: 2×0.8×0.8 m box.
+        // Cutter: 28-vertex rounded-rect prism. After BSP DIFFERENCE the
+        // cutter's bottom cap (becoming the cavity floor) must survive
+        // intact — the actual bug behind issue #780's cap collapsing to 3
+        // triangles is the BSP misclassifying SPANNING edges when many
+        // cap-coplanar wall planes intersect the cap polygon at the cap's
+        // own vertices.
+        use crate::bsp_csg::{Polygon, Vertex};
+
+        let host_polys = ClippingProcessor::mesh_to_polygons(&aabb_to_mesh(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(2.0, 0.8, 0.8),
+        ));
+
+        // Build a 28-vertex rounded rect cap manually (no IFC pipeline) and
+        // its prism by extrusion. Centred at (1.0, 0.4) with half-extents
+        // (0.9, 0.3), corner radius 0.2, depth 0.7, base at z=0.1.
+        const N: usize = 6;
+        let mut outline = Vec::with_capacity((N + 1) * 4);
+        let corners = [
+            (1.7, 0.3, -std::f64::consts::FRAC_PI_2, 0.0),
+            (1.7, 0.5, 0.0, std::f64::consts::FRAC_PI_2),
+            (0.3, 0.5, std::f64::consts::FRAC_PI_2, std::f64::consts::PI),
+            (0.3, 0.3, std::f64::consts::PI, std::f64::consts::PI * 1.5),
+        ];
+        let r = 0.2_f64;
+        for (cx, cy, a0, a1) in corners {
+            for i in 0..=N {
+                let t = i as f64 / N as f64;
+                let a = a0 + (a1 - a0) * t;
+                outline.push((cx + r * a.cos(), cy + r * a.sin()));
+            }
+        }
+        let n = outline.len();
+        let z_bot = 0.1_f64;
+        let z_top = 0.8_f64;
+
+        // Build cutter polygons: bottom cap, top cap, side quads.
+        let mut cutter_polys: Vec<Polygon> = Vec::new();
+        // Bottom cap — CCW from below ⇒ vertex order reversed in 2D
+        // (looking from -Z direction); store as outline reversed to face -Z.
+        let bot_verts: Vec<Vertex> = outline
+            .iter()
+            .rev()
+            .map(|(x, y)| Vertex::new([*x, *y, z_bot], [0.0, 0.0, -1.0]))
+            .collect();
+        cutter_polys.push(Polygon::new(bot_verts));
+        // Top cap — CCW from above
+        let top_verts: Vec<Vertex> = outline
+            .iter()
+            .map(|(x, y)| Vertex::new([*x, *y, z_top], [0.0, 0.0, 1.0]))
+            .collect();
+        cutter_polys.push(Polygon::new(top_verts));
+        // Side walls
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let (x0, y0) = outline[i];
+            let (x1, y1) = outline[j];
+            // Outward normal: perpendicular to (x1-x0, y1-y0) in XY plane,
+            // pointing away from cavity centre (1.0, 0.4).
+            let ex = x1 - x0;
+            let ey = y1 - y0;
+            let mut nx = ey;
+            let mut ny = -ex;
+            let nlen = (nx * nx + ny * ny).sqrt();
+            if nlen > 0.0 {
+                nx /= nlen;
+                ny /= nlen;
+            }
+            // Flip if pointing inward
+            let mx = (x0 + x1) * 0.5 - 1.0;
+            let my = (y0 + y1) * 0.5 - 0.4;
+            if nx * mx + ny * my < 0.0 {
+                nx = -nx;
+                ny = -ny;
+            }
+            let wall = vec![
+                Vertex::new([x0, y0, z_bot], [nx, ny, 0.0]),
+                Vertex::new([x1, y1, z_bot], [nx, ny, 0.0]),
+                Vertex::new([x1, y1, z_top], [nx, ny, 0.0]),
+                Vertex::new([x0, y0, z_top], [nx, ny, 0.0]),
+            ];
+            cutter_polys.push(Polygon::new(wall));
+        }
+
+        assert_eq!(
+            cutter_polys.len(),
+            2 + n,
+            "expected 2 caps + {} walls",
+            n
+        );
+
+        let result_polys =
+            crate::bsp_csg::difference(host_polys, cutter_polys);
+
+        // Find the cavity-floor polygon: at z = 0.1, normal +Z.
+        let mut cap_polys: Vec<&Polygon> = result_polys
+            .iter()
+            .filter(|p| {
+                p.vertices
+                    .iter()
+                    .all(|v| (v.pos[2] - z_bot).abs() < 1.0e-4)
+            })
+            .collect();
+        // Sort by vertex count desc to find the largest survivor.
+        cap_polys.sort_by_key(|p| std::cmp::Reverse(p.vertices.len()));
+        let largest_cap_verts = cap_polys.first().map(|p| p.vertices.len()).unwrap_or(0);
+        assert!(
+            largest_cap_verts >= 20,
+            "cavity floor cap collapsed: largest polygon at z={} has {} verts (need ≥20 for the rounded rect outline). All cap polys: {:?}",
+            z_bot,
+            largest_cap_verts,
+            cap_polys.iter().map(|p| p.vertices.len()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn bsp_difference_preserves_inner_cube_faces() {
+        // Pin BSP behaviour for the "host minus cutter fully inside host" case
+        // (issue #780 bath): the cutter's 6 cap/wall faces should reappear
+        // as the cavity surface after difference. Pre-merge gives BSP one
+        // quad per face on both operands.
+        let host = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(2.0, 0.8, 0.8));
+        let cutter = aabb_to_mesh(Point3::new(0.1, 0.1, 0.1), Point3::new(1.9, 0.7, 0.8));
+
+        let host_polys = ClippingProcessor::mesh_to_polygons(&host);
+        let cutter_polys = ClippingProcessor::mesh_to_polygons(&cutter);
+        assert_eq!(host_polys.len(), 6, "host should pre-merge to 6 face quads");
+        assert_eq!(
+            cutter_polys.len(),
+            6,
+            "cutter should pre-merge to 6 face quads"
+        );
+
+        let result_polys = crate::bsp_csg::difference(host_polys, cutter_polys);
+        let result = ClippingProcessor::polygons_to_mesh(&result_polys)
+            .expect("polygons_to_mesh ok");
+
+        let tris = result.indices.len() / 3;
+        assert!(
+            tris >= 12,
+            "expected ≥ 12 tris (host bottom + 4 sides + annular top + cavity walls + floor); got {}",
+            tris
+        );
+
+        // Cavity floor at z = 0.1: must exist and cover the cavity footprint.
+        let mut floor_area = 0.0_f64;
+        for tri in result.indices.chunks_exact(3) {
+            let v: Vec<(f32, f32, f32)> = tri
+                .iter()
+                .map(|&i| {
+                    let o = i as usize * 3;
+                    (
+                        result.positions[o],
+                        result.positions[o + 1],
+                        result.positions[o + 2],
+                    )
+                })
+                .collect();
+            if v.iter().all(|p| (p.2 - 0.1).abs() < 1.0e-4) {
+                let ax = v[1].0 - v[0].0;
+                let ay = v[1].1 - v[0].1;
+                let bx = v[2].0 - v[0].0;
+                let by = v[2].1 - v[0].1;
+                floor_area += 0.5 * ((ax * by) - (ay * bx)).abs() as f64;
+            }
+        }
+        let expected_floor_area = 1.8 * 0.6; // cavity footprint
+        assert!(
+            (floor_area - expected_floor_area).abs() < 1.0e-3,
+            "cavity floor area = {:.4} m² (expected {:.4})",
+            floor_area,
+            expected_floor_area
+        );
+    }
+
+    #[test]
+    fn merge_coplanar_collapses_subdivided_quad() {
+        // Quad on z=0 plane split into 4 triangles via a centroid vertex.
+        // mesh_to_polygons should reassemble it into a single 4-vertex
+        // polygon and polygons_to_mesh should triangulate that into 2
+        // triangles.
+        let mut mesh = Mesh::new();
+        for p in [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.5, 0.5, 0.0],
+        ] {
+            mesh.add_vertex(
+                Point3::new(p[0], p[1], p[2]),
+                Vector3::new(0.0, 0.0, 1.0),
+            );
+        }
+        mesh.add_triangle(0, 1, 4);
+        mesh.add_triangle(1, 2, 4);
+        mesh.add_triangle(2, 3, 4);
+        mesh.add_triangle(3, 0, 4);
+
+        let polys = ClippingProcessor::mesh_to_polygons(&mesh);
+        assert_eq!(
+            polys.len(),
+            1,
+            "expected single merged polygon, got {}",
+            polys.len()
+        );
+        assert_eq!(
+            polys[0].vertices.len(),
+            4,
+            "expected 4-vertex quad after collinear-vertex cleanup, got {} verts",
+            polys[0].vertices.len()
+        );
+
+        let consolidated = ClippingProcessor::consolidate_coplanar(mesh);
+        assert_eq!(
+            consolidated.indices.len() / 3,
+            2,
+            "consolidated quad should triangulate to 2 tris, got {}",
+            consolidated.indices.len() / 3
+        );
+    }
+
+    #[test]
+    fn merge_coplanar_collapses_edge_split_quad() {
+        // Quad whose boundary edge from (0,0) → (2,0) is split into three
+        // segments by inserted collinear vertices (0.5, 0, 0) and
+        // (1.5, 0, 0). Simulates BSP's "extended cutter plane crossed the
+        // host edge here" output. Must collapse back to 2 triangles.
+        let mut mesh = Mesh::new();
+        for p in [
+            [0.0, 0.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [2.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ] {
+            mesh.add_vertex(
+                Point3::new(p[0], p[1], p[2]),
+                Vector3::new(0.0, 0.0, 1.0),
+            );
+        }
+        // Fan from corner 0 keeps everything CCW.
+        mesh.add_triangle(0, 1, 5);
+        mesh.add_triangle(1, 2, 5);
+        mesh.add_triangle(2, 4, 5);
+        mesh.add_triangle(2, 3, 4);
+
+        let consolidated = ClippingProcessor::consolidate_coplanar(mesh);
+        assert_eq!(
+            consolidated.indices.len() / 3,
+            2,
+            "edge-split quad must collapse to 2 tris after collinear cleanup, got {}",
+            consolidated.indices.len() / 3
+        );
+    }
+
+    #[test]
     fn test_plane_signed_distance() {
         let plane = Plane::new(Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
 
@@ -1703,19 +2114,33 @@ mod tests {
 
     #[test]
     fn test_csg_operation_guard_rejects_complex_operands() {
-        // Build a mesh with > MAX_CSG_POLYGONS_PER_MESH triangles. A box is 12
-        // tris, so 12 stacked boxes = 144 tris, comfortably above the
-        // 128-poly budget set for issue #635 round-window CSG support.
-        let box_mesh = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+        // Build a mesh with > MAX_CSG_POLYGONS_PER_MESH polygons. Twelve
+        // axis-offset boxes — distinct positions so the coplanar-merge
+        // pass keeps each face as its own polygon. (Stacking boxes at the
+        // same origin used to work but the merge now collapses them.)
         let mut complex_mesh = Mesh::new();
-        for _ in 0..12 {
-            complex_mesh.merge(&box_mesh);
+        for i in 0..30 {
+            let offset = i as f64 * 2.0;
+            complex_mesh.merge(&aabb_to_mesh(
+                Point3::new(offset, offset, offset),
+                Point3::new(offset + 1.0, offset + 1.0, offset + 1.0),
+            ));
         }
+        let box_mesh =
+            aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
 
         let polys_complex = ClippingProcessor::mesh_to_polygons(&complex_mesh);
         let polys_box = ClippingProcessor::mesh_to_polygons(&box_mesh);
 
-        assert!(polys_complex.len() > MAX_CSG_POLYGONS_PER_MESH);
-        assert!(!ClippingProcessor::can_run_csg_operation(polys_complex.len(), polys_box.len()));
+        assert!(
+            polys_complex.len() > MAX_CSG_POLYGONS_PER_MESH,
+            "expected > {} polygons, got {} (merge regressed?)",
+            MAX_CSG_POLYGONS_PER_MESH,
+            polys_complex.len()
+        );
+        assert!(!ClippingProcessor::can_run_csg_operation(
+            polys_complex.len(),
+            polys_box.len()
+        ));
     }
 }

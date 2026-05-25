@@ -7,15 +7,13 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
-import { getEffectiveHorizontalScale } from './geo-scale';
+import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   lengthUnitScale: number,
 ): number {
-  const mapUnitScale = projectedCRS?.mapUnitScale;
-  if (typeof mapUnitScale === 'number' && mapUnitScale > 0) return mapUnitScale;
-  return lengthUnitScale > 0 ? lengthUnitScale : 1;
+  return resolveMapUnitToMetreScale(projectedCRS?.mapUnitScale, lengthUnitScale);
 }
 
 export function mapUnitsToMeters(
@@ -60,6 +58,18 @@ export interface CesiumPlacementResult {
   preferOrthometricTerrain: boolean;
 }
 
+/**
+ * Resolve where the model sits in Cesium.
+ *
+ * Placement is PURELY the IFC's authored altitude — `ifcOriginHeight`
+ * (IfcMapConversion.OrthogonalHeight + the geometry origin). There is NO
+ * automatic terrain or storey clamp: the model goes exactly where the file
+ * says, full stop. Terrain is queried only to inform the camera and the
+ * optional below-terrain clip plane; it never moves the model.
+ *
+ * `clampAnchorY` / `anchorOffset` are still derived (the placement gizmo and
+ * the clip-plane math consume them) but they no longer feed `placementHeight`.
+ */
 export function computeCesiumPlacement({
   coordinateInfo,
   projectedCRS,
@@ -72,12 +82,8 @@ export function computeCesiumPlacement({
   const minY = bounds?.min.y ?? 0;
   const clampAnchorY = findClampAnchorY(bounds, storeyElevations);
   const anchorOffset = modelCenterY - clampAnchorY;
-  const terrainPlacementHeight = terrainHeight !== null
-    ? terrainHeight + anchorOffset
-    : null;
-  const placementHeight = terrainPlacementHeight !== null
-    ? Math.max(ifcOriginHeight, terrainPlacementHeight)
-    : ifcOriginHeight;
+  // Model placement = authored IFC altitude. No clamp. No auto-adjust.
+  const placementHeight = ifcOriginHeight;
 
   return {
     clampAnchorY,

@@ -45,6 +45,26 @@ export interface CesiumSlice {
   cesiumTerrainSource: string | null;
   /** Model ID that the Cesium overlay is currently displaying. */
   cesiumSourceModelId: string | null;
+  /**
+   * User-selected federation anchor model.
+   *
+   * When multiple georeferenced models are loaded, federation alignment rebakes
+   * every other model's geometry into this model's viewer-space frame so they
+   * land in the right relative real-world positions. The Cesium bridge also
+   * uses this model's IfcMapConversion to anchor the viewer→ECEF transform.
+   *
+   * `null` selects the default anchor (earliest `loadedAt` with a valid georef).
+   * Setting an override fires a `RECOMPUTE_FEDERATION_ALIGNMENT` re-bake.
+   */
+  anchorModelIdOverride: string | null;
+  /**
+   * When true, the viewport renders a small XYZ triad + label at each loaded
+   * model's true IFC (0,0,0) point — useful for debugging federation
+   * alignment. Origin positions are derived from each model's IfcMapConversion
+   * and the anchor's MapConversion, so the markers stay correct after re-aligns
+   * and across cross-CRS reprojections.
+   */
+  showModelBasepoints: boolean;
   /** Terrain clip Y position in viewer space. When set, fragments below this Y are discarded. */
   cesiumTerrainClipY: number | null;
   /** Whether the GLB model has been loaded into Cesium (hides WebGPU overlay). */
@@ -66,6 +86,9 @@ export interface CesiumSlice {
   setCesiumTerrainHeight: (height: number | null) => void;
   setCesiumTerrainSource: (source: string | null) => void;
   setCesiumSourceModelId: (modelId: string | null) => void;
+  setAnchorModelIdOverride: (modelId: string | null) => void;
+  setShowModelBasepoints: (show: boolean) => void;
+  toggleShowModelBasepoints: () => void;
   setCesiumTerrainClipY: (y: number | null) => void;
   setCesiumGlbLoaded: (loaded: boolean) => void;
   setCesiumPlacementEditMode: (enabled: boolean) => void;
@@ -113,7 +136,17 @@ function resolveIonToken(): string {
   return userToken || DEFAULT_ION_TOKEN;
 }
 
-export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> = (set) => ({
+/**
+ * Cross-slice surface CesiumSlice writes into. `editEnabled` lives on
+ * UISlice — turning on the placement editor implies global edit mode,
+ * so the slice writes it directly here to keep the toolbar pill in
+ * sync atomically.
+ */
+export interface CesiumCrossSliceState {
+  editEnabled: boolean;
+}
+
+export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState, [], [], CesiumSlice> = (set) => ({
   cesiumAvailable: false,
   cesiumEnabled: false,
   cesiumDataSource: loadDataSource(),
@@ -122,6 +155,8 @@ export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> =
   cesiumTerrainHeight: null,
   cesiumTerrainSource: null,
   cesiumSourceModelId: null,
+  anchorModelIdOverride: null,
+  showModelBasepoints: false,
   cesiumTerrainClipY: null,
   cesiumGlbLoaded: false,
   cesiumPlacementEditMode: false,
@@ -172,18 +207,36 @@ export const createCesiumSlice: StateCreator<CesiumSlice, [], [], CesiumSlice> =
   setCesiumTerrainHeight: (height) => set({ cesiumTerrainHeight: height }),
   setCesiumTerrainSource: (source) => set({ cesiumTerrainSource: source }),
   setCesiumSourceModelId: (modelId) => set({ cesiumSourceModelId: modelId }),
+  setAnchorModelIdOverride: (modelId) => set({ anchorModelIdOverride: modelId }),
+  setShowModelBasepoints: (show) => set({ showModelBasepoints: show }),
+  toggleShowModelBasepoints: () => set((s) => ({ showModelBasepoints: !s.showModelBasepoints })),
   setCesiumTerrainClipY: (y) => set({ cesiumTerrainClipY: y }),
   setCesiumGlbLoaded: (loaded) => set({ cesiumGlbLoaded: loaded }),
-  setCesiumPlacementEditMode: (enabled) => set({ cesiumPlacementEditMode: enabled }),
-  toggleCesiumPlacementEditMode: () => set((s) => ({
-    cesiumPlacementEditMode: !s.cesiumPlacementEditMode,
-    ...(!s.cesiumPlacementEditMode
-      ? {}
+  setCesiumPlacementEditMode: (enabled) => set(
+    // Turning the placement editor on implies global edit mode — keeps
+    // the toolbar pill in sync so the user can't end up "moving the
+    // georef" while the rest of the UI claims it's read-only. Turning
+    // it off does *not* exit global edit; other sub-tools (properties,
+    // geometry) may still be in use — but we DO clear the placement
+    // draft so callers exiting via the setter don't leave stale draft
+    // state behind (matches the toggle's disable branch).
+    enabled
+      ? { cesiumPlacementEditMode: true, editEnabled: true }
       : {
+          cesiumPlacementEditMode: false,
           cesiumPlacementDraftModelId: null,
           cesiumPlacementDraft: null,
-        }),
-  })),
+        },
+  ),
+  toggleCesiumPlacementEditMode: () => set((s) => (
+    s.cesiumPlacementEditMode
+      ? {
+          cesiumPlacementEditMode: false,
+          cesiumPlacementDraftModelId: null,
+          cesiumPlacementDraft: null,
+        }
+      : { cesiumPlacementEditMode: true, editEnabled: true }
+  )),
   beginCesiumPlacementDraft: (modelId, conversion) => set({
     cesiumPlacementDraftModelId: modelId,
     cesiumPlacementDraft: {

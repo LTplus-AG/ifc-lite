@@ -42,6 +42,8 @@ import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js'
 import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
 import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotationsSlice.js';
 import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
+import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
+import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
 import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
@@ -136,6 +138,8 @@ export type ViewerState = LoadingSlice &
   SearchSlice &
   AnnotationsSlice &
   AddElementSlice &
+  SplitToolSlice &
+  LevelDisplaySlice &
   PointCloudSlice & {
     resetViewerState: () => void;
   };
@@ -173,6 +177,8 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createSearchSlice(...args),
   ...createAnnotationsSlice(...args),
   ...createAddElementSlice(...args),
+  ...createSplitToolSlice(...args),
+  ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
 
   // Reset all viewer state when loading new file
@@ -256,6 +262,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
 
       // UI
       activeTool: UI_DEFAULTS.ACTIVE_TOOL,
+      editEnabled: false,
       visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
       edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
       edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,

@@ -22,6 +22,11 @@
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/embed-sdk"
+  },
   "keywords": [
     "ifc",
     "bim",

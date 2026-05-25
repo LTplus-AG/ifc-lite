@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { Viewport } from './Viewport';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MergeLayersBanner } from './MergeLayersBanner';
@@ -39,6 +40,10 @@ const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
 };
 
 export function ViewportContainer() {
+  // Drive Stacked / Solo / Exploded level display from the slice.
+  // Mount-once hook — it self-gates on mode + gap + model changes.
+  useLevelDisplayEffect();
+
   const { loadFile, loading, clearAllModels, loadFilesSequentially } = useIfc();
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
@@ -51,6 +56,7 @@ export function ViewportContainer() {
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
   const cesiumPlacementDraft = useViewerStore((s) => s.cesiumPlacementDraft);
   const cesiumPlacementDraftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
+  const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const setCesiumSourceModelId = useViewerStore((s) => s.setCesiumSourceModelId);
   const setCesiumAvailable = useViewerStore((s) => s.setCesiumAvailable);
@@ -75,8 +81,10 @@ export function ViewportContainer() {
     models,
     boundedGeometryMode,
     geometryUpdateTick,
+    geometryContentVersion,
   } = viewportStoreState;
   const storeModels = models;
+  const mergedContentVersionRef = useRef(geometryContentVersion);
 
   // Check if we have models loaded (for determining add vs replace behavior)
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
@@ -118,6 +126,15 @@ export function ViewportContainer() {
 
       if (mergedLengthsRef.current.size !== storeModels.size) {
         shouldRebuild = true;
+      }
+
+      // An external content version bump (e.g. realignFederation re-baked
+      // vertices in place) requires a full cache rebuild — length/visibility
+      // triggers above can't detect in-place mutation. Compare against the
+      // last version we honoured; rebuild when it bumps.
+      if (mergedContentVersionRef.current !== geometryContentVersion) {
+        shouldRebuild = true;
+        mergedContentVersionRef.current = geometryContentVersion;
       }
 
       for (const [modelId, model] of storeModels) {
@@ -180,7 +197,7 @@ export function ViewportContainer() {
 
     // Legacy mode (no federation): use original geometryResult
     return geometryResult;
-  }, [storeModels, geometryResult, modelIdToIndex]);
+  }, [storeModels, geometryResult, modelIdToIndex, geometryContentVersion]);
 
   /**
    * Aggregate point clouds across visible models.
@@ -232,8 +249,18 @@ export function ViewportContainer() {
       };
     };
 
-    // Check federated models first
-    for (const [modelId, model] of storeModels) {
+    // Check federated models, preferring the user-pinned anchor when present.
+    // Matches findReferenceGeorefModel() in useIfcFederation so the Cesium bridge
+    // and the parse-time alignment agree on which model drives the world frame.
+    const orderedModels = (() => {
+      if (!anchorModelIdOverride) return Array.from(storeModels);
+      const entries = Array.from(storeModels);
+      const anchorIdx = entries.findIndex(([id]) => id === anchorModelIdOverride);
+      if (anchorIdx <= 0) return entries;
+      const reordered = [entries[anchorIdx], ...entries.slice(0, anchorIdx), ...entries.slice(anchorIdx + 1)];
+      return reordered;
+    })();
+    for (const [modelId, model] of orderedModels) {
       const ds = model.ifcDataStore;
       if (!ds) continue;
       const effective = getEffectiveGeoreference(
@@ -286,6 +313,7 @@ export function ViewportContainer() {
     mergedGeometryResult,
     cesiumPlacementDraft,
     cesiumPlacementDraftModelId,
+    anchorModelIdOverride,
   ]);
 
   // Determine whether Cesium button should be visible (model has georef or user added it via mutations).
@@ -944,7 +972,19 @@ export function ViewportContainer() {
             ))}
           </div>
 
-          {/* Footer */}
+          {/* Footer chips — left: discovery link to the marketing site for first-time
+              visitors, right: shortcuts cue for power users. Both desktop-only. */}
+          <div className="absolute bottom-8 left-8 hidden md:block">
+            <a
+              href="https://ifclite.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89] hover:border-primary hover:text-primary transition-colors"
+            >
+              <span>New here?</span>
+              <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">ifclite.dev →</span>
+            </a>
+          </div>
           <div className="absolute bottom-8 right-8 hidden md:block">
             <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89]">
               <Command className="h-3 w-3" />
@@ -1007,6 +1047,7 @@ export function ViewportContainer() {
       <Viewport
         geometry={filteredGeometry}
         geometryVersion={geometryVersion}
+        geometryContentVersion={geometryContentVersion}
         pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}
         computedIsolatedIds={computedIsolatedIds}

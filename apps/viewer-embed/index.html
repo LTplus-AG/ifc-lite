@@ -1,22 +1,45 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="robots" content="noindex, nofollow">
   <meta name="description" content="Embeddable IFC 3D model viewer">
-  <meta name="color-scheme" content="dark light">
+  <meta name="color-scheme" content="light dark">
   <title>IFC-Lite Embed</title>
   <style>
     /* Minimal inline styles - no Tailwind dependency for the shell */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { width: 100%; height: 100%; overflow: hidden; }
     body { font-family: system-ui, -apple-system, sans-serif; }
-    html.dark body { background: #1a1b26; color: #a9b1d6; }
+    /* Light is the default for embeds; dark is opt-in via ?theme=dark. */
     html.light body, html:not(.dark) body { background: #ffffff; color: #1a1b26; }
+    html.dark body { background: #1a1b26; color: #a9b1d6; }
     /* Ensure the 3D canvas fills the viewport (Tailwind utilities may not be generated for embed build) */
     #root canvas { width: 100% !important; height: 100% !important; display: block !important; }
+
+    /* Tailwind utility fallbacks — the embed bundle doesn't include Tailwind, so
+     * the shared Viewport's `className="relative w-full h-full"` wrapper resolves
+     * to NO styling. Without these, the wrapper has no height constraint, the
+     * canvas's intrinsic size (driven by its attribute pixels) blows the layout
+     * out to ~8000+ px tall, and the model lands off-frame. These rules cover
+     * exactly the utilities the Viewport DOM tree uses — keep narrow. */
+    .relative { position: relative; }
+    .absolute { position: absolute; }
+    .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+    .w-full { width: 100%; }
+    .h-full { height: 100%; }
+    .block { display: block; }
+    .hidden { display: none; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .justify-center { justify-content: center; }
+    .overflow-hidden { overflow: hidden; }
   </style>
+  <!-- Pre-React theme bootstrap. External script so the deployed CSP
+       (script-src 'self' 'wasm-unsafe-eval' blob:) allows it — inline scripts
+       would need 'unsafe-inline' or a nonce. -->
+  <script src="/theme-bootstrap.js"></script>
 </head>
 <body>
   <div id="root"></div>

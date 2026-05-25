@@ -27,6 +27,25 @@ interface BatchBucket {
   vertexBytes: number;              // accumulated vertex buffer bytes
 }
 
+/**
+ * Release the GPU resources owned by a batch / mesh. Every
+ * BatchedMesh and Mesh shares the same {vertex, index, optional
+ * uniform} buffer layout, and forgetting any one of the three is a
+ * GPU memory leak that won't surface until the user spends ten
+ * minutes inside the viewer. Centralised here so callers don't
+ * have to remember the cleanup sequence.
+ *
+ * Accepts the structural shape so it works for both BatchedMesh and
+ * Mesh — they each carry the same buffer trio.
+ */
+function destroyGpuResources(
+  m: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; uniformBuffer?: GPUBuffer },
+): void {
+  m.vertexBuffer.destroy();
+  m.indexBuffer.destroy();
+  if (m.uniformBuffer) m.uniformBuffer.destroy();
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private instancedMeshes: InstancedMesh[] = [];
@@ -469,11 +488,7 @@ export class Scene {
 
       // Destroy old GPU batch if it exists
       if (bucket?.batchedMesh) {
-        bucket.batchedMesh.vertexBuffer.destroy();
-        bucket.batchedMesh.indexBuffer.destroy();
-        if (bucket.batchedMesh.uniformBuffer) {
-          bucket.batchedMesh.uniformBuffer.destroy();
-        }
+        destroyGpuResources(bucket.batchedMesh);
         bucket.batchedMesh = null;
       }
 
@@ -505,6 +520,160 @@ export class Scene {
    */
   hasPendingBatches(): boolean {
     return this.pendingBatchKeys.size > 0;
+  }
+
+  /**
+   * Remove every mesh registered for `expressId` from the scene.
+   * Affected buckets are marked for rebuild on the next call to
+   * `rebuildPendingBatches`, so the GPU drops them on the next
+   * frame. Returns `true` when at least one mesh was removed.
+   *
+   * Used by the viewer's authoring actions (split, delete) to
+   * make tombstoned IFC entities disappear from the rendered
+   * scene — the previous v1 workaround was to hide them via
+   * `hiddenIds`, but that left the mesh in GPU memory and inside
+   * raycast bounds. This is the proper removal path.
+   *
+   * Notes:
+   *   - For color-merged meshes (the `entityIds` per-vertex case)
+   *     a single MeshData often hosts many entities. We do NOT
+   *     drop the whole mesh in that case — that would also remove
+   *     the other entities — but we DO clear the bbox + meshDataMap
+   *     for the requested expressId, so picking and selection stop
+   *     finding the removed entity. Re-rendering the merged mesh
+   *     unchanged is the right behaviour because color-merged
+   *     batches are an optimisation: the geometry is still real;
+   *     the IFC tombstone just means we ignore it for queries.
+   */
+  removeMeshesForEntity(expressId: number): boolean {
+    const meshDataList = this.meshDataMap.get(expressId);
+    if (!meshDataList || meshDataList.length === 0) {
+      this.boundingBoxes.delete(expressId);
+      return false;
+    }
+
+    // Track which buckets need re-batching so we don't repeatedly
+    // mark the same key.
+    const affectedKeys = new Set<string>();
+    // Separate "did we remove anything dedicated?" from "did any
+    // bucket need rebatching?" — a dedicated mesh that's mid-stream
+    // and not yet bucketed still counts as a removal for the
+    // caller's bulk-count contract.
+    let removedDedicated = false;
+
+    for (const meshData of meshDataList) {
+      // Color-merged path: shared mesh, keep it but drop our entry.
+      if (meshData.entityIds && meshData.entityIds.length > 0) {
+        continue;
+      }
+      removedDedicated = true;
+
+      // Dedicated mesh — drop from its bucket and decrement the
+      // bucket's vertexBytes counter so subsequent
+      // resolveActiveBucket calls see the updated size and don't
+      // unnecessarily split it.
+      const bucket = this.meshDataBucket.get(meshData);
+      if (bucket) {
+        const idx = bucket.meshData.indexOf(meshData);
+        if (idx >= 0) {
+          bucket.meshData.splice(idx, 1);
+          // Match the byte-accounting `splitMeshForStreaming` uses
+          // (positions + normals). Without this, the bucket's size
+          // estimate stays inflated after removal and
+          // `resolveActiveBucket` may force unnecessary splits on
+          // subsequent inserts.
+          const bytes = meshData.positions.byteLength + meshData.normals.byteLength;
+          bucket.vertexBytes = Math.max(0, bucket.vertexBytes - bytes);
+        }
+        affectedKeys.add(bucket.key);
+      }
+      this.meshDataBucket.delete(meshData);
+    }
+
+    this.meshDataMap.delete(expressId);
+    this.boundingBoxes.delete(expressId);
+
+    for (const key of affectedKeys) {
+      this.pendingBatchKeys.add(key);
+    }
+    // True when at least one dedicated mesh was removed — covers
+    // the case where a mesh was queued but not yet bucketed.
+    return removedDedicated;
+  }
+
+  /**
+   * Bulk variant of `removeMeshesForEntity`. Avoids re-marking the
+   * same bucket key once per entity in the common "split N walls"
+   * batch. Returns the number of entities that had at least one
+   * dedicated mesh removed.
+   */
+  removeMeshesForEntities(expressIds: Iterable<number>): number {
+    let count = 0;
+    for (const id of expressIds) {
+      if (this.removeMeshesForEntity(id)) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Translate every mesh for `expressId` by `delta` in renderer
+   * world frame (Y-up). Modifies `positions` in place and marks
+   * the affected bucket(s) for re-batch on the next call to
+   * `rebuildPendingBatches`.
+   *
+   * Bounding boxes are cleared for the entity so the next bounds
+   * query recomputes from the new positions; raycast bounds will
+   * therefore lag by exactly one query, which is acceptable for
+   * the drag-end → fresh-pick interaction the gizmo drives.
+   *
+   * Returns `true` when at least one mesh was modified. Used by
+   * the viewer's `translateEntity` action to keep the rendered
+   * mesh in sync with the IFC coords mutation.
+   *
+   * Color-merged meshes (shared by many entities via per-vertex
+   * `entityIds`) cannot be translated for a single entity without
+   * walking the entityIds array vertex by vertex; this helper
+   * skips them and returns `false` so the caller can fall back
+   * to a full reload if needed.
+   */
+  translateMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+    const meshDataList = this.meshDataMap.get(expressId);
+    if (!meshDataList || meshDataList.length === 0) return false;
+    const [dx, dy, dz] = delta;
+    if (dx === 0 && dy === 0 && dz === 0) return false;
+
+    const affectedKeys = new Set<string>();
+    let anyMoved = false;
+    for (const meshData of meshDataList) {
+      // Skip shared color-merged meshes — translating their
+      // positions would move every entity in the merge.
+      if (meshData.entityIds && meshData.entityIds.length > 0) continue;
+      const pos = meshData.positions;
+      for (let i = 0; i < pos.length; i += 3) {
+        pos[i] += dx;
+        pos[i + 1] += dy;
+        pos[i + 2] += dz;
+      }
+      const bucket = this.meshDataBucket.get(meshData);
+      if (bucket) affectedKeys.add(bucket.key);
+      anyMoved = true;
+    }
+    if (!anyMoved) return false;
+
+    this.boundingBoxes.delete(expressId);
+    for (const key of affectedKeys) {
+      this.pendingBatchKeys.add(key);
+    }
+    return true;
+  }
+
+  /** Bulk variant of `translateMeshesForEntity`. */
+  translateMeshesForEntities(updates: Map<number, [number, number, number]>): number {
+    let count = 0;
+    for (const [id, delta] of updates) {
+      if (this.translateMeshesForEntity(id, delta)) count++;
+    }
+    return count;
   }
 
   // ─── Mesh command queue ──────────────────────────────────────────────
@@ -700,13 +869,7 @@ export class Scene {
     this.activeBucketKey.clear();
     this.pendingBatchKeys.clear();
     // Destroy cached partial batches — their colorKeys are now stale
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) {
-        batch.uniformBuffer.destroy();
-      }
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
 
@@ -732,21 +895,9 @@ export class Scene {
     this.rebuildPendingBatches(device, pipeline);
 
     // 5. NOW destroy old fragment/batch GPU resources (new batches are live)
-    for (const fragment of oldFragments) {
-      fragment.vertexBuffer.destroy();
-      fragment.indexBuffer.destroy();
-      if (fragment.uniformBuffer) {
-        fragment.uniformBuffer.destroy();
-      }
-    }
+    for (const fragment of oldFragments) destroyGpuResources(fragment);
     for (const batch of oldBatches) {
-      if (!fragmentSet.has(batch)) {
-        batch.vertexBuffer.destroy();
-        batch.indexBuffer.destroy();
-        if (batch.uniformBuffer) {
-          batch.uniformBuffer.destroy();
-        }
-      }
+      if (!fragmentSet.has(batch)) destroyGpuResources(batch);
     }
   }
 
@@ -790,11 +941,7 @@ export class Scene {
     this.meshDataBucket = new Map();
     this.activeBucketKey.clear();
     this.pendingBatchKeys.clear();
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) batch.uniformBuffer.destroy();
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
 
@@ -849,17 +996,9 @@ export class Scene {
         scene.batchedMeshes = newBatches;
 
         // Destroy old fragment/batch GPU resources
-        for (const fragment of oldFragments) {
-          fragment.vertexBuffer.destroy();
-          fragment.indexBuffer.destroy();
-          if (fragment.uniformBuffer) fragment.uniformBuffer.destroy();
-        }
+        for (const fragment of oldFragments) destroyGpuResources(fragment);
         for (const batch of oldBatches) {
-          if (!fragmentSet.has(batch)) {
-            batch.vertexBuffer.destroy();
-            batch.indexBuffer.destroy();
-            if (batch.uniformBuffer) batch.uniformBuffer.destroy();
-          }
+          if (!fragmentSet.has(batch)) destroyGpuResources(batch);
         }
         resolve();
       }
@@ -909,11 +1048,7 @@ export class Scene {
     this.meshDataMap.clear();
     this.activeBucketKey.clear();
     this.pendingBatchKeys.clear();
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) batch.uniformBuffer.destroy();
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
     this.geometryReleased = true;
@@ -987,11 +1122,7 @@ export class Scene {
     this.activeBucketKey.clear();
 
     // 3. Clear partial batch cache (would need mesh data to rebuild)
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) batch.uniformBuffer.destroy();
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
 
@@ -1294,11 +1425,7 @@ export class Scene {
     if (currentCacheKey && currentCacheKey !== cacheKey) {
       const oldBatch = this.partialBatchCache.get(currentCacheKey);
       if (oldBatch) {
-        oldBatch.vertexBuffer.destroy();
-        oldBatch.indexBuffer.destroy();
-        if (oldBatch.uniformBuffer) {
-          oldBatch.uniformBuffer.destroy();
-        }
+        destroyGpuResources(oldBatch);
         this.partialBatchCache.delete(currentCacheKey);
       }
     }
@@ -1443,13 +1570,7 @@ export class Scene {
 
   /** Destroy GPU resources for overlay batches */
   private destroyOverrideBatches(): void {
-    for (const batch of this.overrideBatches) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) {
-        batch.uniformBuffer.destroy();
-      }
-    }
+    for (const batch of this.overrideBatches) destroyGpuResources(batch);
     this.overrideBatches = [];
   }
 
@@ -1457,14 +1578,7 @@ export class Scene {
    * Clear regular meshes only (used when converting to instanced rendering)
    */
   clearRegularMeshes(): void {
-    for (const mesh of this.meshes) {
-      mesh.vertexBuffer.destroy();
-      mesh.indexBuffer.destroy();
-      // Destroy per-mesh uniform buffer if it exists
-      if (mesh.uniformBuffer) {
-        mesh.uniformBuffer.destroy();
-      }
-    }
+    for (const mesh of this.meshes) destroyGpuResources(mesh);
     this.meshes = [];
   }
 
@@ -1472,34 +1586,15 @@ export class Scene {
    * Clear scene
    */
   clear(): void {
-    for (const mesh of this.meshes) {
-      mesh.vertexBuffer.destroy();
-      mesh.indexBuffer.destroy();
-      // Destroy per-mesh uniform buffer if it exists
-      if (mesh.uniformBuffer) {
-        mesh.uniformBuffer.destroy();
-      }
-    }
+    for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const mesh of this.instancedMeshes) {
       mesh.vertexBuffer.destroy();
       mesh.indexBuffer.destroy();
       mesh.instanceBuffer.destroy();
     }
-    for (const batch of this.batchedMeshes) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) {
-        batch.uniformBuffer.destroy();
-      }
-    }
+    for (const batch of this.batchedMeshes) destroyGpuResources(batch);
     // Clear partial batch cache
-    for (const batch of this.partialBatchCache.values()) {
-      batch.vertexBuffer.destroy();
-      batch.indexBuffer.destroy();
-      if (batch.uniformBuffer) {
-        batch.uniformBuffer.destroy();
-      }
-    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)
     this.streamingFragments = [];
     this.destroyOverrideBatches();

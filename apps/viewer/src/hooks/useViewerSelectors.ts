@@ -212,14 +212,22 @@ export function useContextMenuState() {
 export function useColorUpdateState() {
   const pendingColorUpdates = useViewerStore((state) => state.pendingColorUpdates);
   const pendingMeshColorUpdates = useViewerStore((state) => state.pendingMeshColorUpdates);
+  const pendingMeshRemovals = useViewerStore((state) => state.pendingMeshRemovals);
+  const pendingMeshTranslations = useViewerStore((state) => state.pendingMeshTranslations);
   const clearPendingColorUpdates = useViewerStore((state) => state.clearPendingColorUpdates);
   const clearPendingMeshColorUpdates = useViewerStore((state) => state.clearPendingMeshColorUpdates);
+  const clearPendingMeshRemovals = useViewerStore((state) => state.clearPendingMeshRemovals);
+  const clearPendingMeshTranslations = useViewerStore((state) => state.clearPendingMeshTranslations);
 
   return {
     pendingColorUpdates,
     pendingMeshColorUpdates,
+    pendingMeshRemovals,
+    pendingMeshTranslations,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
+    clearPendingMeshRemovals,
+    clearPendingMeshTranslations,
   };
 }
 

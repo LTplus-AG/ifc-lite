@@ -145,6 +145,15 @@ export class WebGPUDevice {
     return this.device;
   }
 
+  /**
+   * Max 2D texture dimension reported by the GPU adapter. WebGPU's spec floor is 8192;
+   * iGPUs and most desktop GPUs report 8192 or 16384. Render targets / depth textures
+   * must not exceed this in either axis or the device fails validation.
+   */
+  getMaxTextureDimension(): number {
+    return this.device?.limits?.maxTextureDimension2D ?? 8192;
+  }
+
   getContext(): GPUCanvasContext {
     if (!this.context) {
       throw new Error('Context not initialized');

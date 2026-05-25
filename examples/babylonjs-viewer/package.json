@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.8.0",
+    "@babylonjs/core": "^9.9.1",
     "@ifc-lite/data": "^1.11.5",
     "@ifc-lite/geometry": "^1.11.5",
     "@ifc-lite/parser": "^1.11.5"

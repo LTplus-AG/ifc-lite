@@ -41,12 +41,35 @@ import {
   type WallInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
-import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { EntityExtractor, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import type { AddElementType } from './addElementSlice.js';
+import {
+  resolvePlacementChain,
+  resolveRotationState,
+  rotateProductYaw,
+  resolveWallEditChain,
+  resizeRectangleWall,
+  computeWallSplitGeometry,
+  projectOntoWallAxis,
+} from '@/lib/placement-edit.js';
+import { cloneElementMetadata } from '@/lib/metadata-clone.js';
+import {
+  resolveLinearElementChain,
+  computeLinearElementSplitGeometry,
+  projectOntoLinearAxis,
+  type LinearElementType,
+} from '@/lib/linear-element-edit.js';
+import { reassignWallOpenings } from '@/lib/wall-opening-reassign.js';
+import {
+  resolveSlabEditChain,
+  computeSlabSplitGeometry,
+  type SlabLikeType,
+} from '@/lib/slab-edit.js';
+import type { Point2D } from '@/lib/polygon-clip.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -167,6 +190,35 @@ export interface MutationSlice {
   undoStacks: Map<string, Mutation[]>;
   /** Redo stack per model */
   redoStacks: Map<string, Mutation[]>;
+  /**
+   * Maps mutationId → batchId. Mutations created via
+   * `setPositionalAttributesBatch` share a single batchId so the
+   * undo / redo handlers can pop / push them as one atomic
+   * step — important for compound operations like `resizeWall`
+   * (4 positional writes) where the user expects one Ctrl+Z to
+   * undo the whole resize, not unwind through inconsistent
+   * intermediate states.
+   *
+   * Stored as a side-channel on the slice (vs an extra field on
+   * the published `Mutation` interface) so the batching is a
+   * viewer-local concern and doesn't ripple through @ifc-lite/
+   * mutations consumers.
+   */
+  mutationBatchTags: Map<string, string>;
+  /**
+   * Maps mutationId → the renderer-frame mesh translation that
+   * accompanied a placement-move mutation (`translateEntity` /
+   * `setEntityPosition`). The mutation itself only records the
+   * IfcCartesianPoint coordinate change; the rendered mesh moves
+   * via a separate `setPendingMeshTranslations` call. Undo / redo
+   * of the IFC value alone would leave the 3D mesh stranded at the
+   * moved position, so the handlers replay (redo) or negate (undo)
+   * the translation recorded here.
+   *
+   * Side-channel for the same reason as `mutationBatchTags`: keeps
+   * the renderer coupling out of the published Mutation interface.
+   */
+  mutationMeshTranslations: Map<string, { globalId: number; rendererDelta: [number, number, number] }>;
   /** Models with unsaved changes */
   dirtyModels: Set<string>;
   /** Version counter to trigger re-renders when mutations change */
@@ -273,10 +325,214 @@ export interface MutationSlice {
     value: IfcAttributeValue
   ) => Mutation | null;
   /**
+   * Atomic batch of positional writes — undo / redo treat the
+   * whole list as one operation. Each entry produces a primitive
+   * `UPDATE_POSITIONAL_ATTRIBUTE` mutation under the hood (same
+   * shape as `setPositionalAttribute` so the undo handler stays
+   * uniform), but all entries share a batchId via
+   * `mutationBatchTags` so a single Ctrl+Z reverts the entire
+   * batch.
+   *
+   * Used by compound operations like `resizeWall` (4 coordinated
+   * positional writes) so the user doesn't have to press Ctrl+Z
+   * four times to undo one resize. Returns the batchId so callers
+   * can correlate; empty input is a no-op (returns null).
+   */
+  setPositionalAttributesBatch: (
+    modelId: string,
+    updates: Array<{ entityId: number; index: number; value: IfcAttributeValue }>,
+  ) => string | null;
+  /**
    * Tombstone an entity (existing source entity) or forget it (overlay-only).
    * Returns true if the entity was known to the store or overlay.
    */
   removeEntity: (modelId: string, expressId: number) => boolean;
+  /**
+   * Translate an IfcProduct by a storey-local delta (IFC Z-up). Walks
+   * the placement chain to the terminal `IfcCartesianPoint` and writes
+   * the new coordinates via `setPositionalAttribute` so the edit
+   * stacks with other overlay mutations and undoes cleanly.
+   *
+   * Returns `{ ok: false }` for entities whose placement isn't a
+   * simple `IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint`
+   * chain (mapped representations, 2D placements, non-product
+   * entities). The viewer surfaces the reason as a toast.
+   *
+   * `batchId` (optional) tags the mutation so a drag that emits
+   * many per-frame `translateEntity` calls collapses to one undo
+   * step. The gizmo passes one id per drag; omit it for a
+   * standalone move (e.g. a single numeric-input commit).
+   */
+  translateEntity: (
+    modelId: string,
+    expressId: number,
+    deltaIfc: [number, number, number],
+    batchId?: string,
+  ) => { ok: true; newCoordinates: [number, number, number] } | { ok: false; reason: string };
+  /**
+   * Absolute version of `translateEntity` — replaces the entity's
+   * storey-local position instead of adding a delta. Same chain
+   * requirements apply.
+   */
+  setEntityPosition: (
+    modelId: string,
+    expressId: number,
+    position: [number, number, number],
+  ) => { ok: true; newCoordinates: [number, number, number] } | { ok: false; reason: string };
+  /**
+   * Rotate an IfcProduct about the storey-up Z axis by `deltaYaw`
+   * radians. Updates RefDirection on the placement's
+   * IfcAxis2Placement3D when one already exists.
+   *
+   * Refuses with `{ ok: false }` when the entity's placement has
+   * no explicit RefDirection (the implicit `[1, 0, 0]` STEP
+   * default). Materialising a fresh IfcDirection there would
+   * require a multi-mutation atomic undo entry to avoid orphans
+   * on undo, which the store doesn't have yet. Every entity
+   * emitted by `@ifc-lite/create`'s in-store builders carries an
+   * explicit RefDirection, so the refusal only trips on
+   * hand-rolled source-buffer entities.
+   */
+  rotateEntity: (
+    modelId: string,
+    expressId: number,
+    deltaYaw: number,
+  ) => { ok: true; newYawZ: number } | { ok: false; reason: string };
+  /**
+   * Snapshot of the placement's current yaw about Z (radians) plus
+   * the metadata the UI needs to render a rotation gizmo. Returns
+   * null when the placement chain isn't translatable.
+   */
+  readEntityRotation: (
+    modelId: string,
+    expressId: number,
+  ) => { yawZ: number; refDirection: [number, number, number] } | null;
+  /**
+   * Read the entity's storey-local placement coordinates. Returns
+   * null when the placement chain isn't a simple
+   * `IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint`
+   * (i.e. when `translateEntity` / `setEntityPosition` wouldn't work
+   * either). The action lazily creates the `StoreEditor` on first
+   * call so it works on a freshly-loaded model that hasn't seen any
+   * mutations yet — `MutablePropertyView` is the only thing
+   * `PropertiesPanel` registers up front, and the editor is a thin
+   * facade we can build on demand. Pairing the gate condition with
+   * the existing read-actions keeps "is this entity movable?" and
+   * "what are its coords?" answered by the same code path.
+   */
+  readEntityPosition: (
+    modelId: string,
+    expressId: number,
+  ) => [number, number, number] | null;
+  /**
+   * Resize a rectangular-profile wall by setting new start AND end
+   * points. Atomically updates the placement origin, RefDirection,
+   * profile length, and profile origin. Returns null for walls that
+   * don't follow the `addWallToStore` shape.
+   */
+  resizeWall: (
+    modelId: string,
+    expressId: number,
+    newStart: [number, number, number],
+    newEnd: [number, number, number],
+  ) => { ok: true; newLength: number } | { ok: false; reason: string };
+  /**
+   * Read a wall's current start/end so the UI can render endpoint
+   * handles. Returns null for non-rectangle walls.
+   */
+  readWallEndpoints: (
+    modelId: string,
+    expressId: number,
+  ) => { start: [number, number, number]; end: [number, number, number]; thickness: number } | null;
+  /**
+   * Split a rectangle-profile wall into two walls at `distance`
+   * metres along its axis (measured from the wall's start). Produces
+   * two new walls inheriting the source's Pset / Qto / classification
+   * / material / type relationships, then tombstones the source.
+   *
+   * Returns the two new walls' express ids and federation global
+   * ids on success. On failure (non-rectangle wall, distance too
+   * close to an end, missing storey, etc.) returns a descriptive
+   * reason for the UI to surface.
+   *
+   * Undo posture: the action lands as three primitive mutations on
+   * the model's undo stack (one per new wall create, one for the
+   * source delete), so a full revert needs three Ctrl+Z presses
+   * today. A batched-mutation primitive that collapses this to one
+   * step is on the follow-up list from PR #723.
+   */
+  splitWallAtDistance: (
+    modelId: string,
+    expressId: number,
+    distanceFromStart: number,
+  ) => { ok: true; left: { expressId: number; globalId: number }; right: { expressId: number; globalId: number }; openings: { toLeft: number; toRight: number; skipped: number } } | { ok: false; reason: string };
+  /**
+   * Read-only helper for the Split-tool live preview: projects an
+   * arbitrary storey-local 3D cursor onto the wall axis and returns
+   * how far along the wall (in metres from start) it lands, plus
+   * the wall's total length so the UI can show "1.42 m / 3.50 m".
+   *
+   * Returns null when the entity isn't a resizable wall.
+   */
+  readWallSplitProjection: (
+    modelId: string,
+    expressId: number,
+    cursorStoreyLocal: [number, number, number],
+  ) => { distance: number; length: number; cutPoint: [number, number, number]; axis: [number, number, number] } | null;
+  /**
+   * Split a linear element (`IfcBeam` / `IfcColumn` / `IfcMember`)
+   * at `distance` metres from start. Unlike walls, the source's
+   * extrusion is shrunk in place so the "left" half keeps the
+   * source's GlobalId and Pset rels — the choice is forced by the
+   * IFC representation (length lives on the extrusion `Depth`, not
+   * on the profile XDim), so one positional write covers it. A new
+   * element is added at the cut point to carry the "right" half.
+   */
+  splitLinearElementAtDistance: (
+    modelId: string,
+    expressId: number,
+    distanceFromStart: number,
+  ) => { ok: true; source: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
+  /**
+   * Linear-element analogue of `readWallSplitProjection`. Returns
+   * null when the entity isn't an `addBeam` / `addColumn` /
+   * `addMember` -shaped element.
+   */
+  readLinearElementSplitProjection: (
+    modelId: string,
+    expressId: number,
+    cursorStoreyLocal: [number, number, number],
+  ) => { distance: number; length: number; cutPoint: [number, number, number]; axis: [number, number, number]; elementType: LinearElementType } | null;
+  /**
+   * Read a slab-like element's storey-local footprint polygon so
+   * the Split overlay can render the live cut-line preview. The
+   * footprint comes back in storey-local 2D (XY) with the
+   * placement origin already added. Returns null for non-slab
+   * selections or representations the chain resolver doesn't
+   * support (mapped shapes, tessellated faces, etc).
+   */
+  readSlabFootprint: (
+    modelId: string,
+    expressId: number,
+  ) => { footprint: Point2D[]; elementType: SlabLikeType; storeyElevation: number; thickness: number } | null;
+  /**
+   * Split a slab-like element (IfcSlab / IfcRoof / IfcPlate /
+   * IfcSpace) along a cut line defined by two storey-local 2D
+   * points. Builds two fresh elements with the clipped footprints
+   * (polygon-mode `IfcArbitraryClosedProfileDef` even when the
+   * source was a rectangle — most cuts produce non-rectangular
+   * halves), clones metadata onto both, then tombstones the
+   * source.
+   *
+   * Selection moves to whichever half contains the second click,
+   * so the user can keep editing the new piece immediately.
+   */
+  splitSlabByLine: (
+    modelId: string,
+    expressId: number,
+    cutA: [number, number],
+    cutB: [number, number],
+  ) => { ok: true; left: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
   /**
    * Add a fully-anchored IfcColumn (and its sub-graph) to a parsed model.
    * Returns the new column's expressId, or null if the model can't be
@@ -442,6 +698,160 @@ function getOrCreateStoreEditor(
 }
 
 /**
+ * IfcBuildingStorey.ObjectPlacement is optional in the schema —
+ * some authoring tools leave it null when the file was never
+ * meant to host geometry. Authoring actions need a placement to
+ * anchor their new entities against, so we materialise a default
+ * IfcLocalPlacement at the storey's elevation when one's missing
+ * and patch the storey's attribute via the overlay.
+ *
+ * Idempotent: if the storey already has a placement (number or
+ * `#X` string ref), this is a no-op. Returns true when a
+ * placement was created.
+ */
+function ensureStoreyPlacement(
+  dataStore: import('@ifc-lite/parser').IfcDataStore,
+  editor: StoreEditor,
+  storeyExpressId: number,
+): boolean {
+  // Pull the storey's current attributes (overlay overrides + source).
+  const overlay = editor.getNewEntity(storeyExpressId);
+  let attrs: unknown[];
+  if (overlay) {
+    attrs = overlay.attributes.slice();
+  } else {
+    const ref = dataStore.entityIndex.byId.get(storeyExpressId);
+    if (!ref) return false;
+    const extractor = new EntityExtractor(dataStore.source);
+    const entity = extractor.extractEntity(ref);
+    if (!entity) return false;
+    attrs = entity.attributes.slice();
+  }
+
+  // IfcProduct.ObjectPlacement is at index 5 across IFC2X3 / IFC4.
+  // Accept both number refs and `#X` strings as "already present".
+  const existing = attrs[5];
+  if (typeof existing === 'number' && Number.isFinite(existing)) return false;
+  if (typeof existing === 'string' && existing.startsWith('#')) return false;
+
+  // Build a fresh placement at world origin. The storey's elevation
+  // (if any) carries through the geometry pipeline elsewhere; this
+  // placement gives the IFC graph what resolveSpatialAnchor needs.
+  const elevation = dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
+  const originPt = editor.addEntity('IfcCartesianPoint', [[0, 0, elevation]]).expressId;
+  const axisPlacement = editor.addEntity('IfcAxis2Placement3D', [`#${originPt}`, null, null]).expressId;
+  const localPlacement = editor.addEntity('IfcLocalPlacement', [null, `#${axisPlacement}`]).expressId;
+
+  editor.setPositionalAttribute(storeyExpressId, 5, `#${localPlacement}`);
+  return true;
+}
+
+/**
+ * Resolve the (view, editor, dataStore, storey) tuple that every
+ * splitWall / splitLinearElement / splitSlab action needs. Returns
+ * an error result with a stable message when any piece is missing
+ * so each action's preamble collapses to a single early-return.
+ *
+ * Pass `requireStorey: false` when the caller resolves storey from
+ * a different source (none currently — but the flag keeps the
+ * helper reusable for non-storey-bound split-like flows).
+ */
+type SplitContext = {
+  view: MutablePropertyView;
+  editor: StoreEditor;
+  dataStore: import('@ifc-lite/parser').IfcDataStore;
+  storeyExpressId: number;
+};
+function resolveSplitContext(
+  get: () => ViewerState,
+  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
+  modelId: string,
+  expressId: number,
+  notInStoreyMessage: string,
+): SplitContext | { ok: false; reason: string } {
+  const state = get();
+  const view = state.mutationViews.get(modelId);
+  if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+  const editor = getOrCreateStoreEditor(get, set, modelId);
+  if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+  const dataStore = state.models.get(modelId)?.ifcDataStore;
+  if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+  const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+  if (storeyExpressId === undefined) return { ok: false, reason: notInStoreyMessage };
+  return { view, editor, dataStore, storeyExpressId };
+}
+
+/**
+ * Rollback helper for failed atomic operations (e.g. split where
+ * the left half was created but the right half's builder threw).
+ *
+ * Pops the most recent CREATE_ENTITY mutation for `expressId` off
+ * the model's undo stack, removes the overlay record via
+ * `view.deleteEntity`, and queues the renderer mesh for removal.
+ * No DELETE_ENTITY mutation is recorded — the operation never
+ * happened from the user's perspective, so the undo history is
+ * left clean (Ctrl+Z after a failed split shouldn't bring back
+ * the orphan half).
+ *
+ * Returns true when at least one undo entry was popped.
+ */
+function rollbackOverlayCreate(
+  get: () => ViewerState,
+  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
+  modelId: string,
+  expressId: number,
+): boolean {
+  const state = get();
+  const view = state.mutationViews.get(modelId);
+  const editor = state.storeEditors.get(modelId);
+  if (!view || !editor) return false;
+
+  // Drop the entity from the overlay. The view.deleteEntity call
+  // is silent for already-gone entities — safe even if the caller
+  // gets the rollback path wrong.
+  editor.removeEntity(expressId);
+
+  // Pop the matching CREATE_ENTITY entry off the undo stack. The
+  // split flow always rolls back immediately after the failed
+  // create, so the entry is at top-of-stack — fast-path that case
+  // with a single `pop()`-style slice and only fall back to the
+  // linear scan if a follow-up mutation slipped in between.
+  set((s) => {
+    const stacks = new Map(s.undoStacks);
+    const stack = stacks.get(modelId);
+    if (!stack || stack.length === 0) return {};
+    const top = stack[stack.length - 1];
+    if (top.type === 'CREATE_ENTITY' && top.entityId === expressId) {
+      stacks.set(modelId, stack.slice(0, -1));
+      return {
+        undoStacks: stacks,
+        mutationVersion: s.mutationVersion + 1,
+      };
+    }
+    for (let i = stack.length - 2; i >= 0; i--) {
+      const m = stack[i];
+      if (m.type === 'CREATE_ENTITY' && m.entityId === expressId) {
+        const next = stack.slice();
+        next.splice(i, 1);
+        stacks.set(modelId, next);
+        return {
+          undoStacks: stacks,
+          mutationVersion: s.mutationVersion + 1,
+        };
+      }
+    }
+    return {};
+  });
+
+  // Drop the entity's mesh from the renderer so the user doesn't
+  // see a phantom half-element after the failed split. Uses the
+  // existing pendingMeshRemovals channel (same as Phase A).
+  const globalId = toGlobalIdFromModels(state.models, modelId, expressId);
+  state.setPendingMeshRemovals(new Set([globalId]));
+  return true;
+}
+
+/**
  * Shared dispatcher for the wall/slab/beam in-store builders. Mirrors the
  * structure of `addColumn` (resolve store/view/editor/anchor → run the
  * builder → push a CREATE_ENTITY undo entry → mark dirty + bump version)
@@ -467,6 +877,15 @@ function runInStoreElementBuilder(
 
   const editor = getOrCreateStoreEditor(get, set, modelId);
   if (!editor) return { error: 'Failed to create store editor' };
+
+  // Some source IFC files leave IfcBuildingStorey.ObjectPlacement
+  // null (it's optional in the schema). Without a placement,
+  // resolveSpatialAnchor throws "storey #N has no resolvable
+  // IfcLocalPlacement" — but a fresh IfcLocalPlacement at the
+  // origin is a valid default. Materialise one before the anchor
+  // walk so the user's authoring action doesn't get blocked by
+  // missing-but-recoverable IFC structure.
+  ensureStoreyPlacement(dataStore, editor, storeyExpressId);
 
   let entityId: number;
   try {
@@ -575,6 +994,8 @@ export const createMutationSlice: StateCreator<
   activeChangeSetId: null,
   undoStacks: new Map(),
   redoStacks: new Map(),
+  mutationBatchTags: new Map(),
+  mutationMeshTranslations: new Map(),
   dirtyModels: new Set(),
   mutationVersion: 0,
   georefMutations: new Map(),
@@ -921,6 +1342,653 @@ export const createMutationSlice: StateCreator<
     return stack ? stack[stack.length - 1] : null;
   },
 
+  setPositionalAttributesBatch: (modelId, updates) => {
+    if (updates.length === 0) return null;
+    // Generate the batch id once; every mutation created below
+    // gets tagged with it so the undo / redo handlers can group
+    // them. `crypto.randomUUID` is available in every browser the
+    // viewer supports and avoids the collision risk of
+    // Date.now() + Math.random concatenation.
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const tags = new Map(get().mutationBatchTags);
+    for (const { entityId, index, value } of updates) {
+      const mutation = get().setPositionalAttribute(modelId, entityId, index, value);
+      if (mutation) tags.set(mutation.id, batchId);
+    }
+    set({ mutationBatchTags: tags });
+    return batchId;
+  },
+
+  translateEntity: (modelId, expressId, delta, batchId) => {
+    // Read the existing placement chain WITHOUT committing the edit
+    // yet — we'll route the actual write through `setPositionalAttribute`
+    // below so undo/redo + dirty-tracking come for free.
+    const view = get().mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    const chain = resolvePlacementChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
+      };
+    }
+    const [x, y, z] = chain.coordinates;
+    const next: [number, number, number] = [x + delta[0], y + delta[1], z + delta[2]];
+    // Go through the slice's own `setPositionalAttribute` action so
+    // the mutation lands on the undo stack with the standard envelope.
+    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, next);
+
+    // Push the renderer-frame delta so the visible mesh follows
+    // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
+    //   renderer.x =  ifc.x
+    //   renderer.y =  ifc.z
+    //   renderer.z = -ifc.y
+    const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+    const rendererDelta: [number, number, number] = [delta[0], delta[2], -delta[1]];
+    get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
+
+    // Record the mesh translation against the mutation id so undo /
+    // redo can move the rendered mesh back / forward — the mutation
+    // alone only carries the IfcCartesianPoint coordinate change.
+    // When a `batchId` is supplied (gizmo drag), tag the mutation so
+    // all the drag's per-frame translates collapse to one undo step.
+    if (mutation) {
+      const meshTags = new Map(get().mutationMeshTranslations);
+      meshTags.set(mutation.id, { globalId, rendererDelta });
+      if (batchId) {
+        const batchTags = new Map(get().mutationBatchTags);
+        batchTags.set(mutation.id, batchId);
+        set({ mutationMeshTranslations: meshTags, mutationBatchTags: batchTags });
+      } else {
+        set({ mutationMeshTranslations: meshTags });
+      }
+    }
+
+    return { ok: true, newCoordinates: next };
+  },
+
+  setEntityPosition: (modelId, expressId, position) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    const chain = resolvePlacementChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
+      };
+    }
+    // Push the IFC → renderer delta for the rendered mesh. Same
+    // Z-up → Y-up conversion as `translateEntity` above.
+    const [oldX, oldY, oldZ] = chain.coordinates;
+    const dx = position[0] - oldX;
+    const dy = position[1] - oldY;
+    const dz = position[2] - oldZ;
+    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, position);
+    if (dx !== 0 || dy !== 0 || dz !== 0) {
+      const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
+      const rendererDelta: [number, number, number] = [dx, dz, -dy];
+      get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
+      // Record so undo / redo can move the rendered mesh — see the
+      // matching note in `translateEntity`.
+      if (mutation) {
+        const tags = new Map(get().mutationMeshTranslations);
+        tags.set(mutation.id, { globalId, rendererDelta });
+        set({ mutationMeshTranslations: tags });
+      }
+    }
+    return { ok: true, newCoordinates: position };
+  },
+
+  rotateEntity: (modelId, expressId, deltaYaw) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    // resolveRotationState gives us both the current angle and
+    // whether RefDirection is explicit. When it's null we refuse
+    // — see the interface comment above for why; materialising
+    // would require multi-mutation atomic undo to avoid orphans.
+    // Every in-store builder emits an explicit RefDirection, so
+    // this only trips on hand-rolled source-buffer entities.
+    const state = resolveRotationState(dataStore, view, editor, expressId);
+    if (!state) {
+      return {
+        ok: false,
+        reason:
+          'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D chain',
+      };
+    }
+    if (state.refDirectionId === null) {
+      // Implicit RefDirection means the axis placement points at no
+      // IfcDirection — STEP `$` slot. Materialising a fresh
+      // IfcDirection here would require a multi-mutation atomic undo
+      // entry to avoid orphans; we don't have that primitive yet.
+      // In practice every entity our in-store builders emit
+      // (addColumn / addWall / addSlab / …) carries an explicit
+      // RefDirection, so this branch only trips on hand-rolled
+      // source-buffer entities. Surface a clear refusal so the UI
+      // can show "rotate not supported for this entity" rather than
+      // silently leaking entities.
+      return {
+        ok: false,
+        reason:
+          'Entity has an implicit reference direction (no IfcDirection on its axis placement). Rotation would require materialising a new IfcDirection, which isn\'t undoable yet.',
+      };
+    }
+    const newYaw = state.yawZ + deltaYaw;
+    const newRatios: [number, number, number] = [
+      Math.cos(newYaw),
+      Math.sin(newYaw),
+      state.refDirection[2],
+    ];
+    get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
+    return { ok: true, newYawZ: newYaw };
+  },
+
+  readEntityRotation: (modelId, expressId) => {
+    // Lazy editor creation — see the note on `readEntityPosition`
+    // below. A freshly-loaded model has a mutation view but no
+    // cached editor; building one on read so the rotation UI lights
+    // up on first selection, not after the first unrelated edit.
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const state = resolveRotationState(dataStore, view, editor, expressId);
+    if (!state) return null;
+    return { yawZ: state.yawZ, refDirection: state.refDirection };
+  },
+
+  readEntityPosition: (modelId, expressId) => {
+    // Mirror of `readEntityRotation`'s lazy-create pattern. Used by
+    // `GeometryEditCard` to seed its inputs AND by `GizmoOverlay`
+    // as its "is this entity movable?" gate — one code path means
+    // the controls and the visual gizmo agree on availability.
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolvePlacementChain(dataStore, view, editor, expressId);
+    return chain ? chain.coordinates : null;
+  },
+
+  resizeWall: (modelId, expressId, newStart, newEnd) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+
+    // resolveWallEditChain reads all four ids without mutating.
+    // The four writes are then committed as a single atomic batch
+    // via setPositionalAttributesBatch — one Ctrl+Z reverts the
+    // whole resize, no walking through inconsistent intermediate
+    // wall states.
+    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation',
+      };
+    }
+    const dx = newEnd[0] - newStart[0];
+    const dy = newEnd[1] - newStart[1];
+    const dz = newEnd[2] - newStart[2];
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-6) return { ok: false, reason: 'Wall length must be greater than zero' };
+    if (Math.abs(dz) > Math.max(1e-6 * length, 1e-9)) {
+      return { ok: false, reason: 'Start and end must lie on the same storey plane' };
+    }
+    const dir: [number, number, number] = [dx / length, dy / length, 0];
+
+    get().setPositionalAttributesBatch(modelId, [
+      { entityId: chain.startPointId, index: 0, value: newStart },
+      { entityId: chain.refDirectionId, index: 0, value: dir },
+      { entityId: chain.profileId, index: 3, value: length },
+      { entityId: chain.profileOriginPointId, index: 0, value: [length / 2, 0] },
+    ]);
+
+    return { ok: true, newLength: length };
+  },
+
+  readWallEndpoints: (modelId, expressId) => {
+    // Same lazy-create pattern as `readEntityRotation` /
+    // `readEntityPosition` — handles need to surface on first
+    // selection, not after an unrelated mutation has primed the
+    // editor cache.
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    if (!chain) return null;
+    const [sx, sy, sz] = chain.startCoordinates;
+    const [dx, dy, dz] = chain.refDirection;
+    const end: [number, number, number] = [
+      sx + dx * chain.wallLength,
+      sy + dy * chain.wallLength,
+      sz + dz * chain.wallLength,
+    ];
+    return { start: [sx, sy, sz], end, thickness: chain.thickness };
+  },
+
+  readWallSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    if (!chain) return null;
+    const distance = projectOntoWallAxis(chain, cursorStoreyLocal);
+    const [sx, sy, sz] = chain.startCoordinates;
+    const [dx, dy, dz] = chain.refDirection;
+    const cutPoint: [number, number, number] = [
+      sx + dx * distance,
+      sy + dy * distance,
+      sz + dz * distance,
+    ];
+    // Walls always lie on a storey plane (refDirection.z === 0 by
+    // the builder's contract) but the type lets us carry whatever
+    // the IFC actually says, so we surface it as-is.
+    return { distance, length: chain.wallLength, cutPoint, axis: [dx, dy, dz] };
+  },
+
+  splitWallAtDistance: (modelId, expressId, distanceFromStart) => {
+    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Wall is not contained in a building storey');
+    if ('ok' in ctx) return ctx;
+    const { view, editor, dataStore, storeyExpressId } = ctx;
+    const state = get();
+
+    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation. Split supports walls built by addWallToStore.',
+      };
+    }
+    if (!Number.isFinite(chain.height) || chain.height <= 0) {
+      return {
+        ok: false,
+        reason: 'Wall has no readable extrusion height',
+      };
+    }
+
+    const geo = computeWallSplitGeometry(chain, distanceFromStart, chain.height);
+    if (!geo.ok) return geo;
+
+    // Build the two halves. Each `addWall` call already pushes a
+    // CREATE_ENTITY mutation onto the undo stack AND emits a fresh
+    // mesh via appendGeometryBatch, so the new walls appear in 3D
+    // immediately. The source's mesh stays in the geometry result
+    // but is tombstoned in the IFC overlay — for v1 we mark it
+    // hidden via the existing hiddenEntities mechanism so the user
+    // sees the split take effect.
+    const left = state.addWall(modelId, storeyExpressId, {
+      Start: geo.geometry.left.Start,
+      End: geo.geometry.left.End,
+      Thickness: geo.geometry.left.Thickness,
+      Height: geo.geometry.left.Height,
+      Name: 'Wall (split L)',
+    });
+    if ('error' in left) {
+      return { ok: false, reason: `Couldn't build left half: ${left.error}` };
+    }
+    const right = state.addWall(modelId, storeyExpressId, {
+      Start: geo.geometry.right.Start,
+      End: geo.geometry.right.End,
+      Thickness: geo.geometry.right.Thickness,
+      Height: geo.geometry.right.Height,
+      Name: 'Wall (split R)',
+    });
+    if ('error' in right) {
+      // Roll back the left half via the no-history helper so the
+      // failed split doesn't leave a phantom CREATE+DELETE pair on
+      // the undo stack. `rollbackOverlayCreate` pops the orphan
+      // CREATE_ENTITY entry, drops the overlay record, and removes
+      // the renderer mesh.
+      rollbackOverlayCreate(get, set, modelId, left.expressId);
+      return { ok: false, reason: `Couldn't build right half: ${right.error}` };
+    }
+
+    // Carry Pset / Qto / classification / material / type rels
+    // from the source onto both new walls. Done AFTER the new walls
+    // exist so the rels' RelatedObjects lists can include them.
+    cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
+
+    // Reassign hosted openings (doors / windows / generic voids)
+    // to whichever new half they geometrically belong to. The
+    // canonical IFC convention places the opening's
+    // ObjectPlacement relative to the wall's placement, with
+    // local-X = distance along the wall axis — so we read each
+    // opening's local-X to decide left vs right, and offset
+    // right-half openings by -splitDistance so their world
+    // positions stay fixed across the reparent.
+    //
+    // We resolve each new half's IfcLocalPlacement id by
+    // re-walking the placement chain (it's the entity addWall
+    // created internally; the action's return value only carries
+    // the wall id).
+    const leftChain = resolvePlacementChain(dataStore, view, editor, left.expressId);
+    const rightChain = resolvePlacementChain(dataStore, view, editor, right.expressId);
+    let openingSummary: { toLeft: number; toRight: number; skipped: number } = { toLeft: 0, toRight: 0, skipped: 0 };
+    if (leftChain && rightChain) {
+      const s = reassignWallOpenings(
+        dataStore,
+        view,
+        editor,
+        expressId,
+        left.expressId,
+        right.expressId,
+        distanceFromStart,
+        leftChain.localPlacementId,
+        rightChain.localPlacementId,
+      );
+      openingSummary = { toLeft: s.toLeft, toRight: s.toRight, skipped: s.skipped };
+    }
+    void openingSummary; // surfaced as a toast hint by the caller (selectionHandlers)
+
+    // Tombstone the source. `removeEntity` returns false if the
+    // entity wasn't known — shouldn't happen here (we just
+    // resolved its chain), but defend anyway.
+    const removed = state.removeEntity(modelId, expressId);
+    if (!removed) {
+      return {
+        ok: false,
+        reason: 'Wall was unexpectedly removed before split completed',
+      };
+    }
+
+    // Drop the source's mesh from the rendered scene. The entity
+    // is tombstoned in the IFC overlay so it won't export; this
+    // also clears its GPU buffers and bounding-box entry so picks
+    // / bounds stop finding it. The two new walls already have
+    // their meshes in the geometry (addWall emits them via
+    // appendGeometryBatch).
+    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
+    state.setPendingMeshRemovals(new Set([sourceGlobalId]));
+
+    const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
+    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
+
+    return {
+      ok: true,
+      left: { expressId: left.expressId, globalId: leftGlobalId },
+      right: { expressId: right.expressId, globalId: rightGlobalId },
+      openings: openingSummary,
+    };
+  },
+
+  readLinearElementSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolveLinearElementChain(dataStore, view, editor, expressId);
+    if (!chain) return null;
+    const distance = projectOntoLinearAxis(chain, cursorStoreyLocal);
+    const [sx, sy, sz] = chain.startCoordinates;
+    const [dx, dy, dz] = chain.axisDirection;
+    const cutPoint: [number, number, number] = [
+      sx + dx * distance,
+      sy + dy * distance,
+      sz + dz * distance,
+    ];
+    return {
+      distance,
+      length: chain.depth,
+      cutPoint,
+      axis: chain.axisDirection,
+      elementType: chain.elementType,
+    };
+  },
+
+  splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) => {
+    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Element is not contained in a building storey');
+    if ('ok' in ctx) return ctx;
+    const { view, editor, dataStore, storeyExpressId } = ctx;
+    const state = get();
+
+    const chain = resolveLinearElementChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Element is not a rectangular-profile beam / column / member built by the in-store builders.',
+      };
+    }
+    const geo = computeLinearElementSplitGeometry(chain, distanceFromStart);
+    if (!geo.ok) return geo;
+
+    // Add the "right" half FIRST so a builder failure leaves the
+    // source untouched (no partial-commit state). The source's
+    // extrusion shrink happens only after the new half lands.
+    // The dispatch is one-to-one with the chain's resolved
+    // element type.
+    let addResult: { expressId: number } | { error: string };
+    if (chain.elementType === 'IfcBeam') {
+      addResult = state.addBeam(modelId, storeyExpressId, {
+        Start: geo.geometry.cutPoint,
+        End: geo.geometry.endPoint,
+        Width: geo.geometry.width,
+        Height: geo.geometry.height,
+        Name: 'Beam (split)',
+      });
+    } else if (chain.elementType === 'IfcColumn') {
+      // Columns take a Position + Width + Depth + Height (extrusion
+      // is along +Z). Width/Depth come from the cross-section
+      // (profile XDim / YDim). Height is the right half's length.
+      addResult = state.addColumn(modelId, storeyExpressId, {
+        Position: geo.geometry.cutPoint,
+        Width: geo.geometry.width,
+        Depth: geo.geometry.height,
+        Height: geo.geometry.rightDepth,
+        Name: 'Column (split)',
+      });
+    } else {
+      addResult = state.addMember(modelId, storeyExpressId, {
+        Start: geo.geometry.cutPoint,
+        End: geo.geometry.endPoint,
+        Width: geo.geometry.width,
+        Height: geo.geometry.height,
+        Name: 'Member (split)',
+      });
+    }
+    if ('error' in addResult) {
+      return { ok: false, reason: `Couldn't build right half: ${addResult.error}` };
+    }
+
+    // Right half built — now shrink the source's extrusion to the
+    // "left" length. One write, one undo entry, identity
+    // preserved. Goes through the slice's own
+    // setPositionalAttribute action so undo recovers it.
+    state.setPositionalAttribute(modelId, chain.extrudedSolidId, 3, geo.geometry.leftDepth);
+
+    // Carry Pset / classification / material rels onto the new
+    // right half so it inherits the source's metadata. The source
+    // keeps its own rels natively (we didn't tombstone it).
+    cloneElementMetadata(dataStore, view, editor, expressId, [addResult.expressId]);
+
+    // Hide / re-show the source's mesh so the renderer reflects
+    // the new shorter length. The new mesh for the right half
+    // already came via the addElement pipeline's appendGeometryBatch.
+    // For the source, the easiest visual update is to nudge the
+    // geometryUpdateTick so consumers re-derive bounds — the
+    // existing mesh data lingers at full length until the next
+    // full reload (deferred mesh-update from PR #723). Users see
+    // the new wall appear; the source mesh stays visually unchanged
+    // for now. Documented as a known limitation.
+    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
+    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, addResult.expressId);
+
+    return {
+      ok: true,
+      source: { expressId, globalId: sourceGlobalId },
+      right: { expressId: addResult.expressId, globalId: rightGlobalId },
+    };
+  },
+
+  readSlabFootprint: (modelId, expressId) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return null;
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return null;
+    const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
+    if (!chain) return null;
+    const storeyId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+    const storeyElevation =
+      (storeyId !== undefined
+        ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId)
+        : undefined) ?? 0;
+    return {
+      footprint: chain.footprint,
+      elementType: chain.elementType,
+      storeyElevation,
+      thickness: chain.thickness,
+    };
+  },
+
+  splitSlabByLine: (modelId, expressId, cutA, cutB) => {
+    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Slab is not contained in a building storey');
+    if ('ok' in ctx) return ctx;
+    const { view, editor, dataStore, storeyExpressId } = ctx;
+    const state = get();
+
+    const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
+    if (!chain) {
+      return {
+        ok: false,
+        reason:
+          'Element representation is not a rectangle / polygon profile extruded along Z. Split supports slab-like elements built by addSlab / addRoof / addPlate / addSpace.',
+      };
+    }
+    const geo = computeSlabSplitGeometry(chain, cutA, cutB);
+    if (!geo.ok) return geo;
+
+    // The clipped footprints are in storey-local XY (placement
+    // origin already added). The builders expect an `OuterCurve`
+    // in *profile-local* 2D + a `Position` in storey-local 3D.
+    // Easiest mapping: keep `Position` at `[0, 0, 0]` and pass the
+    // clipped polygon verbatim — the builders fold profile-origin
+    // and placement-origin into one identity.
+    //
+    // IfcSlab / IfcRoof / IfcPlate carry their extrusion depth on
+    // a `Thickness` param; IfcSpace uses `Height`. Same chain
+    // resolver feeds both because the underlying STEP shape is
+    // identical (IfcExtrudedAreaSolid.Depth) — the divergence is
+    // only in the in-store builder's parameter naming.
+    const buildHalf = (outline: Point2D[], label: string) => {
+      const name = `${chain.elementType.replace(/^Ifc/, '')} (split ${label})`;
+      switch (chain.elementType) {
+        case 'IfcSlab':
+          return state.addSlab(modelId, storeyExpressId, {
+            Profile: 'polygon',
+            Position: [0, 0, 0],
+            OuterCurve: outline,
+            Thickness: geo.thickness,
+            Name: name,
+          });
+        case 'IfcRoof':
+          return state.addRoof(modelId, storeyExpressId, {
+            Profile: 'polygon',
+            Position: [0, 0, 0],
+            OuterCurve: outline,
+            Thickness: geo.thickness,
+            Name: name,
+          });
+        case 'IfcPlate':
+          return state.addPlate(modelId, storeyExpressId, {
+            Profile: 'polygon',
+            Position: [0, 0, 0],
+            OuterCurve: outline,
+            Thickness: geo.thickness,
+            Name: name,
+          });
+        case 'IfcSpace':
+          return state.addSpace(modelId, storeyExpressId, {
+            Profile: 'polygon',
+            Position: [0, 0, 0],
+            OuterCurve: outline,
+            Height: geo.thickness,
+            Name: name,
+          });
+        default: {
+          // Exhaustive switch — compile error here if a new
+          // SlabLikeType lands without a builder dispatch.
+          const exhaust: never = chain.elementType;
+          throw new Error(`Unhandled slab-like type: ${String(exhaust)}`);
+        }
+      }
+    };
+
+    const left = buildHalf(geo.leftFootprint, 'L');
+    if ('error' in left) {
+      return { ok: false, reason: `Couldn't build left half: ${left.error}` };
+    }
+    const right = buildHalf(geo.rightFootprint, 'R');
+    if ('error' in right) {
+      // Roll back the left half via the no-history helper — same
+      // reasoning as the wall-split rollback above.
+      rollbackOverlayCreate(get, set, modelId, left.expressId);
+      return { ok: false, reason: `Couldn't build right half: ${right.error}` };
+    }
+
+    cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
+
+    const removed = state.removeEntity(modelId, expressId);
+    if (!removed) {
+      return {
+        ok: false,
+        reason: 'Slab was unexpectedly removed before split completed',
+      };
+    }
+
+    // Hide source mesh so the user sees the cut take effect; the
+    // two new halves already have meshes via addSlab's
+    // appendGeometryBatch. The source's mesh is dropped from GPU
+    // buffers + bbox map via setPendingMeshRemovals — the
+    // streaming hook drains it on the next frame.
+    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
+    state.setPendingMeshRemovals(new Set([sourceGlobalId]));
+
+    const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
+    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
+    return {
+      ok: true,
+      left: { expressId: left.expressId, globalId: leftGlobalId },
+      right: { expressId: right.expressId, globalId: rightGlobalId },
+    };
+  },
+
   removeEntity: (modelId, expressId) => {
     const view = get().mutationViews.get(modelId);
     if (!view) return false;
@@ -933,6 +2001,19 @@ export const createMutationSlice: StateCreator<
     const overlayRecord = view.getNewEntity(expressId);
     const removed = editor.removeEntity(expressId);
     if (!removed) return false;
+
+    // Hide the entity's mesh — the IFC tombstone is what governs
+    // exports; the renderer just needs the visual gone. We use
+    // hideEntities (visibility set) rather than the harder
+    // pendingMeshRemovals path so the undo handler can flip
+    // visibility back without needing to re-materialise GPU
+    // buffers (the mesh data stays in memory + buckets).
+    //
+    // The split-source removal path also flows through here; on
+    // undo of a split, the source's mesh comes back via
+    // `showEntities` in the DELETE_ENTITY undo branch.
+    const globalIdForMesh = toGlobalIdFromModels(get().models, modelId, expressId);
+    get().hideEntities([globalIdForMesh]);
 
     set((state) => {
       const newRemoved = new Map(state.removedNewEntities);
@@ -1275,6 +2356,13 @@ export const createMutationSlice: StateCreator<
     if (undoStack.length === 0) return;
 
     const mutation = undoStack[undoStack.length - 1];
+    // Batch awareness: if the mutation we're about to undo was
+    // tagged as part of a batch (via setPositionalAttributesBatch),
+    // we want one Ctrl+Z to undo every mutation in that batch.
+    // The tail-recurse at the end of this action handles that —
+    // capture the batchId here, undo this single mutation, then
+    // if the next top still shares the batchId, recurse.
+    const batchId = state.mutationBatchTags.get(mutation.id);
 
     // Handle georef mutations directly on georefMutations map
     if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName?.startsWith('georef.')) {
@@ -1381,6 +2469,18 @@ export const createMutationSlice: StateCreator<
           view.setPositionalAttribute(mutation.entityId, index, mutation.oldValue as IfcAttributeValue, true);
         }
       }
+      // If this mutation carried a mesh translation (gizmo / numeric
+      // move), reverse it so the rendered mesh follows the undo.
+      const meshMove = get().mutationMeshTranslations.get(mutation.id);
+      if (meshMove) {
+        get().setPendingMeshTranslations(
+          new Map([[meshMove.globalId, [
+            -meshMove.rendererDelta[0],
+            -meshMove.rendererDelta[1],
+            -meshMove.rendererDelta[2],
+          ]]]),
+        );
+      }
     } else if (mutation.type === 'CREATE_ENTITY') {
       // Undo of a create: stash the NewEntity payload so a subsequent redo
       // can restore it. Without this, redo finds an empty stash and becomes
@@ -1433,6 +2533,20 @@ export const createMutationSlice: StateCreator<
         mutationVersion: s.mutationVersion + 1,
       };
     });
+
+    // Tail-recurse for the rest of the batch (if any). Reading
+    // the stack via get() picks up the just-set state. Stops as
+    // soon as the next top mutation either doesn't exist or
+    // belongs to a different batch.
+    if (batchId !== undefined) {
+      const nextStack = get().undoStacks.get(modelId) || [];
+      if (nextStack.length > 0) {
+        const nextBatchId = get().mutationBatchTags.get(nextStack[nextStack.length - 1].id);
+        if (nextBatchId === batchId) {
+          get().undo(modelId);
+        }
+      }
+    }
   },
 
   redo: (modelId) => {
@@ -1441,6 +2555,7 @@ export const createMutationSlice: StateCreator<
     if (redoStack.length === 0) return;
 
     const mutation = redoStack[redoStack.length - 1];
+    const batchId = state.mutationBatchTags.get(mutation.id);
 
     // Handle georef mutations directly
     if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName?.startsWith('georef.')) {
@@ -1524,6 +2639,14 @@ export const createMutationSlice: StateCreator<
       if (index !== null && mutation.newValue !== undefined) {
         view.setPositionalAttribute(mutation.entityId, index, mutation.newValue as IfcAttributeValue, true);
       }
+      // Replay the mesh translation forward so the rendered mesh
+      // follows the redo — mirror of the undo reversal above.
+      const meshMove = get().mutationMeshTranslations.get(mutation.id);
+      if (meshMove) {
+        get().setPendingMeshTranslations(
+          new Map([[meshMove.globalId, meshMove.rendererDelta]]),
+        );
+      }
     } else if (mutation.type === 'CREATE_ENTITY') {
       // Redo of a create: replay from the stashed NewEntity. Symmetrical to
       // DELETE_ENTITY's undo — same map, same key.
@@ -1577,6 +2700,20 @@ export const createMutationSlice: StateCreator<
         mutationVersion: s.mutationVersion + 1,
       };
     });
+
+    // Tail-recurse for the rest of the batch — mirror of the
+    // undo handler's batch tail. Stops as soon as the next top
+    // of the redo stack either doesn't exist or belongs to a
+    // different batch.
+    if (batchId !== undefined) {
+      const nextStack = get().redoStacks.get(modelId) || [];
+      if (nextStack.length > 0) {
+        const nextBatchId = get().mutationBatchTags.get(nextStack[nextStack.length - 1].id);
+        if (nextBatchId === batchId) {
+          get().redo(modelId);
+        }
+      }
+    }
   },
 
   canUndo: (modelId) => {

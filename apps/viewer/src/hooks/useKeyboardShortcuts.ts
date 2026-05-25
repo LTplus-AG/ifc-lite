@@ -48,6 +48,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const hideEntities = useViewerStore((s) => s.hideEntities);
   const toggleTheme = useViewerStore((s) => s.toggleTheme);
   const toggleBasketPresentationVisible = useViewerStore((s) => s.toggleBasketPresentationVisible);
+  const toggleEditEnabled = useViewerStore((s) => s.toggleEditEnabled);
 
   // Measure tool specific actions
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
@@ -71,6 +72,19 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     const shift = e.shiftKey;
     const key = e.key.toLowerCase();
 
+    // Undo / Redo — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, scoped to the
+    // active model's mutation stack. Always available regardless
+    // of edit mode so the user can recover from any change.
+    if (key === 'z' && ctrl) {
+      e.preventDefault();
+      const state = useViewerStore.getState();
+      const activeModelId = state.activeModelId;
+      if (!activeModelId) return;
+      if (shift) state.redo(activeModelId);
+      else state.undo(activeModelId);
+      return;
+    }
+
     // Navigation tools
     if (key === 'v' && !ctrl && !shift) {
       e.preventDefault();
@@ -91,6 +105,60 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     if (key === 'p' && !ctrl && !shift) {
       e.preventDefault();
       setActiveTool('annotate');
+    }
+
+    // Global edit-mode pill — unlocks inline property/attribute
+    // editors, add-element draw tools, georeference placement, and
+    // future geometry manipulators. Toggle from anywhere outside an
+    // input field.
+    if (key === 'e' && !ctrl && !shift) {
+      e.preventDefault();
+      toggleEditEnabled();
+    }
+
+    // K = knife / Split. Operates only on the currently selected
+    // entity — there's no free-roam "hover anything and split" mode
+    // any more. If there's no selection, the keypress is a no-op
+    // (a toast would be noisy; the user can see no entity is
+    // selected). The action also pre-arms the splitTarget so the
+    // overlay knows what to draw the moment Split engages.
+    if (key === 'k' && !ctrl && !shift) {
+      e.preventDefault();
+      const state = useViewerStore.getState();
+      if (state.activeTool === 'split') {
+        state.clearSplitHover();
+        state.setActiveTool('select');
+        return;
+      }
+      const sel = state.selectedEntity;
+      if (!sel) return;
+      state.setSplitTarget(sel.modelId, sel.expressId);
+      state.setActiveTool('split');
+    }
+
+    // R / Shift+R = rotate selected entity ±15° about the storey-up
+    // Z axis. Only fires while edit mode is on and a single entity
+    // is selected. The rotateEntity action handles the placement
+    // chain walk + undo registration.
+    if (key === 'r' && !ctrl) {
+      const state = useViewerStore.getState();
+      if (state.editEnabled && state.selectedEntity) {
+        e.preventDefault();
+        const deltaDeg = shift ? -15 : 15;
+        const result = state.rotateEntity(
+          state.selectedEntity.modelId,
+          state.selectedEntity.expressId,
+          (deltaDeg * Math.PI) / 180,
+        );
+        if (!result.ok) {
+          // Surface the reason via the existing toast helper rather
+          // than a console warning — the user just pressed a key and
+          // deserves immediate feedback.
+          void import('@/components/ui/toast').then((m) => {
+            m.toast.error(`Couldn't rotate: ${result.reason}`);
+          });
+        }
+      }
     }
 
     // Basket controls (automatic context source)
@@ -152,6 +220,18 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     if (key === 'a' && !ctrl && !shift) {
       e.preventDefault();
       resetVisibilityForHomeFromStore();
+    }
+
+    // Split tool — Esc exits Split and returns to Select. We catch
+    // it here before the global Esc handler so the user gets a
+    // gentle exit (clear hover, swap tool) rather than the global
+    // "clear all selection + visibility" cascade.
+    if (activeTool === 'split' && key === 'escape') {
+      e.preventDefault();
+      const state = useViewerStore.getState();
+      state.clearSplitHover();
+      state.setActiveTool('select');
+      return;
     }
 
     // Add-element tool shortcuts — Enter commits an in-progress slab
@@ -250,6 +330,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     cancelMeasurement,
     clearMeasurements,
     toggleSnap,
+    toggleEditEnabled,
   ]);
 
   useEffect(() => {
@@ -264,11 +345,16 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
 
 // Export shortcut definitions for UI display
 export const KEYBOARD_SHORTCUTS = [
+  { key: 'Ctrl+Z / Cmd+Z', description: 'Undo last authoring change for the active model', category: 'Editing' },
+  { key: 'Ctrl+Shift+Z / Cmd+Shift+Z', description: 'Redo last undone change', category: 'Editing' },
   { key: 'V', description: 'Select tool', category: 'Tools' },
   { key: 'C', description: 'Walk mode', category: 'Tools' },
   { key: 'M', description: 'Measure tool', category: 'Tools' },
   { key: 'P', description: 'Annotate tool — drop a pin with a note', category: 'Tools' },
   { key: 'X', description: 'Section tool', category: 'Tools' },
+  { key: 'E', description: 'Toggle edit mode (unlocks property + geometry edits)', category: 'Tools' },
+  { key: 'K', description: 'Split the selected entity (requires a selection)', category: 'Tools' },
+  { key: 'R / Shift+R', description: 'Rotate selected entity ±15° about Z (requires edit mode)', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },
   { key: 'Ctrl+C', description: 'Clear measurements (Measure tool)', category: 'Tools' },

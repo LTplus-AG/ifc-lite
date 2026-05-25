@@ -90,6 +90,36 @@ interface GLTFDocument {
 export interface GLTFExportOptions {
     useInstancing?: boolean;
     includeMetadata?: boolean;
+    /**
+     * Which IFC surface-style colour to bake into the glTF material:
+     *   - `'rendering'` (default): the apparent rendered colour
+     *     (`IfcSurfaceStyleRendering.DiffuseColour` when authored, falling
+     *     back to `SurfaceColour`). Matches what most IFC viewers display
+     *     and what authoring tools intend as the visible appearance.
+     *   - `'shading'`: the underlying `SurfaceColour`. Only differs when
+     *     the file authored a distinct DiffuseColour — otherwise this is
+     *     identical to `'rendering'`.
+     */
+    colorSource?: 'rendering' | 'shading';
+    /**
+     * When true, omit meshes whose `expressId` is hidden / not in the
+     * isolated set. Mirrors the API used by `StepExporter` so callers can
+     * pass the same store-derived sets to either exporter.
+     */
+    visibleOnly?: boolean;
+    /** Global express IDs explicitly hidden in the viewer. Skipped when
+     *  `visibleOnly` is true. Ignored otherwise. */
+    hiddenEntityIds?: Set<number>;
+    /** Global express IDs in the active isolation set (allowlist). When
+     *  non-null and non-empty, only meshes in this set are emitted. */
+    isolatedEntityIds?: Set<number> | null;
+    /** IFC class names whose visibility toggle is currently OFF in the
+     *  viewer (e.g. `"IfcOpeningElement"`, `"IfcSpace"`). Meshes whose
+     *  `ifcType` is in this set are skipped when `visibleOnly` is true,
+     *  matching the viewport's class-level filter — without it,
+     *  visible-only exports would still ship openings the user never
+     *  rendered. */
+    hiddenIfcTypes?: Set<string>;
 }
 
 export class GLTFExporter {
@@ -120,6 +150,29 @@ export class GLTFExporter {
 
     private buildGLTF(options: GLTFExportOptions): { json: GLTFDocument; buffers: Uint8Array[] } {
         const meshes = this.geometryResult.meshes;
+        const colorSource: 'rendering' | 'shading' = options.colorSource ?? 'rendering';
+        const visibleOnly = options.visibleOnly === true;
+        const hidden = options.hiddenEntityIds ?? null;
+        const isolated = options.isolatedEntityIds ?? null;
+        const hasIsolation = isolated !== null && isolated.size > 0;
+        const hiddenTypes = options.hiddenIfcTypes ?? null;
+
+        const isMeshVisible = (m: MeshData): boolean => {
+            if (!visibleOnly) return true;
+            if (hiddenTypes && m.ifcType && hiddenTypes.has(m.ifcType)) return false;
+            if (hasIsolation && !isolated!.has(m.expressId)) return false;
+            if (hidden && hidden.has(m.expressId)) return false;
+            return true;
+        };
+
+        const pickColor = (
+            m: MeshData,
+        ): [number, number, number, number] => {
+            if (colorSource === 'shading') {
+                return m.shadingColor ?? m.color;
+            }
+            return m.color;
+        };
 
         const gltf: GLTFDocument = {
             asset: {
@@ -190,6 +243,7 @@ export class GLTFExporter {
 
         for (let i = 0; i < meshes.length; i++) {
             const mesh = meshes[i];
+            if (!isMeshVisible(mesh)) continue;
             const mp = mesh.positions;
             const mn = mesh.normals;
             const mi = mesh.indices;
@@ -208,6 +262,7 @@ export class GLTFExporter {
                 if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
             }
 
+            const effectiveColor = pickColor(mesh);
             meshMetas.push({
                 meshIndex: i,
                 posCount: mp.length,
@@ -217,7 +272,7 @@ export class GLTFExporter {
                 normByteOffset: totalNormFloats * 4,
                 idxByteOffset: totalIdxInts * 4,
                 bounds: { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
-                materialIdx: mesh.color ? getOrCreateMaterial(mesh.color) : undefined,
+                materialIdx: effectiveColor ? getOrCreateMaterial(effectiveColor) : undefined,
             });
 
             totalPosFloats += mp.length;

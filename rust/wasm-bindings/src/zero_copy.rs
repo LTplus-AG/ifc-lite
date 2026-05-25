@@ -17,7 +17,13 @@ pub struct MeshDataJs {
     positions: Vec<f32>,
     normals: Vec<f32>,
     indices: Vec<u32>,
+    /// Apparent rendering colour: IfcSurfaceStyleRendering.DiffuseColour
+    /// when authored, otherwise the SurfaceColour.
     color: [f32; 4], // RGBA
+    /// SurfaceColour, populated only when the file authored a distinct
+    /// DiffuseColour (so the two would differ). Consumed by the GLB
+    /// exporter's "Shading" colour-source option; renderers ignore it.
+    shading_color: Option<[f32; 4]>,
 }
 
 #[wasm_bindgen]
@@ -56,6 +62,14 @@ impl MeshDataJs {
     #[wasm_bindgen(getter)]
     pub fn color(&self) -> Vec<f32> {
         self.color.to_vec()
+    }
+
+    /// Optional SurfaceColour for the "Shading" GLB-export choice — only
+    /// present when the file authored a distinct DiffuseColour. JS sees
+    /// `undefined` when absent (most files).
+    #[wasm_bindgen(getter, js_name = shadingColor)]
+    pub fn shading_color(&self) -> Option<Vec<f32>> {
+        self.shading_color.map(|c| c.to_vec())
     }
 
     /// Get vertex count
@@ -109,7 +123,15 @@ impl MeshDataJs {
             normals: mesh.normals,
             indices: mesh.indices,
             color,
+            shading_color: None,
         }
+    }
+
+    /// Attach an optional SurfaceColour for the GLB exporter's "Shading"
+    /// colour source. Callers that have a `geometry_shading_styles` entry
+    /// for the mesh's source geometry id should invoke this after `new`.
+    pub fn set_shading_color(&mut self, shading: Option<[f32; 4]>) {
+        self.shading_color = shading;
     }
 }
 
@@ -145,6 +167,7 @@ impl MeshCollection {
             normals: m.normals.clone(),
             indices: m.indices.clone(),
             color: m.color,
+            shading_color: m.shading_color,
         })
     }
 
@@ -298,6 +321,7 @@ impl Clone for MeshCollection {
                     normals: m.normals.clone(),
                     indices: m.indices.clone(),
                     color: m.color,
+                    shading_color: m.shading_color,
                 })
                 .collect(),
             rtc_offset_x: self.rtc_offset_x,

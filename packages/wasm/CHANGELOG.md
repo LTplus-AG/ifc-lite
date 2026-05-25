@@ -1,5 +1,147 @@
 # @ifc-lite/wasm
 
+## 1.17.0
+
+### Minor Changes
+
+- [#655](https://github.com/LTplus-AG/ifc-lite/pull/655) [`a6637a4`](https://github.com/LTplus-AG/ifc-lite/commit/a6637a41d948ec17841a0ac62586f627d0bb21fa) Thanks [@louistrue](https://github.com/louistrue)! - CSG primitive support + BSP CSG quality overhaul (issue [#780](https://github.com/LTplus-AG/ifc-lite/issues/780)):
+
+  - **Renders the buildingSMART IFC 4.3 bath reference (`bath_csg_solid.ifc`)
+    and similar `IfcCsgSolid` geometry.** Three new entity processors:
+
+    - `IfcBlock` — axis-aligned box CSG primitive.
+    - `IfcCsgSolid` — pass-through that unwraps `TreeRootExpression` to the
+      matching `IfcBooleanResult` or `IfcCsgPrimitive3D` processor.
+    - `IfcRoundedRectangleProfileDef` — rectangle with fillet-arc corners.
+      These appear in IFC 4.3 reference content and in CSG-style authored
+      models that previously emitted no geometry.
+
+  - **BSP CSG pipeline overhaul.** Three coupled fixes that drop the bath
+    reference from 189 to 59 triangles with zero sliver artifacts on the
+    WASM (Manifold-free) build:
+
+    1. **Coplanar pre-merge** in `ClippingProcessor::mesh_to_polygons`
+       reassembles each input mesh's per-plane triangle clusters into
+       convex N-gon polygons before BSP runs. Stops BSP from splitting
+       host face diagonals at every extended cutter wall plane (the
+       "spike triangle" defect on the bath).
+    2. **Post-BSP coplanar consolidation** (`consolidate_coplanar`)
+       re-unions per-plane fragments via the same `i_overlay` 2D union
+       the rest of the codebase already uses for `bool2d::union_contours`,
+       then earcuts the result with hole support — so annular faces (bath
+       rim around the cavity opening) come out clean.
+    3. **Collinear-vertex simplification** strips phantom vertices that
+       BSP's extended planes insert on host outline edges. Without this,
+       earcut emits one sliver triangle per phantom; with it, host faces
+       untouched by the cutter collapse back to their original quads.
+
+  - **Solid-solid `IfcBooleanResult.DIFFERENCE` now runs on the WASM
+    build.** Previously gated to `manifold-csg` only and silently returned
+    the un-cut host on the wasm32 target. The legacy BSP path already had
+    its own `OperandTooLarge` guardrail (128-polygon cap with
+    `BoolFailure` logging), so the conservative skip was unnecessary —
+    small solid-solid cuts (e.g. CSG primitives) now subtract correctly.
+
+  - **Dead code removal in `rust/geometry/src/csg.rs` (~470 lines).**
+
+    - `remove_degenerate_triangles` — was nuking the bath cavity floor
+      because its "strictly inside host bounds AND small ⇒ artifact"
+      heuristic is structurally wrong for closed cavities. Replaced by
+      the new consolidation pipeline that handles the same sliver class
+      without the false positives.
+    - `extract_opening_profile` — never called anywhere.
+    - `clip_mesh_with_box` — deprecated wrapper around `subtract_box`, no
+      callers.
+    - `remove_triangles_inside_bounds` — never wired up, kept "for future
+      rectangular openings" since 2024.
+
+  - **Cross-fixture CSG quality regression** (`csg_quality_regression.rs`).
+    Pins zero spike triangles (aspect ratio > 50:1) on AC20-FZK-Haus
+    gable walls ([#60012](https://github.com/LTplus-AG/ifc-lite/issues/60012) / [#67828](https://github.com/LTplus-AG/ifc-lite/issues/67828), chained polygonal-bounded half-space
+    clips) and on the bath fixture. Three pre-existing spike sources in
+    the rectangular-opening path (duplex window [#6426](https://github.com/LTplus-AG/ifc-lite/issues/6426), advanced_model
+    walls [#553010](https://github.com/LTplus-AG/ifc-lite/issues/553010) / [#612315](https://github.com/LTplus-AG/ifc-lite/issues/612315)) are pinned `#[ignore]`d with their current
+    spike counts so they become tightening gates once that separate path
+    is cleaned up.
+
+  - **Stale `bool_failure_test::*_records_operand_too_large` tests
+    updated.** They depended on 36 stacked-at-same-position box triangles
+    exceeding a 24-polygon cap. The cap was raised to 128 in PR [#648](https://github.com/LTplus-AG/ifc-lite/issues/648) and
+    the new coplanar merge collapses stacked-coincident boxes anyway;
+    replaced with 30 distinct-position boxes (180 face polygons) so the
+    cap-rejection path is genuinely exercised.
+
+### Patch Changes
+
+- [#795](https://github.com/LTplus-AG/ifc-lite/pull/795) [`bb3123a`](https://github.com/LTplus-AG/ifc-lite/commit/bb3123adcd751f4c27b4457156e2d0bae3b40e56) Thanks [@louistrue](https://github.com/louistrue)! - Fix walls sticking through curved roof slabs on AC20-Institute-Var-2
+  (issue [#583](https://github.com/LTplus-AG/ifc-lite/issues/583), PR [#789](https://github.com/LTplus-AG/ifc-lite/issues/789)). The chained-polygonal-bounded-half-space code
+  path used to mesh-merge every cutter in an `IfcBooleanClippingResult`
+  chain into one combined cutter before running a single BSP CSG
+  subtract. When the chain contained overlapping or duplicate prisms
+  (Wand-010 has four chained cutters including an exact duplicate at
+  `x = [17, 25]`), the merge of two closed solids occupying the same
+  volume was non-manifold by construction and BSP produced sliver
+  artefacts that left ~0.4-2.7 m of wall sticking through the roof.
+
+  The fix follows the web-ifc model: drop the batching, let chains fall
+  through the standard recursive single-cutter path. Each per-step
+  cutter is a single closed manifold prism, structurally eliminating
+  the non-manifold-cutter root cause. Two long-standing
+  `IfcPolygonalBoundedHalfSpace` issues that the batched path was
+  masking were also fixed: the prism now extrudes along the cutter
+  Position's `+Z` axis (per the IFC 4.3 spec, not the plane's material-
+  side direction), and the polygon winding is reversed against
+  `Position.Z` to match the cap reversal in `build_tilted_prism_mesh`.
+
+- [#795](https://github.com/LTplus-AG/ifc-lite/pull/795) [`bb3123a`](https://github.com/LTplus-AG/ifc-lite/commit/bb3123adcd751f4c27b4457156e2d0bae3b40e56) Thanks [@louistrue](https://github.com/louistrue)! - Fix the broken door-handle silhouette on Revit-exported `IfcDoor`
+  fixtures (issue [#674](https://github.com/LTplus-AG/ifc-lite/issues/674), PR [#793](https://github.com/LTplus-AG/ifc-lite/issues/793)). `process_surface_of_revolution_face`
+  collapsed each profile point's radial vector to
+  `radius = sqrt(rx² + ry²)`, discarding the sign of the projection
+  onto `axis_x`. Profiles that sat entirely on the `-axis_x` half of
+  the axis frame — for example the Revit door-handle bulb, an
+  `IfcCircle` arc whose centre is offset 15 mm from the revolution
+  axis on the bar side — got mirrored to the `+axis_x` ray and rendered
+  180° away from where they should sit, leaving a visible gap between
+  the lever bar and the rosette.
+
+  The sweep now rotates the profile's actual `(rx, ry)` 2D radial
+  vector through the sweep angle, so profiles offset to either side of
+  the axis stay on their side. Triangle counts are unchanged
+  (repositioning, not re-sampling).
+
+- [#655](https://github.com/LTplus-AG/ifc-lite/pull/655) [`a6637a4`](https://github.com/LTplus-AG/ifc-lite/commit/a6637a41d948ec17841a0ac62586f627d0bb21fa) Thanks [@louistrue](https://github.com/louistrue)! - Geometry correctness fixes from the calibration-report sweep (PR [#655](https://github.com/LTplus-AG/ifc-lite/issues/655)):
+
+  - **W410x60 / wide-flange profile area is now correct to within arc-sampling
+    noise.** Revit authors I-beams as `IfcArbitraryClosedProfileDef` whose
+    composite curve mixes long polyline edges with short fillet-arc edges;
+    the over-tessellated-curve detector was misclassifying the mix as a smooth
+    curve and RDP was slicing across the polyline corners, adding ~4.3 % to
+    the swept volume. Now gated on a longest-edge/diagonal ratio so mixed-
+    geometry profiles bypass simplification entirely.
+
+  - **Walls authored with `IfcExtrudedAreaSolid` profiles whose aspect ratio
+    exceeds 100:1 no longer emit as hollow tubes.** The cap-skip threshold
+    caught normal residential interior walls (115 mm × 12 m = ratio 103),
+    dropping their top/bottom faces. Raised to 10000:1 — only genuinely
+    pathological profiles trigger the skip now.
+
+  - **Opening extension no longer wipes the wall when the opening's
+    extrusion axis maps to the wall's long axis.** Two new gates skip the
+    extension heuristic when (a) the opening already spans the wall in the
+    extrusion direction (advanced_model [#553010](https://github.com/LTplus-AG/ifc-lite/issues/553010), a 300 mm horizontal slot),
+    and (b) the wall extends further along the extrusion direction than the
+    opening's longest dimension (advanced_model [#612315](https://github.com/LTplus-AG/ifc-lite/issues/612315), a 115 mm column
+    whose Position transform rotates +Z onto the wall's 11.8 m long axis).
+    Six previously-failing calibration walls now produce correct cuts.
+
+  - **New `Mesh::welded()` and `Mesh::welded_by_position()` APIs** on the
+    Rust mesh type for opt-in vertex deduplication. Default emission stays
+    unwelded triangle soup so GPU consumers keep per-face flat normals;
+    call sites that need a manifold mesh (volume queries, CSG, watertight
+    checks) can opt in. Welding the duplex M_Fixed window drops vertex
+    count from 180 → 48 (3.75×) and pushes manifold-edge fraction from
+    32 % to 95 %. JS-side exposure is a separate follow-up.
+
 ## 1.16.10
 
 ### Patch Changes

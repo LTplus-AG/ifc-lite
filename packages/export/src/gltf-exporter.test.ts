@@ -155,6 +155,169 @@ describe('GLTFExporter', () => {
       }
     });
 
+    it('should filter hidden meshes when visibleOnly is set', () => {
+      const geometryResult = createTestGeometryResult(4);
+      const exporter = new GLTFExporter(geometryResult);
+      const hiddenEntityIds = new Set<number>([2, 3]); // hide meshes 2 and 3
+
+      const { json } = exporter.exportGLTF({
+        visibleOnly: true,
+        hiddenEntityIds,
+      });
+      const gltf = JSON.parse(json);
+
+      // Only meshes 1 and 4 should remain
+      expect(gltf.nodes.length).toBe(2);
+    });
+
+    it('should restrict export to isolated set when provided', () => {
+      const geometryResult = createTestGeometryResult(4);
+      const exporter = new GLTFExporter(geometryResult);
+      const isolatedEntityIds = new Set<number>([1, 3]); // only keep 1 and 3
+
+      const { json } = exporter.exportGLTF({
+        visibleOnly: true,
+        isolatedEntityIds,
+      });
+      const gltf = JSON.parse(json);
+
+      expect(gltf.nodes.length).toBe(2);
+    });
+
+    it('should ignore filters when visibleOnly is false', () => {
+      const geometryResult = createTestGeometryResult(3);
+      const exporter = new GLTFExporter(geometryResult);
+      const hiddenEntityIds = new Set<number>([1, 2, 3]);
+
+      const { json } = exporter.exportGLTF({
+        visibleOnly: false,
+        hiddenEntityIds,
+      });
+      const gltf = JSON.parse(json);
+
+      // visibleOnly off → hidden set has no effect
+      expect(gltf.nodes.length).toBe(3);
+    });
+
+    // Regression for the door-fixture report: IfcOpeningElement was being
+    // exported even with visible-only on because the dialog only passed the
+    // per-entity hidden set, missing the viewer's class-level typeVisibility
+    // (openings/spaces/site are off-by-default but live in a separate flag).
+    it('should drop meshes whose ifcType is in hiddenIfcTypes on visibleOnly export', () => {
+      const wall = { ...createTestMesh(1), ifcType: 'IfcWall' };
+      const door = { ...createTestMesh(2), ifcType: 'IfcDoor' };
+      const opening = { ...createTestMesh(3), ifcType: 'IfcOpeningElement' };
+      const geometryResult: GeometryResult = {
+        meshes: [wall, door, opening],
+        totalVertices: 9,
+        totalTriangles: 3,
+        coordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 },
+          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          hasLargeCoordinates: false,
+        },
+      };
+      const exporter = new GLTFExporter(geometryResult);
+
+      const { json } = exporter.exportGLTF({
+        visibleOnly: true,
+        includeMetadata: true,
+        hiddenIfcTypes: new Set(['IfcOpeningElement', 'IfcSpace']),
+      });
+      const gltf = JSON.parse(json);
+
+      // Wall + door survive; opening dropped.
+      expect(gltf.nodes.length).toBe(2);
+      const exportedIds = (gltf.nodes as Array<{ extras?: { expressId?: number } }>).map(
+        (n) => n.extras?.expressId,
+      );
+      expect(exportedIds).toContain(1);
+      expect(exportedIds).toContain(2);
+      expect(exportedIds).not.toContain(3);
+    });
+
+    it('hiddenIfcTypes only applies when visibleOnly is true', () => {
+      const opening = { ...createTestMesh(1), ifcType: 'IfcOpeningElement' };
+      const geometryResult: GeometryResult = {
+        meshes: [opening],
+        totalVertices: 3,
+        totalTriangles: 1,
+        coordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 },
+          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          hasLargeCoordinates: false,
+        },
+      };
+      const exporter = new GLTFExporter(geometryResult);
+
+      const { json } = exporter.exportGLTF({
+        visibleOnly: false,
+        hiddenIfcTypes: new Set(['IfcOpeningElement']),
+      });
+      const gltf = JSON.parse(json);
+
+      // Full export keeps the opening — class filter is gated on visibleOnly.
+      expect(gltf.nodes.length).toBe(1);
+    });
+
+    it('should pick shadingColor when colorSource is "shading"', () => {
+      const mesh: MeshData = {
+        ...createTestMesh(1),
+        color: [0.8, 0.2, 0.2, 1.0],
+        shadingColor: [0.1, 0.1, 0.1, 1.0],
+      };
+      const geometryResult: GeometryResult = {
+        meshes: [mesh],
+        totalVertices: 3,
+        totalTriangles: 1,
+        coordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 },
+          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          hasLargeCoordinates: false,
+        },
+      };
+      const exporter = new GLTFExporter(geometryResult);
+
+      const { json } = exporter.exportGLTF({ colorSource: 'shading' });
+      const gltf = JSON.parse(json);
+      const baseColor = gltf.materials[0].pbrMetallicRoughness.baseColorFactor;
+
+      // Shading colour wins
+      expect(baseColor[0]).toBeCloseTo(0.1);
+      expect(baseColor[1]).toBeCloseTo(0.1);
+    });
+
+    it('should fall back to color when colorSource is "shading" but mesh has no shadingColor', () => {
+      const mesh: MeshData = {
+        ...createTestMesh(1),
+        color: [0.8, 0.2, 0.2, 1.0],
+        // no shadingColor — the common case
+      };
+      const geometryResult: GeometryResult = {
+        meshes: [mesh],
+        totalVertices: 3,
+        totalTriangles: 1,
+        coordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 },
+          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+          hasLargeCoordinates: false,
+        },
+      };
+      const exporter = new GLTFExporter(geometryResult);
+
+      const { json } = exporter.exportGLTF({ colorSource: 'shading' });
+      const gltf = JSON.parse(json);
+      const baseColor = gltf.materials[0].pbrMetallicRoughness.baseColorFactor;
+
+      // Rendering colour kept (fallback)
+      expect(baseColor[0]).toBeCloseTo(0.8);
+      expect(baseColor[1]).toBeCloseTo(0.2);
+    });
+
     it('should reject empty geometry with clear error', () => {
       const geometryResult: GeometryResult = {
         meshes: [],

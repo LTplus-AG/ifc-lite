@@ -33,7 +33,15 @@ const LIST_ONLY = args.includes('--list');
 const ONLY = args.filter((a) => !a.startsWith('--'));
 const parsedConcurrency = Number.parseInt(process.env.FIXTURE_CONCURRENCY || '6', 10);
 const CONCURRENCY = Number.isFinite(parsedConcurrency) && parsedConcurrency > 0 ? parsedConcurrency : 6;
-const RETRIES = 4;
+// 8 attempts with exp-backoff capped at 15s + jitter ≈ ~60s total wall-clock
+// per fixture worst-case. The previous 4-attempt / 4s-cap policy gave only
+// ~7.5s of retries and lost a Release run to a transient 502 burst from the
+// upstream mirror (release #502, run 26371185740). 4xx responses skip retries
+// since they aren't going to recover.
+const parsedRetries = Number.parseInt(process.env.FIXTURE_RETRIES || '8', 10);
+const RETRIES = Number.isFinite(parsedRetries) && parsedRetries > 0 ? parsedRetries : 8;
+const RETRY_BASE_MS = 500;
+const RETRY_MAX_MS = 15_000;
 
 if (!existsSync(MANIFEST_PATH)) {
   console.error(`error: ${MANIFEST_PATH} not found`);
@@ -124,10 +132,21 @@ async function fetchOne(entry) {
   const tmp = abs + '.part';
 
   let lastErr;
+  let permanent = false;
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     try {
       const res = await fetch(`${baseUrl}/${entry.sha256}`, { redirect: 'follow' });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      if (!res.ok) {
+        const err = new Error(`HTTP ${res.status} ${res.statusText}`);
+        // 4xx (except 408 Request Timeout and 429 Too Many Requests) is a
+        // permanent failure — retrying won't help and just delays the
+        // overall job. 5xx, network errors, and timeouts get the full
+        // retry budget.
+        if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+          permanent = true;
+        }
+        throw err;
+      }
       if (!res.body) throw new Error('empty response body');
       await pipeline(res.body, createWriteStream(tmp));
       const got = await sha256OfFile(tmp);
@@ -141,10 +160,16 @@ async function fetchOne(entry) {
       lastErr = err;
       // cleanup — best-effort; tmp may not exist if fetch failed before write
       try { unlinkSync(tmp); } catch { /* ignore */ }
-      if (attempt < RETRIES) {
-        const wait = 500 * 2 ** (attempt - 1);
-        await sleep(wait);
-      }
+      if (permanent || attempt >= RETRIES) break;
+      // Exponential backoff capped at RETRY_MAX_MS, plus full-range jitter
+      // (0..wait) so concurrent workers that all 502'd at the same instant
+      // don't synchronously hammer the upstream again on the next tick.
+      const exp = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** (attempt - 1));
+      const wait = Math.floor(exp * (0.5 + Math.random() * 0.5));
+      console.error(
+        `retry: ${entry.path}: ${err.message} (attempt ${attempt}/${RETRIES}, waiting ${wait}ms)`,
+      );
+      await sleep(wait);
     }
   }
   return { entry, action: 'error', error: lastErr };

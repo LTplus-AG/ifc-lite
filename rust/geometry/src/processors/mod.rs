@@ -22,6 +22,7 @@ mod advanced;
 mod advanced_face;
 mod boolean;
 mod brep;
+mod csg_primitive;
 mod extrusion;
 mod extrusion_tapered;
 mod helpers;
@@ -39,6 +40,7 @@ pub use boolean::BooleanClippingProcessor;
 pub use brep::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, ShellBasedSurfaceModelProcessor,
 };
+pub use csg_primitive::{BlockProcessor, CsgSolidProcessor};
 pub use extrusion::ExtrudedAreaSolidProcessor;
 pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use mapped::MappedItemProcessor;

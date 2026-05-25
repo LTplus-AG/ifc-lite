@@ -166,13 +166,29 @@ describe('effective georeferencing', () => {
       assert.strictEqual(getEffectiveHorizontalScale(2, 1, 1), 2);
     });
 
-    it('defaults Scale to 1 when undefined', () => {
-      // Project mm, map m, Scale undefined (treated as 1):
-      //   effective = 1 * 1 / 0.001 = 1000 → model would appear 1000x too large.
-      // This matches the IFC spec; users who omit Scale in such files have an
-      // inconsistent file. Issue #595 reports that this happens to "work"
-      // because the workaround offsets a different bug — fixed here.
-      assert.strictEqual(getEffectiveHorizontalScale(undefined, 1, 0.001), 1000);
+    it('treats Scale=undefined + unit mismatch as author-meant-Scale=1/lus (Bonsai heuristic)', () => {
+      // Project mm, map m, Scale undefined. Spec-strict effective = 1 * 1 /
+      // 0.001 = 1000 would inflate metre-converted geometry 1000x, pushing
+      // proj4 inputs miles outside the CRS valid range — the model lands at
+      // the projection's antipode (Hans's IXAS_KW 018_georeffed.ifc bug).
+      // Bonsai/IfcOpenShell/Revit exports routinely omit Scale; the author's
+      // intent is "geometry and offsets share the same metric unit", which
+      // corresponds to Scale=lengthUnitScale/mapUnitScale per spec → effective 1.
+      assert.strictEqual(getEffectiveHorizontalScale(undefined, 1, 0.001), 1);
+    });
+
+    it('treats Scale=1 + unit mismatch the same as Scale=undefined (heuristic also fires)', () => {
+      // Same situation as above, but the file wrote Scale=1 explicitly (also
+      // common — Revit's IFC exporter does this). The heuristic must catch
+      // both the missing-Scale and the wrong-Scale=1 cases.
+      assert.strictEqual(getEffectiveHorizontalScale(1, 1, 0.001), 1);
+    });
+
+    it('preserves spec-strict math when Scale ≠ 1 (the author opted in to a real scaling)', () => {
+      // Scale=2 with mm project + m map says "multiply X_local by 2 when
+      // adding to map offsets" — deliberate, not a unit-bridging mistake.
+      // Effective = (2 * 1) / 0.001 = 2000.
+      assert.strictEqual(getEffectiveHorizontalScale(2, 1, 0.001), 2000);
     });
 
     it('falls back to 1 for non-positive lengthUnitScale or mapUnitScale', () => {

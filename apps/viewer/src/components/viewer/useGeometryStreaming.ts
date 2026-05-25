@@ -30,13 +30,37 @@ export interface UseGeometryStreamingParams {
   /** Monotonic counter — triggers the streaming effect even when the geometry
    *  array reference is stable (incremental filtering reuses the same array). */
   geometryVersion?: number;
+  /**
+   * Monotonic counter that bumps whenever existing mesh data has been mutated
+   * in place (e.g. realignFederation rewrote vertex positions). Length-based
+   * triggers can't detect in-place mutation, so when this bumps we treat the
+   * incoming `geometry` as a fresh replacement and re-upload it to the GPU.
+   */
+  geometryContentVersion?: number;
   coordinateInfo?: CoordinateInfo;
   isStreaming: boolean;
   geometryBoundsRef: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }>;
   pendingMeshColorUpdates: Map<number, [number, number, number, number]> | null;
   pendingColorUpdates: Map<number, [number, number, number, number]> | null;
+  /**
+   * Authoring actions (split, delete) push globalIds here; the
+   * streaming loop drains them via `scene.removeMeshesForEntities`
+   * so tombstoned IFC entities disappear from the rendered scene
+   * (rather than just being hidden via `hiddenIds`). Cleared by
+   * the hook after the drain.
+   */
+  pendingMeshRemovals: Set<number> | null;
+  /**
+   * Per-entity translations queued by authoring actions (gizmo
+   * drag, numeric move). Drained by the streaming hook into
+   * `scene.translateMeshesForEntities` so the visible mesh
+   * follows the IFC coordinate mutation on the next frame.
+   */
+  pendingMeshTranslations: Map<number, [number, number, number]> | null;
   clearPendingMeshColorUpdates: () => void;
   clearPendingColorUpdates: () => void;
+  clearPendingMeshRemovals: () => void;
+  clearPendingMeshTranslations: () => void;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   releaseGeometryAfterFinalize?: boolean;
   onGeometryReleased?: () => void;
@@ -61,13 +85,18 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     isInitialized,
     geometry,
     geometryVersion,
+    geometryContentVersion,
     coordinateInfo,
     isStreaming,
     geometryBoundsRef,
     pendingMeshColorUpdates,
     pendingColorUpdates,
+    pendingMeshRemovals,
+    pendingMeshTranslations,
     clearPendingMeshColorUpdates,
     clearPendingColorUpdates,
+    clearPendingMeshRemovals,
+    clearPendingMeshTranslations,
     clearColorRef,
     releaseGeometryAfterFinalize = false,
     onGeometryReleased,
@@ -81,6 +110,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const finalBoundsRefittedRef = useRef(false);
   const cameraSnapshotRef = useRef<{ px: number; py: number; pz: number; tx: number; ty: number; tz: number } | null>(null);
   const prevIsStreamingRef = useRef(isStreaming);
+  const lastContentVersionRef = useRef(geometryContentVersion ?? 0);
   const queuePumpTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
   // Only activate the timer-based queue pump when the tab is background-throttled
@@ -142,6 +172,26 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     const scene = renderer.getScene();
     const currentLength = geometry.length;
+
+    // In-place mutation detection: when geometryContentVersion bumps, mesh
+    // positions/normals were rewritten in place (e.g. realignFederation).
+    // Length-based classification can't catch this, so force a full reset and
+    // re-process the geometry from scratch so the GPU re-uploads buffers.
+    const contentVersion = geometryContentVersion ?? 0;
+    if (contentVersion !== lastContentVersionRef.current) {
+      lastContentVersionRef.current = contentVersion;
+      if (lastGeometryLengthRef.current > 0) {
+        traceGeometrySync(`geometry content version bumped → ${contentVersion}; re-uploading buffers`);
+        scene.clear();
+        processedMeshIdsRef.current.clear();
+        lastGeometryLengthRef.current = 0;
+        lastGeometryRef.current = null;
+      }
+    }
+
+    // Read AFTER the optional reset above so the classification below reflects
+    // the post-reset state (otherwise an in-place update gets misclassified as
+    // "no change" and returns early at currentLength === lastLength).
     const lastLength = lastGeometryLengthRef.current;
 
     // ── Classify the change ──
@@ -276,7 +326,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
 
     renderer.requestRender();
-  }, [geometry, geometryVersion, coordinateInfo, isInitialized, isStreaming]);
+  }, [geometry, geometryVersion, geometryContentVersion, coordinateInfo, isInitialized, isStreaming]);
 
   useEffect(() => {
     return () => {
@@ -393,6 +443,55 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       clearPendingMeshColorUpdates();
     }
   }, [pendingMeshColorUpdates, isInitialized, clearPendingMeshColorUpdates]);
+
+  // ─── Mesh removals (split / delete) ───────────────────────────────────
+  // Authoring actions push globalIds into pendingMeshRemovals; drain
+  // here so the renderer actually drops them rather than leaving the
+  // mesh hidden via the visibility set. The bucket rebuild rides
+  // along on the existing rebuildPendingBatches path the streaming
+  // queue already exercises every frame.
+  useEffect(() => {
+    if (pendingMeshRemovals === null || !isInitialized) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const device = renderer.getGPUDevice();
+    const pipeline = renderer.getPipeline();
+    const scene = renderer.getScene();
+    if (!device || !pipeline) return;
+
+    if (pendingMeshRemovals.size > 0) {
+      scene.removeMeshesForEntities(pendingMeshRemovals);
+      if (scene.hasPendingBatches()) {
+        scene.rebuildPendingBatches(device, pipeline);
+      }
+      renderer.requestRender();
+    }
+    clearPendingMeshRemovals();
+  }, [pendingMeshRemovals, isInitialized, clearPendingMeshRemovals]);
+
+  // ─── Mesh translations (move / gizmo drag / numeric move) ────────────
+  // Drain the pending-translation map onto the renderer. Same
+  // rebuildPendingBatches ride-along; the in-place vertex update
+  // means a translate frame is one batch rebuild per affected
+  // bucket (typically one per entity).
+  useEffect(() => {
+    if (pendingMeshTranslations === null || !isInitialized) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const device = renderer.getGPUDevice();
+    const pipeline = renderer.getPipeline();
+    const scene = renderer.getScene();
+    if (!device || !pipeline) return;
+
+    if (pendingMeshTranslations.size > 0) {
+      scene.translateMeshesForEntities(pendingMeshTranslations);
+      if (scene.hasPendingBatches()) {
+        scene.rebuildPendingBatches(device, pipeline);
+      }
+      renderer.requestRender();
+    }
+    clearPendingMeshTranslations();
+  }, [pendingMeshTranslations, isInitialized, clearPendingMeshTranslations]);
 
   // ─── Lens color overlays ─────────────────────────────────────────────
   useEffect(() => {

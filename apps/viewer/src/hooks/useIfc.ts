@@ -81,6 +81,7 @@ export function useIfc() {
     addIfcxOverlays,
     findModelForEntity,
     resolveGlobalId,
+    realignFederation,
   } = useIfcFederation();
 
   // Memoize query to prevent recreation on every render
@@ -130,5 +131,8 @@ export function useIfc() {
     findModelForEntity,  // Find model by globalId
     resolveGlobalId,     // Convert globalId -> (modelId, originalExpressId)
     toGlobalId,          // Convert (modelId, expressId) -> globalId
+
+    // Federation alignment (cross-CRS reprojection + anchor management)
+    realignFederation,   // Re-bake every model's geometry against the current anchor
   };
 }

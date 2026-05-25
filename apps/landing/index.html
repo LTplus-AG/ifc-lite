@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>IFClite. Open, view, and work with IFC files. Right in the browser.</title>
+<meta name="description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option." />
+<meta name="keywords" content="IFC viewer, IFC file, BIM, openBIM, buildingSMART, IFC parser, web IFC, WebGPU, WASM, IFC.js alternative, BIM in browser" />
+<meta name="author" content="LTplus AG" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#0b0b0c" />
+<link rel="canonical" href="https://ifclite.dev/" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="IFClite" />
+<meta property="og:title" content="IFClite. Open, view, and work with IFC files in the browser" />
+<meta property="og:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option." />
+<meta property="og:url" content="https://ifclite.dev/" />
+<meta property="og:image" content="https://ifclite.dev/assets/logo.png" />
+<meta property="og:image:alt" content="IFClite logo" />
+<meta property="og:locale" content="en_US" />
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="IFClite. Open, view, and work with IFC files in the browser" />
+<meta name="twitter:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry." />
+<meta name="twitter:image" content="https://ifclite.dev/assets/logo.png" />
+
+<!-- Structured data. `url` points at this marketing site (ifclite.dev); the
+     live web app lives at https://www.ifclite.com/ and is referenced via
+     sameAs so search engines can link the two surfaces. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "IFClite",
+  "description": "Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option.",
+  "url": "https://ifclite.dev/",
+  "sameAs": [
+    "https://www.ifclite.com/",
+    "https://github.com/LTplus-AG/ifc-lite",
+    "https://www.npmjs.com/package/@ifc-lite/parser"
+  ],
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web",
+  "softwareRequirements": "Modern web browser with WebGPU support",
+  "author": {
+    "@type": "Organization",
+    "name": "LTplus AG",
+    "url": "https://lt.plus/"
+  },
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+}
+</script>
+<script>
+  // Set theme before first paint to avoid a flash.
+  (function () {
+    try {
+      var saved = localStorage.getItem('ifclite-theme');
+      var theme = saved
+        || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dusk' : 'paper');
+      document.documentElement.dataset.theme = theme;
+    } catch (e) {}
+  })();
+</script>
+<link rel="icon" type="image/png" href="assets/logo.png" />
+<link rel="apple-touch-icon" href="assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ─────────────────────────── NAV ─────────────────────────── -->
+<header class="nav" data-screen-label="00 Nav">
+  <div class="nav-inner">
+    <div class="brand">
+      <span class="brand-mark"><img src="assets/logo.png" alt="IFClite logo" /></span>
+      <span>IFClite</span>
+    </div>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#what">Features</a>
+      <a href="#code">API</a>
+      <a href="#setup">Setups</a>
+      <a href="#packages">Packages</a>
+      <a href="#perf">Performance</a>
+      <a href="#docs">Docs</a>
+    </nav>
+    <div class="nav-cta">
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle light / dark theme">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M19.4 4.6l-1.7 1.7M6.3 17.7l-1.7 1.7"/></svg>
+      </button>
+      <a class="btn btn-ghost" href="https://github.com/LTplus-AG/ifc-lite" target="_blank" rel="noopener">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .2a8 8 0 00-2.5 15.6c.4.1.5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.4.7.1-.6.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 014 0c1.5-1 2.2-.8 2.2-.8.5 1.1.2 1.9.1 2.1.5.5.8 1.2.8 2.1 0 3.1-1.8 3.8-3.6 4 .3.3.5.7.5 1.5v2.2c0 .2.1.5.5.4A8 8 0 008 .2z"/></svg>
+        Star on GitHub
+      </a>
+      <a class="btn btn-primary" href="https://www.ifclite.com/" target="_blank" rel="noopener">
+        Try live
+        <span class="arrow">→</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ─────────────────────────── HERO ─────────────────────────── -->
+<section class="hero" data-screen-label="01 Hero">
+  <div class="hero-grid" aria-hidden="true">
+    <svg class="hero-grid-svg hero-grid-base" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
+      <defs>
+        <pattern id="grid-rect" width="64" height="64" patternUnits="userSpaceOnUse">
+          <path d="M 64 0 L 64 64 M 0 64 L 64 64" stroke="currentColor" stroke-width="1" fill="none"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid-rect)"/>
+    </svg>
+    <svg class="hero-grid-svg hero-grid-accent" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
+      <defs>
+        <pattern id="grid-rect-accent" width="64" height="64" patternUnits="userSpaceOnUse">
+          <path d="M 64 0 L 64 64 M 0 64 L 64 64" stroke="currentColor" stroke-width="1.4" fill="none"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid-rect-accent)"/>
+    </svg>
+  </div>
+
+  <div class="wrap hero-inner">
+    <div>
+      <span class="eyebrow">Open-source · MPL-2.0 · Rust + WASM</span>
+      <h1>Parse, view, query, edit IFC. <em>Right in the browser.</em></h1>
+      <p class="lede">Open-source toolkit for the IFC file format. WebGPU rendering, columnar in-memory store, faster than the alternatives on most models. Runs from a CDN.</p>
+
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#code">
+          Read the API
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-ghost" href="https://www.ifclite.com/" target="_blank" rel="noopener">
+          Open the live demo
+        </a>
+      </div>
+
+      <div class="hero-meta">
+        <div class="hero-meta-item">
+          <span class="k">Schemas</span>
+          <span class="v">IFC2X3, IFC4, IFC4X3, IFC5</span>
+        </div>
+        <div class="hero-meta-item">
+          <span class="k">Bundle</span>
+          <span class="v">~260 KB gzipped</span>
+        </div>
+        <div class="hero-meta-item">
+          <span class="k">Renderers</span>
+          <span class="v">WebGPU · Three.js · Babylon.js</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-code" aria-hidden="false">
+      <div class="hero-code-bar">
+        <span>terminal · ifclite scaffold</span>
+        <div class="hero-code-dots"><span></span><span></span><span></span></div>
+      </div>
+      <div class="hero-code-body">
+<div><span class="prompt">$</span> <span class="cmd">npx create-ifc-lite my-viewer --template react</span></div>
+<div class="out">  ✓ scaffolded   <span class="kw">my-viewer</span></div>
+<div class="out">  ✓ installed    7 packages · 6.2 MB</div>
+<div class="out">  ✓ wasm core    ifc-lite-core@<span class="num">0.9.1</span> (Rust)</div>
+<div style="height:8px"></div>
+<div><span class="prompt">$</span> <span class="cmd">cd my-viewer &amp;&amp; npm run dev</span></div>
+<div class="out">  <span class="ok">▲</span> ready on http://localhost:5173</div>
+<div class="out">  drop an .ifc file anywhere on the canvas</div>
+<div style="height:8px"></div>
+<div class="cmt"># includes: drag-drop, hierarchy, properties, 2D drawings</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── STATS ─────────────────────────── -->
+<section class="stats" data-screen-label="02 Stats">
+  <div class="stats-grid">
+    <div class="stat">
+      <div class="v">2.72<span class="u">seconds</span></div>
+      <div class="k">Parse + geometry, 68&nbsp;MB office model, 11,123 products</div>
+    </div>
+    <div class="stat">
+      <div class="v">260<span class="u">KB gzipped</span></div>
+      <div class="k">Parser + geometry + renderer together</div>
+    </div>
+    <div class="stat">
+      <div class="v">1,259<span class="u">MB/s</span></div>
+      <div class="k">Tokenizer throughput on an M1 / M2 laptop</div>
+    </div>
+    <div class="stat">
+      <div class="v">876<span class="u">entities</span></div>
+      <div class="k">IFC2X3 through IFC4X3, plus IFC5 (IFCX)</div>
+    </div>
+    <div class="stat">
+      <div class="v">21<span class="u">models</span></div>
+      <div class="k">Benchmarked across IfcOpenShell, web-ifc, ifc-lite</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── WHAT IT DOES ─────────────────────────── -->
+<section id="what" class="section" data-screen-label="03 Pipeline">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="label">
+        <span class="eyebrow">§01 Pipeline</span>
+        <h2>One file. <em>Seven moves.</em></h2>
+      </div>
+      <p>Most browser IFC libraries stop at parsing or rendering. IFClite covers the whole pipeline. Read a STEP file, look at it, query it, edit it, federate it, validate it, automate it with an agent, and write it back out. Click a stage to try it.</p>
+    </div>
+
+    <div id="pipeline-root"></div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── CODE TABS ─────────────────────────── -->
+<section id="code" class="section" data-screen-label="04 API">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="label">
+        <span class="eyebrow">§02 API</span>
+        <h2>Six packages. <em>TypeScript-first.</em> Async by default.</h2>
+      </div>
+      <p>Each package composes with the rest. Progress events on the long-running calls. No globals. Tree-shakable, so you only pay for the parts you import.</p>
+    </div>
+
+    <div id="code-tabs-root"></div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── SETUPS ─────────────────────────── -->
+<section id="setup" class="section" data-screen-label="05 Setups">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="label">
+        <span class="eyebrow">§03 Setups</span>
+        <h2>Browser, server, or <em>desktop</em>.</h2>
+      </div>
+      <p>Same core, four delivery modes. Start in the browser. Add a server when files get big or teams need caching. Ship a Tauri build when 500&nbsp;MB models show up on a USB stick.</p>
+    </div>
+
+    <div class="setups">
+      <div class="setup">
+        <span class="setup-tag">01 · Browser</span>
+        <h3>WebGPU viewer</h3>
+        <p class="summary">Full client-side viewer. No backend, no upload, no shared state. The model never leaves the browser tab.</p>
+        <ul>
+          <li>Drag-and-drop, hierarchy, props</li>
+          <li>2D drawings &amp; section planes</li>
+          <li>Runs from a CDN</li>
+          <li>Chrome / Edge / Firefox / Safari 18</li>
+        </ul>
+        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/quickstart/" target="_blank" rel="noopener">→ Quick start</a>
+      </div>
+      <div class="setup">
+        <span class="setup-tag">02 · Engine integration</span>
+        <h3>Three.js / Babylon.js</h3>
+        <p class="summary">You already have a 3D app. IFClite parses, tessellates, and hands you meshes you can feed straight into your scene graph.</p>
+        <ul>
+          <li>WebGL, no WebGPU needed</li>
+          <li>Express IDs preserved across meshes</li>
+          <li>Instancing-friendly buffers</li>
+          <li>Both engines, ready-made templates</li>
+        </ul>
+        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/" target="_blank" rel="noopener">→ Three.js tutorial</a>
+      </div>
+      <div class="setup">
+        <span class="setup-tag">03 · Server</span>
+        <h3>Rust backend</h3>
+        <p class="summary">Cache parsed models, stream geometry to many clients, dedupe by content hash. Built for teams and 100&nbsp;MB+ files.</p>
+        <ul>
+          <li>Streaming parse + geometry</li>
+          <li>Parallel processing</li>
+          <li>Content-addressed cache</li>
+          <li>Docker, Fly, Render-ready</li>
+        </ul>
+        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/server/" target="_blank" rel="noopener">→ Server guide</a>
+      </div>
+      <div class="setup">
+        <span class="setup-tag">04 · Desktop</span>
+        <h3>Tauri app</h3>
+        <p class="summary">Native binary for offline work and very large files. Multi-threaded geometry, direct filesystem access, fast-path desktop optimizations.</p>
+        <ul>
+          <li>500 MB+ models handled smoothly</li>
+          <li>Multi-threaded geometry</li>
+          <li>Offline, air-gapped friendly</li>
+          <li>macOS · Windows · Linux</li>
+        </ul>
+        <a class="link mono" href="https://ltplus-ag.github.io/ifc-lite/guide/desktop/" target="_blank" rel="noopener">→ Desktop guide</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── PACKAGE PICKER ─────────────────────────── -->
+<section id="packages" class="section" data-screen-label="06 Package picker">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="label">
+        <span class="eyebrow">§04 Packages</span>
+        <h2>Pick what you <em>need</em>.</h2>
+      </div>
+      <p>30+ TypeScript packages and 5 Rust crates. You rarely need all of them. Pick a preset, or tick the bits you want. The bundle estimate updates as you go.</p>
+    </div>
+    <div id="picker-root"></div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── PERFORMANCE ─────────────────────────── -->
+<section id="perf" class="section" data-screen-label="07 Performance">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="label">
+        <span class="eyebrow">§05 Performance</span>
+        <h2><em>Rust core</em>, shipped as WASM.</h2>
+      </div>
+      <p>Hot paths (tokenization, tessellation, federation) run in Rust, compiled to WebAssembly. Your code stays in TypeScript. Browser-shipped, but the math still goes through Rust.</p>
+    </div>
+
+    <div class="twoup twoup-wide">
+      <div id="bench-root"></div>
+
+      <div id="stack-root"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── SCHEMA + BROWSER ─────────────────────────── -->
+<section id="support" class="section" data-screen-label="08 Support">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="label">
+        <span class="eyebrow">§06 Support</span>
+        <h2>Schemas and <em>browsers</em>.</h2>
+      </div>
+      <p>Most IFC libraries cover a subset of the schema. IFClite implements every IFC4 and IFC4X3 entity, plus the new IFC5 JSON format.</p>
+    </div>
+
+    <div class="support-grid">
+      <div class="support-block">
+        <h4>Schema coverage</h4>
+        <div class="schema-rows">
+          <div class="schema-row">
+            <span class="ver">IFC2X3</span>
+            <span class="bar"><span style="width:100%"></span></span>
+            <span class="pct">653 / 653</span>
+          </div>
+          <div class="schema-row">
+            <span class="ver">IFC4</span>
+            <span class="bar"><span style="width:100%"></span></span>
+            <span class="pct">776 / 776</span>
+          </div>
+          <div class="schema-row">
+            <span class="ver">IFC4X3</span>
+            <span class="bar"><span style="width:100%"></span></span>
+            <span class="pct">876 / 876</span>
+          </div>
+          <div class="schema-row">
+            <span class="ver">IFC5 (IFCX)</span>
+            <span class="bar"><span style="width:88%"></span></span>
+            <span class="pct">preview</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="support-block">
+        <h4>Browser support</h4>
+        <div id="browser-test-root"></div>
+        <p style="font-size: 12.5px; color: var(--ink-3); margin-top: 16px; line-height: 1.5;">
+          WebGPU is required for the built-in renderer. The Three.js and Babylon.js integrations fall back to WebGL and work everywhere those engines do.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── DOCS LINKS ─────────────────────────── -->
+<section id="docs" class="section" data-screen-label="09 Docs">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="label">
+        <span class="eyebrow">§07 Docs</span>
+        <h2>Guides, tutorials, <em>references</em>.</h2>
+      </div>
+      <p>Organized by what you want to do, not by package. Start with a tutorial. Use a guide for a specific feature. Hit the API reference when you know what you need.</p>
+    </div>
+
+    <div class="caps">
+      <a class="cap" href="https://ltplus-ag.github.io/ifc-lite/guide/quickstart/" target="_blank" rel="noopener">
+        <span class="cap-num">→ guide</span>
+        <h3>Quick start</h3>
+        <p>Parse your first IFC file. Five minutes, one terminal, one model.</p>
+        <div class="cap-meta"><span>5 min · npm</span><span class="pill">start here</span></div>
+      </a>
+      <a class="cap" href="https://ltplus-ag.github.io/ifc-lite/tutorials/building-viewer/" target="_blank" rel="noopener">
+        <span class="cap-num">→ tutorial</span>
+        <h3>Build a viewer</h3>
+        <p>Step-by-step: a WebGPU viewer with picking, hierarchy, and property panel.</p>
+        <div class="cap-meta"><span>30 min · React</span><span class="pill">tutorial</span></div>
+      </a>
+      <a class="cap" href="https://ltplus-ag.github.io/ifc-lite/guide/querying/" target="_blank" rel="noopener">
+        <span class="cap-num">→ guide</span>
+        <h3>Querying data</h3>
+        <p>Filters, SQL, joins across property sets. Find what you need without parsing twice.</p>
+        <div class="cap-meta"><span>15 min · SQL</span><span class="pill">guide</span></div>
+      </a>
+      <a class="cap" href="https://ltplus-ag.github.io/ifc-lite/guide/ids/" target="_blank" rel="noopener">
+        <span class="cap-num">→ guide</span>
+        <h3>IDS validation</h3>
+        <p>Write a spec, run it against a model, generate a pass / fail report.</p>
+        <div class="cap-meta"><span>20 min · BCF</span><span class="pill">guide</span></div>
+      </a>
+      <a class="cap" href="https://ltplus-ag.github.io/ifc-lite/architecture/overview/" target="_blank" rel="noopener">
+        <span class="cap-num">→ reference</span>
+        <h3>Architecture</h3>
+        <p>How parsing, federation, and rendering are wired together end to end.</p>
+        <div class="cap-meta"><span>deep dive</span><span class="pill">internals</span></div>
+      </a>
+      <a class="cap" href="https://ltplus-ag.github.io/ifc-lite/api/typescript/" target="_blank" rel="noopener">
+        <span class="cap-num">→ reference</span>
+        <h3>API reference</h3>
+        <p>Every type, every method, every default. TypeScript and Rust both covered.</p>
+        <div class="cap-meta"><span>30+ packages · 5 crates</span><span class="pill">reference</span></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── CTA ─────────────────────────── -->
+<section class="cta" data-screen-label="10 CTA">
+  <div class="wrap">
+    <div class="cta-card">
+      <div class="cta-grid" aria-hidden="true">
+        <svg class="cta-grid-svg cta-grid-base" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
+          <defs>
+            <pattern id="cta-grid-rect" width="64" height="64" patternUnits="userSpaceOnUse">
+              <path d="M 64 0 L 64 64 M 0 64 L 64 64" stroke="currentColor" stroke-width="1" fill="none"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#cta-grid-rect)"/>
+        </svg>
+        <svg class="cta-grid-svg cta-grid-accent" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
+          <defs>
+            <pattern id="cta-grid-rect-accent" width="64" height="64" patternUnits="userSpaceOnUse">
+              <path d="M 64 0 L 64 64 M 0 64 L 64 64" stroke="currentColor" stroke-width="1.4" fill="none"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#cta-grid-rect-accent)"/>
+        </svg>
+      </div>
+      <div class="cta-content">
+        <h2>Try the demo, or <em>scaffold a project</em> locally.</h2>
+        <p>Drop an .ifc file on ifclite.com to see it in the browser. Or run <span class="mono" style="background: rgba(255,255,255,0.09); padding: 1px 6px; border-radius: 3px;">npx create-ifc-lite</span> for a working WebGPU viewer locally.</p>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="https://www.ifclite.com/" target="_blank" rel="noopener">
+            Open ifclite.com
+            <span class="arrow">→</span>
+          </a>
+          <a class="btn btn-ghost" href="https://ltplus-ag.github.io/ifc-lite/" target="_blank" rel="noopener">
+            Read the docs
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/LTplus-AG/ifc-lite" target="_blank" rel="noopener">
+            GitHub →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── FOOTER ─────────────────────────── -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <div class="foot-col">
+        <div class="brand" style="margin-bottom: 4px;">
+          <span class="brand-mark"><img src="assets/logo.png" alt="" /></span>
+          <span>IFClite</span>
+        </div>
+        <p style="color: var(--ink-3); font-size: 13px; line-height: 1.5; max-width: 36ch; margin: 0;">
+          Open-source IFC toolkit. By <a href="https://lt.plus" target="_blank" rel="noopener" style="color: var(--ink); border-bottom: 1px solid var(--line-2);">Louis Trümpler</a> &amp; <a href="https://github.com/LTplus-AG/ifc-lite/graphs/contributors" target="_blank" rel="noopener" style="color: var(--ink); border-bottom: 1px solid var(--line-2);">contributors</a>.
+        </p>
+      </div>
+      <div class="foot-col">
+        <h5>Product</h5>
+        <a href="https://www.ifclite.com/" target="_blank" rel="noopener">Live demo</a>
+        <a href="#packages">Packages</a>
+        <a href="#perf">Benchmarks</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/releases" target="_blank" rel="noopener">Changelog</a>
+      </div>
+      <div class="foot-col">
+        <h5>Docs</h5>
+        <a href="https://ltplus-ag.github.io/ifc-lite/guide/quickstart/" target="_blank" rel="noopener">Quick start</a>
+        <a href="https://ltplus-ag.github.io/ifc-lite/guide/installation/" target="_blank" rel="noopener">Installation</a>
+        <a href="https://ltplus-ag.github.io/ifc-lite/api/typescript/" target="_blank" rel="noopener">TypeScript API</a>
+        <a href="https://ltplus-ag.github.io/ifc-lite/api/rust/" target="_blank" rel="noopener">Rust API</a>
+      </div>
+      <div class="foot-col">
+        <h5>Community</h5>
+        <a href="https://github.com/LTplus-AG/ifc-lite/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/blob/main/CONTRIBUTORS.md" target="_blank" rel="noopener">Contributors</a>
+        <a href="https://github.com/LTplus-AG/ifc-lite/blob/main/LICENSE" target="_blank" rel="noopener">License (MPL-2.0)</a>
+      </div>
+      <div class="foot-col">
+        <h5>Source</h5>
+        <a href="https://github.com/LTplus-AG/ifc-lite" target="_blank" rel="noopener">github.com/LTplus-AG/ifc-lite</a>
+        <a href="https://www.npmjs.com/package/@ifc-lite/parser" target="_blank" rel="noopener">npm @ifc-lite</a>
+        <a href="https://crates.io/crates/ifc-lite-core" target="_blank" rel="noopener">crates.io</a>
+      </div>
+    </div>
+
+  </div>
+</footer>
+
+<!-- light / dark theme switch -->
+<script>
+(function () {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    const next = document.documentElement.dataset.theme === 'dusk' ? 'paper' : 'dusk';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('ifclite-theme', next); } catch (e) {}
+  });
+})();
+</script>
+
+<!-- Hero grid: subtle scroll-tied drift + opacity fade. The drift is applied as a CSS
+     variable so it composes with the perspective transform on the SVG layer. -->
+<script>
+(function () {
+  const grid = document.querySelector('.hero-grid');
+  const hero = document.querySelector('.hero');
+  if (!grid || !hero) return;
+  grid.style.willChange = 'opacity';
+  let raf = 0;
+  function tick() {
+    raf = 0;
+    const y = window.scrollY || 0;
+    const range = hero.offsetHeight;
+    if (y > range + 200) return;
+    const t = Math.min(1, y / range);
+    grid.style.setProperty('--parallax-y', (y * 0.22).toFixed(1) + 'px');
+    grid.style.opacity = (1 - t * 0.85).toFixed(3);
+  }
+  tick();
+  window.addEventListener('scroll', () => {
+    if (!raf) raf = requestAnimationFrame(tick);
+  }, { passive: true });
+})();
+</script>
+
+<!-- Cursor pulse: every PULSE_INTERVAL ms we emit a new ring centred on the cursor's
+     current position. The cursor is only the ORIGIN — movement doesn't trigger
+     pulses. Each ring expands and fades; the violet grid layer's mask is rebuilt
+     each frame as the union of all live rings, so the grid LINES themselves switch
+     to violet as the wavefront crosses them. Dark theme only. -->
+<script>
+(function () {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var isDark = function () { return document.documentElement.dataset.theme !== 'paper'; };
+
+  // rotateX(56deg) foreshortens y in screen space by cos(56°). Inverse that so
+  // ring centres land on the tilted plane roughly where the cursor visually is.
+  var COS_TILT = Math.cos(56 * Math.PI / 180);
+  var TILT_OFFSET_TOP = 0.12;  // matches CSS .hero-grid-svg { top: -12% }
+  var TILT_OFFSET_LEFT = 0.08; // matches CSS .hero-grid-svg { left: -8% }
+
+  var PULSE_INTERVAL = 1800;  // ms between emissions — slow cadence, not nervous
+  var PULSE_DURATION = 3200;  // ms per ring lifetime — slow expansion
+  var RING_THICKNESS = 30;
+  var RING_MAX_RADIUS = 620;
+  var EMPTY_MASK = 'linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0))';
+
+  function attach(hostSel, accentSel) {
+    var host = document.querySelector(hostSel);
+    var accent = document.querySelector(accentSel);
+    if (!host || !accent) return;
+
+    var pulses = [];
+    var raf = 0;
+    var inside = false;
+    var cursorLX = 0, cursorLY = 0;  // accent-layer-local
+    var nextEmit = 0;
+
+    function tick(now) {
+      raf = 0;
+      // Emit new pulse on the steady cadence (only while cursor is inside + dark).
+      if (inside && isDark() && now >= nextEmit) {
+        pulses.push({ lx: cursorLX, ly: cursorLY, start: now });
+        nextEmit = now + PULSE_INTERVAL;
+        if (pulses.length > 6) pulses.shift();
+      }
+
+      var alive = [];
+      var parts = [];
+      for (var i = 0; i < pulses.length; i++) {
+        var p = pulses[i];
+        var t = (now - p.start) / PULSE_DURATION;
+        if (t >= 1) continue;
+        alive.push(p);
+        var ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+        var radius = ease * RING_MAX_RADIUS;
+        var thick = RING_THICKNESS * (1 - t * 0.35);
+        // Soft attack + long fade so the ring feels like a wave, not a strobe.
+        var alpha = (t < 0.12 ? t / 0.12 : 1 - (t - 0.12) / 0.88) * 0.85;
+        var inner = Math.max(0, radius - thick);
+        var outer = radius + thick;
+        parts.push(
+          'radial-gradient(circle ' + outer.toFixed(1) + 'px at ' +
+          p.lx.toFixed(1) + 'px ' + p.ly.toFixed(1) + 'px,' +
+          ' rgba(0,0,0,0) ' + inner.toFixed(1) + 'px,' +
+          ' rgba(0,0,0,' + alpha.toFixed(3) + ') ' + radius.toFixed(1) + 'px,' +
+          ' rgba(0,0,0,0) ' + outer.toFixed(1) + 'px)'
+        );
+      }
+      pulses = alive;
+
+      if (parts.length) {
+        var m = parts.join(',');
+        accent.style.webkitMaskImage = m;
+        accent.style.maskImage = m;
+      } else if (accent.style.maskImage !== EMPTY_MASK) {
+        accent.style.webkitMaskImage = EMPTY_MASK;
+        accent.style.maskImage = EMPTY_MASK;
+      }
+
+      // Keep ticking while cursor is inside (steady cadence) OR rings are still alive.
+      if (inside || pulses.length > 0) raf = requestAnimationFrame(tick);
+    }
+
+    function updateCursor(ev) {
+      var rect = host.getBoundingClientRect();
+      var x = ev.clientX - rect.left;
+      var y = ev.clientY - rect.top;
+      var nowInside = x >= 0 && y >= 0 && x <= rect.width && y <= rect.height;
+      if (nowInside) {
+        var elemLeftPx = -TILT_OFFSET_LEFT * rect.width;
+        var elemTopPx  = -TILT_OFFSET_TOP  * rect.height;
+        cursorLX = x - elemLeftPx;
+        cursorLY = (y - elemTopPx) / COS_TILT;
+        if (!inside) {
+          inside = true;
+          // Fire the first ring immediately on entry so the effect picks up at once.
+          nextEmit = performance.now();
+          if (!raf) raf = requestAnimationFrame(tick);
+        }
+      } else if (inside) {
+        inside = false;
+      }
+    }
+
+    host.addEventListener('mousemove', updateCursor, { passive: true });
+    host.addEventListener('mouseleave', function () { inside = false; }, { passive: true });
+
+    // Reset on theme change to paper.
+    var mo = new MutationObserver(function () {
+      if (!isDark()) {
+        pulses = [];
+        accent.style.webkitMaskImage = EMPTY_MASK;
+        accent.style.maskImage = EMPTY_MASK;
+      }
+    });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  attach('.hero',     '.hero-grid-accent');
+  attach('.cta-card', '.cta-grid-accent');
+})();
+</script>
+
+<!-- React + Babel + app -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="app.jsx"></script>
+
+</body>
+</html>

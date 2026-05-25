@@ -27,12 +27,12 @@
   "dependencies": {
     "@ifc-lite/collab": "workspace:^",
     "lib0": "^0.2.99",
-    "ws": "^8.20.1",
+    "ws": "^8.21.0",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.20"
   },
   "devDependencies": {
-    "@types/node": "^25.8.0",
+    "@types/node": "^25.9.1",
     "@types/ws": "^8.5.13",
     "typescript": "^6.0.3",
     "vitest": "^1.6.0",

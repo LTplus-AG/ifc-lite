@@ -2,8 +2,7 @@ name: Release
 
 # PUBLISH AUTHENTICATION — Phase B trusted publishing
 #
-# This workflow does NOT use long-lived publish tokens. It mints
-# short-lived credentials via OIDC at runtime:
+# Package registries — short-lived credentials minted via OIDC at runtime:
 #
 #   npm        — Trusted Publisher configured per `@ifc-lite/*` package on
 #                npmjs.com. `id-token: write` + npm CLI ≥ 11.5.1 +
@@ -12,6 +11,10 @@ name: Release
 #   crates.io  — Trusted Publisher configured per crate on crates.io.
 #                rust-lang/crates-io-auth-action exchanges the OIDC token
 #                for a 30-minute CARGO_REGISTRY_TOKEN.
+#
+# Git side (push of `changeset-release/main` + opening the version PR) uses
+# a fine-grained PAT (`secrets.RELEASE_PAT`) — see the inline comment on
+# the Checkout step for why a PAT and not GITHUB_TOKEN or a GitHub App.
 #
 # The release job runs in the `release-publish` GitHub Environment so any
 # residual repo-scoped secrets are unreachable from other jobs. See
@@ -40,11 +43,33 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       version: ${{ steps.get-version.outputs.version }}
     steps:
+      # AUTH for the changesets version PR (`chore: version packages`):
+      # we use a fine-grained PAT (`secrets.RELEASE_PAT`), NOT the default
+      # GITHUB_TOKEN, because GitHub suppresses pull_request/push workflow
+      # triggers on GITHUB_TOKEN-authored events (recursion guard) so the
+      # required `Build + WASM + Rust + Node` check would never run on a
+      # version PR and it would sit permanently "Expected" (issue #766).
+      #
+      # Previously this used an installation token from a GitHub App
+      # (`ifc-lite-release-bot-org`) but the install didn't carry over when
+      # the repo moved from `louistrue/ifc-lite` to `LTplus-AG/ifc-lite`,
+      # and the App's installation token on the new owner lost
+      # `pull_requests:write` — every Release run after that failed with
+      # "Resource not accessible by integration" on the create-PR API call.
+      #
+      # A fine-grained PAT scoped to this repo with `contents: read+write`
+      # and `pull_requests: read+write` survives org/repo moves and removes
+      # the App-management surface entirely. Rotate the PAT in the repo
+      # secrets when it expires; no workflow change needed for rotation.
       - name: Checkout Repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           lfs: false
+          # Persist the PAT so the version-packages branch push made by
+          # changesets/action is PAT-authored too — not just the PR API call.
+          # Both must be PAT-authored for the pull_request event to fire.
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Setup pnpm
         # v6 reads the version from the `packageManager` field in
@@ -135,7 +160,10 @@ jobs:
           commit: 'chore: version packages'
           title: 'chore: version packages'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT (not GITHUB_TOKEN) so the version PR + its commits are
+          # authored by a real user identity and CI triggers on them — see
+          # the comment on the Checkout step for the full rationale.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           # npm publishes use OIDC trusted publishing — no NPM_TOKEN.
           # `id-token: write` (set at job level) + npm CLI ≥ 11.5.1 +
           # NPM_CONFIG_PROVENANCE complete the handshake automatically

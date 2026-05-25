@@ -11,7 +11,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { TypeVisibility, EntityRef } from '../types.js';
-import { TYPE_VISIBILITY_DEFAULTS } from '../constants.js';
+import { TYPE_VISIBILITY_DEFAULTS, IFC_ANNOTATIONS_STORAGE_KEY } from '../constants.js';
 
 export interface VisibilitySlice {
   // State (legacy - single model)
@@ -195,12 +195,21 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     return true;
   },
 
-  toggleTypeVisibility: (type) => set((state) => ({
-    typeVisibility: {
-      ...state.typeVisibility,
-      [type]: !state.typeVisibility[type],
-    },
-  })),
+  toggleTypeVisibility: (type) => set((state) => {
+    const next = !state.typeVisibility[type];
+    // Persist the annotations/grids toggle so user choice survives
+    // reloads. Other type toggles (spaces/openings/site) are session-
+    // only and reset to their semantic defaults on next mount; the
+    // annotations toggle matters more in practice because users on
+    // annotation-heavy files toggle it on/off frequently.
+    if (type === 'ifcAnnotations' && typeof window !== 'undefined') {
+      try { localStorage.setItem(IFC_ANNOTATIONS_STORAGE_KEY, String(next)); }
+      catch { /* private-mode storage rejection — non-fatal */ }
+    }
+    return {
+      typeVisibility: { ...state.typeVisibility, [type]: next },
+    };
+  }),
 
   // Actions (multi-model)
   hideEntityInModel: (modelId, expressId) => set((state) => {

@@ -147,6 +147,26 @@ export const UI_DEFAULTS = {
 // Type Visibility Defaults
 // ============================================================================
 
+/**
+ * localStorage key for the IfcAnnotation + IfcGrid visibility toggle.
+ * Same persistence pattern as `MERGE_LAYERS_STORAGE_KEY` — `'true'` /
+ * `'false'` string, anything else falls back to the default.
+ */
+export const IFC_ANNOTATIONS_STORAGE_KEY = 'ifc-lite-ifc-annotations-visible';
+
+function getInitialIfcAnnotationsVisible(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = localStorage.getItem(IFC_ANNOTATIONS_STORAGE_KEY);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    // No stored preference yet → engineering-drawing UX default.
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 export const TYPE_VISIBILITY_DEFAULTS = {
   /** IfcSpace visibility - off by default */
   SPACES: false,
@@ -154,8 +174,11 @@ export const TYPE_VISIBILITY_DEFAULTS = {
   OPENINGS: false,
   /** IfcSite visibility - on by default (when has geometry) */
   SITE: true,
-  /** IfcAnnotation visibility - on by default (engineering-drawing UX) */
-  IFC_ANNOTATIONS: true,
+  /** IfcAnnotation + IfcGrid visibility — persisted across reloads via
+   *  `IFC_ANNOTATIONS_STORAGE_KEY`. Defaults to `true` for first-time
+   *  users (engineering-drawing UX), otherwise reflects the last user
+   *  choice. */
+  IFC_ANNOTATIONS: getInitialIfcAnnotationsVisible(),
 } as const;
 
 // ============================================================================

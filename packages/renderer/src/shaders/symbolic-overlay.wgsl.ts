@@ -95,16 +95,34 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   let u = f32((in.corner & 1u));      // 0,1,0,1
   let v = f32((in.corner >> 1u) & 1u); // 0,0,1,1
 
-  // ── Screen-space text scaling ──
-  // Project the label's shared anchor. For a standard perspective projection
-  // clip.w ≈ view-space depth, and 1 NDC unit corresponds to viewportH/2
-  // pixels — so "world per pixel" at this depth ≈ (2*w)/viewportH.
-  let anchorClip = camera.viewProj * vec4<f32>(inst.anchor, 1.0);
-  let absW = max(abs(anchorClip.w), 1e-4);
-  let worldPerPixel = (2.0 * absW) / max(camera.viewportAndTarget.y, 1.0);
+  // ── Screen-space text scaling (projection-agnostic) ──
+  // Project the label anchor and the anchor + 1 world-Y unit, then read off
+  // the on-screen pixel distance between them. This gives "pixels per
+  // world-Y unit at this anchor" for ANY projection (perspective, ortho,
+  // tilted, sheared) without assuming a specific projection-matrix layout.
+  //
+  // For top-down views world-Y collapses to ~0 screen pixels — in that case
+  // we fall through to the scale=1 clamp below, which leaves the label at
+  // its authored size (the convention for plan-view CAD annotation text).
+  let aClip = camera.viewProj * vec4<f32>(inst.anchor, 1.0);
+  let bClip = camera.viewProj * vec4<f32>(inst.anchor + vec3<f32>(0.0, 1.0, 0.0), 1.0);
+  let aNdc = aClip.xy / max(abs(aClip.w), 1e-4);
+  let bNdc = bClip.xy / max(abs(bClip.w), 1e-4);
+  let unitYPx = length(bNdc - aNdc) * camera.viewportAndTarget.y * 0.5;
+
+  // What the authored cap height currently spans on screen, and what we
+  // want it to span. capHeight is in world-Y units (floor-plan convention).
   let safeCap = max(inst.capHeight, 1e-4);
-  // wanted_world = target_pixels * world_per_pixel; scale = wanted/authored.
-  let scale = (camera.viewportAndTarget.z * worldPerPixel) / safeCap;
+  let currentPx = safeCap * unitYPx;
+  // Clamp to (0.02, 1.0]: never grow text beyond authored size (a too-big
+  // authored size is the floor-plan convention; we should NOT amplify it),
+  // and never shrink below ~2% of authored (keeps the GPU draw alive even
+  // at extreme close zoom; below readable size it just stops mattering).
+  let scale = clamp(
+    camera.viewportAndTarget.z / max(currentPx, 1e-2),
+    0.02,
+    1.0,
+  );
 
   // Apply the single scale to (origin − anchor), rightAxis, and upAxis so
   // per-glyph spacing and glyph dimensions track each other.

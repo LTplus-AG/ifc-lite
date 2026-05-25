@@ -1125,17 +1125,33 @@ fn extract_text_literal(
     };
     let composed = compose_transforms(transform, &placement_transform);
 
-    // attr 3: Extent (IfcPlanarExtent) → SizeInY interpreted as text height
-    // when present (WithExtent only). Falls back to a sensible default
-    // (~0.25 m at 1 m unit_scale) when omitted.
+    // attr 3: Extent (IfcPlanarExtent) → SizeInY is the LAYOUT BOX height of
+    // the typeset string (cap_height × line_height × line_count), NOT the
+    // glyph cap height. Per IFC4 spec IfcTextStyleFontModel.FontSize would
+    // give cap height directly, but this fixture (and most floor-plan
+    // exporters) ship no IfcTextStyle chain — only Extent. So we convert:
+    //
+    //   cap_height ≈ SizeInY × CAP_TO_BOX_RATIO
+    //
+    // 0.7 matches Arial / Helvetica / SimSun (CJK) at line-height 1.0; for
+    // multi-line literals the JS layer splits on `\n` first and renders one
+    // line per text instance, so this single-line ratio is the right unit.
+    //
+    // Fallback when SizeInY is absent OR the text is bare IfcTextLiteral
+    // (no extent at all): 0.18 m world ≈ 7 mm at 1:50 plot scale, the
+    // industry default for annotation text. unit_scale is "meters per file
+    // unit" so dividing it in is wrong (it makes mm-files produce 250 m
+    // text); keep the fallback in meters directly.
+    const CAP_TO_BOX_RATIO: f32 = 0.7;
+    const FALLBACK_CAP_HEIGHT_M: f32 = 0.18;
     let height_model_units = if item.ifc_type == ifc_lite_core::IfcType::IfcTextLiteralWithExtent {
         item.get_ref(3)
             .and_then(|extent_ref| decoder.decode_by_id(extent_ref).ok())
             .and_then(|extent| extent.get(1).and_then(|a| a.as_float()))
-            .map(|h| h as f32)
-            .unwrap_or(0.25 / unit_scale.max(1e-6))
+            .map(|h| (h as f32) * CAP_TO_BOX_RATIO)
+            .unwrap_or(FALLBACK_CAP_HEIGHT_M / unit_scale.max(1e-6))
     } else {
-        0.25 / unit_scale.max(1e-6)
+        FALLBACK_CAP_HEIGHT_M / unit_scale.max(1e-6)
     };
 
     // attr 4: BoxAlignment (string enum). Empty when absent.
@@ -1248,6 +1264,59 @@ fn extract_annotation_fill_area(
                     let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
                         * unit_scale;
                     let (wx, wy) = transform.transform_point(x, y);
+                    out.push(wx - rtc_x);
+                    out.push(-wy + rtc_z);
+                }
+                out
+            }
+            ifc_lite_core::IfcType::IfcCircle => {
+                // IfcAnnotationFillArea with a circle boundary = filled disk.
+                // The IFC_Annotation fixture uses this pattern for every
+                // leader-dot bubble (120 instances, radius 10 mm, black
+                // SolidBlackFill). Tessellate the boundary to a polygon so
+                // the existing ear-clip triangulator can fill it.
+                let radius = curve.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32
+                    * unit_scale;
+                if radius <= 0.0 || !radius.is_finite() {
+                    return Vec::new();
+                }
+                // Center via IfcAxis2Placement.Location (matches the standalone
+                // IfcCircle path at symbolic.rs:789). Walk via mutable bindings
+                // because `Option::cloned()` doesn't work on `Option<&[T]>` and
+                // the decoded entities can't outlive the decoder borrow.
+                let mut cx_local: f32 = 0.0;
+                let mut cy_local: f32 = 0.0;
+                if let Some(pos_ref) = curve.get_ref(0) {
+                    if let Ok(placement) = decoder.decode_by_id(pos_ref) {
+                        if let Some(loc_ref) = placement.get_ref(0) {
+                            if let Ok(loc) = decoder.decode_by_id(loc_ref) {
+                                if let Some(coords) = loc.get(0).and_then(|a| a.as_list()) {
+                                    cx_local = coords.first().and_then(|v| v.as_float())
+                                        .unwrap_or(0.0) as f32
+                                        * unit_scale;
+                                    cy_local = coords.get(1).and_then(|v| v.as_float())
+                                        .unwrap_or(0.0) as f32
+                                        * unit_scale;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Segment count: bigger circles get more segments. Cap at 64
+                // (matches IFC_Model.ifc curve-tessellation budget). For the
+                // 10 mm bubbles in this fixture, 32 segments is more than
+                // enough to look perfectly round at any reasonable zoom.
+                let seg_count = if radius < 0.05 { 32 } else { 64 };
+                let mut out = Vec::with_capacity((seg_count + 1) * 2);
+                // CCW winding so the ear-clip triangulator produces front-
+                // facing fills (the existing IfcPolyline path assumes CCW).
+                let two_pi = std::f32::consts::TAU;
+                for i in 0..seg_count {
+                    let theta = (i as f32) * two_pi / (seg_count as f32);
+                    let lx = cx_local + radius * theta.cos();
+                    let ly = cy_local + radius * theta.sin();
+                    let (wx, wy) = transform.transform_point(lx, ly);
                     out.push(wx - rtc_x);
                     out.push(-wy + rtc_z);
                 }

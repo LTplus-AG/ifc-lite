@@ -49,6 +49,14 @@ export interface AnnotationText2D {
   height: number;
   content: string;
   alignment: string;
+  /**
+   * For multi-line text literals (e.g. CJK descriptions with `\X\0A`
+   * newlines), one IfcTextLiteralWithExtent expands into one AnnotationText2D
+   * per line. `lineYOffset` is added to the storey-elevation world-Y at 3D
+   * conversion so successive lines stack downward (negative Y) below the
+   * shared anchor. Optional — single-line literals leave it undefined.
+   */
+  lineYOffset?: number;
 }
 
 /**
@@ -278,17 +286,34 @@ async function parseAnnotations(
       // (e.g. CJK content) render as raw escape sequences in the atlas.
       const decoded = decodeIfcString(text.content);
       if (decoded.length === 0) continue;
-      const t2d: AnnotationText2D = {
-        x: text.x,
-        y: text.y,
-        dirX: text.dirX,
-        dirY: text.dirY,
-        height: text.height,
-        content: decoded,
-        alignment: text.alignment,
-      };
+
+      // Multi-line split: IfcTextLiteralWithExtent.SizeInY is the LAYOUT BOX
+      // height, not the glyph cap height. The Rust extractor multiplies
+      // SizeInY × 0.7 to recover a single-line cap; for multi-line literals
+      // we further divide by line count and stack lines downward in world-Y.
+      // Source: IFC4 spec — IfcPlanarExtent describes the bounding box of
+      // the typeset string; one literal per line is the conventional
+      // rendering model (matches BIMvision / Solibri / Revit).
+      const lines = decoded.split(/\r?\n/).filter((l) => l.length > 0);
+      if (lines.length === 0) continue;
+      const perLineHeight = lines.length > 1 ? text.height / lines.length : text.height;
+      // Industry-standard line-spacing (CSS line-height ≈ 1.2). Picks up
+      // a little air between rows so descenders don't kiss the next cap.
+      const lineSpacing = perLineHeight * 1.2;
       const bucket = ensureBucket(text.expressId);
-      (bucket ? bucket.texts : result.looseTexts).push(t2d);
+      for (let li = 0; li < lines.length; li++) {
+        const t2d: AnnotationText2D = {
+          x: text.x,
+          y: text.y,
+          dirX: text.dirX,
+          dirY: text.dirY,
+          height: perLineHeight,
+          content: lines[li],
+          alignment: text.alignment,
+          lineYOffset: -li * lineSpacing,
+        };
+        (bucket ? bucket.texts : result.looseTexts).push(t2d);
+      }
     }
 
     for (let i = 0; i < collection.fillCount; i++) {
@@ -547,8 +572,12 @@ export function useSymbolicAnnotationsRichData(params: {
       if (!cached) continue;
 
       const pushText = (t: AnnotationText2D, y: number) => {
+        // lineYOffset stacks multi-line text downward in world-Y. Glyph
+        // upAxis is world-Y (see SymbolicTextPipeline), so subtracting
+        // here puts line 1 below line 0 on screen for any side/oblique
+        // 3D view of the floor plan.
         texts.push({
-          worldPos: [t.x, y, t.y],
+          worldPos: [t.x, y + (t.lineYOffset ?? 0), t.y],
           dirX: t.dirX,
           dirZ: t.dirY,
           height: t.height,

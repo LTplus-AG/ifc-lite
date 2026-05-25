@@ -24,7 +24,6 @@ import {
   ArrowRight,
   Box,
   HelpCircle,
-  Sparkles,
   Loader2,
   Camera,
   Info,
@@ -1746,26 +1745,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <span className="text-xs text-destructive mr-4">{error}</span>
       )}
 
-      {/* Right Side Actions */}
+      {/* Right Side Actions — /mcp moved to the Info dialog header so
+          the toolbar's meta cluster stays focused on shell chrome
+          (Settings · Theme · Help). */}
       <div className="flex items-center gap-2 ml-2 pl-2 border-l border-zinc-200 dark:border-zinc-700/60">
-        {/* /mcp cross-link — lives in the meta cluster (Settings / Theme /
-            Help) so it shares space with shell-level navigation rather
-            than competing with the modeling tools to its left. */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full"
-              onClick={() => navigateToPath('/mcp')}
-              aria-label="Open ifc-lite MCP"
-            >
-              <Sparkles className="!h-[20px] !w-[20px]" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Drive ifc-lite from any LLM (MCP)</TooltipContent>
-        </Tooltip>
-
         {desktopShell ? (
           <Tooltip>
             <TooltipTrigger asChild>

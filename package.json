@@ -97,7 +97,8 @@
       "@vitest/spy": "^3.2.4",
       "@vitest/utils": "^3.2.4",
       "picomatch@<3": "^2.3.2",
-      "picomatch@>=4": "^4.0.4"
+      "picomatch@>=4": "^4.0.4",
+      "uuid@<11.1.1": "^11.1.1"
     }
   }
 }

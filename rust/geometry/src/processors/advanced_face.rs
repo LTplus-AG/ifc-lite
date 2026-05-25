@@ -1378,22 +1378,28 @@ fn process_surface_of_revolution_face(
     let n_angle = ((span / (TAU / 36.0)).ceil() as usize).clamp(4, 48);
     let n_v = profile_pts.len();
 
-    // Generate vertices using cylindrical (r, axial) coordinates of each
-    // profile point — the profile's own angular position around the axis is
-    // irrelevant for the swept surface, only its (radius, axial) matters.
+    // Preserve the profile's (rx, ry) — issue #674: collapsing to radius
+    // mirrored profiles on the −axis_x half to the +axis_x side, drifting
+    // door-handle SoR bulbs 180° away from their bar.
+    let local_profile: Vec<(f64, f64, f64)> = profile_pts
+        .iter()
+        .map(|p| {
+            let r = p - axis_origin;
+            (r.dot(&axis_x), r.dot(&axis_y), r.dot(&axis_dir))
+        })
+        .collect();
+
+    let _ = a_min; // profile is already at a_min in its natural position; only span drives the sweep.
+
     let mut positions = Vec::with_capacity((n_angle + 1) * n_v * 3);
     for i in 0..=n_angle {
-        let theta = a_min + span * (i as f64) / (n_angle as f64);
-        let cos_t = theta.cos();
-        let sin_t = theta.sin();
-        for p in &profile_pts {
-            let r = p - axis_origin;
-            let rx = r.dot(&axis_x);
-            let ry = r.dot(&axis_y);
-            let z = r.dot(&axis_dir);
-            let radius = (rx * rx + ry * ry).sqrt();
-            let world =
-                axis_origin + axis_x * (radius * cos_t) + axis_y * (radius * sin_t) + axis_dir * z;
+        let dtheta = span * (i as f64) / (n_angle as f64);
+        let cos_t = dtheta.cos();
+        let sin_t = dtheta.sin();
+        for &(rx, ry, z) in &local_profile {
+            let nrx = rx * cos_t - ry * sin_t;
+            let nry = rx * sin_t + ry * cos_t;
+            let world = axis_origin + axis_x * nrx + axis_y * nry + axis_dir * z;
             positions.push(world.x as f32);
             positions.push(world.y as f32);
             positions.push(world.z as f32);

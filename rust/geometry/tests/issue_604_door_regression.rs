@@ -113,6 +113,51 @@ fn door_handle_and_glass_meshes_are_non_empty() {
     }
 }
 
+/// Regression for issue #674 — the door handle's `IfcSurfaceOfRevolution`
+/// bulb is mirrored to the +axis_x half when the profile sits entirely on
+/// the −axis_x half (Revit-exported door handles), leaving a visible gap
+/// between the lever and the rosette. Pre-fix the lever AABB started at
+/// x≈115 (bulb collapsed onto the bar); post-fix it extends to x≈91,
+/// reaching across to the rosette centred at x≈122.5.
+#[test]
+fn door_handle_bulb_connects_to_rosette() {
+    let Some(content) = read_fixture() else {
+        return;
+    };
+
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let router = ifc_lite_geometry::GeometryRouter::new();
+
+    for id in [232u32, 440] {
+        let entity = decoder.decode_by_id(id).expect("decode handle brep");
+        let mesh = router
+            .process_representation_item(&entity, &mut decoder)
+            .expect("handle tessellation must not error");
+
+        let mut x_min = f32::INFINITY;
+        let mut x_max = f32::NEG_INFINITY;
+        for c in mesh.positions.chunks_exact(3) {
+            if c[0] < x_min {
+                x_min = c[0];
+            }
+            if c[0] > x_max {
+                x_max = c[0];
+            }
+        }
+
+        // Lever bar tip is at x=245 (raw mm), so x_max is invariant.
+        assert!(x_max > 240.0, "lever #{id} x_max regressed: {x_max:.2}");
+        // Pre-fix: x_min ≈ 115 (bulb on wrong side of axis). The bulb's true
+        // sweep brings it within ~30 mm of the rosette outer face (x=92).
+        assert!(
+            x_min < 100.0,
+            "lever #{id} bulb mirrored: x_min={x_min:.2} — \
+             SoR profile sign-loss regression of issue #674",
+        );
+    }
+}
+
 /// Half (a) of #604 — wall opening cut must be clean when the opening's
 /// extrusion depth exactly equals the host wall's depth (200 mm == 200 mm
 /// in `door.ifc`). Verifies the PR #605 padding fix on a real Revit IFC,

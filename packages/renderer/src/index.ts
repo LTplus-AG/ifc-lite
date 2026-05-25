@@ -2231,22 +2231,30 @@ export class Renderer {
                     );
                 }
 
-                // Standalone IFC annotation overlay (issue #653). The line
-                // vertices were pre-lifted to world space at upload time, so
-                // this draw happens regardless of whether a section plane is
-                // active — annotations are a free-floating "drawing layer"
-                // that sits at each annotation's storey elevation.
-                // Order: fills (background) → lines (outlines on top) →
-                // texts (labels above everything).
-                if (this.symbolicFillPipeline?.hasGeometry()) {
-                    this.symbolicFillPipeline.render(pass, viewProj);
-                }
-                if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
-                    this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
-                }
-                if (this.symbolicTextPipeline?.hasGeometry()) {
-                    this.symbolicTextPipeline.render(pass, viewProj);
-                }
+            }
+
+            // Standalone IFC annotation overlay (issue #653). The line
+            // vertices were pre-lifted to world space at upload time, so
+            // this draw happens regardless of whether a section plane is
+            // active — annotations are a free-floating "drawing layer"
+            // that sits at each annotation's storey elevation.
+            //
+            // This block was previously nested inside the `if (options.sectionPlane && ...)`
+            // guard above, contradicting its own comment. Loading an
+            // annotation-only model with no section plane meant the entire
+            // overlay was skipped at draw time even though 9000+ vertices
+            // had been uploaded successfully. Pulled out to its own block.
+            //
+            // Order: fills (background) → lines (outlines on top) →
+            // texts (labels above everything).
+            if (this.symbolicFillPipeline?.hasGeometry()) {
+                this.symbolicFillPipeline.render(pass, viewProj);
+            }
+            if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
+                this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
+            }
+            if (this.symbolicTextPipeline?.hasGeometry()) {
+                this.symbolicTextPipeline.render(pass, viewProj);
             }
 
             pass.end();

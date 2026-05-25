@@ -22,7 +22,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 /** Lines belonging to a single storey, ready to feed into the section overlay. */
 export interface AnnotationsForStorey {
   storeyId: number;
-  storeyElevation: number;
+  /** Authored `IfcBuildingStorey.Elevation`. `null` means the storey carried
+   *  no elevation in the parsed metadata — distinguishing that from a real
+   *  ground-floor at 0.0 matters because `resolveBucketY` only wants to swap
+   *  in the fallback in the missing case, not for legitimate ground floors. */
+  storeyElevation: number | null;
   lines: DrawingLine2D[];
   texts: AnnotationText2D[];
   fills: AnnotationFill2D[];
@@ -137,13 +141,37 @@ export function circleToSegments(
   }
 }
 
-/** Make a stable cache key for one parsed source. */
+/** Make a stable cache key for one parsed source.
+ *
+ * Uses byteLength + a sample of the actual bytes (head, middle, tail) so two
+ * different IFC sources can't alias even when they happen to share an exact
+ * size — a real risk in federated views with multiple loaded models, and the
+ * symptom is that the second model's annotations get hidden because the parse
+ * effect skips it as "already cached". Sampling 96 bytes is cheap, doesn't
+ * read the whole file, and is collision-resistant in practice. The buffer
+ * identity is also folded in so the same content loaded twice from two
+ * different ArrayBuffers (rare but possible) keeps distinct entries.
+ */
 function sourceKey(store: IfcDataStore | null | undefined): string | null {
   const source = store?.source;
   if (!source || source.byteLength === 0) return null;
-  // byteLength alone is good enough — two distinct files almost never share
-  // an exact byte count, and within a session the same buffer keeps its size.
-  return `b${source.byteLength}`;
+  const len = source.byteLength;
+  const sampleLen = Math.min(32, len);
+  const head = source.subarray(0, sampleLen);
+  const tail = source.subarray(len - sampleLen, len);
+  const midOffset = Math.max(0, Math.floor(len / 2) - Math.floor(sampleLen / 2));
+  const mid = source.subarray(midOffset, Math.min(midOffset + sampleLen, len));
+  // Fold each window into a 32-bit FNV-1a; cheap and collision-resistant for
+  // 96 bytes of structurally distinct IFC headers/body/footer.
+  const hashOne = (bytes: Uint8Array): string => {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < bytes.length; i++) {
+      h ^= bytes[i];
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(16);
+  };
+  return `b${len}-${hashOne(head)}-${hashOne(mid)}-${hashOne(tail)}`;
 }
 
 async function parseAnnotations(
@@ -178,9 +206,10 @@ async function parseAnnotations(
       if (storeyId === undefined) return null;
       let bucket = result.byStorey.get(storeyId);
       if (!bucket) {
+        const elev = storeyElevations?.get(storeyId);
         bucket = {
           storeyId,
-          storeyElevation: storeyElevations?.get(storeyId) ?? 0,
+          storeyElevation: typeof elev === 'number' && Number.isFinite(elev) ? elev : null,
           lines: [],
           texts: [],
           fills: [],
@@ -374,14 +403,16 @@ function useAnnotationParseTrigger(enabled: boolean, stores: IfcDataStore[]): nu
   return version;
 }
 
-/** Resolve the world-space Y for a storey bucket (fallback if elevation = 0). */
-function resolveBucketY(elevation: number, fallbackY: number): number {
-  // Authoring tools sometimes leave `IfcBuildingStorey.Elevation` blank and
-  // put the storey Z directly on annotation placements. In that case the
-  // bucket's recorded elevation is 0 even though the real annotation Y is
-  // elsewhere — use the fallback so the overlay stays visible rather than
-  // being buried inside the building.
-  return elevation === 0 ? fallbackY : elevation;
+/** Resolve the world-space Y for a storey bucket.
+ *
+ * `null` elevation means the storey carried no value in the parsed metadata
+ * (rare but happens in older authoring tools that leave
+ * `IfcBuildingStorey.Elevation` blank and bake the Z into the placements);
+ * fall back to the caller's `fallbackY` (typically the model's mid-Y). A
+ * real ground floor at 0.0 keeps its authored 0 instead of being remapped.
+ */
+function resolveBucketY(elevation: number | null, fallbackY: number): number {
+  return elevation === null ? fallbackY : elevation;
 }
 
 export function useSymbolicAnnotations(params: {

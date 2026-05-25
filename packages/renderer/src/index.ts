@@ -283,15 +283,18 @@ export class Renderer {
             this.pipeline.getSampleCount()
         );
         // IfcAnnotation overlay pipelines (issue #653). Share the device +
-        // presentation format with the rest of the renderer so they composite
-        // into the same RGBA pass.
+        // presentation format AND the MSAA sample count + objectId attachment
+        // shape with the rest of the renderer so they composite into the same
+        // RGBA pass without WebGPU pass-compatibility validation errors.
         this.symbolicFillPipeline = new SymbolicFillPipeline(
             this.device.getDevice(),
             this.device.getFormat(),
+            this.pipeline.getSampleCount(),
         );
         this.symbolicTextPipeline = new SymbolicTextPipeline(
             this.device.getDevice(),
             this.device.getFormat(),
+            this.pipeline.getSampleCount(),
         );
         // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
         // depth TEXTURE_BINDING), rendering still works without post-processing.

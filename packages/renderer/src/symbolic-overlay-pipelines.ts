@@ -58,6 +58,7 @@ export interface SymbolicTextInput {
 export class SymbolicFillPipeline {
   private readonly device: GPUDevice;
   private readonly format: GPUTextureFormat;
+  private readonly sampleCount: number;
   private pipeline: GPURenderPipeline | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private uniformBuffer: GPUBuffer | null = null;
@@ -65,9 +66,10 @@ export class SymbolicFillPipeline {
   private vertexBuffer: GPUBuffer | null = null;
   private vertexCount = 0;
 
-  constructor(device: GPUDevice, presentationFormat: GPUTextureFormat) {
+  constructor(device: GPUDevice, presentationFormat: GPUTextureFormat, sampleCount: number = 1) {
     this.device = device;
     this.format = presentationFormat;
+    this.sampleCount = sampleCount;
   }
 
   private init(): void {
@@ -108,6 +110,11 @@ export class SymbolicFillPipeline {
       fragment: {
         module,
         entryPoint: 'fs_main',
+        // The main render pass attaches 2 colour targets (presentation + the
+        // picker objectId) and runs MSAA. Pipelines used inside that pass
+        // must declare matching targets and sampleCount or WebGPU rejects
+        // them at validation time. The objectId slot is write-masked off so
+        // the picker IDs from the opaque pass underneath are preserved.
         targets: [
           {
             format: this.format,
@@ -119,14 +126,19 @@ export class SymbolicFillPipeline {
             },
             writeMask: GPUColorWrite.ALL,
           },
+          { format: 'rgba8unorm', writeMask: 0 },
         ],
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {
         format: 'depth24plus',
         depthWriteEnabled: false,
-        depthCompare: 'less-equal',
+        // Reverse-Z: the renderer clears depth to 0.0 and uses 'greater' /
+        // 'greater-equal' for everything in the main pass. 'less-equal'
+        // would fail the test on every visible surface.
+        depthCompare: 'greater-equal',
       },
+      multisample: { count: this.sampleCount },
     });
 
     this.uniformBuffer = this.device.createBuffer({
@@ -210,6 +222,7 @@ export class SymbolicFillPipeline {
 export class SymbolicTextPipeline {
   private readonly device: GPUDevice;
   private readonly format: GPUTextureFormat;
+  private readonly sampleCount: number;
   private readonly atlas: SymbolicTextAtlas;
   private pipeline: GPURenderPipeline | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
@@ -223,9 +236,15 @@ export class SymbolicTextPipeline {
   private instanceCount = 0;
   private uploadedAtlasVersion = -1;
 
-  constructor(device: GPUDevice, presentationFormat: GPUTextureFormat, atlas?: SymbolicTextAtlas) {
+  constructor(
+    device: GPUDevice,
+    presentationFormat: GPUTextureFormat,
+    sampleCount: number = 1,
+    atlas?: SymbolicTextAtlas,
+  ) {
     this.device = device;
     this.format = presentationFormat;
+    this.sampleCount = sampleCount;
     this.atlas = atlas ?? new SymbolicTextAtlas();
   }
 
@@ -281,6 +300,8 @@ export class SymbolicTextPipeline {
       fragment: {
         module,
         entryPoint: 'fs_main',
+        // Matches the main render pass attachments — see SymbolicFillPipeline
+        // for the full reasoning.
         targets: [
           {
             format: this.format,
@@ -290,14 +311,17 @@ export class SymbolicTextPipeline {
             },
             writeMask: GPUColorWrite.ALL,
           },
+          { format: 'rgba8unorm', writeMask: 0 },
         ],
       },
       primitive: { topology: 'triangle-strip', cullMode: 'none' },
       depthStencil: {
         format: 'depth24plus',
         depthWriteEnabled: false,
-        depthCompare: 'less-equal',
+        // Reverse-Z: see SymbolicFillPipeline.
+        depthCompare: 'greater-equal',
       },
+      multisample: { count: this.sampleCount },
     });
 
     // Per-vertex corner buffer: 4 corner indices for the triangle-strip quad.
@@ -580,18 +604,107 @@ function triangulateFillTo(stream: number[], fill: SymbolicFillInput): void {
   }
   if (rings.length === 0) return;
 
-  // For the first pass only the outer ring is triangulated; merging holes via
-  // bridge edges is omitted to keep this contained. Holes show through as
-  // background — acceptable for the initial landing; revisit when an IFC file
-  // in the wild actually exercises filled regions with holes.
+  // Stitch each hole into the outer ring with a bridge edge from the hole's
+  // rightmost vertex to the nearest outer-ring vertex (the same approach
+  // earcut.js takes for polygon-with-holes input). Ear-clipping then runs on
+  // the resulting simple polygon. The hole's winding is reversed first so the
+  // combined ring's signed area stays consistent and the ear-test sign holds.
   const outer = rings[0];
-  const triangles = earClip(outer);
+  const holes = rings.slice(1);
+  const stitched = holes.length === 0 ? outer : joinHoles(outer, holes);
+  const triangles = earClip(stitched);
   for (const tri of triangles) {
     for (const idx of tri) {
-      const v = outer[idx];
+      const v = stitched[idx];
       stream.push(v.x, worldY, v.z, color[0], color[1], color[2], color[3]);
     }
   }
+}
+
+/**
+ * Stitch each hole into the outer ring with a single bridge edge so the
+ * result is a simple polygon ear-clipping can handle. Mirrors mapbox/earcut's
+ * `eliminateHoles` pass:
+ *
+ *   1. For each hole, pick its rightmost (max-x) vertex as the bridge start.
+ *   2. Sort holes by descending bridge-start x so outer holes go in first.
+ *   3. Walk the outer ring for the vertex on the right side of the bridge
+ *      that's "visible" from the hole — closest match wins.
+ *   4. Splice the hole (rotated to start at its bridge vertex, and reversed
+ *      so its winding opposes the outer ring) into the outer ring at the
+ *      anchor, closing both ends back to their starts to form a zero-area
+ *      bridge edge.
+ *
+ * This breaks under pathological inputs (overlapping holes, holes outside
+ * the outer ring) but those don't occur in well-formed `IfcAnnotationFillArea`
+ * geometry — the IFC schema requires the outer bound to contain all inner
+ * bounds.
+ */
+type Pt = { x: number; z: number };
+function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
+  if (holes.length === 0) return outer;
+
+  type HoleEntry = { ring: Pt[]; startIdx: number; startX: number; startZ: number };
+  const sorted: HoleEntry[] = holes
+    .map((h) => {
+      let bestI = 0;
+      for (let i = 1; i < h.length; i++) {
+        if (h[i].x > h[bestI].x) bestI = i;
+      }
+      return { ring: h, startIdx: bestI, startX: h[bestI].x, startZ: h[bestI].z };
+    })
+    .sort((a, b) => b.startX - a.startX);
+
+  let result: Pt[] = outer.slice();
+
+  for (const { ring, startIdx, startX, startZ } of sorted) {
+    // Find the outer-ring index with the smallest distance to the bridge
+    // start, preferring vertices to the right (x > startX). When nothing is
+    // to the right (hole touches the outer ring's right edge), fall back to
+    // global nearest.
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < result.length; i++) {
+      const p = result[i];
+      if (p.x <= startX) continue;
+      const d = (p.x - startX) * (p.x - startX) + (p.z - startZ) * (p.z - startZ);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx < 0) {
+      for (let i = 0; i < result.length; i++) {
+        const p = result[i];
+        const d = (p.x - startX) * (p.x - startX) + (p.z - startZ) * (p.z - startZ);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+    }
+    if (bestIdx < 0) continue;
+
+    // Hole reversed so its winding opposes outer (outer is CCW after earClip
+    // normalisation; holes should be CW for the combined ring's area to come
+    // out right). Rotate to start at the bridge vertex.
+    const reversed = ring.slice().reverse();
+    const reversedStartIdx = ring.length - 1 - startIdx;
+    const rotated = [
+      ...reversed.slice(reversedStartIdx),
+      ...reversed.slice(0, reversedStartIdx),
+    ];
+
+    result = [
+      ...result.slice(0, bestIdx + 1),
+      ...rotated,
+      rotated[0],
+      result[bestIdx],
+      ...result.slice(bestIdx + 1),
+    ];
+  }
+
+  return result;
 }
 
 /** Ear-clipping triangulation of a simple polygon. Returns triangle vertex indices. */

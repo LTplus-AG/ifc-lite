@@ -24,8 +24,19 @@ import {
 import { PIPELINE_CONSTANTS } from './constants.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
-const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4) * 4;
+const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1) * 4;
 // origin.xyz + rightAxis.xyz + upAxis.xyz + uvBounds.xyzw + color.rgba
+// + anchor.xyz + capHeight (shared per text label, used by the shader to
+//   compute a single screen-space scale for every glyph in the row).
+
+// Uniform: 4x4 viewProj (64 B) + vec4 viewportAndTarget (16 B) = 80 B.
+const TEXT_UNIFORM_BYTES = 80;
+// Default target glyph cap height in physical pixels. Roughly matches a
+// 13–14px body font at 1× DPR — readable at any zoom without dominating
+// the model. Authored IFC text height is ignored in screen space, but the
+// authored cap height still feeds the scale ratio so glyph metrics keep
+// their relative proportions.
+const DEFAULT_TEXT_TARGET_PX = 14;
 
 // ─── Fill input ─────────────────────────────────────────────────────────────
 
@@ -284,16 +295,19 @@ export class SymbolicTextPipeline {
             stepMode: 'vertex',
             attributes: [{ shaderLocation: 0, offset: 0, format: 'uint32' }],
           },
-          // Per-instance: origin + rightAxis + upAxis + uvBounds + color.
+          // Per-instance: origin + rightAxis + upAxis + uvBounds + color
+          // + anchor + capHeight (last two drive screen-space scaling).
           {
             arrayStride: TEXT_INSTANCE_STRIDE_BYTES,
             stepMode: 'instance',
             attributes: [
-              { shaderLocation: 1, offset: 0,             format: 'float32x3' }, // origin
-              { shaderLocation: 2, offset: 3 * 4,         format: 'float32x3' }, // rightAxis
-              { shaderLocation: 3, offset: (3 + 3) * 4,   format: 'float32x3' }, // upAxis
-              { shaderLocation: 4, offset: (3 + 3 + 3) * 4, format: 'float32x4' }, // uvBounds
-              { shaderLocation: 5, offset: (3 + 3 + 3 + 4) * 4, format: 'float32x4' }, // color
+              { shaderLocation: 1, offset: 0,                             format: 'float32x3' }, // origin
+              { shaderLocation: 2, offset: 3 * 4,                         format: 'float32x3' }, // rightAxis
+              { shaderLocation: 3, offset: (3 + 3) * 4,                   format: 'float32x3' }, // upAxis
+              { shaderLocation: 4, offset: (3 + 3 + 3) * 4,               format: 'float32x4' }, // uvBounds
+              { shaderLocation: 5, offset: (3 + 3 + 3 + 4) * 4,           format: 'float32x4' }, // color
+              { shaderLocation: 6, offset: (3 + 3 + 3 + 4 + 4) * 4,       format: 'float32x3' }, // anchor
+              { shaderLocation: 7, offset: (3 + 3 + 3 + 4 + 4 + 3) * 4,   format: 'float32'   }, // capHeight
             ],
           },
         ],
@@ -338,7 +352,7 @@ export class SymbolicTextPipeline {
 
     this.uniformBuffer = this.device.createBuffer({
       label: 'symbolic-text-camera',
-      size: 64,
+      size: TEXT_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -416,6 +430,8 @@ export class SymbolicTextPipeline {
       upAxis: [number, number, number];
       uvBounds: [number, number, number, number];
       color: [number, number, number, number];
+      anchor: [number, number, number];
+      capHeight: number;
     }> = [];
 
     for (const text of texts) {
@@ -467,6 +483,10 @@ export class SymbolicTextPipeline {
           upAxis: [0, heightGlyphWorld, 0],
           uvBounds: [glyph.u0, glyph.v0, glyph.u1, glyph.v1],
           color: tint,
+          // Shared per-label anchor (text.worldPos) lets the shader compute
+          // one screen-space scale and apply it uniformly across all glyphs.
+          anchor: [text.worldPos[0], text.worldPos[1], text.worldPos[2]],
+          capHeight: heightWorld,
         });
       }
     }
@@ -478,13 +498,15 @@ export class SymbolicTextPipeline {
     const data = new Float32Array(layouts.length * stride);
     let off = 0;
     for (const l of layouts) {
-      data[off + 0] = l.origin[0]; data[off + 1] = l.origin[1]; data[off + 2] = l.origin[2];
-      data[off + 3] = l.rightAxis[0]; data[off + 4] = l.rightAxis[1]; data[off + 5] = l.rightAxis[2];
-      data[off + 6] = l.upAxis[0]; data[off + 7] = l.upAxis[1]; data[off + 8] = l.upAxis[2];
-      data[off + 9] = l.uvBounds[0]; data[off + 10] = l.uvBounds[1];
-      data[off + 11] = l.uvBounds[2]; data[off + 12] = l.uvBounds[3];
-      data[off + 13] = l.color[0]; data[off + 14] = l.color[1];
-      data[off + 15] = l.color[2]; data[off + 16] = l.color[3];
+      data[off + 0]  = l.origin[0];    data[off + 1]  = l.origin[1];    data[off + 2]  = l.origin[2];
+      data[off + 3]  = l.rightAxis[0]; data[off + 4]  = l.rightAxis[1]; data[off + 5]  = l.rightAxis[2];
+      data[off + 6]  = l.upAxis[0];    data[off + 7]  = l.upAxis[1];    data[off + 8]  = l.upAxis[2];
+      data[off + 9]  = l.uvBounds[0];  data[off + 10] = l.uvBounds[1];
+      data[off + 11] = l.uvBounds[2];  data[off + 12] = l.uvBounds[3];
+      data[off + 13] = l.color[0];     data[off + 14] = l.color[1];
+      data[off + 15] = l.color[2];     data[off + 16] = l.color[3];
+      data[off + 17] = l.anchor[0];    data[off + 18] = l.anchor[1];    data[off + 19] = l.anchor[2];
+      data[off + 20] = l.capHeight;
       off += stride;
     }
 
@@ -501,14 +523,28 @@ export class SymbolicTextPipeline {
     return this.instanceCount > 0;
   }
 
-  render(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+  render(
+    pass: GPURenderPassEncoder,
+    viewProj: Float32Array,
+    viewportPxWidth: number,
+    viewportPxHeight: number,
+    targetGlyphPx: number = DEFAULT_TEXT_TARGET_PX,
+  ): void {
     if (!this.pipeline || !this.uniformBuffer || !this.cornerBuffer || !this.instanceBuffer) return;
     if (this.instanceCount === 0) return;
     this.syncAtlasTexture();
     this.ensureBindGroup();
     if (!this.bindGroup) return;
 
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, viewProj);
+    // Pack the uniform: 64 B viewProj + 16 B (viewportW, viewportH, targetPx, pad).
+    const uniformData = new Float32Array(TEXT_UNIFORM_BYTES / 4);
+    uniformData.set(viewProj, 0);
+    uniformData[16] = viewportPxWidth;
+    uniformData[17] = viewportPxHeight;
+    uniformData[18] = targetGlyphPx;
+    uniformData[19] = 0;
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
+
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.cornerBuffer);

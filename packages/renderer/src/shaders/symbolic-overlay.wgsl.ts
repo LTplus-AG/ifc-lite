@@ -46,6 +46,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 export const SYMBOLIC_TEXT_WGSL = /* wgsl */ `
 struct Camera {
   viewProj: mat4x4<f32>,
+  // x = viewport width in physical pixels, y = viewport height
+  // z = target glyph cap-height in screen pixels, w = padding
+  viewportAndTarget: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -70,6 +73,13 @@ struct InstIn {
   @location(4) uvBounds: vec4<f32>,
   // Glyph tint (sRGB straight-alpha).
   @location(5) color: vec4<f32>,
+  // Shared text-label anchor (every glyph in the same label uses the same
+  // anchor). Lets the shader compute one screen-space scale per label and
+  // apply it uniformly to every glyph offset so row spacing stays in sync.
+  @location(6) anchor: vec3<f32>,
+  // Authored cap height in world units. Same value for every glyph in the
+  // label; used to convert "target pixels" into a scale factor.
+  @location(7) capHeight: f32,
 };
 
 struct VsOut {
@@ -85,8 +95,24 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   let u = f32((in.corner & 1u));      // 0,1,0,1
   let v = f32((in.corner >> 1u) & 1u); // 0,0,1,1
 
-  // World position: origin + right * u + up * v
-  let worldPos = inst.origin + inst.rightAxis * u + inst.upAxis * v;
+  // ── Screen-space text scaling ──
+  // Project the label's shared anchor. For a standard perspective projection
+  // clip.w ≈ view-space depth, and 1 NDC unit corresponds to viewportH/2
+  // pixels — so "world per pixel" at this depth ≈ (2*w)/viewportH.
+  let anchorClip = camera.viewProj * vec4<f32>(inst.anchor, 1.0);
+  let absW = max(abs(anchorClip.w), 1e-4);
+  let worldPerPixel = (2.0 * absW) / max(camera.viewportAndTarget.y, 1.0);
+  let safeCap = max(inst.capHeight, 1e-4);
+  // wanted_world = target_pixels * world_per_pixel; scale = wanted/authored.
+  let scale = (camera.viewportAndTarget.z * worldPerPixel) / safeCap;
+
+  // Apply the single scale to (origin − anchor), rightAxis, and upAxis so
+  // per-glyph spacing and glyph dimensions track each other.
+  let localOffset = inst.origin - inst.anchor;
+  let worldPos = inst.anchor
+               + localOffset    * scale
+               + inst.rightAxis * scale * u
+               + inst.upAxis    * scale * v;
 
   // UV: lerp atlas bounds. Note v inverted (atlas top is v=0).
   let uMix = mix(inst.uvBounds.x, inst.uvBounds.z, u);

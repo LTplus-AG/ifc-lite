@@ -2254,7 +2254,15 @@ export class Renderer {
                 this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
             }
             if (this.symbolicTextPipeline?.hasGeometry()) {
-                this.symbolicTextPipeline.render(pass, viewProj);
+                // Pass viewport pixel dimensions so the shader can scale glyphs
+                // to a constant on-screen size (BIMvision-style annotations)
+                // regardless of camera distance or authored text height.
+                this.symbolicTextPipeline.render(
+                    pass,
+                    viewProj,
+                    this.canvas.width,
+                    this.canvas.height,
+                );
             }
 
             pass.end();

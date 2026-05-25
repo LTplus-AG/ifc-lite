@@ -45,7 +45,7 @@ i_overlay = "6.0"
 ifc-lite-core.workspace = true
 
 # Math library
-nalgebra = { version = "0.34", default-features = false, features = ["std"] }
+nalgebra = { version = "0.35", default-features = false, features = ["std"] }
 
 # Parallel processing
 rayon = "1.10"

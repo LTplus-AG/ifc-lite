@@ -16,10 +16,10 @@ describe('sha256Hex', () => {
     expect(hex).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
   });
 
-  it('matches the known digest of the empty file double-byte', async () => {
+  it('matches the known digest of the two-byte \\x00\\x01 input', async () => {
     const hex = await sha256Hex(new Uint8Array([0x00, 0x01]));
-    // sha256(\x00\x01) — generated via reference
-    expect(hex).toMatch(/^[0-9a-f]{64}$/);
+    // Cross-checked: `printf '\x00\x01' | shasum -a 256`.
+    expect(hex).toBe('b413f47d13ee2fe6c845b2ee141af81de858df4ec549a58b7970bb96645bc8d2');
   });
 
   it('is deterministic for the same input', async () => {

@@ -1232,6 +1232,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <TooltipContent>{workspacePanelLabel ? `Panels: ${workspacePanelLabel}` : 'Panels'}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Workspace
+          </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('script')}
             onCheckedChange={() => handleToggleBottomPanel('script')}
@@ -1254,6 +1257,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             Schedule (Gantt)
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Inspect & validate
+          </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('bcf')}
             onCheckedChange={() => handleToggleRightPanel('bcf')}
@@ -1275,13 +1281,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Palette className="h-4 w-4 mr-2" />
             Lens Rules
           </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            checked={activeWorkspacePanels.has('extensions')}
-            onCheckedChange={() => handleToggleRightPanel('extensions')}
-          >
-            <Puzzle className="h-4 w-4 mr-2" />
-            Extensions
-          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Author
+          </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('addElement')}
             onCheckedChange={() => handleToggleRightPanel('addElement')}
@@ -1289,9 +1292,19 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <PackagePlus className="h-4 w-4 mr-2" />
             Add Element
           </DropdownMenuCheckboxItem>
-          {rightAnalysisExtensions.length > 0 && (
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('extensions')}
+            onCheckedChange={() => handleToggleRightPanel('extensions')}
+          >
+            <Puzzle className="h-4 w-4 mr-2" />
+            Extensions
+          </DropdownMenuCheckboxItem>
+          {(rightAnalysisExtensions.length > 0 || bottomAnalysisExtensions.length > 0) && (
             <>
               <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Analysis extensions
+              </DropdownMenuLabel>
               {rightAnalysisExtensions.map((extension) => {
                 const Icon = extension.icon;
                 return (
@@ -1305,11 +1318,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                   </DropdownMenuCheckboxItem>
                 );
               })}
-            </>
-          )}
-          {bottomAnalysisExtensions.length > 0 && (
-            <>
-              <DropdownMenuSeparator />
               {bottomAnalysisExtensions.map((extension) => {
                 const Icon = extension.icon;
                 return (

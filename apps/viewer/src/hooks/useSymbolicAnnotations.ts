@@ -57,6 +57,15 @@ export interface AnnotationText2D {
    * shared anchor. Optional — single-line literals leave it undefined.
    */
   lineYOffset?: number;
+  /**
+   * When true, the renderer rebuilds the glyph quad in screen-aligned
+   * (cameraRight, cameraUp) basis so the text always faces the camera.
+   * Set for IfcGridAxis tags — they must stay readable in top-down/ground
+   * views where the authored world-Y up axis collapses to zero on-screen.
+   * Defaults to false (authored, in-plane text — matches BIMvision for
+   * dimension/leader annotations that lie flat on the floor).
+   */
+  billboard?: boolean;
 }
 
 /**
@@ -324,6 +333,12 @@ async function parseAnnotations(
       // a little air between rows so descenders don't kiss the next cap.
       const lineSpacing = perLineHeight * 1.2;
       const bucket = ensureBucket(text.expressId, text.worldY);
+      // IfcGridAxis bubble tags must stay readable in any view orientation
+      // (top-down, eye-level, oblique). Tag them as billboard so the text
+      // shader rebuilds the quad in screen-aligned basis at render time.
+      // Other annotation text (dimensions, leader labels) keeps authored
+      // orientation — those are meant to lie flat in the floor plane.
+      const isGridTag = text.ifcType === 'IfcGridAxis';
       for (let li = 0; li < lines.length; li++) {
         const t2d: AnnotationText2D = {
           x: text.x,
@@ -334,6 +349,7 @@ async function parseAnnotations(
           content: lines[li],
           alignment: text.alignment,
           lineYOffset: -li * lineSpacing,
+          billboard: isGridTag,
         };
         (bucket ? bucket.texts : result.looseTexts).push(t2d);
       }
@@ -548,6 +564,8 @@ export interface AnnotationText3D {
   height: number;
   content: string;
   alignment: string;
+  /** True when the glyph quad should rebuild in camera-aligned basis (grid tags). */
+  billboard?: boolean;
 }
 
 /**
@@ -606,6 +624,7 @@ export function useSymbolicAnnotationsRichData(params: {
           height: t.height,
           content: t.content,
           alignment: t.alignment,
+          billboard: t.billboard,
         });
       };
       const pushFill = (f: AnnotationFill2D, y: number) => {

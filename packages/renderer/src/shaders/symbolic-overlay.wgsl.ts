@@ -49,6 +49,12 @@ struct Camera {
   // x = viewport width in physical pixels, y = viewport height
   // z = target glyph cap-height in screen pixels, w = padding
   viewportAndTarget: vec4<f32>,
+  // Screen-aligned camera basis (world space). xyz = direction, w = padding.
+  // Used by billboarded glyphs (grid tags) so they always face the camera —
+  // critical for top-down/ground views where world-up upAxis collapses to
+  // zero screen extent and the tag becomes invisible.
+  cameraRight: vec4<f32>,
+  cameraUp:    vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -80,6 +86,17 @@ struct InstIn {
   // Authored cap height in world units. Same value for every glyph in the
   // label; used to convert "target pixels" into a scale factor.
   @location(7) capHeight: f32,
+  // Billboard flag (1.0 = use camera-aligned axes, 0.0 = use authored
+  // rightAxis/upAxis). Only the grid-tag emission path sets this to 1.0.
+  @location(8) billboard: f32,
+  // Per-glyph baseline-relative offset + size in WORLD units. Only used
+  // when billboard=1 (the authored origin bakes the offset along the
+  // floor-plane basis, which is the wrong direction for camera-aligned
+  // text). For non-billboard glyphs these are written too but the shader
+  // picks the authored path. World units = atlas-pixel * wScale.
+  //   .xy = (offsetX, offsetY) from anchor to glyph BL
+  //   .zw = (width, height) of the glyph quad
+  @location(9) glyphOffsetSize: vec4<f32>,
 };
 
 struct VsOut {
@@ -96,41 +113,55 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   let v = f32((in.corner >> 1u) & 1u); // 0,0,1,1
 
   // ── Screen-space text scaling (projection-agnostic) ──
-  // Project the label anchor and the anchor + 1 world-Y unit, then read off
-  // the on-screen pixel distance between them. This gives "pixels per
-  // world-Y unit at this anchor" for ANY projection (perspective, ortho,
-  // tilted, sheared) without assuming a specific projection-matrix layout.
-  //
-  // For top-down views world-Y collapses to ~0 screen pixels — in that case
-  // we fall through to the scale=1 clamp below, which leaves the label at
-  // its authored size (the convention for plan-view CAD annotation text).
+  // For non-billboard glyphs measure world-Y → screen pixels (matches the
+  // authored upAxis convention). For billboard glyphs measure cameraUp →
+  // screen pixels — that axis ALWAYS spans the full viewport height
+  // regardless of view angle, so screen-space scaling stays correct in
+  // top-down / ground / oblique views.
+  let isBillboard = inst.billboard > 0.5;
+  let scaleProbeAxis = select(vec3<f32>(0.0, 1.0, 0.0), camera.cameraUp.xyz, isBillboard);
   let aClip = camera.viewProj * vec4<f32>(inst.anchor, 1.0);
-  let bClip = camera.viewProj * vec4<f32>(inst.anchor + vec3<f32>(0.0, 1.0, 0.0), 1.0);
+  let bClip = camera.viewProj * vec4<f32>(inst.anchor + scaleProbeAxis, 1.0);
   let aNdc = aClip.xy / max(abs(aClip.w), 1e-4);
   let bNdc = bClip.xy / max(abs(bClip.w), 1e-4);
   let unitYPx = length(bNdc - aNdc) * camera.viewportAndTarget.y * 0.5;
 
-  // What the authored cap height currently spans on screen, and what we
-  // want it to span. capHeight is in world-Y units (floor-plan convention).
   let safeCap = max(inst.capHeight, 1e-4);
   let currentPx = safeCap * unitYPx;
-  // Clamp to (0.02, 1.0]: never grow text beyond authored size (a too-big
-  // authored size is the floor-plan convention; we should NOT amplify it),
-  // and never shrink below ~2% of authored (keeps the GPU draw alive even
-  // at extreme close zoom; below readable size it just stops mattering).
+  // Clamp to (0.02, 1.0]: never grow text beyond authored size; never
+  // shrink below ~2%.
   let scale = clamp(
     camera.viewportAndTarget.z / max(currentPx, 1e-2),
     0.02,
     1.0,
   );
 
-  // Apply the single scale to (origin − anchor), rightAxis, and upAxis so
-  // per-glyph spacing and glyph dimensions track each other.
-  let localOffset = inst.origin - inst.anchor;
-  let worldPos = inst.anchor
-               + localOffset    * scale
-               + inst.rightAxis * scale * u
-               + inst.upAxis    * scale * v;
+  // ── Position the glyph quad in world space ──
+  // Non-billboard: authored axes (text lies in the floor plane of its
+  // annotation — IFC convention). Billboard: camera-aligned axes (text
+  // always faces the camera — grid-tag convention).
+  let authoredLocalOffset = inst.origin - inst.anchor;
+  let authoredWorldPos =
+      inst.anchor
+    + authoredLocalOffset * scale
+    + inst.rightAxis * scale * u
+    + inst.upAxis    * scale * v;
+
+  // Billboard: rebuild the quad in screen-aligned camera basis. glyphOffsetSize
+  // carries the same 2D atlas-pixel layout the upload computed, just in
+  // world units — re-project onto (cameraRight, cameraUp) so it tracks the
+  // viewer's eye in every orientation.
+  let bbOffsetX = inst.glyphOffsetSize.x;
+  let bbOffsetY = inst.glyphOffsetSize.y;
+  let bbWidth   = inst.glyphOffsetSize.z;
+  let bbHeight  = inst.glyphOffsetSize.w;
+  let billboardWorldPos =
+      inst.anchor
+    + (camera.cameraRight.xyz * bbOffsetX + camera.cameraUp.xyz * bbOffsetY) * scale
+    + (camera.cameraRight.xyz * bbWidth   * u
+     + camera.cameraUp.xyz    * bbHeight  * v) * scale;
+
+  let worldPos = select(authoredWorldPos, billboardWorldPos, isBillboard);
 
   // UV: lerp atlas bounds. Note v inverted (atlas top is v=0).
   let uMix = mix(inst.uvBounds.x, inst.uvBounds.z, u);

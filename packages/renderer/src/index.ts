@@ -2257,11 +2257,37 @@ export class Renderer {
                 // Pass viewport pixel dimensions so the shader can scale glyphs
                 // to a constant on-screen size (BIMvision-style annotations)
                 // regardless of camera distance or authored text height.
+                //
+                // Also pass the screen-aligned camera basis (right, up) so
+                // billboarded glyphs (grid bubble tags) can face the camera
+                // in any orientation — top-down, eye-level, oblique alike.
+                const camPos = this.camera.getPosition();
+                const camTgt = this.camera.getTarget();
+                const camUpVec = this.camera.getUp();
+                // Forward = normalize(target - position).
+                let fx = camTgt.x - camPos.x;
+                let fy = camTgt.y - camPos.y;
+                let fz = camTgt.z - camPos.z;
+                let flen = Math.hypot(fx, fy, fz) || 1;
+                fx /= flen; fy /= flen; fz /= flen;
+                // Right = normalize(cross(forward, world-up)).
+                let rx = fy * camUpVec.z - fz * camUpVec.y;
+                let ry = fz * camUpVec.x - fx * camUpVec.z;
+                let rz = fx * camUpVec.y - fy * camUpVec.x;
+                let rlen = Math.hypot(rx, ry, rz) || 1;
+                rx /= rlen; ry /= rlen; rz /= rlen;
+                // True up = normalize(cross(right, forward)) — guaranteed
+                // perpendicular to both, defines screen-space vertical.
+                const ux = ry * fz - rz * fy;
+                const uy = rz * fx - rx * fz;
+                const uz = rx * fy - ry * fx;
                 this.symbolicTextPipeline.render(
                     pass,
                     viewProj,
                     this.canvas.width,
                     this.canvas.height,
+                    [rx, ry, rz],
+                    [ux, uy, uz],
                 );
             }
 

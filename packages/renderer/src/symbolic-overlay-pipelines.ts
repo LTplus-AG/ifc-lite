@@ -24,13 +24,17 @@ import {
 import { PIPELINE_CONSTANTS } from './constants.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
-const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1) * 4;
+const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4) * 4;
 // origin.xyz + rightAxis.xyz + upAxis.xyz + uvBounds.xyzw + color.rgba
 // + anchor.xyz + capHeight (shared per text label, used by the shader to
-//   compute a single screen-space scale for every glyph in the row).
+//   compute a single screen-space scale for every glyph in the row)
+// + billboard (1 = use camera-aligned axes, 0 = authored — IfcGridAxis only)
+// + glyphOffsetSize.xyzw (baseline-relative 2D atlas-pixel offset + size
+//   in world units; only consulted on the billboard branch).
 
-// Uniform: 4x4 viewProj (64 B) + vec4 viewportAndTarget (16 B) = 80 B.
-const TEXT_UNIFORM_BYTES = 80;
+// Uniform: viewProj (64 B) + viewportAndTarget (16 B) + cameraRight (16 B)
+// + cameraUp (16 B) = 112 B.
+const TEXT_UNIFORM_BYTES = 112;
 // Default target glyph cap height in physical pixels. Roughly matches a
 // 13–14px body font at 1× DPR — readable at any zoom without dominating
 // the model. Authored IFC text height is ignored in screen space, but the
@@ -63,6 +67,14 @@ export interface SymbolicTextInput {
   /** IFC BoxAlignment ("bottom-left", "center", "top-right", …). */
   alignment: string;
   color?: [number, number, number, number];
+  /**
+   * When true, the shader rebuilds the glyph quad in screen-aligned
+   * (cameraRight, cameraUp) basis so the text always faces the camera.
+   * Used for IfcGridAxis bubble tags — they must stay readable in
+   * top-down/ground views where the authored world-Y up axis collapses.
+   * Defaults to false (authored, in-plane text).
+   */
+  billboard?: boolean;
 }
 
 // ─── Fill pipeline ──────────────────────────────────────────────────────────
@@ -296,18 +308,20 @@ export class SymbolicTextPipeline {
             attributes: [{ shaderLocation: 0, offset: 0, format: 'uint32' }],
           },
           // Per-instance: origin + rightAxis + upAxis + uvBounds + color
-          // + anchor + capHeight (last two drive screen-space scaling).
+          // + anchor + capHeight + billboard + glyphOffsetSize.
           {
             arrayStride: TEXT_INSTANCE_STRIDE_BYTES,
             stepMode: 'instance',
             attributes: [
-              { shaderLocation: 1, offset: 0,                             format: 'float32x3' }, // origin
-              { shaderLocation: 2, offset: 3 * 4,                         format: 'float32x3' }, // rightAxis
-              { shaderLocation: 3, offset: (3 + 3) * 4,                   format: 'float32x3' }, // upAxis
-              { shaderLocation: 4, offset: (3 + 3 + 3) * 4,               format: 'float32x4' }, // uvBounds
-              { shaderLocation: 5, offset: (3 + 3 + 3 + 4) * 4,           format: 'float32x4' }, // color
-              { shaderLocation: 6, offset: (3 + 3 + 3 + 4 + 4) * 4,       format: 'float32x3' }, // anchor
-              { shaderLocation: 7, offset: (3 + 3 + 3 + 4 + 4 + 3) * 4,   format: 'float32'   }, // capHeight
+              { shaderLocation: 1, offset: 0,                                       format: 'float32x3' }, // origin
+              { shaderLocation: 2, offset: 3 * 4,                                   format: 'float32x3' }, // rightAxis
+              { shaderLocation: 3, offset: (3 + 3) * 4,                             format: 'float32x3' }, // upAxis
+              { shaderLocation: 4, offset: (3 + 3 + 3) * 4,                         format: 'float32x4' }, // uvBounds
+              { shaderLocation: 5, offset: (3 + 3 + 3 + 4) * 4,                     format: 'float32x4' }, // color
+              { shaderLocation: 6, offset: (3 + 3 + 3 + 4 + 4) * 4,                 format: 'float32x3' }, // anchor
+              { shaderLocation: 7, offset: (3 + 3 + 3 + 4 + 4 + 3) * 4,             format: 'float32'   }, // capHeight
+              { shaderLocation: 8, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1) * 4,         format: 'float32'   }, // billboard
+              { shaderLocation: 9, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1) * 4,     format: 'float32x4' }, // glyphOffsetSize
             ],
           },
         ],
@@ -432,6 +446,10 @@ export class SymbolicTextPipeline {
       color: [number, number, number, number];
       anchor: [number, number, number];
       capHeight: number;
+      billboard: number;
+      // (offsetX, offsetY, width, height) in world units — only consumed by
+      // the shader on the billboard branch. World units = atlas px × wScale.
+      glyphOffsetSize: [number, number, number, number];
     }> = [];
 
     for (const text of texts) {
@@ -487,6 +505,16 @@ export class SymbolicTextPipeline {
           // one screen-space scale and apply it uniformly across all glyphs.
           anchor: [text.worldPos[0], text.worldPos[1], text.worldPos[2]],
           capHeight: heightWorld,
+          billboard: text.billboard ? 1.0 : 0.0,
+          // Per-glyph offset + size in world units. The shader uses these
+          // (via cameraRight/cameraUp) when billboard=1 so the glyph quad
+          // tracks the screen instead of the floor plane.
+          glyphOffsetSize: [
+            px0 * wScale,         // offsetX from anchor along baseline
+            pyBottom * wScale,    // offsetY (ascender / descender / baseline)
+            widthAtlas * wScale,  // glyph width
+            heightGlyphAtlas * wScale, // glyph height
+          ],
         });
       }
     }
@@ -507,6 +535,9 @@ export class SymbolicTextPipeline {
       data[off + 15] = l.color[2];     data[off + 16] = l.color[3];
       data[off + 17] = l.anchor[0];    data[off + 18] = l.anchor[1];    data[off + 19] = l.anchor[2];
       data[off + 20] = l.capHeight;
+      data[off + 21] = l.billboard;
+      data[off + 22] = l.glyphOffsetSize[0]; data[off + 23] = l.glyphOffsetSize[1];
+      data[off + 24] = l.glyphOffsetSize[2]; data[off + 25] = l.glyphOffsetSize[3];
       off += stride;
     }
 
@@ -528,6 +559,8 @@ export class SymbolicTextPipeline {
     viewProj: Float32Array,
     viewportPxWidth: number,
     viewportPxHeight: number,
+    cameraRight: readonly [number, number, number],
+    cameraUp: readonly [number, number, number],
     targetGlyphPx: number = DEFAULT_TEXT_TARGET_PX,
   ): void {
     if (!this.pipeline || !this.uniformBuffer || !this.cornerBuffer || !this.instanceBuffer) return;
@@ -536,13 +569,25 @@ export class SymbolicTextPipeline {
     this.ensureBindGroup();
     if (!this.bindGroup) return;
 
-    // Pack the uniform: 64 B viewProj + 16 B (viewportW, viewportH, targetPx, pad).
+    // Pack the uniform:
+    //   [0..15]  viewProj                (64 B)
+    //   [16..19] (viewportW, viewportH, targetPx, pad)
+    //   [20..23] cameraRight.xyz + pad
+    //   [24..27] cameraUp.xyz + pad
     const uniformData = new Float32Array(TEXT_UNIFORM_BYTES / 4);
     uniformData.set(viewProj, 0);
     uniformData[16] = viewportPxWidth;
     uniformData[17] = viewportPxHeight;
     uniformData[18] = targetGlyphPx;
     uniformData[19] = 0;
+    uniformData[20] = cameraRight[0];
+    uniformData[21] = cameraRight[1];
+    uniformData[22] = cameraRight[2];
+    uniformData[23] = 0;
+    uniformData[24] = cameraUp[0];
+    uniformData[25] = cameraUp[1];
+    uniformData[26] = cameraUp[2];
+    uniformData[27] = 0;
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
 
     pass.setPipeline(this.pipeline);

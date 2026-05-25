@@ -844,6 +844,7 @@ export function Viewport({
         height: t.height,
         content: t.content,
         alignment: t.alignment,
+        billboard: t.billboard,
       })),
     );
   }, [annotationTexts3D, isInitialized]);

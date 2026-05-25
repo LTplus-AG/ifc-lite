@@ -54,7 +54,7 @@ impl IfcAPI {
         // to "list of style refs". Walked once at parse start (O(n)) so per-
         // item color lookup is O(1) later. Files without any IfcStyledItem
         // get an empty map and the resolver falls back to defaults. See
-        // resolve_fill_color() for the chain (deprecated
+        // resolve_color_via_styles() for the chain (deprecated
         // IfcPresentationStyleAssignment unwrap + IfcFillAreaStyle →
         // IfcColourRgb).
         let styled_items = build_styled_item_index(&content, &mut decoder);
@@ -848,9 +848,14 @@ fn extract_symbolic_item(
             // IfcCircle: Position (IfcAxis2Placement2D/3D), Radius
             let radius = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
 
-            // Skip invalid, degenerate, or unreasonably large radii
-            // Radius > 1000 units is likely erroneous data
-            if radius <= 0.0 || !radius.is_finite() || radius > 1000.0 {
+            // Skip invalid or degenerate radii only. Earlier code dropped
+            // r > 1000m on the assumption such values were exporter bugs,
+            // but site-plan annotations legitimately have multi-km arcs
+            // (turning circles, contour curves, road centrelines) — clip
+            // those silently and the user sees missing geometry with no
+            // diagnostic. NaN/Inf still hard-fails (downstream tessellation
+            // is undefined for those).
+            if radius <= 0.0 || !radius.is_finite() {
                 return;
             }
 
@@ -911,6 +916,56 @@ fn extract_symbolic_item(
                 center_z + transform.tz,
                 rep_identifier.to_string(),
             ));
+        }
+        IfcType::IfcEllipse => {
+            // IfcEllipse: Position (IfcAxis2Placement2D|3D), SemiAxis1, SemiAxis2.
+            // We don't have a SymbolicEllipse primitive (it'd need its own
+            // GPU pipeline), so tessellate to a polyline approximation —
+            // 64 segments matches the IFC_Model.ifc curve-tessellation
+            // budget and is round to ~0.4° per chord on a 1m ellipse.
+            let semi_a = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+            let semi_b = item.get(2).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+            if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {
+                return;
+            }
+            let mut center_local = (0.0f32, 0.0f32, 0.0f32);
+            if let Some(pos_ref) = item.get_ref(0) {
+                if let Ok(placement) = decoder.decode_by_id(pos_ref) {
+                    if let Some(loc_ref) = placement.get_ref(0) {
+                        if let Ok(loc) = decoder.decode_by_id(loc_ref) {
+                            if let Some(coords) = loc.get(0).and_then(|a| a.as_list()) {
+                                center_local.0 = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                                center_local.1 = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                                center_local.2 = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                            }
+                        }
+                    }
+                }
+            }
+            const SEGMENTS: usize = 64;
+            let mut points: Vec<f32> = Vec::with_capacity((SEGMENTS + 1) * 2);
+            for i in 0..=SEGMENTS {
+                let t = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
+                let lx = center_local.0 + semi_a * t.cos();
+                let ly = center_local.1 + semi_b * t.sin();
+                let (wx, wy) = transform.transform_point(lx, ly);
+                let x = wx - rtc_x;
+                let y = -wy + rtc_z;
+                if x.is_finite() && y.is_finite() {
+                    points.push(x);
+                    points.push(y);
+                }
+            }
+            if points.len() >= 4 {
+                collection.add_polyline(SymbolicPolyline::new(
+                    express_id,
+                    ifc_type.to_string(),
+                    points,
+                    true, // closed
+                    center_local.2 + transform.tz,
+                    rep_identifier.to_string(),
+                ));
+            }
         }
         IfcType::IfcTrimmedCurve => {
             // IfcTrimmedCurve: BasisCurve, Trim1, Trim2, SenseAgreement, MasterRepresentation
@@ -1143,6 +1198,7 @@ fn extract_symbolic_item(
                 transform,
                 rtc_x,
                 rtc_z,
+                styled_items,
                 collection,
             );
         }
@@ -1180,6 +1236,7 @@ fn extract_symbolic_item(
 /// unit) when the IFC text style chain isn't resolved here — the renderer can
 /// override based on its own typography defaults.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn extract_text_literal(
     item: &ifc_lite_core::DecodedEntity,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -1190,6 +1247,7 @@ fn extract_text_literal(
     transform: &Transform2D,
     rtc_x: f32,
     rtc_z: f32,
+    styled_items: &std::collections::HashMap<u32, Vec<u32>>,
     collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
 ) {
     use crate::zero_copy::SymbolicText;
@@ -1257,7 +1315,20 @@ fn extract_text_literal(
     // (see polyline/circle paths above).
     let (wx, wy) = composed.transform_point(0.0, 0.0);
 
-    collection.add_text(SymbolicText::new(
+    // Resolve text colour via the IfcStyledItem chain on the literal
+    // entity (`item.id`). When the file ships an IfcTextStyle on this
+    // literal we honour it; otherwise the text falls back to the
+    // renderer's default tint (near-black). The fixture this PR was built
+    // against doesn't include IfcTextStyle on any annotation literal, so
+    // this path is effectively no-op for it — but it's spec-correct and
+    // a foundation for files that do.
+    let (color_r, color_g, color_b, color_a) =
+        match resolve_color_via_styles(item.id, styled_items, decoder) {
+            Some([r, g, b, a]) => (r, g, b, a),
+            None => (0.05, 0.05, 0.05, 1.0),
+        };
+
+    collection.add_text(SymbolicText::new_styled(
         express_id,
         ifc_type.to_string(),
         wx - rtc_x,
@@ -1272,6 +1343,8 @@ fn extract_text_literal(
         // ObjectPlacement, so this works even when ObjectPlacement is null
         // (3DEXPERIENCE pattern — see fixture #62).
         composed.tz,
+        [color_r, color_g, color_b, color_a],
+        0.0, // 0 = use renderer default target_px (14 px body text)
         rep_identifier.to_string(),
     ));
 }
@@ -1358,6 +1431,40 @@ fn extract_annotation_fill_area(
                     let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32
                         * unit_scale;
                     let (wx, wy) = transform.transform_point(x, y);
+                    out.push(wx - rtc_x);
+                    out.push(-wy + rtc_z);
+                }
+                out
+            }
+            ifc_lite_core::IfcType::IfcEllipse => {
+                // IfcAnnotationFillArea with an ellipse boundary — same
+                // tessellation strategy as IfcCircle but with two semi-axes.
+                let semi_a = curve.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                let semi_b = curve.get(2).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {
+                    return Vec::new();
+                }
+                let mut cx_local: f32 = 0.0;
+                let mut cy_local: f32 = 0.0;
+                if let Some(pos_ref) = curve.get_ref(0) {
+                    if let Ok(placement) = decoder.decode_by_id(pos_ref) {
+                        if let Some(loc_ref) = placement.get_ref(0) {
+                            if let Ok(loc) = decoder.decode_by_id(loc_ref) {
+                                if let Some(coords) = loc.get(0).and_then(|a| a.as_list()) {
+                                    cx_local = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                                    cy_local = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
+                                }
+                            }
+                        }
+                    }
+                }
+                const SEGMENTS: usize = 64;
+                let mut out = Vec::with_capacity(SEGMENTS * 2);
+                for i in 0..SEGMENTS {
+                    let theta = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
+                    let lx = cx_local + semi_a * theta.cos();
+                    let ly = cy_local + semi_b * theta.sin();
+                    let (wx, wy) = transform.transform_point(lx, ly);
                     out.push(wx - rtc_x);
                     out.push(-wy + rtc_z);
                 }
@@ -1450,7 +1557,7 @@ fn extract_annotation_fill_area(
     // black — matches the "SolidBlackFill" convention used by the
     // 3DEXPERIENCE / IfcPlusPlus exporters that ship hundreds of leader
     // dots with the implicit assumption of opaque-black rendering.
-    let fill_rgba = resolve_fill_color(item.id, styled_items, decoder)
+    let fill_rgba = resolve_color_via_styles(item.id, styled_items, decoder)
         .unwrap_or([0.0, 0.0, 0.0, 1.0]);
 
     // Capture world-Y elevation from the outer boundary's first 3D point or
@@ -1878,11 +1985,11 @@ fn build_styled_item_index(
     out
 }
 
-/// Resolve the fill color for a styled IfcAnnotationFillArea (or any item
-/// with an associated IfcStyledItem) by walking the style chain. Returns
-/// `None` when no usable color is found — the caller substitutes its
-/// fallback.
-fn resolve_fill_color(
+/// Resolve a colour for a styled representation item via its associated
+/// IfcStyledItem chain. Works for any item type — fills walk
+/// IfcFillAreaStyle, text walks IfcTextStyle. Returns `None` when no
+/// usable colour is found; the caller substitutes its own fallback.
+fn resolve_color_via_styles(
     item_id: u32,
     styled_items: &std::collections::HashMap<u32, Vec<u32>>,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -1897,9 +2004,14 @@ fn resolve_fill_color(
 }
 
 /// Walk a single concrete style ref (`IfcCurveStyle | IfcFillAreaStyle |
-/// IfcTextStyle | IfcSurfaceStyle`) and try to pull a fill color out.
+/// IfcTextStyle | IfcSurfaceStyle`) and try to pull a colour out.
 /// `IfcPresentationStyleAssignment` wrapping is already unwrapped by
 /// `build_styled_item_index`, so we don't need to handle it here.
+///
+/// IfcCurveStyle / IfcSurfaceStyle aren't consumed yet because the line
+/// pipeline still uses a uniform colour — adding per-primitive line colour
+/// is a renderer pipeline change scheduled as a follow-up. IfcTextStyle is
+/// consumed via the text pipeline's per-instance colour attribute.
 fn extract_color_from_style_ref(
     style_ref: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -1909,12 +2021,32 @@ fn extract_color_from_style_ref(
     let style = decoder.decode_by_id(style_ref).ok()?;
     match style.ifc_type {
         IfcType::IfcFillAreaStyle => extract_color_from_fill_area_style(&style, decoder),
-        // Curve / Text / Surface styles fall through — color support for
-        // those primitives is wired up in a follow-up commit (each needs
-        // a per-primitive color field on its zero-copy struct + a renderer
-        // uniform change to honor it).
+        IfcType::IfcTextStyle => extract_color_from_text_style(&style, decoder),
         _ => None,
     }
+}
+
+/// Walk `IfcTextStyle.TextCharacterAppearance` →
+/// `IfcTextStyleForDefinedFont.Colour` → `IfcColourRgb`.
+fn extract_color_from_text_style(
+    style: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    use ifc_lite_core::IfcType;
+    // attr 1: TextCharacterAppearance (IfcTextStyleForDefinedFont)
+    let appearance = decoder.decode_by_id(style.get_ref(1)?).ok()?;
+    if appearance.ifc_type != IfcType::IfcTextStyleForDefinedFont {
+        return None;
+    }
+    // attr 0: Colour (IfcColour) — usually IfcColourRgb.
+    let colour = decoder.decode_by_id(appearance.get_ref(0)?).ok()?;
+    if colour.ifc_type != IfcType::IfcColourRgb {
+        return None;
+    }
+    let r = colour.get(1)?.as_float()? as f32;
+    let g = colour.get(2)?.as_float()? as f32;
+    let b = colour.get(3)?.as_float()? as f32;
+    Some([r, g, b, 1.0])
 }
 
 /// Walk `IfcFillAreaStyle.FillStyles` to find the first `IfcColourRgb` and

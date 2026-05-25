@@ -15,6 +15,8 @@ import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, typ
 import { useViewerStore } from '@/store';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
+import { FederationAlignmentControls } from './FederationAlignmentControls';
+import { PrecisionGridBadge } from './PrecisionGridBadge';
 import { LocationMap, type PickedPosition } from './LocationMap';
 import { computeOrthogonalHeightForBaseAltitude } from '@/lib/geo/cesium-placement';
 import {
@@ -612,6 +614,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           </span>
         </div>
       )}
+      {/* Federation alignment badge + anchor / re-align controls.
+          Hidden when only one model is loaded — alignment is a federation concept. */}
+      {modelId && models.size > 1 && <FederationAlignmentControls modelId={modelId} />}
       {/* CRS summary — always visible */}
       <div className="px-2 py-1.5 flex items-center gap-2">
         <Globe className="h-3 w-3 text-teal-500 shrink-0" />
@@ -624,6 +629,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         {mergedCRS?.description && (
           <span className="text-[10px] font-mono text-teal-500/60 truncate">{mergedCRS.description}</span>
         )}
+        {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
             <button className="flex items-center gap-1 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors ml-auto shrink-0">

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -1 14 9" width="700" height="450" stroke="#111" stroke-width="0.06" fill="none" font-family="ui-monospace, monospace" font-size="0.32">
+  <!-- @ifc-lite/drawing-2d · source: hello-wall.ifc · Level 1 plan -->
+  <title>Level 1 plan · hello-wall.ifc</title>
+
+  <!-- outer walls (thick) -->
+  <g stroke-width="0.18">
+    <line x1="0" y1="0" x2="10" y2="0"/>
+    <line x1="10" y1="0" x2="10" y2="5"/>
+    <line x1="10" y1="5" x2="0" y2="5"/>
+    <line x1="0" y1="5" x2="0" y2="0"/>
+  </g>
+
+  <!-- inner partitions -->
+  <g stroke-width="0.10">
+    <line x1="6" y1="0" x2="6" y2="5"/>
+    <line x1="6" y1="2.5" x2="10" y2="2.5"/>
+  </g>
+
+  <!-- door swings (south wall) -->
+  <g stroke="#1a5cc7" stroke-width="0.08" fill="none">
+    <line x1="1.5" y1="0" x2="2.4" y2="0" stroke="#fff" stroke-width="0.22"/>
+    <path d="M 1.5 0 A 0.9 0.9 0 0 1 2.4 0.9"/>
+  </g>
+
+  <!-- windows (north wall) -->
+  <g stroke="#1a5cc7" stroke-width="0.06">
+    <rect x="1.5" y="4.94" width="0.9" height="0.12" fill="#fff"/>
+    <rect x="3.6" y="4.94" width="0.9" height="0.12" fill="#fff"/>
+    <rect x="7.5" y="4.94" width="1.5" height="0.12" fill="#fff"/>
+  </g>
+
+  <!-- columns -->
+  <g fill="#111">
+    <rect x="3.85" y="2.4" width="0.3" height="0.3"/>
+    <rect x="7.85" y="2.4" width="0.3" height="0.3"/>
+  </g>
+
+  <!-- room labels -->
+  <g fill="#444" stroke="none" text-anchor="middle">
+    <text x="3" y="1.5">Living · 22 m²</text>
+    <text x="8" y="1.5">Kitchen · 12 m²</text>
+    <text x="8" y="4">Bathroom · 6 m²</text>
+  </g>
+
+  <!-- caption -->
+  <g fill="#999" stroke="none">
+    <text x="0" y="-0.3" font-size="0.25">Level 1 · @ifc-lite/drawing-2d · hello-wall.ifc · scale 1:100</text>
+    <text x="10" y="5.6" font-size="0.22" text-anchor="end">N ↑</text>
+  </g>
+</svg>

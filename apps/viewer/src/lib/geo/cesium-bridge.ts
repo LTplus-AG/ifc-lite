@@ -34,7 +34,7 @@ import {
   type ResolveTerrainElevationOptions,
   type TerrainElevationSample,
 } from './terrain-elevation';
-import { getEffectiveHorizontalScale } from './geo-scale';
+import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
 
 export interface GeodesicPosition {
   longitude: number;
@@ -94,7 +94,7 @@ export async function computeCesiumModelOrigin(
   const absc = mapConversion.xAxisAbscissa ?? 1.0;
   const ordi = mapConversion.xAxisOrdinate ?? 0.0;
   const center = computeModelCenterInIfcMeters(coordinateInfo);
-  const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
+  const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
   const horizontalScale = getEffectiveHorizontalScale(
     mapConversion.scale,
     mapScale,
@@ -169,7 +169,7 @@ export async function createCesiumBridge(
     height: origin.height,
   };
   const hScale = origin.horizontalScale;
-  const mapScale = projectedCRS.mapUnitScale ?? lengthUnitScale;
+  const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
   const oHeight = origin.height;
   const originLon = origin.longitude;
   const originLat = origin.latitude;

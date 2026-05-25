@@ -20,9 +20,19 @@ import {
 } from './cesium-placement.js';
 
 describe('cesium placement helpers', () => {
-  it('falls back to the project length unit when mapUnitScale is absent', () => {
-    assert.strictEqual(getMapUnitScale(undefined, 0.001), 0.001);
+  it('defaults to METRES when MapUnit is absent (overrides project length unit)', () => {
+    // Per IFC4 spec, missing MapUnit falls back to the project's length unit.
+    // In practice (Bonsai/IfcOpenShell/Revit), MapConversion offsets are
+    // authored in METRES regardless of project unit. Honouring the spec
+    // pushes offsets thousands of km out of the CRS's valid range and lands
+    // models at the projection's antipode (Hans's IXAS_KW 018 file: mm
+    // project + MapConversion (126500, 480000) → South Pacific instead of
+    // Netherlands). See `resolveMapUnitToMetreScale` rationale.
+    assert.strictEqual(getMapUnitScale(undefined, 0.001), 1);
     assert.strictEqual(getMapUnitScale({ mapUnitScale: 1 }, 0.001), 1);
+    // Explicit non-metre MapUnit still wins — the heuristic only fires when
+    // MapUnit is unset.
+    assert.strictEqual(getMapUnitScale({ mapUnitScale: 0.3048006096 }, 1), 0.3048006096);
   });
 
   it('converts between metres and map units using ProjectedCRS.mapUnitScale', () => {
@@ -41,7 +51,9 @@ describe('cesium placement helpers', () => {
     assert.strictEqual(shouldPreferOrthometricTerrain(undefined), false);
   });
 
-  it('computes terrain-clamped placement and clip plane from storey anchor', () => {
+  it('places the model at its authored IFC height — no terrain/storey clamp', () => {
+    // Model placement is purely IfcMapConversion.OrthogonalHeight + the
+    // geometry origin. Terrain and storey data never move the model.
     const placement = computeCesiumPlacement({
       coordinateInfo: {
         originShift: { x: 0, y: 0, z: 0 },
@@ -61,21 +73,25 @@ describe('cesium placement helpers', () => {
       storeyElevations: new Map([[1, -3], [2, 0], [3, 3]]),
     });
 
+    // placementHeight == authored ifcOriginHeight, NOT terrain+anchorOffset.
+    assert.strictEqual(placement.placementHeight, 244);
+    // clampAnchorY / anchorOffset are still derived (gizmo + clip math use
+    // them) but no longer feed placementHeight.
     assert.strictEqual(placement.clampAnchorY, 0);
     assert.strictEqual(placement.anchorOffset, 3);
-    assert.strictEqual(placement.placementHeight, 248);
-    assert.strictEqual(placement.terrainClipY, 0);
     assert.strictEqual(placement.preferOrthometricTerrain, true);
   });
 
-  it('preserves authored OrthogonalHeight when it is already above terrain', () => {
-    const placement = computeCesiumPlacement({
-      ifcOriginHeight: 244,
-      terrainHeight: 195.4,
-    });
+  it('keeps the authored height whether it is above OR below terrain', () => {
+    // Above terrain — unchanged.
+    const above = computeCesiumPlacement({ ifcOriginHeight: 244, terrainHeight: 195.4 });
+    assert.strictEqual(above.placementHeight, 244);
 
-    assert.strictEqual(placement.placementHeight, 244);
-    assert.strictEqual(placement.terrainClipY, -48.599999999999994);
+    // Below terrain — the model stays sub-grade, NOT lifted to terrain.
+    // (Regression: the old Math.max floor pinned it to terrain, which froze
+    //  the vertical placement gizmo and lifted basements above ground.)
+    const below = computeCesiumPlacement({ ifcOriginHeight: -20, terrainHeight: 70.61 });
+    assert.strictEqual(below.placementHeight, -20);
   });
 
   it('computes OrthogonalHeight from target base altitude with shift and RTC', () => {

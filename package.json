@@ -58,6 +58,7 @@
     "benchmark:check": "node scripts/check-benchmark-regression.js",
     "benchmark:baseline": "pnpm --filter viewer build && pnpm test:benchmark:viewer",
     "generate:bim-globals": "tsx scripts/generate-bim-globals.ts",
+    "verify:epsg": "pnpm --filter @ifc-lite/data verify:epsg",
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
     "check:templates": "pnpm --filter viewer check:templates"
   },
@@ -65,8 +66,8 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "^1.60.0",
-    "@types/node": "^25.8.0",
-    "tsx": "^4.22.1",
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
     "turbo": "^2.9.14",
     "typescript": "^6.0.3"
   },

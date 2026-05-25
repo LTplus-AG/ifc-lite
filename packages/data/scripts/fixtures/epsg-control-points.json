@@ -1,0 +1,155 @@
+{
+  "_doc": "Curated EPSG round-trip control points. Each fixture verifies that the bundled proj4 string for a projected CRS round-trips a published (projected → WGS84 → projected) coordinate within tolerance_m metres, AND that the forward output stays within tolerance_m of the captured baseline lat/lon. Used by scripts/verify-epsg-roundtrip.ts to catch regressions when the bundled EPSG index is regenerated. The expected_wgs84 values are the proj4 output produced by the *current* bundled definitions (post-sanitization for grid-file CRSs); they become a regression baseline. Add a fixture for every CRS family that real users have hit problems with. Tolerances reflect proj4js's browser-side accuracy without grid files: ~1-5m for ETRS89/WGS84 lineages, ~5-10m for Bessel-based national grids relying on +towgs84.",
+  "fixtures": [
+    {
+      "epsg": "28992",
+      "name": "Amersfoort / RD New (Netherlands)",
+      "control_point": {
+        "description": "Projection origin (Onze-Lieve-Vrouwetoren, Amersfoort)",
+        "projected": { "easting": 155000.0, "northing": 463000.0 },
+        "expected_wgs84": { "lat": 52.155788, "lon": 5.389495 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "28992",
+      "name": "Amersfoort / RD New — Rotterdam Markthal area",
+      "control_point": {
+        "description": "Sampled RD coordinate near Rotterdam centre",
+        "projected": { "easting": 92500.0, "northing": 437600.0 },
+        "expected_wgs84": { "lat": 51.923971, "lon": 4.480901 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "27700",
+      "name": "OSGB36 / British National Grid",
+      "control_point": {
+        "description": "Trafalgar Square area (post-nadgrids sanitization)",
+        "projected": { "easting": 530034.0, "northing": 180381.0 },
+        "expected_wgs84": { "lat": 51.506897, "lon": -0.126118 }
+      },
+      "tolerance_m": 2
+    },
+    {
+      "epsg": "2056",
+      "name": "CH1903+ / LV95 (Switzerland)",
+      "control_point": {
+        "description": "LV95 false origin",
+        "projected": { "easting": 2600000.0, "northing": 1200000.0 },
+        "expected_wgs84": { "lat": 46.951083, "lon": 7.438632 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "31287",
+      "name": "MGI / Austria Lambert",
+      "control_point": {
+        "description": "Vienna, Stephansplatz area",
+        "projected": { "easting": 632373.0, "northing": 482270.0 },
+        "expected_wgs84": { "lat": 48.197656, "lon": 16.460033 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "5514",
+      "name": "S-JTSK / Krovak East North (Czech Republic)",
+      "control_point": {
+        "description": "Prague, Old Town Square area",
+        "projected": { "easting": -743330.0, "northing": -1043500.0 },
+        "expected_wgs84": { "lat": 50.082564, "lon": 14.415050 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "31370",
+      "name": "Belge 1972 / Belgian Lambert 72",
+      "control_point": {
+        "description": "Brussels, Grand Place area",
+        "projected": { "easting": 148677.0, "northing": 170851.0 },
+        "expected_wgs84": { "lat": 50.847793, "lon": 4.349147 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "2154",
+      "name": "RGF93 / Lambert-93 (France)",
+      "control_point": {
+        "description": "Paris, Notre-Dame area",
+        "projected": { "easting": 652170.0, "northing": 6862146.0 },
+        "expected_wgs84": { "lat": 48.857574, "lon": 2.348112 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "25832",
+      "name": "ETRS89 / UTM zone 32N (Germany / central Europe)",
+      "control_point": {
+        "description": "Berlin area ETRS89 sample",
+        "projected": { "easting": 389997.0, "northing": 5819761.0 },
+        "expected_wgs84": { "lat": 52.516847, "lon": 7.378847 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "32631",
+      "name": "WGS 84 / UTM zone 31N",
+      "control_point": {
+        "description": "Paris, Eiffel Tower",
+        "projected": { "easting": 448261.0, "northing": 5411934.0 },
+        "expected_wgs84": { "lat": 48.858213, "lon": 2.294625 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "32633",
+      "name": "WGS 84 / UTM zone 33N",
+      "control_point": {
+        "description": "Vienna sample",
+        "projected": { "easting": 601842.0, "northing": 5341380.0 },
+        "expected_wgs84": { "lat": 48.217468, "lon": 16.371043 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "3857",
+      "name": "WGS 84 / Pseudo-Mercator (web mercator)",
+      "control_point": {
+        "description": "Greenwich area",
+        "projected": { "easting": -7427.0, "northing": 6711344.0 },
+        "expected_wgs84": { "lat": 51.506290, "lon": -0.066718 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "26911",
+      "name": "NAD83 / UTM zone 11N (US west)",
+      "control_point": {
+        "description": "Las Vegas area NAD83 sample",
+        "projected": { "easting": 666700.0, "northing": 4002600.0 },
+        "expected_wgs84": { "lat": 36.153818, "lon": -115.146894 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "26910",
+      "name": "NAD83 / UTM zone 10N (US west coast)",
+      "control_point": {
+        "description": "San Francisco area NAD83 sample",
+        "projected": { "easting": 551000.0, "northing": 4181000.0 },
+        "expected_wgs84": { "lat": 37.774917, "lon": -122.420885 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "4326",
+      "name": "WGS 84 (geographic)",
+      "control_point": {
+        "description": "WGS84 identity at Berlin",
+        "projected": { "easting": 13.3777, "northing": 52.5163 },
+        "expected_wgs84": { "lat": 52.5163, "lon": 13.3777 }
+      },
+      "tolerance_m": 0.1
+    }
+  ]
+}

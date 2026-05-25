@@ -69,6 +69,19 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/**
+ * Round a value expressed in map units to the nearest millimetre in metres,
+ * regardless of what unit the map CRS uses. Keeps the gizmo precision stable
+ * when the resolved map unit flips between mm (legacy spec-strict fallback)
+ * and m (resolveMapUnitToMetreScale heuristic): a sub-cm drag was previously
+ * lost to `round2()`'s 0.01-unit floor as soon as map units became metres,
+ * making the vertical handle appear frozen on small movements.
+ */
+function roundToMm(value: number, mapUnitScale: number): number {
+  const mmInMapUnits = 0.001 / (mapUnitScale > 0 ? mapUnitScale : 1);
+  return Math.round(value / mmInMapUnits) * mmInMapUnits;
+}
+
 function formatSigned(value: number, suffix: string): string {
   const rounded = Math.abs(value) < 0.005 ? 0 : round2(value);
   return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)} ${suffix}`;
@@ -473,10 +486,12 @@ export function CesiumPlacementEditor({
       const worldY = closestYOnVerticalLineFromRay(ray, dragState.anchorX, dragState.anchorZ);
       if (worldY === null) return;
       const deltaMeters = worldY - dragState.startWorldY;
+      const mus = getMapUnitScale(projectedCRS, lengthUnitScale);
       updateDraft({
-        orthogonalHeight: round2(
+        orthogonalHeight: roundToMm(
           dragState.startDraft.orthogonalHeight
             + metersToMapUnits(deltaMeters, projectedCRS, lengthUnitScale),
+          mus,
         ),
       });
       return;

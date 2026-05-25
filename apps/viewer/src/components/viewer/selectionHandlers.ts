@@ -11,6 +11,7 @@
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
+import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
 
 /**
@@ -84,6 +85,115 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // corner→opposite for slab rectangle, N+Enter for slab polygon, single
   // for columns). Uses magnetic snap so points lock to vertices/edges
   // when the cursor is near them — same UX as the measure tool.
+  // Split tool — click on a wall / beam / column / member to cut
+  // it at the cursor's projected position. Hover preview lives on
+  // the store (splitHoverPoint / splitHoverDistance) and
+  // SplitOverlay renders the SVG guide; this handler commits the
+  // click by dispatching to the right action for the latched
+  // target's element type.
+  if (tool === 'split') {
+    const state = useViewerStore.getState();
+    const targetModelId = state.splitTargetModelId;
+    const targetExpressId = state.splitTargetExpressId;
+    if (targetModelId === null || targetExpressId === null) {
+      // Click missed any splittable element — no-op so the cursor
+      // doesn't fight the user. The overlay's hint stays visible.
+      return;
+    }
+
+    // Slab two-click flow takes precedence when we're mid-anchor.
+    // The second click commits the cut line from anchor → cursor.
+    // Raycast onto the SOURCE SLAB'S floor (not the global active
+    // storey) so federated / non-active-storey splits land at the
+    // right elevation.
+    if (state.splitMode === 'first-anchor' && state.slabCutAnchor) {
+      const slabFloorY = resolveSlabFloorY(targetModelId, targetExpressId);
+      const cutPoint = raycastStoreyFloor(ctx, x, y, slabFloorY ?? undefined);
+      if (!cutPoint) {
+        toast.error("Couldn't read cut point");
+        return;
+      }
+      const cursorIfc = rendererPointToIfcStoreyLocal(cutPoint);
+      const result = state.splitSlabByLine(
+        targetModelId,
+        targetExpressId,
+        state.slabCutAnchor,
+        [cursorIfc[0], cursorIfc[1]],
+      );
+      if (!result.ok) {
+        toast.error(`Couldn't split slab: ${result.reason}`);
+        return;
+      }
+      state.clearSplitHover();
+      // Move selection to whichever half contains the click. Both
+      // halves are valid polygons; the click landed at `cursorIfc`.
+      const rightFp = state.readSlabFootprint(targetModelId, result.right.expressId);
+      const inRight = rightFp
+        ? pointInPolygon(rightFp.footprint, [cursorIfc[0], cursorIfc[1]])
+        : false;
+      state.setSelectedEntityId(inRight ? result.right.globalId : result.left.globalId);
+      toast.success('Slab split — Ctrl+Z to undo');
+      return;
+    }
+
+    // Single-click element split (wall / beam / column / member).
+    // Wall first because most edits land on walls; if that returns
+    // null we try the linear-element path.
+    const distance = state.splitHoverDistance;
+    if (distance !== null && distance > 0) {
+      const wallTry = state.splitWallAtDistance(targetModelId, targetExpressId, distance);
+      if (wallTry.ok) {
+        state.clearSplitHover();
+        state.setSelectedEntityId(wallTry.right.globalId);
+        // Mention opening reassignment in the toast only when it
+        // happened — silence is preferable to "0 openings moved"
+        // for a wall with no doors / windows.
+        const op = wallTry.openings;
+        const opSummary =
+          op.toLeft + op.toRight > 0
+            ? ` (${op.toLeft + op.toRight} opening${op.toLeft + op.toRight === 1 ? '' : 's'} reassigned)`
+            : '';
+        toast.success(`Wall split${opSummary} — Ctrl+Z to undo`);
+        return;
+      }
+      const linearTry = state.splitLinearElementAtDistance(
+        targetModelId,
+        targetExpressId,
+        distance,
+      );
+      if (linearTry.ok) {
+        state.clearSplitHover();
+        state.setSelectedEntityId(linearTry.right.globalId);
+        toast.success('Element split — Ctrl+Z to undo');
+        return;
+      }
+    }
+
+    // Fall through to the slab path: first click latches the
+    // anchor, second click (handled above) commits. Anchor lands
+    // on the source slab's storey floor (not the global active
+    // storey) — `slabFootprint.storeyElevation` is already the
+    // exact value we need, so pass it through directly.
+    const slabFootprint = state.readSlabFootprint(targetModelId, targetExpressId);
+    if (slabFootprint) {
+      const anchorPoint = raycastStoreyFloor(ctx, x, y, slabFootprint.storeyElevation);
+      if (!anchorPoint) {
+        toast.error("Couldn't read anchor point");
+        return;
+      }
+      const anchorIfc = rendererPointToIfcStoreyLocal(anchorPoint);
+      state.setSlabCutAnchor(
+        [anchorIfc[0], anchorIfc[1]],
+        slabFootprint.footprint,
+        slabFootprint.storeyElevation,
+      );
+      return;
+    }
+
+    toast.error("Couldn't split: not a splittable element");
+    return;
+  }
+
   if (tool === 'addElement') {
     const currentLock = ctx.edgeLockStateRef.current;
     const result = renderer.raycastSceneMagnetic(x, y, {
@@ -109,7 +219,20 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       ?? result.intersection?.point
       ?? raycastStoreyFloor(ctx, x, y);
     if (!point) return;
-    await handleAddElementDrop(point);
+    // Smart-placement: if the click landed on (or snapped to) an
+    // existing entity, infer the target storey from THAT entity's
+    // spatial-hierarchy entry rather than the AddElement panel's
+    // dropdown. Lets the user click on a wall on storey 3 to add
+    // a beam there without first changing the storey selector.
+    // Only kicks in when we actually have an entity under the
+    // cursor — empty-space clicks fall back to the panel value.
+    const hitExpressId = result.snapTarget?.expressId
+      ?? result.intersection?.expressId
+      ?? null;
+    const inferredStorey = hitExpressId !== null
+      ? inferStoreyForGlobalId(hitExpressId)
+      : null;
+    await handleAddElementDrop(point, inferredStorey ?? undefined);
     return;
   }
 
@@ -173,6 +296,27 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
 }
 
 /**
+ * Resolve the storey + model for a hit globalId so the AddElement
+ * click handler can place the new entity in the SAME storey as the
+ * existing element under the cursor. Returns null when the hit
+ * doesn't resolve to any model's spatial-hierarchy entry — caller
+ * falls back to the AddElement panel's storey selector.
+ *
+ * Federation-aware via `fromGlobalIdFromModels`.
+ */
+function inferStoreyForGlobalId(
+  globalId: number,
+): { modelId: string; storeyId: number } | null {
+  const state = useViewerStore.getState();
+  const local = fromGlobalIdFromModels(state.models, globalId);
+  if (!local) return null;
+  const ds = state.models.get(local.modelId)?.ifcDataStore;
+  const storeyId = ds?.spatialHierarchy?.elementToStorey.get(local.expressId);
+  if (storeyId === undefined) return null;
+  return { modelId: local.modelId, storeyId };
+}
+
+/**
  * Find the first IfcBuildingStorey entity in the active model. Used as a
  * fallback when the user hasn't picked a target storey in the panel.
  */
@@ -210,20 +354,34 @@ export function rendererPointToIfcStoreyLocal(point: { x: number; y: number; z: 
  * Storey-floor ray-plane intersection — used as a fallback when the
  * scene raycast misses every mesh (so the user can place new elements
  * in empty space, not just on existing surfaces). The floor sits at
- * renderer Y = storey elevation; if no storey is selected we use 0
- * (the renderer's default ground plane).
+ * renderer Y = storey elevation.
+ *
+ * `storeyOverride` lets the caller supply an explicit floor Y
+ * (renderer frame). Used by the Split tool so a slab on storey 3
+ * doesn't accidentally project clicks onto storey 0's floor when
+ * the addElement / active-model state points elsewhere. Falls back
+ * to `resolveStoreyFloorY()` (active-model lookup) when omitted.
  */
 function raycastStoreyFloor(
   ctx: MouseHandlerContext,
   x: number,
   y: number,
+  storeyOverride?: number,
 ): { x: number; y: number; z: number } | null {
   const camera = ctx.renderer.getCamera();
   const canvas = ctx.renderer.getCanvas();
   if (!camera || !canvas) return null;
-  const ray = camera.unprojectToRay(x, y, canvas.clientWidth, canvas.clientHeight);
+  // x/y arrive in CSS space (handleSelectionClick subtracts the
+  // bounding-rect origin). `unprojectToRay` expects drawing-buffer
+  // coords, which differ from CSS by DPR. Convert both the cursor
+  // and the canvas size so the ray is computed in the same space
+  // `projectToScreen` writes to — otherwise pick drifts at DPR ≠ 1.
+  const rect = canvas.getBoundingClientRect();
+  const sx = rect.width > 0 ? (x / rect.width) * canvas.width : x;
+  const sy = rect.height > 0 ? (y / rect.height) * canvas.height : y;
+  const ray = camera.unprojectToRay(sx, sy, canvas.width, canvas.height);
   if (!ray) return null;
-  const planeY = resolveStoreyFloorY();
+  const planeY = storeyOverride ?? resolveStoreyFloorY();
   // Looking down typically means D.y < 0; reject parallel / near-parallel
   // cases so we don't hand back a wildly extrapolated intersection.
   const dy = ray.direction.y;
@@ -235,6 +393,23 @@ function raycastStoreyFloor(
     y: planeY,
     z: ray.origin.z + ray.direction.z * t,
   };
+}
+
+/**
+ * Helper: resolve a slab's storey elevation in renderer-frame Y so
+ * callers can pass it to `raycastStoreyFloor`. Read from the
+ * model's spatialHierarchy (matches the rest of the split flow's
+ * elevation lookups). Returns null when the slab isn't contained
+ * in a storey we can resolve.
+ */
+function resolveSlabFloorY(modelId: string, expressId: number): number | null {
+  const state = useViewerStore.getState();
+  const ds = state.models.get(modelId)?.ifcDataStore;
+  if (!ds) return null;
+  const storeyId = ds.spatialHierarchy?.elementToStorey.get(expressId);
+  if (storeyId === undefined) return null;
+  const elev = ds.spatialHierarchy?.storeyElevations?.get(storeyId);
+  return typeof elev === 'number' ? elev : null;
 }
 
 /**
@@ -316,10 +491,123 @@ export function handleAddElementHover(ctx: MouseHandlerContext, x: number, y: nu
 }
 
 /**
- * Resolve the active model + storey + a snap-aware world point. Surfaces
- * the same toast errors all add-element entry points share.
+ * Live hover preview for the Split tool. SCOPED TO THE CURRENT
+ * SPLIT TARGET — the slice's `splitTargetModelId` /
+ * `splitTargetExpressId` are set when the user enters Split mode
+ * (via Geometry-card Split button or K shortcut), and they never
+ * change as the cursor moves over other elements. Hovering over a
+ * different wall does NOT switch target; the user must exit Split
+ * (Esc), re-select, and re-enter.
+ *
+ * This is the v2 model — the previous "free-roam, hover anything,
+ * latch new target each frame" approach surfaced way too many
+ * actionable elements at once and made it unclear what would be
+ * cut. Selection-bound matches the rest of the edit-mode UX
+ * (gizmo, geometry card, etc.).
+ *
+ * The cursor still drives the cut POINT — we ray-cast to get a
+ * world point, project that onto the target's axis (linear) or
+ * use cursor XY (slab), and push the result into the slice for
+ * the SplitOverlay to render.
  */
-function resolveAddElementContext(): { modelId: string; storeyId: number } | null {
+export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number): boolean {
+  const { renderer } = ctx;
+  if (!ctx.measureRaycastPendingRef.current) {
+    ctx.measureRaycastPendingRef.current = true;
+    ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
+      ctx.measureRaycastPendingRef.current = false;
+      ctx.measureRaycastFrameRef.current = null;
+
+      const store = useViewerStore.getState();
+      const targetModelId = store.splitTargetModelId;
+      const targetExpressId = store.splitTargetExpressId;
+      if (targetModelId === null || targetExpressId === null) {
+        // Split engaged with no target — clear any stale hover.
+        if (store.splitMode === 'aiming') store.clearSplitHover();
+        return;
+      }
+
+      // Ray-cast to get a world point under the cursor. We don't
+      // care which entity it hit — we use the world point and
+      // project it onto the TARGET's axis. Falls back to the
+      // storey floor so the user can aim at empty space and still
+      // get a sensible cut.
+      const result = renderer.raycastScene(x, y, {
+        hiddenIds: ctx.hiddenEntitiesRef.current,
+        isolatedIds: ctx.isolatedEntitiesRef.current,
+      });
+      // Fallback raycast uses the TARGET's storey floor (not the
+      // global active storey) so the cursor projection stays in
+      // the same Y plane as the element being split.
+      const targetFloorY = resolveSlabFloorY(targetModelId, targetExpressId) ?? undefined;
+      const worldPoint = result?.intersection?.point
+        ?? raycastStoreyFloor(ctx, x, y, targetFloorY);
+      if (!worldPoint) {
+        if (store.splitMode === 'aiming') store.clearSplitHover();
+        return;
+      }
+      const cursorIfc = rendererPointToIfcStoreyLocal(worldPoint);
+
+      // Project onto the target. Try wall (1D), then linear (1D),
+      // then slab (2D — uses the cursor XY directly as a candidate
+      // cut endpoint).
+      const projection =
+        store.readWallSplitProjection(targetModelId, targetExpressId, cursorIfc) ??
+        store.readLinearElementSplitProjection(targetModelId, targetExpressId, cursorIfc);
+      if (projection) {
+        const model = store.models.get(targetModelId);
+        const storeyId = model?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(targetExpressId);
+        const elevation =
+          (storeyId !== undefined
+            ? model?.ifcDataStore?.spatialHierarchy?.storeyElevations?.get(storeyId)
+            : undefined) ?? 0;
+        const [px, py, pz] = projection.cutPoint;
+        const cutRendererFrame: [number, number, number] = [px, pz + elevation, -py];
+        store.setSplitHover(
+          cutRendererFrame,
+          projection.distance,
+          projection.length,
+          projection.cutPoint,
+          projection.axis,
+        );
+        return;
+      }
+      // Slab path — the overlay outlines the polygon + ghost cut
+      // line; the cursor's IFC XY is the candidate endpoint.
+      const slabFootprint = store.readSlabFootprint(targetModelId, targetExpressId);
+      if (slabFootprint) {
+        const [cx, cy] = cursorIfc;
+        const cursorRendererFrame: [number, number, number] = [
+          cx,
+          slabFootprint.storeyElevation,
+          -cy,
+        ];
+        store.setSplitHover(cursorRendererFrame, 0, 0, [cx, cy, 0], null);
+        return;
+      }
+      // Target isn't a splittable shape (rare — gets latched by
+      // the K shortcut / Split button which already checks). Clear.
+      if (store.splitMode === 'aiming') store.clearSplitHover();
+    });
+  }
+  return true;
+}
+
+/**
+ * Resolve the active model + storey + a snap-aware world point.
+ * Surfaces the same toast errors all add-element entry points share.
+ *
+ * `override` lets the caller force a specific (model, storey) pair —
+ * used by smart placement so clicking on an existing element places
+ * the new entity in that element's storey/model rather than the
+ * AddElement panel's currently-selected one. Falls back through the
+ * panel's selector (`addElementStoreyId`) and then the first storey
+ * of the active model when no override is supplied.
+ */
+function resolveAddElementContext(
+  override?: { modelId: string; storeyId: number },
+): { modelId: string; storeyId: number } | null {
+  if (override) return override;
   const state = useViewerStore.getState();
   const modelId = state.addElementModelId ?? resolveActiveModelId();
   if (!modelId) {
@@ -361,8 +649,11 @@ function finishAddElement(
  *   - slab (polygon): N clicks accumulate; Enter / double-click closes
  *     (handled in the keyboard layer; this function only appends)
  */
-async function handleAddElementDrop(point: { x: number; y: number; z: number }): Promise<void> {
-  const ctx = resolveAddElementContext();
+async function handleAddElementDrop(
+  point: { x: number; y: number; z: number },
+  storeyOverride?: { modelId: string; storeyId: number },
+): Promise<void> {
+  const ctx = resolveAddElementContext(storeyOverride);
   if (!ctx) return;
   const { modelId, storeyId } = ctx;
 

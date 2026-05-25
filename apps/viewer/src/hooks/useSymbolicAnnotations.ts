@@ -319,7 +319,7 @@ async function parseAnnotations(
     for (let i = 0; i < collection.fillCount; i++) {
       const fill = collection.getFill(i);
       if (!fill) continue;
-      if (fill.ifcType !== 'IfcAnnotation') continue;
+      if (fill.ifcType !== 'IfcAnnotation' && fill.ifcType !== 'IfcGridAxis') continue;
       const points = fill.points;
       if (points.length < 6) continue; // <3 vertices = no polygon
       const f2d: AnnotationFill2D = {

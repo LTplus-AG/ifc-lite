@@ -49,6 +49,16 @@ impl IfcAPI {
         let rtc_z = if needs_rtc { rtc_offset.2 as f32 } else { 0.0 };
 
         let mut collection = SymbolicRepresentationCollection::new();
+
+        // Pre-pass: build a reverse index from "styled representation-item id"
+        // to "list of style refs". Walked once at parse start (O(n)) so per-
+        // item color lookup is O(1) later. Files without any IfcStyledItem
+        // get an empty map and the resolver falls back to defaults. See
+        // resolve_fill_color() for the chain (deprecated
+        // IfcPresentationStyleAssignment unwrap + IfcFillAreaStyle →
+        // IfcColourRgb).
+        let styled_items = build_styled_item_index(&content, &mut decoder);
+
         let mut scanner = EntityScanner::new(&content);
 
         // Process all building elements that might have symbolic representations.
@@ -214,6 +224,7 @@ impl IfcAPI {
                         &combined_transform,
                         rtc_x,
                         rtc_z,
+                        &styled_items,
                         &mut collection,
                     );
                 }
@@ -603,6 +614,7 @@ fn parse_cartesian_transformation_operator(
 }
 
 /// Extract symbolic geometry from a representation item (recursive for IfcGeometricSet, IfcMappedItem)
+#[allow(clippy::too_many_arguments)]
 fn extract_symbolic_item(
     item: &ifc_lite_core::DecodedEntity,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -613,6 +625,7 @@ fn extract_symbolic_item(
     transform: &Transform2D,
     rtc_x: f32,
     rtc_z: f32,
+    styled_items: &std::collections::HashMap<u32, Vec<u32>>,
     collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
 ) {
     use crate::zero_copy::{SymbolicCircle, SymbolicPolyline};
@@ -634,6 +647,7 @@ fn extract_symbolic_item(
                             transform,
                             rtc_x,
                             rtc_z,
+                            styled_items,
                             collection,
                         );
                     }
@@ -691,6 +705,7 @@ fn extract_symbolic_item(
                                             &composed_transform,
                                             rtc_x,
                                             rtc_z,
+                                            styled_items,
                                             collection,
                                         );
                                     }
@@ -1061,6 +1076,7 @@ fn extract_symbolic_item(
                                     transform,
                                     rtc_x,
                                     rtc_z,
+                                    styled_items,
                                     collection,
                                 );
                             }
@@ -1099,6 +1115,7 @@ fn extract_symbolic_item(
                 transform,
                 rtc_x,
                 rtc_z,
+                styled_items,
                 collection,
             );
         }
@@ -1232,6 +1249,7 @@ fn extract_annotation_fill_area(
     transform: &Transform2D,
     rtc_x: f32,
     rtc_z: f32,
+    styled_items: &std::collections::HashMap<u32, Vec<u32>>,
     collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
 ) {
     use crate::zero_copy::SymbolicFillArea;
@@ -1378,16 +1396,22 @@ fn extract_annotation_fill_area(
         }
     }
 
+    // Resolve fill color via the IfcStyledItem chain. The styled-item index
+    // is keyed by the styled REPRESENTATION ITEM's express id (here:
+    // `item.id`, the IfcAnnotationFillArea entity), not the parent
+    // IfcAnnotation. When no style is associated, fall back to opaque
+    // black — matches the "SolidBlackFill" convention used by the
+    // 3DEXPERIENCE / IfcPlusPlus exporters that ship hundreds of leader
+    // dots with the implicit assumption of opaque-black rendering.
+    let fill_rgba = resolve_fill_color(item.id, styled_items, decoder)
+        .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+
     collection.add_fill(SymbolicFillArea::new(
         express_id,
         ifc_type.to_string(),
         points,
         holes_offsets,
-        // Default fill: opaque dark grey (75% black). The JS renderer reads
-        // SymbolicFillArea.fillR/G/B/A and can substitute a per-type palette;
-        // the IfcStyledItem chain that derives the real style lives in a
-        // follow-up commit.
-        [0.0, 0.0, 0.0, 0.75],
+        fill_rgba,
         rep_identifier.to_string(),
     ));
 }
@@ -1423,7 +1447,7 @@ fn extract_grid(
     rtc_z: f32,
     collection: &mut crate::zero_copy::SymbolicRepresentationCollection,
 ) {
-    use crate::zero_copy::{SymbolicCircle, SymbolicPolyline, SymbolicText};
+    use crate::zero_copy::{SymbolicCircle, SymbolicFillArea, SymbolicPolyline, SymbolicText};
     use ifc_lite_core::IfcType;
 
     // Conventional sizing — all values in METERS (world units) to match the
@@ -1495,6 +1519,10 @@ fn extract_grid(
             // Bubble + tag at the "start" end (offset opposite the axis direction).
             let cx0 = a.0 - nx * BUBBLE_OFFSET_M;
             let cy0 = a.1 - ny * BUBBLE_OFFSET_M;
+            // White-filled disk under the outline so the bubble reads
+            // against any background (walls, hatches, dark fills). CAD
+            // convention — every viewer paints the bubble interior white.
+            collection.add_fill(make_bubble_disk_fill(axis_id, cx0, cy0, BUBBLE_RADIUS_M));
             collection.add_circle(SymbolicCircle::full_circle(
                 axis_id,
                 "IfcGridAxis".to_string(),
@@ -1522,6 +1550,7 @@ fn extract_grid(
             // Bubble + tag at the "end" end (offset along the axis direction).
             let cx1 = b.0 + nx * BUBBLE_OFFSET_M;
             let cy1 = b.1 + ny * BUBBLE_OFFSET_M;
+            collection.add_fill(make_bubble_disk_fill(axis_id, cx1, cy1, BUBBLE_RADIUS_M));
             collection.add_circle(SymbolicCircle::full_circle(
                 axis_id,
                 "IfcGridAxis".to_string(),
@@ -1549,6 +1578,34 @@ fn extract_grid(
     // express_id for every emitted primitive (matches how individual
     // annotations carry their parent entity id).
     let _ = grid_id;
+}
+
+/// Build the white-filled disk that sits under a grid bubble outline.
+///
+/// 32-segment tessellation in CCW order so the ear-clip triangulator
+/// produces front-facing triangles. The fill is opaque white (CAD
+/// convention) so axis tags read against any background.
+fn make_bubble_disk_fill(
+    axis_id: u32,
+    cx: f32,
+    cy: f32,
+    radius: f32,
+) -> crate::zero_copy::SymbolicFillArea {
+    const SEGMENTS: usize = 32;
+    let mut pts = Vec::with_capacity(SEGMENTS * 2);
+    for i in 0..SEGMENTS {
+        let theta = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
+        pts.push(cx + radius * theta.cos());
+        pts.push(cy + radius * theta.sin());
+    }
+    crate::zero_copy::SymbolicFillArea::new(
+        axis_id,
+        "IfcGridAxis".to_string(),
+        pts,
+        Vec::new(),
+        [1.0, 1.0, 1.0, 1.0],
+        "Axis".to_string(),
+    )
 }
 
 /// Sample the two endpoints of an IfcGridAxis curve.
@@ -1587,4 +1644,188 @@ fn sample_grid_axis_endpoints(
     let first = extract(&point_entities[0])?;
     let last = extract(&point_entities[point_entities.len() - 1])?;
     Some((first, last))
+}
+
+// ─── IfcStyledItem chain ─────────────────────────────────────────────────────
+//
+// IFC4 styling for IfcRepresentationItem flows through IfcStyledItem:
+//
+//   IfcStyledItem.Item   →  the styled IfcRepresentationItem
+//   IfcStyledItem.Styles →  SET OF IfcStyleAssignmentSelect
+//                              │
+//                              ├─ IfcPresentationStyle (IFC4 direct path)
+//                              │     ├─ IfcCurveStyle
+//                              │     ├─ IfcFillAreaStyle
+//                              │     ├─ IfcTextStyle
+//                              │     └─ IfcSurfaceStyle
+//                              │
+//                              └─ IfcPresentationStyleAssignment (DEPRECATED
+//                                    in IFC4 but still produced by major
+//                                    exporters — must be transparently
+//                                    unwrapped to its inner Styles list)
+//
+// For symbolic annotation rendering, we only need fill color today (line
+// weight, dash pattern, and text font live in a follow-up since they require
+// per-primitive color/width plumbing through the renderer pipelines).
+
+/// Scan the file once for every `IfcStyledItem` and return the reverse index
+/// keyed by styled-item's express id. The value is the list of concrete
+/// style entity refs (`IfcCurveStyle | IfcFillAreaStyle | IfcTextStyle |
+/// IfcSurfaceStyle`), with the deprecated `IfcPresentationStyleAssignment`
+/// wrapper transparently unwrapped — so downstream resolvers don't need to
+/// know about it.
+///
+/// Two passes (both O(n)):
+///   1. Scan all `IFCPRESENTATIONSTYLEASSIGNMENT` entities, build a map
+///      `assignment_id → Vec<inner_concrete_style_id>`.
+///   2. Scan all `IFCSTYLEDITEM`, for each style ref look it up in the
+///      assignment map: if present, splice in the unwrapped inner refs;
+///      otherwise pass through.
+///
+/// The crate's `IfcType` enum doesn't carry a variant for
+/// `IfcPresentationStyleAssignment` (deprecated in IFC4, omitted by the
+/// schema generator), which is why the unwrap is keyed by entity-id rather
+/// than by `style.ifc_type` match.
+fn build_styled_item_index(
+    content: &str,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> std::collections::HashMap<u32, Vec<u32>> {
+    use ifc_lite_core::EntityScanner;
+
+    let collect_refs = |attr: &ifc_lite_core::AttributeValue| -> Vec<u32> {
+        if let Some(list) = attr.as_list() {
+            list.iter().filter_map(|v| v.as_entity_ref()).collect()
+        } else if let Some(single) = attr.as_entity_ref() {
+            vec![single]
+        } else {
+            Vec::new()
+        }
+    };
+
+    // Pass 1: build presentation-style-assignment wrapper map.
+    let mut wrappers: std::collections::HashMap<u32, Vec<u32>> =
+        std::collections::HashMap::new();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name != "IFCPRESENTATIONSTYLEASSIGNMENT" {
+            continue;
+        }
+        let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
+            continue;
+        };
+        // attr 0: Styles (SET OF IfcPresentationStyleSelect)
+        let Some(styles_attr) = entity.get(0) else {
+            continue;
+        };
+        let inner_refs = collect_refs(styles_attr);
+        if !inner_refs.is_empty() {
+            wrappers.insert(id, inner_refs);
+        }
+    }
+
+    // Pass 2: build item → style index, unwrapping any references that
+    // resolve to a presentation-style-assignment.
+    let mut out: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name != "IFCSTYLEDITEM" {
+            continue;
+        }
+        let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
+            continue;
+        };
+        let Some(item_ref) = entity.get_ref(0) else {
+            continue;
+        };
+        let Some(styles_attr) = entity.get(1) else {
+            continue;
+        };
+        let mut final_refs: Vec<u32> = Vec::new();
+        for raw_ref in collect_refs(styles_attr) {
+            if let Some(inner) = wrappers.get(&raw_ref) {
+                final_refs.extend(inner.iter().copied());
+            } else {
+                final_refs.push(raw_ref);
+            }
+        }
+        if !final_refs.is_empty() {
+            out.entry(item_ref).or_default().extend(final_refs);
+        }
+    }
+    out
+}
+
+/// Resolve the fill color for a styled IfcAnnotationFillArea (or any item
+/// with an associated IfcStyledItem) by walking the style chain. Returns
+/// `None` when no usable color is found — the caller substitutes its
+/// fallback.
+fn resolve_fill_color(
+    item_id: u32,
+    styled_items: &std::collections::HashMap<u32, Vec<u32>>,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    let style_refs = styled_items.get(&item_id)?;
+    for style_ref in style_refs {
+        if let Some(color) = extract_color_from_style_ref(*style_ref, decoder) {
+            return Some(color);
+        }
+    }
+    None
+}
+
+/// Walk a single concrete style ref (`IfcCurveStyle | IfcFillAreaStyle |
+/// IfcTextStyle | IfcSurfaceStyle`) and try to pull a fill color out.
+/// `IfcPresentationStyleAssignment` wrapping is already unwrapped by
+/// `build_styled_item_index`, so we don't need to handle it here.
+fn extract_color_from_style_ref(
+    style_ref: u32,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    use ifc_lite_core::IfcType;
+
+    let style = decoder.decode_by_id(style_ref).ok()?;
+    match style.ifc_type {
+        IfcType::IfcFillAreaStyle => extract_color_from_fill_area_style(&style, decoder),
+        // Curve / Text / Surface styles fall through — color support for
+        // those primitives is wired up in a follow-up commit (each needs
+        // a per-primitive color field on its zero-copy struct + a renderer
+        // uniform change to honor it).
+        _ => None,
+    }
+}
+
+/// Walk `IfcFillAreaStyle.FillStyles` to find the first `IfcColourRgb` and
+/// convert to `[r, g, b, 1.0]`. Hatching / tile / externally-defined fills
+/// are recognised but skipped here (no color of their own — they layer over
+/// whatever color is found, or default).
+fn extract_color_from_fill_area_style(
+    style: &ifc_lite_core::DecodedEntity,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    use ifc_lite_core::IfcType;
+
+    // attr 1: FillStyles (SET OF IfcFillStyleSelect)
+    let fill_styles_attr = style.get(1)?;
+    let fill_style_refs: Vec<u32> = if let Some(list) = fill_styles_attr.as_list() {
+        list.iter().filter_map(|v| v.as_entity_ref()).collect()
+    } else if let Some(single) = fill_styles_attr.as_entity_ref() {
+        vec![single]
+    } else {
+        return None;
+    };
+    for fs_ref in fill_style_refs {
+        let Ok(fs) = decoder.decode_by_id(fs_ref) else {
+            continue;
+        };
+        if fs.ifc_type == IfcType::IfcColourRgb {
+            // attr 1/2/3: Red, Green, Blue (REALs in [0..1])
+            let r = fs.get(1)?.as_float()? as f32;
+            let g = fs.get(2)?.as_float()? as f32;
+            let b = fs.get(3)?.as_float()? as f32;
+            return Some([r, g, b, 1.0]);
+        }
+        // IfcFillAreaStyleHatching / IfcFillAreaStyleTiles / external
+        // styles: defer (no plain color value to extract here).
+    }
+    None
 }

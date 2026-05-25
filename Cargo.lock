@@ -450,6 +450,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
 
 [[package]]
+name = "async-trait"
+version = "0.1.89"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "atk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3017,9 +3028,9 @@ dependencies = [
 
 [[package]]
 name = "manifold-csg"
-version = "0.1.8"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf7d61a2fed9e32a65e9f987505c01e7e1b1b34d32b3f75df3ecff77c246b78a"
+checksum = "3527339ef694b0e3052c07c3da997d8d64100cb0348189b202868ccf123f5385"
 dependencies = [
  "log",
  "manifold-csg-sys",
@@ -3028,9 +3039,9 @@ dependencies = [
 
 [[package]]
 name = "manifold-csg-sys"
-version = "3.4.107"
+version = "3.5.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7ba98ad842ca99ec2752d2e556f43ce69aa3f8000bd55b188053b383f9cb095"
+checksum = "74bd993b1c232e3b0aaef722dd33b24c7240075e4d7398da6b93597bddcca173"
 dependencies = [
  "cmake",
 ]

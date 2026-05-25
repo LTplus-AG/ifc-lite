@@ -22,6 +22,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useBim } from './BimProvider.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { isSafeMode } from '@/lib/safe-mode';
+import { toast } from '@/components/ui/toast';
 
 const ExtensionHostContext = createContext<ExtensionHostService | null>(null);
 
@@ -44,9 +45,28 @@ export function ExtensionHostProvider({ children }: ExtensionHostProviderProps) 
       console.info('[ExtensionHostProvider] safe mode — skipping init().');
       return service.onChange(() => forceRender((n) => n + 1));
     }
-    service.init().catch((err) => {
-      console.error('[ExtensionHostProvider] init failed:', err);
-    });
+    service.init()
+      .then((statuses) => {
+        // Partial-failure path: init() succeeded overall but one or
+        // more extensions failed to load. Surface a single toast that
+        // points at the Repair queue — repeated per-extension toasts
+        // would be noisy on a cold boot with many extensions.
+        const failed = statuses.filter((s) => !s.ok);
+        if (failed.length > 0) {
+          const label = failed.length === 1
+            ? `Extension "${failed[0].id}" failed to load.`
+            : `${failed.length} extensions failed to load.`;
+          toast.error(`${label} Open the Extensions panel → Repair queue to retry.`);
+        }
+      })
+      .catch((err) => {
+        console.error('[ExtensionHostProvider] init failed:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(
+          `Extension system failed to start: ${message}. Installed extensions ` +
+          `may be unavailable — open the Extensions panel to recover.`,
+        );
+      });
     return service.onChange(() => forceRender((n) => n + 1));
   }, [service]);
 

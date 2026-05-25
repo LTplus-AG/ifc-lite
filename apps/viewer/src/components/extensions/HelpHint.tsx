@@ -39,6 +39,12 @@ interface HelpHintProps {
    * mirrors. Both clamp inside the viewport regardless.
    */
   side?: 'bottom-start' | 'bottom-end';
+  /**
+   * Optional "Learn more" link rendered at the bottom of the popover.
+   * Useful for pointing at the full doc page in
+   * `docs/guide/extensions.md` or the authoring guide.
+   */
+  docLink?: { href: string; label?: string };
 }
 
 interface PopoverPosition {
@@ -54,6 +60,7 @@ export function HelpHint({
   label,
   children,
   side = 'bottom-end',
+  docLink,
 }: HelpHintProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -157,6 +164,16 @@ export function HelpHint({
             )}
           >
             {children}
+            {docLink && (
+              <a
+                href={docLink.href}
+                target="_blank"
+                rel="noreferrer"
+                className="block pt-1 mt-1 border-t text-primary hover:underline"
+              >
+                {docLink.label ?? 'Learn more →'}
+              </a>
+            )}
           </div>,
           document.body,
         )}

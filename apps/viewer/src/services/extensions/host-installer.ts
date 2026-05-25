@@ -14,7 +14,8 @@
 
 import {
   sha256Hex,
-  unpackBundle,
+  unpackBundleWithSignature,
+  verifyBundle,
   type ActionIntent,
   type ActionParams,
   type ActivationDispatcher,
@@ -24,6 +25,7 @@ import {
   type ExtensionRuntime,
   type InstalledExtensionRecord,
   type LoadedExtensionStatus,
+  type SignatureInfo,
   type ValidationError,
   type ValidationResult,
 } from '@ifc-lite/extensions';
@@ -35,6 +37,15 @@ export interface ExtensionInstallSummary {
   bundleHash: string;
   capabilities: string[];
   bundle: Bundle;
+  /**
+   * True iff the bundle envelope contained a signature block and that
+   * signature verified against the bundle's canonical content hash.
+   * UI should surface signed/unsigned status alongside the capability
+   * review so users can refuse unsigned bundles for sensitive grants.
+   */
+  signed: boolean;
+  /** Verified signer info — only present when `signed` is true. */
+  signature?: SignatureInfo;
 }
 
 export interface InstallerDeps {
@@ -56,21 +67,51 @@ export class ExtensionInstallError extends Error {
   }
 }
 
-/** Inspect a `.iflx` byte string without installing it. */
+/**
+ * Inspect a `.iflx` byte string without installing it.
+ *
+ * If the bundle envelope carries a signature block we verify it here
+ * — failing the preview rather than the later install, so the user
+ * never gets as far as the capability-review screen for a tampered
+ * bundle. Unsigned bundles preview successfully but are flagged via
+ * `summary.signed = false` so the UI can warn (or block, depending
+ * on policy) before granting capabilities.
+ */
 export async function previewBundleBytes(
   bytes: Uint8Array,
 ): Promise<ValidationResult<ExtensionInstallSummary>> {
-  const unpacked = unpackBundle(bytes);
+  const unpacked = unpackBundleWithSignature(bytes);
   if (!unpacked.ok) return unpacked;
+  const { bundle, signature: sigBlock } = unpacked.value;
+
+  let signature: SignatureInfo | undefined;
+  if (sigBlock) {
+    try {
+      signature = await verifyBundle(bundle, sigBlock);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        errors: [{
+          path: 'signature',
+          code: 'invalid_format',
+          message: `Signature verification failed: ${message}`,
+        }],
+      };
+    }
+  }
+
   const hash = await sha256Hex(bytes);
   return {
     ok: true,
     value: {
-      id: unpacked.value.manifest.id,
-      version: unpacked.value.manifest.version,
+      id: bundle.manifest.id,
+      version: bundle.manifest.version,
       bundleHash: hash,
-      capabilities: unpacked.value.manifest.capabilities,
-      bundle: unpacked.value,
+      capabilities: bundle.manifest.capabilities,
+      bundle,
+      signed: signature !== undefined,
+      signature,
     },
   };
 }
@@ -88,7 +129,7 @@ export async function installFromBytes(
   if (!preview.ok) {
     throw new ExtensionInstallError('Bundle did not unpack', preview.errors);
   }
-  const { bundle, bundleHash, id, version } = preview.value;
+  const { bundle, bundleHash, id, version, signed, signature } = preview.value;
 
   // Callers can only grant capabilities the manifest declares. Drops
   // accidental grant escalation if the review screen pre-filled state
@@ -161,6 +202,8 @@ export async function installFromBytes(
     version,
     previousVersion: previous?.version,
     grantedCapabilities,
+    signed,
+    signerFingerprint: signature?.fingerprint,
   });
   deps.emitAction('extension.install', { id });
 

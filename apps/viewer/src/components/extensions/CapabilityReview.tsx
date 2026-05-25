@@ -26,7 +26,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileCode2, ShieldAlert, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileCode2, ShieldAlert, ShieldCheck, X, KeyRound, Unlock } from 'lucide-react';
 import { BundlePreview } from './BundlePreview';
 import {
   computeRisks,
@@ -146,6 +146,37 @@ export function CapabilityReview({
             silently with broader scope.
           </DialogDescription>
         </DialogHeader>
+
+        {summary.signed && summary.signature ? (
+          <div className="flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs">
+            <KeyRound className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <div className="font-medium text-emerald-700 dark:text-emerald-400">
+                Signature verified
+              </div>
+              <div className="text-muted-foreground mt-0.5">
+                Signed by <code className="font-mono text-[10px]" title={summary.signature.fingerprint}>
+                  {summary.signature.fingerprint.slice(0, 23)}…
+                </code>
+                {' · '}
+                {new Date(summary.signature.signedAt).toLocaleString()}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+            <Unlock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <div className="font-medium text-amber-700 dark:text-amber-400">
+                Unsigned bundle
+              </div>
+              <div className="text-muted-foreground mt-0.5">
+                This bundle has no signature. We cannot verify it came from a
+                specific publisher — install only if you trust the source.
+              </div>
+            </div>
+          </div>
+        )}
 
         {previousGrants && (newSinceUpgrade.size > 0 || droppedSinceUpgrade.length > 0) && (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">

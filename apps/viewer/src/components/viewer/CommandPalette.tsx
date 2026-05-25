@@ -88,6 +88,7 @@ import { GLTFExporter, CSVExporter } from '@ifc-lite/export';
 import { getRecentFiles, formatFileSize, getCachedFile } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
+import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -566,11 +567,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
             .then(() => extensionHost.runCommand(payload.id))
             .catch((err) => {
-              paletteToast.error(
-                `Failed to run extension command: ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-              );
+              paletteToast.error(describeRunCommandError(payload.id, err));
             });
         },
       });

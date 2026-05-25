@@ -36,6 +36,7 @@ import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { evaluateWhen, parseWhen, type CommandContribution, type ResolvedContextMenuContribution } from '@ifc-lite/extensions';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
+import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 
 export function EntityContextMenu() {
   const contextMenu = useViewerStore((s) => s.contextMenu);
@@ -467,7 +468,7 @@ function ExtensionContextItems({
             onClick={() => {
               closeContextMenu();
               host?.runCommand(c.payload.command).catch((err) => {
-                toast.error(`Command failed: ${err instanceof Error ? err.message : String(err)}`);
+                toast.error(describeRunCommandError(c.payload.command, err));
               });
             }}
           />

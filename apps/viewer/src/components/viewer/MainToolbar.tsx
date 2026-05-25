@@ -803,6 +803,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (panel === 'ids' && !requireDesktopFeature('ids_validation', 'IDS validation')) {
       return;
     }
+    if (panel === 'extensions' && !requireDesktopFeature('extensions', 'Extensions')) {
+      return;
+    }
 
     const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
     const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;

@@ -297,7 +297,13 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       toast.success(toastText.flavorImported(flavor.name));
       setPreview(null);
     } catch (err) {
-      toast.error(toastText.failed('Import', err));
+      if (err && (err as { name?: string }).name === 'ExtensionStorageQuotaError') {
+        toast.error(
+          'Out of browser storage — delete a flavor or extension and try again.',
+        );
+      } else {
+        toast.error(toastText.failed('Import', err));
+      }
     } finally {
       setBusy(false);
     }

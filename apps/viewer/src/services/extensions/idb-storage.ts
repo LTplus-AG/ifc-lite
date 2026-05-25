@@ -21,16 +21,54 @@ import type {
 } from '@ifc-lite/extensions';
 
 const DB_NAME = 'ifc-lite-extensions';
+/**
+ * Bump this when adding/removing/renaming object stores or indexes.
+ * Every new version MUST extend the `onupgradeneeded` switch below
+ * with an idempotent migration step from `event.oldVersion`.
+ */
 const DB_VERSION = 1;
 const STORE_EXT = 'extensions';
 const STORE_BUNDLES = 'extension-bundles';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+/**
+ * Thrown from any IDB write path when the browser refuses the
+ * operation because the origin's storage quota is exhausted.
+ * Callers (host-installer, host) should catch this specifically and
+ * surface a "free up space / uninstall something" toast — bubbling
+ * the raw `QuotaExceededError` produces a generic console error and
+ * a silent UI.
+ */
+export class ExtensionStorageQuotaError extends Error {
+  readonly cause?: unknown;
+  constructor(operation: string, cause?: unknown) {
+    super(`Browser storage quota exceeded while ${operation}.`);
+    this.name = 'ExtensionStorageQuotaError';
+    this.cause = cause;
+  }
+}
+
+function isQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED';
+}
+
 export class IdbExtensionStorage implements ExtensionStorage {
   async putExtension(record: InstalledExtensionRecord): Promise<void> {
     const db = await openDatabase();
-    await runStore(db, STORE_EXT, 'readwrite', (store) => store.put(record));
+    try {
+      await runStore(db, STORE_EXT, 'readwrite', (store) => store.put(record));
+    } catch (err) {
+      if (isQuotaError(err)) {
+        throw new ExtensionStorageQuotaError(
+          `saving extension record "${record.id}"`,
+          err,
+        );
+      }
+      throw err;
+    }
   }
 
   async getExtension(id: string): Promise<InstalledExtensionRecord | undefined> {
@@ -70,9 +108,19 @@ export class IdbExtensionStorage implements ExtensionStorage {
 
   async putBundle(id: string, version: string, bytes: Uint8Array): Promise<void> {
     const db = await openDatabase();
-    await runStore(db, STORE_BUNDLES, 'readwrite', (store) =>
-      store.put(new Uint8Array(bytes), bundleKey(id, version)),
-    );
+    try {
+      await runStore(db, STORE_BUNDLES, 'readwrite', (store) =>
+        store.put(new Uint8Array(bytes), bundleKey(id, version)),
+      );
+    } catch (err) {
+      if (isQuotaError(err)) {
+        throw new ExtensionStorageQuotaError(
+          `saving bundle bytes for "${id}@${version}" (${bytes.byteLength} bytes)`,
+          err,
+        );
+      }
+      throw err;
+    }
   }
 
   async getBundle(id: string, version: string): Promise<Uint8Array | undefined> {
@@ -113,13 +161,24 @@ function openDatabase(): Promise<IDBDatabase> {
       dbPromise = null;
       reject(request.error);
     };
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_EXT)) {
-        db.createObjectStore(STORE_EXT, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(STORE_BUNDLES)) {
-        db.createObjectStore(STORE_BUNDLES);
+      // Migrations are append-only. When DB_VERSION bumps:
+      //   case 1: ... // run v1→v2 migration here (e.g. add an index)
+      //   case 2: ... // run v2→v3 here
+      // The createObjectStore calls below seed a fresh database (when
+      // event.oldVersion is 0) and remain idempotent for users who land
+      // here because recovery deleted the database below.
+      switch (event.oldVersion) {
+        case 0:
+          db.createObjectStore(STORE_EXT, { keyPath: 'id' });
+          db.createObjectStore(STORE_BUNDLES);
+          break;
+        default:
+          // No-op until a v2+ migration exists. Leaving the switch
+          // explicit keeps the contract visible: every future bump
+          // adds its own case.
+          break;
       }
     };
     request.onsuccess = () => {

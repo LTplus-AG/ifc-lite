@@ -60,6 +60,17 @@ export interface InstallEvent extends AuditEventBase {
   grantedCapabilities?: string[];
   /** For update only: the previous version. */
   previousVersion?: string;
+  /**
+   * Install/update only: whether the bundle envelope carried a
+   * verified signature block. Absent on uninstall.
+   */
+  signed?: boolean;
+  /**
+   * Install/update only: display fingerprint of the signer when
+   * `signed` is true. Stored verbatim so historical audit rows
+   * survive even if the signer rotates keys.
+   */
+  signerFingerprint?: string;
 }
 
 export interface EnableEvent extends AuditEventBase {

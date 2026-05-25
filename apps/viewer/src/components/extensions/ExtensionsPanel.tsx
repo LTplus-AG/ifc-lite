@@ -34,6 +34,7 @@ import { RepairQueuePanel } from './RepairQueuePanel';
 import { PrivacyPanel } from './PrivacyPanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
+import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
 import { useViewerStore } from '@/store';
 import * as toastText from './toast-helpers';
 import { HelpHint } from './HelpHint';
@@ -170,7 +171,11 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         toast.success(`${status.id} v${status.version} installed`);
         setPending(null);
       } catch (err) {
-        if (err instanceof ExtensionInstallError) {
+        if (err instanceof ExtensionStorageQuotaError) {
+          toast.error(
+            `Out of browser storage. Uninstall an extension or clear some flavors, then retry.`,
+          );
+        } else if (err instanceof ExtensionInstallError) {
           toast.error(`Install rejected: ${err.validationErrors[0]?.message ?? err.message}`);
         } else {
           toast.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -202,7 +207,13 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
               {activeFlavorName}
             </button>
           )}
-          <HelpHint label="Extensions">
+          <HelpHint
+            label="Extensions"
+            docLink={{
+              href: 'https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/extensions.md',
+              label: 'Read the Extensions guide →',
+            }}
+          >
             <p>
               <strong>Extensions</strong> are sandboxed bundles of
               JavaScript that add buttons, panels, lenses, or exporters

@@ -21,6 +21,7 @@ import { evaluateWhen, parseWhen } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
+import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
@@ -74,7 +75,7 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
       .fire(`onCommand:${commandId}` as `onCommand:${string}`)
       .then(() => host.runCommand(commandId))
       .catch((err) => {
-        toast.error(`Failed to run "${commandId}": ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(describeRunCommandError(commandId, err));
       });
   };
 

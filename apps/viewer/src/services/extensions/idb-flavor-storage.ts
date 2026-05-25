@@ -17,8 +17,10 @@
  */
 
 import type { Flavor, FlavorSnapshot, FlavorStorage } from '@ifc-lite/extensions';
+import { ExtensionStorageQuotaError } from './idb-storage.js';
 
 const DB_NAME = 'ifc-lite-flavors';
+/** See idb-storage.ts for the migration policy. */
 const DB_VERSION = 1;
 const STORE_FLAVORS = 'flavors';
 const STORE_ACTIVE = 'flavor-active';
@@ -48,6 +50,23 @@ function txDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
+function isQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED';
+}
+
+async function withQuotaGuard<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (isQuotaError(err)) {
+      throw new ExtensionStorageQuotaError(operation, err);
+    }
+    throw err;
+  }
+}
+
 export class IdbFlavorStorage implements FlavorStorage {
   async putFlavor(flavor: Flavor, reason?: string): Promise<void> {
     const db = await openDatabase();
@@ -55,9 +74,11 @@ export class IdbFlavorStorage implements FlavorStorage {
     if (previous) {
       await this.recordSnapshot(db, previous, reason);
     }
-    const tx = db.transaction(STORE_FLAVORS, 'readwrite');
-    tx.objectStore(STORE_FLAVORS).put(flavor);
-    await txDone(tx);
+    await withQuotaGuard(`saving flavor "${flavor.id}"`, async () => {
+      const tx = db.transaction(STORE_FLAVORS, 'readwrite');
+      tx.objectStore(STORE_FLAVORS).put(flavor);
+      await txDone(tx);
+    });
   }
 
   async getFlavor(id: string): Promise<Flavor | undefined> {

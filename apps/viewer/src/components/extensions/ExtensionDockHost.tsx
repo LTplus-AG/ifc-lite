@@ -30,7 +30,10 @@ import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
 import { WidgetRenderer, type WidgetRendererContext } from './widget/WidgetRenderer';
+import { WidgetErrorBoundary } from './widget/WidgetErrorBoundary';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { toast } from '@/components/ui/toast';
+import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { cn } from '@/lib/utils';
 
 interface ExtensionDockHostProps {
@@ -123,6 +126,7 @@ function DockBody({ contribution }: { contribution: SlotContribution<DockContrib
       invokeCommand: (commandId: string) => {
         host.runCommand(commandId).catch((err) => {
           console.warn('[ExtensionDockHost] command failed:', err);
+          toast.error(describeRunCommandError(commandId, err));
         });
       },
     }),
@@ -175,10 +179,14 @@ function DockBody({ contribution }: { contribution: SlotContribution<DockContrib
   }
   return (
     <div className="p-3">
-      <WidgetRenderer
-        node={widget as Parameters<typeof WidgetRenderer>[0]['node']}
-        ctx={ctx}
-      />
+      <WidgetErrorBoundary
+        label={`${contribution.extensionId}/${contribution.payload.widget}`}
+      >
+        <WidgetRenderer
+          node={widget as Parameters<typeof WidgetRenderer>[0]['node']}
+          ctx={ctx}
+        />
+      </WidgetErrorBoundary>
     </div>
   );
 }

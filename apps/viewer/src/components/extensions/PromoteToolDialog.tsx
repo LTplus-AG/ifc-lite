@@ -285,7 +285,7 @@ async function synthesiseBundle(
   const hash = await sha256Hex(bytes);
   return {
     bytes,
-    summary: { id, version: '0.1.0', bundleHash: hash, capabilities: caps, bundle },
+    summary: { id, version: '0.1.0', bundleHash: hash, capabilities: caps, bundle, signed: false },
   };
 }
 

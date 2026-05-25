@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import type { DrawingLine2D } from '@ifc-lite/renderer';
+import { decodeIfcString } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -174,6 +175,15 @@ function sourceKey(store: IfcDataStore | null | undefined): string | null {
   return `b${len}-${hashOne(head)}-${hashOne(mid)}-${hashOne(tail)}`;
 }
 
+/** Set `localStorage.IFC_ANNOTATIONS_DEBUG = '1'` in the browser to enable
+ *  per-store parse logging — useful when federation cases silently emit
+ *  zero lines/texts/fills and we need to know which step dropped the data. */
+const debugEnabled = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try { return window.localStorage?.getItem('IFC_ANNOTATIONS_DEBUG') === '1'; }
+  catch { return false; }
+};
+
 async function parseAnnotations(
   store: IfcDataStore,
 ): Promise<ParseResult> {
@@ -184,7 +194,10 @@ async function parseAnnotations(
     looseFills: [],
   };
   const source = store.source;
-  if (!source || source.byteLength === 0) return result;
+  if (!source || source.byteLength === 0) {
+    if (debugEnabled()) console.log('[annotations] skip: missing/empty source');
+    return result;
+  }
 
   const hierarchy = store.spatialHierarchy;
   const elementToStorey = hierarchy?.elementToStorey;
@@ -194,6 +207,14 @@ async function parseAnnotations(
   try {
     await processor.init();
     const collection = processor.parseSymbolicRepresentations(source);
+    if (debugEnabled()) {
+      console.log(
+        `[annotations] parsed ${source.byteLength} bytes →`,
+        collection
+          ? `${collection.polylineCount} polylines, ${collection.circleCount} circles, ${collection.textCount} texts, ${collection.fillCount} fills`
+          : 'null',
+      );
+    }
     if (!collection || collection.isEmpty) return result;
 
     // Get or create the per-storey bucket for an annotation. Storey lookup
@@ -250,14 +271,20 @@ async function parseAnnotations(
       if (!text) continue;
       if (text.ifcType !== 'IfcAnnotation') continue;
       // Skip empty literals so the renderer doesn't waste an instance slot.
-      if (text.content.length === 0) continue;
+      // Decode STEP escapes — `\X2\NNNN\X0\` (UTF-16 hex code units) and
+      // `\X\NN` (Latin-1 hex byte). The Rust parser intentionally passes
+      // the literal through verbatim; this is where the JS encoding
+      // package gets applied. Without it, non-ASCII annotation labels
+      // (e.g. CJK content) render as raw escape sequences in the atlas.
+      const decoded = decodeIfcString(text.content);
+      if (decoded.length === 0) continue;
       const t2d: AnnotationText2D = {
         x: text.x,
         y: text.y,
         dirX: text.dirX,
         dirY: text.dirY,
         height: text.height,
-        content: text.content,
+        content: decoded,
         alignment: text.alignment,
       };
       const bucket = ensureBucket(text.expressId);
@@ -429,18 +456,30 @@ export function useSymbolicAnnotations(params: {
     void version; // depend on parse-completion ticks
 
     const verts: number[] = [];
+    let storeIdx = 0;
     for (const store of stores) {
       const key = sourceKey(store);
-      if (!key) continue;
+      if (!key) { storeIdx++; continue; }
       const cached = PARSE_CACHE.get(key);
-      if (!cached) continue;
+      if (!cached) {
+        if (debugEnabled()) console.log(`[annotations] store ${storeIdx}: parse not yet ready for key=${key}`);
+        storeIdx++;
+        continue;
+      }
+      if (debugEnabled()) {
+        const buckets = cached.byStorey.size;
+        const looseLines = cached.loose.length;
+        console.log(`[annotations] store ${storeIdx}: lifting ${buckets} storey buckets + ${looseLines} loose lines (key=${key})`);
+      }
 
       for (const bucket of cached.byStorey.values()) {
         liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
       }
       liftTo3DLineList(cached.loose, fallbackY, verts);
+      storeIdx++;
     }
 
+    if (debugEnabled()) console.log(`[annotations] total 3D vertices: ${verts.length / 3} from ${stores.length} stores`);
     if (verts.length === 0) return EMPTY_F32;
     return new Float32Array(verts);
   }, [enabled, stores, version, fallbackY]);

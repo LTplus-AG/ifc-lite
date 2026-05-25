@@ -1,5 +1,111 @@
 # @ifc-lite/wasm
 
+## 1.18.0
+
+### Minor Changes
+
+- [#688](https://github.com/LTplus-AG/ifc-lite/pull/688) [`d0ba541`](https://github.com/LTplus-AG/ifc-lite/commit/d0ba541dda3936b985c2189fbca4300cbb89df91) Thanks [@louistrue](https://github.com/louistrue)! - Add GLB export dialog with colour-source selection and visibility
+  filtering (PR [#688](https://github.com/LTplus-AG/ifc-lite/issues/688)).
+
+  The new `GLBExportDialog` in the viewer replaces the inline GLB
+  export handler in `MainToolbar` with a dedicated dialog. Features:
+
+  - **Model picker** for federated multi-model scenes.
+  - **Colour source** selector: "Rendering" (the apparent display
+    colour — `IfcSurfaceStyleRendering.DiffuseColour` if authored,
+    falling back to `IfcSurfaceStyleShading.SurfaceColour`) or
+    "Shading" (the raw `SurfaceColour`, only available when the file
+    authored a distinct `DiffuseColour`).
+  - **Visible-only filter** that respects the viewer's hidden /
+    isolated entity sets. Mesh-vs-set comparison runs in global ID
+    space so federated models with non-zero `idOffset` filter
+    correctly.
+  - **Metadata inclusion** toggle for IFC GlobalId / type / name
+    side-tables.
+
+  Pipeline changes underneath:
+
+  - `MeshData` / `MeshDataJs` carry an optional `shadingColor`
+    alongside `color`. The Rust styling module now extracts both
+    `IfcSurfaceStyleRendering.DiffuseColour` (rendering) and
+    `IfcSurfaceStyleShading.SurfaceColour` (shading) in a single
+    pre-pass and returns them as separate maps; `shadingColor` is
+    only populated when it actually differs from the rendering
+    colour, so memory cost stays sparse on the common case.
+  - The streaming geometry path
+    (`convertMeshCollectionToBatch`) and the worker collector
+    (`IfcLiteMeshCollector`) both copy `shadingColor` end-to-end so
+    the dialog's "Shading" source works on every load path, not just
+    the batch path.
+  - `GLTFExporter` gains `colorSource`, `visibleOnly`,
+    `hiddenEntityIds`, and `isolatedEntityIds` options. Visibility
+    filtering compares mesh `expressId` (global) against the dialog-
+    supplied sets (also global) — no offset arithmetic in the
+    exporter.
+
+### Patch Changes
+
+- [#803](https://github.com/LTplus-AG/ifc-lite/pull/803) [`b0b19ad`](https://github.com/LTplus-AG/ifc-lite/commit/b0b19ad2ea205813e599cac02c964ecdb315c6b5) Thanks [@louistrue](https://github.com/louistrue)! - Fix the wedge-shaped Z-fight artifact on the door-glass panel
+  of Revit-exported `IfcDoor` fixtures (issue [#674](https://github.com/LTplus-AG/ifc-lite/issues/674) true root cause,
+  PR [#802](https://github.com/LTplus-AG/ifc-lite/issues/802)).
+
+  `process_planar_face` in `advanced_face.rs` triangulated each
+  `IfcFaceBound` of an `IfcAdvancedFace` as an independent solid
+  polygon, ignoring the IFC 4.3 schema's `IfcFaceOuterBound` vs
+  inner-bound distinction. For a face with one outer rectangle +
+  one inner hole rectangle (the door panel's glass cutout), this
+  emitted:
+
+  - outer ring: 2-tri solid quad covering the whole face
+  - inner ring: 2-tri solid quad covering the hole, with the
+    schema-imposed reversed winding → opposite normal
+
+  Identical plane, opposite normals, overlapping in the cutout's
+  footprint. The WebGPU pipeline runs `cullMode: 'none'`, so the
+  canceling pair rendered as the visible wedge.
+
+  Fix: identify the outer bound (preferring the typed
+  `IfcType::IfcFaceOuterBound`, falling back to the first bound for
+  files that emit only `IfcFaceBound`), treat siblings as holes,
+  honour the per-bound orientation flag, and call the existing
+  `triangulate_polygon_with_holes` helper once — the same pattern
+  the FacetedBrep path in `brep.rs` already uses.
+
+  Door panel [#712](https://github.com/LTplus-AG/ifc-lite/issues/712) on the issue-604 fixture now emits 32 triangles
+  (matching IfcOpenShell's reference), up from 24 pre-fix. The
+  same broken code path was the fallback for every other surface
+  type in `advanced_face.rs` (B-spline edge cap, cylindrical /
+  conical / spherical / toroidal / surface-of-linear-extrusion
+  fallbacks); all of those now also produce correct annular
+  triangulations on faces with inner bounds.
+
+- [#803](https://github.com/LTplus-AG/ifc-lite/pull/803) [`b0b19ad`](https://github.com/LTplus-AG/ifc-lite/commit/b0b19ad2ea205813e599cac02c964ecdb315c6b5) Thanks [@louistrue](https://github.com/louistrue)! - Fix the door-handle bend rendering with the lever floating
+  detached from the rosette on Revit-exported `IfcDoor` fixtures
+  (issue [#674](https://github.com/LTplus-AG/ifc-lite/issues/674) redux, PR [#799](https://github.com/LTplus-AG/ifc-lite/issues/799)).
+
+  `process_surface_of_revolution_face` in `advanced_face.rs` read
+  `surface.get(1)` for the axis placement, but per IFC 4.3 the
+  `IfcSurfaceOfRevolution` schema is:
+
+  IfcSweptSurface (parent)
+  0 SweptCurve
+  1 Position (optional IfcAxis2Placement3D)
+  IfcSurfaceOfRevolution (child)
+  2 AxisPosition (IfcAxis1Placement)
+
+  Revit exports `IFCSURFACEOFREVOLUTION(#sc,$,#ap)` — slot 1 is
+  null. Reading slot 1 returned None, the fallback
+  `(Point3::origin(), +Z)` kicked in, and the angular-extent
+  calculation projected boundary points around (0,0,0) instead of
+  the true revolution axis. The bend swept ~13° through the wrong
+  region of space and the bulb ended up pointing "down and outward"
+  from the rosette.
+
+  Switched to `surface.get(2)`. AABB on the door fixture lands at
+  x=[115, 245] y=[67, 122] vs IfcOpenShell's [120, 250] / [70, 120]
+  (5 mm offset from tessellation density). The bulb now rotates
+  through the correct quadrant and the handle connects.
+
 ## 1.17.0
 
 ### Minor Changes

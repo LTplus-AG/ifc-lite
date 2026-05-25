@@ -8,7 +8,7 @@
 //! Used by both AdvancedBrepProcessor and ShellBasedSurfaceModelProcessor/FaceBasedSurfaceModelProcessor
 //! when shells contain IfcAdvancedFace entities (common in CATIA exports).
 
-use crate::triangulation::{calculate_polygon_normal, project_to_2d, triangulate_polygon};
+use crate::triangulation::{calculate_polygon_normal, project_to_2d};
 use crate::{Error, Point3, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
@@ -789,12 +789,27 @@ fn extract_edge_loop_points(
 }
 
 /// Process a planar or boundary-represented face.
-/// Extracts edge loop boundary points (with B-spline curve sampling)
-/// and triangulates with robust ear-cutting.
+///
+/// Per IFC 4.3 `IfcAdvancedFace`, `Bounds` is a list of `IfcFaceBound` —
+/// at most one is `IfcFaceOuterBound` (the outer ring), the rest are holes.
+/// The previous implementation triangulated each bound as an independent
+/// polygon and concatenated, which meant a face with one outer + one hole
+/// emitted a solid outer quad PLUS a reversed-winding solid quad over the
+/// hole — exactly coplanar, opposite normals, overlapping in the hole's
+/// footprint. With the renderer running `cullMode: 'none'` ("IFC winding
+/// order varies", `packages/renderer/src/pipeline.ts`), that pair surfaced
+/// as a Z-fight on the door panel's glass cutout (issue #674 follow-up).
+///
+/// Mirrors the FacetedBrep path in `processors/brep.rs`: pick the outer
+/// (or first) bound, project to 2D using its basis, project hole bounds
+/// using the SAME basis, and call `triangulate_polygon_with_holes` once.
 fn process_planar_face(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
+    use crate::triangulation::{project_to_2d_with_basis, triangulate_polygon_with_holes};
+    use ifc_lite_core::IfcType;
+
     let bounds_attr = face
         .get(0)
         .ok_or_else(|| Error::geometry("AdvancedFace missing Bounds".to_string()))?;
@@ -802,59 +817,86 @@ fn process_planar_face(
         .as_list()
         .ok_or_else(|| Error::geometry("Expected bounds list".to_string()))?;
 
-    let mut positions = Vec::new();
-    let mut indices = Vec::new();
+    // Collect (points, is_outer, orientation) per bound. Orientation is
+    // attribute 1 of IfcFaceBound; when .F., the loop must be reversed.
+    let mut outer_points: Option<Vec<Point3<f64>>> = None;
+    let mut hole_points: Vec<Vec<Point3<f64>>> = Vec::new();
 
     for bound in bounds {
-        if let Some(bound_id) = bound.as_entity_ref() {
-            let bound_entity = decoder.decode_by_id(bound_id)?;
+        let Some(bound_id) = bound.as_entity_ref() else {
+            continue;
+        };
+        let bound_entity = decoder.decode_by_id(bound_id)?;
 
-            let loop_attr = bound_entity
-                .get(0)
-                .ok_or_else(|| Error::geometry("FaceBound missing Bound".to_string()))?;
+        let loop_attr = bound_entity
+            .get(0)
+            .ok_or_else(|| Error::geometry("FaceBound missing Bound".to_string()))?;
+        let loop_entity = decoder
+            .resolve_ref(loop_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve loop".to_string()))?;
+        if !loop_entity.ifc_type.as_str().eq_ignore_ascii_case("IFCEDGELOOP") {
+            continue;
+        }
 
-            let loop_entity = decoder
-                .resolve_ref(loop_attr)?
-                .ok_or_else(|| Error::geometry("Failed to resolve loop".to_string()))?;
+        let mut points = extract_edge_loop_points(&loop_entity, decoder);
+        if points.len() < 3 {
+            continue;
+        }
+        let orientation = bound_entity
+            .get(1)
+            .and_then(|a| a.as_enum())
+            .map(|e| e == "T" || e == "TRUE")
+            .unwrap_or(true);
+        if !orientation {
+            points.reverse();
+        }
 
-            if !loop_entity.ifc_type.as_str().eq_ignore_ascii_case("IFCEDGELOOP") {
-                continue;
-            }
-
-            // Extract polygon points with B-spline curve sampling
-            let polygon_points = extract_edge_loop_points(&loop_entity, decoder);
-
-            if polygon_points.len() >= 3 {
-                let base_idx = (positions.len() / 3) as u32;
-
-                for point in &polygon_points {
-                    positions.push(point.x as f32);
-                    positions.push(point.y as f32);
-                    positions.push(point.z as f32);
-                }
-
-                // Project 3D polygon to 2D for robust ear-cutting triangulation
-                let normal = calculate_polygon_normal(&polygon_points);
-                let (points_2d, _, _, _) = project_to_2d(&polygon_points, &normal);
-
-                match triangulate_polygon(&points_2d) {
-                    Ok(tri_indices) => {
-                        for idx in tri_indices {
-                            indices.push(base_idx + idx as u32);
-                        }
-                    }
-                    Err(_) => {
-                        // Fallback to fan triangulation
-                        for i in 1..polygon_points.len() - 1 {
-                            indices.push(base_idx);
-                            indices.push(base_idx + i as u32);
-                            indices.push(base_idx + i as u32 + 1);
-                        }
-                    }
+        let is_outer = bound_entity.ifc_type == IfcType::IfcFaceOuterBound;
+        if is_outer || outer_points.is_none() {
+            if is_outer {
+                if let Some(prev_outer) = outer_points.take() {
+                    hole_points.push(prev_outer);
                 }
             }
+            outer_points = Some(points);
+        } else {
+            hole_points.push(points);
         }
     }
+
+    let Some(outer) = outer_points else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+
+    let normal = calculate_polygon_normal(&outer);
+    let (outer_2d, u_axis, v_axis, origin) = project_to_2d(&outer, &normal);
+    let holes_2d: Vec<Vec<nalgebra::Point2<f64>>> = hole_points
+        .iter()
+        .map(|h| project_to_2d_with_basis(h, &u_axis, &v_axis, &origin))
+        .collect();
+
+    let mut positions = Vec::with_capacity((outer.len() + hole_points.iter().map(|h| h.len()).sum::<usize>()) * 3);
+    for p in outer.iter().chain(hole_points.iter().flat_map(|h| h.iter())) {
+        positions.push(p.x as f32);
+        positions.push(p.y as f32);
+        positions.push(p.z as f32);
+    }
+
+    let indices = match triangulate_polygon_with_holes(&outer_2d, &holes_2d) {
+        Ok(idx) => idx.into_iter().map(|i| i as u32).collect(),
+        Err(_) => {
+            // Outer-only fan fallback. Drops holes — same behaviour as the
+            // pre-fix code on a no-hole face, so worst case matches the old
+            // legacy path rather than emitting nothing.
+            let mut idx = Vec::with_capacity((outer.len() - 2) * 3);
+            for i in 1..outer.len() - 1 {
+                idx.push(0u32);
+                idx.push(i as u32);
+                idx.push(i as u32 + 1);
+            }
+            idx
+        }
+    };
 
     Ok((positions, indices))
 }

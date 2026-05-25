@@ -127,6 +127,25 @@ describe('ModelSlice', () => {
       state.addModel(model);
       assert.strictEqual(state.hasModels(), true);
     });
+
+    // Regression for issue #661.
+    it('keeps each model entry distinct when a second model is added', () => {
+      const firstStore = { tag: 'first' } as unknown as IfcDataStore;
+      const firstGeometry = { tag: 'first' } as unknown as GeometryResult;
+      const secondStore = { tag: 'second' } as unknown as IfcDataStore;
+      const secondGeometry = { tag: 'second' } as unknown as GeometryResult;
+
+      const model1 = { ...createMockModel('model-1', 'First'), ifcDataStore: firstStore, geometryResult: firstGeometry };
+      const model2 = { ...createMockModel('model-2', 'Second'), ifcDataStore: secondStore, geometryResult: secondGeometry };
+
+      state.addModel(model1);
+      state.addModel(model2);
+
+      assert.strictEqual(state.models.get('model-1')?.ifcDataStore, firstStore);
+      assert.strictEqual(state.models.get('model-1')?.geometryResult, firstGeometry);
+      assert.strictEqual(state.models.get('model-2')?.ifcDataStore, secondStore);
+      assert.strictEqual(state.models.get('model-2')?.geometryResult, secondGeometry);
+    });
   });
 
   describe('removeModel', () => {

@@ -903,9 +903,12 @@ export function useIfcFederation() {
       // Add to store
       storeAddModel(federatedModel);
 
-      // Also set legacy single-model state for backward compatibility
-      setIfcDataStore(parsedDataStore);
-      setGeometryResult(parsedGeometry);
+      // Don't touch the legacy top-level setters for added models. When this
+      // is the first model, modelSlice.addModel already mirrored it into the
+      // top-level fields. When subsequent models are added, activeModelId
+      // stays on the first model — writing here would alias the new model's
+      // data into the active (first) model's per-model entry and cause both
+      // viewport slots to render the same mesh (issue #661).
 
       setProgress({ phase: 'Complete', percent: 100 });
       setLoading(false);

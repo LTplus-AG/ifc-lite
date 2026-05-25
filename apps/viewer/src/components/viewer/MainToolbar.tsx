@@ -1582,26 +1582,82 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <ActionButton icon={Home} label="Home (Isometric + Reset Visibility)" onClick={handleHome} shortcut="H" />
 
       {/*
-        Consolidated View dropdown.
-        Holds projection toggle, preset views, Cesium overlay (when
-        eligible), and hover tooltips — all of these are "view options"
-        the user reaches for occasionally, and rendering each as a raw
-        icon button used to dominate the toolbar's right half.
+        Cesium 3D World Context — sits next to Home as a raw button so
+        the world-context affordance is one click away when a model has
+        georeferencing. When active, the "Move georeference" sub-toggle
+        appears beside it (its amber tint signals a modal pose whose
+        exit affordance must stay visible).
+      */}
+      {cesiumAvailable && !desktopShell && (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={cesiumEnabled ? 'default' : 'ghost'}
+                size="icon-sm"
+                aria-label={cesiumEnabled ? 'Hide 3D World Context (Cesium)' : 'Show 3D World Context (Cesium)'}
+                aria-pressed={cesiumEnabled}
+                onClick={(e) => {
+                  (e.currentTarget as HTMLButtonElement).blur();
+                  toggleCesium();
+                  if (cesiumEnabled) {
+                    setCesiumPlacementEditMode(false);
+                    if (activeTool === 'cesium-placement') setActiveTool('select');
+                  }
+                }}
+                className={cn(cesiumEnabled && 'bg-teal-600 text-white hover:bg-teal-700')}
+              >
+                <Globe2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {cesiumEnabled ? 'Hide' : 'Show'} 3D World Context (Cesium)
+            </TooltipContent>
+          </Tooltip>
+          {cesiumEnabled && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={cesiumPlacementEditMode ? 'default' : 'ghost'}
+                  size="icon-sm"
+                  aria-label={cesiumPlacementEditMode ? 'Stop moving georeference' : 'Move georeference in Cesium'}
+                  aria-pressed={cesiumPlacementEditMode}
+                  onClick={(e) => {
+                    (e.currentTarget as HTMLButtonElement).blur();
+                    const next = !cesiumPlacementEditMode;
+                    setCesiumPlacementEditMode(next);
+                    setActiveTool(next ? 'cesium-placement' : 'select');
+                  }}
+                  className={cn(cesiumPlacementEditMode && 'bg-amber-500 text-zinc-950 hover:bg-amber-400')}
+                >
+                  <Move className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {cesiumPlacementEditMode ? 'Stop moving georeference' : 'Move georeference'}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </>
+      )}
 
-        The Cesium "Move georeference" sub-toggle stays as a raw button
-        next to the dropdown when it's active — it's a temporary modal
-        state that the user wants to see/dismiss at a glance, not a
-        setting they toggle through a menu.
+      {/*
+        Consolidated View dropdown — holds projection toggle, preset
+        views, and hover tooltips. These are "view options" the user
+        reaches for occasionally, and rendering each as a raw icon
+        button used to dominate the toolbar's right half. Cesium stayed
+        inline (above) because the world-context overlay is a primary
+        affordance, not a tucked-away view setting.
       */}
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button
-                variant={(projectionMode === 'orthographic' || cesiumEnabled || hoverTooltipsEnabled) ? 'default' : 'ghost'}
+                variant={(projectionMode === 'orthographic' || hoverTooltipsEnabled) ? 'default' : 'ghost'}
                 size="icon-sm"
                 aria-label="View options"
-                className={cn((projectionMode === 'orthographic' || cesiumEnabled || hoverTooltipsEnabled) && 'bg-primary text-primary-foreground')}
+                className={cn((projectionMode === 'orthographic' || hoverTooltipsEnabled) && 'bg-primary text-primary-foreground')}
               >
                 <Grid3x3 className="h-4 w-4" />
               </Button>
@@ -1645,27 +1701,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Orbit className="h-4 w-4 mr-2" />
             Orthographic
           </DropdownMenuCheckboxItem>
-          {cesiumAvailable && !desktopShell && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Overlays
-              </DropdownMenuLabel>
-              <DropdownMenuCheckboxItem
-                checked={cesiumEnabled}
-                onCheckedChange={() => {
-                  toggleCesium();
-                  if (cesiumEnabled) {
-                    setCesiumPlacementEditMode(false);
-                    if (activeTool === 'cesium-placement') setActiveTool('select');
-                  }
-                }}
-              >
-                <Globe2 className="h-4 w-4 mr-2" />
-                3D World Context (Cesium)
-              </DropdownMenuCheckboxItem>
-            </>
-          )}
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Helpers
@@ -1679,37 +1714,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      {/*
-        "Move georeference" stays inline next to the View dropdown only
-        while Cesium is active AND we're on the web build. It's an
-        attention-getting modal pose with its own amber tint, so burying
-        it in a menu would hide the affordance that lets the user exit.
-      */}
-      {cesiumAvailable && !desktopShell && cesiumEnabled && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={cesiumPlacementEditMode ? 'default' : 'ghost'}
-              size="icon-sm"
-              aria-label={cesiumPlacementEditMode ? 'Stop moving georeference' : 'Move georeference in Cesium'}
-              aria-pressed={cesiumPlacementEditMode}
-              onClick={(e) => {
-                (e.currentTarget as HTMLButtonElement).blur();
-                const next = !cesiumPlacementEditMode;
-                setCesiumPlacementEditMode(next);
-                setActiveTool(next ? 'cesium-placement' : 'select');
-              }}
-              className={cn(cesiumPlacementEditMode && 'bg-amber-500 text-zinc-950 hover:bg-amber-400')}
-            >
-              <Move className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {cesiumPlacementEditMode ? 'Stop moving georeference' : 'Move georeference'}
-          </TooltipContent>
-        </Tooltip>
-      )}
 
       {/* Spacer */}
       <div className="flex-1" />

@@ -99,9 +99,9 @@ describe('IdbLogStorage', () => {
   it('preserves the seq-based key uniqueness', async () => {
     const store = new IdbLogStorage();
     // Re-appending the same seq overwrites (keyPath: 'seq').
-    store.appendAction({ ...actionEvent(1), params: { type: 'foo' } as ActionEvent['params'] });
+    store.appendAction({ ...actionEvent(1), params: { type: 'foo' } } as ActionEvent);
     await sleep(FLUSH_WAIT_MS);
-    store.appendAction({ ...actionEvent(1), params: { type: 'bar' } as ActionEvent['params'] });
+    store.appendAction({ ...actionEvent(1), params: { type: 'bar' } } as ActionEvent);
     await sleep(FLUSH_WAIT_MS);
     const loaded = await store.loadActions();
     assert.strictEqual(loaded.length, 1);

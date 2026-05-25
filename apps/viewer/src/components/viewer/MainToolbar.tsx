@@ -36,6 +36,7 @@ import {
   PackagePlus,
   MessageSquare,
   ClipboardCheck,
+  Puzzle,
   Palette,
   Orbit,
   Layout,
@@ -529,6 +530,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // Lens state
   const lensPanelVisible = useViewerStore((state) => state.lensPanelVisible);
   const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
+  const extensionsPanelVisible = useViewerStore((state) => state.extensionsPanelVisible);
+  const setExtensionsPanelVisible = useViewerStore((state) => state.setExtensionsPanelVisible);
   const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
@@ -790,7 +793,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'addElement') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'addElement' | 'extensions') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -804,12 +807,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
     const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
     const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
+    const nextExtensionsVisible = panel === 'extensions' ? !extensionsPanelVisible : false;
     const isAddElementActive = activeTool === 'addElement';
     const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
 
     setBcfPanelVisible(nextBcfVisible);
     setIdsPanelVisible(nextIdsVisible);
     setLensPanelVisible(nextLensVisible);
+    setExtensionsPanelVisible(nextExtensionsVisible);
 
     if (panel === 'addElement') {
       setActiveTool(nextAddElementActive ? 'addElement' : 'select');
@@ -817,18 +822,20 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       setActiveTool('select');
     }
 
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextAddElementActive) {
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextExtensionsVisible || nextAddElementActive) {
       setRightPanelCollapsed(false);
     }
   }, [
     activeAnalysisExtension?.placement,
     activeTool,
     bcfPanelVisible,
+    extensionsPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
     requireDesktopFeature,
     setActiveTool,
     setBcfPanelVisible,
+    setExtensionsPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
     setRightPanelCollapsed,
@@ -861,6 +868,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setBcfPanelVisible(false);
     setIdsPanelVisible(false);
     setLensPanelVisible(false);
+    setExtensionsPanelVisible(false);
     // The right slot is single-tenant: when an analysis extension takes
     // it over, the AddElement tool must release it too, otherwise its 3D
     // click handler keeps placing elements behind the extension panel.
@@ -874,6 +882,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     analysisExtensionState.extensions,
     setActiveTool,
     setBcfPanelVisible,
+    setExtensionsPanelVisible,
     setGanttPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
@@ -890,6 +899,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
+    if (extensionsPanelVisible) panels.add('extensions');
     if (activeTool === 'addElement') panels.add('addElement');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
@@ -897,6 +907,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     activeTool,
     analysisExtensionState.activeId,
     bcfPanelVisible,
+    extensionsPanelVisible,
     ganttPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
@@ -913,6 +924,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
+    if (activeWorkspacePanels.has('extensions')) return 'Extensions';
     if (activeWorkspacePanels.has('addElement')) return 'Add Element';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
@@ -1259,6 +1271,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <Palette className="h-4 w-4 mr-2" />
             Lens Rules
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('extensions')}
+            onCheckedChange={() => handleToggleRightPanel('extensions')}
+          >
+            <Puzzle className="h-4 w-4 mr-2" />
+            Extensions
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('addElement')}

@@ -90,3 +90,31 @@
 ## 10. Feedback Loop
 - If a pattern is confusing or repeatedly error-prone, call it out explicitly in your PR notes.
 - Prefer refactors that make the correct path the easiest path (single source of truth helpers, stricter types, fewer implicit fallbacks).
+
+## Cursor Cloud specific instructions
+
+### Prerequisites (already installed by the update script)
+- **Node.js 22.x** + **pnpm 10.8.1** (workspace package manager)
+- **Rust nightly-2025-11-15** with `wasm32-unknown-unknown` target + **wasm-pack** (for WASM builds)
+- All packages are pre-built and test fixtures pre-downloaded by the update script.
+
+### Running services
+
+| Service | Command | URL | Notes |
+|---------|---------|-----|-------|
+| Viewer (dev) | `pnpm --filter viewer dev` | http://localhost:3000 | WebGPU not available in cloud VM — viewer UI loads but 3D rendering shows "WebGPU Not Available" warning. All non-GPU functionality works. |
+| CLI | `node packages/cli/dist/index.js <command>` | N/A | Headless BIM operations; no GPU needed. |
+
+### Key gotchas
+- **WebGPU unavailable in cloud VMs:** The viewer loads and all UI/logic works, but the 3D canvas cannot render geometry. Use the CLI (`ifc-lite info`, `ifc-lite query`, `ifc-lite eval`, etc.) for headless verification of parsing/query/export features.
+- **`pnpm dev` runs `pnpm build` first:** The root `dev` script builds all packages before starting the viewer dev server. If packages are already built, run `pnpm --filter viewer dev` directly to skip the rebuild.
+- **Lint has no scripts:** `pnpm lint` currently reports "None of the selected packages has a lint script". Linting is done at the individual package level where configured.
+- **Test fixtures must be fetched:** Tests that depend on IFC model files skip cleanly if fixtures are absent. Run `pnpm fixtures` to download them (idempotent, hash-verified).
+- **WASM pre-built artifacts committed:** `packages/wasm/pkg/` contains pre-built WASM binaries. Only run `pnpm build:wasm` if you modify Rust source in `rust/`.
+- **MCP bin warnings on install:** Warnings about `ifc-lite-mcp` bin are harmless — they resolve after `pnpm build` creates `packages/mcp/dist/cli.js`.
+
+### Common commands reference
+- **Build all:** `pnpm build` (via Turbo, ~3 min first time, cached subsequently)
+- **Run tests:** `pnpm test` (via Turbo, runs all package tests)
+- **Type check:** `pnpm typecheck`
+- **CLI usage:** `node packages/cli/dist/index.js <command> [args]` (e.g., `info`, `query`, `create`, `eval`, `stats`)

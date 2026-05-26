@@ -184,9 +184,8 @@ export class CameraControls {
    * `camera.up` is always world Y — setPresetView positions the camera at
    * phi ∈ [MIN_PHI, MAX_PHI] (never on the exact pole), so the orbit math
    * never hits the spherical singularity and no special pole-handling is
-   * needed. Phi is clamped to [MIN_PHI, π/2 − ε] (upper hemisphere), which
-   * is the standard BIM constraint — the camera can look from straight
-   * down (top view) to the horizon but never flips over the building.
+   * needed. Phi is clamped to [MIN_PHI, π − MIN_PHI], keeping it just
+   * off both poles so sinφ stays nonzero in the spherical tangent math.
    *
    * Pattern is the same as yomotsu/camera-controls and Autodesk Viewer.
    */

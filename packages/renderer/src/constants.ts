@@ -47,19 +47,18 @@ export const CAMERA_CONSTANTS = {
   /** Far plane multiplier of distance */
   FAR_DISTANCE_MULTIPLIER: 10,
 
-  // Polar angle constraints (BIM convention)
-  // The camera is constrained to the upper hemisphere — it can look from
-  // straight down (top view) down to the horizon, but never "over the top"
-  // or under the building (which would flip the view on its head). This is
-  // standard BIM/CAD behavior (Autodesk Viewer, Navisworks, ThatOpen).
+  // Polar angle constraints (gimbal-lock protection)
+  // Phi is clamped just off the two poles (±Y). camera.up stays world Y
+  // throughout, so the orbit math (sinφ in the tangent) is well-defined
+  // for any phi ∈ [MIN_PHI, π − MIN_PHI]. The full sphere minus the exact
+  // poles is reachable — top/bottom/front/back/left/right presets all fit
+  // inside this range without needing per-preset clamp overrides.
   //
-  // Pattern (yomotsu/camera-controls, three.js): camera.up stays world Y;
-  // top preset is set to MIN_PHI (just barely off the pole) so orbit never
-  // hits the spherical singularity and never has to special-case the pole.
-  /** Minimum phi angle. Top preset uses this — keeps phi off the exact pole. */
+  // Pattern matches yomotsu/camera-controls and Autodesk Viewer.
+  /** Minimum phi angle. Top preset uses this — keeps phi off the +Y pole. */
   MIN_PHI: 0.01,
-  /** Maximum phi angle. π/2 = horizon; clamp below prevents looking up from below. */
-  MAX_PHI: Math.PI / 2 - 0.01,
+  /** Maximum phi angle. Bottom preset uses this — keeps phi off the −Y pole. */
+  MAX_PHI: Math.PI - 0.01,
   /** Sin phi threshold for pole detection */
   POLE_THRESHOLD: 0.05,
 

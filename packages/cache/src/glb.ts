@@ -352,16 +352,21 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
   const resolveMaterialColor = (
     materialIdx: number | undefined,
   ): [number, number, number, number] => {
-    if (materialIdx === undefined) return DEFAULT_COLOR;
+    if (materialIdx === undefined) return [...DEFAULT_COLOR];
     const material = gltf.materials?.[materialIdx];
     const factor = material?.pbrMetallicRoughness?.baseColorFactor;
-    if (!factor || factor.length < 3) return DEFAULT_COLOR;
-    return [
-      factor[0],
-      factor[1],
-      factor[2],
-      factor.length >= 4 ? factor[3] : 1.0,
-    ];
+    if (!Array.isArray(factor) || factor.length < 3) return [...DEFAULT_COLOR];
+    const r = factor[0], g = factor[1], b = factor[2];
+    const a = factor.length >= 4 ? factor[3] : 1.0;
+    if (
+      typeof r !== 'number' || !Number.isFinite(r) ||
+      typeof g !== 'number' || !Number.isFinite(g) ||
+      typeof b !== 'number' || !Number.isFinite(b) ||
+      typeof a !== 'number' || !Number.isFinite(a)
+    ) {
+      return [...DEFAULT_COLOR];
+    }
+    return [r, g, b, a];
   };
 
   for (let nodeIdx = 0; nodeIdx < gltf.nodes.length; nodeIdx++) {

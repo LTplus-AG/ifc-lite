@@ -232,15 +232,16 @@ describe('CameraControls – external pivot orbit', () => {
     );
   });
 
-  it('orbit clamps to upper hemisphere (no flipping under building)', () => {
-    // BIM convention: camera can look from straight down to the horizon
-    // but never under the model (which would flip the view upside-down).
-    // Repeated drag-up orbits should drive phi to MAX_PHI ≈ π/2, not π.
+  it('orbit clamp keeps phi inside [MIN_PHI, MAX_PHI] across long drags', () => {
+    // Phi is clamped just off both poles so sinφ stays nonzero in the
+    // spherical tangent math — the camera never flips through ±Y.
     for (let i = 0; i < 80; i++) controls.orbit(0, -100);
     const pivot = vec3(5, 5, 15);
+    const dir = sub(state.camera.position, pivot);
+    const phi = Math.acos(dir.y / len(dir));
     assert.ok(
-      state.camera.position.y >= pivot.y - 1e-3,
-      `camera should NOT dip below pivot (y=${state.camera.position.y}, pivot.y=${pivot.y})`,
+      phi >= CC.MIN_PHI - 1e-4 && phi <= CC.MAX_PHI + 1e-4,
+      `phi must stay clamped (got ${phi}, range [${CC.MIN_PHI}, ${CC.MAX_PHI}])`,
     );
   });
 });
@@ -306,13 +307,13 @@ describe('CameraControls – pan', () => {
   });
 });
 
-describe('CameraControls – orbit from preset top view (BIM convention)', () => {
+describe('CameraControls – orbit from preset top view', () => {
   // Pattern (yomotsu/camera-controls, Autodesk Viewer, ThatOpen):
   // setPresetView('top') positions the camera at phi=MIN_PHI (just barely
   // off the +Y pole) with camera.up = (0,1,0). Orbit is then standard
-  // spherical with no special pole handling. Phi is clamped to the upper
-  // hemisphere [MIN_PHI, π/2−ε] — the camera can look from straight down to
-  // the horizon but cannot flip under the building.
+  // spherical with no special pole handling. Phi is clamped to
+  // [MIN_PHI, π−MIN_PHI] — both poles are protected from gimbal lock, but
+  // the camera is free to traverse the full sphere in between.
 
   function setupTopPreset(): { state: CameraInternalState; controls: CameraControls } {
     // Approximate what setPresetView('top') produces: camera just barely
@@ -355,7 +356,7 @@ describe('CameraControls – orbit from preset top view (BIM convention)', () =>
     approxEqual(state.camera.position.x, 0, 1e-4);
   });
 
-  it('repeated drag-up converges to horizon (not over the top)', () => {
+  it('repeated drag-up stops at the lower pole clamp (does not flip)', () => {
     const { state, controls } = setupTopPreset();
     for (let i = 0; i < 80; i++) controls.orbit(0, -100);
     const phi = Math.acos(state.camera.position.y / len(state.camera.position));
@@ -364,8 +365,8 @@ describe('CameraControls – orbit from preset top view (BIM convention)', () =>
       `phi must be clamped at MAX_PHI (got ${phi}, max ${CC.MAX_PHI})`,
     );
     assert.ok(
-      state.camera.position.y >= -1e-3,
-      `camera must not dip below target y (y=${state.camera.position.y})`,
+      phi >= CC.MIN_PHI - 1e-4,
+      `phi must stay above MIN_PHI (got ${phi}, min ${CC.MIN_PHI})`,
     );
   });
 

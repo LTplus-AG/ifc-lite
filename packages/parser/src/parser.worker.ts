@@ -18,6 +18,7 @@
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import { IfcParser } from './index.js';
 import type { IfcDataStore } from './columnar-parser.js';
+import type { WasmScanApi } from './entity-scanner.js';
 import {
   collectTransferables,
   toTransport,
@@ -142,10 +143,10 @@ function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable
  * tokenizer). We expose only the latter so `parseColumnar`'s preference
  * logic picks the full scan unconditionally.
  */
-let cachedFullScanApi: { scanEntitiesFastBytes(data: Uint8Array): unknown } | null = null;
+let cachedFullScanApi: Pick<WasmScanApi, 'scanEntitiesFastBytes'> | null = null;
 let initPromise: Promise<void> | null = null;
 
-async function ensureWasmScanApi(): Promise<{ scanEntitiesFastBytes(data: Uint8Array): unknown }> {
+async function ensureWasmScanApi(): Promise<Pick<WasmScanApi, 'scanEntitiesFastBytes'>> {
   if (cachedFullScanApi) return cachedFullScanApi;
   if (!initPromise) initPromise = init().then(() => {});
   await initPromise;

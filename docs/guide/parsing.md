@@ -4,13 +4,14 @@ Complete guide to parsing IFC files with IFClite, covering both IFC4 (STEP) and 
 
 ## Overview
 
-IFClite supports two parsing paradigms and two file formats:
+IFClite supports the columnar STEP parser for IFC4-style files and the IFCX
+parser for IFC5 JSON files:
 
 | Aspect | Options |
 |--------|---------|
 | **Processing** | Client-side (WASM) or Server-side (Rust) |
 | **Format** | IFC4 (STEP) or IFC5 (IFCX JSON) |
-| **Mode** | Synchronous, columnar, or streaming |
+| **Mode** | Columnar or streaming |
 
 ```mermaid
 flowchart TB
@@ -50,12 +51,15 @@ import { IfcParser } from '@ifc-lite/parser';
 const parser = new IfcParser();
 const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
 
-// Standard parse (returns entities as objects)
-const result = await parser.parse(buffer);
-
-// Columnar parse (returns IfcDataStore - recommended)
+// Columnar parse (returns IfcDataStore - recommended for all STEP files)
 const store = await parser.parseColumnar(buffer);
 ```
+
+`parseColumnar()` is the canonical IFC STEP path. It centralizes scan selection
+across pre-scanned indexes, the browser worker scanner, the WASM byte scanner,
+and the TypeScript tokenizer fallback, then builds an `IfcDataStore` for
+on-demand extraction. `parse()` remains as a compatibility adapter for callers
+that still need the older eager `ParseResult` shape.
 
 ### Columnar Parsing (Recommended)
 

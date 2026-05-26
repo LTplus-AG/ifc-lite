@@ -17,14 +17,16 @@ const parser = new IfcParser();
 const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
 
 const t0 = performance.now();
-const result = await parser.parse(buffer, {
+const store = await parser.parseColumnar(buffer, {
   onProgress: ({ phase, percent }) => console.log(`${phase}: ${percent.toFixed(1)}%`),
 });
 
-console.log(`Parsed ${result.entityCount} entities in ${(performance.now() - t0).toFixed(0)}ms`);
+console.log(`Parsed ${store.entityCount} entities in ${(performance.now() - t0).toFixed(0)}ms`);
 ```
 
-For columnar storage (TypedArray-backed, query-friendly, recommended for models > 10 MB):
+`parseColumnar()` is the canonical STEP parser. It uses TypedArray-backed storage,
+shared scan selection, and on-demand extraction for properties, quantities,
+materials, classifications, documents, and attributes.
 
 ```typescript
 const store = await parser.parseColumnar(buffer);

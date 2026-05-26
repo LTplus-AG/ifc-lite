@@ -11,6 +11,7 @@ export { StepTokenizer } from './tokenizer.js';
 export { EntityIndexBuilder } from './entity-index.js';
 export { EntityExtractor } from './entity-extractor.js';
 export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex } from './compact-entity-index.js';
+export type { EntityScanPath, EntityScanResult, PreScannedEntityIndex, WasmScanApi } from './entity-scanner.js';
 export { OpfsSourceBuffer } from './opfs-source-buffer.js';
 export { PropertyExtractor } from './property-extractor.js';
 export { QuantityExtractor } from './quantity-extractor.js';
@@ -107,22 +108,18 @@ export * from './types.js';
 export * from './style-extractor.js';
 export { getAttributeNames, getAttributeNameAt, isKnownType, normalizeIfcTypeName } from './ifc-schema.js';
 
-import type { ParseResult, EntityRef } from './types.js';
-import { decodeIfcString } from '@ifc-lite/encoding';
-import { StepTokenizer } from './tokenizer.js';
+import type { IfcEntity, ParseResult } from './types.js';
 import { EntityIndexBuilder } from './entity-index.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { PropertyExtractor } from './property-extractor.js';
 import { RelationshipExtractor } from './relationship-extractor.js';
 import { ColumnarParser, type IfcDataStore } from './columnar-parser.js';
-import { scanEntitiesInWorker } from './scan-worker-inline.js';
-import { buildEntityRefsFromIndex } from './entity-refs-from-index.js';
-import { safeUtf8Decode } from '@ifc-lite/data';
+import { scanIfcEntities, type PreScannedEntityIndex, type WasmScanApi } from './entity-scanner.js';
 
 export interface ParseOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
   onDiagnostic?: (message: string) => void;
-  wasmApi?: any; // Optional IfcAPI instance for WASM-accelerated entity scanning
+  wasmApi?: WasmScanApi; // Optional IfcAPI instance for WASM-accelerated entity scanning
   /** Yield budget for large incremental parses. Higher values finish faster with longer main-thread slices. */
   yieldIntervalMs?: number;
   /** Keep property-set containers in the primary index but defer indexing individual property/quantity atoms. */
@@ -140,11 +137,7 @@ export interface ParseOptions {
    * where the parser would otherwise duplicate the pre-pass scan under
    * heavy WASM contention with the geometry workers.
    */
-  preScannedEntityIndex?: {
-    ids: Uint32Array;
-    starts: Uint32Array;
-    lengths: Uint32Array;
-  };
+  preScannedEntityIndex?: PreScannedEntityIndex;
 }
 
 /**
@@ -152,36 +145,23 @@ export interface ParseOptions {
  */
 export class IfcParser {
   /**
-   * Parse IFC file into structured data
+   * Parse IFC file into the legacy eager ParseResult shape.
+   *
+   * @deprecated Prefer parseColumnar() for new code. This method is kept as a
+   * compatibility adapter and reuses the shared scanner before eager extraction.
    */
   async parse(buffer: ArrayBuffer, options: ParseOptions = {}): Promise<ParseResult> {
     const uint8Buffer = new Uint8Array(buffer);
 
     // Phase 1: Scan for entities
     options.onProgress?.({ phase: 'scan', percent: 0 });
-    const tokenizer = new StepTokenizer(uint8Buffer);
+    const { entityRefs } = await scanIfcEntities(buffer, {
+      ...options,
+      onProgress: undefined,
+      onDiagnostic: undefined,
+    });
     const indexBuilder = new EntityIndexBuilder();
-
-    let scanned = 0;
-    const entityRefs: EntityRef[] = [];
-
-    for (const ref of tokenizer.scanEntities()) {
-      indexBuilder.addEntity({
-        expressId: ref.expressId,
-        type: ref.type,
-        byteOffset: ref.offset,
-        byteLength: ref.length,
-        lineNumber: ref.line,
-      });
-      entityRefs.push({
-        expressId: ref.expressId,
-        type: ref.type,
-        byteOffset: ref.offset,
-        byteLength: ref.length,
-        lineNumber: ref.line,
-      });
-      scanned++;
-    }
+    for (const ref of entityRefs) indexBuilder.addEntity(ref);
 
     const entityIndex = indexBuilder.build();
     options.onProgress?.({ phase: 'scan', percent: 100 });
@@ -189,7 +169,7 @@ export class IfcParser {
     // Phase 2: Extract entities
     options.onProgress?.({ phase: 'extract', percent: 0 });
     const extractor = new EntityExtractor(uint8Buffer);
-    const entities = new Map<number, any>();
+    const entities = new Map<number, IfcEntity>();
 
     for (let i = 0; i < entityRefs.length; i++) {
       const ref = entityRefs[i];
@@ -240,309 +220,14 @@ export class IfcParser {
     buffer: ArrayBuffer | SharedArrayBuffer,
     options: ParseOptions = {},
   ): Promise<IfcDataStore> {
-    const uint8Buffer = new Uint8Array(buffer);
-    const fileSizeMB = buffer.byteLength / (1024 * 1024);
-
-    // Fast scan: prefer Web Worker (non-blocking), fall back to main-thread scanners
-    options.onProgress?.({ phase: 'scanning', percent: 0 });
-    const scanStartTime = performance.now();
-
-    let entityRefs: EntityRef[] = [];
-    let processed = 0;
-    let scanPath: 'worker' | 'wasm' | 'tokenizer' | 'pre-scanned' = 'tokenizer';
-
-    // Pre-scanned path: caller already has the entity index (from the
-    // streaming geometry pre-pass). Synthesize EntityRef[] from the
-    // column arrays without touching the file again.
-    if (options.preScannedEntityIndex) {
-      const { ids, starts, lengths } = options.preScannedEntityIndex;
-      entityRefs = buildEntityRefsFromIndex(uint8Buffer, ids, starts, lengths);
-      processed = entityRefs.length;
-      scanPath = 'pre-scanned';
-    }
-
-    // Try Web Worker scanner first (keeps main thread free for UI + geometry)
-    if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {
-      try {
-        entityRefs = await scanEntitiesInWorker(buffer);
-        processed = entityRefs.length;
-        scanPath = 'worker';
-      } catch (error) {
-        console.warn('[IfcParser] Worker scan failed, falling back to main thread:', error);
-        entityRefs.length = 0;
-        processed = 0;
-      }
-    }
-
-    // WASM scanner (blocks the parser thread but ~5-10× faster than the
-    // JS tokeniser per the @ifc-lite/wasm docs). The guard accepts any of
-    // the three scan methods — earlier versions required `scanEntitiesFast`
-    // (the legacy string-based API), which silently disabled this branch
-    // for callers that only exposed the modern bytes APIs (e.g. the parser
-    // worker, which deliberately hides `scanRelevantEntitiesFastBytes`
-    // because that scanner filters out IFCSIUNIT/IFCMATERIAL refs the
-    // lite parser still needs).
-    const wasmScanFn: (() => unknown) | null = options.wasmApi
-      ? (typeof options.wasmApi.scanEntitiesFastBytes === 'function'
-          ? () => options.wasmApi!.scanEntitiesFastBytes(uint8Buffer)
-          : typeof options.wasmApi.scanRelevantEntitiesFastBytes === 'function'
-          ? () => options.wasmApi!.scanRelevantEntitiesFastBytes(uint8Buffer)
-          : typeof options.wasmApi.scanEntitiesFast === 'function'
-          ? (() => {
-              // Last-resort scan path: decode the whole source. SAB-safe
-              // via the helper (one scratch copy on Firefox/Chrome with
-              // SAB-decode disabled, zero copy elsewhere). This branch is
-              // only hit when neither byte-level WASM scan API is wired.
-              //
-              // Guard on size: `safeUtf8Decode` materialises a JS string
-              // ~2× the source byte length (UTF-16 internal). For files
-              // > 256 MB we'd allocate ~512 MB+ just to feed a legacy
-              // scanner — refuse the path and fall through to the JS
-              // tokeniser (which streams the bytes directly). The threshold
-              // matches the "huge file" cutoff used elsewhere in the loader.
-              const HUGE_BYTES = 256 * 1024 * 1024;
-              if (uint8Buffer.byteLength > HUGE_BYTES) {
-                console.warn(
-                  '[parser] scanEntitiesFast (string API) skipped: source is %d MB, exceeds %d MB safeUtf8Decode budget — falling back to JS tokeniser.',
-                  Math.round(uint8Buffer.byteLength / (1024 * 1024)),
-                  HUGE_BYTES / (1024 * 1024),
-                );
-                return null;
-              }
-              return () => {
-                const content = safeUtf8Decode(uint8Buffer);
-                return options.wasmApi!.scanEntitiesFast(content);
-              };
-            })()
-          : null)
-      : null;
-
-    if (entityRefs.length === 0 && wasmScanFn) {
-      try {
-        const scanFn = wasmScanFn;
-        const wasmRefs = scanFn() as Array<{
-          expressId?: number;
-          type?: string;
-          byteOffset?: number;
-          byteLength?: number;
-          lineNumber?: number;
-          express_id?: number;
-          entity_type?: string;
-          byte_offset?: number;
-          byte_length?: number;
-          line_number?: number;
-        }>;
-
-        if (wasmRefs.length > 0 && typeof wasmRefs[0]?.expressId === 'number') {
-          entityRefs = wasmRefs as EntityRef[];
-        } else {
-          entityRefs = wasmRefs.map((ref) => ({
-            expressId: ref.expressId ?? ref.express_id ?? 0,
-            type: ref.type ?? ref.entity_type ?? '',
-            byteOffset: ref.byteOffset ?? ref.byte_offset ?? 0,
-            byteLength: ref.byteLength ?? ref.byte_length ?? 0,
-            lineNumber: ref.lineNumber ?? ref.line_number ?? 0,
-          }));
-        }
-
-        processed = entityRefs.length;
-        scanPath = 'wasm';
-      } catch (error) {
-        console.warn('[IfcParser] WASM scan failed, falling back to TypeScript:', error);
-        entityRefs.length = 0;
-        processed = 0;
-      }
-    }
-
-    // Last resort: TypeScript scanner (yields to avoid blocking)
-    if (entityRefs.length === 0) {
-      const tokenizer = new StepTokenizer(uint8Buffer);
-      const YIELD_INTERVAL = 5000;
-      const estimatedTotalEntities = Math.max(fileSizeMB * 13500, 10000);
-
-      for (const ref of tokenizer.scanEntitiesFast()) {
-        entityRefs.push({
-          expressId: ref.expressId,
-          type: ref.type,
-          byteOffset: ref.offset,
-          byteLength: ref.length,
-          lineNumber: ref.line,
-        });
-
-        processed++;
-        if (processed % YIELD_INTERVAL === 0) {
-          const scanPercent = Math.min(95, (processed / estimatedTotalEntities) * 95);
-          options.onProgress?.({ phase: 'scanning', percent: scanPercent });
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-      }
-    }
-
-    const scanElapsedMs = performance.now() - scanStartTime;
-    console.log(`[IfcParser] Fast scan: ${processed} entities in ${scanElapsedMs.toFixed(0)}ms (path=${scanPath})`);
-    options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${scanElapsedMs.toFixed(0)}ms`);
-    options.onProgress?.({ phase: 'scanning', percent: 100 });
+    const { entityRefs, processed, elapsedMs, scanPath } = await scanIfcEntities(buffer, options);
+    console.log(`[IfcParser] Fast scan: ${processed} entities in ${elapsedMs.toFixed(0)}ms (path=${scanPath})`);
 
     // Build columnar structures with on-demand property extraction
     const columnarParser = new ColumnarParser();
     const dataStore = await columnarParser.parseLite(buffer, entityRefs, options);
     return dataStore;
   }
-}
-
-/**
- * On-demand entity parser for lite mode
- * Parse a single entity's attributes from the source buffer
- */
-export function parseEntityOnDemand(
-  source: Uint8Array,
-  entityRef: EntityRef
-): { expressId: number; type: string; attributes: any[] } | null {
-  try {
-    const entityText = safeUtf8Decode(
-      source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength,
-    );
-
-    // Parse: #ID = TYPE(attr1, attr2, ...)
-    const match = entityText.match(/^#(\d+)\s*=\s*(\w+)\((.*)\)/);
-    if (!match) return null;
-
-    const expressId = parseInt(match[1], 10);
-    const type = match[2];
-    const paramsText = match[3];
-
-    // Parse attributes
-    const attributes = parseAttributeList(paramsText);
-
-    return { expressId, type, attributes };
-  } catch (error) {
-    console.warn(`Failed to parse entity #${entityRef.expressId}:`, error);
-    return null;
-  }
-}
-
-/**
- * Parse attribute list from STEP format
- */
-function parseAttributeList(paramsText: string): any[] {
-  if (!paramsText.trim()) return [];
-
-  const attributes: any[] = [];
-  let depth = 0;
-  let current = '';
-  let inString = false;
-
-  for (let i = 0; i < paramsText.length; i++) {
-    const char = paramsText[i];
-
-    if (char === "'") {
-      if (inString) {
-        // Check for escaped quote ('') - STEP uses doubled quotes
-        if (i + 1 < paramsText.length && paramsText[i + 1] === "'") {
-          current += "''";
-          i++;
-          continue;
-        }
-        inString = false;
-      } else {
-        inString = true;
-      }
-      current += char;
-    } else if (inString) {
-      current += char;
-    } else if (char === '(') {
-      depth++;
-      current += char;
-    } else if (char === ')') {
-      depth--;
-      current += char;
-    } else if (char === ',' && depth === 0) {
-      attributes.push(parseAttributeValue(current.trim()));
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-
-  if (current.trim()) {
-    attributes.push(parseAttributeValue(current.trim()));
-  }
-
-  return attributes;
-}
-
-/**
- * Parse a single attribute value
- */
-function parseAttributeValue(value: string): any {
-  value = value.trim();
-
-  if (!value || value === '$') {
-    return null;
-  }
-
-  // TypedValue: IFCTYPENAME(value) - must check before list check
-  // Pattern: identifier followed by parentheses (e.g., IFCNORMALISEDRATIOMEASURE(0.5))
-  const typedValueMatch = value.match(/^([A-Z][A-Z0-9_]*)\((.+)\)$/i);
-  if (typedValueMatch) {
-    const typeName = typedValueMatch[1];
-    const innerValue = typedValueMatch[2].trim();
-    // Return as array [typeName, parsedValue] to match Rust structure
-    return [typeName, parseAttributeValue(innerValue)];
-  }
-
-  // List/Array
-  if (value.startsWith('(') && value.endsWith(')')) {
-    const listContent = value.slice(1, -1).trim();
-    if (!listContent) return [];
-
-    const items: any[] = [];
-    let depth = 0;
-    let current = '';
-
-    for (let i = 0; i < listContent.length; i++) {
-      const char = listContent[i];
-
-      if (char === '(') {
-        depth++;
-        current += char;
-      } else if (char === ')') {
-        depth--;
-        current += char;
-      } else if (char === ',' && depth === 0) {
-        const itemValue = current.trim();
-        if (itemValue) items.push(parseAttributeValue(itemValue));
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    if (current.trim()) items.push(parseAttributeValue(current.trim()));
-    return items;
-  }
-
-  // Reference: #123
-  if (value.startsWith('#')) {
-    const id = parseInt(value.substring(1), 10);
-    return isNaN(id) ? null : id;
-  }
-
-  // String: 'text'
-  if (value.startsWith("'") && value.endsWith("'")) {
-    const raw = value.slice(1, -1).replace(/''/g, "'");
-    // Decode IFC STEP encoded characters (\X2\00FC\X0\ -> ü, etc.)
-    return decodeIfcString(raw);
-  }
-
-  // Number
-  const num = parseFloat(value);
-  if (!isNaN(num)) return num;
-
-  // Enumeration or other identifier
-  return value;
 }
 
 // Import for auto-parser

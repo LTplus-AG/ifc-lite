@@ -147,7 +147,8 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         toast.error(`Flavor "${flavorId}" not found.`);
         return;
       }
-      const savedLenses = useViewerStore.getState().savedLenses;
+      const viewerState = useViewerStore.getState();
+      const savedLenses = viewerState.savedLenses;
       const lenses = savedLenses.map((lens) => ({
         id: lens.id,
         name: lens.name ?? lens.id,
@@ -156,6 +157,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       const next = {
         ...target,
         lenses,
+        layout: { state: viewerState.workbenchLayout },
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current state');
@@ -180,8 +182,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       const slug = opts.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
       const id = `local.${slug || 'flavor'}.${stamp}`;
       const now = new Date().toISOString();
+      const viewerState = useViewerStore.getState();
       const lenses = opts.snapshot
-        ? useViewerStore.getState().savedLenses.map((lens) => ({
+        ? viewerState.savedLenses.map((lens) => ({
             id: lens.id,
             name: lens.name ?? lens.id,
             definition: lens as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
@@ -200,7 +203,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         lenses,
         savedQueries: [],
         keybindings: [],
-        layout: { state: {} },
+        layout: { state: opts.snapshot ? viewerState.workbenchLayout : {} },
         settings: {},
       };
       await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');

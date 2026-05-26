@@ -455,6 +455,19 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => {
           useViewerStore.getState().setFlavorDialogRequested(true);
         } },
+      { id: 'layout:morph', label: 'Morph UI layout…',
+        keywords: 'customize workbench panels drag dock layout resize move',
+        category: 'Panels', icon: Layout,
+        action: () => {
+          const state = useViewerStore.getState();
+          state.setWorkbenchMorphMode(!state.workbenchMorphMode);
+        } },
+      { id: 'layout:reset', label: 'Reset UI layout',
+        keywords: 'customize workbench panels default reset',
+        category: 'Preferences', icon: RotateCcw,
+        action: () => {
+          useViewerStore.getState().resetWorkbenchLayout();
+        } },
     );
 
     // ── Schedule / 4D (Tools) ─────────────────────────────

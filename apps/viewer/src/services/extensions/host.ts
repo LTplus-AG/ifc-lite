@@ -40,6 +40,7 @@ import {
   IdleMineScheduler,
   SlotRegistry,
   filterAgainstInstalled,
+  normalizeWorkbenchLayout,
   parseCapabilities,
   planFromPattern,
   revalidateAgainstSdk,
@@ -432,9 +433,11 @@ export class ExtensionHostService {
       // Late import keeps the host service free of UI store deps for
       // headless test environments — only the browser viewer wires it.
       const { useViewerStore } = await import('@/store');
-      useViewerStore.getState().setSavedLenses(lenses);
+      const store = useViewerStore.getState();
+      store.setSavedLenses(lenses);
+      store.setWorkbenchLayout(normalizeWorkbenchLayout(target.layout.state));
     } catch (err) {
-      console.warn('[ext-host] lens restore on switch failed:', err);
+      console.warn('[ext-host] viewer state restore on switch failed:', err);
     }
     this.emit();
   }

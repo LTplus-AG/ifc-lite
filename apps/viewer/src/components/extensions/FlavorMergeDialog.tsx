@@ -322,5 +322,8 @@ function applyChoice(
       if (idx >= 0) merged.keybindings[idx] = src;
       break;
     }
+    case 'layout':
+      merged.layout = source.layout;
+      break;
   }
 }

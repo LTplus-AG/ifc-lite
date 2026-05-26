@@ -27,6 +27,7 @@
 
 import type { Flavor, FlavorExtension, KeybindingOverride, SavedLens, SavedQuery } from './types.js';
 import type { JsonValue } from '../types.js';
+import { mergeWorkbenchLayouts, normalizeWorkbenchLayout } from '../layout/index.js';
 
 export interface MergeConflict {
   kind:
@@ -35,7 +36,8 @@ export interface MergeConflict {
     | 'lens'
     | 'saved_query'
     | 'keybinding'
-    | 'setting';
+    | 'setting'
+    | 'layout';
   /** Stable identifier within the conflict kind (extension id, setting key, etc.). */
   key: string;
   /** Display-only labels. */
@@ -69,6 +71,20 @@ export function mergeFlavors(base: Flavor, theirs: Flavor, ours: Flavor): MergeR
   });
 
   const settings = mergeSettings(base, theirs, ours, conflicts);
+  const layoutMerge = mergeWorkbenchLayouts(
+    normalizeWorkbenchLayout(base.layout.state),
+    normalizeWorkbenchLayout(theirs.layout.state),
+    normalizeWorkbenchLayout(ours.layout.state),
+  );
+  for (const conflict of layoutMerge.conflicts) {
+    conflicts.push({
+      kind: 'layout',
+      key: `${conflict.kind}:${conflict.key}`,
+      ours: conflict.ours,
+      theirs: conflict.theirs,
+      base: conflict.base,
+    });
+  }
   const promptOverlay = mergePromptOverlay(theirs, ours);
 
   const merged: Flavor = {
@@ -82,7 +98,7 @@ export function mergeFlavors(base: Flavor, theirs: Flavor, ours: Flavor): MergeR
     lenses,
     savedQueries,
     keybindings,
-    layout: theirs.layout, // theirs wins
+    layout: { state: layoutMerge.merged },
     settings,
     promptOverlay,
     author: ours.author,

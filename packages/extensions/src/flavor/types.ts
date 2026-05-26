@@ -14,6 +14,7 @@
  */
 
 import type { JsonValue } from '../types.js';
+import type { WorkbenchLayoutState } from '../layout/types.js';
 
 /** Top-level flavor record. */
 export interface Flavor {
@@ -78,8 +79,8 @@ export interface KeybindingOverride {
 }
 
 export interface LayoutOverride {
-  /** Opaque shape — the viewer's layout slice owns it. */
-  state: Record<string, JsonValue>;
+  /** Viewer workbench layout. Empty legacy state normalises to viewer defaults. */
+  state: WorkbenchLayoutState | Record<string, JsonValue>;
 }
 
 export interface PromptOverlay {

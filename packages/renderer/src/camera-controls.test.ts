@@ -232,13 +232,15 @@ describe('CameraControls – external pivot orbit', () => {
     );
   });
 
-  it('camera can look from below (position.y < pivot.y)', () => {
-    // Orbit down repeatedly
-    for (let i = 0; i < 40; i++) controls.orbit(0, -100);
+  it('orbit clamps to upper hemisphere (no flipping under building)', () => {
+    // BIM convention: camera can look from straight down to the horizon
+    // but never under the model (which would flip the view upside-down).
+    // Repeated drag-up orbits should drive phi to MAX_PHI ≈ π/2, not π.
+    for (let i = 0; i < 80; i++) controls.orbit(0, -100);
     const pivot = vec3(5, 5, 15);
     assert.ok(
-      state.camera.position.y < pivot.y,
-      `camera should be below pivot (y=${state.camera.position.y}, pivot.y=${pivot.y})`,
+      state.camera.position.y >= pivot.y - 1e-3,
+      `camera should NOT dip below pivot (y=${state.camera.position.y}, pivot.y=${pivot.y})`,
     );
   });
 });
@@ -280,4 +282,105 @@ describe('CameraControls – pan', () => {
     approxEqual(lookBefore.y, lookAfter.y, 1e-4);
     approxEqual(lookBefore.z, lookAfter.z, 1e-4);
   });
+
+  it('pans in top-down view (camera straight above target)', () => {
+    // Top preset view: camera at (0, 100, 0) looking down, screen-up = -Z.
+    const state = makeState(makeCamera(vec3(0, 100, 0), vec3(0, 0, 0)));
+    state.camera.up = vec3(0, 0, -1);
+    const controls = new CameraControls(state, () => {});
+    const posBefore = { ...state.camera.position };
+    const targetBefore = { ...state.camera.target };
+
+    controls.pan(10, 5);
+
+    const dx = state.camera.position.x - posBefore.x;
+    const dy = state.camera.position.y - posBefore.y;
+    const dz = state.camera.position.z - posBefore.z;
+    const moved = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    assert.ok(moved > 1e-4, `pan should produce motion in top view (moved=${moved})`);
+
+    // Position and target move by the same offset (pure pan).
+    approxEqual(state.camera.target.x - targetBefore.x, dx, 1e-6);
+    approxEqual(state.camera.target.y - targetBefore.y, dy, 1e-6);
+    approxEqual(state.camera.target.z - targetBefore.z, dz, 1e-6);
+  });
+});
+
+describe('CameraControls – orbit from preset top view (BIM convention)', () => {
+  // Pattern (yomotsu/camera-controls, Autodesk Viewer, ThatOpen):
+  // setPresetView('top') positions the camera at phi=MIN_PHI (just barely
+  // off the +Y pole) with camera.up = (0,1,0). Orbit is then standard
+  // spherical with no special pole handling. Phi is clamped to the upper
+  // hemisphere [MIN_PHI, π/2−ε] — the camera can look from straight down to
+  // the horizon but cannot flip under the building.
+
+  function setupTopPreset(): { state: CameraInternalState; controls: CameraControls } {
+    // Approximate what setPresetView('top') produces: camera just barely
+    // off the +Y pole (theta=0 in this test → camera slightly to +Z, so
+    // screen-up after lookAt with Y-up is +Z direction).
+    const dist = 100;
+    const poleOffset = Math.sin(0.01) * dist;
+    const verticalOffset = Math.cos(0.01) * dist;
+    const state = makeState(makeCamera(
+      vec3(0, verticalOffset, poleOffset),
+      vec3(0, 0, 0),
+    ));
+    state.camera.up = vec3(0, 1, 0);
+    const controls = new CameraControls(state, () => {});
+    controls.setOrbitCenter(vec3(0, 0, 0));
+    return { state, controls };
+  }
+
+  it('camera.up stays world Y after orbit (BIM Y-up preserved)', () => {
+    const { state, controls } = setupTopPreset();
+    controls.orbit(50, -50);
+    approxEqual(state.camera.up.x, 0, 1e-6);
+    approxEqual(state.camera.up.y, 1, 1e-6);
+    approxEqual(state.camera.up.z, 0, 1e-6);
+  });
+
+  it('drag-up at top view tilts camera smoothly toward the horizon', () => {
+    const { state, controls } = setupTopPreset();
+    const phiBefore = Math.acos(state.camera.position.y / len(state.camera.position));
+
+    // Drag-up: deltaY < 0 → dy > 0 → phi increases toward MAX_PHI.
+    controls.orbit(0, -50);
+
+    const phiAfter = Math.acos(state.camera.position.y / len(state.camera.position));
+    assert.ok(
+      phiAfter > phiBefore,
+      `phi should increase on drag-up (before=${phiBefore}, after=${phiAfter})`,
+    );
+    // No X drift: camera was on the YZ plane (theta=0), should stay there.
+    approxEqual(state.camera.position.x, 0, 1e-4);
+  });
+
+  it('repeated drag-up converges to horizon (not over the top)', () => {
+    const { state, controls } = setupTopPreset();
+    for (let i = 0; i < 80; i++) controls.orbit(0, -100);
+    const phi = Math.acos(state.camera.position.y / len(state.camera.position));
+    assert.ok(
+      phi <= CC.MAX_PHI + 1e-4,
+      `phi must be clamped at MAX_PHI (got ${phi}, max ${CC.MAX_PHI})`,
+    );
+    assert.ok(
+      state.camera.position.y >= -1e-3,
+      `camera must not dip below target y (y=${state.camera.position.y})`,
+    );
+  });
+
+  it('continuous drag stays on a single axis (no mid-orbit jump)', () => {
+    const { state, controls } = setupTopPreset();
+    controls.orbit(0, -10);
+    const x1 = state.camera.position.x;
+    controls.orbit(0, -10);
+    const x2 = state.camera.position.x;
+    controls.orbit(0, -10);
+    const x3 = state.camera.position.x;
+    // Pure vertical drag should never introduce X drift across frames.
+    approxEqual(x1, 0, 1e-4);
+    approxEqual(x2, 0, 1e-4);
+    approxEqual(x3, 0, 1e-4);
+  });
+
 });

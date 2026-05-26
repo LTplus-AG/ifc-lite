@@ -126,20 +126,11 @@ function copyInto(dst: Vec3, src: Vec3): void {
 // Spherical coordinate helpers
 // ---------------------------------------------------------------------------
 
-/** Convert a direction vector (from pivot to point) into spherical angles,
- *  handling gimbal lock near the poles. */
+/** Convert a direction vector (from pivot to point) into spherical angles. */
 function toSpherical(dir: Vec3, dist: number): { theta: number; phi: number } {
-  let phi = Math.acos(Math.max(-1, Math.min(1, dir.y / dist)));
-  let theta: number;
+  const phi = Math.acos(Math.max(-1, Math.min(1, dir.y / dist)));
   const sinPhi = Math.sin(phi);
-
-  if (sinPhi > CC.POLE_THRESHOLD) {
-    theta = Math.atan2(dir.x, dir.z);
-  } else {
-    theta = 0;
-    phi = phi < Math.PI / 2 ? CC.MIN_PHI : CC.MAX_PHI;
-  }
-
+  const theta = sinPhi > CC.POLE_THRESHOLD ? Math.atan2(dir.x, dir.z) : 0;
   return { theta, phi };
 }
 
@@ -156,6 +147,7 @@ function fromSpherical(pivot: Vec3, dist: number, theta: number, phi: number): V
 function clampPhi(phi: number): number {
   return Math.max(CC.MIN_PHI, Math.min(CC.MAX_PHI, phi));
 }
+
 
 // ---------------------------------------------------------------------------
 // CameraControls
@@ -187,12 +179,16 @@ export class CameraControls {
   // -------------------------------------------------------------------------
 
   /**
-   * Orbit the camera around a pivot point (Y-up turntable style).
+   * Orbit the camera around a pivot point.
    *
-   * When orbitCenter is set, position orbits around the external pivot and
-   * the look direction is rotated by the same axis-angle rotation (Rodrigues).
-   * Like Blender's turntable: horizontal = world Y, vertical = camera right.
-   * A vertical clamp on the look vector prevents view matrix degeneracy.
+   * `camera.up` is always world Y — setPresetView positions the camera at
+   * phi ∈ [MIN_PHI, MAX_PHI] (never on the exact pole), so the orbit math
+   * never hits the spherical singularity and no special pole-handling is
+   * needed. Phi is clamped to [MIN_PHI, π/2 − ε] (upper hemisphere), which
+   * is the standard BIM constraint — the camera can look from straight
+   * down (top view) to the horizon but never flips over the building.
+   *
+   * Pattern is the same as yomotsu/camera-controls and Autodesk Viewer.
    */
   orbit(deltaX: number, deltaY: number): void {
     this.state.camera.up = { x: 0, y: 1, z: 0 };
@@ -200,10 +196,23 @@ export class CameraControls {
     const dx = -deltaX * CC.ORBIT_SENSITIVITY;
     const dy = -deltaY * CC.ORBIT_SENSITIVITY;
 
-    if (this.orbitCenter !== null) {
-      this.orbitAroundExternalPivot(this.orbitCenter, dx, dy);
+    // Near-pole pivot override. When the camera is essentially looking
+    // straight down (top preset), the click-based orbit pivot is rarely
+    // on the camera's vertical axis — so a "straight-down" drag tilts
+    // the camera in whatever direction the pivot happens to be off-axis,
+    // appearing as "sideways drift". Force the pivot to camera.target at
+    // the pole so the tilt direction is determined only by the preset's
+    // theta (= predictable forward direction), not by the click point.
+    // Once the camera is well off the pole, the user's click pivot takes
+    // over again for natural orbit-around-clicked-point.
+    const look0 = sub(this.state.camera.target, this.state.camera.position);
+    const look0Len = length(look0);
+    const nearPole = look0Len > 1e-6 && Math.abs(look0.y) / look0Len > 0.99;
+    const pivot = nearPole ? this.state.camera.target : this.orbitCenter;
+
+    if (pivot !== null) {
+      this.orbitAroundExternalPivot(pivot, dx, dy);
     } else {
-      // Standard: rotate position around target, target stays fixed
       const newPos = this.rotateAroundPivot(this.state.camera.position, this.state.camera.target, dx, dy);
       copyInto(this.state.camera.position, newPos);
     }
@@ -212,7 +221,8 @@ export class CameraControls {
   }
 
   /**
-   * Rotate a point around the pivot by the given theta/phi deltas.
+   * Standard orbit: rotate `point` around `pivot` by spherical deltas.
+   * Phi clamped to [MIN_PHI, MAX_PHI].
    */
   private rotateAroundPivot(point: Vec3, pivot: Vec3, dx: number, dy: number): Vec3 {
     const dir = sub(point, pivot);
@@ -224,16 +234,13 @@ export class CameraControls {
   }
 
   /**
-   * Orbit around an external pivot (Blender-style turntable with Rodrigues).
+   * Orbit around an external pivot (turntable style with Rodrigues).
    *
-   * 1. Horizontal: rotate offset + look around world Y (always stable).
-   * 2. Vertical: rotate offset + look around the orbit-sphere tangent
-   *    (right axis derived from offset's horizontal component). Position
-   *    phi is clamped to [MIN_PHI, MAX_PHI] so the right axis never
-   *    degenerates (sin(MIN_PHI) ≈ 0.15 → always has XZ component).
-   * 3. Clamp the look vector's vertical angle to prevent the view matrix
-   *    from degenerating when look ∥ Y. Margin is ~0.6° from vertical,
-   *    so the user can look from 89.4° above or below.
+   * Standard convention: dx rotates around world Y, dy tilts the camera by
+   * rotating offset + look around the orbit-sphere tangent perpendicular to
+   * offset's horizontal component. Phi is clamped to [MIN_PHI, MAX_PHI]
+   * which the preset views also respect, so the tangent axis is always
+   * well-defined.
    */
   private orbitAroundExternalPivot(pivot: Vec3, dx: number, dy: number): void {
     let offset = sub(this.state.camera.position, pivot);
@@ -243,27 +250,24 @@ export class CameraControls {
 
     const yAxis: Vec3 = { x: 0, y: 1, z: 0 };
 
-    // 1. Horizontal rotation around world Y (always stable)
+    // 1. Horizontal rotation around world Y
     offset = rodrigues(offset, yAxis, dx);
     look = rodrigues(look, yAxis, dx);
 
-    // 2. Vertical rotation, clamped to prevent position from crossing poles
+    // 2. Vertical rotation (clamped to keep phi in valid range)
     const offsetDir = scale(offset, 1 / dist);
     const currentPhi = Math.acos(Math.max(-1, Math.min(1, offsetDir.y)));
     const clampedDy = clampPhi(currentPhi + dy) - currentPhi;
 
     if (Math.abs(clampedDy) > 1e-10) {
-      // Right axis = tangent to orbit sphere in the phi-increasing direction.
-      // {offset.z, 0, -offset.x} ensures positive angle → phi increases
-      // (camera moves down), matching the spherical-coord convention used
-      // by clampedDy. Always valid because phi is clamped away from the
-      // pole, so offset always has a horizontal component.
+      // Offset is always non-polar here (phi clamped to [MIN_PHI, MAX_PHI]
+      // by preset views and by this very clamp on the previous frame), so
+      // the tangent axis is always well-defined.
       const rightN = normalize({ x: offset.z, y: 0, z: -offset.x });
       offset = rodrigues(offset, rightN, clampedDy);
       look = rodrigues(look, rightN, clampedDy);
     }
 
-    // 3. Prevent view flip: clamp look direction away from ±Y
     look = clampLookVertical(look);
 
     const newPos = { x: pivot.x + offset.x, y: pivot.y + offset.y, z: pivot.z + offset.z };
@@ -287,7 +291,25 @@ export class CameraControls {
     const dir = sub(this.state.camera.position, this.state.camera.target);
     const dist = length(dir);
 
-    const right = normalize({ x: -dir.z, y: 0, z: dir.x });
+    // Standard Y-up reference for the screen-right axis. When the camera is
+    // looking straight up or down (e.g., top/bottom preset view), dir's
+    // horizontal component is zero and the Y-up reference produces a zero
+    // right axis — disabling pan entirely. Fall back to camera.up's
+    // horizontal projection in that case so pan still works.
+    const horizSq = dir.x * dir.x + dir.z * dir.z;
+    let upRef: Vec3;
+    if (horizSq > 1e-12) {
+      upRef = { x: 0, y: 1, z: 0 };
+    } else {
+      const u = this.state.camera.up;
+      const uHoriz = Math.sqrt(u.x * u.x + u.z * u.z);
+      upRef = uHoriz > 1e-6
+        ? { x: u.x / uHoriz, y: 0, z: u.z / uHoriz }
+        : { x: 0, y: 0, z: 1 };
+    }
+    // cross(dir, (0,1,0)) === {-dir.z, 0, dir.x} — preserves the existing
+    // sign convention for the non-polar case.
+    const right = normalize(cross(dir, upRef));
     const up = normalize(cross(right, dir));
 
     const speed = dist * CC.PAN_SPEED_MULTIPLIER;

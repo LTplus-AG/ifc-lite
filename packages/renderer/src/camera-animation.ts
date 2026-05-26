@@ -586,27 +586,45 @@ export class CameraAnimator {
 
     switch (view) {
       case 'top': {
-        // Top view: looking straight down from above (+Y)
-        // Counter-rotate up vector by NEGATIVE building rotation to align with building axes
-        const topUp = topUpVectors[this.presetViewRotation];
-        endPos = { x: center.x, y: center.y + distance, z: center.z };
-        upVector = {
-          x: topUp.x * cosR + topUp.z * sinR,
-          y: topUp.y,
-          z: -topUp.x * sinR + topUp.z * cosR,
+        // Top view: position camera *just barely* off the +Y pole so the
+        // subsequent orbit math has a well-defined polar tangent (no pole
+        // singularity). camera.up stays world Y throughout — screen-up is
+        // then determined by lookAt projecting (0,1,0) onto perp(look),
+        // which falls along the horizontal component of `-look`.
+        //
+        // The 4 rotation cycles select which compass direction appears at
+        // the top of the screen by varying the small horizontal offset
+        // (theta in the spherical math).
+        //   rotation 0 → camera slightly to +Z of center → screen-up = +Z
+        //   rotation 1 → camera slightly to +X → screen-up = +X
+        //   rotation 2 → camera slightly to -Z → screen-up = -Z
+        //   rotation 3 → camera slightly to -X → screen-up = -X
+        // Building rotation is applied as the same Y-axis rotation that
+        // setPresetView would have used to remap the legacy up vector.
+        const poleOffset = Math.sin(0.01) * distance; // ~0.6° tilt
+        const verticalOffset = Math.cos(0.01) * distance;
+        const thetaPerRotation = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+        const thetaWorld = thetaPerRotation[this.presetViewRotation] + (buildingRotation ?? 0);
+        endPos = {
+          x: center.x + poleOffset * Math.sin(thetaWorld),
+          y: center.y + verticalOffset,
+          z: center.z + poleOffset * Math.cos(thetaWorld),
         };
+        upVector = { x: 0, y: 1, z: 0 };
         break;
       }
       case 'bottom': {
-        // Bottom view: looking straight up from below (-Y)
-        // Counter-rotate up vector by NEGATIVE building rotation to align with building axes
-        const bottomUp = bottomUpVectors[this.presetViewRotation];
-        endPos = { x: center.x, y: center.y - distance, z: center.z };
-        upVector = {
-          x: bottomUp.x * cosR + bottomUp.z * sinR,
-          y: bottomUp.y,
-          z: -bottomUp.x * sinR + bottomUp.z * cosR,
+        // Bottom view: mirror of top — phi = π − MIN_PHI.
+        const poleOffset = Math.sin(0.01) * distance;
+        const verticalOffset = Math.cos(0.01) * distance;
+        const thetaPerRotation = [Math.PI, Math.PI / 2, 0, -Math.PI / 2];
+        const thetaWorld = thetaPerRotation[this.presetViewRotation] + (buildingRotation ?? 0);
+        endPos = {
+          x: center.x + poleOffset * Math.sin(thetaWorld),
+          y: center.y - verticalOffset,
+          z: center.z + poleOffset * Math.cos(thetaWorld),
         };
+        upVector = { x: 0, y: 1, z: 0 };
         break;
       }
       case 'front':

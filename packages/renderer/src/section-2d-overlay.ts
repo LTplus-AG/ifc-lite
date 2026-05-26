@@ -396,6 +396,14 @@ export class Section2DOverlayRenderer {
         // are drawn on the cut plane, so closer model geometry should hide
         // them when the camera looks through it.
         depthCompare: 'greater-equal' as const,
+        // Decal bias: nudge annotation/cap lines slightly closer to camera
+        // so they don't z-fight when sitting exactly on a wall/floor face
+        // (issue #812). Reverse-Z means larger depth = closer, so the
+        // bias is negative. Conservative values — large enough to beat
+        // MSAA jitter, small enough to not visibly float on grazing views.
+        depthBias: -4,
+        depthBiasSlopeScale: -0.5,
+        depthBiasClamp: 0,
       },
       multisample: {
         count: this.sampleCount,

@@ -12,7 +12,7 @@
  */
 
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
-import { X, Download, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, PenTool, Hexagon, Type, Cloud, MousePointer2 } from 'lucide-react';
+import { X, Download, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -31,11 +31,12 @@ import { SheetSetupPanel } from './SheetSetupPanel';
 import { TitleBlockEditor } from './TitleBlockEditor';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
 import { Drawing2DCanvas } from './Drawing2DCanvas';
-import { useDrawingGeneration } from '@/hooks/useDrawingGeneration';
+import { useDrawingGeneration, AXIS_MAP } from '@/hooks/useDrawingGeneration';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
+import { useSymbolicAnnotationsForDrawing } from '@/hooks/useSymbolicAnnotations';
 
 interface Section2DPanelProps {
   mergedGeometry?: GeometryResult | null;
@@ -278,6 +279,43 @@ export function Section2DPanel({
     setMeasure2DStart, setMeasure2DCurrent, setMeasure2DShiftLocked,
     setMeasure2DSnapPoint, cancelMeasure2D, completeMeasure2D,
   });
+
+  // ─── IFC annotation overlay (issue #812) ──────────────────────────────────
+  // Re-derive the section's world-coord cut position from the same bounds
+  // useDrawingGeneration uses, so the annotation filter stays in lockstep
+  // with the cut. Empty/missing bounds collapse to an inert range → hook
+  // returns empty, the overlay simply does nothing.
+  const ifcAnnotationsForDrawing = useMemo(() => {
+    const bounds = geometryResult?.coordinateInfo?.shiftedBounds;
+    if (!bounds) {
+      return { sectionPosWorld: 0, viewDepth: 0, fallbackY: 0 };
+    }
+    const axis = AXIS_MAP[sectionPlane.axis];
+    const axisMin = bounds.min[axis];
+    const axisMax = bounds.max[axis];
+    const sectionPosWorld = axisMin + (sectionPlane.position / 100) * (axisMax - axisMin);
+    const viewDepth = (axisMax - axisMin) * 0.5; // matches useDrawingGeneration's maxDepth
+    // For loose annotations (no resolvable storey), fall back to mid-Y like
+    // the 3D viewport does. This lets storeyless models still surface their
+    // annotations on the relevant section.
+    const yMin = bounds.min.y;
+    const yMax = bounds.max.y;
+    const fallbackY = Number.isFinite(yMin) && Number.isFinite(yMax) ? (yMin + yMax) * 0.5 : 0;
+    return { sectionPosWorld, viewDepth, fallbackY };
+  }, [geometryResult, sectionPlane.axis, sectionPlane.position]);
+
+  const ifcAnnotationData = useSymbolicAnnotationsForDrawing({
+    enabled: displayOptions.showIfcAnnotations && status === 'ready',
+    axis: sectionPlane.axis,
+    sectionPosWorld: ifcAnnotationsForDrawing.sectionPosWorld,
+    viewDepth: ifcAnnotationsForDrawing.viewDepth,
+    flipped: sectionPlane.flipped,
+    fallbackY: ifcAnnotationsForDrawing.fallbackY,
+  });
+
+  const toggleIfcAnnotations = useCallback(() => {
+    updateDisplayOptions({ showIfcAnnotations: !displayOptions.showIfcAnnotations });
+  }, [displayOptions.showIfcAnnotations, updateDisplayOptions]);
 
   const annotationHandlers = useAnnotation2D({
     drawing, viewTransform, sectionAxis: sectionPlane.axis, containerRef,
@@ -536,6 +574,17 @@ export function Section2DPanel({
                 {displayOptions.useSymbolicRepresentations ? <Shapes className="h-4 w-4" /> : <Box className="h-4 w-4" />}
               </Button>
 
+              {/* IFC Annotations overlay toggle (issue #812) */}
+              <Button
+                variant={displayOptions.showIfcAnnotations ? 'default' : 'ghost'}
+                size="icon-sm"
+                onClick={toggleIfcAnnotations}
+                title={displayOptions.showIfcAnnotations ? 'Hide IFC annotations on this section' : 'Show IFC annotations on this section'}
+                disabled={sectionPlane.axis !== 'down'}
+              >
+                <Tag className="h-4 w-4" />
+              </Button>
+
               {/* Annotation Tools Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -703,6 +752,10 @@ export function Section2DPanel({
                     {displayOptions.useSymbolicRepresentations ? <Shapes className="h-4 w-4 mr-2" /> : <Box className="h-4 w-4 mr-2" />}
                     {displayOptions.useSymbolicRepresentations ? 'Symbolic (Plan)' : 'Section Cut (Body)'}
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={toggleIfcAnnotations} disabled={sectionPlane.axis !== 'down'}>
+                    <Tag className="h-4 w-4 mr-2" />
+                    IFC Annotations {displayOptions.showIfcAnnotations ? 'On' : 'Off'}
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool('none')}>
                     <MousePointer2 className="h-4 w-4 mr-2" />
                     Select / Pan {annotation2DActiveTool === 'none' ? '(On)' : ''}
@@ -849,6 +902,9 @@ export function Section2DPanel({
               cloudAnnotationPoints={cloudAnnotation2DPoints}
               cloudAnnotations={cloudAnnotations2D}
               selectedAnnotation={selectedAnnotation2D}
+              ifcAnnotationLines={ifcAnnotationData.lines}
+              ifcAnnotationTexts={ifcAnnotationData.texts}
+              ifcAnnotationFills={ifcAnnotationData.fills}
             />
             {/* Subtle updating indicator - shows while regenerating without hiding the drawing */}
             {isRegenerating && (

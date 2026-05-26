@@ -605,6 +605,107 @@ const EMPTY_TEXTS: readonly AnnotationText3D[] = Object.freeze([]);
 const EMPTY_FILLS: readonly AnnotationFill3D[] = Object.freeze([]);
 
 /**
+ * Hook for the 2D Section panel: filters the shared parse cache to
+ * annotations whose world position falls inside the section's view-range
+ * on the cut axis, returning data in the Drawing2D coordinate frame.
+ *
+ * For `axis='down'` (floor plan), the parser's 2D coords already match
+ * the drawing-2d coord frame directly (x = world x, y = world z, with
+ * worldY = the cut axis). For elevation views (`axis='front'`,
+ * `axis='side'`), this hook returns empty: most authored IFC annotations
+ * are floor-plan symbols (dimensions, leaders, room labels) and don't
+ * project meaningfully onto a vertical drawing without a separate
+ * reorientation pass. Wiring those up cleanly is a follow-up.
+ *
+ * The section position is in world units (already converted from the
+ * 0-100% slider via `axisMin + (position / 100) * (axisMax - axisMin)`
+ * by the caller — Section2DPanel computes the same value to feed the
+ * drawing generator).
+ */
+export interface DrawingAnnotationData {
+  lines: DrawingLine2D[];
+  texts: AnnotationText2D[];
+  fills: AnnotationFill2D[];
+}
+
+const EMPTY_DRAWING_ANNOTATIONS: DrawingAnnotationData = {
+  lines: [],
+  texts: [],
+  fills: [],
+};
+
+export function useSymbolicAnnotationsForDrawing(params: {
+  enabled: boolean;
+  axis: 'down' | 'front' | 'side';
+  /** Section plane world-coord position along the cut axis. */
+  sectionPosWorld: number;
+  /** View depth in world units (typically half the model extent on the cut axis). */
+  viewDepth: number;
+  flipped: boolean;
+  /** Fallback world Y for annotations with no resolvable storey. */
+  fallbackY?: number;
+}): DrawingAnnotationData {
+  const { enabled, axis, sectionPosWorld, viewDepth, flipped, fallbackY = 0 } = params;
+  const stores = useActiveStores();
+  const version = useAnnotationParseTrigger(enabled, stores);
+
+  return useMemo(() => {
+    if (!enabled) return EMPTY_DRAWING_ANNOTATIONS;
+    // Only floor plans (axis='down') are supported on this pass. Annotations
+    // for elevations/sections need a coord-reorientation pass that is not
+    // worth building until there's a real authored elevation symbol to test
+    // against. Returning empty quietly keeps the toggle a no-op there.
+    if (axis !== 'down') return EMPTY_DRAWING_ANNOTATIONS;
+    void version;
+
+    // Section view range in world Y. Matches the convention used by
+    // `profile-projector.isInProjectionRange`:
+    //   not flipped → [sectionPos, sectionPos + viewDepth]
+    //   flipped     → [sectionPos - viewDepth, sectionPos]
+    // We expand the range by a small tolerance so annotations sitting
+    // exactly on the cut plane still match (storey elevations are
+    // typically the cut Y).
+    const TOL = 1e-3;
+    const rangeMin = (flipped ? sectionPosWorld - viewDepth : sectionPosWorld) - TOL;
+    const rangeMax = (flipped ? sectionPosWorld : sectionPosWorld + viewDepth) + TOL;
+
+    const lines: DrawingLine2D[] = [];
+    const texts: AnnotationText2D[] = [];
+    const fills: AnnotationFill2D[] = [];
+
+    for (const store of stores) {
+      const key = sourceKey(store);
+      if (!key) continue;
+      const cached = PARSE_CACHE.get(key);
+      if (!cached) continue;
+
+      for (const bucket of cached.byStorey.values()) {
+        const bucketY = resolveBucketY(bucket.storeyElevation, fallbackY);
+        if (bucketY < rangeMin || bucketY > rangeMax) continue;
+        for (const ln of bucket.lines) lines.push(ln);
+        for (const t of bucket.texts) texts.push(t);
+        for (const f of bucket.fills) fills.push(f);
+      }
+
+      // Loose annotations have no resolvable storey — include them if the
+      // fallback Y lands in the view range. That keeps malformed exports
+      // (e.g. 3DEXPERIENCE files with orphaned storeys) usable when the
+      // user is looking at the storey the fallback resolves to.
+      if (fallbackY >= rangeMin && fallbackY <= rangeMax) {
+        for (const ln of cached.loose) lines.push(ln);
+        for (const t of cached.looseTexts) texts.push(t);
+        for (const f of cached.looseFills) fills.push(f);
+      }
+    }
+
+    if (lines.length === 0 && texts.length === 0 && fills.length === 0) {
+      return EMPTY_DRAWING_ANNOTATIONS;
+    }
+    return { lines, texts, fills };
+  }, [enabled, axis, sectionPosWorld, viewDepth, flipped, fallbackY, stores, version]);
+}
+
+/**
  * Hook for the WebGPU text + fill pipelines. Returns 3D-lifted texts and
  * fills for every active model. Shares the parse cache with
  * `useSymbolicAnnotations` so toggling on text+fill rendering after the

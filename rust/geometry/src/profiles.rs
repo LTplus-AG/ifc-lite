@@ -58,6 +58,26 @@ const SIMPLIFIED_MIN_VERTICES: usize = 12;
 
 /// Perpendicular distance from `p` to the line through `a` and `b`.
 #[inline]
+/// Mirror every point of a `Profile2D` about the local Y-axis (x → −x).
+///
+/// `IfcMirroredProfileDef` per IFC4 §8.6.2.21 produces a profile that is
+/// the parent profile reflected about its own Y-axis. Reflection is
+/// orientation-reversing, so we also reverse the winding order of each
+/// contour to keep outer loops CCW and holes CW — without this the
+/// downstream earcut tessellator would emit inside-out triangles.
+fn mirror_profile_about_y_axis(profile: &mut Profile2D) {
+    for p in &mut profile.outer {
+        p.x = -p.x;
+    }
+    profile.outer.reverse();
+    for hole in &mut profile.holes {
+        for p in hole.iter_mut() {
+            p.x = -p.x;
+        }
+        hole.reverse();
+    }
+}
+
 fn perpendicular_distance(p: Point2<f64>, a: Point2<f64>, b: Point2<f64>) -> f64 {
     let dx = b.x - a.x;
     let dy = b.y - a.y;
@@ -445,6 +465,7 @@ impl ProfileProcessor {
             IfcType::IfcCircleHollowProfileDef => self.process_circle_hollow(profile),
             IfcType::IfcRectangleHollowProfileDef => self.process_rectangle_hollow(profile),
             IfcType::IfcIShapeProfileDef => self.process_i_shape(profile),
+            IfcType::IfcAsymmetricIShapeProfileDef => self.process_asymmetric_i_shape(profile),
             IfcType::IfcLShapeProfileDef => self.process_l_shape(profile),
             IfcType::IfcUShapeProfileDef => self.process_u_shape(profile),
             IfcType::IfcTShapeProfileDef => self.process_t_shape(profile),
@@ -563,7 +584,19 @@ impl ProfileProcessor {
     }
 
     /// Process IfcDerivedProfileDef / IfcMirroredProfileDef.
-    /// IfcDerivedProfileDef: ProfileType, ProfileName, ParentProfile, Operator, Label
+    ///
+    /// IFC4 attributes:
+    ///   0: ProfileType
+    ///   1: ProfileName
+    ///   2: ParentProfile (IfcProfileDef)
+    ///   3: Operator      (IfcCartesianTransformationOperator2D)
+    ///   4: Label
+    ///
+    /// `IfcMirroredProfileDef` is a subtype that **always** writes `$` for
+    /// the Operator attribute — the mirror is implicit about the parent
+    /// profile's local Y-axis (x → −x) per IFC4. We therefore short-circuit
+    /// on the subtype and only require Operator on the bare
+    /// `IfcDerivedProfileDef` form.
     fn process_derived_with_depth(
         &self,
         profile: &DecodedEntity,
@@ -579,13 +612,24 @@ impl ProfileProcessor {
 
         let mut result = self.process_with_depth(&parent_profile, decoder, depth + 1)?;
 
-        let operator_attr = profile
-            .get(3)
-            .ok_or_else(|| Error::geometry("Derived profile missing Operator".to_string()))?;
-        let operator = decoder
-            .resolve_ref(operator_attr)?
-            .ok_or_else(|| Error::geometry("Derived profile Operator not found".to_string()))?;
+        if profile.ifc_type == IfcType::IfcMirroredProfileDef {
+            mirror_profile_about_y_axis(&mut result);
+            return Ok(result);
+        }
 
+        // IfcDerivedProfileDef. Operator is required per the spec but some
+        // authoring tools omit it when the derived profile happens to equal
+        // its parent; treat null as the identity transform rather than
+        // erroring (the parent already came back fully processed).
+        let Some(operator_attr) = profile.get(3) else {
+            return Ok(result);
+        };
+        if operator_attr.is_null() {
+            return Ok(result);
+        }
+        let Some(operator) = decoder.resolve_ref(operator_attr)? else {
+            return Ok(result);
+        };
         self.apply_cartesian_transformation_operator_2d(&mut result, &operator, decoder)?;
         Ok(result)
     }
@@ -841,6 +885,96 @@ impl ProfileProcessor {
             Point2::new(-half_web, half_depth - flange_thickness),
             Point2::new(-half_web, -half_depth + flange_thickness),
             Point2::new(-half_width, -half_depth + flange_thickness),
+        ];
+
+        Ok(Profile2D::new(points))
+    }
+
+    /// Process asymmetric I-shape profile.
+    ///
+    /// `IfcAsymmetricIShapeProfileDef` (IFC4) attributes after the three
+    /// inherited `IfcParameterizedProfileDef` slots (ProfileType,
+    /// ProfileName, Position):
+    ///
+    ///   3:  BottomFlangeWidth          (required)
+    ///   4:  OverallDepth               (required)
+    ///   5:  WebThickness               (required)
+    ///   6:  BottomFlangeThickness      (required)
+    ///   7:  BottomFlangeFilletRadius   (optional, ignored — see below)
+    ///   8:  TopFlangeWidth             (required)
+    ///   9:  TopFlangeThickness         (optional, falls back to BottomFlangeThickness)
+    ///   10: TopFlangeFilletRadius      (optional, ignored)
+    ///   11: BottomFlangeEdgeRadius     (optional, ignored)
+    ///   12: BottomFlangeSlope          (optional, ignored)
+    ///   13: TopFlangeEdgeRadius        (optional, ignored)
+    ///   14: TopFlangeSlope             (optional, ignored)
+    ///
+    /// Fillet radii / edge tapers / slopes are intentionally omitted: the
+    /// existing symmetric `process_i_shape` ignores them too and the bridge
+    /// fixture in issue #828 doesn't need them to read correctly.
+    /// `process_i_shape` ignores them too. The origin sits at the centre
+    /// of the bounding rectangle (`max(top_width, bottom_width)` by
+    /// `overall_depth`) — same convention as the symmetric variant, which
+    /// is what Tekla, Revit, and the IfcOpenShell reference impl all emit.
+    fn process_asymmetric_i_shape(&self, profile: &DecodedEntity) -> Result<Profile2D> {
+        let bottom_width = profile
+            .get_float(3)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing BottomFlangeWidth".to_string()))?;
+        let overall_depth = profile
+            .get_float(4)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing OverallDepth".to_string()))?;
+        let web_thickness = profile
+            .get_float(5)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing WebThickness".to_string()))?;
+        let bottom_flange_thickness = profile
+            .get_float(6)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing BottomFlangeThickness".to_string()))?;
+        let top_width = profile
+            .get_float(8)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing TopFlangeWidth".to_string()))?;
+        // TopFlangeThickness is OPTIONAL in IFC4. When omitted, the IFC4
+        // schema rule `IfcAsymmetricIShapeProfileDef.WR3` says the value
+        // equals BottomFlangeThickness — so symmetric flange thicknesses
+        // can be authored by leaving the top one $.
+        let top_flange_thickness = profile.get_float(9).unwrap_or(bottom_flange_thickness);
+
+        if overall_depth <= bottom_flange_thickness + top_flange_thickness {
+            return Err(Error::geometry(format!(
+                "AsymmetricI: OverallDepth {} must exceed BottomFlangeThickness + \
+                 TopFlangeThickness ({} + {} = {})",
+                overall_depth,
+                bottom_flange_thickness,
+                top_flange_thickness,
+                bottom_flange_thickness + top_flange_thickness,
+            )));
+        }
+
+        let half_overall_width = bottom_width.max(top_width) * 0.5;
+        let half_depth = overall_depth * 0.5;
+        let half_web = web_thickness * 0.5;
+        let half_bottom = bottom_width * 0.5;
+        let half_top = top_width * 0.5;
+
+        // Twelve-point CCW outline starting at the bottom-flange's
+        // bottom-left corner. Identical topology to `process_i_shape` but
+        // with two independent flange widths. The point at `(_, -half_depth
+        // + bottom_flange_thickness)` is intentionally placed at the
+        // bottom-flange edge (`±half_bottom`) — *not* at the overall width
+        // — so a wider bottom flange protrudes correctly.
+        let _ = half_overall_width; // (kept for future fillet/slope work)
+        let points = vec![
+            Point2::new(-half_bottom, -half_depth),
+            Point2::new(half_bottom, -half_depth),
+            Point2::new(half_bottom, -half_depth + bottom_flange_thickness),
+            Point2::new(half_web, -half_depth + bottom_flange_thickness),
+            Point2::new(half_web, half_depth - top_flange_thickness),
+            Point2::new(half_top, half_depth - top_flange_thickness),
+            Point2::new(half_top, half_depth),
+            Point2::new(-half_top, half_depth),
+            Point2::new(-half_top, half_depth - top_flange_thickness),
+            Point2::new(-half_web, half_depth - top_flange_thickness),
+            Point2::new(-half_web, -half_depth + bottom_flange_thickness),
+            Point2::new(-half_bottom, -half_depth + bottom_flange_thickness),
         ];
 
         Ok(Profile2D::new(points))

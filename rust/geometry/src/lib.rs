@@ -68,6 +68,7 @@
 //! - **Complex Breps**: ~200 entities/sec
 //! - **Boolean operations**: ~20 entities/sec
 
+pub mod alignment;
 pub mod bool2d;
 // Legacy BSP CSG kernel. Unused when `manifold-csg` is enabled; the
 // `#[allow(dead_code)]` keeps the build warning-clean while the migration
@@ -112,6 +113,7 @@ pub use processors::{
     MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
     SurfaceOfLinearExtrusionProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
+pub use alignment::{AlignmentCurve, AlignmentFrame};
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;

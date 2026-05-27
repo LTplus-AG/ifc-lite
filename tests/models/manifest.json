@@ -694,6 +694,11 @@
       "size": 56594
     },
     {
+      "path": "issues/832_opening_representations.ifc",
+      "sha256": "0a81eda40a3b575fbcab02db37f1cea7cf9c5dd1d099099a1bb5a5f9f4c64868",
+      "size": 11355
+    },
+    {
       "path": "various/01_BIMcollab_Example_ARC.ifc",
       "sha256": "87392cf24264b023e65d8ca1dab1eb8996643c1aa51b9dff9d518ed8904151fc",
       "size": 18230149

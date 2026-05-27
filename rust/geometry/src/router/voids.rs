@@ -1907,6 +1907,24 @@ impl GeometryRouter {
         if wall_proj_extent > opening_max_dim {
             return (open_min, open_max);
         }
+        // Case (3): the opening was authored to extend past the wall on at
+        // least one side in extrusion direction. This is a partial-overlap
+        // "bite" — issue #832, a 1 × 1 × 0.2 m opening offset so half the
+        // 0.2 m depth pokes out the wall's +X face. The Revit "extend to
+        // reach the opposite wall face" heuristic that follows is only
+        // sound when the opening sits ENTIRELY INSIDE the wall along the
+        // extrusion axis (the "opening too short" pattern); when the
+        // opening already pokes out one side, applying it stretches the
+        // box across the full wall thickness and the AABB clip removes
+        // BOTH faces — the punched-through slot the bug reporter saw.
+        // Compare projections rather than raw coords so the sign of the
+        // extrusion direction is irrelevant.
+        const POKE_TOL: f64 = 1e-6;
+        let opening_pokes_past_wall = open_min_proj < wall_min_proj - POKE_TOL
+            || open_max_proj > wall_max_proj + POKE_TOL;
+        if opening_pokes_past_wall {
+            return (open_min, open_max);
+        }
 
         // Calculate how much to extend in each direction along the extrusion axis
         // If wall extends beyond opening, we need to extend the opening
@@ -3207,6 +3225,46 @@ mod reveal_tests {
         assert_eq!(new_max.x, open_max.x);
         assert_eq!(new_min.z, open_min.z);
         assert_eq!(new_max.z, open_max.z);
+    }
+
+    #[test]
+    fn test_extend_opening_skipped_when_opening_pokes_past_wall() {
+        // Regression for issue #832: a 1×1×0.2 m opening offset so its
+        // 0.2 m extrusion depth pokes 0.1 m past the wall's +X face. The
+        // Revit "extend to reach the opposite wall face" heuristic would
+        // stretch the opening through the wall thickness and the AABB
+        // clip would remove BOTH the +X (touched) and -X (un-touched)
+        // wall faces — the "punched-through slot" the user reported.
+        // The extension must bail out and return the authored bounds.
+        let router = crate::router::GeometryRouter::new();
+
+        // Wall: 0.2 m thick along X, 3 m × 3 m face.
+        let wall_min = Point3::new(7.9, 0.0, 0.0);
+        let wall_max = Point3::new(8.1, 3.0, 3.0);
+        // Opening starts inside the wall (x=8.0) and pokes past +X (x=8.2).
+        let open_min = Point3::new(8.0, 0.5, 1.0);
+        let open_max = Point3::new(8.2, 1.5, 2.0);
+        let dir = Vector3::new(1.0, 0.0, 0.0);
+
+        let (new_min, new_max) =
+            router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+
+        // Authored bounds must come back UNCHANGED — no extension, no pad.
+        assert_eq!(new_min, open_min, "X-poke-out: extension must not change min");
+        assert_eq!(new_max, open_max, "X-poke-out: extension must not change max");
+
+        // Same shape mirrored: opening pokes past -X face, extrusion -X.
+        let wall_min = Point3::new(5.9, 0.0, 0.0);
+        let wall_max = Point3::new(6.1, 3.0, 3.0);
+        let open_min = Point3::new(5.8, 0.5, 1.0);
+        let open_max = Point3::new(6.0, 1.5, 2.0);
+        let dir = Vector3::new(-1.0, 0.0, 0.0);
+
+        let (new_min, new_max) =
+            router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+
+        assert_eq!(new_min, open_min, "-X-poke-out: extension must not change min");
+        assert_eq!(new_max, open_max, "-X-poke-out: extension must not change max");
     }
 
     #[test]

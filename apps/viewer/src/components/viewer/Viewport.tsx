@@ -41,7 +41,6 @@ import { usePointCloudSync } from './usePointCloudSync.js';
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
 import { useSymbolicAnnotations, useSymbolicAnnotationsRichData } from '../../hooks/useSymbolicAnnotations.js';
-import { ANNOTATION_VIEW_DEPTH } from '@/hooks/useDrawingGeneration';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -800,35 +799,13 @@ export function Viewport({
     if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return 0;
     return (min + max) * 0.5;
   }, [coordinateInfo]);
-  // When the section tool is active on a horizontal cut, restrict the 3D
-  // annotation overlay to the same 1.2 m slab the 2D Section panel uses
-  // (see `ANNOTATION_VIEW_DEPTH`). Without this, dimensions from every
-  // storey float through the viewport regardless of where the cut sits,
-  // which is what the user reported as "still showing them from ABOVE
-  // camera". The filter no-ops for non-`down` axes and when the cut is
-  // disabled, preserving the toggle's existing "show all" behaviour.
-  const annotation3DSectionFilter = useMemo(() => {
-    if (!sectionPlane.enabled) return undefined;
-    if (sectionPlane.axis !== 'down') return undefined;
-    if (!sectionRange) return undefined;
-    const sectionPosWorld = sectionRange.min + (sectionPlane.position / 100) * (sectionRange.max - sectionRange.min);
-    return {
-      axis: sectionPlane.axis,
-      sectionPosWorld,
-      viewDepth: ANNOTATION_VIEW_DEPTH,
-      flipped: sectionPlane.flipped,
-    } as const;
-  }, [sectionPlane.enabled, sectionPlane.axis, sectionPlane.position, sectionPlane.flipped, sectionRange]);
-
   const annotationVertices3D = useSymbolicAnnotations({
     enabled: ifcAnnotationsVisible,
     fallbackY: annotationFallbackY,
-    sectionFilter: annotation3DSectionFilter,
   });
   const { texts: annotationTexts3D, fills: annotationFills3D } = useSymbolicAnnotationsRichData({
     enabled: ifcAnnotationsVisible,
     fallbackY: annotationFallbackY,
-    sectionFilter: annotation3DSectionFilter,
   });
   useEffect(() => {
     const renderer = rendererRef.current;

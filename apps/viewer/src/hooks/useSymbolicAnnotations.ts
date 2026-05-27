@@ -521,52 +521,18 @@ function resolveBucketY(elevation: number | null, fallbackY: number): number {
   return elevation === null ? fallbackY : elevation;
 }
 
-/** Optional section-plane filter for the 3D annotation overlays. When active,
- *  only annotation buckets whose elevation falls inside a 1.2 m slab IN FRONT
- *  of the cut are emitted, so dimensions from storeys above/below the cut
- *  don't float through the model in the 3D viewport. Only the cardinal
- *  down-axis is meaningful — annotations are floor-plan symbols and don't
- *  project sensibly onto vertical sections — so the filter no-ops for
- *  `axis='front'` / `axis='side'` and lets the toggle behave as before.
- */
-export interface AnnotationSectionFilter {
-  axis: 'down' | 'front' | 'side';
-  /** Section plane world-coord position along the cut axis. */
-  sectionPosWorld: number;
-  /** Slab depth in world units — typically `ANNOTATION_VIEW_DEPTH`. */
-  viewDepth: number;
-  flipped: boolean;
-}
-
-/** Build the bucket-elevation predicate for an optional section filter.
- *  Returns `null` when the filter is unset or non-down (filter passes all).
- */
-function makeSectionBucketPredicate(
-  filter: AnnotationSectionFilter | undefined,
-): ((bucketY: number) => boolean) | null {
-  if (!filter || filter.axis !== 'down') return null;
-  const TOL = 1e-3;
-  const rangeMin = (filter.flipped ? filter.sectionPosWorld - filter.viewDepth : filter.sectionPosWorld) - TOL;
-  const rangeMax = (filter.flipped ? filter.sectionPosWorld : filter.sectionPosWorld + filter.viewDepth) + TOL;
-  return (bucketY: number) => bucketY >= rangeMin && bucketY <= rangeMax;
-}
-
 export function useSymbolicAnnotations(params: {
   enabled: boolean;
   /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
   fallbackY?: number;
-  /** Optional cut-plane slab filter — see `AnnotationSectionFilter`. */
-  sectionFilter?: AnnotationSectionFilter;
 }): Float32Array {
-  const { enabled, fallbackY = 0, sectionFilter } = params;
+  const { enabled, fallbackY = 0 } = params;
   const stores = useActiveStores();
   const version = useAnnotationParseTrigger(enabled, stores);
 
   return useMemo(() => {
     if (!enabled) return EMPTY_F32;
     void version; // depend on parse-completion ticks
-
-    const inRange = makeSectionBucketPredicate(sectionFilter);
 
     const verts: number[] = [];
     let storeIdx = 0;
@@ -586,23 +552,16 @@ export function useSymbolicAnnotations(params: {
       }
 
       for (const bucket of cached.byStorey.values()) {
-        const bucketY = resolveBucketY(bucket.storeyElevation, fallbackY);
-        if (inRange && !inRange(bucketY)) continue;
-        liftTo3DLineList(bucket.lines, bucketY, verts);
+        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
       }
-      // Loose: include only if the fallback Y also falls inside the slab
-      // (or the filter is off). Otherwise orphan dimensions from storeys
-      // outside the slab would still bleed through the 3D overlay.
-      if (!inRange || inRange(fallbackY)) {
-        liftTo3DLineList(cached.loose, fallbackY, verts);
-      }
+      liftTo3DLineList(cached.loose, fallbackY, verts);
       storeIdx++;
     }
 
     if (debugEnabled()) console.log(`[annotations] total 3D line vertices: ${verts.length / 3} from ${stores.length} stores`);
     if (verts.length === 0) return EMPTY_F32;
     return new Float32Array(verts);
-  }, [enabled, stores, version, fallbackY, sectionFilter]);
+  }, [enabled, stores, version, fallbackY]);
 }
 
 /**
@@ -787,18 +746,14 @@ export function useSymbolicAnnotationsForDrawing(params: {
 export function useSymbolicAnnotationsRichData(params: {
   enabled: boolean;
   fallbackY?: number;
-  /** Optional cut-plane slab filter — see `AnnotationSectionFilter`. */
-  sectionFilter?: AnnotationSectionFilter;
 }): { texts: readonly AnnotationText3D[]; fills: readonly AnnotationFill3D[] } {
-  const { enabled, fallbackY = 0, sectionFilter } = params;
+  const { enabled, fallbackY = 0 } = params;
   const stores = useActiveStores();
   const version = useAnnotationParseTrigger(enabled, stores);
 
   return useMemo(() => {
     if (!enabled) return { texts: EMPTY_TEXTS, fills: EMPTY_FILLS };
     void version;
-
-    const inRange = makeSectionBucketPredicate(sectionFilter);
 
     const texts: AnnotationText3D[] = [];
     const fills: AnnotationFill3D[] = [];
@@ -838,19 +793,16 @@ export function useSymbolicAnnotationsRichData(params: {
 
       for (const bucket of cached.byStorey.values()) {
         const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-        if (inRange && !inRange(y)) continue;
         for (const t of bucket.texts) pushText(t, y);
         for (const f of bucket.fills) pushFill(f, y);
       }
-      if (!inRange || inRange(fallbackY)) {
-        for (const t of cached.looseTexts) pushText(t, fallbackY);
-        for (const f of cached.looseFills) pushFill(f, fallbackY);
-      }
+      for (const t of cached.looseTexts) pushText(t, fallbackY);
+      for (const f of cached.looseFills) pushFill(f, fallbackY);
     }
 
     return {
       texts: texts.length ? texts : EMPTY_TEXTS,
       fills: fills.length ? fills : EMPTY_FILLS,
     };
-  }, [enabled, stores, version, fallbackY, sectionFilter]);
+  }, [enabled, stores, version, fallbackY]);
 }

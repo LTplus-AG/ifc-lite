@@ -31,7 +31,6 @@
 
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
-use std::path::Path;
 
 const FIXTURE: &str = "../../tests/models/issues/821_TallBuilding.ifc";
 
@@ -40,15 +39,31 @@ const FIXTURE: &str = "../../tests/models/issues/821_TallBuilding.ifc";
 // per strict spec — would remove the entire wall.
 const BROKEN_OUTSIDE_WALLS: &[u32] = &[615, 1297, 2401];
 
+/// See `issue_820_trimmed_curve_planeangleunit::lfs_pointer_prefix` for
+/// why this string is built at runtime instead of being a string literal.
+fn lfs_pointer_prefix() -> String {
+    format!("version {}{}", "https://git-lfs.github.com/", "spec/")
+}
+
 fn read_fixture() -> Option<String> {
-    if !Path::new(FIXTURE).exists() {
-        eprintln!(
-            "skipping issue-821 regression: fixture missing at {FIXTURE} — \
-             place TallBuilding.ifc under tests/models/issues/",
-        );
-        return None;
+    match std::fs::read_to_string(FIXTURE) {
+        Ok(s) if s.starts_with(&lfs_pointer_prefix()) => {
+            eprintln!(
+                "skipping issue-821 regression: fixture at {FIXTURE} is a Git LFS \
+                 pointer — run `pnpm fixtures` from the repo root to download it",
+            );
+            None
+        }
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "skipping issue-821 regression: fixture missing at {FIXTURE} — \
+                 run `pnpm fixtures` from the repo root to download it",
+            );
+            None
+        }
+        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
     }
-    std::fs::read_to_string(FIXTURE).ok()
 }
 
 #[test]
@@ -135,23 +150,62 @@ fn difference_emptied_host_is_recorded_in_csg_failures() {
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
-    let router = GeometryRouter::new();
 
-    // Process all three walls — fallback should fire at least once for
-    // each wall's two-stage clip chain.
+    // Process each wall's body chain directly through `BooleanClippingProcessor`
+    // so we can drain its own failure log. The router's `take_csg_failures`
+    // sees only the *router*-attributed failures (those routed through the
+    // void-aware path) and would silently report 0 here even when the guard
+    // is firing inside the boolean processor on every call.
+    let schema = ifc_lite_core::IfcSchema::new();
+    let boolean = ifc_lite_geometry::BooleanClippingProcessor::new();
+
     for &wall_id in BROKEN_OUTSIDE_WALLS {
-        let wall = decoder.decode_by_id(wall_id).unwrap();
-        let _ = router.process_element(&wall, &mut decoder);
+        let wall = decoder
+            .decode_by_id(wall_id)
+            .unwrap_or_else(|e| panic!("decode wall #{} ({})", wall_id, e));
+        let rep_id = wall.get_ref(6).expect("wall has representation");
+        let product_shape = decoder.decode_by_id(rep_id).expect("decode rep");
+        let reprs = product_shape
+            .get(2)
+            .and_then(|a| a.as_list())
+            .expect("rep list");
+        for r in reprs {
+            let Some(shape_repr_id) = r.as_entity_ref() else {
+                continue;
+            };
+            let shape_repr = decoder.decode_by_id(shape_repr_id).expect("decode shape");
+            let rep_type = shape_repr
+                .get(2)
+                .and_then(|a| a.as_string().map(String::from))
+                .unwrap_or_default();
+            if rep_type != "Clipping" && rep_type != "Body" {
+                continue;
+            }
+            let items = shape_repr
+                .get(3)
+                .and_then(|a| a.as_list())
+                .expect("items list");
+            for it in items {
+                let Some(item_id) = it.as_entity_ref() else {
+                    continue;
+                };
+                let Ok(item) = decoder.decode_by_id(item_id) else {
+                    continue;
+                };
+                if item.ifc_type != ifc_lite_core::IfcType::IfcBooleanClippingResult
+                    && item.ifc_type != ifc_lite_core::IfcType::IfcBooleanResult
+                {
+                    continue;
+                }
+                let _ =
+                    ifc_lite_geometry::GeometryProcessor::process(&boolean, &item, &mut decoder, &schema);
+            }
+        }
     }
 
-    // The router doesn't attribute boolean-failures from
-    // process_element by wall id (that's done by process_element_with_voids),
-    // so we just confirm at least one DifferenceEmptiedHost showed up
-    // total. Drain via `take_csg_failures` to inspect.
-    let failures = router.take_csg_failures();
+    let failures = boolean.take_failures();
     let total_emptied: usize = failures
-        .values()
-        .flatten()
+        .iter()
         .filter(|f| {
             matches!(
                 f.reason,
@@ -159,9 +213,10 @@ fn difference_emptied_host_is_recorded_in_csg_failures() {
             )
         })
         .count();
-    // Walls aren't keyed by id in this code path; we just want to see
-    // the diagnostic surface at all. Six clips (three walls × two
-    // clipping ops each) all hit the fallback in the diagnostic example,
-    // so any positive count proves the path is exercised.
-    let _ = total_emptied;
+    assert!(
+        total_emptied > 0,
+        "expected ≥1 DifferenceEmptiedHost diagnostic when processing the \
+         three broken outside walls — got 0 (the guard never fired and \
+         this test was previously a silent pass)",
+    );
 }

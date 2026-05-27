@@ -1038,32 +1038,53 @@ fn extract_symbolic_item(
                         // basis circle's elevation.
                         let world_y = center_z + transform.tz;
 
-                        // Get trim parameters (simplified - assume parameter values).
-                        // Scale by the project's PLANEANGLEUNIT — see
-                        // ProfileProcessor::process_trimmed_conic and issue
-                        // #820 for why unconditional `.to_radians()` breaks
-                        // RADIAN-declared files. Missing trims default to
-                        // a full circle in radians and bypass scaling.
+                        // Mirror `ProfileProcessor::process_trimmed_conic` so the
+                        // symbolic 2D arc matches the tessellated 3D arc on the
+                        // same `IfcTrimmedCurve`. Three things matter and were
+                        // previously dropped here:
+                        //
+                        //   * `PLANEANGLEUNIT` scaling — issue #820. Parameters
+                        //     in `IfcParameterValue` are in the project's
+                        //     plane-angle unit, not always degrees.
+                        //   * `SenseAgreement` (attr 3) — `.F.` reverses the
+                        //     sweep direction. `min`/`max` discards this.
+                        //   * Wrap-around — `start=350°, end=10°, sense=T`
+                        //     should sweep a 20° arc, not a 340° arc going
+                        //     backwards. `process_trimmed_conic` adds TAU to
+                        //     `end_angle` (or subtracts when `sense=F`) so the
+                        //     downstream sampler walks the intended way.
+                        //
+                        // `as_float()` already unwraps the `IFCPARAMETERVALUE`
+                        // typed-value wrapper (see `schema_gen.rs as_float()`
+                        // List branch), so no explicit "is it IFCPARAMETERVALUE?"
+                        // sniff is needed here.
                         let angle_scale = decoder.plane_angle_to_radians() as f32;
-                        let trim1 = item
-                            .get(1)
-                            .and_then(|a| {
-                                a.as_list()
-                                    .and_then(|l| l.first().and_then(|v| v.as_float()))
+                        let raw_trim1: Option<f32> = item.get(1).and_then(|a| {
+                            a.as_list()
+                                .and_then(|l| l.first().and_then(|v| v.as_float()))
+                        }).map(|v| v as f32);
+                        let raw_trim2: Option<f32> = item.get(2).and_then(|a| {
+                            a.as_list()
+                                .and_then(|l| l.first().and_then(|v| v.as_float()))
+                        }).map(|v| v as f32);
+                        let sense = item
+                            .get(3)
+                            .and_then(|v| match v {
+                                ifc_lite_core::AttributeValue::Enum(s) => {
+                                    Some(s == "T" || s == "TRUE" || s == ".T.")
+                                }
+                                _ => None,
                             })
-                            .map(|v| v as f32 * angle_scale)
-                            .unwrap_or(0.0);
-                        let trim2 = item
-                            .get(2)
-                            .and_then(|a| {
-                                a.as_list()
-                                    .and_then(|l| l.first().and_then(|v| v.as_float()))
-                            })
-                            .map(|v| v as f32 * angle_scale)
-                            .unwrap_or(std::f32::consts::TAU);
+                            .unwrap_or(true);
 
-                        let start_angle = trim1.min(trim2);
-                        let end_angle = trim1.max(trim2);
+                        let start_angle = raw_trim1.map(|v| v * angle_scale).unwrap_or(0.0);
+                        let mut end_angle =
+                            raw_trim2.map(|v| v * angle_scale).unwrap_or(std::f32::consts::TAU);
+                        if sense && end_angle < start_angle {
+                            end_angle += std::f32::consts::TAU;
+                        } else if !sense && end_angle > start_angle {
+                            end_angle -= std::f32::consts::TAU;
+                        }
 
                         // Validate angles
                         if !start_angle.is_finite() || !end_angle.is_finite() {

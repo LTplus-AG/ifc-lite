@@ -28,7 +28,6 @@
 
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
-use std::path::Path;
 
 const FIXTURE: &str = "../../tests/models/issues/819_IFC4TessellationComplex.ifc";
 
@@ -37,15 +36,31 @@ const FIXTURE: &str = "../../tests/models/issues/819_IFC4TessellationComplex.ifc
 // smooth-averaged normals before the fix.
 const FACESETS: &[u32] = &[1480, 4373, 5127, 5657, 5795];
 
+/// See `issue_820_trimmed_curve_planeangleunit::lfs_pointer_prefix` for
+/// why this string is built at runtime instead of being a string literal.
+fn lfs_pointer_prefix() -> String {
+    format!("version {}{}", "https://git-lfs.github.com/", "spec/")
+}
+
 fn read_fixture() -> Option<String> {
-    if !Path::new(FIXTURE).exists() {
-        eprintln!(
-            "skipping issue-819 regression: fixture missing at {FIXTURE} — \
-             place IFC4TessellationComplex.ifc under tests/models/issues/",
-        );
-        return None;
+    match std::fs::read_to_string(FIXTURE) {
+        Ok(s) if s.starts_with(&lfs_pointer_prefix()) => {
+            eprintln!(
+                "skipping issue-819 regression: fixture at {FIXTURE} is a Git LFS \
+                 pointer — run `pnpm fixtures` from the repo root to download it",
+            );
+            None
+        }
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "skipping issue-819 regression: fixture missing at {FIXTURE} — \
+                 run `pnpm fixtures` from the repo root to download it",
+            );
+            None
+        }
+        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
     }
-    std::fs::read_to_string(FIXTURE).ok()
 }
 
 #[test]

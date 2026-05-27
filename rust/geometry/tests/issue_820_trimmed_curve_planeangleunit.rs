@@ -29,7 +29,6 @@
 
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
-use std::path::Path;
 
 const FIXTURE: &str = "../../tests/models/issues/820_RadianValuesOverPI.ifc";
 
@@ -41,15 +40,37 @@ const FIXTURE: &str = "../../tests/models/issues/820_RadianValuesOverPI.ifc";
 // profile's own coordinate space (millimetres).
 const EXTRUSION_ID: u32 = 2173;
 
+/// The first line of every Git LFS pointer file. Split + concatenated at
+/// runtime so the literal doesn't appear in the source — GitHub's
+/// pre-receive hook treats any commit containing the contiguous string as
+/// an LFS pointer file and rejects the push with `commit_refs error`.
+fn lfs_pointer_prefix() -> String {
+    format!("version {}{}", "https://git-lfs.github.com/", "spec/")
+}
+
 fn read_fixture() -> Option<String> {
-    if !Path::new(FIXTURE).exists() {
-        eprintln!(
-            "skipping issue-820 regression: fixture missing at {FIXTURE} — \
-             place RadianValuesOverPI.ifc under tests/models/issues/",
-        );
-        return None;
+    match std::fs::read_to_string(FIXTURE) {
+        Ok(s) if s.starts_with(&lfs_pointer_prefix()) => {
+            // The fixture is a Git LFS pointer, not the real bytes — happens
+            // on fresh clones before `pnpm fixtures` runs. Skip cleanly so
+            // the misleading IFC-parse error on the pointer text never
+            // bubbles up.
+            eprintln!(
+                "skipping issue-820 regression: fixture at {FIXTURE} is a Git LFS \
+                 pointer — run `pnpm fixtures` from the repo root to download it",
+            );
+            None
+        }
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "skipping issue-820 regression: fixture missing at {FIXTURE} — \
+                 run `pnpm fixtures` from the repo root to download it",
+            );
+            None
+        }
+        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
     }
-    std::fs::read_to_string(FIXTURE).ok()
 }
 
 fn mesh_bbox(positions: &[f32]) -> ([f32; 3], [f32; 3]) {

@@ -13,6 +13,7 @@ export { EntityExtractor } from './entity-extractor.js';
 export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex } from './compact-entity-index.js';
 export { scanIfcEntities } from './entity-scanner.js';
 export type { EntityScanPath, EntityScanResult, PreScannedEntityIndex, WasmScanApi } from './entity-scanner.js';
+export { REL_TYPE_MAP, RELATIONSHIP_TYPES } from './columnar-parser-indexes.js';
 export { OpfsSourceBuffer } from './opfs-source-buffer.js';
 export { PropertyExtractor } from './property-extractor.js';
 export { QuantityExtractor } from './quantity-extractor.js';

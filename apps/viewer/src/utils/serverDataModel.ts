@@ -13,6 +13,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { DataModel } from '@ifc-lite/server-client';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP } from '@ifc-lite/parser';
 import {
   IfcTypeEnum,
   RelationshipType,
@@ -75,31 +76,6 @@ export interface ServerParseResult {
     total_triangles: number;
   };
 }
-
-// ============================================================================
-// Relationship Type Mapping
-// ============================================================================
-
-/**
- * Pre-computed uppercase relationship type map for efficient comparison
- * IMPORTANT: Keep in sync with columnar-parser.ts REL_TYPE_MAP (14 types total)
- */
-const REL_TYPE_MAP = new Map<string, RelationshipType>([
-  ['IFCRELCONTAINEDINSPATIALSTRUCTURE', RelationshipType.ContainsElements],
-  ['IFCRELAGGREGATES', RelationshipType.Aggregates],
-  ['IFCRELDEFINESBYPROPERTIES', RelationshipType.DefinesByProperties],
-  ['IFCRELDEFINESBYTYPE', RelationshipType.DefinesByType],
-  ['IFCRELASSOCIATESMATERIAL', RelationshipType.AssociatesMaterial],
-  ['IFCRELASSOCIATESCLASSIFICATION', RelationshipType.AssociatesClassification],
-  ['IFCRELVOIDSELEMENT', RelationshipType.VoidsElement],
-  ['IFCRELFILLSELEMENT', RelationshipType.FillsElement],
-  ['IFCRELCONNECTSPATHELEMENTS', RelationshipType.ConnectsPathElements],
-  ['IFCRELCONNECTSELEMENTS', RelationshipType.ConnectsElements],
-  ['IFCRELSPACEBOUNDARY', RelationshipType.SpaceBoundary],
-  ['IFCRELASSIGNSTOGROUP', RelationshipType.AssignsToGroup],
-  ['IFCRELASSIGNSTOPRODUCT', RelationshipType.AssignsToProduct],
-  ['IFCRELREFERENCEDINSPATIALSTRUCTURE', RelationshipType.ReferencedInSpatialStructure],
-]);
 
 // ============================================================================
 // Spatial Hierarchy Building
@@ -432,7 +408,7 @@ function buildRelationships(
   // Combined loop - process relationships once for both graph building AND property mapping
   for (const rel of dataModel.relationships) {
     const upperType = rel.rel_type.toUpperCase();
-    const relType = REL_TYPE_MAP.get(upperType);
+    const relType = CANONICAL_REL_TYPE_MAP[upperType];
 
     // Build property set and quantity set mappings (regardless of relType mapping)
     if (upperType === 'IFCRELDEFINESBYPROPERTIES') {

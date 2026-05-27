@@ -1905,7 +1905,7 @@ export function useIfcLoader() {
         // risking corruption.
         const parserWasmApi = isNativeFileHandle(file) ? undefined : geometryProcessor.getApi();
         return new IfcParser().parseColumnar(buffer, {
-          wasmApi: parserWasmApi,
+          wasmApi: parserWasmApi ?? undefined,
           onSpatialReady: onPartialDataStore,
         });
       };

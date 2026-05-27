@@ -84,6 +84,41 @@ function buildFallbackGeometryFromLod0(lod0: Lod0Json): { meshes: MeshData[]; fa
   return { meshes, failed };
 }
 
+function emptyCoordinateInfo(): GeometryResult['coordinateInfo'] {
+  const zero = { x: 0, y: 0, z: 0 };
+  return {
+    originShift: zero,
+    originalBounds: { min: { ...zero }, max: { ...zero } },
+    shiftedBounds: { min: { ...zero }, max: { ...zero } },
+    hasLargeCoordinates: false,
+  };
+}
+
+async function processGeometryAdaptive(gp: GeometryProcessor, buffer: ArrayBuffer): Promise<GeometryResult> {
+  const meshes: MeshData[] = [];
+  let coordinateInfo: GeometryResult['coordinateInfo'] | null = null;
+
+  for await (const event of gp.processAdaptive(new Uint8Array(buffer), {
+    // LOD export is not latency-sensitive UI work. Force the async streaming
+    // strategy so this path does not call the legacy sync parseMeshes API.
+    sizeThreshold: 0,
+  })) {
+    if (event.type === 'batch') {
+      meshes.push(...event.meshes);
+      coordinateInfo = event.coordinateInfo ?? coordinateInfo;
+    } else if (event.type === 'complete') {
+      coordinateInfo = event.coordinateInfo;
+    }
+  }
+
+  return {
+    meshes,
+    totalTriangles: meshes.reduce((sum, mesh) => sum + mesh.indices.length / 3, 0),
+    totalVertices: meshes.reduce((sum, mesh) => sum + mesh.positions.length / 3, 0),
+    coordinateInfo: coordinateInfo ?? emptyCoordinateInfo(),
+  };
+}
+
 export async function generateLod1(input: LodInput, options: GenerateLod1Options = {}): Promise<GenerateLod1Result> {
   // LOD0 is mandatory and used for degraded detection + fallback.
   const lod0 = await generateLod0(input);
@@ -99,7 +134,7 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
     const buffer = toIfcArrayBuffer(input);
     const gp = new GeometryProcessor({ quality: options.quality });
     await gp.init();
-    const geom = await gp.process(new Uint8Array(buffer));
+    const geom = await processGeometryAdaptive(gp, buffer);
 
     const exporter = new GLTFExporter(geom);
     const glb = exporter.exportGLB({ includeMetadata: true });
@@ -113,7 +148,7 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
 
     const status: Lod1MetaJson['status'] = failedElements.length > 0 ? 'degraded' : 'ok';
     if (status === 'degraded') {
-      notes.push('Some elements did not produce mesh output; GLB contains partial geometry.')
+      notes.push('Some elements did not produce mesh output; GLB contains partial geometry.');
     }
 
     const meta: Lod1MetaJson = {
@@ -126,23 +161,17 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
     };
 
     return { glb, meta };
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Full failure => mandatory fallback GLB from LOD0 bboxes
     const errMsg = e instanceof Error ? e.message : String(e);
     notes.push(`Meshing failed; using fallback boxes from LOD0. (${errMsg})`);
 
     const { meshes } = buildFallbackGeometryFromLod0(lod0);
-    const zero = { x: 0, y: 0, z: 0 };
     const fallbackResult: GeometryResult = {
       meshes,
       totalTriangles: meshes.reduce((s, m) => s + m.indices.length / 3, 0),
       totalVertices: meshes.reduce((s, m) => s + m.positions.length / 3, 0),
-      coordinateInfo: {
-        originShift: zero,
-        originalBounds: { min: { ...zero }, max: { ...zero } },
-        shiftedBounds: { min: { ...zero }, max: { ...zero } },
-        hasLargeCoordinates: false,
-      },
+      coordinateInfo: emptyCoordinateInfo(),
     };
     const exporter = new GLTFExporter(fallbackResult);
 

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { IfcParser, parseIfcx, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
+import { WorkerParser } from '@ifc-lite/parser/browser';
 import { GeometryProcessor, GeometryQuality, type CoordinateInfo, type DynamicBatchConfig, type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
@@ -217,6 +218,18 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
 
   const parser = new IfcParser();
   const wasmApi = geometryProcessor.getApi();
+  const canShareSource = WorkerParser.isSupported();
+  const sharedSource = canShareSource ? new SharedArrayBuffer(options.buffer.byteLength) : null;
+  if (sharedSource) {
+    new Uint8Array(sharedSource).set(new Uint8Array(options.buffer));
+  }
+  const geometryWillEmitEntityIndex =
+    sharedSource !== null
+    && options.fileSizeMB >= 2
+    && typeof Worker !== 'undefined'
+    && typeof navigator !== 'undefined'
+    && (navigator.hardwareConcurrency ?? 1) > 1;
+  let workerParser: WorkerParser | null = null;
   const allMeshes: MeshData[] = [];
   const cumulativeColorUpdates = new Map<number, RgbaColor>();
   let finalCoordinateInfo: CoordinateInfo | null = null;
@@ -224,20 +237,40 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
   let estimatedTotal = 0;
   let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
 
-  const dataStorePromise = parser.parseColumnar(options.buffer, {
-    wasmApi,
-    onSpatialReady: (partialStore) => {
-      if (options.shouldAbort?.()) {
-        return;
-      }
-      options.onSpatialReady?.(normalizeDataStoreStoreys(partialStore));
-    },
-  });
+  const handleSpatialReady = (partialStore: IfcDataStore) => {
+    if (options.shouldAbort?.()) {
+      return;
+    }
+    options.onSpatialReady?.(normalizeDataStoreStoreys(partialStore));
+  };
+  const dataStorePromise = sharedSource
+    ? (() => {
+        workerParser = new WorkerParser();
+        return workerParser.parseColumnar(sharedSource, {
+          waitForEntityIndex: geometryWillEmitEntityIndex,
+          onSpatialReady: handleSpatialReady,
+        }).catch((error) => {
+          console.warn('[viewerModelIngest] Parser worker failed, falling back to main-thread parse:', error);
+          return parser.parseColumnar(options.buffer, {
+            wasmApi: wasmApi ?? undefined,
+            onSpatialReady: handleSpatialReady,
+          });
+        });
+      })()
+    : parser.parseColumnar(options.buffer, {
+        wasmApi: wasmApi ?? undefined,
+        onSpatialReady: handleSpatialReady,
+      });
 
-  for await (const event of geometryProcessor.processAdaptive(new Uint8Array(options.buffer), {
+  const geometryView = sharedSource ? new Uint8Array(sharedSource) : new Uint8Array(options.buffer);
+  for await (const event of geometryProcessor.processAdaptive(geometryView, {
     sizeThreshold: 2 * 1024 * 1024,
     batchSize: options.getDynamicBatchSize(options.fileSizeMB),
     sharedRtcOffset: options.sharedRtcOffset,
+    existingSab: sharedSource ?? undefined,
+    onEntityIndex: (ids, starts, lengths) => {
+      workerParser?.setEntityIndex(ids, starts, lengths);
+    },
   })) {
     if (options.shouldAbort?.()) {
       break;

@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { DataModel } from '@ifc-lite/server-client';
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, RelationshipType } from '@ifc-lite/data';
 import { convertServerDataModel, type ServerParseResult } from './serverDataModel';
 
 const parseResult: ServerParseResult = {
@@ -86,5 +86,55 @@ describe('convertServerDataModel', () => {
     assert.deepEqual(dataStore.spatialHierarchy?.project.children[0].children[0].elements, [4]);
     assert.deepEqual(dataStore.spatialHierarchy?.getPath(4).map((node) => node.expressId), [1, 2, 3]);
     assert.deepEqual(dataStore.spatialHierarchy?.byBuilding.get(2), []);
+  });
+
+  it('uses the canonical parser relationship map for server relationships', () => {
+    const dataModel: DataModel = {
+      entities: new Map([
+        [1, { entity_id: 1, type_name: 'IFCPROJECT', global_id: '0', name: 'Project', has_geometry: false }],
+        [2, { entity_id: 2, type_name: 'IFCBUILDING', global_id: '1', name: 'Building', has_geometry: false }],
+        [3, { entity_id: 3, type_name: 'IFCDOCUMENTREFERENCE', global_id: '', name: 'Spec', has_geometry: false }],
+      ]),
+      propertySets: new Map(),
+      quantitySets: new Map(),
+      relationships: [
+        { rel_type: 'IFCRELNESTS', relating_id: 1, related_id: 2 },
+        { rel_type: 'IFCRELASSOCIATESDOCUMENT', relating_id: 3, related_id: 2 },
+      ],
+      spatialHierarchy: {
+        nodes: [
+          {
+            entity_id: 1,
+            parent_id: 0,
+            level: 0,
+            path: 'Project',
+            type_name: 'IFCPROJECT',
+            name: 'Project',
+            children_ids: [2],
+            element_ids: [],
+          },
+          {
+            entity_id: 2,
+            parent_id: 1,
+            level: 1,
+            path: 'Project/Building',
+            type_name: 'IFCBUILDING',
+            name: 'Building',
+            children_ids: [],
+            element_ids: [],
+          },
+        ],
+        project_id: 1,
+        element_to_storey: new Map(),
+        element_to_building: new Map(),
+        element_to_site: new Map(),
+        element_to_space: new Map(),
+      },
+    };
+
+    const dataStore = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+
+    assert.deepEqual(dataStore.relationships.getRelated(1, RelationshipType.Aggregates, 'forward'), [2]);
+    assert.deepEqual(dataStore.relationships.getRelated(3, RelationshipType.AssociatesDocument, 'forward'), [2]);
   });
 });

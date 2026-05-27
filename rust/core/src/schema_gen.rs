@@ -339,6 +339,10 @@ impl IfcSchema {
             ProfileCategory::Parametric,
         );
         profile_types.insert(IfcType::IfcIShapeProfileDef, ProfileCategory::Parametric);
+        profile_types.insert(
+            IfcType::IfcAsymmetricIShapeProfileDef,
+            ProfileCategory::Parametric,
+        );
         profile_types.insert(IfcType::IfcLShapeProfileDef, ProfileCategory::Parametric);
         profile_types.insert(IfcType::IfcUShapeProfileDef, ProfileCategory::Parametric);
         profile_types.insert(IfcType::IfcTShapeProfileDef, ProfileCategory::Parametric);

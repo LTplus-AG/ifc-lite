@@ -22,8 +22,8 @@ use crate::processors::{
     AdvancedBrepProcessor, BlockProcessor, BooleanClippingProcessor, CsgSolidProcessor,
     ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor,
     FacetedBrepProcessor, MappedItemProcessor, PolygonalFaceSetProcessor,
-    RevolvedAreaSolidProcessor, ShellBasedSurfaceModelProcessor, SweptDiskSolidProcessor,
-    TriangulatedFaceSetProcessor,
+    RevolvedAreaSolidProcessor, SectionedSolidHorizontalProcessor,
+    ShellBasedSurfaceModelProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -217,6 +217,9 @@ impl GeometryRouter {
         router.register(Box::new(BooleanClippingProcessor::new()));
         router.register(Box::new(SweptDiskSolidProcessor::new(schema_clone.clone())));
         router.register(Box::new(RevolvedAreaSolidProcessor::new(
+            schema_clone.clone(),
+        )));
+        router.register(Box::new(SectionedSolidHorizontalProcessor::new(
             schema_clone.clone(),
         )));
         router.register(Box::new(AdvancedBrepProcessor::new()));

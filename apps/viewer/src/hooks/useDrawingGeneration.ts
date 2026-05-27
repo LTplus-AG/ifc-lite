@@ -92,10 +92,19 @@ export function useDrawingGeneration({
   // Track if this is a regeneration (vs initial generation)
   const isRegeneratingRef = useRef(false);
 
+  // Symbolic lines carry an optional `worldY` (the parent primitive's
+  // elevation in world Y, captured from the WASM extractor). The drawing-2d
+  // package's DrawingLine type has no per-line elevation slot, but we need
+  // it here to cull annotations that sit on the wrong side of the section
+  // cut plane (see filter below `cutEntityIds`). Attaching it as an extra
+  // field keeps the change local — the canvas draws DrawingLine fields and
+  // ignores anything extra.
+  type SymbolicDrawingLine = DrawingLine & { worldY?: number };
+
   // Cache for symbolic representations - these don't change with section position
   // Only re-parse when model or display options change
   const symbolicCacheRef = useRef<{
-    lines: DrawingLine[];
+    lines: SymbolicDrawingLine[];
     entities: Set<number>;
     sourceId: string | null;
     useSymbolic: boolean;
@@ -120,7 +129,7 @@ export function useDrawingGeneration({
 
     // Parse symbolic representations if enabled (for hybrid mode)
     // OPTIMIZATION: Cache symbolic data - it doesn't change with section position
-    let symbolicLines: DrawingLine[] = [];
+    let symbolicLines: SymbolicDrawingLine[] = [];
     let entitiesWithSymbols = new Set<number>();
 
     // For multi-model: create cache key from model count and visible model IDs
@@ -167,6 +176,12 @@ export function useDrawingGeneration({
                 entitiesWithSymbols.add(poly.expressId);
                 const points = poly.points;
                 const pointCount = poly.pointCount;
+                // WASM exposes `worldY` on every symbolic primitive — the
+                // elevation of its parent placement (Z-up IFC, world-Y here).
+                // The .d.ts shipped with the @ifc-lite/wasm package lags
+                // behind the Rust source; read defensively so a stale build
+                // returns undefined instead of throwing.
+                const polyWorldY = (poly as unknown as { worldY?: number }).worldY;
 
                 for (let j = 0; j < pointCount - 1; j++) {
                   symbolicLines.push({
@@ -180,6 +195,7 @@ export function useDrawingGeneration({
                     ifcType: poly.ifcType,
                     modelIndex: symbolicModelIndex,
                     depth: 0,
+                    worldY: polyWorldY,
                   });
                 }
 
@@ -195,6 +211,7 @@ export function useDrawingGeneration({
                     ifcType: poly.ifcType,
                     modelIndex: symbolicModelIndex,
                     depth: 0,
+                    worldY: polyWorldY,
                   });
                 }
               }
@@ -206,6 +223,7 @@ export function useDrawingGeneration({
 
                 entitiesWithSymbols.add(circle.expressId);
                 const numSegments = circle.isFullCircle ? 32 : 16;
+                const circleWorldY = (circle as unknown as { worldY?: number }).worldY;
 
                 for (let j = 0; j < numSegments; j++) {
                   const t1 = j / numSegments;
@@ -230,6 +248,7 @@ export function useDrawingGeneration({
                     ifcType: circle.ifcType,
                     modelIndex: symbolicModelIndex,
                     depth: 0,
+                    worldY: circleWorldY,
                   });
                 }
               }
@@ -375,9 +394,41 @@ export function useDrawingGeneration({
           }
         }
 
+        // Cull annotations on the far side of the section cut plane.
+        //
+        // IfcAnnotation / IfcGridAxis polylines (dimensions, room tags, grid
+        // bubbles) live at a single elevation but have no body geometry — the
+        // `cutEntityIds.has(line.entityId)` filter below never sees them, so
+        // they leaked through and rendered regardless of where the section
+        // sat. For a down-section ('y' axis) the WASM extractor gives us
+        // `worldY` per primitive, so apply the same half-space convention the
+        // edge extractor uses for projection lines (see
+        // `EdgeExtractor.filterEdgesByDepth`): when the section is not
+        // flipped, the plane normal points up so we keep annotations whose
+        // worldY ≥ cutY; when flipped, we keep annotations below the cut.
+        //
+        // Annotations without a recoverable worldY (older WASM build) are
+        // kept — better to over-render than to silently drop authored
+        // dimensions when the runtime can't classify them.
+        //
+        // Limited to 'y' (down) sections: symbolic primitives are authored
+        // in floor-plan space and only carry worldY; for vertical
+        // ('x' side / 'z' front) sections we'd need per-primitive worldX /
+        // worldZ from the WASM extractor, which isn't exposed yet.
+        const annotationCulled = axis === 'y'
+          ? symbolicLines.filter((line) => {
+              const wy = line.worldY;
+              if (wy === undefined) return true;
+              const isAnnotationLike = line.ifcType === 'IfcAnnotation' || line.ifcType === 'IfcGridAxis';
+              if (!isAnnotationLike) return true;
+              const d = wy - position;
+              return sectionPlane.flipped ? d <= 0 : d >= 0;
+            })
+          : symbolicLines;
+
         // Only include symbolic lines for entities that are ACTUALLY being cut
         // This filters out symbols from other floors/levels not intersected by the section plane
-        const relevantSymbolicLines = symbolicLines.filter(line =>
+        const relevantSymbolicLines = annotationCulled.filter(line =>
           line.entityId !== undefined && cutEntityIds.has(line.entityId)
         );
 

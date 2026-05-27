@@ -21,6 +21,10 @@ function len(v: Vec3): number {
   return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
+function clampUnit(value: number): number {
+  return Math.max(-1, Math.min(1, value));
+}
+
 function sub(a: Vec3, b: Vec3): Vec3 {
   return vec3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
@@ -238,7 +242,7 @@ describe('CameraControls – external pivot orbit', () => {
     for (let i = 0; i < 80; i++) controls.orbit(0, -100);
     const pivot = vec3(5, 5, 15);
     const dir = sub(state.camera.position, pivot);
-    const phi = Math.acos(dir.y / len(dir));
+    const phi = Math.acos(clampUnit(dir.y / len(dir)));
     assert.ok(
       phi >= CC.MIN_PHI - 1e-4 && phi <= CC.MAX_PHI + 1e-4,
       `phi must stay clamped (got ${phi}, range [${CC.MIN_PHI}, ${CC.MAX_PHI}])`,
@@ -342,12 +346,12 @@ describe('CameraControls – orbit from preset top view', () => {
 
   it('drag-up at top view tilts camera smoothly toward the horizon', () => {
     const { state, controls } = setupTopPreset();
-    const phiBefore = Math.acos(state.camera.position.y / len(state.camera.position));
+    const phiBefore = Math.acos(clampUnit(state.camera.position.y / len(state.camera.position)));
 
     // Drag-up: deltaY < 0 → dy > 0 → phi increases toward MAX_PHI.
     controls.orbit(0, -50);
 
-    const phiAfter = Math.acos(state.camera.position.y / len(state.camera.position));
+    const phiAfter = Math.acos(clampUnit(state.camera.position.y / len(state.camera.position)));
     assert.ok(
       phiAfter > phiBefore,
       `phi should increase on drag-up (before=${phiBefore}, after=${phiAfter})`,
@@ -359,7 +363,7 @@ describe('CameraControls – orbit from preset top view', () => {
   it('repeated drag-up stops at the lower pole clamp (does not flip)', () => {
     const { state, controls } = setupTopPreset();
     for (let i = 0; i < 80; i++) controls.orbit(0, -100);
-    const phi = Math.acos(state.camera.position.y / len(state.camera.position));
+    const phi = Math.acos(clampUnit(state.camera.position.y / len(state.camera.position)));
     assert.ok(
       phi <= CC.MAX_PHI + 1e-4,
       `phi must be clamped at MAX_PHI (got ${phi}, max ${CC.MAX_PHI})`,

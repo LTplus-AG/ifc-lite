@@ -35,7 +35,7 @@ import { IfcParser } from '@ifc-lite/parser';
 
 // WASM is loaded automatically
 const parser = new IfcParser();
-await parser.parse(buffer);
+await parser.parseColumnar(buffer);
 ```
 
 ### Manual Loading

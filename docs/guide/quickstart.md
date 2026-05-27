@@ -91,12 +91,15 @@ async function main() {
   console.log(`Parsed ${store.entityCount} entities`);
 
   // Process geometry from the IFC buffer
-  const geometryResult = await geometry.process(new Uint8Array(buffer));
+  const meshes = [];
+  for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+    if (event.type === 'batch') meshes.push(...event.meshes);
+  }
 
-  console.log(`Extracted ${geometryResult.meshes.length} meshes`);
+  console.log(`Extracted ${meshes.length} meshes`);
 
   // Load geometry into renderer (creates GPU buffers and batches)
-  renderer.loadGeometry(geometryResult);
+  renderer.loadGeometry(meshes);
 
   // Fit camera to model bounds
   renderer.fitToView();
@@ -401,8 +404,11 @@ renderer.addMeshes(result.meshes);
 // Option 2: Load geometry from GeometryProcessor result
 const geometry = new GeometryProcessor();
 await geometry.init();
-const geometryResult = await geometry.process(new Uint8Array(buffer));
-renderer.loadGeometry(geometryResult);
+const meshes = [];
+for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+  if (event.type === 'batch') meshes.push(...event.meshes);
+}
+renderer.loadGeometry(meshes);
 
 // Fit camera to model
 renderer.fitToView();

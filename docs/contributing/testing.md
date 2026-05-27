@@ -102,19 +102,19 @@ describe('IfcParser', () => {
       `;
 
       const buffer = new TextEncoder().encode(content).buffer;
-      const result = await parser.parse(buffer);
+      const result = await parser.parseColumnar(buffer);
 
       expect(result.entityCount).toBe(1);
-      expect(result.schema).toBe('IFC4');
+      expect(result.schemaVersion).toBe('IFC4');
     });
 
     it('should extract entity properties', async () => {
       const buffer = await loadTestFile('test-model.ifc');
-      const result = await parser.parse(buffer);
+      const result = await parser.parseColumnar(buffer);
 
-      const wall = result.entities.find(e => e.type === 'IFCWALL');
-      expect(wall).toBeDefined();
-      expect(wall?.globalId).toMatch(/^[0-9a-zA-Z_$]+$/);
+      const wallIds = result.entityIndex.byType.get('IFCWALL') ?? [];
+      expect(wallIds.length).toBeGreaterThan(0);
+      expect(result.entities.getGlobalId(wallIds[0])).toMatch(/^[0-9a-zA-Z_$]+$/);
     });
 
     it('should handle streaming geometry', async () => {
@@ -136,7 +136,7 @@ describe('IfcParser', () => {
     it('should throw on invalid file', async () => {
       const buffer = new TextEncoder().encode('invalid content').buffer;
 
-      await expect(parser.parse(buffer)).rejects.toThrow();
+      await expect(parser.parseColumnar(buffer)).rejects.toThrow();
     });
   });
 });
@@ -219,6 +219,7 @@ mod tests {
 // tests/integration/full-parse.test.ts
 import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { Renderer } from '@ifc-lite/renderer';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -229,16 +230,24 @@ describe('Full Parse Integration', () => {
     const filePath = join(__dirname, '../fixtures/test-model.ifc');
     const buffer = readFileSync(filePath).buffer;
 
-    // Parse
+    // Parse metadata
     const parser = new IfcParser();
-    const result = await parser.parse(buffer);
+    const store = await parser.parseColumnar(buffer);
+
+    // Extract geometry separately
+    const geometry = new GeometryProcessor();
+    await geometry.init();
+    const meshes = [];
+    for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+      if (event.type === 'batch') meshes.push(...event.meshes);
+    }
 
     // Verify parsing
-    expect(result.entityCount).toBeGreaterThan(0);
-    expect(result.geometry.meshes.length).toBeGreaterThan(0);
+    expect(store.entityCount).toBeGreaterThan(0);
+    expect(meshes.length).toBeGreaterThan(0);
 
     // Verify geometry
-    const mesh = result.geometry.meshes[0];
+    const mesh = meshes[0];
     expect(mesh.positions.length).toBeGreaterThan(0);
     expect(mesh.indices.length).toBeGreaterThan(0);
     expect(mesh.indices.length % 3).toBe(0); // Valid triangles

@@ -27,15 +27,16 @@ const content = new TextDecoder().decode(buffer);
 const result = await api.parse(content);
 console.log(`Entities: ${result.entityCount}`);
 
-// Tessellated meshes — each entry has expressId, positions, indices, normals, color
-const meshes = api.parseMeshes(content);
-console.log(`${meshes.length} meshes`);
-for (let i = 0; i < meshes.length; i++) {
-  const mesh = meshes.get(i);
-  console.log(mesh.ifcType, mesh.expressId, mesh.vertexCount, 'vertices');
-}
+// Prefer streaming mesh batches over the legacy sync parseMeshes() API.
+await api.parseMeshesAsync(content, {
+  batchSize: 100,
+  onBatch: (meshes) => {
+    for (const mesh of meshes) {
+      console.log(mesh.ifcType, mesh.expressId, mesh.vertexCount, 'vertices');
+    }
+  },
+});
 
-meshes.free();                        // free the Rust-side mesh buffer
 api.free();                           // free the API instance
 ```
 
@@ -108,7 +109,7 @@ if (georef) {
 
 | Class | Purpose |
 |---|---|
-| `IfcAPI` | Top-level parser entry point — `parse`, `parseMeshes`, `parseMeshesAsync`, `parseToGpuGeometry`, `parseZeroCopy`, `getGeoReference`, `extractProfiles`, `parseSymbolicRepresentations`, … |
+| `IfcAPI` | Top-level parser entry point — `parse`, `parseMeshesAsync`, `parseToGpuGeometry`, `getGeoReference`, `extractProfiles`, `parseSymbolicRepresentations`, plus legacy sync helpers |
 | `MeshCollection`, `MeshDataJs` | Tessellated geometry output |
 | `MeshCollectionWithRtc`, `RtcOffsetJs` | Mesh collection with relative-to-centre offset for large-coordinate models |
 | `InstancedMeshCollection`, `InstancedGeometry`, `InstanceData` | Instanced geometry path (deduplicated meshes + per-instance transforms) |

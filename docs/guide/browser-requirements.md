@@ -214,11 +214,12 @@ async function createRenderer(canvas: HTMLCanvasElement) {
 | Android | Firefox 127+ | :material-check-circle:{ .success } |
 
 !!! tip "Mobile Performance"
-    For mobile devices, consider using the `FAST` quality mode:
+    For mobile devices, keep parsing columnar and stream geometry in batches:
     ```typescript
-    const result = await parser.parse(buffer, {
-      geometryQuality: 'FAST'
-    });
+    const store = await parser.parseColumnar(buffer);
+    for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+      if (event.type === 'batch') renderer.addMeshes(event.meshes);
+    }
     ```
 
 ## Next Steps

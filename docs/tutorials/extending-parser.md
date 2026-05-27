@@ -198,10 +198,9 @@ ProcessorRegistry.register(new CustomProfileProcessor());
 const router = new GeometryRouter();
 router.addProcessor(new CustomProfileProcessor());
 
-// Process geometry with custom processors
-const result = await parser.parse(buffer, {
-  geometryRouter: router
-});
+// Process metadata with the canonical columnar parser, then route custom
+// geometry through GeometryProcessor/Rust processors.
+const store = await parser.parseColumnar(buffer);
 ```
 
 ## Schema Extensions
@@ -224,9 +223,9 @@ const customEntity: EntityDefinition = {
 // Register
 SchemaRegistry.register(customEntity);
 
-// Now parser will recognize custom entities
-const result = await parser.parse(buffer);
-const customs = result.entities.filter(e => e.type === 'IFCCUSTOMELEMENT');
+// Schema extensions must be generated into the parser package before parsing.
+const store = await parser.parseColumnar(buffer);
+const customs = store.entityIndex.byType.get('IFCCUSTOMELEMENT') ?? [];
 ```
 
 ### Custom Property Extractors
@@ -414,8 +413,8 @@ class PluginManager {
 const plugins = new PluginManager();
 plugins.register(new AnalyticsPlugin());
 
-const result = await parser.parse(buffer);
-plugins.onParse(result);
+const store = await parser.parseColumnar(buffer);
+plugins.onParse(store);
 ```
 
 ## Best Practices

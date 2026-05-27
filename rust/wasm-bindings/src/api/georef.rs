@@ -54,6 +54,10 @@ impl IfcAPI {
     /// Parse IFC file and return mesh with RTC offset for large coordinates
     /// This handles georeferenced models by shifting to centroid
     ///
+    /// # Deprecated
+    /// Prefer `parseMeshesAsync` or the pre-pass/batch geometry pipeline, which
+    /// emits RTC metadata without this legacy synchronous full-parse path.
+    ///
     /// Example:
     /// ```javascript
     /// const api = new IfcAPI();

@@ -13,6 +13,10 @@ impl IfcAPI {
     /// Parse IFC file with zero-copy mesh data
     /// Maximum performance - returns mesh with direct memory access
     ///
+    /// # Deprecated
+    /// Prefer `parseToGpuGeometry` / `parseToGpuInstancedGeometry` for GPU
+    /// upload paths. This compatibility API performs its own full scan.
+    ///
     /// Example:
     /// ```javascript
     /// const api = new IfcAPI();

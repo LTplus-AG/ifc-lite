@@ -34,6 +34,11 @@ impl IfcAPI {
     /// Parse IFC file and return individual meshes with express IDs and colors
     /// This matches the MeshData[] format expected by the viewer
     ///
+    /// # Deprecated
+    /// Prefer `parseMeshesAsync` or the `buildPrePassOnce` +
+    /// `processGeometryBatch` pipeline. This synchronous compatibility API
+    /// performs its own full scan and blocks the caller.
+    ///
     /// Example:
     /// ```javascript
     /// const api = new IfcAPI();

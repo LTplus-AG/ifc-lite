@@ -452,8 +452,7 @@ The data store scans the raw IFC STEP text once and creates a columnar index for
 
 ```typescript
 import {
-  StepTokenizer,
-  ColumnarParser,
+  IfcParser,
   type IfcDataStore,
   extractEntityAttributesOnDemand,
   extractPropertiesOnDemand,
@@ -461,20 +460,7 @@ import {
 } from '@ifc-lite/parser';
 
 async function buildDataStore(buffer: ArrayBuffer): Promise<IfcDataStore> {
-  const tokenizer = new StepTokenizer(new Uint8Array(buffer));
-
-  const entityRefs = [];
-  for (const ref of tokenizer.scanEntities()) {
-    entityRefs.push({
-      expressId: ref.expressId,
-      type: ref.type,
-      byteOffset: ref.offset,
-      byteLength: ref.length,
-      lineNumber: ref.line,
-    });
-  }
-
-  return new ColumnarParser().parseLite(buffer, entityRefs);
+  return new IfcParser().parseColumnar(buffer);
 }
 ```
 

@@ -102,6 +102,21 @@ export function clearGlobalRefs(): void {
   globalRendererRef = null;
 }
 
+/** Apply extracted BCF camera state without touching selection, visibility, or section plane. */
+function applyCameraState(
+  renderer: Renderer,
+  camera: NonNullable<ReturnType<typeof extractViewpointState>['camera']>,
+  animate: boolean,
+): void {
+  const rendererCamera = renderer.getCamera();
+  if (animate) {
+    rendererCamera.animateTo(camera.position, camera.target, 300);
+  } else {
+    rendererCamera.setPosition(camera.position.x, camera.position.y, camera.position.z);
+    rendererCamera.setTarget(camera.target.x, camera.target.y, camera.target.z);
+  }
+}
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -357,6 +372,28 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     ]
   );
 
+  /** Restore only the viewpoint camera (used by zoom-to-topic fallback). */
+  const applyViewpointCamera = useCallback(
+    (viewpoint: BCFViewpoint, animate = true) => {
+      const renderer = getRenderer();
+      if (!renderer) {
+        console.warn('[useBCF] Cannot apply viewpoint camera: no renderer');
+        return;
+      }
+
+      const bounds = getBounds() ?? undefined;
+      const state = extractViewpointState(
+        viewpoint,
+        bounds,
+        renderer.getCamera().getDistance(),
+      );
+      if (state.camera) {
+        applyCameraState(renderer, state.camera, animate);
+      }
+    },
+    [getRenderer, getBounds],
+  );
+
   /**
    * Apply a viewpoint to the viewer
    */
@@ -378,22 +415,8 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       );
       const { camera, sectionPlane: viewpointSectionPlane } = state;
 
-      // Apply camera
       if (camera) {
-        const rendererCamera = renderer.getCamera();
-
-        if (animate) {
-          // Animate to new position
-          rendererCamera.animateTo(
-            camera.position,
-            camera.target,
-            300 // 300ms animation
-          );
-        } else {
-          // Set immediately
-          rendererCamera.setPosition(camera.position.x, camera.position.y, camera.position.z);
-          rendererCamera.setTarget(camera.target.x, camera.target.y, camera.target.z);
-        }
+        applyCameraState(renderer, camera, animate);
       }
 
       // Apply section plane
@@ -533,10 +556,10 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         return;
       }
 
-      // Fallback: restore camera from the latest viewpoint only
-      applyViewpoint(topic.viewpoints[topic.viewpoints.length - 1], true);
+      // Fallback: camera from latest viewpoint only — preserve selection/visibility
+      applyViewpointCamera(topic.viewpoints[topic.viewpoints.length - 1], true);
     },
-    [applyViewpoint, getRenderer, globalIdToExpressId],
+    [applyViewpointCamera, getRenderer, globalIdToExpressId],
   );
 
   return {

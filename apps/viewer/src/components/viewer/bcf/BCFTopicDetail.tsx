@@ -124,8 +124,9 @@ export function BCFTopicDetail({
               size="sm"
               onClick={onZoomToTopic}
               disabled={!canZoomToTopic}
+              aria-label="Zoom to topic"
             >
-              <Crosshair className="h-4 w-4" />
+              <Crosshair className="h-4 w-4" aria-hidden />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Zoom to</TooltipContent>

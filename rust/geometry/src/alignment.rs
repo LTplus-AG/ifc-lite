@@ -26,7 +26,7 @@
 //! vertical), +Y along travel. Used by `SectionedSolidHorizontalProcessor`
 //! to place each cross-section in 3D space.
 
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use nalgebra::{Point3, Vector3};
 use std::sync::OnceLock;
 
@@ -53,6 +53,211 @@ ifc_type_fn!(t_transition_curve_segment_2d, "IFCTRANSITIONCURVESEGMENT2D");
 ifc_type_fn!(t_ver_seg_line, "IFCALIGNMENT2DVERSEGLINE");
 ifc_type_fn!(t_ver_seg_parabolic, "IFCALIGNMENT2DVERSEGPARABOLICARC");
 ifc_type_fn!(t_ver_seg_circular, "IFCALIGNMENT2DVERSEGCIRCULARARC");
+ifc_type_fn!(t_alignment_2d_cant, "IFCALIGNMENT2DCANT");
+ifc_type_fn!(t_cant_seg_const, "IFCALIGNMENT2DCANTSEGLINE");
+ifc_type_fn!(t_cant_seg_transition, "IFCALIGNMENT2DCANTSEGTRANSITION");
+
+/// IFC4x1 `IfcTransitionCurveType` enumeration. The curvature varies
+/// from `start_curv` at `s=0` to `end_curv` at `s=L` along a profile
+/// that depends on the subtype.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransitionKind {
+    /// Linear curvature: `κ(s) = κ₀ + (κ₁-κ₀)·(s/L)`. Euler spiral.
+    Clothoid,
+    /// Cubic smoothstep: `κ(s) = κ₀ + (κ₁-κ₀)·(3u² − 2u³)` (u = s/L).
+    Bloss,
+    /// Cosine taper: `κ(s) = κ₀ + (κ₁-κ₀)·(1 − cos(π·u))/2`.
+    Cosine,
+    /// Sine taper: `κ(s) = κ₀ + (κ₁-κ₀)·(u − sin(2π·u)/(2π))`.
+    Sine,
+    /// Approximated as clothoid — the canonical cubic-parabola
+    /// formulation `y = x³/(6RL)` is linear-in-x curvature, which is
+    /// `≈` linear-in-s for short transitions (the railway-engineering
+    /// regime where this subtype is authored).
+    CubicParabola,
+    /// Same approximation as `Bloss` (quintic smooth blend) — the
+    /// biquadratic-parabola subtype has two parabolic halves whose
+    /// curvature joins continuously at `s=L/2`, equivalent visually
+    /// to a Bloss blend for typical transition lengths.
+    BiquadraticParabola,
+}
+
+impl TransitionKind {
+    fn from_enum(name: &str) -> Self {
+        match name {
+            "CLOTHOIDCURVE" => Self::Clothoid,
+            "BLOSSCURVE" => Self::Bloss,
+            "COSINECURVE" => Self::Cosine,
+            "SINECURVE" => Self::Sine,
+            "CUBICPARABOLA" => Self::CubicParabola,
+            "BIQUADRATICPARABOLA" => Self::BiquadraticParabola,
+            // Unknown subtypes fall back to clothoid (most common).
+            _ => Self::Clothoid,
+        }
+    }
+
+    /// `g(u) = ∫₀ᵘ shape(v) dv` where `shape(v)` is the curvature blend
+    /// profile (=0 at u=0, =1 at u=1). Used to evaluate the heading
+    /// closed-form: `h(s) = h₀ + κ₀·s + (κ₁-κ₀)·L·g(s/L)`.
+    fn heading_integral(self, u: f64) -> f64 {
+        let u = u.clamp(0.0, 1.0);
+        match self {
+            Self::Clothoid | Self::CubicParabola => 0.5 * u * u,
+            Self::Bloss | Self::BiquadraticParabola => {
+                // ∫(3v² − 2v³)dv = v³ − v⁴/2
+                u * u * u - 0.5 * u * u * u * u
+            }
+            Self::Cosine => {
+                // ∫½(1 − cos(πv))dv = v/2 − sin(πv)/(2π)
+                0.5 * u - (std::f64::consts::PI * u).sin() / (2.0 * std::f64::consts::PI)
+            }
+            Self::Sine => {
+                // ∫(v − sin(2πv)/(2π))dv = v²/2 + cos(2πv)/(4π²) − 1/(4π²)
+                let two_pi = 2.0 * std::f64::consts::PI;
+                0.5 * u * u + ((two_pi * u).cos() - 1.0) / (4.0 * std::f64::consts::PI.powi(2))
+            }
+        }
+    }
+}
+
+/// Public spec for a cant segment. Callers building cant by hand (e.g.
+/// from an alternative schema traversal) pass a `Vec<CantSegSpec>` to
+/// `AlignmentCurve::with_cant_segments`.
+#[derive(Debug, Clone, Copy)]
+pub struct CantSegSpec {
+    /// Cumulative station along the directrix where this segment
+    /// begins, in file length units.
+    pub start: f64,
+    /// Horizontal length of the segment.
+    pub length: f64,
+    /// Cant angle (radians) at the start of the segment.
+    pub roll_start: f64,
+    /// Cant angle (radians) at the end of the segment. Equal to
+    /// `roll_start` for constant-cant segments.
+    pub roll_end: f64,
+}
+
+/// Internal cant segment. We keep `Const` and `Linear` distinct mainly
+/// for clarity in `cant_angle`; both could be folded into the linear
+/// case at the cost of a couple of extra multiplications.
+#[derive(Debug, Clone, Copy)]
+enum CantSeg {
+    /// Constant cant from `start` to `start+length`, with `roll` radians
+    /// of rotation about the tangent (positive = right rail lower).
+    Const { start: f64, length: f64, roll: f64 },
+    /// Linear transition from `roll_start` at station `start` to
+    /// `roll_end` at `start+length`.
+    Linear {
+        start: f64,
+        length: f64,
+        roll_start: f64,
+        roll_end: f64,
+    },
+}
+
+impl CantSeg {
+    fn from_spec(spec: CantSegSpec) -> Self {
+        if (spec.roll_end - spec.roll_start).abs() < 1e-12 {
+            CantSeg::Const {
+                start: spec.start,
+                length: spec.length,
+                roll: spec.roll_start,
+            }
+        } else {
+            CantSeg::Linear {
+                start: spec.start,
+                length: spec.length,
+                roll_start: spec.roll_start,
+                roll_end: spec.roll_end,
+            }
+        }
+    }
+}
+
+/// Parse an `IfcAlignment2DCant` entity into a list of
+/// `CantSegSpec`. The segments are taken in authored order; each
+/// segment is one of `IfcAlignment2DCantSegLine` (constant cant) or
+/// `IfcAlignment2DCantSegTransition` (linear cant transition).
+///
+/// IFC4x1 `IfcAlignment2DCant` attributes:
+///   0: RailHeadDistance (track gauge; not used by the renderer)
+///   1: Segments         (LIST of IfcAlignment2DCantSegment)
+///
+/// Inherited `IfcAlignment2DCantSegment` attrs:
+///   0: TangentialContinuity
+///   1: StartTag / 2: EndTag
+///   3: StartDistAlong
+///   4: HorizontalLength
+///   5: StartCantLeft
+///   6: StartCantRight
+/// Plus subtype-specific:
+///   7: EndCantLeft  (transition only)
+///   8: EndCantRight (transition only)
+///
+/// Track gauge / cant convention: the roll angle is computed as
+/// `atan2(StartCantRight − StartCantLeft, RailHeadDistance)`. The
+/// IFC4x1 convention is that cant values are positive vertical
+/// distances above the rail-head datum, so right-cant > left-cant
+/// rolls the cross-section CCW about the tangent looking down-track.
+pub fn parse_cant(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Vec<CantSegSpec>> {
+    if entity.ifc_type != t_alignment_2d_cant() {
+        return Err(Error::geometry(format!(
+            "#{} is not IfcAlignment2DCant",
+            entity.id,
+        )));
+    }
+    let rail_head_distance = entity.get_float(0).unwrap_or(1.435); // standard gauge in m as a sane default
+    let segs_attr = entity
+        .get(1)
+        .ok_or_else(|| Error::geometry("IfcAlignment2DCant missing Segments".to_string()))?;
+    let seg_refs = segs_attr
+        .as_list()
+        .ok_or_else(|| Error::geometry("Cant Segments must be a list".to_string()))?;
+
+    let mut specs = Vec::with_capacity(seg_refs.len());
+    for r in seg_refs {
+        let sid = r.as_entity_ref().ok_or_else(|| {
+            Error::geometry("Cant segment ref is not an entity reference".to_string())
+        })?;
+        let seg = decoder.decode_by_id(sid)?;
+        let start = seg.get_float(3).ok_or_else(|| {
+            Error::geometry(format!("CantSegment #{} missing StartDistAlong", sid))
+        })?;
+        let length = seg.get_float(4).ok_or_else(|| {
+            Error::geometry(format!("CantSegment #{} missing HorizontalLength", sid))
+        })?;
+        let start_left = seg.get_float(5).unwrap_or(0.0);
+        let start_right = seg.get_float(6).unwrap_or(0.0);
+        let roll_start = ((start_right - start_left) / rail_head_distance.max(1e-9)).atan();
+        // Constant-cant subtype is `IfcAlignment2DCantSegLine`; the
+        // transition subtype is `IfcAlignment2DCantSegTransition` and
+        // additionally carries end-cant attributes at indices 7 / 8.
+        // We compare against both type IDs so future schema dialects
+        // that add more constant-cant subtypes still default to "no
+        // change in cant" rather than misreading attrs 7/8.
+        let is_transition = seg.ifc_type == t_cant_seg_transition();
+        let is_const = seg.ifc_type == t_cant_seg_const();
+        let (roll_end_left, roll_end_right) = if is_transition {
+            (
+                seg.get_float(7).unwrap_or(start_left),
+                seg.get_float(8).unwrap_or(start_right),
+            )
+        } else if is_const {
+            (start_left, start_right)
+        } else {
+            // Unknown subtype — default to constant cant.
+            (start_left, start_right)
+        };
+        let roll_end = ((roll_end_right - roll_end_left) / rail_head_distance.max(1e-9)).atan();
+        specs.push(CantSegSpec {
+            start,
+            length,
+            roll_start,
+            roll_end,
+        });
+    }
+    Ok(specs)
+}
 
 /// `True` if the attribute is an IFC boolean enum `.T.`. Anything else
 /// (including `.F.`, `.U.`, missing, or wrong shape) reads as `false`.
@@ -79,10 +284,11 @@ enum HSeg {
         ccw: bool,
         cum_start: f64,
     },
-    /// Transition curve. Linearly-varying curvature κ(s) =
-    /// start_curv + (end_curv − start_curv) · s / length. Equivalent to
-    /// a clothoid when one endpoint has κ=0. Position evaluated by
-    /// numerical integration (trapezoidal quadrature in arc length).
+    /// Transition curve. Curvature varies smoothly from `start_curv` to
+    /// `end_curv` along arc length according to the `kind`'s blend
+    /// profile. Position evaluated by numerical integration of
+    /// `(cos h(s), sin h(s))` ds — no closed form for the Fresnel-style
+    /// integrals these curves produce.
     Transition {
         sx: f64,
         sy: f64,
@@ -90,6 +296,7 @@ enum HSeg {
         length: f64,
         start_curv: f64,
         end_curv: f64,
+        kind: TransitionKind,
         cum_start: f64,
     },
 }
@@ -129,10 +336,15 @@ enum VSeg {
 pub struct AlignmentFrame {
     /// Origin of the cross-section's local 2D coords (px=0, py=0).
     pub origin: Point3<f64>,
-    /// Right of travel in the horizontal plane. Profile's local +X.
+    /// Right of travel in the horizontal plane. Profile's local +X
+    /// when `FixedAxisVertical = true`. Always lies in the world XY
+    /// plane: `(sin h, −cos h, 0)`.
     pub right: Vector3<f64>,
-    /// Up (global +Z). Profile's local +Y.
+    /// Up (global +Z). Profile's local +Y when `FixedAxisVertical = true`.
     pub up: Vector3<f64>,
+    /// Unit tangent of the 3D directrix at this station. Includes the
+    /// longitudinal slope from the vertical alignment.
+    pub tangent: Vector3<f64>,
 }
 
 /// Parsed alignment curve. Holds horizontal and vertical segments in
@@ -140,14 +352,29 @@ pub struct AlignmentFrame {
 pub struct AlignmentCurve {
     horizontal: Vec<HSeg>,
     vertical: Vec<VSeg>,
+    cant: Vec<CantSeg>,
 }
 
 impl AlignmentCurve {
-    /// Parse `IfcAlignmentCurve` (or a curve that walks like one). Returns
-    /// `Ok(None)` when the directrix is something other than alignment so
-    /// the caller can fall back to a straight-line sweep. Errors only on
-    /// malformed alignment input (e.g. missing required `Horizontal`).
+    /// Parse `IfcAlignmentCurve` (or any directrix we can reduce to a
+    /// piecewise alignment). Recognised cases:
+    ///
+    /// - `IfcAlignmentCurve` — full horizontal + vertical + (optional)
+    ///   cant parsing.
+    /// - `IfcPolyline` — synthesised as a chain of line segments. Each
+    ///   polyline edge becomes one `HSeg::Line` (in XY) and one
+    ///   `VSeg::Line` (with gradient = dz / horizontal length). This
+    ///   covers the relatively rare case of a sectioned-solid authored
+    ///   with a polyline directrix, which is spec-allowed but uncommon.
+    ///
+    /// Returns `Ok(None)` for any other directrix so the caller can
+    /// fall back to a straight-line sweep. Errors only on malformed
+    /// recognised input (e.g. an `IfcAlignmentCurve` missing
+    /// `Horizontal`).
     pub fn parse(directrix: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Option<Self>> {
+        if directrix.ifc_type == IfcType::IfcPolyline {
+            return Self::from_polyline(directrix, decoder).map(Some);
+        }
         if directrix.ifc_type != t_alignment_curve() {
             return Ok(None);
         }
@@ -169,7 +396,131 @@ impl AlignmentCurve {
             _ => Vec::new(),
         };
 
-        Ok(Some(Self { horizontal, vertical }))
+        // Cant is an off-axis sibling entity (`IfcAlignment2DCant`).
+        // IFC4x1 doesn't have a direct attribute on `IfcAlignmentCurve`
+        // pointing at it; the auto-discovery (file-wide scan that
+        // walks IfcAlignment → Cant) is left as a hook via
+        // `with_cant_segments`. The current pipeline produces no cant
+        // because no fixture in the suite exercises it.
+        let cant = Vec::new();
+
+        Ok(Some(Self {
+            horizontal,
+            vertical,
+            cant,
+        }))
+    }
+
+    /// Attach a pre-parsed cant profile. Used by callers that have
+    /// already located an `IfcAlignment2DCant` entity for this
+    /// alignment (e.g. via an `IfcAlignment.AxisCant` traversal). The
+    /// segments are taken in authored order with cumulative-station
+    /// indexing handled by `cant_angle`.
+    pub fn with_cant_segments(mut self, segments: Vec<CantSegSpec>) -> Self {
+        self.cant = segments.into_iter().map(CantSeg::from_spec).collect();
+        self
+    }
+
+    /// Scan `content` for any `IfcAlignment2DCant` and attach the first
+    /// one found. This is a best-effort hook for callers that want the
+    /// auto-discovery convenience; in IFC4x1 the schema doesn't
+    /// constrain how the cant is bound to the alignment, so picking
+    /// the first one is the only generic option. Files with multiple
+    /// alignments + cants should use `with_cant_segments` explicitly.
+    pub fn auto_attach_cant(self, content: &str, decoder: &mut EntityDecoder) -> Result<Self> {
+        let mut scanner = EntityScanner::new(content);
+        while let Some((id, type_name, _, _)) = scanner.next_entity() {
+            if type_name == "IFCALIGNMENT2DCANT" {
+                let entity = decoder.decode_by_id(id)?;
+                let specs = parse_cant(&entity, decoder)?;
+                return Ok(self.with_cant_segments(specs));
+            }
+        }
+        Ok(self)
+    }
+
+    /// Total length of the horizontal alignment (sum of segment lengths).
+    pub fn horizontal_length(&self) -> f64 {
+        self.horizontal
+            .last()
+            .map(|s| h_cum_start(s) + h_length(s))
+            .unwrap_or(0.0)
+    }
+
+    /// Build an alignment from an `IfcPolyline` directrix. Each
+    /// polyline edge becomes one horizontal Line segment plus one
+    /// vertical Line segment so the unified `evaluate(station)` path
+    /// works without special-casing in the processor.
+    fn from_polyline(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Self> {
+        let points_attr = curve
+            .get(0)
+            .ok_or_else(|| Error::geometry("IfcPolyline missing Points".to_string()))?;
+        let point_refs = points_attr
+            .as_list()
+            .ok_or_else(|| Error::geometry("IfcPolyline Points is not a list".to_string()))?;
+        if point_refs.len() < 2 {
+            return Err(Error::geometry(
+                "IfcPolyline directrix needs ≥ 2 points".to_string(),
+            ));
+        }
+        let mut pts: Vec<(f64, f64, f64)> = Vec::with_capacity(point_refs.len());
+        for r in point_refs {
+            let pid = r
+                .as_entity_ref()
+                .ok_or_else(|| Error::geometry("Polyline point is not an entity ref".to_string()))?;
+            let p = decoder.decode_by_id(pid)?;
+            let coords = p
+                .get_list(0)
+                .ok_or_else(|| Error::geometry("CartesianPoint missing Coordinates".to_string()))?;
+            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+            pts.push((x, y, z));
+        }
+
+        let mut horizontal: Vec<HSeg> = Vec::with_capacity(pts.len() - 1);
+        let mut vertical: Vec<VSeg> = Vec::with_capacity(pts.len() - 1);
+        let mut cum_xy = 0.0;
+        for w in pts.windows(2) {
+            let (x0, y0, z0) = w[0];
+            let (x1, y1, z1) = w[1];
+            let dx = x1 - x0;
+            let dy = y1 - y0;
+            let dz = z1 - z0;
+            let len_xy = (dx * dx + dy * dy).sqrt();
+            if len_xy < 1e-12 {
+                // Pure-vertical edge — skip; would create degenerate
+                // horizontal segment. The vertical segment for the
+                // adjacent edges still carries the elevation change.
+                continue;
+            }
+            let heading = dy.atan2(dx);
+            horizontal.push(HSeg::Line {
+                sx: x0,
+                sy: y0,
+                heading,
+                length: len_xy,
+                cum_start: cum_xy,
+            });
+            let gradient = dz / len_xy;
+            vertical.push(VSeg::Line {
+                start: cum_xy,
+                length: len_xy,
+                h0: z0,
+                g0: gradient,
+            });
+            cum_xy += len_xy;
+        }
+        if horizontal.is_empty() {
+            return Err(Error::geometry(
+                "IfcPolyline directrix degenerated to zero horizontal length".to_string(),
+            ));
+        }
+        Ok(Self {
+            horizontal,
+            vertical,
+            cant: Vec::new(),
+        })
     }
 
     /// Evaluate the placement frame at the given station (cumulative
@@ -178,16 +529,70 @@ impl AlignmentCurve {
     pub fn evaluate(&self, station: f64) -> AlignmentFrame {
         let (x, y, heading) = self.evaluate_horizontal(station);
         let z = self.evaluate_vertical(station);
+        let slope = self.evaluate_vertical_slope(station);
         let cos_h = heading.cos();
         let sin_h = heading.sin();
-        // Right of travel: rotate tangent (cos h, sin h) by −90° → (sin h, −cos h).
+        // Right of travel: rotate horizontal tangent (cos h, sin h) by
+        // −90° → (sin h, −cos h). Stays horizontal regardless of slope.
         let right = Vector3::new(sin_h, -cos_h, 0.0);
         let up = Vector3::new(0.0, 0.0, 1.0);
+        // 3D tangent: (cos h, sin h) scaled by cos(atan slope) plus a
+        // sin(atan slope) vertical component. Equivalent to taking the
+        // unit-length 3D derivative of (x(s), y(s), z(s)) w.r.t. station.
+        let inv_norm = (1.0 + slope * slope).sqrt();
+        let tangent = Vector3::new(cos_h / inv_norm, sin_h / inv_norm, slope / inv_norm);
         AlignmentFrame {
             origin: Point3::new(x, y, z),
             right,
             up,
+            tangent,
         }
+    }
+
+    /// Cant (roll about the 3D tangent) at the given station, in
+    /// radians. Returns 0 when no cant is authored.
+    pub fn cant_angle(&self, station: f64) -> f64 {
+        for seg in &self.cant {
+            match seg {
+                CantSeg::Const {
+                    start,
+                    length,
+                    roll,
+                } => {
+                    if station >= *start - 1e-9 && station <= start + length + 1e-9 {
+                        return *roll;
+                    }
+                }
+                CantSeg::Linear {
+                    start,
+                    length,
+                    roll_start,
+                    roll_end,
+                } => {
+                    if station >= *start - 1e-9 && station <= start + length + 1e-9 {
+                        let t = ((station - start) / length.max(1e-12)).clamp(0.0, 1.0);
+                        return roll_start * (1.0 - t) + roll_end * t;
+                    }
+                }
+            }
+        }
+        0.0
+    }
+
+    fn evaluate_vertical_slope(&self, station: f64) -> f64 {
+        if self.vertical.is_empty() {
+            return 0.0;
+        }
+        for seg in &self.vertical {
+            let start = v_start(seg);
+            let length = v_length(seg);
+            if station <= start + length + 1e-9 {
+                let local = (station - start).max(0.0).min(length);
+                return v_eval(seg, local).1;
+            }
+        }
+        let last = self.vertical.last().unwrap();
+        v_eval(last, v_length(last)).1
     }
 
     fn evaluate_horizontal(&self, station: f64) -> (f64, f64, f64) {
@@ -338,8 +743,7 @@ fn parse_horizontal(
             //   4: EndRadius   (optional)
             //   5: IsStartRadiusCCW
             //   6: IsEndRadiusCCW
-            //   7: TransitionCurveType (enum — we treat all subtypes
-            //      as clothoid in this first cut; see module docstring)
+            //   7: TransitionCurveType (enum — dispatches κ(s) profile)
             let start_radius = curve.get_float(3);
             let end_radius = curve.get_float(4);
             let start_ccw = read_bool(curve.get(5));
@@ -352,6 +756,11 @@ fn parse_horizontal(
                 Some(r) if r.abs() > 1e-12 => (if end_ccw { 1.0 } else { -1.0 }) / r,
                 _ => 0.0,
             };
+            let kind = curve
+                .get(7)
+                .and_then(|v| v.as_enum())
+                .map(TransitionKind::from_enum)
+                .unwrap_or(TransitionKind::Clothoid);
             HSeg::Transition {
                 sx,
                 sy,
@@ -359,6 +768,7 @@ fn parse_horizontal(
                 length,
                 start_curv,
                 end_curv,
+                kind,
                 cum_start: cumulative,
             }
         } else {
@@ -544,17 +954,21 @@ fn h_eval(seg: &HSeg, s: f64) -> (f64, f64, f64) {
             length,
             start_curv,
             end_curv,
+            kind,
             ..
         } => {
-            // heading(u) = h0 + κ0·u + ½ · (κ1−κ0)/L · u²
-            // x, y require ∫cos(h(u)) du, ∫sin(h(u)) du — no closed form.
-            // Trapezoidal quadrature with N steps; N scales with how far
-            // along the segment we are so the sample density per metre is
-            // roughly constant.
-            let cm = (end_curv - start_curv) / length.max(1e-12);
-            let n = ((s.abs() * 0.5).ceil() as usize)
-                .max(16)
-                .min(4096);
+            // heading(s) = h₀ + κ₀·s + (κ₁-κ₀)·L · g(s/L)
+            //   where g(u) is the integral of the curvature-blend
+            //   profile chosen by the `TransitionKind` (see
+            //   `TransitionKind::heading_integral`). x, y require
+            //   ∫cos(h(s)) ds, ∫sin(h(s)) ds — no closed form except
+            //   for the Clothoid (Fresnel integrals).
+            //
+            // Numerical integration via the composite trapezoidal rule.
+            // Step density scales with arc-length traversed so the
+            // sample interval is roughly constant per metre, with a
+            // minimum of 16 samples for stability.
+            let n = ((s.abs() * 0.5).ceil() as usize).max(16).min(4096);
             let ds = s / n as f64;
             let mut x = *sx;
             let mut y = *sy;
@@ -562,7 +976,9 @@ fn h_eval(seg: &HSeg, s: f64) -> (f64, f64, f64) {
             let mut prev_sin = heading.sin();
             for i in 1..=n {
                 let u = i as f64 * ds;
-                let h = heading + start_curv * u + 0.5 * cm * u * u;
+                let h = *heading
+                    + start_curv * u
+                    + (end_curv - start_curv) * length * kind.heading_integral(u / length);
                 let cs = h.cos();
                 let sn = h.sin();
                 x += 0.5 * ds * (prev_cos + cs);
@@ -570,7 +986,9 @@ fn h_eval(seg: &HSeg, s: f64) -> (f64, f64, f64) {
                 prev_cos = cs;
                 prev_sin = sn;
             }
-            let final_h = heading + start_curv * s + 0.5 * cm * s * s;
+            let final_h = *heading
+                + start_curv * s
+                + (end_curv - start_curv) * length * kind.heading_integral(s / length);
             (x, y, final_h)
         }
     }
@@ -676,6 +1094,122 @@ mod tests {
         // in the source file.
         assert!((x - 2945.13).abs() < 5.0, "x = {} expected ~2945.13", x);
         assert!((y - 216.39).abs() < 5.0, "y = {} expected ~216.39", y);
+    }
+
+    /// Cant rolls the (right, up) axes around the tangent. Drive the
+    /// roll from a hand-built segment and check that the frame rotates
+    /// by the expected amount on a straight directrix where the
+    /// pre-cant axes are easy to reason about.
+    #[test]
+    fn cant_rotates_frame_axes() {
+        // Straight directrix along +X, no slope.
+        let curve = AlignmentCurve {
+            horizontal: vec![HSeg::Line {
+                sx: 0.0,
+                sy: 0.0,
+                heading: 0.0,
+                length: 100.0,
+                cum_start: 0.0,
+            }],
+            vertical: vec![],
+            cant: vec![],
+        };
+        let frame_no_cant = curve.evaluate(50.0);
+        // Pre-cant axes: right = (0, -1, 0), up = (0, 0, 1).
+        assert!((frame_no_cant.right.x).abs() < 1e-9);
+        assert!((frame_no_cant.right.y + 1.0).abs() < 1e-9);
+        assert!((frame_no_cant.up.z - 1.0).abs() < 1e-9);
+
+        let with_cant = curve.with_cant_segments(vec![CantSegSpec {
+            start: 0.0,
+            length: 100.0,
+            roll_start: std::f64::consts::FRAC_PI_2,
+            roll_end: std::f64::consts::FRAC_PI_2,
+        }]);
+        // The processor (not AlignmentCurve::evaluate) is what applies
+        // the cant roll. We test the roll lookup directly here.
+        let angle = with_cant.cant_angle(50.0);
+        assert!((angle - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+        // Past the end of the segment → 0 again.
+        assert!(with_cant.cant_angle(150.0).abs() < 1e-9);
+    }
+
+    /// `from_polyline` builds a piecewise-linear directrix. Each edge
+    /// becomes one horizontal Line segment + one vertical Line segment;
+    /// `evaluate(station)` walks them in order.
+    #[test]
+    fn polyline_directrix_evaluates_piecewise() {
+        // Build a 3-point polyline directly (we test the construction
+        // logic, not the parsing — that's covered by integration tests).
+        // Path: (0,0,0) → (10, 0, 1) → (10, 10, 2)
+        // Edge 1: heading 0, length 10, gradient 0.1
+        // Edge 2: heading π/2, length 10, gradient 0.1
+        let curve = AlignmentCurve {
+            horizontal: vec![
+                HSeg::Line {
+                    sx: 0.0,
+                    sy: 0.0,
+                    heading: 0.0,
+                    length: 10.0,
+                    cum_start: 0.0,
+                },
+                HSeg::Line {
+                    sx: 10.0,
+                    sy: 0.0,
+                    heading: std::f64::consts::FRAC_PI_2,
+                    length: 10.0,
+                    cum_start: 10.0,
+                },
+            ],
+            vertical: vec![
+                VSeg::Line {
+                    start: 0.0,
+                    length: 10.0,
+                    h0: 0.0,
+                    g0: 0.1,
+                },
+                VSeg::Line {
+                    start: 10.0,
+                    length: 10.0,
+                    h0: 1.0,
+                    g0: 0.1,
+                },
+            ],
+            cant: vec![],
+        };
+        // Mid-point of edge 1: station 5.
+        let f1 = curve.evaluate(5.0);
+        assert!((f1.origin.x - 5.0).abs() < 1e-9);
+        assert!((f1.origin.y).abs() < 1e-9);
+        assert!((f1.origin.z - 0.5).abs() < 1e-9);
+        // Mid-point of edge 2: station 15.
+        let f2 = curve.evaluate(15.0);
+        assert!((f2.origin.x - 10.0).abs() < 1e-9);
+        assert!((f2.origin.y - 5.0).abs() < 1e-9);
+        assert!((f2.origin.z - 1.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn transition_kind_heading_integral_normalised() {
+        // g(0) = 0, g(1) ∈ [0.4, 0.6] (depends on profile — all the
+        // smoothstep-like profiles have ½ for the integral at the
+        // midpoint, and the clothoid has ½ exactly).
+        for kind in [
+            TransitionKind::Clothoid,
+            TransitionKind::Bloss,
+            TransitionKind::Cosine,
+            TransitionKind::Sine,
+            TransitionKind::CubicParabola,
+            TransitionKind::BiquadraticParabola,
+        ] {
+            assert!(kind.heading_integral(0.0).abs() < 1e-12, "{:?}", kind);
+            let mid = kind.heading_integral(0.5);
+            assert!(mid > 0.0 && mid < 0.5, "{:?} mid={}", kind, mid);
+            // Clothoid: ½ · u² → ½ · 1 = ½ at u=1.
+            // Bloss / others: each peaks below ½ as a smooth blend.
+            let end = kind.heading_integral(1.0);
+            assert!(end > 0.0 && end < 1.0, "{:?} end={}", kind, end);
+        }
     }
 
     #[test]

@@ -138,6 +138,168 @@ fn sectioned_solid_horizontal_lofts_pier_69() {
     );
 }
 
+/// Railings #415 and #424 are authored with only two cross-section
+/// stations spanning the full bridge length (0 → 5280 inches) and
+/// non-zero `OffsetLateral` (#417 = 252 in, #425 = −144 in). Together
+/// they exercise two things the MVP couldn't handle:
+///
+/// - **Adaptive subdivision.** Without intermediate sample stations the
+///   sweep collapses onto a straight chord between the two endpoints,
+///   making the railing appear flat. After the fix the processor walks
+///   the alignment between the authored stations and inserts samples
+///   wherever the heading change exceeds `MAX_ANGLE_STEP_RAD`.
+/// - **`IfcDistanceExpression` offsets.** Lateral / vertical offsets
+///   shift the cross-section origin off the directrix centreline. The
+///   two railings should land on opposite sides of the road deck.
+#[test]
+fn railings_subdivide_and_offset() {
+    let Some(content) = read_fixture() else {
+        return;
+    };
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+
+    let right_rail = mesh_bbox(&router, &mut decoder, 415);
+    let left_rail = mesh_bbox(&router, &mut decoder, 424);
+
+    // Both railings span ~134 m along the alignment.
+    let right_x_span = right_rail.x_max - right_rail.x_min;
+    let left_x_span = left_rail.x_max - left_rail.x_min;
+    assert!(
+        right_x_span > 125.0 && left_x_span > 125.0,
+        "railings should span ~134 m: right={}m, left={}m",
+        right_x_span,
+        left_x_span,
+    );
+
+    // Adaptive subdivision: lateral deflection from the curve must be
+    // visible. Pre-fix this was 0.92 m (= profile width); post-fix it
+    // exceeds 5 m because the railing follows the arc.
+    let right_y_span = right_rail.y_max - right_rail.y_min;
+    let left_y_span = left_rail.y_max - left_rail.y_min;
+    assert!(
+        right_y_span > 5.0,
+        "right railing Y span {} m — sweep did not subdivide curved sections",
+        right_y_span,
+    );
+    assert!(
+        left_y_span > 5.0,
+        "left railing Y span {} m — sweep did not subdivide curved sections",
+        left_y_span,
+    );
+
+    // Offsets: #417 has OffsetLateral = +252 in (= +6.4 m, right of
+    // travel) and #425 has OffsetLateral = −144 in (= −3.66 m, left of
+    // travel). The two railings should sit on opposite sides of the
+    // directrix Y centroid.
+    let right_y_mid = 0.5 * (right_rail.y_min + right_rail.y_max);
+    let left_y_mid = 0.5 * (left_rail.y_min + left_rail.y_max);
+    assert!(
+        left_y_mid > right_y_mid + 4.0,
+        "railings collapsed onto the same lateral position — offsets ignored?\n\
+         right_y_mid = {}, left_y_mid = {}",
+        right_y_mid,
+        left_y_mid,
+    );
+}
+
+/// Girders #441, #460, #465, #470 all share the same I-shape profile
+/// (#442) authored only at distance-along 0 / 1000 inches but with four
+/// distinct `OffsetLateral` values: −117, −3, +111, +225 inches. The
+/// resulting meshes must lie at four different lateral positions; if
+/// the processor ignores `IfcDistanceExpression.OffsetLateral` they
+/// all collapse onto the same line (the symptom that triggered this
+/// hardening pass).
+#[test]
+fn girder_lateral_offsets_separate_meshes() {
+    let Some(content) = read_fixture() else {
+        return;
+    };
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+
+    let bboxes: Vec<_> = [441, 460, 465, 470]
+        .iter()
+        .map(|id| mesh_bbox(&router, &mut decoder, *id))
+        .collect();
+
+    // Lateral offsets are monotonically increasing: −117, −3, +111,
+    // +225 inches. The Y midpoints should change monotonically too —
+    // direction depends on the alignment's `right` vector at station
+    // 0 (heading ~13°, so right ≈ (sin 13°, −cos 13°, 0) → positive
+    // lateral offset moves the girder toward −Y). All four
+    // consecutive deltas should have the same sign and be large
+    // enough that the meshes are genuinely separated, not jittering
+    // around the directrix.
+    let mids: Vec<f64> = bboxes
+        .iter()
+        .map(|b| 0.5 * (b.y_min as f64 + b.y_max as f64))
+        .collect();
+    let deltas: Vec<f64> = mids.windows(2).map(|w| w[1] - w[0]).collect();
+    let direction = deltas[0].signum();
+    for d in &deltas {
+        assert!(
+            d.signum() == direction && d.abs() > 0.5,
+            "girder lateral offsets did not produce monotonic separation: \
+             mids = {:?}, deltas = {:?}",
+            mids,
+            deltas,
+        );
+    }
+    // Total Y range across the four girders should be at least the
+    // span of the lateral offsets ((225 − −117) in = 8.69 m), minus
+    // some slack for the curve sweep across the 0–1000 inch sub-arc.
+    let span = mids.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+        - mids.iter().cloned().fold(f64::INFINITY, f64::min);
+    assert!(
+        span > 7.0,
+        "girder Y midpoint span {} m too small — lateral offsets dampened",
+        span,
+    );
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Bbox {
+    x_min: f32,
+    x_max: f32,
+    y_min: f32,
+    y_max: f32,
+    z_min: f32,
+    z_max: f32,
+}
+
+fn mesh_bbox(
+    router: &GeometryRouter,
+    decoder: &mut EntityDecoder,
+    id: u32,
+) -> Bbox {
+    let entity = decoder.decode_by_id(id).expect("decode");
+    assert_eq!(entity.ifc_type, IfcType::IfcSectionedSolidHorizontal);
+    let mesh = router
+        .process_representation_item(&entity, decoder)
+        .expect("process");
+    assert!(!mesh.positions.is_empty(), "#{} empty mesh", id);
+    let mut b = Bbox {
+        x_min: f32::INFINITY,
+        x_max: f32::NEG_INFINITY,
+        y_min: f32::INFINITY,
+        y_max: f32::NEG_INFINITY,
+        z_min: f32::INFINITY,
+        z_max: f32::NEG_INFINITY,
+    };
+    for p in mesh.positions.chunks_exact(3) {
+        if p[0] < b.x_min { b.x_min = p[0]; }
+        if p[0] > b.x_max { b.x_max = p[0]; }
+        if p[1] < b.y_min { b.y_min = p[1]; }
+        if p[1] > b.y_max { b.y_max = p[1]; }
+        if p[2] < b.z_min { b.z_min = p[2]; }
+        if p[2] > b.z_max { b.z_max = p[2]; }
+    }
+    b
+}
+
 /// Every `IfcSectionedSolidHorizontal` in the fixture must now produce a
 /// non-empty mesh. The fixture exercises three profile pathways:
 ///   • arbitrary closed (pier caps, abutments)

@@ -477,15 +477,21 @@ export function useDrawingGeneration({
         // the WASM cutter already uses `normal`/`distance` verbatim, so
         // re-use both here for consistency with the cap.
         //
-        // The kept window is `0 ≤ signedDist ≤ ANNOTATION_VIEW_DEPTH` on
-        // the +normal side (the camera-facing half-space, matching what
-        // `EdgeExtractor.filterEdgesByDepth` does for projection edges).
-        // Flipped sections see the same world from the −normal side, so
-        // the slab mirrors to `−ANNOTATION_VIEW_DEPTH ≤ signedDist ≤ 0`.
-        // Anything BEHIND the camera (wrong sign) or FARTHER than the
-        // view depth is dropped — without the upper bound, dimensions
-        // from every storey beyond the cut stacked on top of each other
-        // because the half-space alone is unbounded along the camera axis.
+        // The kept window is `−ANNOTATION_VIEW_DEPTH ≤ signedDist ≤ 0` on
+        // the −normal side — the side BELOW a down-looking camera, where
+        // IFC dimensions live (authored at the storey's floor elevation,
+        // not at the cut height). This DIVERGES from
+        // `EdgeExtractor.filterEdgesByDepth`, which projects above the
+        // cut: annotations and projection edges are naturally on opposite
+        // sides of the cut plane. Flipped sections look at the same world
+        // from the opposite side, so the slab mirrors to
+        // `0 ≤ signedDist ≤ ANNOTATION_VIEW_DEPTH`.
+        //
+        // Anything on the wrong side of the cut, or farther than the view
+        // depth on the right side, is dropped — without the upper bound,
+        // dimensions from every storey beyond the cut stacked on top of
+        // each other because the half-space alone is unbounded along the
+        // camera axis.
         //
         // Annotations missing a recoverable centroid (older WASM build,
         // or a degenerate polyline) are kept — over-rendering is preferable
@@ -510,9 +516,9 @@ export function useDrawingGeneration({
             wz * cullNormal[2] -
             cullDistance;
           if (sectionPlane.flipped) {
-            return signedDist <= 0 && signedDist >= -ANNOTATION_VIEW_DEPTH;
+            return signedDist >= 0 && signedDist <= ANNOTATION_VIEW_DEPTH;
           }
-          return signedDist >= 0 && signedDist <= ANNOTATION_VIEW_DEPTH;
+          return signedDist <= 0 && signedDist >= -ANNOTATION_VIEW_DEPTH;
         });
 
         // Only include symbolic lines for entities that are ACTUALLY being cut

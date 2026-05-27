@@ -658,16 +658,28 @@ export function useSymbolicAnnotationsForDrawing(params: {
     if (axis !== 'down') return EMPTY_DRAWING_ANNOTATIONS;
     void version;
 
-    // Section view range in world Y. Matches the convention used by
-    // `profile-projector.isInProjectionRange`:
-    //   not flipped → [sectionPos, sectionPos + viewDepth]
-    //   flipped     → [sectionPos - viewDepth, sectionPos]
-    // We expand the range by a small tolerance so annotations sitting
-    // exactly on the cut plane still match (storey elevations are
-    // typically the cut Y).
+    // Section view range in world Y.
+    //
+    // For a floor-plan cut at axis='down' the camera looks DOWN through the
+    // cut. "In front of the camera" is therefore the side BELOW the cut —
+    // where the floor and authored dimensions sit (IFC convention places
+    // dimension annotations at the storey's floor elevation, not at the
+    // cut height). The user's complaint: with the slab on the +normal
+    // side, you had to scrub the section DOWN into the floor before
+    // anything showed, and then the dimensions appeared one storey BELOW
+    // the cut. Mirror that — keep the slab on the −normal side for the
+    // unflipped down section, and flip it for the reflected-ceiling case.
+    //
+    // Note this DIVERGES from `profile-projector.isInProjectionRange`,
+    // which projects above the cut by default. Annotations live with the
+    // storey floor, the projection lives with the upper-storey volume —
+    // they're naturally on opposite sides of the cut plane.
+    //
+    // Tolerance lets annotations authored exactly on the cut plane (e.g.
+    // a storey at Z=0 with a section right at the storey datum) survive.
     const TOL = 1e-3;
-    const rangeMin = (flipped ? sectionPosWorld - viewDepth : sectionPosWorld) - TOL;
-    const rangeMax = (flipped ? sectionPosWorld : sectionPosWorld + viewDepth) + TOL;
+    const rangeMin = (flipped ? sectionPosWorld : sectionPosWorld - viewDepth) - TOL;
+    const rangeMax = (flipped ? sectionPosWorld + viewDepth : sectionPosWorld) + TOL;
 
     const lines: DrawingLine2D[] = [];
     const texts: AnnotationText2D[] = [];

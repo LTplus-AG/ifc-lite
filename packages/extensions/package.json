@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/extensions",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Extension manifest, capability grammar, and slot registry for ifc-lite user customization",
   "type": "module",
   "main": "./dist/index.js",
@@ -46,11 +46,11 @@
   "author": "Louis True",
   "repository": {
     "type": "git",
-    "url": "https://github.com/louistrue/ifc-lite.git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/extensions"
   },
-  "homepage": "https://louistrue.github.io/ifc-lite/",
-  "bugs": "https://github.com/louistrue/ifc-lite/issues",
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",

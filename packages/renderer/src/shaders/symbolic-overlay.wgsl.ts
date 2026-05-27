@@ -176,7 +176,16 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   let vMix = mix(inst.uvBounds.w, inst.uvBounds.y, v);
 
   var out: VsOut;
-  out.clipPos = camera.viewProj * vec4<f32>(worldPos, 1.0);
+  let clip = camera.viewProj * vec4<f32>(worldPos, 1.0);
+  // Reverse-Z decal nudge for text coplanar with model faces (issue #812
+  // follow-up: "30", "1.49" etc. flickering against the terrain). The
+  // pipeline-level depthBiasSlopeScale collapses to ~0 for billboard
+  // glyphs — the quad faces the camera, so depth slope across the quad
+  // is zero — leaving only a tiny -4 constant that MSAA jitter beats.
+  // Adding a small positive multiple of clip.w raises NDC z by a
+  // constant after the w-divide, which under reverse-Z reads as
+  // "slightly closer" — same trick the line pipeline uses.
+  out.clipPos = vec4<f32>(clip.x, clip.y, clip.z + 5e-5 * clip.w, clip.w);
   out.uv      = vec2<f32>(uMix, vMix);
   out.color   = inst.color;
   return out;

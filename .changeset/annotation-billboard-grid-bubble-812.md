@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/viewer": patch
+"@ifc-lite/renderer": patch
 "@ifc-lite/wasm": patch
 ---
 
@@ -19,3 +20,15 @@ Improve IFC annotation legibility in 3D (issue #812 follow-up):
   reads through the bubble in 3D. The black outline ring (◯) and tag
   glyph are unchanged — the white ● fill instance has been removed
   from `emit_bubble`, which also drops one text instance per bubble.
+
+- **Annotation text no longer z-fights coplanar surfaces.** Now that
+  every glyph billboards, the quad faces the camera with zero depth
+  slope across its screen extent — which means the text pipeline's
+  `depthBiasSlopeScale: -0.5` contributes ~0 and only the small `-4`
+  constant survives, not enough to beat MSAA jitter on a label drawn
+  exactly on a wall/floor face (visible as dimension digits strobing
+  against terrain in 3D). The symbolic-overlay text shader now applies
+  the same `clip.z + 5e-5 * clip.w` reverse-Z nudge the section-2D
+  line pipeline already uses — depth-format-independent, slope-
+  independent, and large enough to clear coplanar jitter without
+  pulling the label visibly off the surface.

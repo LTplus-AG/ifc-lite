@@ -60,10 +60,9 @@ export interface AnnotationText2D {
   /**
    * When true, the renderer rebuilds the glyph quad in screen-aligned
    * (cameraRight, cameraUp) basis so the text always faces the camera.
-   * Set for IfcGridAxis tags — they must stay readable in top-down/ground
-   * views where the authored world-Y up axis collapses to zero on-screen.
-   * Defaults to false (authored, in-plane text — matches BIMvision for
-   * dimension/leader annotations that lie flat on the floor).
+   * Set for every annotation literal (grid bubbles, dimension callouts,
+   * leader labels) so they stay legible in any view — flat-in-plane text
+   * collapses to a sliver at oblique angles (issue #812). Defaults to false.
    */
   billboard?: boolean;
   /** sRGB straight-alpha tint (0..1). Defaults to renderer near-black. */
@@ -337,12 +336,13 @@ async function parseAnnotations(
       // a little air between rows so descenders don't kiss the next cap.
       const lineSpacing = perLineHeight * 1.2;
       const bucket = ensureBucket(text.expressId, text.worldY);
-      // IfcGridAxis bubble tags must stay readable in any view orientation
-      // (top-down, eye-level, oblique). Tag them as billboard so the text
-      // shader rebuilds the quad in screen-aligned basis at render time.
-      // Other annotation text (dimensions, leader labels) keeps authored
-      // orientation — those are meant to lie flat in the floor plane.
-      const isGridTag = text.ifcType === 'IfcGridAxis';
+      // All annotation text — grid bubbles, dimension callouts, leader labels —
+      // billboards to the camera so it stays legible in any view orientation
+      // (top-down, eye-level, oblique). The shader rebuilds the quad in the
+      // screen-aligned basis at render time. Authored orientation is intentionally
+      // dropped: at oblique viewing angles, flat-in-plane text becomes a smeared
+      // sliver of pixels (issue #812). Anchor + alignment are preserved, so each
+      // label still sits at its authored insertion point.
       // Read per-instance style metadata. WASM emits these for grid
       // bubble parts (● fill / ○ outline / tag) and reserves them for
       // future IfcTextStyle resolution on regular annotation text.
@@ -362,7 +362,7 @@ async function parseAnnotations(
           content: lines[li],
           alignment: text.alignment,
           lineYOffset: -li * lineSpacing,
-          billboard: isGridTag,
+          billboard: true,
           color: textColor,
           targetPx,
         };

@@ -1809,8 +1809,8 @@ fn extract_grid(
     let _ = grid_id;
 }
 
-/// Emit a bubble (white fill ● + black outline ○ + black tag) as three
-/// stacked text instances at (cx, cy, world_y). All three share the same
+/// Emit a bubble (transparent interior + black outline ○ + black tag) as
+/// two stacked text instances at (cx, cy, world_y). Both share the same
 /// anchor + `IfcGridAxis` ifc-type + Axis representation identifier; the
 /// shader's per-instance `targetPx` and `colour` make them render at the
 /// right relative size and tint without needing dedicated pipelines.
@@ -1828,20 +1828,10 @@ fn emit_bubble(
     tag_target_px: f32,
 ) {
     use crate::zero_copy::SymbolicText;
-    // 1) White fill — `●` (U+2B24 BLACK LARGE CIRCLE) tinted white.
-    collection.add_text(SymbolicText::new_styled(
-        axis_id, "IfcGridAxis".to_string(),
-        cx, cy, 1.0, 0.0, bubble_cap_m,
-        "\u{2B24}".to_string(),
-        "center".to_string(),
-        world_y,
-        [1.0, 1.0, 1.0, 1.0],
-        bubble_target_px,
-        "Axis".to_string(),
-    ));
-    // 2) Black outline — `◯` (U+25EF LARGE CIRCLE) at the same size; its
-    //    stroke renders just outside the fill, giving the canonical
-    //    white-fill-black-stroke bubble look from CAD conventions.
+    // 1) Black outline — `◯` (U+25EF LARGE CIRCLE). The interior is left
+    //    transparent so the model behind reads through (issue #812 follow-up).
+    //    A previous revision stacked a white `●` (U+2B24) underneath for the
+    //    classic CAD-sheet look, but it obscured geometry in 3D views.
     collection.add_text(SymbolicText::new_styled(
         axis_id, "IfcGridAxis".to_string(),
         cx, cy, 1.0, 0.0, bubble_cap_m,
@@ -1852,7 +1842,7 @@ fn emit_bubble(
         bubble_target_px,
         "Axis".to_string(),
     ));
-    // 3) Tag text — actual axis label (alphanumeric).
+    // 2) Tag text — actual axis label (alphanumeric).
     collection.add_text(SymbolicText::new_styled(
         axis_id, "IfcGridAxis".to_string(),
         cx, cy, 1.0, 0.0, tag_cap_m,

@@ -76,6 +76,24 @@ impl BooleanClippingProcessor {
         log.extend(clipper.take_failures());
     }
 
+    /// If a DIFFERENCE clip removed every triangle from a non-empty host,
+    /// revert to the host and record the loss. Spec-compliant subtract can
+    /// legitimately return empty when the cutter fully contains the host,
+    /// but in real IFC exports this almost always indicates a bad clip
+    /// (e.g. Revit IFC2x3 walls whose top-trim half-space plane lands
+    /// exactly at the wall's top, making the material region cover the
+    /// whole wall — issue #821 TallBuilding.ifc walls #615, #1297, #2401).
+    /// BIMVision and other production viewers handle this defensively;
+    /// without the fallback the wall renders as empty and the user reports
+    /// "outside wall geometry is not displayed".
+    fn guard_against_full_host_removal(&self, host: Mesh, result: Mesh) -> Mesh {
+        if host.is_empty() || !result.is_empty() {
+            return result;
+        }
+        self.record_failure(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost);
+        host
+    }
+
     /// Process a solid operand with depth tracking
     fn process_operand_with_depth(
         &self,
@@ -676,7 +694,9 @@ impl BooleanClippingProcessor {
                 // Simple half-space: use plane clipping
                 let (plane_point, plane_normal, agreement) =
                     self.parse_half_space_solid(&second_operand, decoder)?;
-                return self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement);
+                let clipped =
+                    self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement)?;
+                return Ok(self.guard_against_full_host_removal(mesh, clipped));
             }
 
             if second_operand.ifc_type == IfcType::IfcPolygonalBoundedHalfSpace {
@@ -694,7 +714,7 @@ impl BooleanClippingProcessor {
                     let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
                     self.drain_clipper_failures(&clipper);
                     if let Ok(clipped) = subtract_result {
-                        return Ok(clipped);
+                        return Ok(self.guard_against_full_host_removal(mesh, clipped));
                     }
                 }
 
@@ -706,7 +726,9 @@ impl BooleanClippingProcessor {
                     BoolOp::Difference,
                     BoolFailureReason::PolygonalBoundedHalfSpaceFallback,
                 );
-                return self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement);
+                let clipped =
+                    self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement)?;
+                return Ok(self.guard_against_full_host_removal(mesh, clipped));
             }
 
             // Solid-solid difference. Under `manifold-csg` Manifold handles

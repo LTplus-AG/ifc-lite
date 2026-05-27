@@ -113,6 +113,15 @@ pub enum BoolFailureReason {
     /// Catch-all for kernel-specific errors. Free-form because the legacy BSP
     /// returns `String` errors and Manifold (Sprint 2) will return its own.
     KernelError(String),
+    /// `IfcBooleanResult.DIFFERENCE` produced an empty mesh from a non-empty
+    /// host. Almost always a buggy export — a clip plane authored AT the
+    /// wall's top with `AgreementFlag = .T.` (issue #821, Revit IFC2x3
+    /// TallBuilding.ifc) makes the half-space material region exactly cover
+    /// the wall body, so the strict-spec subtract yields nothing. The caller
+    /// falls back to the un-cut host (matching what BIMVision and similar
+    /// viewers do in practice) and records this so the loss surfaces in
+    /// diagnostics rather than as a silently missing element.
+    DifferenceEmptiedHost,
 }
 
 impl fmt::Display for BoolFailureReason {
@@ -137,6 +146,9 @@ impl fmt::Display for BoolFailureReason {
             BoolFailureReason::UnknownBooleanOperator(op) => {
                 write!(f, "unknown IfcBooleanResult operator '{op}'")
             }
+            BoolFailureReason::DifferenceEmptiedHost => f.write_str(
+                "DIFFERENCE removed the entire host; reverted to un-cut",
+            ),
             BoolFailureReason::ManifoldOutputDegenerate {
                 host_tris,
                 result_tris,

@@ -1668,9 +1668,15 @@ impl ProfileProcessor {
 
         let (center, rotation) = self.get_placement_2d(basis, decoder)?;
 
-        // Convert trim parameters to angles (in degrees usually)
-        let start_angle = trim1.unwrap_or(0.0).to_radians();
-        let mut end_angle = trim2.unwrap_or(360.0).to_radians();
+        // Convert trim parameters to angles using the project's PLANEANGLEUNIT.
+        // The IFC spec interprets IfcParameterValue on IfcCircle/IfcEllipse as
+        // an angle in that unit; defaulting to `.to_radians()` collapsed 240°
+        // arcs to ~4° on RADIAN-declared files (issue #820, Renga export).
+        let angle_scale = decoder.plane_angle_to_radians();
+        let start_angle = trim1.unwrap_or(0.0) * angle_scale;
+        let mut end_angle = trim2
+            .map(|v| v * angle_scale)
+            .unwrap_or(2.0 * std::f64::consts::PI);
 
         // Handle angle wrapping for arcs that cross the 0°/360° boundary.
         // Example: start=359.98°, end=0° with sense=T should be a tiny arc (~0.02°),

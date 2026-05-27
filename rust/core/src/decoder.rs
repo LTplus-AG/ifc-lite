@@ -93,6 +93,11 @@ pub struct EntityDecoder<'a> {
     /// Cache of cartesian point coordinates for FacetedBrep optimization
     /// Only populated when using get_polyloop_coords_cached
     point_cache: FxHashMap<u32, (f64, f64, f64)>,
+    /// Lazy-cached multiplier converting file plane-angle units to radians.
+    /// Populated on first call to [`Self::plane_angle_to_radians`]. Spec
+    /// default (and Renga-style files) is 1.0 (RADIAN); degree-unit files
+    /// resolve to π/180.
+    plane_angle_to_radians_cache: Option<f64>,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -103,6 +108,7 @@ impl<'a> EntityDecoder<'a> {
             cache: FxHashMap::default(),
             entity_index: None,
             point_cache: FxHashMap::default(),
+            plane_angle_to_radians_cache: None,
         }
     }
 
@@ -113,6 +119,7 @@ impl<'a> EntityDecoder<'a> {
             cache: FxHashMap::default(),
             entity_index: Some(Arc::new(index)),
             point_cache: FxHashMap::default(),
+            plane_angle_to_radians_cache: None,
         }
     }
 
@@ -123,6 +130,7 @@ impl<'a> EntityDecoder<'a> {
             cache: FxHashMap::default(),
             entity_index: Some(index),
             point_cache: FxHashMap::default(),
+            plane_angle_to_radians_cache: None,
         }
     }
 
@@ -222,6 +230,38 @@ impl<'a> EntityDecoder<'a> {
             .ok_or_else(|| Error::parse(0, format!("Entity #{} not found", entity_id)))?;
 
         self.decode_at(start, end)
+    }
+
+    /// Multiplier that converts file plane-angle units to radians.
+    ///
+    /// Lazy-resolved on first call by scanning for IFCPROJECT and reading
+    /// its IFCUNITASSIGNMENT. Cached for subsequent calls. Returns `1.0`
+    /// when no plane-angle unit is declared (IFC spec default = RADIAN).
+    ///
+    /// Use this at curve-sampling time wherever an `IfcParameterValue` is
+    /// interpreted as an angle (IfcCircle / IfcEllipse trim parameters).
+    /// Without it, `value.to_radians()` is correct only for DEGREE files
+    /// and silently shrinks arcs on RADIAN files (issue #820).
+    pub fn plane_angle_to_radians(&mut self) -> f64 {
+        if let Some(cached) = self.plane_angle_to_radians_cache {
+            return cached;
+        }
+
+        let mut scanner = crate::parser::EntityScanner::new(self.content);
+        let mut project_id: Option<u32> = None;
+        while let Some((id, type_name, _, _)) = scanner.next_entity() {
+            if type_name == "IFCPROJECT" {
+                project_id = Some(id);
+                break;
+            }
+        }
+
+        let scale = match project_id {
+            Some(pid) => crate::units::extract_plane_angle_to_radians(self, pid).unwrap_or(1.0),
+            None => 1.0,
+        };
+        self.plane_angle_to_radians_cache = Some(scale);
+        scale
     }
 
     /// Resolve entity reference (follow #ID)

@@ -591,6 +591,9 @@ impl GeometryRouter {
                     "ManifoldOutputDegenerate"
                 }
                 crate::diagnostics::BoolFailureReason::KernelError(_) => "KernelError",
+                crate::diagnostics::BoolFailureReason::DifferenceEmptiedHost => {
+                    "DifferenceEmptiedHost"
+                }
             };
             entry.first_failure_label = Some(label.to_string());
         }

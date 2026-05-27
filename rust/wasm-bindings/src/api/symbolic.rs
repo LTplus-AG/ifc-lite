@@ -1038,26 +1038,32 @@ fn extract_symbolic_item(
                         // basis circle's elevation.
                         let world_y = center_z + transform.tz;
 
-                        // Get trim parameters (simplified - assume parameter values)
+                        // Get trim parameters (simplified - assume parameter values).
+                        // Scale by the project's PLANEANGLEUNIT — see
+                        // ProfileProcessor::process_trimmed_conic and issue
+                        // #820 for why unconditional `.to_radians()` breaks
+                        // RADIAN-declared files. Missing trims default to
+                        // a full circle in radians and bypass scaling.
+                        let angle_scale = decoder.plane_angle_to_radians() as f32;
                         let trim1 = item
                             .get(1)
                             .and_then(|a| {
                                 a.as_list()
                                     .and_then(|l| l.first().and_then(|v| v.as_float()))
                             })
-                            .unwrap_or(0.0) as f32;
+                            .map(|v| v as f32 * angle_scale)
+                            .unwrap_or(0.0);
                         let trim2 = item
                             .get(2)
                             .and_then(|a| {
                                 a.as_list()
                                     .and_then(|l| l.first().and_then(|v| v.as_float()))
                             })
-                            .unwrap_or(std::f32::consts::TAU as f64)
-                            as f32;
+                            .map(|v| v as f32 * angle_scale)
+                            .unwrap_or(std::f32::consts::TAU);
 
-                        // Convert to arc and tessellate as polyline
-                        let start_angle = trim1.to_radians().min(trim2.to_radians());
-                        let end_angle = trim1.to_radians().max(trim2.to_radians());
+                        let start_angle = trim1.min(trim2);
+                        let end_angle = trim1.max(trim2);
 
                         // Validate angles
                         if !start_angle.is_finite() || !end_angle.is_finite() {

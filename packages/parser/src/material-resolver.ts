@@ -162,9 +162,18 @@ function resolveMaterial(
                     }
                 }
 
+                // Convert raw IFC value to metres so downstream UI doesn't
+                // have to guess. Files with LENGTHUNIT=MILLI (e.g. Dutch
+                // Revit / ArchiCAD exports — schependomlaan.ifc) store
+                // 60 for a 60 mm prefab slab; without this scale the
+                // properties panel rendered "60.0 m" because
+                // `formatThickness` assumes its input is metres.
+                const rawThickness = typeof la[1] === 'number' ? la[1] : undefined;
+                const scale = store.lengthUnitScale ?? 1;
+                const thickness = rawThickness !== undefined ? rawThickness * scale : undefined;
                 layers.push({
                     materialName,
-                    thickness: typeof la[1] === 'number' ? la[1] : undefined,
+                    thickness,
                     isVentilated: la[2] === true || la[2] === '.T.',
                     name: typeof la[3] === 'string' ? la[3] : undefined,
                     category: typeof la[5] === 'string' ? la[5] : undefined,

@@ -7,7 +7,10 @@ import {
   createDefaultWorkbenchLayout,
   normalizeWorkbenchLayout,
   type PersonalPanelDefinition,
+  type UiAutomation,
   type WorkbenchLayoutState,
+  type WorkbenchMode,
+  type WorkbenchModeSnapshot,
   type WorkbenchPanelChrome,
   type WorkbenchPanelId,
   type WorkbenchZoneId,
@@ -29,6 +32,12 @@ export interface WorkbenchSlice {
   addWorkbenchPersonalPanel: (panel: PersonalPanelDefinition, zone?: WorkbenchZoneId) => void;
   updateWorkbenchPersonalPanel: (panel: PersonalPanelDefinition) => void;
   removeWorkbenchPersonalPanel: (panelId: WorkbenchPanelId) => void;
+  saveWorkbenchMode: (name: string, description?: string) => WorkbenchMode;
+  applyWorkbenchMode: (modeId: string) => void;
+  deleteWorkbenchMode: (modeId: string) => void;
+  upsertWorkbenchAutomation: (automation: UiAutomation) => void;
+  deleteWorkbenchAutomation: (automationId: string) => void;
+  appendWorkbenchHistory: (label: string, patchId?: string) => void;
 }
 
 export const createWorkbenchSlice: StateCreator<WorkbenchSlice, [], [], WorkbenchSlice> = (set, get) => ({
@@ -159,6 +168,79 @@ export const createWorkbenchSlice: StateCreator<WorkbenchSlice, [], [], Workbenc
       },
     });
   },
+
+  saveWorkbenchMode: (name, description) => {
+    const layout = get().workbenchLayout;
+    const now = new Date().toISOString();
+    const id = `mode:${slugify(name)}:${Date.now().toString(36)}`;
+    const mode: WorkbenchMode = {
+      id,
+      name,
+      description,
+      createdAt: now,
+      updatedAt: now,
+      snapshot: snapshotLayout(layout),
+    };
+    set({
+      workbenchLayout: {
+        ...layout,
+        workspaceModes: { ...layout.workspaceModes, [id]: mode },
+        history: [...layout.history, { id: crypto.randomUUID(), label: `Saved mode: ${name}`, createdAt: now }].slice(-50),
+      },
+    });
+    return mode;
+  },
+
+  applyWorkbenchMode: (modeId) => {
+    const layout = get().workbenchLayout;
+    const mode = layout.workspaceModes[modeId];
+    if (!mode) return;
+    const now = new Date().toISOString();
+    set({
+      workbenchLayout: {
+        ...layout,
+        ...mode.snapshot,
+        workspaceModes: layout.workspaceModes,
+        automations: layout.automations,
+        personalPanels: layout.personalPanels,
+        history: [...layout.history, { id: crypto.randomUUID(), label: `Applied mode: ${mode.name}`, createdAt: now }].slice(-50),
+      },
+    });
+  },
+
+  deleteWorkbenchMode: (modeId) => {
+    const layout = get().workbenchLayout;
+    const { [modeId]: _deleted, ...workspaceModes } = layout.workspaceModes;
+    set({ workbenchLayout: { ...layout, workspaceModes } });
+  },
+
+  upsertWorkbenchAutomation: (automation) => {
+    const layout = get().workbenchLayout;
+    set({
+      workbenchLayout: {
+        ...layout,
+        automations: [
+          ...layout.automations.filter((entry) => entry.id !== automation.id),
+          automation,
+        ],
+      },
+    });
+  },
+
+  deleteWorkbenchAutomation: (automationId) => {
+    const layout = get().workbenchLayout;
+    set({ workbenchLayout: { ...layout, automations: layout.automations.filter((entry) => entry.id !== automationId) } });
+  },
+
+  appendWorkbenchHistory: (label, patchId) => {
+    const layout = get().workbenchLayout;
+    set({
+      workbenchLayout: {
+        ...layout,
+        history: [...layout.history, { id: crypto.randomUUID(), label, patchId, createdAt: new Date().toISOString() }].slice(-50),
+      },
+    });
+  },
 });
 
 function findPanelZone(layout: WorkbenchLayoutState, panelId: string): WorkbenchZoneId | undefined {
@@ -166,4 +248,19 @@ function findPanelZone(layout: WorkbenchLayoutState, panelId: string): Workbench
   if (layout.zones.right.includes(panelId)) return 'right';
   if (layout.zones.bottom.includes(panelId)) return 'bottom';
   return undefined;
+}
+
+function snapshotLayout(layout: WorkbenchLayoutState): WorkbenchModeSnapshot {
+  return {
+    zones: structuredClone(layout.zones),
+    sizes: structuredClone(layout.sizes),
+    collapsed: structuredClone(layout.collapsed),
+    activeTabs: structuredClone(layout.activeTabs),
+    floating: structuredClone(layout.floating),
+    panelChrome: structuredClone(layout.panelChrome),
+  };
+}
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace';
 }

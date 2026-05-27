@@ -60,10 +60,12 @@ describe('applyWorkbenchPatch', () => {
         { op: 'movePanel', panelId: BUILTIN_PANEL_IDS.ids, toZone: 'bottom', toIndex: 0 },
         { op: 'setPanelChrome', panelId: BUILTIN_PANEL_IDS.ids, chrome: { title: 'QA checks' } },
         { op: 'setBottomHeight', height: 420 },
+        { op: 'appendHistory', entry: { id: 'hist.one', label: 'AI layout morph', createdAt: '2026-01-01T00:00:00.000Z' } },
       ],
     });
     expect(next.zones.bottom[0]).toBe(BUILTIN_PANEL_IDS.ids);
     expect(next.panelChrome[BUILTIN_PANEL_IDS.ids].title).toBe('QA checks');
     expect(next.sizes.bottomHeight).toBe(420);
+    expect(next.history[0].label).toBe('AI layout morph');
   });
 });

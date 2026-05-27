@@ -35,6 +35,9 @@ export function mergeWorkbenchLayouts(
     floating: mergeValue(base.floating, theirs.floating, ours.floating, conflicts, 'panel_move', 'floating'),
     panelChrome: mergeRecord(base.panelChrome, theirs.panelChrome, ours.panelChrome, conflicts, 'panel_chrome'),
     personalPanels: mergeRecord(base.personalPanels, theirs.personalPanels, ours.personalPanels, conflicts, 'personal_panel'),
+    workspaceModes: mergeRecord(base.workspaceModes, theirs.workspaceModes, ours.workspaceModes, conflicts, 'panel_chrome'),
+    automations: mergeValue(base.automations, theirs.automations, ours.automations, conflicts, 'panel_chrome', 'automations'),
+    history: [...ours.history, ...theirs.history.filter((entry) => !ours.history.some((oursEntry) => oursEntry.id === entry.id))].slice(-50),
   };
   return { merged, conflicts };
 }

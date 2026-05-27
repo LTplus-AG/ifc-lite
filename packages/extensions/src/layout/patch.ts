@@ -43,6 +43,47 @@ export function applyWorkbenchOperation(
         personalPanels,
       };
     }
+    case 'setFloatingPanel':
+      return {
+        ...layout,
+        floating: [
+          ...layout.floating.filter((placement) => placement.panelId !== operation.placement.panelId),
+          operation.placement,
+        ],
+      };
+    case 'removeFloatingPanel':
+      return {
+        ...layout,
+        floating: layout.floating.filter((placement) => placement.panelId !== operation.panelId),
+      };
+    case 'saveWorkspaceMode':
+      return {
+        ...layout,
+        workspaceModes: { ...layout.workspaceModes, [operation.mode.id]: operation.mode },
+      };
+    case 'deleteWorkspaceMode': {
+      const { [operation.modeId]: _mode, ...workspaceModes } = layout.workspaceModes;
+      return { ...layout, workspaceModes };
+    }
+    case 'addAutomation':
+    case 'updateAutomation':
+      return {
+        ...layout,
+        automations: [
+          ...layout.automations.filter((automation) => automation.id !== operation.automation.id),
+          operation.automation,
+        ],
+      };
+    case 'deleteAutomation':
+      return {
+        ...layout,
+        automations: layout.automations.filter((automation) => automation.id !== operation.automationId),
+      };
+    case 'appendHistory':
+      return {
+        ...layout,
+        history: [...layout.history.filter((entry) => entry.id !== operation.entry.id), operation.entry].slice(-50),
+      };
     case 'setHorizontalSizes':
       return { ...layout, sizes: { ...layout.sizes, horizontal: operation.sizes } };
     case 'setBottomHeight':

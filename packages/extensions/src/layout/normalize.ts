@@ -7,7 +7,9 @@ import { createDefaultWorkbenchLayout } from './defaults.js';
 import type {
   FloatingPanelPlacement,
   PersonalPanelDefinition,
+  UiAutomation,
   WorkbenchLayoutState,
+  WorkbenchMode,
   WorkbenchPanelChrome,
   WorkbenchZoneId,
 } from './types.js';
@@ -54,6 +56,9 @@ export function normalizeWorkbenchLayout(input: unknown): WorkbenchLayoutState {
     floating: readFloating(raw.floating),
     panelChrome: readRecord(raw.panelChrome, isPanelChrome),
     personalPanels: readRecord(raw.personalPanels, isPersonalPanel),
+    workspaceModes: readRecord(raw.workspaceModes, isWorkbenchMode),
+    automations: readAutomations(raw.automations),
+    history: Array.isArray(raw.history) ? raw.history.filter(isHistoryEntry).slice(-50) : [],
   };
 }
 
@@ -117,6 +122,41 @@ function isPersonalPanel(value: unknown): value is PersonalPanelDefinition {
     && isJsonValue(value.widget)
     && typeof value.createdAt === 'string'
     && typeof value.updatedAt === 'string';
+}
+
+function isWorkbenchMode(value: unknown): value is WorkbenchMode {
+  if (!isPlainObject(value) || typeof value.id !== 'string' || typeof value.name !== 'string') return false;
+  if (typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string') return false;
+  const snapshot = value.snapshot;
+  return isPlainObject(snapshot)
+    && isPlainObject(snapshot.zones)
+    && isPlainObject(snapshot.sizes)
+    && isPlainObject(snapshot.collapsed)
+    && isPlainObject(snapshot.activeTabs)
+    && Array.isArray(snapshot.floating)
+    && isPlainObject(snapshot.panelChrome);
+}
+
+function readAutomations(raw: unknown): UiAutomation[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isAutomation);
+}
+
+function isAutomation(value: unknown): value is UiAutomation {
+  if (!isPlainObject(value)) return false;
+  return typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && typeof value.enabled === 'boolean'
+    && isPlainObject(value.trigger)
+    && typeof value.trigger.kind === 'string'
+    && Array.isArray(value.actions);
+}
+
+function isHistoryEntry(value: unknown): value is WorkbenchLayoutState['history'][number] {
+  return isPlainObject(value)
+    && typeof value.id === 'string'
+    && typeof value.label === 'string'
+    && typeof value.createdAt === 'string';
 }
 
 function isFloating(value: unknown): value is FloatingPanelPlacement {

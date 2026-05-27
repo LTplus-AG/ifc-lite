@@ -28,6 +28,8 @@ import { PanelLibraryDialog } from './PanelLibraryDialog';
 import { MorphToolbar } from './MorphToolbar';
 import { getWorkbenchPanelTitle, ZONE_LABEL } from './panelRegistry';
 import { WorkbenchPanelHost } from './WorkbenchPanelHost';
+import { WorkspaceModesDialog } from './WorkspaceModesDialog';
+import { firePanelOpenedAutomation, useWorkbenchAutomations } from '@/hooks/useWorkbenchAutomations';
 
 const BOTTOM_PANEL_MIN_HEIGHT = 120;
 const BOTTOM_PANEL_MAX_RATIO = 0.7;
@@ -46,6 +48,7 @@ export function WorkbenchDesktopLayout({ analysisExtensionState }: WorkbenchDesk
   const resetLayout = useViewerStore((s) => s.resetWorkbenchLayout);
   const [personalOpen, setPersonalOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [modesOpen, setModesOpen] = useState(false);
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
@@ -60,6 +63,7 @@ export function WorkbenchDesktopLayout({ analysisExtensionState }: WorkbenchDesk
 
   useLegacyPanelSync();
   useAutoPersistLayout();
+  useWorkbenchAutomations();
 
   useEffect(() => {
     const panel = leftPanelRef.current;
@@ -84,6 +88,7 @@ export function WorkbenchDesktopLayout({ analysisExtensionState }: WorkbenchDesk
         onToggle={() => setMorphMode(!morphMode)}
         onAddPanel={() => setPersonalOpen(true)}
         onLibrary={() => setLibraryOpen(true)}
+        onModes={() => setModesOpen(true)}
         onReset={() => {
           resetLayout();
           toast.success('Layout reset to IFC Lite default.');
@@ -161,6 +166,7 @@ export function WorkbenchDesktopLayout({ analysisExtensionState }: WorkbenchDesk
         }}
       />
       <PanelChromeDialog panelId={editingPanelId} onClose={() => setEditingPanelId(null)} />
+      <WorkspaceModesDialog open={modesOpen} onClose={() => setModesOpen(false)} />
     </div>
   );
 }
@@ -183,7 +189,10 @@ function WorkbenchZone({ zone, morphMode }: { zone: WorkbenchZoneId; morphMode: 
               panelId={panelId}
               active={panelId === activePanel}
               morphMode={morphMode}
-              onClick={() => setActive(zone, panelId)}
+              onClick={() => {
+                setActive(zone, panelId);
+                firePanelOpenedAutomation(panelId);
+              }}
             />
           ))}
           {morphMode && (

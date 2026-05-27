@@ -33,6 +33,7 @@ export type {
   ExporterContribution,
   ExtensionManifest,
   IdsValidatorContribution,
+  JsonValue,
   KeybindingContribution,
   LensContribution,
   ManifestAuthor,

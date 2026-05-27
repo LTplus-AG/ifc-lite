@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
-  StepTokenizer,
   EntityExtractor,
   extractLengthUnitScale,
   getAllAttributesForEntity,
+  scanIfcEntities,
 } from '@ifc-lite/parser';
 
 import type { EntityRef } from '@ifc-lite/parser';
@@ -26,18 +26,17 @@ import {
 
 type Index = { byId: Map<number, EntityRef>; byType: Map<string, number[]> };
 
-function buildEntityIndex(source: Uint8Array): Index {
-  const tokenizer = new StepTokenizer(source);
+function buildEntityIndex(entityRefs: EntityRef[]): Index {
   const byId = new Map<number, EntityRef>();
   const byType = new Map<string, number[]>();
-  for (const ref of tokenizer.scanEntitiesFast()) {
+  for (const ref of entityRefs) {
     const t = String(ref.type || '').toUpperCase();
     const er: EntityRef = {
       expressId: ref.expressId,
       type: t,
-      byteOffset: ref.offset,
-      byteLength: ref.length,
-      lineNumber: ref.line,
+      byteOffset: ref.byteOffset,
+      byteLength: ref.byteLength,
+      lineNumber: ref.lineNumber,
     };
     byId.set(er.expressId, er);
     const arr = byType.get(t);
@@ -74,7 +73,8 @@ function isCandidateElementType(typeUpper: string): boolean {
 export async function generateLod0(input: LodInput): Promise<Lod0Json> {
   const buffer = toIfcArrayBuffer(input);
   const source = new Uint8Array(buffer);
-  const entityIndex = buildEntityIndex(source);
+  const { entityRefs } = await scanIfcEntities(buffer);
+  const entityIndex = buildEntityIndex(entityRefs);
   const unitScale = extractLengthUnitScale(source, entityIndex);
   const extractor = new EntityExtractor(source);
 

@@ -11,6 +11,7 @@ export { StepTokenizer } from './tokenizer.js';
 export { EntityIndexBuilder } from './entity-index.js';
 export { EntityExtractor } from './entity-extractor.js';
 export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex } from './compact-entity-index.js';
+export { scanIfcEntities } from './entity-scanner.js';
 export type { EntityScanPath, EntityScanResult, PreScannedEntityIndex, WasmScanApi } from './entity-scanner.js';
 export { OpfsSourceBuffer } from './opfs-source-buffer.js';
 export { PropertyExtractor } from './property-extractor.js';

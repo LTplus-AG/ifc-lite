@@ -178,7 +178,10 @@ export function evaluateAutoColorLens(
 
     ruleCounts.set(ruleId, entityIds.length);
     ruleEntityIds.set(ruleId, entityIds);
-    legend.push({ id: ruleId, name: value, color, count: entityIds.length });
+    const displayName = autoColor.source === 'model'
+      ? (provider.getModelName?.(value) ?? value)
+      : value;
+    legend.push({ id: ruleId, name: displayName, color, count: entityIds.length });
   }
 
   // Ghost unmatched (null/empty value) entities
@@ -240,6 +243,10 @@ function extractAutoColorValue(
     case 'material':
       if (!provider.getMaterialName) return undefined;
       return provider.getMaterialName(globalId);
+
+    case 'model':
+      if (!provider.getModelId) return undefined;
+      return provider.getModelId(globalId);
 
     default:
       return undefined;

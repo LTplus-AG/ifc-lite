@@ -25,6 +25,7 @@ import type { FederatedModel } from '@/store/types';
 
 interface ModelEntry {
   id: string;
+  name: string;
   ifcDataStore: IfcDataStore;
   idOffset: number;
   maxExpressId: number;
@@ -58,6 +59,7 @@ export function createLensDataProvider(
       if (model.ifcDataStore) {
         entries.push({
           id: model.id,
+          name: model.name,
           ifcDataStore: model.ifcDataStore,
           idOffset: model.idOffset ?? 0,
           maxExpressId: model.maxExpressId ?? 0,
@@ -67,6 +69,7 @@ export function createLensDataProvider(
   } else if (legacyDataStore) {
     entries.push({
       id: 'legacy',
+      name: 'Model',
       ifcDataStore: legacyDataStore,
       idOffset: 0,
       maxExpressId: computeMaxExpressId(legacyDataStore),
@@ -284,6 +287,17 @@ export function createLensDataProvider(
       if (info.profiles?.length) return info.profiles[0].materialName;
       if (info.materials?.length) return info.materials[0]?.name;
       return undefined;
+    },
+
+    getModelId(globalId: number): string | undefined {
+      const resolved = resolveGlobalId(globalId, entries);
+      if (!resolved) return undefined;
+      return resolved.entry.id;
+    },
+
+    getModelName(modelId: string): string | undefined {
+      const entry = entries.find(e => e.id === modelId);
+      return entry?.name ?? modelId;
     },
   };
 }

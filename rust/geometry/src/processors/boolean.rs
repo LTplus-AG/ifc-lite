@@ -76,6 +76,35 @@ impl BooleanClippingProcessor {
         log.extend(clipper.take_failures());
     }
 
+    /// If a DIFFERENCE clip emptied a non-empty host **and** the cutter's
+    /// plane is coincident with one of the host's bounding-box faces,
+    /// revert to the host and record the loss. The coincidence test is
+    /// what keeps this from rendering geometry the model explicitly
+    /// removed: a half-space deliberately placed far from the host so it
+    /// engulfs the body (e.g. a demolition-phase cutter) still produces
+    /// the correct empty mesh because no host face touches that plane.
+    /// Only the Revit IFC2x3 "top-trim at exactly the wall top" pattern
+    /// — issue #821 TallBuilding.ifc walls #615, #1297, #2401 and similar
+    /// Revit exports where the spec-correct cut would erase the wall —
+    /// hits the fallback.
+    fn guard_against_full_host_removal(
+        &self,
+        host: Mesh,
+        result: Mesh,
+        plane_point: Point3<f64>,
+        plane_normal: Vector3<f64>,
+    ) -> Mesh {
+        if host.is_empty() || !result.is_empty() {
+            return result;
+        }
+        if !plane_is_coincident_with_host_face(&host, plane_point, plane_normal) {
+            // Spec-correct full removal — respect the author's intent.
+            return result;
+        }
+        self.record_failure(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost);
+        host
+    }
+
     /// Process a solid operand with depth tracking
     fn process_operand_with_depth(
         &self,
@@ -676,7 +705,14 @@ impl BooleanClippingProcessor {
                 // Simple half-space: use plane clipping
                 let (plane_point, plane_normal, agreement) =
                     self.parse_half_space_solid(&second_operand, decoder)?;
-                return self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement);
+                let clipped =
+                    self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement)?;
+                return Ok(self.guard_against_full_host_removal(
+                    mesh,
+                    clipped,
+                    plane_point,
+                    plane_normal,
+                ));
             }
 
             if second_operand.ifc_type == IfcType::IfcPolygonalBoundedHalfSpace {
@@ -694,7 +730,12 @@ impl BooleanClippingProcessor {
                     let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
                     self.drain_clipper_failures(&clipper);
                     if let Ok(clipped) = subtract_result {
-                        return Ok(clipped);
+                        return Ok(self.guard_against_full_host_removal(
+                            mesh,
+                            clipped,
+                            plane_point,
+                            plane_normal,
+                        ));
                     }
                 }
 
@@ -706,7 +747,14 @@ impl BooleanClippingProcessor {
                     BoolOp::Difference,
                     BoolFailureReason::PolygonalBoundedHalfSpaceFallback,
                 );
-                return self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement);
+                let clipped =
+                    self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement)?;
+                return Ok(self.guard_against_full_host_removal(
+                    mesh,
+                    clipped,
+                    plane_point,
+                    plane_normal,
+                ));
             }
 
             // Solid-solid difference. Under `manifold-csg` Manifold handles
@@ -797,6 +845,57 @@ impl BooleanClippingProcessor {
         );
         Ok(mesh)
     }
+}
+
+/// Decide whether `plane` (point + outward normal) is coincident with one
+/// of the host mesh's axis-aligned bounding-box faces. The check tolerates
+/// numerical noise scaled to the host's diagonal so it works for both
+/// metre-scale residential walls and millimetre-scale connector hardware.
+fn plane_is_coincident_with_host_face(
+    host: &Mesh,
+    plane_point: Point3<f64>,
+    plane_normal: Vector3<f64>,
+) -> bool {
+    let (mn, mx) = host.bounds();
+    let host_min = Point3::new(mn.x as f64, mn.y as f64, mn.z as f64);
+    let host_max = Point3::new(mx.x as f64, mx.y as f64, mx.z as f64);
+    let dx = host_max.x - host_min.x;
+    let dy = host_max.y - host_min.y;
+    let dz = host_max.z - host_min.z;
+    let diag = (dx * dx + dy * dy + dz * dz).sqrt();
+    if diag <= 0.0 {
+        return false;
+    }
+    // 0.1 % of host diagonal, but never less than 1 mm. A 4 m wall ⇒ 4 mm;
+    // a 20 mm fastener ⇒ 1 mm. Tight enough to reject planes that are
+    // unambiguously *outside* the host (the "intentional engulf" case)
+    // while still catching the Revit top-trim that lands exactly on the
+    // wall's top face within float-precision noise.
+    let tol = (diag * 0.001).max(0.001);
+
+    // Test all 8 bbox corners against the plane. If ANY corner is within
+    // `tol` of the plane, the plane is touching (or near-coincident with)
+    // a face. This catches axis-aligned faces (4 corners hit), as well as
+    // edges (2 corners hit) and even single-vertex grazes — all of which
+    // signal that the cut author meant the plane to ride the host surface,
+    // not engulf the body from far away.
+    let corners = [
+        Point3::new(host_min.x, host_min.y, host_min.z),
+        Point3::new(host_max.x, host_min.y, host_min.z),
+        Point3::new(host_min.x, host_max.y, host_min.z),
+        Point3::new(host_max.x, host_max.y, host_min.z),
+        Point3::new(host_min.x, host_min.y, host_max.z),
+        Point3::new(host_max.x, host_min.y, host_max.z),
+        Point3::new(host_min.x, host_max.y, host_max.z),
+        Point3::new(host_max.x, host_max.y, host_max.z),
+    ];
+    for c in &corners {
+        let signed = (c - plane_point).dot(&plane_normal);
+        if signed.abs() <= tol {
+            return true;
+        }
+    }
+    false
 }
 
 impl GeometryProcessor for BooleanClippingProcessor {

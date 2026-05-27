@@ -97,14 +97,38 @@ impl GeometryProcessor for TriangulatedFaceSetProcessor {
             AttributeValue::parse_index_list(face_list)
         };
 
-        // Create mesh (normals will be computed later)
-        let mut mesh = Mesh {
-            positions,
-            normals: Vec::new(),
-            indices,
-            rtc_applied: false,
-        };
-        // Validate: IFC files (especially Revit exports) may have indices beyond vertex count
+        // Read Closed (attribute 2): .T. means definitely closed, .F. means
+        // definitely open, $ / UNKNOWN means "not specified". Revit-exported
+        // light fixtures and similar families in IFC4 often omit Closed
+        // ($) but still author closed shells — sometimes with inward-facing
+        // winding (issue #819, IFC4TessellationComplex.ifc). Mirror the
+        // PolygonalFaceSet orientation pass but be less strict: also apply
+        // it when Closed is unknown, never when explicitly .F.
+        let closed_attr = entity.get(2);
+        let is_open = closed_attr
+            .and_then(|a| a.as_enum())
+            .map(|v| v == "F")
+            .unwrap_or(false);
+
+        let mut indices = indices;
+        if !is_open {
+            PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);
+        }
+
+        // Flat-shade by duplicating vertices per-triangle. Without this, the
+        // downstream per-vertex normal accumulator (`csg::calculate_normals`)
+        // averages adjacent face normals at every shared vertex, which
+        // softens crisp facet edges into a muddy gradient on faceted
+        // geometry — visible in issue #819 on `IFC4TessellationComplex.ifc`
+        // where the user contrasted ifc-lite's smoothed dome with the
+        // facet-sharp BIMVision render. `PolygonalFaceSetProcessor` already
+        // does this; bringing `IfcTriangulatedFaceSet` to parity matches
+        // IfcOpenShell / web-ifc behaviour for `Normals = $`.
+        //
+        // 3× vertex bloat. Acceptable for Revit lighting/family export
+        // sizes; if it ever becomes a bottleneck on giant tessellated
+        // models, gate this on per-edge crease angle.
+        let mut mesh = PolygonalFaceSetProcessor::build_flat_shaded_mesh(&positions, &indices);
         mesh.validate_indices();
         Ok(mesh)
     }

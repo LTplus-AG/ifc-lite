@@ -92,14 +92,23 @@ export function useDrawingGeneration({
   // Track if this is a regeneration (vs initial generation)
   const isRegeneratingRef = useRef(false);
 
-  // Symbolic lines carry an optional `worldY` (the parent primitive's
-  // elevation in world Y, captured from the WASM extractor). The drawing-2d
-  // package's DrawingLine type has no per-line elevation slot, but we need
-  // it here to cull annotations that sit on the wrong side of the section
-  // cut plane (see filter below `cutEntityIds`). Attaching it as an extra
-  // field keeps the change local — the canvas draws DrawingLine fields and
-  // ignores anything extra.
-  type SymbolicDrawingLine = DrawingLine & { worldY?: number };
+  // Symbolic lines carry the parent primitive's world-space centroid so the
+  // 2D Section filter below can cull them against the active cut plane —
+  // cardinal axis OR a face-picked custom plane. The drawing-2d package's
+  // DrawingLine has no per-line position slot; attaching the centroid as
+  // extra fields keeps the change local since the canvas ignores anything
+  // beyond DrawingLine's declared fields.
+  //
+  // Coordinate space matches the section cutter's input (shifted bounds):
+  // - worldX: read from the polyline's 2D x (already RTC-shifted by WASM)
+  // - worldZ: -(polyline 2D y) — WASM negates Z into the 2D y axis to
+  //   match section-cut output handedness, so flip back here
+  // - worldY: from the WASM `worldY` accessor (vertical elevation)
+  type SymbolicDrawingLine = DrawingLine & {
+    worldX?: number;
+    worldY?: number;
+    worldZ?: number;
+  };
 
   // Cache for symbolic representations - these don't change with section position
   // Only re-parse when model or display options change
@@ -182,6 +191,20 @@ export function useDrawingGeneration({
                 // behind the Rust source; read defensively so a stale build
                 // returns undefined instead of throwing.
                 const polyWorldY = (poly as unknown as { worldY?: number }).worldY;
+                // Centroid in shifted world coords — derived from the 2D
+                // points the WASM extractor already emits in section-cut
+                // space. point.x = world X (RTC-shifted); point.y =
+                // -world Z (negated to match cut-output handedness), so
+                // flip the sign back to recover world Z. Computed once
+                // per source polyline and shared across its segments.
+                let sumX = 0;
+                let sumY = 0;
+                for (let p = 0; p < pointCount; p++) {
+                  sumX += points[p * 2];
+                  sumY += points[p * 2 + 1];
+                }
+                const polyWorldX = pointCount > 0 ? sumX / pointCount : undefined;
+                const polyWorldZ = pointCount > 0 ? -sumY / pointCount : undefined;
 
                 for (let j = 0; j < pointCount - 1; j++) {
                   symbolicLines.push({
@@ -195,7 +218,9 @@ export function useDrawingGeneration({
                     ifcType: poly.ifcType,
                     modelIndex: symbolicModelIndex,
                     depth: 0,
+                    worldX: polyWorldX,
                     worldY: polyWorldY,
+                    worldZ: polyWorldZ,
                   });
                 }
 
@@ -211,7 +236,9 @@ export function useDrawingGeneration({
                     ifcType: poly.ifcType,
                     modelIndex: symbolicModelIndex,
                     depth: 0,
+                    worldX: polyWorldX,
                     worldY: polyWorldY,
+                    worldZ: polyWorldZ,
                   });
                 }
               }
@@ -224,6 +251,11 @@ export function useDrawingGeneration({
                 entitiesWithSymbols.add(circle.expressId);
                 const numSegments = circle.isFullCircle ? 32 : 16;
                 const circleWorldY = (circle as unknown as { worldY?: number }).worldY;
+                // Centre in shifted world coords. circle.centerX is
+                // already RTC-shifted X; circle.centerY carries the
+                // negated Z (see polyline note above) — flip to recover.
+                const circleWorldX = circle.centerX;
+                const circleWorldZ = -circle.centerY;
 
                 for (let j = 0; j < numSegments; j++) {
                   const t1 = j / numSegments;
@@ -248,7 +280,9 @@ export function useDrawingGeneration({
                     ifcType: circle.ifcType,
                     modelIndex: symbolicModelIndex,
                     depth: 0,
+                    worldX: circleWorldX,
                     worldY: circleWorldY,
+                    worldZ: circleWorldZ,
                   });
                 }
               }
@@ -397,34 +431,47 @@ export function useDrawingGeneration({
         // Cull annotations on the far side of the section cut plane.
         //
         // IfcAnnotation / IfcGridAxis polylines (dimensions, room tags, grid
-        // bubbles) live at a single elevation but have no body geometry — the
-        // `cutEntityIds.has(line.entityId)` filter below never sees them, so
-        // they leaked through and rendered regardless of where the section
-        // sat. For a down-section ('y' axis) the WASM extractor gives us
-        // `worldY` per primitive, so apply the same half-space convention the
-        // edge extractor uses for projection lines (see
-        // `EdgeExtractor.filterEdgesByDepth`): when the section is not
-        // flipped, the plane normal points up so we keep annotations whose
-        // worldY ≥ cutY; when flipped, we keep annotations below the cut.
+        // bubbles) live at a single elevation but have no body geometry —
+        // the `cutEntityIds.has(line.entityId)` filter below never matches
+        // them, so without this they render regardless of where the
+        // section sits.
         //
-        // Annotations without a recoverable worldY (older WASM build) are
-        // kept — better to over-render than to silently drop authored
-        // dimensions when the runtime can't classify them.
+        // Reduce every cut mode (cardinal X/Y/Z + face-pick custom plane)
+        // to a single half-space test against a unit normal + signed
+        // distance. For cardinal axes the normal is the basis vector and
+        // distance is `position` (already in shifted-bounds coords, the
+        // same space the symbolic centroids land in). For custom planes
+        // the WASM cutter already uses `normal`/`distance` verbatim, so
+        // re-use both here for consistency with the cap.
         //
-        // Limited to 'y' (down) sections: symbolic primitives are authored
-        // in floor-plan space and only carry worldY; for vertical
-        // ('x' side / 'z' front) sections we'd need per-primitive worldX /
-        // worldZ from the WASM extractor, which isn't exposed yet.
-        const annotationCulled = axis === 'y'
-          ? symbolicLines.filter((line) => {
-              const wy = line.worldY;
-              if (wy === undefined) return true;
-              const isAnnotationLike = line.ifcType === 'IfcAnnotation' || line.ifcType === 'IfcGridAxis';
-              if (!isAnnotationLike) return true;
-              const d = wy - position;
-              return sectionPlane.flipped ? d <= 0 : d >= 0;
-            })
-          : symbolicLines;
+        // The half-space sign matches what `EdgeExtractor.filterEdgesByDepth`
+        // does for projection edges: keep `signedDist ≥ 0` on the +normal
+        // side when not flipped, flip when the user has flipped the section.
+        //
+        // Annotations missing a recoverable centroid (older WASM build, or
+        // a degenerate polyline) are kept — over-rendering is preferable
+        // to silently dropping authored dimensions when the runtime can't
+        // classify them.
+        const cullNormal: [number, number, number] = sectionPlane.custom
+          ? sectionPlane.custom.normal
+          : axis === 'x' ? [1, 0, 0]
+          : axis === 'y' ? [0, 1, 0]
+          : [0, 0, 1];
+        const cullDistance = sectionPlane.custom ? sectionPlane.custom.distance : position;
+        const annotationCulled = symbolicLines.filter((line) => {
+          const isAnnotationLike = line.ifcType === 'IfcAnnotation' || line.ifcType === 'IfcGridAxis';
+          if (!isAnnotationLike) return true;
+          const wx = line.worldX;
+          const wy = line.worldY;
+          const wz = line.worldZ;
+          if (wx === undefined || wy === undefined || wz === undefined) return true;
+          const signedDist =
+            wx * cullNormal[0] +
+            wy * cullNormal[1] +
+            wz * cullNormal[2] -
+            cullDistance;
+          return sectionPlane.flipped ? signedDist <= 0 : signedDist >= 0;
+        });
 
         // Only include symbolic lines for entities that are ACTUALLY being cut
         // This filters out symbols from other floors/levels not intersected by the section plane

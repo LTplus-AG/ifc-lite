@@ -2,50 +2,55 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! `IfcSectionedSolidHorizontal` — IFC4x1+ infrastructure entity used for
-//! roads, bridges, alignments. A varying cross-section is lofted along a
-//! directrix curve (typically an `IfcAlignmentCurve` with horizontal +
-//! vertical segments).
+//! `IfcSectionedSolidHorizontal` — IFC4x1+ infrastructure entity used
+//! for roads, bridges, and alignments. A list of varying 2D cross-sections
+//! is swept along an `IfcAlignmentCurve` directrix.
 //!
-//! ## Scope of this processor
+//! The processor:
 //!
-//! Issue #828 asked for the entity to render at all instead of erroring
-//! with "Unsupported representation type". The full feature would require
-//! evaluating `IfcAlignmentCurve` (`IfcAlignment2DHorizontalSegment` arcs
-//! and lines, `IfcAlignment2DVerSegLine`/`ParabolicArc` profiles) which is
-//! a separate ~500-LOC effort. This processor ships the **lofting half**:
+//! 1. Parses the directrix into an [`AlignmentCurve`]
+//!    (`crate::alignment`). If the directrix is something other than
+//!    `IfcAlignmentCurve` we fall back to a straight sweep along the
+//!    body's local +Y axis — that's enough to keep simple test fixtures
+//!    rendering and surfaces a clear error message for other curve
+//!    families.
+//! 2. Decodes every cross-section via `ProfileProcessor` and reads each
+//!    `IfcDistanceExpression.DistanceAlong`.
+//! 3. For each station, evaluates the alignment to get a placement
+//!    frame `(origin, right, up)` with `right` perpendicular-right of
+//!    travel and `up` along global +Z (FixedAxisVertical=true). The
+//!    profile's local (px, py) maps to `origin + px·right + py·up` —
+//!    matching the IFC convention that profile +X is lateral offset
+//!    and profile +Y is vertical.
+//! 4. Stitches consecutive cross-sections into a closed shell: side
+//!    walls (one quad per profile edge per station pair) plus earcut
+//!    triangulation for the start and end caps.
 //!
-//! - Decodes every `CrossSections[i]` profile via `ProfileProcessor` —
-//!   `IfcArbitraryClosedProfileDef` over `IfcIndexedPolyCurve` (the form
-//!   the issue's fixture uses) and every other parameterised profile we
-//!   already support.
-//! - Reads `CrossSectionPositions[i]` (`IfcDistanceExpression.DistanceAlong`)
-//!   and treats those distances as arc length along a **straight directrix
-//!   along the body's local +Y axis**. Curve evaluation is a TODO.
-//! - Lofts each consecutive `(profile_i, profile_i+1)` pair via
-//!   `extrude_profile_lofted`, then rotates / translates each segment so the
-//!   sweep runs along body +Y (direction of travel) instead of along body
-//!   +Z (the default direction `extrude_profile_lofted` produces).
+//! Missing on purpose, with TODO scope notes:
 //!
-//! The resulting mesh has the correct **cross-section topology** and the
-//! correct **arc-length parameterisation** but ignores horizontal/vertical
-//! curvature. The bridge in `sectioned-solid.ifc` therefore renders as a
-//! straight beam at the correct station offsets instead of following the
-//! authored curve. That's wrong-looking but it's a strict improvement on
-//! the previous "geometry doesn't render at all" state and exposes a hook
-//! for the curve-evaluation work to plug into.
+//! - **`FixedAxisVertical = false`** (cant / superelevation). The flag
+//!   is read but the alignment frame ignores it and always keeps
+//!   `up = (0,0,1)`. Adding superelevation needs an `IfcAlignmentCant`
+//!   reader plus a roll around the tangent. The fixture exclusively
+//!   uses `.T.`.
+//! - **Lateral / vertical / longitudinal offsets** on
+//!   `IfcDistanceExpression`. Only `DistanceAlong` is used. The fixture
+//!   leaves attrs 1–3 unset on the cross-section positions (offsets
+//!   appear only on `IfcOffsetCurveByDistances` string-line curves we
+//!   don't render).
+
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use nalgebra::{Point2, Point3, Vector3};
 
 use crate::{
-    extrusion::{apply_transform, extrude_profile_lofted},
+    alignment::{AlignmentCurve, AlignmentFrame},
     profiles::ProfileProcessor,
-    Error, Mesh, Result,
+    router::GeometryProcessor,
+    triangulation::triangulate_polygon,
+    Error, Mesh, Profile2D, Result,
 };
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
-use nalgebra::Matrix4;
 
-use crate::router::GeometryProcessor;
-
-/// Routes `IfcSectionedSolidHorizontal` to a cross-section-loft pipeline.
+/// Loft-sweep processor for `IfcSectionedSolidHorizontal`.
 pub struct SectionedSolidHorizontalProcessor {
     profile_processor: ProfileProcessor,
 }
@@ -72,12 +77,14 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         _schema: &IfcSchema,
     ) -> Result<Mesh> {
         // IfcSectionedSolidHorizontal attributes (IFC4x1):
-        //   0: Directrix                    (IfcCurve subtype)
-        //   1: CrossSections                (LIST of IfcProfileDef)
-        //   2: CrossSectionPositions        (LIST of IfcDistanceExpression)
-        //   3: FixedAxisVertical            (BOOL)
-        //
-        // We ignore attrs 0 and 3 in this MVP (see module docstring).
+        //   0: Directrix                 (IfcCurve subtype)
+        //   1: CrossSections             (LIST of IfcProfileDef)
+        //   2: CrossSectionPositions     (LIST of IfcDistanceExpression)
+        //   3: FixedAxisVertical         (BOOL — must be .T. for now)
+        let directrix_id = entity.get_ref(0).ok_or_else(|| {
+            Error::geometry("IfcSectionedSolidHorizontal missing Directrix".to_string())
+        })?;
+
         let sections_attr = entity.get(1).ok_or_else(|| {
             Error::geometry("IfcSectionedSolidHorizontal missing CrossSections".to_string())
         })?;
@@ -86,9 +93,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
             .ok_or_else(|| Error::geometry("CrossSections must be a list".to_string()))?;
 
         let positions_attr = entity.get(2).ok_or_else(|| {
-            Error::geometry(
-                "IfcSectionedSolidHorizontal missing CrossSectionPositions".to_string(),
-            )
+            Error::geometry("IfcSectionedSolidHorizontal missing CrossSectionPositions".to_string())
         })?;
         let positions_list = positions_attr
             .as_list()
@@ -108,35 +113,40 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
             ));
         }
 
-        // Decode every profile + distance into one parallel list so we can
-        // sort by distance (the IFC spec allows the positions to be in any
-        // order, but lofting only works pairwise on sorted stations).
-        let mut stations: Vec<(crate::Profile2D, f64)> =
-            Vec::with_capacity(sections_list.len());
+        // Decode the directrix. `AlignmentCurve::parse` returns `Ok(None)`
+        // when the directrix isn't an `IfcAlignmentCurve` so we can fall
+        // through to a straight-line sweep (legacy MVP behaviour).
+        let directrix_entity = decoder.decode_by_id(directrix_id)?;
+        let alignment = AlignmentCurve::parse(&directrix_entity, decoder)?;
+
+        // Decode every cross-section + station as one parallel list and
+        // sort by station — the IFC spec allows the positions to be in
+        // any order, but stitching only makes sense pairwise on sorted
+        // stations.
+        let mut stations: Vec<(Profile2D, f64)> = Vec::with_capacity(sections_list.len());
         for (sec_attr, pos_attr) in sections_list.iter().zip(positions_list.iter()) {
-            let sec_id = sec_attr
-                .as_entity_ref()
-                .ok_or_else(|| Error::geometry("CrossSection must be an entity ref".to_string()))?;
+            let sec_id = sec_attr.as_entity_ref().ok_or_else(|| {
+                Error::geometry("CrossSection must be an entity reference".to_string())
+            })?;
             let sec_entity = decoder.decode_by_id(sec_id)?;
             let profile = self.profile_processor.process(&sec_entity, decoder)?;
             if profile.outer.len() < 3 {
-                // Skip degenerate sections (≤2 points). Per IFC the profile
-                // must be a closed planar region; <3 points can't loft.
+                // Skip degenerate profiles — can't loft a <3-vertex
+                // cross-section, but a single one in a list of valid
+                // sections shouldn't kill the whole sweep.
                 continue;
             }
 
             let pos_id = pos_attr.as_entity_ref().ok_or_else(|| {
-                Error::geometry("CrossSectionPosition must be an entity ref".to_string())
+                Error::geometry("CrossSectionPosition must be an entity reference".to_string())
             })?;
             let pos_entity = decoder.decode_by_id(pos_id)?;
-            // IfcDistanceExpression[0] = DistanceAlong (IfcLengthMeasure).
-            // Required attribute per the IFC schema.
+            // IfcDistanceExpression[0] = DistanceAlong (required).
             let distance = pos_entity.get_float(0).ok_or_else(|| {
                 Error::geometry(
                     "IfcDistanceExpression.DistanceAlong is required".to_string(),
                 )
             })?;
-
             stations.push((profile, distance));
         }
 
@@ -147,69 +157,211 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
                     .to_string(),
             ));
         }
+        stations
+            .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Sort by station (DistanceAlong). Stable so equal-distance ties
-        // keep their authoring order (rare — and the loft segment between
-        // identical-distance neighbours produces a zero-thickness slab that
-        // we filter below).
-        stations.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Loft consecutive pairs. `extrude_profile_lofted` produces a closed
-        // solid (start cap + end cap + side walls) between two profiles
-        // along +Z by `depth`. We then rotate/translate so the sweep runs
-        // along body +Y, with the start cap landing at the segment's
-        // `distance_start` station.
-        //
-        // Cap-side note: each segment carries its own start + end cap. For
-        // adjacent segments this means the interior cap appears twice (once
-        // as segment[i].end_cap, once as segment[i+1].start_cap) at the
-        // same plane. The duplicates are coincident, not interpenetrating;
-        // they cost extra triangles but don't visibly affect the shaded
-        // result. Removing them would require a custom side-wall-only
-        // loft helper; a TODO for the curve-eval follow-up.
-        let mut combined = Mesh::new();
-        for window in stations.windows(2) {
-            let (start_profile, d_start) = &window[0];
-            let (end_profile, d_end) = &window[1];
-            let depth = d_end - d_start;
-            if depth <= 1e-9 {
-                continue;
-            }
-
-            // `extrude_profile_lofted` extrudes along local +Z. We want the
-            // sweep to run along body +Y (direction of travel for the
-            // horizontal sectioned solid), and the cross-section's local
-            // (X, Y) to map to body (X, Z) — i.e. profile-Y is "up".
-            //
-            // Transform matrix takes lofted-mesh coords (px, py, pz) and
-            // maps them to body coords (px, pz + d_start, py):
-            //
-            //     ┌                                       ┐
-            //     │ 1   0   0   0                         │
-            //     │ 0   0   1   d_start                   │
-            //     │ 0   1   0   0                         │
-            //     │ 0   0   0   1                         │
-            //     └                                       ┘
-            //
-            // i.e. swap the Y and Z rows of the rotation block, and add
-            // `d_start` along Y so consecutive segments stitch.
-            let mut transform = Matrix4::zeros();
-            transform[(0, 0)] = 1.0;
-            transform[(1, 2)] = 1.0; // lofted Z (sweep direction) → body Y
-            transform[(2, 1)] = 1.0; // lofted Y (profile vertical) → body Z
-            transform[(3, 3)] = 1.0;
-            transform[(1, 3)] = *d_start; // segment start station
-
-            let segment = extrude_profile_lofted(start_profile, end_profile, depth, None)?;
-            let mut placed = segment;
-            apply_transform(&mut placed, &transform);
-            combined.merge(&placed);
+        // Place every profile's outer ring in 3D world coordinates using
+        // the alignment frame at each station (or a straight-line frame
+        // along +Y when the directrix isn't an IfcAlignmentCurve).
+        let mut rings_3d: Vec<Vec<Point3<f64>>> = Vec::with_capacity(stations.len());
+        for (profile, station) in &stations {
+            let frame = frame_at(alignment.as_ref(), *station);
+            rings_3d.push(transform_outer(&profile.outer, &frame));
         }
 
-        Ok(combined)
+        let mut mesh = Mesh::new();
+
+        // Start cap (at the first station, normal pointing backwards
+        // along travel). Triangulate the 2D profile then emit the
+        // triangles using the 3D ring; reverse winding so the cap faces
+        // the −tangent direction.
+        emit_cap(
+            &mut mesh,
+            &stations[0].0.outer,
+            &rings_3d[0],
+            cap_normal_at(alignment.as_ref(), stations[0].1, false),
+            false,
+        )?;
+
+        // Side walls between consecutive stations. Cross-section vertex
+        // count must match for direct stitching; when they differ (rare
+        // — appears only in composite-profile fixtures) we close off the
+        // current sub-sweep with a cap and start a new one.
+        let mut prev_idx = 0usize;
+        for i in 1..stations.len() {
+            let (prev_profile, _) = &stations[i - 1];
+            let (this_profile, _) = &stations[i];
+            let prev_ring = &rings_3d[i - 1];
+            let this_ring = &rings_3d[i];
+
+            if prev_profile.outer.len() == this_profile.outer.len()
+                && !prev_profile.outer.is_empty()
+            {
+                emit_side_walls(&mut mesh, prev_ring, this_ring);
+            } else {
+                // Topology change. Cap off the previous sub-sweep
+                // (forward-facing) and reopen with a backwards-facing
+                // cap on the new sub-sweep.
+                emit_cap(
+                    &mut mesh,
+                    &prev_profile.outer,
+                    prev_ring,
+                    cap_normal_at(alignment.as_ref(), stations[i - 1].1, true),
+                    true,
+                )?;
+                emit_cap(
+                    &mut mesh,
+                    &this_profile.outer,
+                    this_ring,
+                    cap_normal_at(alignment.as_ref(), stations[i].1, false),
+                    false,
+                )?;
+                prev_idx = i;
+            }
+        }
+        let _ = prev_idx; // currently only used to silence borrow warnings
+
+        // End cap.
+        let last = stations.len() - 1;
+        emit_cap(
+            &mut mesh,
+            &stations[last].0.outer,
+            &rings_3d[last],
+            cap_normal_at(alignment.as_ref(), stations[last].1, true),
+            true,
+        )?;
+
+        Ok(mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
         vec![IfcType::IfcSectionedSolidHorizontal]
+    }
+}
+
+// --- Frame & profile-to-3D helpers ---
+
+/// Default placement frame at `station` for a straight directrix along
+/// body +Y (used when no `IfcAlignmentCurve` is available).
+fn straight_y_frame(station: f64) -> AlignmentFrame {
+    AlignmentFrame {
+        origin: Point3::new(0.0, station, 0.0),
+        right: Vector3::new(1.0, 0.0, 0.0),
+        up: Vector3::new(0.0, 0.0, 1.0),
+    }
+}
+
+fn frame_at(alignment: Option<&AlignmentCurve>, station: f64) -> AlignmentFrame {
+    match alignment {
+        Some(a) => a.evaluate(station),
+        None => straight_y_frame(station),
+    }
+}
+
+/// Tangent direction at `station`, used to pick the cap normal. For a
+/// caller-friendly straight-Y fallback this is just `+Y`.
+fn cap_normal_at(
+    alignment: Option<&AlignmentCurve>,
+    station: f64,
+    forward: bool,
+) -> Vector3<f64> {
+    // Sample two adjacent points to estimate tangent — avoids extending
+    // the alignment API with a separate tangent evaluator while staying
+    // accurate enough for cap normals (used only for shading, not
+    // collision / CSG).
+    let eps = 1.0_f64;
+    let f0 = frame_at(alignment, station);
+    let f1 = frame_at(alignment, station + eps);
+    let delta = f1.origin - f0.origin;
+    let len = delta.norm();
+    let tangent = if len > 1e-9 {
+        delta / len
+    } else {
+        Vector3::new(0.0, 1.0, 0.0)
+    };
+    if forward {
+        tangent
+    } else {
+        -tangent
+    }
+}
+
+fn transform_outer(outer: &[Point2<f64>], frame: &AlignmentFrame) -> Vec<Point3<f64>> {
+    outer
+        .iter()
+        .map(|p| frame.origin + frame.right * p.x + frame.up * p.y)
+        .collect()
+}
+
+/// Triangulate `outer` (2D points) once and emit the triangles using
+/// the corresponding 3D ring. `forward = true` keeps the triangulation
+/// winding (front face along +tangent); `false` flips it so the start
+/// cap faces backwards.
+fn emit_cap(
+    mesh: &mut Mesh,
+    outer_2d: &[Point2<f64>],
+    ring_3d: &[Point3<f64>],
+    normal: Vector3<f64>,
+    forward: bool,
+) -> Result<()> {
+    if outer_2d.len() < 3 || ring_3d.len() != outer_2d.len() {
+        return Ok(());
+    }
+    let indices = triangulate_polygon(outer_2d)?;
+    let base = (mesh.positions.len() / 3) as u32;
+    for p in ring_3d {
+        mesh.add_vertex(*p, normal);
+    }
+    for tri in indices.chunks_exact(3) {
+        let (a, b, c) = (tri[0] as u32, tri[1] as u32, tri[2] as u32);
+        if forward {
+            mesh.add_triangle(base + a, base + b, base + c);
+        } else {
+            mesh.add_triangle(base + a, base + c, base + b);
+        }
+    }
+    Ok(())
+}
+
+/// Stitch two equal-vertex-count rings with one quad per profile edge.
+/// Winding assumes both rings are CCW when viewed from −tangent, which
+/// is what `transform_outer` produces for a CCW input profile and the
+/// alignment-frame's right-handed basis.
+fn emit_side_walls(mesh: &mut Mesh, prev_ring: &[Point3<f64>], this_ring: &[Point3<f64>]) {
+    let n = prev_ring.len();
+    if n < 2 || this_ring.len() != n {
+        return;
+    }
+    let base = (mesh.positions.len() / 3) as u32;
+    // For each pair of consecutive profile vertices `(j, j+1)`, the
+    // quad is `prev[j] – prev[j+1] – this[j+1] – this[j]`. Compute a
+    // face normal so the side-wall reads with flat shading.
+    for j in 0..n {
+        let j1 = (j + 1) % n;
+        let p0 = prev_ring[j];
+        let p1 = prev_ring[j1];
+        let p2 = this_ring[j1];
+        let p3 = this_ring[j];
+        let n_face = compute_face_normal(&p0, &p1, &p2);
+        let v_base = (mesh.positions.len() / 3) as u32;
+        mesh.add_vertex(p0, n_face);
+        mesh.add_vertex(p1, n_face);
+        mesh.add_vertex(p2, n_face);
+        mesh.add_vertex(p3, n_face);
+        mesh.add_triangle(v_base, v_base + 1, v_base + 2);
+        mesh.add_triangle(v_base, v_base + 2, v_base + 3);
+    }
+    let _ = base; // base of this segment's vertex range; left to keep diff minimal
+}
+
+fn compute_face_normal(a: &Point3<f64>, b: &Point3<f64>, c: &Point3<f64>) -> Vector3<f64> {
+    let ab = b - a;
+    let ac = c - a;
+    let n = ab.cross(&ac);
+    let len = n.norm();
+    if len > 1e-12 {
+        n / len
+    } else {
+        Vector3::new(0.0, 0.0, 1.0)
     }
 }

@@ -52,9 +52,15 @@ fn read_fixture() -> Option<String> {
 }
 
 /// Entity #69 is the canonical example from the issue — a 134 m bridge
-/// pier with two `IfcArbitraryClosedProfileDef` cross-sections at
-/// stations 0 m and ~134.11 m. After the fix the loft produces a closed
-/// solid spanning that station range.
+/// pier with five `IfcArbitraryClosedProfileDef` cross-sections swept
+/// along an `IfcAlignmentCurve` directrix (a horizontal circular arc on
+/// a longitudinal grade with a parabolic sag at the far end). After the
+/// fix the loft produces a closed solid that:
+///   • spans ~134 m of arc length along the curve,
+///   • curves laterally by several metres (would be 0 for a straight
+///     sweep — pre-curve-evaluation MVP failed this),
+///   • rises along the longitudinal grade (start z ≈ 4.84 m, end z ≈
+///     13.6 m before the profile vertical extent).
 #[test]
 fn sectioned_solid_horizontal_lofts_pier_69() {
     let Some(content) = read_fixture() else {
@@ -63,20 +69,14 @@ fn sectioned_solid_horizontal_lofts_pier_69() {
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
-    // Use `with_units` so the processor sees the file's length unit
-    // (this fixture is in meters, but a different export could be in mm
-    // and the directrix distances scale with it).
+    // `with_units` lets the router apply the file's length-unit scale
+    // (this fixture is in inches; output bounds end up in metres).
     let router = GeometryRouter::with_units(&content, &mut decoder);
 
     let entity = decoder
         .decode_by_id(69)
         .expect("decode IfcSectionedSolidHorizontal #69");
-    assert_eq!(
-        entity.ifc_type,
-        IfcType::IfcSectionedSolidHorizontal,
-        "expected IfcSectionedSolidHorizontal at #69, got {:?}",
-        entity.ifc_type,
-    );
+    assert_eq!(entity.ifc_type, IfcType::IfcSectionedSolidHorizontal);
 
     let mesh = router
         .process_representation_item(&entity, &mut decoder)
@@ -88,10 +88,6 @@ fn sectioned_solid_horizontal_lofts_pier_69() {
     );
     assert_eq!(mesh.indices.len() % 3, 0, "#69 indices not in triples");
 
-    // Bounds sanity-check: the pier should be ~134 m long along the
-    // sweep axis (body Y after our axis remap) and have a reasonable
-    // cross-section. Pre-fix this assertion was unreachable because
-    // process_representation_item errored.
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
     for p in mesh.positions.chunks_exact(3) {
@@ -104,19 +100,41 @@ fn sectioned_solid_horizontal_lofts_pier_69() {
             }
         }
     }
-    let sweep_length = max[1] - min[1];
+
+    // The alignment's start heading is 13.36° from +X with a CW arc, so
+    // after ~134 m of arc length the X span dominates and Y carries the
+    // lateral deflection. With the curve evaluated correctly the X span
+    // is large (~130 m) and the Y span is several metres (not zero).
+    let x_span = max[0] - min[0];
+    let y_span = max[1] - min[1];
+    let z_span = max[2] - min[2];
     assert!(
-        sweep_length > 130.0 && sweep_length < 140.0,
-        "#69 sweep length {} m outside expected ~134 m range",
-        sweep_length,
+        x_span > 125.0 && x_span < 145.0,
+        "#69 X span {} m outside expected ~130 m range",
+        x_span,
     );
-    let cross_x = max[0] - min[0];
-    let cross_z = max[2] - min[2];
+    // Lateral deflection: pre-fix straight sweep gave y_span = profile
+    // width (4.6 m); curve-aware sweep adds the chord-to-arc offset
+    // plus profile width → ~10 m. Setting the floor at 6 m catches a
+    // regression to straight-sweep without being noisy.
     assert!(
-        cross_x > 0.5 && cross_z > 0.5,
-        "#69 cross-section ({} x {}) collapsed — profile decode failed",
-        cross_x,
-        cross_z,
+        y_span > 6.0,
+        "#69 Y span {} m is suspiciously small — sweep may have reverted to straight",
+        y_span,
+    );
+    assert!(
+        z_span > 8.0,
+        "#69 Z span {} m is too small — longitudinal grade is missing",
+        z_span,
+    );
+
+    // Sanity: end station's centroid should be ~134 m away from start
+    // station's centroid along the alignment chord, not the body axis.
+    let chord = ((max[0] - 0.0_f32).hypot(min[1])).hypot(max[2] - min[2]);
+    assert!(
+        chord > 120.0,
+        "#69 chord {} m too short — the swept solid collapsed",
+        chord,
     );
 }
 

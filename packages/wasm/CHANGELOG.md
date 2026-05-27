@@ -1,5 +1,161 @@
 # @ifc-lite/wasm
 
+## 1.19.2
+
+### Patch Changes
+
+- [#839](https://github.com/LTplus-AG/ifc-lite/pull/839) [`8c1632c`](https://github.com/LTplus-AG/ifc-lite/commit/8c1632ceb63ff4cfdbac4f2936d54d2d3a7e2f1b) Thanks [@louistrue](https://github.com/louistrue)! - Improve IFC annotation legibility in 3D (issue [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) follow-up):
+
+  - **All annotation text now billboards to the camera.** Previously only
+    IfcGridAxis tags rebuilt in the screen-aligned basis; IfcAnnotation
+    text (dimensions, leader labels, room tags) kept its authored
+    in-plane orientation. In oblique views that text collapsed to a
+    smeared sliver of pixels — the "distorted dimension labels in
+    FZK-Haus" symptom from the issue. The shader path was already
+    per-instance billboard-aware, so the change is just a flag flip at
+    upload time; anchor and alignment are unchanged.
+
+  - **Grid bubbles no longer paint a white disc behind the tag.** The
+    bubble interior is now transparent, so geometry behind a grid line
+    reads through the bubble in 3D. The black outline ring (◯) and tag
+    glyph are unchanged — the white ● fill instance has been removed
+    from `emit_bubble`, which also drops one text instance per bubble.
+
+  - **Annotation text no longer z-fights coplanar surfaces.** Now that
+    every glyph billboards, the quad faces the camera with zero depth
+    slope across its screen extent — which means the text pipeline's
+    `depthBiasSlopeScale: -0.5` contributes ~0 and only the small `-4`
+    constant survives, not enough to beat MSAA jitter on a label drawn
+    exactly on a wall/floor face (visible as dimension digits strobing
+    against terrain in 3D). The symbolic-overlay text shader now applies
+    the same `clip.z + 5e-5 * clip.w` reverse-Z nudge the section-2D
+    line pipeline already uses — depth-format-independent, slope-
+    independent, and large enough to clear coplanar jitter without
+    pulling the label visibly off the surface.
+
+- [#840](https://github.com/LTplus-AG/ifc-lite/pull/840) [`231e494`](https://github.com/LTplus-AG/ifc-lite/commit/231e494e7ee920c5219d7fa5c5c6dde4c2bced2a) Thanks [@louistrue](https://github.com/louistrue)! - Fix `IfcOpeningElement` punching through the entire wall when the
+  authored opening pokes past one wall face (issue [#832](https://github.com/LTplus-AG/ifc-lite/issues/832)).
+
+  `router/voids.rs::extend_opening_along_direction` is a Revit/ArchiCAD
+  heuristic that stretches an opening AABB along its own extrusion axis
+  to make sure the AABB clip lands cleanly on both wall faces. It was
+  designed for the "opening modelled too short" pattern — opening fully
+  inside the wall in extrusion direction. When an opening is _offset_
+  so part of it sticks out one face (e.g. a 1 m × 1 m × 0.2 m opening
+  positioned so its 0.2 m depth straddles the wall's +X face at exactly
+  the wall-thickness boundary), the heuristic over-extended through
+  the wall and the AABB clip removed BOTH the touched and untouched
+  wall faces — the "punched-through slot" the bug reporter saw on
+  wall [#222](https://github.com/LTplus-AG/ifc-lite/issues/222) in `ifc-opening.ifc`.
+
+  The fix adds a gate that bails out of the extension when the
+  opening's projection on its own extrusion axis pokes past either
+  wall projection — comparing projections (not raw coords) so the
+  sign of the extrusion direction is irrelevant. The author's bite
+  is preserved verbatim and the AABB clip only removes the wall
+  material the opening actually intersects.
+
+  Regression coverage:
+
+  - `rust/geometry/tests/issue_832_opening_representations.rs` — full
+    pipeline test against the reporter's 5-wall fixture, asserting
+    each wall ends up with a bounded hole and the wall faces the
+    opening doesn't reach remain pristine 2-triangle rectangles.
+  - `router::voids::reveal_tests::test_extend_opening_skipped_when_opening_pokes_past_wall`
+    — direct unit test pinning the new gate, covering both `+X` and
+    `-X` extrusion-direction polarity.
+  - The existing [#604](https://github.com/LTplus-AG/ifc-lite/issues/604) "exact-match coplanarity pad" regression
+    (`test_extend_opening_pads_past_wall_on_exact_match`) still passes
+    unchanged — the new gate intentionally does not fire when the
+    opening fits exactly inside the wall.
+
+  Fixture `tests/models/issues/832_opening_representations.ifc` (11 KB,
+  SHA-256 `0a81eda40a3b…`) added to the manifest. The bytes need to be
+  uploaded to the `fixtures-v1` GitHub Release via `pnpm fixtures:upload`
+  once merged.
+
+- [#838](https://github.com/LTplus-AG/ifc-lite/pull/838) [`279d897`](https://github.com/LTplus-AG/ifc-lite/commit/279d897dd6e28214930a6b0fffe01dd813141ee0) Thanks [@louistrue](https://github.com/louistrue)! - `GeometryRouter::get_or_cache_by_hash` now performs a full equality
+  check on every hash hit before reusing the cached `Arc<Mesh>` (issue
+  [#833](https://github.com/LTplus-AG/ifc-lite/issues/833)). The previous fast path returned a hash match without checking
+  geometry, on the theory that `FxHasher`'s 64-bit output collides only
+  ~1 in 2^64. Under wasm32 codegen on `schependomlaan.ifc`, two slabs
+  with mirrored rectangular cross-sections (a 7.43 m × 3 m profile in
+  +X+Y vs −X−Y) hashed to the same value: the second slab's local mesh
+  was silently replaced by the first, and after placement the slab
+  rendered as a "floating" mesh 7.43 m off the building. Native x86_64
+  hashes both meshes distinctly, which is why the bug only surfaced in
+  the browser — the regression was invisible to the Rust integration
+  tests until we forced a collision in the new
+  `router::caching::tests::collision_does_not_silently_swap_meshes`
+  test.
+
+  On a true match (the cache's intended fast path — repeated geometry
+  across N storeys, instanced doors / windows) we still return the
+  shared `Arc`, so dedup behaviour is preserved. On a false-positive
+  hash hit we return a fresh `Arc` without overwriting the existing
+  entry, so subsequent identical lookups continue to dedupe.
+
+- [#836](https://github.com/LTplus-AG/ifc-lite/pull/836) [`d83fc42`](https://github.com/LTplus-AG/ifc-lite/commit/d83fc424a6b9d2a786e2dfaabe1dc2fb8746d07c) Thanks [@louistrue](https://github.com/louistrue)! - `IfcSectionedSolidHorizontal` now renders with full directrix curve
+  evaluation (issue [#828](https://github.com/LTplus-AG/ifc-lite/issues/828)). The IFC4x1 infrastructure entity — used for
+  road / bridge / alignment models with varying cross-sections — was
+  previously erroring "Unsupported representation type". The new
+  `SectionedSolidHorizontalProcessor` plus the `crate::alignment`
+  evaluator sweep each profile along the actual `IfcAlignmentCurve`:
+
+  - **Horizontal alignment** — `IfcLineSegment2D`, `IfcCircularArcSegment2D`,
+    and `IfcTransitionCurveSegment2D` (linear-curvature clothoid;
+    Bloss / cubic-parabola / sine / cosine subtypes degrade to a
+    clothoid with matching endpoint curvatures, which is geometrically
+    continuous instead of a jump). Each segment's StartPoint /
+    StartDirection / SegmentLength is taken as authoritative — the
+    evaluator does not assume segments are pre-joined.
+  - **Vertical alignment** — `IfcAlignment2DVerSegLine`,
+    `IfcAlignment2DVerSegParabolicArc`, and `IfcAlignment2DVerSegCircularArc`.
+    Circular vertical curves use the parabolic approximation
+    `z ≈ z₀ + g₀·s + ±s²/(2R)`, sub-mm-accurate for typical highway radii.
+  - **Plane-angle unit conversion** — `StartDirection` values are scaled
+    via `EntityDecoder::plane_angle_to_radians()`, so files declaring
+    `PLANEANGLEUNIT = .DEGREE.` (like the issue's fixture) get the right
+    geometry.
+  - **Mesh construction** — each station gets a placement frame with
+    `+X` perpendicular-right of travel and `+Z` along global up
+    (FixedAxisVertical=true; cant/superelevation TODO). Side walls are
+    one quad per profile edge per station pair with flat-shaded face
+    normals; caps are earcut triangulations of the start and end
+    profiles. A topology change (varying vertex count between adjacent
+    cross-sections) closes the current sub-sweep with a cap and reopens
+    a new one.
+  - **Falls back gracefully** when the directrix isn't an
+    `IfcAlignmentCurve` (e.g. an arbitrary polyline) to a straight
+    sweep along the body's local +Y axis.
+
+  Two profile types in the same fixture are also closed out:
+
+  - **`IfcAsymmetricIShapeProfileDef`** — six steel-girder profiles
+    used this entity. Added a 12-point CCW builder with independent
+    top/bottom flange widths and thicknesses; the IFC4 WR3 fallback
+    (`TopFlangeThickness ← BottomFlangeThickness`) applies when the
+    optional attribute is `$`. Fillet radii and flange slopes are
+    parsed but ignored (same posture as the symmetric I-shape).
+  - **`IfcMirroredProfileDef` with implicit operator.** Per IFC4 §8.6.2.21
+    this subtype writes `$` for `Operator` and reflects the parent
+    about its local Y-axis. The previous code errored "Operator not
+    found"; it now short-circuits with an explicit X-mirror plus
+    contour-winding reversal. `IfcDerivedProfileDef` with a null
+    operator is now treated as identity instead of failing.
+
+  Regression tests:
+
+  - `every_sectioned_solid_horizontal_in_fixture_lofts` — all 16
+    sectioned solids in the fixture loft to non-empty meshes
+    (pre-fix: 9/16).
+  - `sectioned_solid_horizontal_lofts_pier_69` — pier [#69](https://github.com/LTplus-AG/ifc-lite/issues/69) has the
+    expected curved bounds (~134 m principal span, several metres
+    of lateral deflection that would be zero for a straight sweep,
+    ~10+ m vertical from the parabolic sag at the far end).
+  - Three alignment-evaluator unit tests pin the line-segment, arc, and
+    parabolic-vertical math against the fixture's authored numbers.
+
 ## 1.19.1
 
 ### Patch Changes

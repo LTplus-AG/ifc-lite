@@ -11,9 +11,10 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { patchThreadedDevStub } from './lib/patch-threaded-stub.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, '..');
@@ -52,28 +53,3 @@ if (result.status === 0 && threaded) {
 }
 
 process.exit(result.status ?? 1);
-
-function patchThreadedDevStub(outDir) {
-  const dtsPath = resolve(outDir, 'ifc-lite.d.ts');
-  const jsPath = resolve(outDir, 'ifc-lite.js');
-  if (!existsSync(dtsPath) || !existsSync(jsPath)) return;
-
-  let dts = readFileSync(dtsPath, 'utf8');
-  if (!dts.includes('initThreadPool')) {
-    dts += `
-
-/** Stub for local dev when threaded WASM was not built from source */
-export function initThreadPool(_numThreads?: number): Promise<void>;
-`;
-    writeFileSync(dtsPath, dts);
-  }
-
-  let js = readFileSync(jsPath, 'utf8');
-  if (!js.includes('function initThreadPool')) {
-    js = js.replace(
-      'export { initSync };\nexport default __wbg_init;',
-      'export { initSync };\nexport async function initThreadPool(_numThreads) {}\nexport default __wbg_init;',
-    );
-    writeFileSync(jsPath, js);
-  }
-}

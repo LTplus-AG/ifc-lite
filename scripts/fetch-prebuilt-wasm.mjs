@@ -11,6 +11,7 @@ import { execSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { patchThreadedDevStub } from './lib/patch-threaded-stub.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, '..');
@@ -58,28 +59,3 @@ rmSync(join(rootDir, tgzName), { force: true });
 console.log(`Installed prebuilt WASM to ${wasmOut}`);
 patchThreadedDevStub(threadedOut);
 console.log(`Patched threaded dev stub at ${threadedOut} (rebuild with Rust for real threading)`);
-
-function patchThreadedDevStub(outDir) {
-  const dtsPath = join(outDir, 'ifc-lite.d.ts');
-  const jsPath = join(outDir, 'ifc-lite.js');
-  let dts = readFileSync(dtsPath, 'utf8');
-  if (!dts.includes('initThreadPool')) {
-    dts += `
-
-/**
- * Thread-pool initializer for the threaded WASM bundle.
- * Stubbed when prebuilt single-thread artifacts are used for local dev.
- */
-export function initThreadPool(_numThreads?: number): Promise<void>;
-`;
-    writeFileSync(dtsPath, dts);
-  }
-  let js = readFileSync(jsPath, 'utf8');
-  if (!js.includes('function initThreadPool')) {
-    js = js.replace(
-      'export { initSync };\nexport default __wbg_init;',
-      'export { initSync };\nexport async function initThreadPool(_numThreads) {}\nexport default __wbg_init;',
-    );
-    writeFileSync(jsPath, js);
-  }
-}

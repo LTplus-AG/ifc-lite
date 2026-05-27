@@ -306,6 +306,18 @@ function RuleEditor({
     }
   }, [criteriaType, discovered, onRequestDiscovery]);
 
+  // Auto-populate the single available model so the selector-hidden branch
+  // doesn't leave a model rule permanently invalid.
+  useEffect(() => {
+    if (criteriaType !== 'model') return;
+    if (modelOptions.length !== 1) return;
+    if (rule.criteria.modelId) return;
+    const updated = { ...rule.criteria, modelId: modelOptions[0].id };
+    onChange({ criteria: updated, name: deriveRuleName(updated) });
+    // deriveRuleName is stable for this render; depending on rule.criteria/onChange is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [criteriaType, modelOptions, rule.criteria, onChange]);
+
   // Derived lists from discovered data
   const ifcClasses = useMemo(() => discovered?.classes ?? [], [discovered]);
   const psetNames = useMemo((): string[] => {

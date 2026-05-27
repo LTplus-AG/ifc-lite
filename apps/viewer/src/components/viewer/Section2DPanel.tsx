@@ -31,7 +31,7 @@ import { SheetSetupPanel } from './SheetSetupPanel';
 import { TitleBlockEditor } from './TitleBlockEditor';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
 import { Drawing2DCanvas } from './Drawing2DCanvas';
-import { useDrawingGeneration, AXIS_MAP } from '@/hooks/useDrawingGeneration';
+import { useDrawingGeneration, AXIS_MAP, ANNOTATION_VIEW_DEPTH } from '@/hooks/useDrawingGeneration';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
@@ -294,7 +294,11 @@ export function Section2DPanel({
     const axisMin = bounds.min[axis];
     const axisMax = bounds.max[axis];
     const sectionPosWorld = axisMin + (sectionPlane.position / 100) * (axisMax - axisMin);
-    const viewDepth = (axisMax - axisMin) * 0.5; // matches useDrawingGeneration's maxDepth
+    // IFC annotations get a tight 1.2 m view-depth slab — typical plan-view
+    // convention so dimension chains from the next storey don't stack onto
+    // the cut floor. The body cutter still uses half-extent for its own
+    // projection edges; the slab is annotation-specific.
+    const viewDepth = ANNOTATION_VIEW_DEPTH;
     // For loose annotations (no resolvable storey), fall back to mid-Y like
     // the 3D viewport does. This lets storeyless models still surface their
     // annotations on the relevant section.

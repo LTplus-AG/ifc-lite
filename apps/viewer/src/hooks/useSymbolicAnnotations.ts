@@ -521,18 +521,52 @@ function resolveBucketY(elevation: number | null, fallbackY: number): number {
   return elevation === null ? fallbackY : elevation;
 }
 
+/** Optional section-plane filter for the 3D annotation overlays. When active,
+ *  only annotation buckets whose elevation falls inside a 1.2 m slab IN FRONT
+ *  of the cut are emitted, so dimensions from storeys above/below the cut
+ *  don't float through the model in the 3D viewport. Only the cardinal
+ *  down-axis is meaningful — annotations are floor-plan symbols and don't
+ *  project sensibly onto vertical sections — so the filter no-ops for
+ *  `axis='front'` / `axis='side'` and lets the toggle behave as before.
+ */
+export interface AnnotationSectionFilter {
+  axis: 'down' | 'front' | 'side';
+  /** Section plane world-coord position along the cut axis. */
+  sectionPosWorld: number;
+  /** Slab depth in world units — typically `ANNOTATION_VIEW_DEPTH`. */
+  viewDepth: number;
+  flipped: boolean;
+}
+
+/** Build the bucket-elevation predicate for an optional section filter.
+ *  Returns `null` when the filter is unset or non-down (filter passes all).
+ */
+function makeSectionBucketPredicate(
+  filter: AnnotationSectionFilter | undefined,
+): ((bucketY: number) => boolean) | null {
+  if (!filter || filter.axis !== 'down') return null;
+  const TOL = 1e-3;
+  const rangeMin = (filter.flipped ? filter.sectionPosWorld - filter.viewDepth : filter.sectionPosWorld) - TOL;
+  const rangeMax = (filter.flipped ? filter.sectionPosWorld : filter.sectionPosWorld + filter.viewDepth) + TOL;
+  return (bucketY: number) => bucketY >= rangeMin && bucketY <= rangeMax;
+}
+
 export function useSymbolicAnnotations(params: {
   enabled: boolean;
   /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
   fallbackY?: number;
+  /** Optional cut-plane slab filter — see `AnnotationSectionFilter`. */
+  sectionFilter?: AnnotationSectionFilter;
 }): Float32Array {
-  const { enabled, fallbackY = 0 } = params;
+  const { enabled, fallbackY = 0, sectionFilter } = params;
   const stores = useActiveStores();
   const version = useAnnotationParseTrigger(enabled, stores);
 
   return useMemo(() => {
     if (!enabled) return EMPTY_F32;
     void version; // depend on parse-completion ticks
+
+    const inRange = makeSectionBucketPredicate(sectionFilter);
 
     const verts: number[] = [];
     let storeIdx = 0;
@@ -552,16 +586,23 @@ export function useSymbolicAnnotations(params: {
       }
 
       for (const bucket of cached.byStorey.values()) {
-        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+        const bucketY = resolveBucketY(bucket.storeyElevation, fallbackY);
+        if (inRange && !inRange(bucketY)) continue;
+        liftTo3DLineList(bucket.lines, bucketY, verts);
       }
-      liftTo3DLineList(cached.loose, fallbackY, verts);
+      // Loose: include only if the fallback Y also falls inside the slab
+      // (or the filter is off). Otherwise orphan dimensions from storeys
+      // outside the slab would still bleed through the 3D overlay.
+      if (!inRange || inRange(fallbackY)) {
+        liftTo3DLineList(cached.loose, fallbackY, verts);
+      }
       storeIdx++;
     }
 
     if (debugEnabled()) console.log(`[annotations] total 3D line vertices: ${verts.length / 3} from ${stores.length} stores`);
     if (verts.length === 0) return EMPTY_F32;
     return new Float32Array(verts);
-  }, [enabled, stores, version, fallbackY]);
+  }, [enabled, stores, version, fallbackY, sectionFilter]);
 }
 
 /**
@@ -673,6 +714,38 @@ export function useSymbolicAnnotationsForDrawing(params: {
     const texts: AnnotationText2D[] = [];
     const fills: AnnotationFill2D[] = [];
 
+    // The drawing-2d cutter negates the 2D U axis on flipped cardinal cuts
+    // (see `projectTo2D` in @ifc-lite/drawing-2d/math.ts and `flipU` in the
+    // GPU cutter). Annotation primitives come out of WASM in the cutter's
+    // UNFLIPPED basis, so on a flipped section they'd sit beside the model
+    // (mirrored across X=0) instead of on top of it — exactly the
+    // "dimensions floating to the right of the floor plan" symptom. Mirror
+    // X for lines/texts/fills here so they line up with the section cut
+    // output drawn underneath. Y stays put (the cutter only flips U).
+    const pushLine = flipped
+      ? (ln: DrawingLine2D) => lines.push({
+          line: {
+            start: { x: -ln.line.start.x, y: ln.line.start.y },
+            end:   { x: -ln.line.end.x,   y: ln.line.end.y   },
+          },
+          category: ln.category,
+        })
+      : (ln: DrawingLine2D) => lines.push(ln);
+    const pushText = flipped
+      ? (t: AnnotationText2D) => texts.push({ ...t, x: -t.x, dirX: -t.dirX })
+      : (t: AnnotationText2D) => texts.push(t);
+    const pushFill = flipped
+      ? (f: AnnotationFill2D) => {
+          const src = f.points;
+          const dst = new Float32Array(src.length);
+          for (let i = 0; i < src.length; i += 2) {
+            dst[i]     = -src[i];
+            dst[i + 1] =  src[i + 1];
+          }
+          fills.push({ ...f, points: dst });
+        }
+      : (f: AnnotationFill2D) => fills.push(f);
+
     for (const store of stores) {
       const key = sourceKey(store);
       if (!key) continue;
@@ -682,9 +755,9 @@ export function useSymbolicAnnotationsForDrawing(params: {
       for (const bucket of cached.byStorey.values()) {
         const bucketY = resolveBucketY(bucket.storeyElevation, fallbackY);
         if (bucketY < rangeMin || bucketY > rangeMax) continue;
-        for (const ln of bucket.lines) lines.push(ln);
-        for (const t of bucket.texts) texts.push(t);
-        for (const f of bucket.fills) fills.push(f);
+        for (const ln of bucket.lines) pushLine(ln);
+        for (const t of bucket.texts) pushText(t);
+        for (const f of bucket.fills) pushFill(f);
       }
 
       // Loose annotations have no resolvable storey — include them if the
@@ -692,9 +765,9 @@ export function useSymbolicAnnotationsForDrawing(params: {
       // (e.g. 3DEXPERIENCE files with orphaned storeys) usable when the
       // user is looking at the storey the fallback resolves to.
       if (fallbackY >= rangeMin && fallbackY <= rangeMax) {
-        for (const ln of cached.loose) lines.push(ln);
-        for (const t of cached.looseTexts) texts.push(t);
-        for (const f of cached.looseFills) fills.push(f);
+        for (const ln of cached.loose) pushLine(ln);
+        for (const t of cached.looseTexts) pushText(t);
+        for (const f of cached.looseFills) pushFill(f);
       }
     }
 
@@ -714,14 +787,18 @@ export function useSymbolicAnnotationsForDrawing(params: {
 export function useSymbolicAnnotationsRichData(params: {
   enabled: boolean;
   fallbackY?: number;
+  /** Optional cut-plane slab filter — see `AnnotationSectionFilter`. */
+  sectionFilter?: AnnotationSectionFilter;
 }): { texts: readonly AnnotationText3D[]; fills: readonly AnnotationFill3D[] } {
-  const { enabled, fallbackY = 0 } = params;
+  const { enabled, fallbackY = 0, sectionFilter } = params;
   const stores = useActiveStores();
   const version = useAnnotationParseTrigger(enabled, stores);
 
   return useMemo(() => {
     if (!enabled) return { texts: EMPTY_TEXTS, fills: EMPTY_FILLS };
     void version;
+
+    const inRange = makeSectionBucketPredicate(sectionFilter);
 
     const texts: AnnotationText3D[] = [];
     const fills: AnnotationFill3D[] = [];
@@ -761,16 +838,19 @@ export function useSymbolicAnnotationsRichData(params: {
 
       for (const bucket of cached.byStorey.values()) {
         const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+        if (inRange && !inRange(y)) continue;
         for (const t of bucket.texts) pushText(t, y);
         for (const f of bucket.fills) pushFill(f, y);
       }
-      for (const t of cached.looseTexts) pushText(t, fallbackY);
-      for (const f of cached.looseFills) pushFill(f, fallbackY);
+      if (!inRange || inRange(fallbackY)) {
+        for (const t of cached.looseTexts) pushText(t, fallbackY);
+        for (const f of cached.looseFills) pushFill(f, fallbackY);
+      }
     }
 
     return {
       texts: texts.length ? texts : EMPTY_TEXTS,
       fills: fills.length ? fills : EMPTY_FILLS,
     };
-  }, [enabled, stores, version, fallbackY]);
+  }, [enabled, stores, version, fallbackY, sectionFilter]);
 }

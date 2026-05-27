@@ -738,6 +738,22 @@ pub(crate) fn combined_pre_pass(
         geometry_styles.entry(mat_id).or_insert(color);
     }
 
+    // Mirror what `buildPrePassStreaming` already does in `gpu_meshes.rs`
+    // (the `for (&element_id, colors) in &element_material_styles { … }`
+    // block): fold each element's single resolved material colour into
+    // `geometry_styles` keyed by the **element** express ID. Without this,
+    // the synchronous parse paths that go through `combined_pre_pass`
+    // (`parseMeshesAsync`, `parseMeshesSubset`, `buildPrePassOnce`) leave
+    // the colour unread — `resolve_element_color`'s element-id fallback
+    // finds nothing and material-chain-only elements render as the
+    // per-type grey default on those APIs. The streaming path didn't
+    // exhibit the bug because it folds entries inline.
+    for (&element_id, colors) in &element_material_styles {
+        if let Some(&color) = colors.first() {
+            geometry_styles.entry(element_id).or_insert(color);
+        }
+    }
+
     // Scan IfcRelAssociatesMaterial → resolved LayerBuildup per element.
     let material_layer_index = std::sync::Arc::new(
         ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder),

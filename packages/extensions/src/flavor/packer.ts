@@ -77,7 +77,11 @@ export function packFlavor(flavor: Flavor, opts: FlavorPackOptions = {}): Uint8A
     ...(opts.summary ? { summary: opts.summary } : {}),
   };
   const json = JSON.stringify(envelope);
-  return gzipSync(new TextEncoder().encode(json));
+  // Pin mtime to 0 so the gzip header doesn't embed wall-clock time —
+  // two `packFlavor(sameInput)` calls straddling a second boundary
+  // would otherwise differ by a few bytes in the MTIME field and the
+  // `is deterministic for the same input` test would flake on CI.
+  return gzipSync(new TextEncoder().encode(json), { mtime: 0 });
 }
 
 export function unpackFlavor(bytes: Uint8Array): ValidationResult<UnpackedFlavor> {

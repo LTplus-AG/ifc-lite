@@ -13,13 +13,15 @@
 
 import { useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
-import type { BCFViewpoint } from '@ifc-lite/bcf';
+import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
 import {
   createViewpoint,
   extractViewpointState,
+  computeMarkerPositions,
   type ViewerCameraState,
   type ViewerSectionPlane,
   type ViewerBounds,
+  type OverlayBBox,
 } from '@ifc-lite/bcf';
 import type { Renderer } from '@ifc-lite/renderer';
 import {
@@ -52,6 +54,10 @@ interface UseBCFResult {
   createViewpointFromState: (options?: CreateViewpointOptions) => Promise<BCFViewpoint | null>;
   /** Apply a viewpoint to the viewer */
   applyViewpoint: (viewpoint: BCFViewpoint, animate?: boolean) => void;
+  /** Animate the camera to a BCF topic's 3D location (without changing selection/visibility) */
+  zoomToTopic: (topic: BCFTopic) => void;
+  /** Whether a topic has enough data to zoom to */
+  canZoomToTopic: (topic: BCFTopic) => boolean;
   /** Capture a snapshot from the canvas */
   captureSnapshot: () => Promise<string | null>;
   /** Set the canvas ref for snapshot capture */
@@ -482,9 +488,62 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     ]
   );
 
+  const canZoomToTopic = useCallback((topic: BCFTopic): boolean => {
+    return topic.viewpoints.length > 0;
+  }, []);
+
+  const zoomToTopic = useCallback(
+    (topic: BCFTopic) => {
+      const renderer = getRenderer();
+      if (!renderer || topic.viewpoints.length === 0) return;
+
+      const boundsLookup = (ifcGuid: string): OverlayBBox | null => {
+        const result = globalIdToExpressId(ifcGuid);
+        if (!result) return null;
+        return renderer.getScene().getEntityBoundingBox(result.expressId);
+      };
+
+      const markers = computeMarkerPositions([topic], boundsLookup, {
+        targetDistance: renderer.getCamera().getDistance(),
+      });
+
+      if (markers.length > 0) {
+        const marker = markers[0];
+
+        if (marker.positionSource === 'component') {
+          for (let i = topic.viewpoints.length - 1; i >= 0; i--) {
+            const vp = topic.viewpoints[i];
+            const guids = [
+              ...(vp.components?.selection ?? []),
+              ...(vp.components?.visibility?.exceptions ?? []),
+            ];
+            for (const comp of guids) {
+              if (!comp.ifcGuid) continue;
+              const bbox = boundsLookup(comp.ifcGuid);
+              if (bbox) {
+                void renderer.getCamera().frameBounds(bbox.min, bbox.max);
+                return;
+              }
+            }
+          }
+        }
+
+        const point = marker.connectorAnchor ?? marker.position;
+        void renderer.getCamera().framePoint(point);
+        return;
+      }
+
+      // Fallback: restore camera from the latest viewpoint only
+      applyViewpoint(topic.viewpoints[topic.viewpoints.length - 1], true);
+    },
+    [applyViewpoint, getRenderer, globalIdToExpressId],
+  );
+
   return {
     createViewpointFromState,
     applyViewpoint,
+    zoomToTopic,
+    canZoomToTopic,
     captureSnapshot,
     setCanvasRef,
     setRendererRef,

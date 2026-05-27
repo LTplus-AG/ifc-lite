@@ -1,5 +1,11 @@
 # @ifc-lite/bcf
 
+## 1.15.4
+
+### Patch Changes
+
+- [#831](https://github.com/LTplus-AG/ifc-lite/pull/831) [`8b48495`](https://github.com/LTplus-AG/ifc-lite/commit/8b48495bc65c8ca778c3b60f271108f641fafe02) Thanks [@jonatanjacobsson](https://github.com/jonatanjacobsson)! - Color 3D BCF topic markers by topic status instead of priority, and match the active-marker pulse ring to the status color.
+
 ## 1.15.3
 
 ### Patch Changes

@@ -1,5 +1,49 @@
 # @ifc-lite/renderer
 
+## 1.22.1
+
+### Patch Changes
+
+- [#815](https://github.com/LTplus-AG/ifc-lite/pull/815) [`bc1a85d`](https://github.com/LTplus-AG/ifc-lite/commit/bc1a85dd532386774bcc76025de06b4fcf493937) Thanks [@louistrue](https://github.com/louistrue)! - Make IFC annotation overlays usable in real drawings (issue [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) follow-up
+  to the annotation text feature):
+
+  - **3D z-fight fix**: annotation lines, fills, and text pipelines now apply
+    a reverse-Z `depthBias` / `depthBiasSlopeScale` so a label drawn exactly
+    on a wall/floor face no longer disappears or strobes. This was the user-
+    reported "coplanar glitch" — the per-fragment depth-equal pass plus MSAA
+    jitter was the actual cause, not line weight. The pipelines remain
+    `depthCompare: 'greater-equal'` so foreground geometry still occludes the
+    overlay correctly.
+
+  - **Annotations in 2D section views**: the Section 2D panel now overlays
+    IfcAnnotation curves, text, and fills on the section drawing when their
+    authored storey elevation falls inside the cut's view-range on the cut
+    axis. New `showIfcAnnotations` flag on `drawing2DDisplayOptions` (defaults
+    on) and a header toggle (Tag icon, next to Symbolic-vs-Cut) wire it up.
+    The toggle is currently active only for floor-plan views (`axis='down'`);
+    elevation/section axes need a separate coord-reorientation pass and are
+    disabled in the UI.
+
+  The 2D path reuses the existing module-global parse cache from
+  `useSymbolicAnnotations`, so the WASM symbolic-representation parse runs
+  at most once per loaded model regardless of how many overlay surfaces are
+  active.
+
+- [#815](https://github.com/LTplus-AG/ifc-lite/pull/815) [`bc1a85d`](https://github.com/LTplus-AG/ifc-lite/commit/bc1a85dd532386774bcc76025de06b4fcf493937) Thanks [@louistrue](https://github.com/louistrue)! - Fix invalid WebGPU pipeline error on the 2D section overlay line pipeline.
+  After [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) the line pipeline carried `depthBias` / `depthBiasSlopeScale` /
+  `depthBiasClamp` alongside `topology: 'line-list'`, which the WebGPU spec
+  rejects ("Depth bias is not compatible with non-triangle topology
+  LineList"). The invalid pipeline then surfaced a second error on every
+  `set_pipeline` for section cut outlines and 3D annotation lines.
+
+  The depth-bias fields are removed from the pipeline and the equivalent
+  reverse-Z decal nudge is now applied directly in the line vertex shader
+  (`clip.z + 5e-5 * clip.w`), preserving the [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) coplanar-line fix while
+  producing a valid WebGPU pipeline.
+
+- Updated dependencies [[`bdb9978`](https://github.com/LTplus-AG/ifc-lite/commit/bdb997842fe38627fefbcddf250fc0136289bc84), [`ee6dbae`](https://github.com/LTplus-AG/ifc-lite/commit/ee6dbaedcc205b08728fa3e235bc3028d32b65e3)]:
+  - @ifc-lite/wasm@1.19.1
+
 ## 1.22.0
 
 ### Minor Changes

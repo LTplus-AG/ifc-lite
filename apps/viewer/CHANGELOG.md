@@ -1,5 +1,54 @@
 # @ifc-lite/viewer
 
+## 1.25.0
+
+### Minor Changes
+
+- [#815](https://github.com/LTplus-AG/ifc-lite/pull/815) [`bc1a85d`](https://github.com/LTplus-AG/ifc-lite/commit/bc1a85dd532386774bcc76025de06b4fcf493937) Thanks [@louistrue](https://github.com/louistrue)! - Make IFC annotation overlays usable in real drawings (issue [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) follow-up
+  to the annotation text feature):
+
+  - **3D z-fight fix**: annotation lines, fills, and text pipelines now apply
+    a reverse-Z `depthBias` / `depthBiasSlopeScale` so a label drawn exactly
+    on a wall/floor face no longer disappears or strobes. This was the user-
+    reported "coplanar glitch" — the per-fragment depth-equal pass plus MSAA
+    jitter was the actual cause, not line weight. The pipelines remain
+    `depthCompare: 'greater-equal'` so foreground geometry still occludes the
+    overlay correctly.
+
+  - **Annotations in 2D section views**: the Section 2D panel now overlays
+    IfcAnnotation curves, text, and fills on the section drawing when their
+    authored storey elevation falls inside the cut's view-range on the cut
+    axis. New `showIfcAnnotations` flag on `drawing2DDisplayOptions` (defaults
+    on) and a header toggle (Tag icon, next to Symbolic-vs-Cut) wire it up.
+    The toggle is currently active only for floor-plan views (`axis='down'`);
+    elevation/section axes need a separate coord-reorientation pass and are
+    disabled in the UI.
+
+  The 2D path reuses the existing module-global parse cache from
+  `useSymbolicAnnotations`, so the WASM symbolic-representation parse runs
+  at most once per loaded model regardless of how many overlay surfaces are
+  active.
+
+### Patch Changes
+
+- [#827](https://github.com/LTplus-AG/ifc-lite/pull/827) [`4c87791`](https://github.com/LTplus-AG/ifc-lite/commit/4c87791aa17780ec7d3f007dddf841d5606c5cdc) Thanks [@louistrue](https://github.com/louistrue)! - Address CodeRabbit feedback from PR [#823](https://github.com/LTplus-AG/ifc-lite/issues/823):
+
+  - Auto-populate `modelId` in the Lens rule editor when exactly one federated model is loaded, so the single-model branch (which hides the selector) no longer leaves the rule permanently invalid.
+  - Fix a `ReferenceError` in `scripts/fetch-prebuilt-wasm.mjs` by routing both prebuilt-fetch and source-build flows through a shared `scripts/lib/patch-threaded-stub.mjs` helper that imports `writeFileSync` and uses a regex anchored on the default export (resilient to wasm-bindgen formatting changes).
+  - Refresh the stale build-command reference in `@ifc-lite/wasm-threaded`'s package description.
+
+  Closes [#824](https://github.com/LTplus-AG/ifc-lite/issues/824).
+
+- Updated dependencies [[`8b48495`](https://github.com/LTplus-AG/ifc-lite/commit/8b48495bc65c8ca778c3b60f271108f641fafe02), [`78f1d10`](https://github.com/LTplus-AG/ifc-lite/commit/78f1d10aab812da682962845638daa95b86ae178), [`bc1a85d`](https://github.com/LTplus-AG/ifc-lite/commit/bc1a85dd532386774bcc76025de06b4fcf493937), [`bdb9978`](https://github.com/LTplus-AG/ifc-lite/commit/bdb997842fe38627fefbcddf250fc0136289bc84), [`a72c8d9`](https://github.com/LTplus-AG/ifc-lite/commit/a72c8d9d71da428cec6453e60c650c6cb296007c), [`ee6dbae`](https://github.com/LTplus-AG/ifc-lite/commit/ee6dbaedcc205b08728fa3e235bc3028d32b65e3), [`bc1a85d`](https://github.com/LTplus-AG/ifc-lite/commit/bc1a85dd532386774bcc76025de06b4fcf493937)]:
+  - @ifc-lite/bcf@1.15.4
+  - @ifc-lite/cache@1.14.7
+  - @ifc-lite/export@1.19.2
+  - @ifc-lite/renderer@1.22.1
+  - @ifc-lite/wasm@1.19.1
+  - @ifc-lite/parser@2.4.2
+  - @ifc-lite/lens@1.15.0
+  - @ifc-lite/ids@1.15.3
+
 ## 1.24.0
 
 ### Minor Changes

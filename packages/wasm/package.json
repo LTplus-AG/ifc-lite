@@ -7,7 +7,7 @@
   "description": "WebAssembly bindings for IFC-Lite",
   "version": "1.19.0",
   "scripts": {
-    "build": "bash ../../scripts/build-wasm.sh",
+    "build": "node ../../scripts/run-build-wasm.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "license": "MPL-2.0",

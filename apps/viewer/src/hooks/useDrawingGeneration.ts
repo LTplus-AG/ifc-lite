@@ -32,6 +32,14 @@ export const AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
   side: 'x',
 };
 
+// Depth of the slab IN FRONT of the section plane (in shifted-world
+// metres) within which IFC annotation/grid primitives are kept. Beyond
+// the slab they're culled — matches a typical plan-view "view depth"
+// where dimensions for the next storey shouldn't bleed through. The
+// shifted-bounds coordinate system the centroids and `position` both
+// live in is already in metres (WASM applies `unit_scale` upstream).
+export const ANNOTATION_VIEW_DEPTH = 1.2;
+
 interface UseDrawingGenerationParams {
   geometryResult: GeometryResult | null | undefined;
   ifcDataStore: { source: Uint8Array } | null;
@@ -428,7 +436,32 @@ export function useDrawingGeneration({
           }
         }
 
-        // Cull annotations on the far side of the section cut plane.
+        // When the user toggles `sectionPlane.flipped` on a cardinal axis,
+        // the cutter negates the 2D U axis (see `projectTo2D` in
+        // @ifc-lite/drawing-2d/math.ts and `data[6] = flipU` in the GPU
+        // cutter). Symbolic primitives come out of WASM in the cutter's
+        // UNFLIPPED basis — for the plan ('y') case `(line.x = worldX − rtc,
+        // line.y = −worldY + rtc)` — so on a flipped section the cut
+        // polygons land at −X while the symbolic lines stay at +X. The
+        // result the user reported: annotations sitting NEXT TO the model
+        // as if they were mirrored across the model's centre, instead of
+        // staying with the cut. Mirror symbolic X here to match the cutter
+        // for cardinal flipped sections. Custom face-pick planes use
+        // `projectTo2DBasis` (no U flip), so leave them untouched —
+        // symbolic alignment on an arbitrary basis is a separate problem
+        // and out of scope for this fix.
+        const mirrorSymbolicX = sectionPlane.flipped && !sectionPlane.custom;
+        const orientedSymbolicLines: SymbolicDrawingLine[] = mirrorSymbolicX
+          ? symbolicLines.map((line) => ({
+              ...line,
+              line: {
+                start: { x: -line.line.start.x, y: line.line.start.y },
+                end:   { x: -line.line.end.x,   y: line.line.end.y   },
+              },
+            }))
+          : symbolicLines;
+
+        // Cull annotations to a thin view-depth slab IN FRONT of the cut.
         //
         // IfcAnnotation / IfcGridAxis polylines (dimensions, room tags, grid
         // bubbles) live at a single elevation but have no body geometry —
@@ -444,12 +477,18 @@ export function useDrawingGeneration({
         // the WASM cutter already uses `normal`/`distance` verbatim, so
         // re-use both here for consistency with the cap.
         //
-        // The half-space sign matches what `EdgeExtractor.filterEdgesByDepth`
-        // does for projection edges: keep `signedDist ≥ 0` on the +normal
-        // side when not flipped, flip when the user has flipped the section.
+        // The kept window is `0 ≤ signedDist ≤ ANNOTATION_VIEW_DEPTH` on
+        // the +normal side (the camera-facing half-space, matching what
+        // `EdgeExtractor.filterEdgesByDepth` does for projection edges).
+        // Flipped sections see the same world from the −normal side, so
+        // the slab mirrors to `−ANNOTATION_VIEW_DEPTH ≤ signedDist ≤ 0`.
+        // Anything BEHIND the camera (wrong sign) or FARTHER than the
+        // view depth is dropped — without the upper bound, dimensions
+        // from every storey beyond the cut stacked on top of each other
+        // because the half-space alone is unbounded along the camera axis.
         //
-        // Annotations missing a recoverable centroid (older WASM build, or
-        // a degenerate polyline) are kept — over-rendering is preferable
+        // Annotations missing a recoverable centroid (older WASM build,
+        // or a degenerate polyline) are kept — over-rendering is preferable
         // to silently dropping authored dimensions when the runtime can't
         // classify them.
         const cullNormal: [number, number, number] = sectionPlane.custom
@@ -458,7 +497,7 @@ export function useDrawingGeneration({
           : axis === 'y' ? [0, 1, 0]
           : [0, 0, 1];
         const cullDistance = sectionPlane.custom ? sectionPlane.custom.distance : position;
-        const annotationCulled = symbolicLines.filter((line) => {
+        const annotationCulled = orientedSymbolicLines.filter((line) => {
           const isAnnotationLike = line.ifcType === 'IfcAnnotation' || line.ifcType === 'IfcGridAxis';
           if (!isAnnotationLike) return true;
           const wx = line.worldX;
@@ -470,7 +509,10 @@ export function useDrawingGeneration({
             wy * cullNormal[1] +
             wz * cullNormal[2] -
             cullDistance;
-          return sectionPlane.flipped ? signedDist <= 0 : signedDist >= 0;
+          if (sectionPlane.flipped) {
+            return signedDist <= 0 && signedDist >= -ANNOTATION_VIEW_DEPTH;
+          }
+          return signedDist >= 0 && signedDist <= ANNOTATION_VIEW_DEPTH;
         });
 
         // Only include symbolic lines for entities that are ACTUALLY being cut

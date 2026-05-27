@@ -38,6 +38,10 @@ interface OpfsFileHandle {
  * // Or use the sync subarray for backwards compatibility:
  * const view = source.subarray(byteOffset, byteOffset + byteLength);
  * ```
+ *
+ * @deprecated Experimental OPFS source storage is not wired into
+ * `IfcDataStore.source`. Keep source bytes in the store until a future cache
+ * format supports OPFS-backed range reads end-to-end.
  */
 export class OpfsSourceBuffer {
   /** In-memory buffer (null when offloaded to OPFS) */

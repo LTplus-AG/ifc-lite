@@ -23,6 +23,7 @@ import { readProperties } from './sections/properties.js';
 import { readQuantities } from './sections/quantities.js';
 import { readRelationships } from './sections/relationships.js';
 import { readGeometry } from './sections/geometry.js';
+import { readEntityIndex } from './sections/entity-index.js';
 
 export class BinaryCacheReader {
   /**
@@ -116,6 +117,12 @@ export class BinaryCacheReader {
     };
 
     const result: CacheReadResult = { dataStore };
+
+    const entityIndexSection = sectionMap.get(SectionType.EntityIndex);
+    if (entityIndexSection) {
+      reader.position = entityIndexSection.offset;
+      result.entityIndex = readEntityIndex(reader);
+    }
 
     // Read geometry (optional)
     if (!skipGeometry && header.hasGeometry) {

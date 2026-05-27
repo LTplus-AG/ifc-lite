@@ -13,7 +13,7 @@ import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 export const MAGIC = 0x4C434649; // "IFCL" in little-endian
 
 /** Current format version */
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 
 /** Section types in the binary format */
 export enum SectionType {
@@ -25,6 +25,7 @@ export enum SectionType {
   Geometry = 6,
   Spatial = 7,
   Bounds = 8,
+  EntityIndex = 9,
 }
 
 /** IFC schema version */
@@ -126,6 +127,27 @@ export interface IfcDataStore {
   quantities: QuantityTable;
   relationships: RelationshipGraph;
   spatialHierarchy?: SpatialHierarchy;
+  entityIndex?: CacheEntityIndex;
+}
+
+export interface CacheEntityRef {
+  expressId: number;
+  type: string;
+  byteOffset: number;
+  byteLength: number;
+  lineNumber?: number;
+}
+
+export interface CacheEntityIndex {
+  byId: Iterable<[number, CacheEntityRef]>;
+}
+
+export interface CachedEntityIndexColumns {
+  ids: Uint32Array;
+  byteOffsets: Uint32Array;
+  byteLengths: Uint32Array;
+  typeIndices: Uint16Array;
+  typeNames: string[];
 }
 
 /**
@@ -133,6 +155,7 @@ export interface IfcDataStore {
  */
 export interface CacheReadResult {
   dataStore: IfcDataStore;
+  entityIndex?: CachedEntityIndexColumns;
   geometry?: {
     meshes: MeshData[];
     totalVertices: number;

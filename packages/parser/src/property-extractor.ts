@@ -4,6 +4,9 @@
 
 /**
  * Property extractor - extracts PropertySets and their values
+ *
+ * @deprecated Legacy eager `ParseResult` helper. Use
+ * `extractPropertiesOnDemand(store, expressId)` with `parseColumnar()`.
  */
 
 import type { IfcEntity, PropertySet, PropertyValue } from './types.js';

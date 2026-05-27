@@ -13,10 +13,11 @@ import { useCallback } from 'react';
 import {
   BinaryCacheWriter,
   BinaryCacheReader,
+  type CachedEntityIndexColumns,
   type IfcDataStore as CacheDataStore,
   type GeometryData,
 } from '@ifc-lite/cache';
-import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndexBuilder, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -29,6 +30,27 @@ import { calculateStoreyHeights } from '../utils/localParsingUtils.js';
 // Re-export types for convenience
 export type { CacheResult } from '../services/cacheService.js';
 export { getCached, setCached, deleteCached } from '../services/cacheService.js';
+
+function buildEntityIndexFromCachedColumns(columns: CachedEntityIndexColumns): IfcDataStore['entityIndex'] {
+  const byId = new CompactEntityIndex(
+    columns.ids,
+    columns.byteOffsets,
+    columns.byteLengths,
+    columns.typeIndices,
+    columns.typeNames,
+  );
+  const byType = new Map<string, number[]>();
+  for (let i = 0; i < columns.ids.length; i++) {
+    const type = columns.typeNames[columns.typeIndices[i]];
+    let ids = byType.get(type);
+    if (!ids) {
+      ids = [];
+      byType.set(type, ids);
+    }
+    ids.push(columns.ids[i]);
+  }
+  return { byId, byType };
+}
 
 // ============================================================================
 // Types
@@ -107,25 +129,28 @@ export function useIfcCache() {
       if (cacheResult.sourceBuffer) {
         dataStore.source = new Uint8Array(cacheResult.sourceBuffer);
 
-        // Quick scan to rebuild entity index with byte offsets (needed for on-demand extraction).
-        // Uses CompactEntityIndexBuilder to fill typed arrays directly during the scan,
-        // avoiding a temporary array of 4.4M+ objects (~350MB for large files).
-        const tokenizer = new StepTokenizer(dataStore.source);
-        const estimatedCount = dataStore.entities?.count ?? 100_000;
-        const indexBuilder = new CompactEntityIndexBuilder(estimatedCount);
-        const byType = new Map<string, number[]>();
+        if (result.entityIndex) {
+          dataStore.entityIndex = buildEntityIndexFromCachedColumns(result.entityIndex);
+        } else {
+          // Backward compatibility for v3 caches: rebuild byte offsets from the
+          // source once, then future v4 writes persist this section.
+          const tokenizer = new StepTokenizer(dataStore.source);
+          const estimatedCount = dataStore.entities?.count ?? 100_000;
+          const indexBuilder = new CompactEntityIndexBuilder(estimatedCount);
+          const byType = new Map<string, number[]>();
 
-        for (const ref of tokenizer.scanEntitiesFast()) {
-          indexBuilder.add(ref.expressId, ref.type, ref.offset, ref.length);
-          let typeList = byType.get(ref.type);
-          if (!typeList) {
-            typeList = [];
-            byType.set(ref.type, typeList);
+          for (const ref of tokenizer.scanEntitiesFast()) {
+            indexBuilder.add(ref.expressId, ref.type, ref.offset, ref.length);
+            let typeList = byType.get(ref.type);
+            if (!typeList) {
+              typeList = [];
+              byType.set(ref.type, typeList);
+            }
+            typeList.push(ref.expressId);
           }
-          typeList.push(ref.expressId);
+          const compactByIdIndex = indexBuilder.build();
+          dataStore.entityIndex = { byId: compactByIdIndex, byType };
         }
-        const compactByIdIndex = indexBuilder.build();
-        dataStore.entityIndex = { byId: compactByIdIndex, byType };
 
         // Rebuild on-demand maps from relationships
         // Pass entityIndex which contains ALL entity types including IfcPropertySet/IfcElementQuantity
@@ -254,6 +279,7 @@ export function useIfcCache() {
         quantities: dataStore.quantities,
         relationships: dataStore.relationships,
         spatialHierarchy: dataStore.spatialHierarchy,
+        entityIndex: dataStore.entityIndex,
       };
 
       console.log('[useIfcCache] Writing cache buffer...');

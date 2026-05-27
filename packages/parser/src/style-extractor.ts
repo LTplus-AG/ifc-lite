@@ -34,6 +34,9 @@ export interface StyleMapping {
 
 /**
  * Extract IFC surface styles and create material mappings
+ *
+ * @deprecated Legacy eager entity-map style extractor. Browser geometry uses
+ * the Rust/WASM style pre-pass; new metadata code should use `IfcDataStore`.
  */
 export class StyleExtractor {
     private entities: Map<number, IfcEntity>;

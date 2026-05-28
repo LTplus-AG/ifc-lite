@@ -17,6 +17,20 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   IfcBuilding: '\uea40',
   IfcBuildingStorey: '\ue8fe',
   IfcSpace: '\ueff4',
+  // IFC4.3 facility containers \u2014 same family as IfcBuilding (multi-storey
+  // spatial root) but `domain` carries the "campus / infrastructure
+  // facility" reading; IfcFacilityPart follows the storey-line icon for
+  // consistency. (Issue #860 \u2014 user reported no icon on IfcFacility.)
+  IfcFacility: '\ue7ee', // "domain"
+  IfcFacilityPart: '\ue8fe', // "layers" \u2014 mirrors IfcBuildingStorey
+  IfcBridge: '\uebbf', // "directions_railway" \u2014 civil bridge icon
+  IfcBridgePart: '\ue8fe',
+  IfcRoad: '\uebbe', // "route"
+  IfcRoadPart: '\ue8fe',
+  IfcRailway: '\ue570', // "train"
+  IfcRailwayPart: '\ue8fe',
+  IfcMarineFacility: '\ue532', // "directions_boat"
+  IfcMarineFacilityPart: '\ue8fe',
 
   // Structural
   IfcBeam: '\uf108',
@@ -79,6 +93,19 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   IfcCivilElement: '\uea99',
   IfcGeographicElement: '\uea99',
   IfcLinearElement: '\uebaa',
+
+  // Geotechnical strata (IFC4.3) \u2014 issue #860. The abstract base plus the
+  // three concrete leaves (IfcSolidStratum / IfcVoidStratum / IfcWaterStratum)
+  // all share the `terrain` glyph. The geometry pipeline routes the leaves
+  // through IfcGeotechnicalStratum via legacy_entities.rs, so the icon map
+  // covers both the leaf names (when entries land in the spatial tree with
+  // their original type string) and the base.
+  IfcGeotechnicalAssembly: '\ue564',
+  IfcGeotechnicalElement: '\ue564',
+  IfcGeotechnicalStratum: '\ue564',
+  IfcSolidStratum: '\ue564',
+  IfcVoidStratum: '\ue564',
+  IfcWaterStratum: '\ue564',
 
   // Proxy / generic fallback
   IfcProduct: '\ue047',

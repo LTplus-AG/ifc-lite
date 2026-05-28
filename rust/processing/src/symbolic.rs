@@ -84,8 +84,13 @@ impl SymbolicData {
 pub fn extract_symbolic_data(content: &str) -> SymbolicData {
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
-    let unit_scale = ifc_lite_geometry::GeometryRouter::with_units(content, &mut decoder)
-        .unit_scale() as f32;
+    // Reuse the geometry router for both unit-scale and placement
+    // resolution. Without applying placements, an IfcGrid at storey N
+    // emits its axis points with `world_y = 0` and any rotated grid /
+    // off-origin storey leaks raw local coordinates through to the
+    // client — see PR #852 review (chatgpt-codex P1).
+    let router = ifc_lite_geometry::GeometryRouter::with_units(content, &mut decoder);
+    let unit_scale = router.unit_scale() as f32;
 
     let mut data = SymbolicData::default();
     let mut scanner = EntityScanner::new(content);
@@ -101,14 +106,43 @@ pub fn extract_symbolic_data(content: &str) -> SymbolicData {
             continue;
         };
 
+        // Resolve the entity's world-space placement. Returns identity
+        // when the entity has no IfcLocalPlacement (degenerate but
+        // legal — those still work fine here, the points just stay in
+        // the file's authored coordinate frame).
+        let placement = router
+            .resolve_scaled_placement(&entity, &mut decoder)
+            .ok();
+
         if is_grid {
-            extract_grid_axes(&entity, &mut decoder, unit_scale, &mut data);
+            extract_grid_axes(&entity, &mut decoder, unit_scale, placement.as_ref(), &mut data);
         } else {
-            extract_annotation_polylines(&entity, &mut decoder, unit_scale, &mut data);
+            extract_annotation_polylines(
+                &entity,
+                &mut decoder,
+                unit_scale,
+                placement.as_ref(),
+                &mut data,
+            );
         }
     }
 
     data
+}
+
+/// Apply a 4×4 placement matrix (column-major, `[m00, m10, m20, m30,
+/// m01, …]`) to a metres-scaled `(x, y)` point. Returns the world
+/// position in metres, retaining only x/y (z is folded into `world_y`).
+#[inline]
+fn apply_placement_xy(placement: &[f64; 16], x_m: f32, y_m: f32) -> (f32, f32, f32) {
+    // nalgebra Matrix4 stores column-major: index = col*4 + row.
+    let x = x_m as f64;
+    let y = y_m as f64;
+    // z is 0 because the point came from a 2D IfcCartesianPoint
+    let wx = placement[0] * x + placement[4] * y + placement[12];
+    let wy = placement[1] * x + placement[5] * y + placement[13];
+    let wz = placement[2] * x + placement[6] * y + placement[14];
+    (wx as f32, wy as f32, wz as f32)
 }
 
 /// Extract endpoint pairs from each axis in `IfcGrid.UAxes` / `VAxes` /
@@ -118,6 +152,7 @@ fn extract_grid_axes(
     grid: &ifc_lite_core::DecodedEntity,
     decoder: &mut EntityDecoder,
     unit_scale: f32,
+    placement: Option<&[f64; 16]>,
     out: &mut SymbolicData,
 ) {
     for axis_attr_idx in [7usize, 8, 9] {
@@ -144,12 +179,27 @@ fn extract_grid_axes(
             };
 
             if let Some([p0, p1]) = polyline_endpoints(&curve, decoder, unit_scale) {
+                // Apply the grid's IfcLocalPlacement to lift each
+                // 2D axis endpoint into world space. Without this,
+                // grids at a storey offset emit `world_y = 0` and
+                // rotated grids leak raw local XY. Z component
+                // populates `world_y` so the renderer can lift each
+                // grid axis to its host storey.
+                let (p0w, p1w, world_y) = match placement {
+                    Some(m) => {
+                        let p0w = apply_placement_xy(m, p0.0, p0.1);
+                        let p1w = apply_placement_xy(m, p1.0, p1.1);
+                        let world_y = 0.5 * (p0w.2 + p1w.2);
+                        ((p0w.0, p0w.1), (p1w.0, p1w.1), world_y)
+                    }
+                    None => (p0, p1, 0.0_f32),
+                };
                 out.grid_axes.push(SymbolicGridAxis {
                     express_id: axis.id,
                     grid_express_id: grid.id,
                     tag,
-                    endpoints: [p0.0, p0.1, p1.0, p1.1],
-                    world_y: 0.0,
+                    endpoints: [p0w.0, p0w.1, p1w.0, p1w.1],
+                    world_y,
                 });
             }
         }
@@ -162,6 +212,7 @@ fn extract_annotation_polylines(
     annotation: &ifc_lite_core::DecodedEntity,
     decoder: &mut EntityDecoder,
     unit_scale: f32,
+    placement: Option<&[f64; 16]>,
     out: &mut SymbolicData,
 ) {
     let Some(rep_attr) = annotation.get(6) else {
@@ -211,12 +262,35 @@ fn extract_annotation_polylines(
                         (points.first(), points.get(points.len() - 2))
                     && points.first() == points.get(points.len() - 2)
                     && points.get(1) == points.get(points.len() - 1);
+                // Same placement-resolution rationale as
+                // `extract_grid_axes`: rotated or storey-offset
+                // annotations need their authored 2D coords lifted
+                // into world space, and the z component populates
+                // `world_y` so the client renders each polyline at
+                // its host storey's elevation.
+                let (placed_points, world_y) = match placement {
+                    Some(m) => {
+                        let mut placed = Vec::with_capacity(points.len());
+                        let mut z_sum = 0.0_f32;
+                        let mut z_count = 0_u32;
+                        for chunk in points.chunks_exact(2) {
+                            let w = apply_placement_xy(m, chunk[0], chunk[1]);
+                            placed.push(w.0);
+                            placed.push(w.1);
+                            z_sum += w.2;
+                            z_count += 1;
+                        }
+                        let world_y = if z_count > 0 { z_sum / z_count as f32 } else { 0.0 };
+                        (placed, world_y)
+                    }
+                    None => (points, 0.0_f32),
+                };
                 out.polylines.push(SymbolicPolyline {
                     express_id: item.id,
                     ifc_type: "IfcAnnotation".to_string(),
-                    points,
+                    points: placed_points,
                     closed,
-                    world_y: 0.0,
+                    world_y,
                     representation: rep_ident.clone(),
                 });
             }

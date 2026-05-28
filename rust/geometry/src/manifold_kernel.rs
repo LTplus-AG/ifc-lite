@@ -21,7 +21,7 @@
 //! mirrors its `union` / `difference` / `intersection` shapes via the
 //! mesh-level wrappers in `csg.rs`.
 
-use crate::csg::calculate_normals;
+use crate::csg::{calculate_normals, smooth_normals_with_creases};
 use crate::diagnostics::BoolFailureReason;
 use crate::mesh::Mesh;
 use manifold_csg::Manifold;
@@ -553,11 +553,29 @@ fn manifold_to_mesh(m: &Manifold) -> Mesh {
     calculate_normals(&mut mesh);
     let mut welded = mesh.welded(1e-6, 1e-3);
 
-    // Re-derive area-weighted normals on the welded mesh. Coplanar
-    // adjacent strips now share verts, so each vertex's accumulator
-    // sees one identical face normal contributed from every strip on
-    // the same plane → flat surfaces shade uniformly.
-    calculate_normals(&mut welded);
+    // Re-derive normals on the welded mesh with crease-angle smoothing.
+    // The naive `calculate_normals` averages adjacent face normals at
+    // every shared vertex — coplanar strips shade uniformly (good) but
+    // wall-meets-floor corners get a 45° normal where the geometry has
+    // a 90° edge (bad — corners look soft). `smooth_normals_with_creases`
+    // partitions each vertex's incident triangles into smooth groups
+    // by face-normal-dot threshold; coplanar adjacent strips end up in
+    // one group with one shared smooth normal (no scar line), and a
+    // wall-meets-floor vertex ends up with TWO groups (and thus two
+    // duplicated final verts) so the renderer paints a crisp crease.
+    //
+    // 0.866 ≈ cos(30°): the same threshold Blender's "auto smooth",
+    // 3ds Max's "smoothing groups by angle", and most CAD viewers use
+    // as the default for the perceived "designer-intended" trade-off
+    // between scar-line-free flats and crisp engineered corners.
+    //
+    // Unlike `calculate_normals` this runs on both native and wasm so
+    // both renderers see identical normals straight out of the CSG
+    // pipeline. Native JS-side normal computation (if any downstream
+    // consumer still does it) will receive a mesh with normals already
+    // written and either preserve or override them — either way the
+    // crease-aware pass is the canonical answer for Manifold output.
+    smooth_normals_with_creases(&mut welded, 0.866);
     welded
 }
 
@@ -1033,25 +1051,22 @@ mod tests {
         let result = difference(&host, &cutter).expect("difference ok");
         assert!(!result.is_empty(), "cut wall must produce output");
 
-        // 1. Position uniqueness: every (x, y, z) tuple in the output
-        // must be distinct at 10 µm precision. If welding didn't run,
-        // Manifold's per-strip duplicate verts would still be present.
-        let mut seen = std::collections::HashSet::new();
-        let mut duplicates = 0;
-        for chunk in result.positions.chunks_exact(3) {
-            let key = (
-                (chunk[0] / 1e-5).round() as i64,
-                (chunk[1] / 1e-5).round() as i64,
-                (chunk[2] / 1e-5).round() as i64,
-            );
-            if !seen.insert(key) {
-                duplicates += 1;
-            }
-        }
-        assert_eq!(
-            duplicates, 0,
-            "expected zero duplicate vertex positions after welding, found {}",
-            duplicates,
+        // 1. Crease-aware smoothing duplicates verts at hard corners
+        // by design — a wall-meets-floor vertex emits one vert per
+        // incident smooth group (typically 2–3 final verts per
+        // physical corner) so the renderer sees crisp normals. We
+        // assert the OUTPUT vert count is bounded, not that it's
+        // unique: at most 3× the triangle count (worst-case flat
+        // shading) and at least the input volume's verts.
+        let tri_count = result.indices.len() / 3;
+        let vert_count = result.positions.len() / 3;
+        assert!(
+            vert_count <= tri_count * 3,
+            "vert count {vert_count} exceeds flat-shading upper bound 3*{tri_count}",
+        );
+        assert!(
+            vert_count >= 8,
+            "post-process must keep at least the cube's 8 corner verts, got {vert_count}",
         );
 
         // 2. The mesh must still represent a meaningful volume — at

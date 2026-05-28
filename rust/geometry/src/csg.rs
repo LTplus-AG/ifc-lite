@@ -1522,18 +1522,21 @@ impl ClippingProcessor {
         // rendered as the gable triangle alone before this guard.
         let (host_min, host_max) = host.bounds();
         let (res_min, res_max) = result.bounds();
-        // 1 % of the host's longest edge — tight enough to catch a
-        // truly-outside result, loose enough to absorb the floating-point
-        // jitter Manifold introduces along intersection seams.
-        let host_span = (host_max - host_min).abs();
-        let slack = host_span.x.max(host_span.y).max(host_span.z) as f64 * 0.01;
-        let slack = slack as f32;
-        if res_min.x + slack < host_min.x
-            || res_min.y + slack < host_min.y
-            || res_min.z + slack < host_min.z
-            || res_max.x > host_max.x + slack
-            || res_max.y > host_max.y + slack
-            || res_max.z > host_max.z + slack
+        // 1 % of the host's edge **per axis** — using a single tolerance
+        // derived from the longest dimension lets thin walls/plates pass
+        // a wrong-piece check on Y/Z that they shouldn't (CodeRabbit
+        // review on PR #861). With per-axis slack, a 5 m × 0.4 m × 7 m
+        // wall gets ±5 cm tolerance on X, ±4 mm on Y, ±7 cm on Z — so a
+        // result that pokes >4 mm past the wall's thickness face is
+        // correctly flagged even though it's well within 1 % of the X
+        // span.
+        let slack = (host_max - host_min).abs() * 0.01;
+        if res_min.x + slack.x < host_min.x
+            || res_min.y + slack.y < host_min.y
+            || res_min.z + slack.z < host_min.z
+            || res_max.x > host_max.x + slack.x
+            || res_max.y > host_max.y + slack.y
+            || res_max.z > host_max.z + slack.z
         {
             return true;
         }

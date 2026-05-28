@@ -60,6 +60,14 @@ _emsdk_dir="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}"
 if [ -x "$_emsdk_dir/upstream/bin/clang++" ]; then
   export EMSDK="$_emsdk_dir"
   export WASM_CXX_SHIM_LLVM_BIN_DIR="$_emsdk_dir/wasm-cxx-prefix/bin"
+  # Also prepend the bin directory to PATH so any wasm-cxx-shim probe
+  # path that resolves `clang++` via PATH (rather than the env var)
+  # picks up the cached toolchain instead of system clang or
+  # nothing-at-all. Belt-and-braces — the build.rs probe in 3.5.100
+  # uses `WASM_CXX_SHIM_LLVM_BIN_DIR` directly, but the CMake-side
+  # probe and any future shim version that delegates to `find_program`
+  # benefits from the PATH entry (PR #861 review, chatgpt-codex P1).
+  export PATH="$WASM_CXX_SHIM_LLVM_BIN_DIR:$PATH"
   echo "🛠  EMSDK=$EMSDK"
   echo "🛠  WASM_CXX_SHIM_LLVM_BIN_DIR=$WASM_CXX_SHIM_LLVM_BIN_DIR"
 fi

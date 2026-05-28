@@ -443,52 +443,47 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             }
         }
 
-        // End caps for a partial revolution. Build fan triangles from the
-        // profile centroid for each end ring. Cheap and good enough for the
-        // structural-beam case the IFC spec targets here.
+        // End caps for a partial revolution.
+        //
+        // Originally a fan from the profile centroid to consecutive
+        // boundary points. That assumption only holds for CONVEX
+        // profiles — for a concave profile (I-beam, L-beam, hollow
+        // rectangle …) the centroid lies outside the polygon in some
+        // regions, the fan triangles cross each other, and the cap
+        // renders as a bow-tie/X artifact (issue #846 follow-up: PR
+        // #848 sweep landed correctly but the I-beam cross-section came
+        // out as a zigzag because of this fan path).
+        //
+        // Use earcut on the 2D profile boundary instead. The resulting
+        // triangle indices are in [0..num_profile_points) — they map
+        // 1:1 onto the ring vertices we already emitted, so the cap
+        // just reuses those positions (no new vertices except the side-
+        // wall winding requires flipping one of the two caps so its
+        // outward normal points away from the swept volume).
         if !full_circle && num_profile_points >= 3 {
-            let centroid_2d = {
-                let (sx, sy) = profile_points
-                    .iter()
-                    .fold((0.0, 0.0), |(sx, sy), p| (sx + p.x, sy + p.y));
-                let n = num_profile_points as f64;
-                Point3::new(sx / n, sy / n, 0.0)
-            };
+            let profile_flat: Vec<f64> = profile_points
+                .iter()
+                .flat_map(|p| [p.x, p.y])
+                .collect();
+            let cap_indices = earcutr::earcut(&profile_flat, &[], 2)
+                .map_err(|e| Error::geometry(format!(
+                    "Revolved profile cap triangulation failed: {e:?}"
+                )))?;
 
             for (ring_idx, flip) in [(0usize, true), (segments, false)] {
-                let t = if ring_idx == 0 {
-                    0.0
-                } else {
-                    angle
-                };
-                let cos_t = t.cos();
-                let sin_t = t.sin();
-                let k = axis_direction;
-
-                let v = centroid_2d - axis_location;
-                let v_par = k * v.dot(&k);
-                let v_perp = v - v_par;
-                let v_perp_rot = v_perp * cos_t + k.cross(&v_perp) * sin_t;
-                let center = axis_location + v_par + v_perp_rot;
-
-                let center_idx = (positions.len() / 3) as u32;
-                positions.push(center.x as f32);
-                positions.push(center.y as f32);
-                positions.push(center.z as f32);
-
                 let base = (ring_idx * num_profile_points) as u32;
-                for j in 0..num_profile_points {
-                    let j_next = (j + 1) % num_profile_points;
-                    let a = base + j as u32;
-                    let b = base + j_next as u32;
+                for tri in cap_indices.chunks_exact(3) {
+                    let a = base + tri[0] as u32;
+                    let b = base + tri[1] as u32;
+                    let c = base + tri[2] as u32;
                     if flip {
-                        indices.push(center_idx);
-                        indices.push(b);
                         indices.push(a);
+                        indices.push(c);
+                        indices.push(b);
                     } else {
-                        indices.push(center_idx);
                         indices.push(a);
                         indices.push(b);
+                        indices.push(c);
                     }
                 }
             }

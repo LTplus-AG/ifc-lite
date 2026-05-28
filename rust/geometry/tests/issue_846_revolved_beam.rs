@@ -124,3 +124,53 @@ fn extrusion_beam_unchanged_under_revolved_fix() {
         "expected extrusion beam to span ≈1 m on its long axis, got {max_span}",
     );
 }
+
+#[test]
+fn revolved_beam_has_manifold_cap_triangulation() {
+    // Issue #846 follow-up: the FIRST fix (PR #848) made the sweep curve
+    // land correctly but the end caps were built as a centroid fan — fine
+    // for convex profiles, broken for the I-beam's concave outline.
+    // Visible symptom: the revolved beam's cross-section rendered as a
+    // bowtie/X where adjacent fan triangles crossed each other through
+    // the concave web region of the IPE200 profile.
+    //
+    // Robust catch: an edge that's shared by > 2 triangles is non-manifold,
+    // which is exactly what a bowtie-fan produces (crossed fan triangles
+    // share edges with their neighbours in degenerate ways). Earcut on the
+    // same polygon yields a manifold cap; no edge has more than 2
+    // incidences.
+    let Some(content) = read_fixture() else { return };
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+    let beam = decoder
+        .decode_by_id(227)
+        .expect("decode IfcBeam #227 (Revolution)");
+    let mesh = router
+        .process_element(&beam, &mut decoder)
+        .expect("process revolution beam");
+
+    let mut edge_count: std::collections::HashMap<(u32, u32), u32> =
+        std::collections::HashMap::new();
+    for tri in mesh.indices.chunks_exact(3) {
+        for k in 0..3 {
+            let a = tri[k];
+            let b = tri[(k + 1) % 3];
+            let key = if a < b { (a, b) } else { (b, a) };
+            *edge_count.entry(key).or_insert(0) += 1;
+        }
+    }
+    let non_manifold_edges: Vec<_> = edge_count
+        .iter()
+        .filter(|(_, &count)| count > 2)
+        .collect();
+    assert!(
+        non_manifold_edges.is_empty(),
+        "{} edges shared by 3+ triangles — cap triangulation is self-\
+         intersecting (the centroid-fan bow-tie that PR #848 follow-up \
+         was supposed to fix; see swept.rs::process for IfcRevolvedAreaSolid).\n\
+         First few: {:?}",
+        non_manifold_edges.len(),
+        non_manifold_edges.iter().take(5).collect::<Vec<_>>(),
+    );
+}

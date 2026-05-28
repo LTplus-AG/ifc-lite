@@ -826,6 +826,11 @@ pub fn process_geometry_streaming_filtered_with_options(
     let mut faceted_brep_ids: Vec<u32> = Vec::new();
     let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut filling_by_opening: FxHashMap<u32, u32> = FxHashMap::default();
+    // Parent → aggregated children, used to propagate void cuts from a
+    // host with no body (e.g. IFC4 IfcWallElementedCase) to the parts
+    // that actually carry the geometry. See `propagate_voids_to_parts`
+    // below.
+    let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut entity_jobs: Vec<EntityJob> = Vec::with_capacity(2000);
     let quick_metadata_enabled = options.emit_quick_metadata_bootstrap;
     let mut quick_spatial_nodes = quick_metadata_enabled.then(HashMap::<u32, QuickSpatialNodeEntry>::new);
@@ -968,6 +973,23 @@ pub fn process_geometry_streaming_filtered_with_options(
                     filling_by_opening.insert(opening_id, filling_id);
                 }
             }
+        } else if type_name == "IFCRELAGGREGATES" {
+            // Independent of quick-metadata mode: keep a parent → children
+            // index so we can push voids down to aggregated parts when the
+            // host element has no body of its own (IfcWallElementedCase).
+            let args = parse_step_arguments(&content[start..end]);
+            if let Some(parent_id) = args.get(4).and_then(|token| parse_step_ref(token)) {
+                let kids = args
+                    .get(5)
+                    .map(|token| parse_step_ref_list(token))
+                    .unwrap_or_default();
+                if !kids.is_empty() {
+                    aggregate_children
+                        .entry(parent_id)
+                        .or_default()
+                        .extend(kids);
+                }
+            }
         } else if type_name == "IFCSITE" && site_entity_pos.is_none() {
             site_entity_pos = Some((start, end));
         } else if type_name == "IFCBUILDING" && building_entity_pos.is_none() {
@@ -1005,6 +1027,14 @@ pub fn process_geometry_streaming_filtered_with_options(
             });
         }
     }
+
+    // IfcWallElementedCase + friends: when an opening voids a host that
+    // aggregates parts (drywall panels, studs, tracks) and has no body
+    // representation of its own, the opening must propagate to every
+    // aggregated descendant so the part meshes get the cut. Without this
+    // propagation the cut silently no-ops (the host has nothing to clip)
+    // and panels/studs cover what should be the window/door hole.
+    propagate_voids_to_aggregated_parts(&mut void_index, &aggregate_children);
 
     let entity_scan_time = entity_scan_start.elapsed();
 
@@ -1868,6 +1898,65 @@ fn normalize_style_name(raw: Option<&str>) -> Option<String> {
     Some(name.to_string())
 }
 
+/// Propagate openings from hosts that aggregate parts (IfcWallElementedCase
+/// pattern) to every aggregated descendant. The IFC4 spec allows an opening
+/// on a host whose geometry is distributed across aggregated parts; without
+/// propagation the cut runs against an empty host mesh and produces a
+/// "silent no-op" warning while panels/studs cover what should be the
+/// window/door hole.
+///
+/// Propagation is breadth-first with a visited-set cycle guard.
+/// Existing void entries for a part are extended (deduplicated) so we never
+/// overwrite an authored direct void.
+fn propagate_voids_to_aggregated_parts(
+    void_index: &mut FxHashMap<u32, Vec<u32>>,
+    aggregate_children: &FxHashMap<u32, Vec<u32>>,
+) {
+    if void_index.is_empty() || aggregate_children.is_empty() {
+        return;
+    }
+
+    // Snapshot host ids first — we mutate void_index inside the loop.
+    let hosts: Vec<u32> = void_index.keys().copied().collect();
+
+    for host in hosts {
+        let openings = match void_index.get(&host) {
+            Some(list) if !list.is_empty() => list.clone(),
+            _ => continue,
+        };
+
+        // BFS over aggregated descendants of `host`. Skip the host itself.
+        let mut stack: Vec<u32> = match aggregate_children.get(&host) {
+            Some(kids) => kids.clone(),
+            None => continue,
+        };
+        let mut seen: HashSet<u32> = HashSet::default();
+        seen.insert(host);
+
+        while let Some(part) = stack.pop() {
+            if !seen.insert(part) {
+                continue;
+            }
+
+            // Mirror the openings onto this part, deduplicated.
+            let entry = void_index.entry(part).or_default();
+            for opening in &openings {
+                if !entry.contains(opening) {
+                    entry.push(*opening);
+                }
+            }
+
+            if let Some(grand_kids) = aggregate_children.get(&part) {
+                for kid in grand_kids {
+                    if !seen.contains(kid) {
+                        stack.push(*kid);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Apply the opening filter and return which entity IDs to suppress and a filtered void index.
 ///
 /// Returns `(skipped_entity_ids, filtered_void_index)` where:
@@ -2131,5 +2220,79 @@ fn get_default_color(ifc_type: &IfcType) -> [f32; 4] {
 
         // Default - neutral gray
         _ => [0.8, 0.8, 0.8, 1.0],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn map(pairs: &[(u32, &[u32])]) -> FxHashMap<u32, Vec<u32>> {
+        pairs
+            .iter()
+            .map(|(k, v)| (*k, v.to_vec()))
+            .collect()
+    }
+
+    #[test]
+    fn propagate_voids_walks_full_aggregate_tree() {
+        // Host #100 voided by openings #200 and #201. The host aggregates
+        // parts #110 and #111; #110 further aggregates #120 (a grand-part).
+        // Every leaf in the aggregate sub-tree must inherit both openings.
+        let mut void_index = map(&[(100, &[200, 201])]);
+        let aggregate_children = map(&[(100, &[110, 111]), (110, &[120])]);
+
+        propagate_voids_to_aggregated_parts(&mut void_index, &aggregate_children);
+
+        let expected = [200, 201];
+        for part in &[110, 111, 120] {
+            let got = void_index.get(part).expect("part should have voids");
+            assert_eq!(
+                got.iter().copied().collect::<std::collections::HashSet<_>>(),
+                expected.iter().copied().collect::<std::collections::HashSet<_>>(),
+                "part #{part} should receive both openings",
+            );
+        }
+        // Host entry is preserved untouched.
+        assert_eq!(void_index.get(&100), Some(&vec![200, 201]));
+    }
+
+    #[test]
+    fn propagate_voids_deduplicates_existing_part_voids() {
+        // Authored: part #110 already voided by opening #999 directly.
+        // After propagation it must have #200 and #999, not #200 twice.
+        let mut void_index = map(&[(100, &[200]), (110, &[999])]);
+        let aggregate_children = map(&[(100, &[110])]);
+
+        propagate_voids_to_aggregated_parts(&mut void_index, &aggregate_children);
+
+        let mut part_voids = void_index.get(&110).unwrap().clone();
+        part_voids.sort();
+        assert_eq!(part_voids, vec![200, 999]);
+    }
+
+    #[test]
+    fn propagate_voids_handles_aggregate_cycles() {
+        // Cyclic IfcRelAggregates: #110 -> #120 -> #110. Without the visited
+        // guard this loops forever. With it the walk terminates and both
+        // parts get the openings exactly once.
+        let mut void_index = map(&[(100, &[200])]);
+        let aggregate_children = map(&[(100, &[110]), (110, &[120]), (120, &[110])]);
+
+        propagate_voids_to_aggregated_parts(&mut void_index, &aggregate_children);
+
+        assert_eq!(void_index.get(&110), Some(&vec![200]));
+        assert_eq!(void_index.get(&120), Some(&vec![200]));
+    }
+
+    #[test]
+    fn propagate_voids_no_op_when_host_has_no_parts() {
+        let mut void_index = map(&[(100, &[200])]);
+        let aggregate_children = map(&[(101, &[110])]); // different host
+        let before = void_index.clone();
+
+        propagate_voids_to_aggregated_parts(&mut void_index, &aggregate_children);
+
+        assert_eq!(void_index, before);
     }
 }

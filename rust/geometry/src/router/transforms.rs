@@ -261,8 +261,15 @@ impl GeometryRouter {
         // 0: Axis1 (IfcDirection) - X axis direction (optional)
         // 1: Axis2 (IfcDirection) - Y axis direction (optional)
         // 2: LocalOrigin (IfcCartesianPoint) - translation
-        // 3: Scale (IfcReal) - uniform scale (optional, defaults to 1.0)
+        // 3: Scale (IfcReal) - X axis scale (optional, defaults to 1.0)
         // 4: Axis3 (IfcDirection) - Z axis direction (optional, for 3D only)
+        // IfcCartesianTransformationOperator3DNonUniform adds:
+        // 5: Scale2 (IfcReal) - Y axis scale (defaults to Scale)
+        // 6: Scale3 (IfcReal) - Z axis scale (defaults to Scale)
+        // Without honoring attrs 5+6, every non-uniform mapped item collapses
+        // to its X scale on all three axes — the drywall-panel pieces in the
+        // wall-elemented-case fixture (issue #845 follow-up) ended up as
+        // tiny cubes instead of tall narrow strips covering the wall area.
 
         // Get LocalOrigin (attribute 2)
         let origin = if let Some(origin_attr) = entity.get(2) {
@@ -292,8 +299,25 @@ impl GeometryRouter {
             Point3::origin()
         };
 
-        // Get Scale (attribute 3)
+        // Get Scale (attribute 3). For IfcCartesianTransformationOperator3DNonUniform
+        // this is Scale1 (X axis only); attrs 5+6 supply per-axis Y and Z scales,
+        // defaulting to Scale1 when omitted.
         let scale = entity.get_float(3).unwrap_or(1.0);
+        let is_non_uniform = matches!(
+            entity.ifc_type,
+            IfcType::IfcCartesianTransformationOperator2DnonUniform
+                | IfcType::IfcCartesianTransformationOperator3DnonUniform
+        );
+        let scale_y = if is_non_uniform {
+            entity.get_float(5).unwrap_or(scale)
+        } else {
+            scale
+        };
+        let scale_z = if is_non_uniform {
+            entity.get_float(6).unwrap_or(scale)
+        } else {
+            scale
+        };
 
         // Get Axis1 (X axis, attribute 0)
         let x_axis = if let Some(axis1_attr) = entity.get(0) {
@@ -329,17 +353,19 @@ impl GeometryRouter {
         let y_axis = z_axis.cross(&x_axis).normalize();
         let x_axis = y_axis.cross(&z_axis).normalize();
 
-        // Build transformation matrix with scale
+        // Build transformation matrix. Each axis is scaled by its
+        // per-axis factor (Scale / Scale2 / Scale3) so non-uniform
+        // operators produce the authored anisotropic transform.
         let mut transform = Matrix4::identity();
         transform[(0, 0)] = x_axis.x * scale;
         transform[(1, 0)] = x_axis.y * scale;
         transform[(2, 0)] = x_axis.z * scale;
-        transform[(0, 1)] = y_axis.x * scale;
-        transform[(1, 1)] = y_axis.y * scale;
-        transform[(2, 1)] = y_axis.z * scale;
-        transform[(0, 2)] = z_axis.x * scale;
-        transform[(1, 2)] = z_axis.y * scale;
-        transform[(2, 2)] = z_axis.z * scale;
+        transform[(0, 1)] = y_axis.x * scale_y;
+        transform[(1, 1)] = y_axis.y * scale_y;
+        transform[(2, 1)] = y_axis.z * scale_y;
+        transform[(0, 2)] = z_axis.x * scale_z;
+        transform[(1, 2)] = z_axis.y * scale_z;
+        transform[(2, 2)] = z_axis.z * scale_z;
         transform[(0, 3)] = origin.x;
         transform[(1, 3)] = origin.y;
         transform[(2, 3)] = origin.z;

@@ -739,6 +739,11 @@
       "size": 18659
     },
     {
+      "path": "issues/859_linear_placement_of_signal.ifc",
+      "sha256": "5f2f1b1bf14ddef048a49f4136189e83469a9b15db43b1708bb4c42d0494de13",
+      "size": 228220
+    },
+    {
       "path": "issues/858_indexed_colour_map.ifc",
       "sha256": "2b48006569d06b9d8f77535cc72ee6c21cbe93cfe87704319a7b1934263d81ba",
       "size": 2629

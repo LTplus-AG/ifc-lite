@@ -1437,6 +1437,29 @@ impl ProfileProcessor {
             IfcType::IfcCompositeCurve => {
                 self.process_composite_curve_3d_with_depth(curve, decoder, depth)
             }
+            // IFC4x3 IfcGradientCurve = IfcCompositeCurve subtype that adds a
+            // 2D BaseCurve (attr 2) supplying the horizontal layout + own
+            // segments supplying the vertical (z) profile. The minimum-viable
+            // sampler for #859's IfcLinearPlacement use case returns the
+            // horizontal track of points by recursing into BaseCurve and
+            // dropping Z to 0 — every signal lands at the correct (x, y)
+            // station, just at the alignment's reference elevation instead
+            // of the true grade-corrected z. Full grade evaluation is a
+            // follow-up; "every signal pinned to its alignment station" is
+            // already a vast improvement over the pre-fix "all signals at
+            // world origin" state.
+            IfcType::IfcGradientCurve => {
+                if let Some(base_attr) = curve.get(2) {
+                    if !base_attr.is_null() {
+                        if let Some(base) = decoder.resolve_ref(base_attr)? {
+                            return self.get_curve_points_with_depth(&base, decoder, depth + 1);
+                        }
+                    }
+                }
+                // No BaseCurve → fall through to the segments-as-composite path
+                // so we at least produce something rather than erroring.
+                self.process_composite_curve_3d_with_depth(curve, decoder, depth)
+            }
             IfcType::IfcCircle => self.process_circle_3d(curve, decoder),
             IfcType::IfcIndexedPolyCurve => {
                 // Native 3D path: handles both IfcCartesianPointList2D (z=0) and
@@ -1650,6 +1673,46 @@ impl ProfileProcessor {
         let mut result = Vec::new();
 
         for segment in segments {
+            // IFC4x3 IfcCurveSegment (alignment fixtures) has a different
+            // attribute layout from the IFC2x3/IFC4 IfcCompositeCurveSegment
+            // the original walker was written for:
+            //   IfcCurveSegment: 0 Transition, 1 Placement (IfcAxis2Placement2D/3D),
+            //                    2 SegmentStart (length measure), 3 SegmentLength,
+            //                    4 ParentCurve
+            // Without recognising it, every alignment-authored composite
+            // curve errored out at "Failed to resolve ParentCurve" (the old
+            // walker reading attr 2 hit the SegmentStart length measure),
+            // which broke #859's IfcLinearPlacement resolver — every
+            // linearly-placed signal/referent fell back to identity.
+            //
+            // Minimum-viable handling: emit the segment's Placement.Location
+            // as ONE sample point and let the linear-placement sampler
+            // interpolate linearly between segment starts. Sparse but
+            // already a vast improvement over "all at origin". A full
+            // alignment evaluator (sampling the ParentCurve inside each
+            // segment's authored start..start+length range) is follow-up
+            // scope.
+            if segment.ifc_type == IfcType::IfcCurveSegment {
+                if let Some(placement_attr) = segment.get(1) {
+                    if !placement_attr.is_null() {
+                        if let Some(placement) = decoder.resolve_ref(placement_attr)? {
+                            if let Some(origin) =
+                                axis2_placement_location_3d(&placement, decoder)
+                            {
+                                if result.last().map_or(true, |last: &Point3<f64>| {
+                                    (last - origin).norm() > 1e-9
+                                }) {
+                                    result.push(origin);
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                }
+                // Couldn't read this segment's placement — skip rather than fail.
+                continue;
+            }
+
             // IfcCompositeCurveSegment: Transition, SameSense, ParentCurve
             let parent_curve_attr = segment.get(2).ok_or_else(|| {
                 Error::geometry("CompositeCurveSegment missing ParentCurve".to_string())
@@ -2564,6 +2627,40 @@ impl ProfileProcessor {
 
         Ok(result)
     }
+}
+
+/// Resolve an `IfcAxis2Placement2D` or `IfcAxis2Placement3D`'s Location
+/// attribute (the origin point) into a 3D point. Used by the IFC4x3
+/// IfcCurveSegment fallback in the composite-curve walker — segment
+/// placements give us the per-segment start coordinates, which is enough
+/// for `IfcLinearPlacement` to position products near (but linearly
+/// interpolated between) their authored alignment stations.
+///
+/// Returns `None` when the placement type isn't recognised or the
+/// location reference can't be resolved; the caller should skip the
+/// segment rather than fail.
+fn axis2_placement_location_3d(
+    placement: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Option<Point3<f64>> {
+    if placement.ifc_type != IfcType::IfcAxis2Placement2D
+        && placement.ifc_type != IfcType::IfcAxis2Placement3D
+    {
+        return None;
+    }
+    let location_attr = placement.get(0)?;
+    if location_attr.is_null() {
+        return None;
+    }
+    let location = decoder.resolve_ref(location_attr).ok().flatten()?;
+    if location.ifc_type != IfcType::IfcCartesianPoint {
+        return None;
+    }
+    let coords = location.get(0)?.as_list()?;
+    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+    Some(Point3::new(x, y, z))
 }
 
 #[cfg(test)]

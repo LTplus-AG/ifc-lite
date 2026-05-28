@@ -37,6 +37,28 @@ if [ -f "$HOME/.cargo/env" ]; then
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
 
+# Park cargo's target/ in Vercel's persistent build-cache mount so
+# incremental Rust compiles survive across deploys. Vercel preserves
+# the contents of `/vercel/cache/` between successive builds of the
+# same project. Falls back to the workspace's default ./target when
+# the directory isn't writable (local CI runners, GHA, etc.).
+if mkdir -p "/vercel/cache/cargo-target" 2>/dev/null; then
+  export CARGO_TARGET_DIR="/vercel/cache/cargo-target"
+  echo "🦀 CARGO_TARGET_DIR=$CARGO_TARGET_DIR (persistent across Vercel deploys)"
+else
+  echo "🦀 CARGO_TARGET_DIR unset (no writable Vercel cache dir; using ./target)"
+fi
+
+# Surface Turbo Remote Cache status in the deploy log. Cache hits show
+# up as "FULL TURBO" in turbo's banner; if you don't see them, set
+# TURBO_TEAM + TURBO_TOKEN in the Vercel project env.
+if [ -n "${TURBO_TOKEN:-}" ] && [ -n "${TURBO_TEAM:-}" ]; then
+  echo "🚀 Turbo Remote Cache enabled (team=$TURBO_TEAM)"
+else
+  echo "⚠️  Turbo Remote Cache NOT configured — every deploy will rebuild WASM from source."
+  echo "   Set TURBO_TEAM + TURBO_TOKEN in the Vercel project env to enable."
+fi
+
 echo "🏗️  Vercel build phase"
 echo "   HOME=$HOME  PWD=$PWD"
 RUSTUP_BIN=$(command -v rustup 2>/dev/null || true)

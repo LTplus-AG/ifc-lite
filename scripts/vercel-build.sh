@@ -49,6 +49,16 @@ else
   echo "🦀 CARGO_TARGET_DIR unset (no writable Vercel cache dir; using ./target)"
 fi
 
+# Carry the wasm-cxx-shim cross-toolchain env vars forward to turbo's
+# subprocesses. scripts/vercel-install.sh provisions the tools under
+# /vercel/cache/wasm-cxx/ but env vars set there don't reach this phase
+# by default — same gotcha as RUSTUP_HOME above.
+if [ -d "${WASM_CXX_PREFIX:-/vercel/cache/wasm-cxx}/bin" ]; then
+  export WASM_CXX_SHIM_LLVM_BIN_DIR="${WASM_CXX_PREFIX:-/vercel/cache/wasm-cxx}/bin"
+  export WASM_CXX_SHIM_LIBCXX_HEADERS="${WASM_CXX_PREFIX:-/vercel/cache/wasm-cxx}/include/c++/v1"
+  echo "🛠  WASM_CXX_SHIM_LLVM_BIN_DIR=$WASM_CXX_SHIM_LLVM_BIN_DIR"
+fi
+
 # Surface Turbo Remote Cache status in the deploy log. Cache hits show
 # up as "FULL TURBO" in turbo's banner; if you don't see them, set
 # TURBO_TEAM + TURBO_TOKEN in the Vercel project env.

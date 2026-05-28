@@ -67,5 +67,71 @@ if ! command -v wasm-pack >/dev/null 2>&1; then
   curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 fi
 
+# ── wasm-cxx cross-toolchain (for the Manifold CSG kernel) ────────────────
+#
+# `ifc-lite-geometry`'s `manifold-csg-wasm-uu` feature compiles the Manifold
+# C++ kernel into the wasm bundle via the `wasm-cxx-shim` helper. The shim
+# needs three things on PATH:
+#
+#   1. `clang++` with the wasm32-unknown-unknown target
+#   2. `wasm-ld` (from lld)
+#   3. libc++ headers at `<llvm-prefix>/include/c++/v1`
+#
+# Amazon Linux 2023 ships #1 and #2 in dnf (clang20 / lld20 packages) but
+# NOT libc++ headers — they're an LLVM source artefact. We pull just the
+# headers from the matching LLVM release tarball (~8 MB) and lay out a
+# minimal cross-prefix the shim can find. The whole thing lives under
+# Vercel's persistent build-cache mount so subsequent deploys skip the
+# dnf install + header download entirely.
+#
+# Local dev: `brew install llvm lld` on macOS gives you everything in
+# `/opt/homebrew/opt/llvm/bin` + `/opt/homebrew/opt/lld/bin`, which the
+# shim's toolchain file auto-detects. On Debian/Ubuntu run
+# `apt install clang-20 lld-20 libc++-20-dev`.
+provision_wasm_cxx_toolchain() {
+  if [ ! -x "$(command -v dnf 2>/dev/null)" ]; then
+    return 0  # Non-Vercel host; assume the dev provisioned LLVM locally.
+  fi
+
+  local llvm_version="20.1.8"
+  local cross_prefix="${WASM_CXX_PREFIX:-/vercel/cache/wasm-cxx}"
+  local cross_bin="$cross_prefix/bin"
+  local libcxx_include="$cross_prefix/include/c++/v1"
+
+  if [ -f "$libcxx_include/iostream" ] && [ -x "$cross_bin/clang++" ]; then
+    echo "📦 wasm-cxx toolchain restored from cache at $cross_prefix"
+  else
+    echo "📦 Provisioning wasm-cxx toolchain at $cross_prefix..."
+    if ! command -v clang++-20 >/dev/null 2>&1 && ! command -v clang20 >/dev/null 2>&1; then
+      dnf install -y -q clang20 lld20 cmake \
+        || { echo "❌ Failed to install clang20/lld20/cmake via dnf"; return 1; }
+    fi
+    mkdir -p "$cross_bin"
+    local clang_real lld_real ar_real
+    clang_real="$(command -v clang++-20 || command -v clang++20 || command -v clang++)"
+    # Each clang tool ships under one or both naming conventions on AL2023.
+    lld_real="$(command -v wasm-ld-20 || command -v wasm-ld20 || command -v wasm-ld)"
+    ar_real="$(command -v llvm-ar-20 || command -v llvm-ar20 || command -v llvm-ar || command -v ar)"
+    ln -sf "$clang_real" "$cross_bin/clang++"
+    ln -sf "${clang_real%++}" "$cross_bin/clang"
+    ln -sf "$lld_real" "$cross_bin/wasm-ld"
+    ln -sf "$ar_real" "$cross_bin/llvm-ar"
+
+    mkdir -p "$libcxx_include"
+    # --strip-components=2 drops `libcxx-N.N.N.src/include/`
+    curl --proto '=https' --tlsv1.2 -sSL \
+      "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvm_version/libcxx-$llvm_version.src.tar.xz" \
+      | tar -xJ -C "$libcxx_include" --strip-components=2 \
+        "libcxx-$llvm_version.src/include" \
+      || { echo "❌ Failed to fetch libcxx-$llvm_version headers"; return 1; }
+  fi
+
+  export WASM_CXX_SHIM_LLVM_BIN_DIR="$cross_bin"
+  export WASM_CXX_SHIM_LIBCXX_HEADERS="$libcxx_include"
+  echo "   WASM_CXX_SHIM_LLVM_BIN_DIR=$WASM_CXX_SHIM_LLVM_BIN_DIR"
+  echo "   WASM_CXX_SHIM_LIBCXX_HEADERS=$WASM_CXX_SHIM_LIBCXX_HEADERS"
+}
+provision_wasm_cxx_toolchain
+
 echo "📦 Running pnpm install --frozen-lockfile..."
 pnpm install --frozen-lockfile

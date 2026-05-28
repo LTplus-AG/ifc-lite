@@ -1511,6 +1511,32 @@ impl ClippingProcessor {
         if host_tris >= 12 && result_tris * 4 < host_tris {
             return true;
         }
+
+        // "Wrong piece" check: a difference result MUST be a subset of the
+        // host volume, so the result's bounding box has to sit inside the
+        // host's. When a malformed cutter (typical: IfcFacetedBrep with
+        // inward-pointing face normals) inverts the kernel's
+        // inside/outside test, Manifold returns the CUTTER mesh instead —
+        // which lives partially or wholly outside the host bbox. House.ifc
+        // wall #3448 (a 7 m extrusion clipped by a gable-shaped brep)
+        // rendered as the gable triangle alone before this guard.
+        let (host_min, host_max) = host.bounds();
+        let (res_min, res_max) = result.bounds();
+        // 1 % of the host's longest edge — tight enough to catch a
+        // truly-outside result, loose enough to absorb the floating-point
+        // jitter Manifold introduces along intersection seams.
+        let host_span = (host_max - host_min).abs();
+        let slack = host_span.x.max(host_span.y).max(host_span.z) as f64 * 0.01;
+        let slack = slack as f32;
+        if res_min.x + slack < host_min.x
+            || res_min.y + slack < host_min.y
+            || res_min.z + slack < host_min.z
+            || res_max.x > host_max.x + slack
+            || res_max.y > host_max.y + slack
+            || res_max.z > host_max.z + slack
+        {
+            return true;
+        }
         false
     }
 

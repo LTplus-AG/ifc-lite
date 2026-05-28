@@ -26,6 +26,18 @@ const SLAB_ID: u32 = 303;
 
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
+        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            // PR #657 removed Git LFS from this repo (fixtures live in a
+            // GitHub Release now), but a contributor cloning before that
+            // change can still have an LFS pointer at this path. Skip
+            // cleanly rather than treating the pointer as real STEP and
+            // failing later with a confusing parse error (PR #864 review).
+            eprintln!(
+                "issue-853 fixture at {FIXTURE} is a Git LFS pointer — \
+                 skipping (run `pnpm fixtures` to fetch real bytes)"
+            );
+            None
+        }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             eprintln!("issue-853 fixture missing — skipping (run `pnpm fixtures`)");

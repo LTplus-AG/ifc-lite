@@ -200,8 +200,18 @@ export const TYPE_VISIBILITY_DEFAULTS = {
   SITE:            readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, SEMANTIC_DEFAULTS.site),
   /** IfcAnnotation visibility (text, dimensions, leaders) — persisted. */
   IFC_ANNOTATIONS: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcAnnotations),
-  /** IfcGrid visibility (axis lines + bubble tags) — persisted. Issue #862. */
-  IFC_GRID:        readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcGrid, SEMANTIC_DEFAULTS.ifcGrid),
+  /**
+   * IfcGrid visibility (axis lines + bubble tags) — persisted. Issue
+   * #862. Migration: if the new key isn't set yet, fall back to the
+   * legacy combined `ifcAnnotations` preference. That way a user who
+   * previously turned the combined "Annotations & Grids" toggle off
+   * keeps grids hidden after upgrade, instead of grids silently
+   * reappearing (PR #868 review, chatgpt-codex P2).
+   */
+  IFC_GRID:        readPersistedBool(
+    TYPE_VISIBILITY_STORAGE_KEYS.ifcGrid,
+    readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcGrid),
+  ),
 } as const;
 
 // ============================================================================

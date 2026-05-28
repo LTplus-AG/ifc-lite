@@ -34,3 +34,10 @@ Regression coverage:
 
 Fixture `tests/models/issues/846_revolved_beam.ifc` (4.4 KB) added to
 the manifest.
+
+This PR was branched on top of PR #847 (issue #842 — IfcRationalBSplineSurfaceWithKnots),
+so the manifest update here also carries an `issues/842_rational_bspline_surface.ifc`
+entry inherited from that base. Once #847 lands on `main` and this PR
+rebases, the 842 entry will already be on main and the diff collapses to
+just the 846 entry. Documented per PR #848 review (coderabbit Minor) so
+the scope of the manifest delta is clear.

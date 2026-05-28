@@ -123,6 +123,7 @@ impl IfcAPI {
         let style_indexes = super::styling::build_geometry_style_indexes(&content, &mut decoder);
         let mut geometry_styles = style_indexes.colors;
         let geometry_shading_styles = style_indexes.shading_colors;
+        let styled_item_geoms = style_indexes.styled_item_geoms;
         let style_index = build_element_style_index(&content, &geometry_styles, &mut decoder);
         // Build material-based styles for sub-element color fallback (windows, doors)
         let element_material_styles =
@@ -393,14 +394,25 @@ impl IfcAPI {
                             // this branch is mostly a no-op for cut
                             // geometry — but for uncut tessellated parts
                             // mixed in the same element it still applies.
-                            if let Some(map) = indexed_colour_maps.get(&sub.geometry_id) {
-                                if let Some(groups) =
-                                    split_mesh_by_indexed_colour_map(&mesh, map)
-                                {
-                                    for (mut group_mesh, group_color) in groups {
-                                        push_mesh_if_valid(&mut group_mesh, group_color, None);
+                            //
+                            // IfcStyledItem precedence (PR #867 review,
+                            // chatgpt-codex P2): when the same face set
+                            // also carries an IfcStyledItem the styled
+                            // colour outranks the per-face map — match
+                            // `build_geometry_style_indexes`'s merge order
+                            // so the renderer's two colour paths agree
+                            // even on files with both mechanisms authored
+                            // on the same geometry.
+                            if !styled_item_geoms.contains(&sub.geometry_id) {
+                                if let Some(map) = indexed_colour_maps.get(&sub.geometry_id) {
+                                    if let Some(groups) =
+                                        split_mesh_by_indexed_colour_map(&mesh, map)
+                                    {
+                                        for (mut group_mesh, group_color) in groups {
+                                            push_mesh_if_valid(&mut group_mesh, group_color, None);
+                                        }
+                                        continue;
                                     }
-                                    continue;
                                 }
                             }
                             let color = resolve_submesh_color(
@@ -468,14 +480,19 @@ impl IfcAPI {
                             // IfcIndexedColourMap, split the mesh into per-
                             // colour sub-meshes. Falls through to the
                             // single-colour path on length mismatch.
-                            if let Some(map) = indexed_colour_maps.get(&sub.geometry_id) {
-                                if let Some(groups) =
-                                    split_mesh_by_indexed_colour_map(&mesh, map)
-                                {
-                                    for (mut group_mesh, group_color) in groups {
-                                        push_mesh_if_valid(&mut group_mesh, group_color, None);
+                            // IfcStyledItem outranks the per-face map
+                            // (PR #867 review); same precedence
+                            // gate as the with-openings branch above.
+                            if !styled_item_geoms.contains(&sub.geometry_id) {
+                                if let Some(map) = indexed_colour_maps.get(&sub.geometry_id) {
+                                    if let Some(groups) =
+                                        split_mesh_by_indexed_colour_map(&mesh, map)
+                                    {
+                                        for (mut group_mesh, group_color) in groups {
+                                            push_mesh_if_valid(&mut group_mesh, group_color, None);
+                                        }
+                                        continue;
                                     }
-                                    continue;
                                 }
                             }
                             let color = resolve_submesh_color(
@@ -758,6 +775,24 @@ impl IfcAPI {
 
                         for sub in sub_meshes.sub_meshes {
                             let mut mesh = sub.mesh;
+                            // Issue #858 / PR #867: per-triangle colour
+                            // map splitter, gated on IfcStyledItem
+                            // precedence. Same logic as the synchronous
+                            // `parse_meshes` path.
+                            if !pre_pass.styled_item_geoms.contains(&sub.geometry_id) {
+                                if let Some(map) =
+                                    pre_pass.indexed_colour_maps.get(&sub.geometry_id)
+                                {
+                                    if let Some(groups) =
+                                        split_mesh_by_indexed_colour_map(&mesh, map)
+                                    {
+                                        for (mut group_mesh, group_color) in groups {
+                                            push_mesh(&mut group_mesh, group_color, None);
+                                        }
+                                        continue;
+                                    }
+                                }
+                            }
                             let color = resolve_submesh_color(
                                 sub.geometry_id,
                                 &pre_pass.geometry_styles,
@@ -803,6 +838,22 @@ impl IfcAPI {
 
                         for sub in sub_meshes.sub_meshes {
                             let mut mesh = sub.mesh;
+                            // Per-triangle colour split — issue #858 /
+                            // PR #867. IfcStyledItem outranks.
+                            if !pre_pass.styled_item_geoms.contains(&sub.geometry_id) {
+                                if let Some(map) =
+                                    pre_pass.indexed_colour_maps.get(&sub.geometry_id)
+                                {
+                                    if let Some(groups) =
+                                        split_mesh_by_indexed_colour_map(&mesh, map)
+                                    {
+                                        for (mut group_mesh, group_color) in groups {
+                                            push_mesh(&mut group_mesh, group_color, None);
+                                        }
+                                        continue;
+                                    }
+                                }
+                            }
                             let color = resolve_submesh_color(
                                 sub.geometry_id,
                                 &pre_pass.geometry_styles,

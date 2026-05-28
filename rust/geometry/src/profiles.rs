@@ -443,12 +443,37 @@ fn rounded_rectangle_outline(
         (-half_x + radius, -half_y + radius, PI, PI + half_pi),
     ];
 
-    let mut points = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
+    // Drop duplicate seam vertices when adjacent corners' arc endpoints
+    // coincide. This happens when `radius == half_x` or `radius == half_y`
+    // (the degenerate circle path that motivated issue #854 — the inner
+    // fillet at 10/10 collapses to a single circle whose adjacent corner
+    // arcs share their tangent point). Without dedup the contour
+    // contains zero-length edges that earcutr handles but downstream
+    // analytics / 2D drawing pipelines may not (PR #863 review). 1 µm
+    // tolerance in profile units matches the welding precision used
+    // throughout `manifold_kernel.rs`.
+    let mut points: Vec<Point2<f64>> = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
+    const SEAM_TOL: f64 = 1.0e-6;
     for (cx, cy, a0, a1) in corners {
         for i in 0..=SEGMENTS_PER_CORNER {
             let t = i as f64 / SEGMENTS_PER_CORNER as f64;
             let a = a0 + (a1 - a0) * t;
-            points.push(Point2::new(cx + radius * a.cos(), cy + radius * a.sin()));
+            let pt = Point2::new(cx + radius * a.cos(), cy + radius * a.sin());
+            if let Some(prev) = points.last() {
+                if (prev.x - pt.x).abs() < SEAM_TOL && (prev.y - pt.y).abs() < SEAM_TOL {
+                    continue;
+                }
+            }
+            points.push(pt);
+        }
+    }
+    // For the exact-circle case the final vertex also coincides with
+    // the first — same dedup logic, wrapping around.
+    if points.len() >= 2 {
+        let first = points[0];
+        let last = points[points.len() - 1];
+        if (first.x - last.x).abs() < SEAM_TOL && (first.y - last.y).abs() < SEAM_TOL {
+            points.pop();
         }
     }
     if !ccw {

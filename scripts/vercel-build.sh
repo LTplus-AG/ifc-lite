@@ -64,6 +64,18 @@ if [ -x "$_emsdk_dir/upstream/bin/clang++" ]; then
   echo "🛠  WASM_CXX_SHIM_LLVM_BIN_DIR=$WASM_CXX_SHIM_LLVM_BIN_DIR"
 fi
 
+# Newer cmake than AL2023's 3.22 (wasm-cxx-shim needs 3.25+). Install
+# script drops it next to /vercel/cache/emsdk. Prepend to PATH so the
+# shim's cmake invocation finds the right version.
+_cmake_glob=( "/vercel/cache"/cmake-*-linux-x86_64 "${WASM_CXX_PREFIX:-/vercel/cache/emsdk}/.."/cmake-*-linux-x86_64 )
+for _cmake_dir in "${_cmake_glob[@]}"; do
+  if [ -x "$_cmake_dir/bin/cmake" ]; then
+    export PATH="$_cmake_dir/bin:$PATH"
+    echo "🛠  cmake=$_cmake_dir/bin/cmake"
+    break
+  fi
+done
+
 # Surface Turbo Remote Cache status in the deploy log. Cache hits show
 # up as "FULL TURBO" in turbo's banner; if you don't see them, set
 # TURBO_TEAM + TURBO_TOKEN in the Vercel project env.

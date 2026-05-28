@@ -95,15 +95,23 @@ provision_wasm_cxx_toolchain() {
     return 0  # Non-Vercel host; assume the dev provisioned LLVM locally.
   fi
 
-  # The wasm-cxx-shim drives the C++ build via cmake. emsdk doesn't
-  # bundle a cmake binary, and Vercel's AL2023 image doesn't pre-install
-  # one. dnf install is fast (~10s) and cmake (3.22 in their repo) is
-  # well above the shim's 3.18 minimum, so no version-drift surprise.
-  if ! command -v cmake >/dev/null 2>&1; then
-    echo "📦 Installing cmake via dnf..."
-    dnf install -y -q cmake \
-      || { echo "❌ Failed to install cmake via dnf"; return 1; }
+  # The wasm-cxx-shim drives the C++ build via cmake (3.25+ required).
+  # AL2023's dnf-shipped cmake is 3.22.2 — too old. Download Kitware's
+  # precompiled Linux x86_64 tarball into the cache instead. ~55 MB
+  # one-time per project; survives between deploys via /vercel/cache.
+  local cmake_version="${CMAKE_VERSION:-4.3.3}"
+  local cmake_prefix="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}/../cmake-$cmake_version"
+  if [ ! -x "$cmake_prefix/bin/cmake" ]; then
+    echo "📦 Provisioning cmake $cmake_version at $cmake_prefix..."
+    mkdir -p "$cmake_prefix"
+    curl --proto '=https' --tlsv1.2 -sSL \
+      "https://github.com/Kitware/CMake/releases/download/v$cmake_version/cmake-$cmake_version-linux-x86_64.tar.gz" \
+      | tar -xz -C "$cmake_prefix" --strip-components=1 \
+      || { echo "❌ Failed to fetch cmake $cmake_version"; return 1; }
+  else
+    echo "📦 cmake $cmake_version restored from cache at $cmake_prefix"
   fi
+  export PATH="$cmake_prefix/bin:$PATH"
 
   local emsdk_dir="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}"
   # Synthetic prefix with the directory layout `wasm-cxx-shim`'s Rust

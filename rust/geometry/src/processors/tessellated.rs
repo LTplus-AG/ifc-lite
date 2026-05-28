@@ -134,7 +134,15 @@ impl GeometryProcessor for TriangulatedFaceSetProcessor {
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcTriangulatedFaceSet]
+        // IfcTriangulatedIrregularNetwork is a subtype of IfcTriangulatedFaceSet
+        // that adds an optional `ClosedOrOpen` list at the end and is used for
+        // terrain (TIN) surfaces. We don't read the extra attribute and the
+        // inherited Coordinates / Closed / CoordIndex layout is identical, so
+        // routing TIN through the same processor is correct.
+        vec![
+            IfcType::IfcTriangulatedFaceSet,
+            IfcType::IfcTriangulatedIrregularNetwork,
+        ]
     }
 }
 

@@ -228,6 +228,7 @@ pub fn should_use_fast_path(type_name: &str) -> bool {
         type_name.to_uppercase().as_str(),
         "IFCCARTESIANPOINTLIST3D"
             | "IFCTRIANGULATEDFACESET"
+            | "IFCTRIANGULATEDIRREGULARNETWORK"
             | "IFCPOLYGONALFACESET"
             | "IFCINDEXEDPOLYGONALFACE"
     )

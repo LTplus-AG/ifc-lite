@@ -167,7 +167,9 @@ impl GeometryRouter {
 
                     // ── Tessellated path ──
                     // attr 0 = Coordinates (IfcCartesianPointList3D)
-                    IfcType::IfcTriangulatedFaceSet | IfcType::IfcPolygonalFaceSet => {
+                    IfcType::IfcTriangulatedFaceSet
+                    | IfcType::IfcTriangulatedIrregularNetwork
+                    | IfcType::IfcPolygonalFaceSet => {
                         if let Some(pt) = self.tessellated_first_vertex(&item, decoder) {
                             return Some(pt);
                         }
@@ -274,9 +276,9 @@ impl GeometryRouter {
             IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
                 self.brep_first_vertex(item, decoder)
             }
-            IfcType::IfcTriangulatedFaceSet | IfcType::IfcPolygonalFaceSet => {
-                self.tessellated_first_vertex(item, decoder)
-            }
+            IfcType::IfcTriangulatedFaceSet
+            | IfcType::IfcTriangulatedIrregularNetwork
+            | IfcType::IfcPolygonalFaceSet => self.tessellated_first_vertex(item, decoder),
             IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
                 let Some(shells_attr) = item.get(0) else {
                     return false;

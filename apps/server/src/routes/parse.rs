@@ -153,10 +153,16 @@ pub async fn parse_full(
     let content = String::from_utf8(data)?;
     let opening_filter = query.opening_filter;
 
-    // Process on blocking thread pool (CPU-intensive)
-    let result =
-        tokio::task::spawn_blocking(move || process_geometry_filtered(&content, opening_filter))
-            .await?;
+    // Process on blocking thread pool (CPU-intensive). Bundle the 3D
+    // geometry with the 2D symbolic-data extraction (issue #843) so
+    // callers can render IfcGrid axes and IfcAnnotation polylines from
+    // the same response without re-uploading the file.
+    let (result, symbolic_data) = tokio::task::spawn_blocking(move || {
+        let result = process_geometry_filtered(&content, opening_filter);
+        let symbolic = ifc_lite_processing::extract_symbolic_data(&content);
+        (result, symbolic)
+    })
+    .await?;
 
     let response = ParseResponse {
         cache_key: cache_key.clone(),
@@ -166,6 +172,7 @@ pub async fn parse_full(
         building_transform: result.building_transform,
         metadata: result.metadata,
         stats: result.stats,
+        symbolic_data,
     };
 
     // Cache result (background)

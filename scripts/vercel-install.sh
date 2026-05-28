@@ -106,6 +106,15 @@ provision_wasm_cxx_toolchain() {
   fi
 
   local emsdk_dir="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}"
+  # Synthetic prefix with the directory layout `wasm-cxx-shim`'s Rust
+  # build.rs probe expects: clang++ + wasm-ld + llvm-ar in `bin/`, libc++
+  # headers at `include/c++/v1/`. emsdk's native layout puts headers under
+  # `upstream/emscripten/cache/sysroot/include/c++/v1/`, which the probe
+  # won't find. Symlinks let both halves of the shim (Rust + CMake) point
+  # at the same emsdk install.
+  local cxx_prefix="$emsdk_dir/wasm-cxx-prefix"
+  local cxx_bin="$cxx_prefix/bin"
+  local cxx_include="$cxx_prefix/include/c++/v1"
 
   if [ -x "$emsdk_dir/upstream/bin/clang++" ]; then
     echo "📦 emsdk toolchain restored from cache at $emsdk_dir"
@@ -122,8 +131,19 @@ provision_wasm_cxx_toolchain() {
       || { echo "❌ emsdk install latest failed"; return 1; }
   fi
 
+  # (Re)create the synthetic prefix every run. Symlinks are cheap, and
+  # this lets us pick up emsdk SDK changes without invalidating the
+  # whole cache directory.
+  mkdir -p "$cxx_bin" "$cxx_prefix/include/c++"
+  for tool in clang clang++ wasm-ld llvm-ar; do
+    ln -sf "$emsdk_dir/upstream/bin/$tool" "$cxx_bin/$tool"
+  done
+  ln -sfn "$emsdk_dir/upstream/emscripten/cache/sysroot/include/c++/v1" "$cxx_include"
+
   export EMSDK="$emsdk_dir"
+  export WASM_CXX_SHIM_LLVM_BIN_DIR="$cxx_bin"
   echo "   EMSDK=$EMSDK"
+  echo "   WASM_CXX_SHIM_LLVM_BIN_DIR=$WASM_CXX_SHIM_LLVM_BIN_DIR"
 }
 provision_wasm_cxx_toolchain
 

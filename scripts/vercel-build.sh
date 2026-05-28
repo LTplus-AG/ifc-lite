@@ -49,14 +49,19 @@ else
   echo "🦀 CARGO_TARGET_DIR unset (no writable Vercel cache dir; using ./target)"
 fi
 
-# Carry the emsdk path forward to turbo's subprocesses so the
-# wasm-cxx-shim's cmake toolchain file picks up clang/wasm-ld/libc++.
-# scripts/vercel-install.sh provisions emsdk under /vercel/cache/emsdk
-# but env vars set there don't reach this phase by default — same
-# gotcha as RUSTUP_HOME above.
-if [ -x "${WASM_CXX_PREFIX:-/vercel/cache/emsdk}/upstream/bin/clang++" ]; then
-  export EMSDK="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}"
-  echo "🛠  EMSDK=$EMSDK (wasm-cxx-shim toolchain probe)"
+# Carry the emsdk paths forward to turbo's subprocesses. The
+# wasm-cxx-shim has two LLVM probes — the Rust build.rs reads
+# `WASM_CXX_SHIM_LLVM_BIN_DIR` and looks for libc++ headers at
+# `<root>/include/c++/v1`; the CMake toolchain file reads `EMSDK`.
+# scripts/vercel-install.sh provisions a synthetic prefix that
+# satisfies both. Env vars set in install don't reach this phase by
+# default — same gotcha as RUSTUP_HOME above.
+_emsdk_dir="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}"
+if [ -x "$_emsdk_dir/upstream/bin/clang++" ]; then
+  export EMSDK="$_emsdk_dir"
+  export WASM_CXX_SHIM_LLVM_BIN_DIR="$_emsdk_dir/wasm-cxx-prefix/bin"
+  echo "🛠  EMSDK=$EMSDK"
+  echo "🛠  WASM_CXX_SHIM_LLVM_BIN_DIR=$WASM_CXX_SHIM_LLVM_BIN_DIR"
 fi
 
 # Surface Turbo Remote Cache status in the deploy log. Cache hits show

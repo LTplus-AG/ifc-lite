@@ -213,6 +213,35 @@ struct BspNode {
     polygons: Vec<Polygon>,
 }
 
+impl Drop for BspNode {
+    /// Drop the sub-tree iteratively. The naive recursive drop of nested
+    /// `Box<BspNode>` overflows the stack on the same degenerate trees
+    /// that `build` does (4000+ near-coplanar polygons → linked-list-like
+    /// partition). We move each child out into an explicit stack and
+    /// let it drop after its grandchildren have been hoisted, so the
+    /// recursion never exceeds depth 1.
+    fn drop(&mut self) {
+        let mut stack: Vec<Box<BspNode>> = Vec::new();
+        if let Some(front) = self.front.take() {
+            stack.push(front);
+        }
+        if let Some(back) = self.back.take() {
+            stack.push(back);
+        }
+        while let Some(mut node) = stack.pop() {
+            if let Some(front) = node.front.take() {
+                stack.push(front);
+            }
+            if let Some(back) = node.back.take() {
+                stack.push(back);
+            }
+            // `node` falls out of scope here. Its `front` / `back` are now
+            // both `None`, so the implicit recursive drop terminates after
+            // a single level.
+        }
+    }
+}
+
 impl BspNode {
     fn new(polygons: Vec<Polygon>) -> Self {
         let mut node = BspNode {
@@ -228,137 +257,185 @@ impl BspNode {
     }
 
     fn invert(&mut self) {
-        for poly in &mut self.polygons {
-            poly.flip();
+        // Iterative pre-order walk with an explicit stack to bound JS+WASM
+        // call depth on degenerate BSP trees. The naive recursive form
+        // overflowed Firefox's combined call-stack limit (~10K frames) on
+        // House.ifc, whose facetted breps fold into deeply unbalanced
+        // trees because so many wall/roof polygons are coplanar.
+        let mut stack: Vec<*mut BspNode> = vec![self as *mut _];
+        while let Some(ptr) = stack.pop() {
+            // SAFETY: `self` is mutably borrowed for the duration of this
+            // function; child nodes are reached only through their Boxes
+            // owned by the parent we already mutably hold. Each raw ptr
+            // is dereferenced once and not aliased across iterations.
+            let node = unsafe { &mut *ptr };
+            for poly in &mut node.polygons {
+                poly.flip();
+            }
+            if let Some(ref mut plane) = node.plane {
+                plane.flip();
+            }
+            std::mem::swap(&mut node.front, &mut node.back);
+            if let Some(ref mut front) = node.front {
+                stack.push(front.as_mut() as *mut _);
+            }
+            if let Some(ref mut back) = node.back {
+                stack.push(back.as_mut() as *mut _);
+            }
         }
-        if let Some(ref mut plane) = self.plane {
-            plane.flip();
-        }
-        if let Some(ref mut front) = self.front {
-            front.invert();
-        }
-        if let Some(ref mut back) = self.back {
-            back.invert();
-        }
-        std::mem::swap(&mut self.front, &mut self.back);
     }
 
     fn clip_polygons(&self, polygons: Vec<Polygon>) -> Vec<Polygon> {
-        let plane = match &self.plane {
-            Some(p) => p,
-            None => return polygons,
-        };
+        // Iterative post-order walk. Each frame describes a node + the
+        // polygons that are still being routed through its sub-tree; the
+        // pending sub-traversals are pushed back on the stack.
+        let mut out: Vec<Polygon> = Vec::new();
+        let mut stack: Vec<(&BspNode, Vec<Polygon>)> = vec![(self, polygons)];
+        while let Some((node, polys)) = stack.pop() {
+            let plane = match &node.plane {
+                Some(p) => p,
+                None => {
+                    // No splitting plane at this node — everything passes through.
+                    out.extend(polys);
+                    continue;
+                }
+            };
 
-        let mut front = Vec::new();
-        let mut back = Vec::new();
+            let mut front = Vec::new();
+            let mut back = Vec::new();
+            for poly in polys {
+                let mut cf = Vec::new();
+                let mut cb = Vec::new();
+                let mut f = Vec::new();
+                let mut b = Vec::new();
+                plane.split_polygon(&poly, &mut cf, &mut cb, &mut f, &mut b);
+                front.extend(cf);
+                front.extend(f);
+                back.extend(cb);
+                back.extend(b);
+            }
 
-        for poly in polygons {
-            let mut cf = Vec::new();
-            let mut cb = Vec::new();
-            let mut f = Vec::new();
-            let mut b = Vec::new();
-            plane.split_polygon(&poly, &mut cf, &mut cb, &mut f, &mut b);
-            front.extend(cf);
-            front.extend(f);
-            back.extend(cb);
-            back.extend(b);
+            // Back side: drop polygons that don't have a back sub-tree to
+            // descend into (mirrors the original `back = Vec::new()` branch).
+            if let Some(ref back_node) = node.back {
+                stack.push((back_node.as_ref(), back));
+            }
+
+            if let Some(ref front_node) = node.front {
+                stack.push((front_node.as_ref(), front));
+            } else {
+                out.extend(front);
+            }
         }
-
-        if let Some(ref node) = self.front {
-            front = node.clip_polygons(front);
-        }
-
-        if let Some(ref node) = self.back {
-            back = node.clip_polygons(back);
-        } else {
-            back = Vec::new();
-        }
-
-        front.extend(back);
-        front
+        out
     }
 
     fn clip_to(&mut self, other: &BspNode) {
-        self.polygons = other.clip_polygons(std::mem::take(&mut self.polygons));
-        if let Some(ref mut front) = self.front {
-            front.clip_to(other);
-        }
-        if let Some(ref mut back) = self.back {
-            back.clip_to(other);
+        let mut stack: Vec<*mut BspNode> = vec![self as *mut _];
+        while let Some(ptr) = stack.pop() {
+            // SAFETY: same argument as `invert` — each pointer is the
+            // owner of an exclusive borrow walked once via the BspNode
+            // box tree, never aliased across loop iterations.
+            let node = unsafe { &mut *ptr };
+            node.polygons = other.clip_polygons(std::mem::take(&mut node.polygons));
+            if let Some(ref mut front) = node.front {
+                stack.push(front.as_mut() as *mut _);
+            }
+            if let Some(ref mut back) = node.back {
+                stack.push(back.as_mut() as *mut _);
+            }
         }
     }
 
     fn all_polygons(&self) -> Vec<Polygon> {
-        let mut polygons = self.polygons.clone();
-        if let Some(ref front) = self.front {
-            polygons.extend(front.all_polygons());
-        }
-        if let Some(ref back) = self.back {
-            polygons.extend(back.all_polygons());
+        let mut polygons = Vec::new();
+        let mut stack: Vec<&BspNode> = vec![self];
+        while let Some(node) = stack.pop() {
+            polygons.extend(node.polygons.iter().cloned());
+            if let Some(ref front) = node.front {
+                stack.push(front.as_ref());
+            }
+            if let Some(ref back) = node.back {
+                stack.push(back.as_ref());
+            }
         }
         polygons
     }
 
     fn build(&mut self, polygons: Vec<Polygon>) {
-        if polygons.is_empty() {
-            return;
-        }
+        // Iterative pre-order build. Each work item is (target node, polygons
+        // to insert into the sub-tree rooted at that node). Replaces the
+        // naive recursive form that overflowed Firefox's combined JS+WASM
+        // call-stack limit (~10K frames) on House.ifc — its facetted breps
+        // have many coplanar wall/roof polygons, which degenerate the
+        // partition tree into a near-linked-list.
+        let mut stack: Vec<(*mut BspNode, Vec<Polygon>)> = vec![(self as *mut _, polygons)];
+        while let Some((ptr, polygons)) = stack.pop() {
+            if polygons.is_empty() {
+                continue;
+            }
+            // SAFETY: each pointer either targets `self` (a unique
+            // mutable borrow held for the duration of `build`) or a
+            // Box owned by an ancestor we already mutably hold; the
+            // explicit stack visits each node at most once.
+            let node = unsafe { &mut *ptr };
 
-        if self.plane.is_none() {
-            for poly in &polygons {
-                if let Some(plane) = Plane::from_polygon(poly) {
-                    self.plane = Some(plane);
-                    break;
+            if node.plane.is_none() {
+                for poly in &polygons {
+                    if let Some(plane) = Plane::from_polygon(poly) {
+                        node.plane = Some(plane);
+                        break;
+                    }
                 }
             }
-        }
 
-        let plane = match self.plane.clone() {
-            Some(p) => p,
-            None => {
-                self.polygons.extend(polygons);
-                return;
+            let plane = match node.plane.clone() {
+                Some(p) => p,
+                None => {
+                    node.polygons.extend(polygons);
+                    continue;
+                }
+            };
+
+            let mut front = Vec::new();
+            let mut back = Vec::new();
+            for poly in polygons {
+                let mut cf = Vec::new();
+                let mut cb = Vec::new();
+                let mut f = Vec::new();
+                let mut b = Vec::new();
+                plane.split_polygon(&poly, &mut cf, &mut cb, &mut f, &mut b);
+                node.polygons.extend(cf);
+                node.polygons.extend(cb);
+                front.extend(f);
+                back.extend(b);
             }
-        };
 
-        let mut front = Vec::new();
-        let mut back = Vec::new();
-        let coplanar_polys = &mut self.polygons;
-
-        for poly in polygons {
-            let mut cf = Vec::new();
-            let mut cb = Vec::new();
-            let mut f = Vec::new();
-            let mut b = Vec::new();
-            plane.split_polygon(&poly, &mut cf, &mut cb, &mut f, &mut b);
-            coplanar_polys.extend(cf);
-            coplanar_polys.extend(cb);
-            front.extend(f);
-            back.extend(b);
-        }
-
-        if !front.is_empty() {
-            if self.front.is_none() {
-                self.front = Some(Box::new(BspNode {
-                    plane: None,
-                    front: None,
-                    back: None,
-                    polygons: Vec::new(),
-                }));
+            if !front.is_empty() {
+                if node.front.is_none() {
+                    node.front = Some(Box::new(BspNode {
+                        plane: None,
+                        front: None,
+                        back: None,
+                        polygons: Vec::new(),
+                    }));
+                }
+                let front_ptr = node.front.as_mut().unwrap().as_mut() as *mut _;
+                stack.push((front_ptr, front));
             }
-            self.front.as_mut().unwrap().build(front);
-        }
 
-        if !back.is_empty() {
-            if self.back.is_none() {
-                self.back = Some(Box::new(BspNode {
-                    plane: None,
-                    front: None,
-                    back: None,
-                    polygons: Vec::new(),
-                }));
+            if !back.is_empty() {
+                if node.back.is_none() {
+                    node.back = Some(Box::new(BspNode {
+                        plane: None,
+                        front: None,
+                        back: None,
+                        polygons: Vec::new(),
+                    }));
+                }
+                let back_ptr = node.back.as_mut().unwrap().as_mut() as *mut _;
+                stack.push((back_ptr, back));
             }
-            self.back.as_mut().unwrap().build(back);
         }
     }
 }
@@ -415,4 +492,61 @@ pub fn intersection(a: Vec<Polygon>, b: Vec<Polygon>) -> Vec<Polygon> {
     a_node.build(b_node.all_polygons());
     a_node.invert();
     a_node.all_polygons()
+}
+
+#[cfg(test)]
+mod stack_safety_tests {
+    use super::*;
+
+    /// Build a deeply-degenerate BSP tree by feeding the kernel a long
+    /// stack of slightly-offset coplanar quads. Each new quad goes to the
+    /// "back" side of every prior partition plane, producing a linked-list
+    /// shaped tree of depth `N`. Pre-fix the recursive `build` /
+    /// `clip_polygons` / `clip_to` / `all_polygons` overflowed Firefox's
+    /// combined JS+WASM call-stack limit (~10K frames) for
+    /// `N ≥ a few thousand` on House.ifc — issue #841's "too much
+    /// recursion" repro.
+    ///
+    /// Native stack would tolerate the original recursion (8 MB) but the
+    /// browser limit is much tighter, so we run the regression against a
+    /// large enough N to fail the old code on native too: a degenerate
+    /// drop chain blows the much smaller default 1 MB drop-frame budget
+    /// well before 10K nodes.
+    #[test]
+    fn deep_bsp_does_not_overflow() {
+        // 4096 deep quads -> tree depth 4096. Each frame in the old
+        // recursive code held a Vec<Polygon> + cloned Plane on the stack
+        // (~hundreds of bytes); the iterative replacement keeps the
+        // process-level call depth at 1 regardless of tree depth.
+        const N: usize = 4096;
+
+        fn quad(z: f64) -> Polygon {
+            let v = |x: f64, y: f64| Vertex::new([x, y, z], [0.0, 0.0, 1.0]);
+            Polygon::new(vec![v(0.0, 0.0), v(1.0, 0.0), v(1.0, 1.0), v(0.0, 1.0)])
+        }
+
+        let polys: Vec<Polygon> = (0..N).map(|i| quad(i as f64)).collect();
+
+        // build (was recursive)
+        let mut node = BspNode::new(polys);
+        // all_polygons (was recursive)
+        let collected = node.all_polygons();
+        assert_eq!(collected.len(), N, "every input polygon survives the walk");
+
+        // invert (was recursive) — purely in-place, just must not panic.
+        node.invert();
+
+        // clip_polygons + clip_to against an out-of-the-way cutter.
+        // The cutter is far above the input quads so nothing should get
+        // clipped — we're exercising the recursion, not the math.
+        let cutter: Vec<Polygon> = vec![quad((N + 1) as f64)];
+        let cutter_node = BspNode::new(cutter);
+        node.clip_to(&cutter_node);
+        let _ = cutter_node.clip_polygons(node.all_polygons());
+
+        // Drop (was recursive via Box). Forcing the destructor to run on
+        // a depth-N tree confirms the iterative `Drop` impl works too.
+        drop(node);
+        drop(cutter_node);
+    }
 }

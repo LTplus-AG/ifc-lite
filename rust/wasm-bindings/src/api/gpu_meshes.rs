@@ -187,9 +187,17 @@ impl IfcAPI {
 
             // Decode and process the entity
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                // Check if entity actually has representation (attribute index 6 for IfcProduct)
+                // Check if entity actually has representation (attribute index 6 for IfcProduct).
+                // IfcAlignment is the documented exception: its Axis curve is on
+                // attr 7, and `Representation` (attr 6) is conventionally `$`.
+                // The geometry router has a dedicated early branch for that
+                // case (see `processing.rs::process_element` → `try_alignment_mesh`),
+                // so let alignments through regardless of attr 6 (PR #849 fix —
+                // pre-fix, the user reported the terrain rendered but the
+                // alignment curves did not because this guard short-circuited).
                 let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-                if !has_representation {
+                let is_alignment = entity.ifc_type == ifc_lite_core::IfcType::IfcAlignment;
+                if !has_representation && !is_alignment {
                     web_sys::console::debug_1(
                         &format!(
                             "[IFC-LITE] #{} ({}) has no representation — skipping geometry",
@@ -597,8 +605,12 @@ impl IfcAPI {
             }
 
             if let Ok(entity) = decoder.decode_at_with_id(id, job_start, job_end) {
+                // IfcAlignment exception — see the equivalent guard in
+                // `parse_meshes`; Axis curve lives on attr 7 and the router
+                // routes through `try_alignment_mesh`.
                 let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-                if !has_representation {
+                let is_alignment = entity.ifc_type == ifc_lite_core::IfcType::IfcAlignment;
+                if !has_representation && !is_alignment {
                     continue;
                 }
 
@@ -2090,9 +2102,11 @@ impl IfcAPI {
             }
 
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                // Check if entity has representation
+                // Check if entity has representation. IfcAlignment exception
+                // — see the equivalent guard in `parse_meshes`.
                 let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-                if !has_representation {
+                let is_alignment = entity.ifc_type == ifc_lite_core::IfcType::IfcAlignment;
+                if !has_representation && !is_alignment {
                     continue;
                 }
 
@@ -3601,8 +3615,10 @@ impl IfcAPI {
             }
 
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcAlignment exception — see `parse_meshes`.
                 let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-                if !has_representation {
+                let is_alignment = entity.ifc_type == ifc_lite_core::IfcType::IfcAlignment;
+                if !has_representation && !is_alignment {
                     continue;
                 }
 
@@ -4248,8 +4264,10 @@ impl IfcAPI {
             let end = chunk[2] as usize;
 
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcAlignment exception — see `parse_meshes`.
                 let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-                if !has_representation {
+                let is_alignment = entity.ifc_type == ifc_lite_core::IfcType::IfcAlignment;
+                if !has_representation && !is_alignment {
                     continue;
                 }
 

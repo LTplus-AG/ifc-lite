@@ -724,6 +724,11 @@
       "size": 4394
     },
     {
+      "path": "issues/853_slab_pocket.ifc",
+      "sha256": "736a4aad0f03ac6512d486e7d1e5e94e68cfe8b5916c7e9e6d14b0215e26ac62",
+      "size": 4348
+    },
+    {
       "path": "issues/854_air_terminal_hollow_fillet.ifc",
       "sha256": "0ae00c7883d10a5df32646efba3e4ce70886746e17ac507e649801e11ca3161a",
       "size": 14476

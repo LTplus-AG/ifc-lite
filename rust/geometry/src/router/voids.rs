@@ -1926,6 +1926,29 @@ impl GeometryRouter {
             return (open_min, open_max);
         }
 
+        // Case (4): RECESS / POCKET pattern (issue #853). The opening starts
+        // exactly at one of the wall's faces and ends in the interior — the
+        // authored intent is a partial-depth bite from one side, not a
+        // through-hole. Extending to reach the opposite face converts the
+        // pocket into a through-hole (the user's screenshot on #853).
+        //
+        // IFC4+ models can author this with `IfcOpeningElement.PredefinedType
+        // = .RECESS.`, but we don't have a clean path to read that here —
+        // and geometry alone disambiguates the case: in a true "opening too
+        // short" pattern the opening floats inside the wall (neither end on
+        // a face); in a recess one end is on a face and the other is inside.
+        // Use coplanarity-pad tolerance so a tiny float-error offset doesn't
+        // mask the alignment.
+        let face_align_tol = (wall_max_proj - wall_min_proj).abs() * 1e-5;
+        let near_at_min_face = (open_min_proj - wall_min_proj).abs() < face_align_tol;
+        let near_at_max_face = (open_max_proj - wall_max_proj).abs() < face_align_tol;
+        let far_inside_min = open_min_proj > wall_min_proj + face_align_tol;
+        let far_inside_max = open_max_proj < wall_max_proj - face_align_tol;
+        let is_recess = (near_at_min_face && far_inside_max) || (near_at_max_face && far_inside_min);
+        if is_recess {
+            return (open_min, open_max);
+        }
+
         // Calculate how much to extend in each direction along the extrusion axis
         // If wall extends beyond opening, we need to extend the opening
         let extend_backward = (open_min_proj - wall_min_proj).max(0.0); // How much wall extends before opening

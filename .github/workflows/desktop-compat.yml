@@ -72,13 +72,20 @@ jobs:
 
       # PR #861 enables `manifold-csg-wasm-uu` on the wasm bundle;
       # `manifold-csg-sys`'s build script needs a wasm32-capable
-      # clang + libc++ headers. Ubuntu 24.04 main repo ships clang-18
-      # which the shim's probe accepts (`/usr/lib/llvm-{18..22}/bin`).
-      - name: Install LLVM 18 (for manifold-csg-sys wasm build)
+      # clang + libc++ headers. clang-20 specifically — libc++-18's
+      # ABI/availability config doesn't cross-compile to
+      # wasm32-unknown-unknown (see test.yml's note for the full
+      # diagnostic). Add apt.llvm.org for clang-20 since Ubuntu
+      # Noble's main repo tops out at clang-18.
+      - name: Install LLVM 20 (for manifold-csg-sys wasm build)
         run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+            | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
+            | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
-            clang-18 lld-18 libc++-18-dev libc++abi-18-dev
+            clang-20 lld-20 libc++-20-dev libc++abi-20-dev
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

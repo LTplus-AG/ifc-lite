@@ -121,16 +121,26 @@ jobs:
       # The wasm bundle pulls in `manifold-csg-sys` via the
       # `manifold-csg-wasm-uu` feature (PR #861). Its build script
       # (wasm-cxx-shim) needs a wasm32-capable clang + lld + libc++
-      # headers. Ubuntu 24.04's main repo ships clang-18, which the
-      # shim's probe accepts (it searches `/usr/lib/llvm-{18..22}/bin`).
+      # headers — and specifically clang-20+, because libc++-18's
+      # headers ship ABI/availability config that doesn't compile
+      # cleanly for the wasm32-unknown-unknown target (observed on
+      # the first attempt at this CI fix: `_LIBCPP_ABI_FORCE_ITANIUM`
+      # + `_LIBCPP_AVAILABILITY_VERBOSE_ABORT` errors). Ubuntu Noble's
+      # main repo only has clang-18, so add apt.llvm.org's signed
+      # repo for clang-20.
+      #
       # Vercel uses emsdk for the same purpose (see
       # `scripts/vercel-install.sh`); GHA's depot images don't have
-      # clang-18 preinstalled, so install it here.
-      - name: Install LLVM 18 (for manifold-csg-sys wasm build)
+      # any clang preinstalled.
+      - name: Install LLVM 20 (for manifold-csg-sys wasm build)
         run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+            | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
+            | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
-            clang-18 lld-18 libc++-18-dev libc++abi-18-dev
+            clang-20 lld-20 libc++-20-dev libc++abi-20-dev
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -45,7 +45,20 @@ impl Default for IfcAlignmentProcessor {
 /// alignment evaluator returns extrapolated points past either end, so we
 /// stop at exactly the horizontal length to avoid drawing trailing
 /// segments past the authored curve.
+///
+/// Assumes the file unit ≈ 1 metre. For non-metre files (millimetre
+/// authoring is common on infrastructure models) a 1 km alignment in
+/// mm would emit 1,000,001 samples and OOM/hang the geometry pass
+/// (PR #849 chatgpt-codex P1 review). [`MAX_SAMPLES`] caps the count
+/// and falls back to a coarser, length-proportional step when this
+/// constant would generate too many — robust against any unit choice
+/// without needing a routing/unit-scale plumbing change.
 const SAMPLE_STEP_FILE_UNITS: f64 = 1.0;
+/// Hard cap on samples per alignment — prevents pathological
+/// unit/length combinations from exploding the mesh. A 5 km alignment
+/// at 1 m steps is well under this; mm-unit files trigger the
+/// length-proportional fallback step below.
+const MAX_SAMPLES: usize = 5_000;
 /// Width of the rendered ribbon (along the alignment's right-of-travel),
 /// also in file length units. 0.5 m at the alignment's authored scale —
 /// thin enough to read as a curve but wide enough to survive distant
@@ -75,12 +88,21 @@ impl GeometryProcessor for IfcAlignmentProcessor {
             return Ok(Mesh::new());
         }
 
-        let sample_count = ((length / SAMPLE_STEP_FILE_UNITS).ceil() as usize).max(1) + 1;
+        // Adaptive sample step: prefer the 1-file-unit default, but fall
+        // back to a length-proportional step when that would exceed
+        // [`MAX_SAMPLES`] (the case for sub-metre file units on long
+        // alignments — issue raised in PR #849 review).
+        let raw_count = ((length / SAMPLE_STEP_FILE_UNITS).ceil() as usize).max(1);
+        let (sample_step, sample_count) = if raw_count > MAX_SAMPLES {
+            (length / MAX_SAMPLES as f64, MAX_SAMPLES + 1)
+        } else {
+            (SAMPLE_STEP_FILE_UNITS, raw_count + 1)
+        };
         let mut left_pts: Vec<Point3<f64>> = Vec::with_capacity(sample_count);
         let mut right_pts: Vec<Point3<f64>> = Vec::with_capacity(sample_count);
 
         for i in 0..sample_count {
-            let station = (i as f64 * SAMPLE_STEP_FILE_UNITS).min(length);
+            let station = (i as f64 * sample_step).min(length);
             let frame = alignment.evaluate(station);
             let offset = frame.right * RIBBON_HALF_WIDTH_FILE_UNITS;
             left_pts.push(frame.origin - offset);

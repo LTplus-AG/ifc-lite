@@ -90,10 +90,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `IFC_LITE_THREADED_STUB=1` skips the actual threaded wasm-pack
+      # compile — same trick as `scripts/vercel-build.sh`. See the
+      # equivalent step in test.yml for the rationale (manifold-csg-sys
+      # is compiled without atomics so threaded link with +atomics
+      # crates fails via rust-lld).
       - name: Build shared packages
+        env:
+          IFC_LITE_THREADED_STUB: '1'
         run: pnpm build
 
       - name: Build desktop frontend (Vite only, no Tauri)
+        env:
+          IFC_LITE_THREADED_STUB: '1'
         run: pnpm build:desktop
 
       - name: Verify desktop contract version

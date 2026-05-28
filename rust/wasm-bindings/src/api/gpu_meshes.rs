@@ -1797,6 +1797,43 @@ impl IfcAPI {
                                         calculate_normals(&mut mesh);
                                     }
 
+                                    // Issue #858 / PR #867 follow-up:
+                                    // per-triangle colour split for
+                                    // `IfcIndexedColourMap`, gated on
+                                    // IfcStyledItem precedence — the
+                                    // streaming `parseMeshesAsync` is the
+                                    // viewer's primary load path, so the
+                                    // split has to run here too.
+                                    if !pre_pass.styled_item_geoms.contains(&sub.geometry_id) {
+                                        if let Some(map) =
+                                            pre_pass.indexed_colour_maps.get(&sub.geometry_id)
+                                        {
+                                            if let Some(groups) =
+                                                split_mesh_by_indexed_colour_map(&mesh, map)
+                                            {
+                                                for (mut group_mesh, group_color) in groups {
+                                                    if group_mesh.normals.len()
+                                                        != group_mesh.positions.len()
+                                                    {
+                                                        calculate_normals(&mut group_mesh);
+                                                    }
+                                                    total_vertices +=
+                                                        group_mesh.positions.len() / 3;
+                                                    total_triangles +=
+                                                        group_mesh.indices.len() / 3;
+                                                    let mesh_data = MeshDataJs::new(
+                                                        id,
+                                                        ifc_type_name.clone(),
+                                                        group_mesh,
+                                                        group_color,
+                                                    );
+                                                    batch_meshes.push(mesh_data);
+                                                }
+                                                continue;
+                                            }
+                                        }
+                                    }
+
                                     let color = resolve_submesh_color(
                                         sub.geometry_id,
                                         &pre_pass.geometry_styles,
@@ -1944,6 +1981,37 @@ impl IfcAPI {
                                         calculate_normals(&mut mesh);
                                     }
 
+                                    // Per-triangle colour split (#858 / #867).
+                                    if !pre_pass.styled_item_geoms.contains(&sub.geometry_id) {
+                                        if let Some(map) =
+                                            pre_pass.indexed_colour_maps.get(&sub.geometry_id)
+                                        {
+                                            if let Some(groups) =
+                                                split_mesh_by_indexed_colour_map(&mesh, map)
+                                            {
+                                                for (mut group_mesh, group_color) in groups {
+                                                    if group_mesh.normals.len()
+                                                        != group_mesh.positions.len()
+                                                    {
+                                                        calculate_normals(&mut group_mesh);
+                                                    }
+                                                    total_vertices +=
+                                                        group_mesh.positions.len() / 3;
+                                                    total_triangles +=
+                                                        group_mesh.indices.len() / 3;
+                                                    let mesh_data = MeshDataJs::new(
+                                                        id,
+                                                        ifc_type_name.clone(),
+                                                        group_mesh,
+                                                        group_color,
+                                                    );
+                                                    batch_meshes.push(mesh_data);
+                                                }
+                                                continue;
+                                            }
+                                        }
+                                    }
+
                                     let color = resolve_submesh_color(
                                         sub.geometry_id,
                                         &pre_pass.geometry_styles,
@@ -2021,6 +2089,37 @@ impl IfcAPI {
                                     }
                                     if mesh.normals.len() != mesh.positions.len() {
                                         calculate_normals(&mut mesh);
+                                    }
+
+                                    // Per-triangle colour split (#858 / #867).
+                                    if !pre_pass.styled_item_geoms.contains(&sub.geometry_id) {
+                                        if let Some(map) =
+                                            pre_pass.indexed_colour_maps.get(&sub.geometry_id)
+                                        {
+                                            if let Some(groups) =
+                                                split_mesh_by_indexed_colour_map(&mesh, map)
+                                            {
+                                                for (mut group_mesh, group_color) in groups {
+                                                    if group_mesh.normals.len()
+                                                        != group_mesh.positions.len()
+                                                    {
+                                                        calculate_normals(&mut group_mesh);
+                                                    }
+                                                    total_vertices +=
+                                                        group_mesh.positions.len() / 3;
+                                                    total_triangles +=
+                                                        group_mesh.indices.len() / 3;
+                                                    let mesh_data = MeshDataJs::new(
+                                                        id,
+                                                        ifc_type_name.clone(),
+                                                        group_mesh,
+                                                        group_color,
+                                                    );
+                                                    batch_meshes.push(mesh_data);
+                                                }
+                                                continue;
+                                            }
+                                        }
                                     }
 
                                     let color = resolve_submesh_color(

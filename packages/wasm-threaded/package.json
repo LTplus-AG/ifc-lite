@@ -11,6 +11,9 @@
   "scripts": {
     "build": "node ../../scripts/run-build-wasm.mjs --threaded"
   },
+  "devDependencies": {
+    "@ifc-lite/wasm": "workspace:^"
+  },
   "license": "MPL-2.0",
   "repository": {
     "type": "git",

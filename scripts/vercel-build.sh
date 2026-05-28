@@ -59,6 +59,17 @@ else
   echo "   Set TURBO_TEAM + TURBO_TOKEN in the Vercel project env to enable."
 fi
 
+# Skip the second wasm-pack compile for @ifc-lite/wasm-threaded.
+# scripts/run-build-wasm.mjs honours this env var by copying the
+# single-thread pkg/ output into the threaded destination and stubbing
+# `initThreadPool` to a no-op. The published threaded path is gated
+# behind a localStorage flag; opt-in users on Vercel previews get the
+# documented per-task serial fallback (no perf regression in default
+# traffic). Override locally with IFC_LITE_THREADED_STUB=0 to rebuild
+# the real threaded bundle.
+export IFC_LITE_THREADED_STUB="${IFC_LITE_THREADED_STUB:-1}"
+echo "🧵 IFC_LITE_THREADED_STUB=$IFC_LITE_THREADED_STUB (stub threaded bundle from single-thread pkg)"
+
 echo "🏗️  Vercel build phase"
 echo "   HOME=$HOME  PWD=$PWD"
 RUSTUP_BIN=$(command -v rustup 2>/dev/null || true)

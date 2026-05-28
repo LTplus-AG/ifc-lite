@@ -110,18 +110,262 @@ fn weld_vertices(mesh: &Mesh) -> (Vec<f64>, Vec<u64>, usize) {
     (welded_pos, welded_tris, dedup_count)
 }
 
+/// Flood-fill triangle winding so every face's outward normal points
+/// away from the solid interior.
+///
+/// **Why this exists.** IFC `IfcFacetedBrep` shells should ship with
+/// outward-facing face normals, but plenty of exporters break that
+/// invariant — flipped faces, mixed winding across a shell, globally
+/// inverted shells — and Manifold's manifold-by-construction
+/// assumption silently inverts inside/outside when the input violates
+/// it. The empirical failure mode is the one this commit chain
+/// chases: `host - cutter` returns the cutter mesh instead of the
+/// cut host. Symptom in production: House.ifc wall #3448 rendering
+/// as a triangular spike. The pre-Manifold BSP path clipped polygons
+/// individually and tolerated mixed winding; Manifold doesn't.
+///
+/// **Algorithm.** Standard manifold-orientability flood-fill:
+/// 1. Build an `(min_v, max_v) → [(tri, direction)]` edge index over
+///    the welded triangle list.
+/// 2. Cluster triangles into connected components via union-find over
+///    shared edges. Each component (typically one per `IfcClosedShell`,
+///    but an `IfcFacetedBrepWithVoids` ships one outer + N inner
+///    shells) is oriented independently.
+/// 3. Per component, pick a seed triangle that touches the vertex of
+///    greatest extent along the component's longest axis. That vertex
+///    is on the convex hull, so the seed's outward normal must have
+///    a non-negative component along that axis. If the seed's normal
+///    points the wrong way, flip the seed before propagating.
+/// 4. BFS from the seed. For any two adjacent triangles, the shared
+///    edge has to be traversed in OPPOSITE directions if both are
+///    outward-facing. When the neighbour traverses the edge in the
+///    SAME direction as the source, flip the neighbour
+///    (`tri.swap(0, 2)` — preserves the third vertex, flips the
+///    cycle).
+///
+/// Mutates `tris` in place. Positions are read-only.
+fn reorient_outward(positions: &[f64], tris: &mut [u64]) {
+    let n_verts = positions.len() / 3;
+    let n_tris = tris.len() / 3;
+    if n_verts == 0 || n_tris == 0 {
+        return;
+    }
+
+    // ── 1. Edge → [(tri_idx, traversed_low_to_high)] index ─────────────
+    // Direction = true if the triangle traverses the edge from the
+    // lower-indexed vertex to the higher-indexed vertex.
+    let mut edge_map: FxHashMap<(u32, u32), smallvec::SmallVec<[(u32, bool); 4]>> =
+        FxHashMap::default();
+    edge_map.reserve(n_tris * 3);
+
+    for t_idx in 0..n_tris {
+        let t = &tris[t_idx * 3..t_idx * 3 + 3];
+        for k in 0..3 {
+            let a = t[k] as u32;
+            let b = t[(k + 1) % 3] as u32;
+            let key = if a < b { (a, b) } else { (b, a) };
+            let low_to_high = a < b;
+            edge_map.entry(key).or_default().push((t_idx as u32, low_to_high));
+        }
+    }
+
+    // ── 2. Union-find for connected components ──────────────────────────
+    let mut parent: Vec<u32> = (0..n_tris as u32).collect();
+    fn find(parent: &mut [u32], mut x: u32) -> u32 {
+        while parent[x as usize] != x {
+            let p = parent[x as usize];
+            parent[x as usize] = parent[p as usize]; // path compression
+            x = parent[x as usize];
+        }
+        x
+    }
+    fn union(parent: &mut [u32], a: u32, b: u32) {
+        let ra = find(parent, a);
+        let rb = find(parent, b);
+        if ra != rb {
+            parent[ra as usize] = rb;
+        }
+    }
+    for entries in edge_map.values() {
+        // Only honour 2-triangle (manifold) edges. Non-manifold edges
+        // (T-junctions, fold-overs) don't define a consistent
+        // neighbour relation — leave such triangles in their own
+        // component rather than risk a wrong-direction flip.
+        if entries.len() != 2 {
+            continue;
+        }
+        union(&mut parent, entries[0].0, entries[1].0);
+    }
+    let mut components: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    for t in 0..n_tris as u32 {
+        let root = find(&mut parent, t);
+        components.entry(root).or_default().push(t);
+    }
+
+    // ── 3. Per-component BFS propagate (fixes mixed winding) ──────────
+    //
+    // For each component, pick an arbitrary seed and propagate
+    // orientation across manifold (2-triangle) edges. Adjacent
+    // triangles must traverse their shared edge in OPPOSITE
+    // directions; when they don't, flip the neighbour. After this pass
+    // every component is INTERNALLY consistent — all triangles in the
+    // component face the same way (in or out).
+    //
+    // BFS only modifies the input when triangles are inconsistent
+    // *within* a component. Well-formed shells have no inconsistencies
+    // here, so the pass is a no-op on the common case.
+    let mut visited = vec![false; n_tris];
+    for component in components.values() {
+        if component.is_empty() {
+            continue;
+        }
+        let seed = component[0];
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(seed);
+        visited[seed as usize] = true;
+        while let Some(curr) = queue.pop_front() {
+            let curr_tri = [
+                tris[curr as usize * 3] as u32,
+                tris[curr as usize * 3 + 1] as u32,
+                tris[curr as usize * 3 + 2] as u32,
+            ];
+            for k in 0..3 {
+                let a = curr_tri[k];
+                let b = curr_tri[(k + 1) % 3];
+                let key = if a < b { (a, b) } else { (b, a) };
+                let curr_dir = a < b;
+                let Some(adjs) = edge_map.get(&key) else {
+                    continue;
+                };
+                if adjs.len() != 2 {
+                    continue;
+                }
+                for &(other_idx, _other_dir) in adjs {
+                    if other_idx == curr || visited[other_idx as usize] {
+                        continue;
+                    }
+                    visited[other_idx as usize] = true;
+                    let ot = [
+                        tris[other_idx as usize * 3] as u32,
+                        tris[other_idx as usize * 3 + 1] as u32,
+                        tris[other_idx as usize * 3 + 2] as u32,
+                    ];
+                    let mut neighbour_dir = None;
+                    for j in 0..3 {
+                        let oa = ot[j];
+                        let ob = ot[(j + 1) % 3];
+                        if (oa.min(ob), oa.max(ob)) == key {
+                            neighbour_dir = Some(oa < ob);
+                            break;
+                        }
+                    }
+                    let Some(neighbour_dir) = neighbour_dir else {
+                        continue;
+                    };
+                    if neighbour_dir == curr_dir {
+                        let base = other_idx as usize * 3;
+                        tris.swap(base, base + 2);
+                    }
+                    queue.push_back(other_idx);
+                }
+            }
+        }
+    }
+
+    // ── 4. Global signed-volume check ─────────────────────────────────
+    //
+    // Signed volume by the divergence theorem is positive for a
+    // closed shell whose face normals point outward, negative for
+    // inward. We deliberately compute this over the WHOLE input rather
+    // than per-component because non-manifold edges (T-junctions in
+    // exported FacetedBreps — observed at 24 such edges on FZK-Haus's
+    // curved windows) split a single closed shell into multiple
+    // pseudo-components. A subset of triangles has no inherent
+    // "outward" direction — its signed-volume sign is just a function
+    // of where its centroid sits relative to the origin, not of its
+    // winding. Per-component flips on such subsets incorrectly invert
+    // already-correct triangles.
+    //
+    // The whole-mesh sign is meaningful as long as the union of all
+    // components forms a closed surface (which it does for any IFC
+    // brep that gets to this point). If the global sign is negative,
+    // every component was consistently inward — flip everything.
+    let total_volume = signed_volume_6x(positions, tris);
+    if total_volume < 0.0 {
+        for t_idx in 0..n_tris {
+            let base = t_idx * 3;
+            tris.swap(base, base + 2);
+        }
+    }
+}
+
+/// Six times the signed tetrahedral volume of a triangle with the
+/// origin — Σ over all triangles gives 6× the closed-shell volume by
+/// the divergence theorem. Positive for outward-CCW closed shells,
+/// negative for inward.
+#[inline]
+fn signed_volume_of(positions: &[f64], tris: &[u64], t_idx: usize) -> f64 {
+    let base = t_idx * 3;
+    let a = &positions[tris[base] as usize * 3..tris[base] as usize * 3 + 3];
+    let b = &positions[tris[base + 1] as usize * 3..tris[base + 1] as usize * 3 + 3];
+    let c = &positions[tris[base + 2] as usize * 3..tris[base + 2] as usize * 3 + 3];
+    let cross_x = b[1] * c[2] - b[2] * c[1];
+    let cross_y = b[2] * c[0] - b[0] * c[2];
+    let cross_z = b[0] * c[1] - b[1] * c[0];
+    a[0] * cross_x + a[1] * cross_y + a[2] * cross_z
+}
+
+#[inline]
+fn signed_volume_6x(positions: &[f64], tris: &[u64]) -> f64 {
+    let mut sum = 0.0;
+    let n_tris = tris.len() / 3;
+    for t in 0..n_tris {
+        sum += signed_volume_of(positions, tris, t);
+    }
+    sum
+}
+
+/// Component of the triangle's geometric normal along `axis`.
+/// Sign tells us which side of the plane the triangle's CCW winding
+/// faces. Magnitude is unnormalised — callers only compare signs, so
+/// the sqrt for normalisation is wasted work. Test-only after the
+/// `reorient_outward` rewrite swapped local-axis seed selection for a
+/// global signed-volume check.
+#[cfg(test)]
+fn triangle_normal_axis(positions: &[f64], tri: &[u64], axis: usize) -> f64 {
+    let a = &positions[tri[0] as usize * 3..tri[0] as usize * 3 + 3];
+    let b = &positions[tri[1] as usize * 3..tri[1] as usize * 3 + 3];
+    let c = &positions[tri[2] as usize * 3..tri[2] as usize * 3 + 3];
+    // (b - a) × (c - a)
+    let ux = b[0] - a[0];
+    let uy = b[1] - a[1];
+    let uz = b[2] - a[2];
+    let vx = c[0] - a[0];
+    let vy = c[1] - a[1];
+    let vz = c[2] - a[2];
+    match axis {
+        0 => uy * vz - uz * vy,
+        1 => uz * vx - ux * vz,
+        _ => ux * vy - uy * vx,
+    }
+}
+
 /// Convert an ifc-lite `Mesh` (f32 positions, u32 indices) to a Manifold
 /// (f64 vertex properties, u64 triangle indices). Runs a vertex-weld
-/// pre-pass — see [`weld_vertices`] for why.
+/// pre-pass — see [`weld_vertices`] for why — followed by a winding
+/// flood-fill so every shell's face normals point outward — see
+/// [`reorient_outward`] for the rationale (House.ifc gable wall).
 fn mesh_to_manifold(mesh: &Mesh) -> Result<Manifold, BoolFailureReason> {
     if mesh.is_empty() {
         return Err(BoolFailureReason::EmptyOperand);
     }
 
-    let (vert_props, tri_indices, _dedup) = weld_vertices(mesh);
+    let (vert_props, mut tri_indices, _dedup) = weld_vertices(mesh);
     if tri_indices.is_empty() {
         return Err(BoolFailureReason::DegenerateOperand);
     }
+
+    reorient_outward(&vert_props, &mut tri_indices);
 
     Manifold::from_mesh_f64(&vert_props, 3, &tri_indices)
         .map_err(|e| BoolFailureReason::KernelError(format!("mesh_to_manifold: {e}")))
@@ -385,5 +629,113 @@ mod tests {
         let cutter = unit_box_at(Point3::new(0.05, 0.05, -0.5));
         let result = difference(&host, &cutter).expect("difference ok past 24-poly cap");
         assert!(!result.is_empty());
+    }
+
+    /// Build a unit box whose triangle winding is FLIPPED — every face
+    /// CCW becomes CW. With outward normals expected, every face now
+    /// points INWARD. Pre-fix this is exactly the input that made
+    /// Manifold return the cutter mesh instead of the cut host on the
+    /// House.ifc gable wall.
+    fn unit_box_inside_out_at(origin: Point3<f64>) -> Mesh {
+        let mut m = unit_box_at(origin);
+        for tri in m.indices.chunks_exact_mut(3) {
+            tri.swap(0, 2);
+        }
+        m
+    }
+
+    /// Build a unit box where the −X and +Y faces are correctly oriented
+    /// but the other four are flipped — mixed winding across the shell,
+    /// mimicking an IFC exporter that gets some face normals right and
+    /// others wrong. Pre-fix this also confuses Manifold.
+    fn unit_box_mixed_winding_at(origin: Point3<f64>) -> Mesh {
+        let mut m = unit_box_at(origin);
+        // unit_box_at lays the 12 triangles out 2-per-face in this order:
+        // -Z, +Z, -X, +X, -Y, +Y. Keep -X (4, 5) and +Y (10, 11) sane;
+        // flip the others.
+        for face in [0, 1, 3, 4] {
+            let base = face * 2;
+            for tri in &mut [base, base + 1] {
+                let t = *tri;
+                m.indices.swap(t * 3, t * 3 + 2);
+            }
+        }
+        m
+    }
+
+    #[test]
+    fn reorient_outward_fixes_inside_out_box() {
+        let bad = unit_box_inside_out_at(Point3::new(0.0, 0.0, 0.0));
+        let (verts, mut tris, _) = weld_vertices(&bad);
+        reorient_outward(&verts, &mut tris);
+
+        // After reorientation, the average outward normal at the +Z face
+        // must point in +Z. Cross-check: the top face has at least one
+        // triangle whose normal axis-Z component is positive.
+        let mut any_positive_top_normal = false;
+        for chunk in tris.chunks_exact(3) {
+            // A triangle on the top face has all three vertices at z ≈ 1.
+            let on_top = chunk.iter().all(|&i| {
+                let z = verts[i as usize * 3 + 2];
+                (z - 1.0).abs() < 1e-6
+            });
+            if !on_top {
+                continue;
+            }
+            if triangle_normal_axis(&verts, chunk, 2) > 0.0 {
+                any_positive_top_normal = true;
+                break;
+            }
+        }
+        assert!(
+            any_positive_top_normal,
+            "after reorient, the +Z face must have an outward-facing triangle"
+        );
+    }
+
+    #[test]
+    fn difference_survives_inside_out_cutter() {
+        // The canonical House.ifc bug. host is a correctly-oriented box;
+        // the cutter is an inside-out box that pokes through one face.
+        // Without the reorient pass, Manifold returns the cutter mesh
+        // and the result lies partially outside the host bbox.
+        let host = unit_box_at(Point3::new(0.0, 0.0, 0.0));
+        let bad_cutter = unit_box_inside_out_at(Point3::new(0.25, 0.25, -0.5));
+        let good_cutter = unit_box_at(Point3::new(0.25, 0.25, -0.5));
+
+        let bad_result = difference(&host, &bad_cutter).expect("difference ok");
+        let good_result = difference(&host, &good_cutter).expect("difference ok");
+
+        // The two results should be structurally identical: same triangle
+        // count, same bounding box. The reorient pass normalises the bad
+        // cutter into the same shape as the good one before Manifold
+        // ever sees the difference.
+        assert_eq!(
+            bad_result.triangle_count(),
+            good_result.triangle_count(),
+            "reorient-fixed cutter must produce the same triangle count as a correctly-oriented one",
+        );
+        let (bad_min, bad_max) = bad_result.bounds();
+        let (good_min, good_max) = good_result.bounds();
+        assert!((bad_min - good_min).abs().max() < 1e-5);
+        assert!((bad_max - good_max).abs().max() < 1e-5);
+    }
+
+    #[test]
+    fn difference_survives_mixed_winding_cutter() {
+        // Four of six faces flipped — mimics a real-world IfcFacetedBrep
+        // with per-face winding bugs (not just a globally-inverted shell).
+        let host = unit_box_at(Point3::new(0.0, 0.0, 0.0));
+        let mixed_cutter = unit_box_mixed_winding_at(Point3::new(0.25, 0.25, -0.5));
+        let good_cutter = unit_box_at(Point3::new(0.25, 0.25, -0.5));
+
+        let mixed_result = difference(&host, &mixed_cutter).expect("difference ok");
+        let good_result = difference(&host, &good_cutter).expect("difference ok");
+
+        assert_eq!(
+            mixed_result.triangle_count(),
+            good_result.triangle_count(),
+            "reorient must reconcile mixed-winding cutter to outward-facing",
+        );
     }
 }

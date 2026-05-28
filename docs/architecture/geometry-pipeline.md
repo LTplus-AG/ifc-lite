@@ -537,24 +537,36 @@ issues that previously blocked the wasm build have been resolved
 upstream. `rust/wasm-bindings/Cargo.toml` opts into the feature and
 `scripts/vercel-install.sh` provisions the host toolchain.
 
-Build prerequisites:
+Build prerequisites — the shim accepts any of:
 
-- LLVM 18+ with `clang++`, `wasm-ld`, and `llvm-ar` on PATH (or pointed
-  to via `WASM_CXX_SHIM_LLVM_BIN_DIR`).
-- libc++ headers at `<llvm-prefix>/include/c++/v1/`. Not bundled with
-  the AL2023 `clang20` package; on Vercel we fetch the matching
-  `libcxx-N.N.N.src.tar.xz` from the LLVM release page into
-  `/vercel/cache/wasm-cxx/` so subsequent deploys reuse it.
+- **`EMSDK` env var pointing at an emsdk install** (cleanest;
+  works hermetically with no system packages). The Emscripten
+  bundle includes a complete LLVM 23 with libc++ headers, `wasm-ld`,
+  and `llvm-ar` under `$EMSDK/upstream/bin/`. The shim's CMake
+  toolchain probe (`cmake/toolchain-wasm32.cmake`) discovers it
+  automatically when `EMSDK` is set.
+- **Host LLVM 18+** with `clang++`, `wasm-ld`, `llvm-ar`, and libc++
+  headers at `<llvm-prefix>/include/c++/v1/`. Override the probe
+  with `WASM_CXX_SHIM_LLVM_BIN_DIR` and
+  `WASM_CXX_SHIM_LIBCXX_HEADERS` when the layout doesn't match the
+  standard ladder.
 - CMake 3.18+ for the `wasm-cxx-shim` FetchContent build of Manifold +
-  Clipper2.
+  Clipper2 (pre-installed in Vercel's image).
+
+Vercel:
+
+`scripts/vercel-install.sh` clones `emsdk` into `/vercel/cache/emsdk`
+on first deploy and runs `./emsdk install latest` (~340 MB download).
+The cache survives across deploys per Vercel's build-cache policy.
+We chose emsdk over `dnf install clang20` because Vercel's pinned
+AL2023 image (`2023.2.20231011.0`) only ships `clang15`.
 
 Local dev:
 
 - macOS: `brew install llvm lld`. The shim's toolchain file
   auto-detects `/opt/homebrew/opt/llvm@N/bin`; no env vars required.
 - Debian/Ubuntu: `apt install clang-20 lld-20 libc++-20-dev libc++abi-20-dev`.
-- Other hosts: see the wasm-cxx-shim CMake toolchain probe ladder
-  documented at `cmake/toolchain-wasm32.cmake` in the shim sources.
+- Cross-platform: `git clone https://github.com/emscripten-core/emsdk && cd emsdk && ./emsdk install latest && export EMSDK=$PWD`.
 
 Runtime properties of the wasm-side Manifold:
 

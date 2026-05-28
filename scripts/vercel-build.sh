@@ -49,14 +49,14 @@ else
   echo "🦀 CARGO_TARGET_DIR unset (no writable Vercel cache dir; using ./target)"
 fi
 
-# Carry the wasm-cxx-shim cross-toolchain env vars forward to turbo's
-# subprocesses. scripts/vercel-install.sh provisions the tools under
-# /vercel/cache/wasm-cxx/ but env vars set there don't reach this phase
-# by default — same gotcha as RUSTUP_HOME above.
-if [ -d "${WASM_CXX_PREFIX:-/vercel/cache/wasm-cxx}/bin" ]; then
-  export WASM_CXX_SHIM_LLVM_BIN_DIR="${WASM_CXX_PREFIX:-/vercel/cache/wasm-cxx}/bin"
-  export WASM_CXX_SHIM_LIBCXX_HEADERS="${WASM_CXX_PREFIX:-/vercel/cache/wasm-cxx}/include/c++/v1"
-  echo "🛠  WASM_CXX_SHIM_LLVM_BIN_DIR=$WASM_CXX_SHIM_LLVM_BIN_DIR"
+# Carry the emsdk path forward to turbo's subprocesses so the
+# wasm-cxx-shim's cmake toolchain file picks up clang/wasm-ld/libc++.
+# scripts/vercel-install.sh provisions emsdk under /vercel/cache/emsdk
+# but env vars set there don't reach this phase by default — same
+# gotcha as RUSTUP_HOME above.
+if [ -x "${WASM_CXX_PREFIX:-/vercel/cache/emsdk}/upstream/bin/clang++" ]; then
+  export EMSDK="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}"
+  echo "🛠  EMSDK=$EMSDK (wasm-cxx-shim toolchain probe)"
 fi
 
 # Surface Turbo Remote Cache status in the deploy log. Cache hits show

@@ -220,6 +220,114 @@ fn generate_reveal_quads(
     }
 }
 
+/// Emit a horizontal cap face at the *inside* end of a recess opening
+/// (issue #864 follow-up review).
+///
+/// `generate_reveal_quads` covers the four side walls of an opening (the
+/// faces parallel to the extrusion axis). For a true through-opening that
+/// suffices: the host's pre-existing surfaces at the wall's near + far
+/// face become the entrance + exit, and `cut_rectangular_opening` already
+/// removed the host triangles inside the opening footprint so the
+/// renderer sees a clean hole at both faces.
+///
+/// A recess (issue #853) is asymmetric: one end of the opening sits
+/// flush with a host face (still a hole through that face), the other
+/// end stops INSIDE the host — and the host has no surface at that
+/// stop plane, so without an explicit cap the recess renders as
+/// open-bottomed (you'd see straight through the slab when looking
+/// into the pocket from the flush side).
+///
+/// Detection mirrors case (4) of `extend_opening_along_direction`:
+/// one end of the opening coincides with a host face on the extrusion
+/// axis, the other end sits strictly inside. The cap is emitted on
+/// the plane of the inside end, with its normal pointing OUT OF THE
+/// HOST (toward the open / flush end), so the renderer's outward-
+/// facing-normal convention shades it as the visible floor of the
+/// pocket.
+///
+/// No-op when the opening is a regular through-cut (neither end on a
+/// host face, or both ends on a host face).
+fn generate_recess_cap(
+    mesh: &mut Mesh,
+    open_min: &Point3<f64>,
+    open_max: &Point3<f64>,
+    wall_min: &Point3<f64>,
+    wall_max: &Point3<f64>,
+    extrusion_dir: Option<&Vector3<f64>>,
+) {
+    let ea = determine_extrusion_axis(extrusion_dir, wall_min, wall_max);
+
+    // Same per-axis tolerance as the recess detector in
+    // `extend_opening_along_direction` — proportional to the host
+    // extent so a small float-error offset doesn't mask the alignment.
+    let host_extent = (axis_val(wall_max, ea) - axis_val(wall_min, ea)).abs();
+    let face_align_tol = host_extent * 1e-5;
+
+    let open_lo = axis_val(open_min, ea);
+    let open_hi = axis_val(open_max, ea);
+    let wall_lo = axis_val(wall_min, ea);
+    let wall_hi = axis_val(wall_max, ea);
+
+    let near_at_min_face = (open_lo - wall_lo).abs() < face_align_tol;
+    let near_at_max_face = (open_hi - wall_hi).abs() < face_align_tol;
+    let far_inside_max = open_hi < wall_hi - face_align_tol;
+    let far_inside_min = open_lo > wall_lo + face_align_tol;
+
+    let (cap_value, normal_sign) = if near_at_min_face && far_inside_max {
+        // Min face is the flush end; cap at `open_hi`, normal points toward
+        // the flush face (−ea).
+        (open_hi, -1.0)
+    } else if near_at_max_face && far_inside_min {
+        // Max face is the flush end; cap at `open_lo`, normal points toward
+        // the flush face (+ea).
+        (open_lo, 1.0)
+    } else {
+        return;
+    };
+
+    // The two cross-axes (the ones that are NOT the extrusion axis).
+    let cross: [usize; 2] = match ea {
+        0 => [1, 2],
+        1 => [0, 2],
+        _ => [0, 1],
+    };
+    let c0 = cross[0];
+    let c1 = cross[1];
+
+    // Cap footprint = opening's cross-axis bounds clamped to the host so
+    // the cap never overshoots the host mesh (mirrors the clamping in
+    // `generate_reveal_quads`).
+    let c0_lo = axis_val(open_min, c0).max(axis_val(wall_min, c0));
+    let c0_hi = axis_val(open_max, c0).min(axis_val(wall_max, c0));
+    let c1_lo = axis_val(open_min, c1).max(axis_val(wall_min, c1));
+    let c1_hi = axis_val(open_max, c1).min(axis_val(wall_max, c1));
+    if c0_hi - c0_lo < 1e-4 || c1_hi - c1_lo < 1e-4 {
+        return;
+    }
+
+    // Wind the cap CCW viewed along the outward normal. For
+    // `normal_sign == +1.0` we look down the +ea axis at the rectangle;
+    // CCW corners are (c0_lo, c1_lo) → (c0_hi, c1_lo) → (c0_hi, c1_hi)
+    // → (c0_lo, c1_hi). For `normal_sign == -1.0` reverse to flip the
+    // winding.
+    let (a, b, c, d) = if normal_sign > 0.0 {
+        (
+            point_from_axes(ea, cap_value, c0, c0_lo, c1, c1_lo),
+            point_from_axes(ea, cap_value, c0, c0_hi, c1, c1_lo),
+            point_from_axes(ea, cap_value, c0, c0_hi, c1, c1_hi),
+            point_from_axes(ea, cap_value, c0, c0_lo, c1, c1_hi),
+        )
+    } else {
+        (
+            point_from_axes(ea, cap_value, c0, c0_lo, c1, c1_lo),
+            point_from_axes(ea, cap_value, c0, c0_lo, c1, c1_hi),
+            point_from_axes(ea, cap_value, c0, c0_hi, c1, c1_hi),
+            point_from_axes(ea, cap_value, c0, c0_hi, c1, c1_lo),
+        )
+    };
+    add_reveal_quad(mesh, a, b, c, d, vec_along_axis(ea, normal_sign));
+}
+
 /// Whether the representation type is geometry we can process.
 fn is_body_representation(rep_type: &str) -> bool {
     matches!(
@@ -1142,6 +1250,17 @@ impl GeometryRouter {
                     &wall_max,
                     rect_dirs[i].as_ref(),
                 );
+                // Issue #864 follow-up: recess openings (one end flush
+                // with a host face, the other end inside) need a cap
+                // face at the inside end. No-op for through-cuts.
+                generate_recess_cap(
+                    &mut result,
+                    open_min,
+                    open_max,
+                    &wall_min,
+                    &wall_max,
+                    rect_dirs[i].as_ref(),
+                );
             }
         }
 
@@ -1755,6 +1874,16 @@ impl GeometryRouter {
             // to world space together with the rest of the mesh.
             let x_dir = Vector3::new(1.0, 0.0, 0.0);
             generate_reveal_quads(
+                result,
+                &rot_min,
+                &rot_max,
+                &rot_wall_min,
+                &rot_wall_max,
+                Some(&x_dir),
+            );
+            // Issue #864 follow-up: emit a cap face at the recess's
+            // inside end (no-op for through-openings).
+            generate_recess_cap(
                 result,
                 &rot_min,
                 &rot_max,

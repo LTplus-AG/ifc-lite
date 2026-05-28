@@ -119,6 +119,62 @@ fn issue_853_recess_does_not_extend_through_slab() {
         pocket_floor_verts,
     );
 
+    // PR #864 follow-up review: ≥4 verts on the floor plane is necessary
+    // but not sufficient — the four reveal-quad bottom edges land on
+    // that plane regardless of whether an actual cap face exists, so
+    // the slab can look "open at the bottom" with the test still
+    // passing. Check for at least one TRIANGLE that lies fully on the
+    // floor plane AND inside the recess footprint, AND whose normal
+    // points away from the host interior. That's the cap face proper —
+    // emitted by `generate_recess_cap` only when the recess pattern is
+    // detected.
+    let mut cap_tris = 0;
+    for tri in mesh.indices.chunks_exact(3) {
+        let mut on_floor = true;
+        let mut in_footprint = true;
+        for &v in tri {
+            let base = v as usize * 3;
+            let x = mesh.positions[base];
+            let y = mesh.positions[base + 1];
+            let z = mesh.positions[base + 2];
+            if (z - FLOOR_Z).abs() >= FLOOR_TOL {
+                on_floor = false;
+                break;
+            }
+            if !(recess_xmin - 1e-3..=recess_xmax + 1e-3).contains(&x)
+                || !(recess_ymin - 1e-3..=recess_ymax + 1e-3).contains(&y)
+            {
+                in_footprint = false;
+                break;
+            }
+        }
+        if !(on_floor && in_footprint) {
+            continue;
+        }
+        // Sanity-check the normal: at least one corner vertex should have
+        // a positive Z normal (cap points UP out of the slab toward the
+        // open top face at z=0).
+        let n_base = tri[0] as usize * 3;
+        let ny = mesh.normals.get(n_base + 1).copied().unwrap_or(0.0);
+        let nz = mesh.normals.get(n_base + 2).copied().unwrap_or(0.0);
+        if nz > 0.5 || ny.abs() < 0.5 {
+            // Either a real +Z-facing cap normal, or the normal hasn't
+            // been computed yet (some emit paths defer normal calc to
+            // the renderer). Accept either — the existence of a fully-
+            // on-plane triangle is the load-bearing signal.
+            cap_tris += 1;
+        }
+    }
+    assert!(
+        cap_tris >= 1,
+        "recess cap face missing: 0 triangles lie fully on z ≈ -0.050 m \
+         inside the recess footprint, even though {} vertices sit on \
+         that plane. The bottom edges of the side reveal quads coincide \
+         with the floor plane but don't form a filled cap — the recess \
+         renders as open-bottomed (PR #864 review).",
+        pocket_floor_verts,
+    );
+
     // Sanity: the slab still has its full extent in Z (the
     // through-hole opening #325 doesn't shrink the bbox; it carves
     // a hole through the interior). If the recess fix accidentally

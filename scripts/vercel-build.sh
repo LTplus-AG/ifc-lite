@@ -65,10 +65,9 @@ if [ -x "$_emsdk_dir/upstream/bin/clang++" ]; then
 fi
 
 # Newer cmake than AL2023's 3.22 (wasm-cxx-shim needs 3.25+). Install
-# script drops it next to /vercel/cache/emsdk. Prepend to PATH so the
-# shim's cmake invocation finds the right version.
-_cmake_glob=( "/vercel/cache"/cmake-*-linux-x86_64 "${WASM_CXX_PREFIX:-/vercel/cache/emsdk}/.."/cmake-*-linux-x86_64 )
-for _cmake_dir in "${_cmake_glob[@]}"; do
+# script drops it under /vercel/cache/cmake-<version>/. Prepend to PATH
+# so the shim's cmake invocation finds the right version.
+for _cmake_dir in /vercel/cache/cmake-*; do
   if [ -x "$_cmake_dir/bin/cmake" ]; then
     export PATH="$_cmake_dir/bin:$PATH"
     echo "🛠  cmake=$_cmake_dir/bin/cmake"

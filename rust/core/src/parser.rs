@@ -318,25 +318,42 @@ impl<'a> EntityScanner<'a> {
     /// Returns (entity_id, type_name, line_start, line_end)
     #[inline]
     pub fn next_entity(&mut self) -> Option<(u32, &'a str, usize, usize)> {
-        // Find a '#' that actually starts an entity. A `#` is legal inside
+        // Find a '#' that actually starts an entity. A '#' is legal inside
         // STEP-encoded quoted strings (e.g. CATIA writes filenames like
-        // `'…\X0\2#.ifc'` into the HEADER's FILE_NAME), so we validate that
-        // the `#` is followed by at least one ASCII digit before treating it
-        // as an entity anchor. Without this check, an in-string `#` would
-        // misalign `find_entity_end`'s quote parity and silently drop every
-        // remaining entity in the file. See issue #654.
+        // `'…\X0\2#.ifc'` into the HEADER's FILE_NAME) AND inside STEP
+        // `/* … */` comments (template-generated IFC commonly has phrases
+        // like `/* Standard case walls #1 with axis … */`; issue #856).
+        // Validate that the '#' starts a real `#<digits>[ws]*=` pattern
+        // before locking it in — same shape as `build_entity_index`'s
+        // existing check, so the scanner and index stay in agreement.
         let bytes = self.bytes;
         let len = bytes.len();
-        let line_start = loop {
+        let (line_start, id_end_validated) = loop {
             let remaining = &bytes[self.position..];
             let start_offset = memchr::memchr(b'#', remaining)?;
             let candidate = self.position + start_offset;
             let after = candidate + 1;
-            if after < len && bytes[after].is_ascii_digit() {
-                break candidate;
+            if after >= len || !bytes[after].is_ascii_digit() {
+                self.position = after;
+                continue;
             }
-            // Not a valid entity start — advance past this '#' and retry.
-            self.position = after;
+            // Walk the digit run.
+            let mut digit_end = after;
+            while digit_end < len && bytes[digit_end].is_ascii_digit() {
+                digit_end += 1;
+            }
+            // Skip optional whitespace and verify the next byte is '='.
+            let mut probe = digit_end;
+            while probe < len && bytes[probe].is_ascii_whitespace() {
+                probe += 1;
+            }
+            if probe < len && bytes[probe] == b'=' {
+                break (candidate, digit_end);
+            }
+            // '#<digits>' not followed by '=' — this is a comment or string
+            // reference, not an entity definition. Skip past the digits and
+            // keep searching.
+            self.position = digit_end;
         };
 
         // Find the end of the entity (semicolon) while respecting quoted strings
@@ -345,14 +362,9 @@ impl<'a> EntityScanner<'a> {
         let end_offset = self.find_entity_end(line_content)?;
         let line_end = line_start + end_offset + 1;
 
-        // Parse entity ID (inline for speed)
+        // Parse entity ID — digit range already validated in the candidate loop.
         let id_start = line_start + 1;
-        let mut id_end = id_start;
-        while id_end < line_end && self.bytes[id_end].is_ascii_digit() {
-            id_end += 1;
-        }
-
-        // Fast integer parsing without allocation
+        let id_end = id_end_validated;
         let id = self.parse_u32_fast(id_start, id_end)?;
 
         // Find '=' after ID using SIMD

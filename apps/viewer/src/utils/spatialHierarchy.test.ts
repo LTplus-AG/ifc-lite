@@ -115,6 +115,43 @@ describe('rebuildSpatialHierarchy', () => {
     assert.equal(hierarchy.elementToStorey.get(5), 4);
   });
 
+  it('terminates without stack overflow on cyclic spatial aggregation (issue #841)', () => {
+    // Regression for the House.ifc failure mode: a malformed
+    // IfcRelAggregates edge points a spatial-structure entity back at
+    // an ancestor. Pre-fix the recursive `buildNode` recursed
+    // indefinitely along the cycle and tripped V8's "Maximum call
+    // stack size exceeded" before any geometry showed.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(4, strings);
+    entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    entities.add(2, 'IFCSITE', 's0', 'Site', '', '');
+    entities.add(3, 'IFCBUILDING', 'b0', 'Building', '', '');
+    entities.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Storey', '', '');
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 400);
+    relationships.addEdge(2, 3, RelationshipType.Aggregates, 401);
+    relationships.addEdge(3, 4, RelationshipType.Aggregates, 402);
+    // Cycle: storey aggregates back to the building.
+    relationships.addEdge(4, 3, RelationshipType.Aggregates, 403);
+
+    const hierarchy = rebuildSpatialHierarchy(entities.build(), relationships.build());
+    assert.ok(hierarchy);
+    // First-visit wins: building appears once under site, storey once
+    // under building; the cycle edge is skipped.
+    assert.equal(hierarchy.project.children[0].type, IfcTypeEnum.IfcSite);
+    assert.equal(hierarchy.project.children[0].children[0].type, IfcTypeEnum.IfcBuilding);
+    assert.equal(
+      hierarchy.project.children[0].children[0].children[0].type,
+      IfcTypeEnum.IfcBuildingStorey,
+    );
+    // The cycle back-edge yielded no extra child.
+    assert.equal(
+      hierarchy.project.children[0].children[0].children[0].children.length,
+      0,
+    );
+  });
+
   it('terminates in bounded time on malformed aggregate cycles', () => {
     // Cycle guard: part references back to wall via IfcRelAggregates. Without
     // the `seen` set, the descendant walk would infinite-loop.

@@ -53,10 +53,16 @@ export function rebuildSpatialHierarchy(
   const projectId = projectIds[0];
 
   // Build node tree recursively - NOW O(1) lookups!
+  // Track visited spatial nodes to short-circuit cycles in malformed IFC
+  // files (IfcRelAggregates that loops back on itself). Without this guard
+  // the recursion blows the JS call stack with "Maximum call stack size
+  // exceeded" before any geometry can be displayed.
+  const visited = new Set<number>();
   function buildNode(expressId: number): SpatialNode {
     // O(1) lookup instead of O(n) linear search
     const typeEnum = entities.getTypeEnum(expressId);
     const name = entities.getName(expressId) || `Entity #${expressId}`;
+    visited.add(expressId);
 
     // Get contained elements via IfcRelContainedInSpatialStructure
     const rawContainedElements = relationships.getRelated(
@@ -83,6 +89,7 @@ export function rebuildSpatialHierarchy(
     // Filter to spatial structure types and recurse - O(1) per child now!
     const childNodes: SpatialNode[] = [];
     for (const childId of aggregatedChildren) {
+      if (visited.has(childId)) continue;
       const childType = entities.getTypeEnum(childId);
       if (childType && isSpatialStructureType(childType) && childType !== IfcTypeEnum.IfcProject) {
         childNodes.push(buildNode(childId));

@@ -270,7 +270,7 @@ fn tessellate_bspline_surface(
 
 /// Parse rational weights from IfcRationalBSplineSurfaceWithKnots.
 /// Attribute 12: WeightsData (LIST of LIST of REAL).
-fn parse_rational_weights(bspline: &DecodedEntity) -> Option<Vec<Vec<f64>>> {
+pub(super) fn parse_rational_weights(bspline: &DecodedEntity) -> Option<Vec<Vec<f64>>> {
     let weights_attr = bspline.get(12)?;
     let rows = weights_attr.as_list()?;
     let mut result = Vec::with_capacity(rows.len());
@@ -903,7 +903,7 @@ fn process_planar_face(
 
 /// Process a B-spline surface face.
 /// When `weights` is `Some`, rational (NURBS) evaluation is used.
-fn process_bspline_face(
+pub(super) fn process_bspline_face(
     bspline: &DecodedEntity,
     decoder: &mut EntityDecoder,
     weights: Option<&[Vec<f64>]>,

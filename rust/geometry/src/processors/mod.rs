@@ -36,12 +36,12 @@ mod tessellated;
 mod tests;
 
 // Re-export all processor types
-pub use advanced::AdvancedBrepProcessor;
+pub use advanced::{AdvancedBrepProcessor, BSplineSurfaceProcessor};
 pub use boolean::BooleanClippingProcessor;
 pub use brep::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, ShellBasedSurfaceModelProcessor,
 };
-pub use csg_primitive::{BlockProcessor, CsgSolidProcessor};
+pub use csg_primitive::{BlockProcessor, CsgSolidProcessor, SphereProcessor};
 pub use extrusion::ExtrudedAreaSolidProcessor;
 pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use mapped::MappedItemProcessor;

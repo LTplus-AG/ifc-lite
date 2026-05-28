@@ -95,6 +95,16 @@ provision_wasm_cxx_toolchain() {
     return 0  # Non-Vercel host; assume the dev provisioned LLVM locally.
   fi
 
+  # The wasm-cxx-shim drives the C++ build via cmake. emsdk doesn't
+  # bundle a cmake binary, and Vercel's AL2023 image doesn't pre-install
+  # one. dnf install is fast (~10s) and cmake (3.22 in their repo) is
+  # well above the shim's 3.18 minimum, so no version-drift surprise.
+  if ! command -v cmake >/dev/null 2>&1; then
+    echo "📦 Installing cmake via dnf..."
+    dnf install -y -q cmake \
+      || { echo "❌ Failed to install cmake via dnf"; return 1; }
+  fi
+
   local emsdk_dir="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}"
 
   if [ -x "$emsdk_dir/upstream/bin/clang++" ]; then

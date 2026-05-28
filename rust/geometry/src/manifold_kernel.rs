@@ -371,6 +371,103 @@ fn mesh_to_manifold(mesh: &Mesh) -> Result<Manifold, BoolFailureReason> {
         .map_err(|e| BoolFailureReason::KernelError(format!("mesh_to_manifold: {e}")))
 }
 
+/// Variant of [`mesh_to_manifold`] that uniformly inflates the welded
+/// mesh around its centroid before handing it to Manifold.
+///
+/// **Why.** Many IFC exporters author "tight" cutters whose faces are
+/// EXACTLY coincident with the host's faces (e.g. AC20-House Traufe
+/// wall #3448's gable cutter shares all four top corners and both
+/// long edges with the wall extrusion). Coincident-face CSG is on
+/// Manifold's coplanar-classifier precision boundary, and the classifier
+/// is not bit-deterministic across platforms — macOS aarch64 lands on
+/// the "remove cutter from host" side, emscripten/WASM lands on
+/// "return cutter" for the SAME f64 input mesh.
+///
+/// The textbook fix in robust computational-geometry literature is to
+/// regularize the input so all intersections are strictly transversal.
+/// Uniform inflation around the centroid pushes every face outward by
+/// the same fraction, eliminating coincidence with anything in the
+/// host without changing the cutter's topology.
+///
+/// Magnitude is set so the corner displacement is **~10 µm** regardless
+/// of mesh scale — well above Manifold's ~`bbox × 1e-7` coplanarity
+/// epsilon yet far below any visible feature size (10 µm in a 5.5 m
+/// wall is sub-screen-pixel at any practical zoom).
+fn mesh_to_manifold_perturbed(mesh: &Mesh) -> Result<Manifold, BoolFailureReason> {
+    if mesh.is_empty() {
+        return Err(BoolFailureReason::EmptyOperand);
+    }
+
+    let (mut vert_props, mut tri_indices, _dedup) = weld_vertices(mesh);
+    if tri_indices.is_empty() {
+        return Err(BoolFailureReason::DegenerateOperand);
+    }
+
+    reorient_outward(&vert_props, &mut tri_indices);
+    perturb_around_centroid(&mut vert_props);
+
+    Manifold::from_mesh_f64(&vert_props, 3, &tri_indices)
+        .map_err(|e| BoolFailureReason::KernelError(format!("mesh_to_manifold_perturbed: {e}")))
+}
+
+/// Move every vertex outward from the mesh centroid such that the
+/// vertex farthest from the centroid moves by ~10 µm (in whatever
+/// units the mesh is authored in — works equally for mm or m IFC).
+fn perturb_around_centroid(positions: &mut [f64]) {
+    const TARGET_CORNER_DISPLACEMENT: f64 = 1.0e-5; // 10 µm in unit-agnostic terms
+
+    let n = positions.len() / 3;
+    if n == 0 {
+        return;
+    }
+
+    // bbox + centroid
+    let mut min = [f64::INFINITY; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
+    for i in 0..n {
+        for axis in 0..3 {
+            let v = positions[i * 3 + axis];
+            if v < min[axis] {
+                min[axis] = v;
+            }
+            if v > max[axis] {
+                max[axis] = v;
+            }
+        }
+    }
+    let center = [
+        (min[0] + max[0]) * 0.5,
+        (min[1] + max[1]) * 0.5,
+        (min[2] + max[2]) * 0.5,
+    ];
+
+    // Half-extent farthest from centroid sets the scale: a vertex at
+    // that corner moves by `TARGET_CORNER_DISPLACEMENT` after scaling.
+    let half = [
+        (max[0] - min[0]).abs() * 0.5,
+        (max[1] - min[1]).abs() * 0.5,
+        (max[2] - min[2]).abs() * 0.5,
+    ];
+    let max_half = half[0].max(half[1]).max(half[2]);
+    if max_half <= 0.0 {
+        return; // degenerate; nothing to do
+    }
+    // For IFC fixtures the units vary (mm vs m). Pick an absolute
+    // displacement that's invisible at the smaller scale: 1e-5 of one
+    // unit (10 µm when units=mm, 10 nm when units=m). The latter is
+    // below Manifold's tolerance for m-scale geometry, so cap the
+    // SCALE at 1e-6 (= 1 part-per-million) to guarantee a meaningful
+    // perturbation regardless of authored units.
+    let scale_delta = (TARGET_CORNER_DISPLACEMENT / max_half).max(1.0e-6);
+    let scale = 1.0 + scale_delta;
+
+    for i in 0..n {
+        positions[i * 3] = center[0] + (positions[i * 3] - center[0]) * scale;
+        positions[i * 3 + 1] = center[1] + (positions[i * 3 + 1] - center[1]) * scale;
+        positions[i * 3 + 2] = center[2] + (positions[i * 3 + 2] - center[2]) * scale;
+    }
+}
+
 /// Convert a Manifold result back to an ifc-lite `Mesh`. Vertex normals
 /// are recomputed from positions; Manifold does not preserve our normals
 /// through boolean operations.
@@ -403,9 +500,17 @@ fn manifold_to_mesh(m: &Manifold) -> Mesh {
 }
 
 /// Manifold-backed boolean difference (`host - void`).
+///
+/// The cutter is uniformly inflated around its centroid before being
+/// handed to Manifold — see [`mesh_to_manifold_perturbed`] for why.
+/// This eliminates exact face/edge coincidences between cutter and host
+/// (the precision-boundary case where Manifold-on-WASM and Manifold-on-
+/// native diverged for House.ifc Traufe wall #3448; the cutter shared
+/// all four top corners and two side edges with the host, and WASM's
+/// coplanar-face classifier landed on the wrong side).
 pub fn difference(host: &Mesh, void: &Mesh) -> Result<Mesh, BoolFailureReason> {
     let host_m = mesh_to_manifold(host)?;
-    let void_m = mesh_to_manifold(void)?;
+    let void_m = mesh_to_manifold_perturbed(void)?;
     let result = host_m.difference(&void_m);
     Ok(manifold_to_mesh(&result))
 }
@@ -736,6 +841,75 @@ mod tests {
             mixed_result.triangle_count(),
             good_result.triangle_count(),
             "reorient must reconcile mixed-winding cutter to outward-facing",
+        );
+    }
+
+    #[test]
+    fn difference_survives_face_coincident_cutter() {
+        // Reproduces the AC20-House Traufe wall #3448 input class: the
+        // cutter's top face is EXACTLY coplanar with the host's top
+        // face, and every cutter vertex on the top sits on a host edge
+        // or corner. On native macOS aarch64 Manifold subtracts cleanly,
+        // but on emscripten/WASM the coplanar-face classifier returns
+        // the cutter instead of the cut host — the visual bug the user
+        // reported. `mesh_to_manifold_perturbed` regularizes by
+        // inflating the cutter ~10 µm so all intersections become
+        // strictly transversal.
+        let host = unit_box_at(Point3::new(0.0, 0.0, 0.0));
+        // Cutter that shares the host's top face (z = 1.0) entirely
+        // and extends downward into the host.
+        let mut cutter = Mesh::with_capacity(8, 36);
+        let n = Vector3::new(0.0, 0.0, 0.0);
+        let p = |x: f64, y: f64, z: f64| Point3::new(x, y, z);
+        // 8 corners of a unit-XY × 0.5 Z slab sitting at z ∈ [0.5, 1.0]
+        // — its top face is EXACTLY the host's top face.
+        let cs = [
+            p(0.0, 0.0, 0.5),
+            p(1.0, 0.0, 0.5),
+            p(1.0, 1.0, 0.5),
+            p(0.0, 1.0, 0.5),
+            p(0.0, 0.0, 1.0),
+            p(1.0, 0.0, 1.0),
+            p(1.0, 1.0, 1.0),
+            p(0.0, 1.0, 1.0),
+        ];
+        for pt in &cs {
+            cutter.add_vertex(*pt, n);
+        }
+        // Same face layout as `unit_box_at` so the cutter is a valid
+        // closed manifold with outward winding.
+        let faces: [[u32; 6]; 6] = [
+            [0, 2, 1, 0, 3, 2],
+            [4, 5, 6, 4, 6, 7],
+            [0, 4, 7, 0, 7, 3],
+            [1, 2, 6, 1, 6, 5],
+            [0, 1, 5, 0, 5, 4],
+            [3, 7, 6, 3, 6, 2],
+        ];
+        for face in &faces {
+            cutter.add_triangle(face[0], face[1], face[2]);
+            cutter.add_triangle(face[3], face[4], face[5]);
+        }
+
+        let result = difference(&host, &cutter).expect("difference ok");
+        assert!(!result.is_empty(), "coincident-face difference returned empty");
+
+        // For host = unit box, cutter = upper-half box: result must
+        // occupy the lower half of the host. That means the result's
+        // z-extent reaches BOTH host extremes: the original bottom at
+        // z = 0 AND the cut plane at z = 0.5. If Manifold returns the
+        // cutter (the platform-determinism bug), the result's lower
+        // bound is z = 0.5, not 0.
+        let (rmin, rmax) = result.bounds();
+        assert!(
+            rmin.z < 0.1,
+            "result must contain the host's bottom (z=0), got z_min={}",
+            rmin.z,
+        );
+        assert!(
+            rmax.z > 0.4 && rmax.z < 0.6,
+            "result must be cut at the coincident face (z≈0.5), got z_max={}",
+            rmax.z,
         );
     }
 }

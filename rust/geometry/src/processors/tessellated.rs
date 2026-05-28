@@ -494,7 +494,7 @@ impl PolygonalFaceSetProcessor {
     }
 
     #[inline]
-    fn build_flat_shaded_mesh(positions: &[f32], indices: &[u32]) -> Mesh {
+    pub(crate) fn build_flat_shaded_mesh(positions: &[f32], indices: &[u32]) -> Mesh {
         let mut flat_positions: Vec<f32> = Vec::with_capacity(indices.len() * 3);
         let mut flat_normals: Vec<f32> = Vec::with_capacity(indices.len() * 3);
         let mut flat_indices: Vec<u32> = Vec::with_capacity(indices.len());

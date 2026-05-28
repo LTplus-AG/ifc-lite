@@ -25,12 +25,22 @@ profile vertex around the axis line using a proper Rodrigues
 decomposition into parallel and perpendicular components relative to
 the axis direction.
 
+Second follow-up: after the cap topology was fixed by earcut, the rendered
+I-beam profile still came out as a smooth blob because the side quads and
+caps shared profile-ring vertices — the viewer's vertex-normal averaging
+blended the flange face normal with the perpendicular web face normal at
+every sharp 90° crease in the IPE200 cross-section. Flat-shade the whole
+revolved solid (per-triangle vertex duplication, each triangle carries its
+own face normal) so creases stay crisp.
+
 Regression coverage:
 
 - `rust/geometry/tests/issue_846_revolved_beam.rs` — drives the reporter's
   beam-varying-extrusion-paths fixture. Asserts beam #227 sweeps an arc
-  ≥ 0.9 m long with a ≥ 0.15 m perpendicular profile extent, and that
-  beam #210 (plain extrusion) is unaffected.
+  ≥ 0.9 m long with a ≥ 0.15 m perpendicular profile extent, that beam
+  #210 (plain extrusion) is unaffected, that the cap triangulation is
+  manifold (no edge shared by 3+ triangles), and that the mesh ships
+  per-triangle normals so the renderer can't re-smooth the creases.
 
 Fixture `tests/models/issues/846_revolved_beam.ifc` (4.4 KB) added to
 the manifest.

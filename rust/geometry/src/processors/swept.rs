@@ -11,6 +11,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
 use super::helpers::parse_axis2_placement_3d;
+use super::tessellated::PolygonalFaceSetProcessor;
 use crate::router::GeometryProcessor;
 
 /// Build a rotation-minimising frame (RMF) for sweeping a circular cross-section
@@ -498,6 +499,19 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
 
         // Apply Position to lift Position-local coords into object coords.
         apply_transform(&mut mesh, &position_transform);
+
+        // Profile-boundary creases (e.g. flange-to-web on an I-beam) are
+        // all sharp 90° edges, but the swept mesh shares vertices between
+        // adjacent side quads — so per-vertex normal averaging smooths the
+        // shading across every crease and the cross-section reads as a
+        // smooth blob. Flat-shade the whole revolved solid (each triangle
+        // gets its own three vertices with the face normal) so the
+        // shading matches the actual geometry.
+        let flat =
+            PolygonalFaceSetProcessor::build_flat_shaded_mesh(&mesh.positions, &mesh.indices);
+        mesh.positions = flat.positions;
+        mesh.normals = flat.normals;
+        mesh.indices = flat.indices;
 
         Ok(mesh)
     }

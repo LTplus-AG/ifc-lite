@@ -174,3 +174,66 @@ fn revolved_beam_has_manifold_cap_triangulation() {
         non_manifold_edges.iter().take(5).collect::<Vec<_>>(),
     );
 }
+
+#[test]
+fn revolved_beam_is_flat_shaded_so_creases_stay_sharp() {
+    // Issue #846 second follow-up: after the cap topology was fixed by
+    // earcut, the rendered I-beam profile still looked like a smooth blob.
+    // The cause: side quads + caps shared profile-ring vertices, so the
+    // viewer's vertex-normal averaging blended the flange-face normal with
+    // the perpendicular web-face normal at every crease — every sharp
+    // 90° edge in the IPE200 cross-section came out smoothed.
+    //
+    // Fix: flat-shade the whole revolved solid (per-triangle vertex
+    // duplication, each triangle carries its own face normal). Assert
+    // both invariants the renderer relies on:
+    //   1) positions and normals are parallel arrays (normals populated)
+    //   2) every triangle's three vertex normals are identical → no
+    //      averaging across creases is possible
+    let Some(content) = read_fixture() else { return };
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+    let beam = decoder
+        .decode_by_id(227)
+        .expect("decode IfcBeam #227 (Revolution)");
+    let mesh = router
+        .process_element(&beam, &mut decoder)
+        .expect("process revolution beam");
+
+    assert_eq!(
+        mesh.normals.len(),
+        mesh.positions.len(),
+        "revolved-solid mesh must ship per-vertex normals; got \
+         {} normal floats for {} position floats — the viewer would \
+         fall back to averaged normals and re-smooth every crease",
+        mesh.normals.len(),
+        mesh.positions.len(),
+    );
+
+    let mut mismatched_triangles = 0usize;
+    for tri in mesh.indices.chunks_exact(3) {
+        let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+        let n0 = &mesh.normals[i0 * 3..i0 * 3 + 3];
+        let n1 = &mesh.normals[i1 * 3..i1 * 3 + 3];
+        let n2 = &mesh.normals[i2 * 3..i2 * 3 + 3];
+        let eq = |a: &[f32], b: &[f32]| {
+            (a[0] - b[0]).abs() < 1e-5
+                && (a[1] - b[1]).abs() < 1e-5
+                && (a[2] - b[2]).abs() < 1e-5
+        };
+        if !(eq(n0, n1) && eq(n1, n2)) {
+            mismatched_triangles += 1;
+        }
+    }
+    assert_eq!(
+        mismatched_triangles, 0,
+        "{} triangles have non-identical vertex normals — the revolved \
+         I-beam is being smooth-shaded again, so creases between the \
+         flange faces and the web will render as a rounded blob \
+         (see swept.rs::process — should call \
+         PolygonalFaceSetProcessor::build_flat_shaded_mesh on the \
+         finished mesh)",
+        mismatched_triangles,
+    );
+}

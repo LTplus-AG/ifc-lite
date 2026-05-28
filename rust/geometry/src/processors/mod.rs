@@ -20,6 +20,7 @@
 
 mod advanced;
 mod advanced_face;
+mod alignment;
 mod boolean;
 mod brep;
 mod csg_primitive;
@@ -37,6 +38,7 @@ mod tests;
 
 // Re-export all processor types
 pub use advanced::{AdvancedBrepProcessor, BSplineSurfaceProcessor};
+pub use alignment::IfcAlignmentProcessor;
 pub use boolean::BooleanClippingProcessor;
 pub use brep::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, ShellBasedSurfaceModelProcessor,

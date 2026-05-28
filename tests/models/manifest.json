@@ -704,6 +704,16 @@
       "size": 5852
     },
     {
+      "path": "issues/844_terrain_and_alignment.ifc",
+      "sha256": "f6124170e390ed865120985dbd0e6fd38d5c9caae97dd41082031d3246e6a096",
+      "size": 543228
+    },
+    {
+      "path": "issues/846_revolved_beam.ifc",
+      "sha256": "69c2ddfa79087eb24ccd7ba8b8be7fff9135b09251934022959723da5e88c578",
+      "size": 4394
+    },
+    {
       "path": "issues/854_air_terminal_hollow_fillet.ifc",
       "sha256": "0ae00c7883d10a5df32646efba3e4ce70886746e17ac507e649801e11ca3161a",
       "size": 14476

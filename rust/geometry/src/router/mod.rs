@@ -21,10 +21,10 @@ use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{
     AdvancedBrepProcessor, BSplineSurfaceProcessor, BlockProcessor, BooleanClippingProcessor,
     CsgSolidProcessor, ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor,
-    FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, MappedItemProcessor,
-    PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor, SectionedSolidHorizontalProcessor,
-    ShellBasedSurfaceModelProcessor, SphereProcessor, SweptDiskSolidProcessor,
-    TriangulatedFaceSetProcessor,
+    FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, IfcAlignmentProcessor,
+    MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
+    SectionedSolidHorizontalProcessor, ShellBasedSurfaceModelProcessor, SphereProcessor,
+    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -230,6 +230,7 @@ impl GeometryRouter {
         router.register(Box::new(BlockProcessor::new()));
         router.register(Box::new(SphereProcessor::new()));
         router.register(Box::new(CsgSolidProcessor::new()));
+        router.register(Box::new(IfcAlignmentProcessor::new()));
 
         router
     }

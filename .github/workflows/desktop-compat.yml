@@ -70,6 +70,16 @@ jobs:
         with:
           version: latest
 
+      # PR #861 enables `manifold-csg-wasm-uu` on the wasm bundle;
+      # `manifold-csg-sys`'s build script needs a wasm32-capable
+      # clang + libc++ headers. Ubuntu 24.04 main repo ships clang-18
+      # which the shim's probe accepts (`/usr/lib/llvm-{18..22}/bin`).
+      - name: Install LLVM 18 (for manifold-csg-sys wasm build)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            clang-18 lld-18 libc++-18-dev libc++abi-18-dev
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

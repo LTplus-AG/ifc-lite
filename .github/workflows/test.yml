@@ -118,6 +118,20 @@ jobs:
         with:
           version: latest
 
+      # The wasm bundle pulls in `manifold-csg-sys` via the
+      # `manifold-csg-wasm-uu` feature (PR #861). Its build script
+      # (wasm-cxx-shim) needs a wasm32-capable clang + lld + libc++
+      # headers. Ubuntu 24.04's main repo ships clang-18, which the
+      # shim's probe accepts (it searches `/usr/lib/llvm-{18..22}/bin`).
+      # Vercel uses emsdk for the same purpose (see
+      # `scripts/vercel-install.sh`); GHA's depot images don't have
+      # clang-18 preinstalled, so install it here.
+      - name: Install LLVM 18 (for manifold-csg-sys wasm build)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            clang-18 lld-18 libc++-18-dev libc++abi-18-dev
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

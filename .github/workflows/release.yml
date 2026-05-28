@@ -110,6 +110,16 @@ jobs:
         with:
           version: latest
 
+      # PR #861 enables `manifold-csg-wasm-uu` on the wasm bundle;
+      # `manifold-csg-sys`'s build script needs a wasm32-capable
+      # clang + libc++ headers. Same install as `test.yml` and
+      # `desktop-compat.yml`.
+      - name: Install LLVM 18 (for manifold-csg-sys wasm build)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            clang-18 lld-18 libc++-18-dev libc++abi-18-dev
+
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 

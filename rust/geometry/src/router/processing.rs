@@ -797,7 +797,12 @@ impl GeometryRouter {
         // Process all representations and merge meshes
         let mut combined_mesh = Mesh::new();
 
-        // Check for direct geometry
+        // Check for direct geometry. `Surface3D` is included because
+        // `IfcRationalBSplineSurfaceWithKnots` and `IfcSphere` (issue
+        // #842) author their geometry under that representation type;
+        // omitting it here would let the GPU-instancing path silently
+        // skip elements that `process_element` / `process_element_with_submeshes`
+        // render correctly (CodeRabbit + chatgpt P2 review on PR #847).
         let has_direct_geometry = representations.iter().any(|rep| {
             if rep.ifc_type != IfcType::IfcShapeRepresentation {
                 return false;
@@ -813,6 +818,7 @@ impl GeometryRouter {
                             | "CSG"
                             | "Clipping"
                             | "SurfaceModel"
+                            | "Surface3D"
                             | "Tessellation"
                             | "AdvancedSweptSolid"
                             | "AdvancedBrep"
@@ -845,6 +851,7 @@ impl GeometryRouter {
                             | "CSG"
                             | "Clipping"
                             | "SurfaceModel"
+                            | "Surface3D"
                             | "Tessellation"
                             | "MappedRepresentation"
                             | "AdvancedSweptSolid"

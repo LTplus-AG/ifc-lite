@@ -208,6 +208,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         openings: TYPE_VISIBILITY_DEFAULTS.OPENINGS,
         site: TYPE_VISIBILITY_DEFAULTS.SITE,
         ifcAnnotations: TYPE_VISIBILITY_DEFAULTS.IFC_ANNOTATIONS,
+        ifcGrid: TYPE_VISIBILITY_DEFAULTS.IFC_GRID,
       },
 
       // Visibility (multi-model)

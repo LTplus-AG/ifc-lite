@@ -91,13 +91,31 @@ export interface AnnotationFill2D {
   };
 }
 
-/** Cached parse result keyed by source identity. */
+/** Cached parse result keyed by source identity.
+ *
+ * IfcAnnotation and IfcGridAxis primitives are stored in PARALLEL bucket
+ * collections (issue #862). They share the same parse pass and the same
+ * storey-resolution logic, but the renderer treats them differently:
+ *
+ *   - Annotation buckets always lift every storey (memory
+ *     `feedback_3d_annotation_overlay_no_section_filter.md`: the user
+ *     expects every storey's dimensions to be visible in 3D).
+ *   - Grid buckets get optional section-plane filtering and an
+ *     independent visibility toggle, so dense-grid models can hide
+ *     grids per storey without losing dimensions.
+ */
 interface ParseResult {
+  // IfcAnnotation buckets
   byStorey: Map<number, AnnotationsForStorey>;
-  /** Annotations with no resolvable storey — shown on every floor as a fallback. */
   loose: DrawingLine2D[];
   looseTexts: AnnotationText2D[];
   looseFills: AnnotationFill2D[];
+
+  // IfcGridAxis buckets (issue #862)
+  gridByStorey: Map<number, AnnotationsForStorey>;
+  gridLoose: DrawingLine2D[];
+  gridLooseTexts: AnnotationText2D[];
+  gridLooseFills: AnnotationFill2D[];
 }
 
 const CIRCLE_SEGMENTS_FULL = 32;
@@ -212,6 +230,10 @@ async function parseAnnotations(
     loose: [],
     looseTexts: [],
     looseFills: [],
+    gridByStorey: new Map(),
+    gridLoose: [],
+    gridLooseTexts: [],
+    gridLooseFills: [],
   };
   const source = store.source;
   if (!source || source.byteLength === 0) {
@@ -256,6 +278,7 @@ async function parseAnnotations(
     const ensureBucket = (
       expressId: number,
       primitiveWorldY: number,
+      ifcType: string,
     ): AnnotationsForStorey | null => {
       let effectiveY: number | null = null;
       if (Number.isFinite(primitiveWorldY) && primitiveWorldY !== 0) {
@@ -269,7 +292,11 @@ async function parseAnnotations(
       }
       if (effectiveY === null) return null;
       const key = Math.round(effectiveY * 1000);
-      let bucket = result.byStorey.get(key);
+      // Issue #862: IfcGridAxis primitives land in a parallel bucket
+      // collection so the renderer can section-clip + visibility-toggle
+      // them independently of IfcAnnotation (text/dimension symbols).
+      const storeyMap = ifcType === 'IfcGridAxis' ? result.gridByStorey : result.byStorey;
+      let bucket = storeyMap.get(key);
       if (!bucket) {
         bucket = {
           storeyId: key,
@@ -278,7 +305,7 @@ async function parseAnnotations(
           texts: [],
           fills: [],
         };
-        result.byStorey.set(key, bucket);
+        storeyMap.set(key, bucket);
       }
       return bucket;
     };
@@ -287,8 +314,9 @@ async function parseAnnotations(
       const poly = collection.getPolyline(i);
       if (!poly) continue;
       if (poly.ifcType !== 'IfcAnnotation' && poly.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(poly.expressId, poly.worldY);
-      const out = bucket ? bucket.lines : result.loose;
+      const bucket = ensureBucket(poly.expressId, poly.worldY, poly.ifcType);
+      const looseTarget = poly.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+      const out = bucket ? bucket.lines : looseTarget;
       polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out);
     }
 
@@ -296,8 +324,9 @@ async function parseAnnotations(
       const circle = collection.getCircle(i);
       if (!circle) continue;
       if (circle.ifcType !== 'IfcAnnotation' && circle.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(circle.expressId, circle.worldY);
-      const out = bucket ? bucket.lines : result.loose;
+      const bucket = ensureBucket(circle.expressId, circle.worldY, circle.ifcType);
+      const looseTarget = circle.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+      const out = bucket ? bucket.lines : looseTarget;
       circleToSegments(
         circle.centerX,
         circle.centerY,
@@ -335,7 +364,8 @@ async function parseAnnotations(
       // Industry-standard line-spacing (CSS line-height ≈ 1.2). Picks up
       // a little air between rows so descenders don't kiss the next cap.
       const lineSpacing = perLineHeight * 1.2;
-      const bucket = ensureBucket(text.expressId, text.worldY);
+      const bucket = ensureBucket(text.expressId, text.worldY, text.ifcType);
+      const looseTextTarget = text.ifcType === 'IfcGridAxis' ? result.gridLooseTexts : result.looseTexts;
       // All annotation text — grid bubbles, dimension callouts, leader labels —
       // billboards to the camera so it stays legible in any view orientation
       // (top-down, eye-level, oblique). The shader rebuilds the quad in the
@@ -366,7 +396,7 @@ async function parseAnnotations(
           color: textColor,
           targetPx,
         };
-        (bucket ? bucket.texts : result.looseTexts).push(t2d);
+        (bucket ? bucket.texts : looseTextTarget).push(t2d);
       }
     }
 
@@ -389,8 +419,9 @@ async function parseAnnotations(
             }
           : undefined,
       };
-      const bucket = ensureBucket(fill.expressId, fill.worldY);
-      (bucket ? bucket.fills : result.looseFills).push(f2d);
+      const bucket = ensureBucket(fill.expressId, fill.worldY, fill.ifcType);
+      const looseFillTarget = fill.ifcType === 'IfcGridAxis' ? result.gridLooseFills : result.looseFills;
+      (bucket ? bucket.fills : looseFillTarget).push(f2d);
     }
   } finally {
     processor.dispose();
@@ -521,17 +552,48 @@ function resolveBucketY(elevation: number | null, fallbackY: number): number {
   return elevation === null ? fallbackY : elevation;
 }
 
-export function useSymbolicAnnotations(params: {
+/** Section-clip parameters for grid lines (issue #862). Grids ARE clipped
+ *  by the active section plane; IfcAnnotation overlays are NOT (per the
+ *  feedback_3d_annotation_overlay_no_section_filter memory). When
+ *  `enabled === false` no clipping happens — grids lift to every storey
+ *  same as annotations.
+ */
+export interface SectionClipForGrid {
   enabled: boolean;
+  /** World coord on the cut axis (e.g. world-Y for axis='down'). */
+  posWorld: number;
+  /** Half-thickness of the visible band around the cut, world units. */
+  viewDepth: number;
+  /** Cut axis. Only `'down'` performs vertical clipping; other axes pass through unfiltered (grid lines are vertical and don't project meaningfully onto elevation cuts). */
+  axis: 'down' | 'front' | 'side';
+}
+
+export function useSymbolicAnnotations(params: {
+  /** Enable IfcAnnotation lift (the existing default behaviour). */
+  enabled: boolean;
+  /**
+   * Enable IfcGrid lift. Independent of `enabled` so a user can hide
+   * annotations while keeping grids, or vice versa (issue #862).
+   * Defaults to `enabled` so existing call sites that don't set it
+   * keep the legacy combined behaviour.
+   */
+  gridEnabled?: boolean;
+  /** Section clipping for grids only — see [`SectionClipForGrid`]. */
+  gridSectionClip?: SectionClipForGrid;
   /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
   fallbackY?: number;
 }): Float32Array {
-  const { enabled, fallbackY = 0 } = params;
+  const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
+  const effectiveGridEnabled = gridEnabled ?? enabled;
   const stores = useActiveStores();
-  const version = useAnnotationParseTrigger(enabled, stores);
+  // Trigger parse if EITHER subset is enabled — the parse pass is shared.
+  const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
+  const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
+  const clipPos = clipEnabled ? gridSectionClip!.posWorld : 0;
+  const clipDepth = clipEnabled ? gridSectionClip!.viewDepth : 0;
 
   return useMemo(() => {
-    if (!enabled) return EMPTY_F32;
+    if (!enabled && !effectiveGridEnabled) return EMPTY_F32;
     void version; // depend on parse-completion ticks
 
     const verts: number[] = [];
@@ -546,22 +608,49 @@ export function useSymbolicAnnotations(params: {
         continue;
       }
       if (debugEnabled()) {
-        const buckets = cached.byStorey.size;
-        const looseLines = cached.loose.length;
-        console.log(`[annotations] store ${storeIdx}: lifting ${buckets} storey buckets + ${looseLines} loose lines (key=${key}, fallbackY=${fallbackY})`);
+        console.log(
+          `[annotations] store ${storeIdx}: annotation buckets=${cached.byStorey.size}+${cached.loose.length}loose, grid buckets=${cached.gridByStorey.size}+${cached.gridLoose.length}loose (annot=${enabled}, grid=${effectiveGridEnabled}, clip=${clipEnabled})`,
+        );
       }
 
-      for (const bucket of cached.byStorey.values()) {
-        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+      if (enabled) {
+        for (const bucket of cached.byStorey.values()) {
+          liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+        }
+        liftTo3DLineList(cached.loose, fallbackY, verts);
       }
-      liftTo3DLineList(cached.loose, fallbackY, verts);
+
+      if (effectiveGridEnabled) {
+        // Issue #862: section-clip grid buckets only — IfcAnnotation
+        // intentionally bypasses this per the feedback memory ("the
+        // user expects every storey's dimensions/grid bubbles to lift
+        // into the viewport when [the annotation toggle is] on, even
+        // while a section cut is active").
+        if (clipEnabled) {
+          const lo = clipPos - clipDepth;
+          const hi = clipPos + clipDepth;
+          for (const bucket of cached.gridByStorey.values()) {
+            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+            if (y < lo || y > hi) continue;
+            liftTo3DLineList(bucket.lines, y, verts);
+          }
+          if (fallbackY >= lo && fallbackY <= hi) {
+            liftTo3DLineList(cached.gridLoose, fallbackY, verts);
+          }
+        } else {
+          for (const bucket of cached.gridByStorey.values()) {
+            liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+          }
+          liftTo3DLineList(cached.gridLoose, fallbackY, verts);
+        }
+      }
       storeIdx++;
     }
 
     if (debugEnabled()) console.log(`[annotations] total 3D line vertices: ${verts.length / 3} from ${stores.length} stores`);
     if (verts.length === 0) return EMPTY_F32;
     return new Float32Array(verts);
-  }, [enabled, stores, version, fallbackY]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, version, fallbackY]);
 }
 
 /**
@@ -723,13 +812,19 @@ export function useSymbolicAnnotationsForDrawing(params: {
       const cached = PARSE_CACHE.get(key);
       if (!cached) continue;
 
-      for (const bucket of cached.byStorey.values()) {
+      // Drawing-2D pulls BOTH annotation and grid buckets (issue #862
+      // split them at parse time so the 3D viewport can clip them
+      // separately — the 2D Section panel still wants the combined
+      // overlay).
+      const collectBucket = (bucket: AnnotationsForStorey) => {
         const bucketY = resolveBucketY(bucket.storeyElevation, fallbackY);
-        if (bucketY < rangeMin || bucketY > rangeMax) continue;
+        if (bucketY < rangeMin || bucketY > rangeMax) return;
         for (const ln of bucket.lines) pushLine(ln);
         for (const t of bucket.texts) pushText(t);
         for (const f of bucket.fills) pushFill(f);
-      }
+      };
+      for (const bucket of cached.byStorey.values()) collectBucket(bucket);
+      for (const bucket of cached.gridByStorey.values()) collectBucket(bucket);
 
       // Loose annotations have no resolvable storey — include them if the
       // fallback Y lands in the view range. That keeps malformed exports
@@ -739,6 +834,9 @@ export function useSymbolicAnnotationsForDrawing(params: {
         for (const ln of cached.loose) pushLine(ln);
         for (const t of cached.looseTexts) pushText(t);
         for (const f of cached.looseFills) pushFill(f);
+        for (const ln of cached.gridLoose) pushLine(ln);
+        for (const t of cached.gridLooseTexts) pushText(t);
+        for (const f of cached.gridLooseFills) pushFill(f);
       }
     }
 
@@ -757,14 +855,24 @@ export function useSymbolicAnnotationsForDrawing(params: {
  */
 export function useSymbolicAnnotationsRichData(params: {
   enabled: boolean;
+  /** Lift grid-bubble texts + fills. Independent of `enabled` (issue #862).
+   *  Defaults to `enabled` for legacy callers. */
+  gridEnabled?: boolean;
+  /** Section clipping for grid texts/fills only — same semantics as
+   *  [`useSymbolicAnnotations`]. */
+  gridSectionClip?: SectionClipForGrid;
   fallbackY?: number;
 }): { texts: readonly AnnotationText3D[]; fills: readonly AnnotationFill3D[] } {
-  const { enabled, fallbackY = 0 } = params;
+  const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
+  const effectiveGridEnabled = gridEnabled ?? enabled;
   const stores = useActiveStores();
-  const version = useAnnotationParseTrigger(enabled, stores);
+  const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
+  const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
+  const clipPos = clipEnabled ? gridSectionClip!.posWorld : 0;
+  const clipDepth = clipEnabled ? gridSectionClip!.viewDepth : 0;
 
   return useMemo(() => {
-    if (!enabled) return { texts: EMPTY_TEXTS, fills: EMPTY_FILLS };
+    if (!enabled && !effectiveGridEnabled) return { texts: EMPTY_TEXTS, fills: EMPTY_FILLS };
     void version;
 
     const texts: AnnotationText3D[] = [];
@@ -803,18 +911,45 @@ export function useSymbolicAnnotationsRichData(params: {
         });
       };
 
-      for (const bucket of cached.byStorey.values()) {
-        const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-        for (const t of bucket.texts) pushText(t, y);
-        for (const f of bucket.fills) pushFill(f, y);
+      if (enabled) {
+        for (const bucket of cached.byStorey.values()) {
+          const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+          for (const t of bucket.texts) pushText(t, y);
+          for (const f of bucket.fills) pushFill(f, y);
+        }
+        for (const t of cached.looseTexts) pushText(t, fallbackY);
+        for (const f of cached.looseFills) pushFill(f, fallbackY);
       }
-      for (const t of cached.looseTexts) pushText(t, fallbackY);
-      for (const f of cached.looseFills) pushFill(f, fallbackY);
+
+      if (effectiveGridEnabled) {
+        if (clipEnabled) {
+          const lo = clipPos - clipDepth;
+          const hi = clipPos + clipDepth;
+          for (const bucket of cached.gridByStorey.values()) {
+            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+            if (y < lo || y > hi) continue;
+            for (const t of bucket.texts) pushText(t, y);
+            for (const f of bucket.fills) pushFill(f, y);
+          }
+          if (fallbackY >= lo && fallbackY <= hi) {
+            for (const t of cached.gridLooseTexts) pushText(t, fallbackY);
+            for (const f of cached.gridLooseFills) pushFill(f, fallbackY);
+          }
+        } else {
+          for (const bucket of cached.gridByStorey.values()) {
+            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+            for (const t of bucket.texts) pushText(t, y);
+            for (const f of bucket.fills) pushFill(f, y);
+          }
+          for (const t of cached.gridLooseTexts) pushText(t, fallbackY);
+          for (const f of cached.gridLooseFills) pushFill(f, fallbackY);
+        }
+      }
     }
 
     return {
       texts: texts.length ? texts : EMPTY_TEXTS,
       fills: fills.length ? fills : EMPTY_FILLS,
     };
-  }, [enabled, stores, version, fallbackY]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, version, fallbackY]);
 }

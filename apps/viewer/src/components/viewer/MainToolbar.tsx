@@ -627,29 +627,42 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- meshLen is a stable proxy for geometryResult
   }, [models, meshLen]);
 
-  // IfcAnnotation has no body mesh, so it can't be detected via the mesh scan.
-  // Look up the entity table directly. byType keys are uppercase STEP names
-  // ('IFCANNOTATION') but cache loads sometimes preserve PascalCase too.
-  // Symbolic 2D overlays cover BOTH IfcAnnotation (text, dimensions, leader
-  // lines, filled regions) AND IfcGrid (axis lines + synthesized bubble +
-  // tag). Some files ship only grids (Snowdon Towers Structural is the
-  // canonical example — no IfcAnnotation at all), so the toggle must
-  // surface for either entity type or grid-only models get no way to hide
-  // the overlay.
-  const hasIfcAnnotations = useMemo(() => {
-    const has = (store: typeof ifcDataStore | undefined) => {
+  // IfcAnnotation / IfcGrid have no body mesh, so they can't be detected via
+  // the mesh scan. Look up the entity table directly. byType keys are
+  // uppercase STEP names but cache loads sometimes preserve PascalCase.
+  //
+  // Issue #862 split these into separate visibility toggles — files that
+  // ship only one of the two need only that menu entry. Some files ship
+  // only grids (Snowdon Towers Structural — no IfcAnnotation) so probing
+  // each independently is required.
+  const hasIfcEntities = useMemo(() => {
+    const probe = (store: typeof ifcDataStore | undefined) => {
       const byType = store?.entityIndex?.byType;
-      if (!byType) return false;
-      return (byType.get('IFCANNOTATION')?.length ?? 0) > 0
-        || (byType.get('IfcAnnotation')?.length ?? 0) > 0
-        || (byType.get('IFCGRID')?.length ?? 0) > 0
-        || (byType.get('IfcGrid')?.length ?? 0) > 0;
+      if (!byType) return { annotations: false, grid: false };
+      return {
+        annotations: (byType.get('IFCANNOTATION')?.length ?? 0) > 0
+          || (byType.get('IfcAnnotation')?.length ?? 0) > 0,
+        grid: (byType.get('IFCGRID')?.length ?? 0) > 0
+          || (byType.get('IfcGrid')?.length ?? 0) > 0,
+      };
     };
+    let annotations = false;
+    let grid = false;
     if (models.size > 0) {
-      for (const [, m] of models) if (has(m.ifcDataStore)) return true;
+      for (const [, m] of models) {
+        const p = probe(m.ifcDataStore);
+        annotations ||= p.annotations;
+        grid ||= p.grid;
+      }
+    } else {
+      const p = probe(ifcDataStore);
+      annotations = p.annotations;
+      grid = p.grid;
     }
-    return has(ifcDataStore);
+    return { annotations, grid };
   }, [models, ifcDataStore]);
+  const hasIfcAnnotations = hasIfcEntities.annotations;
+  const hasIfcGrid = hasIfcEntities.grid;
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1577,7 +1590,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               onCheckedChange={() => toggleTypeVisibility('ifcAnnotations')}
             >
               <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
-              Show Annotations & Grids
+              Show Annotations
+            </DropdownMenuCheckboxItem>
+          )}
+          {hasIfcGrid && (
+            <DropdownMenuCheckboxItem
+              checked={typeVisibility.ifcGrid}
+              onCheckedChange={() => toggleTypeVisibility('ifcGrid')}
+            >
+              <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
+              Show Grids
             </DropdownMenuCheckboxItem>
           )}
 

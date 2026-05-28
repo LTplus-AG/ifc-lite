@@ -199,6 +199,15 @@ export interface TypeVisibility {
   site: boolean;
   /** IfcAnnotation (2D symbolic curves) - on by default when present */
   ifcAnnotations: boolean;
+  /**
+   * IfcGrid axis lines + bubble tags — split from `ifcAnnotations`
+   * (issue #862). Default true to match the legacy combined behaviour;
+   * users with dense grids that obscure components can hide grids while
+   * keeping annotations on. Unlike `ifcAnnotations`, grids are also
+   * section-clipped when a 3D section plane is active so each storey's
+   * grid lines only show for storeys near the cut.
+   */
+  ifcGrid: boolean;
 }
 
 // ============================================================================

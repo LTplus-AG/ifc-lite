@@ -9,8 +9,9 @@
 
 use super::styling::{
     build_element_material_styles_from_content, build_element_style_index,
-    build_geometry_style_index, extract_building_rotation, get_default_color_for_type,
-    resolve_element_color, resolve_submesh_color,
+    build_geometry_style_index, extract_building_rotation,
+    extract_full_indexed_colour_map_span, get_default_color_for_type, resolve_element_color,
+    resolve_submesh_color, IndexedColourMapResolved,
 };
 use super::GeometryStats;
 use super::IfcAPI;
@@ -27,6 +28,64 @@ fn decode_ifc_bytes<'a>(data: &'a [u8]) -> &'a str {
         Ok(content) => content,
         Err(error) => wasm_bindgen::throw_str(&format!("Invalid UTF-8 IFC data: {error}")),
     }
+}
+
+/// Split a flat-shaded mesh (3 unique verts per triangle) into one
+/// sub-mesh per colour group from an `IfcIndexedColourMap`. Returns
+/// `None` when the resolved map's triangle count doesn't match the mesh
+/// (caller falls back to single-colour rendering). See issue #858.
+fn split_mesh_by_indexed_colour_map(
+    mesh: &ifc_lite_geometry::Mesh,
+    map: &IndexedColourMapResolved,
+) -> Option<Vec<(ifc_lite_geometry::Mesh, [f32; 4])>> {
+    let n_tris = mesh.indices.len() / 3;
+    if map.triangle_indices.len() != n_tris || n_tris == 0 || map.colours.is_empty() {
+        return None;
+    }
+
+    // Group triangles by 1-based palette index. Skip out-of-range indices
+    // (defensive — pre-fix the dominant-colour path silently mapped index 0
+    // to colours[0], which on a malformed file produced random colour).
+    let mut groups: rustc_hash::FxHashMap<u32, Vec<usize>> = rustc_hash::FxHashMap::default();
+    for (tri_i, &c_idx) in map.triangle_indices.iter().enumerate() {
+        if c_idx == 0 || (c_idx as usize) > map.colours.len() {
+            continue;
+        }
+        groups.entry(c_idx).or_default().push(tri_i);
+    }
+    if groups.is_empty() {
+        return None;
+    }
+
+    let mut out: Vec<(ifc_lite_geometry::Mesh, [f32; 4])> = Vec::with_capacity(groups.len());
+    for (c_idx, tri_indices) in groups {
+        let colour = map.colours[(c_idx - 1) as usize];
+        let mut sub = ifc_lite_geometry::Mesh::new();
+        sub.positions.reserve(tri_indices.len() * 9);
+        sub.normals.reserve(tri_indices.len() * 9);
+        for &tri_i in &tri_indices {
+            let tri_base = tri_i * 3;
+            for corner in 0..3 {
+                let v = mesh.indices[tri_base + corner] as usize;
+                let pos_base = v * 3;
+                if pos_base + 3 > mesh.positions.len() {
+                    continue;
+                }
+                sub.positions
+                    .extend_from_slice(&mesh.positions[pos_base..pos_base + 3]);
+                if pos_base + 3 <= mesh.normals.len() {
+                    sub.normals
+                        .extend_from_slice(&mesh.normals[pos_base..pos_base + 3]);
+                } else {
+                    sub.normals.extend_from_slice(&[0.0, 0.0, 0.0]);
+                }
+            }
+        }
+        let n_verts = (sub.positions.len() / 3) as u32;
+        sub.indices = (0..n_verts).collect();
+        out.push((sub, colour));
+    }
+    Some(out)
 }
 
 #[wasm_bindgen]
@@ -88,6 +147,13 @@ impl IfcAPI {
         let mut faceted_brep_ids: Vec<u32> = Vec::new();
         let mut void_index: rustc_hash::FxHashMap<u32, Vec<u32>> = rustc_hash::FxHashMap::default();
 
+        // Pre-resolve every IfcIndexedColourMap so the rendering loop can
+        // split a coloured face-set's mesh into per-colour sub-meshes
+        // without doing a per-element decoder lookup. Issue #858 — only
+        // the dominant colour was applied pre-fix.
+        let mut indexed_colour_maps: rustc_hash::FxHashMap<u32, IndexedColourMapResolved> =
+            rustc_hash::FxHashMap::default();
+
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             if type_name == "IFCFACETEDBREP" {
                 faceted_brep_ids.push(id);
@@ -99,6 +165,12 @@ impl IfcAPI {
                     {
                         void_index.entry(host_id).or_default().push(opening_id);
                     }
+                }
+            } else if type_name == "IFCINDEXEDCOLOURMAP" {
+                if let Some(resolved) =
+                    extract_full_indexed_colour_map_span(id, start, end, &mut decoder)
+                {
+                    indexed_colour_maps.insert(resolved.geometry_id, resolved);
                 }
             }
         }
@@ -315,6 +387,22 @@ impl IfcAPI {
 
                         for sub in sub_meshes.sub_meshes {
                             let mut mesh = sub.mesh;
+                            // Issue #858: per-triangle colour split. After
+                            // void cutting the triangle count usually no
+                            // longer matches the original colour map, so
+                            // this branch is mostly a no-op for cut
+                            // geometry — but for uncut tessellated parts
+                            // mixed in the same element it still applies.
+                            if let Some(map) = indexed_colour_maps.get(&sub.geometry_id) {
+                                if let Some(groups) =
+                                    split_mesh_by_indexed_colour_map(&mesh, map)
+                                {
+                                    for (mut group_mesh, group_color) in groups {
+                                        push_mesh_if_valid(&mut group_mesh, group_color, None);
+                                    }
+                                    continue;
+                                }
+                            }
                             let color = resolve_submesh_color(
                                 sub.geometry_id,
                                 &geometry_styles,
@@ -376,6 +464,20 @@ impl IfcAPI {
 
                         for sub in sub_meshes.sub_meshes {
                             let mut mesh = sub.mesh;
+                            // Issue #858: when the source geometry has an
+                            // IfcIndexedColourMap, split the mesh into per-
+                            // colour sub-meshes. Falls through to the
+                            // single-colour path on length mismatch.
+                            if let Some(map) = indexed_colour_maps.get(&sub.geometry_id) {
+                                if let Some(groups) =
+                                    split_mesh_by_indexed_colour_map(&mesh, map)
+                                {
+                                    for (mut group_mesh, group_color) in groups {
+                                        push_mesh_if_valid(&mut group_mesh, group_color, None);
+                                    }
+                                    continue;
+                                }
+                            }
                             let color = resolve_submesh_color(
                                 sub.geometry_id,
                                 &geometry_styles,
@@ -4334,5 +4436,71 @@ impl IfcAPI {
         }
 
         collection
+    }
+}
+
+#[cfg(test)]
+mod indexed_colour_map_split_tests {
+    //! Issue #858 — verify the flat-shaded mesh split keeps the triangle
+    //! count, partitions triangles by palette index, and pairs each
+    //! group with the correct colour.
+    use super::split_mesh_by_indexed_colour_map;
+    use super::IndexedColourMapResolved;
+    use ifc_lite_geometry::Mesh;
+
+    fn flat_shaded_quad() -> Mesh {
+        // 2 triangles in a flat-shaded layout (6 unique vertices, one
+        // per corner) — mirrors what `TriangulatedFaceSetProcessor`
+        // emits via `build_flat_shaded_mesh`.
+        let mut m = Mesh::new();
+        m.positions = vec![
+            // tri 0: a quad's lower triangle
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0,
+            // tri 1: upper triangle
+            0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+        ];
+        m.normals = vec![0.0; 18];
+        m.indices = vec![0, 1, 2, 3, 4, 5];
+        m
+    }
+
+    #[test]
+    fn splits_into_two_groups() {
+        let mesh = flat_shaded_quad();
+        let map = IndexedColourMapResolved {
+            geometry_id: 1,
+            colours: vec![[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]],
+            triangle_indices: vec![1, 2],
+        };
+        let groups = split_mesh_by_indexed_colour_map(&mesh, &map).expect("split");
+        assert_eq!(groups.len(), 2);
+
+        let mut totals_by_colour: std::collections::HashMap<[u32; 4], usize> =
+            std::collections::HashMap::new();
+        for (sub, colour) in &groups {
+            let key = [
+                (colour[0] * 255.0) as u32,
+                (colour[1] * 255.0) as u32,
+                (colour[2] * 255.0) as u32,
+                (colour[3] * 255.0) as u32,
+            ];
+            *totals_by_colour.entry(key).or_insert(0) += sub.indices.len() / 3;
+        }
+        assert_eq!(totals_by_colour[&[255, 0, 0, 255]], 1, "tri 0 → red");
+        assert_eq!(totals_by_colour[&[0, 255, 0, 255]], 1, "tri 1 → green");
+    }
+
+    #[test]
+    fn returns_none_on_length_mismatch() {
+        let mesh = flat_shaded_quad();
+        let map = IndexedColourMapResolved {
+            geometry_id: 1,
+            colours: vec![[1.0, 0.0, 0.0, 1.0]],
+            triangle_indices: vec![1, 1, 1], // 3 entries, mesh has 2 tris
+        };
+        assert!(
+            split_mesh_by_indexed_colour_map(&mesh, &map).is_none(),
+            "length mismatch must fall through to single-colour path",
+        );
     }
 }

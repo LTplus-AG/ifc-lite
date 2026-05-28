@@ -109,18 +109,55 @@ export const mainShaderSource = `
             }
           }
 
-          // Compute normal — with fallback for zero normals
-          // dpdx/dpdy must be called outside non-uniform control flow (WGSL spec),
-          // so we compute the flat normal unconditionally and select below.
+          // Compute normal via derivative-based flat shading.
+          //
+          // Industry-standard solution for BIM/CAD viewers — what
+          // Three.js (material.flatShading = true), Autodesk Forge,
+          // Speckle, and xeokit all do for opaque surfaces. Rationale:
+          //
+          //   * BIM geometry is overwhelmingly flat surfaces (walls,
+          //     slabs, roofs, beams), and CSG operations (opening
+          //     subtraction, layer slicing) emit those surfaces as
+          //     dense strips of coplanar triangles. Per-vertex normal
+          //     averaging gives a SLIGHTLY-different normal at each
+          //     vertex due to f32 noise from boolean output; the
+          //     boundary between strips then reads as a visible darker/
+          //     brighter scar line — the horizontal striations on
+          //     walls, stripes on roofs, visible triangulation reports
+          //     across every CSG kernel we have tried (legacy BSP,
+          //     Manifold).
+          //   * cross(dpdx, dpdy) of world position evaluates to the
+          //     EXACT face normal in the fragment shader. Every
+          //     fragment on a flat face — across an arbitrarily-fine
+          //     triangulation — gets the IDENTICAL normal, so coplanar
+          //     splits become invisible by construction. No CPU-side
+          //     welding, smooth-grouping, or coplanar-face merging
+          //     fixes the symptom as cleanly.
+          //
+          // Trade-off: genuinely curved surfaces (cylinder tessellations,
+          // BSpline approximations) shade with visible facets. For BIM
+          // that's acceptable — curved surfaces are < 5 % of typical
+          // model triangle count and the faceting matches CAD-tool
+          // (Revit, ArchiCAD) on-screen behaviour at default quality.
+          //
+          // We still fall back to the vertex normal when derivatives
+          // are unavailable (extreme polygon degeneracy where dpdx /
+          // dpdy collapse to zero — practically never on real geometry).
           let faceN = cross(dpdx(input.worldPos), dpdy(input.worldPos));
-          var N = input.normal;
-          let nLen2 = dot(N, N);
-          if (nLen2 < 0.0001) {
-            // Fallback: use flat normal from screen-space derivatives
-            let fLen2 = dot(faceN, faceN);
-            N = select(vec3<f32>(0.0, 1.0, 0.0), faceN * inverseSqrt(fLen2), fLen2 > 1e-10);
+          let fLen2 = dot(faceN, faceN);
+          var N: vec3<f32>;
+          if (fLen2 > 1e-10) {
+            N = faceN * inverseSqrt(fLen2);
           } else {
-            N = N * inverseSqrt(nLen2);
+            // Degenerate derivative — fall back to the vertex normal
+            // if it's populated, else +Y.
+            N = input.normal;
+            let nLen2 = dot(N, N);
+            if (nLen2 > 1e-6) {
+              N = N * inverseSqrt(nLen2);
+            } else {
+              N = vec3<f32>(0.0, 1.0, 0.0);
+            }
           }
 
           // Enhanced lighting with multiple sources
@@ -237,14 +274,25 @@ export const mainShaderSource = `
           let e = 0.14;
           color = clamp((color * (a * color + b)) / (color * (c * color + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 
-          // Subtle edge enhancement using screen-space derivatives
+          // Subtle edge enhancement using screen-space derivatives.
+          //
+          // Use the SHADED normal (face normal from dpdx/dpdy above)
+          // for the normal-gradient term, not the interpolated vertex
+          // normal — otherwise we get spurious dark stripes on flat
+          // surfaces whose vertex normals carry numerical noise from
+          // CSG output (the visible scar-line symptom would just
+          // resurface here even after the lit-normal fix). With the
+          // face normal, coplanar adjacent triangles agree exactly →
+          // zero normal gradient → no false edge; only the genuine
+          // creases between perpendicular faces produce a real
+          // gradient and get the intended outline.
           let depthGradient = length(vec2<f32>(
             dpdx(input.viewPos.z),
             dpdy(input.viewPos.z)
           ));
           let normalGradient = length(vec2<f32>(
-            length(dpdx(input.normal)),
-            length(dpdy(input.normal))
+            length(dpdx(N)),
+            length(dpdy(N))
           ));
 
           if (uniforms.flags.z == 1u) {

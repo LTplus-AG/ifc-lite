@@ -321,17 +321,65 @@ impl<'a> EntityScanner<'a> {
         // Find a '#' that actually starts an entity. A '#' is legal inside
         // STEP-encoded quoted strings (e.g. CATIA writes filenames like
         // `'…\X0\2#.ifc'` into the HEADER's FILE_NAME) AND inside STEP
-        // `/* … */` comments (template-generated IFC commonly has phrases
-        // like `/* Standard case walls #1 with axis … */`; issue #856).
-        // Validate that the '#' starts a real `#<digits>[ws]*=` pattern
-        // before locking it in — same shape as `build_entity_index`'s
-        // existing check, so the scanner and index stay in agreement.
+        // `/* … */` comments. Two layered guards:
+        //
+        //   1. Skip past `/* … */` comment regions entirely so an inner
+        //      `#N=…` token can't be mistaken for an entity (PR #865 follow-
+        //      up — `/* previous #12= IFCWALL */` was the canonical example
+        //      where the original `#N=` shape check still false-positived).
+        //   2. After comment-skipping locates a candidate '#', validate it
+        //      starts a real `#<digits>[ws]*=` pattern. Catches embedded
+        //      references inside STEP strings (CATIA `'…\X0\2#.ifc'`) AND
+        //      any comment-shaped tokens the comment skipper missed (mostly
+        //      a fallback now — true `/* */` regions never reach this check).
+        //
+        // Both checks together keep `next_entity` aligned with
+        // `build_entity_index` which is comment-blind today; if a stray
+        // comment-bound entity slips past the scanner, the index also
+        // ignores it, so the entity decoder + scanner stay consistent.
         let bytes = self.bytes;
         let len = bytes.len();
         let (line_start, id_end_validated) = loop {
+            // Step (1): jump past any `/* … */` comment that starts at or
+            // before the next candidate '#'. Use memchr2 so we look for
+            // '#' and '/' in one SIMD pass — whichever comes first
+            // decides the next move.
             let remaining = &bytes[self.position..];
-            let start_offset = memchr::memchr(b'#', remaining)?;
-            let candidate = self.position + start_offset;
+            let next = memchr::memchr2(b'#', b'/', remaining)?;
+            let candidate = self.position + next;
+            let candidate_byte = bytes[candidate];
+
+            if candidate_byte == b'/' {
+                // '/' might begin a STEP `/* … */` comment. If yes, jump
+                // past `*/`; if not, it's a STEP arithmetic '/' inside a
+                // value list (rare; just step past it).
+                if candidate + 1 < len && bytes[candidate + 1] == b'*' {
+                    let mut p = candidate + 2;
+                    while p + 1 < len {
+                        // Find next '*'; check if followed by '/'.
+                        let from = p;
+                        let star = match memchr::memchr(b'*', &bytes[from..]) {
+                            Some(off) => from + off,
+                            None => return None, // unterminated comment
+                        };
+                        if star + 1 < len && bytes[star + 1] == b'/' {
+                            self.position = star + 2;
+                            break;
+                        }
+                        p = star + 1;
+                    }
+                    if self.position <= candidate {
+                        // Comment never closed — refuse to scan further.
+                        return None;
+                    }
+                    continue;
+                }
+                // Lone '/' — not a comment. Skip past.
+                self.position = candidate + 1;
+                continue;
+            }
+
+            // candidate_byte == b'#'. Step (2): validate `#<digits>[ws]*=`.
             let after = candidate + 1;
             if after >= len || !bytes[after].is_ascii_digit() {
                 self.position = after;

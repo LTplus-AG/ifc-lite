@@ -57,6 +57,44 @@ fn scanner_skips_in_comment_hashes() {
 }
 
 #[test]
+fn scanner_skips_definition_shaped_tokens_in_comments() {
+    // PR #865 follow-up review (chatgpt-codex P2): the original
+    // `#N=` shape check still false-positived on `/* #12= IFCWALL */`
+    // because the comment body genuinely contains the `#N=` pattern.
+    // The full fix has to skip `/* … */` regions, not just shape-
+    // check the candidate.
+    const FIXTURE: &str = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('test'),'2;1');
+FILE_NAME('','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+/* previous version had a typo: #12= IFCWALL('bad',$,'Bad',$,$,$,$,$,.NOTDEFINED.); */
+#1= IFCPROJECT('xxxxxxxxxxxxxxxxxxxxx1',$,'Project',$,$,$,$,$,$);
+/* #99 = IFCSLAB('also-bad',$,'Bad Slab',$,$,$,$,$,$); */
+#2= IFCWALL('xxxxxxxxxxxxxxxxxxxxx2',$,'Wall A',$,$,$,$,$,.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let mut scanner = EntityScanner::new(FIXTURE);
+    let mut seen_ids = Vec::new();
+    while let Some((id, name, _start, _end)) = scanner.next_entity() {
+        seen_ids.push((id, name.to_string()));
+    }
+    assert_eq!(
+        seen_ids,
+        vec![
+            (1, "IFCPROJECT".to_string()),
+            (2, "IFCWALL".to_string()),
+        ],
+        "scanner picked up bogus #N= entities from inside a /* … */ \
+         comment despite the shape-check guard — the comment-skipping \
+         layer is required to fully fix this class of bug",
+    );
+}
+
+#[test]
 fn decoder_can_parse_all_walls_after_scanner_fix() {
     let mut scanner = EntityScanner::new(FIXTURE_WITH_COMMENTS);
     let mut decoder = EntityDecoder::new(FIXTURE_WITH_COMMENTS);

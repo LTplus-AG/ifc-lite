@@ -19,7 +19,8 @@ pub use processor::{
     OpeningFilterMode, ProcessingResult, StreamingOptions,
 };
 pub use symbolic::{
-    extract_symbolic_data, SymbolicData, SymbolicGridAxis, SymbolicPolyline,
+    extract_symbolic_data, SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis,
+    SymbolicPolyline, SymbolicText,
 };
 pub use types::mesh::MeshData;
 pub use types::response::{

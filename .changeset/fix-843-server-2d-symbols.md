@@ -1,38 +1,67 @@
 ---
-"@ifc-lite/wasm": patch
+"@ifc-lite/wasm": minor
 ---
 
-Expose 2D symbol data (`IfcGrid` axes and `IfcAnnotation` polylines) in
-the server's `ParseResponse` so callers don't have to re-parse the IFC
-on the client to get the same primitives the browser-side
-`parseSymbolicRepresentations` API already exposes (issue #843).
+Expose full 2D symbol data in the server's `ParseResponse` at parity
+with the browser-side parser (issue #843). The server now ships the
+same primitives the browser does: `IfcGrid` axis lines + bubble + tag
+glyphs, `IfcAnnotation` polylines, `IfcIndexedPolyCurve`,
+`IfcCircle` disks, `IfcEllipse` tessellations, `IfcTrimmedCurve` arcs
+with `PLANEANGLEUNIT` scaling + sense-agreement + wrap-around,
+`IfcCompositeCurve` recursion, `IfcGeometricSet` /
+`IfcGeometricCurveSet` recursion, `IfcMappedItem` with `MappingOrigin`
++ `MappingTarget` transform composition, `IfcTextLiteral` /
+`IfcTextLiteralWithExtent` with placement composition / `BoxAlignment`
+/ cap-height derived from extent box, `IfcAnnotationFillArea` with
+outer ring + optional hole rings, and `IfcStyledItem` colour
+resolution (`IfcTextStyle` → `IfcColourRgb`, `IfcFillAreaStyle` →
+`IfcColourRgb`).
 
-Add a new `ifc_lite_processing::extract_symbolic_data` function and a
-`SymbolicData` field on `ParseResponse`. The extractor walks the file
-once and emits:
+The full 2 100-line extractor that used to live in
+`rust/wasm-bindings/src/api/symbolic.rs` has been moved into
+`ifc_lite_processing::symbolic` as the canonical implementation.
+Both pipelines now call the same function:
 
-- One `SymbolicGridAxis` per `IfcGridAxis` in any `IfcGrid.UAxes` /
-  `VAxes` / `WAxes` list, with the axis tag and endpoint pair in
-  metres.
-- One `SymbolicPolyline` per `IfcPolyline` item inside an
-  `IfcAnnotation`'s `Annotation` / `FootPrint` / `Plan` / `Axis`
-  shape representation.
+- HTTP server: `extract_symbolic_data(&content) -> SymbolicData`
+  serialised under `symbolic_data` in `ParseResponse`.
+- WASM bindings: `IfcAPI.parseSymbolicRepresentations(content)` is now
+  a thin wrapper that calls `extract_symbolic_data` and converts the
+  result into the existing `SymbolicRepresentationCollection`
+  `wasm_bindgen` type via a new `from_data()` constructor.
 
-The HTTP route (`POST /api/v1/parse`) calls the extractor in the same
-`spawn_blocking` as the geometry pipeline and serialises the result
-under `symbolic_data` (omitted from JSON when empty).
+Net effect: zero behaviour change for the JS side (the
+`SymbolicRepresentationCollection` API surface is unchanged) but the
+server response now carries every primitive the renderer can paint,
+not just the scaffolding subset that the first cut had been
+deliberately scoped to.
 
-This is a scaffolding step toward full parity with the wasm-side
-symbolic extractor (`rust/wasm-bindings/src/api/symbolic.rs`, ~2100
-lines) — trimmed-curve arcs, fill areas, text literals, and per-axis
-styling still live wasm-side and need a deeper refactor into this
-crate. The field names mirror the wasm collection's so future work
-can extend `SymbolicData` without breaking the response shape.
+Coordinate handling at parity:
+
+- Per-product `ObjectPlacement` resolution via `IfcLocalPlacement`
+  chain (translations accumulate after rotation by parent, rotations
+  accumulate to orient symbols).
+- Per-representation `ContextOfItems.WorldCoordinateSystem` is
+  composed in when present and non-trivial.
+- Auto-detected RTC offset is subtracted (same threshold the mesh
+  pipeline uses).
+- Y-axis flip (`y → -y`) to match the renderer's section-cut coord
+  convention.
+
+P1 review feedback from chatgpt-codex on the original commit
+(`symbolic.rs:181` — "Apply placements before emitting symbolic
+coordinates") was already addressed by an earlier commit on this
+branch (`ac72f039`) and remains addressed here: placements flow
+through `resolve_object_placement` for every entity.
 
 Regression coverage:
 
-- `rust/processing/tests/issue_843_symbolic_data.rs` — three tests
-  covering grid-axis extraction (tags, endpoints, grid grouping),
-  annotation polylines (closed-loop detection, representation tag),
-  and the empty-IFC happy path. Uses an inlined synthetic IFC4 file
-  so the tests don't depend on an external fixture.
+- `rust/processing/tests/issue_843_symbolic_data.rs` — original
+  three tests updated for the new behaviour. Grid extraction also
+  emits axis lines + bubble texts now; the annotation-only count is
+  filtered by `representation = "Annotation"`.
+- `rust/processing/tests/issue_843_symbolic_parity.rs` — four new
+  tests driving a richer synthetic IFC4 file that exercises every
+  new primitive family: `IfcCircle` disk, `IfcTextLiteralWithExtent`
+  text, `IfcAnnotationFillArea` fill, `IfcEllipse` tessellation.
+- Full `cargo test -p ifc-lite-geometry --tests`: 267 passed,
+  0 regressions.

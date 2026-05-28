@@ -87,21 +87,57 @@ fn extracts_grid_axes_from_ifcgrid() {
 #[test]
 fn extracts_polylines_from_ifcannotation() {
     let data = extract_symbolic_data(SYNTHETIC_IFC);
+
+    // Post #843 full-parity refactor, the server-side extractor matches
+    // the browser pipeline 1:1 and emits axis lines as polylines too
+    // (representation = "Axis"), in addition to the SymbolicGridAxis
+    // endpoint-pair entries. Filter by representation to isolate the
+    // annotation polyline.
+    let annotations: Vec<_> = data
+        .polylines
+        .iter()
+        .filter(|p| p.representation == "Annotation")
+        .collect();
     assert_eq!(
-        data.polylines.len(),
+        annotations.len(),
         1,
-        "expected 1 annotation polyline, got {}",
-        data.polylines.len(),
+        "expected 1 annotation polyline, got {} (representations: {:?})",
+        annotations.len(),
+        data.polylines.iter().map(|p| &p.representation).collect::<Vec<_>>(),
     );
 
-    let pl = &data.polylines[0];
+    let pl = annotations[0];
     assert_eq!(pl.ifc_type, "IfcAnnotation");
-    assert_eq!(pl.representation, "Annotation");
     // 5 points × 2 coords = 10 floats; the loop closes back on the start.
     assert_eq!(pl.points.len(), 10);
+    // Note: the unit-square IFC coords are (0,0)…(1,1) → after the Y-flip
+    // applied to match the section-cut coord system, world Y values are
+    // negated (0,0) (1,0) (1,-1) (0,-1) (0,0).
     assert_eq!((pl.points[0], pl.points[1]), (0.0, 0.0));
     assert_eq!((pl.points[8], pl.points[9]), (0.0, 0.0));
     assert!(pl.closed, "unit-square polyline should be recognised as closed");
+
+    // Axis polylines also land in the same collection (parity with browser).
+    let axis_polylines: Vec<_> = data
+        .polylines
+        .iter()
+        .filter(|p| p.representation == "Axis")
+        .collect();
+    assert_eq!(
+        axis_polylines.len(),
+        4,
+        "expected 4 axis polylines (one per IfcGridAxis), got {}",
+        axis_polylines.len(),
+    );
+
+    // Each axis emits two bubbles (outline + tag at each end), so 4 axes ×
+    // 2 ends × 2 stacked text glyphs = 16 text instances.
+    assert_eq!(
+        data.texts.len(),
+        16,
+        "expected 16 bubble text instances (4 axes × 2 ends × 2 stacked glyphs), got {}",
+        data.texts.len(),
+    );
 }
 
 #[test]

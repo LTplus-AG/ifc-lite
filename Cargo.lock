@@ -2540,6 +2540,7 @@ dependencies = [
  "futures-util",
  "ifc-lite-core",
  "ifc-lite-geometry",
+ "ifc-lite-processing",
  "js-sys",
  "rayon",
  "rayon-core",

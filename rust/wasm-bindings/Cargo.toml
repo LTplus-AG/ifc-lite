@@ -46,6 +46,9 @@ ifc-lite-core.workspace = true
 # the workspace's `default-features = true`. Pin the path directly so we
 # can pick our exact feature set from this single non-native consumer.
 ifc-lite-geometry = { path = "../geometry", default-features = false, features = ["manifold-csg-wasm-uu"] }
+# Canonical 2D-symbol extractor lives here; the wasm bindings just
+# delegate (issue #843 follow-up — full parity, one implementation).
+ifc-lite-processing = { path = "../processing" }
 js-sys = "=0.3.83"
 rayon = "1.10"
 # CRITICAL for wasm-bindgen-rayon to actually parallelize: the

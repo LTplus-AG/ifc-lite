@@ -704,6 +704,11 @@
       "size": 5852
     },
     {
+      "path": "issues/854_air_terminal_hollow_fillet.ifc",
+      "sha256": "0ae00c7883d10a5df32646efba3e4ce70886746e17ac507e649801e11ca3161a",
+      "size": 14476
+    },
+    {
       "path": "issues/856_wall_decode_failed.ifc",
       "sha256": "5f8a7eda3e63b0e3d4c5f0c986aeb4e8bbfeb9c84f6ccc42845bc5c704ef4849",
       "size": 18659

@@ -400,6 +400,63 @@ fn same_point_3d(prev: Option<&Point3<f64>>, next: &Point3<f64>) -> bool {
     }
 }
 
+/// Build a rectangle outline with quarter-circle fillets at the four
+/// corners. Used by `IfcRectangleHollowProfileDef` (outer + inner loops)
+/// — see issue #854 for the case where the inner fillet equals the inner
+/// half-dim and the loop degenerates to a full circle.
+///
+/// * `half_x` / `half_y` — half-extents of the rectangle, centred on origin.
+/// * `radius` — fillet radius. `0` (or below 1 µm) emits sharp corners.
+///   Caller must clamp to ≤ `min(half_x, half_y)`.
+/// * `ccw` — output orientation. Profile outer loops are CCW; hole loops
+///   are CW (per `Profile2D::add_hole`'s contract).
+fn rounded_rectangle_outline(
+    half_x: f64,
+    half_y: f64,
+    radius: f64,
+    ccw: bool,
+) -> Vec<Point2<f64>> {
+    if radius <= 1.0e-9 {
+        let pts = vec![
+            Point2::new(-half_x, -half_y),
+            Point2::new(half_x, -half_y),
+            Point2::new(half_x, half_y),
+            Point2::new(-half_x, half_y),
+        ];
+        return if ccw {
+            pts
+        } else {
+            pts.into_iter().rev().collect()
+        };
+    }
+
+    // 6 segments per corner matches `process_rounded_rectangle` — keeps
+    // the outline cheap and the surface-of-revolution-style extrusions
+    // these profiles drive (HVAC diffuser shells, hollow tubular sections)
+    // under the legacy BSP 128-poly cap.
+    const SEGMENTS_PER_CORNER: usize = 6;
+    let half_pi = PI / 2.0;
+    let corners = [
+        (half_x - radius, -half_y + radius, -half_pi, 0.0),
+        (half_x - radius, half_y - radius, 0.0, half_pi),
+        (-half_x + radius, half_y - radius, half_pi, PI),
+        (-half_x + radius, -half_y + radius, PI, PI + half_pi),
+    ];
+
+    let mut points = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
+    for (cx, cy, a0, a1) in corners {
+        for i in 0..=SEGMENTS_PER_CORNER {
+            let t = i as f64 / SEGMENTS_PER_CORNER as f64;
+            let a = a0 + (a1 - a0) * t;
+            points.push(Point2::new(cx + radius * a.cos(), cy + radius * a.sin()));
+        }
+    }
+    if !ccw {
+        points.reverse();
+    }
+    points
+}
+
 /// Profile processor - processes IFC profiles into 2D contours
 pub struct ProfileProcessor {
     schema: IfcSchema,
@@ -1017,6 +1074,19 @@ impl ProfileProcessor {
 
     /// Process rectangle hollow profile (rectangular tube)
     /// IfcRectangleHollowProfileDef: ProfileType, ProfileName, Position, XDim, YDim, WallThickness, InnerFilletRadius, OuterFilletRadius
+    ///
+    /// Both fillet radii are optional in the schema. When set, they replace the
+    /// sharp 90° corners with quarter-circle arcs:
+    ///
+    /// * `OuterFilletRadius = R_o` rounds each outer corner with radius R_o.
+    /// * `InnerFilletRadius = R_i` rounds the corresponding inner corner. When
+    ///   `R_i == min(inner_half_x, inner_half_y)` the four inner arcs meet and
+    ///   the inner hole degenerates to a circle (issue #854 — RHS with a thin
+    ///   wall and circular bore, common for HVAC diffusers).
+    ///
+    /// The standard requires `R_o >= R_i + WallThickness` for a uniform-thickness
+    /// shell, but BIM authoring tools sometimes violate that; we tessellate
+    /// whatever radii were authored and let the renderer show the result.
     fn process_rectangle_hollow(&self, profile: &DecodedEntity) -> Result<Profile2D> {
         let x_dim = profile
             .get_float(3)
@@ -1042,21 +1112,27 @@ impl ProfileProcessor {
         let inner_half_x = half_x - wall_thickness;
         let inner_half_y = half_y - wall_thickness;
 
-        // Outer rectangle (counter-clockwise)
-        let outer_points = vec![
-            Point2::new(-half_x, -half_y),
-            Point2::new(half_x, -half_y),
-            Point2::new(half_x, half_y),
-            Point2::new(-half_x, half_y),
-        ];
+        // InnerFilletRadius is attr 6, OuterFilletRadius is attr 7. Both
+        // optional; `None` (or a value below 1 µm) collapses to sharp
+        // corners. Clamp to the half-extent so an authored value larger
+        // than the inner half-dim doesn't fold the polygon inside-out.
+        let inner_fillet = profile
+            .get_float(6)
+            .unwrap_or(0.0)
+            .max(0.0)
+            .min(inner_half_x)
+            .min(inner_half_y);
+        let outer_fillet = profile
+            .get_float(7)
+            .unwrap_or(0.0)
+            .max(0.0)
+            .min(half_x)
+            .min(half_y);
 
-        // Inner rectangle (clockwise for hole - reversed order)
-        let inner_points = vec![
-            Point2::new(-inner_half_x, -inner_half_y),
-            Point2::new(-inner_half_x, inner_half_y),
-            Point2::new(inner_half_x, inner_half_y),
-            Point2::new(inner_half_x, -inner_half_y),
-        ];
+        let outer_points =
+            rounded_rectangle_outline(half_x, half_y, outer_fillet, /*ccw=*/ true);
+        let inner_points =
+            rounded_rectangle_outline(inner_half_x, inner_half_y, inner_fillet, /*ccw=*/ false);
 
         let mut result = Profile2D::new(outer_points);
         result.add_hole(inner_points);

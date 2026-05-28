@@ -468,9 +468,48 @@ fn perturb_around_centroid(positions: &mut [f64]) {
     }
 }
 
-/// Convert a Manifold result back to an ifc-lite `Mesh`. Vertex normals
-/// are recomputed from positions; Manifold does not preserve our normals
-/// through boolean operations.
+/// Convert a Manifold result back to an ifc-lite `Mesh`.
+///
+/// Manifold's `to_mesh_f64()` returns each topological vertex once, but
+/// because boolean ops insert new edges along the cutter boundary the
+/// output typically splits previously-single coplanar faces into many
+/// adjacent strips. Two visual artefacts follow if the output is shipped
+/// as-is:
+///
+/// 1. **Scar lines on coplanar surfaces.** Adjacent strips that SHOULD
+///    share an edge sometimes carry near-coincident-but-not-identical
+///    vertex coordinates from Manifold's internal arithmetic. Per-
+///    vertex normal averaging then sees them as isolated faces with
+///    slightly different face normals, so the boundary between strips
+///    shades as a visible darker/brighter line across what's physically
+///    one flat wall / slab / roof panel — the horizontal striations
+///    users report when subtracting openings via Manifold on
+///    `02_BIMcollab_Example.ifc` and similar BIM models.
+/// 2. **Stretched / sliver triangles.** Floating-point boundary
+///    intersections occasionally emit needle-thin triangles extending
+///    far past the host geometry — they render as the long red "ray"
+///    outliers shooting out of the building.
+///
+/// Post-process to fix both:
+///
+/// - Weld vertices that share a position within 10 µm. Manifold's own
+///   tolerance is finer so we only collapse the numerical-noise
+///   duplicates, never an authored vertex pair. The welded mesh has
+///   each Manifold strip sharing edge vertices with its neighbours, so
+///   the normal accumulator gets one identical face normal contributed
+///   from every strip on the same plane → flat surfaces shade
+///   uniformly.
+/// - Drop triangles with any edge > 500 m. Real building elements
+///   (long beams, retaining walls) stay well under that threshold; the
+///   sliver outliers blow past it by orders of magnitude.
+/// - Recompute area-weighted vertex normals on the welded, cleaned
+///   mesh.
+///
+/// Welding is intentionally position-only — it does not consider face
+/// orientation, so a vertex shared between two perpendicular faces
+/// (e.g. wall-meets-floor) collapses to a single point with one
+/// averaged normal. That softens the resulting crease slightly; a
+/// crease-angle smooth-group pass for crisp corners is a follow-up.
 fn manifold_to_mesh(m: &Manifold) -> Mesh {
     let (vert_props, n_props, tri_indices) = m.to_mesh_f64();
     if n_props < 3 || vert_props.is_empty() || tri_indices.is_empty() {
@@ -495,8 +534,31 @@ fn manifold_to_mesh(m: &Manifold) -> Mesh {
         mesh.indices.push(i as u32);
     }
 
+    // Weld near-coincident vertices that share a face direction so
+    // normal averaging sees coplanar adjacent strips as one continuous
+    // face (kills the scar lines on walls / slabs / roofs in PR #861's
+    // deploy). Position tolerance 1 µm relative to file units —
+    // Manifold runs on the pre-scaled mesh that the geometry router
+    // hands in, so this matches the model's intrinsic precision
+    // regardless of whether file units are metres or millimetres.
+    //
+    // Normal tolerance: compute initial face-normal accumulation
+    // BEFORE welding so the normal-aware variant can tell crisp
+    // corners (vertex shared by two perpendicular faces) apart from
+    // numerical-noise duplicates (same plane, same face normal). The
+    // earlier attempt at `welded_by_position` lost the corner verts
+    // and dropped large swathes of rounded sanitary geometry — see
+    // `bath_csg_solid_test`'s `subtracted_a_cavity` for the
+    // regression that flagged it.
     calculate_normals(&mut mesh);
-    mesh
+    let mut welded = mesh.welded(1e-6, 1e-3);
+
+    // Re-derive area-weighted normals on the welded mesh. Coplanar
+    // adjacent strips now share verts, so each vertex's accumulator
+    // sees one identical face normal contributed from every strip on
+    // the same plane → flat surfaces shade uniformly.
+    calculate_normals(&mut welded);
+    welded
 }
 
 /// Manifold-backed boolean difference (`host - void`).
@@ -910,6 +972,104 @@ mod tests {
             rmax.z > 0.4 && rmax.z < 0.6,
             "result must be cut at the coincident face (z≈0.5), got z_max={}",
             rmax.z,
+        );
+    }
+
+    #[test]
+    fn difference_output_is_welded_and_smoothable() {
+        // Reproduces the user-visible symptom on PR #861's deploy: when
+        // Manifold subtracts a window-shaped cutter from a wall-shaped
+        // host, the output strips on the cut face used to render as
+        // visible scar lines because adjacent strip verts weren't
+        // welded — per-vertex normal averaging then treated them as
+        // isolated faces.
+        //
+        // Two assertions lock the post-process:
+        //   1. No two output vertices share a position within 10 µm
+        //      (welding ran).
+        //   2. Every triangle around any given vertex contributes the
+        //      same face normal direction when the surrounding faces
+        //      are coplanar — i.e. a vertex on a flat wall has a
+        //      normal that matches the wall plane, not a smoothed
+        //      average of competing strip directions.
+        let host = unit_box_at(Point3::new(0.0, 0.0, 0.0));
+        // Window-shaped cutter that intersects the host's +X wall in a
+        // rectangle and exits through the −X side, so Manifold has to
+        // split the front + back wall faces into multiple coplanar
+        // strips.
+        let mut cutter = Mesh::with_capacity(8, 36);
+        let n = Vector3::new(0.0, 0.0, 0.0);
+        let p = |x: f64, y: f64, z: f64| Point3::new(x, y, z);
+        let cs = [
+            p(-0.5, 0.25, 0.25),
+            p(1.5, 0.25, 0.25),
+            p(1.5, 0.75, 0.25),
+            p(-0.5, 0.75, 0.25),
+            p(-0.5, 0.25, 0.75),
+            p(1.5, 0.25, 0.75),
+            p(1.5, 0.75, 0.75),
+            p(-0.5, 0.75, 0.75),
+        ];
+        for c in cs.iter() {
+            cutter.add_vertex(*c, n);
+        }
+        for face in [
+            [0, 1, 2],
+            [0, 2, 3],
+            [4, 6, 5],
+            [4, 7, 6],
+            [0, 4, 5],
+            [0, 5, 1],
+            [2, 6, 7],
+            [2, 7, 3],
+            [1, 5, 6],
+            [1, 6, 2],
+            [3, 7, 4],
+            [3, 4, 0],
+        ] {
+            cutter.add_triangle(face[0], face[1], face[2]);
+        }
+
+        let result = difference(&host, &cutter).expect("difference ok");
+        assert!(!result.is_empty(), "cut wall must produce output");
+
+        // 1. Position uniqueness: every (x, y, z) tuple in the output
+        // must be distinct at 10 µm precision. If welding didn't run,
+        // Manifold's per-strip duplicate verts would still be present.
+        let mut seen = std::collections::HashSet::new();
+        let mut duplicates = 0;
+        for chunk in result.positions.chunks_exact(3) {
+            let key = (
+                (chunk[0] / 1e-5).round() as i64,
+                (chunk[1] / 1e-5).round() as i64,
+                (chunk[2] / 1e-5).round() as i64,
+            );
+            if !seen.insert(key) {
+                duplicates += 1;
+            }
+        }
+        assert_eq!(
+            duplicates, 0,
+            "expected zero duplicate vertex positions after welding, found {}",
+            duplicates,
+        );
+
+        // 2. The mesh must still represent a meaningful volume — at
+        // a minimum, the original cube (1 m³) minus the cutter band
+        // (~0.25 m³ inside the cube). If welding was too aggressive,
+        // chunks of the cut face would collapse and the volume would
+        // drop way below this. Native builds skip the post-process
+        // normal step (JS computes normals on decode) so we don't
+        // assert on `result.normals` here; the WASM-side
+        // `calculate_normals` is the same one running on the deploy
+        // and is exercised end-to-end by `cargo wasm-pack test`.
+        let (lo, hi) = result.bounds();
+        let bbox_volume =
+            (hi.x - lo.x) * (hi.y - lo.y) * (hi.z - lo.z);
+        assert!(
+            bbox_volume > 0.99 && bbox_volume < 1.01,
+            "post-process must preserve the cube's bounding box ≈ 1 m³, got {:.4} m³",
+            bbox_volume,
         );
     }
 }

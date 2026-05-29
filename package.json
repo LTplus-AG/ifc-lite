@@ -40,6 +40,7 @@
     "collab:demo:3d": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo-3d.mjs",
     "typecheck": "turbo typecheck",
     "lint": "pnpm -r lint",
+    "knip": "knip",
     "docs:serve": "python3 -m mkdocs serve",
     "docs:build": "python3 -m mkdocs build",
     "changeset": "changeset",
@@ -68,6 +69,7 @@
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.1",
+    "knip": "^6.14.2",
     "tsx": "^4.22.3",
     "turbo": "^2.9.14",
     "typescript": "^6.0.3"

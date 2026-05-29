@@ -11,6 +11,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'node:assert/strict';
 import { initSync, IfcAPI } from '../packages/wasm/pkg/ifc-lite.js';
+import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -50,7 +51,7 @@ console.log('📋 Parse → Mesh Pipeline');
 
 test('column: parse produces valid geometry', () => {
   const content = readFileSync(COLUMN_IFC, 'utf-8');
-  const collection = api.parseMeshes(content);
+  const collection = parseMeshesViaPrePass(api, content);
 
   assert.ok(collection.length > 0, 'Should produce meshes');
 
@@ -78,7 +79,7 @@ test('column: parse produces valid geometry', () => {
 
 test('wall with opening: parse handles boolean operations', () => {
   const content = readFileSync(WALL_IFC, 'utf-8');
-  const collection = api.parseMeshes(content);
+  const collection = parseMeshesViaPrePass(api, content);
 
   // Wall with opening should still produce valid geometry
   assert.ok(collection.length > 0, 'Wall fixture should produce at least one mesh');
@@ -94,7 +95,7 @@ test('wall with opening: parse handles boolean operations', () => {
 
 test('duplex: parse handles complex building model', () => {
   const content = readFileSync(DUPLEX_IFC, 'utf-8');
-  const collection = api.parseMeshes(content);
+  const collection = parseMeshesViaPrePass(api, content);
 
   // Duplex is a complete building - should have many meshes
   assert.ok(collection.length > 10, 'Complex model should have many meshes');
@@ -102,105 +103,6 @@ test('duplex: parse handles complex building model', () => {
   assert.ok(collection.totalTriangles > 500, 'Should have many triangles');
 
   collection.free();
-});
-
-// ===== GPU Geometry Pipeline =====
-console.log('\n📋 GPU Geometry Pipeline');
-
-test('column: GPU geometry has valid buffer structure', () => {
-  const content = readFileSync(COLUMN_IFC, 'utf-8');
-  const gpuGeom = api.parseToGpuGeometry(content);
-
-  assert.ok(gpuGeom.meshCount > 0, 'Should have meshes');
-
-  // Verify buffer alignment
-  assert.ok(gpuGeom.vertexDataByteLength > 0, 'Should have vertex data');
-  assert.ok(gpuGeom.indicesByteLength > 0, 'Should have index data');
-
-  // Byte lengths should be properly aligned
-  assert.equal(gpuGeom.indicesByteLength % 4, 0, 'Index buffer should be 4-byte aligned');
-
-  // Mesh metadata should be consistent
-  let totalIndexCount = 0;
-  for (let i = 0; i < gpuGeom.meshCount; i++) {
-    const meta = gpuGeom.getMeshMetadata(i);
-    totalIndexCount += meta.indexCount;
-    meta.free();
-  }
-  assert.equal(totalIndexCount, gpuGeom.indicesLen, 'Mesh index counts should sum to total');
-
-  gpuGeom.free();
-});
-
-test('duplex: GPU geometry handles large models', () => {
-  const content = readFileSync(DUPLEX_IFC, 'utf-8');
-  const gpuGeom = api.parseToGpuGeometry(content);
-
-  assert.ok(gpuGeom.meshCount > 10, 'Should have many meshes');
-  assert.ok(gpuGeom.totalVertexCount > 1000, 'Should have many vertices');
-  assert.ok(!gpuGeom.isEmpty, 'Should not be empty');
-
-  gpuGeom.free();
-});
-
-// ===== Instanced Geometry Pipeline =====
-console.log('\n📋 Instanced Geometry Pipeline');
-
-test('duplex: instancing groups identical geometries', () => {
-  const content = readFileSync(DUPLEX_IFC, 'utf-8');
-
-  // Get instanced count
-  const instanced = api.parseMeshesInstanced(content);
-  const uniqueGeometries = instanced.length;
-  const totalInstances = instanced.totalInstances;
-
-  // Instancing should group identical geometries
-  assert.ok(uniqueGeometries > 0, 'Should have unique geometries');
-  assert.ok(totalInstances >= uniqueGeometries, 'Total instances should be >= unique geometries');
-
-  // Calculate deduplication ratio
-  const ratio = totalInstances / uniqueGeometries;
-  console.log(`     Deduplication: ${totalInstances} instances → ${uniqueGeometries} unique (${ratio.toFixed(1)}x)`);
-
-  // Verify instance data integrity
-  for (let i = 0; i < Math.min(instanced.length, 5); i++) {
-    const geom = instanced.get(i);
-    assert.ok(geom.instance_count > 0, 'Each geometry should have at least 1 instance');
-    assert.ok(geom.positions.length > 0, 'Each geometry should have positions');
-    geom.free();
-  }
-
-  instanced.free();
-});
-
-// ===== Cross-Package Consistency =====
-console.log('\n📋 Cross-Package Consistency');
-
-test('mesh counts match across APIs', () => {
-  const content = readFileSync(COLUMN_IFC, 'utf-8');
-
-  const meshes = api.parseMeshes(content);
-  const gpuGeom = api.parseToGpuGeometry(content);
-
-  assert.equal(meshes.length, gpuGeom.meshCount, 'Mesh count should be consistent');
-
-  // Vertex counts should also match
-  assert.equal(meshes.totalVertices, gpuGeom.totalVertexCount, 'Vertex count should match');
-
-  meshes.free();
-  gpuGeom.free();
-});
-
-test('triangle counts match across APIs', () => {
-  const content = readFileSync(COLUMN_IFC, 'utf-8');
-
-  const meshes = api.parseMeshes(content);
-  const gpuGeom = api.parseToGpuGeometry(content);
-
-  assert.equal(meshes.totalTriangles, gpuGeom.totalTriangleCount, 'Triangle count should match');
-
-  meshes.free();
-  gpuGeom.free();
 });
 
 // Summary

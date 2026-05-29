@@ -7,7 +7,7 @@
  */
 
 export { WebGPUDevice } from './device.js';
-export { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
+export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 export type { ProjectionMode } from './camera-controls.js';
 export { Scene } from './scene.js';
@@ -44,18 +44,6 @@ export * from './types.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 
-// Zero-copy GPU upload (new - faster, less memory)
-export {
-    ZeroCopyGpuUploader,
-    createZeroCopyUploader,
-    type WasmMemoryHandle,
-    type GpuGeometryData,
-    type GpuInstancedGeometryData,
-    type ZeroCopyMeshMetadata,
-    type ZeroCopyUploadResult,
-    type ZeroCopyInstancedUploadResult,
-} from './zero-copy-uploader.js';
-
 // Extracted manager classes
 export { PickingManager } from './picking-manager.js';
 export type { PointPickProvider } from './picking-manager.js';
@@ -81,20 +69,18 @@ export type {
 } from './pointcloud/point-cloud-node.js';
 
 import { WebGPUDevice } from './device.js';
-import { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
+import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
 import { Picker } from './picker.js';
 import { MathUtils } from './math.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
-import { deduplicateMeshes } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
     RenderOptions,
     PickOptions,
     PickResult,
     Mesh,
-    InstancedMesh,
     VisualEnhancementOptions,
     ContactShadingQuality,
     SeparationLinesQuality,
@@ -108,7 +94,6 @@ import {
   type SymbolicTextInput,
 } from './symbolic-overlay-pipelines.js';
 import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
-import type { InstancedGeometry } from '@ifc-lite/wasm';
 import { Raycaster, type Intersection } from './raycaster.js';
 import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
 import { PickingManager } from './picking-manager.js';
@@ -169,7 +154,6 @@ function computeBvhFingerprint(meshes: ReadonlyArray<import('@ifc-lite/geometry'
 export class Renderer {
     private device: WebGPUDevice;
     private pipeline: RenderPipeline | null = null;
-    private instancedPipeline: InstancedRenderPipeline | null = null;
     private camera: Camera;
     private scene: Scene;
     private picker: Picker | null = null;
@@ -270,7 +254,6 @@ export class Renderer {
         }
 
         this.pipeline = new RenderPipeline(this.device, width, height);
-        this.instancedPipeline = new InstancedRenderPipeline(this.device, width, height);
         this.picker = new Picker(this.device, width, height);
         this.sectionPlaneRenderer = new SectionPlaneRenderer(
             this.device.getDevice(),
@@ -778,183 +761,6 @@ export class Renderer {
     }
 
     /**
-     * Add instanced geometry to scene
-     * Converts InstancedGeometry from geometry package to InstancedMesh for rendering
-     */
-    addInstancedGeometry(geometry: InstancedGeometry): void {
-        if (!this.instancedPipeline || !this.device.isInitialized()) {
-            throw new Error('Renderer not initialized. Call init() first.');
-        }
-
-        const device = this.device.getDevice();
-
-        // Upload positions and normals interleaved
-        const vertexCount = geometry.positions.length / 3;
-        const vertexData = new Float32Array(vertexCount * 6);
-        for (let i = 0; i < vertexCount; i++) {
-            vertexData[i * 6 + 0] = geometry.positions[i * 3 + 0];
-            vertexData[i * 6 + 1] = geometry.positions[i * 3 + 1];
-            vertexData[i * 6 + 2] = geometry.positions[i * 3 + 2];
-            vertexData[i * 6 + 3] = geometry.normals[i * 3 + 0];
-            vertexData[i * 6 + 4] = geometry.normals[i * 3 + 1];
-            vertexData[i * 6 + 5] = geometry.normals[i * 3 + 2];
-        }
-
-        // Create vertex buffer with exact size needed (ensure it matches data size)
-        const vertexBufferSize = vertexData.byteLength;
-        const vertexBuffer = device.createBuffer({
-            size: vertexBufferSize,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        });
-        device.queue.writeBuffer(vertexBuffer, 0, vertexData);
-
-        // Create index buffer
-        const indexBuffer = device.createBuffer({
-            size: geometry.indices.byteLength,
-            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-        });
-        device.queue.writeBuffer(indexBuffer, 0, geometry.indices);
-
-        // Create instance buffer: each instance is 80 bytes (20 floats: 16 for transform + 4 for color)
-        const instanceCount = geometry.instance_count;
-        const instanceData = new Float32Array(instanceCount * 20);
-        const expressIdToInstanceIndex = new Map<number, number>();
-
-        for (let i = 0; i < instanceCount; i++) {
-            const instance = geometry.get_instance(i);
-            if (!instance) continue;
-
-            const baseIdx = i * 20;
-
-            // Copy transform (16 floats)
-            instanceData.set(instance.transform, baseIdx);
-
-            // Copy color (4 floats)
-            instanceData[baseIdx + 16] = instance.color[0];
-            instanceData[baseIdx + 17] = instance.color[1];
-            instanceData[baseIdx + 18] = instance.color[2];
-            instanceData[baseIdx + 19] = instance.color[3];
-
-            expressIdToInstanceIndex.set(instance.expressId, i);
-        }
-
-        const instanceBuffer = device.createBuffer({
-            size: instanceData.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        });
-        device.queue.writeBuffer(instanceBuffer, 0, instanceData);
-
-        // Create and cache bind group to avoid per-frame allocation
-        const bindGroup = this.instancedPipeline.createInstanceBindGroup(instanceBuffer);
-
-        const instancedMesh: InstancedMesh = {
-            geometryId: Number(geometry.geometryId),
-            vertexBuffer,
-            indexBuffer,
-            indexCount: geometry.indices.length,
-            instanceBuffer,
-            instanceCount: instanceCount,
-            expressIdToInstanceIndex,
-            bindGroup,
-        };
-
-        this.scene.addInstancedMesh(instancedMesh);
-    }
-
-    /**
-     * Convert MeshData array to instanced meshes for optimized rendering
-     * Groups identical geometries and creates GPU instanced draw calls
-     * Call this in background after initial streaming completes
-     */
-    convertToInstanced(meshDataArray: import('@ifc-lite/geometry').MeshData[]): void {
-        if (!this.instancedPipeline || !this.device.isInitialized()) {
-            console.warn('[Renderer] Cannot convert to instanced: renderer not initialized');
-            return;
-        }
-
-        const instancedData = deduplicateMeshes(meshDataArray);
-        const device = this.device.getDevice();
-        let totalInstances = 0;
-
-        for (const group of instancedData) {
-            const vertexCount = group.positions.length / 3;
-            const vertexData = new Float32Array(vertexCount * 6);
-            for (let i = 0; i < vertexCount; i++) {
-                vertexData[i * 6 + 0] = group.positions[i * 3 + 0];
-                vertexData[i * 6 + 1] = group.positions[i * 3 + 1];
-                vertexData[i * 6 + 2] = group.positions[i * 3 + 2];
-                vertexData[i * 6 + 3] = group.normals[i * 3 + 0];
-                vertexData[i * 6 + 4] = group.normals[i * 3 + 1];
-                vertexData[i * 6 + 5] = group.normals[i * 3 + 2];
-            }
-
-            const vertexBuffer = device.createBuffer({
-                size: vertexData.byteLength,
-                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-            });
-            device.queue.writeBuffer(vertexBuffer, 0, vertexData);
-
-            const indexBuffer = device.createBuffer({
-                size: group.indices.byteLength,
-                usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-            });
-            device.queue.writeBuffer(indexBuffer, 0, group.indices);
-
-            const instanceCount = group.instances.length;
-            const instanceData = new Float32Array(instanceCount * 20);
-            const expressIdToInstanceIndex = new Map<number, number>();
-            const identityTransform = new Float32Array([
-                1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-            ]);
-
-            for (let i = 0; i < instanceCount; i++) {
-                const instance = group.instances[i];
-                const baseIdx = i * 20;
-                instanceData.set(identityTransform, baseIdx);
-                instanceData[baseIdx + 16] = instance.color[0];
-                instanceData[baseIdx + 17] = instance.color[1];
-                instanceData[baseIdx + 18] = instance.color[2];
-                instanceData[baseIdx + 19] = instance.color[3];
-                expressIdToInstanceIndex.set(instance.expressId, i);
-            }
-
-            const instanceBuffer = device.createBuffer({
-                size: instanceData.byteLength,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            });
-            device.queue.writeBuffer(instanceBuffer, 0, instanceData);
-
-            const bindGroup = this.instancedPipeline.createInstanceBindGroup(instanceBuffer);
-            let geometryHash = 0;
-            for (let i = 0; i < group.geometryHash.length; i++) {
-                geometryHash = ((geometryHash << 5) - geometryHash) + group.geometryHash.charCodeAt(i);
-                geometryHash = geometryHash & geometryHash;
-            }
-
-            this.scene.addInstancedMesh({
-                geometryId: Math.abs(geometryHash),
-                vertexBuffer,
-                indexBuffer,
-                indexCount: group.indices.length,
-                instanceBuffer,
-                instanceCount,
-                expressIdToInstanceIndex,
-                bindGroup,
-            });
-            totalInstances += instanceCount;
-        }
-
-        const regularMeshCount = this.scene.getMeshes().length;
-        this.scene.clearRegularMeshes();
-
-        console.log(
-            `[Renderer] Converted ${meshDataArray.length} meshes to ${instancedData.length} instanced geometries ` +
-            `(${totalInstances} total instances, ${(totalInstances / instancedData.length).toFixed(1)}x deduplication). ` +
-            `Cleared ${regularMeshCount} regular meshes.`
-        );
-    }
-
-    /**
      * Ensure all meshes have GPU resources (call after adding meshes if pipeline wasn't ready)
      */
     ensureMeshResources(): void {
@@ -1167,9 +973,6 @@ export class Renderer {
             this.device.configureContext();
             // Also resize the depth texture immediately
             this.pipeline.resize(width, height);
-            if (this.instancedPipeline) {
-                this.instancedPipeline.resize(width, height);
-            }
         }
 
         // Skip rendering if canvas is invalid
@@ -1305,9 +1108,6 @@ export class Renderer {
         // Resize depth texture if needed
         if (this.pipeline.needsResize(this.canvas.width, this.canvas.height)) {
             this.pipeline.resize(this.canvas.width, this.canvas.height);
-        }
-        if (this.instancedPipeline?.needsResize(this.canvas.width, this.canvas.height)) {
-            this.instancedPipeline.resize(this.canvas.width, this.canvas.height);
         }
 
         // Push a validation error scope to capture the EXACT error (for mobile debugging)
@@ -2128,35 +1928,6 @@ export class Renderer {
                 }
             }
 
-            // Render instanced meshes (much more efficient for repeated geometry)
-            if (this.instancedPipeline) {
-                const instancedMeshes = this.scene.getInstancedMeshes();
-                if (instancedMeshes.length > 0) {
-                    // Update instanced pipeline uniforms
-                    this.instancedPipeline.updateUniforms(
-                        viewProj,
-                        sectionPlaneData
-                            ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
-                            : undefined,
-                    );
-
-                    // Switch to instanced pipeline
-                    pass.setPipeline(this.instancedPipeline.getPipeline());
-
-                    for (const instancedMesh of instancedMeshes) {
-                        // Use cached bind group (created at mesh upload time)
-                        // Falls back to creating one if missing (shouldn't happen in normal flow)
-                        const bindGroup = instancedMesh.bindGroup ??
-                            this.instancedPipeline.createInstanceBindGroup(instancedMesh.instanceBuffer);
-                        pass.setBindGroup(0, bindGroup);
-                        pass.setVertexBuffer(0, instancedMesh.vertexBuffer);
-                        pass.setIndexBuffer(instancedMesh.indexBuffer, 'uint32');
-                        // Draw with instancing: indexCount, instanceCount
-                        pass.drawIndexed(instancedMesh.indexCount, instancedMesh.instanceCount, 0, 0, 0);
-                    }
-                }
-            }
-
             // Draw point clouds (IFCx inline + streamed LAS/LAZ).
             // Shares the depth buffer + section plane state with the mesh pipeline so
             // points occlude triangles and vice versa. The splat shader needs the
@@ -2778,8 +2549,6 @@ export class Renderer {
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();
         this.pipeline = null;
-        this.instancedPipeline?.destroy();
-        this.instancedPipeline = null;
 
         // Picker GPU resources
         this.picker?.destroy();

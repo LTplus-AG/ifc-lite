@@ -10,11 +10,6 @@
 import { createLogger } from '@ifc-lite/data';
 import init, {
   IfcAPI,
-  MeshCollection,
-  MeshDataJs,
-  InstancedMeshCollection,
-  InstancedGeometry,
-  InstanceData,
   SymbolicRepresentationCollection,
   SymbolicPolyline,
   SymbolicCircle,
@@ -22,11 +17,6 @@ import init, {
   ProfileEntryJs,
 } from '@ifc-lite/wasm';
 export type {
-  MeshCollection,
-  MeshDataJs,
-  InstancedMeshCollection,
-  InstancedGeometry,
-  InstanceData,
   SymbolicRepresentationCollection,
   SymbolicPolyline,
   SymbolicCircle,
@@ -47,38 +37,6 @@ let fatalWasmRuntimeError: Error | null = null;
  * relying on `as any` or `@ts-ignore`.
  */
 type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
-
-export interface StreamingProgress {
-  percent: number;
-  processed: number;
-  total: number;
-  phase: 'simple' | 'simple_complete' | 'complex';
-}
-
-export interface StreamingStats {
-  totalMeshes: number;
-  totalVertices: number;
-  totalTriangles: number;
-}
-
-export interface InstancedStreamingStats {
-  totalGeometries: number;
-  totalInstances: number;
-}
-
-export interface ParseMeshesAsyncOptions {
-  batchSize?: number;
-  // NOTE: WASM automatically defers style building for faster first frame
-  onBatch?: (meshes: MeshDataJs[], progress: StreamingProgress) => void;
-  onComplete?: (stats: StreamingStats) => void;
-  onColorUpdate?: (updates: Map<number, [number, number, number, number]>) => void;
-}
-
-export interface ParseMeshesInstancedAsyncOptions {
-  batchSize?: number;
-  onBatch?: (geometries: InstancedGeometry[], progress: StreamingProgress) => void;
-  onComplete?: (stats: InstancedStreamingStats) => void;
-}
 
 export class IfcLiteBridge {
   private ifcApi: IfcAPI | null = null;
@@ -154,102 +112,6 @@ export class IfcLiteBridge {
   }
 
   /**
-   * Parse IFC content and return mesh collection (blocking)
-   * Returns individual meshes with express IDs and colors
-   */
-  parseMeshes(content: string): MeshCollection {
-    if (!this.ifcApi) {
-      throw new Error('IFC-Lite not initialized. Call init() first.');
-    }
-    try {
-      const collection = this.ifcApi.parseMeshes(content);
-      log.debug(`Parsed ${collection.length} meshes`, { operation: 'parseMeshes' });
-      return collection;
-    } catch (error) {
-      log.error('Failed to parse IFC geometry', error, {
-        operation: 'parseMeshes',
-        data: { contentLength: content.length },
-      });
-      if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Parse IFC content and return instanced geometry collection (blocking)
-   * Groups identical geometries by hash and returns instances with transforms
-   * Reduces draw calls significantly for buildings with repeated elements
-   */
-  parseMeshesInstanced(content: string): InstancedMeshCollection {
-    if (!this.ifcApi) {
-      throw new Error('IFC-Lite not initialized. Call init() first.');
-    }
-    try {
-      const collection = this.ifcApi.parseMeshesInstanced(content);
-      log.debug(`Parsed ${collection.length} instanced geometries`, { operation: 'parseMeshesInstanced' });
-      return collection;
-    } catch (error) {
-      log.error('Failed to parse instanced IFC geometry', error, {
-        operation: 'parseMeshesInstanced',
-        data: { contentLength: content.length },
-      });
-      if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Parse IFC content with streaming (non-blocking)
-   * Yields batches progressively for fast first frame
-   * Simple geometry (walls, slabs, beams) processed first
-   */
-  async parseMeshesAsync(content: string, options: ParseMeshesAsyncOptions = {}): Promise<void> {
-    if (!this.ifcApi) {
-      throw new Error('IFC-Lite not initialized. Call init() first.');
-    }
-    try {
-      return await this.ifcApi.parseMeshesAsync(content, options);
-    } catch (error) {
-      log.error('Failed to parse IFC geometry (streaming)', error, {
-        operation: 'parseMeshesAsync',
-        data: { contentLength: content.length },
-      });
-      if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Parse IFC content with streaming instanced geometry (non-blocking)
-   * Groups identical geometries and yields batches progressively
-   * Simple geometry (walls, slabs, beams) processed first
-   * Reduces draw calls significantly for buildings with repeated elements
-   */
-  async parseMeshesInstancedAsync(content: string, options: ParseMeshesInstancedAsyncOptions = {}): Promise<void> {
-    if (!this.ifcApi) {
-      throw new Error('IFC-Lite not initialized. Call init() first.');
-    }
-    try {
-      return await this.ifcApi.parseMeshesInstancedAsync(content, options);
-    } catch (error) {
-      log.error('Failed to parse instanced IFC geometry (streaming)', error, {
-        operation: 'parseMeshesInstancedAsync',
-        data: { contentLength: content.length },
-      });
-      if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
-      }
-      throw error;
-    }
-  }
-
-  /**
    * Parse IFC content and return symbolic representations (Plan, Annotation, FootPrint)
    * These are pre-authored 2D curves for architectural drawings
    */
@@ -294,31 +156,6 @@ export class IfcLiteBridge {
       log.error('Failed to extract profiles', error, {
         operation: 'extractProfiles',
         data: { contentLength: content.length },
-      });
-      if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Parse a subset of IFC geometry entities by index range.
-   * Performs the full pre-pass but only processes entities in [startIdx, endIdx).
-   * Designed for Web Worker parallelization where each worker handles a slice.
-   */
-  parseMeshesSubset(content: string, startIdx: number, endIdx: number, skipExpensive: boolean = false): MeshCollection {
-    if (!this.ifcApi) {
-      throw new Error('IFC-Lite not initialized. Call init() first.');
-    }
-    try {
-      const collection = this.ifcApi.parseMeshesSubset(content, startIdx, endIdx, skipExpensive);
-      log.debug(`Parsed subset [${startIdx}, ${endIdx}) → ${collection.length} meshes`, { operation: 'parseMeshesSubset' });
-      return collection;
-    } catch (error) {
-      log.error('Failed to parse IFC geometry subset', error, {
-        operation: 'parseMeshesSubset',
-        data: { contentLength: content.length, startIdx, endIdx },
       });
       if (this.isWasmRuntimeError(error)) {
         this.markFatalWasmRuntimeError();

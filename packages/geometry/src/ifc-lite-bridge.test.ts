@@ -5,12 +5,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wasmMocks = vi.hoisted(() => {
-  const parseMeshes = vi.fn();
+  const parseSymbolicRepresentations = vi.fn();
   const setMergeLayers = vi.fn();
 
   class MockIfcAPI {
-    parseMeshes(content: string) {
-      return parseMeshes(content);
+    parseSymbolicRepresentations(content: string) {
+      return parseSymbolicRepresentations(content);
     }
     setMergeLayers(enabled: boolean) {
       return setMergeLayers(enabled);
@@ -19,7 +19,7 @@ const wasmMocks = vi.hoisted(() => {
 
   return {
     init: vi.fn(async () => undefined),
-    parseMeshes,
+    parseSymbolicRepresentations,
     setMergeLayers,
     MockIfcAPI,
   };
@@ -35,7 +35,7 @@ import { IfcLiteBridge } from './ifc-lite-bridge.js';
 describe('IfcLiteBridge', () => {
   beforeEach(() => {
     wasmMocks.init.mockClear();
-    wasmMocks.parseMeshes.mockReset();
+    wasmMocks.parseSymbolicRepresentations.mockReset();
     wasmMocks.setMergeLayers.mockReset();
   });
 
@@ -66,11 +66,11 @@ describe('IfcLiteBridge', () => {
     const bridge = new IfcLiteBridge();
     await bridge.init();
 
-    wasmMocks.parseMeshes.mockImplementationOnce(() => {
+    wasmMocks.parseSymbolicRepresentations.mockImplementationOnce(() => {
       throw new WebAssembly.RuntimeError('panic');
     });
 
-    expect(() => bridge.parseMeshes('broken ifc')).toThrow(WebAssembly.RuntimeError);
+    expect(() => bridge.parseSymbolicRepresentations('broken ifc')).toThrow(WebAssembly.RuntimeError);
     await expect(bridge.init()).rejects.toThrow(
       'IFC-Lite WASM cannot recover from a fatal runtime error within the same document lifetime.',
     );

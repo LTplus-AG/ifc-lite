@@ -85,29 +85,6 @@ export function convertMeshCollectionToBatch(
   return batch;
 }
 
-/**
- * Convert a WASM InstancedMeshCollection into a plain array of
- * InstancedGeometry objects, freeing the collection wrapper.
- */
-export function convertInstancedCollectionToBatch(
-  collection: import('@ifc-lite/wasm').InstancedMeshCollection
-): import('@ifc-lite/wasm').InstancedGeometry[] {
-  const batch: import('@ifc-lite/wasm').InstancedGeometry[] = [];
-
-  try {
-    for (let i = 0; i < collection.length; i++) {
-      const geometry = collection.get(i);
-      if (geometry) {
-        batch.push(geometry);
-      }
-    }
-  } finally {
-    collection.free();
-  }
-
-  return batch;
-}
-
 // ── Coordinate-info helpers ──
 
 /**

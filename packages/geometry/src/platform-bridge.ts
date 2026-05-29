@@ -172,17 +172,20 @@ export function isTauri(): boolean {
 }
 
 /**
- * Create the appropriate platform bridge based on runtime environment
+ * Create the appropriate platform bridge based on runtime environment.
  *
- * In Tauri: Returns NativeBridge (native Rust processing)
- * In Browser: Returns WasmBridge (WASM processing)
+ * Only used on the native (Tauri) path — `GeometryProcessor` calls this
+ * exclusively when `isNative` (which requires `isTauri()`), so the browser
+ * never reaches here. In the browser, geometry runs through the WASM
+ * `GeometryProcessor.bridge` (`IfcLiteBridge`) + pre-pass/job-batch path
+ * directly, not through a platform bridge.
  */
 export async function createPlatformBridge(): Promise<IPlatformBridge> {
   if (isTauri()) {
     const { NativeBridge } = await import('./native-bridge.js');
     return new NativeBridge();
-  } else {
-    const { WasmBridge } = await import('./wasm-bridge.js');
-    return new WasmBridge();
   }
+  throw new Error(
+    'createPlatformBridge() is native-only; the browser uses the WASM GeometryProcessor path directly.',
+  );
 }

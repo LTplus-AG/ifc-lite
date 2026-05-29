@@ -9,7 +9,6 @@ use crate::{Error, Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{
     has_geometry_by_name, DecodedEntity, EntityDecoder, GeometryCategory, IfcType,
 };
-use nalgebra::Matrix4;
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
@@ -750,123 +749,6 @@ impl GeometryRouter {
         }
 
         Ok(())
-    }
-
-    /// Process building element and return geometry + transform separately
-    /// Used for instanced rendering - geometry is returned untransformed, transform is separate
-    #[inline]
-    pub fn process_element_with_transform(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<(Mesh, Matrix4<f64>)> {
-        // Get representation (attribute 6 for most building elements)
-        let representation_attr = element.get(6).ok_or_else(|| {
-            Error::geometry(format!(
-                "Element #{} has no representation attribute",
-                element.id
-            ))
-        })?;
-
-        if representation_attr.is_null() {
-            return Ok((Mesh::new(), Matrix4::identity())); // No geometry
-        }
-
-        let representation = decoder
-            .resolve_ref(representation_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
-
-        if representation.ifc_type != IfcType::IfcProductDefinitionShape {
-            return Err(Error::geometry(format!(
-                "Expected IfcProductDefinitionShape, got {}",
-                representation.ifc_type
-            )));
-        }
-
-        // Get representations list (attribute 2)
-        let representations_attr = representation.get(2).ok_or_else(|| {
-            Error::geometry("IfcProductDefinitionShape missing Representations".to_string())
-        })?;
-
-        let representations = decoder.resolve_ref_list(representations_attr)?;
-
-        // Process all representations and merge meshes
-        let mut combined_mesh = Mesh::new();
-
-        // Check for direct geometry
-        let has_direct_geometry = representations.iter().any(|rep| {
-            if rep.ifc_type != IfcType::IfcShapeRepresentation {
-                return false;
-            }
-            if let Some(rep_type_attr) = rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    matches!(
-                        rep_type,
-                        "Body"
-                            | "SweptSolid"
-                            | "SolidModel"
-                            | "Brep"
-                            | "CSG"
-                            | "Clipping"
-                            | "SurfaceModel"
-                            | "Tessellation"
-                            | "AdvancedSweptSolid"
-                            | "AdvancedBrep"
-                    )
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        });
-
-        for shape_rep in representations {
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
-
-            if let Some(rep_type_attr) = shape_rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    if rep_type == "MappedRepresentation" && has_direct_geometry {
-                        continue;
-                    }
-
-                    if !matches!(
-                        rep_type,
-                        "Body"
-                            | "SweptSolid"
-                            | "SolidModel"
-                            | "Brep"
-                            | "CSG"
-                            | "Clipping"
-                            | "SurfaceModel"
-                            | "Tessellation"
-                            | "MappedRepresentation"
-                            | "AdvancedSweptSolid"
-                            | "AdvancedBrep"
-                    ) {
-                        continue;
-                    }
-                }
-            }
-
-            let items_attr = shape_rep.get(3).ok_or_else(|| {
-                Error::geometry("IfcShapeRepresentation missing Items".to_string())
-            })?;
-
-            let items = decoder.resolve_ref_list(items_attr)?;
-
-            for item in items {
-                let mesh = self.process_representation_item(&item, decoder)?;
-                combined_mesh.merge(&mesh);
-            }
-        }
-
-        // Get placement transform WITHOUT applying it
-        let transform = self.get_placement_transform_from_element(element, decoder)?;
-
-        Ok((combined_mesh, transform))
     }
 
     /// Process a single representation item (IfcExtrudedAreaSolid, etc.)

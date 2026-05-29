@@ -82,19 +82,6 @@ export default defineConfig({
       },
     },
     {
-      name: 'zero-copy-benchmark',
-      testMatch: /zero-copy-benchmark\.spec\.ts/,
-      webServer: {
-        command: 'npx serve . -p 3333',
-        port: 3333,
-        reuseExistingServer: true,
-        timeout: 30000,
-      },
-      use: {
-        baseURL: 'http://localhost:3333',
-      },
-    },
-    {
       name: 'holter-debug',
       testMatch: /holter-tower-debug\.spec\.ts/,
       timeout: 600000, // 10 min for large file

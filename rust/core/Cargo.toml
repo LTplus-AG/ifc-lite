@@ -13,7 +13,6 @@ exclude = ["examples/test_real_ifc.rs"]
 
 [features]
 default = []
-serde = ["dep:serde"]
 
 [dependencies]
 
@@ -35,9 +34,6 @@ nom = "7.1"
 
 # Fast hashing
 rustc-hash = "2.1"
-
-# Optional: serialization
-serde = { version = "1.0", features = ["derive"], optional = true }
 
 # SmallVec for stack-allocated small vectors (avoids heap allocation for small lists)
 smallvec = "1.13"

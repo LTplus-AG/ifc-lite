@@ -9,8 +9,6 @@
 
 // IFC-Lite components (recommended - faster)
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
-export { IfcLiteMeshCollector, type StreamingColorUpdateEvent, type StreamingRtcOffsetEvent } from './ifc-lite-mesh-collector.js';
-import type { StreamingColorUpdateEvent, StreamingRtcOffsetEvent } from './ifc-lite-mesh-collector.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
@@ -35,34 +33,9 @@ export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 
-export { LODGenerator, type LODConfig, type LODMesh } from './lod.js';
-export {
-  deduplicateMeshes,
-  getDeduplicationStats,
-  type InstancedMeshData,
-  type DeduplicationStats
-} from './geometry-deduplicator.js';
 export * from './types.js';
-export * from './default-materials.js';
-
-// Zero-copy GPU upload (new - faster, less memory)
-export { WasmMemoryManager, type GpuGeometryHandle, type GpuMeshMetadataHandle, type GpuInstancedGeometryHandle, type GpuInstancedGeometryCollectionHandle, type GpuInstancedGeometryRefHandle } from './wasm-memory-manager.js';
-export {
-  ZeroCopyMeshCollector,
-  ZeroCopyInstancedCollector,
-  type ZeroCopyStreamingProgress,
-  type ZeroCopyBatchResult,
-  type ZeroCopyCompleteStats,
-  type ZeroCopyMeshMetadata,
-  type ZeroCopyBatch,
-  type ZeroCopyInstancedBatch,
-} from './zero-copy-collector.js';
-
-// Legacy exports for compatibility (deprecated)
-export { IfcLiteBridge as WebIfcBridge } from './ifc-lite-bridge.js';
 
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
-import { IfcLiteMeshCollector } from './ifc-lite-mesh-collector.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
@@ -70,7 +43,7 @@ import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometrySt
 import type { GeometryResult, MeshData, CoordinateInfo } from './types.js';
 
 // Extracted sub-modules
-import { getStreamingBatchSize, convertMeshCollectionToBatch, convertInstancedCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
+import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
 import { streamNativeGeometry, type QueuedNativeStreamingEvent } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
 
@@ -130,23 +103,6 @@ export interface DynamicBatchConfig {
   fileSizeMB?: number;
 }
 
-/**
- * Calculate dynamic batch size based on batch number
- */
-export function calculateDynamicBatchSize(
-  batchNumber: number,
-  initialBatchSize: number = 50,
-  maxBatchSize: number = 500
-): number {
-  if (batchNumber <= 3) {
-    return initialBatchSize; // Fast first frame
-  } else if (batchNumber <= 6) {
-    return Math.floor((initialBatchSize + maxBatchSize) / 2); // Quick ramp
-  } else {
-    return maxBatchSize; // Full throughput earlier
-  }
-}
-
 export type StreamingGeometryEvent =
   | { type: 'start'; totalEstimate: number }
   | { type: 'model-open'; modelID: number }
@@ -180,12 +136,6 @@ export type StreamingGeometryEvent =
    */
   | { type: 'progress'; phase: 'prepass' | 'workers' }
   | { type: 'complete'; totalMeshes: number; coordinateInfo: import('./types.js').CoordinateInfo };
-
-export type StreamingInstancedGeometryEvent =
-  | { type: 'start'; totalEstimate: number }
-  | { type: 'model-open'; modelID: number }
-  | { type: 'batch'; geometries: import('@ifc-lite/wasm').InstancedGeometry[]; totalSoFar: number; coordinateInfo?: import('./types.js').CoordinateInfo }
-  | { type: 'complete'; totalGeometries: number; totalInstances: number; coordinateInfo: import('./types.js').CoordinateInfo };
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop
 // have been extracted to ./geometry-native.ts
@@ -326,23 +276,60 @@ export class GeometryProcessor {
   }
 
   /**
-   * Collect meshes on main thread using IFC-Lite WASM
+   * Collect ALL meshes for a buffer via the Family-A pre-pass + job-batch
+   * path — the same WASM entry points (`buildPrePassOnce` +
+   * `processGeometryBatch`) that the worker pool and the >256 MB streaming
+   * path already use. This is the single main-thread mesh-production
+   * implementation; it replaces the legacy whole-file
+   * `IfcLiteMeshCollector` / `parseMeshes` path.
+   *
+   * The merge-layers toggle is stateful on the bridge's IfcAPI (applied in
+   * `init()` via `bridge.setMergeLayers`), so the batch path honours it
+   * without any per-call argument. Bytes are passed straight through —
+   * no `TextDecoder` materialization of the whole file.
    */
-  private async collectMeshesMainThread(buffer: Uint8Array, _entityIndex?: Map<number, any>): Promise<{ meshes: MeshData[]; buildingRotation?: number }> {
+  private collectMeshesViaPrePass(buffer: Uint8Array): { meshes: MeshData[]; buildingRotation?: number } {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
     }
 
-    // Convert buffer to string (IFC files are text)
-    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
-    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
-    const content = safeUtf8Decode(buffer);
+    const api = this.bridge.getApi();
+    const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    try {
+      const meshes: MeshData[] = [];
+      const totalJobs = prePass.totalJobs ?? 0;
 
-    const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content, { mergeLayers: this.mergeLayers });
-    const meshes = collector.collectMeshes();
-    const buildingRotation = collector.getBuildingRotation();
+      if (prePass.jobs && totalJobs > 0) {
+        // One batch over all jobs — synchronous callers want the full set.
+        const collection = api.processGeometryBatch(
+          buffer,
+          prePass.jobs,
+          prePass.unitScale,
+          prePass.rtcOffset?.[0] ?? 0,
+          prePass.rtcOffset?.[1] ?? 0,
+          prePass.rtcOffset?.[2] ?? 0,
+          prePass.needsShift,
+          prePass.voidKeys,
+          prePass.voidCounts,
+          prePass.voidValues,
+          prePass.styleIds,
+          prePass.styleColors,
+        );
+        meshes.push(...convertMeshCollectionToBatch(collection));
+      }
 
-    return { meshes, buildingRotation };
+      return { meshes, buildingRotation: prePass.buildingRotation ?? undefined };
+    } finally {
+      // Always release the pre-pass cache — even if processGeometryBatch throws.
+      api.clearPrePassCache?.();
+    }
+  }
+
+  /**
+   * Collect meshes on main thread using IFC-Lite WASM.
+   */
+  private async collectMeshesMainThread(buffer: Uint8Array, _entityIndex?: Map<number, any>): Promise<{ meshes: MeshData[]; buildingRotation?: number }> {
+    return this.collectMeshesViaPrePass(buffer);
   }
 
   // getStreamingBatchSize, convertMeshCollectionToBatch,
@@ -360,186 +347,89 @@ export class GeometryProcessor {
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
 
-    yield { type: 'model-open', modelID: 0 };
+    // try/finally so the pre-pass cache is released on every exit: the
+    // totalJobs===0 early return, a processGeometryBatch throw, or the
+    // consumer abandoning the generator (which triggers `.return()`).
+    try {
+      yield { type: 'model-open', modelID: 0 };
 
-    if (prePass.rtcOffset) {
-      yield {
-        type: 'rtcOffset',
-        rtcOffset: {
-          x: prePass.rtcOffset[0] ?? 0,
-          y: prePass.rtcOffset[1] ?? 0,
-          z: prePass.rtcOffset[2] ?? 0,
-        },
-        hasRtc: Boolean(prePass.needsShift),
-      };
-    }
-
-    const buildingRotation = prePass.buildingRotation ?? undefined;
-    if (!prePass.jobs || prePass.totalJobs === 0) {
-      const coordinateInfo = withBuildingRotation(
-        this.coordinateHandler.getFinalCoordinateInfo(),
-        buildingRotation,
-      );
-      yield { type: 'complete', totalMeshes: 0, coordinateInfo };
-      return;
-    }
-
-    const batchSize = getStreamingBatchSize(buffer, batchConfig);
-    // Cap at ~30 batches max to avoid excessive per-batch overhead
-    const maxBatches = 30;
-    const effectiveBatchSize = Math.max(batchSize, Math.ceil(prePass.totalJobs / maxBatches));
-    let totalMeshes = 0;
-
-    for (let startJob = 0; startJob < prePass.totalJobs; startJob += effectiveBatchSize) {
-      const endJob = Math.min(startJob + effectiveBatchSize, prePass.totalJobs);
-      const jobSlice = prePass.jobs.slice(startJob * 3, endJob * 3);
-      const collection = api.processGeometryBatch(
-        buffer,
-        jobSlice,
-        prePass.unitScale,
-        prePass.rtcOffset?.[0] ?? 0,
-        prePass.rtcOffset?.[1] ?? 0,
-        prePass.rtcOffset?.[2] ?? 0,
-        prePass.needsShift,
-        prePass.voidKeys,
-        prePass.voidCounts,
-        prePass.voidValues,
-        prePass.styleIds,
-        prePass.styleColors,
-      );
-
-      const batch = convertMeshCollectionToBatch(collection);
-      if (batch.length === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0));
-        continue;
+      if (prePass.rtcOffset) {
+        yield {
+          type: 'rtcOffset',
+          rtcOffset: {
+            x: prePass.rtcOffset[0] ?? 0,
+            y: prePass.rtcOffset[1] ?? 0,
+            z: prePass.rtcOffset[2] ?? 0,
+          },
+          hasRtc: Boolean(prePass.needsShift),
+        };
       }
 
-      this.coordinateHandler.processMeshesIncremental(batch);
-      totalMeshes += batch.length;
-      const currentCoordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-      const coordinateInfo = currentCoordinateInfo
-        ? withBuildingRotation(currentCoordinateInfo, buildingRotation)
-        : null;
-
-      yield {
-        type: 'batch',
-        meshes: batch,
-        totalSoFar: totalMeshes,
-        coordinateInfo: coordinateInfo || undefined,
-      };
-
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-
-    api.clearPrePassCache?.();
-
-    const coordinateInfo = withBuildingRotation(
-      this.coordinateHandler.getFinalCoordinateInfo(),
-      buildingRotation,
-    );
-    yield { type: 'complete', totalMeshes, coordinateInfo };
-  }
-
-  private async *processInstancedStreamingBytes(
-    buffer: Uint8Array,
-    batchSize: number
-  ): AsyncGenerator<StreamingInstancedGeometryEvent> {
-    if (!this.bridge) {
-      throw new Error('WASM bridge not initialized');
-    }
-
-    const api = this.bridge.getApi();
-    const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    const buildingRotation = prePass.buildingRotation ?? undefined;
-
-    yield { type: 'model-open', modelID: 0 };
-
-    if (!prePass.jobs || prePass.totalJobs === 0) {
-      const coordinateInfo = withBuildingRotation(
-        this.coordinateHandler.getFinalCoordinateInfo(),
-        buildingRotation,
-      );
-      yield { type: 'complete', totalGeometries: 0, totalInstances: 0, coordinateInfo };
-      return;
-    }
-
-    let totalGeometries = 0;
-    let totalInstances = 0;
-
-    // Cap at ~30 batches max to avoid excessive per-batch overhead
-    const maxBatches = 30;
-    const effectiveBatchSize = Math.max(batchSize, Math.ceil(prePass.totalJobs / maxBatches));
-
-    for (let startJob = 0; startJob < prePass.totalJobs; startJob += effectiveBatchSize) {
-      const endJob = Math.min(startJob + effectiveBatchSize, prePass.totalJobs);
-      const jobSlice = prePass.jobs.slice(startJob * 3, endJob * 3);
-      const collection = api.processInstancedGeometryBatch(
-        buffer,
-        jobSlice,
-        prePass.unitScale,
-        prePass.rtcOffset?.[0] ?? 0,
-        prePass.rtcOffset?.[1] ?? 0,
-        prePass.rtcOffset?.[2] ?? 0,
-        prePass.needsShift,
-        prePass.styleIds,
-        prePass.styleColors,
-      );
-
-      const batch = convertInstancedCollectionToBatch(collection);
-      if (batch.length === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0));
-        continue;
+      const buildingRotation = prePass.buildingRotation ?? undefined;
+      if (!prePass.jobs || prePass.totalJobs === 0) {
+        const coordinateInfo = withBuildingRotation(
+          this.coordinateHandler.getFinalCoordinateInfo(),
+          buildingRotation,
+        );
+        yield { type: 'complete', totalMeshes: 0, coordinateInfo };
+        return;
       }
 
-      const meshDataBatch: MeshData[] = [];
-      for (const geom of batch) {
-        const positions = geom.positions;
-        const normals = geom.normals;
-        const indices = geom.indices;
+      const batchSize = getStreamingBatchSize(buffer, batchConfig);
+      // Cap at ~30 batches max to avoid excessive per-batch overhead
+      const maxBatches = 30;
+      const effectiveBatchSize = Math.max(batchSize, Math.ceil(prePass.totalJobs / maxBatches));
+      let totalMeshes = 0;
 
-        if (geom.instance_count > 0) {
-          const firstInstance = geom.get_instance(0);
-          if (firstInstance) {
-            const color = firstInstance.color;
-            meshDataBatch.push({
-              expressId: firstInstance.expressId,
-              positions,
-              normals,
-              indices,
-              color: [color[0], color[1], color[2], color[3]],
-            });
-          }
+      for (let startJob = 0; startJob < prePass.totalJobs; startJob += effectiveBatchSize) {
+        const endJob = Math.min(startJob + effectiveBatchSize, prePass.totalJobs);
+        const jobSlice = prePass.jobs.slice(startJob * 3, endJob * 3);
+        const collection = api.processGeometryBatch(
+          buffer,
+          jobSlice,
+          prePass.unitScale,
+          prePass.rtcOffset?.[0] ?? 0,
+          prePass.rtcOffset?.[1] ?? 0,
+          prePass.rtcOffset?.[2] ?? 0,
+          prePass.needsShift,
+          prePass.voidKeys,
+          prePass.voidCounts,
+          prePass.voidValues,
+          prePass.styleIds,
+          prePass.styleColors,
+        );
+
+        const batch = convertMeshCollectionToBatch(collection);
+        if (batch.length === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+          continue;
         }
+
+        this.coordinateHandler.processMeshesIncremental(batch);
+        totalMeshes += batch.length;
+        const currentCoordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
+        const coordinateInfo = currentCoordinateInfo
+          ? withBuildingRotation(currentCoordinateInfo, buildingRotation)
+          : null;
+
+        yield {
+          type: 'batch',
+          meshes: batch,
+          totalSoFar: totalMeshes,
+          coordinateInfo: coordinateInfo || undefined,
+        };
+
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
 
-      if (meshDataBatch.length > 0) {
-        this.coordinateHandler.processMeshesIncremental(meshDataBatch);
-      }
-
-      totalGeometries += batch.length;
-      totalInstances += batch.reduce((sum, geometry) => sum + geometry.instance_count, 0);
-      const currentCoordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-      const coordinateInfo = currentCoordinateInfo
-        ? withBuildingRotation(currentCoordinateInfo, buildingRotation)
-        : null;
-
-      yield {
-        type: 'batch',
-        geometries: batch,
-        totalSoFar: totalGeometries,
-        coordinateInfo: coordinateInfo || undefined,
-      };
-
-      await new Promise(resolve => setTimeout(resolve, 0));
+      const coordinateInfo = withBuildingRotation(
+        this.coordinateHandler.getFinalCoordinateInfo(),
+        buildingRotation,
+      );
+      yield { type: 'complete', totalMeshes, coordinateInfo };
+    } finally {
+      api.clearPrePassCache?.();
     }
-
-    api.clearPrePassCache?.();
-
-    const coordinateInfo = withBuildingRotation(
-      this.coordinateHandler.getFinalCoordinateInfo(),
-      buildingRotation,
-    );
-    yield { type: 'complete', totalGeometries, totalInstances, coordinateInfo };
   }
 
   /**
@@ -671,65 +561,16 @@ export class GeometryProcessor {
 
       console.timeEnd('[GeometryProcessor] native-streaming');
     } else {
-      // WASM PATH
+      // WASM PATH — single-threaded fallback (no SAB / Worker). Route ALL
+      // sizes through the Family-A pre-pass + job-batch streamer; the old
+      // 256 MB gate (above which we already used `processStreamingBytes`)
+      // is gone, so there is one byte-based streaming implementation and
+      // the legacy whole-file `IfcLiteMeshCollector` is no longer used.
       if (!this.bridge) {
         throw new Error('WASM bridge not initialized');
       }
 
-      if (buffer.length >= GeometryProcessor.largeFileByteStreamingThreshold) {
-        yield* this.processStreamingBytes(buffer, batchConfig);
-        return;
-      }
-
-      // Convert buffer to string (IFC files are text). SAB-safe.
-      const content = safeUtf8Decode(buffer);
-
-      yield { type: 'model-open', modelID: 0 };
-
-      const collector = new IfcLiteMeshCollector(this.bridge.getApi(), content, { mergeLayers: this.mergeLayers });
-      let totalMeshes = 0;
-      let extractedBuildingRotation: number | undefined = undefined;
-
-      const wasmBatchSize = getStreamingBatchSize(buffer, batchConfig);
-
-      // Use WASM batches directly for maximum throughput
-      for await (const item of collector.collectMeshesStreaming(wasmBatchSize)) {
-        // Handle color update events
-        if (item && typeof item === 'object' && 'type' in item && (item as StreamingColorUpdateEvent).type === 'colorUpdate') {
-          yield { type: 'colorUpdate', updates: (item as StreamingColorUpdateEvent).updates };
-          continue;
-        }
-
-        // Handle RTC offset events
-        if (item && typeof item === 'object' && 'type' in item && (item as StreamingRtcOffsetEvent).type === 'rtcOffset') {
-          const rtcEvent = item as StreamingRtcOffsetEvent;
-          yield { type: 'rtcOffset', rtcOffset: rtcEvent.rtcOffset, hasRtc: rtcEvent.hasRtc };
-          continue;
-        }
-
-        // Handle mesh batches
-        const batch = item as MeshData[];
-        // Process coordinate shifts incrementally (will accumulate bounds)
-        this.coordinateHandler.processMeshesIncremental(batch);
-        totalMeshes += batch.length;
-        const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-
-        // Merge buildingRotation if we have it
-        const coordinateInfoWithRotation = coordinateInfo && extractedBuildingRotation !== undefined
-          ? { ...coordinateInfo, buildingRotation: extractedBuildingRotation }
-          : coordinateInfo;
-
-        yield { type: 'batch', meshes: batch, totalSoFar: totalMeshes, coordinateInfo: coordinateInfoWithRotation || undefined };
-      }
-
-      // Get building rotation after streaming completes
-      extractedBuildingRotation = collector.getBuildingRotation();
-
-      const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
-      const finalCoordinateInfo = extractedBuildingRotation !== undefined
-        ? { ...coordinateInfo, buildingRotation: extractedBuildingRotation }
-        : coordinateInfo;
-      yield { type: 'complete', totalMeshes, coordinateInfo: finalCoordinateInfo };
+      yield* this.processStreamingBytes(buffer, batchConfig);
     }
   }
 
@@ -782,123 +623,6 @@ export class GeometryProcessor {
   }
 
   /**
-   * Process IFC file with streaming instanced geometry output for progressive rendering
-   * Groups identical geometries by hash (before transformation) for GPU instancing
-   * @param buffer IFC file buffer
-   * @param batchSize Number of unique geometries per batch (default: 25)
-   */
-  async *processInstancedStreaming(
-    buffer: Uint8Array,
-    batchSize: number = 25
-  ): AsyncGenerator<StreamingInstancedGeometryEvent> {
-    const releaseWasmOperation = this.isNative
-      ? null
-      : acquireWasmStreamingOperation('processInstancedStreaming');
-
-    try {
-      yield* this.processInstancedStreamingUnlocked(buffer, batchSize);
-    } finally {
-      releaseWasmOperation?.();
-    }
-  }
-
-  private async *processInstancedStreamingUnlocked(
-    buffer: Uint8Array,
-    batchSize: number = 25
-  ): AsyncGenerator<StreamingInstancedGeometryEvent> {
-    // Initialize if needed
-    if (this.isNative) {
-      if (!this.platformBridge) {
-        await this.init();
-      }
-      // Note: Native instanced streaming not yet implemented - fall through to WASM
-      // For now, throw an error to make it clear
-      console.warn('[GeometryProcessor] Native instanced streaming not yet implemented, using WASM');
-    }
-
-    if (!this.bridge?.isInitialized()) {
-      await this.init();
-    }
-
-    // Reset coordinate handler for new file
-    this.coordinateHandler.reset();
-
-    yield { type: 'start', totalEstimate: buffer.length / 1000 };
-
-    // Adapt batch size for large files to reduce callback overhead
-    // Larger batches = fewer callbacks = less overhead for huge models
-    const fileSizeMB = buffer.length / (1024 * 1024);
-    const effectiveBatchSize = fileSizeMB < 50 ? batchSize : fileSizeMB < 200 ? Math.max(batchSize, 50) : fileSizeMB < 300 ? Math.max(batchSize, 100) : Math.max(batchSize, 200);
-    const byteBatchSize = Math.max(effectiveBatchSize, getStreamingBatchSize(buffer, batchSize));
-
-    if (buffer.length >= GeometryProcessor.largeFileByteStreamingThreshold) {
-      yield* this.processInstancedStreamingBytes(buffer, byteBatchSize);
-      return;
-    }
-
-    // Convert buffer to string (IFC files are text)
-    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
-    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
-    const content = safeUtf8Decode(buffer);
-
-    // Use a placeholder model ID (IFC-Lite doesn't use model IDs)
-    yield { type: 'model-open', modelID: 0 };
-
-    const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content, { mergeLayers: this.mergeLayers });
-    let totalGeometries = 0;
-    let totalInstances = 0;
-
-    for await (const batch of collector.collectInstancedGeometryStreaming(effectiveBatchSize)) {
-      // For instanced geometry, we need to extract mesh data from instances for coordinate handling
-      // Convert InstancedGeometry to MeshData[] for coordinate handler
-      const meshDataBatch: MeshData[] = [];
-      for (const geom of batch) {
-        const positions = geom.positions;
-        const normals = geom.normals;
-        const indices = geom.indices;
-
-        // Create a mesh data entry for each instance (for coordinate bounds calculation)
-        // We'll use the first instance's color as representative
-        if (geom.instance_count > 0) {
-          const firstInstance = geom.get_instance(0);
-          if (firstInstance) {
-            const color = firstInstance.color;
-            meshDataBatch.push({
-              expressId: firstInstance.expressId,
-              positions,
-              normals,
-              indices,
-              color: [color[0], color[1], color[2], color[3]],
-            });
-          }
-        }
-      }
-
-      // Process coordinate shifts incrementally
-      if (meshDataBatch.length > 0) {
-        this.coordinateHandler.processMeshesIncremental(meshDataBatch);
-      }
-
-      totalGeometries += batch.length;
-      totalInstances += batch.reduce((sum, g) => sum + g.instance_count, 0);
-
-      // Get current coordinate info for this batch
-      const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-
-      yield {
-        type: 'batch',
-        geometries: batch,
-        totalSoFar: totalGeometries,
-        coordinateInfo: coordinateInfo || undefined
-      };
-    }
-
-    const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
-
-    yield { type: 'complete', totalGeometries, totalInstances, coordinateInfo };
-  }
-
-  /**
    * Process IFC file in parallel using Web Workers.
    * Each worker gets its own WASM instance and processes a disjoint slice
    * of the geometry entity list. Batches are yielded as they arrive from
@@ -917,17 +641,15 @@ export class GeometryProcessor {
       starts: Uint32Array,
       lengths: Uint32Array,
     ) => void,
-    /** Phase 2 flag — use the single-controller worker (rayon-internal). */
-    useSingleController?: boolean,
     /**
-     * Explicit wasm asset URLs forwarded to the worker pool. See
+     * Explicit wasm asset URL forwarded to the worker pool. See
      * `ProcessParallelOptions.wasmUrls` in `geometry-parallel.ts` for
      * the full rationale — needed only for bundlers that can't transform
      * `new URL('ifc-lite_bg.wasm', import.meta.url)` inside the worker
      * dist (or deployments that serve wasm from a separate origin).
      * Vite + webpack 5 consumers leave this undefined.
      */
-    wasmUrls?: { wasm?: string; wasmThreaded?: string },
+    wasmUrls?: { wasm?: string },
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -936,7 +658,6 @@ export class GeometryProcessor {
 
     yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab, {
       onEntityIndex,
-      useSingleController,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -976,13 +697,11 @@ export class GeometryProcessor {
         starts: Uint32Array,
         lengths: Uint32Array,
       ) => void;
-      /** Phase 2 — opt-in to the single-controller (rayon) worker. */
-      useSingleController?: boolean;
       /**
-       * Explicit wasm asset URLs forwarded to the worker pool.
+       * Explicit wasm asset URL forwarded to the worker pool.
        * See `processParallel(...).wasmUrls` for rationale.
        */
-      wasmUrls?: { wasm?: string; wasmThreaded?: string };
+      wasmUrls?: { wasm?: string };
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -1007,6 +726,7 @@ export class GeometryProcessor {
       yield { type: 'model-open', modelID: 0 };
 
       let allMeshes: MeshData[];
+      let buildingRotation: number | undefined;
 
       if (this.isNative && this.platformBridge) {
         // NATIVE PATH - single batch processing
@@ -1015,10 +735,10 @@ export class GeometryProcessor {
         allMeshes = result.meshes;
         console.timeEnd('[GeometryProcessor] native-adaptive-sync');
       } else {
-        // WASM PATH (SAB-safe).
-        const content = safeUtf8Decode(buffer);
-        const collector = new IfcLiteMeshCollector(this.bridge!.getApi(), content, { mergeLayers: this.mergeLayers });
-        allMeshes = collector.collectMeshes();
+        // WASM PATH — Family-A pre-pass + job batches (SAB-safe, bytes in).
+        const collected = this.collectMeshesViaPrePass(buffer);
+        allMeshes = collected.meshes;
+        buildingRotation = collected.buildingRotation;
       }
 
       // NOTE: The sync path (<2MB) does not support sharedRtcOffset override.
@@ -1027,7 +747,10 @@ export class GeometryProcessor {
 
       // Process coordinate shifts
       this.coordinateHandler.processMeshesIncremental(allMeshes);
-      const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
+      const coordinateInfo = withBuildingRotation(
+        this.coordinateHandler.getFinalCoordinateInfo(),
+        buildingRotation,
+      );
 
       // Emit as single batch for immediate rendering
       yield {
@@ -1051,7 +774,6 @@ export class GeometryProcessor {
           options.sharedRtcOffset,
           options.existingSab,
           options.onEntityIndex,
-          options.useSingleController,
           options.wasmUrls,
         );
       } else {

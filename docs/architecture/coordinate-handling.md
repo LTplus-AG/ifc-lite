@@ -250,60 +250,36 @@ processMeshesIncremental(batch: MeshData[]): void {
 
 ### WASM APIs
 
-#### parseMeshesAsync
+The RTC offset is computed once by the pre-pass and then applied by every
+geometry batch. There is no separate "GPU geometry" entry point — meshes come
+out of `processGeometryBatch` already shifted into RTC-local coordinates.
+
+#### buildPrePassOnce
 
 ```typescript
-interface ParseMeshesOptions {
-    batchSize?: number;
-    onProgress?: (percent: number) => void;
-    onBatch?: (meshes: MeshData[], progress: Progress) => void;
-    onRtcOffset?: (offset: { x: number; y: number; z: number }) => void;
-    onComplete?: (stats: CompletionStats) => void;
-}
+const pre = api.buildPrePassOnce(bytes);
 
-interface CompletionStats {
-    totalMeshes: number;
-    totalVertices: number;
-    totalTriangles: number;
-    rtcOffset?: { x: number; y: number; z: number };
+// pre.needsShift  — true when the model has large coordinates needing RTC
+// pre.rtcOffset   — Float64Array [x, y, z] origin to subtract (or undefined)
+if (pre.needsShift && pre.rtcOffset) {
+    console.log('RTC origin:', pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2]);
 }
 ```
 
-#### parseToGpuGeometry (Sync)
+#### processGeometryBatch
+
+The pre-pass RTC offset and `needsShift` flag are passed straight into each
+batch call, so positions returned by `collection.get(i)` are already
+RTC-shifted (subtract was applied in WASM):
 
 ```typescript
-const gpuGeom = api.parseToGpuGeometry(ifcContent);
-
-// Check for RTC offset
-if (gpuGeom.hasRtcOffset) {
-    console.log('RTC applied:', {
-        x: gpuGeom.rtcOffsetX,
-        y: gpuGeom.rtcOffsetY,
-        z: gpuGeom.rtcOffsetZ
-    });
-}
-```
-
-#### parseToGpuGeometryAsync (Streaming)
-
-```typescript
-await api.parseToGpuGeometryAsync(ifcContent, {
-    batchSize: 25,
-    onBatch: (gpuGeom, progress) => {
-        // Each batch includes RTC offset
-        if (gpuGeom.hasRtcOffset) {
-            console.log('Batch RTC:', gpuGeom.rtcOffsetX, gpuGeom.rtcOffsetY, gpuGeom.rtcOffsetZ);
-        }
-        // Upload to GPU...
-        gpuGeom.free();
-    },
-    onComplete: (stats) => {
-        // Final stats include RTC
-        if (stats.rtcOffset) {
-            console.log('Final RTC:', stats.rtcOffset);
-        }
-    }
-});
+const collection = api.processGeometryBatch(
+    bytes, jobs, pre.unitScale,
+    pre.rtcOffset?.[0] ?? 0, pre.rtcOffset?.[1] ?? 0, pre.rtcOffset?.[2] ?? 0,
+    pre.needsShift,
+    pre.voidKeys, pre.voidCounts, pre.voidValues,
+    pre.styleIds, pre.styleColors,
+);
 ```
 
 ### TypeScript APIs
@@ -347,22 +323,24 @@ interface CoordinateInfo {
 
 ## Usage Patterns
 
-### Pattern 1: Full WASM Processing
+### Pattern 1: Streaming via GeometryProcessor
 
-When loading directly via WASM parser:
+The high-level `@ifc-lite/geometry` processor surfaces the RTC offset as a
+stream event before the first batch, then yields RTC-shifted meshes:
 
 ```typescript
-const api = new IfcAPI();
-const result = await api.parseMeshesAsync(content, {
-    onRtcOffset: (offset) => {
-        // Store for coordinate conversion
-        setRtcOffset(offset);
-    },
-    onBatch: (meshes, progress) => {
+const geometry = new GeometryProcessor();
+await geometry.init();
+
+for await (const event of geometry.processStreaming(buffer)) {
+    if (event.type === 'rtcOffset') {
+        // Store for coordinate conversion back to world space
+        setRtcOffset(event.rtcOffset);
+    } else if (event.type === 'batch') {
         // Meshes already have RTC applied
-        renderer.addMeshes(meshes);
+        renderer.addMeshes(event.meshes);
     }
-});
+}
 ```
 
 ### Pattern 2: Server Streaming
@@ -439,11 +417,10 @@ const distance = Math.sqrt(
 
 ```typescript
 // In WASM path
-api.parseMeshesAsync(content, {
-    onRtcOffset: (offset) => {
-        console.log('[RTC] WASM detected offset:', offset);
-    }
-});
+const pre = api.buildPrePassOnce(bytes);
+if (pre.needsShift && pre.rtcOffset) {
+    console.log('[RTC] WASM detected offset:', Array.from(pre.rtcOffset));
+}
 
 // In TypeScript path
 const info = handler.getCoordinateInfo();

@@ -1905,7 +1905,7 @@ export function useIfcLoader() {
         // risking corruption.
         const parserWasmApi = isNativeFileHandle(file) ? undefined : geometryProcessor.getApi();
         return new IfcParser().parseColumnar(buffer, {
-          wasmApi: parserWasmApi,
+          wasmApi: parserWasmApi ?? undefined,
           onSpatialReady: onPartialDataStore,
         });
       };
@@ -2032,34 +2032,12 @@ export function useIfcLoader() {
         // When the parser worker is in use, hand the geometry workers the
         // same SAB so we don't pay the file-bytes copy twice.
         const geometryView = sharedSource ? new Uint8Array(sharedSource) : new Uint8Array(buffer);
-        // Phase 2 of single-controller-rayon-design.md — opt-in via
-        // localStorage so we can A/B compare against the N-worker
-        // baseline without rolling out for everyone. Users (and the
-        // benchmark harness) flip this with:
-        //   localStorage.setItem('ifc-lite:single-controller', '1')
-        // and reload. Set to anything else (or unset) for the legacy
-        // N-worker path. Safe: if the threaded WASM bundle fails to
-        // load (no COI, Safari, etc.) the controller worker falls back
-        // to per-task serial execution within the controller itself
-        // (par_iter without an initialized pool).
-        const useSingleController = (() => {
-          try {
-            return typeof localStorage !== 'undefined'
-              && localStorage.getItem('ifc-lite:single-controller') === '1';
-          } catch {
-            return false;
-          }
-        })();
-        if (useSingleController) {
-          console.log('[useIfc] single-controller path enabled (Phase 2)');
-        }
         const geometryEvents = shouldUseDesktopStableWasmGeometry
           ? geometryProcessor.processStreaming(geometryView, undefined, dynamicBatchConfig)
           : geometryProcessor.processAdaptive(geometryView, {
               sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
               batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
               existingSab: sharedSource ?? undefined,
-              useSingleController,
               // Hand the streaming pre-pass's entity index to the parser
               // worker so it skips a duplicate ~10 s WASM scan. Safe even
               // when the parser falls back to main-thread (instance is

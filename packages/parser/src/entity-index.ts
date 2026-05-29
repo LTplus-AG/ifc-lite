@@ -4,6 +4,9 @@
 
 /**
  * Entity index builder - creates fast lookup structures
+ *
+ * @deprecated Legacy eager-parse helper. New code should use
+ * `scanIfcEntities()` plus `CompactEntityIndexBuilder`/`parseColumnar()`.
  */
 
 import type { EntityRef, EntityIndex } from './types.js';

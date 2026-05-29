@@ -35,7 +35,7 @@ import { IfcParser } from '@ifc-lite/parser';
 
 // WASM is loaded automatically
 const parser = new IfcParser();
-await parser.parse(buffer);
+await parser.parseColumnar(buffer);
 ```
 
 ### Manual Loading
@@ -212,41 +212,6 @@ type StreamEvent =
   | { type: 'complete' };
 ```
 
-## Zero-Copy Memory Access
-
-For optimal performance, you can access WASM memory directly:
-
-### Getting Raw Pointers
-
-```typescript
-interface ZeroCopyBuffer {
-  ptr: number;      // WASM memory pointer
-  len: number;      // Buffer length in bytes
-  asUint8Array(): Uint8Array;
-  asFloat32Array(): Float32Array;
-}
-
-// Get positions as zero-copy view
-const positions = api.getPositionsBuffer(expressId);
-const view = positions.asFloat32Array();
-
-// Upload directly to GPU
-device.queue.writeBuffer(gpuBuffer, 0, view);
-```
-
-### Memory Management
-
-```typescript
-// WASM memory can be accessed directly
-import { memory } from 'ifc-lite-wasm';
-
-// Create view into WASM memory
-const wasmMemory = new Uint8Array(memory.buffer);
-
-// Views become invalid after WASM memory grows
-// Always create fresh views before use
-```
-
 ## Error Handling
 
 WASM functions can throw errors:
@@ -293,18 +258,7 @@ for (let i = 0; i < meshes.length; i += 100) {
 }
 ```
 
-### 3. Use Zero-Copy Where Possible
-
-```typescript
-// Good: zero-copy buffer view
-const buffer = api.getPositionsBuffer(id);
-gpuQueue.writeBuffer(vbo, 0, buffer.asFloat32Array());
-
-// Avoid: copying to new array
-const positions = new Float32Array(api.getPositions(id));
-```
-
-### 4. Release Memory
+### 3. Release Memory
 
 ```typescript
 // Clean up when done

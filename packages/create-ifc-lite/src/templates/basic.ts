@@ -72,19 +72,19 @@ const buffer = nodeBuffer.buffer.slice(
 const parser = new IfcParser();
 
 console.log('Parsing IFC file...');
-parser.parse(buffer).then(result => {
+parser.parseColumnar(buffer).then(store => {
   console.log('\\nFile parsed successfully!');
-  console.log(\`  Entities: \${result.entityCount}\`);
+  console.log(\`  Entities: \${store.entityCount}\`);
+  console.log(\`  Schema: \${store.schemaVersion}\`);
 
   // Count by type
-  const typeCounts = new Map<string, number>();
-  for (const [id, entity] of result.entities) {
-    typeCounts.set(entity.type, (typeCounts.get(entity.type) || 0) + 1);
-  }
+  const typeCounts = [...store.entityIndex.byType.entries()]
+    .map(([type, ids]) => [type, ids.length] as const)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
 
   console.log('\\nTop entity types:');
-  const sorted = [...typeCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
-  for (const [type, count] of sorted) {
+  for (const [type, count] of typeCounts) {
     console.log(\`  \${type}: \${count}\`);
   }
 });

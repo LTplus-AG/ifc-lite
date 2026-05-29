@@ -31,12 +31,12 @@ describe('resolveWasmAssetPath', () => {
   it('resolves snippet asset requests inside the wasm pkg directory', () => {
     const assetPath = resolveWasmAssetPath(
       '/Users/test/node_modules/@ifc-lite/wasm',
-      '/wasm/snippets/wasm-bindgen-rayon-123/src/workerHelpers.js',
+      '/wasm/snippets/ifc-lite-wasm-abc123/src/helper.js',
     );
 
     assert.equal(
       assetPath,
-      '/Users/test/node_modules/@ifc-lite/wasm/pkg/snippets/wasm-bindgen-rayon-123/src/workerHelpers.js',
+      '/Users/test/node_modules/@ifc-lite/wasm/pkg/snippets/ifc-lite-wasm-abc123/src/helper.js',
     );
   });
 

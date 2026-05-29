@@ -4,6 +4,9 @@
 
 /**
  * Relationship extractor - extracts spatial structure and other relationships
+ *
+ * @deprecated Legacy eager `ParseResult` helper. Use the relationship graph on
+ * `IfcDataStore` returned by `parseColumnar()`.
  */
 
 import type { IfcEntity, Relationship } from './types.js';

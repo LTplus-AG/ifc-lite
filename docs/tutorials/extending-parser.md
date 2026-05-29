@@ -198,10 +198,9 @@ ProcessorRegistry.register(new CustomProfileProcessor());
 const router = new GeometryRouter();
 router.addProcessor(new CustomProfileProcessor());
 
-// Process geometry with custom processors
-const result = await parser.parse(buffer, {
-  geometryRouter: router
-});
+// Process metadata with the canonical columnar parser, then route custom
+// geometry through GeometryProcessor/Rust processors.
+const store = await parser.parseColumnar(buffer);
 ```
 
 ## Schema Extensions
@@ -224,9 +223,9 @@ const customEntity: EntityDefinition = {
 // Register
 SchemaRegistry.register(customEntity);
 
-// Now parser will recognize custom entities
-const result = await parser.parse(buffer);
-const customs = result.entities.filter(e => e.type === 'IFCCUSTOMELEMENT');
+// Schema extensions must be generated into the parser package before parsing.
+const store = await parser.parseColumnar(buffer);
+const customs = store.entityIndex.byType.get('IFCCUSTOMELEMENT') ?? [];
 ```
 
 ### Custom Property Extractors
@@ -349,7 +348,7 @@ interface IfcLitePlugin {
 
   // Lifecycle hooks
   onInit?(context: PluginContext): void;
-  onParse?(result: ParseResult): void;
+  onParse?(store: IfcDataStore): void;
   onGeometry?(meshes: Mesh[]): void;
   onRender?(renderer: Renderer): void;
   onDispose?(): void;
@@ -366,20 +365,11 @@ class AnalyticsPlugin implements IfcLitePlugin {
   name = 'analytics';
   version = '1.0.0';
 
-  onParse(result: ParseResult): void {
+  onParse(store: IfcDataStore): void {
     console.log('Parse statistics:', {
-      entities: result.entityCount,
-      schema: result.schema,
-      types: this.countTypes(result)
+      entities: store.entityCount,
+      schema: store.schema,
     });
-  }
-
-  private countTypes(result: ParseResult): Record<string, number> {
-    const counts: Record<string, number> = {};
-    for (const entity of result.entities) {
-      counts[entity.type] = (counts[entity.type] || 0) + 1;
-    }
-    return counts;
   }
 }
 ```
@@ -401,9 +391,9 @@ class PluginManager {
     }
   }
 
-  onParse(result: ParseResult): void {
+  onParse(store: IfcDataStore): void {
     for (const plugin of this.plugins) {
-      plugin.onParse?.(result);
+      plugin.onParse?.(store);
     }
   }
 
@@ -414,8 +404,8 @@ class PluginManager {
 const plugins = new PluginManager();
 plugins.register(new AnalyticsPlugin());
 
-const result = await parser.parse(buffer);
-plugins.onParse(result);
+const store = await parser.parseColumnar(buffer);
+plugins.onParse(store);
 ```
 
 ## Best Practices

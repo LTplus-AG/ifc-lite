@@ -54,11 +54,6 @@ packages/wasm/pkg/ifc-lite_bg.wasm
 packages/wasm/pkg/ifc-lite_bg.wasm.d.ts
 packages/wasm/pkg/ifc-lite.js
 packages/wasm/pkg/ifc-lite.d.ts
-packages/wasm-threaded/pkg/ifc-lite_bg.wasm
-packages/wasm-threaded/pkg/ifc-lite_bg.wasm.d.ts
-packages/wasm-threaded/pkg/ifc-lite.js
-packages/wasm-threaded/pkg/ifc-lite.d.ts
-packages/wasm-threaded/pkg/snippets/
 
 # Tauri/Claude temp files
 tmpclaude*

@@ -45,47 +45,21 @@
 //!   }
 //! });
 //! ```
-//!
-//! ## Zero-Copy Memory Access
-//!
-//! For optimal performance, mesh data can be accessed directly from WASM memory:
-//!
-//! ```javascript
-//! const positions = api.getPositionsBuffer(expressId);
-//! const view = positions.asFloat32Array();
-//!
-//! // Upload directly to GPU without copying
-//! device.queue.writeBuffer(gpuBuffer, 0, view);
-//! ```
 
 use wasm_bindgen::prelude::*;
-
-// Threading-only export. The `threading` Cargo feature pulls in
-// wasm-bindgen-rayon and exposes `initThreadPool` to JS so the
-// single-controller worker (Phase 2) can spin up an internal rayon
-// pool. The default (single-threaded) build omits this entirely so
-// the slim bundle stays slim.
-#[cfg(feature = "threading")]
-pub use wasm_bindgen_rayon::init_thread_pool;
 
 #[cfg(feature = "console_error_panic_hook")]
 pub use console_error_panic_hook::set_once as set_panic_hook;
 
 mod api;
-mod gpu_geometry;
 mod utils;
 mod zero_copy;
 
 pub use api::IfcAPI;
-pub use gpu_geometry::{
-    GpuGeometry, GpuInstancedGeometry, GpuInstancedGeometryCollection, GpuInstancedGeometryRef,
-    GpuMeshMetadata,
-};
 pub use utils::set_panic_hook as init_panic_hook;
 pub use zero_copy::{
-    get_memory, InstanceData, InstancedGeometry, InstancedMeshCollection, MeshCollection,
-    MeshDataJs, SymbolicCircle, SymbolicFillArea, SymbolicPolyline,
-    SymbolicRepresentationCollection, SymbolicText, ZeroCopyMesh,
+    get_memory, MeshCollection, MeshDataJs, SymbolicCircle, SymbolicFillArea, SymbolicPolyline,
+    SymbolicRepresentationCollection, SymbolicText,
 };
 
 /// Initialize the WASM module.

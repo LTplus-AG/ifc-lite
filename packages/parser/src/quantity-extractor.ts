@@ -4,6 +4,9 @@
 
 /**
  * Quantity extractor - extracts IfcElementQuantity sets and their values
+ *
+ * @deprecated Legacy eager `ParseResult` helper. Use
+ * `extractQuantitiesOnDemand(store, expressId)` with `parseColumnar()`.
  */
 
 import type { IfcEntity } from './types.js';

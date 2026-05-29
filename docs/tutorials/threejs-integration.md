@@ -375,50 +375,15 @@ if (result.coordinateInfo.hasLargeCoordinates) {
 |----------|------------|---------|
 | **Individual meshes** | Small models, need picking | Simple, per-entity control |
 | **Color batching** | Medium models (1k-10k entities) | Fewer draw calls |
-| **THREE.InstancedMesh** | Repeated elements (columns, furniture) | GPU instancing |
 | **LOD** | Large models | Reduce triangle count at distance |
 | **Frustum culling** | Large scenes | Only render visible geometry |
 
-### Using InstancedMesh for Repeated Elements
-
-```typescript
-import { GeometryProcessor, type InstancedGeometry } from '@ifc-lite/geometry';
-
-const processor = new GeometryProcessor();
-await processor.init();
-
-const buffer = new Uint8Array(await file.arrayBuffer());
-
-for await (const event of processor.processInstancedStreaming(buffer)) {
-  if (event.type === 'batch') {
-    for (const instanced of event.geometries) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(instanced.positions, 3));
-      geo.setAttribute('normal', new THREE.BufferAttribute(instanced.normals, 3));
-      geo.setIndex(new THREE.BufferAttribute(instanced.indices, 1));
-
-      const mat = new THREE.MeshStandardMaterial();
-      const mesh = new THREE.InstancedMesh(geo, mat, instanced.instance_count);
-
-      for (let i = 0; i < instanced.instance_count; i++) {
-        const inst = instanced.get_instance(i);
-        if (!inst) continue;
-
-        const matrix = new THREE.Matrix4().fromArray(inst.transform);
-        mesh.setMatrixAt(i, matrix);
-
-        const [r, g, b] = inst.color;
-        mesh.setColorAt(i, new THREE.Color(r, g, b));
-      }
-
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-
-      scene.add(mesh);
-    }
-  }
-}
-```
+> **Note:** the geometry engine expands mapped/repeated representations into
+> regular per-element meshes and the renderer batches them by colour — it does
+> not emit instance buffers, so there is no `processInstancedStreaming` API.
+> If you need true `THREE.InstancedMesh`, detect repeats yourself from the
+> emitted `MeshData` (e.g. hash positions/indices) and build the instances in
+> application code.
 
 ## Extracting IFC Object Data
 
@@ -452,8 +417,7 @@ The data store scans the raw IFC STEP text once and creates a columnar index for
 
 ```typescript
 import {
-  StepTokenizer,
-  ColumnarParser,
+  IfcParser,
   type IfcDataStore,
   extractEntityAttributesOnDemand,
   extractPropertiesOnDemand,
@@ -461,20 +425,7 @@ import {
 } from '@ifc-lite/parser';
 
 async function buildDataStore(buffer: ArrayBuffer): Promise<IfcDataStore> {
-  const tokenizer = new StepTokenizer(new Uint8Array(buffer));
-
-  const entityRefs = [];
-  for (const ref of tokenizer.scanEntities()) {
-    entityRefs.push({
-      expressId: ref.expressId,
-      type: ref.type,
-      byteOffset: ref.offset,
-      byteLength: ref.length,
-      lineNumber: ref.line,
-    });
-  }
-
-  return new ColumnarParser().parseLite(buffer, entityRefs);
+  return new IfcParser().parseColumnar(buffer);
 }
 ```
 

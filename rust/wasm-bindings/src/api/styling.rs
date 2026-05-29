@@ -4,130 +4,6 @@
 
 //! Styling, color extraction, and building rotation for IFC-Lite API
 
-/// Build style index: maps geometry express IDs to RGBA colors.
-///
-/// IFC4 defines two parallel mechanisms for coloring a geometric
-/// representation item. This walker handles both:
-///
-/// 1. `IfcStyledItem` chain — the traditional approach. `Item` points at a
-///    geometry item, `Styles` chains through IfcSurfaceStyle →
-///    IfcSurfaceStyleRendering → IfcColourRgb to a colour.
-///
-/// 2. `IfcIndexedColourMap` — the tessellated-face-set approach used by
-///    CATIA / 3DEXPERIENCE exports (see #663). `MappedTo` points at an
-///    IfcTessellatedFaceSet, `Colours` is an IfcColourRgbList, and `ColourIndex`
-///    is a per-face index into that list. For our purposes we pick the most
-///    common colour and assign it as the geometry's solid colour; true
-///    per-face colour rendering would need a richer mesh-data contract.
-///
-/// IfcIndexedColourMap entries shadow IfcStyledItem entries when both target
-/// the same geometry (rare, but CATIA never emits styled items so the two
-/// paths almost never collide in practice).
-pub(crate) fn build_geometry_style_index(
-    content: &str,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashMap<u32, [f32; 4]> {
-    build_geometry_style_indexes(content, decoder).colors
-}
-
-/// Per-geometry colour maps emitted by the style scan.
-///
-/// `colors` is the apparent rendering colour (DiffuseColour-with-fallback
-/// from IfcSurfaceStyleRendering, or the IfcIndexedColourMap dominant
-/// face colour). `shading_colors` carries the SurfaceColour separately,
-/// keyed by the same geometry id, *only* when it differs from `colors` —
-/// i.e. when the file authored a distinct DiffuseColour. Consumers that
-/// don't care (everything except the GLB exporter's "Shading" mode) can
-/// simply ignore `shading_colors`.
-pub(crate) struct GeometryStyleIndexes {
-    pub colors: rustc_hash::FxHashMap<u32, [f32; 4]>,
-    pub shading_colors: rustc_hash::FxHashMap<u32, [f32; 4]>,
-    /// Geometry IDs that had an `IfcStyledItem` directly authored on
-    /// them. Distinct from `colors` because the merge below also folds
-    /// in `IfcIndexedColourMap` dominant colours for geometries without
-    /// a styled item — once merged, the source is no longer
-    /// recoverable. PR #867 review (chatgpt-codex P2): the per-
-    /// triangle colour-map splitter in `gpu_meshes.rs` must defer to
-    /// IfcStyledItem when both are authored on the same face set.
-    pub styled_item_geoms: rustc_hash::FxHashSet<u32>,
-}
-
-/// Single-pass variant that also returns the per-geometry shading colour
-/// when the IfcSurfaceStyleRendering authored a distinct DiffuseColour.
-pub(crate) fn build_geometry_style_indexes(
-    content: &str,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> GeometryStyleIndexes {
-    use ifc_lite_core::EntityScanner;
-    use rustc_hash::FxHashMap;
-
-    let mut style_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    let mut shading_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    let mut styled_item_geoms: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    // Stash IfcIndexedColourMap results separately so the merge below can
-    // give IfcStyledItem unconditional precedence regardless of scan order
-    // — files where an IFCINDEXEDCOLOURMAP appears before its matching
-    // IFCSTYLEDITEM otherwise let the colour-map shadow the authored intent
-    // (CodeRabbit feedback on #669).
-    let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    let mut scanner = EntityScanner::new(content);
-
-    // One pass over all entities — branch on the relevant type names. Doing
-    // both walks in a single pass keeps the file scan cost the same as the
-    // pre-#663 single-mechanism implementation.
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        match type_name {
-            "IFCSTYLEDITEM" => {
-                let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) else { continue };
-
-                // IfcStyledItem: Item (ref to geometry), Styles (list of style refs), Name
-                let Some(geometry_id) = styled_item.get_ref(0) else { continue };
-
-                // Skip if we already have a styled-item color for this geometry
-                // (an earlier IfcStyledItem already won). IfcIndexedColourMap
-                // entries are kept in the side map and merged below with lower
-                // precedence than anything we put into `style_index` here.
-                if style_index.contains_key(&geometry_id) {
-                    continue;
-                }
-
-                let Some(styles_attr) = styled_item.get(1) else { continue };
-                if let Some((color, shading)) =
-                    extract_color_pair_from_styles(styles_attr, decoder)
-                {
-                    style_index.insert(geometry_id, color);
-                    styled_item_geoms.insert(geometry_id);
-                    if let Some(s) = shading {
-                        shading_index.insert(geometry_id, s);
-                    }
-                }
-            }
-            "IFCINDEXEDCOLOURMAP" => {
-                if let Some((geometry_id, color)) =
-                    extract_color_from_indexed_colour_map(id, start, end, decoder)
-                {
-                    colour_map_styles.entry(geometry_id).or_insert(color);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // Merge: IfcStyledItem (in `style_index`) wins unconditionally. Only
-    // geometries WITHOUT a styled-item entry pick up their colour-map colour.
-    // IfcIndexedColourMap has no rendering/shading distinction so it
-    // contributes nothing to `shading_index`.
-    for (geometry_id, color) in colour_map_styles {
-        style_index.entry(geometry_id).or_insert(color);
-    }
-
-    GeometryStyleIndexes {
-        colors: style_index,
-        shading_colors: shading_index,
-        styled_item_geoms,
-    }
-}
-
 /// Resolve the geometry ID + dominant colour from an `IfcIndexedColourMap`.
 ///
 /// Schema (IFC4):
@@ -151,93 +27,6 @@ pub(crate) fn extract_color_from_indexed_colour_map_span(
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<(u32, [f32; 4])> {
     extract_color_from_indexed_colour_map(id, start, end, decoder)
-}
-
-/// Full IfcIndexedColourMap payload: every authored colour + the per-
-/// triangle index list, so callers can split a mesh into colour groups
-/// instead of collapsing to a single dominant colour.
-///
-/// Used for issue #858 — `tessellation-with-individual-colors.ifc`
-/// authors a 12-triangle cube with three colours (red/green/yellow);
-/// the dominant-only path picked red and rendered the whole cube red.
-pub(crate) struct IndexedColourMapResolved {
-    /// Target IfcTessellatedFaceSet entity id.
-    pub geometry_id: u32,
-    /// Resolved RGBA palette. 1-based indexing per ISO 10303-21 — index 1
-    /// is `colours[0]`, etc.
-    pub colours: Vec<[f32; 4]>,
-    /// Per-triangle 1-based palette index. Same length as the face-set's
-    /// triangle list.
-    pub triangle_indices: Vec<u32>,
-}
-
-/// Span-based companion to [`extract_color_from_indexed_colour_map_span`]
-/// that returns the full per-triangle colour assignment rather than
-/// collapsing to a single dominant colour. Returns `None` when the map
-/// can't be resolved (bad references, empty index list, etc.).
-pub(crate) fn extract_full_indexed_colour_map_span(
-    id: u32,
-    start: usize,
-    end: usize,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<IndexedColourMapResolved> {
-    let entity = decoder.decode_at_with_id(id, start, end).ok()?;
-    let geometry_id = entity.get_ref(0)?;
-    let opacity = entity
-        .get(1)
-        .and_then(|a| a.as_float())
-        .map(|v| v as f32)
-        .unwrap_or(1.0)
-        .clamp(0.0, 1.0);
-    let colours_id = entity.get_ref(2)?;
-    let index_list = entity.get(3)?.as_list()?;
-    if index_list.is_empty() {
-        return None;
-    }
-
-    let colours_entity = decoder.decode_by_id(colours_id).ok()?;
-    let colour_list = colours_entity.get(0)?.as_list()?;
-    // Strict-mode resolution: any malformed entry collapses the whole
-    // map to `None` so the caller falls back to the dominant-colour
-    // path. PR #867 review (CodeRabbit Major) — `filter_map` previously
-    // silently dropped bad rows / negative indices, leaving the
-    // resolver returning a palette/index mapping that no longer
-    // matched the authored triangle count. The splitter would then
-    // emit fewer triangles than the source mesh instead of routing
-    // through the single-colour fallback. Reject the whole map up
-    // front so the contract `triangle_indices.len() == mesh.tris`
-    // holds whenever the resolver returns Some.
-    let mut colours: Vec<[f32; 4]> = Vec::with_capacity(colour_list.len());
-    for c in colour_list {
-        let rgb = c.as_list()?;
-        let r = rgb.first().and_then(|v| v.as_float())? as f32;
-        let g = rgb.get(1).and_then(|v| v.as_float())? as f32;
-        let b = rgb.get(2).and_then(|v| v.as_float())? as f32;
-        colours.push([r, g, b, opacity]);
-    }
-    if colours.is_empty() {
-        return None;
-    }
-
-    let mut triangle_indices: Vec<u32> = Vec::with_capacity(index_list.len());
-    for v in index_list {
-        let idx = v.as_int()?;
-        if idx <= 0 || (idx as usize) > colours.len() {
-            // Out-of-range / non-positive index ⇒ the entire map is
-            // structurally invalid; bail.
-            return None;
-        }
-        triangle_indices.push(idx as u32);
-    }
-    if triangle_indices.is_empty() {
-        return None;
-    }
-
-    Some(IndexedColourMapResolved {
-        geometry_id,
-        colours,
-        triangle_indices,
-    })
 }
 
 fn extract_color_from_indexed_colour_map(
@@ -286,109 +75,6 @@ fn extract_color_from_indexed_colour_map(
     let b = rgb_tuple.get(2).and_then(|v| v.as_float())? as f32;
 
     Some((geometry_id, [r, g, b, opacity.clamp(0.0, 1.0)]))
-}
-
-/// Build element style index: maps building element IDs to RGBA colors
-/// Follows: Element → IfcProductDefinitionShape → IfcShapeRepresentation → geometry items
-pub(crate) fn build_element_style_index(
-    content: &str,
-    geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashMap<u32, [f32; 4]> {
-    use ifc_lite_core::EntityScanner;
-    use rustc_hash::FxHashMap;
-
-    let mut element_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-
-    // Short-circuit: if no geometry has styles, skip the entire traversal.
-    // ~85-95% of IFC files have few styled items; for files with zero styles
-    // this avoids decoding every building element's representation chain.
-    if geometry_styles.is_empty() {
-        return element_styles;
-    }
-
-    let mut scanner = EntityScanner::new(content);
-
-    // Scan all building elements
-    while let Some((element_id, type_name, start, end)) = scanner.next_entity() {
-        // Check if this is a building element type
-        if !ifc_lite_core::has_geometry_by_name(type_name) {
-            continue;
-        }
-
-        // Decode the element
-        let element = match decoder.decode_at_with_id(element_id, start, end) {
-            Ok(entity) => entity,
-            Err(_) => continue,
-        };
-
-        // Building elements have Representation attribute at index 6
-        // IfcProduct: GlobalId, OwnerHistory, Name, Description, ObjectType, ObjectPlacement, Representation
-        let repr_id = match element.get_ref(6) {
-            Some(id) => id,
-            None => continue,
-        };
-
-        // Decode IfcProductDefinitionShape
-        let product_shape = match decoder.decode_by_id(repr_id) {
-            Ok(entity) => entity,
-            Err(_) => continue,
-        };
-
-        // IfcProductDefinitionShape: Name, Description, Representations (list)
-        // Attribute 2: Representations
-        let reprs_attr = match product_shape.get(2) {
-            Some(attr) => attr,
-            None => continue,
-        };
-
-        let reprs_list = match reprs_attr.as_list() {
-            Some(list) => list,
-            None => continue,
-        };
-
-        // Look through representations for geometry with styles
-        'repr_loop: for repr_item in reprs_list {
-            let shape_repr_id = match repr_item.as_entity_ref() {
-                Some(id) => id,
-                None => continue,
-            };
-
-            // Decode IfcShapeRepresentation
-            let shape_repr = match decoder.decode_by_id(shape_repr_id) {
-                Ok(entity) => entity,
-                Err(_) => continue,
-            };
-
-            // IfcShapeRepresentation: ContextOfItems, RepresentationIdentifier, RepresentationType, Items
-            // Attribute 3: Items (list of geometry items)
-            let items_attr = match shape_repr.get(3) {
-                Some(attr) => attr,
-                None => continue,
-            };
-
-            let items_list = match items_attr.as_list() {
-                Some(list) => list,
-                None => continue,
-            };
-
-            // Check each geometry item for a style
-            for geom_item in items_list {
-                let geom_id = match geom_item.as_entity_ref() {
-                    Some(id) => id,
-                    None => continue,
-                };
-
-                // Check if this geometry has a style, following MappedItem references if needed
-                if let Some(color) = find_color_for_geometry(geom_id, geometry_styles, decoder) {
-                    element_styles.insert(element_id, color);
-                    break 'repr_loop; // Found a color — stop all representation traversal
-                }
-            }
-        }
-    }
-
-    element_styles
 }
 
 /// Find color for a geometry item, following MappedItem references if needed.
@@ -672,11 +358,6 @@ pub(crate) struct PrePassData {
     /// IfcSurfaceStyleRendering.DiffuseColour with SurfaceColour fallback,
     /// or IfcIndexedColourMap dominant colour).
     pub geometry_styles: rustc_hash::FxHashMap<u32, [f32; 4]>,
-    /// Geometry ID → SurfaceColour, populated only when the file authored
-    /// a distinct DiffuseColour so it differs from `geometry_styles`.
-    /// Consumed by the GLB exporter's "Shading" colour source; renderers
-    /// and other exporters can ignore it.
-    pub geometry_shading_styles: rustc_hash::FxHashMap<u32, [f32; 4]>,
     /// Host element → opening elements (from IfcRelVoidsElement)
     pub void_index: rustc_hash::FxHashMap<u32, Vec<u32>>,
     /// FacetedBrep entity IDs for batch preprocessing
@@ -689,31 +370,6 @@ pub(crate) struct PrePassData {
     pub simple_jobs: Vec<(u32, usize, usize, ifc_lite_core::IfcType)>,
     /// Complex geometry jobs (windows, doors, furniture …)
     pub complex_jobs: Vec<(u32, usize, usize, ifc_lite_core::IfcType)>,
-    /// Element ID → list of material-based colors (from IfcRelAssociatesMaterial chain).
-    /// Used as fallback when a sub-mesh has no direct IfcStyledItem style.
-    pub element_material_styles: rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
-    /// Material layer buildup index (IfcMaterialLayerSetUsage → sliceable
-    /// layers). Elements here are eligible for per-layer sub-meshes even if
-    /// their geometry is a single swept solid. Held in an `Arc` so it can be
-    /// attached to the `GeometryRouter` without cloning the map.
-    pub material_layer_index: std::sync::Arc<ifc_lite_geometry::MaterialLayerIndex>,
-    /// Map from every emitted `IfcBuildingElementPart` whose parent has its own
-    /// `Representation` → parent element id. Captured during
-    /// `propagate_voids_to_parts` so the merge-layers toggle (#540) can skip
-    /// per-part meshes when the parent is sliceable.
-    pub part_to_parent: rustc_hash::FxHashMap<u32, u32>,
-    /// Geometry IDs that had an `IfcStyledItem` directly authored. Used by
-    /// the per-triangle IfcIndexedColourMap splitter to defer to the
-    /// styled-item colour when both mechanisms are authored on the same
-    /// face set. PR #867 review (chatgpt-codex P2).
-    pub styled_item_geoms: rustc_hash::FxHashSet<u32>,
-    /// Full per-face IfcIndexedColourMap payload keyed by face-set geometry
-    /// id. Populated only when the streaming / async render loop needs to
-    /// split a flat-shaded mesh into per-colour sub-meshes (issue #858).
-    /// `None` entry means "no colour map" (cheaper than an absent key for
-    /// the hot lookup); the splitter only fires when this map's
-    /// `triangle_indices` length matches the source mesh's triangle count.
-    pub indexed_colour_maps: rustc_hash::FxHashMap<u32, IndexedColourMapResolved>,
 }
 
 /// Single EntityScanner pass that collects everything needed before geometry
@@ -732,10 +388,6 @@ pub(crate) fn combined_pre_pass(
     let estimated_elements = content.len() / 2000;
 
     let mut geometry_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    // Sparse side-table populated only when IfcSurfaceStyleRendering
-    // authored a DiffuseColour distinct from SurfaceColour. Consumed by the
-    // GLB exporter's "Shading" colour source.
-    let mut geometry_shading_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     // IfcIndexedColourMap side-map (#663). Merged into `geometry_styles` after
     // the scan so IfcStyledItem keeps precedence regardless of scan order.
     let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
@@ -753,11 +405,6 @@ pub(crate) fn combined_pre_pass(
     let mut material_def_reprs: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     // IfcRelAssociatesMaterial: element_id → material_select_id
     let mut element_to_material: FxHashMap<u32, u32> = FxHashMap::default();
-    // PR #867: geometries with a direct IfcStyledItem (so the per-face
-    // colour-map splitter can defer to the styled colour), and the full
-    // per-face colour-map payload for the splitter itself.
-    let mut styled_item_geoms: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    let mut indexed_colour_maps: FxHashMap<u32, IndexedColourMapResolved> = FxHashMap::default();
 
     let mut scanner = EntityScanner::new(content);
 
@@ -769,21 +416,12 @@ pub(crate) fn combined_pre_pass(
                         // Normal IfcStyledItem with Item reference → geometry_styles
                         if !geometry_styles.contains_key(&geometry_id) {
                             if let Some(styles_attr) = styled_item.get(1) {
-                                if let Some((color, shading)) =
-                                    extract_color_pair_from_styles(styles_attr, decoder)
+                                if let Some(color) =
+                                    extract_color_from_styles(styles_attr, decoder)
                                 {
                                     geometry_styles.insert(geometry_id, color);
-                                    styled_item_geoms.insert(geometry_id);
-                                    if let Some(s) = shading {
-                                        geometry_shading_styles.insert(geometry_id, s);
-                                    }
                                 }
                             }
-                        } else {
-                            // Already-styled geometry — still record source so
-                            // the colour-map splitter knows to defer to the
-                            // styled colour (PR #867).
-                            styled_item_geoms.insert(geometry_id);
                         }
                     } else {
                         // Orphan IfcStyledItem (null Item) — material-based color
@@ -803,18 +441,6 @@ pub(crate) fn combined_pre_pass(
                     extract_color_from_indexed_colour_map(id, start, end, decoder)
                 {
                     colour_map_styles.entry(geometry_id).or_insert(color);
-                }
-                // ALSO collect the full per-face payload so the streaming /
-                // async render loops can split a flat-shaded mesh into per-
-                // colour sub-meshes (issue #858 / PR #867). Re-decoding is
-                // cheap (~µs) compared to the geometry pass that follows,
-                // and the dominant-colour fast path above caches the
-                // map's first decode under the hood so this is mostly
-                // a re-pull from the entity cache.
-                if let Some(resolved) =
-                    extract_full_indexed_colour_map_span(id, start, end, decoder)
-                {
-                    indexed_colour_maps.insert(resolved.geometry_id, resolved);
                 }
             }
             "IFCMATERIALDEFINITIONREPRESENTATION" | "IFCRELASSOCIATESMATERIAL" => {
@@ -893,9 +519,8 @@ pub(crate) fn combined_pre_pass(
     // (the `for (&element_id, colors) in &element_material_styles { … }`
     // block): fold each element's single resolved material colour into
     // `geometry_styles` keyed by the **element** express ID. Without this,
-    // the synchronous parse paths that go through `combined_pre_pass`
-    // (`parseMeshesAsync`, `parseMeshesSubset`, `buildPrePassOnce`) leave
-    // the colour unread — `resolve_element_color`'s element-id fallback
+    // the path that goes through `combined_pre_pass` (`buildPrePassOnce`)
+    // leaves the colour unread — `resolve_element_color`'s element-id fallback
     // finds nothing and material-chain-only elements render as the
     // per-type grey default on those APIs. The streaming path didn't
     // exhibit the bug because it folds entries inline.
@@ -905,31 +530,20 @@ pub(crate) fn combined_pre_pass(
         }
     }
 
-    // Scan IfcRelAssociatesMaterial → resolved LayerBuildup per element.
-    let material_layer_index = std::sync::Arc::new(
-        ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder),
-    );
-
     // Propagate voids from aggregate parents (IfcWall) to children (IfcBuildingElementPart)
-    // so that multilayer wall parts also get window/door cutouts. Also captures
-    // the part → parent map used by the merge-layers toggle (issue #540).
-    let part_to_parent =
-        ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
+    // so that multilayer wall parts also get window/door cutouts. The returned
+    // part→parent map is unused here (the merge-layers skip-set is rebuilt in
+    // gpu_meshes), but the call mutates `void_index` in place — keep it.
+    let _ = ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
 
     PrePassData {
         geometry_styles,
-        geometry_shading_styles,
         void_index,
         faceted_brep_ids,
         project_id,
         site_position,
         simple_jobs,
         complex_jobs,
-        element_material_styles,
-        material_layer_index,
-        part_to_parent,
-        styled_item_geoms,
-        indexed_colour_maps,
     }
 }
 
@@ -1118,20 +732,6 @@ fn extract_refs_from_list(entity: &ifc_lite_core::DecodedEntity, index: usize) -
         .unwrap_or_default()
 }
 
-/// Build element material styles by scanning the content for material-related entities.
-/// Standalone version for use in synchronous parse_meshes path (which doesn't use combined_pre_pass).
-pub(crate) fn build_element_material_styles_from_content(
-    content: &str,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> {
-    let (orphan_styled_items, material_def_reprs, element_to_material) =
-        collect_material_data(content, decoder);
-
-    let material_styles =
-        build_material_style_index(&material_def_reprs, &orphan_styled_items, decoder);
-    build_element_material_styles(&element_to_material, &material_styles, decoder)
-}
-
 /// Flatten a `material_id -> Vec<color>` map into `material_id -> color` by
 /// picking the first opaque color per material (falling back to the first
 /// color overall). Used to key layered sub-mesh colour lookups on material
@@ -1155,59 +755,6 @@ pub(crate) fn flatten_material_color_index(
         out.insert(mat_id, color);
     }
     out
-}
-
-/// Build a flat `material_id -> color` map from a fresh scan of `content`.
-/// Standalone variant for the synchronous parse_meshes path that can't share
-/// state with `combined_pre_pass`.
-pub(crate) fn build_material_color_index_from_content(
-    content: &str,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashMap<u32, [f32; 4]> {
-    let (orphan_styled_items, material_def_reprs, _element_to_material) =
-        collect_material_data(content, decoder);
-    let material_styles =
-        build_material_style_index(&material_def_reprs, &orphan_styled_items, decoder);
-    flatten_material_color_index(&material_styles)
-}
-
-/// Collect material-related data from an IFC content scan.
-/// Returns: (orphan_styled_items, material_def_reprs, element_to_material)
-///
-/// Shared between `combined_pre_pass` (which integrates collection into its
-/// single-pass loop) and `build_element_material_styles_from_content` (which
-/// needs a standalone scan for the synchronous parse_meshes path).
-fn collect_material_data(
-    content: &str,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> (
-    rustc_hash::FxHashMap<u32, [f32; 4]>,
-    rustc_hash::FxHashMap<u32, Vec<u32>>,
-    rustc_hash::FxHashMap<u32, u32>,
-) {
-    use ifc_lite_core::EntityScanner;
-    use rustc_hash::FxHashMap;
-
-    let mut orphan_styled_items: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    let mut material_def_reprs: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let mut element_to_material: FxHashMap<u32, u32> = FxHashMap::default();
-
-    let mut scanner = EntityScanner::new(content);
-
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        collect_material_entity(
-            id,
-            type_name,
-            start,
-            end,
-            decoder,
-            &mut orphan_styled_items,
-            &mut material_def_reprs,
-            &mut element_to_material,
-        );
-    }
-
-    (orphan_styled_items, material_def_reprs, element_to_material)
 }
 
 /// Process a single entity for material-related data collection.
@@ -1491,39 +1038,6 @@ pub(crate) fn extract_building_rotation_from_site(
     extract_rotation_from_placement(&top_level_placement, decoder)
 }
 
-/// Extract building rotation from IfcSite's top-level placement (scans file).
-/// Used by the synchronous parse_meshes path.
-pub(crate) fn extract_building_rotation(
-    content: &str,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<f64> {
-    use ifc_lite_core::EntityScanner;
-
-    let mut scanner = EntityScanner::new(content);
-
-    while let Some((site_id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCSITE" {
-            continue;
-        }
-        if let Ok(site_entity) = decoder.decode_at_with_id(site_id, start, end) {
-            let placement_attr = match site_entity.get(5) {
-                Some(attr) if !attr.is_null() => attr,
-                _ => continue,
-            };
-            let placement = match decoder.resolve_ref(placement_attr) {
-                Ok(Some(p)) => p,
-                _ => continue,
-            };
-            let top_level_placement = find_top_level_placement(&placement, decoder);
-            if let Some(rotation) = extract_rotation_from_placement(&top_level_placement, decoder) {
-                return Some(rotation);
-            }
-        }
-    }
-
-    None
-}
-
 /// Find the top-level placement (one with null parent)
 fn find_top_level_placement(
     placement: &ifc_lite_core::DecodedEntity,
@@ -1719,58 +1233,5 @@ END-ISO-10303-21;
         // Unrelated express ID — neither the wall nor any item in its rep.
         styles.insert(999, [0.5, 0.5, 0.5, 1.0]);
         assert_eq!(resolve_element_color(&wall, &styles, &mut decoder), None);
-    }
-}
-
-#[cfg(test)]
-mod indexed_colour_map_tests {
-    //! Issue #858 — `IfcIndexedColourMap` must surface every authored
-    //! colour, not just the dominant one. `extract_full_indexed_colour_map_span`
-    //! is the data-extraction half of the fix; `gpu_meshes.rs` consumes the
-    //! resolved struct to split a flat-shaded mesh into per-colour groups.
-    use super::extract_full_indexed_colour_map_span;
-    use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
-
-    /// Minimal IFC4 fixture: an `IfcTriangulatedFaceSet` with 12 triangles
-    /// + an `IfcIndexedColourMap` assigning 3 colours
-    /// (red / green / yellow). Matches the reporter's
-    /// `tessellation-with-individual-colors.ifc` structure.
-    const FIXTURE: &str = "ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('test'),'2;1');
-FILE_NAME('','2024-01-01T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#200=IFCCARTESIANPOINTLIST3D(((0.0,0.0,0.0),(1.0,0.0,0.0),(1.0,1.0,0.0),(0.0,1.0,0.0),(0.0,0.0,1.0),(1.0,0.0,1.0),(1.0,1.0,1.0),(0.0,1.0,1.0)));
-#201=IFCTRIANGULATEDFACESET(#200,$,.T.,((1,6,5),(1,2,6),(6,2,7),(7,2,3),(7,8,6),(6,8,5),(5,8,1),(1,8,4),(4,2,1),(2,4,3),(4,8,7),(7,3,4)),$);
-#202=IFCCOLOURRGBLIST(((1.0,0.0,0.0),(0.0,0.5,0.0),(1.0,1.0,0.0)));
-#203=IFCINDEXEDCOLOURMAP(#201,$,#202,(1,1,2,2,3,3,1,1,1,1,1,1));
-ENDSEC;
-END-ISO-10303-21;
-";
-
-    #[test]
-    fn extracts_three_colours_with_twelve_indices() {
-        let mut decoder = EntityDecoder::with_index(FIXTURE, build_entity_index(FIXTURE));
-        let mut scanner = EntityScanner::new(FIXTURE);
-        let mut resolved = None;
-        while let Some((id, name, start, end)) = scanner.next_entity() {
-            if name == "IFCINDEXEDCOLOURMAP" {
-                resolved = extract_full_indexed_colour_map_span(id, start, end, &mut decoder);
-                break;
-            }
-        }
-        let r = resolved.expect("colour map must resolve");
-        assert_eq!(r.geometry_id, 201);
-        assert_eq!(r.colours.len(), 3, "all three palette entries must surface");
-        assert_eq!(r.colours[0], [1.0, 0.0, 0.0, 1.0]);
-        assert_eq!(r.colours[1], [0.0, 0.5, 0.0, 1.0]);
-        assert_eq!(r.colours[2], [1.0, 1.0, 0.0, 1.0]);
-        assert_eq!(
-            r.triangle_indices,
-            vec![1, 1, 2, 2, 3, 3, 1, 1, 1, 1, 1, 1],
-            "per-triangle palette assignment must round-trip verbatim",
-        );
     }
 }

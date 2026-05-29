@@ -28,6 +28,7 @@ import { writeProperties } from './sections/properties.js';
 import { writeQuantities } from './sections/quantities.js';
 import { writeRelationships } from './sections/relationships.js';
 import { writeGeometry } from './sections/geometry.js';
+import { writeEntityIndex } from './sections/entity-index.js';
 
 export interface GeometryData {
   meshes: MeshData[];
@@ -101,6 +102,15 @@ export class BinaryCacheWriter {
       return writer.build();
     });
     sectionBuffers.push({ type: SectionType.Relationships, buffer: relationshipsBuffer });
+
+    if (dataStore.entityIndex) {
+      const entityIndexBuffer = this.writeSection(() => {
+        const writer = new BufferWriter();
+        writeEntityIndex(writer, dataStore.entityIndex!);
+        return writer.build();
+      });
+      sectionBuffers.push({ type: SectionType.EntityIndex, buffer: entityIndexBuffer });
+    }
 
     // Geometry section (optional)
     let totalVertices = 0;

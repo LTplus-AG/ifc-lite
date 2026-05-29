@@ -6,213 +6,14 @@
 //!
 //! Modern async/await API for parsing IFC files.
 
-mod debug;
 mod extract_profiles;
-mod georef;
 mod gpu_meshes;
 mod parsing;
 pub(crate) mod styling;
 mod symbolic;
-mod zero_copy_api;
 
-use crate::zero_copy::{MeshCollection, MeshDataJs};
-use ifc_lite_core::{EntityIndex, GeoReference, RtcOffset};
+use ifc_lite_core::EntityIndex;
 use wasm_bindgen::prelude::*;
-
-/// Georeferencing information exposed to JavaScript
-#[wasm_bindgen]
-#[derive(Debug, Clone)]
-pub struct GeoReferenceJs {
-    /// CRS name (e.g., "EPSG:32632")
-    #[wasm_bindgen(skip)]
-    pub crs_name: Option<String>,
-    /// Eastings (X offset)
-    pub eastings: f64,
-    /// Northings (Y offset)
-    pub northings: f64,
-    /// Orthogonal height (Z offset)
-    pub orthogonal_height: f64,
-    /// X-axis abscissa (cos of rotation)
-    pub x_axis_abscissa: f64,
-    /// X-axis ordinate (sin of rotation)
-    pub x_axis_ordinate: f64,
-    /// Scale factor
-    pub scale: f64,
-}
-
-#[wasm_bindgen]
-impl GeoReferenceJs {
-    /// Get CRS name
-    #[wasm_bindgen(getter, js_name = crsName)]
-    pub fn crs_name(&self) -> Option<String> {
-        self.crs_name.clone()
-    }
-
-    /// Get rotation angle in radians
-    #[wasm_bindgen(getter)]
-    pub fn rotation(&self) -> f64 {
-        self.x_axis_ordinate.atan2(self.x_axis_abscissa)
-    }
-
-    /// Transform local coordinates to map coordinates
-    #[wasm_bindgen(js_name = localToMap)]
-    pub fn local_to_map(&self, x: f64, y: f64, z: f64) -> Vec<f64> {
-        let cos_r = self.x_axis_abscissa;
-        let sin_r = self.x_axis_ordinate;
-        let s = self.scale;
-
-        let e = s * (cos_r * x - sin_r * y) + self.eastings;
-        let n = s * (sin_r * x + cos_r * y) + self.northings;
-        let h = z + self.orthogonal_height;
-
-        vec![e, n, h]
-    }
-
-    /// Transform map coordinates to local coordinates
-    #[wasm_bindgen(js_name = mapToLocal)]
-    pub fn map_to_local(&self, e: f64, n: f64, h: f64) -> Vec<f64> {
-        let cos_r = self.x_axis_abscissa;
-        let sin_r = self.x_axis_ordinate;
-        let inv_scale = if self.scale.abs() < f64::EPSILON {
-            1.0
-        } else {
-            1.0 / self.scale
-        };
-
-        let dx = e - self.eastings;
-        let dy = n - self.northings;
-
-        let x = inv_scale * (cos_r * dx + sin_r * dy);
-        let y = inv_scale * (-sin_r * dx + cos_r * dy);
-        let z = h - self.orthogonal_height;
-
-        vec![x, y, z]
-    }
-
-    /// Get 4x4 transformation matrix (column-major for WebGL)
-    #[wasm_bindgen(js_name = toMatrix)]
-    pub fn to_matrix(&self) -> Vec<f64> {
-        let cos_r = self.x_axis_abscissa;
-        let sin_r = self.x_axis_ordinate;
-        let s = self.scale;
-
-        vec![
-            s * cos_r,
-            s * sin_r,
-            0.0,
-            0.0,
-            -s * sin_r,
-            s * cos_r,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            self.eastings,
-            self.northings,
-            self.orthogonal_height,
-            1.0,
-        ]
-    }
-}
-
-impl From<GeoReference> for GeoReferenceJs {
-    fn from(geo: GeoReference) -> Self {
-        Self {
-            crs_name: geo.crs_name,
-            eastings: geo.eastings,
-            northings: geo.northings,
-            orthogonal_height: geo.orthogonal_height,
-            x_axis_abscissa: geo.x_axis_abscissa,
-            x_axis_ordinate: geo.x_axis_ordinate,
-            scale: geo.scale,
-        }
-    }
-}
-
-/// RTC offset information exposed to JavaScript
-#[wasm_bindgen]
-#[derive(Debug, Clone, Default)]
-pub struct RtcOffsetJs {
-    /// X offset (subtracted from positions)
-    pub x: f64,
-    /// Y offset
-    pub y: f64,
-    /// Z offset
-    pub z: f64,
-}
-
-#[wasm_bindgen]
-impl RtcOffsetJs {
-    /// Check if offset is significant (>10km)
-    #[wasm_bindgen(js_name = isSignificant)]
-    pub fn is_significant(&self) -> bool {
-        const THRESHOLD: f64 = 10000.0;
-        self.x.abs() > THRESHOLD || self.y.abs() > THRESHOLD || self.z.abs() > THRESHOLD
-    }
-
-    /// Convert local coordinates to world coordinates
-    #[wasm_bindgen(js_name = toWorld)]
-    pub fn to_world(&self, x: f64, y: f64, z: f64) -> Vec<f64> {
-        vec![x + self.x, y + self.y, z + self.z]
-    }
-}
-
-impl From<RtcOffset> for RtcOffsetJs {
-    fn from(offset: RtcOffset) -> Self {
-        Self {
-            x: offset.x,
-            y: offset.y,
-            z: offset.z,
-        }
-    }
-}
-
-/// Statistics tracking for geometry parsing
-#[derive(Default)]
-struct GeometryStats {
-    total: u32,
-    success: u32,
-    decode_failed: u32,
-    no_representation: u32,
-    process_failed: u32,
-    empty_mesh: u32,
-    outlier_filtered: u32,
-}
-
-/// Mesh collection with RTC offset for large coordinates
-#[wasm_bindgen]
-pub struct MeshCollectionWithRtc {
-    meshes: MeshCollection,
-    rtc_offset: RtcOffsetJs,
-}
-
-#[wasm_bindgen]
-impl MeshCollectionWithRtc {
-    /// Get the mesh collection
-    #[wasm_bindgen(getter)]
-    pub fn meshes(&self) -> MeshCollection {
-        self.meshes.clone()
-    }
-
-    /// Get the RTC offset
-    #[wasm_bindgen(getter, js_name = rtcOffset)]
-    pub fn rtc_offset(&self) -> RtcOffsetJs {
-        self.rtc_offset.clone()
-    }
-
-    /// Get number of meshes
-    #[wasm_bindgen(getter)]
-    pub fn length(&self) -> usize {
-        self.meshes.len()
-    }
-
-    /// Get mesh at index
-    pub fn get(&self, index: usize) -> Option<MeshDataJs> {
-        self.meshes.get(index)
-    }
-}
 
 /// Main IFC-Lite API
 #[wasm_bindgen]
@@ -238,7 +39,7 @@ pub struct IfcAPI {
     /// under concurrent `&self` access.
     cached_entity_index: std::sync::Mutex<Option<std::sync::Arc<EntityIndex>>>,
 
-    /// When `true`, the `parseMeshes*` family suppresses geometry emission for
+    /// When `true`, `processGeometryBatch` suppresses geometry emission for
     /// every `IfcBuildingElementPart` whose `IfcRelAggregates` parent (a) has
     /// its own `Representation` and (b) is marked `Sliceable` in
     /// `MaterialLayerIndex`. The parent wall's single solid then carries the
@@ -249,8 +50,7 @@ pub struct IfcAPI {
     /// without locking — all parse paths read it once at the top.
     merge_layers: std::sync::atomic::AtomicBool,
 
-    /// Lazily-built skip set used by `processGeometryBatch` and
-    /// `processGeometryBatchParallel` when `merge_layers` is on. The set
+    /// Lazily-built skip set used by `processGeometryBatch` when `merge_layers` is on. The set
     /// holds every `IfcBuildingElementPart` express ID whose parent wall
     /// (a) has its own `Representation` and (b) is sliceable in
     /// `MaterialLayerIndex` — i.e. the parts that should be suppressed
@@ -364,17 +164,15 @@ impl IfcAPI {
 
     /// Toggle the "render multilayer walls as a single solid" mode (issue #540).
     ///
-    /// When `enabled` is `true`, every subsequent `parseMeshes*` call will
-    /// suppress geometry emission for `IfcBuildingElementPart` entities whose
-    /// `IfcRelAggregates` parent wall is sliceable (has an
+    /// When `enabled` is `true`, every subsequent `processGeometryBatch` call
+    /// will suppress geometry emission for `IfcBuildingElementPart` entities
+    /// whose `IfcRelAggregates` parent wall is sliceable (has an
     /// `IfcMaterialLayerSetUsage`) AND has its own `Representation`. The
     /// parent wall keeps its per-layer sub-mesh colouring, so the visual
     /// result is the same as the layered render but with one mesh per wall
     /// instead of one per layer part — much cheaper for both CPU and GPU.
     ///
-    /// Default is `false`. Pass `true` before calling `parseMeshes`,
-    /// `parseMeshesSubset`, `parseMeshesAsync`, `parseMeshesInstanced`, or
-    /// `parseMeshesInstancedAsync`.
+    /// Default is `false`. Pass `true` before calling `processGeometryBatch`.
     #[wasm_bindgen(js_name = setMergeLayers)]
     pub fn set_merge_layers(&self, enabled: bool) {
         self.merge_layers
@@ -399,7 +197,7 @@ impl IfcAPI {
     }
 
     /// Get or lazily build the cached parts-to-skip set used by
-    /// `processGeometryBatch` and `processGeometryBatchParallel` when the
+    /// `processGeometryBatch` when the
     /// merge-layers toggle is on. Two full-file scans (`MaterialLayerIndex`
     /// + `propagate_voids_to_parts`) are amortised across every batch on
     /// the same content; first-call cost ~one IFC re-scan, subsequent

@@ -55,7 +55,7 @@ apps/desktop/
 ├── src-tauri/
 │   ├── src/
 │   │   ├── commands/       # Tauri IPC commands
-│   │   │   ├── ifc.rs      # parse_ifc_buffer, get_geometry
+│   │   │   ├── ifc.rs      # get_geometry, get_geometry_streaming
 │   │   │   ├── cache.rs    # Binary caching system
 │   │   │   └── file_dialog.rs
 │   │   └── lib.rs          # Tauri app setup
@@ -71,8 +71,7 @@ The desktop app exposes these Tauri commands to the frontend:
 
 | Command | Description |
 |---------|-------------|
-| `parse_ifc_buffer` | Parse IFC with native multi-threading (Rayon) |
-| `get_geometry` | Process geometry in parallel batches |
+| `get_geometry` | Process geometry in parallel batches (native Rayon multi-threading) |
 | `get_geometry_streaming` | Stream geometry progressively to the renderer |
 | `open_ifc_file` | Native file dialog for opening IFC files |
 | `get_cached` / `set_cached` | Binary cache for instant reload of previously opened files |

@@ -15,6 +15,7 @@ import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'node:assert/strict';
 import { initSync, IfcAPI } from '../packages/wasm/pkg/ifc-lite.js';
+import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
@@ -168,7 +169,7 @@ function testFile(filePath, options = {}) {
 
   try {
     const content = readFileSync(filePath, 'utf-8');
-    const collection = api.parseMeshes(content);
+    const collection = parseMeshesViaPrePass(api, content);
 
     try {
       const currentStats = extractGeometryStats(collection);

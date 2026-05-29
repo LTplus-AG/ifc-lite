@@ -45,9 +45,6 @@ const SPACE_LIKE_SPATIAL_TYPE_SET = new Set<IfcTypeEnum>(SPACE_LIKE_SPATIAL_TYPE
 const SPATIAL_STRUCTURE_TYPE_NAME_SET = new Set<string>(
   SPATIAL_STRUCTURE_TYPE_ENUMS.map((type) => IfcTypeEnumToString(type)),
 );
-const BUILDING_LIKE_SPATIAL_TYPE_NAME_SET = new Set<string>(
-  BUILDING_LIKE_SPATIAL_TYPE_ENUMS.map((type) => IfcTypeEnumToString(type)),
-);
 
 export function isSpatialStructureType(typeEnum: IfcTypeEnum): boolean {
   return SPATIAL_STRUCTURE_TYPE_SET.has(typeEnum);
@@ -60,11 +57,6 @@ export function isSpatialStructureTypeName(typeName: string | null | undefined):
 
 export function isBuildingLikeSpatialType(typeEnum: IfcTypeEnum): boolean {
   return BUILDING_LIKE_SPATIAL_TYPE_SET.has(typeEnum);
-}
-
-export function isBuildingLikeSpatialTypeName(typeName: string | null | undefined): boolean {
-  if (!typeName) return false;
-  return BUILDING_LIKE_SPATIAL_TYPE_NAME_SET.has(typeName);
 }
 
 export function isStoreyLikeSpatialType(typeEnum: IfcTypeEnum): boolean {

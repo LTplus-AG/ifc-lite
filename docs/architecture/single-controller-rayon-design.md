@@ -441,23 +441,19 @@ Decoder cost dominates and decoding is inherently serial-friendly
 (can't escape SAB byte access). Option 1 was abandoned before
 implementation based on the math.
 
-### What the threaded build IS still good for (kept as latent
-infrastructure)
+### Update: the threaded infrastructure was removed
 
-- The threaded WASM build target (`packages/wasm-threaded/pkg/`) and
-  `packages/wasm-threaded` workspace package stay in the repo. They
-  are unused by default (single-thread bundle is the only one the
-  viewer imports today) but available behind the
-  `localStorage['ifc-lite:single-controller']` flag for future
-  experiments where the workload may be CPU-bound (e.g. WebGPU
-  compute-shader fallback, batch geometry simplification, BIM ML).
-- The microbenchmark function (`benchmarkPureCpuParallelism`) stays
-  as a re-runnable verification harness for future contributors who
-  want to confirm the runtime is still healthy before investing in a
-  rayon-based optimization.
-- The full RUSTFLAGS recipe + Cargo configuration is in
-  `.cargo/config.toml` + `scripts/build-wasm.sh` and serves as
-  reference for any future thread-enabled WASM work.
+The threaded/single-controller path stayed disabled-by-default and then
+broke to build once the Manifold C++ CSG kernel landed (its objects
+can't link into a `--shared-memory` bundle). It was deleted in full:
+the `packages/wasm-threaded` workspace package, the `threading` Cargo
+feature + `wasm-bindgen-rayon` dependency, `process_geometry_batch_parallel`,
+`benchmarkPureCpuParallelism`, `geometry-controller.worker.ts`, and the
+`localStorage['ifc-lite:single-controller']` gate. The N independent Web
+Workers (one slim single-thread WASM instance each) are the single
+browser parallelism strategy. This doc is retained only as a record of
+the exploration; re-attempting the path requires reviving that
+infrastructure (and an atomics-compatible Manifold wasm build first).
 
 ### Realistic next-step paths
 

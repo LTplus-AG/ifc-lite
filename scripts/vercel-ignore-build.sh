@@ -63,7 +63,6 @@ RELEVANT=(
   'packages/**/src/**'
   'packages/**/package.json'
   'packages/wasm/**'
-  'packages/wasm-threaded/**'
   # Workspace + tooling config.
   'package.json'
   'pnpm-lock.yaml'

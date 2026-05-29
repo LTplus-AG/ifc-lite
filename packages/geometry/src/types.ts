@@ -35,38 +35,6 @@ export interface Vec3 {
   z: number;
 }
 
-/**
- * Instance data for instanced rendering
- */
-export interface InstanceData {
-  expressId: number;
-  transform: Float32Array; // 16 floats (4x4 matrix, column-major)
-  color: [number, number, number, number]; // RGBA
-}
-
-/**
- * Instanced geometry - one geometry definition with multiple instances
- * Reduces draw calls by grouping identical geometries with different transforms
- */
-export interface InstancedGeometry {
-  geometryId: number; // Hash of geometry content
-  positions: Float32Array; // [x,y,z, x,y,z, ...]
-  normals: Float32Array; // [nx,ny,nz, ...]
-  indices: Uint32Array; // Triangle indices
-  instance_count: number; // WASM getter - number of instances
-  get_instance(index: number): InstanceData | null; // WASM method - get instance at index
-}
-
-/**
- * Collection of instanced geometries
- */
-export interface InstancedMeshCollection {
-  length: number;
-  totalGeometries: number;
-  totalInstances: number;
-  get(index: number): InstancedGeometry | null;
-}
-
 export interface AABB {
   min: Vec3;
   max: Vec3;

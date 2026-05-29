@@ -7,7 +7,7 @@
 //! Lazily decode IFC entities from byte offsets without loading entire file into memory.
 
 use crate::error::{Error, Result};
-use crate::parser::parse_entity;
+use crate::parser::{parse_entity, EntityScanner};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -15,69 +15,21 @@ use std::sync::Arc;
 /// Pre-built entity index type
 pub type EntityIndex = FxHashMap<u32, (usize, usize)>;
 
-/// Build entity index from content - O(n) scan using SIMD-accelerated search
-/// Returns index mapping entity IDs to byte offsets
+/// Build an entity index from content.
+///
+/// This intentionally shares `EntityScanner`'s HEADER skipping and quoted-string
+/// semantics so scan iteration and decoder lookup cannot disagree on malformed
+/// headers or semicolons embedded inside STEP strings.
 #[inline]
 pub fn build_entity_index(content: &str) -> EntityIndex {
-    let bytes = content.as_bytes();
-    let len = bytes.len();
-
-    // Pre-allocate with estimated capacity (roughly 1 entity per 50 bytes)
-    let estimated_entities = len / 50;
+    let estimated_entities = content.len() / 50;
     let mut index = FxHashMap::with_capacity_and_hasher(estimated_entities, Default::default());
-
-    let mut pos = 0;
-
-    while pos < len {
-        // Find next '#' using SIMD-accelerated search
-        let remaining = &bytes[pos..];
-        let hash_offset = match memchr::memchr(b'#', remaining) {
-            Some(offset) => offset,
-            None => break,
-        };
-
-        let start = pos + hash_offset;
-        pos = start + 1;
-
-        // Parse entity ID (inline for speed)
-        let id_start = pos;
-        while pos < len && bytes[pos].is_ascii_digit() {
-            pos += 1;
-        }
-        let id_end = pos;
-
-        // Skip whitespace before '=' (handles both `#45=` and `#45 = ` formats)
-        while pos < len && bytes[pos].is_ascii_whitespace() {
-            pos += 1;
-        }
-
-        if id_end > id_start && pos < len && bytes[pos] == b'=' {
-            // Fast integer parsing without allocation
-            let id = parse_u32_inline(bytes, id_start, id_end);
-
-            // Find end of entity (;) using SIMD
-            let entity_content = &bytes[pos..];
-            if let Some(semicolon_offset) = memchr::memchr(b';', entity_content) {
-                pos += semicolon_offset + 1; // Include semicolon
-                index.insert(id, (start, pos));
-            } else {
-                break; // No semicolon found, malformed
-            }
-        }
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, _type_name, start, end)) = scanner.next_entity() {
+        index.insert(id, (start, end));
     }
 
     index
-}
-
-/// Fast u32 parsing without string allocation
-#[inline]
-fn parse_u32_inline(bytes: &[u8], start: usize, end: usize) -> u32 {
-    let mut result: u32 = 0;
-    for &byte in &bytes[start..end] {
-        let digit = byte.wrapping_sub(b'0');
-        result = result.wrapping_mul(10).wrapping_add(digit as u32);
-    }
-    result
 }
 
 /// Entity decoder for lazy parsing - uses Arc for efficient cache sharing
@@ -317,10 +269,7 @@ impl<'a> EntityDecoder<'a> {
     /// For a typical 100K-entry cache × 9 rayon tasks = 900K atomics
     /// total, ~90 ms wall (incurred ONCE at task setup; the parallel
     /// hot path then runs lock-free against the populated cache).
-    pub fn inject_shared_cache(
-        &mut self,
-        shared: &FxHashMap<u32, Arc<DecodedEntity>>,
-    ) {
+    pub fn inject_shared_cache(&mut self, shared: &FxHashMap<u32, Arc<DecodedEntity>>) {
         self.cache.reserve(shared.len());
         for (&id, entity) in shared.iter() {
             self.cache.insert(id, Arc::clone(entity));
@@ -340,11 +289,9 @@ impl<'a> EntityDecoder<'a> {
             return Ok(Arc::clone(arc));
         }
         let _ = self.decode_at(start, end)?;
-        Ok(Arc::clone(
-            self.cache
-                .get(&id)
-                .ok_or_else(|| Error::parse(0, "decode_at didn't populate cache".to_string()))?,
-        ))
+        Ok(Arc::clone(self.cache.get(&id).ok_or_else(|| {
+            Error::parse(0, "decode_at didn't populate cache".to_string())
+        })?))
     }
 
     /// Drain the populated cache out of this decoder for sharing across
@@ -1038,6 +985,40 @@ mod tests {
         assert_eq!(decoder.cache_size(), 1);
         let cached = decoder.get_cached(5).unwrap();
         assert_eq!(cached.id, 5);
+    }
+
+    #[test]
+    fn test_build_entity_index_matches_scanner_header_semantics() {
+        let content = "ISO-10303-21;\nHEADER;\n\
+FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');\n\
+FILE_NAME('26-IFC\\X2\\00B1\\X0\\2#.ifc','2026-04-29T18:21:27',$,$,'CATIA','CATIA',$);\n\
+FILE_SCHEMA(('IFC4'));\nENDSEC;\n\
+DATA;\n\
+#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('guid2',$,$,$,'Wall; with semicolon',$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+        let index = build_entity_index(content);
+
+        assert_eq!(index.len(), 2);
+        assert!(!index.contains_key(&26));
+        let (start, end) = index.get(&2).copied().unwrap();
+        assert_eq!(
+            &content[start..end],
+            "#2=IFCWALL('guid2',$,$,$,'Wall; with semicolon',$,$,$);"
+        );
+    }
+
+    #[test]
+    fn test_decode_by_id_handles_quoted_semicolon_from_shared_index() {
+        let content = "#1=IFCWALL('guid',$,$,$,'Wall; with semicolon',$,$,$);\n";
+        let mut decoder = EntityDecoder::new(content);
+
+        let wall = decoder.decode_by_id(1).unwrap();
+
+        assert_eq!(wall.id, 1);
+        assert_eq!(wall.ifc_type, IfcType::IfcWall);
+        assert_eq!(wall.get_string(4), Some("Wall; with semicolon"));
     }
 
     #[test]

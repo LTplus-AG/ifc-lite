@@ -14,8 +14,7 @@
  */
 
 import {
-  StepTokenizer,
-  ColumnarParser,
+  IfcParser,
   type IfcDataStore,
   extractEntityAttributesOnDemand,
   extractPropertiesOnDemand,
@@ -74,34 +73,10 @@ export interface SpatialTreeNode {
 // ── buildDataStore ────────────────────────────────────────────────────
 
 /**
- * Scan the IFC STEP buffer and build the columnar data store.
- *
- * Pure-JS tokeniser — does NOT require WASM to run.
+ * Build the columnar data store through the canonical parser entrypoint.
  */
 export async function buildDataStore(buffer: ArrayBuffer): Promise<IfcDataStore> {
-  const uint8Buffer = new Uint8Array(buffer);
-  const tokenizer = new StepTokenizer(uint8Buffer);
-
-  const entityRefs: Array<{
-    expressId: number;
-    type: string;
-    byteOffset: number;
-    byteLength: number;
-    lineNumber: number;
-  }> = [];
-
-  for (const ref of tokenizer.scanEntities()) {
-    entityRefs.push({
-      expressId: ref.expressId,
-      type: ref.type,
-      byteOffset: ref.offset,
-      byteLength: ref.length,
-      lineNumber: ref.line,
-    });
-  }
-
-  const parser = new ColumnarParser();
-  return parser.parseLite(buffer, entityRefs);
+  return new IfcParser().parseColumnar(buffer);
 }
 
 // ── getEntityData ─────────────────────────────────────────────────────

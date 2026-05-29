@@ -305,8 +305,8 @@ fileInput.addEventListener('change', async () => {
 
     streamRoot = new TransformNode('stream-root', scene);
 
-    // The WASM `parseMeshesAsync` calls onBatch synchronously, so the entire
-    // for-await drains as microtasks — requestAnimationFrame never fires between
+    // `processStreaming` yields batches as microtasks, so the entire
+    // for-await can drain before requestAnimationFrame fires between
     // batches. We fix this by explicitly yielding to the next animation frame
     // inside each batch case. The main render loop then fires once per frame,
     // painting accumulated geometry before we process the next batch.

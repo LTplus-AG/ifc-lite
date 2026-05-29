@@ -333,25 +333,22 @@ class CustomProfileProcessor extends GeometryProcessor {
 ProcessorRegistry.register(new CustomProfileProcessor());
 ```
 
-## Instancing
+## Batching
 
-IFC often uses mapped representations for repeated elements. The renderer handles instancing automatically:
+The renderer automatically groups geometry by colour into a small number of
+batched draw calls (one `BatchedMesh` per colour group), so a model with many
+repeated elements still renders in a handful of draws — no manual step:
 
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { Renderer } from '@ifc-lite/renderer';
 
 const geometry = new GeometryProcessor();
 await geometry.init();
 
 const result = await geometry.process(new Uint8Array(buffer));
 
-// Load geometry - renderer automatically batches by color
-// and can use instancing for repeated elements
+// The renderer batches by colour when you load the meshes.
 renderer.loadGeometry(result);
-
-// For advanced instancing control:
-renderer.convertToInstanced(result.meshes);
 ```
 
 ## Performance Optimization

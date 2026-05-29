@@ -19,7 +19,6 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
-            commands::ifc::parse_ifc_buffer,
             commands::ifc::get_geometry,
             commands::ifc::get_geometry_streaming,
             commands::cache::get_cached,

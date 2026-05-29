@@ -1024,9 +1024,6 @@ importers:
         specifier: workspace:^
         version: link:../wasm
     devDependencies:
-      '@ifc-lite/wasm-threaded':
-        specifier: workspace:*
-        version: link:../wasm-threaded
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1363,12 +1360,6 @@ importers:
         version: 6.0.3
 
   packages/wasm: {}
-
-  packages/wasm-threaded:
-    devDependencies:
-      '@ifc-lite/wasm':
-        specifier: workspace:^
-        version: link:../wasm
 
 packages:
 

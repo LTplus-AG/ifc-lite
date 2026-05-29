@@ -100,8 +100,8 @@ flowchart TD
     import { IfcParser } from '@ifc-lite/parser';
 
     const parser = new IfcParser();
-    const result = await parser.parse(buffer);
-    console.log(`Found ${result.entityCount} entities`);
+    const store = await parser.parseColumnar(buffer);
+    console.log(`Found ${store.entityCount} entities`);
     ```
 
 === "3D viewer (WebGPU)"
@@ -125,9 +125,12 @@ flowchart TD
 
     const parser = new IfcParser();
     const store = await parser.parseColumnar(buffer);
-    const geometryResult = await geometry.process(new Uint8Array(buffer));
+    const meshes = [];
+    for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+      if (event.type === 'batch') meshes.push(...event.meshes);
+    }
 
-    renderer.loadGeometry(geometryResult);
+    renderer.loadGeometry(meshes);
     renderer.fitToView();
     renderer.render();
     ```

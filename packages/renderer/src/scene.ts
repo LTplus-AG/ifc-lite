@@ -6,7 +6,7 @@
  * Scene graph and mesh management
  */
 
-import type { Mesh, InstancedMesh, BatchedMesh, Vec3 } from './types.js';
+import type { Mesh, BatchedMesh, Vec3 } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderPipeline } from './pipeline.js';
 import { BATCH_CONSTANTS } from './constants.js';
@@ -48,7 +48,6 @@ function destroyGpuResources(
 
 export class Scene {
   private meshes: Mesh[] = [];
-  private instancedMeshes: InstancedMesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
   private buckets: Map<string, BatchBucket> = new Map();            // bucketKey -> consolidated bucket state
   private meshDataBucket: Map<MeshData, BatchBucket> = new Map();   // reverse lookup: MeshData -> owning bucket
@@ -108,24 +107,10 @@ export class Scene {
   }
 
   /**
-   * Add instanced mesh to scene
-   */
-  addInstancedMesh(mesh: InstancedMesh): void {
-    this.instancedMeshes.push(mesh);
-  }
-
-  /**
    * Get all meshes
    */
   getMeshes(): Mesh[] {
     return this.meshes;
-  }
-
-  /**
-   * Get all instanced meshes
-   */
-  getInstancedMeshes(): InstancedMesh[] {
-    return this.instancedMeshes;
   }
 
   /**
@@ -1575,23 +1560,10 @@ export class Scene {
   }
 
   /**
-   * Clear regular meshes only (used when converting to instanced rendering)
-   */
-  clearRegularMeshes(): void {
-    for (const mesh of this.meshes) destroyGpuResources(mesh);
-    this.meshes = [];
-  }
-
-  /**
    * Clear scene
    */
   clear(): void {
     for (const mesh of this.meshes) destroyGpuResources(mesh);
-    for (const mesh of this.instancedMeshes) {
-      mesh.vertexBuffer.destroy();
-      mesh.indexBuffer.destroy();
-      mesh.instanceBuffer.destroy();
-    }
     for (const batch of this.batchedMeshes) destroyGpuResources(batch);
     // Clear partial batch cache
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
@@ -1600,7 +1572,6 @@ export class Scene {
     this.destroyOverrideBatches();
     this.colorOverrides = null;
     this.meshes = [];
-    this.instancedMeshes = [];
     this.batchedMeshes = [];
     this.buckets.clear();
     this.meshDataBucket = new Map();

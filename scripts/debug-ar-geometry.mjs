@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { initSync, IfcAPI } from "../packages/wasm/pkg/ifc-lite.js";
+import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, "..");
@@ -37,7 +38,7 @@ console.log(`✅ File loaded (${(content.length / 1024 / 1024).toFixed(2)} MB)\n
 
 // Parse meshes
 console.log("🔧 Parsing meshes...");
-const collection = api.parseMeshes(content);
+const collection = parseMeshesViaPrePass(api, content);
 
 // Get RTC offset
 const rtcOffset = {

@@ -530,32 +530,6 @@ impl IfcAPI {
 }
 ```
 
-### Zero-Copy Buffers
-
-```rust
-/// Zero-copy buffer for GPU upload
-#[wasm_bindgen]
-pub struct ZeroCopyBuffer {
-    ptr: *const u8,
-    len: usize,
-}
-
-#[wasm_bindgen]
-impl ZeroCopyBuffer {
-    /// Get buffer pointer
-    #[wasm_bindgen(getter)]
-    pub fn ptr(&self) -> *const u8;
-
-    /// Get buffer length
-    #[wasm_bindgen(getter)]
-    pub fn len(&self) -> usize;
-
-    /// Get as Uint8Array view
-    #[wasm_bindgen]
-    pub fn as_uint8_array(&self) -> js_sys::Uint8Array;
-}
-```
-
 ---
 
 ## Building Documentation

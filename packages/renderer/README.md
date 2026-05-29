@@ -18,7 +18,10 @@ const renderer = new Renderer(canvas);
 const geometry = new GeometryProcessor();
 await Promise.all([renderer.init(), geometry.init()]);
 
-const meshes = await geometry.process(new Uint8Array(buffer));
+const meshes = [];
+for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+  if (event.type === 'batch') meshes.push(...event.meshes);
+}
 renderer.loadGeometry(meshes);
 renderer.requestRender();
 ```

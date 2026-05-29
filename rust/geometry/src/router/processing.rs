@@ -166,7 +166,9 @@ impl GeometryRouter {
 
                     // ── Tessellated path ──
                     // attr 0 = Coordinates (IfcCartesianPointList3D)
-                    IfcType::IfcTriangulatedFaceSet | IfcType::IfcPolygonalFaceSet => {
+                    IfcType::IfcTriangulatedFaceSet
+                    | IfcType::IfcTriangulatedIrregularNetwork
+                    | IfcType::IfcPolygonalFaceSet => {
                         if let Some(pt) = self.tessellated_first_vertex(&item, decoder) {
                             return Some(pt);
                         }
@@ -273,9 +275,9 @@ impl GeometryRouter {
             IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
                 self.brep_first_vertex(item, decoder)
             }
-            IfcType::IfcTriangulatedFaceSet | IfcType::IfcPolygonalFaceSet => {
-                self.tessellated_first_vertex(item, decoder)
-            }
+            IfcType::IfcTriangulatedFaceSet
+            | IfcType::IfcTriangulatedIrregularNetwork
+            | IfcType::IfcPolygonalFaceSet => self.tessellated_first_vertex(item, decoder),
             IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
                 let Some(shells_attr) = item.get(0) else {
                     return false;
@@ -368,6 +370,17 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
+        // IfcAlignment carries its directrix curve in a dedicated `Axis`
+        // attribute (IFC4X1) instead of (or in addition to) a normal
+        // IfcShapeRepresentation. Route those through the alignment
+        // processor before the standard representation walk, since the
+        // Representation is often `$` in practice.
+        if element.ifc_type == IfcType::IfcAlignment {
+            if let Some(mesh) = self.try_alignment_mesh(element, decoder)? {
+                return Ok(mesh);
+            }
+        }
+
         // Get representation (attribute 6 for most building elements)
         // IfcProduct: GlobalId, OwnerHistory, Name, Description, ObjectType, ObjectPlacement, Representation, Tag
         let representation_attr = element.get(6).ok_or_else(|| {
@@ -420,6 +433,7 @@ impl GeometryRouter {
                             | "CSG"
                             | "Clipping"
                             | "SurfaceModel"
+                            | "Surface3D"
                             | "Tessellation"
                             | "AdvancedSweptSolid"
                             | "AdvancedBrep"
@@ -457,6 +471,7 @@ impl GeometryRouter {
                             | "CSG"
                             | "Clipping"
                             | "SurfaceModel"
+                            | "Surface3D"
                             | "Tessellation"
                             | "MappedRepresentation"
                             | "AdvancedSweptSolid"
@@ -554,6 +569,7 @@ impl GeometryRouter {
                             | "CSG"
                             | "Clipping"
                             | "SurfaceModel"
+                            | "Surface3D"
                             | "Tessellation"
                             | "AdvancedSweptSolid"
                             | "AdvancedBrep"
@@ -588,6 +604,7 @@ impl GeometryRouter {
                             | "CSG"
                             | "Clipping"
                             | "SurfaceModel"
+                            | "Surface3D"
                             | "Tessellation"
                             | "MappedRepresentation"
                             | "AdvancedSweptSolid"
@@ -965,5 +982,33 @@ impl GeometryRouter {
         }
 
         Ok(mesh)
+    }
+
+    /// Run an `IfcAlignment` through the dedicated alignment processor, then
+    /// apply the standard unit scale + placement transform. Returns `None`
+    /// when the alignment has no recognisable directrix curve (the caller
+    /// falls back to normal representation processing).
+    fn try_alignment_mesh(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<Mesh>> {
+        let processor = match self.processors.get(&IfcType::IfcAlignment) {
+            Some(p) => Arc::clone(p),
+            None => return Ok(None),
+        };
+        let mut mesh = match processor.process(element, decoder, &self.schema) {
+            Ok(m) => m,
+            // Missing Axis or unparseable curve isn't fatal — fall back so
+            // the caller can still walk a normal representation if present.
+            Err(_) => return Ok(None),
+        };
+        if mesh.positions.is_empty() {
+            return Ok(None);
+        }
+        mesh.validate_indices();
+        self.scale_mesh(&mut mesh);
+        self.apply_placement(element, decoder, &mut mesh)?;
+        Ok(Some(mesh))
     }
 }

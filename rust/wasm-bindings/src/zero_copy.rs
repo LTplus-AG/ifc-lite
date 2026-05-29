@@ -1006,6 +1006,67 @@ impl SymbolicRepresentationCollection {
     pub fn add_fill(&mut self, fill: SymbolicFillArea) {
         self.fills.push(fill);
     }
+
+    /// Convert from the canonical `ifc_lite_processing::SymbolicData`
+    /// (issue #843 follow-up — full parity refactor). The WASM-side
+    /// extractor now delegates to the processing crate and converts the
+    /// result here so the browser and the HTTP server produce bit-
+    /// identical symbol streams from one canonical implementation.
+    pub fn from_data(data: ifc_lite_processing::SymbolicData) -> Self {
+        let mut collection = Self::with_capacity(data.polylines.len(), data.circles.len());
+        for p in data.polylines {
+            collection.add_polyline(SymbolicPolyline::new(
+                p.express_id,
+                p.ifc_type,
+                p.points,
+                p.closed,
+                p.world_y,
+                p.representation,
+            ));
+        }
+        for c in data.circles {
+            collection.add_circle(SymbolicCircle::new(
+                c.express_id,
+                c.ifc_type,
+                c.center_x,
+                c.center_y,
+                c.radius,
+                c.world_y,
+                c.start_angle,
+                c.end_angle,
+                c.representation,
+            ));
+        }
+        for t in data.texts {
+            collection.add_text(SymbolicText::new_styled(
+                t.express_id,
+                t.ifc_type,
+                t.x,
+                t.y,
+                t.dir_x,
+                t.dir_y,
+                t.height,
+                t.content,
+                t.alignment,
+                t.world_y,
+                t.color,
+                t.target_px,
+                t.representation,
+            ));
+        }
+        for f in data.fills {
+            collection.add_fill(SymbolicFillArea::new(
+                f.express_id,
+                f.ifc_type,
+                f.points,
+                f.holes_offsets,
+                f.fill_color,
+                f.world_y,
+                f.representation,
+            ));
+        }
+        collection
+    }
 }
 
 impl Default for SymbolicRepresentationCollection {

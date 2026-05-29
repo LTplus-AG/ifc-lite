@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/parser",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "IFC/STEP parser for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

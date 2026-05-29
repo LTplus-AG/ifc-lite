@@ -28,6 +28,8 @@ export function matchesCriteria(
       return matchesQuantity(criteria, globalId, provider);
     case 'classification':
       return matchesClassification(criteria, globalId, provider);
+    case 'model':
+      return matchesModel(criteria, globalId, provider);
     default:
       return false;
   }
@@ -200,4 +202,16 @@ function matchesClassification(
   }
 
   return false;
+}
+
+/** Match by federated model identifier */
+function matchesModel(
+  criteria: LensCriteria,
+  globalId: number,
+  provider: LensDataProvider,
+): boolean {
+  if (!criteria.modelId) return false;
+  if (!provider.getModelId) return false;
+
+  return provider.getModelId(globalId) === criteria.modelId;
 }

@@ -10,7 +10,7 @@
  *
  * Features:
  *   - Markers anchored to 3D objects — track correctly during orbit/pan/zoom
- *   - Color-coded by priority / status
+ *   - Color-coded by topic status
  *   - Click, hover callbacks
  *   - Continuous re-projection every frame via onCameraChange
  *   - Connector lines from marker to projected anchor point
@@ -28,12 +28,12 @@ const CONNECTOR_CLASS = 'bcf-overlay-connector';
 const ACTIVE_CLASS = 'bcf-overlay-active';
 const TOOLTIP_CLASS = 'bcf-overlay-tooltip';
 
-const PRIORITY_COLORS: Record<string, string> = {
-  high: '#f7768e',
-  critical: '#f7768e',
-  medium: '#ff9e64',
-  normal: '#ff9e64',
-  low: '#9ece6a',
+/** Pin and connector colors keyed by BCF topic status */
+const STATUS_COLORS: Record<string, string> = {
+  open: '#f7768e',
+  'in progress': '#e0af68',
+  resolved: '#9ece6a',
+  closed: '#565f89',
 };
 
 const STATUS_ICONS: Record<string, string> = {
@@ -258,7 +258,7 @@ export class BCFOverlayRenderer {
         }
 
         conn.style.display = '';
-        const color = this.getPriorityColor(marker.priority);
+        const color = this.getStatusColor(marker.status);
         conn.setAttribute('x1', String(markerX));
         conn.setAttribute('y1', String(markerY));
         conn.setAttribute('x2', String(anchorScreen.x));
@@ -331,8 +331,9 @@ export class BCFOverlayRenderer {
   }
 
   private updateMarkerInnerHTML(el: HTMLDivElement, marker: BCFMarker3D): void {
-    const color = this.getPriorityColor(marker.priority);
+    const color = this.getStatusColor(marker.status);
     const statusIcon = STATUS_ICONS[marker.status.toLowerCase()] ?? '●';
+    const priorityLabel = marker.priority ? ` · ${marker.priority}` : '';
 
     el.innerHTML = `
       <div class="bcf-marker-pin" style="--marker-color:${color};">
@@ -344,14 +345,14 @@ export class BCFOverlayRenderer {
           <span class="bcf-tooltip-title">${this.escapeHtml(marker.title)}</span>
         </div>
         <div class="bcf-tooltip-meta">
-          ${this.escapeHtml(marker.status)}${marker.commentCount > 0 ? ` · ${marker.commentCount} comment${marker.commentCount !== 1 ? 's' : ''}` : ''}
+          ${this.escapeHtml(marker.status)}${priorityLabel}${marker.commentCount > 0 ? ` · ${marker.commentCount} comment${marker.commentCount !== 1 ? 's' : ''}` : ''}
         </div>
       </div>
     `;
   }
 
-  private getPriorityColor(priority: string): string {
-    return PRIORITY_COLORS[priority.toLowerCase()] ?? '#7aa2f7';
+  private getStatusColor(status: string): string {
+    return STATUS_COLORS[status.toLowerCase()] ?? '#7aa2f7';
   }
 
   private escapeHtml(text: string): string {
@@ -407,7 +408,7 @@ export class BCFOverlayRenderer {
 
       .${ACTIVE_CLASS} .bcf-marker-pin {
         transform: rotate(-45deg) scale(1.25);
-        box-shadow: 0 0 0 4px rgba(122,162,247,0.35), 0 4px 16px rgba(0,0,0,0.4);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--marker-color, #7aa2f7) 35%, transparent), 0 4px 16px rgba(0,0,0,0.4);
         animation: bcf-pulse 1.8s ease-in-out infinite;
       }
 
@@ -485,8 +486,8 @@ export class BCFOverlayRenderer {
 
       /* Pulse animation for active marker */
       @keyframes bcf-pulse {
-        0%, 100% { box-shadow: 0 0 0 4px rgba(122,162,247,0.35), 0 4px 16px rgba(0,0,0,0.4); }
-        50% { box-shadow: 0 0 0 8px rgba(122,162,247,0.1), 0 4px 16px rgba(0,0,0,0.4); }
+        0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--marker-color, #7aa2f7) 35%, transparent), 0 4px 16px rgba(0,0,0,0.4); }
+        50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--marker-color, #7aa2f7) 10%, transparent), 0 4px 16px rgba(0,0,0,0.4); }
       }
     `;
     document.head.appendChild(style);

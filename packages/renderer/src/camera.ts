@@ -15,6 +15,7 @@ import { MathUtils } from './math.js';
 import { CameraControls, type CameraInternalState, type ProjectionMode } from './camera-controls.js';
 import { CameraAnimator } from './camera-animation.js';
 import { CameraProjection } from './camera-projection.js';
+import { pickFitPolicy, type Bounds3, type FitPolicy, type PickFitPolicyOptions } from './camera-fit-policy.js';
 
 export class Camera {
   private state: CameraInternalState;
@@ -183,6 +184,53 @@ export class Camera {
 
   async zoomExtent(min: Vec3, max: Vec3, duration = 300): Promise<void> {
     return this.animator.zoomExtent(min, max, duration);
+  }
+
+  /**
+   * Apply a `FitPolicy` snapshot to the camera without animation. Used by
+   * the post-load auto-fit where any in-flight tween would compete with
+   * the streaming-complete frame and produce a visible camera jump.
+   */
+  snapToFitPolicy(policy: FitPolicy): void {
+    this.state.camera.position = { ...policy.position };
+    this.state.camera.target = { ...policy.target };
+    this.state.camera.up = { ...policy.up };
+    this.updateMatrices();
+  }
+
+  /**
+   * Animate the camera to a `FitPolicy` pose. Used by the Home button so
+   * the transition matches the rest of the navigation tweens.
+   */
+  async applyFitPolicy(policy: FitPolicy, duration = 500): Promise<void> {
+    return this.animator.animateToWithUp(
+      { ...policy.position },
+      { ...policy.target },
+      { ...policy.up },
+      duration,
+    );
+  }
+
+  /**
+   * Convenience: pick + apply the adaptive fit policy for the given bounds
+   * in one call. The default behaviour delegates to `pickFitPolicy()` so
+   * callers don't have to thread the FOV through themselves.
+   */
+  fitBoundsAdaptive(
+    bounds: Bounds3,
+    options?: { animate?: boolean; duration?: number; viewportShortPx?: number },
+  ): FitPolicy {
+    const fitOpts: PickFitPolicyOptions = {
+      fovY: this.state.camera.fov,
+      viewportShortPx: options?.viewportShortPx,
+    };
+    const policy = pickFitPolicy(bounds, fitOpts);
+    if (options?.animate) {
+      void this.applyFitPolicy(policy, options.duration ?? 500);
+    } else {
+      this.snapToFitPolicy(policy);
+    }
+    return policy;
   }
 
   /**

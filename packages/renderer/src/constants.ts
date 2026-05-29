@@ -47,11 +47,18 @@ export const CAMERA_CONSTANTS = {
   /** Far plane multiplier of distance */
   FAR_DISTANCE_MULTIPLIER: 10,
 
-  // Gimbal lock prevention
-  /** Minimum phi angle to prevent gimbal lock at poles */
-  MIN_PHI: 0.15,
-  /** Maximum phi angle to prevent gimbal lock at poles */
-  MAX_PHI: Math.PI - 0.15,
+  // Polar angle constraints (gimbal-lock protection)
+  // Phi is clamped just off the two poles (±Y). camera.up stays world Y
+  // throughout, so the orbit math (sinφ in the tangent) is well-defined
+  // for any phi ∈ [MIN_PHI, π − MIN_PHI]. The full sphere minus the exact
+  // poles is reachable — top/bottom/front/back/left/right presets all fit
+  // inside this range without needing per-preset clamp overrides.
+  //
+  // Pattern matches yomotsu/camera-controls and Autodesk Viewer.
+  /** Minimum phi angle. Top preset uses this — keeps phi off the +Y pole. */
+  MIN_PHI: 0.01,
+  /** Maximum phi angle. Bottom preset uses this — keeps phi off the −Y pole. */
+  MAX_PHI: Math.PI - 0.01,
   /** Sin phi threshold for pole detection */
   POLE_THRESHOLD: 0.05,
 

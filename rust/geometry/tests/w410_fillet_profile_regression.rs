@@ -46,7 +46,26 @@ fn shoelace_area(points: &[Point2<f64>]) -> f64 {
 fn w410x60_arbitrary_closed_profile_with_fillet_arcs_matches_analytical_area() {
     // Profile lifted verbatim from duplex.ifc beam #36892 (one of six
     // W410x60 beams sharing the same profile type).
+    //
+    // duplex.ifc's IFCUNITASSIGNMENT uses an IFCCONVERSIONBASEDUNIT 'DEGREE'
+    // for PLANEANGLEUNIT, so the IFCPARAMETERVALUE trim parameters below
+    // (270.0, 359.999…) are degrees. The minimal project + unit graph
+    // below restores that context — without it,
+    // EntityDecoder::plane_angle_to_radians falls through to the IFC spec
+    // default (radian) and the fillet arcs sample as 270 *radians* of sweep
+    // (43 revolutions), bloating the polygon area ~7.7x (issue #820 surfaced
+    // the underlying bug).
     let content = r#"
+#1=IFCPROJECT('p',$,'Test',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);
+#3=IFCUNITASSIGNMENT((#5,#7));
+#4=IFCAXIS2PLACEMENT3D(#6,$,$);
+#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#6=IFCCARTESIANPOINT((0.,0.,0.));
+#7=IFCCONVERSIONBASEDUNIT(#8,.PLANEANGLEUNIT.,'DEGREE',#9);
+#8=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);
+#9=IFCMEASUREWITHUNIT(IFCRATIOMEASURE(0.0174532925199433),#10);
+#10=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
 #11=IFCDIRECTION((1.,0.));
 #12=IFCDIRECTION((-1.,0.));
 #13=IFCDIRECTION((0.,1.));

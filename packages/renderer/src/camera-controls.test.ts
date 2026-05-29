@@ -21,6 +21,10 @@ function len(v: Vec3): number {
   return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
+function clampUnit(value: number): number {
+  return Math.max(-1, Math.min(1, value));
+}
+
 function sub(a: Vec3, b: Vec3): Vec3 {
   return vec3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
@@ -232,13 +236,16 @@ describe('CameraControls – external pivot orbit', () => {
     );
   });
 
-  it('camera can look from below (position.y < pivot.y)', () => {
-    // Orbit down repeatedly
-    for (let i = 0; i < 40; i++) controls.orbit(0, -100);
+  it('orbit clamp keeps phi inside [MIN_PHI, MAX_PHI] across long drags', () => {
+    // Phi is clamped just off both poles so sinφ stays nonzero in the
+    // spherical tangent math — the camera never flips through ±Y.
+    for (let i = 0; i < 80; i++) controls.orbit(0, -100);
     const pivot = vec3(5, 5, 15);
+    const dir = sub(state.camera.position, pivot);
+    const phi = Math.acos(clampUnit(dir.y / len(dir)));
     assert.ok(
-      state.camera.position.y < pivot.y,
-      `camera should be below pivot (y=${state.camera.position.y}, pivot.y=${pivot.y})`,
+      phi >= CC.MIN_PHI - 1e-4 && phi <= CC.MAX_PHI + 1e-4,
+      `phi must stay clamped (got ${phi}, range [${CC.MIN_PHI}, ${CC.MAX_PHI}])`,
     );
   });
 });
@@ -280,4 +287,105 @@ describe('CameraControls – pan', () => {
     approxEqual(lookBefore.y, lookAfter.y, 1e-4);
     approxEqual(lookBefore.z, lookAfter.z, 1e-4);
   });
+
+  it('pans in top-down view (camera straight above target)', () => {
+    // Top preset view: camera at (0, 100, 0) looking down, screen-up = -Z.
+    const state = makeState(makeCamera(vec3(0, 100, 0), vec3(0, 0, 0)));
+    state.camera.up = vec3(0, 0, -1);
+    const controls = new CameraControls(state, () => {});
+    const posBefore = { ...state.camera.position };
+    const targetBefore = { ...state.camera.target };
+
+    controls.pan(10, 5);
+
+    const dx = state.camera.position.x - posBefore.x;
+    const dy = state.camera.position.y - posBefore.y;
+    const dz = state.camera.position.z - posBefore.z;
+    const moved = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    assert.ok(moved > 1e-4, `pan should produce motion in top view (moved=${moved})`);
+
+    // Position and target move by the same offset (pure pan).
+    approxEqual(state.camera.target.x - targetBefore.x, dx, 1e-6);
+    approxEqual(state.camera.target.y - targetBefore.y, dy, 1e-6);
+    approxEqual(state.camera.target.z - targetBefore.z, dz, 1e-6);
+  });
+});
+
+describe('CameraControls – orbit from preset top view', () => {
+  // Pattern (yomotsu/camera-controls, Autodesk Viewer, ThatOpen):
+  // setPresetView('top') positions the camera at phi=MIN_PHI (just barely
+  // off the +Y pole) with camera.up = (0,1,0). Orbit is then standard
+  // spherical with no special pole handling. Phi is clamped to
+  // [MIN_PHI, π−MIN_PHI] — both poles are protected from gimbal lock, but
+  // the camera is free to traverse the full sphere in between.
+
+  function setupTopPreset(): { state: CameraInternalState; controls: CameraControls } {
+    // Approximate what setPresetView('top') produces: camera just barely
+    // off the +Y pole (theta=0 in this test → camera slightly to +Z, so
+    // screen-up after lookAt with Y-up is +Z direction).
+    const dist = 100;
+    const poleOffset = Math.sin(0.01) * dist;
+    const verticalOffset = Math.cos(0.01) * dist;
+    const state = makeState(makeCamera(
+      vec3(0, verticalOffset, poleOffset),
+      vec3(0, 0, 0),
+    ));
+    state.camera.up = vec3(0, 1, 0);
+    const controls = new CameraControls(state, () => {});
+    controls.setOrbitCenter(vec3(0, 0, 0));
+    return { state, controls };
+  }
+
+  it('camera.up stays world Y after orbit (BIM Y-up preserved)', () => {
+    const { state, controls } = setupTopPreset();
+    controls.orbit(50, -50);
+    approxEqual(state.camera.up.x, 0, 1e-6);
+    approxEqual(state.camera.up.y, 1, 1e-6);
+    approxEqual(state.camera.up.z, 0, 1e-6);
+  });
+
+  it('drag-up at top view tilts camera smoothly toward the horizon', () => {
+    const { state, controls } = setupTopPreset();
+    const phiBefore = Math.acos(clampUnit(state.camera.position.y / len(state.camera.position)));
+
+    // Drag-up: deltaY < 0 → dy > 0 → phi increases toward MAX_PHI.
+    controls.orbit(0, -50);
+
+    const phiAfter = Math.acos(clampUnit(state.camera.position.y / len(state.camera.position)));
+    assert.ok(
+      phiAfter > phiBefore,
+      `phi should increase on drag-up (before=${phiBefore}, after=${phiAfter})`,
+    );
+    // No X drift: camera was on the YZ plane (theta=0), should stay there.
+    approxEqual(state.camera.position.x, 0, 1e-4);
+  });
+
+  it('repeated drag-up stops at the lower pole clamp (does not flip)', () => {
+    const { state, controls } = setupTopPreset();
+    for (let i = 0; i < 80; i++) controls.orbit(0, -100);
+    const phi = Math.acos(clampUnit(state.camera.position.y / len(state.camera.position)));
+    assert.ok(
+      phi <= CC.MAX_PHI + 1e-4,
+      `phi must be clamped at MAX_PHI (got ${phi}, max ${CC.MAX_PHI})`,
+    );
+    assert.ok(
+      phi >= CC.MIN_PHI - 1e-4,
+      `phi must stay above MIN_PHI (got ${phi}, min ${CC.MIN_PHI})`,
+    );
+  });
+
+  it('continuous drag stays on a single axis (no mid-orbit jump)', () => {
+    const { state, controls } = setupTopPreset();
+    controls.orbit(0, -10);
+    const x1 = state.camera.position.x;
+    controls.orbit(0, -10);
+    const x2 = state.camera.position.x;
+    controls.orbit(0, -10);
+    const x3 = state.camera.position.x;
+    // Pure vertical drag should never introduce X drift across frames.
+    approxEqual(x1, 0, 1e-4);
+    approxEqual(x2, 0, 1e-4);
+    approxEqual(x3, 0, 1e-4);
+  });
+
 });

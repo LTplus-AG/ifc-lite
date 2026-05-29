@@ -63,6 +63,14 @@ export {
   isEntitySubtypeOf,
   RESERVED_PSET_PREFIXES,
 } from './ifc-schema/index.js';
+
+// Raw bundled entity tables — exposed so synchronous consumers (parser
+// categorizer, geometry routers) can walk the inheritance chain across
+// every IFC version in one map without the async wrappers above. Treat
+// as read-only.
+export { ENTITIES_IFC2X3 } from './ifc-schema/generated/entities-ifc2x3.js';
+export { ENTITIES_IFC4 } from './ifc-schema/generated/entities-ifc4.js';
+export { ENTITIES_IFC4X3 } from './ifc-schema/generated/entities-ifc4x3.js';
 export type {
   IfcAttributeInfo,
   IfcDataTypeInfo,

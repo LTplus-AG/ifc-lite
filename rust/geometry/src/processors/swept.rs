@@ -4,9 +4,14 @@
 
 //! Swept geometry processors - SweptDiskSolid and RevolvedAreaSolid.
 
-use crate::{profiles::ProfileProcessor, Error, Mesh, Point3, Result, Vector3};
+use crate::{
+    extrusion::apply_transform, profiles::ProfileProcessor, Error, Mesh, Point3, Result, Vector3,
+};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use nalgebra::Matrix4;
 
+use super::helpers::parse_axis2_placement_3d;
+use super::tessellated::PolygonalFaceSetProcessor;
 use crate::router::GeometryProcessor;
 
 /// Build a rotation-minimising frame (RMF) for sweeping a circular cross-section
@@ -281,42 +286,52 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
     ) -> Result<Mesh> {
-        // IfcRevolvedAreaSolid attributes:
-        // 0: SweptArea (IfcProfileDef) - the 2D profile to revolve
-        // 1: Position (IfcAxis2Placement3D) - placement of the solid
-        // 2: Axis (IfcAxis1Placement) - the axis of revolution
+        // IfcRevolvedAreaSolid attributes (inherits IfcSweptAreaSolid):
+        // 0: SweptArea (IfcProfileDef) - 2D profile in xy plane of Position
+        // 1: Position (IfcAxis2Placement3D) - solid's local coord system
+        // 2: Axis (IfcAxis1Placement) - revolution axis in xy plane of Position
         // 3: Angle (IfcPlaneAngleMeasure) - revolution angle in radians
 
         let profile_attr = entity
             .get(0)
             .ok_or_else(|| Error::geometry("RevolvedAreaSolid missing SweptArea".to_string()))?;
-
         let profile = decoder
             .resolve_ref(profile_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
 
-        // Get axis placement (attribute 2)
+        // Position transform: maps Position-local coords -> object coords.
+        // Optional in some files; default to identity.
+        let position_transform = if let Some(pos_attr) = entity.get(1) {
+            if !pos_attr.is_null() {
+                if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
+                    parse_axis2_placement_3d(&pos_entity, decoder)?
+                } else {
+                    Matrix4::identity()
+                }
+            } else {
+                Matrix4::identity()
+            }
+        } else {
+            Matrix4::identity()
+        };
+
         let axis_attr = entity
             .get(2)
             .ok_or_else(|| Error::geometry("RevolvedAreaSolid missing Axis".to_string()))?;
-
         let axis_placement = decoder
             .resolve_ref(axis_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve Axis".to_string()))?;
 
-        // Get angle (attribute 3)
         let angle = entity
             .get_float(3)
             .ok_or_else(|| Error::geometry("RevolvedAreaSolid missing Angle".to_string()))?;
 
-        // Get the 2D profile points
         let profile_2d = self.profile_processor.process(&profile, decoder)?;
         if profile_2d.outer.is_empty() {
             return Ok(Mesh::new());
         }
 
-        // Parse axis placement to get axis point and direction
-        // IfcAxis1Placement: Location, Axis (optional)
+        // IfcAxis1Placement: 0=Location (IfcCartesianPoint), 1=Axis (IfcDirection, optional)
         let axis_location = {
             let loc_attr = axis_placement
                 .get(0)
@@ -344,138 +359,161 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
                     let coords = dir.get(0).and_then(|v| v.as_list()).ok_or_else(|| {
                         Error::geometry("Axis direction missing coordinates".to_string())
                     })?;
-                    Vector3::new(
+                    let raw = Vector3::new(
                         coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
                         coords.get(1).and_then(|v| v.as_float()).unwrap_or(1.0),
                         coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-                    )
-                    .normalize()
+                    );
+                    if raw.norm() < 1e-12 {
+                        Vector3::new(0.0, 1.0, 0.0)
+                    } else {
+                        raw.normalize()
+                    }
                 } else {
-                    Vector3::new(0.0, 1.0, 0.0) // Default Y axis
+                    Vector3::new(0.0, 1.0, 0.0)
                 }
             } else {
-                Vector3::new(0.0, 1.0, 0.0) // Default Y axis
+                Vector3::new(0.0, 1.0, 0.0)
             }
         };
 
-        // Generate revolved mesh
-        // Number of segments depends on angle
         let full_circle = angle.abs() >= std::f64::consts::PI * 1.99;
         let segments = if full_circle {
-            24 // Full revolution
+            24
         } else {
-            ((angle.abs() / std::f64::consts::PI * 12.0).ceil() as usize).max(4)
+            ((angle.abs() / std::f64::consts::PI * 12.0).ceil() as usize).max(8)
         };
 
         let profile_points = &profile_2d.outer;
         let num_profile_points = profile_points.len();
 
-        let mut positions = Vec::new();
+        let ring_count = if full_circle { segments } else { segments + 1 };
+        let mut positions = Vec::with_capacity(ring_count * num_profile_points * 3);
         let mut indices = Vec::new();
 
-        // For each segment around the revolution
-        for i in 0..=segments {
-            let t = if full_circle && i == segments {
-                0.0 // Close the loop exactly
+        // Rotate each profile vertex around the axis line in Position-local coords.
+        for i in 0..ring_count {
+            let t = if full_circle {
+                std::f64::consts::TAU * i as f64 / segments as f64
             } else {
                 angle * i as f64 / segments as f64
             };
 
-            // Rotation matrix around axis
             let cos_t = t.cos();
             let sin_t = t.sin();
-            let (ax, ay, az) = (axis_direction.x, axis_direction.y, axis_direction.z);
+            let k = axis_direction;
 
-            // Rodrigues' rotation formula components
-            let k_matrix = |v: Vector3<f64>| -> Vector3<f64> {
-                Vector3::new(
-                    ay * v.z - az * v.y,
-                    az * v.x - ax * v.z,
-                    ax * v.y - ay * v.x,
-                )
-            };
+            for p2d in profile_points {
+                // Lift profile vertex into Position-local 3D (xy plane, z=0)
+                let p_local = Point3::new(p2d.x, p2d.y, 0.0);
 
-            // For each point in the profile
-            for (j, p2d) in profile_points.iter().enumerate() {
-                // Profile point in 3D (assume profile is in XY plane, rotated around Y axis)
-                // The 2D profile X becomes distance from axis, Y becomes height along axis
-                let radius = p2d.x;
-                let height = p2d.y;
+                // Decompose v = (p_local - axis_location) into parallel + perpendicular
+                // to the axis, then rotate only the perpendicular component by t.
+                let v = p_local - axis_location;
+                let v_par_len = v.dot(&k);
+                let v_par = k * v_par_len;
+                let v_perp = v - v_par;
+                let v_perp_rot = v_perp * cos_t + k.cross(&v_perp) * sin_t;
 
-                // Initial position before rotation (in the plane containing the axis)
-                let v = Vector3::new(radius, 0.0, 0.0);
+                let pos_local = axis_location + v_par + v_perp_rot;
 
-                // Rodrigues' rotation: v_rot = v*cos(t) + (k x v)*sin(t) + k*(k.v)*(1-cos(t))
-                let k_cross_v = k_matrix(v);
-                let k_dot_v = ax * v.x + ay * v.y + az * v.z;
+                positions.push(pos_local.x as f32);
+                positions.push(pos_local.y as f32);
+                positions.push(pos_local.z as f32);
+            }
+        }
 
-                let v_rot =
-                    v * cos_t + k_cross_v * sin_t + axis_direction * k_dot_v * (1.0 - cos_t);
+        // Side quads. The last ring connects back to the first only when the
+        // sweep closes the loop (full revolution).
+        let segment_quads = segments;
+        for i in 0..segment_quads {
+            let ring_a = i;
+            let ring_b = (i + 1) % ring_count;
+            for j in 0..num_profile_points {
+                let j_next = (j + 1) % num_profile_points;
+                let a = (ring_a * num_profile_points + j) as u32;
+                let b = (ring_b * num_profile_points + j) as u32;
+                let c = (ring_b * num_profile_points + j_next) as u32;
+                let d = (ring_a * num_profile_points + j_next) as u32;
+                indices.push(a);
+                indices.push(b);
+                indices.push(c);
+                indices.push(a);
+                indices.push(c);
+                indices.push(d);
+            }
+        }
 
-                // Final position = axis_location + height along axis + rotated radius
-                let pos = axis_location + axis_direction * height + v_rot;
+        // End caps for a partial revolution.
+        //
+        // Originally a fan from the profile centroid to consecutive
+        // boundary points. That assumption only holds for CONVEX
+        // profiles — for a concave profile (I-beam, L-beam, hollow
+        // rectangle …) the centroid lies outside the polygon in some
+        // regions, the fan triangles cross each other, and the cap
+        // renders as a bow-tie/X artifact (issue #846 follow-up: PR
+        // #848 sweep landed correctly but the I-beam cross-section came
+        // out as a zigzag because of this fan path).
+        //
+        // Use earcut on the 2D profile boundary instead. The resulting
+        // triangle indices are in [0..num_profile_points) — they map
+        // 1:1 onto the ring vertices we already emitted, so the cap
+        // just reuses those positions (no new vertices except the side-
+        // wall winding requires flipping one of the two caps so its
+        // outward normal points away from the swept volume).
+        if !full_circle && num_profile_points >= 3 {
+            let profile_flat: Vec<f64> = profile_points
+                .iter()
+                .flat_map(|p| [p.x, p.y])
+                .collect();
+            let cap_indices = earcutr::earcut(&profile_flat, &[], 2)
+                .map_err(|e| Error::geometry(format!(
+                    "Revolved profile cap triangulation failed: {e:?}"
+                )))?;
 
-                positions.push(pos.x as f32);
-                positions.push(pos.y as f32);
-                positions.push(pos.z as f32);
-
-                // Create triangles (except for the last segment if it connects back)
-                if i < segments && j < num_profile_points - 1 {
-                    let current = (i * num_profile_points + j) as u32;
-                    let next_seg = ((i + 1) * num_profile_points + j) as u32;
-                    let current_next = current + 1;
-                    let next_seg_next = next_seg + 1;
-
-                    // Two triangles per quad
-                    indices.push(current);
-                    indices.push(next_seg);
-                    indices.push(next_seg_next);
-
-                    indices.push(current);
-                    indices.push(next_seg_next);
-                    indices.push(current_next);
+            for (ring_idx, flip) in [(0usize, true), (segments, false)] {
+                let base = (ring_idx * num_profile_points) as u32;
+                for tri in cap_indices.chunks_exact(3) {
+                    let a = base + tri[0] as u32;
+                    let b = base + tri[1] as u32;
+                    let c = base + tri[2] as u32;
+                    if flip {
+                        indices.push(a);
+                        indices.push(c);
+                        indices.push(b);
+                    } else {
+                        indices.push(a);
+                        indices.push(b);
+                        indices.push(c);
+                    }
                 }
             }
         }
 
-        // Add end caps if not a full revolution
-        if !full_circle {
-            // Start cap
-            let start_center_idx = (positions.len() / 3) as u32;
-            let start_center = axis_location
-                + axis_direction
-                    * (profile_points.iter().map(|p| p.y).sum::<f64>()
-                        / profile_points.len() as f64);
-            positions.push(start_center.x as f32);
-            positions.push(start_center.y as f32);
-            positions.push(start_center.z as f32);
-
-            for j in 0..num_profile_points - 1 {
-                indices.push(start_center_idx);
-                indices.push(j as u32 + 1);
-                indices.push(j as u32);
-            }
-
-            // End cap
-            let end_center_idx = (positions.len() / 3) as u32;
-            let end_base = (segments * num_profile_points) as u32;
-            positions.push(start_center.x as f32);
-            positions.push(start_center.y as f32);
-            positions.push(start_center.z as f32);
-
-            for j in 0..num_profile_points - 1 {
-                indices.push(end_center_idx);
-                indices.push(end_base + j as u32);
-                indices.push(end_base + j as u32 + 1);
-            }
-        }
-
-        Ok(Mesh {
+        let mut mesh = Mesh {
             positions,
             normals: Vec::new(),
             indices,
             rtc_applied: false,
-        })
+        };
+
+        // Apply Position to lift Position-local coords into object coords.
+        apply_transform(&mut mesh, &position_transform);
+
+        // Profile-boundary creases (e.g. flange-to-web on an I-beam) are
+        // all sharp 90° edges, but the swept mesh shares vertices between
+        // adjacent side quads — so per-vertex normal averaging smooths the
+        // shading across every crease and the cross-section reads as a
+        // smooth blob. Flat-shade the whole revolved solid (each triangle
+        // gets its own three vertices with the face normal) so the
+        // shading matches the actual geometry.
+        let flat =
+            PolygonalFaceSetProcessor::build_flat_shaded_mesh(&mesh.positions, &mesh.indices);
+        mesh.positions = flat.positions;
+        mesh.normals = flat.normals;
+        mesh.indices = flat.indices;
+
+        Ok(mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

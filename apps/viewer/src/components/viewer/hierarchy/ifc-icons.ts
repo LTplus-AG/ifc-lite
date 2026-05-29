@@ -17,6 +17,20 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   IfcBuilding: '\uea40',
   IfcBuildingStorey: '\ue8fe',
   IfcSpace: '\ueff4',
+  // IFC4.3 facility containers \u2014 same family as IfcBuilding (multi-storey
+  // spatial root) but `domain` carries the "campus / infrastructure
+  // facility" reading; IfcFacilityPart follows the storey-line icon for
+  // consistency. (Issue #860 \u2014 user reported no icon on IfcFacility.)
+  IfcFacility: '\ue7ee', // "domain"
+  IfcFacilityPart: '\ue8fe', // "layers" \u2014 mirrors IfcBuildingStorey
+  IfcBridge: '\uebbf', // "directions_railway" \u2014 civil bridge icon
+  IfcBridgePart: '\ue8fe',
+  IfcRoad: '\uebbe', // "route"
+  IfcRoadPart: '\ue8fe',
+  IfcRailway: '\ue570', // "train"
+  IfcRailwayPart: '\ue8fe',
+  IfcMarineFacility: '\ue532', // "directions_boat"
+  IfcMarineFacilityPart: '\ue8fe',
 
   // Structural
   IfcBeam: '\uf108',
@@ -79,6 +93,52 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   IfcCivilElement: '\uea99',
   IfcGeographicElement: '\uea99',
   IfcLinearElement: '\uebaa',
+
+  // IFC4.3 alignment / positioning. IfcAlignment shares the linear-element
+  // glyph because that's exactly what it is at the geometry level (a
+  // parameterised curve). IfcReferent is a station marker along that
+  // alignment (mileposts, kilometre posts) \u2014 pin glyph. IfcPositioningElement
+  // is the abstract base.
+  IfcAlignment: '\uebaa', // "polyline" / linear scale
+  IfcPositioningElement: '\ue55f', // "place"
+  IfcReferent: '\ue55f', // "place" \u2014 station marker
+
+  // IFC4.3 transportation signage & signals (rail/road). Same traffic-light
+  // glyph for both since the spec treats signals as the trackside subtype of
+  // signs.
+  IfcSign: '\ue9b2', // "traffic"
+  IfcSignal: '\ue9b2',
+
+  // IFC4.3 road / rail wearing surface. Pavement is the assembly, courses
+  // are its layers, kerbs sit at the edge.
+  IfcPavement: '\ue4f4', // "texture"
+  IfcCourse: '\ue8fe', // "layers"
+  IfcKerb: '\uf108', // "horizontal_rule"
+
+  // IFC4.3 earthworks. Cut/Fill share the geotechnical "terrain" glyph
+  // since they're shape-of-ground operations on the same domain.
+  IfcEarthworksElement: '\ue564',
+  IfcEarthworksFill: '\ue564',
+  IfcEarthworksCut: '\ue564',
+
+  // Geotechnical strata (IFC4.3) \u2014 issue #860. The abstract base plus the
+  // three concrete leaves (IfcSolidStratum / IfcVoidStratum / IfcWaterStratum)
+  // all share the `terrain` glyph. The geometry pipeline routes the leaves
+  // through IfcGeotechnicalStratum via legacy_entities.rs, so the icon map
+  // covers both the leaf names (when entries land in the spatial tree with
+  // their original type string) and the base.
+  IfcGeotechnicalAssembly: '\ue564',
+  IfcGeotechnicalElement: '\ue564',
+  IfcGeotechnicalStratum: '\ue564',
+  IfcSolidStratum: '\ue564',
+  IfcVoidStratum: '\ue564',
+  IfcWaterStratum: '\ue564',
+
+  // IFC4.3 marine / navigation / track / vehicle leaves.
+  IfcMooringDevice: '\uf1cd', // "anchor"
+  IfcNavigationElement: '\ue55d', // "navigation"
+  IfcTrackElement: '\ue260', // "linear_scale"
+  IfcVehicle: '\ue531', // "directions_car"
 
   // Proxy / generic fallback
   IfcProduct: '\ue047',

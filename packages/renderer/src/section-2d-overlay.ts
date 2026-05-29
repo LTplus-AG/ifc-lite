@@ -279,7 +279,15 @@ export class Section2DOverlayRenderer {
         fn vs_main(input: VertexInput) -> VertexOutput {
           var output: VertexOutput;
           let offsetPos = input.position + uniforms.planeOffset.xyz;
-          output.position = uniforms.viewProj * vec4<f32>(offsetPos, 1.0);
+          let clip = uniforms.viewProj * vec4<f32>(offsetPos, 1.0);
+          // Reverse-Z decal nudge for lines coplanar with model faces
+          // (issue #812). WebGPU forbids depthStencil.depthBias on non-
+          // triangle topologies, so we do the equivalent in clip space:
+          // adding a small positive multiple of clip.w raises NDC z by a
+          // constant after the w-divide, which under reverse-Z means
+          // "slightly closer" — enough to beat MSAA jitter on annotation
+          // lines that ride exactly on a wall/floor.
+          output.position = vec4<f32>(clip.x, clip.y, clip.z + 5e-5 * clip.w, clip.w);
           return output;
         }
 
@@ -394,7 +402,10 @@ export class Section2DOverlayRenderer {
         depthWriteEnabled: false,
         // Same z-respect logic as the fill pipeline above — outline lines
         // are drawn on the cut plane, so closer model geometry should hide
-        // them when the camera looks through it.
+        // them when the camera looks through it. The decal nudge for the
+        // #812 coplanar case is applied in the line vertex shader (clip-z
+        // offset) — WebGPU forbids depthStencil.depthBias on non-triangle
+        // topologies.
         depthCompare: 'greater-equal' as const,
       },
       multisample: {

@@ -173,6 +173,12 @@ export class SymbolicFillPipeline {
         // 'greater-equal' for everything in the main pass. 'less-equal'
         // would fail the test on every visible surface.
         depthCompare: 'greater-equal',
+        // Decal bias: nudge fills slightly closer to camera so they don't
+        // z-fight when coplanar with a wall/floor face (issue #812).
+        // Reverse-Z → larger depth is closer → negative bias.
+        depthBias: -4,
+        depthBiasSlopeScale: -0.5,
+        depthBiasClamp: 0,
       },
       multisample: { count: this.sampleCount },
     });
@@ -362,6 +368,11 @@ export class SymbolicTextPipeline {
         depthWriteEnabled: false,
         // Reverse-Z: see SymbolicFillPipeline.
         depthCompare: 'greater-equal',
+        // Decal bias so text labels stay legible when sitting exactly on
+        // a wall/floor face (issue #812). Reverse-Z → negative bias.
+        depthBias: -4,
+        depthBiasSlopeScale: -0.5,
+        depthBiasClamp: 0,
       },
       multisample: { count: this.sampleCount },
     });

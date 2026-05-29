@@ -413,6 +413,7 @@ fn item_has_identity_position(item: &DecodedEntity, decoder: &mut EntityDecoder)
         | IfcType::IfcAdvancedBrep
         | IfcType::IfcAdvancedBrepWithVoids
         | IfcType::IfcTriangulatedFaceSet
+        | IfcType::IfcTriangulatedIrregularNetwork
         | IfcType::IfcPolygonalFaceSet
         | IfcType::IfcFaceBasedSurfaceModel
         | IfcType::IfcShellBasedSurfaceModel => true,

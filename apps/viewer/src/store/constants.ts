@@ -159,6 +159,7 @@ export const TYPE_VISIBILITY_STORAGE_KEYS = {
   openings:       'ifc-lite-ifc-openings-visible',
   site:           'ifc-lite-ifc-site-visible',
   ifcAnnotations: 'ifc-lite-ifc-annotations-visible',
+  ifcGrid:        'ifc-lite-ifc-grid-visible',
 } as const;
 
 /** Legacy alias — kept until external callers migrate. */
@@ -178,13 +179,16 @@ function readPersistedBool(key: string, fallback: boolean): boolean {
 
 // Semantic defaults applied when no localStorage preference is set.
 // IfcSpace / IfcOpeningElement off — they cover walls and confuse novices
-// on first load. IfcSite + IfcAnnotation/IfcGrid on — both convey
-// design intent users expect to see by default.
+// on first load. IfcSite + IfcAnnotation + IfcGrid on — all three convey
+// design intent users expect to see by default. (Issue #862 split grid
+// into its own toggle so dense-grid models can hide grids without losing
+// dimensions/labels.)
 const SEMANTIC_DEFAULTS = {
   spaces: false,
   openings: false,
   site: true,
   ifcAnnotations: true,
+  ifcGrid: true,
 } as const;
 
 export const TYPE_VISIBILITY_DEFAULTS = {
@@ -194,8 +198,20 @@ export const TYPE_VISIBILITY_DEFAULTS = {
   OPENINGS:        readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, SEMANTIC_DEFAULTS.openings),
   /** IfcSite visibility — persisted across reloads. */
   SITE:            readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, SEMANTIC_DEFAULTS.site),
-  /** IfcAnnotation + IfcGrid visibility — persisted across reloads. */
+  /** IfcAnnotation visibility (text, dimensions, leaders) — persisted. */
   IFC_ANNOTATIONS: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcAnnotations),
+  /**
+   * IfcGrid visibility (axis lines + bubble tags) — persisted. Issue
+   * #862. Migration: if the new key isn't set yet, fall back to the
+   * legacy combined `ifcAnnotations` preference. That way a user who
+   * previously turned the combined "Annotations & Grids" toggle off
+   * keeps grids hidden after upgrade, instead of grids silently
+   * reappearing (PR #868 review, chatgpt-codex P2).
+   */
+  IFC_GRID:        readPersistedBool(
+    TYPE_VISIBILITY_STORAGE_KEYS.ifcGrid,
+    readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcGrid),
+  ),
 } as const;
 
 // ============================================================================

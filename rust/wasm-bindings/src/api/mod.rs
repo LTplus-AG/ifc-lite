@@ -376,6 +376,9 @@ pub(super) fn drain_and_log_csg_diagnostics(
                         "ManifoldOutputDegenerate"
                     }
                     ifc_lite_geometry::BoolFailureReason::KernelError(_) => "KernelError",
+                    ifc_lite_geometry::BoolFailureReason::DifferenceEmptiedHost => {
+                        "DifferenceEmptiedHost"
+                    }
                 };
                 *by_reason.entry(key).or_insert(0) += 1;
             }

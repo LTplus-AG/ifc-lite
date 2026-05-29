@@ -1041,8 +1041,10 @@ impl IfcAPI {
             }
 
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcAlignment exception — see `parse_meshes`.
                 let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-                if !has_representation {
+                let is_alignment = entity.ifc_type == ifc_lite_core::IfcType::IfcAlignment;
+                if !has_representation && !is_alignment {
                     continue;
                 }
 
@@ -1585,5 +1587,71 @@ impl IfcAPI {
             mesh_collection.add(mesh);
         }
         mesh_collection
+    }
+}
+
+#[cfg(test)]
+mod indexed_colour_map_split_tests {
+    //! Issue #858 — verify the flat-shaded mesh split keeps the triangle
+    //! count, partitions triangles by palette index, and pairs each
+    //! group with the correct colour.
+    use super::split_mesh_by_indexed_colour_map;
+    use super::IndexedColourMapResolved;
+    use ifc_lite_geometry::Mesh;
+
+    fn flat_shaded_quad() -> Mesh {
+        // 2 triangles in a flat-shaded layout (6 unique vertices, one
+        // per corner) — mirrors what `TriangulatedFaceSetProcessor`
+        // emits via `build_flat_shaded_mesh`.
+        let mut m = Mesh::new();
+        m.positions = vec![
+            // tri 0: a quad's lower triangle
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0,
+            // tri 1: upper triangle
+            0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+        ];
+        m.normals = vec![0.0; 18];
+        m.indices = vec![0, 1, 2, 3, 4, 5];
+        m
+    }
+
+    #[test]
+    fn splits_into_two_groups() {
+        let mesh = flat_shaded_quad();
+        let map = IndexedColourMapResolved {
+            geometry_id: 1,
+            colours: vec![[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]],
+            triangle_indices: vec![1, 2],
+        };
+        let groups = split_mesh_by_indexed_colour_map(&mesh, &map).expect("split");
+        assert_eq!(groups.len(), 2);
+
+        let mut totals_by_colour: std::collections::HashMap<[u32; 4], usize> =
+            std::collections::HashMap::new();
+        for (sub, colour) in &groups {
+            let key = [
+                (colour[0] * 255.0) as u32,
+                (colour[1] * 255.0) as u32,
+                (colour[2] * 255.0) as u32,
+                (colour[3] * 255.0) as u32,
+            ];
+            *totals_by_colour.entry(key).or_insert(0) += sub.indices.len() / 3;
+        }
+        assert_eq!(totals_by_colour[&[255, 0, 0, 255]], 1, "tri 0 → red");
+        assert_eq!(totals_by_colour[&[0, 255, 0, 255]], 1, "tri 1 → green");
+    }
+
+    #[test]
+    fn returns_none_on_length_mismatch() {
+        let mesh = flat_shaded_quad();
+        let map = IndexedColourMapResolved {
+            geometry_id: 1,
+            colours: vec![[1.0, 0.0, 0.0, 1.0]],
+            triangle_indices: vec![1, 1, 1], // 3 entries, mesh has 2 tris
+        };
+        assert!(
+            split_mesh_by_indexed_colour_map(&mesh, &map).is_none(),
+            "length mismatch must fall through to single-colour path",
+        );
     }
 }

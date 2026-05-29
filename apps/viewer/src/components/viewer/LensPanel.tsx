@@ -44,6 +44,7 @@ const TYPE_LABELS: Record<string, string> = {
   quantity: 'Quantity',
   classification: 'Classification',
   material: 'Material',
+  model: 'Model',
 };
 
 interface LensPanelProps {
@@ -285,6 +286,11 @@ function RuleEditor({
   onRequestDiscovery: (categories: { properties?: boolean; quantities?: boolean; classifications?: boolean; materials?: boolean }) => void;
 }) {
   const criteriaType = rule.criteria.type;
+  const loadedModels = useViewerStore((s) => s.models);
+  const modelOptions = useMemo(
+    () => Array.from(loadedModels.values()).sort((a, b) => a.name.localeCompare(b.name)),
+    [loadedModels],
+  );
 
   // Trigger lazy discovery when user selects a criteria type that needs it
   useEffect(() => {
@@ -299,6 +305,18 @@ function RuleEditor({
       onRequestDiscovery({ materials: true });
     }
   }, [criteriaType, discovered, onRequestDiscovery]);
+
+  // Auto-populate the single available model so the selector-hidden branch
+  // doesn't leave a model rule permanently invalid.
+  useEffect(() => {
+    if (criteriaType !== 'model') return;
+    if (modelOptions.length !== 1) return;
+    if (rule.criteria.modelId) return;
+    const updated = { ...rule.criteria, modelId: modelOptions[0].id };
+    onChange({ criteria: updated, name: deriveRuleName(updated) });
+    // deriveRuleName is stable for this render; depending on rule.criteria/onChange is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [criteriaType, modelOptions, rule.criteria, onChange]);
 
   // Derived lists from discovered data
   const ifcClasses = useMemo(() => discovered?.classes ?? [], [discovered]);
@@ -350,6 +368,9 @@ function RuleEditor({
       case 'material':
         base.materialName = '';
         break;
+      case 'model':
+        base.modelId = modelOptions.length === 1 ? modelOptions[0].id : '';
+        break;
     }
     onChange({ criteria: base, name: rule.name === 'New Rule' ? TYPE_LABELS[newType] : rule.name });
   };
@@ -363,6 +384,10 @@ function RuleEditor({
       case 'quantity': return criteria.quantityName || 'Quantity';
       case 'classification': return criteria.classificationCode || criteria.classificationSystem || 'Classification';
       case 'material': return criteria.materialName || 'Material';
+      case 'model': {
+        const selected = modelOptions.find(m => m.id === criteria.modelId);
+        return selected?.name || 'Model';
+      }
       default: return 'Rule';
     }
   };
@@ -516,6 +541,30 @@ function RuleEditor({
           />
         )}
 
+        {/* Model: dropdown from loaded federated models */}
+        {criteriaType === 'model' && (
+          modelOptions.length <= 1 ? (
+            <span className="flex-1 min-w-0 text-xs text-zinc-400 dark:text-zinc-500 truncate">
+              {modelOptions.length === 0 ? 'No models loaded' : modelOptions[0]?.name ?? 'Model'}
+            </span>
+          ) : (
+            <select
+              value={rule.criteria.modelId ?? ''}
+              onChange={(e) => {
+                const modelId = e.target.value;
+                const updated = { ...rule.criteria, modelId };
+                onChange({ criteria: updated, name: deriveRuleName(updated) });
+              }}
+              className={cn(selectClass, 'flex-1 min-w-0')}
+            >
+              <option value="">Model...</option>
+              {modelOptions.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          )
+        )}
+
         <button
           onClick={onRemove}
           className="text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 p-0.5 flex-shrink-0"
@@ -644,6 +693,7 @@ function LensEditor({
       case 'quantity': return !!c.quantitySet && !!c.quantityName;
       case 'classification': return !!c.classificationSystem || !!c.classificationCode;
       case 'material': return !!c.materialName;
+      case 'model': return !!c.modelId;
       default: return false;
     }
   };

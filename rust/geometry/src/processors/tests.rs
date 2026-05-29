@@ -733,6 +733,10 @@ fn test_trimmed_circle_3d_placement_reads_ref_direction() {
     //
     // Without the fix the rotation reads as 0° (the Z-axis x/y components),
     // so 270° lands at (100, 90) — visibly off.
+    // Project + IFCCONVERSIONBASEDUNIT 'DEGREE' makes the IFCPARAMETERVALUE
+    // trim parameters below explicitly degrees. Without this, the spec
+    // default (RADIAN) interprets 270 as 270 rad ≈ 43 revolutions and the
+    // arc samples come out wrong (see EntityDecoder::plane_angle_to_radians).
     let content = r#"
 #1=IFCCARTESIANPOINT((100.0,100.0,0.0));
 #2=IFCDIRECTION((0.0,0.0,1.0));
@@ -743,6 +747,14 @@ fn test_trimmed_circle_3d_placement_reads_ref_direction() {
 #7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
 #8=IFCCOMPOSITECURVE((#7),.F.);
 #9=IFCSWEPTDISKSOLID(#8,0.5,$,$,$);
+#10=IFCPROJECT('p',$,'Test',$,$,$,$,(#11),#12);
+#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);
+#12=IFCUNITASSIGNMENT((#13,#14));
+#13=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#14=IFCCONVERSIONBASEDUNIT(#15,.PLANEANGLEUNIT.,'DEGREE',#16);
+#15=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);
+#16=IFCMEASUREWITHUNIT(IFCRATIOMEASURE(0.0174532925199433),#17);
+#17=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
 "#;
 
     let mut decoder = EntityDecoder::new(content);

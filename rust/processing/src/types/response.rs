@@ -5,6 +5,7 @@
 //! Shared response types for the IFC processing API.
 
 use super::mesh::MeshData;
+use crate::symbolic::SymbolicData;
 use serde::{Deserialize, Serialize};
 
 /// Full parse response with all meshes.
@@ -33,6 +34,11 @@ pub struct ParseResponse {
     pub metadata: ModelMetadata,
     /// Processing statistics.
     pub stats: ProcessingStats,
+    /// 2D symbol data extracted from `IfcAnnotation` and `IfcGrid`
+    /// entities. Always emitted (potentially empty); see issue #843 for
+    /// the parity rationale with the browser-side parser.
+    #[serde(default, skip_serializing_if = "SymbolicData::is_empty")]
+    pub symbolic_data: SymbolicData,
 }
 
 /// Model metadata extracted from the IFC file.

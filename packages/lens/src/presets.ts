@@ -62,4 +62,12 @@ export const BUILTIN_LENSES: readonly Lens[] = [
     rules: [],
     autoColor: { source: 'material' },
   },
+  // Auto-color by federated model
+  {
+    id: 'lens-by-model',
+    name: 'By Model',
+    builtin: true,
+    rules: [],
+    autoColor: { source: 'model' },
+  },
 ];

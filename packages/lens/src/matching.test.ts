@@ -341,3 +341,48 @@ describe('matchesCriteria — material', () => {
     expect(matchesCriteria({ type: 'material' }, 1, provider)).toBe(false);
   });
 });
+
+describe('matchesCriteria — model', () => {
+  const entities = [
+    { id: 1, type: 'IfcWall', modelId: 'model-a' },
+    { id: 2, type: 'IfcSlab', modelId: 'model-a' },
+    { id: 3, type: 'IfcColumn', modelId: 'model-b' },
+  ];
+
+  function createModelProvider(includeGetModelId = true): LensDataProvider {
+    const entityMap = new Map(entities.map(e => [e.id, e]));
+    const provider: LensDataProvider = {
+      getEntityCount: () => entities.length,
+      forEachEntity: (cb) => {
+        for (const e of entities) cb(e.id, e.modelId);
+      },
+      getEntityType: (id) => entityMap.get(id)?.type,
+      getPropertyValue: () => undefined,
+      getPropertySets: () => [],
+    };
+    if (includeGetModelId) {
+      provider.getModelId = (id) => entityMap.get(id)?.modelId;
+    }
+    return provider;
+  }
+
+  it('should match entities from the specified model', () => {
+    const c: LensCriteria = { type: 'model', modelId: 'model-a' };
+    expect(matchesCriteria(c, 1, createModelProvider())).toBe(true);
+    expect(matchesCriteria(c, 2, createModelProvider())).toBe(true);
+  });
+
+  it('should not match entities from a different model', () => {
+    const c: LensCriteria = { type: 'model', modelId: 'model-a' };
+    expect(matchesCriteria(c, 3, createModelProvider())).toBe(false);
+  });
+
+  it('should return false when modelId is missing in criteria', () => {
+    expect(matchesCriteria({ type: 'model' }, 1, createModelProvider())).toBe(false);
+  });
+
+  it('should return false when provider omits getModelId', () => {
+    const c: LensCriteria = { type: 'model', modelId: 'model-a' };
+    expect(matchesCriteria(c, 1, createModelProvider(false))).toBe(false);
+  });
+});

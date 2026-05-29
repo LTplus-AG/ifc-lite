@@ -43,7 +43,7 @@ export interface VisibilitySlice {
   clearAllFilters: () => void;
   showAll: () => void;
   isEntityVisible: (id: number) => boolean;
-  toggleTypeVisibility: (type: 'spaces' | 'openings' | 'site' | 'ifcAnnotations') => void;
+  toggleTypeVisibility: (type: 'spaces' | 'openings' | 'site' | 'ifcAnnotations' | 'ifcGrid') => void;
   /** Set all hidden entities at once (for BCF viewpoint application) */
   setHiddenEntities: (ids: Set<number>) => void;
   /** Set all isolated entities at once (for BCF viewpoint with defaultVisibility=false) */
@@ -80,6 +80,7 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     openings: TYPE_VISIBILITY_DEFAULTS.OPENINGS,
     site: TYPE_VISIBILITY_DEFAULTS.SITE,
     ifcAnnotations: TYPE_VISIBILITY_DEFAULTS.IFC_ANNOTATIONS,
+    ifcGrid: TYPE_VISIBILITY_DEFAULTS.IFC_GRID,
   },
 
   // Initial state (multi-model)

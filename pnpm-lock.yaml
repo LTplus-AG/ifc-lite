@@ -1358,7 +1358,11 @@ importers:
 
   packages/wasm: {}
 
-  packages/wasm-threaded: {}
+  packages/wasm-threaded:
+    devDependencies:
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
 
 packages:
 

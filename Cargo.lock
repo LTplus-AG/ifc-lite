@@ -2423,7 +2423,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-core"
-version = "2.4.1"
+version = "2.4.2"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -2462,7 +2462,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-engine"
-version = "2.4.1"
+version = "2.4.2"
 dependencies = [
  "ifc-lite-processing",
  "memmap2 0.9.10",
@@ -2471,7 +2471,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "2.4.1"
+version = "2.4.2"
 dependencies = [
  "approx",
  "earcutr",
@@ -2487,7 +2487,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "2.4.1"
+version = "2.4.2"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -2500,7 +2500,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "2.4.1"
+version = "2.4.2"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2534,12 +2534,13 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "2.4.1"
+version = "2.4.2"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",
  "ifc-lite-core",
  "ifc-lite-geometry",
+ "ifc-lite-processing",
  "js-sys",
  "rayon",
  "rayon-core",

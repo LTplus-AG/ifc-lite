@@ -58,6 +58,26 @@ const SIMPLIFIED_MIN_VERTICES: usize = 12;
 
 /// Perpendicular distance from `p` to the line through `a` and `b`.
 #[inline]
+/// Mirror every point of a `Profile2D` about the local Y-axis (x → −x).
+///
+/// `IfcMirroredProfileDef` per IFC4 §8.6.2.21 produces a profile that is
+/// the parent profile reflected about its own Y-axis. Reflection is
+/// orientation-reversing, so we also reverse the winding order of each
+/// contour to keep outer loops CCW and holes CW — without this the
+/// downstream earcut tessellator would emit inside-out triangles.
+fn mirror_profile_about_y_axis(profile: &mut Profile2D) {
+    for p in &mut profile.outer {
+        p.x = -p.x;
+    }
+    profile.outer.reverse();
+    for hole in &mut profile.holes {
+        for p in hole.iter_mut() {
+            p.x = -p.x;
+        }
+        hole.reverse();
+    }
+}
+
 fn perpendicular_distance(p: Point2<f64>, a: Point2<f64>, b: Point2<f64>) -> f64 {
     let dx = b.x - a.x;
     let dy = b.y - a.y;
@@ -380,6 +400,88 @@ fn same_point_3d(prev: Option<&Point3<f64>>, next: &Point3<f64>) -> bool {
     }
 }
 
+/// Build a rectangle outline with quarter-circle fillets at the four
+/// corners. Used by `IfcRectangleHollowProfileDef` (outer + inner loops)
+/// — see issue #854 for the case where the inner fillet equals the inner
+/// half-dim and the loop degenerates to a full circle.
+///
+/// * `half_x` / `half_y` — half-extents of the rectangle, centred on origin.
+/// * `radius` — fillet radius. `0` (or below 1 µm) emits sharp corners.
+///   Caller must clamp to ≤ `min(half_x, half_y)`.
+/// * `ccw` — output orientation. Profile outer loops are CCW; hole loops
+///   are CW (per `Profile2D::add_hole`'s contract).
+fn rounded_rectangle_outline(
+    half_x: f64,
+    half_y: f64,
+    radius: f64,
+    ccw: bool,
+) -> Vec<Point2<f64>> {
+    if radius <= 1.0e-9 {
+        let pts = vec![
+            Point2::new(-half_x, -half_y),
+            Point2::new(half_x, -half_y),
+            Point2::new(half_x, half_y),
+            Point2::new(-half_x, half_y),
+        ];
+        return if ccw {
+            pts
+        } else {
+            pts.into_iter().rev().collect()
+        };
+    }
+
+    // 6 segments per corner matches `process_rounded_rectangle` — keeps
+    // the outline cheap and the surface-of-revolution-style extrusions
+    // these profiles drive (HVAC diffuser shells, hollow tubular sections)
+    // under the legacy BSP 128-poly cap.
+    const SEGMENTS_PER_CORNER: usize = 6;
+    let half_pi = PI / 2.0;
+    let corners = [
+        (half_x - radius, -half_y + radius, -half_pi, 0.0),
+        (half_x - radius, half_y - radius, 0.0, half_pi),
+        (-half_x + radius, half_y - radius, half_pi, PI),
+        (-half_x + radius, -half_y + radius, PI, PI + half_pi),
+    ];
+
+    // Drop duplicate seam vertices when adjacent corners' arc endpoints
+    // coincide. This happens when `radius == half_x` or `radius == half_y`
+    // (the degenerate circle path that motivated issue #854 — the inner
+    // fillet at 10/10 collapses to a single circle whose adjacent corner
+    // arcs share their tangent point). Without dedup the contour
+    // contains zero-length edges that earcutr handles but downstream
+    // analytics / 2D drawing pipelines may not (PR #863 review). 1 µm
+    // tolerance in profile units matches the welding precision used
+    // throughout `manifold_kernel.rs`.
+    let mut points: Vec<Point2<f64>> = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
+    const SEAM_TOL: f64 = 1.0e-6;
+    for (cx, cy, a0, a1) in corners {
+        for i in 0..=SEGMENTS_PER_CORNER {
+            let t = i as f64 / SEGMENTS_PER_CORNER as f64;
+            let a = a0 + (a1 - a0) * t;
+            let pt = Point2::new(cx + radius * a.cos(), cy + radius * a.sin());
+            if let Some(prev) = points.last() {
+                if (prev.x - pt.x).abs() < SEAM_TOL && (prev.y - pt.y).abs() < SEAM_TOL {
+                    continue;
+                }
+            }
+            points.push(pt);
+        }
+    }
+    // For the exact-circle case the final vertex also coincides with
+    // the first — same dedup logic, wrapping around.
+    if points.len() >= 2 {
+        let first = points[0];
+        let last = points[points.len() - 1];
+        if (first.x - last.x).abs() < SEAM_TOL && (first.y - last.y).abs() < SEAM_TOL {
+            points.pop();
+        }
+    }
+    if !ccw {
+        points.reverse();
+    }
+    points
+}
+
 /// Profile processor - processes IFC profiles into 2D contours
 pub struct ProfileProcessor {
     schema: IfcSchema,
@@ -445,6 +547,7 @@ impl ProfileProcessor {
             IfcType::IfcCircleHollowProfileDef => self.process_circle_hollow(profile),
             IfcType::IfcRectangleHollowProfileDef => self.process_rectangle_hollow(profile),
             IfcType::IfcIShapeProfileDef => self.process_i_shape(profile),
+            IfcType::IfcAsymmetricIShapeProfileDef => self.process_asymmetric_i_shape(profile),
             IfcType::IfcLShapeProfileDef => self.process_l_shape(profile),
             IfcType::IfcUShapeProfileDef => self.process_u_shape(profile),
             IfcType::IfcTShapeProfileDef => self.process_t_shape(profile),
@@ -563,7 +666,19 @@ impl ProfileProcessor {
     }
 
     /// Process IfcDerivedProfileDef / IfcMirroredProfileDef.
-    /// IfcDerivedProfileDef: ProfileType, ProfileName, ParentProfile, Operator, Label
+    ///
+    /// IFC4 attributes:
+    ///   0: ProfileType
+    ///   1: ProfileName
+    ///   2: ParentProfile (IfcProfileDef)
+    ///   3: Operator      (IfcCartesianTransformationOperator2D)
+    ///   4: Label
+    ///
+    /// `IfcMirroredProfileDef` is a subtype that **always** writes `$` for
+    /// the Operator attribute — the mirror is implicit about the parent
+    /// profile's local Y-axis (x → −x) per IFC4. We therefore short-circuit
+    /// on the subtype and only require Operator on the bare
+    /// `IfcDerivedProfileDef` form.
     fn process_derived_with_depth(
         &self,
         profile: &DecodedEntity,
@@ -579,13 +694,24 @@ impl ProfileProcessor {
 
         let mut result = self.process_with_depth(&parent_profile, decoder, depth + 1)?;
 
-        let operator_attr = profile
-            .get(3)
-            .ok_or_else(|| Error::geometry("Derived profile missing Operator".to_string()))?;
-        let operator = decoder
-            .resolve_ref(operator_attr)?
-            .ok_or_else(|| Error::geometry("Derived profile Operator not found".to_string()))?;
+        if profile.ifc_type == IfcType::IfcMirroredProfileDef {
+            mirror_profile_about_y_axis(&mut result);
+            return Ok(result);
+        }
 
+        // IfcDerivedProfileDef. Operator is required per the spec but some
+        // authoring tools omit it when the derived profile happens to equal
+        // its parent; treat null as the identity transform rather than
+        // erroring (the parent already came back fully processed).
+        let Some(operator_attr) = profile.get(3) else {
+            return Ok(result);
+        };
+        if operator_attr.is_null() {
+            return Ok(result);
+        }
+        let Some(operator) = decoder.resolve_ref(operator_attr)? else {
+            return Ok(result);
+        };
         self.apply_cartesian_transformation_operator_2d(&mut result, &operator, decoder)?;
         Ok(result)
     }
@@ -846,6 +972,96 @@ impl ProfileProcessor {
         Ok(Profile2D::new(points))
     }
 
+    /// Process asymmetric I-shape profile.
+    ///
+    /// `IfcAsymmetricIShapeProfileDef` (IFC4) attributes after the three
+    /// inherited `IfcParameterizedProfileDef` slots (ProfileType,
+    /// ProfileName, Position):
+    ///
+    ///   3:  BottomFlangeWidth          (required)
+    ///   4:  OverallDepth               (required)
+    ///   5:  WebThickness               (required)
+    ///   6:  BottomFlangeThickness      (required)
+    ///   7:  BottomFlangeFilletRadius   (optional, ignored — see below)
+    ///   8:  TopFlangeWidth             (required)
+    ///   9:  TopFlangeThickness         (optional, falls back to BottomFlangeThickness)
+    ///   10: TopFlangeFilletRadius      (optional, ignored)
+    ///   11: BottomFlangeEdgeRadius     (optional, ignored)
+    ///   12: BottomFlangeSlope          (optional, ignored)
+    ///   13: TopFlangeEdgeRadius        (optional, ignored)
+    ///   14: TopFlangeSlope             (optional, ignored)
+    ///
+    /// Fillet radii / edge tapers / slopes are intentionally omitted: the
+    /// existing symmetric `process_i_shape` ignores them too and the bridge
+    /// fixture in issue #828 doesn't need them to read correctly.
+    /// `process_i_shape` ignores them too. The origin sits at the centre
+    /// of the bounding rectangle (`max(top_width, bottom_width)` by
+    /// `overall_depth`) — same convention as the symmetric variant, which
+    /// is what Tekla, Revit, and the IfcOpenShell reference impl all emit.
+    fn process_asymmetric_i_shape(&self, profile: &DecodedEntity) -> Result<Profile2D> {
+        let bottom_width = profile
+            .get_float(3)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing BottomFlangeWidth".to_string()))?;
+        let overall_depth = profile
+            .get_float(4)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing OverallDepth".to_string()))?;
+        let web_thickness = profile
+            .get_float(5)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing WebThickness".to_string()))?;
+        let bottom_flange_thickness = profile
+            .get_float(6)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing BottomFlangeThickness".to_string()))?;
+        let top_width = profile
+            .get_float(8)
+            .ok_or_else(|| Error::geometry("AsymmetricI missing TopFlangeWidth".to_string()))?;
+        // TopFlangeThickness is OPTIONAL in IFC4. When omitted, the IFC4
+        // schema rule `IfcAsymmetricIShapeProfileDef.WR3` says the value
+        // equals BottomFlangeThickness — so symmetric flange thicknesses
+        // can be authored by leaving the top one $.
+        let top_flange_thickness = profile.get_float(9).unwrap_or(bottom_flange_thickness);
+
+        if overall_depth <= bottom_flange_thickness + top_flange_thickness {
+            return Err(Error::geometry(format!(
+                "AsymmetricI: OverallDepth {} must exceed BottomFlangeThickness + \
+                 TopFlangeThickness ({} + {} = {})",
+                overall_depth,
+                bottom_flange_thickness,
+                top_flange_thickness,
+                bottom_flange_thickness + top_flange_thickness,
+            )));
+        }
+
+        let half_overall_width = bottom_width.max(top_width) * 0.5;
+        let half_depth = overall_depth * 0.5;
+        let half_web = web_thickness * 0.5;
+        let half_bottom = bottom_width * 0.5;
+        let half_top = top_width * 0.5;
+
+        // Twelve-point CCW outline starting at the bottom-flange's
+        // bottom-left corner. Identical topology to `process_i_shape` but
+        // with two independent flange widths. The point at `(_, -half_depth
+        // + bottom_flange_thickness)` is intentionally placed at the
+        // bottom-flange edge (`±half_bottom`) — *not* at the overall width
+        // — so a wider bottom flange protrudes correctly.
+        let _ = half_overall_width; // (kept for future fillet/slope work)
+        let points = vec![
+            Point2::new(-half_bottom, -half_depth),
+            Point2::new(half_bottom, -half_depth),
+            Point2::new(half_bottom, -half_depth + bottom_flange_thickness),
+            Point2::new(half_web, -half_depth + bottom_flange_thickness),
+            Point2::new(half_web, half_depth - top_flange_thickness),
+            Point2::new(half_top, half_depth - top_flange_thickness),
+            Point2::new(half_top, half_depth),
+            Point2::new(-half_top, half_depth),
+            Point2::new(-half_top, half_depth - top_flange_thickness),
+            Point2::new(-half_web, half_depth - top_flange_thickness),
+            Point2::new(-half_web, -half_depth + bottom_flange_thickness),
+            Point2::new(-half_bottom, -half_depth + bottom_flange_thickness),
+        ];
+
+        Ok(Profile2D::new(points))
+    }
+
     /// Process circle hollow profile (tube/pipe)
     /// IfcCircleHollowProfileDef: ProfileType, ProfileName, Position, Radius, WallThickness
     fn process_circle_hollow(&self, profile: &DecodedEntity) -> Result<Profile2D> {
@@ -883,6 +1099,19 @@ impl ProfileProcessor {
 
     /// Process rectangle hollow profile (rectangular tube)
     /// IfcRectangleHollowProfileDef: ProfileType, ProfileName, Position, XDim, YDim, WallThickness, InnerFilletRadius, OuterFilletRadius
+    ///
+    /// Both fillet radii are optional in the schema. When set, they replace the
+    /// sharp 90° corners with quarter-circle arcs:
+    ///
+    /// * `OuterFilletRadius = R_o` rounds each outer corner with radius R_o.
+    /// * `InnerFilletRadius = R_i` rounds the corresponding inner corner. When
+    ///   `R_i == min(inner_half_x, inner_half_y)` the four inner arcs meet and
+    ///   the inner hole degenerates to a circle (issue #854 — RHS with a thin
+    ///   wall and circular bore, common for HVAC diffusers).
+    ///
+    /// The standard requires `R_o >= R_i + WallThickness` for a uniform-thickness
+    /// shell, but BIM authoring tools sometimes violate that; we tessellate
+    /// whatever radii were authored and let the renderer show the result.
     fn process_rectangle_hollow(&self, profile: &DecodedEntity) -> Result<Profile2D> {
         let x_dim = profile
             .get_float(3)
@@ -908,21 +1137,27 @@ impl ProfileProcessor {
         let inner_half_x = half_x - wall_thickness;
         let inner_half_y = half_y - wall_thickness;
 
-        // Outer rectangle (counter-clockwise)
-        let outer_points = vec![
-            Point2::new(-half_x, -half_y),
-            Point2::new(half_x, -half_y),
-            Point2::new(half_x, half_y),
-            Point2::new(-half_x, half_y),
-        ];
+        // InnerFilletRadius is attr 6, OuterFilletRadius is attr 7. Both
+        // optional; `None` (or a value below 1 µm) collapses to sharp
+        // corners. Clamp to the half-extent so an authored value larger
+        // than the inner half-dim doesn't fold the polygon inside-out.
+        let inner_fillet = profile
+            .get_float(6)
+            .unwrap_or(0.0)
+            .max(0.0)
+            .min(inner_half_x)
+            .min(inner_half_y);
+        let outer_fillet = profile
+            .get_float(7)
+            .unwrap_or(0.0)
+            .max(0.0)
+            .min(half_x)
+            .min(half_y);
 
-        // Inner rectangle (clockwise for hole - reversed order)
-        let inner_points = vec![
-            Point2::new(-inner_half_x, -inner_half_y),
-            Point2::new(-inner_half_x, inner_half_y),
-            Point2::new(inner_half_x, inner_half_y),
-            Point2::new(inner_half_x, -inner_half_y),
-        ];
+        let outer_points =
+            rounded_rectangle_outline(half_x, half_y, outer_fillet, /*ccw=*/ true);
+        let inner_points =
+            rounded_rectangle_outline(inner_half_x, inner_half_y, inner_fillet, /*ccw=*/ false);
 
         let mut result = Profile2D::new(outer_points);
         result.add_hole(inner_points);
@@ -1202,6 +1437,29 @@ impl ProfileProcessor {
             IfcType::IfcCompositeCurve => {
                 self.process_composite_curve_3d_with_depth(curve, decoder, depth)
             }
+            // IFC4x3 IfcGradientCurve = IfcCompositeCurve subtype that adds a
+            // 2D BaseCurve (attr 2) supplying the horizontal layout + own
+            // segments supplying the vertical (z) profile. The minimum-viable
+            // sampler for #859's IfcLinearPlacement use case returns the
+            // horizontal track of points by recursing into BaseCurve and
+            // dropping Z to 0 — every signal lands at the correct (x, y)
+            // station, just at the alignment's reference elevation instead
+            // of the true grade-corrected z. Full grade evaluation is a
+            // follow-up; "every signal pinned to its alignment station" is
+            // already a vast improvement over the pre-fix "all signals at
+            // world origin" state.
+            IfcType::IfcGradientCurve => {
+                if let Some(base_attr) = curve.get(2) {
+                    if !base_attr.is_null() {
+                        if let Some(base) = decoder.resolve_ref(base_attr)? {
+                            return self.get_curve_points_with_depth(&base, decoder, depth + 1);
+                        }
+                    }
+                }
+                // No BaseCurve → fall through to the segments-as-composite path
+                // so we at least produce something rather than erroring.
+                self.process_composite_curve_3d_with_depth(curve, decoder, depth)
+            }
             IfcType::IfcCircle => self.process_circle_3d(curve, decoder),
             IfcType::IfcIndexedPolyCurve => {
                 // Native 3D path: handles both IfcCartesianPointList2D (z=0) and
@@ -1413,8 +1671,77 @@ impl ProfileProcessor {
 
         let segments = decoder.resolve_ref_list(segments_attr)?;
         let mut result = Vec::new();
+        // Track the last IfcCurveSegment we sampled so we can extrapolate its
+        // terminal point after the loop. Each segment in the loop body emits
+        // only its START placement; without the terminal, every product whose
+        // `DistanceAlong` falls inside the FINAL segment after its start
+        // station gets clamped by `sample_polyline_at_distance` to that
+        // segment's start (i.e. authored station 800 instead of 900 on a
+        // 932-m alignment with the last segment spanning 800..932). See the
+        // post-loop block below.
+        let mut last_curve_segment_terminal: Option<Point3<f64>> = None;
 
         for segment in segments {
+            // IFC4x3 IfcCurveSegment (alignment fixtures) has a different
+            // attribute layout from the IFC2x3/IFC4 IfcCompositeCurveSegment
+            // the original walker was written for:
+            //   IfcCurveSegment: 0 Transition, 1 Placement (IfcAxis2Placement2D/3D),
+            //                    2 SegmentStart (length measure), 3 SegmentLength,
+            //                    4 ParentCurve
+            // Without recognising it, every alignment-authored composite
+            // curve errored out at "Failed to resolve ParentCurve" (the old
+            // walker reading attr 2 hit the SegmentStart length measure),
+            // which broke #859's IfcLinearPlacement resolver — every
+            // linearly-placed signal/referent fell back to identity.
+            //
+            // Minimum-viable handling: emit the segment's Placement.Location
+            // as ONE sample point and let the linear-placement sampler
+            // interpolate linearly between segment starts. Sparse but
+            // already a vast improvement over "all at origin". A full
+            // alignment evaluator (sampling the ParentCurve inside each
+            // segment's authored start..start+length range) is follow-up
+            // scope.
+            if segment.ifc_type == IfcType::IfcCurveSegment {
+                if let Some(placement_attr) = segment.get(1) {
+                    if !placement_attr.is_null() {
+                        if let Some(placement) = decoder.resolve_ref(placement_attr)? {
+                            if let Some((origin, x_axis)) =
+                                axis2_placement_location_and_x_axis_3d(&placement, decoder)
+                            {
+                                if result.last().map_or(true, |last: &Point3<f64>| {
+                                    (last - origin).norm() > 1e-9
+                                }) {
+                                    result.push(origin);
+                                }
+                                // Stash the segment's projected terminal in
+                                // case this turns out to be the last segment.
+                                // Read SegmentLength (attr 3); the value may
+                                // be wrapped in an IfcLengthMeasure typed
+                                // record or be a bare REAL.
+                                let segment_length = segment
+                                    .get(3)
+                                    .and_then(|a| a.as_float())
+                                    .unwrap_or(0.0);
+                                if segment_length > 1e-9 {
+                                    last_curve_segment_terminal =
+                                        Some(origin + x_axis * segment_length);
+                                } else {
+                                    last_curve_segment_terminal = None;
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                }
+                // Couldn't read this segment's placement — skip rather than fail.
+                last_curve_segment_terminal = None;
+                continue;
+            }
+            // Non-IfcCurveSegment branch (IfcCompositeCurveSegment): the
+            // explicit ParentCurve samples below already give us the segment
+            // end, so clear the stashed terminal.
+            last_curve_segment_terminal = None;
+
             // IfcCompositeCurveSegment: Transition, SameSense, ParentCurve
             let parent_curve_attr = segment.get(2).ok_or_else(|| {
                 Error::geometry("CompositeCurveSegment missing ParentCurve".to_string())
@@ -1446,6 +1773,20 @@ impl ProfileProcessor {
                 result.extend(segment_points.into_iter().skip(1));
             } else {
                 result.extend(segment_points);
+            }
+        }
+
+        // Append the last IfcCurveSegment's terminal sample (exact for
+        // straight segments, tangent approximation for curves). Pre-fix the
+        // missing terminal made `sample_polyline_at_distance` clamp any
+        // product in the final segment to the segment's start station; this
+        // surfaces visibly as railway signals authored at station 900 m
+        // snapping onto the segment-start marker around station 800 m.
+        if let Some(terminal) = last_curve_segment_terminal {
+            if result.last().map_or(true, |last: &Point3<f64>| {
+                (last - terminal).norm() > 1e-9
+            }) {
+                result.push(terminal);
             }
         }
 
@@ -1668,9 +2009,15 @@ impl ProfileProcessor {
 
         let (center, rotation) = self.get_placement_2d(basis, decoder)?;
 
-        // Convert trim parameters to angles (in degrees usually)
-        let start_angle = trim1.unwrap_or(0.0).to_radians();
-        let mut end_angle = trim2.unwrap_or(360.0).to_radians();
+        // Convert trim parameters to angles using the project's PLANEANGLEUNIT.
+        // The IFC spec interprets IfcParameterValue on IfcCircle/IfcEllipse as
+        // an angle in that unit; defaulting to `.to_radians()` collapsed 240°
+        // arcs to ~4° on RADIAN-declared files (issue #820, Renga export).
+        let angle_scale = decoder.plane_angle_to_radians();
+        let start_angle = trim1.unwrap_or(0.0) * angle_scale;
+        let mut end_angle = trim2
+            .map(|v| v * angle_scale)
+            .unwrap_or(2.0 * std::f64::consts::PI);
 
         // Handle angle wrapping for arcs that cross the 0°/360° boundary.
         // Example: start=359.98°, end=0° with sense=T should be a tiny arc (~0.02°),
@@ -2323,6 +2670,67 @@ impl ProfileProcessor {
 
         Ok(result)
     }
+}
+
+/// Resolve an `IfcAxis2Placement2D` or `IfcAxis2Placement3D` into its
+/// origin point AND local X-axis (RefDirection) as a unit vector. Used to
+/// extrapolate the last `IfcCurveSegment`'s terminal point:
+/// `origin + x_axis * SegmentLength` is exact for straight segments and a
+/// tangent approximation for arcs / clothoids — both strictly better than
+/// dropping the terminal sample entirely, which caused
+/// `sample_polyline_at_distance` to clamp any product whose
+/// `DistanceAlong` fell inside the final segment to its start station.
+///
+/// IFC4x3 attribute layout:
+///   IfcAxis2Placement2D: 0 Location, 1 RefDirection
+///   IfcAxis2Placement3D: 0 Location, 1 Axis (local Z), 2 RefDirection (local X)
+///
+/// Returns `(origin, x_axis)` with `x_axis` defaulting to +X when the
+/// RefDirection is absent or zero-length (matches the EXPRESS default).
+fn axis2_placement_location_and_x_axis_3d(
+    placement: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Option<(Point3<f64>, nalgebra::Vector3<f64>)> {
+    let is_3d = placement.ifc_type == IfcType::IfcAxis2Placement3D;
+    let is_2d = placement.ifc_type == IfcType::IfcAxis2Placement2D;
+    if !is_2d && !is_3d {
+        return None;
+    }
+    let location_attr = placement.get(0)?;
+    if location_attr.is_null() {
+        return None;
+    }
+    let location = decoder.resolve_ref(location_attr).ok().flatten()?;
+    if location.ifc_type != IfcType::IfcCartesianPoint {
+        return None;
+    }
+    let coords = location.get(0)?.as_list()?;
+    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+    let origin = Point3::new(x, y, z);
+
+    // RefDirection slot: index 2 on 3D, index 1 on 2D.
+    let ref_dir_idx = if is_3d { 2 } else { 1 };
+    let mut x_axis = nalgebra::Vector3::x();
+    if let Some(dir_attr) = placement.get(ref_dir_idx) {
+        if !dir_attr.is_null() {
+            if let Some(dir) = decoder.resolve_ref(dir_attr).ok().flatten() {
+                if dir.ifc_type == IfcType::IfcDirection {
+                    if let Some(ratios) = dir.get(0).and_then(|a| a.as_list()) {
+                        let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                        let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                        let dz = ratios.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+                        let v = nalgebra::Vector3::new(dx, dy, dz);
+                        if v.norm() > 1e-12 {
+                            x_axis = v.normalize();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Some((origin, x_axis))
 }
 
 #[cfg(test)]

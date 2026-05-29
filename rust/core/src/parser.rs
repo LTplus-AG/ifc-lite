@@ -318,25 +318,90 @@ impl<'a> EntityScanner<'a> {
     /// Returns (entity_id, type_name, line_start, line_end)
     #[inline]
     pub fn next_entity(&mut self) -> Option<(u32, &'a str, usize, usize)> {
-        // Find a '#' that actually starts an entity. A `#` is legal inside
+        // Find a '#' that actually starts an entity. A '#' is legal inside
         // STEP-encoded quoted strings (e.g. CATIA writes filenames like
-        // `'…\X0\2#.ifc'` into the HEADER's FILE_NAME), so we validate that
-        // the `#` is followed by at least one ASCII digit before treating it
-        // as an entity anchor. Without this check, an in-string `#` would
-        // misalign `find_entity_end`'s quote parity and silently drop every
-        // remaining entity in the file. See issue #654.
+        // `'…\X0\2#.ifc'` into the HEADER's FILE_NAME) AND inside STEP
+        // `/* … */` comments. Two layered guards:
+        //
+        //   1. Skip past `/* … */` comment regions entirely so an inner
+        //      `#N=…` token can't be mistaken for an entity (PR #865 follow-
+        //      up — `/* previous #12= IFCWALL */` was the canonical example
+        //      where the original `#N=` shape check still false-positived).
+        //   2. After comment-skipping locates a candidate '#', validate it
+        //      starts a real `#<digits>[ws]*=` pattern. Catches embedded
+        //      references inside STEP strings (CATIA `'…\X0\2#.ifc'`) AND
+        //      any comment-shaped tokens the comment skipper missed (mostly
+        //      a fallback now — true `/* */` regions never reach this check).
+        //
+        // Both checks together keep `next_entity` aligned with
+        // `build_entity_index` which is comment-blind today; if a stray
+        // comment-bound entity slips past the scanner, the index also
+        // ignores it, so the entity decoder + scanner stay consistent.
         let bytes = self.bytes;
         let len = bytes.len();
-        let line_start = loop {
+        let (line_start, id_end_validated) = loop {
+            // Step (1): jump past any `/* … */` comment that starts at or
+            // before the next candidate '#'. Use memchr2 so we look for
+            // '#' and '/' in one SIMD pass — whichever comes first
+            // decides the next move.
             let remaining = &bytes[self.position..];
-            let start_offset = memchr::memchr(b'#', remaining)?;
-            let candidate = self.position + start_offset;
-            let after = candidate + 1;
-            if after < len && bytes[after].is_ascii_digit() {
-                break candidate;
+            let next = memchr::memchr2(b'#', b'/', remaining)?;
+            let candidate = self.position + next;
+            let candidate_byte = bytes[candidate];
+
+            if candidate_byte == b'/' {
+                // '/' might begin a STEP `/* … */` comment. If yes, jump
+                // past `*/`; if not, it's a STEP arithmetic '/' inside a
+                // value list (rare; just step past it).
+                if candidate + 1 < len && bytes[candidate + 1] == b'*' {
+                    let mut p = candidate + 2;
+                    while p + 1 < len {
+                        // Find next '*'; check if followed by '/'.
+                        let from = p;
+                        let star = match memchr::memchr(b'*', &bytes[from..]) {
+                            Some(off) => from + off,
+                            None => return None, // unterminated comment
+                        };
+                        if star + 1 < len && bytes[star + 1] == b'/' {
+                            self.position = star + 2;
+                            break;
+                        }
+                        p = star + 1;
+                    }
+                    if self.position <= candidate {
+                        // Comment never closed — refuse to scan further.
+                        return None;
+                    }
+                    continue;
+                }
+                // Lone '/' — not a comment. Skip past.
+                self.position = candidate + 1;
+                continue;
             }
-            // Not a valid entity start — advance past this '#' and retry.
-            self.position = after;
+
+            // candidate_byte == b'#'. Step (2): validate `#<digits>[ws]*=`.
+            let after = candidate + 1;
+            if after >= len || !bytes[after].is_ascii_digit() {
+                self.position = after;
+                continue;
+            }
+            // Walk the digit run.
+            let mut digit_end = after;
+            while digit_end < len && bytes[digit_end].is_ascii_digit() {
+                digit_end += 1;
+            }
+            // Skip optional whitespace and verify the next byte is '='.
+            let mut probe = digit_end;
+            while probe < len && bytes[probe].is_ascii_whitespace() {
+                probe += 1;
+            }
+            if probe < len && bytes[probe] == b'=' {
+                break (candidate, digit_end);
+            }
+            // '#<digits>' not followed by '=' — this is a comment or string
+            // reference, not an entity definition. Skip past the digits and
+            // keep searching.
+            self.position = digit_end;
         };
 
         // Find the end of the entity (semicolon) while respecting quoted strings
@@ -345,14 +410,9 @@ impl<'a> EntityScanner<'a> {
         let end_offset = self.find_entity_end(line_content)?;
         let line_end = line_start + end_offset + 1;
 
-        // Parse entity ID (inline for speed)
+        // Parse entity ID — digit range already validated in the candidate loop.
         let id_start = line_start + 1;
-        let mut id_end = id_start;
-        while id_end < line_end && self.bytes[id_end].is_ascii_digit() {
-            id_end += 1;
-        }
-
-        // Fast integer parsing without allocation
+        let id_end = id_end_validated;
         let id = self.parse_u32_fast(id_start, id_end)?;
 
         // Find '=' after ID using SIMD

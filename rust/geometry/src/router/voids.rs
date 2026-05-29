@@ -220,6 +220,114 @@ fn generate_reveal_quads(
     }
 }
 
+/// Emit a horizontal cap face at the *inside* end of a recess opening
+/// (issue #864 follow-up review).
+///
+/// `generate_reveal_quads` covers the four side walls of an opening (the
+/// faces parallel to the extrusion axis). For a true through-opening that
+/// suffices: the host's pre-existing surfaces at the wall's near + far
+/// face become the entrance + exit, and `cut_rectangular_opening` already
+/// removed the host triangles inside the opening footprint so the
+/// renderer sees a clean hole at both faces.
+///
+/// A recess (issue #853) is asymmetric: one end of the opening sits
+/// flush with a host face (still a hole through that face), the other
+/// end stops INSIDE the host — and the host has no surface at that
+/// stop plane, so without an explicit cap the recess renders as
+/// open-bottomed (you'd see straight through the slab when looking
+/// into the pocket from the flush side).
+///
+/// Detection mirrors case (4) of `extend_opening_along_direction`:
+/// one end of the opening coincides with a host face on the extrusion
+/// axis, the other end sits strictly inside. The cap is emitted on
+/// the plane of the inside end, with its normal pointing OUT OF THE
+/// HOST (toward the open / flush end), so the renderer's outward-
+/// facing-normal convention shades it as the visible floor of the
+/// pocket.
+///
+/// No-op when the opening is a regular through-cut (neither end on a
+/// host face, or both ends on a host face).
+fn generate_recess_cap(
+    mesh: &mut Mesh,
+    open_min: &Point3<f64>,
+    open_max: &Point3<f64>,
+    wall_min: &Point3<f64>,
+    wall_max: &Point3<f64>,
+    extrusion_dir: Option<&Vector3<f64>>,
+) {
+    let ea = determine_extrusion_axis(extrusion_dir, wall_min, wall_max);
+
+    // Same per-axis tolerance as the recess detector in
+    // `extend_opening_along_direction` — proportional to the host
+    // extent so a small float-error offset doesn't mask the alignment.
+    let host_extent = (axis_val(wall_max, ea) - axis_val(wall_min, ea)).abs();
+    let face_align_tol = host_extent * 1e-5;
+
+    let open_lo = axis_val(open_min, ea);
+    let open_hi = axis_val(open_max, ea);
+    let wall_lo = axis_val(wall_min, ea);
+    let wall_hi = axis_val(wall_max, ea);
+
+    let near_at_min_face = (open_lo - wall_lo).abs() < face_align_tol;
+    let near_at_max_face = (open_hi - wall_hi).abs() < face_align_tol;
+    let far_inside_max = open_hi < wall_hi - face_align_tol;
+    let far_inside_min = open_lo > wall_lo + face_align_tol;
+
+    let (cap_value, normal_sign) = if near_at_min_face && far_inside_max {
+        // Min face is the flush end; cap at `open_hi`, normal points toward
+        // the flush face (−ea).
+        (open_hi, -1.0)
+    } else if near_at_max_face && far_inside_min {
+        // Max face is the flush end; cap at `open_lo`, normal points toward
+        // the flush face (+ea).
+        (open_lo, 1.0)
+    } else {
+        return;
+    };
+
+    // The two cross-axes (the ones that are NOT the extrusion axis).
+    let cross: [usize; 2] = match ea {
+        0 => [1, 2],
+        1 => [0, 2],
+        _ => [0, 1],
+    };
+    let c0 = cross[0];
+    let c1 = cross[1];
+
+    // Cap footprint = opening's cross-axis bounds clamped to the host so
+    // the cap never overshoots the host mesh (mirrors the clamping in
+    // `generate_reveal_quads`).
+    let c0_lo = axis_val(open_min, c0).max(axis_val(wall_min, c0));
+    let c0_hi = axis_val(open_max, c0).min(axis_val(wall_max, c0));
+    let c1_lo = axis_val(open_min, c1).max(axis_val(wall_min, c1));
+    let c1_hi = axis_val(open_max, c1).min(axis_val(wall_max, c1));
+    if c0_hi - c0_lo < 1e-4 || c1_hi - c1_lo < 1e-4 {
+        return;
+    }
+
+    // Wind the cap CCW viewed along the outward normal. For
+    // `normal_sign == +1.0` we look down the +ea axis at the rectangle;
+    // CCW corners are (c0_lo, c1_lo) → (c0_hi, c1_lo) → (c0_hi, c1_hi)
+    // → (c0_lo, c1_hi). For `normal_sign == -1.0` reverse to flip the
+    // winding.
+    let (a, b, c, d) = if normal_sign > 0.0 {
+        (
+            point_from_axes(ea, cap_value, c0, c0_lo, c1, c1_lo),
+            point_from_axes(ea, cap_value, c0, c0_hi, c1, c1_lo),
+            point_from_axes(ea, cap_value, c0, c0_hi, c1, c1_hi),
+            point_from_axes(ea, cap_value, c0, c0_lo, c1, c1_hi),
+        )
+    } else {
+        (
+            point_from_axes(ea, cap_value, c0, c0_lo, c1, c1_lo),
+            point_from_axes(ea, cap_value, c0, c0_lo, c1, c1_hi),
+            point_from_axes(ea, cap_value, c0, c0_hi, c1, c1_hi),
+            point_from_axes(ea, cap_value, c0, c0_hi, c1, c1_lo),
+        )
+    };
+    add_reveal_quad(mesh, a, b, c, d, vec_along_axis(ea, normal_sign));
+}
+
 /// Whether the representation type is geometry we can process.
 fn is_body_representation(rep_type: &str) -> bool {
     matches!(
@@ -1142,6 +1250,17 @@ impl GeometryRouter {
                     &wall_max,
                     rect_dirs[i].as_ref(),
                 );
+                // Issue #864 follow-up: recess openings (one end flush
+                // with a host face, the other end inside) need a cap
+                // face at the inside end. No-op for through-cuts.
+                generate_recess_cap(
+                    &mut result,
+                    open_min,
+                    open_max,
+                    &wall_min,
+                    &wall_max,
+                    rect_dirs[i].as_ref(),
+                );
             }
         }
 
@@ -1762,6 +1881,16 @@ impl GeometryRouter {
                 &rot_wall_max,
                 Some(&x_dir),
             );
+            // Issue #864 follow-up: emit a cap face at the recess's
+            // inside end (no-op for through-openings).
+            generate_recess_cap(
+                result,
+                &rot_min,
+                &rot_max,
+                &rot_wall_min,
+                &rot_wall_max,
+                Some(&x_dir),
+            );
 
             // Transform positions and normals back to world frame.
             for chunk in result.positions.chunks_exact_mut(3) {
@@ -1905,6 +2034,47 @@ impl GeometryRouter {
             .max((open_max.z - open_min.z).abs());
         let wall_proj_extent = (wall_max_proj - wall_min_proj).abs();
         if wall_proj_extent > opening_max_dim {
+            return (open_min, open_max);
+        }
+        // Case (3): the opening was authored to extend past the wall on at
+        // least one side in extrusion direction. This is a partial-overlap
+        // "bite" — issue #832, a 1 × 1 × 0.2 m opening offset so half the
+        // 0.2 m depth pokes out the wall's +X face. The Revit "extend to
+        // reach the opposite wall face" heuristic that follows is only
+        // sound when the opening sits ENTIRELY INSIDE the wall along the
+        // extrusion axis (the "opening too short" pattern); when the
+        // opening already pokes out one side, applying it stretches the
+        // box across the full wall thickness and the AABB clip removes
+        // BOTH faces — the punched-through slot the bug reporter saw.
+        // Compare projections rather than raw coords so the sign of the
+        // extrusion direction is irrelevant.
+        const POKE_TOL: f64 = 1e-6;
+        let opening_pokes_past_wall = open_min_proj < wall_min_proj - POKE_TOL
+            || open_max_proj > wall_max_proj + POKE_TOL;
+        if opening_pokes_past_wall {
+            return (open_min, open_max);
+        }
+
+        // Case (4): RECESS / POCKET pattern (issue #853). The opening starts
+        // exactly at one of the wall's faces and ends in the interior — the
+        // authored intent is a partial-depth bite from one side, not a
+        // through-hole. Extending to reach the opposite face converts the
+        // pocket into a through-hole (the user's screenshot on #853).
+        //
+        // IFC4+ models can author this with `IfcOpeningElement.PredefinedType
+        // = .RECESS.`, but we don't have a clean path to read that here —
+        // and geometry alone disambiguates the case: in a true "opening too
+        // short" pattern the opening floats inside the wall (neither end on
+        // a face); in a recess one end is on a face and the other is inside.
+        // Use coplanarity-pad tolerance so a tiny float-error offset doesn't
+        // mask the alignment.
+        let face_align_tol = (wall_max_proj - wall_min_proj).abs() * 1e-5;
+        let near_at_min_face = (open_min_proj - wall_min_proj).abs() < face_align_tol;
+        let near_at_max_face = (open_max_proj - wall_max_proj).abs() < face_align_tol;
+        let far_inside_min = open_min_proj > wall_min_proj + face_align_tol;
+        let far_inside_max = open_max_proj < wall_max_proj - face_align_tol;
+        let is_recess = (near_at_min_face && far_inside_max) || (near_at_max_face && far_inside_min);
+        if is_recess {
             return (open_min, open_max);
         }
 
@@ -3207,6 +3377,46 @@ mod reveal_tests {
         assert_eq!(new_max.x, open_max.x);
         assert_eq!(new_min.z, open_min.z);
         assert_eq!(new_max.z, open_max.z);
+    }
+
+    #[test]
+    fn test_extend_opening_skipped_when_opening_pokes_past_wall() {
+        // Regression for issue #832: a 1×1×0.2 m opening offset so its
+        // 0.2 m extrusion depth pokes 0.1 m past the wall's +X face. The
+        // Revit "extend to reach the opposite wall face" heuristic would
+        // stretch the opening through the wall thickness and the AABB
+        // clip would remove BOTH the +X (touched) and -X (un-touched)
+        // wall faces — the "punched-through slot" the user reported.
+        // The extension must bail out and return the authored bounds.
+        let router = crate::router::GeometryRouter::new();
+
+        // Wall: 0.2 m thick along X, 3 m × 3 m face.
+        let wall_min = Point3::new(7.9, 0.0, 0.0);
+        let wall_max = Point3::new(8.1, 3.0, 3.0);
+        // Opening starts inside the wall (x=8.0) and pokes past +X (x=8.2).
+        let open_min = Point3::new(8.0, 0.5, 1.0);
+        let open_max = Point3::new(8.2, 1.5, 2.0);
+        let dir = Vector3::new(1.0, 0.0, 0.0);
+
+        let (new_min, new_max) =
+            router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+
+        // Authored bounds must come back UNCHANGED — no extension, no pad.
+        assert_eq!(new_min, open_min, "X-poke-out: extension must not change min");
+        assert_eq!(new_max, open_max, "X-poke-out: extension must not change max");
+
+        // Same shape mirrored: opening pokes past -X face, extrusion -X.
+        let wall_min = Point3::new(5.9, 0.0, 0.0);
+        let wall_max = Point3::new(6.1, 3.0, 3.0);
+        let open_min = Point3::new(5.8, 0.5, 1.0);
+        let open_max = Point3::new(6.0, 1.5, 2.0);
+        let dir = Vector3::new(-1.0, 0.0, 0.0);
+
+        let (new_min, new_max) =
+            router.extend_opening_along_direction(open_min, open_max, wall_min, wall_max, dir);
+
+        assert_eq!(new_min, open_min, "-X-poke-out: extension must not change min");
+        assert_eq!(new_max, open_max, "-X-poke-out: extension must not change max");
     }
 
     #[test]

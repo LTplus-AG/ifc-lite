@@ -1,5 +1,11 @@
 # @ifc-lite/lens
 
+## 1.15.0
+
+### Minor Changes
+
+- [#823](https://github.com/LTplus-AG/ifc-lite/pull/823) [`a72c8d9`](https://github.com/LTplus-AG/ifc-lite/commit/a72c8d9d71da428cec6453e60c650c6cb296007c) Thanks [@jonatanjacobsson](https://github.com/jonatanjacobsson)! - Add `model` criteria type and auto-color source for federated model coloring, including a built-in "By Model" preset.
+
 ## 1.14.4
 
 ### Patch Changes

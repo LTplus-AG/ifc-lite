@@ -388,4 +388,56 @@ describe('evaluateAutoColorLens', () => {
     const colors = new Set(result.legend.map(l => l.color));
     expect(colors.size).toBe(30);
   });
+
+  it('should auto-color by model when provider supports getModelId', () => {
+    const entities = [
+      { id: 1, type: 'IfcWall', modelId: 'model-a' },
+      { id: 2, type: 'IfcWall', modelId: 'model-a' },
+      { id: 3, type: 'IfcSlab', modelId: 'model-b' },
+    ];
+    const entityMap = new Map(entities.map(e => [e.id, e]));
+    const modelNames = new Map([
+      ['model-a', 'Building A.ifc'],
+      ['model-b', 'Building B.ifc'],
+    ]);
+
+    const provider = createMockProvider(entities);
+    (provider as LensDataProvider).getModelId = (id) => entityMap.get(id)?.modelId;
+    (provider as LensDataProvider).getModelName = (modelId) => modelNames.get(modelId);
+
+    const spec: AutoColorSpec = { source: 'model' };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    expect(result.legend.length).toBe(2);
+    expect(result.colorMap.size).toBe(3);
+
+    const groupA = result.legend.find(e => e.name === 'Building A.ifc');
+    const groupB = result.legend.find(e => e.name === 'Building B.ifc');
+    expect(groupA).toBeDefined();
+    expect(groupA!.count).toBe(2);
+    expect(groupB).toBeDefined();
+    expect(groupB!.count).toBe(1);
+
+    const colors = new Set(result.legend.map(e => e.color));
+    expect(colors.size).toBe(2);
+  });
+
+  it('should auto-color single model as one group', () => {
+    const entities = [
+      { id: 1, type: 'IfcWall', modelId: 'legacy' },
+      { id: 2, type: 'IfcSlab', modelId: 'legacy' },
+    ];
+    const entityMap = new Map(entities.map(e => [e.id, e]));
+
+    const provider = createMockProvider(entities);
+    (provider as LensDataProvider).getModelId = (id) => entityMap.get(id)?.modelId;
+    (provider as LensDataProvider).getModelName = () => 'Model';
+
+    const spec: AutoColorSpec = { source: 'model' };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    expect(result.legend.length).toBe(1);
+    expect(result.legend[0].name).toBe('Model');
+    expect(result.legend[0].count).toBe(2);
+  });
 });

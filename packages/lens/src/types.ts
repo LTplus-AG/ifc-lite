@@ -94,6 +94,18 @@ export interface LensDataProvider {
     name: string;
     quantities: ReadonlyArray<{ name: string }>;
   }>;
+
+  /**
+   * Get the federated model identifier for an entity.
+   * Optional — engine skips model criteria when not implemented.
+   */
+  getModelId?(globalId: number): string | undefined;
+
+  /**
+   * Get the display name for a model identifier (for legends and UI).
+   * Optional — falls back to the raw modelId when not implemented.
+   */
+  getModelName?(modelId: string): string | undefined;
 }
 
 /** Property set returned by {@link LensDataProvider.getPropertySets} */
@@ -118,7 +130,7 @@ export interface ClassificationInfo {
 
 /** Criteria for matching entities */
 export interface LensCriteria {
-  type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification';
+  type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model';
   /** IFC class name (e.g. "IfcWall") — used when type === "ifcType" */
   ifcType?: string;
   /** Property set name (e.g. "Pset_WallCommon") — used when type === "property" */
@@ -145,6 +157,8 @@ export interface LensCriteria {
   classificationSystem?: string;
   /** Classification code (e.g. "Pr_60_10_32") — used when type === "classification" */
   classificationCode?: string;
+  /** Federated model identifier — used when type === "model" */
+  modelId?: string;
 }
 
 /** A single rule within a Lens */
@@ -166,7 +180,7 @@ export interface LensRule {
  * to each group. No manual rule authoring needed.
  */
 export interface AutoColorSpec {
-  source: 'ifcType' | 'attribute' | 'property' | 'quantity' | 'classification' | 'material';
+  source: 'ifcType' | 'attribute' | 'property' | 'quantity' | 'classification' | 'material' | 'model';
   /** Property/quantity set name — for source "property" or "quantity" */
   psetName?: string;
   /** Attribute, property, or quantity name */
@@ -219,12 +233,12 @@ export interface AutoColorLegendEntry {
 
 /** Supported auto-color data sources for display in UI */
 export const AUTO_COLOR_SOURCES = [
-  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material',
+  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model',
 ] as const;
 
 /** All supported criteria types for lens rules */
 export const LENS_CRITERIA_TYPES = [
-  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material',
+  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model',
 ] as const;
 
 /** Common entity attribute names for the lens rule editor */

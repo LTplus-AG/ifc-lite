@@ -31,17 +31,24 @@ console_error_panic_hook = { version = "0.1", optional = true }
 futures-util = "0.3"
 # gloo-timers removed — sync processing for speed
 ifc-lite-core.workspace = true
-# Disable default features so we DON'T pull in `manifold-csg`. The
-# Manifold C++ kernel can't compile to wasm32-unknown-unknown today
-# (upstream `wasm-cxx-shim` libc++ 18/20 incompatibility — see
-# docs/architecture/geometry-pipeline.md "WASM status"). Native
-# consumers keep the default and get Manifold; WASM stays on the
-# legacy BSP path until upstream unblocks.
+# Manifold C++ CSG kernel via the `manifold-csg-wasm-uu` feature.
+# Unblocked as of `wasm-cxx-shim` v0.5.0 / `manifold-csg-sys` 3.5.100
+# (May 2026); see docs/architecture/geometry-pipeline.md "WASM status".
+# Build requires LLVM 18+ with libc++ headers and `wasm-ld` on PATH —
+# `scripts/vercel-install.sh` provisions those on Vercel via dnf, and
+# `brew install llvm lld` covers local macOS dev.
+#
+# Picking the feature explicitly here (rather than re-enabling the
+# workspace default) keeps the opt-in contract documented at the
+# wasm-bindings layer: this is the one crate that flips the kernel.
 #
 # NOTE: cannot use `workspace = true` here because that forces inheriting
 # the workspace's `default-features = true`. Pin the path directly so we
-# can opt out of defaults from this single non-native consumer.
-ifc-lite-geometry = { path = "../geometry", default-features = false }
+# can pick our exact feature set from this single non-native consumer.
+ifc-lite-geometry = { path = "../geometry", default-features = false, features = ["manifold-csg-wasm-uu"] }
+# Canonical 2D-symbol extractor lives here; the wasm bindings just
+# delegate (issue #843 follow-up — full parity, one implementation).
+ifc-lite-processing = { path = "../processing" }
 js-sys = "=0.3.83"
 rayon = "1.10"
 # CRITICAL for wasm-bindgen-rayon to actually parallelize: the

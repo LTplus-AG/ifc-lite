@@ -18,8 +18,14 @@ import {
   MousePointer2,
   Focus,
   EyeOff,
+  Crosshair,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -46,6 +52,8 @@ export interface BCFTopicDetailProps {
   onActivateViewpoint: (viewpoint: BCFViewpoint) => void;
   onDeleteViewpoint: (viewpointGuid: string) => void;
   onUpdateStatus: (status: string) => void;
+  onZoomToTopic: () => void;
+  canZoomToTopic: boolean;
   onDeleteTopic: () => void;
   // Viewer state info for capture feedback
   selectionCount: number;
@@ -65,6 +73,8 @@ export function BCFTopicDetail({
   onActivateViewpoint,
   onDeleteViewpoint,
   onUpdateStatus,
+  onZoomToTopic,
+  canZoomToTopic,
   onDeleteTopic,
   selectionCount,
   hasIsolation,
@@ -107,6 +117,20 @@ export function BCFTopicDetail({
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <h3 className="font-medium text-sm flex-1 truncate">{topic.title}</h3>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onZoomToTopic}
+              disabled={!canZoomToTopic}
+              aria-label="Zoom to topic"
+            >
+              <Crosshair className="h-4 w-4" aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Zoom to</TooltipContent>
+        </Tooltip>
         <Button
           variant="ghost"
           size="sm"

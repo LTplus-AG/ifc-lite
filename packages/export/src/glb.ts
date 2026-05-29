@@ -85,15 +85,22 @@ export function parseGLBToMeshData(glb: Uint8Array): MeshData[] {
 
   const DEFAULT_COLOR: [number, number, number, number] = [0.8, 0.8, 0.8, 1];
   const resolveMaterialColor = (materialIdx: unknown): [number, number, number, number] => {
-    if (typeof materialIdx !== 'number') return DEFAULT_COLOR;
+    if (typeof materialIdx !== 'number') return [...DEFAULT_COLOR];
     const factor = materials[materialIdx]?.pbrMetallicRoughness?.baseColorFactor;
-    if (!Array.isArray(factor) || factor.length < 3) return DEFAULT_COLOR;
-    return [
-      Number(factor[0]),
-      Number(factor[1]),
-      Number(factor[2]),
-      factor.length >= 4 ? Number(factor[3]) : 1,
-    ];
+    if (!Array.isArray(factor) || factor.length < 3) return [...DEFAULT_COLOR];
+    const r = Number(factor[0]);
+    const g = Number(factor[1]);
+    const b = Number(factor[2]);
+    const a = factor.length >= 4 ? Number(factor[3]) : 1;
+    if (
+      !Number.isFinite(r) ||
+      !Number.isFinite(g) ||
+      !Number.isFinite(b) ||
+      !Number.isFinite(a)
+    ) {
+      return [...DEFAULT_COLOR];
+    }
+    return [r, g, b, a];
   };
 
   const readAccessor = (accessorIndex: number): { array: Float32Array | Uint32Array; count: number; components: number } => {

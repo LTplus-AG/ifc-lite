@@ -9,10 +9,12 @@ import {
   type Drawing2D,
   type ElementData,
 } from '@ifc-lite/drawing-2d';
+import type { DrawingLine2D } from '@ifc-lite/renderer';
 import { formatDistance } from './tools/formatDistance';
 import { formatArea, computePolygonCentroid } from './tools/computePolygonArea';
 import { drawCloudOnCanvas } from './tools/cloudPathGenerator';
 import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Annotation2DTool, Point2D, SelectedAnnotation2D } from '@/store/slices/drawing2DSlice';
+import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnnotations';
 
 // Fill colors for IFC types (architectural convention)
 const IFC_TYPE_FILL_COLORS: Record<string, string> = {
@@ -51,6 +53,142 @@ const IFC_TYPE_FILL_COLORS: Record<string, string> = {
 
 export function getFillColorForType(ifcType: string): string {
   return IFC_TYPE_FILL_COLORS[ifcType] || IFC_TYPE_FILL_COLORS.default;
+}
+
+// ─── IFC annotation overlay helpers (issue #812) ─────────────────────────────
+
+/** Linear sRGB straight-alpha [0..1] tuple → CSS `rgba(...)`. */
+function rgbaToCss(c: readonly [number, number, number, number]): string {
+  const r = Math.round(Math.max(0, Math.min(1, c[0])) * 255);
+  const g = Math.round(Math.max(0, Math.min(1, c[1])) * 255);
+  const b = Math.round(Math.max(0, Math.min(1, c[2])) * 255);
+  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, c[3]))})`;
+}
+
+/**
+ * Map IFC `BoxAlignment` to canvas2d `textAlign` + `textBaseline`. Mirrors
+ * the renderer's `parseBoxAlignment` semantics so the 2D overlay anchors
+ * text the same way the 3D pipeline does. Unknown / empty strings default
+ * to bottom-left (IFC4 IfcTextLiteralWithExtent default).
+ */
+function alignmentToCanvas(s: string): { align: CanvasTextAlign; baseline: CanvasTextBaseline } {
+  const norm = (s ?? '').toLowerCase().trim();
+  let align: CanvasTextAlign = 'left';
+  let baseline: CanvasTextBaseline = 'alphabetic';
+  if (norm.includes('right')) align = 'right';
+  else if (norm.includes('center')) align = 'center';
+  if (norm.includes('top')) baseline = 'top';
+  else if (norm.includes('middle') || (norm.includes('center') && !norm.includes('center-'))) baseline = 'middle';
+  return { align, baseline };
+}
+
+/**
+ * Render IFC annotation fills, lines, and text into the canvas, in screen
+ * pixels. The caller supplies:
+ *   - `modelToScreen` – drawing-coord → screen-pixel conversion (accounts
+ *     for axis flips and sheet-mode paper scale)
+ *   - `mmLineToScreen` – mm line weight → screen px stroke width
+ *   - `worldHeightToScreenPx` – world-units text height → screen px font size
+ *
+ * Called from both the sheet-mode and direct-mode render paths in
+ * `Drawing2DCanvas`. Splitting it out keeps the two paths in sync without
+ * duplicating ~80 lines of canvas calls.
+ *
+ * Text rendering uses identity transform (no canvas rotate-with-scale) so
+ * `direct mode`'s y-flip doesn't mirror glyphs. The baseline direction is
+ * recovered in screen space from `dirX/dirY` mapped through `modelToScreen`.
+ */
+function drawIfcAnnotationsScreenSpace(
+  ctx: CanvasRenderingContext2D,
+  lines: readonly DrawingLine2D[] | undefined,
+  texts: readonly AnnotationText2D[] | undefined,
+  fills: readonly AnnotationFill2D[] | undefined,
+  modelToScreen: (x: number, y: number) => { x: number; y: number },
+  mmLineToScreen: (mmWeight: number) => number,
+  worldHeightToScreenPx: (worldHeight: number) => number,
+): void {
+  // Fills first so lines/text composite cleanly on top.
+  if (fills && fills.length > 0) {
+    for (const fill of fills) {
+      const pts = fill.points;
+      if (pts.length < 6) continue;
+      const holes = fill.holesOffsets;
+
+      ctx.fillStyle = rgbaToCss(fill.color);
+      ctx.beginPath();
+
+      // Outer ring runs from index 0 up to the first hole offset (or end of
+      // points if no holes). Each hole offset is a vertex index where the
+      // next ring starts. Path subpaths use moveTo + lineTo + closePath; the
+      // even-odd fill rule handles the holes.
+      const ringStarts: number[] = [0];
+      for (let i = 0; i < holes.length; i++) ringStarts.push(holes[i]);
+      ringStarts.push(pts.length / 2); // sentinel end
+
+      for (let ri = 0; ri < ringStarts.length - 1; ri++) {
+        const start = ringStarts[ri];
+        const end = ringStarts[ri + 1];
+        if (end - start < 3) continue;
+        const first = modelToScreen(pts[start * 2], pts[start * 2 + 1]);
+        ctx.moveTo(first.x, first.y);
+        for (let i = start + 1; i < end; i++) {
+          const p = modelToScreen(pts[i * 2], pts[i * 2 + 1]);
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.closePath();
+      }
+      ctx.fill('evenodd');
+    }
+  }
+
+  if (lines && lines.length > 0) {
+    // Slightly heavier than the drawing-2d 'annotation' category (0.13 mm)
+    // so coplanar overlays read clearly against the cut polygons beneath.
+    // This is the 2D equivalent of the 3D thicker-lines suggestion in #812.
+    const lineWidthMm = 0.2;
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = mmLineToScreen(lineWidthMm);
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    for (const ln of lines) {
+      const a = modelToScreen(ln.line.start.x, ln.line.start.y);
+      const b = modelToScreen(ln.line.end.x, ln.line.end.y);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+  }
+
+  if (texts && texts.length > 0) {
+    for (const t of texts) {
+      if (!t.content) continue;
+      const anchor = modelToScreen(t.x, t.y);
+      // Recover baseline direction in SCREEN space. modelToScreen may flip
+      // axes (e.g. direct-mode flips Y), so atan2(dirY, dirX) on raw model
+      // dirs would draw the text mirrored on those axes.
+      const baselineEnd = modelToScreen(t.x + t.dirX, t.y + t.dirY);
+      const sx = baselineEnd.x - anchor.x;
+      const sy = baselineEnd.y - anchor.y;
+      const angle = Math.abs(sx) + Math.abs(sy) > 1e-6 ? Math.atan2(sy, sx) : 0;
+
+      const fontPx = t.targetPx && t.targetPx > 0 ? t.targetPx : worldHeightToScreenPx(t.height);
+      const { align, baseline } = alignmentToCanvas(t.alignment);
+      // Multi-line literals stack downward in world Y in 3D. In 2D screen
+      // space the equivalent is `+ fontPx` per line below the anchor along
+      // the baseline-perpendicular (handled by the canvas rotate below).
+      const lineOffsetPx = (t.lineYOffset ?? 0) * (fontPx / Math.max(1e-6, t.height));
+
+      ctx.save();
+      ctx.fillStyle = t.color ? rgbaToCss(t.color) : '#000000';
+      ctx.font = `${fontPx}px system-ui, sans-serif`;
+      ctx.textAlign = align;
+      ctx.textBaseline = baseline;
+      ctx.translate(anchor.x, anchor.y);
+      ctx.rotate(angle);
+      ctx.fillText(t.content, 0, lineOffsetPx);
+      ctx.restore();
+    }
+  }
 }
 
 // Static constants to avoid creating new objects/arrays on every render
@@ -97,6 +235,10 @@ interface Drawing2DCanvasProps {
   cloudAnnotations?: CloudAnnotation2D[];
   // Selection
   selectedAnnotation?: SelectedAnnotation2D | null;
+  // IFC annotation overlay (issue #812)
+  ifcAnnotationLines?: readonly DrawingLine2D[];
+  ifcAnnotationTexts?: readonly AnnotationText2D[];
+  ifcAnnotationFills?: readonly AnnotationFill2D[];
 }
 
 export function Drawing2DCanvas({
@@ -126,6 +268,9 @@ export function Drawing2DCanvas({
   cloudAnnotationPoints = [],
   cloudAnnotations = [],
   selectedAnnotation = null,
+  ifcAnnotationLines,
+  ifcAnnotationTexts,
+  ifcAnnotationFills,
 }: Drawing2DCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -630,6 +775,17 @@ export function Drawing2DCanvas({
           ctx.stroke();
           ctx.setLineDash([]);
         }
+
+        // IFC annotation overlay (issue #812)
+        drawIfcAnnotationsScreenSpace(
+          ctx,
+          ifcAnnotationLines,
+          ifcAnnotationTexts,
+          ifcAnnotationFills,
+          modelToScreen,
+          (mm) => Math.max(0.5, mmToScreen(mm) * 0.3),
+          (worldHeight) => Math.max(8, worldHeight * drawingTransform.scaleFactor * transform.scale),
+        );
       };
 
       drawModelContent();
@@ -945,6 +1101,27 @@ export function Drawing2DCanvas({
       }
 
       ctx.restore();
+
+      // IFC annotation overlay (issue #812). Rendered after ctx.restore so we
+      // can size lines and text in screen pixels rather than fighting the
+      // ctx.scale applied above (which would inverse-scale everything).
+      const directScaleX = sectionAxis === 'side' ? -transform.scale : transform.scale;
+      const directScaleY = sectionAxis === 'down' ? transform.scale : -transform.scale;
+      drawIfcAnnotationsScreenSpace(
+        ctx,
+        ifcAnnotationLines,
+        ifcAnnotationTexts,
+        ifcAnnotationFills,
+        (x, y) => ({ x: x * directScaleX + transform.x, y: y * directScaleY + transform.y }),
+        // No paper scale here: take a baseline 0.3 px per "default mm" so
+        // weights match the heavier projection lines visually. Annotation
+        // strokes in IFC are intentionally lighter than projection lines,
+        // but a hair too thin on a 1× screen disappears entirely.
+        (mmWeight) => Math.max(0.5, mmWeight * transform.scale * 0.3),
+        // World height directly to screen pixels through the active zoom.
+        // 8 px floor so labels stay legible when zoomed way out.
+        (worldHeight) => Math.max(8, worldHeight * transform.scale),
+      );
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1399,7 +1576,7 @@ export function Drawing2DCanvas({
         }
       }
     }
-  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation]);
+  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills]);
 
   return (
     <canvas

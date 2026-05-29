@@ -90,7 +90,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   const models = useViewerStore((s) => s.models);
 
   // BCF hook for camera/snapshot integration
-  const { createViewpointFromState, applyViewpoint } = useBCF();
+  const { createViewpointFromState, applyViewpoint, zoomToTopic, canZoomToTopic } = useBCF();
 
   // Local state
   const [statusFilter, setStatusFilter] = useState('all');
@@ -260,6 +260,11 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     applyViewpoint(viewpoint, true); // Animate to viewpoint
   }, [applyViewpoint]);
 
+  const handleZoomToTopic = useCallback(() => {
+    if (!activeTopic) return;
+    zoomToTopic(activeTopic);
+  }, [activeTopic, zoomToTopic]);
+
   // Delete viewpoint
   const handleDeleteViewpoint = useCallback(
     (viewpointGuid: string) => {
@@ -391,6 +396,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onActivateViewpoint={handleActivateViewpoint}
             onDeleteViewpoint={handleDeleteViewpoint}
             onUpdateStatus={handleUpdateStatus}
+            onZoomToTopic={handleZoomToTopic}
+            canZoomToTopic={activeTopic ? canZoomToTopic(activeTopic) : false}
             onDeleteTopic={handleDeleteTopic}
             selectionCount={selectionCount}
             hasIsolation={hasIsolation}

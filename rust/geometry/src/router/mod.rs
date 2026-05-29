@@ -19,11 +19,12 @@ mod tests;
 
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{
-    AdvancedBrepProcessor, BlockProcessor, BooleanClippingProcessor, CsgSolidProcessor,
-    ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor,
-    FacetedBrepProcessor, MappedItemProcessor, PolygonalFaceSetProcessor,
-    RevolvedAreaSolidProcessor, ShellBasedSurfaceModelProcessor, SweptDiskSolidProcessor,
-    TriangulatedFaceSetProcessor,
+    AdvancedBrepProcessor, BSplineSurfaceProcessor, BlockProcessor, BooleanClippingProcessor,
+    CsgSolidProcessor, ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor,
+    FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, IfcAlignmentProcessor,
+    MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
+    SectionedSolidHorizontalProcessor, ShellBasedSurfaceModelProcessor, SphereProcessor,
+    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -219,11 +220,17 @@ impl GeometryRouter {
         router.register(Box::new(RevolvedAreaSolidProcessor::new(
             schema_clone.clone(),
         )));
+        router.register(Box::new(SectionedSolidHorizontalProcessor::new(
+            schema_clone.clone(),
+        )));
         router.register(Box::new(AdvancedBrepProcessor::new()));
+        router.register(Box::new(BSplineSurfaceProcessor::new()));
         router.register(Box::new(ShellBasedSurfaceModelProcessor::new()));
         router.register(Box::new(FaceBasedSurfaceModelProcessor::new()));
         router.register(Box::new(BlockProcessor::new()));
+        router.register(Box::new(SphereProcessor::new()));
         router.register(Box::new(CsgSolidProcessor::new()));
+        router.register(Box::new(IfcAlignmentProcessor::new()));
 
         router
     }
@@ -591,6 +598,9 @@ impl GeometryRouter {
                     "ManifoldOutputDegenerate"
                 }
                 crate::diagnostics::BoolFailureReason::KernelError(_) => "KernelError",
+                crate::diagnostics::BoolFailureReason::DifferenceEmptiedHost => {
+                    "DifferenceEmptiedHost"
+                }
             };
             entry.first_failure_label = Some(label.to_string());
         }

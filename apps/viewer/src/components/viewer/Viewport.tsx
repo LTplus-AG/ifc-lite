@@ -40,7 +40,11 @@ import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
-import { useSymbolicAnnotations, useSymbolicAnnotationsRichData } from '../../hooks/useSymbolicAnnotations.js';
+import {
+  useSymbolicAnnotations,
+  useSymbolicAnnotationsRichData,
+  type SectionClipForGrid,
+} from '../../hooks/useSymbolicAnnotations.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -622,8 +626,19 @@ export function Viewport({
           calculateScale();
         },
         home: () => {
-          // Reset to isometric view
-          camera.zoomToFit(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 500);
+          // Adaptive home: compact buildings get the historical SE isometric
+          // pose (1:1 with the old behaviour), linear infrastructure gets a
+          // side-on view at a distance where signals / referents are visible
+          // instead of receding to sub-pixel. The policy is computed from
+          // the current bbox shape so a federation that swaps from one
+          // building to a railway picks the right pose on Home press.
+          // See packages/renderer/src/camera-fit-policy.ts.
+          const canvas = rendererRef.current?.getCanvas();
+          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          camera.fitBoundsAdaptive(
+            { min: geometryBoundsRef.current.min, max: geometryBoundsRef.current.max },
+            { animate: true, duration: 500, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+          );
           calculateScale();
         },
         zoomIn: () => {
@@ -787,6 +802,11 @@ export function Viewport({
   // storey model shows all storeys' annotations layered correctly in 3D
   // (issue #653). Parsing is lazy and only runs while the toggle is on.
   const ifcAnnotationsVisible = useViewerStore((s) => s.typeVisibility.ifcAnnotations);
+  // Issue #862: IfcGrid is a separate toggle from IfcAnnotation. Default
+  // is on so existing users see no change; when the user disables it the
+  // grid axes + bubble tags drop out without affecting dimension/leader
+  // annotation rendering.
+  const ifcGridVisible = useViewerStore((s) => s.typeVisibility.ifcGrid);
   // For annotations whose storey can't be resolved (or whose authored
   // elevation is 0 because the storey Z lives on the placement instead),
   // lift to the middle of the model's vertical span so they don't end up
@@ -799,12 +819,37 @@ export function Viewport({
     if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return 0;
     return (min + max) * 0.5;
   }, [coordinateInfo]);
+
+  // Issue #862: section-clip grid lines so dense-grid models stay
+  // readable when a horizontal cut is active. Use a 1.5 m band on each
+  // side of the cut so the cut storey's grids are visible but storeys
+  // 1.5 m+ away are hidden (matches typical residential floor heights).
+  // Only applies to the floor-plan axis (`'down'`) — vertical cuts
+  // don't clip grids since grid lines are inherently vertical.
+  const gridSectionClip = useMemo<SectionClipForGrid | undefined>(() => {
+    if (!sectionPlane.enabled || sectionPlane.axis !== 'down' || !sectionRange) {
+      return undefined;
+    }
+    const posWorld = sectionRange.min + (sectionPlane.position / 100) * (sectionRange.max - sectionRange.min);
+    const GRID_CLIP_HALF_BAND_M = 1.5;
+    return {
+      enabled: true,
+      posWorld,
+      viewDepth: GRID_CLIP_HALF_BAND_M,
+      axis: sectionPlane.axis,
+    };
+  }, [sectionPlane.enabled, sectionPlane.axis, sectionPlane.position, sectionRange]);
+
   const annotationVertices3D = useSymbolicAnnotations({
     enabled: ifcAnnotationsVisible,
+    gridEnabled: ifcGridVisible,
+    gridSectionClip,
     fallbackY: annotationFallbackY,
   });
   const { texts: annotationTexts3D, fills: annotationFills3D } = useSymbolicAnnotationsRichData({
     enabled: ifcAnnotationsVisible,
+    gridEnabled: ifcGridVisible,
+    gridSectionClip,
     fallbackY: annotationFallbackY,
   });
   useEffect(() => {

@@ -91,6 +91,13 @@ export interface Drawing2DState {
     scale: number;
     /** Use authored symbolic representations (Plan/Annotation) when available instead of section cut */
     useSymbolicRepresentations: boolean;
+    /**
+     * Whether to overlay IfcAnnotation curves, text, and fills on the 2D
+     * section view. Filtered to annotations whose world position falls
+     * inside the section's view-range on the cut axis (issue #812 follow-up
+     * to the IfcAnnotation text feature).
+     */
+    showIfcAnnotations: boolean;
   };
   /** Available graphic override presets */
   graphicOverridePresets: GraphicOverridePreset[];
@@ -236,6 +243,7 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   show3DOverlay: true, // Show 3D overlay by default
   scale: 100, // 1:100 default
   useSymbolicRepresentations: false, // Default to section cut (Body geometry)
+  showIfcAnnotations: true, // Mirror the 3D Class Visibility default
 });
 
 const getDefaultState = (): Drawing2DState => ({

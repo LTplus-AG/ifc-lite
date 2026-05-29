@@ -8,6 +8,7 @@
 //! the HTTP server and the native FFI library.
 
 mod processor;
+mod symbolic;
 mod types;
 
 pub use processor::{
@@ -16,6 +17,10 @@ pub use processor::{
     process_geometry_streaming_filtered_with_options, process_geometry_streaming_with_options,
     process_geometry_streaming_with_options_and_bootstrap,
     OpeningFilterMode, ProcessingResult, StreamingOptions,
+};
+pub use symbolic::{
+    extract_symbolic_data, SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis,
+    SymbolicPolyline, SymbolicText,
 };
 pub use types::mesh::MeshData;
 pub use types::response::{

@@ -20,6 +20,7 @@
 
 mod advanced;
 mod advanced_face;
+mod alignment;
 mod boolean;
 mod brep;
 mod csg_primitive;
@@ -27,6 +28,7 @@ mod extrusion;
 mod extrusion_tapered;
 mod helpers;
 mod mapped;
+mod sectioned;
 mod surface;
 mod swept;
 mod tessellated;
@@ -35,15 +37,17 @@ mod tessellated;
 mod tests;
 
 // Re-export all processor types
-pub use advanced::AdvancedBrepProcessor;
+pub use advanced::{AdvancedBrepProcessor, BSplineSurfaceProcessor};
+pub use alignment::IfcAlignmentProcessor;
 pub use boolean::BooleanClippingProcessor;
 pub use brep::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, ShellBasedSurfaceModelProcessor,
 };
-pub use csg_primitive::{BlockProcessor, CsgSolidProcessor};
+pub use csg_primitive::{BlockProcessor, CsgSolidProcessor, SphereProcessor};
 pub use extrusion::ExtrudedAreaSolidProcessor;
 pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use mapped::MappedItemProcessor;
+pub use sectioned::SectionedSolidHorizontalProcessor;
 pub use surface::SurfaceOfLinearExtrusionProcessor;
 pub use swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};

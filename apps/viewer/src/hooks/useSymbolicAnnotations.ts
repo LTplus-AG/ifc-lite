@@ -60,10 +60,9 @@ export interface AnnotationText2D {
   /**
    * When true, the renderer rebuilds the glyph quad in screen-aligned
    * (cameraRight, cameraUp) basis so the text always faces the camera.
-   * Set for IfcGridAxis tags — they must stay readable in top-down/ground
-   * views where the authored world-Y up axis collapses to zero on-screen.
-   * Defaults to false (authored, in-plane text — matches BIMvision for
-   * dimension/leader annotations that lie flat on the floor).
+   * Set for every annotation literal (grid bubbles, dimension callouts,
+   * leader labels) so they stay legible in any view — flat-in-plane text
+   * collapses to a sliver at oblique angles (issue #812). Defaults to false.
    */
   billboard?: boolean;
   /** sRGB straight-alpha tint (0..1). Defaults to renderer near-black. */
@@ -92,13 +91,31 @@ export interface AnnotationFill2D {
   };
 }
 
-/** Cached parse result keyed by source identity. */
+/** Cached parse result keyed by source identity.
+ *
+ * IfcAnnotation and IfcGridAxis primitives are stored in PARALLEL bucket
+ * collections (issue #862). They share the same parse pass and the same
+ * storey-resolution logic, but the renderer treats them differently:
+ *
+ *   - Annotation buckets always lift every storey (memory
+ *     `feedback_3d_annotation_overlay_no_section_filter.md`: the user
+ *     expects every storey's dimensions to be visible in 3D).
+ *   - Grid buckets get optional section-plane filtering and an
+ *     independent visibility toggle, so dense-grid models can hide
+ *     grids per storey without losing dimensions.
+ */
 interface ParseResult {
+  // IfcAnnotation buckets
   byStorey: Map<number, AnnotationsForStorey>;
-  /** Annotations with no resolvable storey — shown on every floor as a fallback. */
   loose: DrawingLine2D[];
   looseTexts: AnnotationText2D[];
   looseFills: AnnotationFill2D[];
+
+  // IfcGridAxis buckets (issue #862)
+  gridByStorey: Map<number, AnnotationsForStorey>;
+  gridLoose: DrawingLine2D[];
+  gridLooseTexts: AnnotationText2D[];
+  gridLooseFills: AnnotationFill2D[];
 }
 
 const CIRCLE_SEGMENTS_FULL = 32;
@@ -213,6 +230,10 @@ async function parseAnnotations(
     loose: [],
     looseTexts: [],
     looseFills: [],
+    gridByStorey: new Map(),
+    gridLoose: [],
+    gridLooseTexts: [],
+    gridLooseFills: [],
   };
   const source = store.source;
   if (!source || source.byteLength === 0) {
@@ -257,6 +278,7 @@ async function parseAnnotations(
     const ensureBucket = (
       expressId: number,
       primitiveWorldY: number,
+      ifcType: string,
     ): AnnotationsForStorey | null => {
       let effectiveY: number | null = null;
       if (Number.isFinite(primitiveWorldY) && primitiveWorldY !== 0) {
@@ -270,7 +292,11 @@ async function parseAnnotations(
       }
       if (effectiveY === null) return null;
       const key = Math.round(effectiveY * 1000);
-      let bucket = result.byStorey.get(key);
+      // Issue #862: IfcGridAxis primitives land in a parallel bucket
+      // collection so the renderer can section-clip + visibility-toggle
+      // them independently of IfcAnnotation (text/dimension symbols).
+      const storeyMap = ifcType === 'IfcGridAxis' ? result.gridByStorey : result.byStorey;
+      let bucket = storeyMap.get(key);
       if (!bucket) {
         bucket = {
           storeyId: key,
@@ -279,7 +305,7 @@ async function parseAnnotations(
           texts: [],
           fills: [],
         };
-        result.byStorey.set(key, bucket);
+        storeyMap.set(key, bucket);
       }
       return bucket;
     };
@@ -288,8 +314,9 @@ async function parseAnnotations(
       const poly = collection.getPolyline(i);
       if (!poly) continue;
       if (poly.ifcType !== 'IfcAnnotation' && poly.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(poly.expressId, poly.worldY);
-      const out = bucket ? bucket.lines : result.loose;
+      const bucket = ensureBucket(poly.expressId, poly.worldY, poly.ifcType);
+      const looseTarget = poly.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+      const out = bucket ? bucket.lines : looseTarget;
       polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out);
     }
 
@@ -297,8 +324,9 @@ async function parseAnnotations(
       const circle = collection.getCircle(i);
       if (!circle) continue;
       if (circle.ifcType !== 'IfcAnnotation' && circle.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(circle.expressId, circle.worldY);
-      const out = bucket ? bucket.lines : result.loose;
+      const bucket = ensureBucket(circle.expressId, circle.worldY, circle.ifcType);
+      const looseTarget = circle.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+      const out = bucket ? bucket.lines : looseTarget;
       circleToSegments(
         circle.centerX,
         circle.centerY,
@@ -336,13 +364,15 @@ async function parseAnnotations(
       // Industry-standard line-spacing (CSS line-height ≈ 1.2). Picks up
       // a little air between rows so descenders don't kiss the next cap.
       const lineSpacing = perLineHeight * 1.2;
-      const bucket = ensureBucket(text.expressId, text.worldY);
-      // IfcGridAxis bubble tags must stay readable in any view orientation
-      // (top-down, eye-level, oblique). Tag them as billboard so the text
-      // shader rebuilds the quad in screen-aligned basis at render time.
-      // Other annotation text (dimensions, leader labels) keeps authored
-      // orientation — those are meant to lie flat in the floor plane.
-      const isGridTag = text.ifcType === 'IfcGridAxis';
+      const bucket = ensureBucket(text.expressId, text.worldY, text.ifcType);
+      const looseTextTarget = text.ifcType === 'IfcGridAxis' ? result.gridLooseTexts : result.looseTexts;
+      // All annotation text — grid bubbles, dimension callouts, leader labels —
+      // billboards to the camera so it stays legible in any view orientation
+      // (top-down, eye-level, oblique). The shader rebuilds the quad in the
+      // screen-aligned basis at render time. Authored orientation is intentionally
+      // dropped: at oblique viewing angles, flat-in-plane text becomes a smeared
+      // sliver of pixels (issue #812). Anchor + alignment are preserved, so each
+      // label still sits at its authored insertion point.
       // Read per-instance style metadata. WASM emits these for grid
       // bubble parts (● fill / ○ outline / tag) and reserves them for
       // future IfcTextStyle resolution on regular annotation text.
@@ -362,11 +392,11 @@ async function parseAnnotations(
           content: lines[li],
           alignment: text.alignment,
           lineYOffset: -li * lineSpacing,
-          billboard: isGridTag,
+          billboard: true,
           color: textColor,
           targetPx,
         };
-        (bucket ? bucket.texts : result.looseTexts).push(t2d);
+        (bucket ? bucket.texts : looseTextTarget).push(t2d);
       }
     }
 
@@ -389,8 +419,9 @@ async function parseAnnotations(
             }
           : undefined,
       };
-      const bucket = ensureBucket(fill.expressId, fill.worldY);
-      (bucket ? bucket.fills : result.looseFills).push(f2d);
+      const bucket = ensureBucket(fill.expressId, fill.worldY, fill.ifcType);
+      const looseFillTarget = fill.ifcType === 'IfcGridAxis' ? result.gridLooseFills : result.looseFills;
+      (bucket ? bucket.fills : looseFillTarget).push(f2d);
     }
   } finally {
     processor.dispose();
@@ -521,17 +552,48 @@ function resolveBucketY(elevation: number | null, fallbackY: number): number {
   return elevation === null ? fallbackY : elevation;
 }
 
-export function useSymbolicAnnotations(params: {
+/** Section-clip parameters for grid lines (issue #862). Grids ARE clipped
+ *  by the active section plane; IfcAnnotation overlays are NOT (per the
+ *  feedback_3d_annotation_overlay_no_section_filter memory). When
+ *  `enabled === false` no clipping happens — grids lift to every storey
+ *  same as annotations.
+ */
+export interface SectionClipForGrid {
   enabled: boolean;
+  /** World coord on the cut axis (e.g. world-Y for axis='down'). */
+  posWorld: number;
+  /** Half-thickness of the visible band around the cut, world units. */
+  viewDepth: number;
+  /** Cut axis. Only `'down'` performs vertical clipping; other axes pass through unfiltered (grid lines are vertical and don't project meaningfully onto elevation cuts). */
+  axis: 'down' | 'front' | 'side';
+}
+
+export function useSymbolicAnnotations(params: {
+  /** Enable IfcAnnotation lift (the existing default behaviour). */
+  enabled: boolean;
+  /**
+   * Enable IfcGrid lift. Independent of `enabled` so a user can hide
+   * annotations while keeping grids, or vice versa (issue #862).
+   * Defaults to `enabled` so existing call sites that don't set it
+   * keep the legacy combined behaviour.
+   */
+  gridEnabled?: boolean;
+  /** Section clipping for grids only — see [`SectionClipForGrid`]. */
+  gridSectionClip?: SectionClipForGrid;
   /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
   fallbackY?: number;
 }): Float32Array {
-  const { enabled, fallbackY = 0 } = params;
+  const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
+  const effectiveGridEnabled = gridEnabled ?? enabled;
   const stores = useActiveStores();
-  const version = useAnnotationParseTrigger(enabled, stores);
+  // Trigger parse if EITHER subset is enabled — the parse pass is shared.
+  const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
+  const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
+  const clipPos = clipEnabled ? gridSectionClip!.posWorld : 0;
+  const clipDepth = clipEnabled ? gridSectionClip!.viewDepth : 0;
 
   return useMemo(() => {
-    if (!enabled) return EMPTY_F32;
+    if (!enabled && !effectiveGridEnabled) return EMPTY_F32;
     void version; // depend on parse-completion ticks
 
     const verts: number[] = [];
@@ -546,22 +608,49 @@ export function useSymbolicAnnotations(params: {
         continue;
       }
       if (debugEnabled()) {
-        const buckets = cached.byStorey.size;
-        const looseLines = cached.loose.length;
-        console.log(`[annotations] store ${storeIdx}: lifting ${buckets} storey buckets + ${looseLines} loose lines (key=${key}, fallbackY=${fallbackY})`);
+        console.log(
+          `[annotations] store ${storeIdx}: annotation buckets=${cached.byStorey.size}+${cached.loose.length}loose, grid buckets=${cached.gridByStorey.size}+${cached.gridLoose.length}loose (annot=${enabled}, grid=${effectiveGridEnabled}, clip=${clipEnabled})`,
+        );
       }
 
-      for (const bucket of cached.byStorey.values()) {
-        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+      if (enabled) {
+        for (const bucket of cached.byStorey.values()) {
+          liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+        }
+        liftTo3DLineList(cached.loose, fallbackY, verts);
       }
-      liftTo3DLineList(cached.loose, fallbackY, verts);
+
+      if (effectiveGridEnabled) {
+        // Issue #862: section-clip grid buckets only — IfcAnnotation
+        // intentionally bypasses this per the feedback memory ("the
+        // user expects every storey's dimensions/grid bubbles to lift
+        // into the viewport when [the annotation toggle is] on, even
+        // while a section cut is active").
+        if (clipEnabled) {
+          const lo = clipPos - clipDepth;
+          const hi = clipPos + clipDepth;
+          for (const bucket of cached.gridByStorey.values()) {
+            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+            if (y < lo || y > hi) continue;
+            liftTo3DLineList(bucket.lines, y, verts);
+          }
+          if (fallbackY >= lo && fallbackY <= hi) {
+            liftTo3DLineList(cached.gridLoose, fallbackY, verts);
+          }
+        } else {
+          for (const bucket of cached.gridByStorey.values()) {
+            liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), verts);
+          }
+          liftTo3DLineList(cached.gridLoose, fallbackY, verts);
+        }
+      }
       storeIdx++;
     }
 
     if (debugEnabled()) console.log(`[annotations] total 3D line vertices: ${verts.length / 3} from ${stores.length} stores`);
     if (verts.length === 0) return EMPTY_F32;
     return new Float32Array(verts);
-  }, [enabled, stores, version, fallbackY]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, version, fallbackY]);
 }
 
 /**
@@ -605,6 +694,160 @@ const EMPTY_TEXTS: readonly AnnotationText3D[] = Object.freeze([]);
 const EMPTY_FILLS: readonly AnnotationFill3D[] = Object.freeze([]);
 
 /**
+ * Hook for the 2D Section panel: filters the shared parse cache to
+ * annotations whose world position falls inside the section's view-range
+ * on the cut axis, returning data in the Drawing2D coordinate frame.
+ *
+ * For `axis='down'` (floor plan), the parser's 2D coords already match
+ * the drawing-2d coord frame directly (x = world x, y = world z, with
+ * worldY = the cut axis). For elevation views (`axis='front'`,
+ * `axis='side'`), this hook returns empty: most authored IFC annotations
+ * are floor-plan symbols (dimensions, leaders, room labels) and don't
+ * project meaningfully onto a vertical drawing without a separate
+ * reorientation pass. Wiring those up cleanly is a follow-up.
+ *
+ * The section position is in world units (already converted from the
+ * 0-100% slider via `axisMin + (position / 100) * (axisMax - axisMin)`
+ * by the caller — Section2DPanel computes the same value to feed the
+ * drawing generator).
+ */
+export interface DrawingAnnotationData {
+  lines: DrawingLine2D[];
+  texts: AnnotationText2D[];
+  fills: AnnotationFill2D[];
+}
+
+const EMPTY_DRAWING_ANNOTATIONS: DrawingAnnotationData = {
+  lines: [],
+  texts: [],
+  fills: [],
+};
+
+export function useSymbolicAnnotationsForDrawing(params: {
+  enabled: boolean;
+  axis: 'down' | 'front' | 'side';
+  /** Section plane world-coord position along the cut axis. */
+  sectionPosWorld: number;
+  /** View depth in world units (typically half the model extent on the cut axis). */
+  viewDepth: number;
+  flipped: boolean;
+  /** Fallback world Y for annotations with no resolvable storey. */
+  fallbackY?: number;
+}): DrawingAnnotationData {
+  const { enabled, axis, sectionPosWorld, viewDepth, flipped, fallbackY = 0 } = params;
+  const stores = useActiveStores();
+  const version = useAnnotationParseTrigger(enabled, stores);
+
+  return useMemo(() => {
+    if (!enabled) return EMPTY_DRAWING_ANNOTATIONS;
+    // Only floor plans (axis='down') are supported on this pass. Annotations
+    // for elevations/sections need a coord-reorientation pass that is not
+    // worth building until there's a real authored elevation symbol to test
+    // against. Returning empty quietly keeps the toggle a no-op there.
+    if (axis !== 'down') return EMPTY_DRAWING_ANNOTATIONS;
+    void version;
+
+    // Section view range in world Y.
+    //
+    // For a floor-plan cut at axis='down' the camera looks DOWN through the
+    // cut. "In front of the camera" is therefore the side BELOW the cut —
+    // where the floor and authored dimensions sit (IFC convention places
+    // dimension annotations at the storey's floor elevation, not at the
+    // cut height). The user's complaint: with the slab on the +normal
+    // side, you had to scrub the section DOWN into the floor before
+    // anything showed, and then the dimensions appeared one storey BELOW
+    // the cut. Mirror that — keep the slab on the −normal side for the
+    // unflipped down section, and flip it for the reflected-ceiling case.
+    //
+    // Note this DIVERGES from `profile-projector.isInProjectionRange`,
+    // which projects above the cut by default. Annotations live with the
+    // storey floor, the projection lives with the upper-storey volume —
+    // they're naturally on opposite sides of the cut plane.
+    //
+    // Tolerance lets annotations authored exactly on the cut plane (e.g.
+    // a storey at Z=0 with a section right at the storey datum) survive.
+    const TOL = 1e-3;
+    const rangeMin = (flipped ? sectionPosWorld : sectionPosWorld - viewDepth) - TOL;
+    const rangeMax = (flipped ? sectionPosWorld + viewDepth : sectionPosWorld) + TOL;
+
+    const lines: DrawingLine2D[] = [];
+    const texts: AnnotationText2D[] = [];
+    const fills: AnnotationFill2D[] = [];
+
+    // The drawing-2d cutter negates the 2D U axis on flipped cardinal cuts
+    // (see `projectTo2D` in @ifc-lite/drawing-2d/math.ts and `flipU` in the
+    // GPU cutter). Annotation primitives come out of WASM in the cutter's
+    // UNFLIPPED basis, so on a flipped section they'd sit beside the model
+    // (mirrored across X=0) instead of on top of it — exactly the
+    // "dimensions floating to the right of the floor plan" symptom. Mirror
+    // X for lines/texts/fills here so they line up with the section cut
+    // output drawn underneath. Y stays put (the cutter only flips U).
+    const pushLine = flipped
+      ? (ln: DrawingLine2D) => lines.push({
+          line: {
+            start: { x: -ln.line.start.x, y: ln.line.start.y },
+            end:   { x: -ln.line.end.x,   y: ln.line.end.y   },
+          },
+          category: ln.category,
+        })
+      : (ln: DrawingLine2D) => lines.push(ln);
+    const pushText = flipped
+      ? (t: AnnotationText2D) => texts.push({ ...t, x: -t.x, dirX: -t.dirX })
+      : (t: AnnotationText2D) => texts.push(t);
+    const pushFill = flipped
+      ? (f: AnnotationFill2D) => {
+          const src = f.points;
+          const dst = new Float32Array(src.length);
+          for (let i = 0; i < src.length; i += 2) {
+            dst[i]     = -src[i];
+            dst[i + 1] =  src[i + 1];
+          }
+          fills.push({ ...f, points: dst });
+        }
+      : (f: AnnotationFill2D) => fills.push(f);
+
+    for (const store of stores) {
+      const key = sourceKey(store);
+      if (!key) continue;
+      const cached = PARSE_CACHE.get(key);
+      if (!cached) continue;
+
+      // Drawing-2D pulls BOTH annotation and grid buckets (issue #862
+      // split them at parse time so the 3D viewport can clip them
+      // separately — the 2D Section panel still wants the combined
+      // overlay).
+      const collectBucket = (bucket: AnnotationsForStorey) => {
+        const bucketY = resolveBucketY(bucket.storeyElevation, fallbackY);
+        if (bucketY < rangeMin || bucketY > rangeMax) return;
+        for (const ln of bucket.lines) pushLine(ln);
+        for (const t of bucket.texts) pushText(t);
+        for (const f of bucket.fills) pushFill(f);
+      };
+      for (const bucket of cached.byStorey.values()) collectBucket(bucket);
+      for (const bucket of cached.gridByStorey.values()) collectBucket(bucket);
+
+      // Loose annotations have no resolvable storey — include them if the
+      // fallback Y lands in the view range. That keeps malformed exports
+      // (e.g. 3DEXPERIENCE files with orphaned storeys) usable when the
+      // user is looking at the storey the fallback resolves to.
+      if (fallbackY >= rangeMin && fallbackY <= rangeMax) {
+        for (const ln of cached.loose) pushLine(ln);
+        for (const t of cached.looseTexts) pushText(t);
+        for (const f of cached.looseFills) pushFill(f);
+        for (const ln of cached.gridLoose) pushLine(ln);
+        for (const t of cached.gridLooseTexts) pushText(t);
+        for (const f of cached.gridLooseFills) pushFill(f);
+      }
+    }
+
+    if (lines.length === 0 && texts.length === 0 && fills.length === 0) {
+      return EMPTY_DRAWING_ANNOTATIONS;
+    }
+    return { lines, texts, fills };
+  }, [enabled, axis, sectionPosWorld, viewDepth, flipped, fallbackY, stores, version]);
+}
+
+/**
  * Hook for the WebGPU text + fill pipelines. Returns 3D-lifted texts and
  * fills for every active model. Shares the parse cache with
  * `useSymbolicAnnotations` so toggling on text+fill rendering after the
@@ -612,14 +855,24 @@ const EMPTY_FILLS: readonly AnnotationFill3D[] = Object.freeze([]);
  */
 export function useSymbolicAnnotationsRichData(params: {
   enabled: boolean;
+  /** Lift grid-bubble texts + fills. Independent of `enabled` (issue #862).
+   *  Defaults to `enabled` for legacy callers. */
+  gridEnabled?: boolean;
+  /** Section clipping for grid texts/fills only — same semantics as
+   *  [`useSymbolicAnnotations`]. */
+  gridSectionClip?: SectionClipForGrid;
   fallbackY?: number;
 }): { texts: readonly AnnotationText3D[]; fills: readonly AnnotationFill3D[] } {
-  const { enabled, fallbackY = 0 } = params;
+  const { enabled, gridEnabled, gridSectionClip, fallbackY = 0 } = params;
+  const effectiveGridEnabled = gridEnabled ?? enabled;
   const stores = useActiveStores();
-  const version = useAnnotationParseTrigger(enabled, stores);
+  const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
+  const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
+  const clipPos = clipEnabled ? gridSectionClip!.posWorld : 0;
+  const clipDepth = clipEnabled ? gridSectionClip!.viewDepth : 0;
 
   return useMemo(() => {
-    if (!enabled) return { texts: EMPTY_TEXTS, fills: EMPTY_FILLS };
+    if (!enabled && !effectiveGridEnabled) return { texts: EMPTY_TEXTS, fills: EMPTY_FILLS };
     void version;
 
     const texts: AnnotationText3D[] = [];
@@ -658,18 +911,45 @@ export function useSymbolicAnnotationsRichData(params: {
         });
       };
 
-      for (const bucket of cached.byStorey.values()) {
-        const y = resolveBucketY(bucket.storeyElevation, fallbackY);
-        for (const t of bucket.texts) pushText(t, y);
-        for (const f of bucket.fills) pushFill(f, y);
+      if (enabled) {
+        for (const bucket of cached.byStorey.values()) {
+          const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+          for (const t of bucket.texts) pushText(t, y);
+          for (const f of bucket.fills) pushFill(f, y);
+        }
+        for (const t of cached.looseTexts) pushText(t, fallbackY);
+        for (const f of cached.looseFills) pushFill(f, fallbackY);
       }
-      for (const t of cached.looseTexts) pushText(t, fallbackY);
-      for (const f of cached.looseFills) pushFill(f, fallbackY);
+
+      if (effectiveGridEnabled) {
+        if (clipEnabled) {
+          const lo = clipPos - clipDepth;
+          const hi = clipPos + clipDepth;
+          for (const bucket of cached.gridByStorey.values()) {
+            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+            if (y < lo || y > hi) continue;
+            for (const t of bucket.texts) pushText(t, y);
+            for (const f of bucket.fills) pushFill(f, y);
+          }
+          if (fallbackY >= lo && fallbackY <= hi) {
+            for (const t of cached.gridLooseTexts) pushText(t, fallbackY);
+            for (const f of cached.gridLooseFills) pushFill(f, fallbackY);
+          }
+        } else {
+          for (const bucket of cached.gridByStorey.values()) {
+            const y = resolveBucketY(bucket.storeyElevation, fallbackY);
+            for (const t of bucket.texts) pushText(t, y);
+            for (const f of bucket.fills) pushFill(f, y);
+          }
+          for (const t of cached.gridLooseTexts) pushText(t, fallbackY);
+          for (const f of cached.gridLooseFills) pushFill(f, fallbackY);
+        }
+      }
     }
 
     return {
       texts: texts.length ? texts : EMPTY_TEXTS,
       fills: fills.length ? fills : EMPTY_FILLS,
     };
-  }, [enabled, stores, version, fallbackY]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, version, fallbackY]);
 }

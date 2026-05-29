@@ -1,5 +1,148 @@
 # @ifc-lite/renderer
 
+## 1.23.0
+
+### Minor Changes
+
+- [#872](https://github.com/LTplus-AG/ifc-lite/pull/872) [`680f979`](https://github.com/LTplus-AG/ifc-lite/commit/680f979385e6073ee99b4b31824490cb0c8d30f0) Thanks [@louistrue](https://github.com/louistrue)! - ROOT-CAUSE fix for visible triangulation / scar lines on flat surfaces
+  after every CSG operation (opening subtraction, layer slicing). Switch
+  the main fragment shader from interpolated vertex normals to
+  derivative-based flat shading for the lit normal, matching the
+  industry standard for BIM/CAD viewers (Three.js
+  `material.flatShading`, Autodesk Forge, Speckle, xeokit).
+
+  ### Why this is the right fix
+
+  The visible "horizontal striations on walls", "stripes on slabs",
+  "triangulation lines" the user reports across the legacy BSP kernel
+  AND the Manifold kernel all come from one thing: per-vertex normal
+  averaging on a mesh whose strip-boundary vertices carry slightly
+  different f32 positions / normals coming out of the CSG. CPU-side
+  welding + crease-aware smoothing (the previous attempts on PR [#861](https://github.com/LTplus-AG/ifc-lite/issues/861))
+  helps but never fully eliminates it — any per-vertex normal can carry
+  sub-ulp noise that the rasteriser amplifies into a visible line at
+  strip boundaries.
+
+  `cross(dpdx(worldPos), dpdy(worldPos))` evaluates to the EXACT face
+  normal in the fragment shader. Every fragment on a flat face — across
+  an arbitrarily-fine triangulation — gets the IDENTICAL normal, so
+  coplanar splits become invisible by construction. The CSG kernel can
+  emit as many strip triangles as it wants; the rendered surface looks
+  like one continuous face.
+
+  ### Trade-off
+
+  Genuinely curved surfaces (cylinder tessellations, BSpline
+  approximations) shade with visible facets at the triangle resolution
+  the IFC author chose. For BIM that's acceptable — curved surfaces are
+  < 5 % of typical model triangle count and the faceting matches
+  Revit / ArchiCAD on-screen behaviour at default quality. Future work
+  could add a per-primitive smooth-shading flag for explicit smooth
+  surfaces; until then, flat-by-default is correct for the dominant case.
+
+  ### Secondary fix
+
+  The edge-enhancement pass also switched from interpolated-vertex-normal
+  gradient to face-normal gradient. Without that change the edge
+  enhancer would draw the same false dark stripes from vertex-normal
+  noise — only the LIT normal would be clean. Now both light and edge
+  agree: coplanar adjacent triangles produce zero gradient → no spurious
+  edge; real wall-meets-floor creases produce a large gradient → the
+  intended outline.
+
+  ### Verification
+
+  `pnpm --filter @ifc-lite/renderer build` typechecks clean. The fix is
+  a shader-only change to `packages/renderer/src/shaders/main.wgsl.ts`;
+  no Rust or test changes required. Visual verification on deploy
+  preview required — load any model that previously showed scar lines
+  (BIMcollab Example, ifc4 walls with openings, etc.).
+
+### Patch Changes
+
+- Updated dependencies [[`cc28f46`](https://github.com/LTplus-AG/ifc-lite/commit/cc28f4675b7cdca67ff6c97a6461337e17468fd2), [`df912ca`](https://github.com/LTplus-AG/ifc-lite/commit/df912cafb1f3632abadee5134324165e5c1a084f), [`eada6ad`](https://github.com/LTplus-AG/ifc-lite/commit/eada6ad841d0dd5179088a8ba0b2bc6783d33e8d), [`9e2a644`](https://github.com/LTplus-AG/ifc-lite/commit/9e2a6440ff658f0c5fd58fc23d193fb8ddd897a4), [`b2d6f2a`](https://github.com/LTplus-AG/ifc-lite/commit/b2d6f2a023935446ae8e9b7dc6e436dedd1555ad), [`4632362`](https://github.com/LTplus-AG/ifc-lite/commit/46323626deed90ac5d5221569831ea6fcd6e0889), [`14d69d3`](https://github.com/LTplus-AG/ifc-lite/commit/14d69d3359a0415d7bc8798411483a9f47c75ff3)]:
+  - @ifc-lite/wasm@1.20.0
+
+## 1.22.2
+
+### Patch Changes
+
+- [#839](https://github.com/LTplus-AG/ifc-lite/pull/839) [`8c1632c`](https://github.com/LTplus-AG/ifc-lite/commit/8c1632ceb63ff4cfdbac4f2936d54d2d3a7e2f1b) Thanks [@louistrue](https://github.com/louistrue)! - Improve IFC annotation legibility in 3D (issue [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) follow-up):
+
+  - **All annotation text now billboards to the camera.** Previously only
+    IfcGridAxis tags rebuilt in the screen-aligned basis; IfcAnnotation
+    text (dimensions, leader labels, room tags) kept its authored
+    in-plane orientation. In oblique views that text collapsed to a
+    smeared sliver of pixels — the "distorted dimension labels in
+    FZK-Haus" symptom from the issue. The shader path was already
+    per-instance billboard-aware, so the change is just a flag flip at
+    upload time; anchor and alignment are unchanged.
+
+  - **Grid bubbles no longer paint a white disc behind the tag.** The
+    bubble interior is now transparent, so geometry behind a grid line
+    reads through the bubble in 3D. The black outline ring (◯) and tag
+    glyph are unchanged — the white ● fill instance has been removed
+    from `emit_bubble`, which also drops one text instance per bubble.
+
+  - **Annotation text no longer z-fights coplanar surfaces.** Now that
+    every glyph billboards, the quad faces the camera with zero depth
+    slope across its screen extent — which means the text pipeline's
+    `depthBiasSlopeScale: -0.5` contributes ~0 and only the small `-4`
+    constant survives, not enough to beat MSAA jitter on a label drawn
+    exactly on a wall/floor face (visible as dimension digits strobing
+    against terrain in 3D). The symbolic-overlay text shader now applies
+    the same `clip.z + 5e-5 * clip.w` reverse-Z nudge the section-2D
+    line pipeline already uses — depth-format-independent, slope-
+    independent, and large enough to clear coplanar jitter without
+    pulling the label visibly off the surface.
+
+- Updated dependencies [[`8c1632c`](https://github.com/LTplus-AG/ifc-lite/commit/8c1632ceb63ff4cfdbac4f2936d54d2d3a7e2f1b), [`231e494`](https://github.com/LTplus-AG/ifc-lite/commit/231e494e7ee920c5219d7fa5c5c6dde4c2bced2a), [`279d897`](https://github.com/LTplus-AG/ifc-lite/commit/279d897dd6e28214930a6b0fffe01dd813141ee0), [`d83fc42`](https://github.com/LTplus-AG/ifc-lite/commit/d83fc424a6b9d2a786e2dfaabe1dc2fb8746d07c)]:
+  - @ifc-lite/wasm@1.19.2
+
+## 1.22.1
+
+### Patch Changes
+
+- [#815](https://github.com/LTplus-AG/ifc-lite/pull/815) [`bc1a85d`](https://github.com/LTplus-AG/ifc-lite/commit/bc1a85dd532386774bcc76025de06b4fcf493937) Thanks [@louistrue](https://github.com/louistrue)! - Make IFC annotation overlays usable in real drawings (issue [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) follow-up
+  to the annotation text feature):
+
+  - **3D z-fight fix**: annotation lines, fills, and text pipelines now apply
+    a reverse-Z `depthBias` / `depthBiasSlopeScale` so a label drawn exactly
+    on a wall/floor face no longer disappears or strobes. This was the user-
+    reported "coplanar glitch" — the per-fragment depth-equal pass plus MSAA
+    jitter was the actual cause, not line weight. The pipelines remain
+    `depthCompare: 'greater-equal'` so foreground geometry still occludes the
+    overlay correctly.
+
+  - **Annotations in 2D section views**: the Section 2D panel now overlays
+    IfcAnnotation curves, text, and fills on the section drawing when their
+    authored storey elevation falls inside the cut's view-range on the cut
+    axis. New `showIfcAnnotations` flag on `drawing2DDisplayOptions` (defaults
+    on) and a header toggle (Tag icon, next to Symbolic-vs-Cut) wire it up.
+    The toggle is currently active only for floor-plan views (`axis='down'`);
+    elevation/section axes need a separate coord-reorientation pass and are
+    disabled in the UI.
+
+  The 2D path reuses the existing module-global parse cache from
+  `useSymbolicAnnotations`, so the WASM symbolic-representation parse runs
+  at most once per loaded model regardless of how many overlay surfaces are
+  active.
+
+- [#815](https://github.com/LTplus-AG/ifc-lite/pull/815) [`bc1a85d`](https://github.com/LTplus-AG/ifc-lite/commit/bc1a85dd532386774bcc76025de06b4fcf493937) Thanks [@louistrue](https://github.com/louistrue)! - Fix invalid WebGPU pipeline error on the 2D section overlay line pipeline.
+  After [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) the line pipeline carried `depthBias` / `depthBiasSlopeScale` /
+  `depthBiasClamp` alongside `topology: 'line-list'`, which the WebGPU spec
+  rejects ("Depth bias is not compatible with non-triangle topology
+  LineList"). The invalid pipeline then surfaced a second error on every
+  `set_pipeline` for section cut outlines and 3D annotation lines.
+
+  The depth-bias fields are removed from the pipeline and the equivalent
+  reverse-Z decal nudge is now applied directly in the line vertex shader
+  (`clip.z + 5e-5 * clip.w`), preserving the [#812](https://github.com/LTplus-AG/ifc-lite/issues/812) coplanar-line fix while
+  producing a valid WebGPU pipeline.
+
+- Updated dependencies [[`bdb9978`](https://github.com/LTplus-AG/ifc-lite/commit/bdb997842fe38627fefbcddf250fc0136289bc84), [`ee6dbae`](https://github.com/LTplus-AG/ifc-lite/commit/ee6dbaedcc205b08728fa3e235bc3028d32b65e3)]:
+  - @ifc-lite/wasm@1.19.1
+
 ## 1.22.0
 
 ### Minor Changes

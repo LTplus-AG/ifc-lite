@@ -16,18 +16,6 @@
  * input.
  */
 
-/**
- * Slugify a free-text label into a stable, lowercase, dash-separated
- * identifier safe to use as a path / capability target segment.
- */
-export function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64) || 'untitled';
-}
-
 /** Stable id for the baseline default flavor. */
 export const DEFAULT_FLAVOR_ID = 'flv.default';
 
@@ -50,9 +38,4 @@ export function flavorMergedId(
 /** Build the command id for an AI-suggested extension. */
 export function suggestedCommandId(slug: string): string {
   return `ext.suggested.${slug}.run`;
-}
-
-/** Build the extension id for an AI-suggested extension. */
-export function suggestedExtensionId(slug: string): string {
-  return `ext.suggested.${slug}`;
 }

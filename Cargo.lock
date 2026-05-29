@@ -708,7 +708,7 @@ dependencies = [
  "futures",
  "hex",
  "libc",
- "memmap2 0.5.10",
+ "memmap2",
  "miette",
  "reflink-copy",
  "serde",
@@ -2433,7 +2433,6 @@ dependencies = [
  "memchr",
  "nom",
  "rustc-hash",
- "serde",
  "smallvec",
  "thiserror 2.0.18",
  "tokio",
@@ -2458,15 +2457,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "xxhash-rust",
-]
-
-[[package]]
-name = "ifc-lite-engine"
-version = "2.4.2"
-dependencies = [
- "ifc-lite-processing",
- "memmap2 0.9.10",
- "serde",
 ]
 
 [[package]]
@@ -3009,15 +2999,6 @@ name = "memmap2"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "memmap2"
-version = "0.9.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
 dependencies = [
  "libc",
 ]

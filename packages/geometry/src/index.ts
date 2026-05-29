@@ -33,9 +33,7 @@ export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 
-export { LODGenerator, type LODConfig, type LODMesh } from './lod.js';
 export * from './types.js';
-export * from './default-materials.js';
 
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import { BufferBuilder } from './buffer-builder.js';
@@ -103,23 +101,6 @@ export interface DynamicBatchConfig {
   maxBatchSize?: number;
   /** File size in MB for adaptive sizing (optional) */
   fileSizeMB?: number;
-}
-
-/**
- * Calculate dynamic batch size based on batch number
- */
-export function calculateDynamicBatchSize(
-  batchNumber: number,
-  initialBatchSize: number = 50,
-  maxBatchSize: number = 500
-): number {
-  if (batchNumber <= 3) {
-    return initialBatchSize; // Fast first frame
-  } else if (batchNumber <= 6) {
-    return Math.floor((initialBatchSize + maxBatchSize) / 2); // Quick ramp
-  } else {
-    return maxBatchSize; // Full throughput earlier
-  }
 }
 
 export type StreamingGeometryEvent =

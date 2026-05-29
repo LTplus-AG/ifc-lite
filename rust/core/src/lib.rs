@@ -61,10 +61,6 @@
 //! - **Tokenization**: ~1,259 MB/s throughput
 //! - **Entity scanning**: ~650 MB/s with SIMD acceleration
 //! - **Number parsing**: 10x faster than std using [lexical-core](https://docs.rs/lexical-core)
-//!
-//! ## Feature Flags
-//!
-//! - `serde`: Enable serialization support for parsed data
 
 pub mod decoder;
 pub mod error;

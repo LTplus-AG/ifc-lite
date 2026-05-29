@@ -184,14 +184,15 @@ function readPersistedBool(key: string, fallback: boolean): boolean {
 // on first load. IfcSite + IfcAnnotation + IfcGrid on — all three convey
 // design intent users expect to see by default. (Issue #862 split grid
 // into its own toggle so dense-grid models can hide grids without losing
-// dimensions/labels.)
-const SEMANTIC_DEFAULTS = {
+// dimensions/labels.) Exported so the "Reset" action in the visibility
+// menu can restore these without re-deriving them.
+export const TYPE_VISIBILITY_SEMANTIC_DEFAULTS: TypeVisibility = {
   spaces: false,
   openings: false,
   site: true,
   ifcAnnotations: true,
   ifcGrid: true,
-} as const;
+};
 
 /**
  * Resolve the full type-visibility preference set from localStorage.
@@ -206,17 +207,17 @@ const SEMANTIC_DEFAULTS = {
  */
 export function getPersistedTypeVisibility(): TypeVisibility {
   return {
-    spaces:         readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spaces, SEMANTIC_DEFAULTS.spaces),
-    openings:       readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, SEMANTIC_DEFAULTS.openings),
-    site:           readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, SEMANTIC_DEFAULTS.site),
-    ifcAnnotations: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcAnnotations),
+    spaces:         readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spaces, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.spaces),
+    openings:       readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.openings),
+    site:           readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.site),
+    ifcAnnotations: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.ifcAnnotations),
     // Issue #862. Migration: if the new grid key isn't set yet, fall back to
     // the legacy combined `ifcAnnotations` preference so a user who turned
     // the old "Annotations & Grids" toggle off keeps grids hidden after
     // upgrade instead of grids silently reappearing (PR #868 review).
     ifcGrid:        readPersistedBool(
       TYPE_VISIBILITY_STORAGE_KEYS.ifcGrid,
-      readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcGrid),
+      readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.ifcGrid),
     ),
   };
 }

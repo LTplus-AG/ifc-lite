@@ -11,7 +11,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { TypeVisibility, EntityRef } from '../types.js';
-import { getPersistedTypeVisibility, TYPE_VISIBILITY_STORAGE_KEYS } from '../constants.js';
+import { getPersistedTypeVisibility, TYPE_VISIBILITY_STORAGE_KEYS, TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '../constants.js';
 
 export interface VisibilitySlice {
   // State (legacy - single model)
@@ -44,6 +44,8 @@ export interface VisibilitySlice {
   showAll: () => void;
   isEntityVisible: (id: number) => boolean;
   toggleTypeVisibility: (type: 'spaces' | 'openings' | 'site' | 'ifcAnnotations' | 'ifcGrid') => void;
+  /** Restore every type-visibility toggle to its semantic default (and persist). */
+  resetTypeVisibility: () => void;
   /** Set all hidden entities at once (for BCF viewpoint application) */
   setHiddenEntities: (ids: Set<number>) => void;
   /** Set all isolated entities at once (for BCF viewpoint with defaultVisibility=false) */
@@ -204,6 +206,19 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     return {
       typeVisibility: { ...state.typeVisibility, [type]: next },
     };
+  }),
+
+  resetTypeVisibility: () => set(() => {
+    // Restore semantic defaults and persist them per-key (same storage
+    // pattern as toggleTypeVisibility) so the reset survives reloads.
+    if (typeof window !== 'undefined') {
+      (Object.keys(TYPE_VISIBILITY_STORAGE_KEYS) as (keyof typeof TYPE_VISIBILITY_STORAGE_KEYS)[])
+        .forEach((key) => {
+          try { localStorage.setItem(TYPE_VISIBILITY_STORAGE_KEYS[key], String(TYPE_VISIBILITY_SEMANTIC_DEFAULTS[key])); }
+          catch { /* private-mode storage rejection — non-fatal */ }
+        });
+    }
+    return { typeVisibility: { ...TYPE_VISIBILITY_SEMANTIC_DEFAULTS } };
   }),
 
   // Actions (multi-model)

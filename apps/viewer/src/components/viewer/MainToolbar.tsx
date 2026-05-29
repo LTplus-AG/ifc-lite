@@ -52,6 +52,7 @@ import {
   Redo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -155,6 +156,39 @@ function ToolButton({
         {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+interface ClassVisibilityRowProps {
+  /** Colored class glyph (caller sets the tint). */
+  icon: React.ReactNode;
+  label: string;
+  /** One-line plain-language hint about what the IFC class covers. */
+  description: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}
+
+/**
+ * One row of the Visibility panel: colored class icon + label/description
+ * on the left, a Switch on the right. The whole row is a <label>, so a
+ * click anywhere toggles the switch and — because it isn't a menu item —
+ * the dropdown stays open for flipping several classes in a row. The left
+ * cluster dims when off so on/off reads from saturation as well as the
+ * switch position.
+ */
+function ClassVisibilityRow({ icon, label, description, checked, onChange }: ClassVisibilityRowProps) {
+  return (
+    <label className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
+      <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', !checked && 'opacity-50')}>
+        {icon}
+        <span className="grid gap-0.5 min-w-0">
+          <span className="text-sm leading-tight truncate">{label}</span>
+          <span className="text-[10px] leading-tight text-muted-foreground truncate">{description}</span>
+        </span>
+      </span>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </label>
   );
 }
 
@@ -505,6 +539,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
+  const resetTypeVisibility = useViewerStore((state) => state.resetTypeVisibility);
+  // How many of the five class toggles are on — surfaced in the menu
+  // header so the user sees scene state at a glance.
+  const visibleClassCount = [
+    typeVisibility.spaces,
+    typeVisibility.openings,
+    typeVisibility.site,
+    typeVisibility.ifcAnnotations,
+    typeVisibility.ifcGrid,
+  ].filter(Boolean).length;
   // Issue #540: load-time toggle that asks the WASM bridge to merge
   // Revit-style multilayer walls. We surface this in the Class
   // Visibility dropdown so users discover it next to the other
@@ -1440,7 +1484,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 // Walls) that the user should be able to set BEFORE
                 // opening a file. The class toggles are persisted
                 // preferences, so they always render too.
-                aria-label={mergeLayers ? 'Class Visibility (Merge Multilayer Walls is on)' : 'Class Visibility'}
+                aria-label={mergeLayers ? 'Visibility (Merge Multilayer Walls is on)' : 'Visibility'}
                 className="relative"
               >
                 <Filter className="h-4 w-4" />
@@ -1457,67 +1501,93 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             </DropdownMenuTrigger>
           </TooltipTrigger>
           <TooltipContent>
-            {mergeLayers ? 'Class Visibility · Merge Multilayer Walls is on' : 'Class Visibility'}
+            {mergeLayers ? 'Visibility · Merge Multilayer Walls is on' : 'Visibility'}
           </TooltipContent>
         </Tooltip>
-        <DropdownMenuContent className="w-72">
-          {/*
-            Always render all five class toggles, regardless of what the
-            current model contains. They are persisted user preferences
-            (see getPersistedTypeVisibility) — a user who hides Spaces wants
-            that to stick across models and reloads, so the controls must
-            stay visible even when the loaded file has none of that class.
-            Toggling a class absent from the model is simply a no-op.
-          */}
-          <DropdownMenuCheckboxItem
+        {/*
+          Settings-style panel (not a list of menu-items): each row is a
+          plain <label> wrapping a right-aligned Switch, so toggling does
+          NOT close the menu — users routinely flip several classes in one
+          pass. State reads two ways: the switch position and the row
+          dimming when off. All five render unconditionally (persisted
+          preferences, sticky across models/reloads); toggling a class the
+          model lacks is a no-op.
+        */}
+        <DropdownMenuContent align="start" className="w-[300px] p-1.5">
+          <div className="flex items-center justify-between gap-2 px-1.5 pb-1 pt-0.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Visibility
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] tabular-nums text-muted-foreground/80">
+                {visibleClassCount}/5
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                onClick={resetTypeVisibility}
+              >
+                Reset
+              </Button>
+            </div>
+          </div>
+
+          <ClassVisibilityRow
+            icon={<Box className="h-4 w-4 shrink-0" style={{ color: '#33d9ff' }} />}
+            label="Spaces"
+            description="Room & zone volumes"
             checked={typeVisibility.spaces}
-            onCheckedChange={() => toggleTypeVisibility('spaces')}
-          >
-            <Box className="h-4 w-4 mr-2" style={{ color: '#33d9ff' }} />
-            Show Spaces
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
+            onChange={() => toggleTypeVisibility('spaces')}
+          />
+          <ClassVisibilityRow
+            icon={<SquareX className="h-4 w-4 shrink-0" style={{ color: '#ff6b4a' }} />}
+            label="Openings"
+            description="Door & window voids"
             checked={typeVisibility.openings}
-            onCheckedChange={() => toggleTypeVisibility('openings')}
-          >
-            <SquareX className="h-4 w-4 mr-2" style={{ color: '#ff6b4a' }} />
-            Show Openings
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
+            onChange={() => toggleTypeVisibility('openings')}
+          />
+          <ClassVisibilityRow
+            icon={<Building2 className="h-4 w-4 shrink-0" style={{ color: '#66cc4d' }} />}
+            label="Site"
+            description="Terrain & context"
             checked={typeVisibility.site}
-            onCheckedChange={() => toggleTypeVisibility('site')}
-          >
-            <Building2 className="h-4 w-4 mr-2" style={{ color: '#66cc4d' }} />
-            Show Site
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
+            onChange={() => toggleTypeVisibility('site')}
+          />
+          <ClassVisibilityRow
+            icon={<Pencil className="h-4 w-4 shrink-0" style={{ color: '#e4b400' }} />}
+            label="Annotations"
+            description="Text, dimensions, leaders"
             checked={typeVisibility.ifcAnnotations}
-            onCheckedChange={() => toggleTypeVisibility('ifcAnnotations')}
-          >
-            <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
-            Show Annotations
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
+            onChange={() => toggleTypeVisibility('ifcAnnotations')}
+          />
+          <ClassVisibilityRow
+            icon={<Grid3x3 className="h-4 w-4 shrink-0" style={{ color: '#e4b400' }} />}
+            label="Grids"
+            description="Structural axes"
             checked={typeVisibility.ifcGrid}
-            onCheckedChange={() => toggleTypeVisibility('ifcGrid')}
-          >
-            {/* Distinct grid glyph — annotations already use the pencil. */}
-            <Grid3x3 className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
-            Show Grids
-          </DropdownMenuCheckboxItem>
-          {/* Merge Multilayer Walls sits in the same flat list: every
-              toggle here persists, so there's no longer a "runtime vs
-              load-time" split worth a subheader. It applies on the next
-              model open (the only behavioural difference), surfaced via
-              the hover title rather than a space-eating second line. */}
-          <DropdownMenuCheckboxItem
-            checked={mergeLayers}
-            onCheckedChange={(next) => setMergeLayers(next === true)}
-            title="Render walls as one solid · applies on next model load"
-          >
-            <Layers2 className="h-4 w-4 mr-2 shrink-0 text-primary" />
-            Merge Multilayer Walls
-          </DropdownMenuCheckboxItem>
+            onChange={() => toggleTypeVisibility('ifcGrid')}
+          />
+
+          <DropdownMenuSeparator className="my-1" />
+
+          {/* Merge multilayer walls rebuilds geometry, so unlike the live
+              toggles above it only takes effect on the next model load.
+              The "· on reload" suffix carries that nuance inline — keeps
+              the row identical in shape to the others (no header, no chip
+              crowding the long label). */}
+          <label className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
+            <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', !mergeLayers && 'opacity-50')}>
+              <Layers2 className="h-4 w-4 shrink-0 text-primary" />
+              <span className="grid gap-0.5 min-w-0">
+                <span className="text-sm leading-tight truncate">Merge multilayer walls</span>
+                <span className="text-[10px] leading-tight text-muted-foreground truncate">
+                  Render walls as one solid · on reload
+                </span>
+              </span>
+            </span>
+            <Switch checked={mergeLayers} onCheckedChange={(next) => setMergeLayers(next === true)} />
+          </label>
         </DropdownMenuContent>
       </DropdownMenu>
 

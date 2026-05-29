@@ -309,5 +309,20 @@ describe('VisibilitySlice', () => {
       state.toggleTypeVisibility('ifcAnnotations');
       assert.strictEqual(state.typeVisibility.ifcAnnotations, !initial);
     });
+
+    it('resetTypeVisibility restores semantic defaults', () => {
+      // Flip everything away from defaults first.
+      state.toggleTypeVisibility('spaces');   // false -> true
+      state.toggleTypeVisibility('site');     // true  -> false
+      state.toggleTypeVisibility('ifcGrid');  // true  -> false
+      state.resetTypeVisibility();
+      assert.deepStrictEqual(state.typeVisibility, {
+        spaces: false,
+        openings: false,
+        site: true,
+        ifcAnnotations: true,
+        ifcGrid: true,
+      });
+    });
   });
 });

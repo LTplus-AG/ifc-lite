@@ -1,5 +1,68 @@
 # @ifc-lite/renderer
 
+## 1.23.0
+
+### Minor Changes
+
+- [#872](https://github.com/LTplus-AG/ifc-lite/pull/872) [`680f979`](https://github.com/LTplus-AG/ifc-lite/commit/680f979385e6073ee99b4b31824490cb0c8d30f0) Thanks [@louistrue](https://github.com/louistrue)! - ROOT-CAUSE fix for visible triangulation / scar lines on flat surfaces
+  after every CSG operation (opening subtraction, layer slicing). Switch
+  the main fragment shader from interpolated vertex normals to
+  derivative-based flat shading for the lit normal, matching the
+  industry standard for BIM/CAD viewers (Three.js
+  `material.flatShading`, Autodesk Forge, Speckle, xeokit).
+
+  ### Why this is the right fix
+
+  The visible "horizontal striations on walls", "stripes on slabs",
+  "triangulation lines" the user reports across the legacy BSP kernel
+  AND the Manifold kernel all come from one thing: per-vertex normal
+  averaging on a mesh whose strip-boundary vertices carry slightly
+  different f32 positions / normals coming out of the CSG. CPU-side
+  welding + crease-aware smoothing (the previous attempts on PR [#861](https://github.com/LTplus-AG/ifc-lite/issues/861))
+  helps but never fully eliminates it — any per-vertex normal can carry
+  sub-ulp noise that the rasteriser amplifies into a visible line at
+  strip boundaries.
+
+  `cross(dpdx(worldPos), dpdy(worldPos))` evaluates to the EXACT face
+  normal in the fragment shader. Every fragment on a flat face — across
+  an arbitrarily-fine triangulation — gets the IDENTICAL normal, so
+  coplanar splits become invisible by construction. The CSG kernel can
+  emit as many strip triangles as it wants; the rendered surface looks
+  like one continuous face.
+
+  ### Trade-off
+
+  Genuinely curved surfaces (cylinder tessellations, BSpline
+  approximations) shade with visible facets at the triangle resolution
+  the IFC author chose. For BIM that's acceptable — curved surfaces are
+  < 5 % of typical model triangle count and the faceting matches
+  Revit / ArchiCAD on-screen behaviour at default quality. Future work
+  could add a per-primitive smooth-shading flag for explicit smooth
+  surfaces; until then, flat-by-default is correct for the dominant case.
+
+  ### Secondary fix
+
+  The edge-enhancement pass also switched from interpolated-vertex-normal
+  gradient to face-normal gradient. Without that change the edge
+  enhancer would draw the same false dark stripes from vertex-normal
+  noise — only the LIT normal would be clean. Now both light and edge
+  agree: coplanar adjacent triangles produce zero gradient → no spurious
+  edge; real wall-meets-floor creases produce a large gradient → the
+  intended outline.
+
+  ### Verification
+
+  `pnpm --filter @ifc-lite/renderer build` typechecks clean. The fix is
+  a shader-only change to `packages/renderer/src/shaders/main.wgsl.ts`;
+  no Rust or test changes required. Visual verification on deploy
+  preview required — load any model that previously showed scar lines
+  (BIMcollab Example, ifc4 walls with openings, etc.).
+
+### Patch Changes
+
+- Updated dependencies [[`cc28f46`](https://github.com/LTplus-AG/ifc-lite/commit/cc28f4675b7cdca67ff6c97a6461337e17468fd2), [`df912ca`](https://github.com/LTplus-AG/ifc-lite/commit/df912cafb1f3632abadee5134324165e5c1a084f), [`eada6ad`](https://github.com/LTplus-AG/ifc-lite/commit/eada6ad841d0dd5179088a8ba0b2bc6783d33e8d), [`9e2a644`](https://github.com/LTplus-AG/ifc-lite/commit/9e2a6440ff658f0c5fd58fc23d193fb8ddd897a4), [`b2d6f2a`](https://github.com/LTplus-AG/ifc-lite/commit/b2d6f2a023935446ae8e9b7dc6e436dedd1555ad), [`4632362`](https://github.com/LTplus-AG/ifc-lite/commit/46323626deed90ac5d5221569831ea6fcd6e0889), [`14d69d3`](https://github.com/LTplus-AG/ifc-lite/commit/14d69d3359a0415d7bc8798411483a9f47c75ff3)]:
+  - @ifc-lite/wasm@1.20.0
+
 ## 1.22.2
 
 ### Patch Changes

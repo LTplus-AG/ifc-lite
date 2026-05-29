@@ -1501,32 +1501,22 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             checked={typeVisibility.ifcGrid}
             onCheckedChange={() => toggleTypeVisibility('ifcGrid')}
           >
-            <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
+            {/* Distinct grid glyph — annotations already use the pencil. */}
+            <Grid3x3 className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
             Show Grids
           </DropdownMenuCheckboxItem>
-
-          {/* Load-time toggles live below the runtime visibility
-              switches — they apply on next model open rather than
-              affecting the current scene. The subheader makes that
-              boundary visible at a glance. */}
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Load Settings
-          </DropdownMenuLabel>
+          {/* Merge Multilayer Walls sits in the same flat list: every
+              toggle here persists, so there's no longer a "runtime vs
+              load-time" split worth a subheader. It applies on the next
+              model open (the only behavioural difference), surfaced via
+              the hover title rather than a space-eating second line. */}
           <DropdownMenuCheckboxItem
             checked={mergeLayers}
             onCheckedChange={(next) => setMergeLayers(next === true)}
-            // Use items-start so the checkmark and icon line up with
-            // the primary label while the description wraps below.
-            className="items-start gap-2 py-2"
+            title="Render walls as one solid · applies on next model load"
           >
-            <Layers2 className="h-4 w-4 mr-2 mt-0.5 shrink-0 text-primary" />
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-sm font-medium leading-tight">Merge Multilayer Walls</span>
-              <span className="text-[11px] leading-tight text-muted-foreground">
-                Render walls as 1 solid · Applies on reload
-              </span>
-            </div>
+            <Layers2 className="h-4 w-4 mr-2 shrink-0 text-primary" />
+            Merge Multilayer Walls
           </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>

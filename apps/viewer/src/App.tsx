@@ -21,6 +21,7 @@ import { BimProvider } from './sdk/BimProvider';
 import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
 import { Toaster } from './components/ui/toast';
 import { useEffect, useState } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 
 export function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -48,6 +49,7 @@ export function App() {
       <>
         <McpPlayground />
         <Toaster />
+        <Analytics />
       </>
     );
   }
@@ -56,6 +58,7 @@ export function App() {
       <>
         <McpLanding />
         <Toaster />
+        <Analytics />
       </>
     );
   }
@@ -65,6 +68,7 @@ export function App() {
       <ExtensionHostProvider>
         {pathname === '/settings' ? <SettingsPage /> : <ViewerLayout />}
         <Toaster />
+        <Analytics />
       </ExtensionHostProvider>
     </BimProvider>
   );

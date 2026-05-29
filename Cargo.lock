@@ -2550,7 +2550,6 @@ dependencies = [
  "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-bindgen-rayon",
  "wasm-bindgen-test",
  "web-sys",
 ]
@@ -3954,7 +3953,6 @@ checksum = "fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d"
 dependencies = [
  "either",
  "rayon-core",
- "wasm_sync",
 ]
 
 [[package]]
@@ -5874,18 +5872,6 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "wasm-bindgen-shared",
-]
-
-[[package]]
-name = "wasm-bindgen-rayon"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a16c60a56c81e4dc3b9c43d76ba5633e1c0278211d59a9cb07d61b6cd1c6583"
-dependencies = [
- "crossbeam-channel",
- "js-sys",
- "rayon",
- "wasm-bindgen",
 ]
 
 [[package]]

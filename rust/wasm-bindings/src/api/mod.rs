@@ -51,8 +51,7 @@ pub struct IfcAPI {
     /// without locking — all parse paths read it once at the top.
     merge_layers: std::sync::atomic::AtomicBool,
 
-    /// Lazily-built skip set used by `processGeometryBatch` and
-    /// `processGeometryBatchParallel` when `merge_layers` is on. The set
+    /// Lazily-built skip set used by `processGeometryBatch` when `merge_layers` is on. The set
     /// holds every `IfcBuildingElementPart` express ID whose parent wall
     /// (a) has its own `Representation` and (b) is sliceable in
     /// `MaterialLayerIndex` — i.e. the parts that should be suppressed
@@ -199,7 +198,7 @@ impl IfcAPI {
     }
 
     /// Get or lazily build the cached parts-to-skip set used by
-    /// `processGeometryBatch` and `processGeometryBatchParallel` when the
+    /// `processGeometryBatch` when the
     /// merge-layers toggle is on. Two full-file scans (`MaterialLayerIndex`
     /// + `propagate_voids_to_parts`) are amortised across every batch on
     /// the same content; first-call cost ~one IFC re-scan, subsequent

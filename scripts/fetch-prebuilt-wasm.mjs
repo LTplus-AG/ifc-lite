@@ -11,7 +11,6 @@ import { execSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { patchThreadedDevStub } from './lib/patch-threaded-stub.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, '..');
@@ -23,7 +22,6 @@ const version = wasmPkgJson.version;
 const tarball = `@ifc-lite/wasm@${version}`;
 
 const wasmOut = join(rootDir, 'packages/wasm/pkg');
-const threadedOut = join(rootDir, 'packages/wasm-threaded/pkg');
 const wasmFile = join(wasmOut, 'ifc-lite_bg.wasm');
 
 if (existsSync(wasmFile)) {
@@ -47,15 +45,11 @@ execSync(`tar -xzf ${JSON.stringify(join(rootDir, tgzName))} -C ${JSON.stringify
 });
 
 mkdirSync(wasmOut, { recursive: true });
-mkdirSync(threadedOut, { recursive: true });
 
 const pkgDir = join(extractDir, 'package/pkg');
 cpSync(pkgDir, wasmOut, { recursive: true, force: true });
-cpSync(pkgDir, threadedOut, { recursive: true, force: true });
 
 rmSync(extractDir, { recursive: true, force: true });
 rmSync(join(rootDir, tgzName), { force: true });
 
 console.log(`Installed prebuilt WASM to ${wasmOut}`);
-patchThreadedDevStub(threadedOut);
-console.log(`Patched threaded dev stub at ${threadedOut} (rebuild with Rust for real threading)`);

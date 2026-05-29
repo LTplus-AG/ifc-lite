@@ -75,12 +75,11 @@ export class IfcLiteBridge {
       // from import.meta.url, no need to manually construct paths
       await init();
 
-      // Thread pool initialization is DISABLED.
-      // wasm-bindgen-rayon's initThreadPool creates workers that import the WASM
-      // module via ../../.. — this path doesn't resolve in Vite production builds,
-      // causing workers to hang forever and corrupt the WASM closure state.
-      // Without the thread pool, rayon's par_iter() falls back to sequential.
-      log.warn('Geometry processing: single-threaded mode (thread pool disabled for Vite compatibility)');
+      // The WASM bundle has no in-WASM thread pool; rayon `par_iter()`
+      // (e.g. FacetedBrep preprocessing) runs sequentially on the main
+      // thread. Cross-worker parallelism is provided at a higher level by
+      // the N-worker pool in `geometry-parallel.ts`.
+      log.debug('Geometry processing: single-threaded WASM (N-worker pool handles parallelism)');
 
       this.ifcApi = new IfcAPI();
       // Re-apply the cached merge-layers flag so callers can call

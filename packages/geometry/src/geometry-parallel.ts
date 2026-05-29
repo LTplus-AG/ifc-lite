@@ -50,22 +50,6 @@ export interface ProcessParallelOptions {
     lengths: Uint32Array,
   ) => void;
   /**
-   * Phase 2 of single-controller-rayon-design.md — when true, spawn ONE
-   * controller worker that runs `processGeometryBatchParallel` with
-   * an internal rayon thread pool, instead of the N-independent-worker
-   * pool. The host can opt in via `localStorage.getItem('ifc-lite:single-controller')`
-   * (set in `useIfcLoader.ts`). Same input/output contract; the
-   * controller mirrors `geometry.worker.ts`'s message protocol so this
-   * file's dispatch loop is unchanged.
-   *
-   * Trade-offs documented in the design doc:
-   *   - peakWasm should drop ~5.3 GB → ~3 GB (one heap, not three).
-   *   - Stream tail should drop on rayon-friendly hosts (10+ cores).
-   *   - Falls back silently to N-worker path if the threaded WASM
-   *     bundle fails to load (no COI, Safari, etc.).
-   */
-  useSingleController?: boolean;
-  /**
    * Issue #540 — "Merge Multilayer Walls" load-time toggle. When
    * `true`, the geometry workers' IfcAPI receive
    * `setMergeLayers(true)` before the first stream-chunk lands, so
@@ -74,26 +58,20 @@ export interface ProcessParallelOptions {
    */
   mergeLayers?: boolean;
   /**
-   * Explicit URLs for the wasm-bindgen `.wasm` binaries. When provided,
+   * Explicit URL for the wasm-bindgen `.wasm` binary. When provided,
    * forwarded to the geometry workers' init messages so they call
    * `init(wasmUrl)` instead of relying on wasm-bindgen's default
    * `import.meta.url`-based resolution.
    *
-   * Vite + webpack 5 consumers don't need to set these — the bundler
+   * Vite + webpack 5 consumers don't need to set this — the bundler
    * rewrites the `new URL('ifc-lite_bg.wasm', import.meta.url)` literal
-   * inside the wasm-bindgen glue at build time. These options exist
-   * for consumers whose bundler doesn't transform that pattern, or who
+   * inside the wasm-bindgen glue at build time. This option exists for
+   * consumers whose bundler doesn't transform that pattern, or who
    * serve the wasm from a CDN at a different origin (e.g., self-hosted
    * deployments, Tauri custom protocols, embedded usage).
-   *
-   * `wasm` covers the legacy single-thread worker bundle
-   * (`@ifc-lite/wasm`); `wasmThreaded` covers the rayon controller
-   * bundle (`@ifc-lite/wasm-threaded`). Pass both if both code paths
-   * may run.
    */
   wasmUrls?: {
     wasm?: string;
-    wasmThreaded?: string;
   };
 }
 
@@ -130,25 +108,13 @@ export async function* processParallel(
     new Uint8Array(sharedBuffer).set(buffer);
   }
 
-  // Phase 2 controller path: ONE worker that does internal rayon
-  // parallelism, instead of N independent WASM-instance workers. The
-  // controller imports the threaded bundle (`@ifc-lite/wasm-threaded`)
-  // and calls processGeometryBatchParallel for each stream-chunk.
-  //
-  // The PRE-PASS worker always stays on the legacy bundle —
-  // `geometry.worker.ts` handles `prepass-streaming` messages; the
-  // controller does not. The legacy bundle is also slimmer (no
-  // wasm-bindgen-rayon snippets) so the pre-pass pays no atomics tax.
-  const useController = options?.useSingleController === true;
-  const makeGeometryWorker = () => useController
-    ? new Worker(
-        new URL('./geometry-controller.worker.ts', import.meta.url),
-        { type: 'module' },
-      )
-    : new Worker(
-        new URL('./geometry.worker.ts', import.meta.url),
-        { type: 'module' },
-      );
+  // N independent WASM-instance workers, each running
+  // `geometry.worker.ts` (one `@ifc-lite/wasm` instance per worker).
+  const makeGeometryWorker = () =>
+    new Worker(
+      new URL('./geometry.worker.ts', import.meta.url),
+      { type: 'module' },
+    );
   const makePrepassWorker = () => new Worker(
     new URL('./geometry.worker.ts', import.meta.url),
     { type: 'module' },
@@ -287,13 +253,7 @@ export async function* processParallel(
     ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) : 8;
   const fileSizeMB = buffer.byteLength / (1024 * 1024);
   const estimatedJobs = Math.max(1, Math.ceil(fileSizeMB * 100));
-  // Controller path: ONE worker. The worker spins up (cores - 1) rayon
-  // helpers internally; pickWorkerCount's per-worker budget no longer
-  // applies because we hold ONE WASM heap, not N. N-worker path
-  // unchanged.
-  const workerCount = useController
-    ? 1
-    : pickWorkerCount({ fileSizeMB, cores, deviceMemoryGB, totalJobs: estimatedJobs });
+  const workerCount = pickWorkerCount({ fileSizeMB, cores, deviceMemoryGB, totalJobs: estimatedJobs });
 
   const workers: Worker[] = [];
   for (let i = 0; i < workerCount; i++) {
@@ -308,9 +268,7 @@ export async function* processParallel(
     // one — undefined leaves the worker on wasm-bindgen's default
     // `import.meta.url`-based resolution, which is what Vite + webpack
     // already handle.
-    const wasmUrlForWorker = useController
-      ? options?.wasmUrls?.wasmThreaded
-      : options?.wasmUrls?.wasm;
+    const wasmUrlForWorker = options?.wasmUrls?.wasm;
     worker.postMessage({
       type: 'init',
       ...(wasmUrlForWorker ? { wasmUrl: wasmUrlForWorker } : {}),

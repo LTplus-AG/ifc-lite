@@ -35,18 +35,14 @@ describe('#666 wasm-url plumbing', () => {
     expect(msg.wasmUrl).toBe('https://cdn.example.com/ifc-lite_bg.wasm');
   });
 
-  it('ProcessParallelOptions exposes wasmUrls for both bundles', () => {
-    // Same idea: if either key is renamed or dropped, the file fails
-    // to typecheck. Both legacy + threaded bundles must be configurable
-    // because `processParallel` picks one based on `useSingleController`.
+  it('ProcessParallelOptions exposes wasmUrls.wasm', () => {
+    // If the key is renamed or dropped, the file fails to typecheck.
     const opts: ProcessParallelOptions = {
       wasmUrls: {
         wasm: '/assets/ifc-lite_bg.wasm',
-        wasmThreaded: '/assets/ifc-lite-threaded_bg.wasm',
       },
     };
     expect(opts.wasmUrls?.wasm).toBe('/assets/ifc-lite_bg.wasm');
-    expect(opts.wasmUrls?.wasmThreaded).toBe('/assets/ifc-lite-threaded_bg.wasm');
   });
 
   it('wasmUrls is optional — default Vite/webpack consumers omit it', () => {
@@ -66,9 +62,9 @@ describe('#666 wasm-url plumbing', () => {
     // someone drops the param, this file fails to typecheck.
     type ProcessParallelMethod = GeometryProcessor['processParallel'];
     type Args = Parameters<ProcessParallelMethod>;
-    // 6th positional parameter is wasmUrls (after buffer, sharedRtcOffset,
-    // existingSab, onEntityIndex, useSingleController).
-    const wasmUrlsArg: Args[5] = { wasm: '/x.wasm' };
+    // 5th positional parameter is wasmUrls (after buffer, sharedRtcOffset,
+    // existingSab, onEntityIndex).
+    const wasmUrlsArg: Args[4] = { wasm: '/x.wasm' };
     expect(wasmUrlsArg).toBeDefined();
   });
 
@@ -92,14 +88,6 @@ describe('#666 wasm package exports the binary at a resolvable subpath', () => {
 
   it('@ifc-lite/wasm exports ./ifc-lite_bg.wasm', () => {
     const pkgPath = resolve(repoRoot, 'packages/wasm/package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
-      exports?: Record<string, unknown>;
-    };
-    expect(pkg.exports?.['./ifc-lite_bg.wasm']).toBe('./pkg/ifc-lite_bg.wasm');
-  });
-
-  it('@ifc-lite/wasm-threaded exports ./ifc-lite_bg.wasm', () => {
-    const pkgPath = resolve(repoRoot, 'packages/wasm-threaded/package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
       exports?: Record<string, unknown>;
     };

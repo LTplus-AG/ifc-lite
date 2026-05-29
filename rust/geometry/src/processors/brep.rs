@@ -345,8 +345,9 @@ impl FacetedBrepProcessor {
             }
         }
 
-        // PHASE 2: Triangulate ALL faces from ALL BREPs in one parallel batch
-        // Uses rayon thread pool on both native and WASM (via wasm-bindgen-rayon)
+        // PHASE 2: Triangulate ALL faces from ALL BREPs in one parallel batch.
+        // Uses the rayon thread pool on native; on wasm (no thread pool) it
+        // runs sequentially.
         let face_results: Vec<(usize, FaceResult)> = all_faces
             .par_iter()
             .map(|(brep_idx, face)| {

@@ -295,30 +295,34 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    const meshes: MeshData[] = [];
-    const totalJobs = prePass.totalJobs ?? 0;
+    try {
+      const meshes: MeshData[] = [];
+      const totalJobs = prePass.totalJobs ?? 0;
 
-    if (prePass.jobs && totalJobs > 0) {
-      // One batch over all jobs — synchronous callers want the full set.
-      const collection = api.processGeometryBatch(
-        buffer,
-        prePass.jobs,
-        prePass.unitScale,
-        prePass.rtcOffset?.[0] ?? 0,
-        prePass.rtcOffset?.[1] ?? 0,
-        prePass.rtcOffset?.[2] ?? 0,
-        prePass.needsShift,
-        prePass.voidKeys,
-        prePass.voidCounts,
-        prePass.voidValues,
-        prePass.styleIds,
-        prePass.styleColors,
-      );
-      meshes.push(...convertMeshCollectionToBatch(collection));
+      if (prePass.jobs && totalJobs > 0) {
+        // One batch over all jobs — synchronous callers want the full set.
+        const collection = api.processGeometryBatch(
+          buffer,
+          prePass.jobs,
+          prePass.unitScale,
+          prePass.rtcOffset?.[0] ?? 0,
+          prePass.rtcOffset?.[1] ?? 0,
+          prePass.rtcOffset?.[2] ?? 0,
+          prePass.needsShift,
+          prePass.voidKeys,
+          prePass.voidCounts,
+          prePass.voidValues,
+          prePass.styleIds,
+          prePass.styleColors,
+        );
+        meshes.push(...convertMeshCollectionToBatch(collection));
+      }
+
+      return { meshes, buildingRotation: prePass.buildingRotation ?? undefined };
+    } finally {
+      // Always release the pre-pass cache — even if processGeometryBatch throws.
+      api.clearPrePassCache?.();
     }
-
-    api.clearPrePassCache?.();
-    return { meshes, buildingRotation: prePass.buildingRotation ?? undefined };
   }
 
   /**
@@ -343,84 +347,89 @@ export class GeometryProcessor {
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
 
-    yield { type: 'model-open', modelID: 0 };
+    // try/finally so the pre-pass cache is released on every exit: the
+    // totalJobs===0 early return, a processGeometryBatch throw, or the
+    // consumer abandoning the generator (which triggers `.return()`).
+    try {
+      yield { type: 'model-open', modelID: 0 };
 
-    if (prePass.rtcOffset) {
-      yield {
-        type: 'rtcOffset',
-        rtcOffset: {
-          x: prePass.rtcOffset[0] ?? 0,
-          y: prePass.rtcOffset[1] ?? 0,
-          z: prePass.rtcOffset[2] ?? 0,
-        },
-        hasRtc: Boolean(prePass.needsShift),
-      };
-    }
+      if (prePass.rtcOffset) {
+        yield {
+          type: 'rtcOffset',
+          rtcOffset: {
+            x: prePass.rtcOffset[0] ?? 0,
+            y: prePass.rtcOffset[1] ?? 0,
+            z: prePass.rtcOffset[2] ?? 0,
+          },
+          hasRtc: Boolean(prePass.needsShift),
+        };
+      }
 
-    const buildingRotation = prePass.buildingRotation ?? undefined;
-    if (!prePass.jobs || prePass.totalJobs === 0) {
+      const buildingRotation = prePass.buildingRotation ?? undefined;
+      if (!prePass.jobs || prePass.totalJobs === 0) {
+        const coordinateInfo = withBuildingRotation(
+          this.coordinateHandler.getFinalCoordinateInfo(),
+          buildingRotation,
+        );
+        yield { type: 'complete', totalMeshes: 0, coordinateInfo };
+        return;
+      }
+
+      const batchSize = getStreamingBatchSize(buffer, batchConfig);
+      // Cap at ~30 batches max to avoid excessive per-batch overhead
+      const maxBatches = 30;
+      const effectiveBatchSize = Math.max(batchSize, Math.ceil(prePass.totalJobs / maxBatches));
+      let totalMeshes = 0;
+
+      for (let startJob = 0; startJob < prePass.totalJobs; startJob += effectiveBatchSize) {
+        const endJob = Math.min(startJob + effectiveBatchSize, prePass.totalJobs);
+        const jobSlice = prePass.jobs.slice(startJob * 3, endJob * 3);
+        const collection = api.processGeometryBatch(
+          buffer,
+          jobSlice,
+          prePass.unitScale,
+          prePass.rtcOffset?.[0] ?? 0,
+          prePass.rtcOffset?.[1] ?? 0,
+          prePass.rtcOffset?.[2] ?? 0,
+          prePass.needsShift,
+          prePass.voidKeys,
+          prePass.voidCounts,
+          prePass.voidValues,
+          prePass.styleIds,
+          prePass.styleColors,
+        );
+
+        const batch = convertMeshCollectionToBatch(collection);
+        if (batch.length === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+          continue;
+        }
+
+        this.coordinateHandler.processMeshesIncremental(batch);
+        totalMeshes += batch.length;
+        const currentCoordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
+        const coordinateInfo = currentCoordinateInfo
+          ? withBuildingRotation(currentCoordinateInfo, buildingRotation)
+          : null;
+
+        yield {
+          type: 'batch',
+          meshes: batch,
+          totalSoFar: totalMeshes,
+          coordinateInfo: coordinateInfo || undefined,
+        };
+
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
       const coordinateInfo = withBuildingRotation(
         this.coordinateHandler.getFinalCoordinateInfo(),
         buildingRotation,
       );
-      yield { type: 'complete', totalMeshes: 0, coordinateInfo };
-      return;
+      yield { type: 'complete', totalMeshes, coordinateInfo };
+    } finally {
+      api.clearPrePassCache?.();
     }
-
-    const batchSize = getStreamingBatchSize(buffer, batchConfig);
-    // Cap at ~30 batches max to avoid excessive per-batch overhead
-    const maxBatches = 30;
-    const effectiveBatchSize = Math.max(batchSize, Math.ceil(prePass.totalJobs / maxBatches));
-    let totalMeshes = 0;
-
-    for (let startJob = 0; startJob < prePass.totalJobs; startJob += effectiveBatchSize) {
-      const endJob = Math.min(startJob + effectiveBatchSize, prePass.totalJobs);
-      const jobSlice = prePass.jobs.slice(startJob * 3, endJob * 3);
-      const collection = api.processGeometryBatch(
-        buffer,
-        jobSlice,
-        prePass.unitScale,
-        prePass.rtcOffset?.[0] ?? 0,
-        prePass.rtcOffset?.[1] ?? 0,
-        prePass.rtcOffset?.[2] ?? 0,
-        prePass.needsShift,
-        prePass.voidKeys,
-        prePass.voidCounts,
-        prePass.voidValues,
-        prePass.styleIds,
-        prePass.styleColors,
-      );
-
-      const batch = convertMeshCollectionToBatch(collection);
-      if (batch.length === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0));
-        continue;
-      }
-
-      this.coordinateHandler.processMeshesIncremental(batch);
-      totalMeshes += batch.length;
-      const currentCoordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-      const coordinateInfo = currentCoordinateInfo
-        ? withBuildingRotation(currentCoordinateInfo, buildingRotation)
-        : null;
-
-      yield {
-        type: 'batch',
-        meshes: batch,
-        totalSoFar: totalMeshes,
-        coordinateInfo: coordinateInfo || undefined,
-      };
-
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-
-    api.clearPrePassCache?.();
-
-    const coordinateInfo = withBuildingRotation(
-      this.coordinateHandler.getFinalCoordinateInfo(),
-      buildingRotation,
-    );
-    yield { type: 'complete', totalMeshes, coordinateInfo };
   }
 
   /**

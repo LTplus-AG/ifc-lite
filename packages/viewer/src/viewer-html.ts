@@ -1271,35 +1271,50 @@ async function parseMeshesViaPrePass(api, content, opts) {
 
   const bytes = new TextEncoder().encode(content);
   const pre = api.buildPrePassOnce(bytes);
-  const total = (pre && pre.totalJobs) || 0;
+  try {
+    const total = (pre && pre.totalJobs) || 0;
 
-  if (pre && pre.jobs && total > 0) {
-    const rtcX = pre.rtcOffset ? (pre.rtcOffset[0] || 0) : 0;
-    const rtcY = pre.rtcOffset ? (pre.rtcOffset[1] || 0) : 0;
-    const rtcZ = pre.rtcOffset ? (pre.rtcOffset[2] || 0) : 0;
-    // Cap at ~30 batches like the main viewer's byte-streaming path.
-    const step = Math.max(batchSize, Math.ceil(total / 30));
-    for (let start = 0; start < total; start += step) {
-      const end = Math.min(start + step, total);
-      const jobSlice = pre.jobs.slice(start * 3, end * 3);
-      const collection = api.processGeometryBatch(
-        bytes, jobSlice, pre.unitScale, rtcX, rtcY, rtcZ, pre.needsShift,
-        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
-      );
-      const meshes = [];
-      for (let i = 0; i < collection.length; i++) {
-        const m = collection.get(i);
-        if (m) meshes.push(m);
+    if (pre && pre.jobs && total > 0) {
+      const rtcX = pre.rtcOffset ? (pre.rtcOffset[0] || 0) : 0;
+      const rtcY = pre.rtcOffset ? (pre.rtcOffset[1] || 0) : 0;
+      const rtcZ = pre.rtcOffset ? (pre.rtcOffset[2] || 0) : 0;
+      // Cap at ~30 batches like the main viewer's byte-streaming path.
+      const step = Math.max(batchSize, Math.ceil(total / 30));
+      for (let start = 0; start < total; start += step) {
+        const end = Math.min(start + step, total);
+        const jobSlice = pre.jobs.slice(start * 3, end * 3);
+        const collection = api.processGeometryBatch(
+          bytes, jobSlice, pre.unitScale, rtcX, rtcY, rtcZ, pre.needsShift,
+          pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+        );
+        // The MeshDataJs getters copy into JS-owned typed arrays, so onBatch
+        // consumers keep working after we free the WASM handles. Free every
+        // mesh + the collection per batch, or the standalone viewer leaks
+        // WASM memory batch-by-batch and can OOM before a large load finishes.
+        try {
+          const meshes = [];
+          for (let i = 0; i < collection.length; i++) {
+            const m = collection.get(i);
+            if (m) meshes.push(m);
+          }
+          try {
+            if (meshes.length && onBatch) {
+              onBatch(meshes, { percent: Math.min(100, Math.round((end / total) * 100)) });
+            }
+          } finally {
+            for (const m of meshes) m.free();
+          }
+        } finally {
+          collection.free();
+        }
+        // Yield to the event loop so the canvas paints progressively.
+        await new Promise(r => setTimeout(r, 0));
       }
-      if (meshes.length && onBatch) {
-        onBatch(meshes, { percent: Math.min(100, Math.round((end / total) * 100)) });
-      }
-      // Yield to the event loop so the canvas paints progressively.
-      await new Promise(r => setTimeout(r, 0));
     }
+  } finally {
+    if (api.clearPrePassCache) api.clearPrePassCache();
   }
 
-  if (api.clearPrePassCache) api.clearPrePassCache();
   if (onComplete) onComplete();
 }
 

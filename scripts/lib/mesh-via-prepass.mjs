@@ -32,37 +32,41 @@ export function parseMeshesViaPrePass(api, content) {
   const rtcY = pre && pre.rtcOffset ? (pre.rtcOffset[1] || 0) : 0;
   const rtcZ = pre && pre.rtcOffset ? (pre.rtcOffset[2] || 0) : 0;
 
-  if (pre && pre.jobs && total > 0) {
-    const col = api.processGeometryBatch(
-      bytes, pre.jobs, pre.unitScale, rtcX, rtcY, rtcZ, pre.needsShift,
-      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
-    );
-    try {
-      for (let i = 0; i < col.length; i++) {
-        const m = col.get(i);
-        if (!m) continue;
-        // Copy out into a plain JS object, then free the wasm handle.
-        meshes.push({
-          expressId: m.expressId,
-          ifcType: m.ifcType,
-          positions: m.positions,
-          normals: m.normals,
-          indices: m.indices,
-          color: m.color,
-          vertexCount: m.vertexCount,
-          triangleCount: m.triangleCount,
-          free: () => {},
-        });
-        totalVertices += m.vertexCount;
-        totalTriangles += m.triangleCount;
-        m.free();
+  try {
+    if (pre && pre.jobs && total > 0) {
+      const col = api.processGeometryBatch(
+        bytes, pre.jobs, pre.unitScale, rtcX, rtcY, rtcZ, pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      );
+      try {
+        for (let i = 0; i < col.length; i++) {
+          const m = col.get(i);
+          if (!m) continue;
+          // Copy out into a plain JS object, then free the wasm handle.
+          meshes.push({
+            expressId: m.expressId,
+            ifcType: m.ifcType,
+            positions: m.positions,
+            normals: m.normals,
+            indices: m.indices,
+            color: m.color,
+            vertexCount: m.vertexCount,
+            triangleCount: m.triangleCount,
+            free: () => {},
+          });
+          totalVertices += m.vertexCount;
+          totalTriangles += m.triangleCount;
+          m.free();
+        }
+      } finally {
+        col.free();
       }
-    } finally {
-      col.free();
     }
+  } finally {
+    // Clear in a finally so a throw above doesn't carry stale cache into
+    // the next file processed through this reused IfcAPI.
+    if (api.clearPrePassCache) api.clearPrePassCache();
   }
-
-  if (api.clearPrePassCache) api.clearPrePassCache();
 
   return {
     length: meshes.length,

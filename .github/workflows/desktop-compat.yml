@@ -70,13 +70,39 @@ jobs:
         with:
           version: latest
 
+      # PR #861 enables `manifold-csg-wasm-uu` on the wasm bundle;
+      # `manifold-csg-sys`'s build script needs a wasm32-capable
+      # clang + libc++ headers. clang-20 specifically — libc++-18's
+      # ABI/availability config doesn't cross-compile to
+      # wasm32-unknown-unknown (see test.yml's note for the full
+      # diagnostic). Add apt.llvm.org for clang-20 since Ubuntu
+      # Noble's main repo tops out at clang-18.
+      - name: Install LLVM 20 (for manifold-csg-sys wasm build)
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+            | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
+            | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            clang-20 lld-20 libc++-20-dev libc++abi-20-dev
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `IFC_LITE_THREADED_STUB=1` skips the actual threaded wasm-pack
+      # compile — same trick as `scripts/vercel-build.sh`. See the
+      # equivalent step in test.yml for the rationale (manifold-csg-sys
+      # is compiled without atomics so threaded link with +atomics
+      # crates fails via rust-lld).
       - name: Build shared packages
+        env:
+          IFC_LITE_THREADED_STUB: '1'
         run: pnpm build
 
       - name: Build desktop frontend (Vite only, no Tauri)
+        env:
+          IFC_LITE_THREADED_STUB: '1'
         run: pnpm build:desktop
 
       - name: Verify desktop contract version

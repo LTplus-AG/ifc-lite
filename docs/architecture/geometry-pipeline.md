@@ -531,23 +531,61 @@ identically under both kernels. Sprint 2 acceptance gates assert
 
 ### WASM status
 
-`--features manifold-csg-wasm-uu` (which implies `manifold-csg` plus
-upstream's `unstable-wasm-uu`) is currently blocked on a libc++ /
-wasm-cxx-shim incompatibility in the `manifold-csg-sys` crate:
+`--features manifold-csg-wasm-uu` is **enabled** as of `wasm-cxx-shim`
+v0.5.0 / `manifold-csg-sys` 3.5.100 (May 2026); the libc++ / musl-locale
+issues that previously blocked the wasm build have been resolved
+upstream. `rust/wasm-bindings/Cargo.toml` opts into the feature and
+`scripts/vercel-install.sh` provisions the host toolchain.
 
-- libc++-18: `_LIBCPP_AVAILABILITY_VERBOSE_ABORT` undefined when the
-  shim's `__assertion_handler` is loaded.
-- libc++-20: musl locale headers
-  (`__locale_dir/locale_base_api/musl.h`) are pulled in despite the
-  shim's `_LIBCPP_HAS_LOCALIZATION 0` define; `locale.h` then fails to
-  resolve in the `wasm32-unknown-unknown` no-libc environment.
+Build prerequisites — the shim accepts any of:
 
-Both are upstream issues (`zmerlynn/manifold-csg-sys` and its bundled
-`zmerlynn/wasm-cxx-shim`); not patchable from this repo. Track
-upstream and re-attempt once the shim is updated for current libc++
-versions. Until then `manifold-csg` stays opt-in for native builds
-only and `wasm32-unknown-unknown` builds continue to use the legacy
-BSP path.
+- **`EMSDK` env var pointing at an emsdk install** (cleanest;
+  works hermetically with no system packages). The Emscripten
+  bundle includes a complete LLVM 23 with libc++ headers, `wasm-ld`,
+  and `llvm-ar` under `$EMSDK/upstream/bin/`. The shim's CMake
+  toolchain probe (`cmake/toolchain-wasm32.cmake`) discovers it
+  automatically when `EMSDK` is set.
+- **Host LLVM 18+** with `clang++`, `wasm-ld`, `llvm-ar`, and libc++
+  headers at `<llvm-prefix>/include/c++/v1/`. Override the probe
+  with `WASM_CXX_SHIM_LLVM_BIN_DIR` and
+  `WASM_CXX_SHIM_LIBCXX_HEADERS` when the layout doesn't match the
+  standard ladder.
+- CMake 3.18+ for the `wasm-cxx-shim` FetchContent build of Manifold +
+  Clipper2 (pre-installed in Vercel's image).
+
+Vercel:
+
+`scripts/vercel-install.sh` clones `emsdk` into `/vercel/cache/emsdk`
+on first deploy and runs `./emsdk install latest` (~340 MB download).
+The cache survives across deploys per Vercel's build-cache policy.
+We chose emsdk over `dnf install clang20` because Vercel's pinned
+AL2023 image (`2023.2.20231011.0`) only ships `clang15`.
+
+Local dev:
+
+- macOS: `brew install llvm lld`. The shim's toolchain file
+  auto-detects `/opt/homebrew/opt/llvm@N/bin`; no env vars required.
+- Debian/Ubuntu: `apt install clang-20 lld-20 libc++-20-dev libc++abi-20-dev`.
+- Cross-platform: `git clone https://github.com/emscripten-core/emsdk && cd emsdk && ./emsdk install latest && export EMSDK=$PWD`.
+
+Runtime properties of the wasm-side Manifold:
+
+- Single-threaded execution (TBB is gated off — wasm has no threading
+  in the unknown-unknown target). Same correctness as native, lower
+  throughput on multi-core inputs.
+- No exception runtime; the shim aborts on throw rather than unwinds.
+  Malformed input that would have thrown native becomes a wasm
+  `unreachable` trap. In practice this is the same surface area the
+  pre-Manifold BSP path used to panic on, just with a cleaner
+  diagnostic.
+- Wasm bundle size impact: +250–400 KB (Manifold + Clipper2 + shim
+  glue, after `wasm-opt`).
+
+The legacy in-tree BSP port (`bsp_csg.rs`) is kept as a compile-time
+fallback under `default-features = false` for downstream consumers who
+need to build the geometry crate without LLVM available. There is no
+runtime selection — the active kernel is decided at build time by the
+feature set.
 
 ## Performance Metrics
 

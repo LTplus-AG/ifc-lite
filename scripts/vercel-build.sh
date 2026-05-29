@@ -49,6 +49,40 @@ else
   echo "🦀 CARGO_TARGET_DIR unset (no writable Vercel cache dir; using ./target)"
 fi
 
+# Carry the emsdk paths forward to turbo's subprocesses. The
+# wasm-cxx-shim has two LLVM probes — the Rust build.rs reads
+# `WASM_CXX_SHIM_LLVM_BIN_DIR` and looks for libc++ headers at
+# `<root>/include/c++/v1`; the CMake toolchain file reads `EMSDK`.
+# scripts/vercel-install.sh provisions a synthetic prefix that
+# satisfies both. Env vars set in install don't reach this phase by
+# default — same gotcha as RUSTUP_HOME above.
+_emsdk_dir="${WASM_CXX_PREFIX:-/vercel/cache/emsdk}"
+if [ -x "$_emsdk_dir/upstream/bin/clang++" ]; then
+  export EMSDK="$_emsdk_dir"
+  export WASM_CXX_SHIM_LLVM_BIN_DIR="$_emsdk_dir/wasm-cxx-prefix/bin"
+  # Also prepend the bin directory to PATH so any wasm-cxx-shim probe
+  # path that resolves `clang++` via PATH (rather than the env var)
+  # picks up the cached toolchain instead of system clang or
+  # nothing-at-all. Belt-and-braces — the build.rs probe in 3.5.100
+  # uses `WASM_CXX_SHIM_LLVM_BIN_DIR` directly, but the CMake-side
+  # probe and any future shim version that delegates to `find_program`
+  # benefits from the PATH entry (PR #861 review, chatgpt-codex P1).
+  export PATH="$WASM_CXX_SHIM_LLVM_BIN_DIR:$PATH"
+  echo "🛠  EMSDK=$EMSDK"
+  echo "🛠  WASM_CXX_SHIM_LLVM_BIN_DIR=$WASM_CXX_SHIM_LLVM_BIN_DIR"
+fi
+
+# Newer cmake than AL2023's 3.22 (wasm-cxx-shim needs 3.25+). Install
+# script drops it under /vercel/cache/cmake-<version>/. Prepend to PATH
+# so the shim's cmake invocation finds the right version.
+for _cmake_dir in /vercel/cache/cmake-*; do
+  if [ -x "$_cmake_dir/bin/cmake" ]; then
+    export PATH="$_cmake_dir/bin:$PATH"
+    echo "🛠  cmake=$_cmake_dir/bin/cmake"
+    break
+  fi
+done
+
 # Surface Turbo Remote Cache status in the deploy log. Cache hits show
 # up as "FULL TURBO" in turbo's banner; if you don't see them, set
 # TURBO_TEAM + TURBO_TOKEN in the Vercel project env.

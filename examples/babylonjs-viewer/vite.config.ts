@@ -10,7 +10,9 @@ export default defineConfig({
   },
   server: {
     headers: {
-      // Required for SharedArrayBuffer (WASM threading)
+      // Cross-origin isolation enables SharedArrayBuffer, which the geometry
+      // worker pool uses to share the IFC file bytes across workers (each
+      // worker runs its own single-threaded WASM instance — not in-WASM threads).
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },

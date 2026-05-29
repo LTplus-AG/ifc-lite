@@ -5,8 +5,8 @@
 #
 # Vercel `installCommand` entry point.
 #
-# After PR #657 we stopped committing the WASM bundles to git — see
-# .gitignore and packages/wasm*/pkg/. Vercel must therefore bootstrap a
+# After PR #657 we stopped committing the WASM bundle to git — see
+# .gitignore and packages/wasm/pkg/. Vercel must therefore bootstrap a
 # Rust toolchain + wasm-pack before pnpm install so that `turbo build`
 # can call `scripts/build-wasm.sh` and produce the bundles from source
 # every deploy. The previous "commit-the-binary" model silently shipped

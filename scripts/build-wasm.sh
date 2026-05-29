@@ -67,11 +67,11 @@ rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
   --release \
   $FEATURES
 
-# NOTE: wasm-opt is disabled.
-# Multiple wasm-opt versions (npm and cargo) have been tested and all miscompile
-# the wasm-bindgen closure/async machinery when --enable-threads is used,
-# causing RuntimeError: unreachable in production. The Rust compiler's LLVM -O3
-# (release profile) provides sufficient optimization.
+# NOTE: wasm-opt is disabled. The bundle is single-threaded (SIMD128 only,
+# no atomics/shared-memory), and the Rust compiler's LLVM -O3 (release
+# profile) already provides sufficient optimization. wasm-opt also has a
+# history of miscompiling the wasm-bindgen closure/async machinery
+# (RuntimeError: unreachable in production), so it stays off.
 echo "ℹ️  wasm-opt disabled — using LLVM -O3 only"
 
 # Show bundle size

@@ -1517,26 +1517,6 @@ fn collect_geometry_style_info(
     }
 }
 
-fn build_geometry_style_index(
-    content: &str,
-    entity_index: &Arc<EntityIndex>,
-) -> FxHashMap<u32, GeometryStyleInfo> {
-    let mut geometry_styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
-    let mut scanner = EntityScanner::new(content);
-
-    while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCSTYLEDITEM" {
-            continue;
-        }
-        if let Ok(styled_item) = decoder.decode_at(start, end) {
-            collect_geometry_style_info(&mut geometry_styles, &styled_item, &mut decoder);
-        }
-    }
-
-    geometry_styles
-}
-
 fn build_color_updates_for_jobs(
     jobs: &[EntityJob],
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,

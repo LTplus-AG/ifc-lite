@@ -193,9 +193,16 @@ export class SpatialHierarchyBuilder {
       RelationshipType.ContainsElements,
       'forward'
     );
+    // Keep entities whose type isn't in the EntityTable (e.g. IFC4x3 leaves the
+    // categorizer skipped). The filter's purpose is to peel off spatial-structure
+    // children — those become recursive nodes via the aggregates branch — not to
+    // gate on whether the EntityTable happened to record the type. Dropping
+    // missing entities silently hides every IfcReferent/IfcSignal/IfcAlignment
+    // under an IfcRailway/IfcRoad even though the relationship graph has them.
     const containedElements = rawContainedElements.filter((id) => {
       const childType = entityTypeMap.get(id);
-      return childType !== undefined && !isSpatialStructureType(childType);
+      if (childType === undefined) return true;
+      return !isSpatialStructureType(childType);
     });
 
     // Get child spatial elements via IfcRelAggregates (inverse - who aggregates this?)

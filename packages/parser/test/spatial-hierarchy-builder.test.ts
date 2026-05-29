@@ -42,4 +42,56 @@ describe('SpatialHierarchyBuilder', () => {
     expect(hierarchy.getPath(4).map((node) => node.expressId)).toEqual([1, 2, 3]);
     expect(hierarchy.byBuilding.get(2)).toEqual([]);
   });
+
+  it('keeps contained elements whose type was not categorized into the EntityTable', () => {
+    // Reporter scenario: linear-placement-of-signal.ifc has an IfcRailway whose
+    // IfcRelContainedInSpatialStructure names 26 IfcReferent / IfcSignal /
+    // IfcAlignment children. Before the fix, the parser categorized those
+    // IFC4x3 leaves as CAT_SKIP — they never entered the EntityTable, so
+    // entityTypeMap.get(id) returned undefined and the contained-elements
+    // filter silently dropped every child. The hierarchy panel rendered
+    // "Default Railway Name" with zero elements even though the underlying
+    // relationship graph had all 26 edges.
+    //
+    // This test simulates that exact shape: parent in the table, children
+    // referenced only by the relationship graph. The hierarchy must surface
+    // them so downstream panels can render them by expressId even when their
+    // type was not pre-registered.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(2, strings);
+    entities.add(1, 'IFCPROJECT', '0', 'Stationing', '', '');
+    entities.add(2273, 'IFCRAILWAY', '1', 'Default Railway Name', '', '');
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2273, RelationshipType.Aggregates, 3043);
+    // 26 children — none of these expressIds are added to the entity table.
+    const referentIds = [
+      2698, 2712, 2726, 2740, 2754, 2768, 2782, 2796, 2810, 2824,
+      2838, 2852, 2866, 2880, 2894, 2908, 2922, 2936, 2950, 2964,
+      2978, 2992, 3006,
+    ];
+    const signalIds = [3020, 3031];
+    const alignmentId = 2278;
+    for (const id of [alignmentId, ...referentIds, ...signalIds]) {
+      relationships.addEdge(2273, id, RelationshipType.ContainsElements, 3042);
+    }
+
+    const hierarchy = new SpatialHierarchyBuilder().build(
+      entities.build(),
+      relationships.build(),
+      strings,
+      new Uint8Array(),
+      { byId: { get: () => undefined } },
+    );
+
+    const railway = hierarchy.project.children[0];
+    expect(railway.type).toBe(IfcTypeEnum.IfcRailway);
+    expect(railway.elements).toHaveLength(1 + referentIds.length + signalIds.length);
+    expect(railway.elements).toContain(alignmentId);
+    expect(railway.elements).toContain(referentIds[0]);
+    expect(railway.elements).toContain(signalIds[0]);
+    // byBuilding aliases facility-like containers; the railway entry should
+    // reflect the full element list, not the post-filter empty list.
+    expect(hierarchy.byBuilding.get(2273)).toHaveLength(1 + referentIds.length + signalIds.length);
+  });
 });

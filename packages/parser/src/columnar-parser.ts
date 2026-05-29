@@ -201,16 +201,13 @@ export class ColumnarParser {
             return upper;
         };
 
-        const RELEVANT_ENTITY_PREFIXES = new Set([
-            'IFCWALL', 'IFCSLAB', 'IFCBEAM', 'IFCCOLUMN', 'IFCPLATE', 'IFCDOOR', 'IFCWINDOW',
-            'IFCROOF', 'IFCSTAIR', 'IFCRAILING', 'IFCRAMP', 'IFCFOOTING', 'IFCPILE',
-            'IFCMEMBER', 'IFCCURTAINWALL', 'IFCBUILDINGELEMENTPROXY', 'IFCFURNISHINGELEMENT',
-            'IFCFLOWSEGMENT', 'IFCFLOWTERMINAL', 'IFCFLOWCONTROLLER', 'IFCFLOWFITTING',
-            'IFCSPACE', 'IFCOPENINGELEMENT', 'IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY',
-            'IFCPROJECT', 'IFCCOVERING', 'IFCANNOTATION', 'IFCGRID',
-            // Infrastructure entities needed by on-demand extraction and StepExporter.
-            // Without these, findPreferredGeometricRepresentationContextId() and
-            // findLengthUnitReference() fail because the entities are not in byId.
+        // Non-product helper entities that on-demand extraction / StepExporter
+        // need addressable in `byId`. These are not IfcProduct subtypes so the
+        // schema-driven IFCPRODUCT subtype check below cannot capture them.
+        // Without them, findPreferredGeometricRepresentationContextId() and
+        // findLengthUnitReference() fail because the entities are missing from
+        // the compact entity index.
+        const RELEVANT_NON_PRODUCT_HELPERS = new Set([
             'IFCGEOMETRICREPRESENTATIONCONTEXT', 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
             'IFCUNITASSIGNMENT', 'IFCSIUNIT', 'IFCCONVERSIONBASEDUNIT',
             'IFCDERIVEDUNIT', 'IFCDERIVEDUNITELEMENT', 'IFCMEASUREWITHUNIT',
@@ -222,6 +219,15 @@ export class ColumnarParser {
             'IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE',
             'IFCDOCUMENTINFORMATION', 'IFCDOCUMENTREFERENCE',
         ]);
+
+        // Schema-driven inclusion: every IfcProduct subtype belongs in the
+        // EntityTable. The previous hardcoded enumeration of IFC4 building-
+        // element leaves (IFCWALL, IFCSLAB, …) and IFC4x3 infrastructure
+        // leaves (IFCREFERENT, IFCSIGNAL, IFCALIGNMENT, IFCPAVEMENT, …) drifted
+        // with every schema bump — new entities silently became CAT_SKIP and
+        // disappeared from the hierarchy panel. The generated schema registry
+        // already knows the full inheritance chain, so use it.
+        const RELEVANT_PRODUCT_ROOTS = new Set(['IFCPRODUCT']);
 
         // Category constants for the lookup cache
         const CAT_SKIP = 0, CAT_SPATIAL = 1, CAT_GEOMETRY = 2, CAT_HIERARCHY_REL = 3,
@@ -248,7 +254,11 @@ export class ColumnarParser {
             else if (PROPERTY_ENTITY_TYPES.has(upper)) cat = CAT_PROPERTY_ENTITY;
             else if (ASSOCIATION_REL_TYPES.has(upper)) cat = CAT_ASSOCIATION_REL;
             else if (isIfcTypeLikeEntity(upper)) cat = CAT_TYPE_OBJECT;
-            else if (RELEVANT_ENTITY_PREFIXES.has(upper) || upper.startsWith('IFCREL')) cat = CAT_RELEVANT;
+            else if (
+                RELEVANT_NON_PRODUCT_HELPERS.has(upper)
+                || isSubtypeOfAny(upper, RELEVANT_PRODUCT_ROOTS)
+                || upper.startsWith('IFCREL')
+            ) cat = CAT_RELEVANT;
             else cat = CAT_SKIP;
             typeCategoryCache.set(type, cat);
             return cat;

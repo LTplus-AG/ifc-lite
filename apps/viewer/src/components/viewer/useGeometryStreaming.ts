@@ -302,22 +302,40 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     lastGeometryLengthRef.current = currentLength;
 
     // ── Fit camera ──
-    if (!cameraFittedRef.current && coordinateInfo?.shiftedBounds) {
-      const sb = coordinateInfo.shiftedBounds;
-      const maxSize = Math.max(sb.max.x - sb.min.x, sb.max.y - sb.min.y, sb.max.z - sb.min.z);
-      if (maxSize > 0 && Number.isFinite(maxSize)) {
-        renderer.getCamera().fitToBounds(sb.min, sb.max);
-        geometryBoundsRef.current = { min: { ...sb.min }, max: { ...sb.max } };
-        cameraFittedRef.current = true;
-        const pos = renderer.getCamera().getPosition();
-        const tgt = renderer.getCamera().getTarget();
-        cameraSnapshotRef.current = { px: pos.x, py: pos.y, pz: pos.z, tx: tgt.x, ty: tgt.y, tz: tgt.z };
+    //
+    // Pre-#871 the branching here was structured as
+    //   if (coordinateInfo?.shiftedBounds) { try to fit }
+    //   else if (geometry.length > 0) { fall back }
+    // but `coordinateInfo.shiftedBounds` is ALWAYS truthy — the wasm
+    // bridge ships a default `{ min: 0, max: 0 }` placeholder before
+    // any real bounds get computed. The outer `if` therefore won
+    // every time, the inner `maxSize > 0` failed, and the `else if`
+    // fallback NEVER fired. Result: the camera stayed at the default
+    // (0, 0, 0) framing while linearly-placed railway geometry sat at
+    // its MGA-territory world coords (~330, 123 after RTC), invisible
+    // to the user. Compute the size first so the branch reflects
+    // whether the data is actually usable, not just whether the
+    // property exists.
+    if (!cameraFittedRef.current) {
+      let fitted = false;
+      const sb = coordinateInfo?.shiftedBounds;
+      if (sb) {
+        const maxSize = Math.max(sb.max.x - sb.min.x, sb.max.y - sb.min.y, sb.max.z - sb.min.z);
+        if (maxSize > 0 && Number.isFinite(maxSize)) {
+          renderer.getCamera().fitToBounds(sb.min, sb.max);
+          geometryBoundsRef.current = { min: { ...sb.min }, max: { ...sb.max } };
+          fitted = true;
+        }
       }
-    } else if (!cameraFittedRef.current && geometry.length > 0 && !isStreaming) {
-      const bounds = computeBounds(geometry);
-      if (bounds) {
-        renderer.getCamera().fitToBounds(bounds.min, bounds.max);
-        geometryBoundsRef.current = bounds;
+      if (!fitted && geometry.length > 0 && !isStreaming) {
+        const bounds = computeBounds(geometry);
+        if (bounds) {
+          renderer.getCamera().fitToBounds(bounds.min, bounds.max);
+          geometryBoundsRef.current = bounds;
+          fitted = true;
+        }
+      }
+      if (fitted) {
         cameraFittedRef.current = true;
         const pos = renderer.getCamera().getPosition();
         const tgt = renderer.getCamera().getTarget();

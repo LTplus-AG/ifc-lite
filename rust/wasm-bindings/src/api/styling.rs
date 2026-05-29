@@ -556,14 +556,28 @@ fn extract_color_from_surface_style(
 /// Extract color from IfcSurfaceStyleRendering or IfcSurfaceStyleShading.
 ///
 /// Returns `(rendering_color, shading_color)`:
-///   - `rendering_color` is the apparent surface colour. When
-///     IfcSurfaceStyleRendering authored a DiffuseColour (attr 2) it wins;
-///     otherwise we fall back to SurfaceColour (attr 0). Matches how most
-///     IFC viewers display the model and is what the GLB exporter uses by
-///     default.
-///   - `shading_color` is the SurfaceColour, returned only when it differs
-///     from `rendering_color` (i.e. a DiffuseColour was authored). The GLB
-///     exporter's "Shading" colour source picks this up.
+///   - `rendering_color` is the apparent surface colour: `SurfaceColour`
+///     (attr 0) by default, scaled by `DiffuseColour` (attr 2) when the
+///     author supplied it as an `IfcNormalisedRatioMeasure` factor.
+///     Matches how web-ifc, IfcOpenShell, BlenderBIM, and the IFC spec
+///     prose treat the chain — `SurfaceColour` IS the apparent surface
+///     colour; `DiffuseColour` is the diffuse-reflection contribution
+///     used by full PBR/Phong renderers and is meaningless for the flat
+///     viewer pipeline when its only effect is to drop everything to
+///     black.
+///   - `shading_color` is the alternative the GLB exporter's "Shading"
+///     source picks up — populated only when a distinct `DiffuseColour`
+///     IfcColourRgb is authored, so downstream pipelines that DO want
+///     the per-component diffuse override can still get it.
+///
+/// Pre-fix this preferred `DiffuseColour` over `SurfaceColour`. That
+/// regressed on every IFC file that authors `DiffuseColour =
+/// IfcColourRgb(0, 0, 0)` (which the spec defines as "no diffuse
+/// reflection contribution", NOT "render the surface in black") — most
+/// notably the railway fixture on issue #859 / PR #871, where every
+/// IfcSignal / IfcReferent rendered as opaque black on the dark
+/// viewport background and the user reported "viewport blank" even
+/// though 33 meshes had streamed correctly.
 fn extract_color_from_rendering(
     rendering_id: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -585,32 +599,36 @@ fn extract_color_from_rendering(
             let alpha = (1.0 - transparency as f32).clamp(0.0, 1.0);
             let surface_rgba = [sr, sg, sb, alpha];
 
-            // Probe DiffuseColour: entity ref first, then inline factor.
-            let rendering_rgba = if rendering.ifc_type
-                == IfcType::IfcSurfaceStyleRendering
-            {
+            // SurfaceColour is the canonical apparent colour. Only let
+            // DiffuseColour modulate it when it's a normalised-ratio
+            // factor (which IS a multiplicative modifier of
+            // SurfaceColour per spec). When DiffuseColour is an
+            // IfcColourRgb we store it as the optional `shading`
+            // override for downstream consumers (GLB exporter's
+            // "Shading" source) but do NOT use it as the rendered
+            // colour — that would replace the entire surface tint
+            // with a value the IFC author intended as a reflectance
+            // coefficient, which turns most files black on the flat
+            // viewer pipeline.
+            let mut rendering_rgba = surface_rgba;
+            let mut shading: Option<[f32; 4]> = None;
+
+            if rendering.ifc_type == IfcType::IfcSurfaceStyleRendering {
                 if let Some(diffuse_id) = rendering.get_ref(2) {
-                    if let Some([dr, dg, db, _]) = extract_color_rgb(diffuse_id, decoder)
-                    {
-                        [dr, dg, db, alpha]
-                    } else {
-                        surface_rgba
+                    if let Some([dr, dg, db, _]) = extract_color_rgb(diffuse_id, decoder) {
+                        let diffuse_rgba = [dr, dg, db, alpha];
+                        // Surface the diffuse override to the GLB
+                        // exporter only when it actually differs from
+                        // the surface colour.
+                        if diffuse_rgba != surface_rgba {
+                            shading = Some(diffuse_rgba);
+                        }
                     }
                 } else if let Some(factor) = rendering.get_float(2) {
                     let f = (factor as f32).clamp(0.0, 1.0);
-                    [sr * f, sg * f, sb * f, alpha]
-                } else {
-                    surface_rgba
+                    rendering_rgba = [sr * f, sg * f, sb * f, alpha];
                 }
-            } else {
-                surface_rgba
-            };
-
-            let shading = if rendering_rgba == surface_rgba {
-                None
-            } else {
-                Some(surface_rgba)
-            };
+            }
 
             return Some((rendering_rgba, shading));
         }

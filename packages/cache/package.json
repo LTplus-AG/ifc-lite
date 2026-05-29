@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cache",
-  "version": "1.14.7",
+  "version": "1.14.8",
   "description": "Binary cache format for IFC-Lite - fast model loading",
   "type": "module",
   "main": "./dist/index.js",

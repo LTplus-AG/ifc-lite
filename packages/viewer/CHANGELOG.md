@@ -1,5 +1,14 @@
 # @ifc-lite/viewer-core
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [[`e73ac09`](https://github.com/LTplus-AG/ifc-lite/commit/e73ac0931b85cd299ae9b723073e956b6b124c85), [`e73ac09`](https://github.com/LTplus-AG/ifc-lite/commit/e73ac0931b85cd299ae9b723073e956b6b124c85)]:
+  - @ifc-lite/wasm@2.0.0
+  - @ifc-lite/create@1.15.1
+  - @ifc-lite/sdk@1.16.1
+
 ## 0.2.3
 
 ### Patch Changes

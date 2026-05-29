@@ -1,5 +1,14 @@
 # @ifc-lite/collab
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`e73ac09`](https://github.com/LTplus-AG/ifc-lite/commit/e73ac0931b85cd299ae9b723073e956b6b124c85)]:
+  - @ifc-lite/data@2.0.0
+  - @ifc-lite/ifcx@2.1.2
+  - @ifc-lite/mutations@1.15.1
+
 ## 0.2.0
 
 ### Minor Changes

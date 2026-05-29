@@ -1,5 +1,12 @@
 # @ifc-lite/spatial
 
+## 1.14.6
+
+### Patch Changes
+
+- Updated dependencies [[`e73ac09`](https://github.com/LTplus-AG/ifc-lite/commit/e73ac0931b85cd299ae9b723073e956b6b124c85)]:
+  - @ifc-lite/geometry@2.0.0
+
 ## 1.14.5
 
 ### Patch Changes

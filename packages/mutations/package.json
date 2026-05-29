@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/mutations",
-  "version": "1.15.0",
+  "version": "1.15.1",
   "description": "Mutation tracking and property editing for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

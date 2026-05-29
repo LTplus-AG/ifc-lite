@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/sdk",
-  "version": "1.16.0",
+  "version": "1.16.1",
   "description": "Scripting SDK for ifc-lite — the bim.* API for BIM automation",
   "type": "module",
   "main": "./dist/index.js",

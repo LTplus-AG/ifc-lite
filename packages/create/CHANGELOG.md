@@ -1,5 +1,13 @@
 # @ifc-lite/create
 
+## 1.15.1
+
+### Patch Changes
+
+- Updated dependencies [[`e73ac09`](https://github.com/LTplus-AG/ifc-lite/commit/e73ac0931b85cd299ae9b723073e956b6b124c85), [`e73ac09`](https://github.com/LTplus-AG/ifc-lite/commit/e73ac0931b85cd299ae9b723073e956b6b124c85)]:
+  - @ifc-lite/parser@3.0.0
+  - @ifc-lite/mutations@1.15.1
+
 ## 1.15.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer-embed",
-  "version": "1.14.4",
+  "version": "1.14.5",
   "private": true,
   "description": "Embeddable IFC-Lite 3D viewer for iframes (Power BI, Superset, etc.)",
   "type": "module",

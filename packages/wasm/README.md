@@ -12,7 +12,9 @@ npm install @ifc-lite/wasm
 
 ## Direct WASM use
 
-`IfcAPI` methods take the raw IFC text (a `string`), not a `Uint8Array`. Decode the buffer first.
+The text-based parse methods (`parse`, `parseStreaming`) take the raw IFC text
+(a `string`) — decode the buffer first. The geometry methods (`buildPrePassOnce`,
+`processGeometryBatch`, see below) instead take the raw `Uint8Array` bytes.
 
 ```typescript
 import init, { IfcAPI } from '@ifc-lite/wasm';
@@ -65,6 +67,7 @@ for (let start = 0; start < pre.totalJobs; start += 100) {
 }
 
 api.clearPrePassCache();
+api.free();                           // release the API instance when done
 ```
 
 > Most consumers should use [`@ifc-lite/geometry`](../geometry/README.md)'s

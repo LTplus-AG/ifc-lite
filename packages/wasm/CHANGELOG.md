@@ -1,5 +1,321 @@
 # @ifc-lite/wasm
 
+## 1.20.0
+
+### Minor Changes
+
+- [#861](https://github.com/LTplus-AG/ifc-lite/pull/861) [`cc28f46`](https://github.com/LTplus-AG/ifc-lite/commit/cc28f4675b7cdca67ff6c97a6461337e17468fd2) Thanks [@louistrue](https://github.com/louistrue)! - Replace the in-tree BSP CSG kernel with Manifold (elalish/manifold) in
+  the wasm build, matching the native path. Fixes the `RangeError: too
+much recursion` / `unreachable executed` failures on degenerate IFC
+  geometry (notably issue [#841](https://github.com/LTplus-AG/ifc-lite/issues/841) House.ifc) at the cost of ~250 KB added
+  to the wasm bundle.
+
+  The previous status — Manifold blocked on `wasm32-unknown-unknown` by
+  upstream `wasm-cxx-shim` libc++ issues — was resolved in
+  `wasm-cxx-shim` v0.5.0 / `manifold-csg-sys` 3.5.100 (May 2026). Flip
+  `rust/wasm-bindings/Cargo.toml` to depend on
+  `ifc-lite-geometry/manifold-csg-wasm-uu` and provision the
+  cross-toolchain on Vercel via `scripts/vercel-install.sh`:
+
+  - `dnf install clang20 lld20 cmake` from AL2023.
+  - Fetch matching `libcxx-N.N.N.src.tar.xz` headers from the LLVM
+    release page; cached under `/vercel/cache/wasm-cxx/` so subsequent
+    deploys reuse them.
+
+  Local dev: `brew install llvm lld` on macOS, `apt install clang-20
+lld-20 libc++-20-dev libc++abi-20-dev` on Debian/Ubuntu. The
+  wasm-cxx-shim toolchain file auto-detects standard install paths.
+
+  `docs/architecture/geometry-pipeline.md` updated to reflect the new
+  status, build prerequisites, and runtime properties (single-threaded
+  on wasm, no exception runtime).
+
+  Same correctness as the native Manifold path; wasm bundle grows from
+  ~1.5 MB to ~1.7 MB after the existing `wasm-opt -O3` pass.
+
+  ## Post-process for visual quality
+
+  Manifold's raw output splits previously-single coplanar faces into
+  many adjacent strips along the cutter boundary, and the verts on
+  those strip boundaries are emitted as distinct (numerically
+  near-coincident) topological points. Shipping that to the renderer
+  as-is gave two visible artefacts on the PR's first deploy preview
+  (`02_BIMcollab_Example.ifc`):
+
+  1. **Scar lines on coplanar surfaces** — visible horizontal striations
+     on walls / slabs / roofs where adjacent strips had slightly
+     different vertex normals after per-vertex averaging.
+  2. **Stretched sliver triangles** — long red "rays" shooting out of
+     the building from rare boundary-intersection degenerate
+     triangles.
+
+  `manifold_to_mesh` now does a post-process pass:
+
+  - Compute initial per-vertex face normals.
+  - `Mesh::welded(1 µm position, 1 mrad normal)` — collapses pure
+    numerical-noise duplicates while preserving crisp corner verts
+    (perpendicular faces meeting at a point have distinct normals and
+    stay separate).
+  - Re-derive area-weighted normals on the welded mesh.
+
+  The 1 µm tolerance is file-unit-relative (the CSG runs on the router's
+  pre-scaled mesh) so it's safe for both metre and millimetre IFCs. An
+  earlier attempt at the broader `Mesh::welded_by_position` collapsed
+  legitimate distinct verts on rounded sanitary geometry and regressed
+  `bath_csg_solid_test::subtracted_a_cavity` from ~0.55 m³ to 0.0326 m³;
+  the normal-aware variant keeps the bath intact.
+
+  Follow-up scope: a crease-angle smooth-group pass would make hard
+  corners (wall-meets-floor) shade crisply while keeping coplanar
+  surfaces uniform. The current post-process softens those corners
+  slightly because position-only welding can't tell a real corner
+  vertex from a numerical-noise duplicate without the normal-eps gate,
+  and the gate's threshold is too tight to catch all the noise on
+  boundary-coincident input.
+
+- [#852](https://github.com/LTplus-AG/ifc-lite/pull/852) [`eada6ad`](https://github.com/LTplus-AG/ifc-lite/commit/eada6ad841d0dd5179088a8ba0b2bc6783d33e8d) Thanks [@louistrue](https://github.com/louistrue)! - Expose full 2D symbol data in the server's `ParseResponse` at parity
+  with the browser-side parser (issue [#843](https://github.com/LTplus-AG/ifc-lite/issues/843)). The server now ships the
+  same primitives the browser does: `IfcGrid` axis lines + bubble + tag
+  glyphs, `IfcAnnotation` polylines, `IfcIndexedPolyCurve`,
+  `IfcCircle` disks, `IfcEllipse` tessellations, `IfcTrimmedCurve` arcs
+  with `PLANEANGLEUNIT` scaling + sense-agreement + wrap-around,
+  `IfcCompositeCurve` recursion, `IfcGeometricSet` /
+  `IfcGeometricCurveSet` recursion, `IfcMappedItem` with `MappingOrigin`
+
+  - `MappingTarget` transform composition, `IfcTextLiteral` /
+    `IfcTextLiteralWithExtent` with placement composition / `BoxAlignment`
+    / cap-height derived from extent box, `IfcAnnotationFillArea` with
+    outer ring + optional hole rings, and `IfcStyledItem` colour
+    resolution (`IfcTextStyle` → `IfcColourRgb`, `IfcFillAreaStyle` →
+    `IfcColourRgb`).
+
+  The full 2 100-line extractor that used to live in
+  `rust/wasm-bindings/src/api/symbolic.rs` has been moved into
+  `ifc_lite_processing::symbolic` as the canonical implementation.
+  Both pipelines now call the same function:
+
+  - HTTP server: `extract_symbolic_data(&content) -> SymbolicData`
+    serialised under `symbolic_data` in `ParseResponse`.
+  - WASM bindings: `IfcAPI.parseSymbolicRepresentations(content)` is now
+    a thin wrapper that calls `extract_symbolic_data` and converts the
+    result into the existing `SymbolicRepresentationCollection`
+    `wasm_bindgen` type via a new `from_data()` constructor.
+
+  Net effect: zero behaviour change for the JS side (the
+  `SymbolicRepresentationCollection` API surface is unchanged) but the
+  server response now carries every primitive the renderer can paint,
+  not just the scaffolding subset that the first cut had been
+  deliberately scoped to.
+
+  Coordinate handling at parity:
+
+  - Per-product `ObjectPlacement` resolution via `IfcLocalPlacement`
+    chain (translations accumulate after rotation by parent, rotations
+    accumulate to orient symbols).
+  - Per-representation `ContextOfItems.WorldCoordinateSystem` is
+    composed in when present and non-trivial.
+  - Auto-detected RTC offset is subtracted (same threshold the mesh
+    pipeline uses).
+  - Y-axis flip (`y → -y`) to match the renderer's section-cut coord
+    convention.
+
+  P1 review feedback from chatgpt-codex on the original commit
+  (`symbolic.rs:181` — "Apply placements before emitting symbolic
+  coordinates") was already addressed by an earlier commit on this
+  branch (`ac72f039`) and remains addressed here: placements flow
+  through `resolve_object_placement` for every entity.
+
+  Regression coverage:
+
+  - `rust/processing/tests/issue_843_symbolic_data.rs` — original
+    three tests updated for the new behaviour. Grid extraction also
+    emits axis lines + bubble texts now; the annotation-only count is
+    filtered by `representation = "Annotation"`.
+  - `rust/processing/tests/issue_843_symbolic_parity.rs` — four new
+    tests driving a richer synthetic IFC4 file that exercises every
+    new primitive family: `IfcCircle` disk, `IfcTextLiteralWithExtent`
+    text, `IfcAnnotationFillArea` fill, `IfcEllipse` tessellation.
+  - Full `cargo test -p ifc-lite-geometry --tests`: 267 passed,
+    0 regressions.
+
+### Patch Changes
+
+- [#847](https://github.com/LTplus-AG/ifc-lite/pull/847) [`df912ca`](https://github.com/LTplus-AG/ifc-lite/commit/df912cafb1f3632abadee5134324165e5c1a084f) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcRationalBSplineSurfaceWithKnots` /
+  `IfcBSplineSurfaceWithKnots` surfaces and `IfcSphere` CSG primitives
+  when they appear directly under a `'Surface3D'` shape representation
+  (issue [#842](https://github.com/LTplus-AG/ifc-lite/issues/842)).
+
+  The B-spline tessellator (Cox-de Boor + rational weights) already
+  existed for surfaces nested inside `IfcAdvancedFace`, but standalone
+  surface items had no processor registered and `Surface3D`
+  representations were filtered out at the router. Wire the same
+  tessellator behind a `BSplineSurfaceProcessor`, add a `SphereProcessor`
+  for the remaining `IfcCsgPrimitive3D` leaf used in the reporter's
+  fixture, and allow `'Surface3D'` representations through the
+  representation-type allow-list in `process_element` /
+  `process_element_with_submeshes`.
+
+  Regression coverage:
+
+  - `rust/geometry/tests/issue_842_bspline_and_sphere.rs` — full pipeline
+    against the reporter's NURBS marker fixture, asserting that the proxy
+    containing the two 5×5 rational B-spline patches plus nine IfcSphere
+    markers produces both surface tessellation and sphere meshes spanning
+    the expected X extent.
+
+  Fixture `tests/models/issues/842_rational_bspline_surface.ifc` added
+  to the manifest (5.7 KB).
+
+- [#849](https://github.com/LTplus-AG/ifc-lite/pull/849) [`9e2a644`](https://github.com/LTplus-AG/ifc-lite/commit/9e2a6440ff658f0c5fd58fc23d193fb8ddd897a4) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcAlignment` directrix curves and confirm `IfcGeographicElement`
+  terrain meshes load (issue [#844](https://github.com/LTplus-AG/ifc-lite/issues/844)).
+
+  `IfcGeographicElement` already routes through the standard pipeline —
+  its `'Body','Tessellation'` representation hits the existing
+  `TriangulatedFaceSetProcessor`. The issue was only ever the
+  `IfcAlignment` side: in IFC4X1 the alignment carries its curve in a
+  dedicated `Axis` (`IfcAlignmentCurve`) attribute and the file's
+  `Representation` is typically `$`, so `process_element` bailed before
+  reaching any geometry.
+
+  Add `IfcAlignmentProcessor` that consumes the Axis curve via the
+  existing `AlignmentCurve` evaluator (full IFC4X1 horizontal + vertical
+  parser already used by `SectionedSolidHorizontalProcessor`) and
+  samples it at 1 m intervals into a thin triangulated ribbon centred on
+  the directrix. Short-circuit `process_element` for `IfcAlignment` so
+  the missing-representation path falls through to the ribbon processor.
+
+  Regression coverage:
+
+  - `rust/geometry/tests/issue_844_terrain_and_alignment.rs` — drives the
+    reporter's IFC4X1 fixture. Verifies both `IfcGeographicElement` [#30](https://github.com/LTplus-AG/ifc-lite/issues/30)
+    (Terrain) tessellates and `IfcAlignment` [#59](https://github.com/LTplus-AG/ifc-lite/issues/59) (the 'A1' alignment,
+    8 horizontal + 24 vertical segments) renders as a ribbon spanning
+    more than 2 m on its longest axis.
+
+  Fixture `tests/models/issues/844_terrain_and_alignment.ifc` (530 KB)
+  added to the manifest.
+
+- [#851](https://github.com/LTplus-AG/ifc-lite/pull/851) [`b2d6f2a`](https://github.com/LTplus-AG/ifc-lite/commit/b2d6f2a023935446ae8e9b7dc6e436dedd1555ad) Thanks [@louistrue](https://github.com/louistrue)! - Propagate `IfcRelVoidsElement` cuts to aggregated parts so
+  `IfcWallElementedCase` walls (and any host whose body lives on its
+  aggregated children) actually show the authored openings (issue [#845](https://github.com/LTplus-AG/ifc-lite/issues/845)).
+
+  The reporter's fixture is the canonical IFC4
+  `ifcwallelementedcase` model: an `IfcWall` with no body
+  representation that aggregates a track frame plus drywall panels via
+  `IfcRelAggregates`. The openings are authored directly against the
+  wall, so the existing void path ran the cut against an empty host
+  mesh — the kernel logged "Rectangular cut SILENT NO-OP" and the
+  window/door cutouts never reached the panel geometry that actually
+  covers them.
+
+  Build a parent → children index from `IfcRelAggregates` during the
+  entity scan and, after the void index is collected, breadth-first
+  push every opening on a host down through the aggregation tree
+  (visited-set cycle guard, deduplicate against authored direct voids).
+  Each aggregated leaf now sees the openings and clips its mesh against
+  them.
+
+  Regression coverage:
+
+  - `rust/processing/src/processor.rs` — four `propagate_voids_to_aggregated_parts`
+    unit tests cover the full sub-tree walk, dedup against authored
+    voids, aggregate cycles, and no-op when the host has no parts.
+  - `rust/processing/tests/issue_845_wall_elemented_case.rs` — drives the
+    reporter's fixture through `process_geometry` and asserts both
+    drywall panel meshes ([#145](https://github.com/LTplus-AG/ifc-lite/issues/145) Panel Forward, [#146](https://github.com/LTplus-AG/ifc-lite/issues/146) Panel Reverse) end
+    up with substantially more triangles than the pristine 12-tris
+    slab — proof the openings now carve into them.
+
+  Fixture `tests/models/issues/845_wall_elemented_case.ifc` (25 KB)
+  added to the manifest.
+
+- [#848](https://github.com/LTplus-AG/ifc-lite/pull/848) [`4632362`](https://github.com/LTplus-AG/ifc-lite/commit/46323626deed90ac5d5221569831ea6fcd6e0889) Thanks [@louistrue](https://github.com/louistrue)! - Fix `IfcRevolvedAreaSolid` rendering when the solid's `Position` is not
+  identity or the revolution axis is offset from the profile origin
+  (issue [#846](https://github.com/LTplus-AG/ifc-lite/issues/846)).
+
+  The old `RevolvedAreaSolidProcessor` had two bugs:
+
+  1. It ignored the `Position` (`IfcAxis2Placement3D`) attribute that
+     places the swept solid's coordinate system in the enclosing
+     representation. The profile and axis values were used as-if in the
+     final object coord system.
+  2. It misused the 2D profile vertex `(x, y)` as `(radius, height)`
+     along the axis — only correct when the axis runs through the
+     profile origin along the profile's Y axis. For the reporter's beam
+     the axis sits 1.3 m offset from the profile and points along −Y,
+     so the old code produced a tiny ring near the axis line instead of
+     the authored 45° I-beam sweep.
+
+  The fix applies `parse_axis2_placement_3d` to lift the swept-solid
+  local coords into the surrounding object frame and rotates each
+  profile vertex around the axis line using a proper Rodrigues
+  decomposition into parallel and perpendicular components relative to
+  the axis direction.
+
+  Second follow-up: after the cap topology was fixed by earcut, the rendered
+  I-beam profile still came out as a smooth blob because the side quads and
+  caps shared profile-ring vertices — the viewer's vertex-normal averaging
+  blended the flange face normal with the perpendicular web face normal at
+  every sharp 90° crease in the IPE200 cross-section. Flat-shade the whole
+  revolved solid (per-triangle vertex duplication, each triangle carries its
+  own face normal) so creases stay crisp.
+
+  Regression coverage:
+
+  - `rust/geometry/tests/issue_846_revolved_beam.rs` — drives the reporter's
+    beam-varying-extrusion-paths fixture. Asserts beam [#227](https://github.com/LTplus-AG/ifc-lite/issues/227) sweeps an arc
+    ≥ 0.9 m long with a ≥ 0.15 m perpendicular profile extent, that beam
+    [#210](https://github.com/LTplus-AG/ifc-lite/issues/210) (plain extrusion) is unaffected, that the cap triangulation is
+    manifold (no edge shared by 3+ triangles), and that the mesh ships
+    per-triangle normals so the renderer can't re-smooth the creases.
+
+  Fixture `tests/models/issues/846_revolved_beam.ifc` (4.4 KB) added to
+  the manifest.
+
+  This PR was branched on top of PR [#847](https://github.com/LTplus-AG/ifc-lite/issues/847) (issue [#842](https://github.com/LTplus-AG/ifc-lite/issues/842) — IfcRationalBSplineSurfaceWithKnots),
+  so the manifest update here also carries an `issues/842_rational_bspline_surface.ifc`
+  entry inherited from that base. Once [#847](https://github.com/LTplus-AG/ifc-lite/issues/847) lands on `main` and this PR
+  rebases, the 842 entry will already be on main and the diff collapses to
+  just the 846 entry. Documented per PR [#848](https://github.com/LTplus-AG/ifc-lite/issues/848) review (coderabbit Minor) so
+  the scope of the manifest delta is clear.
+
+- [#870](https://github.com/LTplus-AG/ifc-lite/pull/870) [`14d69d3`](https://github.com/LTplus-AG/ifc-lite/commit/14d69d3359a0415d7bc8798411483a9f47c75ff3) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcTriangulatedIrregularNetwork` (terrain TIN) representations
+  (issue [#859](https://github.com/LTplus-AG/ifc-lite/issues/859) follow-up to PR [#866](https://github.com/LTplus-AG/ifc-lite/issues/866)).
+
+  PR [#866](https://github.com/LTplus-AG/ifc-lite/issues/866) stopped `IfcSolidStratum` (and the other concrete
+  `IfcGeotechnicalStratum` leaves) from being silently dropped at
+  `has_geometry_by_name`. That uncovered a second silent failure: the
+  stratum's body is typically an `IfcTriangulatedIrregularNetwork`, and
+  the geometry router rejected it with
+  `"Unsupported representation type: IfcTriangulatedIrregularNetwork"`
+  because no processor was registered for the type — the user's
+  `UT_Tin_in_MGA_56.ifc` reached the viewer with 0 meshes and an empty
+  viewport.
+
+  `IfcTriangulatedIrregularNetwork` is a subtype of
+  `IfcTriangulatedFaceSet`. It adds an optional `ClosedOrOpen` list at
+  the tail but inherits Coordinates / Closed / CoordIndex in the same
+  attribute slots — so the existing `TriangulatedFaceSetProcessor` is
+  correct for TIN as-is. The fix:
+
+  - Adds `IfcTriangulatedIrregularNetwork` to
+    `TriangulatedFaceSetProcessor::supported_types()` so the router
+    registers it against the same processor.
+  - Extends the `IfcTriangulatedFaceSet | IfcPolygonalFaceSet` match
+    arms in `router/processing.rs` (RTC detection / large-coord checks)
+    and `router/layers.rs` (no-position geometry list) to also include
+    TIN.
+  - Adds TIN to `core::fast_parse::should_use_fast_path` so the
+    direct-byte CoordIndex parser is used on real terrain meshes.
+
+  Regression coverage:
+
+  - `rust/geometry/tests/issue_859_tin_irregular_network.rs` — builds a
+    minimal in-memory IFC4x3 file with an `IfcGeographicElement` whose
+    body is a 2-triangle TIN, asserts the router produces a mesh with
+    the authored bbox and triangle count. Pre-fix the call errored at
+    the dispatch layer.
+
 ## 1.19.2
 
 ### Patch Changes

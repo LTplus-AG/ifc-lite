@@ -562,107 +562,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   );
   const desktopShell = isTauri();
 
-  // Check which type geometries exist across ALL loaded models (federation-aware).
-  // PERF: Use meshes.length as dep proxy instead of full geometryResult, and
-  // scan incrementally — once a type is found it stays found, so we only scan
-  // NEW meshes since the last check. Per-model cursors ensure federated models
-  // each track their own scan position independently.
-  const typeGeomScanRef = useRef({
-    spaces: false, openings: false, site: false,
-    legacyLastLen: 0,
-    modelLastLen: new Map<string | number, number>(),
-  });
-  const meshLen = geometryResult?.meshes.length ?? 0;
-  const typeGeometryExists = useMemo(() => {
-    const scan = typeGeomScanRef.current;
-
-    // Reset if legacy meshes array shrunk (new file loaded)
-    if (meshLen < scan.legacyLastLen) {
-      scan.spaces = false;
-      scan.openings = false;
-      scan.site = false;
-      scan.legacyLastLen = 0;
-      scan.modelLastLen.clear();
-    }
-
-    // Already found all types — nothing to do
-    if (scan.spaces && scan.openings && scan.site) {
-      return { spaces: scan.spaces, openings: scan.openings, site: scan.site };
-    }
-
-    // Check federated models (scan only new meshes per model)
-    if (models.size > 0) {
-      for (const [modelId, model] of models) {
-        const meshes = model.geometryResult?.meshes;
-        if (!meshes) continue;
-        const modelStart = scan.modelLastLen.get(modelId) ?? 0;
-        // Reset cursor if model was reloaded (mesh array shrunk)
-        const start = meshes.length < modelStart ? 0 : modelStart;
-        for (let i = start; i < meshes.length; i++) {
-          const t = meshes[i].ifcType;
-          if (t === 'IfcSpace') scan.spaces = true;
-          else if (t === 'IfcOpeningElement') scan.openings = true;
-          else if (t === 'IfcSite') scan.site = true;
-          if (scan.spaces && scan.openings && scan.site) break;
-        }
-        scan.modelLastLen.set(modelId, meshes.length);
-        if (scan.spaces && scan.openings && scan.site) break;
-      }
-    }
-
-    // Legacy single-model path (scan only new meshes)
-    if (geometryResult?.meshes) {
-      const meshes = geometryResult.meshes;
-      for (let i = scan.legacyLastLen; i < meshes.length; i++) {
-        const t = meshes[i].ifcType;
-        if (t === 'IfcSpace') scan.spaces = true;
-        else if (t === 'IfcOpeningElement') scan.openings = true;
-        else if (t === 'IfcSite') scan.site = true;
-        if (scan.spaces && scan.openings && scan.site) break;
-      }
-    }
-
-    scan.legacyLastLen = meshLen;
-    return { spaces: scan.spaces, openings: scan.openings, site: scan.site };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- meshLen is a stable proxy for geometryResult
-  }, [models, meshLen]);
-
-  // IfcAnnotation / IfcGrid have no body mesh, so they can't be detected via
-  // the mesh scan. Look up the entity table directly. byType keys are
-  // uppercase STEP names but cache loads sometimes preserve PascalCase.
-  //
-  // Issue #862 split these into separate visibility toggles — files that
-  // ship only one of the two need only that menu entry. Some files ship
-  // only grids (Snowdon Towers Structural — no IfcAnnotation) so probing
-  // each independently is required.
-  const hasIfcEntities = useMemo(() => {
-    const probe = (store: typeof ifcDataStore | undefined) => {
-      const byType = store?.entityIndex?.byType;
-      if (!byType) return { annotations: false, grid: false };
-      return {
-        annotations: (byType.get('IFCANNOTATION')?.length ?? 0) > 0
-          || (byType.get('IfcAnnotation')?.length ?? 0) > 0,
-        grid: (byType.get('IFCGRID')?.length ?? 0) > 0
-          || (byType.get('IfcGrid')?.length ?? 0) > 0,
-      };
-    };
-    let annotations = false;
-    let grid = false;
-    if (models.size > 0) {
-      for (const [, m] of models) {
-        const p = probe(m.ifcDataStore);
-        annotations ||= p.annotations;
-        grid ||= p.grid;
-      }
-    } else {
-      const p = probe(ifcDataStore);
-      annotations = p.annotations;
-      grid = p.grid;
-    }
-    return { annotations, grid };
-  }, [models, ifcDataStore]);
-  const hasIfcAnnotations = hasIfcEntities.annotations;
-  const hasIfcGrid = hasIfcEntities.grid;
+  // NOTE: The Class Visibility dropdown used to gate each toggle on whether
+  // the loaded model actually contained that class (scanning meshes for
+  // Spaces/Openings/Site and probing the entity table for Annotations/Grids).
+  // That gating was removed: the toggles are persisted user preferences, so
+  // they now render unconditionally and stay sticky across models and reloads.
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1534,8 +1438,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 // Stay enabled even with no model loaded — the dropdown
                 // also exposes load-time settings (Merge Multilayer
                 // Walls) that the user should be able to set BEFORE
-                // opening a file. Runtime items inside self-gate via
-                // typeGeometryExists.
+                // opening a file. The class toggles are persisted
+                // preferences, so they always render too.
                 aria-label={mergeLayers ? 'Class Visibility (Merge Multilayer Walls is on)' : 'Class Visibility'}
                 className="relative"
               >
@@ -1557,51 +1461,49 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </TooltipContent>
         </Tooltip>
         <DropdownMenuContent className="w-72">
-          {typeGeometryExists.spaces && (
-            <DropdownMenuCheckboxItem
-              checked={typeVisibility.spaces}
-              onCheckedChange={() => toggleTypeVisibility('spaces')}
-            >
-              <Box className="h-4 w-4 mr-2" style={{ color: '#33d9ff' }} />
-              Show Spaces
-            </DropdownMenuCheckboxItem>
-          )}
-          {typeGeometryExists.openings && (
-            <DropdownMenuCheckboxItem
-              checked={typeVisibility.openings}
-              onCheckedChange={() => toggleTypeVisibility('openings')}
-            >
-              <SquareX className="h-4 w-4 mr-2" style={{ color: '#ff6b4a' }} />
-              Show Openings
-            </DropdownMenuCheckboxItem>
-          )}
-          {typeGeometryExists.site && (
-            <DropdownMenuCheckboxItem
-              checked={typeVisibility.site}
-              onCheckedChange={() => toggleTypeVisibility('site')}
-            >
-              <Building2 className="h-4 w-4 mr-2" style={{ color: '#66cc4d' }} />
-              Show Site
-            </DropdownMenuCheckboxItem>
-          )}
-          {hasIfcAnnotations && (
-            <DropdownMenuCheckboxItem
-              checked={typeVisibility.ifcAnnotations}
-              onCheckedChange={() => toggleTypeVisibility('ifcAnnotations')}
-            >
-              <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
-              Show Annotations
-            </DropdownMenuCheckboxItem>
-          )}
-          {hasIfcGrid && (
-            <DropdownMenuCheckboxItem
-              checked={typeVisibility.ifcGrid}
-              onCheckedChange={() => toggleTypeVisibility('ifcGrid')}
-            >
-              <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
-              Show Grids
-            </DropdownMenuCheckboxItem>
-          )}
+          {/*
+            Always render all five class toggles, regardless of what the
+            current model contains. They are persisted user preferences
+            (see getPersistedTypeVisibility) — a user who hides Spaces wants
+            that to stick across models and reloads, so the controls must
+            stay visible even when the loaded file has none of that class.
+            Toggling a class absent from the model is simply a no-op.
+          */}
+          <DropdownMenuCheckboxItem
+            checked={typeVisibility.spaces}
+            onCheckedChange={() => toggleTypeVisibility('spaces')}
+          >
+            <Box className="h-4 w-4 mr-2" style={{ color: '#33d9ff' }} />
+            Show Spaces
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={typeVisibility.openings}
+            onCheckedChange={() => toggleTypeVisibility('openings')}
+          >
+            <SquareX className="h-4 w-4 mr-2" style={{ color: '#ff6b4a' }} />
+            Show Openings
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={typeVisibility.site}
+            onCheckedChange={() => toggleTypeVisibility('site')}
+          >
+            <Building2 className="h-4 w-4 mr-2" style={{ color: '#66cc4d' }} />
+            Show Site
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={typeVisibility.ifcAnnotations}
+            onCheckedChange={() => toggleTypeVisibility('ifcAnnotations')}
+          >
+            <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
+            Show Annotations
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={typeVisibility.ifcGrid}
+            onCheckedChange={() => toggleTypeVisibility('ifcGrid')}
+          >
+            <Pencil className="h-4 w-4 mr-2" style={{ color: '#e4b400' }} />
+            Show Grids
+          </DropdownMenuCheckboxItem>
 
           {/* Load-time toggles live below the runtime visibility
               switches — they apply on next model open rather than

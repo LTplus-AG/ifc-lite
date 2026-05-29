@@ -244,7 +244,24 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         geometryBoundsRef.current = { ...DEFAULT_BOUNDS };
       }
     } else if (currentLength === lastLength) {
-      return; // No change
+      // No mesh-count change, so the queueMeshes / appendToBatches block
+      // below would be a no-op. But we MUST still reach the camera-fit
+      // block — the streaming-complete re-render (isStreaming flips
+      // false, geometry array length stays at the final mesh count)
+      // arrives here, and that's the FIRST render where path 2
+      // (`computeBounds(geometry)` fallback when shiftedBounds is empty)
+      // is allowed to fire. Pre-fix the early return short-circuited
+      // the camera fit entirely; the user reported 33 meshes streamed
+      // with the viewport stuck at the default ±100 m bounds (issue
+      // #859 / PR #871 deploy preview, `linear-placement-of-signal.ifc`).
+      //
+      // Skip only when the camera is already fitted or there's nothing
+      // to fit to.
+      if (cameraFittedRef.current || currentLength === 0) {
+        return;
+      }
+      // Otherwise fall through so the camera-fit block at the bottom of
+      // the effect gets a chance to run.
     }
 
     // Visibility toggle while NOT streaming — array rebuilt from scratch

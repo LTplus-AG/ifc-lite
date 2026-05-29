@@ -124,10 +124,9 @@ function selectWasmScanFunction(api: WasmScanApi | undefined, uint8Buffer: Uint8
     return () => api.scanEntitiesFastBytes?.(uint8Buffer);
   }
 
-  if (typeof api.scanRelevantEntitiesFastBytes === 'function') {
-    return () => api.scanRelevantEntitiesFastBytes?.(uint8Buffer);
-  }
-
+  // Deliberately NOT falling back to scanRelevantEntitiesFastBytes: it returns
+  // a filtered subset (relevant entities only), which would build an incomplete
+  // entity index here. Fall through to the full-scan scanEntitiesFast instead.
   if (typeof api.scanEntitiesFast !== 'function') {
     return null;
   }

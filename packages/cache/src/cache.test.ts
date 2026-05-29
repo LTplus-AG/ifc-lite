@@ -119,9 +119,20 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     ].join('\n'));
     sourceBuffer = source.buffer;
     const entityRefs = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
+    // Find the full `#<id>=` marker (not just the first `#` byte) so a `#`
+    // appearing inside a string value can't produce a wrong offset.
+    const findMarker = (needle: Uint8Array, from: number): number => {
+      outer: for (let i = from; i <= source.length - needle.length; i++) {
+        for (let j = 0; j < needle.length; j++) {
+          if (source[i + j] !== needle[j]) continue outer;
+        }
+        return i;
+      }
+      return -1;
+    };
     for (const id of [1, 2, 3, 4, 5]) {
-      const marker = `#${id}=`;
-      const byteOffset = source.indexOf(new TextEncoder().encode(marker)[0], id === 1 ? 0 : (entityRefs.get(id - 1)?.byteOffset ?? 0) + 1);
+      const marker = new TextEncoder().encode(`#${id}=`);
+      const byteOffset = findMarker(marker, id === 1 ? 0 : (entityRefs.get(id - 1)?.byteOffset ?? 0) + 1);
       const lineEnd = source.indexOf(0x3b, byteOffset) + 1;
       const type = id === 1 ? 'IFCPROJECT' : id === 2 ? 'IFCSITE' : id === 3 ? 'IFCBUILDING' : 'IFCWALL';
       entityRefs.set(id, {

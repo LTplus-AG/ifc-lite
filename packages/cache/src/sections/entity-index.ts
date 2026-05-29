@@ -53,13 +53,25 @@ export function readEntityIndex(reader: BufferReader): CachedEntityIndexColumns 
     typeNames.push(reader.readString());
   }
 
-  return {
-    ids: reader.readUint32Array(count),
-    byteOffsets: reader.readUint32Array(count),
-    byteLengths: reader.readUint32Array(count),
-    typeIndices: reader.readUint16Array(count),
-    typeNames,
-  };
+  const ids = reader.readUint32Array(count);
+  const byteOffsets = reader.readUint32Array(count);
+  const byteLengths = reader.readUint32Array(count);
+  const typeIndices = reader.readUint16Array(count);
+
+  // Fail fast on a corrupt cache: every typeIndex must address a real entry in
+  // typeNames, else downstream lookups (typeNames[typeIndices[i]]) silently
+  // yield undefined. A throw here is handled by BinaryCacheReader.read()'s
+  // caller as a cache miss → re-parse, matching the other validation throws.
+  for (let i = 0; i < typeIndices.length; i++) {
+    if (typeIndices[i] >= typeNames.length) {
+      throw new Error(
+        `Corrupt cache entity-index: typeIndex ${typeIndices[i]} at row ${i} ` +
+          `exceeds typeNames length ${typeNames.length}`,
+      );
+    }
+  }
+
+  return { ids, byteOffsets, byteLengths, typeIndices, typeNames };
 }
 
 function normalizeRef(id: number, ref: CacheEntityRef): CacheEntityRef {

@@ -348,7 +348,7 @@ interface IfcLitePlugin {
 
   // Lifecycle hooks
   onInit?(context: PluginContext): void;
-  onParse?(result: ParseResult): void;
+  onParse?(store: IfcDataStore): void;
   onGeometry?(meshes: Mesh[]): void;
   onRender?(renderer: Renderer): void;
   onDispose?(): void;
@@ -365,20 +365,11 @@ class AnalyticsPlugin implements IfcLitePlugin {
   name = 'analytics';
   version = '1.0.0';
 
-  onParse(result: ParseResult): void {
+  onParse(store: IfcDataStore): void {
     console.log('Parse statistics:', {
-      entities: result.entityCount,
-      schema: result.schema,
-      types: this.countTypes(result)
+      entities: store.entityCount,
+      schema: store.schema,
     });
-  }
-
-  private countTypes(result: ParseResult): Record<string, number> {
-    const counts: Record<string, number> = {};
-    for (const entity of result.entities) {
-      counts[entity.type] = (counts[entity.type] || 0) + 1;
-    }
-    return counts;
   }
 }
 ```
@@ -400,9 +391,9 @@ class PluginManager {
     }
   }
 
-  onParse(result: ParseResult): void {
+  onParse(store: IfcDataStore): void {
     for (const plugin of this.plugins) {
-      plugin.onParse?.(result);
+      plugin.onParse?.(store);
     }
   }
 

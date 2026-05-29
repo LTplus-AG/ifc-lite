@@ -226,19 +226,21 @@ import { join } from 'path';
 
 describe('Full Parse Integration', () => {
   it('should parse and render a real IFC file', async () => {
-    // Load test file
+    // Load test file. readFileSync returns a Node Buffer backed by a shared
+    // pool, so `.buffer` would expose the whole pool — not just this file's
+    // bytes. Copy the exact bytes into a standalone Uint8Array first.
     const filePath = join(__dirname, '../fixtures/test-model.ifc');
-    const buffer = readFileSync(filePath).buffer;
+    const bytes = new Uint8Array(readFileSync(filePath));
 
     // Parse metadata
     const parser = new IfcParser();
-    const store = await parser.parseColumnar(buffer);
+    const store = await parser.parseColumnar(bytes);
 
     // Extract geometry separately
     const geometry = new GeometryProcessor();
     await geometry.init();
     const meshes = [];
-    for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+    for await (const event of geometry.processAdaptive(bytes)) {
       if (event.type === 'batch') meshes.push(...event.meshes);
     }
 

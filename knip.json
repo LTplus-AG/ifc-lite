@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": [
+    "**/dist/**",
+    "**/pkg/**",
+    "**/*.d.ts",
+    "**/generated/**",
+    ".claude/**",
+    "packages/create-ifc-lite/src/templates/**",
+    "apps/viewer/src/lib/scripts/templates/**"
+  ],
+  "ignoreBinaries": ["wasm-pack", "cargo", "rustup", "serve"],
+  "ignoreWorkspaces": ["examples/*"]
+}

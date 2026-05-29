@@ -12,8 +12,8 @@
 
 ## 3. Mandatory Workflows
 - **License Headers:** Every new source file must include the MPL-2.0 header documented in [`./LICENSE_HEADER.md`](./LICENSE_HEADER.md).
-- **Changesets:** If changes affect published `packages/*`, add a changeset with `pnpm changeset`. Never manually edit package versions or `CHANGELOG.md`.
-- **Generated Artifacts:** Do not edit generated WASM JS/TS declaration outputs in `packages/wasm/`; make source changes in Rust crates and regenerate.
+- **Changesets:** If changes affect published `packages/*`, add a changeset with `pnpm changeset`. Never manually edit package versions or `CHANGELOG.md`. **The bump level must match the biggest API change in the PR:** removing or renaming a published export is `major` for ≥1.0 packages and `minor` for 0.x packages — never default to `patch` when the public surface shrank. Sanity-check with `pnpm changeset status`.
+- **Generated Artifacts:** Do not edit generated WASM JS/TS declaration outputs in `packages/wasm/`; make source changes in Rust crates and regenerate. A local `scripts/build-wasm.sh` run also rewrites `packages/wasm/pkg/README.md` and `pkg/package.json` (version bump + copied README) — that churn is generated, so `git checkout` those two files before committing.
 
 ## 4. Single-Model vs Federated-Model Correctness (Common Failure Mode)
 - **Treat both modes as first-class:** Code must work when there is exactly one model *and* when multiple federated models are loaded.
@@ -61,11 +61,16 @@
 ### Undeclared class properties
 - Never use `(this as any).foo` to store state. Declare all properties in the class body with proper types.
 
+### WASM handle lifetimes
+- Every WASM handle (`MeshCollection`, `MeshDataJs`, the pre-pass cache) must be freed deterministically. Wrap pre-pass + job-batch usage in `try/finally` so `clearPrePassCache()` / `.free()` run on early return, on a thrown error, **and** when an async generator is abandoned (its `.return()` runs `finally`).
+- The mesh getters copy into JS-owned typed arrays, so it is safe to `.free()` each handle immediately after extracting its data — and retaining the extracted `MeshData` across batches is safe (it is no longer a live view into WASM memory). Do not add redundant deep-copies of already-extracted meshes.
+
 ## 8. Rust Dependency Policy
 - **`Cargo.lock` is committed.** This workspace mixes libraries (`rust/core`, `rust/geometry`, etc.) and application binaries (`apps/server`, `apps/desktop/src-tauri`). App crates need a committed lockfile to stay reproducible, and CI runs a fresh resolve on every build — without a lockfile, any upstream yank instantly breaks the pipeline. See commit history for the `core2` incident (every published version yanked in 2025) that motivated this decision.
 - **Don't delete `Cargo.lock` to "refresh" dependencies.** Use `cargo update -p <crate>` for targeted upgrades, or `cargo update` for a full refresh. Review the resulting lockfile diff before committing.
 - **`[patch.crates-io]` lives in the workspace root `Cargo.toml`.** Local patch targets go under `rust/vendor/<crate>/`. Every vendored stub must explain, in its own `src/lib.rs` header comment, why it exists and the exact upstream condition that would let it be deleted.
 - **Don't silently bump dep ranges.** Major or patched-version crossings should be called out in the PR description so reviewers can sanity-check for behaviour changes.
+- **Prove Rust removals with `cargo test`, not just `cargo check`.** `cargo check` on the wasm `cdylib` target does not compile `#[cfg(test)]` modules, so a removed function still referenced by a test slips through a check-only verification. Run `cargo test --workspace` before claiming a Rust deletion is clean. Items intentionally kept unused (e.g. for native/wasm parity) must carry `#[allow(dead_code)]` plus a comment stating why.
 
 ## 9. Test Fixtures
 
@@ -90,3 +95,12 @@
 ## 10. Feedback Loop
 - If a pattern is confusing or repeatedly error-prone, call it out explicitly in your PR notes.
 - Prefer refactors that make the correct path the easiest path (single source of truth helpers, stricter types, fewer implicit fallbacks).
+
+## 11. Removing & Replacing Code (Anti-Cruft)
+These rules exist because a single consolidation pass found ~36 pieces of dead/redundant code — old parallel paths, unused public exports, and stale docs — that each accumulated one "leave it for now" decision at a time.
+- **Supersede means delete.** When you replace a code path, remove the old one in the *same* PR — never leave a second "legacy" / "fallback" / "just-in-case" path. If a path must be kept temporarily, gate it behind a `// TODO(remove-by: <condition or date>, <owner>)` and a tracking issue; "latent infrastructure" with no removal trigger is exactly how dead paths accumulate.
+- **No speculative public API.** Only re-export from a package's `index.ts` what has a real consumer — in-repo, a shipped example, or documented external use. An unused public export is permanent semver liability. When you remove the last consumer of a public export, remove the export too (or justify keeping it in the PR).
+- **Delete dead code with the change that orphans it.** A function, field, command, or module that loses its last caller is removed in the same PR, not "left for later."
+- **Docs, examples, scripts, READMEs and benchmarks are part of the API surface.** When you remove or rename a public symbol, grep the whole repo (`docs/`, `examples/`, `scripts/`, `*.md`, tutorials, `tests/benchmark/`) and update every reference in the same PR.
+- **Don't merge infrastructure ahead of its consumer.** A feature with no caller (an unused WASM export, a worker the UI never spawns) does not belong on `main`. Keep it on a branch until something uses it.
+- **Run `pnpm knip` when you remove or replace code.** It reports unused files, exports, and dependencies across the workspace — run it before finishing a removal/cleanup PR (it flags orphans like a no-longer-imported module or a zero-consumer export). knip is an on-demand tool, **not** a CI gate, so a finding is a removal candidate to act on or consciously ignore, not a build failure. It does not see stale prose, so the repo-wide grep above is still required. For Rust the equivalent backstop is `cargo test --workspace` (it compiles the `#[cfg(test)]` modules that `cargo check` skips).

@@ -20,7 +20,13 @@ on:
       - 'rust/**'
   workflow_dispatch:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer push to main supersedes an in-flight image build — cancel the older
+  # run rather than queueing behind it, so a slow/hung build can't jam the
+  # queue (as happened when #874's large Rust diff cache-busted the build and a
+  # later commit's run sat pending behind it).
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -33,6 +39,9 @@ jobs:
   docker:
     name: Build & Push Docker Image
     runs-on: depot-ubuntu-24.04-4
+    # Cap a stuck "Build and push" so it can't run to GitHub's 6h default.
+    # A cold Rust+wasm rebuild (cache miss) is ~30-45 min, so 60 gives headroom.
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write

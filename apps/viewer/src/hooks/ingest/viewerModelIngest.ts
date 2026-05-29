@@ -8,6 +8,7 @@ import { GeometryProcessor, GeometryQuality, type CoordinateInfo, type DynamicBa
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
 import { calculateMeshBounds, calculateStoreyHeights, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
+import { resolveDataStoreOrAbort } from './resolveDataStoreOrAbort.js';
 
 type RgbaColor = [number, number, number, number];
 
@@ -315,7 +316,17 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
     }
   }
 
-  const dataStore = normalizeDataStoreStoreys(await dataStorePromise);
+  // If the load was cancelled, don't await dataStorePromise: a worker parse
+  // started with waitForEntityIndex blocks until the geometry pre-pass hands
+  // over the entity index, which never happens once the geometry loop has been
+  // aborted above. resolveDataStoreOrAbort terminates the worker and throws an
+  // AbortError instead of hanging here.
+  const dataStore = normalizeDataStoreStoreys(
+    await resolveDataStoreOrAbort(dataStorePromise, {
+      aborted: options.shouldAbort?.() ?? false,
+      terminate: () => workerParser?.terminate(),
+    }),
+  );
   if (!finalCoordinateInfo) {
     finalCoordinateInfo = createCoordinateInfo(calculateMeshBounds(allMeshes).bounds);
   }

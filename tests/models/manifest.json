@@ -419,11 +419,6 @@
       "size": 19846535
     },
     {
-      "path": "ifc5/Linear_placement_of_signals_linear-placement-of-signal.ifc",
-      "sha256": "5f2f1b1bf14ddef048a49f4136189e83469a9b15db43b1708bb4c42d0494de13",
-      "size": 228220
-    },
-    {
       "path": "ifc5/Linear_placement_of_signals_linear-placement-of-signal.ifcx",
       "sha256": "2c5613b0235d2bc4943a989014e6173dc95d0becd59ee2177cd8ded10cef10c2",
       "size": 639359

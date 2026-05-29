@@ -113,6 +113,67 @@ fn signals_land_on_alignment_not_at_world_origin() {
 }
 
 #[test]
+fn referents_past_last_segment_start_dont_clamp_to_it() {
+    // Regression for the Codex P2 finding on PR #871: the IfcCurveSegment
+    // fallback in the composite-curve walker used to emit only each
+    // segment's START placement as a sample. `sample_polyline_at_distance`
+    // clamps any `DistanceAlong` past the last sample to the last sample —
+    // so EVERY product whose authored station fell inside the final
+    // segment after its start (e.g. referents authored at 1003 m and
+    // 1029 m, both inside the alignment's terminal segment) collapsed
+    // onto the same world position. The fix appends the last segment's
+    // terminal point (origin + RefDirection * SegmentLength) so linear
+    // interpolation between segment start and terminal gives distinct
+    // positions for distinct stations.
+    //
+    // The fixture's last two referents are:
+    //   #3006 Referent_021 → station 1003.10 m
+    //   #2712 End          → station 1029.37 m (the IfcReferent named
+    //                        "End"; authored at the very end of the
+    //                        alignment)
+    // Authored station gap is ~26.27 m. Pre-fix both clamp to the same
+    // last-segment-start sample → centroid distance ≈ 0. Post-fix linear
+    // interpolation between the segment start and the appended terminal
+    // gives a separation of roughly the authored gap.
+    let Some(content) = read_fixture() else { return };
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+
+    let r_last = decoder.decode_by_id(3006).expect("decode #3006 Referent_021");
+    let r_end = decoder.decode_by_id(2712).expect("decode #2712 End");
+
+    let m_last = router
+        .process_element(&r_last, &mut decoder)
+        .expect("process #3006");
+    let m_end = router
+        .process_element(&r_end, &mut decoder)
+        .expect("process #2712");
+
+    assert!(
+        !m_last.positions.is_empty() && !m_end.positions.is_empty(),
+        "both referents must produce geometry",
+    );
+
+    let (lx, ly, _) = mesh_centroid(&m_last);
+    let (ex, ey, _) = mesh_centroid(&m_end);
+    let separation = ((lx - ex).powi(2) + (ly - ey).powi(2)).sqrt();
+
+    // Pre-fix this was ~0 m (both clamped to the same segment-start
+    // sample). Post-fix it should land near the authored 26.27 m gap;
+    // allow generous tolerance because the sampler still linearly
+    // interpolates a curved alignment.
+    assert!(
+        separation > 5.0,
+        "Referent_021 (station 1003.1 m) and End (station 1029.37 m) are \
+         only {separation:.2} m apart in world space. That collapse means \
+         `sample_polyline_at_distance` clamped both stations to the last \
+         IfcCurveSegment's start sample — i.e. the segment terminal isn't \
+         being appended in `process_composite_curve_3d_with_depth`.",
+    );
+}
+
+#[test]
 fn referents_resolve_individual_placements_along_curve() {
     let Some(content) = read_fixture() else { return };
     let entity_index = ifc_lite_core::build_entity_index(&content);
@@ -122,11 +183,9 @@ fn referents_resolve_individual_placements_along_curve() {
     // Four IfcReferents at varied stations. Even though referents typically
     // carry no body geometry, `process_element` still runs the placement
     // resolver — and if `IfcLinearPlacement` is honoured every referent's
-    // placement should resolve to a non-identity 4×4. We probe through
-    // `process_element_with_voids` instead, since referents may have
-    // representation entries that exercise the void path; here we just
+    // placement should resolve to a non-identity 4×4. Here we just
     // confirm no error and that the call returns successfully for every
-    // referent type the fixture authors.
+    // referent the fixture authors.
     for id in [2698u32, 2712, 2726, 2740] {
         let ent = decoder
             .decode_by_id(id)

@@ -1,10 +1,18 @@
 ---
 "@ifc-lite/wasm": minor
+"@ifc-lite/server-bin": minor
 ---
 
 Render IFC4x3 `IfcGridPlacement` so products laid out on a structural grid
 land on their grid-axis intersections instead of stacking at world origin
 (issue #883).
+
+The fix is in the shared `ifc-lite-geometry` Rust crate, so it ships on both
+surfaces that compile it: the WebAssembly build (`@ifc-lite/wasm`) and the
+native server binary downloaded by `@ifc-lite/server-bin` (pinned to its own
+package version, so it needs the bump to pull a rebuilt binary). The desktop
+app (Tauri) and the Docker server image compile the same crate and pick the
+fix up through their own build pipelines.
 
 The placement resolver dispatched only on `IfcLocalPlacement` and
 `IfcLinearPlacement` — every other placement type fell through to identity.

@@ -349,26 +349,51 @@ impl GeometryRouter {
     }
 
     /// Decode `IfcGridPlacement.PlacementLocation` (an
-    /// `IfcVirtualGridIntersection`) into a grid-local transform: intersect
-    /// the two referenced grid axes in the grid plane, shift by the optional
-    /// per-axis offsets, lift by the optional elevation, and orient by the
-    /// optional `PlacementRefDirection`. Returns `None` (→ caller keeps the
-    /// grid's own transform) when the structure is malformed or the axes are
-    /// parallel.
+    /// `IfcVirtualGridIntersection`) into a grid-local transform: locate the
+    /// grid-axis intersection point and orient it by the optional
+    /// `PlacementRefDirection`. Returns `None` (→ caller keeps the grid's own
+    /// transform) when the structure is malformed or the axes are parallel.
     fn try_resolve_grid_intersection(
         &self,
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<Matrix4<f64>> {
+        // PlacementLocation (attr 1) → the grid intersection the product sits on.
         let loc_attr = placement.get(1)?;
         if loc_attr.is_null() {
             return None;
         }
-        let intersection = decoder.resolve_ref(loc_attr).ok().flatten()?;
-        if intersection.ifc_type != IfcType::IfcVirtualGridIntersection {
+        let location = decoder.resolve_ref(loc_attr).ok().flatten()?;
+        if location.ifc_type != IfcType::IfcVirtualGridIntersection {
             return None;
         }
+        let p = self.grid_intersection_point(&location, decoder)?;
 
+        // Orientation from PlacementRefDirection (attr 2) — full
+        // IfcGridPlacementDirectionSelect coverage:
+        //   • IfcDirection              → its XY is local +X directly.
+        //   • IfcVirtualGridIntersection → local +X points from this location
+        //                                  to that second intersection.
+        //   • null / unresolved         → axis-aligned (inherit grid orientation).
+        let mut m = match self.grid_ref_direction_vector(placement, &p, decoder) {
+            Some(x_dir) => orient_x_in_plane(x_dir),
+            None => Matrix4::identity(),
+        };
+        m[(0, 3)] = p.x;
+        m[(1, 3)] = p.y;
+        m[(2, 3)] = p.z; // grid axes are planar (z = 0); elevation via offset
+        Some(m)
+    }
+
+    /// Resolve an `IfcVirtualGridIntersection` to a grid-local point: intersect
+    /// its two `IfcGridAxis` curves in the grid plane, shift by the optional
+    /// per-axis lateral `OffsetDistances`, and lift by the optional elevation
+    /// (third offset → z). `None` when the axes are missing or parallel.
+    fn grid_intersection_point(
+        &self,
+        intersection: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<Point3<f64>> {
         // IntersectingAxes (attr 0) — a set of exactly two IfcGridAxis.
         let axes_attr = intersection.get(0)?;
         let axes = decoder.resolve_ref_list(axes_attr).ok()?;
@@ -394,16 +419,7 @@ impl GeometryRouter {
         let pa = Point2::new(a0.x + n_a.x * off_u, a0.y + n_a.y * off_u);
         let pb = Point2::new(b0.x + n_b.x * off_v, b0.y + n_b.y * off_v);
         let p = line_intersection_2d(pa, a_dir, pb, b_dir)?;
-
-        // Orientation: an IfcDirection PlacementRefDirection sets local +X;
-        // otherwise stay axis-aligned and inherit the grid's orientation.
-        let mut m = self
-            .try_resolve_grid_ref_direction(placement, decoder)
-            .unwrap_or_else(Matrix4::identity);
-        m[(0, 3)] = p.x;
-        m[(1, 3)] = p.y;
-        m[(2, 3)] = off_z; // grid axes are planar (z = 0); elevation via offset
-        Some(m)
+        Some(Point3::new(p.x, p.y, off_z))
     }
 
     /// Read an `IfcGridAxis` into a point-and-direction line in the grid
@@ -435,37 +451,40 @@ impl GeometryRouter {
         Some((Point2::new(start.x, start.y), dir))
     }
 
-    /// Resolve the optional `PlacementRefDirection` (attr 2) when it is an
-    /// `IfcDirection`, returning a rotation matrix whose +X follows that
-    /// direction (in the grid plane) with world up as +Z. `None` for a null,
-    /// missing, or `IfcVirtualGridIntersection`-typed ref direction so the
-    /// caller keeps the grid's own orientation.
-    fn try_resolve_grid_ref_direction(
+    /// Resolve the optional `PlacementRefDirection` (attr 2) into a 2D local
+    /// +X direction in the grid plane, covering both members of
+    /// `IfcGridPlacementDirectionSelect`:
+    ///   • `IfcDirection`              → its XY components.
+    ///   • `IfcVirtualGridIntersection` → the vector from `origin` (the
+    ///     placement location) to that second intersection point.
+    /// `None` for a null, missing, unresolved, or degenerate (zero-length)
+    /// ref direction, so the caller stays axis-aligned.
+    fn grid_ref_direction_vector(
         &self,
         placement: &DecodedEntity,
+        origin: &Point3<f64>,
         decoder: &mut EntityDecoder,
-    ) -> Option<Matrix4<f64>> {
+    ) -> Option<Vector2<f64>> {
         let dir_attr = placement.get(2)?;
         if dir_attr.is_null() {
             return None;
         }
-        let dir_entity = decoder.resolve_ref(dir_attr).ok().flatten()?;
-        if dir_entity.ifc_type != IfcType::IfcDirection {
-            return None;
-        }
-        let ref_dir = self.parse_direction(&dir_entity).ok()?;
-        let z = Vector3::new(0.0, 0.0, 1.0);
-        let x = Vector3::new(ref_dir.x, ref_dir.y, 0.0);
+        let entity = decoder.resolve_ref(dir_attr).ok().flatten()?;
+        let x = match entity.ifc_type {
+            IfcType::IfcDirection => {
+                let d = self.parse_direction(&entity).ok()?;
+                Vector2::new(d.x, d.y)
+            }
+            IfcType::IfcVirtualGridIntersection => {
+                let q = self.grid_intersection_point(&entity, decoder)?;
+                Vector2::new(q.x - origin.x, q.y - origin.y)
+            }
+            _ => return None,
+        };
         if x.norm() < 1e-9 {
             return None;
         }
-        let x = x.normalize();
-        let y = z.cross(&x).normalize();
-        let mut m = Matrix4::<f64>::identity();
-        m.fixed_view_mut::<3, 1>(0, 0).copy_from(&x);
-        m.fixed_view_mut::<3, 1>(0, 1).copy_from(&y);
-        m.fixed_view_mut::<3, 1>(0, 2).copy_from(&z);
-        Some(m)
+        Some(x)
     }
 
     /// Parse IfcAxis2Placement3D into transformation matrix
@@ -786,6 +805,21 @@ impl GeometryRouter {
 /// Returns the 3D position at `distance` along the polyline plus the unit
 /// tangent of the segment containing it. The caller is expected to pass a
 /// densely-sampled polyline from
+/// Build a rotation matrix whose local +X follows the given in-plane
+/// direction and +Z is world up (+Y = Z × X). Translation is left at the
+/// origin for the caller to fill in. The input must be non-degenerate
+/// (callers guarantee a non-zero vector).
+fn orient_x_in_plane(x_dir: Vector2<f64>) -> Matrix4<f64> {
+    let z = Vector3::new(0.0, 0.0, 1.0);
+    let x = Vector3::new(x_dir.x, x_dir.y, 0.0).normalize();
+    let y = z.cross(&x).normalize();
+    let mut m = Matrix4::<f64>::identity();
+    m.fixed_view_mut::<3, 1>(0, 0).copy_from(&x);
+    m.fixed_view_mut::<3, 1>(0, 1).copy_from(&y);
+    m.fixed_view_mut::<3, 1>(0, 2).copy_from(&z);
+    m
+}
+
 /// Left-hand (+90°) unit normal of a 2D direction, or zero when the input is
 /// degenerate. Used to shift a grid axis parallel to itself by an offset.
 fn left_normal(dir: Vector2<f64>) -> Vector2<f64> {
@@ -906,5 +940,93 @@ mod sample_polyline_tests {
         assert!(none.is_none());
         let single = sample_polyline_at_distance(&[Point3::new(0.0, 0.0, 0.0)], 0.0);
         assert!(single.is_none());
+    }
+}
+
+#[cfg(test)]
+mod grid_placement_tests {
+    use super::*;
+    use ifc_lite_core::build_entity_index;
+
+    // Grid axes: P = horizontal line y=0, Q = vertical line x=0 (intersect at
+    // origin). S = horizontal line y=5. Two ref-direction flavours plus an
+    // offset case exercise the full IfcGridPlacementDirectionSelect coverage.
+    const CONTENT: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCCARTESIANPOINT((10.,0.));
+#3=IFCPOLYLINE((#1,#2));
+#4=IFCGRIDAXIS('P',#3,.T.);
+#5=IFCCARTESIANPOINT((0.,10.));
+#6=IFCPOLYLINE((#1,#5));
+#7=IFCGRIDAXIS('Q',#6,.T.);
+#8=IFCVIRTUALGRIDINTERSECTION((#4,#7),(0.,0.,0.));
+#9=IFCCARTESIANPOINT((0.,5.));
+#10=IFCCARTESIANPOINT((10.,5.));
+#11=IFCPOLYLINE((#9,#10));
+#12=IFCGRIDAXIS('S',#11,.T.);
+#13=IFCVIRTUALGRIDINTERSECTION((#7,#12),(0.,0.,0.));
+#20=IFCGRIDPLACEMENT($,#8,#13);
+#21=IFCDIRECTION((0.,1.,0.));
+#22=IFCGRIDPLACEMENT($,#8,#21);
+#23=IFCGRIDPLACEMENT($,#8,$);
+#30=IFCVIRTUALGRIDINTERSECTION((#4,#7),(2.,3.,4.));
+#31=IFCGRIDPLACEMENT($,#30,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    fn transform_of(id: u32) -> Matrix4<f64> {
+        let content = CONTENT.to_string();
+        let ei = build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, ei);
+        let router = GeometryRouter::new();
+        let placement = decoder
+            .decode_by_id(id)
+            .unwrap_or_else(|e| panic!("decode #{id}: {e:?}"));
+        router
+            .get_placement_transform(&placement, &mut decoder)
+            .unwrap_or_else(|e| panic!("transform #{id}: {e:?}"))
+    }
+
+    fn x_axis(m: &Matrix4<f64>) -> Vector3<f64> {
+        Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)])
+    }
+    fn origin(m: &Matrix4<f64>) -> Point3<f64> {
+        Point3::new(m[(0, 3)], m[(1, 3)], m[(2, 3)])
+    }
+
+    #[test]
+    fn ref_direction_as_ifc_direction_sets_local_x() {
+        let m = transform_of(22);
+        assert!((x_axis(&m) - Vector3::new(0.0, 1.0, 0.0)).norm() < 1e-9);
+        assert!((origin(&m) - Point3::new(0.0, 0.0, 0.0)).norm() < 1e-9);
+    }
+
+    #[test]
+    fn ref_direction_as_virtual_intersection_points_x_toward_it() {
+        // Location is (0,0); ref intersection #13 is (0,5) → +X must be +Y.
+        let m = transform_of(20);
+        assert!((x_axis(&m) - Vector3::new(0.0, 1.0, 0.0)).norm() < 1e-9);
+        assert!((origin(&m) - Point3::new(0.0, 0.0, 0.0)).norm() < 1e-9);
+    }
+
+    #[test]
+    fn null_ref_direction_stays_axis_aligned() {
+        let m = transform_of(23);
+        assert!((x_axis(&m) - Vector3::new(1.0, 0.0, 0.0)).norm() < 1e-9);
+        assert!((origin(&m) - Point3::new(0.0, 0.0, 0.0)).norm() < 1e-9);
+    }
+
+    #[test]
+    fn offset_distances_shift_the_intersection() {
+        // off_u=2 (perp to P → +Y), off_v=3 (perp to Q → -X), elevation=4.
+        let m = transform_of(31);
+        assert!((origin(&m) - Point3::new(-3.0, 2.0, 4.0)).norm() < 1e-9, "origin={:?}", origin(&m));
     }
 }

@@ -10,6 +10,8 @@ export { WebGPUDevice } from './device.js';
 export { RenderPipeline, InstancedRenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 export type { ProjectionMode } from './camera-controls.js';
+export { pickFitPolicy } from './camera-fit-policy.js';
+export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './camera-fit-policy.js';
 export { Scene } from './scene.js';
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';

@@ -22,6 +22,13 @@ import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { logToDesktopTerminal } from '@/services/desktop-logger';
+import { toast } from '../ui/toast.js';
+
+// Session-scoped flag so the linear-infrastructure hint fires at most once
+// per page load (model swaps included). Stored at module scope rather than
+// in component state because federation re-mounts the streaming hook on
+// every model load — a useRef wouldn't survive.
+let linearFitHintShown = false;
 
 export interface UseGeometryStreamingParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -109,6 +116,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const cameraFittedRef = useRef(false);
   const finalBoundsRefittedRef = useRef(false);
   const cameraSnapshotRef = useRef<{ px: number; py: number; pz: number; tx: number; ty: number; tz: number } | null>(null);
+  // Tracks which fit branch the post-load auto-fit took. Linear models get a
+  // one-time status-line hint via the viewer store; the home button can also
+  // mirror the same policy on re-press without re-deriving the bbox shape.
+  const lastFitPolicyKindRef = useRef<'compact' | 'linear' | null>(null);
   const prevIsStreamingRef = useRef(isStreaming);
   const lastContentVersionRef = useRef(geometryContentVersion ?? 0);
   const queuePumpTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
@@ -334,21 +345,40 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // whether the data is actually usable, not just whether the
     // property exists.
     if (!cameraFittedRef.current) {
+      // The adaptive fit picks an SE-isometric pose for compact models
+      // (today's behaviour) but switches to a side-on-along-the-alignment
+      // pose for high-aspect-ratio bboxes (railway / road corridors).
+      // Without the switch, a 932 × 0.75 × 428 m alignment auto-fits to a
+      // ~1864 m distance where every 1 m signal projects to a sub-pixel
+      // dot — the user sees a blank viewport even though geometry is in
+      // the scene. See packages/renderer/src/camera-fit-policy.ts.
       let fitted = false;
       const sb = coordinateInfo?.shiftedBounds;
       if (sb) {
         const maxSize = Math.max(sb.max.x - sb.min.x, sb.max.y - sb.min.y, sb.max.z - sb.min.z);
         if (maxSize > 0 && Number.isFinite(maxSize)) {
-          renderer.getCamera().fitToBounds(sb.min, sb.max);
+          const canvas = renderer.getCanvas();
+          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          const policy = renderer.getCamera().fitBoundsAdaptive(
+            { min: sb.min, max: sb.max },
+            { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+          );
           geometryBoundsRef.current = { min: { ...sb.min }, max: { ...sb.max } };
+          lastFitPolicyKindRef.current = policy.kind;
           fitted = true;
         }
       }
       if (!fitted && geometry.length > 0 && !isStreaming) {
         const bounds = computeBounds(geometry);
         if (bounds) {
-          renderer.getCamera().fitToBounds(bounds.min, bounds.max);
+          const canvas = renderer.getCanvas();
+          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          const policy = renderer.getCamera().fitBoundsAdaptive(
+            bounds,
+            { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+          );
           geometryBoundsRef.current = bounds;
+          lastFitPolicyKindRef.current = policy.kind;
           fitted = true;
         }
       }
@@ -357,6 +387,15 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         const pos = renderer.getCamera().getPosition();
         const tgt = renderer.getCamera().getTarget();
         cameraSnapshotRef.current = { px: pos.x, py: pos.y, pz: pos.z, tx: tgt.x, ty: tgt.y, tz: tgt.z };
+        // One-time hint for linear-infrastructure models. The side-on auto-fit
+        // shows a slice of the alignment at a useful zoom — but the FULL
+        // alignment is much longer than what fits on screen, so users need
+        // to know to pan / use Frame Selection to inspect remote stations.
+        // Hint is module-scoped so model swaps within one session don't spam.
+        if (lastFitPolicyKindRef.current === 'linear' && !linearFitHintShown) {
+          linearFitHintShown = true;
+          toast.info('Linear infrastructure — pan along the alignment, or select an element and press F to zoom in');
+        }
       }
     }
 
@@ -398,14 +437,35 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             `finalize start geometryLength=${capturedGeometry?.length ?? 0} releaseAfterFinalize=${releaseGeometryAfterFinalize}`
           );
 
-          // Compute exact bounds and refit camera (fast ~15ms scan)
+          // Compute exact bounds and refit camera (fast ~15ms scan). Use
+          // the adaptive policy so linear-infrastructure models keep the
+          // side-on pose chosen by the early-fit branch — without this,
+          // the streaming-complete refit reverts to the legacy
+          // `fitToBounds` (SE isometric at `maxSize * 2`), undoing the
+          // useful close-in framing and putting the camera back at the
+          // sub-pixel distance for railway / road corridors.
           if (cameraFittedRef.current && !finalBoundsRefittedRef.current && capturedGeometry && capturedGeometry.length > 0) {
             const t0 = performance.now();
             const exactBounds = computeBounds(capturedGeometry);
             console.log(`[GeomStream] computeBounds: ${(performance.now() - t0).toFixed(0)}ms`);
             if (exactBounds) {
               if (!userMovedCamera(r, cameraSnapshotRef.current)) {
-                r.getCamera().fitToBounds(exactBounds.min, exactBounds.max);
+                const canvas = r.getCanvas();
+                const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+                const policy = r.getCamera().fitBoundsAdaptive(
+                  exactBounds,
+                  { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+                );
+                lastFitPolicyKindRef.current = policy.kind;
+                // Update the snapshot so a subsequent userMovedCamera check
+                // doesn't fire against the new pose's own delta.
+                const pos = r.getCamera().getPosition();
+                const tgt = r.getCamera().getTarget();
+                cameraSnapshotRef.current = { px: pos.x, py: pos.y, pz: pos.z, tx: tgt.x, ty: tgt.y, tz: tgt.z };
+                if (policy.kind === 'linear' && !linearFitHintShown) {
+                  linearFitHintShown = true;
+                  toast.info('Linear infrastructure — pan along the alignment, or select an element and press F to zoom in');
+                }
               }
               geometryBoundsRef.current = exactBounds;
               finalBoundsRefittedRef.current = true;

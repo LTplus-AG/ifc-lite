@@ -622,8 +622,19 @@ export function Viewport({
           calculateScale();
         },
         home: () => {
-          // Reset to isometric view
-          camera.zoomToFit(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 500);
+          // Adaptive home: compact buildings get the historical SE isometric
+          // pose (1:1 with the old behaviour), linear infrastructure gets a
+          // side-on view at a distance where signals / referents are visible
+          // instead of receding to sub-pixel. The policy is computed from
+          // the current bbox shape so a federation that swaps from one
+          // building to a railway picks the right pose on Home press.
+          // See packages/renderer/src/camera-fit-policy.ts.
+          const canvas = rendererRef.current?.getCanvas();
+          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          camera.fitBoundsAdaptive(
+            { min: geometryBoundsRef.current.min, max: geometryBoundsRef.current.max },
+            { animate: true, duration: 500, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+          );
           calculateScale();
         },
         zoomIn: () => {

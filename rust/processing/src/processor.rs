@@ -518,26 +518,7 @@ struct QuickSpatialNodeEntry {
     parent: Option<u32>,
 }
 
-fn is_quick_spatial_type(type_upper: &str) -> bool {
-    matches!(
-        type_upper,
-        "IFCPROJECT"
-            | "IFCSITE"
-            | "IFCBUILDING"
-            | "IFCBUILDINGSTOREY"
-            | "IFCSPACE"
-            | "IFCFACILITY"
-            | "IFCFACILITYPART"
-            | "IFCBRIDGE"
-            | "IFCBRIDGEPART"
-            | "IFCROAD"
-            | "IFCROADPART"
-            | "IFCRAILWAY"
-            | "IFCRAILWAYPART"
-    )
-}
-
-/// Case-insensitive variant that avoids to_ascii_uppercase() allocation.
+/// Case-insensitive spatial-type check that avoids to_ascii_uppercase() allocation.
 #[inline]
 fn is_quick_spatial_type_ci(type_name: &str) -> bool {
     type_name.eq_ignore_ascii_case("IFCPROJECT")

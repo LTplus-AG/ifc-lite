@@ -265,24 +265,6 @@ export function parsePath(path: string): ParsedPath {
 }
 
 /**
- * Walk a path through composed nodes.
- */
-export function walkComposedPath(
-  root: ComposedNode,
-  segments: string[]
-): ComposedNode | null {
-  let current: ComposedNode = root;
-
-  for (const segment of segments) {
-    const child = current.children.get(segment);
-    if (!child) return null;
-    current = child;
-  }
-
-  return current;
-}
-
-/**
  * Create a new path index.
  */
 export function createPathIndex(): PathIndex {

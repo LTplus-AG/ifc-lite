@@ -153,17 +153,7 @@ jobs:
       # the PR before merge, so the SHA reaching `push: main` has
       # already passed all of them. Repeating them would add ~8 min
       # per release without changing the verdict.
-      #
-      # `IFC_LITE_THREADED_STUB=1` ships the threaded bundle as a copy
-      # of the single-thread bundle — same compromise as Vercel preview
-      # deploys (see `scripts/vercel-build.sh`). The threaded path is
-      # gated behind a localStorage flag, so default traffic uses the
-      # single-thread bundle anyway; opt-in users transparently get the
-      # serial fallback. Drop this env var once the upstream
-      # `manifold-csg-sys` ships an atomics-compatible build.
       - name: Build Packages
-        env:
-          IFC_LITE_THREADED_STUB: '1'
         run: pnpm build
 
       # Exchange the workflow's OIDC ID-token for a short-lived (30-minute)

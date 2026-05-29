@@ -45,18 +45,6 @@
 //!   }
 //! });
 //! ```
-//!
-//! ## Zero-Copy Memory Access
-//!
-//! For optimal performance, mesh data can be accessed directly from WASM memory:
-//!
-//! ```javascript
-//! const positions = api.getPositionsBuffer(expressId);
-//! const view = positions.asFloat32Array();
-//!
-//! // Upload directly to GPU without copying
-//! device.queue.writeBuffer(gpuBuffer, 0, view);
-//! ```
 
 use wasm_bindgen::prelude::*;
 

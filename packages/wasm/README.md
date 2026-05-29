@@ -1,6 +1,6 @@
 # @ifc-lite/wasm
 
-Pre-built WebAssembly bindings for the IFClite Rust core. ~650 KB binary (~260 KB gzipped) covering STEP parsing, geometry tessellation, georeferencing, and zero-copy GPU upload.
+Pre-built WebAssembly bindings for the IFClite Rust core, covering STEP parsing and geometry tessellation (including the Manifold CSG kernel).
 
 > **You probably don't need to use this package directly.** It's the WASM binary plus generated JS/TypeScript bindings that `@ifc-lite/parser`, `@ifc-lite/geometry`, and `@ifc-lite/renderer` consume internally. Reach for it when you want raw access to the Rust core without the higher-level wrappers.
 
@@ -27,95 +27,56 @@ const content = new TextDecoder().decode(buffer);
 const result = await api.parse(content);
 console.log(`Entities: ${result.entityCount}`);
 
-// Prefer streaming mesh batches over the legacy sync parseMeshes() API.
-await api.parseMeshesAsync(content, {
-  batchSize: 100,
-  onBatch: (meshes) => {
-    for (const mesh of meshes) {
-      console.log(mesh.ifcType, mesh.expressId, mesh.vertexCount, 'vertices');
-    }
-  },
-});
-
 api.free();                           // free the API instance
 ```
 
-## Streaming mesh batches
+## Meshes (pre-pass + job batches)
 
-For progressive rendering, stream meshes in batches and yield to the browser between them:
-
-```typescript
-import init, { IfcAPI } from '@ifc-lite/wasm';
-
-await init();
-const api = new IfcAPI();
-
-await api.parseMeshesAsync(content, {
-  batchSize: 100,
-  onRtcOffset: ({ x, y, z, hasRtc }) => {
-    if (hasRtc) viewer.setWorldOffset(x, y, z);
-  },
-  onBatch: (meshes, progress) => {
-    for (const mesh of meshes) scene.add(toThreeMesh(mesh));
-    console.log(`${progress.percent}%`);
-  },
-  onComplete: ({ totalMeshes }) => console.log(`Done — ${totalMeshes} meshes`),
-});
-```
-
-## Zero-copy GPU upload
-
-`parseToGpuGeometry` returns interleaved (position + normal) vertex data with pointers into WASM linear memory, ready for direct `GPUBuffer` upload:
+Geometry runs as a single pre-pass (one scan that produces a flat job list
+plus unit scale, RTC offset, void/style indices) followed by
+`processGeometryBatch` calls over slices of that job list. Pass the IFC
+**bytes** (`Uint8Array`) to these methods:
 
 ```typescript
 import init, { IfcAPI } from '@ifc-lite/wasm';
 
 await init();
 const api = new IfcAPI();
-const gpuGeom = api.parseToGpuGeometry(content);
-const memory = api.getMemory();
+const bytes = new Uint8Array(await fetch('model.ifc').then(r => r.arrayBuffer()));
 
-// Direct views into WASM memory — no intermediate copy
-const vertexView = new Float32Array(memory.buffer, gpuGeom.vertexDataPtr, gpuGeom.vertexDataLen);
-const indexView = new Uint32Array(memory.buffer, gpuGeom.indicesPtr, gpuGeom.indicesLen);
-
-device.queue.writeBuffer(gpuVertexBuffer, 0, vertexView);
-device.queue.writeBuffer(gpuIndexBuffer, 0, indexView);
-
-// IMPORTANT: views are only valid until the next WASM allocation. Free immediately after upload.
-gpuGeom.free();
-```
-
-For deduplicated geometry (one mesh per shape, per-instance transforms), use `parseToGpuInstancedGeometry(content)` and iterate `GpuInstancedGeometryCollection`.
-
-## Georeferencing
-
-```typescript
-import init, { IfcAPI } from '@ifc-lite/wasm';
-
-await init();
-const api = new IfcAPI();
-const georef = api.getGeoReference(content);
-
-if (georef) {
-  console.log(`CRS: ${georef.crsName}`);
-  const [e, n, h] = georef.localToMap(10, 20, 5);
-  console.log(`Local (10,20,5) → Map (${e}, ${n}, ${h})`);
-  georef.free();
+const pre = api.buildPrePassOnce(bytes);
+// Large-coordinate models: pre.needsShift / pre.rtcOffset give the RTC origin.
+for (let start = 0; start < pre.totalJobs; start += 100) {
+  const end = Math.min(start + 100, pre.totalJobs);
+  const jobs = pre.jobs.slice(start * 3, end * 3);
+  const collection = api.processGeometryBatch(
+    bytes, jobs, pre.unitScale,
+    pre.rtcOffset?.[0] ?? 0, pre.rtcOffset?.[1] ?? 0, pre.rtcOffset?.[2] ?? 0,
+    pre.needsShift,
+    pre.voidKeys, pre.voidCounts, pre.voidValues,
+    pre.styleIds, pre.styleColors,
+  );
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    scene.add(toThreeMesh(mesh)); // mesh.expressId, .ifcType, .positions, .normals, .indices, .color
+    mesh.free();
+  }
+  collection.free();
 }
+
+api.clearPrePassCache();
 ```
+
+> Most consumers should use [`@ifc-lite/geometry`](../geometry/README.md)'s
+> `GeometryProcessor` instead — it wraps this pre-pass/job-batch flow with a
+> Web-Worker pool, RTC coordinate handling, and progressive streaming.
 
 ## Exports
 
 | Class | Purpose |
 |---|---|
-| `IfcAPI` | Top-level parser entry point — `parse`, `parseMeshesAsync`, `parseToGpuGeometry`, `getGeoReference`, `extractProfiles`, `parseSymbolicRepresentations`, plus legacy sync helpers |
+| `IfcAPI` | Top-level entry point — `parse`, `parseStreaming`, `buildPrePassOnce` / `buildPrePassFast` / `buildPrePassStreaming`, `processGeometryBatch`, `scanEntitiesFast` / `scanEntitiesFastBytes` / `scanGeometryEntitiesFast`, `extractProfiles`, `parseSymbolicRepresentations` |
 | `MeshCollection`, `MeshDataJs` | Tessellated geometry output |
-| `MeshCollectionWithRtc`, `RtcOffsetJs` | Mesh collection with relative-to-centre offset for large-coordinate models |
-| `InstancedMeshCollection`, `InstancedGeometry`, `InstanceData` | Instanced geometry path (deduplicated meshes + per-instance transforms) |
-| `ZeroCopyMesh`, `GpuGeometry`, `GpuMeshMetadata` | Zero-copy GPU upload handles |
-| `GpuInstancedGeometry`, `GpuInstancedGeometryCollection`, `GpuInstancedGeometryRef` | Zero-copy instanced path |
-| `GeoReferenceJs` | Georeferencing transform |
 | `ProfileCollection`, `ProfileEntryJs` | Cross-section profile data (extruded-area solids) |
 | `SymbolicRepresentationCollection`, `SymbolicCircle`, `SymbolicPolyline` | 2D symbolic representations (for plan / annotation views) |
 

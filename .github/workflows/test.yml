@@ -169,35 +169,20 @@ jobs:
       # packages/wasm/pkg/ is committed but goes stale whenever Rust changes
       # ship without a maintainer running scripts/build-wasm.sh first; this
       # step catches Rust → wasm breakage before downstream consumers see it.
-      #
-      # `IFC_LITE_THREADED_STUB=1` skips the actual threaded wasm-pack
-      # compile and copies the single-thread bundle into the threaded
-      # output path — same trick `scripts/vercel-build.sh` already uses.
-      # Without this, `manifold-csg-sys` (compiled without atomics) and
-      # our wasm-bindings (compiled with `+atomics` + shared-memory)
-      # fail to link via `rust-lld`. The published threaded path is gated
-      # behind a localStorage flag and falls back to a per-task serial
-      # execution when the stub bundle is loaded, so this doesn't cause
-      # a runtime regression for the default traffic.
       - name: Build WASM
-        env:
-          IFC_LITE_THREADED_STUB: '1'
         run: bash scripts/build-wasm.sh
 
       # Build all workspace packages so their dist/ artifacts exist for
       # downstream consumers — turbo handles the dep graph.
       - name: Build packages
-        env:
-          IFC_LITE_THREADED_STUB: '1'
         run: pnpm build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-output
-          # `packages/*/pkg` covers both `wasm/pkg` and `wasm-threaded/pkg`
-          # which downstream `pnpm build` calls require (see
-          # @ifc-lite/wasm-threaded#build's pre-built-artifact check).
+          # `packages/*/pkg` covers `wasm/pkg`, which downstream
+          # `pnpm build` calls require.
           path: |
             packages/*/dist
             packages/*/wasm

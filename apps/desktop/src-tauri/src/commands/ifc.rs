@@ -17,36 +17,6 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::Emitter;
 
-/// Parse IFC buffer and return basic parse info (without geometry)
-#[tauri::command]
-pub async fn parse_ifc_buffer(buffer: Vec<u8>) -> Result<serde_json::Value, String> {
-    let content = String::from_utf8(buffer).map_err(|e| format!("Invalid UTF-8: {}", e))?;
-
-    let mut scanner = EntityScanner::new(&content);
-    let mut entity_count = 0;
-    let mut schema_version = String::from("unknown");
-
-    while let Some((_, type_name, _, _)) = scanner.next_entity() {
-        entity_count += 1;
-        if type_name == "IFCPROJECT" || type_name.starts_with("IFC") {
-            // Try to detect schema from file header or entity types
-            if schema_version == "unknown" {
-                if content.contains("IFC4X3") {
-                    schema_version = "IFC4X3".to_string();
-                } else if content.contains("IFC4") {
-                    schema_version = "IFC4".to_string();
-                } else if content.contains("IFC2X3") {
-                    schema_version = "IFC2X3".to_string();
-                }
-            }
-        }
-    }
-
-    Ok(serde_json::json!({
-        "entityCount": entity_count,
-        "schemaVersion": schema_version,
-    }))
-}
 
 /// Process IFC buffer and return all geometry meshes
 #[tauri::command]
@@ -211,7 +181,6 @@ pub async fn get_geometry_streaming(
 /// Entity data collected for parallel processing
 struct EntityJob {
     id: u32,
-    type_name: String,
     start: usize,
     end: usize,
 }
@@ -254,7 +223,6 @@ fn process_geometry(content: &str) -> Result<(Vec<MeshData>, GeometryStats), Str
         if ifc_lite_core::has_geometry_by_name(type_name) {
             entity_jobs.push(EntityJob {
                 id,
-                type_name: type_name.to_string(),
                 start,
                 end,
             });

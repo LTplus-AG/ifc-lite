@@ -1172,11 +1172,9 @@ impl IfcAPI {
         }
 
         // Drain & surface the opening / CSG diagnostics. The viewer's
-        // streaming path (>2 MB files) goes processAdaptive ->
-        // processParallel -> Web Workers -> `processGeometryBatch`,
-        // bypassing `parseMeshesAsync` entirely. Without this drain
-        // here the diagnostic helper never fires for any real-world
-        // file the viewer loads.
+        // large-file path goes processAdaptive -> processParallel -> Web
+        // Workers -> `processGeometryBatch`, so the drain has to run here
+        // or the diagnostic helper never fires for real-world files.
         let _ = super::drain_and_log_csg_diagnostics(&router);
 
         mesh_collection

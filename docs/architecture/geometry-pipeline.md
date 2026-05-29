@@ -406,51 +406,30 @@ graph LR
 | BALANCED | 16 | Medium | Default |
 | HIGH | 32 | More | Detailed viewing |
 
-## Instancing
+## Mapped Representations
 
-### MappedItem Processing
+IFC reuses geometry via `IfcMappedItem` (a source `IfcRepresentationMap` plus a
+per-instance placement transform). The engine **expands** each mapped item into
+its own tessellated mesh — the source geometry is tessellated once and the
+result is transformed per placement. There is no GPU-instancing path: the
+renderer instead groups the resulting meshes by colour into a small number of
+batched draw calls (see the rendering guide), which keeps draw-call counts low
+without a separate instance buffer.
 
 ```mermaid
 flowchart TB
     subgraph Definition["Mapped Representation"]
-        Source["Source Geometry"]
-        Transform["Transform Matrix"]
-    end
-
-    subgraph Detection["Instance Detection"]
-        Hash["Hash source ID"]
-        Lookup["Lookup in cache"]
+        Source["Source Geometry (IfcRepresentationMap)"]
+        Transform["Per-instance placement transform"]
     end
 
     subgraph Output["Output"]
-        Reuse["Reuse existing mesh"]
-        Transforms["Instance transforms[]"]
+        Mesh["Tessellated mesh (transform applied)"]
+        Batch["Renderer batches by colour"]
     end
 
-    Definition --> Detection
-    Detection -->|"Cache hit"| Reuse
-    Detection -->|"Cache miss"| Source
-    Source --> Reuse
-    Reuse --> Transforms
-```
-
-### Instance Data Structure
-
-```typescript
-interface InstancedMesh {
-  baseMesh: Mesh;
-  transforms: Matrix4[];
-  expressIds: number[];
-}
-
-// GPU instancing data
-interface InstanceData {
-  positions: Float32Array;    // Shared geometry
-  normals: Float32Array;
-  indices: Uint32Array;
-  instanceMatrices: Float32Array;  // Per-instance transforms
-  instanceColors: Float32Array;    // Per-instance colors
-}
+    Definition --> Mesh
+    Mesh --> Batch
 ```
 
 ## Streaming Pipeline

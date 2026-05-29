@@ -439,12 +439,3 @@ function findRoots(composed: Map<string, ComposedNodeWithSources>): ComposedNode
 
   return roots;
 }
-
-/**
- * Compose a single IFCX file (convenience wrapper).
- */
-export function composeSingleFile(file: IfcxFile): FederatedCompositionResult {
-  const stack = new LayerStack();
-  stack.addLayer(file, new ArrayBuffer(0), 'single');
-  return composeFederated(stack);
-}

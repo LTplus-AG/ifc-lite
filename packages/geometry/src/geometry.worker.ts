@@ -165,12 +165,6 @@ export interface GeometryWorkerMemoryMessage {
   wasmHeapBytes: number;
 }
 
-export type GeometryWorkerResponse =
-  | GeometryWorkerBatchMessage
-  | GeometryWorkerCompleteMessage
-  | GeometryWorkerErrorMessage
-  | GeometryWorkerMemoryMessage;
-
 let api: IfcAPI | null = null;
 
 /**

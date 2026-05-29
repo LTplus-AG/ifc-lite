@@ -8,7 +8,7 @@
  */
 
 import type { ComposedNode, IfcClass } from './types.js';
-import { ATTR, BUILDING_ELEMENT_TYPES } from './types.js';
+import { ATTR } from './types.js';
 import { buildReachableAttributeIndex, collectIncomingEdgeNames } from './traversal.js';
 import { POINTCLOUD_ATTR_KEYS } from '@ifc-lite/pointcloud';
 import {
@@ -135,11 +135,4 @@ function extractName(node: ComposedNode, incomingEdgeNames: string[]): string | 
   }
 
   return null;
-}
-
-/**
- * Check if a type code represents a building element.
- */
-export function isBuildingElement(typeCode: string): boolean {
-  return BUILDING_ELEMENT_TYPES.has(typeCode);
 }

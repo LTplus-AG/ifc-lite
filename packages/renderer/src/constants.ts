@@ -81,28 +81,6 @@ export const CAMERA_CONSTANTS = {
 } as const;
 
 // ============================================================================
-// BVH Constants
-// ============================================================================
-
-export const BVH_CONSTANTS = {
-  /** Minimum mesh count to trigger BVH construction */
-  THRESHOLD: 100,
-  /** Maximum primitives per leaf node */
-  MAX_PRIMITIVES_PER_LEAF: 4,
-  /** Maximum tree depth */
-  MAX_DEPTH: 32,
-} as const;
-
-// ============================================================================
-// Error Handling Constants
-// ============================================================================
-
-export const ERROR_CONSTANTS = {
-  /** Rate limit for render error logging (ms) */
-  RENDER_ERROR_THROTTLE_MS: 1000,
-} as const;
-
-// ============================================================================
 // Pipeline Constants
 // ============================================================================
 
@@ -129,28 +107,6 @@ export const PIPELINE_CONSTANTS = {
 } as const;
 
 // ============================================================================
-// Lighting Constants (for shaders)
-// ============================================================================
-
-export const LIGHTING_CONSTANTS = {
-  // Directional lights (normalized directions)
-  SUN_LIGHT: { x: 0.5, y: 1.0, z: 0.3 } as const,
-  FILL_LIGHT: { x: -0.5, y: 0.3, z: -0.3 } as const,
-  RIM_LIGHT: { x: 0.0, y: 0.2, z: -1.0 } as const,
-
-  // Hemisphere colors
-  SKY_COLOR: { r: 0.3, g: 0.35, b: 0.4 } as const,
-  GROUND_COLOR: { r: 0.15, g: 0.1, b: 0.08 } as const,
-
-  // Intensities
-  AMBIENT_INTENSITY: 0.25,
-  DIFFUSE_SUN_INTENSITY: 0.55,
-  DIFFUSE_FILL_INTENSITY: 0.15,
-  RIM_INTENSITY: 0.15,
-  WRAP_FACTOR: 0.3,
-} as const;
-
-// ============================================================================
 // Batch Buffer Constants
 // ============================================================================
 
@@ -163,15 +119,4 @@ export const BATCH_CONSTANTS = {
   BYTES_PER_VERTEX: 7 * 4,
   /** Bytes per index (uint32) */
   BYTES_PER_INDEX: 4,
-} as const;
-
-// ============================================================================
-// Pick Constants
-// ============================================================================
-
-export const PICK_CONSTANTS = {
-  /** Maximum meshes to create for picking during streaming */
-  MAX_PICK_MESH_CREATION: 500,
-  /** Pick buffer format */
-  BUFFER_FORMAT: 'rgba8unorm' as const,
 } as const;

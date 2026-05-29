@@ -747,25 +747,6 @@ Meshes are automatically grouped by color for efficient rendering:
 renderer.addMeshes(meshes, true);  // isStreaming = true
 ```
 
-### Zero-Copy GPU Upload
-
-For advanced use cases, the renderer supports zero-copy GPU upload from WASM memory:
-
-```typescript
-import { ZeroCopyGpuUploader, createZeroCopyUploader } from '@ifc-lite/renderer';
-
-// Create uploader with GPU device
-const device = renderer.getGPUDevice();
-const uploader = createZeroCopyUploader(device, wasmApi);
-
-// Upload geometry directly from WASM memory to GPU
-const result = uploader.uploadGeometry(gpuGeometryData);
-```
-
-!!! note "Advanced Feature"
-    Zero-copy upload is an advanced optimization. For most use cases,
-    `loadGeometry()` and `addMeshes()` provide excellent performance.
-
 ## Complete Example
 
 ```typescript

@@ -5,21 +5,10 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const wasmMocks = vi.hoisted(() => {
-  const parseMeshesAsync = vi.fn();
-  const parseMeshesInstancedAsync = vi.fn();
   const buildPrePassOnce = vi.fn();
   const processGeometryBatch = vi.fn();
-  const processInstancedGeometryBatch = vi.fn();
 
   class MockIfcAPI {
-    parseMeshesAsync(content: string, options: unknown) {
-      return parseMeshesAsync(content, options);
-    }
-
-    parseMeshesInstancedAsync(content: string, options: unknown) {
-      return parseMeshesInstancedAsync(content, options);
-    }
-
     buildPrePassOnce(data: Uint8Array) {
       return buildPrePassOnce(data);
     }
@@ -53,39 +42,12 @@ const wasmMocks = vi.hoisted(() => {
         styleColors,
       );
     }
-
-    processInstancedGeometryBatch(
-      data: Uint8Array,
-      jobsFlat: Uint32Array,
-      unitScale: number,
-      rtcX: number,
-      rtcY: number,
-      rtcZ: number,
-      needsShift: boolean,
-      styleIds: Uint32Array,
-      styleColors: Uint8Array,
-    ) {
-      return processInstancedGeometryBatch(
-        data,
-        jobsFlat,
-        unitScale,
-        rtcX,
-        rtcY,
-        rtcZ,
-        needsShift,
-        styleIds,
-        styleColors,
-      );
-    }
   }
 
   return {
     init: vi.fn(async () => undefined),
-    parseMeshesAsync,
-    parseMeshesInstancedAsync,
     buildPrePassOnce,
     processGeometryBatch,
-    processInstancedGeometryBatch,
     MockIfcAPI,
   };
 });
@@ -102,11 +64,8 @@ describe('GeometryProcessor byte streaming fallback', () => {
 
   beforeEach(() => {
     wasmMocks.init.mockClear();
-    wasmMocks.parseMeshesAsync.mockReset();
-    wasmMocks.parseMeshesInstancedAsync.mockReset();
     wasmMocks.buildPrePassOnce.mockReset();
     wasmMocks.processGeometryBatch.mockReset();
-    wasmMocks.processInstancedGeometryBatch.mockReset();
     (GeometryProcessor as any).largeFileByteStreamingThreshold = 1;
   });
 
@@ -157,7 +116,6 @@ describe('GeometryProcessor byte streaming fallback', () => {
       events.push(event as { type: string; [key: string]: unknown });
     }
 
-    expect(wasmMocks.parseMeshesAsync).not.toHaveBeenCalled();
     expect(wasmMocks.buildPrePassOnce).toHaveBeenCalledWith(buffer);
     expect(wasmMocks.processGeometryBatch).toHaveBeenCalledTimes(1);
     expect(meshFree).toHaveBeenCalledTimes(1);

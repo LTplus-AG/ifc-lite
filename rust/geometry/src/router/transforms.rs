@@ -800,11 +800,6 @@ impl GeometryRouter {
     }
 }
 
-/// Walk a polyline-sampled curve and interpolate to a target arc length.
-///
-/// Returns the 3D position at `distance` along the polyline plus the unit
-/// tangent of the segment containing it. The caller is expected to pass a
-/// densely-sampled polyline from
 /// Build a rotation matrix whose local +X follows the given in-plane
 /// direction and +Z is world up (+Y = Z × X). Translation is left at the
 /// origin for the caller to fill in. The input must be non-degenerate
@@ -849,6 +844,11 @@ fn line_intersection_2d(
     Some(p1 + d1 * t)
 }
 
+/// Walk a polyline-sampled curve and interpolate to a target arc length.
+///
+/// Returns the 3D position at `distance` along the polyline plus the unit
+/// tangent of the segment containing it. The caller is expected to pass a
+/// densely-sampled polyline from
 /// [`ProfileProcessor::get_curve_points`][crate::profiles::ProfileProcessor::get_curve_points]
 /// — the precision of the result is bounded by the sampler's spacing.
 ///
@@ -977,6 +977,12 @@ DATA;
 #23=IFCGRIDPLACEMENT($,#8,$);
 #30=IFCVIRTUALGRIDINTERSECTION((#4,#7),(2.,3.,4.));
 #31=IFCGRIDPLACEMENT($,#30,$);
+#40=IFCDIRECTION((0.,0.,1.));
+#41=IFCDIRECTION((1.,0.,0.));
+#42=IFCCARTESIANPOINT((100.,200.,300.));
+#43=IFCAXIS2PLACEMENT3D(#42,#40,#41);
+#44=IFCLOCALPLACEMENT($,#43);
+#45=IFCGRIDPLACEMENT(#44,#8,$);
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -1028,5 +1034,20 @@ END-ISO-10303-21;
         // off_u=2 (perp to P → +Y), off_v=3 (perp to Q → -X), elevation=4.
         let m = transform_of(31);
         assert!((origin(&m) - Point3::new(-3.0, 2.0, 4.0)).norm() < 1e-9, "origin={:?}", origin(&m));
+    }
+
+    #[test]
+    fn placement_rel_to_composes_with_the_grid_placement() {
+        // PlacementRelTo #44 sits at (100,200,300); the intersection is local
+        // (0,0). The composed transform must land at the grid's world offset —
+        // this is the parent ∘ local path that positions a real grid relative
+        // to its storey/site (and the reporter's grid at (-17000,16000,0)).
+        let m = transform_of(45);
+        assert!(
+            (origin(&m) - Point3::new(100.0, 200.0, 300.0)).norm() < 1e-9,
+            "origin={:?}",
+            origin(&m)
+        );
+        assert!((x_axis(&m) - Vector3::new(1.0, 0.0, 0.0)).norm() < 1e-9);
     }
 }

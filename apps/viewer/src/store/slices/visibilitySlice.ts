@@ -11,7 +11,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { TypeVisibility, EntityRef } from '../types.js';
-import { TYPE_VISIBILITY_DEFAULTS, TYPE_VISIBILITY_STORAGE_KEYS } from '../constants.js';
+import { getPersistedTypeVisibility, TYPE_VISIBILITY_STORAGE_KEYS } from '../constants.js';
 
 export interface VisibilitySlice {
   // State (legacy - single model)
@@ -75,13 +75,8 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
   hiddenEntities: new Set(),
   isolatedEntities: null,
   classFilter: null,
-  typeVisibility: {
-    spaces: TYPE_VISIBILITY_DEFAULTS.SPACES,
-    openings: TYPE_VISIBILITY_DEFAULTS.OPENINGS,
-    site: TYPE_VISIBILITY_DEFAULTS.SITE,
-    ifcAnnotations: TYPE_VISIBILITY_DEFAULTS.IFC_ANNOTATIONS,
-    ifcGrid: TYPE_VISIBILITY_DEFAULTS.IFC_GRID,
-  },
+  // Read persisted toggles fresh so the user's choices survive reloads.
+  typeVisibility: getPersistedTypeVisibility(),
 
   // Initial state (multi-model)
   hiddenEntitiesByModel: new Map(),

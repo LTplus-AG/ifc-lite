@@ -5,7 +5,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { createVisibilitySlice, type VisibilitySlice } from './visibilitySlice.js';
-import { TYPE_VISIBILITY_DEFAULTS } from '../constants.js';
+import { getPersistedTypeVisibility } from '../constants.js';
 
 describe('VisibilitySlice', () => {
   let state: VisibilitySlice;
@@ -33,10 +33,13 @@ describe('VisibilitySlice', () => {
       assert.strictEqual(state.isolatedEntitiesByModel.size, 0);
     });
 
-    it('should have default type visibility', () => {
-      assert.strictEqual(state.typeVisibility.spaces, TYPE_VISIBILITY_DEFAULTS.SPACES);
-      assert.strictEqual(state.typeVisibility.openings, TYPE_VISIBILITY_DEFAULTS.OPENINGS);
-      assert.strictEqual(state.typeVisibility.site, TYPE_VISIBILITY_DEFAULTS.SITE);
+    it('should initialise type visibility from persisted preferences', () => {
+      const persisted = getPersistedTypeVisibility();
+      assert.strictEqual(state.typeVisibility.spaces, persisted.spaces);
+      assert.strictEqual(state.typeVisibility.openings, persisted.openings);
+      assert.strictEqual(state.typeVisibility.site, persisted.site);
+      assert.strictEqual(state.typeVisibility.ifcAnnotations, persisted.ifcAnnotations);
+      assert.strictEqual(state.typeVisibility.ifcGrid, persisted.ifcGrid);
     });
   });
 

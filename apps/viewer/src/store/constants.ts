@@ -6,6 +6,8 @@
  * Store constants - extracted magic numbers for maintainability
  */
 
+import type { TypeVisibility } from './types.js';
+
 // ============================================================================
 // Camera Defaults
 // ============================================================================
@@ -191,28 +193,33 @@ const SEMANTIC_DEFAULTS = {
   ifcGrid: true,
 } as const;
 
-export const TYPE_VISIBILITY_DEFAULTS = {
-  /** IfcSpace visibility — persisted across reloads. */
-  SPACES:          readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spaces, SEMANTIC_DEFAULTS.spaces),
-  /** IfcOpeningElement visibility — persisted across reloads. */
-  OPENINGS:        readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, SEMANTIC_DEFAULTS.openings),
-  /** IfcSite visibility — persisted across reloads. */
-  SITE:            readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, SEMANTIC_DEFAULTS.site),
-  /** IfcAnnotation visibility (text, dimensions, leaders) — persisted. */
-  IFC_ANNOTATIONS: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcAnnotations),
-  /**
-   * IfcGrid visibility (axis lines + bubble tags) — persisted. Issue
-   * #862. Migration: if the new key isn't set yet, fall back to the
-   * legacy combined `ifcAnnotations` preference. That way a user who
-   * previously turned the combined "Annotations & Grids" toggle off
-   * keeps grids hidden after upgrade, instead of grids silently
-   * reappearing (PR #868 review, chatgpt-codex P2).
-   */
-  IFC_GRID:        readPersistedBool(
-    TYPE_VISIBILITY_STORAGE_KEYS.ifcGrid,
-    readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcGrid),
-  ),
-} as const;
+/**
+ * Resolve the full type-visibility preference set from localStorage.
+ *
+ * Read fresh on EVERY call — not captured once at module load. The store
+ * applies this both at boot (slice init) and on every new-file load
+ * (`resetViewerState`). A module-level constant would snapshot localStorage
+ * at first import and then go stale after the first in-session toggle, so
+ * loading a second model would silently revert the user's choices (e.g.
+ * "Show Annotations" flipping back on). Reading live keeps every toggle
+ * sticky across reloads AND across model swaps within a session.
+ */
+export function getPersistedTypeVisibility(): TypeVisibility {
+  return {
+    spaces:         readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spaces, SEMANTIC_DEFAULTS.spaces),
+    openings:       readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, SEMANTIC_DEFAULTS.openings),
+    site:           readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, SEMANTIC_DEFAULTS.site),
+    ifcAnnotations: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcAnnotations),
+    // Issue #862. Migration: if the new grid key isn't set yet, fall back to
+    // the legacy combined `ifcAnnotations` preference so a user who turned
+    // the old "Annotations & Grids" toggle off keeps grids hidden after
+    // upgrade instead of grids silently reappearing (PR #868 review).
+    ifcGrid:        readPersistedBool(
+      TYPE_VISIBILITY_STORAGE_KEYS.ifcGrid,
+      readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, SEMANTIC_DEFAULTS.ifcGrid),
+    ),
+  };
+}
 
 // ============================================================================
 // Data Defaults

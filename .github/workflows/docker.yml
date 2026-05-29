@@ -40,8 +40,11 @@ jobs:
     name: Build & Push Docker Image
     runs-on: depot-ubuntu-24.04-4
     # Cap a stuck "Build and push" so it can't run to GitHub's 6h default.
-    # A cold Rust+wasm rebuild (cache miss) is ~30-45 min, so 60 gives headroom.
-    timeout-minutes: 60
+    # A *cold* build — cargo-chef cooking the whole workspace incl. the
+    # manifold-csg-sys C++ kernel after a deps-cache miss — runs >60 min, and a
+    # cold build that gets cancelled never warms the gha cache, so the cap must
+    # let one complete. 120 covers a cold build; warm builds finish in minutes.
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
